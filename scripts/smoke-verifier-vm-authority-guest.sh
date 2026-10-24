@@ -3386,6 +3386,8 @@ run_focused_rust_tests() {
                 fs::tests::rename_admitted_entry_stays_with_its_retained_parent_after_path_swap
                 fs::tests::file_metadata_digest_different_subseconds_use_wire_precision
                 fs::tests::file_metadata_digest_epoch_fraction_keeps_zero_seconds
+                fs::tests::file_metadata_receive_native_path_writes_stay_with_destination
+                fs::tests::file_metadata_receive_native_path_resumes_stay_with_destination
                 fs::tests::file_metadata_digest_mismatched_seconds_and_sizes_stay_distinct
                 fs::tests::recursive_owner_files_retain_the_listed_parent
                 fs::tests::recursive_owner_empty_dirs_retain_the_listed_parent

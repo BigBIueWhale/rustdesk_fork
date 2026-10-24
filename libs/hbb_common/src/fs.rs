@@ -5808,6 +5808,150 @@ mod tests {
     use crate::protobuf::Message as _;
 
     #[cfg(target_os = "linux")]
+    async fn file_metadata_native_path_case(
+        kind: &str, spelling: &str, invalid: bool,
+    ) -> serde_json::Value {
+        use std::os::unix::ffi::OsStringExt;
+        let cwd = std::env::current_dir().unwrap();
+        let directory = std::ffi::OsString::from_vec(if invalid {
+            b"destination-\xff".to_vec()
+        } else {
+            "destination-É".as_bytes().to_vec()
+        });
+        let parent = if spelling == "absolute" {
+            cwd.join(&directory)
+        } else {
+            PathBuf::from(&directory)
+        };
+        std::fs::create_dir(&parent).unwrap();
+        let final_path = parent.join("incoming.bin");
+        let selected_download = parent.join("incoming.bin.download");
+        let selected_digest = parent.join("incoming.bin.digest");
+        let selected_lock = parent.join("incoming.bin.download.lock");
+        let cwd_file = cwd.join("incoming.bin");
+        std::fs::write(&cwd_file, b"working-directory sentinel").unwrap();
+        let digest = FileDigest { size: 6, modified: 31 };
+        let digest_bytes = serde_json::to_vec(&digest).unwrap();
+        let result = if kind == "write" {
+            let mut job = TransferJob::new_write(
+                491, JobType::Generic, String::new(), parent.clone(),
+                0, false, false, false,
+            ).with_files(vec![FileEntry {
+                name: "incoming.bin".into(), size: 6, modified_time: 31,
+                ..Default::default()
+            }]).unwrap();
+            let result = match job.write(FileTransferBlock {
+                id: 491, file_num: 0, data: b"abcdef".to_vec().into(),
+                ..Default::default()
+            }).await {
+                Ok(()) => job.finalize_write(1).await,
+                Err(error) => Err(error),
+            };
+            drop(job);
+            result
+        } else {
+            assert_eq!(kind, "resume");
+            // Independent native names are the oracle; do not use recv_sidecar_path here.
+            std::fs::write(&selected_download, b"abc").unwrap();
+            std::fs::write(&selected_digest, &digest_bytes).unwrap();
+            std::fs::write(cwd.join(".download"), b"bad").unwrap();
+            std::fs::write(cwd.join(".digest"), &digest_bytes).unwrap();
+            tokio::task::spawn_blocking(move || -> ResultType<()> {
+                use std::io::Write;
+                let (mut stream, mut claim) =
+                    ReceiveWriteClaim::resume(final_path, digest, 6, 3)?;
+                stream.write_all(b"def")?;
+                stream.sync_all()?;
+                drop(stream);
+                claim.finish(6, 31)?;
+                Ok(())
+            }).await.unwrap()
+        };
+        let absent = |path: &Path| matches!(std::fs::symlink_metadata(path),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound);
+        let destination_exact = std::fs::read(parent.join("incoming.bin"))
+            .map(|bytes| bytes == b"abcdef").unwrap_or(false);
+        let cwd_preserved = std::fs::read(&cwd_file).unwrap() == b"working-directory sentinel"
+            && if kind == "resume" {
+                std::fs::read(cwd.join(".download")).ok().as_deref() == Some(&b"bad"[..])
+                    && std::fs::read(cwd.join(".digest")).ok().as_deref() == Some(digest_bytes.as_slice())
+            } else {
+                absent(&cwd.join(".download")) && absent(&cwd.join(".digest"))
+            }
+            && absent(&cwd.join(".download.lock"));
+        serde_json::json!({
+            "kind": kind, "spelling": spelling, "invalid": invalid,
+            "operation_ok": result.is_ok(), "destination_exact": destination_exact,
+            "cwd_preserved": cwd_preserved,
+            "sidecars_retired": absent(&selected_download)
+                && absent(&selected_digest) && absent(&selected_lock),
+        })
+    }
+
+    #[cfg(target_os = "linux")]
+    async fn assert_file_metadata_native_paths(kind: &str, test_name: &str) {
+        const CASE: &str = "RUSTDESK_RECEIVE_NATIVE_PATH_CASE";
+        if let Ok(case) = std::env::var(CASE) {
+            let fields: Vec<_> = case.split('/').collect();
+            assert_eq!(fields.len(), 3);
+            assert_eq!(fields[0], kind);
+            assert!(matches!(fields[1], "absolute" | "relative"));
+            assert!(matches!(fields[2], "false" | "true"));
+            let observation = file_metadata_native_path_case(
+                kind, fields[1], fields[2] == "true",
+            ).await;
+            println!("FILE_METADATA_NATIVE_PATH={observation}");
+            return;
+        }
+        let mut passed = true;
+        let mut cases = 0;
+        for invalid in [false, true] {
+            for spelling in ["absolute", "relative"] {
+                let root = TestTempDir::new("rustdesk_receive_native_path");
+                std::fs::create_dir_all(&root.path).unwrap();
+                let output = tokio::process::Command::new(std::env::current_exe().unwrap())
+                    .args(["--exact", test_name, "--nocapture", "--test-threads=1"])
+                    .env(CASE, format!("{kind}/{spelling}/{invalid}"))
+                    .current_dir(&root.path)
+                    .output().await.unwrap();
+                assert!(output.status.success(),
+                    "native path worker failed: {}", String::from_utf8_lossy(&output.stderr));
+                assert!(output.stdout.len() < 16 * 1024);
+                let stdout = std::str::from_utf8(&output.stdout).unwrap();
+                let observations: Vec<_> = stdout.lines()
+                    .filter_map(|line| line.strip_prefix("FILE_METADATA_NATIVE_PATH="))
+                    .collect();
+                assert_eq!(observations.len(), 1);
+                let observation: serde_json::Value =
+                    serde_json::from_str(observations[0]).unwrap();
+                assert_eq!(observation["kind"], kind);
+                assert_eq!(observation["spelling"], spelling);
+                assert_eq!(observation["invalid"], invalid);
+                passed &= ["operation_ok", "destination_exact", "cwd_preserved", "sidecars_retired"]
+                    .iter().all(|key| observation[*key] == true);
+                println!("FILE_METADATA_NATIVE_PATH={}", observations[0]);
+                cases += 1;
+            }
+        }
+        assert_eq!(cases, 4);
+        assert!(passed, "receive artifacts and final writes must retain the native destination");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn file_metadata_receive_native_path_writes_stay_with_destination() {
+        assert_file_metadata_native_paths("write",
+            "fs::tests::file_metadata_receive_native_path_writes_stay_with_destination").await;
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn file_metadata_receive_native_path_resumes_stay_with_destination() {
+        assert_file_metadata_native_paths("resume",
+            "fs::tests::file_metadata_receive_native_path_resumes_stay_with_destination").await;
+    }
+
+    #[cfg(target_os = "linux")]
     async fn file_metadata_digest_fixture(
         source_seconds: i64,
         source_nanos: u32,

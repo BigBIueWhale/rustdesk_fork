@@ -2440,9 +2440,11 @@ async fn run_io_runtime<T: InvokeUiSession>(
         } else if handler.args.len() == 0 {
             let pfs = handler.lc.read().unwrap().port_forwards.clone();
             for d in pfs {
+                let port = d.0;
                 if let Err(err) = supervisor.add(d.into()).await {
-                    handler.on_error(&err);
-                    break;
+                    handler.on_error(&format!(
+                        "Failed to start tunnel on local port {port}: {err}"
+                    ));
                 }
             }
             loop {

@@ -13476,6 +13476,66 @@ Complete peer/CM per-call authority, native audio/resource finality, rendered UI
 full parent, installed/other-platform behavior, all fifteen credential actions,
 R-S0/R-F5, soak and release acceptance remain OPEN. All user parks are unchanged.
 
+**CM voice per-call authority — source and Linux component verified; full native
+IPC/audio/UI acceptance OPEN.** `c0a9a93d` replaces the bare bool response/string
+stop protocol with separate closed command/event enums carrying a call ID. The
+connection mints checked positive IDs independently of peer request timestamps,
+retains an ID through pending/active ownership and retires it on refusal/close.
+IDs do not wrap or repeat within a connection; existing connection capability and
+registry generation scope them across connection lifetimes. They are not new
+credentials or durable identities.
+
+CM state mutation belongs to the registry: only a live voice-capable current owner
+may publish a fresh Incoming while idle, Started for its exact pending call, or
+Closed for its exact pending/active call. A retained consumed-ID watermark refuses
+replayed incoming IDs. Invalid transitions preserve state. CM FFI admission checks
+the displayed registry generation, positive call ID and required phase before
+cloning its sender. The private controlled dispatcher rechecks type, call ID and
+phase when the queued command is consumed; only pending calls accept Respond and
+only active calls accept Stop. Old actions cannot select a later call.
+
+Desktop/mobile/dialog callbacks retain an immutable triple of connection ID,
+registry generation and call ID before installation. Client equality, copying,
+serialization and incremental state updates include the call ID. Web placeholders
+require the new argument; iOS retains explicit refusal. The old IPC variants and
+public unbound controlled effect methods are removed. Network voice schema and
+viewer behavior are unchanged. Desktop/Android real-IPC test fixtures are adapted
+but unexecuted; full parent/bootstrap remains parked.
+
+Typed API preparation `d16e3baf` deliberately retains old selection. The native
+77-case baseline passes 74 and fails all three new authority tests. Each action
+admits 36 ID/phase combinations although only two are valid; the controlled
+dispatcher also selects 36. Event updates admit 36 each instead of 6/2/4 valid
+Incoming/Started/Closed transitions. The identical corrected cohort passes 77/77
+in 7.05 native seconds, 109 outer. Each of the three new matrices executes 108
+contexts; issuer controls cover both allowed types, repeated peer IDs, last
+positive ID, exhaustion and negative counter refusal. All prior 73 assertions
+remain, with typed message/phase fixture adaptations. Across 30 inputs/45 parts,
+only connection.rs, ui_cm_interface.rs and their registry/sender/command parts
+differ. Locked dependencies and tests are identical A/B.
+
+Actual registry, FFI, real CM queues, request issuance and controlled command
+dispatch execute. Post-auth identity, lease presence, clock, audio/close/send
+effects are explicit doubles. Complete handlers, native CM IPC, OS principals,
+physical audio and cleanup are not established. The bounded failed-run printer
+omits 24 successful prior viewer mismatch rows; its unchanged test passes and
+retains its source binding. The unchanged 512-record ceiling remains.
+
+Fresh pinned bridge generation and caller/import compilation pass with 47 Dart
+cases and three result-parser controls in 259 outer seconds. Two new production
+model tests retain the immutable triple after Client mutation and verify voice-ID
+equality/copy/serialization. Existing 45 controls pass. These do not execute voice
+buttons/dialogs, native bridge transport or Android notifications. The first Dart
+attempt stopped before generation/tests on one formatting wrap; its diagnostic
+and joined retirement are retained. No duplicate native run followed that Dart-only
+format correction.
+
+Evidence: `.harness-state/verifier-vm/cm-call-authority-d14134b4.json`.
+Real peer/CM IPC and audio/resource finality, rendered voice controls/dialogs,
+Android notification/device behavior, full parent, installed/other-platform and
+cross-version execution, all fifteen credential actions, R-S0/R-F5, soak and
+release acceptance remain OPEN. All user parks remain unchanged.
+
 Historical `--flutter-model-tests --peer-data` source `c4acc5ce` passed all ten named tests and three
 result-parser controls in 277 outer seconds with fresh bridge/import compilation. The same tests
 on `6dfedef7` passed eight cases and failed the two live-metadata privacy cases, exposing synthetic

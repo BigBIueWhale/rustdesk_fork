@@ -11,9 +11,9 @@ MAX_OUTPUT = 4 * 1024 * 1024
 
 def select_artifact(output, package="hbb_common", source_root="/source"):
     manifest_package, executable_dir = package, "/cargo-target/debug/deps"
-    if package == "descriptor_lifetime" and source_root == "/source":
+    if package in ("descriptor_lifetime", "receive_authority") and source_root == "/source":
         manifest_package = "hbb_common"
-        name, kind, source = package, ["test"], "tests/descriptor_lifetime.rs"
+        name, kind, source = package, ["test"], f"tests/{package}.rs"
     elif package == "cpace_it" and source_root == "/source":
         name, kind, source = "handshake", ["test"], "tests/handshake.rs"
     elif package == "surface_it" and source_root == "/source":

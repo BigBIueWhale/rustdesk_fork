@@ -14,6 +14,12 @@ path = "tests/descriptor_lifetime.rs"
 harness = false
 test = false
 
+[[test]]
+name = "receive_authority"
+path = "tests/receive_authority.rs"
+harness = false
+test = false
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]

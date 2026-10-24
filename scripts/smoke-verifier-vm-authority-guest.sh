@@ -3130,6 +3130,8 @@ run_focused_rust_tests() {
             libs/hbb_common/src/config.rs
             libs/hbb_common/src/fs.rs
             libs/hbb_common/src/fs/atomic_write.rs
+            libs/hbb_common/Cargo.toml
+            libs/hbb_common/tests/receive_authority.rs
             flutter/test/fixtures/direct_address.json
             src/client.rs
             src/ipc.rs
@@ -5657,6 +5659,18 @@ run_focused_rust_tests() {
                             fi
                             printf "FILE_METADATA_DESCRIPTOR_ARTIFACT=pass sha256=%s executable=%s modes=2 cases=6 unchanged=before-after\n" \
                                 "$lifetime_sha" "$lifetime_executable"
+                            cargo test --offline --locked -p hbb_common --test receive_authority --no-run \
+                                --message-format=json-render-diagnostics --color never \
+                                >/cargo-target/receive-authority-build.json
+                            authority_executable="$(python3 -I -S /source/scripts/select-hbb-common-test-artifact.py \
+                                /cargo-target/receive-authority-build.json receive_authority)"
+                            [ -f "$authority_executable" ] && [ ! -L "$authority_executable" ] \
+                                && [ -x "$authority_executable" ] \
+                                && [ "$(stat -c "%u:%g:%h" -- "$authority_executable")" = 1000:1000:1 ]
+                            authority_sha="$(sha256sum "$authority_executable" | cut -d " " -f 1)"
+                            authority_source_sha="$(sha256sum /source/libs/hbb_common/tests/receive_authority.rs | cut -d " " -f 1)"
+                            printf "RECEIVE_NATIVE_AUTHORITY_BUILD=observed sha256=%s executable=%s source_sha256=%s\\n" \
+                                "$authority_sha" "$authority_executable" "$authority_source_sha"
                         elif [ "$RUST_TEST_PROFILE" = config-options ]; then
                             for group in config::tests::config_transaction_ config::tests::peer_load_removes_and_rewrites_legacy_rdp_credential_options config::tests::test_load_reads_legacy_plaintext_id_without_storing config::tests::test_load_path_ config::option_tests:: config::linux_directory::lease_tests:: password_security::test::test_; do
                                 group_status=0
@@ -7238,6 +7252,59 @@ PY
         || fail 'focused Rust-test container did not exit cleanly'
     "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
     CONTAINER_ID=
+    if [ "$MODE" = hbb-common-fs ] && [ "$RUST_TEST_PROFILE" = file-metadata ]; then
+        local authority_record authority_sha authority_executable authority_source_sha authority_work
+        local authority_output=$ROOT/receive-native-authority.out
+        local -a authority_records
+        mapfile -t authority_records < <(
+            grep -E '^RECEIVE_NATIVE_AUTHORITY_BUILD=observed sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/receive_authority-[0-9a-f]{16} source_sha256=[0-9a-f]{64}$' "$output"
+        )
+        [ "${#authority_records[@]}" -eq 1 ] \
+            && [ "$(grep -Fc 'RECEIVE_NATIVE_AUTHORITY_BUILD=' "$output")" -eq 1 ] \
+            || fail 'receive authority native build receipt differs'
+        authority_record=${authority_records[0]}
+        authority_sha=${authority_record#*sha256=}; authority_sha=${authority_sha%% *}
+        authority_executable=${authority_record#*executable=}; authority_executable=${authority_executable%% *}
+        authority_source_sha=${authority_record##*source_sha256=}
+        [ "$authority_source_sha" = "$(sha256sum "$source_root/libs/hbb_common/tests/receive_authority.rs" | cut -d ' ' -f 1)" ] \
+            || fail 'receive authority native driver source differs'
+        authority_executable=$target_root/${authority_executable#/cargo-target/}
+        [ -f "$authority_executable" ] && [ ! -L "$authority_executable" ] \
+            && [ "$(stat -c '%u:%g:%h' "$authority_executable")" = 1000:1000:1 ] \
+            && [ "$(stat -c '%s' "$authority_executable")" -le 268435456 ] \
+            && [ "$authority_sha" = "$(sha256sum "$authority_executable" | cut -d ' ' -f 1)" ] \
+            || fail 'receive authority native artifact differs'
+        authority_work=$(mktemp -d /tmp/rustdesk-receive-authority.XXXXXXXXXX)
+        chmod 0755 "$authority_work"
+        install -o 0 -g 0 -m 0555 "$authority_executable" "$authority_work/probe"
+        install -d -o 0 -g 0 -m 0711 "$authority_work/data"
+        install -d -o 0 -g 0 -m 0700 "$authority_work/home"
+        [ "$(stat -c '%u:%g:%a:%h' "$authority_work/probe")" = 0:0:555:1 ] \
+            && [ "$authority_sha" = "$(sha256sum "$authority_work/probe" | cut -d ' ' -f 1)" ] \
+            || fail 'receive authority protected runtime copy differs'
+        # Privileged receiver and irreversible UID drop run only inside this disposable VM.
+        setpriv --no-new-privs env -i PATH=/usr/bin:/bin HOME="$authority_work/home" \
+            LANG=C LC_ALL=C \
+            prlimit --as=1073741824 --nofile=128:128 --core=0:0 --fsize=67108864 \
+            timeout --signal=TERM --kill-after=5s 60s \
+            "$authority_work/probe" run "$authority_work/data" >"$authority_output" 2>&1 \
+            || { tail -c 65536 "$authority_output" >&2; fail 'root/ordinary-user receive authority cases failed'; }
+        [ "$(stat -c '%s' "$authority_output")" -le 65536 ] \
+            && [ "$(grep -Fc 'RECEIVE_NATIVE_CASE=' "$authority_output")" -eq 12 ] \
+            && [ "$(grep -Fc 'RECEIVE_NATIVE_ACTOR=' "$authority_output")" -eq 16 ] \
+            && [ "$(grep -Fxc 'RECEIVE_NATIVE_AUTHORITY=pass cases=12 actors=16 receiver_uid=0 actor_uid=4001 children=joined fixture=retired' "$authority_output")" -eq 1 ] \
+            || fail 'receive authority native scenario or join receipt differs'
+        [ -z "$(find "$authority_work/data" -mindepth 1 -maxdepth 1 -print -quit)" ] \
+            && [ "$authority_sha" = "$(sha256sum "$authority_work/probe" | cut -d ' ' -f 1)" ] \
+            && [ "$authority_sha" = "$(sha256sum "$authority_executable" | cut -d ' ' -f 1)" ] \
+            || fail 'receive authority native artifact or fixture changed'
+        cat "$authority_output"
+        rm -rf -- "$authority_work"
+        [ ! -e "$authority_work" ] && [ ! -L "$authority_work" ] \
+            || fail 'receive authority runtime workspace did not retire'
+        printf 'RECEIVE_NATIVE_AUTHORITY_VM=pass commit=%s tree=%s artifact_sha256=%s source_sha256=%s cases=12 actors=16 receiver_uid=0 actor_uid=4001 scope=production-library installed=unexecuted vm_network=none children=joined fixture=retired\n' \
+            "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$authority_sha" "$authority_source_sha"
+    fi
     if [ "$MODE" = linux-service-uid-tests ]; then
         python3 -I -S "$source_root/scripts/prepare-trusted-executable-fixture.py" retire
     fi

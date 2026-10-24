@@ -5963,6 +5963,18 @@ elif [ "$MODE" = hbb-common-fs ]; then
     HBB_COMMON_FS_ARTIFACT_SHA256=${hbb_common_fs_receipts[0]#*artifact_sha256=}
     HBB_COMMON_FS_ARTIFACT_SHA256=${HBB_COMMON_FS_ARTIFACT_SHA256%% *}
     printf '%s\n' "${hbb_common_fs_receipts[0]}"
+    if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
+        mapfile -t receive_native_receipts < <(
+            /usr/bin/grep -Eo \
+                "RECEIVE_NATIVE_AUTHORITY_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE artifact_sha256=[0-9a-f]{64} source_sha256=[0-9a-f]{64} cases=12 actors=16 receiver_uid=0 actor_uid=4001 scope=production-library installed=unexecuted vm_network=none children=joined fixture=retired" \
+                "$SERIAL_LOG" || true
+        )
+        [ "${#receive_native_receipts[@]}" -eq 1 ] \
+            && [ "$(/usr/bin/grep -Fc 'RECEIVE_NATIVE_AUTHORITY_VM=' "$SERIAL_LOG")" -eq 1 ] \
+            || fail 'root/ordinary-user receive authority receipt is absent or duplicated'
+        require_exact_fixed_receipt "${receive_native_receipts[0]}" 'root/ordinary-user receive authority'
+        printf '%s\n' "${receive_native_receipts[0]}"
+    fi
     if [ "$RUST_TEST_PROFILE" = compression ]; then
         require_exact_fixed_receipt \
             'DECOMPRESSION_INPUT=pass paths=2 sizes=3 healthy=6 refused=6 probe=SIGABRT children=joined' \

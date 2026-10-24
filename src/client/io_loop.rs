@@ -1788,6 +1788,7 @@ impl<T: InvokeUiSession> Remote<T> {
     }
 
     async fn stop_voice_call(&mut self) {
+        self.voice_call_request_timestamp = None;
         let Some(mut voice_call_audio) = self.voice_call_audio.take() else {
             return;
         };
@@ -3746,18 +3747,20 @@ impl<T: InvokeUiSession> Remote<T> {
                         // TODO: maybe we will do a voice call from the peer in the future.
                     } else {
                         log::debug!("The remote has requested to close the voice call");
-                        if self.voice_call_audio.is_some() {
+                        if self.voice_call_audio.is_some()
+                            || self.voice_call_request_timestamp.is_some()
+                        {
                             self.stop_voice_call().await;
                             self.handler.on_voice_call_closed("");
                         }
                     }
                 }
                 Some(message::Union::VoiceCallResponse(response)) => {
-                    let ts = std::mem::replace(&mut self.voice_call_request_timestamp, None);
-                    if let Some(ts) = ts {
+                    if let Some(ts) = self.voice_call_request_timestamp {
                         if response.req_timestamp != ts.get() {
-                            log::debug!("Possible encountering a voice call attack.");
+                            log::debug!("Ignored voice-call response for a different request");
                         } else {
+                            self.voice_call_request_timestamp = None;
                             if response.accepted {
                                 // The peer accepted the voice call.
                                 self.stop_voice_call().await;

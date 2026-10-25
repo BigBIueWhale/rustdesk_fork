@@ -8823,14 +8823,6 @@ impl Connection {
                 return true;
             }
 
-            // R-A2/R-S2: approve-mode is pinned to "password" (the config funnel's PINNED_SETTINGS),
-            // so CPace at the choke point is the SOLE authorizer and every connection reaches login
-            // already authorized. The inherited attended "click-to-accept" branch — Click/Both
-            // approve-mode gated by is_logon()/allow-logon-screen-password, the
-            // try_start_cm(authorized=false) + the LOGIN_MSG_NO_PASSWORD_ACCESS "wait for the remote
-            // side to accept" prompt — is UNREACHABLE (both approve_mode() comparisons are always
-            // false) and is excised.
-            //
             // R-S18 / R-S2 / R-S6: LoginRequest is now session metadata only. CPace at the choke
             // point is the sole authenticator, so no legacy salted-hash password field is parsed
             // or re-validated here.

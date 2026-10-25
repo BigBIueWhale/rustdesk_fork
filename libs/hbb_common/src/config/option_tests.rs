@@ -5263,7 +5263,7 @@ fn ordinary_option_source_healthy_missing_sparse_and_concurrent_controls() {
                 for (hide, expected) in [("Y", true), ("N", false)] {
                     CONFIG2.write().unwrap().options.insert("allow-hide-cm".into(), hide.into());
                     assert!(crate::password_security::permanent_enabled());
-                    assert_eq!(crate::password_security::approve_mode(), crate::password_security::ApproveMode::Password);
+                    assert_eq!(Config::get_option(keys::OPTION_APPROVE_MODE), "password");
                     assert_eq!(crate::password_security::hide_cm(), expected);
                     policy_cases += 1;
                 }

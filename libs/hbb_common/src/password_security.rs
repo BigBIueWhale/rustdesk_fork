@@ -1,13 +1,6 @@
 use crate::config::Config;
 use sodiumoxide::{base64, crypto::secretbox};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ApproveMode {
-    Both,
-    Password,
-    Click,
-}
-
 pub fn permanent_enabled() -> bool {
     Config::get_option("verification-method") == "use-permanent-password"
 }
@@ -17,19 +10,8 @@ pub fn has_valid_password() -> bool {
     permanent_enabled() && Config::has_permanent_password()
 }
 
-pub fn approve_mode() -> ApproveMode {
-    let mode = Config::get_option("approve-mode");
-    if mode == "password" {
-        ApproveMode::Password
-    } else if mode == "click" {
-        ApproveMode::Click
-    } else {
-        ApproveMode::Both
-    }
-}
-
 pub fn hide_cm() -> bool {
-    approve_mode() == ApproveMode::Password
+    Config::get_option("approve-mode") == "password"
         && permanent_enabled()
         && crate::config::option2bool("allow-hide-cm", &Config::get_option("allow-hide-cm"))
 }

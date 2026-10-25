@@ -23,6 +23,7 @@ BASE_READONLY_TEST=0
 FLUTTER_TEST_PROFILE=models
 RUST_TEST_PROFILE=integration
 HBB_LOGIND_NATIVE=0
+HBB_CONFIG_NATIVE=0
 HBB_FUSE_READ_TESTS=0
 HBB_SEND_DIGEST_TESTS=0
 COUNT_REQUIREMENTS=0
@@ -88,6 +89,15 @@ case "$#:${1:-}" in
         elif [ "$1" = --compression-tests ]; then
             RUST_TEST_PROFILE=compression
         fi
+        ;;
+    2:--config-options-tests)
+        [ "$2" = --service-root ] \
+            && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
+            && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'native service-config arguments or overrides are invalid' >&2; exit 2; }
+        MODE=hbb-common-fs
+        RUST_TEST_PROFILE=config-options
+        HBB_CONFIG_NATIVE=1
         ;;
     1:--cpace-recovery-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
@@ -600,7 +610,7 @@ case "$#:${1:-}" in
         printf 'File metadata admission/finality: %s --file-metadata-tests\n' "${0##*/}" >&2
         printf 'TCP writer retirement: %s --writer-retirement-tests\n' "${0##*/}" >&2
         printf 'Shared and file-block decompression: %s --compression-tests\n' "${0##*/}" >&2
-        printf 'Ordinary option persistence: %s --config-options-tests\n' "${0##*/}" >&2
+        printf 'Ordinary option persistence: %s --config-options-tests [--service-root]\n' "${0##*/}" >&2
         printf 'Focused production clipboard tests: %s --android-rust-lifecycle-tests --clipboard\n' "${0##*/}" >&2
         printf 'Focused installer encoder/decoder tests: %s --installer-package-tests\n' "${0##*/}" >&2
         printf 'Focused whiteboard presentation state tests: %s --android-rust-lifecycle-tests --whiteboard-presentation\n' "${0##*/}" >&2
@@ -4650,6 +4660,9 @@ elif [ "$MODE" = hbb-common-fs ]; then
         guest_invocation+=' --compression'
     elif [ "$RUST_TEST_PROFILE" = config-options ]; then
         guest_invocation+=' --config-options'
+        if [ "$HBB_CONFIG_NATIVE" -eq 1 ]; then
+            guest_invocation+=' --native-service-config'
+        fi
     fi
 elif [ "$MODE" = cpace-recovery-tests ]; then
     guest_invocation+=" --cpace-recovery-tests /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
@@ -5999,6 +6012,11 @@ elif [ "$MODE" = hbb-common-fs ]; then
         require_exact_fixed_receipt \
             "LINUX_LOGINCTL_NATIVE=pass cases=7 artifact_sha256=$HBB_COMMON_FS_ARTIFACT_SHA256 fixture=systemd-pam scope=logind-session-selection installed=unexecuted uid=1000 caps=none nnp=on cleanup=joined" \
             'native Linux logind session-selection receipt'
+    fi
+    if [ "$HBB_CONFIG_NATIVE" -eq 1 ]; then
+        require_exact_fixed_receipt \
+            "LINUX_SERVICE_CONFIG_NATIVE=pass cases=6 artifact_sha256=$HBB_COMMON_FS_ARTIFACT_SHA256 scope=configuration-root installed=unexecuted caps=none nnp=on cleanup=joined" \
+            'native Linux service configuration-root receipt'
     fi
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \

@@ -15,6 +15,7 @@ FLUTTER_APP_ENGINE_CONTEXT=
 FLUTTER_TEST_PROFILE=models
 RUST_TEST_PROFILE=integration
 HBB_LOGIND_NATIVE=0
+HBB_CONFIG_NATIVE=0
 HBB_FUSE_READ_TESTS=0
 HBB_SEND_DIGEST_TESTS=0
 LEDGER_REQUIREMENTS_SHA256=
@@ -122,6 +123,12 @@ case "$#:${8:-}" in
             --compression) RUST_TEST_PROFILE=compression ;;
             *) exit 2 ;;
         esac
+        ;;
+    14:--hbb-common-fs)
+        [ "${13}" = --config-options ] && [ "${14}" = --native-service-config ] || exit 2
+        MODE=hbb-common-fs
+        RUST_TEST_PROFILE=config-options
+        HBB_CONFIG_NATIVE=1
         ;;
     12:--cpace-recovery-tests)
         MODE=cpace-recovery-tests
@@ -3144,6 +3151,9 @@ run_focused_rust_tests() {
             scripts/test-hbb-common-test-artifact.py
             scripts/verify.sh
         )
+        if [ "$HBB_CONFIG_NATIVE" -eq 1 ]; then
+            source_fingerprints+=(scripts/test-linux-service-config-root.py)
+        fi
         required_tests=(
             platform::linux::tests::r_s11at_loginctl_output_deadline_reaps_silent_child
             platform::linux::tests::r_s11at_loginctl_output_limit_reaps_writing_child
@@ -7372,6 +7382,21 @@ PY
         grep -Fxq "LINUX_LOGINCTL_NATIVE=pass cases=7 artifact_sha256=$hbb_test_artifact_sha fixture=systemd-pam scope=logind-session-selection installed=unexecuted uid=1000 caps=none nnp=on cleanup=joined" \
             "$native_output" || fail 'native logind fixture receipt differs'
     fi
+    if [ "$MODE" = hbb-common-fs ] && [ "$HBB_CONFIG_NATIVE" -eq 1 ]; then
+        local native_config_executable native_config_output=$ROOT/service-config-native.out
+        native_config_executable=${hbb_artifact_receipts[0]#*executable=}
+        native_config_executable=${native_config_executable%% *}
+        printf 'LINUX_SERVICE_CONFIG_NATIVE_STAGE=running artifact_sha256=%s\n' "$hbb_test_artifact_sha"
+        python3 -I -S "$source_root/scripts/test-linux-service-config-root.py" \
+            --docker-client "$CLIENT" --docker-socket "$SOCK" --image "$image_config" \
+            --artifact "$target_root/${native_config_executable#/cargo-target/}" \
+            --sha256 "$hbb_test_artifact_sha" >"$native_config_output" 2>&1 \
+            || { cat "$native_config_output" >&2; fail 'native service configuration-root test failed'; }
+        [ "$(stat -c '%s' "$native_config_output")" -le 1048576 ] \
+            || fail 'native service configuration-root output exceeds its bound'
+        grep -Fxq "LINUX_SERVICE_CONFIG_NATIVE=pass cases=6 artifact_sha256=$hbb_test_artifact_sha scope=configuration-root installed=unexecuted caps=none nnp=on cleanup=joined" \
+            "$native_config_output" || fail 'native service configuration-root receipt differs'
+    fi
     "$CLIENT" --host "unix://$SOCK" image rm "$image_config" >/dev/null
     [ "$source_before" = \
       "$source_archive_sha:$(
@@ -7490,6 +7515,9 @@ PY
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
             grep -E '^test platform::linux::tests::r_s11e40_.* \.\.\. ok$' "$output"
             cat "$native_output"
+        fi
+        if [ "$HBB_CONFIG_NATIVE" -eq 1 ]; then
+            cat "$native_config_output"
         fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
             printf 'FILE_METADATA_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \

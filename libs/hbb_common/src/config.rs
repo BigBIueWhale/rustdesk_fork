@@ -5681,6 +5681,89 @@ unrelated = "preserved"
         );
     }
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "requires the verifier VM's protected passwd fixture"]
+    fn linux_service_owned_config_root_native_passwd() {
+        let case = std::env::var("RUSTDESK_NATIVE_SERVICE_CONFIG_CASE").unwrap();
+        let (uid, home) = match case.as_str() {
+            "root" => (0, Some("/fixture/root-home")),
+            "user-service" => (1000, Some("/fixture/user-home")),
+            "user-owned" | "missing-home" | "relative-home" => (1000, None),
+            "missing-account" => (1001, None),
+            _ => panic!("unexpected native service-config case"),
+        };
+        assert_eq!(users::get_current_uid(), uid);
+        assert_eq!(users::get_effective_uid(), uid);
+        let status = std::fs::read_to_string("/proc/self/status").unwrap();
+        for field in ["CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"] {
+            assert!(status.lines().any(|line| {
+                line.strip_prefix(&format!("{field}:"))
+                    .map(|value| u64::from_str_radix(value.trim(), 16).unwrap() == 0)
+                    .unwrap_or(false)
+            }));
+        }
+        assert!(status.lines().any(|line| line == "NoNewPrivs:\t1"));
+        assert!(LINUX_SERVICE_OWNED_CONFIG_ROOT.get().is_none());
+        *APP_NAME.write().unwrap() = "RustDesk".to_owned();
+        assert_eq!(Config::get_home(), Path::new("/ambient-home"));
+        assert_eq!(
+            Config::path("authority-probe"),
+            Path::new("/ambient-xdg/rustdesk/authority-probe")
+        );
+
+        if let Some(home) = home {
+            let expected = Path::new(home).join(".config/rustdesk");
+            assert_eq!(
+                Config::initialize_linux_service_owned_root().unwrap(),
+                expected
+            );
+            std::env::set_var("HOME", "/changed-home");
+            std::env::set_var("XDG_CONFIG_HOME", "/changed-xdg");
+            assert_eq!(
+                Config::initialize_linux_service_owned_root().unwrap(),
+                expected
+            );
+            assert_eq!(Config::get_home(), Path::new(home));
+            assert_eq!(
+                Config::path("authority-probe"),
+                expected.join("authority-probe")
+            );
+            *APP_NAME.write().unwrap() = "OtherApp".to_owned();
+            assert!(Config::initialize_linux_service_owned_root().is_err());
+            assert_eq!(Config::get_home(), Path::new(home));
+            assert_eq!(
+                Config::path("authority-probe"),
+                expected.join("authority-probe")
+            );
+        } else if case == "user-owned" {
+            std::env::set_var("HOME", "/changed-home");
+            std::env::set_var("XDG_CONFIG_HOME", "/changed-xdg");
+            assert_eq!(Config::get_home(), Path::new("/changed-home"));
+            assert_eq!(
+                Config::path("authority-probe"),
+                Path::new("/changed-xdg/rustdesk/authority-probe")
+            );
+            assert!(LINUX_SERVICE_OWNED_CONFIG_ROOT.get().is_none());
+        } else {
+            // Use the real lookup as a positive control for the relative-path refusal.
+            if case == "relative-home" {
+                assert_eq!(
+                    crate::platform::linux::get_effective_home_dir_trusted().unwrap(),
+                    Path::new("relative-home")
+                );
+            } else {
+                assert!(crate::platform::linux::get_effective_home_dir_trusted().is_none());
+            }
+            assert!(Config::initialize_linux_service_owned_root().is_err());
+            std::env::set_var("HOME", "/fixture/user-home");
+            std::env::set_var("XDG_CONFIG_HOME", "/fixture/user-home/.config");
+            assert!(Config::initialize_linux_service_owned_root().is_err());
+            assert!(LINUX_SERVICE_OWNED_CONFIG_ROOT.get().is_none());
+        }
+        println!("LINUX_SERVICE_CONFIG_CASE=pass name={case} uid={uid}");
+    }
+
     static CONFIG_STATE_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     struct ConfigStateTestGuard {

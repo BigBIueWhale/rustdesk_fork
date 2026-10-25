@@ -9505,7 +9505,7 @@ grep -q 'pub const REOPEN_AFTER_SERVICE_STOP_ARG' src/platform/linux.rs || r_s11
 grep -q 'schedule_reopen_after_service_stop(2)' src/platform/linux.rs || r_s11c10m="$r_s11c10m uninstall-reopen-not-argv-mode"
 grep -q 'reopen_after_service_stop(secs)' src/core_main.rs || r_s11c10m="$r_s11c10m delayed-reopen-arg-not-handled"
 shared_linux_helper_blocks=$(
-  awk '/const LOGINCTL_PATHS/,/pub fn get_wayland_displays/' libs/hbb_common/src/platform/linux.rs
+  awk '/const LOGINCTL_PATHS/,/fn get_home_dir_for_uid_trusted/' libs/hbb_common/src/platform/linux.rs
   awk '/pub fn schedule_reopen_after_service_stop/,/fn trusted_fixed_executable/' src/platform/linux.rs
 )
 if echo "$shared_linux_helper_blocks" | grep -Eq 'find_cmd_path|CMD_PS|CMD_SH|Command::new\("which"\)|flatpak-spawn|pub fn run_cmds|pub fn run_cmds_trim_newline|fn shell_quote|pub fn shell_quote|sh -c|sleep \{secs\}|exec \{exe'; then

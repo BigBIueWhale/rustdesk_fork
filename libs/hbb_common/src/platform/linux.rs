@@ -1,4 +1,3 @@
-use crate::ResultType;
 use std::{
     convert::TryInto,
     io::{self, Read},
@@ -10,15 +9,6 @@ use std::{
     process::{Child, ChildStderr, ChildStdout, Command, ExitStatus, Stdio},
 };
 use users::{get_current_uid, get_effective_uid, get_user_by_uid, os::unix::UserExt};
-
-use sctk::{
-    output::OutputData,
-    output::{OutputHandler, OutputState},
-    reexports::client::protocol::wl_output::WlOutput,
-    reexports::client::{globals, Proxy},
-    reexports::client::{Connection, QueueHandle},
-    registry::{ProvidesRegistryState, RegistryState},
-};
 
 lazy_static::lazy_static! {
     pub static ref DISTRO: Distro = Distro::new();
@@ -1026,88 +1016,6 @@ fn capture_loginctl_output(
         }
         std::thread::sleep(std::time::Duration::from_millis(2));
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct WaylandDisplayInfo {
-    pub name: String,
-    pub x: i32,
-    pub y: i32,
-    pub width: i32,
-    pub height: i32,
-    pub logical_size: Option<(i32, i32)>,
-    pub refresh_rate: i32,
-}
-
-// Retrieves information about all connected displays via the Wayland protocol.
-pub fn get_wayland_displays() -> ResultType<Vec<WaylandDisplayInfo>> {
-    struct WaylandEnv {
-        registry_state: RegistryState,
-        output_state: OutputState,
-    }
-
-    impl OutputHandler for WaylandEnv {
-        fn output_state(&mut self) -> &mut OutputState {
-            &mut self.output_state
-        }
-
-        fn new_output(&mut self, _: &Connection, _: &QueueHandle<Self>, _: WlOutput) {}
-        fn update_output(&mut self, _: &Connection, _: &QueueHandle<Self>, _: WlOutput) {}
-        fn output_destroyed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: WlOutput) {}
-    }
-
-    impl ProvidesRegistryState for WaylandEnv {
-        fn registry(&mut self) -> &mut RegistryState {
-            &mut self.registry_state
-        }
-
-        sctk::registry_handlers!();
-    }
-
-    sctk::delegate_output!(WaylandEnv);
-    sctk::delegate_registry!(WaylandEnv);
-
-    let conn = Connection::connect_to_env()?;
-    let (globals, mut event_queue) = globals::registry_queue_init(&conn)?;
-    let queue_handle = event_queue.handle();
-
-    let registry_state = RegistryState::new(&globals);
-    let output_state = OutputState::new(&globals, &queue_handle);
-
-    let mut environment = WaylandEnv {
-        registry_state,
-        output_state,
-    };
-
-    event_queue.roundtrip(&mut environment)?;
-
-    let outputs: Vec<_> = environment.output_state.outputs().collect();
-    let mut display_infos = Vec::new();
-
-    for output in outputs {
-        if let Some(output_data) = output.data::<OutputData>() {
-            output_data.with_output_info(|info| {
-                if let Some(mode) = info.modes.iter().find(|m| m.current) {
-                    let (x, y) = info.location;
-                    let (width, height) = mode.dimensions;
-                    let refresh_rate = mode.refresh_rate;
-                    let name = info.name.clone().unwrap_or_default();
-                    let logical_size = info.logical_size;
-                    display_infos.push(WaylandDisplayInfo {
-                        name,
-                        x,
-                        y,
-                        width,
-                        height,
-                        logical_size,
-                        refresh_rate,
-                    });
-                }
-            });
-        }
-    }
-
-    Ok(display_infos)
 }
 
 /// Get the current user's home directory via getpwuid (trusted source).

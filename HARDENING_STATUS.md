@@ -3061,6 +3061,31 @@ by consolidating the ledger. All separately parked work remains OPEN/PARKED.
 
 ### Current authority and source closure
 
+**Permanent-password policy model (`0ad23cde`).** The private dual-password enum,
+its permissive fallback and redundant resolver are deleted. `permanent_enabled`
+compares the effective value from the existing unconditional configuration funnel;
+CM visibility uses that same predicate. Public APIs, approval handling, policy pins,
+credential storage and privileged receivers are unchanged. The removed branch was
+already unreachable under the pins; this is obsolete-model removal, not a newly
+demonstrated authentication bypass or local privilege escalation.
+
+The extended existing configuration control passes unchanged at preparation
+`6a5db501` and after removal. Each Linux run passes all 206 tests/seven groups;
+the corrected transaction takes 151 outer seconds. Twenty-four policy combinations
+exercise stored/default/overwrite layers, empty/retired/unknown/current values and
+both CM visibility choices through the actual resolver functions. Permanent-password
+and password-approval policy remain effective, visibility follows its own option,
+and reads preserve stored bytes. `permanent-policy-model-27526c3f.json` binds identical
+regression bytes, exact artifacts, observations and joined bounded-RAM cleanup.
+
+R-X7 now states the retained credential/factor/dependency exclusions and immutable
+funnel contract without upstream implementation history or the stale claim that
+the current resolvers fail open. R-S16 names the retained resolver. Requirement IDs
+are unchanged; all other specification sections are byte-identical. Full app/CM UI,
+installed and other-platform behavior, all fifteen credential actions, R-S0/R-F5,
+cold/release, independent reproduction and external review remain OPEN. Every user
+park remains parked.
+
 **Existing legacy-key lookup — OPEN/PARKED at the user's topic pivot.**
 `Config::get_existing_key_pair` still uses the recovering core-config loader; a
 cold optional lookup can therefore rename malformed TOML while returning no key.

@@ -1362,6 +1362,80 @@ mod tests {
     }
 
     #[test]
+    fn r_s11at_loginctl_output_requires_waitable_children() {
+        const ROLE: &str = "RUSTDESK_TEST_LOGINCTL_WAIT_DISPOSITION";
+        const TEST: &str = "platform::linux::tests::r_s11at_loginctl_output_requires_waitable_children";
+        let Ok(role) = std::env::var(ROLE) else {
+            for role in ["ignored", "no-child-wait"] {
+                let output = Command::new(std::env::current_exe().unwrap())
+                    .env_clear()
+                    .env(ROLE, role)
+                    .args(["--exact", TEST, "--nocapture", "--test-threads=1"])
+                    .output()
+                    .unwrap();
+                assert!(output.stdout.len() + output.stderr.len() < 8192);
+                let stdout = String::from_utf8(output.stdout).unwrap();
+                assert!(output.status.success(), "{role}: {stdout}{}",
+                    String::from_utf8_lossy(&output.stderr));
+                assert!(stdout.contains("test result: ok. 1 passed; 0 failed; 0 ignored;"));
+                let receipt = format!("LOGINCTL_WAIT_AUTHORITY=pass disposition={role} refusal=before-spawn restored=success children=reaped descriptors=unchanged");
+                assert!(stdout.contains(&receipt));
+                println!("{receipt}");
+            }
+            return;
+        };
+        assert!(matches!(role.as_str(), "ignored" | "no-child-wait"));
+        let temp = LoginctlFixtureDirectory::new();
+        let descriptors = || std::fs::read_dir("/proc/self/fd").unwrap().count();
+        let before = descriptors();
+        let run_healthy = |name: &str| {
+            let pid_file = temp.path().join(name);
+            let mut lookup = LoginctlLookup::new(
+                std::time::Instant::now() + LOGINCTL_LOOKUP_TIMEOUT, &|| false,
+            );
+            let output = capture_loginctl_output(
+                &mut loginctl_fixture_command("success", &pid_file), &mut lookup,
+            ).unwrap();
+            assert!(output.status.success());
+            assert!(output.stdout.windows(b"loginctl fixture payload\n".len())
+                .any(|bytes| bytes == b"loginctl fixture payload\n"));
+            assert_loginctl_fixture_reaped(&pid_file);
+        };
+        run_healthy("before.pid");
+        let pid_file = temp.path().join("refused.pid");
+        let mut command = loginctl_fixture_command("success", &pid_file);
+        command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+
+        let mut action: libc::sigaction = unsafe { std::mem::zeroed() };
+        action.sa_sigaction = if role == "ignored" { libc::SIG_IGN } else { libc::SIG_DFL };
+        action.sa_flags = if role == "no-child-wait" { libc::SA_NOCLDWAIT } else { 0 };
+        let mut previous: libc::sigaction = unsafe { std::mem::zeroed() };
+        assert_eq!(unsafe { libc::sigemptyset(&mut action.sa_mask) }, 0);
+        assert_eq!(unsafe { libc::sigaction(libc::SIGCHLD, &action, &mut previous) }, 0);
+        let mut observed: libc::sigaction = unsafe { std::mem::zeroed() };
+        assert_eq!(unsafe { libc::sigaction(libc::SIGCHLD, std::ptr::null(), &mut observed) }, 0);
+        assert_eq!(observed.sa_sigaction, action.sa_sigaction);
+        assert_eq!(observed.sa_flags & libc::SA_NOCLDWAIT, action.sa_flags);
+        let result = OwnedAuthorizationChild::spawn(&mut command);
+        assert_eq!(unsafe { libc::sigaction(libc::SIGCHLD, &previous, std::ptr::null_mut()) }, 0);
+        match result {
+            Err(error) => {
+                assert_eq!(error.kind(), io::ErrorKind::Other);
+                assert_eq!(error.to_string(), "authorization child cannot retain wait ownership");
+            }
+            Ok(mut child) => {
+                child.terminate_and_reap().unwrap();
+                panic!("unwaitable child was admitted");
+            }
+        }
+        assert!(!pid_file.exists());
+        assert!(!temp.path().join("refused.pid.ready").exists());
+        run_healthy("after.pid");
+        assert_eq!(descriptors(), before);
+        println!("LOGINCTL_WAIT_AUTHORITY=pass disposition={role} refusal=before-spawn restored=success children=reaped descriptors=unchanged");
+    }
+
+    #[test]
     fn r_s11e40_loginctl_queries_are_typed_and_noninteractive() {
         assert_eq!(
             LoginctlQuery::ListSessions.arguments(),

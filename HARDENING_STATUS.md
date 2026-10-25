@@ -2077,15 +2077,15 @@ Frame-vector refusal is source reviewed rather than separately injected. Persist
 global/C-heap OOM, full application error consumption and presentation, other native
 targets, installed R-S0, R-F5 recovery/soaks and release acceptance remain OPEN.
 
-**Video QoS — named Linux component evidence retained; current activity-epoch correction unvalidated; end-to-end latency OPEN.**
+**Video QoS — activity-epoch correction passes focused Linux component verification; end-to-end latency OPEN.**
 
-The latest accepted component evidence remains `fbf1036c`: all twenty-two controller tests and
-five quality-application tests pass in the focused Linux lane. The controller,
+At `eae3ac51`, product correction `6c51a5f6` passes all twenty-two controller tests and
+five quality-application tests in the focused Linux lane. The controller,
 application function and test sources are imported directly; shared configuration,
 protocol types and Quality are production definitions. Elapsed/RTT inputs and the
 encoder boundary are controlled. This is not real codec/device, packet, renderer
-or installed-service acceptance. The later activity-epoch source below has not
-been compiled or executed; those historical passes do not validate it.
+or installed-service acceptance. Full capture-loop compilation and actual R-F5
+presentation, impairment/recovery and multi-hour soak evidence remain OPEN.
 
 The current behavior is:
 
@@ -2130,7 +2130,7 @@ The current behavior is:
   decision. An activity update while adaptation is unavailable clears every
   display's stored activity and restarts the period. Current source additionally
   retires the activity epoch on availability transitions and binds capture-local
-  batches to that epoch; compilation/native verification remains open below. The existing
+  batches to that epoch; the focused component regressions pass below. The existing
   three-second period, six-frame threshold and fixed requested quality remain.
 - Codec-support and activity setters are server-private exact-generation operations.
   Missing, replaced, reset or wrong-display generations return refusal before
@@ -2144,7 +2144,7 @@ native results/artifacts, endpoint observations and joined cleanup. Source-only
 references are marked. Counts describe historical named runs, not additional
 current full-parent or platform execution.
 
-**Activity epochs (`6c51a5f6`) — source implemented; compilation and native verification OPEN.**
+**Activity epochs (`6c51a5f6`) — focused component compilation and execution passed at `eae3ac51`.**
 The prior controller retired activity only on an update made while adaptation was
 unavailable. Support/blocking-display transitions entirely between updates could
 retain stored activity; clearing that alone would leave capture-local batches.
@@ -2162,34 +2162,29 @@ rechecks the activity object before and after unlocked encoder calls; periodic
 publication consumes its owned count/timer. The raw-counter API and capture locals
 are removed. Existing quality, bitrate, recording and pacing ownership remain.
 
-The existing 27-test inventory is retained. Prepared regressions add support and
-sibling-display transitions between updates and two paused-encoder activity cases;
-the expected joined-worker result increases from nine to eleven in both harness
-checks. Candidate tests additionally cover delayed old batches, fresh zero/six-frame
-growth, incompatible activity/display ownership and local counter saturation.
-Fixture bindings use the production activity object and controlled elapsed time;
-the current-owner support test now expects immediate counter/period retirement.
-None of these new expectations is a passed-test claim.
+The unchanged 27-test inventory passes through canonical
+`--video-qos-controller-tests` in 128 outer seconds on one unchanged Rust 1.75.0
+Linux artifact. Support and sibling-display transitions between updates retire
+stored counts and delayed capture-local batches; fresh zero-frame input preserves
+quality, while six fresh frames permit growth. Both paused-encoder activity cases
+retire old batches, and all eleven encoder scenarios join their exact worker.
+Incompatible activity/display ownership is refused without mutation, idempotent
+support preserves the live window, and local counters saturate. Existing bitrate,
+congestion, owner, retry, recording and pacing controls also pass. Elapsed inputs
+and encoder behavior are controlled; this is component execution, not a live codec
+or network experiment. No empirical old/new A/B is claimed.
 
-Both canonical `--video-qos-controller-tests` attempts refused before allocation:
-preparation `e30cdb1b` had 12,622 MiB available and product source `6c51a5f6` had
-13,554 MiB, against the unchanged 20,480-MiB requirement including scratch/headroom.
-No compiler, VM or test payload ran; no empirical A/B or successful compilation is
-claimed. `git diff --check` and shell syntax checks pass. The current full capture
-loop, component regressions, other platforms, installed authority and actual R-F5
-presentation/impairment/soak still require execution. Resource limits and all user
-parks remain unchanged. `qos-activity-epoch-source-2c95be52.json` binds source review,
-prepared/candidate hashes and exact refused admissions; the earlier source finding
-remains in `qos-activity-epoch-audit-82aa2e57.json`. This item remains OPEN for work.
-
-**Validation blocked by available RAM.** At `2c061c77`, a further canonical
-`--video-qos-controller-tests` attempt refused before allocation: 20,480 MiB
-required and 11,081 MiB available. The same resource blocker has persisted across
-three consecutive goal turns. Product source remains `6c51a5f6`, uncompiled and
-unexecuted; preserve it and resume this exact lane when resources admit it.
-No VM, compiler or test payload started, no resource limit was lowered and no disk
-fallback was used. This is an external validation prerequisite, not completion.
-Retained admission/source closure: `qos-activity-epoch-ram-block-2c061c77.json`.
+The unchanged 20,480-MiB admission gate admitted this run; no limit was lowered.
+Writable VM storage peaked at 3,675,824,128 bytes in bounded RAM. The recorded QEMU
+child exited zero, its exact PID and RAM workspace are absent, and the owned run
+root retired. Four endpoint snapshots show no additions or removals. Retained
+source, artifact, observations and cleanup: `qos-activity-epoch-native-6c51a5f6.json`.
+Earlier refused admissions and source review remain in
+`qos-activity-epoch-source-2c95be52.json`, `qos-activity-epoch-audit-82aa2e57.json`
+and `qos-activity-epoch-ram-block-2c061c77.json`; available RAM no longer blocks
+this completed component check. Full capture startup/application compilation,
+real codecs/peers/presentation, other platforms, installed authority, R-S0/R-F5
+and release acceptance remain OPEN. All user-parked work remains parked.
 
 | Correction | Native evidence and limits | Retained capsules |
 | --- | --- | --- |

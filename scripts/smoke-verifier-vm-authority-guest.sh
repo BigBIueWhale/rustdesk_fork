@@ -5577,22 +5577,6 @@ run_focused_rust_tests() {
                         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
                             python3 -I -S /source/scripts/run-linux-fuse-read-test.py
                         else
-                        if [ "$RUST_TEST_PROFILE" = config-options ]; then
-                            cp -a /source /tmp/cargo-lock-review
-                            chmod u+w /tmp/cargo-lock-review /tmp/cargo-lock-review/Cargo.lock
-                            cd /tmp/cargo-lock-review
-                            timeout --signal=TERM --kill-after=5s 30s \
-                                cargo metadata --offline --format-version=1 \
-                                >/tmp/cargo-lock-metadata.json
-                            diff_status=0
-                            diff -u /source/Cargo.lock Cargo.lock >/tmp/cargo-lock.diff || diff_status=$?
-                            [ "$diff_status" -le 1 ] && [ "$(stat -c %s /tmp/cargo-lock.diff)" -le 65536 ]
-                            printf "CARGO_LOCK_REVIEW_BEGIN\n"
-                            cat /tmp/cargo-lock.diff
-                            sha256sum Cargo.lock
-                            printf "CARGO_LOCK_REVIEW_END product_tests=unexecuted\n"
-                            exit 97
-                        fi
                         cargo test --offline --locked -p hbb_common --lib --no-run \
                             --message-format=json-render-diagnostics --color never \
                             >/cargo-target/hbb-common-build.json

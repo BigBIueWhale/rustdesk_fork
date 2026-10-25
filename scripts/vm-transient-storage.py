@@ -29,6 +29,9 @@ def storage_limits(profile, memory_mib):
     if profile == 'hbb-common-fs':
         require(memory_mib == 6144, 'filesystem storage profile requires its 6 GiB guest')
         return 6 * GIB, 4 * GIB
+    if profile == 'linux-logind':
+        require(memory_mib == 8192, 'logind storage profile requires its 8 GiB guest')
+        return 7 * GIB, 6 * GIB
     if profile == 'cpace-recovery-tests':
         require(memory_mib == 8192, 'CPace storage profile requires its 8 GiB guest')
         return 6 * GIB, 4 * GIB
@@ -433,7 +436,7 @@ def main():
     parser.add_argument('operation', choices=('preflight', 'reserve', 'check', 'watch', 'run'))
     parser.add_argument('--memory-mib', type=int, required=True)
     parser.add_argument('--storage-profile',
-                        choices=('standard', 'hbb-common-fs', 'cpace-recovery-tests',
+                        choices=('standard', 'hbb-common-fs', 'linux-logind', 'cpace-recovery-tests',
                                  'flutter-credential-dialog', 'linux-service-build',
                                  'ledger-token-count', 'authority-smoke', 'x11-focus', 'linux-parent-libtest',
                                  'linux-resource-limits', 'linux-resolution-lifetime', 'fusermount-process', 'xrandr-acquisition',

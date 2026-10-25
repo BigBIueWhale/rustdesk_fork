@@ -950,6 +950,7 @@ gib = 1024 ** 3
 for profile, memory, scratch, overlay in (
         ('standard', 2048, 16, 8),
         ('hbb-common-fs', 6144, 6, 4),
+        ('linux-logind', 8192, 7, 6),
         ('cpace-recovery-tests', 8192, 6, 4),
         ('installer-package', 4096, 6, 4),
         ('flutter-credential-dialog', 4096, 7, 6),
@@ -976,6 +977,7 @@ for profile, memory, scratch, overlay in (
         raise SystemExit('VM storage profile limits differ')
 for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 4096),
                         ('ledger-token-count', 8192), ('unknown', 2048),
+                        ('linux-logind', 4096), ('linux-logind', 8193),
                         ('cpace-recovery-tests', 6144), ('cpace-recovery-tests', 8193),
                         ('installer-package', 2048), ('installer-package', 8192),
                         ('x11-focus', 4095), ('x11-focus', 8192),
@@ -1003,7 +1005,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
         raise SystemExit('VM storage profile accepted an invalid guest/profile')
 if module['HEADROOM'] != 6 * gib or module['OVERHEAD'] != gib:
     raise SystemExit('VM storage headroom or overhead differs')
-print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=23 refusals=40 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
+print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=25 refusals=44 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
 cli = subprocess.run([sys.executable, '-B', '-I', '-S', sys.argv[1], 'preflight',
                       '--memory-mib', '10240', '--storage-profile', 'linux-flutter-suspend'],
                      capture_output=True, text=True, timeout=5, check=False)
@@ -1025,7 +1027,7 @@ special = {mode: mode for mode in ('ledger-token-count', 'cpace-recovery-tests',
 special.update({'authority-smoke': 'authority-smoke', 'dependency-inventory': 'authority-smoke',
                 'android-frame-tests': 'x11-focus'})
 cases = [(mode, {}, special.get(mode, 'standard')) for mode in sorted(modes)]
-cases.extend([('hbb-common-fs', {'HBB_LOGIND_NATIVE': '1'}, 'standard'),
+cases.extend([('hbb-common-fs', {'HBB_LOGIND_NATIVE': '1'}, 'linux-logind'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'file-metadata'}, 'flutter-credential-dialog'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'frame-queue'}, 'flutter-credential-dialog'),
               ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'video-vpx'}, 'linux-parent-libtest'),

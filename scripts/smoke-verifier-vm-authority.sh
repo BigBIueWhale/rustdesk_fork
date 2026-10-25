@@ -4647,7 +4647,7 @@ vm_iso_command /usr/bin/xorriso -as mkisofs -quiet -iso-level 3 -volid RD_VERIFI
 /usr/bin/chmod 0700 "$RUN/seed"
 guest_invocation="bash /mnt/rustdesk-verifier-inputs/guest.sh /mnt/rustdesk-verifier-inputs/docker.tgz /mnt/rustdesk-verifier-inputs/repo/scripts/verify-vm-entry-preflight.sh $VERIFIER_VM_DOCKER_VERSION $SIZE_VERIFIER_VM_DOCKER_STATIC $SHA256_VERIFIER_VM_DOCKER_STATIC $VERIFIER_VM_KERNEL_RELEASE $VERIFIER_VM_ROOT_FILESYSTEM_UUID"
 if [ "$MODE" = media-kernel-tests ]; then
-    guest_invocation='python3 -I -S /mnt/rustdesk-verifier-inputs/media/boot.py --prepare >/dev/ttyS0 2>&1'
+    guest_invocation='python3 -I -S /mnt/rustdesk-verifier-inputs/media/boot.py --prepare'
 elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
     guest_invocation+=" --$MODE $FOCUSED_TEST_COMMIT $FOCUSED_TEST_TREE"
 elif [ "$MODE" = debian-systemd-lifecycle ]; then
@@ -5337,7 +5337,7 @@ from pathlib import Path
 raw=Path(sys.argv[1]).read_bytes()
 assert b'MEDIA_KERNEL_FAILURE=' not in raw
 def record(prefix):
-    found=re.findall(rb'(?:^|\n)'+prefix+rb'=(\{[^\r\n]+\})\r?\n',raw)
+    found=re.findall(prefix+rb'=(\{[^\r\n]+\})\r?\n',raw)
     assert len(found)==1, (prefix,len(found))
     return json.loads(found[0])
 prepared=record(b'MEDIA_BOOT_PREPARED'); result=record(b'MEDIA_KERNEL_RESULT')

@@ -3079,30 +3079,30 @@ cleanup are retained in `retired-lock-queries-5fecf369.json`. Full application a
 installed settings/credential behavior, all fifteen credential actions, other-platform
 and release acceptance, R-S0/R-F5 and every user-parked task remain OPEN/PARKED.
 
-**Permanent-password policy model (`0ad23cde`).** The private dual-password enum,
-its permissive fallback and redundant resolver are deleted. `permanent_enabled`
-compares the effective value from the existing unconditional configuration funnel;
-CM visibility uses that same predicate. Public APIs, approval handling, policy pins,
-credential storage and privileged receivers are unchanged. The removed branch was
-already unreachable under the pins; this is obsolete-model removal, not a newly
-demonstrated authentication bypass or local privilege escalation.
+**Permanent-password policy consumers (`0ad23cde`, `53f873fa`).** The dual-password
+and click/combined-approval enums, permissive fallbacks and redundant resolvers are
+deleted. `permanent_enabled` compares the effective verification value from the
+unconditional configuration funnel; `hide_cm` reads the approval value through the
+same funnel and combines it with permanent-password policy and its visibility option.
+Desktop IPC and mobile FFI callers, policy pins, credential storage and privileged
+receivers are unchanged. The removed states were already unreachable under the pins;
+this is obsolete-model removal, not a demonstrated authentication bypass or LPE fix.
 
-The extended existing configuration control passes unchanged at preparation
-`6a5db501` and after removal. Each Linux run passes all 206 tests/seven groups;
-the corrected transaction takes 151 outer seconds. Twenty-four policy combinations
-exercise stored/default/overwrite layers, empty/retired/unknown/current values and
-both CM visibility choices through the actual resolver functions. Permanent-password
-and password-approval policy remain effective, visibility follows its own option,
-and reads preserve stored bytes. `permanent-policy-model-27526c3f.json` binds identical
-regression bytes, exact artifacts, observations and joined bounded-RAM cleanup.
+The current Linux library passes all 206 tests/seven groups in 142 outer seconds.
+Twenty-four policy combinations exercise stored/default/overwrite layers,
+empty/retired/unknown/current values and both visibility choices. Password approval
+and permanent-password policy remain effective, visibility follows its option, and
+reads preserve stored bytes. One assertion now checks the effective approval value
+instead of the removed enum; all other test bodies and VM orchestration are unchanged.
+`approval-policy-model-f200e7f4.json` binds source/history, artifact, native observations
+and joined bounded-RAM cleanup. Earlier identical-test dual-password-model comparisons
+remain in `permanent-policy-model-27526c3f.json`.
 
-R-X7 now states the retained credential/factor/dependency exclusions and immutable
-funnel contract without upstream implementation history or the stale claim that
-the current resolvers fail open. R-S16 names the retained resolver. Requirement IDs
-are unchanged; all other specification sections are byte-identical. Full app/CM UI,
-installed and other-platform behavior, all fifteen credential actions, R-S0/R-F5,
-cold/release, independent reproduction and external review remain OPEN. Every user
-park remains parked.
+R-S16/R-X7/R-A6 name the retained consumers; Appendix C #8 names the actual option
+keys. Credential/factor/dependency exclusions, immutable policy and acceptance
+obligations remain. Full app/CM UI, installed and other-platform behavior, all fifteen
+credential actions, R-S0/R-F5, cold/release, independent reproduction and external
+review remain OPEN. Every user park remains parked.
 
 **Existing legacy-key lookup — OPEN/PARKED at the user's topic pivot.**
 `Config::get_existing_key_pair` still uses the recovering core-config loader; a

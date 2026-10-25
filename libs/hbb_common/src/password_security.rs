@@ -1,19 +1,6 @@
 use crate::config::Config;
 use sodiumoxide::{base64, crypto::secretbox};
 
-// R-X7: the rotating one-time (temporary) password is EXCISED — the permanent password is the
-// fork's sole credential and sole CPace PRS (R-S9/R-P1). The TEMPORARY_PASSWORD store, its
-// generator, update/read, and the per-connection failure-rotation are removed. The
-// `OnlyUseTemporaryPassword` resolver variant and the `use-temporary-password` token are removed
-// too (R-A6 lists that token grep-zero), leaving `verification_method` as a funnel read (R-S16)
-// over only the two surviving, permanent-accepting methods.
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum VerificationMethod {
-    OnlyUsePermanentPassword,
-    UseBothPasswords,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApproveMode {
     Both,
@@ -21,24 +8,8 @@ pub enum ApproveMode {
     Click,
 }
 
-fn verification_method() -> VerificationMethod {
-    // Funnel read (R-S16); the R-S16 pin resolves this to `use-permanent-password`. The excised
-    // temporary-password branch and its `use-temporary-password` token are gone (R-X7/R-A6).
-    let method = Config::get_option("verification-method");
-    if method == "use-permanent-password" {
-        VerificationMethod::OnlyUsePermanentPassword
-    } else {
-        VerificationMethod::UseBothPasswords // default
-    }
-}
-
 pub fn permanent_enabled() -> bool {
-    // Every surviving verification method accepts the permanent password (the temporary path is
-    // excised, R-X7). Exhaustive match (no wildcard) so re-adding a method is a compile error, not
-    // a silent fail-open; retained as a funnel read (R-S16), never a bare constant.
-    match verification_method() {
-        VerificationMethod::OnlyUsePermanentPassword | VerificationMethod::UseBothPasswords => true,
-    }
+    Config::get_option("verification-method") == "use-permanent-password"
 }
 
 pub fn has_valid_password() -> bool {
@@ -59,7 +30,7 @@ pub fn approve_mode() -> ApproveMode {
 
 pub fn hide_cm() -> bool {
     approve_mode() == ApproveMode::Password
-        && verification_method() == VerificationMethod::OnlyUsePermanentPassword
+        && permanent_enabled()
         && crate::config::option2bool("allow-hide-cm", &Config::get_option("allow-hide-cm"))
 }
 

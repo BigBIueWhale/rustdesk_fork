@@ -3551,7 +3551,7 @@ impl Config {
         // R-S16(b): pin the read funnel. The controlled-side policy table is the
         // single source of truth — a pinned key returns its compile-time value
         // before any overwrite/stored/default lookup, so every config-driven
-        // resolver (verification_method, approve_mode, option2bool("enable-*"),
+        // resolver (permanent_enabled, approve_mode, option2bool("enable-*"),
         // the egress reads) returns the policy with no per-call-site edit. The
         // pin is UNCONDITIONAL (R-R2b): PINNED_SETTINGS is enforced on every build.
         if let Some(v) = pinned_setting(k) {

@@ -3098,6 +3098,48 @@ fn peer_listing_returns_only_metadata_and_alias() {
             passed &= case_passed;
             PeerConfig::remove(&id).unwrap();
         }
+        let bulk_id = |index| format!("listing-batch-peer-{index:05}");
+        for index in 0..4096 {
+            let path = PeerConfig::path(&bulk_id(index));
+            fs::write(&path, &original).unwrap();
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o400)).unwrap();
+        }
+        let mut selected: Vec<_> = (4096..12288).map(bulk_id).collect();
+        selected.extend((0..4096).step_by(2).rev().flat_map(|index| [bulk_id(index), bulk_id(index)]));
+        let expected_bulk: Vec<_> = (0..4096).step_by(2).map(bulk_id).collect();
+        let before = snapshot();
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o500)).unwrap();
+        let cpu_now = || {
+            use std::convert::TryInto;
+            let mut time = std::mem::MaybeUninit::<crate::libc::timespec>::uninit();
+            assert_eq!(unsafe {
+                crate::libc::clock_gettime(crate::libc::CLOCK_THREAD_CPUTIME_ID, time.as_mut_ptr())
+            }, 0);
+            let time = unsafe { time.assume_init() };
+            Duration::new(time.tv_sec.try_into().unwrap(), time.tv_nsec.try_into().unwrap())
+        };
+        for order in ["forward", "reverse"] {
+            let cpu_started = cpu_now();
+            let started = Instant::now();
+            let listed = PeerConfig::get_vec_id_modified_time_path(&Some(selected.clone()));
+            let wall_us = started.elapsed().as_micros();
+            let cpu_us = (cpu_now() - cpu_started).as_micros();
+            let ordered = listed.windows(2).all(|pair| pair[0].1 >= pair[1].1);
+            let paths_match = listed.iter().all(|(id, _, path)| PeerConfig::path(id) == *path);
+            let mut actual: Vec<_> = listed.into_iter().map(|(id, _, _)| id).collect();
+            actual.sort();
+            let correct = actual == expected_bulk && ordered && paths_match;
+            println!("OPTION_COMMIT_PEER_FILTER_BATCH=observed order={order} records=4096 selected={} matches={} wall_us={wall_us} cpu_us={cpu_us} correct={correct}", selected.len(), actual.len());
+            passed &= correct;
+            selected.reverse();
+        }
+        let empty = PeerConfig::get_vec_id_modified_time_path(&Some(vec![])).is_empty();
+        let unfiltered = PeerConfig::get_vec_id_modified_time_path(&None).len()
+            == expected.len() + 4096;
+        let preserved = snapshot() == before;
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
+        println!("OPTION_COMMIT_PEER_FILTER_BATCH=controls empty={empty} unfiltered={unfiltered} readonly_preserved={preserved}");
+        passed &= empty && unfiltered && preserved;
         let after_fds = fds();
         println!("OPTION_COMMIT_PEER_LIST_IDENTITY_FDS=before:{before_fds} after:{after_fds}");
         assert_eq!(before_fds, after_fds);

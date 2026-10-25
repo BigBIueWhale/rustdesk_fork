@@ -4225,6 +4225,22 @@ scratch/headroom exhaustion. Canonical markers, bounded diagnostics and intentio
 their ownership; exact joins precede retirement, and uncertainty retains the marker and blocks reuse.
 Every helper entry refuses root.
 
+The native logind lane now selects `linux-logind` (`b361c47d`): its unchanged
+8 GiB guest uses 7 GiB RAM scratch and a 6 GiB QEMU file ceiling, with at most
+1 GiB prepared inputs before launch. The 6 GiB host headroom and 1 GiB overhead
+remain, reducing admission from 31 to 22 GiB. The former standard allocation
+refused at 26,477 MiB available before reservation. The focused native transaction
+then passes all fourteen library tests and seven real PAM/logind scenarios in
+118 outer seconds. Product code, tests, fixture, dependencies and the 300-second
+deadline are unchanged. Scratch peaks at 3,879,604,224 bytes and overlay at
+3,713,011,712; QEMU accounts for 4,096 block-write bytes and durable diagnostics
+peak at 3,305,472 bytes. Four complete listener snapshots have zero deltas;
+the exact VM and RAM workspace retire. `logind-storage-profile-9cb313da.json`
+binds sources, native outcomes, installed limits and cleanup. This accepts the
+warm-boot focused allocation, not cold provisioning, installed credential
+authority, other platforms, sustained resource bounds or R-S0/R-F5/release
+acceptance. All user parks remain parked.
+
 **Shared compression and file-block decoding — fallible output; Linux component accepted.** `fa22a5cb`
 replaces the infallible 128-KiB-plus-one output allocation with checked reservation
 and an `OutOfMemory` IO error. Encoded/output/history limits and raw-input borrowing
@@ -4468,7 +4484,7 @@ and the fifteen credential-action rows above.
 | --- | --- |
 | Polkit runtime and Debian dependency | `aa956518` captured 82 signed-snapshot packages, 31,596,230 bytes, with pins in `scripts/pins.env` and receipt `online-fetch-receipts/run.63EwFoon0W.receipt`. `f99f6cc0` passed seven Debian metadata cases; this alone is not an installed receiver. Raw `gX6siRyvuz.serial.log` and exact receipts remain in the audit. Standalone `polkitd` is required; release closure is OPEN. |
 | UID policy and logind capture | `aa437333` passed four policy cases plus the guard; `3eabd727` passed eight capture cases within 116 tests/five groups, retaining the original four bodies. Unknown pre-existing loopback listener `127.0.0.1:9333` was left untouched; that diagnostic establishes no leak or bypass. Exact artifacts and raw receipts remain in the audit. |
-| Native logind | `68e596b3` passed 14 unit and seven real PAM/logind cases: empty/removed users, seatless unspecified/TTY, active X11, switching and closing sessions. PAM 1.5.2-6+deb12u2 and systemd 252.39-1~deb12u2; raw `8oLyS0S0lG`. This did not run an installed credential receiver. |
+| Native logind | `b361c47d` passes the unchanged 14 unit and seven real PAM/logind cases under the bounded profile above: empty/removed users, seatless unspecified/TTY, active X11, switching and closing sessions. PAM 1.5.2-6+deb12u2 and systemd 252.39-1~deb12u2; raw `MBhOX3RLmI`. This does not run an installed credential receiver. Prior `68e596b3`/`8oLyS0S0lG` evidence remains retained. |
 | Coordinator and raw v2 | `e69129bc` passed seven coordinator/23 raw-module cases in five groups: actual AF_UNIX readiness before disclosure, canonical/fragmented/empty/max/auth bodies, malformed/truncated/expired input, wiping, half-close, replay, expiry and shutdown. Pre-write refusal is NotSent; a started write is uncertain. `linux-wire-v2-accepted-e69129bc.json` retains exact scope. Two wording-only tests were later deleted; the current seven coordinator/21 protocol cases are not thereby validated. |
 | Current coordinator execution gap | At `04c7e32e`, the 28-case attempt refused before QEMU: admission required 39,936 MiB with 23,531 MiB available. No case ran. `login-inventory-role.json` retains the refusal. Guest/scratch admission and the no-disk-fallback rule remain binding. |
 

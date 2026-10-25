@@ -1,5 +1,5 @@
 use sha2::{Digest, Sha256};
-use sodiumoxide::base64;
+use sodiumoxide::{base64, crypto::secretbox};
 
 use crate::password_security::symmetric_crypt;
 
@@ -8,6 +8,15 @@ pub(super) const PERMANENT_PASSWORD_HASH_PREFIX: &str = "00";
 pub(super) const PERMANENT_PASSWORD_H1_LEN: usize = 32;
 pub(super) const DEFAULT_SALT_LEN: usize = 32;
 pub const ENCRYPT_MAX_LEN: usize = 128; // used for password, pin, etc, not for all
+
+// The hash envelope is the largest credential plaintext. Versioned secretbox
+// storage adds one format byte, a nonce and the authentication tag.
+const MAX_ENCODED_CREDENTIAL_LEN: usize = {
+    let plaintext_len = PERMANENT_PASSWORD_HASH_PREFIX.len()
+        + (PERMANENT_PASSWORD_H1_LEN + 2) / 3 * 4;
+    let ciphertext_len = 1 + secretbox::NONCEBYTES + secretbox::MACBYTES + plaintext_len;
+    (ciphertext_len + 2) / 3 * 4
+};
 
 #[cfg(test)]
 pub(super) fn is_permanent_password_hashed_storage(v: &str) -> bool {
@@ -75,7 +84,7 @@ fn encrypt_permanent_password_storage(storage: &str) -> Option<String> {
 
 pub(super) fn decrypt_permanent_password_storage(storage: &str) -> Option<String> {
     let encoded = storage.strip_prefix(PERMANENT_PASSWORD_ENC_VERSION)?;
-    if encoded.is_empty() {
+    if encoded.is_empty() || encoded.len() > MAX_ENCODED_CREDENTIAL_LEN {
         return None;
     }
     let decoded = base64::decode(encoded.as_bytes(), base64::Variant::Original).ok()?;

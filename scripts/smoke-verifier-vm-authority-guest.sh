@@ -3599,7 +3599,7 @@ run_focused_rust_tests() {
                 config::option_tests::peer_removal_retains_its_parent_across_path_replacement
                 config::option_tests::peer_removal_refuses_shared_writable_parents_without_repair
                 config::option_tests::peer_removal_missing_parents_and_repeats_release_descriptors
-                config::option_tests::peer_removal_supports_write_search_only_parents
+                config::option_tests::peer_removal_requires_syncable_parent_before_unlink
                 config::option_tests::peer_removal_checks_name_absence_before_reporting_success
                 config::option_tests::peer_forget_write_failure_is_reported_and_retryable
                 config::option_tests::peer_forget_unreadable_source_refuses_without_replacing_settings

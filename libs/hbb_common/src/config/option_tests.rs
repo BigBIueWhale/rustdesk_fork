@@ -4076,6 +4076,58 @@ fn peer_removal_deletes_only_the_selected_file_and_allows_repeat() {
         PeerConfig::remove(id).unwrap();
         assert!(!PeerConfig::path(id).exists());
         assert_eq!(fs::read(&sibling).unwrap(), original);
+
+        #[cfg(target_arch = "x86_64")]
+        {
+            let fds = || fs::read_dir("/proc/self/fd").unwrap().count();
+            let before_fds = fds();
+            let mut reported = true;
+            for present in [true, false] {
+                let path = PeerConfig::path(id);
+                if present { fs::write(&path, b"selected for durable removal").unwrap(); }
+                let parent = path.parent().unwrap().to_path_buf();
+                let (native_errno, result) = std::thread::spawn(move || {
+                    let directory = fs::File::open(parent).unwrap();
+                    directory.sync_all().unwrap();
+                    let statement = |code, k| crate::libc::sock_filter { code: code as u16, jt: 0, jf: 0, k };
+                    let jump = |code, k, jt, jf| crate::libc::sock_filter { code: code as u16, jt, jf, k };
+                    let load = crate::libc::BPF_LD | crate::libc::BPF_W | crate::libc::BPF_ABS;
+                    let equal = crate::libc::BPF_JMP | crate::libc::BPF_JEQ | crate::libc::BPF_K;
+                    let bits = crate::libc::BPF_JMP | crate::libc::BPF_JSET | crate::libc::BPF_K;
+                    let ret = crate::libc::BPF_RET | crate::libc::BPF_K;
+                    let mut filter = [
+                        statement(load, 4),
+                        jump(equal, 0xc000003e, 1, 0),
+                        statement(ret, crate::libc::SECCOMP_RET_KILL_PROCESS),
+                        statement(load, 0),
+                        jump(bits, 0x40000000, 0, 1),
+                        statement(ret, crate::libc::SECCOMP_RET_KILL_PROCESS),
+                        jump(equal, crate::libc::SYS_fsync as u32, 0, 1),
+                        statement(ret, crate::libc::SECCOMP_RET_ERRNO | crate::libc::EIO as u32),
+                        statement(ret, crate::libc::SECCOMP_RET_ALLOW),
+                    ];
+                    let program = crate::libc::sock_fprog { len: filter.len() as u16, filter: filter.as_mut_ptr() };
+                    assert_eq!(unsafe { crate::libc::prctl(crate::libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) }, 0);
+                    // The fault belongs only to this worker; its parent performs the real retry.
+                    assert_eq!(unsafe {
+                        crate::libc::syscall(crate::libc::SYS_seccomp,
+                            crate::libc::SECCOMP_SET_MODE_FILTER, 0, &program)
+                    }, 0, "install peer-removal fsync filter: {}", io::Error::last_os_error());
+                    let native_errno = directory.sync_all().unwrap_err().raw_os_error().unwrap();
+                    (native_errno, PeerConfig::remove(id).map_err(|error| error.to_string()))
+                }).join().unwrap();
+                let absent = !path.exists();
+                let preserved = fs::read(&sibling).unwrap() == original;
+                let uncertain = result.as_ref().err().is_some_and(|error| error.contains("uncertain"));
+                let retry = PeerConfig::remove(id).is_ok() && !path.exists();
+                println!("OPTION_COMMIT_PEER_REMOVE_SYNC=observed present={present} native_errno={native_errno} reported={} uncertain={uncertain} absent={absent} sibling_preserved={preserved} retry={retry}", result.is_err());
+                reported &= native_errno == crate::libc::EIO && uncertain && absent && preserved && retry;
+            }
+            let after_fds = fds();
+            println!("OPTION_COMMIT_PEER_REMOVE_SYNC=handles before={before_fds} after={after_fds}");
+            assert_eq!(before_fds, after_fds);
+            assert!(reported, "peer removal cannot report durability when parent synchronization fails");
+        }
     });
 }
 
@@ -4223,8 +4275,8 @@ fn peer_removal_missing_parents_and_repeats_release_descriptors() {
 
 #[test]
 #[cfg(target_os = "linux")]
-fn peer_removal_supports_write_search_only_parents() {
-    in_private_process("config::option_tests::peer_removal_supports_write_search_only_parents", |_| {
+fn peer_removal_requires_syncable_parent_before_unlink() {
+    in_private_process("config::option_tests::peer_removal_requires_syncable_parent_before_unlink", |_| {
         let id = "peer-removal-search-only";
         let path = PeerConfig::path(id);
         let parent = path.parent().unwrap();
@@ -4234,12 +4286,29 @@ fn peer_removal_supports_write_search_only_parents() {
         fs::write(&sibling, b"preserved bytes").unwrap();
         fs::set_permissions(parent, fs::Permissions::from_mode(0o300)).unwrap();
         assert_eq!(fs::read_dir(parent).err().unwrap().kind(), std::io::ErrorKind::PermissionDenied);
-        let result = PeerConfig::remove(id);
+        let mut unlinks = 0;
+        let result = PeerConfig::remove_with_unlink_hook(id, |unlink| {
+            unlinks += 1;
+            unlink()
+        });
         let unchanged_mode = fs::metadata(parent).unwrap().permissions().mode() & 0o777 == 0o300;
         fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).unwrap();
-        println!("OPTION_COMMIT_PEER_REMOVE_PARENT=observed kind=search_only success={} mode_unchanged={unchanged_mode}", result.is_ok());
-        assert!(result.is_ok() && unchanged_mode && !path.exists());
+        let preserved = fs::read(&path).ok().as_deref() == Some(b"selected bytes".as_slice());
+        let retry = PeerConfig::remove(id).is_ok() && !path.exists();
+        println!("OPTION_COMMIT_PEER_REMOVE_PARENT=observed kind=unsyncable refused={} unlinks={unlinks} file_preserved={preserved} mode_unchanged={unchanged_mode} retry={retry}", result.is_err());
         assert_eq!(fs::read(sibling).unwrap(), b"preserved bytes");
+
+        fs::write(&path, b"search-only ancestor control").unwrap();
+        let ancestor = parent.parent().unwrap();
+        let permissions = fs::metadata(ancestor).unwrap().permissions();
+        fs::set_permissions(ancestor, fs::Permissions::from_mode(0o100)).unwrap();
+        let ancestor_result = PeerConfig::remove(id);
+        let ancestor_unchanged = fs::metadata(ancestor).unwrap().permissions().mode() & 0o777 == 0o100;
+        fs::set_permissions(ancestor, permissions).unwrap();
+        let ancestor_removed = !path.exists();
+        println!("OPTION_COMMIT_PEER_REMOVE_PARENT=observed kind=search_only_ancestor success={} mode_unchanged={ancestor_unchanged} removed={ancestor_removed}", ancestor_result.is_ok());
+        assert!(ancestor_result.is_ok() && ancestor_unchanged && ancestor_removed);
+        assert!(result.is_err() && unlinks == 0 && preserved && unchanged_mode && retry);
     });
 }
 

@@ -79,6 +79,23 @@ fn stored_prs_rejects_invalid_decoded_values_without_mutation() {
             println!("OPTION_COMMIT_PRS_READER=control kind={kind} correct={correct}");
             assert!(correct);
         }
+        for (kind, value) in [
+            ("large-noncurrent", "x".repeat(1024 * 1024)),
+            ("noncurrent", "x".repeat(4096)),
+            ("short", "x".into()),
+            ("version-only", "01".into()),
+            ("empty", String::new()),
+        ] {
+            let mut config = Config { password: value.clone(), salt: "preserved-salt".into(), ..Default::default() };
+            let (refused, validation_ok) = crate::fs::with_allocations_refused(|| {
+                (decrypt_permanent_password_prs_storage(&value).is_none()
+                    && decode_permanent_password_h1_from_storage(&value).is_none(),
+                    Config::validate_or_decrypt_permanent_password_storage(&mut config).is_ok())
+            });
+            let preserved = config.password == value && config.salt == "preserved-salt";
+            println!("OPTION_COMMIT_PRS_DECODE_FAILURE=observed kind={kind} bytes={} refused={refused} validation_ok={validation_ok} preserved={preserved} rust_allocations=none", value.len());
+            assert!(refused && validation_ok && preserved);
+        }
         let after_fds = fds();
         println!("OPTION_COMMIT_PRS_READER=handles before={before_fds} after={after_fds}");
         assert_eq!(before_fds, after_fds);

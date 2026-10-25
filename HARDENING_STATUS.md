@@ -12016,6 +12016,21 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   native capture or packaged-artifact evidence. Separately compiled platform/session
   compatibility remains supported. Exact-artifact/native acceptance stays OPEN under
   R-B2/R-B10; implementation history remains in Git at `d8ae44eb`.
+  The unused common-library `WaylandDisplayInfo`/`get_wayland_displays` path and
+  its SCTK 0.20 dependency are also removed (`f3dfb260`, `35df1179`); its last
+  caller disappeared with the capture backend at `196cd091`. Five locked packages
+  disappear, with no version upgrades; SCTK 0.19.2 remains required by the windowing
+  dependencies. The final lockfile equals isolated offline Cargo output, including
+  removal of the now-unused tracing/log edge. Remaining Linux platform code and
+  tests are byte-identical; the helper source gate only changes its extraction endpoint.
+  The real shared library passes its locked offline build and all 206 existing Linux
+  configuration tests/seven groups in 145 outer seconds. The initial incomplete-lock
+  refusal and temporary Cargo-review run executed no product tests; their diagnostics
+  and exact cleanup are retained in `retired-wayland-query-eaa72268.json`, together
+  with the accepted artifact and bounded-RAM evidence. Temporary review code is absent.
+  This removes dormant code, not a newly demonstrated LPE. Current full app/capture,
+  native logind, installed and other-platform behavior, R-S0/R-F5 and release acceptance
+  remain OPEN; all user-parked work stays parked.
 - **R-X9 — portable-packer Quick Support residue excised — CLOSED/GATED 2026-07-21.** The June 24 R-X9
   change deleted the Windows application's portable controlled-side service, its Quick Support receiver and
   elevation machinery, `set_quick_support`, the `--quick_support` argument arm, and the application's executable-

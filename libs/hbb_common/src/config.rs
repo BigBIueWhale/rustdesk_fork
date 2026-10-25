@@ -28,7 +28,7 @@ mod linux_directory;
 use permanent_password::compute_permanent_password_h1;
 use permanent_password::{
     decode_permanent_password_h1_from_hashed_storage, decrypt_permanent_password_prs_storage,
-    decrypt_permanent_password_str_or_original, derive_permanent_password_storages,
+    decrypt_permanent_password_storage, derive_permanent_password_storages,
     DEFAULT_SALT_LEN, PERMANENT_PASSWORD_H1_LEN,
 };
 pub use permanent_password::{
@@ -3134,9 +3134,7 @@ impl Config {
             return Ok(());
         }
 
-        let (decrypted_storage, decrypted, _) =
-            decrypt_permanent_password_str_or_original(&config.password);
-        if decrypted {
+        if let Some(decrypted_storage) = decrypt_permanent_password_storage(&config.password) {
             Self::ensure_permanent_password_hash_salt(config)?;
             if decode_permanent_password_h1_from_hashed_storage(&decrypted_storage).is_some() {
                 return Ok(());

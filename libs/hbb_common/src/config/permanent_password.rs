@@ -8,7 +8,6 @@ pub(super) const PERMANENT_PASSWORD_HASH_PREFIX: &str = "00";
 pub(super) const PERMANENT_PASSWORD_H1_LEN: usize = 32;
 pub(super) const DEFAULT_SALT_LEN: usize = 32;
 pub const ENCRYPT_MAX_LEN: usize = 128; // used for password, pin, etc, not for all
-const VERSION_LEN: usize = 2;
 
 #[cfg(test)]
 pub(super) fn is_permanent_password_hashed_storage(v: &str) -> bool {
@@ -74,18 +73,14 @@ fn encrypt_permanent_password_storage(storage: &str) -> Option<String> {
     )
 }
 
-pub(super) fn decrypt_permanent_password_str_or_original(storage: &str) -> (String, bool, bool) {
-    if storage.len() > VERSION_LEN && storage.starts_with(PERMANENT_PASSWORD_ENC_VERSION) {
-        if let Ok(decoded) = base64::decode(
-            &storage.as_bytes()[VERSION_LEN..],
-            base64::Variant::Original,
-        ) {
-            if let Ok(v) = symmetric_crypt(&decoded, false) {
-                return (String::from_utf8_lossy(&v).to_string(), true, false);
-            }
-        }
+pub(super) fn decrypt_permanent_password_storage(storage: &str) -> Option<String> {
+    let encoded = storage.strip_prefix(PERMANENT_PASSWORD_ENC_VERSION)?;
+    if encoded.is_empty() {
+        return None;
     }
-    (storage.to_owned(), false, !storage.is_empty())
+    let decoded = base64::decode(encoded.as_bytes(), base64::Variant::Original).ok()?;
+    let plaintext = symmetric_crypt(&decoded, false).ok()?;
+    Some(String::from_utf8_lossy(&plaintext).to_string())
 }
 
 // ── R-P1: the memory-hard CPace PRS derivation (Argon2id) ────────────────────
@@ -221,13 +216,7 @@ pub(super) fn encrypt_permanent_password_prs_storage(prs: &str) -> Option<String
 }
 
 pub(super) fn decrypt_permanent_password_prs_storage(storage: &str) -> Option<String> {
-    if storage.is_empty() {
-        return None;
-    }
-    let (plaintext, decrypted, _) = decrypt_permanent_password_str_or_original(storage);
-    if !decrypted {
-        return None;
-    }
+    let plaintext = decrypt_permanent_password_storage(storage)?;
     if validate_permanent_password_prs(&plaintext).is_err() {
         sodiumoxide::utils::memzero(&mut plaintext.into_bytes());
         return None;
@@ -238,14 +227,8 @@ pub(super) fn decrypt_permanent_password_prs_storage(storage: &str) -> Option<St
 pub fn decode_permanent_password_h1_from_storage(
     storage: &str,
 ) -> Option<[u8; PERMANENT_PASSWORD_H1_LEN]> {
-    if storage.starts_with(PERMANENT_PASSWORD_ENC_VERSION) {
-        let (hashed_storage, decrypted, _) = decrypt_permanent_password_str_or_original(storage);
-        if !decrypted {
-            return None;
-        }
-        return decode_permanent_password_h1_from_hashed_storage(&hashed_storage);
-    }
-    None
+    let hashed_storage = decrypt_permanent_password_storage(storage)?;
+    decode_permanent_password_h1_from_hashed_storage(&hashed_storage)
 }
 
 #[cfg(test)]
@@ -272,9 +255,7 @@ mod tests {
         assert!(storage.starts_with(PERMANENT_PASSWORD_ENC_VERSION));
         assert!(!is_permanent_password_hashed_storage(&storage));
 
-        let (inner, decrypted, should_store) = decrypt_permanent_password_str_or_original(&storage);
-        assert!(decrypted);
-        assert!(!should_store);
+        let inner = decrypt_permanent_password_storage(&storage).unwrap();
         assert!(inner.starts_with(PERMANENT_PASSWORD_HASH_PREFIX));
         assert_eq!(
             decode_permanent_password_h1_from_storage(&storage),

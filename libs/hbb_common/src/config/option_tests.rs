@@ -26,6 +26,14 @@ fn stored_prs_rejects_invalid_decoded_values_without_mutation() {
         assert!(RUNTIME_PERMANENT_PASSWORD_PRS.read().unwrap().is_none());
         let (password, healthy_storage) = derive_permanent_password_storages("stored PRS fixture password").unwrap();
         let healthy = decrypt_permanent_password_prs_storage(&healthy_storage).unwrap();
+        let raw = decode_permanent_password_h1_from_storage(&password).unwrap();
+        assert_eq!(base64::encode(raw, base64::Variant::Original), healthy);
+        let mut valid = Config { password: password.clone(), salt: "preserved-salt".into(), ..Default::default() };
+        Config::validate_or_decrypt_permanent_password_storage(&mut valid).unwrap();
+        assert_eq!(valid.password, password);
+        valid.salt.clear();
+        assert!(Config::validate_or_decrypt_permanent_password_storage(&mut valid).is_err());
+        println!("OPTION_COMMIT_PRS_DECODE_FAILURE=controls valid_hash=true config_preserved=true missing_salt_refused=true");
         let file = Config::file_("");
         let mut cases: Vec<_> = invalid_prs_values().into_iter()
             .map(|(kind, value)| (kind, value.into_bytes())).collect();

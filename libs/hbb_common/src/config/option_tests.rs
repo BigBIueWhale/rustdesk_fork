@@ -5242,6 +5242,38 @@ fn ordinary_option_source_healthy_missing_sparse_and_concurrent_controls() {
         assert!((0..8).all(|i| stored.options.get(&format!("ordinary-source-worker-{i}")) == Some(&i.to_string())));
         assert_eq!(*CONFIG2.read().unwrap(), stored);
         assert!(keys::PINNED_SETTINGS.iter().all(|(key, value)| Config::get_option(key) == *value));
+        let original_bytes = fs::read(&file).unwrap();
+        let defaults = DEFAULT_SETTINGS.read().unwrap().clone();
+        let overwrites = OVERWRITE_SETTINGS.read().unwrap().clone();
+        let mut policy_cases = 0;
+        for layer in ["stored", "default", "overwrite"] {
+            for (method, approval) in [("", ""), ("use-both-passwords", "click"),
+                                       ("unknown", "unknown"), ("use-permanent-password", "password")] {
+                *CONFIG2.write().unwrap() = stored.clone();
+                *DEFAULT_SETTINGS.write().unwrap() = defaults.clone();
+                *OVERWRITE_SETTINGS.write().unwrap() = overwrites.clone();
+                for (key, value) in [(keys::OPTION_VERIFICATION_METHOD, method), (keys::OPTION_APPROVE_MODE, approval)] {
+                    match layer {
+                        "stored" => CONFIG2.write().unwrap().options.insert(key.into(), value.into()),
+                        "default" => DEFAULT_SETTINGS.write().unwrap().insert(key.into(), value.into()),
+                        "overwrite" => OVERWRITE_SETTINGS.write().unwrap().insert(key.into(), value.into()),
+                        _ => unreachable!(),
+                    };
+                }
+                for (hide, expected) in [("Y", true), ("N", false)] {
+                    CONFIG2.write().unwrap().options.insert("allow-hide-cm".into(), hide.into());
+                    assert!(crate::password_security::permanent_enabled());
+                    assert_eq!(crate::password_security::approve_mode(), crate::password_security::ApproveMode::Password);
+                    assert_eq!(crate::password_security::hide_cm(), expected);
+                    policy_cases += 1;
+                }
+                assert_eq!(fs::read(&file).unwrap(), original_bytes);
+            }
+        }
+        *CONFIG2.write().unwrap() = stored;
+        *DEFAULT_SETTINGS.write().unwrap() = defaults;
+        *OVERWRITE_SETTINGS.write().unwrap() = overwrites;
+        println!("OPTION_COMMIT_PASSWORD_POLICY=pass cases={policy_cases} layers=3 values=4 visibility=2 permanent_enabled=true approval=password file_unchanged=true");
         println!("OPTION_COMMIT_ORDINARY_SOURCE=observed kind=controls missing_noops_absent=true first_save=true empty_removal=true sparse_fields_default=true concurrent_writers=8 keys_preserved=true policy_pinned=true cleanup=joined");
     });
 }

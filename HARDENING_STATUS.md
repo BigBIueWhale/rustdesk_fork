@@ -3100,29 +3100,36 @@ namespace/ACL/lifecycle races, physical crash and soak, all fifteen credential a
 R-S0/R-F5, cold/release, independent reproduction and external review remain OPEN.
 Every user park remains parked.
 
-**Permanent-credential decode failures (`c356cae5`).** The private decoder returns
+**Permanent-credential decoding (`c356cae5`, `e5aedb22`).** The private decoder returns
 only an optional decrypted value. Its original-input copy and two Boolean flags are
 removed; the PRS reader, hash reader and configuration validator consume that result.
+Current-prefix inputs now admit at most 116 Base64 bytes before decoding or key lookup.
+The bound derives from the largest supported plaintext (two-byte hash prefix plus the
+padded 32-byte credential), secretbox tag/nonce and format byte; the complete `01`
+storage is at most 118 bytes. The smaller required legacy ciphertext remains readable.
 Prefix/empty refusal, successful decryption, canonical PRS checks, invalid-plaintext
 wiping, salt validation and preservation of undecodable stored credentials remain.
 Encryption, wire formats, OS-key/legacy-key selection and privileged authority are unchanged.
 
-At unchanged-product `42fcc7c2`, a preallocated 1 MiB noncurrent value triggers another
-1 MiB allocation while being rejected. Denying that allocation aborts the owned worker;
-188 controls pass and one regression fails before the final two groups are skipped.
-The same rejection cases at `c356cae5` pass in the 206-case Linux configuration cohort:
-1 MiB/4 KiB noncurrent, short, version-only and empty values reject without calling-thread
-Rust allocations; configuration validation preserves their fields and descriptors return
-4 to 4. Added direct controls verify valid hash/PRS agreement, unchanged encrypted storage
-and missing-salt refusal. Existing valid/clear/encrypted-empty, malformed-value,
-generation, persistence and at-rest compatibility cases pass. The allocation-control child
-is joined. `credential-decode-failure-12085b55.json` binds the source/artifact comparison,
-exact test changes, observations and joined bounded-RAM cleanup.
+The earlier failed-result-copy A/B is retained in `credential-decode-failure-12085b55.json`.
+At unchanged-product preparation `388fa445`, the extended regression instead reaches a
+current-prefix value with a 1 MiB payload: Base64 decoding attempts a 786,432-byte allocation
+and the owned worker aborts under allocation refusal. There are 188 passing controls and
+one failure before the final two groups are skipped. The identical test at `e5aedb22`
+passes all 206 Linux configuration cases/seven groups in 152 outer seconds. Current-prefix
+payloads of 117, 120, 4,096 and 1,048,576 bytes, including an invalid-alphabet case, reject
+without calling-thread Rust allocation. Configuration validation preserves fields and
+descriptors return 4 to 4. Six controls decrypt hash, PRS and empty plaintext through both
+versioned and legacy ciphertext, including valid 118-byte storage. Prior rejection,
+salt, generation, persistence, canonical-value and at-rest controls also pass; the positive
+allocation-refusal child joins. `credential-envelope-bound-add61bef.json` binds exact sources,
+unchanged regression bytes, artifacts, observations and joined bounded-RAM cleanup.
 
-This removes the failed-result copy, not every allocation in credential processing:
-nonempty current-format Base64/ciphertext and enclosing configuration reads still allocate.
-No remote-input or LPE closure is demonstrated. Full app/installed/other-platform,
-all fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN; all parks remain.
+This bounds the private `01` credential decoder, not enclosing configuration reads, cached
+copies, generic `00` wrappers or storage-key acquisition. Admitted ciphertext still allocates
+within the envelope bound. Oversized values remain unavailable and preserved; no remote-input
+or LPE closure is demonstrated. Full app/installed/other-platform, all fifteen credential
+actions, R-S0/R-F5 and release acceptance remain OPEN; every user park remains parked.
 
 **Shared at-rest wrapper write format (`ef025a32`).** The string/vector write APIs
 accept only data and its existing length limit; one fixed `00` envelope replaces the

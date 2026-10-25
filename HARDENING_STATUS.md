@@ -3070,35 +3070,34 @@ pivot rather than leaving an unfinished regression cohort active. The production
 getter, cache and legacy-decryption path are unchanged. Resume only on explicit
 direction; no failure reproduction, correction or acceptance is claimed.
 
-**PRS value admission (`552c4fef`).** Durable PRS reads previously treated every decrypted
-nonempty string as available, while runtime replica admission already required canonical
-base64 of exactly 32 bytes. One shared validator now governs durable wrapping, decoded
-storage and runtime installation. Invalid data returns unavailable before authentication
-or replica publication; durable writes reject it before encryption. Explicit clear values,
-including an encrypted empty value, retain their empty-state behavior. Runtime error text,
-generation/no-op/publication ordering and protected-action authority remain. Validation
-temporaries and rejected decoded values are wiped; no format migration or repair occurs.
+**PRS value admission (`552c4fef`, `6193e94b`).** One shared validator governs
+durable wrapping, decoded storage and runtime installation: explicit clear or canonical
+Base64 of exactly 32 bytes. It now rejects every other nonempty encoded length before
+decoding or allocation; the admitted padded length is 44 bytes. Existing decoded-size,
+alphabet/padding/canonical checks and temporary wiping remain. Invalid values cannot
+publish a runtime replica or become an available durable credential. Wrong-length runtime
+errors use the fixed value-error category; no rejected bytes enter error text.
 
-The unchanged new test bodies pass in the 206-case Linux configuration cohort at
-`552c4fef`. Eleven malformed encrypted payloads cover wrong lengths, padding/pad bits,
-whitespace, URL-safe characters, invalid base64, Unicode and invalid UTF-8. Repeated typed
-reads, password availability and snapshots refuse while preserving file bytes/identity,
-directory entries, cache and generation, despite the separate password-storage field
-remaining valid. Valid PRS, ordinary clear and encrypted-empty controls pass, with
-descriptors 4 to 4. Ten invalid write/runtime inputs refuse without replacing the live
-replica or its generation; valid round trip, clear and runtime nonpersistence pass.
-The original baseline execution was refused before allocation for insufficient RAM;
-no empirical before/after failure is claimed.
+The extended existing regression at unchanged-product `c6472931` demonstrates a
+786,432-byte allocation attempt for a 1 MiB input. Refusing that allocation aborts the
+owned worker; the separate 31-byte allocation-refusal control also aborts as expected.
+The configuration cohort records 188 passing controls and one failure before its last
+two groups are skipped. The identical test at `6193e94b` passes all 206 cases/seven
+groups: lengths 1, 43, 45, 4,096 and 1,048,576 refuse in both validation and durable
+wrapping while calling-thread Rust allocations are denied; empty validation succeeds and descriptors
+return 4 to 4. Existing malformed encrypted-value, canonical padding/length, valid
+round-trip, clear/encrypted-empty, runtime nonpersistence and state/generation-preservation
+controls pass. The positive allocation-control child is joined.
 
-The 19-case Linux UID/helper-identity cohort and updated supplementary source-order
-checker also pass on that source. The checker now follows shared validation before
-generation/state ownership, retaining no-op, prior-value wiping, publication, generation
-and no-persistence checks. This is unprivileged Linux library/policy evidence, not an
-installed receiver or full application. Exact sources/artifacts, named outcomes and joined
-bounded-RAM cleanup: `canonical-prs-0a6b9a07.json`. Installed/root and other-platform
-credential flows, actual IPC/handshakes/UI, namespace/content/ACL/lifecycle races, physical
-crash and soak, all fifteen credential actions, R-S0/R-F5, cold/release, independent
-reproduction and external review remain OPEN. Every user park remains parked.
+Earlier `canonical-prs-0a6b9a07.json` retains durable-read, UID/helper and supplementary
+source-order evidence. `prs-length-admission-b8250a9a.json` binds this component A/B,
+source/artifacts, allocation observations and joined bounded-RAM cleanup. The raw IPC
+protocol retains its separate 4 KiB cap and exact receiver authority; this is not a
+demonstrated remote input or local privilege escalation. Parsing/decrypting the enclosing
+configuration/storage, full app/IPC/handshakes/UI, installed/root and other platforms,
+namespace/ACL/lifecycle races, physical crash and soak, all fifteen credential actions,
+R-S0/R-F5, cold/release, independent reproduction and external review remain OPEN.
+Every user park remains parked.
 
 **Shared at-rest wrapper write format (`ef025a32`).** The string/vector write APIs
 accept only data and its existing length limit; one fixed `00` envelope replaces the

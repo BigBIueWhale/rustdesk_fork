@@ -4647,7 +4647,7 @@ vm_iso_command /usr/bin/xorriso -as mkisofs -quiet -iso-level 3 -volid RD_VERIFI
 /usr/bin/chmod 0700 "$RUN/seed"
 guest_invocation="bash /mnt/rustdesk-verifier-inputs/guest.sh /mnt/rustdesk-verifier-inputs/docker.tgz /mnt/rustdesk-verifier-inputs/repo/scripts/verify-vm-entry-preflight.sh $VERIFIER_VM_DOCKER_VERSION $SIZE_VERIFIER_VM_DOCKER_STATIC $SHA256_VERIFIER_VM_DOCKER_STATIC $VERIFIER_VM_KERNEL_RELEASE $VERIFIER_VM_ROOT_FILESYSTEM_UUID"
 if [ "$MODE" = media-kernel-tests ]; then
-    guest_invocation='python3 -I -S /mnt/rustdesk-verifier-inputs/media/boot.py --prepare'
+    guest_invocation='python3 -I -S /mnt/rustdesk-verifier-inputs/media/boot.py --prepare >/dev/ttyS0 2>&1'
 elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
     guest_invocation+=" --$MODE $FOCUSED_TEST_COMMIT $FOCUSED_TEST_TREE"
 elif [ "$MODE" = debian-systemd-lifecycle ]; then
@@ -5121,9 +5121,11 @@ for socket in "${VIRTIOFS_SOCKETS[@]}"; do
     reconcile_socket "$socket" \
         || fail 'virtiofsd channel cleanup is ambiguous'
 done
-require_exact_fixed_receipt \
-    'VERIFIER_VM_GIT_RUNTIME=pass source=pinned-deb version=2.39.5 root=vm-ephemeral network=none' \
-    'authenticated verifier-VM Git runtime marker'
+if [ "$MODE" != media-kernel-tests ]; then
+    require_exact_fixed_receipt \
+        'VERIFIER_VM_GIT_RUNTIME=pass source=pinned-deb version=2.39.5 root=vm-ephemeral network=none' \
+        'authenticated verifier-VM Git runtime marker'
+fi
 if [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ] \
    || [ "$MODE" = android-emulator-runtime ]; then
     require_exact_fixed_receipt \

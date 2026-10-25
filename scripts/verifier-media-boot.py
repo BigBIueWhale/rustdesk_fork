@@ -59,7 +59,7 @@ def main():
                + ' rw rootfstype=ext4 rootwait console=ttyS0,115200n8 rustdesk.verifier_vm=1'
                + ' systemd.mask=systemd-networkd-wait-online.service'
                + ' systemd.mask=ssh.service systemd.mask=ssh.socket')
-    media_cmdline = cmdline + ' rustdesk.media_vm=1'
+    media_cmdline = cmdline + ' rustdesk.media_vm=1 systemd.mask=serial-getty@ttyS0.service'
     for service in ('cloud-init-local', 'cloud-init', 'cloud-config', 'cloud-final'):
         media_cmdline += ' systemd.mask=' + service + '.service'
     boot_id = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
@@ -96,7 +96,7 @@ def main():
                 raise OSError(ctypes.get_errno(), 'guest kexec_file_load failed')
         require(Path('/sys/kernel/kexec_loaded').read_text().strip() == '1',
                 'media kernel was not loaded')
-        print('MEDIA_BOOT_PREPARED=' + json.dumps(result, sort_keys=True), flush=True)
+        print('\nMEDIA_BOOT_PREPARED=' + json.dumps(result, sort_keys=True), flush=True)
     else:
         require(Path('/proc/cmdline').read_text().strip() == media_cmdline,
                 'media handoff command line differs')

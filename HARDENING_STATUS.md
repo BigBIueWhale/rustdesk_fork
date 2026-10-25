@@ -3303,6 +3303,29 @@ test duplication; broader installed, platform and release acceptance is unchange
 OPEN/PARKED pending reconciliation with the compiled inventory. Its last RAM-admission
 refusal created no VM or scratch workspace. All earlier explicit parks remain parked.
 
+**Favorite peer filtering — Linux component comparison accepted; full UI OPEN.**
+`ac5a8cb8` indexes selected IDs once as a borrowed, randomly hashed membership set
+inside `PeerConfig::get_vec_id_modified_time_path`. The former per-record vector
+scan is removed. Membership work is expected linear in filters plus records;
+filesystem reads and modification-time sorting retain their existing costs.
+Exact ID/path validation, duplicate-insensitive selection, empty/no-filter behavior
+and descending modification-time order remain. The set borrows IDs and lives only
+for the call. The Favorites FFI caller is source-reviewed, not freshly executed.
+
+The extended existing regression creates 4,096 peer files and selects from 12,288
+IDs, including duplicates and missing records. Both unchanged-product `72c3ce91`
+and corrected source pass all 206 Linux configuration cases/seven groups. In the
+same two filter orders, per-call thread CPU falls from 324/213 ms to 20/19 ms,
+with comparable wall time. Both return exactly 2,048 peers, preserve order and
+file identity/content/mode under read-only permissions, retain empty/unfiltered
+controls and finish with descriptors 4 to 4. This is a debug-library comparison,
+not a release/UI latency guarantee. `favorite-peer-filter-ff0fba39.json` binds the
+identical test bodies, sources/artifacts, exact timings and joined bounded-RAM
+cleanup. No API, protocol, authority, dependency or harness change is included.
+Full rendered Favorites/native FFI, other platforms and installed behavior,
+concurrent namespace changes, sustained resource/performance and R-S0/R-F5/release
+acceptance remain OPEN. Whole-peer writers and all other user parks stay parked.
+
 **Bulk Favorites membership — Linux component comparison accepted; full UI OPEN.**
 `349ea547` replaces repeated vector scans with borrowed membership sets inside each
 fresh LocalConfig mutation. Existing favorites keep their order, new IDs follow first

@@ -4480,11 +4480,25 @@ cancellation and shutdown rechecked under the admission lock. Async grant and wo
 checklists remain deleted. The complete contracts are in R-S11at, R-S11fi, R-S11hx
 and the fifteen credential-action rows above.
 
+**Native authorization-child wait disposition (`af465fad`).** The existing
+`OwnedAuthorizationChild::spawn` safeguard is now exercised with actual
+`SIGCHLD=SIG_IGN` and `SA_NOCLDWAIT` settings in two isolated re-exec processes.
+Each reads back the kernel disposition, requires the exact pre-spawn refusal
+and absent child markers, restores the original setting, and completes a fresh
+healthy capture. Positive children run before and after each refusal; every
+child is reaped and descriptor counts are unchanged. All fifteen library cases
+and seven real PAM/logind scenarios pass in 118 outer seconds under the bounded
+RAM profile. `logind-wait-authority-30f7c96f.json` binds source/artifact, native
+observations and joined cleanup. Production and prior test bodies are byte-identical;
+this adds behavioral coverage, not a new product correction or LPE closure.
+Concurrent signal-disposition changes, installed pkcheck/credential receivers,
+other platforms, full functionality, R-S0/R-F5 and release acceptance remain OPEN.
+
 | Component checkpoint | Evidence and limit |
 | --- | --- |
 | Polkit runtime and Debian dependency | `aa956518` captured 82 signed-snapshot packages, 31,596,230 bytes, with pins in `scripts/pins.env` and receipt `online-fetch-receipts/run.63EwFoon0W.receipt`. `f99f6cc0` passed seven Debian metadata cases; this alone is not an installed receiver. Raw `gX6siRyvuz.serial.log` and exact receipts remain in the audit. Standalone `polkitd` is required; release closure is OPEN. |
 | UID policy and logind capture | `aa437333` passed four policy cases plus the guard; `3eabd727` passed eight capture cases within 116 tests/five groups, retaining the original four bodies. Unknown pre-existing loopback listener `127.0.0.1:9333` was left untouched; that diagnostic establishes no leak or bypass. Exact artifacts and raw receipts remain in the audit. |
-| Native logind | `b361c47d` passes the unchanged 14 unit and seven real PAM/logind cases under the bounded profile above: empty/removed users, seatless unspecified/TTY, active X11, switching and closing sessions. PAM 1.5.2-6+deb12u2 and systemd 252.39-1~deb12u2; raw `MBhOX3RLmI`. This does not run an installed credential receiver. Prior `68e596b3`/`8oLyS0S0lG` evidence remains retained. |
+| Native logind | `af465fad` passes 15 unit and the unchanged seven real PAM/logind cases: empty/removed users, seatless unspecified/TTY, active X11, switching and closing sessions. PAM 1.5.2-6+deb12u2 and systemd 252.39-1~deb12u2; raw `SS4jhD5IEF`. This does not run an installed credential receiver. The bounded-profile result `b361c47d`/`MBhOX3RLmI` and prior `68e596b3`/`8oLyS0S0lG` remain retained. |
 | Coordinator and raw v2 | `e69129bc` passed seven coordinator/23 raw-module cases in five groups: actual AF_UNIX readiness before disclosure, canonical/fragmented/empty/max/auth bodies, malformed/truncated/expired input, wiping, half-close, replay, expiry and shutdown. Pre-write refusal is NotSent; a started write is uncertain. `linux-wire-v2-accepted-e69129bc.json` retains exact scope. Two wording-only tests were later deleted; the current seven coordinator/21 protocol cases are not thereby validated. |
 | Current coordinator execution gap | At `04c7e32e`, the 28-case attempt refused before QEMU: admission required 39,936 MiB with 23,531 MiB available. No case ran. `login-inventory-role.json` retains the refusal. Guest/scratch admission and the no-disk-fallback rule remain binding. |
 

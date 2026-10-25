@@ -125,8 +125,7 @@ intentionally omits the non-ASCII-space mapping and FreeformClass rejection.
   secret-bearing `Drop`/`Zeroizing` path.
 - `libs/pake/src/tests.rs`: the draft-21 `G_Coffee25519` vector, both fork KAT
   anchors, role-oriented key checks, wrong-password behavior, AD mismatch,
-  identity/decode rejection, replay behavior, NFC behavior, and the explicitly
-  limited ignored timing probe.
+  identity/decode rejection, replay behavior, and NFC behavior.
 
 Review every byte boundary and domain-separation value, the draft-to-fork
 composition, scalar generation, Ristretto decode/identity handling, explicit
@@ -134,6 +133,12 @@ role binding, confirmation-before-authorization order, error classification,
 and all success, error, timeout, and drop paths for secret erasure. Verify the
 published vector independently rather than trusting the expected constants in
 the same source tree.
+
+Timing remains in the expert-review scope under R-P12. Primitive-selection
+source checks and library types do not prove the timing of compiled code.
+Review target-specific compiler/backend assumptions and require measured
+leakage assessment with demonstrated sensitivity; a run detecting no leakage
+does not establish constant-time execution on every input or target.
 
 ### Wire choreography and authorization edge
 
@@ -227,7 +232,7 @@ At minimum, the published external report must answer:
    closed without creating a remotely useful denial-of-service amplification?
 6. Are all security claims and residuals accurate, including the fixed global
    Argon2id salt, NFC-only (not OpaqueString) preparation, balanced-PAKE stored
-   PRS equivalence, draft status, dependency assumptions, ignored timing probe,
+   PRS equivalence, draft status, dependency assumptions, timing-evidence limits,
    and lack of post-quantum security?
 
 The report must include methodology, exact scope, independence/conflict

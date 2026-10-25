@@ -4308,6 +4308,9 @@ impl PeerConfig {
         id_filters: &Option<Vec<String>>,
     ) -> Vec<(String, SystemTime, PathBuf)> {
         if let Ok(peers) = Config::path(PEERS).read_dir() {
+            let id_filters = id_filters.as_ref().map(|ids| {
+                ids.iter().map(String::as_str).collect::<HashSet<_>>()
+            });
             let mut vec_id_modified_time_path = peers
                 .into_iter()
                 .filter_map(|res| match res {
@@ -4338,10 +4341,10 @@ impl PeerConfig {
                     Some((id, p))
                 })
                 .filter(|(id, _)| {
-                    let Some(filters) = id_filters else {
+                    let Some(filters) = &id_filters else {
                         return true;
                     };
-                    filters.contains(id)
+                    filters.contains(id.as_str())
                 })
                 .map(|(id, p)| {
                     let t = crate::get_modified_time(&p);

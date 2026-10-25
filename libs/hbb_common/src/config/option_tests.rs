@@ -88,7 +88,14 @@ fn stored_prs_rejects_invalid_decoded_values_without_mutation() {
 
 #[test]
 fn prs_storage_writer_and_runtime_share_canonical_value_admission() {
-    in_private_process("config::option_tests::prs_storage_writer_and_runtime_share_canonical_value_admission", |_| {
+    use std::os::unix::process::ExitStatusExt;
+    const TEST: &str = "config::option_tests::prs_storage_writer_and_runtime_share_canonical_value_admission";
+    const PROBE: &str = "RUSTDESK_PRS_ALLOCATION_PROBE";
+    if std::env::var_os(PROBE).is_some() {
+        crate::fs::with_allocations_refused(|| std::hint::black_box(Vec::<u8>::with_capacity(31)));
+        panic!("allocation refusal probe must abort");
+    }
+    in_private_process(TEST, |_| {
         let valid = base64::encode(&[0x5au8; PERMANENT_PASSWORD_H1_LEN], base64::Variant::Original);
         assert!(Config::set_permanent_password_prs_for_runtime(&valid).unwrap());
         let generation = Config::read_permanent_password_credential_snapshot().generation();
@@ -110,6 +117,31 @@ fn prs_storage_writer_and_runtime_share_canonical_value_admission() {
         assert!(!Config::file_("").exists());
         println!("OPTION_COMMIT_PRS_WRITER=controls valid_round_trip=true clear=true runtime_nonpersistent=true");
         assert!(all_refused);
+
+        let fds = || fs::read_dir("/proc/self/fd").unwrap().count();
+        let before_fds = fds();
+        let probe = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", TEST, "--nocapture", "--test-threads=1"])
+            .env(PROBE, "1").output().unwrap();
+        assert!(probe.stdout.len() + probe.stderr.len() < 8192);
+        assert_eq!(probe.status.signal(), Some(crate::libc::SIGABRT));
+        assert!(String::from_utf8_lossy(&probe.stderr).contains("memory allocation of 31 bytes failed"));
+        println!("OPTION_COMMIT_PRS_BOUND=probe allocation_refused=true child_joined=true");
+        for length in [1024 * 1024, 4096, 45, 43, 1] {
+            let value = "A".repeat(length);
+            let (refused, write_refused) = crate::fs::with_allocations_refused(|| {
+                (permanent_password::validate_permanent_password_prs(&value).is_err(),
+                    permanent_password::encrypt_permanent_password_prs_storage(&value).is_none())
+            });
+            assert!(refused && write_refused);
+            println!("OPTION_COMMIT_PRS_BOUND=observed bytes={length} refused=true write_refused=true rust_allocations=none");
+        }
+        assert_eq!(crate::fs::with_allocations_refused(|| {
+            permanent_password::validate_permanent_password_prs("")
+        }), Ok(()));
+        let after_fds = fds();
+        assert_eq!(before_fds, after_fds);
+        println!("OPTION_COMMIT_PRS_BOUND=controls clear=true fds_before={before_fds} fds_after={after_fds}");
     });
 }
 

@@ -22,6 +22,9 @@ OVERHEAD = GIB
 
 
 def storage_limits(profile, memory_mib):
+    if profile == 'media-kernel-tests':
+        require(memory_mib == 2048, 'media kernel fixture requires its 2 GiB guest')
+        return 4 * GIB, 3 * GIB
     if profile in ('ledger-token-count', 'authority-smoke'):
         require(memory_mib == 2048, f'{profile} storage profile requires its 2 GiB guest')
         # These guests build no product artifacts; preparation may provision the boot cache.
@@ -442,7 +445,7 @@ def main():
                                  'linux-resource-limits', 'linux-resolution-lifetime', 'fusermount-process', 'xrandr-acquisition',
                                  'linux-service-uid-tests', 'audio-buffer', 'audio-mailbox', 'file-block', 'control-egress', 'clipboard-response',
                                  'linux-service-receiver', 'linux-flutter-replay', 'installer-package',
-                                 'android-storage-key', 'linux-flutter-suspend'),
+                                 'android-storage-key', 'linux-flutter-suspend', 'media-kernel-tests'),
                         default='standard')
     parser.add_argument('--workspace')
     parser.add_argument('--identity')

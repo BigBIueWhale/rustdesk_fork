@@ -380,6 +380,11 @@ case "$#:${1:-}" in
         fi
         MODE=ledger-token-count
         ;;
+    1:--media-kernel-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'media kernel input/run overrides are forbidden' >&2; exit 2; }
+        MODE=media-kernel-tests
+        ;;
     1:--host-network-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'host network test input/run overrides are forbidden' >&2; exit 2; }
@@ -833,6 +838,9 @@ readonly DART_AUDIT_CHECKER="$SCRIPT_DIR/verify-dart-audit-authority.py"
 readonly REQUIREMENTS_SOURCE="$REPO_ROOT/requirements.html"
 readonly HARDENING_SOURCE="$REPO_ROOT/HARDENING_STATUS.md"
 readonly LEDGER_TOKEN_COUNT_SOURCE="$SCRIPT_DIR/count-ledger-tokens.py"
+readonly MEDIA_BOOT_SOURCE="$SCRIPT_DIR/verifier-media-boot.py"
+readonly MEDIA_GUEST_SOURCE="$SCRIPT_DIR/verifier-media-guest.py"
+readonly MEDIA_KERNEL_PACKAGE="$REPO_ROOT/online/candidates/verifier-media-kernel/linux-image-6.1.0-50-amd64_6.1.176-1_amd64.deb"
 readonly VM_HOST_NETWORK_SOURCE="$SCRIPT_DIR/vm-host-network.py"
 readonly VM_HOST_NETWORK_TEST="$SCRIPT_DIR/test-vm-host-network.py"
 readonly LEDGER_TOKENIZER_ARCHIVE="$REPO_ROOT/online/candidates/ledger-tokenizer/ledger-tokenizer-inputs.tar.gz"
@@ -855,7 +863,11 @@ if [ "$MODE" = android-emulator-boot ] \
 else
     readonly VM_CPUS=4
 fi
-if [ "$MODE" = debian-systemd-lifecycle ]; then
+if [ "$MODE" = media-kernel-tests ]; then
+    readonly VM_TIMEOUT_SECONDS=240
+    readonly OVERLAY_SIZE=6G
+    readonly VM_MEMORY=2048
+elif [ "$MODE" = debian-systemd-lifecycle ]; then
     readonly VM_TIMEOUT_SECONDS=480
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=2048
@@ -2428,7 +2440,7 @@ fi
 frame_inputs_before=
 FOCUSED_TEST_COMMIT=
 FOCUSED_TEST_TREE=
-if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
+if [ "$MODE" = media-kernel-tests ] || [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
    || [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ] || [ "$MODE" = debian-package-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = host-network-tests ] || [ "$MODE" = dependency-inventory ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
    || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ] \
    || { [ "$MODE" = android-rust-lifecycle-tests ] \
@@ -2449,6 +2461,20 @@ fi
 debian_polkit_sources_before=
 debian_package_inputs_before=
 ledger_token_inputs_before=
+if [ "$MODE" = media-kernel-tests ]; then
+    media_sources=("$MEDIA_BOOT_SOURCE" "$MEDIA_GUEST_SOURCE" "$PIN_SOURCE" "$VM_STORAGE_SOURCE" "$SCRIPT_DIR/vm-transient-storage.sh")
+    for source in "${media_sources[@]}"; do
+        [ -f "$source" ] && [ ! -L "$source" ] || fail 'media source is absent or ambiguous'
+        verify_committed_test_source "$source"
+    done
+    [ -f "$MEDIA_KERNEL_PACKAGE" ] && [ ! -L "$MEDIA_KERNEL_PACKAGE" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' "$MEDIA_KERNEL_PACKAGE")" = \
+             "$HOST_UID:$HOST_GID:400:1:$SIZE_VERIFIER_MEDIA_KERNEL_PACKAGE" ] \
+        || fail 'media kernel package authority differs'
+    verify_sha256 "$MEDIA_KERNEL_PACKAGE" "$SHA256_VERIFIER_MEDIA_KERNEL_PACKAGE"
+    media_sources+=("$MEDIA_KERNEL_PACKAGE")
+    media_inputs_before="$(/usr/bin/sha256sum "${media_sources[@]}")"
+fi
 for source in "$VM_HOST_NETWORK_SOURCE" "$VM_HOST_NETWORK_TEST"; do
     [ -f "$source" ] && [ ! -L "$source" ] || fail 'host network source is absent or ambiguous'
     verify_committed_test_source "$source"
@@ -3257,7 +3283,7 @@ for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT
     "$LIB_SOURCE" "$PIN_SOURCE"; do
     [ -f "$source" ] && [ ! -L "$source" ] \
         || fail "verifier-VM source is absent or symlinked: $source"
-    if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
+    if [ "$MODE" = media-kernel-tests ] || [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
        || [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ] || [ "$MODE" = debian-package-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = dependency-inventory ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
        || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
         verify_committed_test_source "$source"
@@ -4288,6 +4314,34 @@ elif [ "$MODE" = dependency-inventory ]; then
         [ "$source" != .github/workflows/DISABLED.md ] || continue
         lifecycle_payload_grafts+=("repo/$source=$REPO_ROOT/$source")
     done
+elif [ "$MODE" = media-kernel-tests ]; then
+    media_contract="$VM_TRANSIENT/media-contract.json"
+    /usr/bin/python3 -I -S - "$media_contract" "$FOCUSED_TEST_COMMIT" "$MEDIA_BOOT_SOURCE" "$MEDIA_GUEST_SOURCE" \
+        "$VERIFIER_VM_KERNEL_RELEASE" "$VERIFIER_VM_ROOT_FILESYSTEM_UUID" \
+        "$SIZE_VERIFIER_MEDIA_KERNEL_PACKAGE" "$SHA256_VERIFIER_MEDIA_KERNEL_PACKAGE" \
+        "$SIZE_VERIFIER_MEDIA_KERNEL" "$SHA256_VERIFIER_MEDIA_KERNEL" \
+        "$SHA256_VERIFIER_MEDIA_KERNEL_CONFIG" "$SOURCE_DATE_EPOCH_PIN" <<'PY'
+import hashlib,json,os,sys
+from pathlib import Path
+sources={}
+for name,path in zip(('boot.py','guest.py'),sys.argv[3:5]):
+    data=Path(path).read_bytes()
+    sources[name]={'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()}
+keys=('VERIFIER_VM_KERNEL_RELEASE','VERIFIER_VM_ROOT_FILESYSTEM_UUID',
+      'SIZE_VERIFIER_MEDIA_KERNEL_PACKAGE','SHA256_VERIFIER_MEDIA_KERNEL_PACKAGE',
+      'SIZE_VERIFIER_MEDIA_KERNEL','SHA256_VERIFIER_MEDIA_KERNEL',
+      'SHA256_VERIFIER_MEDIA_KERNEL_CONFIG','SOURCE_DATE_EPOCH_PIN')
+with open(sys.argv[1],'x') as output:
+    json.dump({'source_commit':sys.argv[2],'sources':sources,'pins':dict(zip(keys,sys.argv[5:]))},output,sort_keys=True)
+    output.write('\n')
+    os.fchmod(output.fileno(),0o400)
+PY
+    lifecycle_payload_grafts=(
+        "media/contract.json=$media_contract"
+        "media/boot.py=$MEDIA_BOOT_SOURCE"
+        "media/guest.py=$MEDIA_GUEST_SOURCE"
+        "media/linux-image-6.1.0-50-amd64_6.1.176-1_amd64.deb=$MEDIA_KERNEL_PACKAGE"
+    )
 elif [ "$MODE" = ledger-token-count ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=(
@@ -4592,7 +4646,9 @@ vm_iso_command /usr/bin/xorriso -as mkisofs -quiet -iso-level 3 -volid RD_VERIFI
 /usr/bin/mkdir "$RUN/seed"
 /usr/bin/chmod 0700 "$RUN/seed"
 guest_invocation="bash /mnt/rustdesk-verifier-inputs/guest.sh /mnt/rustdesk-verifier-inputs/docker.tgz /mnt/rustdesk-verifier-inputs/repo/scripts/verify-vm-entry-preflight.sh $VERIFIER_VM_DOCKER_VERSION $SIZE_VERIFIER_VM_DOCKER_STATIC $SHA256_VERIFIER_VM_DOCKER_STATIC $VERIFIER_VM_KERNEL_RELEASE $VERIFIER_VM_ROOT_FILESYSTEM_UUID"
-if [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
+if [ "$MODE" = media-kernel-tests ]; then
+    guest_invocation='python3 -I -S /mnt/rustdesk-verifier-inputs/media/boot.py --prepare'
+elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
     guest_invocation+=" --$MODE $FOCUSED_TEST_COMMIT $FOCUSED_TEST_TREE"
 elif [ "$MODE" = debian-systemd-lifecycle ]; then
     guest_invocation+=" --debian-systemd-lifecycle /mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz /mnt/rustdesk-verifier-inputs/artifact/rustdesk-x86_64.deb $LIFECYCLE_ARTIFACT_SHA256 $LIFECYCLE_COMMIT"
@@ -4728,6 +4784,10 @@ elif [ "$MODE" = dart-audit ]; then
 elif [ "$MODE" = rust-audit ]; then
     guest_invocation+=" --rust-audit /mnt/rustdesk-verifier-inputs/source.tar $RUST_AUDIT_SOURCE_COMMIT $RUST_AUDIT_SOURCE_TREE $RUST_AUDIT_SOURCE_ARCHIVE_SHA256 /mnt/rustdesk-verifier-inputs/rust-audit.docker.tar.gz"
 fi
+guest_finish='systemctl poweroff --no-block || poweroff -f'
+if [ "$MODE" = media-kernel-tests ]; then
+    guest_finish='if [ "$status" -eq 0 ]; then systemctl kexec --no-block || poweroff -f; else systemctl poweroff --no-block || poweroff -f; fi'
+fi
 printf '%s\n' \
     '#!/usr/bin/env bash' \
     'set -euo pipefail' \
@@ -4740,7 +4800,7 @@ printf '%s\n' \
     '        echo VERIFIER_VM_CLOUD_INIT=fail status=$status' \
     '    fi' \
     '    sync' \
-    '    systemctl poweroff --no-block || poweroff -f' \
+    "    $guest_finish" \
     '    exit "$status"' \
     '}' \
     'trap finish EXIT' \
@@ -5265,6 +5325,38 @@ elif [ "$MODE" = debian-polkit-tests ]; then
     require_exact_fixed_receipt "$debian_polkit_vm_receipt" 'Debian authorization dependency execution and finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Debian authorization dependency guest completion'
     printf '%s\n' "$debian_polkit_receipt" "$debian_polkit_vm_receipt"
+elif [ "$MODE" = media-kernel-tests ]; then
+    require_exact_fixed_receipt "MEDIA_KERNEL_FIXTURE=pass source=$FOCUSED_TEST_COMMIT generations=2 principal=4000:4000 root-foreign=refused module=retired product=unexecuted" 'native media kernel lifecycle'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'media kernel preparation'
+    /usr/bin/python3 -I -S - "$SERIAL_LOG" "$FOCUSED_TEST_COMMIT" "$MEDIA_BOOT_SOURCE" "$MEDIA_GUEST_SOURCE" \
+        "$SHA256_VERIFIER_MEDIA_KERNEL" "$SIZE_VERIFIER_MEDIA_KERNEL" <<'PY'
+import hashlib,json,re,sys
+from pathlib import Path
+raw=Path(sys.argv[1]).read_bytes()
+assert b'MEDIA_KERNEL_FAILURE=' not in raw
+def record(prefix):
+    found=re.findall(rb'(?:^|\n)'+prefix+rb'=(\{[^\r\n]+\})\r?\n',raw)
+    assert len(found)==1, (prefix,len(found))
+    return json.loads(found[0])
+prepared=record(b'MEDIA_BOOT_PREPARED'); result=record(b'MEDIA_KERNEL_RESULT')
+assert prepared['source_commit']==result['source_commit']==sys.argv[2]
+assert prepared['kernel']=={'bytes':int(sys.argv[6]),'sha256':sys.argv[5]}
+assert prepared['same_guest_initrd_equality'] is True and prepared['module_count']==4022
+assert prepared['boot_id']==result['previous_boot_id'] and prepared['boot_id']!=result['boot_id']
+assert prepared['kernel_release']==result['kernel_release']=='6.1.0-50-amd64'
+assert result['module_retired'] is True and result['root_foreign_probe_refused'] is True
+assert result['product_executed'] is False and len(result['captures'])==2
+for name,path in zip(('boot.py','guest.py'),sys.argv[3:5]):
+    data=Path(path).read_bytes()
+    assert result['sources'][name]=={'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()}
+for capture in result['captures']:
+    assert capture['principal']=='4000:4000' and capture['node']=='/dev/video2'
+    assert capture['driver']=='vivid' and capture['native_zero_errno']==2
+    assert (capture['width'],capture['height'],capture['format'],capture['frame_bytes'])==(320,180,'RGB3',172800)
+    assert len(capture['frame_sha256'])==len(capture['pixel_color_counts'])==4
+    assert len(set(capture['frame_sha256']))>=2 and min(capture['pixel_color_counts'])>=8
+print('MEDIA_KERNEL_OBSERVATION='+json.dumps({'prepared':prepared,'fixture':result},sort_keys=True))
+PY
 elif [ "$MODE" = host-network-tests ]; then
     require_exact_fixed_receipt \
         'VM_HOST_NETWORK_TESTS=pass controls=4 restrictions=native inheritance=fork-exec unix=roundtrip netlink=socket-diag ip=denied x32=SIGSYS descriptors=closed-or-refused' \
@@ -8188,6 +8280,13 @@ if [ "$MODE" = dependency-inventory ]; then
         && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
         || fail 'dependency inventory source or index changed'
 fi
+if [ "$MODE" = media-kernel-tests ]; then
+    [ "$(/usr/bin/sha256sum "${media_sources[@]}")" = "$media_inputs_before" ] \
+        && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
+        && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')" = "$FOCUSED_TEST_TREE" ] \
+        && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
+        || fail 'media kernel source or inputs changed during execution'
+fi
 if [ "$MODE" = ledger-token-count ]; then
     [ "$(/usr/bin/sha256sum "${ledger_count_sources[@]}")" = "$ledger_token_inputs_before" ] \
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
@@ -8296,6 +8395,9 @@ elif [ "$MODE" = host-network-tests ]; then
 elif [ "$MODE" = dependency-inventory ]; then
     printf 'DEPENDENCY_INVENTORY_OUTER=pass host_uid=%s commit=%s tree=%s index_sha256=%s helper_sha256=%s network=none listeners=no-harness-addition source=readonly product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$inventory_index_sha" "$inventory_helper_sha" "$vm_elapsed_seconds"
+elif [ "$MODE" = media-kernel-tests ]; then
+    printf 'MEDIA_KERNEL_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition storage=bounded-ram qemu=one handoff=kexec product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = ledger-token-count ]; then
     printf 'LEDGER_TOKEN_COUNT_OUTER=pass host_uid=%s commit=%s tree=%s input_sha256=%s recipe_sha256=%s network=none listeners=no-harness-addition inputs=readonly product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$ledger_input_sha" "$ledger_recipe_sha" "$vm_elapsed_seconds"

@@ -165,7 +165,7 @@ def provision(pins):
     return result
 
 
-def fixture(pins, contract):
+def capture_fixture(pins):
     require(os.uname().release == RELEASE, 'media boot kernel release differs')
     require(file_record(Path('/boot/config-' + RELEASE), 1048576)['sha256']
             == pins['SHA256_VERIFIER_MEDIA_KERNEL_CONFIG'], 'running media module config differs')
@@ -209,6 +209,12 @@ def fixture(pins, contract):
             run(['/usr/bin/udevadm', 'settle', '--timeout=10'])
         require(not list(Path('/dev').glob('video*'))
                 and not Path('/sys/module/vivid').exists(), 'fixture retirement incomplete')
+    return {'kernel_release': RELEASE, 'captures': captures, 'module_retired': True,
+            'root_foreign_probe_refused': True, 'product_executed': False}
+
+
+def fixture(pins, contract):
+    result = capture_fixture(pins)
     for name, expected in contract['sources'].items():
         require(file_record(MEDIA / name, 1048576) == expected, 'native component source differs: ' + name)
     module_spec = importlib.util.spec_from_file_location('media_nokhwa', MEDIA / 'nokhwa.py')
@@ -216,9 +222,8 @@ def fixture(pins, contract):
     module = importlib.util.module_from_spec(module_spec)
     sys.dont_write_bytecode = True
     module_spec.loader.exec_module(module)
-    native = module.verify(pins)
-    return {'kernel_release': RELEASE, 'captures': captures, 'nokhwa': native,
-            'module_retired': True, 'root_foreign_probe_refused': True, 'product_executed': False}
+    result['nokhwa'] = module.verify(pins)
+    return result
 
 
 def main():

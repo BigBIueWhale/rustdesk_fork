@@ -4173,6 +4173,9 @@ impl PeerConfig {
             if result.is_ok()
                 || result.as_ref().err().is_some_and(|error| error.kind() == io::ErrorKind::NotFound)
             {
+                parent.sync_all().map_err(|error| anyhow!(
+                    "Peer removal durability is uncertain: {error}"
+                ))?;
                 let mut metadata = std::mem::MaybeUninit::<crate::libc::stat>::uninit();
                 if unsafe { crate::libc::fstatat(
                     parent.as_raw_fd(), name.as_ptr(), metadata.as_mut_ptr(),
@@ -4198,7 +4201,7 @@ impl PeerConfig {
 
     #[cfg(target_os = "linux")]
     fn open_removal_parent(path: &Path) -> crate::ResultType<Option<fs::File>> {
-        use std::os::unix::fs::MetadataExt;
+        use std::os::unix::{fs::MetadataExt, io::{AsRawFd, FromRawFd}};
 
         let Some(parent) = open_existing_config_parent(path)? else {
             return Ok(None);
@@ -4212,7 +4215,21 @@ impl PeerConfig {
                 "Peer directory failed ownership/write-permission verification"
             ));
         }
-        Ok(Some(parent))
+        let fd = unsafe { crate::libc::openat(
+            parent.as_raw_fd(), b".\0".as_ptr() as *const crate::libc::c_char,
+            crate::libc::O_RDONLY | crate::libc::O_DIRECTORY
+                | crate::libc::O_NOFOLLOW | crate::libc::O_CLOEXEC,
+        ) };
+        if fd < 0 { return Err(io::Error::last_os_error().into()); }
+        let readable = unsafe { fs::File::from_raw_fd(fd) };
+        let current = readable.metadata()?;
+        if (current.dev(), current.ino()) != (metadata.dev(), metadata.ino())
+            || current.uid() != unsafe { crate::libc::geteuid() }
+            || current.mode() & 0o022 != 0
+        {
+            return Err(anyhow!("Peer directory changed during synchronization admission"));
+        }
+        Ok(Some(readable))
     }
 
     fn encoded_id(id: &str) -> String {

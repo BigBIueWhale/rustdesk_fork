@@ -198,6 +198,10 @@ pub(super) fn validate_permanent_password_prs(prs: &str) -> Result<(), &'static 
     if prs.is_empty() {
         return Ok(());
     }
+    // Admit the fixed padded representation before decoding can allocate from its length.
+    if prs.len() != (PERMANENT_PASSWORD_H1_LEN + 2) / 3 * 4 {
+        return Err("value");
+    }
     let mut decoded = base64::decode(prs.as_bytes(), base64::Variant::Original)
         .map_err(|_| "encoding")?;
     let mut canonical = base64::encode(&decoded, base64::Variant::Original).into_bytes();

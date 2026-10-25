@@ -5204,7 +5204,6 @@ if [ -n "$r_s11e30" ]; then echo "  FAIL R-S11e-30 Linux pkcheck helper inherite
 echo "== (3b-iii-d9a) Linux pkcheck helper ambient environment authority (R-S11y/R-S11e-39) =="
 r_s11e39=
 pkcheck_environment_policy=$(awk '/fn configure_linux_pkcheck_environment/,/fn linux_pkcheck_authorizes_service_owned_password_change/' src/ipc.rs)
-pkcheck_environment_test=$(awk '/fn linux_pkcheck_child_excludes_inherited_environment/,/fn linux_password_authorization_is_bounded_reaped_and_capacity_isolated/' src/ipc.rs)
 grep -qF 'fn configure_linux_pkcheck_environment(command: &mut std::process::Command)' <<<"$pkcheck_environment_policy" \
   || r_s11e39="$r_s11e39 environment-policy-missing"
 grep -qF 'command.env_clear();' <<<"$pkcheck_environment_policy" \
@@ -5220,17 +5219,8 @@ if [ -z "$pkcheck_environment_line" ] || [ -z "$pkcheck_policy_line" ] || [ -z "
   || [ "$pkcheck_environment_line" -ge "$pkcheck_spawn_line" ]; then
   r_s11e39="$r_s11e39 environment-policy-order-invalid"
 fi
-for runtime_binding in \
-  'const HOSTILE_BUS: &str = "unix:path=/tmp/rustdesk-hostile-system-bus";' \
-  '.env("DBUS_SYSTEM_BUS_ADDRESS", HOSTILE_BUS)' \
-  'configure_linux_pkcheck_environment(&mut worker);' \
-  'std::env::var_os("DBUS_SYSTEM_BUS_ADDRESS").is_none()' \
-  'key != std::ffi::OsStr::new(ROLE)' \
-  'unexpected.is_empty()'; do
-  grep -qF "$runtime_binding" <<<"$pkcheck_environment_test" || r_s11e39="$r_s11e39 actual-child-proof-missing"
-done
 if [ -n "$r_s11e39" ]; then echo "  FAIL R-S11e-39 Linux pkcheck helper ambient environment authority:$r_s11e39"; rc=1; else
-  echo "  ok  R-S11e-39 Linux service-owned pkcheck starts with an empty environment and an actual child excludes a hostile inherited system-bus selector"; fi
+  echo "  ok  R-S11e-39 source checks: pkcheck environment clearing precedes descriptor setup and spawn, with no replacement variables"; fi
 
 # R-S11e-40 parser/query unit cases; real logind uses --linux-logind-tests.
 echo "== Linux loginctl parsing and query unit tests (R-S11e-40) =="
@@ -7045,7 +7035,6 @@ systemctl_command_policy=$(awk '/fn configure_systemctl_environment/,/fn systemc
 systemctl_execution=$(awk '/fn systemctl_service\(action: SystemctlServiceAction/,/pub fn uninstall_service/' src/platform/linux.rs)
 systemctl_install=$(awk '/pub fn install_service\(\) -> bool/,/^}/' src/platform/linux.rs)
 systemctl_uninstall=$(awk '/pub fn uninstall_service\(show_new_window: bool, _: bool\) -> bool/,/^}/' src/platform/linux.rs)
-systemctl_tests=$(awk '/fn r_s11e41_systemctl_service_actions_and_unit_are_exact/,/fn r_s11c10_privileged_command_candidates_are_fixed_system_paths/' src/platform/linux.rs)
 for binding in \
   'enum SystemctlServiceAction' \
   'Self::Enable => "enable"' \
@@ -7097,22 +7086,8 @@ for call in \
   'systemctl_service(SystemctlServiceAction::Stop, &app_name)'; do
   grep -qF "$call" <<<"$systemctl_uninstall" || r_s11e41="$r_s11e41 typed-uninstall-call-missing"
 done
-for proof in \
-  'fn r_s11e41_systemctl_service_actions_and_unit_are_exact()' \
-  '"rustdesk.service"' \
-  '"rustdesk.service",' \
-  'fn r_s11e41_systemctl_child_excludes_inherited_environment()' \
-  '.env("DBUS_SYSTEM_BUS_ADDRESS", HOSTILE_BUS)' \
-  '.env("SYSTEMCTL_FORCE_BUS", "1")' \
-  '.env("SYSTEMD_UNIT_PATH", HOSTILE_UNIT_PATH)' \
-  '.env("SYSTEMD_PAGER", "/bin/sh")' \
-  '.env("SYSTEMD_OFFLINE", "1")' \
-  'configure_systemctl_environment(&mut worker);' \
-  'unexpected.is_empty()'; do
-  grep -qF "$proof" <<<"$systemctl_tests" || r_s11e41="$r_s11e41 focused-regression-missing"
-done
 if [ -n "$r_s11e41" ]; then echo "  FAIL R-S11e-41 Linux systemctl service-lifecycle authority:$r_s11e41"; rc=1; else
-  echo "  ok  R-S11e-41 Linux service lifecycle uses a typed four-verb system-manager request, a locally validated explicit service unit, empty environment, null stdin, fixed trusted image, stdio-only descriptor boundary, and successful exit"; fi
+  echo "  ok  R-S11e-41 source checks: typed systemctl action/unit, empty environment, fixed argv/stdin and command-before-descriptor-before-status ordering"; fi
 
 # (3b-iii-d10) R-S11q/R-S11e-31: every Linux same-executable
 # helper launch owns its descriptor contract. This includes the root

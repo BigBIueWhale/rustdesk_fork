@@ -34,6 +34,28 @@ fn stored_prs_rejects_invalid_decoded_values_without_mutation() {
         valid.salt.clear();
         assert!(Config::validate_or_decrypt_permanent_password_storage(&mut valid).is_err());
         println!("OPTION_COMMIT_PRS_DECODE_FAILURE=controls valid_hash=true config_preserved=true missing_salt_refused=true");
+        let mut key_bytes = crate::at_rest_storage_key().unwrap();
+        key_bytes.resize(sodiumoxide::crypto::secretbox::KEYBYTES, 0);
+        let key = sodiumoxide::crypto::secretbox::Key::from_slice(&key_bytes).unwrap();
+        let hashed = permanent_password::encode_permanent_password_storage_from_h1(&raw);
+        for legacy in [false, true] {
+            for (kind, plain) in [("hash", hashed.as_str()), ("prs", healthy.as_str()), ("empty", "")] {
+                let cipher = if legacy {
+                    sodiumoxide::crypto::secretbox::seal(plain.as_bytes(),
+                        &sodiumoxide::crypto::secretbox::Nonce([0; sodiumoxide::crypto::secretbox::NONCEBYTES]), &key)
+                } else {
+                    crate::password_security::symmetric_crypt(plain.as_bytes(), true).unwrap()
+                };
+                let storage = "01".to_owned() + &base64::encode(cipher, base64::Variant::Original);
+                assert_eq!(permanent_password::decrypt_permanent_password_storage(&storage).as_deref(), Some(plain));
+                if kind == "hash" {
+                    assert_eq!(decode_permanent_password_h1_from_storage(&storage), Some(raw));
+                } else {
+                    assert_eq!(decrypt_permanent_password_prs_storage(&storage).as_deref(), Some(plain));
+                }
+                println!("OPTION_COMMIT_PRS_ENVELOPE=control legacy={legacy} kind={kind} bytes={} round_trip=true", storage.len());
+            }
+        }
         let file = Config::file_("");
         let mut cases: Vec<_> = invalid_prs_values().into_iter()
             .map(|(kind, value)| (kind, value.into_bytes())).collect();
@@ -88,6 +110,11 @@ fn stored_prs_rejects_invalid_decoded_values_without_mutation() {
             assert!(correct);
         }
         for (kind, value) in [
+            ("current-large", "01".to_owned() + &"A".repeat(1024 * 1024)),
+            ("current-4k", "01".to_owned() + &"A".repeat(4096)),
+            ("current-limit-plus-one", "01".to_owned() + &"A".repeat(117)),
+            ("current-next-padded", "01".to_owned() + &"A".repeat(120)),
+            ("current-invalid-alphabet", "01".to_owned() + &"!".repeat(117)),
             ("large-noncurrent", "x".repeat(1024 * 1024)),
             ("noncurrent", "x".repeat(4096)),
             ("short", "x".into()),

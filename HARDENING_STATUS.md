@@ -3061,6 +3061,24 @@ by consolidating the ledger. All separately parked work remains OPEN/PARKED.
 
 ### Current authority and source closure
 
+**Retired desktop lock-state queries (`50f9b5e9`).** The last connection-authentication
+caller was removed by `d5aec5bc`; current source has no consumer. The Linux/macOS/Windows
+`is_locked` APIs, Linux `LockedHint` query variant, macOS `ioreg` launcher and constant,
+and Windows C++ query/FFI declaration are deleted. Both descriptor source gates drop
+the obsolete macOS query requirement and update the remaining output-call inventory.
+R-S11t/R-S11z lose only the retired query references. Live authentication, credential
+receivers, input/screen-lock actions, session selection, test bodies and dependencies
+are byte-identical outside those deletions; this is obsolete-path removal, not a
+demonstrated LPE correction.
+
+The unchanged fifteen Linux component tests and seven real PAM/logind scenarios pass
+on the changed shared library in 119 outer seconds. Both edited shell sources parse;
+their full catalogs and native Apple/Windows builds did not run. Exact source/history,
+artifact, observations, the pre-VM unpushed-source refusal and joined bounded-RAM
+cleanup are retained in `retired-lock-queries-5fecf369.json`. Full application and
+installed settings/credential behavior, all fifteen credential actions, other-platform
+and release acceptance, R-S0/R-F5 and every user-parked task remain OPEN/PARKED.
+
 **Permanent-password policy model (`0ad23cde`).** The private dual-password enum,
 its permissive fallback and redundant resolver are deleted. `permanent_enabled`
 compares the effective value from the existing unconditional configuration funnel;
@@ -4498,7 +4516,7 @@ other platforms, full functionality, R-S0/R-F5 and release acceptance remain OPE
 | --- | --- |
 | Polkit runtime and Debian dependency | `aa956518` captured 82 signed-snapshot packages, 31,596,230 bytes, with pins in `scripts/pins.env` and receipt `online-fetch-receipts/run.63EwFoon0W.receipt`. `f99f6cc0` passed seven Debian metadata cases; this alone is not an installed receiver. Raw `gX6siRyvuz.serial.log` and exact receipts remain in the audit. Standalone `polkitd` is required; release closure is OPEN. |
 | UID policy and logind capture | `aa437333` passed four policy cases plus the guard; `3eabd727` passed eight capture cases within 116 tests/five groups, retaining the original four bodies. Unknown pre-existing loopback listener `127.0.0.1:9333` was left untouched; that diagnostic establishes no leak or bypass. Exact artifacts and raw receipts remain in the audit. |
-| Native logind | `af465fad` passes 15 unit and the unchanged seven real PAM/logind cases: empty/removed users, seatless unspecified/TTY, active X11, switching and closing sessions. PAM 1.5.2-6+deb12u2 and systemd 252.39-1~deb12u2; raw `SS4jhD5IEF`. This does not run an installed credential receiver. The bounded-profile result `b361c47d`/`MBhOX3RLmI` and prior `68e596b3`/`8oLyS0S0lG` remain retained. |
+| Native logind | `50f9b5e9` passes 15 unit and the unchanged seven real PAM/logind cases: empty/removed users, seatless unspecified/TTY, active X11, switching and closing sessions. PAM 1.5.2-6+deb12u2 and systemd 252.39-1~deb12u2; raw `49CYWG5Kcp`. This does not run an installed credential receiver. Earlier `af465fad`/`SS4jhD5IEF`, bounded-profile `b361c47d`/`MBhOX3RLmI` and `68e596b3`/`8oLyS0S0lG` remain retained. |
 | Coordinator and raw v2 | `e69129bc` passed seven coordinator/23 raw-module cases in five groups: actual AF_UNIX readiness before disclosure, canonical/fragmented/empty/max/auth bodies, malformed/truncated/expired input, wiping, half-close, replay, expiry and shutdown. Pre-write refusal is NotSent; a started write is uncertain. `linux-wire-v2-accepted-e69129bc.json` retains exact scope. Two wording-only tests were later deleted; the current seven coordinator/21 protocol cases are not thereby validated. |
 | Current coordinator execution gap | At `04c7e32e`, the 28-case attempt refused before QEMU: admission required 39,936 MiB with 23,531 MiB available. No case ran. `login-inventory-role.json` retains the refusal. Guest/scratch admission and the no-disk-fallback rule remain binding. |
 

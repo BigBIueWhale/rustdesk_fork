@@ -4401,12 +4401,15 @@ the prior full section is archived in Git at `facf345b`:
 - `.harness-state/verifier-vm/vm-cold-storage-accepted-b23935f6.json` — 9,871 bytes,
   SHA-256 `da4ab96c5096b76474508ee9b08ba036d574071884355ae7988b162659052b9d`.
 
-The standalone `scripts/smoke-verifier-media.py` disk-scratch launcher is absent. Its two-phase guest
-fixture and historical evidence remain, but missing-file exit2 establishes path removal only.
-Media execution/storage, Windows storage/graphical/installed/release behavior, complete acquisition/
+The standalone `scripts/smoke-verifier-media.py` disk-scratch launcher is absent. The shared
+`smoke-verifier-vm-authority.sh --media-kernel-tests` profile now admits the kernel/V4L2 fixture with
+2 GiB guest RAM, 4 GiB scratch and a 3 GiB hard overlay ceiling. One QEMU process performs a guest-local
+kexec handoff; all writable boot assets remain in its RAM-backed overlay, without host raw/partition
+extraction. Its accepted normal lifecycle is recorded under ViewCamera below. Supplier compilation,
+other media workloads, Windows storage/graphical/installed/release behavior, complete acquisition/
 bootstrap closure, full release and other-platform storage acceptance remain OPEN. `AGENTS.md` forbids
-other VM launchers until equivalent admission, limits, isolation and joined cleanup exist; no alternate
-launcher, disk fallback or override is supplied. Tmpfs is swappable: no host swap/mount change or
+other VM launchers until equivalent admission, limits, isolation and joined cleanup exist; no disk
+fallback or override is supplied. Tmpfs is swappable: no host swap/mount change or
 zero-system-I/O claim is made. Design sources: [Linux tmpfs](https://docs.kernel.org/filesystems/tmpfs.html),
 [QEMU disk images](https://www.qemu.org/docs/master/system/images.html), and
 [QMP](https://www.qemu.org/docs/master/interop/qmp-spec.html).
@@ -5749,11 +5752,12 @@ contains both paths; the retained vendor file matches its Cargo checksum entry, 
 Native acceptance must cover two distinct retained opens and node-index reuse with an old handle still
 live, as well as nonzero discovery, matching metadata, failed discovery, hotplug and overlapping logins.
 
-The fixed media harness now stages `scripts/camera-native-probe` and compiles it with the unchanged
-pinned devcheck image, exact Cargo vendor closure and projected product lock inside guest-only Docker.
-The unprivileged guest probe targets nonzero capture, two retained devices and native node-number reuse;
-root/foreign refusal, decoded frames, live device identities and joined retirement are required.
-Execution acceptance is pending. Node rename is a lifetime fixture, not physical hotplug or RustDesk login evidence.
+The retained `scripts/verifier-media-nokhwa.py` and `scripts/camera-native-probe` define offline
+compilation with the pinned devcheck image, exact Cargo vendor closure and projected product lock.
+They target nonzero capture, two retained devices and native node-number reuse, with root/foreign
+refusal, decoded frames, live device identities and joined retirement. They are not yet admitted by
+the shared bounded-RAM media profile; supplier execution acceptance is pending. Node rename is a
+lifetime fixture, not physical hotplug or RustDesk login evidence.
 
 **Fixture evidence retained.** The authenticated cloud base lacks `CONFIG_MEDIA_SUPPORT`; its complete
 config and observations remain in `.harness-state/verifier-vm/camera-kernel-inspection-61d8cb61-complete`.
@@ -5776,7 +5780,22 @@ equal source/input freezes and owned scratch cleanup are bound by
 `3951100fc36e74495c3adb6efa581499c76baa7b42b0d67e1f4540c212324b29`, and its complete streams/freezes.
 `media-v4l2-run.5c341b8fa6` retains the first recipe replay; three rejected trees remain preserved.
 
-This ran the guest kernel/Python probe, with `product_executed: false`; no camera product API is corrected.
+**Current bounded-RAM fixture accepted at `b38db2e0`.**
+`/bin/bash scripts/smoke-verifier-vm-authority.sh --media-kernel-tests` completed in 39 seconds.
+`verifier-media-boot.py` provisions the authenticated package and equal initramfs pair inside the
+guest, then uses `kexec_file_load` and orderly systemd shutdown to boot the media kernel in the same
+QEMU process. Distinct boot IDs, exact source/kernel/initramfs identities, both real unprivileged
+capture generations, root/foreign refusal and final module/node absence are checked. The generated
+initramfs matches the historical digest above. This uses the existing shared admission, live monitor,
+pre-execution file ceiling, exact joins and RAM retirement; the run peaked at 981,291,008 scratch
+bytes and 180,224 bytes in its durable run directory, with unchanged host listener snapshots.
+`media-kernel-ram-82e60f91.json` binds the accepted run, two rejected development runs, exact sources,
+resource records and cleanup. The earlier standalone launcher remains absent.
+The handoff follows [systemd 252 kernel loading](https://github.com/systemd/systemd/blob/v252/src/systemctl/systemctl-start-special.c)
+and its [shutdown path](https://github.com/systemd/systemd/blob/v252/src/shutdown/shutdown.c);
+failure to reach the new kernel or complete capture cannot satisfy the outer receipt.
+
+Both fixture paths ran the guest kernel/Python probe, with `product_executed: false`; no camera product API is corrected.
 Production nokhwa/RustDesk discovery, capture/catalog generation ownership, supplier failure reproduction,
 stale-open/hotplug/overlapping logins, physical and Windows cameras, canonical reusable media boot-cache
 promotion, independent reproduction, cold R-B2/R-B10 and broader native/installed/release acceptance remain OPEN.

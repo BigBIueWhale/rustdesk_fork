@@ -44,7 +44,6 @@ type BooleanT = hbb_common::libc::c_int;
 const MACOS_LAUNCHCTL: &str = "/bin/launchctl";
 const MACOS_OPEN: &str = "/usr/bin/open";
 const MACOS_OSASCRIPT: &str = "/usr/bin/osascript";
-const MACOS_IOREG: &str = "/usr/sbin/ioreg";
 const MACOS_PRIVILEGED_SCRIPT_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
 const MACOS_PRIVILEGED_HELPER_EXEC: &str =
     "/Library/PrivilegedHelperTools/com.carriez.rustdesk_service";
@@ -952,38 +951,6 @@ pub fn get_active_user_home() -> Option<PathBuf> {
 
 pub fn is_prelogin() -> bool {
     get_active_userid() == "0"
-}
-
-// https://stackoverflow.com/questions/11505255/osx-check-if-the-screen-is-locked
-// No "CGSSessionScreenIsLocked" can be found when macOS is not locked.
-//
-// `ioreg -n Root -d1` returns `"CGSSessionScreenIsLocked"=Yes`
-// `ioreg -n Root -d1 -a` returns
-// ```
-// ...
-//    <key>CGSSessionScreenIsLocked</key>
-//    <true/>
-// ...
-// ```
-pub fn is_locked() -> bool {
-    let mut command = std::process::Command::new(MACOS_IOREG);
-    command.arg("-n").arg("Root").arg("-d1");
-    let output =
-        hbb_common::platform::macos::configure_command_close_nonstdio_on_exec(&mut command)
-            .and_then(|()| command.output());
-    match output {
-        Ok(output) => {
-            let output_str = String::from_utf8_lossy(&output.stdout);
-            // Although `"CGSSessionScreenIsLocked"=Yes` was printed on my macOS,
-            // I also check `"CGSSessionScreenIsLocked"=true` for better compability.
-            output_str.contains("\"CGSSessionScreenIsLocked\"=Yes")
-                || output_str.contains("\"CGSSessionScreenIsLocked\"=true")
-        }
-        Err(e) => {
-            log::error!("Failed to query ioreg for the lock state: {}", e);
-            false
-        }
-    }
 }
 
 pub fn declare_remote_user_activity() {

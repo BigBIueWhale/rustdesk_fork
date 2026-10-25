@@ -617,7 +617,6 @@ const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 
 extern "C" {
     fn get_current_session(rdp: BOOL) -> DWORD;
-    fn is_session_locked(session_id: DWORD) -> BOOL;
     fn LaunchProcessWin(
         application: *const u16,
         cmd: *const u16,
@@ -4633,13 +4632,6 @@ pub fn is_prelogin() -> bool {
         return false;
     };
     username.is_empty() || username == "SYSTEM"
-}
-
-pub fn is_locked() -> bool {
-    let Some(session_id) = get_current_process_session_id() else {
-        return false;
-    };
-    unsafe { is_session_locked(session_id) == TRUE }
 }
 
 pub fn is_root() -> bool {

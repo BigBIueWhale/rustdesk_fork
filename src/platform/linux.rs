@@ -2747,31 +2747,6 @@ fn is_non_login_shell(shell: &Path) -> bool {
             .unwrap_or(false)
 }
 
-// Check "Lock".
-// "Switch user" can't be checked, because `get_values_of_seat0(&[0])` does not return the session.
-// The logged in session is "online" not "active".
-// And the "Switch user" screen is usually Wayland login session, which we do not support.
-pub fn is_locked() -> bool {
-    if is_prelogin() {
-        return false;
-    }
-
-    let values = get_values_of_seat0(&[0]);
-    // Though the values can't be empty, we still add check here for safety.
-    // Because we cannot guarantee whether the internal implementation will change in the future.
-    // https://github.com/rustdesk/hbb_common/blob/ebb4d4a48cf7ed6ca62e93f8ed124065c6408536/src/platform/linux.rs#L119
-    if values.is_empty() {
-        log::debug!("Failed to check is locked, values vector is empty.");
-        return false;
-    }
-    let session = &values[0];
-    if session.is_empty() {
-        log::debug!("Failed to check is locked, session is empty.");
-        return false;
-    }
-    is_session_locked(session)
-}
-
 fn effective_uid_is_root(effective_uid: hbb_common::libc::uid_t) -> bool {
     effective_uid == 0
 }

@@ -3843,7 +3843,6 @@ macos_platform_source=$(cat "$REPO/src/platform/macos.rs")
 macos_checked_command=$(awk '/fn run_checked_command/,/fn launchctl_query_succeeds/' "$REPO/src/platform/macos.rs")
 macos_launchctl_query=$(awk '/fn launchctl_query_succeeds/,/fn launchctl_service_loaded/' "$REPO/src/platform/macos.rs")
 macos_uninstall=$(awk '/pub fn uninstall_service/,/pub fn get_cursor_pos/' "$REPO/src/platform/macos.rs")
-macos_lock_query=$(awk '/pub fn is_locked/,/pub fn declare_remote_user_activity/' "$REPO/src/platform/macos.rs")
 macos_service_snapshot_query=$(awk '/fn macos_launch_agent_owns_service_owned_server_pid/,/^[}]$/' "$REPO/src/ipc.rs")
 macos_run_me=$(awk '/pub fn run_me_with_env/,/#\[inline\]/{print}' "$REPO/src/common.rs")
 portable_pty_unix=$(cat "$REPO/libs/portable_pty/src/unix.rs")
@@ -3886,14 +3885,13 @@ check_apple_r_s11e34_helper_contract() {
 check_apple_r_s11e34_helper_contract "$macos_checked_command" 'configure_command_close_nonstdio_on_exec(command)' 'command.status()'
 check_apple_r_s11e34_helper_contract "$macos_launchctl_query" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.status()'
 check_apple_r_s11e34_helper_contract "$macos_uninstall" 'configure_command_close_nonstdio_on_exec(' 'command.spawn()'
-check_apple_r_s11e34_helper_contract "$macos_lock_query" 'configure_command_close_nonstdio_on_exec(' 'command.output()'
 check_apple_r_s11e34_helper_contract "$macos_service_snapshot_query" 'configure_command_close_nonstdio_on_exec(&mut command)' 'run_macos_bounded_child_stdout('
 check_apple_r_s11e34_helper_contract "$macos_run_me" 'platform::macos::configure_command_close_nonstdio_on_exec(&mut cmd)' 'let result = cmd.args(&args).spawn();'
 [ "$(grep -cF 'command.status()' <<<"$macos_platform_source")" = 2 ] \
   || r_s11e34="$r_s11e34 macos-platform-status-inventory-drift"
 [ "$(grep -cF 'command.spawn()' <<<"$macos_platform_source")" = 1 ] \
   || r_s11e34="$r_s11e34 macos-platform-spawn-inventory-drift"
-[ "$(grep -cF 'command.output()' <<<"$macos_platform_source")" = 2 ] \
+[ "$(grep -cF 'command.output()' <<<"$macos_platform_source")" = 1 ] \
   || r_s11e34="$r_s11e34 macos-platform-output-inventory-drift"
 [ "$(grep -cF 'run_checked_command(' <<<"$macos_platform_source")" = 6 ] \
   || r_s11e34="$r_s11e34 macos-checked-command-inventory-drift"

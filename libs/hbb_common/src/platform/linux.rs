@@ -699,18 +699,9 @@ pub fn is_active_and_seat0(sid: &str) -> bool {
     )
 }
 
-// Check both "Lock" and "Switch user"
-pub fn is_session_locked(sid: &str) -> bool {
-    matches!(
-        loginctl_session_properties(sid, &[LoginctlProperty::LockedHint]).as_deref(),
-        Ok([locked]) if locked == "yes"
-    )
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum LoginctlProperty {
     Display,
-    LockedHint,
     Name,
     Scope,
     Seat,
@@ -723,7 +714,6 @@ impl LoginctlProperty {
     fn name(self) -> &'static str {
         match self {
             Self::Display => "Display",
-            Self::LockedHint => "LockedHint",
             Self::Name => "Name",
             Self::Scope => "Scope",
             Self::Seat => "Seat",
@@ -736,7 +726,6 @@ impl LoginctlProperty {
     fn argument(self) -> &'static str {
         match self {
             Self::Display => "--property=Display",
-            Self::LockedHint => "--property=LockedHint",
             Self::Name => "--property=Name",
             Self::Scope => "--property=Scope",
             Self::Seat => "--property=Seat",

@@ -137,7 +137,7 @@ void main() {
         ),
       ));
       expect(tester.takeException(), isNull);
-      final sheet = tester.getRect(find.byType(BottomSheet));
+      final sheet = tester.getRect(find.byType(BottomSheetBody));
       for (final text in [title, detail]) {
         final bounds = tester.getRect(find.text(text));
         expect(sheet.contains(bounds.topLeft), isTrue);
@@ -177,7 +177,7 @@ void main() {
       ),
     ));
     expect(tester.takeException(), isNull);
-    final sheet = tester.getRect(find.byType(BottomSheet));
+    final sheet = tester.getRect(find.byType(BottomSheetBody));
     expect(sheet.height, greaterThan(65));
     expect(sheet.height, lessThan(320));
     for (final text in ['Selected', '1 item']) {

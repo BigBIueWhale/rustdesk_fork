@@ -65,13 +65,7 @@ hwcodec = ["scrap/hwcodec"]
 vram = ["scrap/vram"]
 mediacodec = ["scrap/mediacodec"]
 linux-pkg-config = ["magnum-opus/linux-pkg-config", "scrap/linux-pkg-config"]
-unix-file-copy-paste = [
-    "dep:x11-clipboard",
-    "dep:x11rb",
-    "dep:percent-encoding",
-    "dep:once_cell",
-    "clipboard/unix-file-copy-paste",
-]
+unix-file-copy-paste = ["clipboard/unix-file-copy-paste"]
 screencapturekit = ["cpal/screencapturekit"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -230,11 +224,7 @@ dbus = "0.9"
 # EXCISED -- zero `pam::` usage remains after that excision, so the dep + its transitive pam-sys libpam
 # link + the .deb libpam0g Depends + the /etc/pam.d/rustdesk install were all dead weight (a third-party
 # git dep dropped, shrinking the supply-chain + runtime-link surface the spec's sovereignty posture wants).
-x11-clipboard = {git="https://github.com/clslaid/x11-clipboard", branch = "feat/store-batch", optional = true}
-x11rb =  {version = "0.12", features = ["all-extensions"], optional = true}
 x11rb-listener = { package = "x11rb", version = "0.13", features = ["xfixes"] }
-percent-encoding = {version = "2.3", optional = true}
-once_cell = {version = "1.18", optional = true}
 nix = { version = "0.29", features = ["term", "process"]}
 gtk = "0.18"
 winit = "0.30"

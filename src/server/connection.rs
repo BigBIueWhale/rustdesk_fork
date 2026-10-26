@@ -8507,30 +8507,56 @@ impl Connection {
         rx_from_cm: &mut crate::ui_cm_interface::CmEgressReceiver,
         cancellation: &hbb_common::tokio_util::sync::CancellationToken,
     ) -> ResultType<()> {
-        if let Some(mut forward) = self.port_forward_socket.take() {
+        if let Some(forward) = self.port_forward_socket.take() {
             log::info!("Running port forwarding loop");
+            let (writer, mut reader) = forward.split();
+            let mut local_writer = Some(writer);
+            let mut local_read_closed = false;
+            let pending_write = None;
+            tokio::pin!(pending_write);
             let mut last_recv_time = Instant::now();
             let mut idle_timer = crate::rustdesk_interval(time::interval(Duration::from_secs(1)));
             // Retain the same relay future across nonterminal CM messages so a pending
             // socket write keeps its bytes. Terminal controls remain live during that write.
             let relay = async {
                 loop {
+                    // Read EOF must not discard a write already admitted to the local target.
+                    if local_read_closed && local_writer.is_some() {
+                        bail!("Forward reset by the peer");
+                    }
                     tokio::select! {
-                        biased;
-                        res = forward.next() => {
+                        result = async {
+                            match pending_write.as_mut().as_pin_mut() {
+                                Some(write) => write.await,
+                                None => std::future::pending().await,
+                            }
+                        } => {
+                            local_writer = Some(result?);
+                            pending_write.set(None);
+                        }
+                        res = reader.next(), if !local_read_closed => {
                             if let Some(res) = res {
                                 last_recv_time = Instant::now();
                                 // local target -> seal on the keyed stream -> peer.
                                 self.stream.send_bytes(res?.into()).await?;
                             } else {
-                                bail!("Forward reset by the peer");
+                                local_read_closed = true;
                             }
                         },
-                        res = self.stream.next() => {
+                        res = self.stream.next(), if local_writer.is_some() => {
                             if let Some(res) = res {
                                 last_recv_time = Instant::now();
                                 // peer -> decrypted frame -> local target.
-                                timeout(PORT_FORWARD_SEND_TIMEOUT, forward.send(res?)).await??;
+                                let bytes = res?;
+                                let Some(mut writer) = local_writer.take() else {
+                                    bail!("Local tunnel writer is unavailable");
+                                };
+                                // Keep one write owned here; reverse traffic may progress while
+                                // its socket is backpressured, but no next peer frame is admitted.
+                                pending_write.set(Some(async move {
+                                    timeout(PORT_FORWARD_SEND_TIMEOUT, writer.send(bytes)).await??;
+                                    Ok::<_, hbb_common::anyhow::Error>(writer)
+                                }));
                             } else {
                                 bail!("Stream reset by the peer");
                             }

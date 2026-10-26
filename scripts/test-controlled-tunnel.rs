@@ -21,10 +21,17 @@ async fn timeout<F: std::future::Future>(ms: u64, future: F) -> Result<F::Output
 struct ObservedSocket {
     socket: TcpStream,
     blocked: Arc<Notify>,
+    eof: Arc<Notify>,
 }
 impl AsyncRead for ObservedSocket {
     fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
-        Pin::new(&mut self.socket).poll_read(cx, buf)
+        let before = buf.filled().len();
+        let has_capacity = buf.remaining() != 0;
+        let result = Pin::new(&mut self.socket).poll_read(cx, buf);
+        if has_capacity && matches!(result, Poll::Ready(Ok(()))) && buf.filled().len() == before {
+            self.eof.notify_one();
+        }
+        result
     }
 }
 impl AsyncWrite for ObservedSocket {
@@ -76,6 +83,7 @@ struct Fixture {
     control: Option<crate::CmEgressSender>,
     cancellation: CancellationToken,
     blocked: Arc<Notify>,
+    eof: Arc<Notify>,
     task: tokio::task::JoinHandle<ResultType<()>>,
 }
 impl Fixture {
@@ -93,10 +101,11 @@ impl Fixture {
         let (target, _) = listener.accept().await.unwrap();
         drop(listener);
         let blocked = Arc::new(Notify::new());
+        let eof = Arc::new(Notify::new());
         let (inbound, input) = mpsc::channel(1);
         let (output, outbound) = mpsc::channel(32);
         let (control, mut receiver) = crate::cm_egress_channel();
-        let forward = Framed::new(ObservedSocket { socket, blocked: blocked.clone() }, BytesCodec::new());
+        let forward = Framed::new(ObservedSocket { socket, blocked: blocked.clone(), eof: eof.clone() }, BytesCodec::new());
         let stream = PeerStream { inbound: input, outbound: output };
         let cancellation = CancellationToken::new();
         let cancel = cancellation.clone();
@@ -108,7 +117,7 @@ impl Fixture {
                 connection.try_port_forward_loop(&mut receiver, &cancel).await
             }
         });
-        Self { target, inbound, outbound, control: Some(control), cancellation, blocked, task }
+        Self { target, inbound, outbound, control: Some(control), cancellation, blocked, eof, task }
     }
     async fn block_target(&mut self) -> Vec<u8> {
         let payload: Vec<u8> = (0..1024 * 1024).map(|n| (n % 251) as u8).collect();
@@ -229,4 +238,23 @@ async fn tunnel_reverse_direction_progresses_during_native_write_backpressure() 
     }
     assert_eq!(passed, 2);
     println!("CONTROLLED_TUNNEL_DUPLEX=pass roles=2 pending_bytes=1048576 reverse_bytes=8192 deadline_ms=500 inbound=one-pending-write cleanup=joined peer=double");
+}
+
+#[tokio::test]
+async fn tunnel_local_read_eof_preserves_the_admitted_write() {
+    for viewer in [false, true] {
+        let mut fixture = Fixture::for_role(viewer).await;
+        let payload = fixture.block_target().await;
+        fixture.target.shutdown().await.unwrap();
+        timeout(500, fixture.eof.notified()).await.expect("relay must observe native read EOF during its pending write");
+        assert!(!fixture.task.is_finished(), "read EOF must not discard the pending write");
+        let mut received = vec![0; payload.len()];
+        timeout(5000, fixture.target.read_exact(&mut received)).await.unwrap().unwrap();
+        assert_eq!(received, payload);
+        let (timely, reason) = fixture.stop().await;
+        assert!(timely && reason == if viewer { "closed" } else { "Forward reset by the peer" });
+        let role = if viewer { "viewer" } else { "controlled" };
+        println!("CONTROLLED_TUNNEL_EOF_CASE=observed role={role} read_eof=native pending_write=retained bytes_exact=true joined=true");
+    }
+    println!("CONTROLLED_TUNNEL_EOF=pass roles=2 pending_bytes=1048576 read_eof=native admitted_write=completed cleanup=joined peer=double");
 }

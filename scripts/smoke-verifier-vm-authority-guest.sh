@@ -4349,6 +4349,7 @@ run_focused_rust_tests() {
                 controlled_tunnel::controlled_tunnel_close_interrupts_backpressured_target
                 controlled_tunnel::controlled_tunnel_preserves_pending_write_and_healthy_relay
                 controlled_tunnel::tunnel_reverse_direction_progresses_during_native_write_backpressure
+                controlled_tunnel::tunnel_local_read_eof_preserves_the_admitted_write
                 port_forward_settings::identical_saved_mapping_still_requests_runtime_application
                 port_forward_settings::mapping_bind_failure_retries_the_saved_target
                 port_forward_settings::saved_mapping_startup_refuses_ambiguous_and_oversized_lists
@@ -6390,7 +6391,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
         printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=36 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
-        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=96 bridge=absent\n'
+        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=97 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=12 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
@@ -6720,6 +6721,9 @@ PY
         [ "$(grep -Fxc 'CONTROLLED_TUNNEL_DUPLEX=pass roles=2 pending_bytes=1048576 reverse_bytes=8192 deadline_ms=500 inbound=one-pending-write cleanup=joined peer=double' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^CONTROLLED_TUNNEL_DUPLEX_CASE=observed role=(viewer|controlled) blocked=native reverse_before_drain=true inbound_bounded=true bytes_exact=true subsequent=true joined=true correct=true$' "$output")" -eq 2 ] \
             || fail 'tunnel reverse progress or bounded write ownership differs'
+        [ "$(grep -Fxc 'CONTROLLED_TUNNEL_EOF=pass roles=2 pending_bytes=1048576 read_eof=native admitted_write=completed cleanup=joined peer=double' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^CONTROLLED_TUNNEL_EOF_CASE=observed role=(viewer|controlled) read_eof=native pending_write=retained bytes_exact=true joined=true$' "$output")" -eq 2 ] \
+            || fail 'tunnel read EOF discarded its pending local write'
         [ "$(grep -Fxc 'PF_SETTINGS_STARTUP=pass cases=6 attempts=independent errors=visible saved=unchanged listeners=native cleanup=joined' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^PF_SETTINGS_STARTUP_CASE=observed .* correct=true$' "$output")" -eq 6 ] \
             || fail 'saved mapping startup independence or native cleanup differs'
@@ -6737,7 +6741,7 @@ PY
         [ "$(grep -Fxc 'PF_SETTINGS_ONE_OFF=pass cases=4 invalid=before-bind-and-launch valid=native-listener owner-thread=joined ports=rebindable' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^PF_SETTINGS_ONE_OFF_CASE=observed .* correct=true$' "$output")" -eq 4 ] \
             || fail 'one-off local-port refusal or owned thread/listener finality differs'
-        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=96 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=97 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CONTROL_EGRESS_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'control-egress artifact receipt differs'
         [ "$(grep -Fxc 'CM_VOICE_CALL_ACTION=pass cases=108 identity=exact phase=exact invalid=refused queues=real' "$output")" -eq 1 ] \

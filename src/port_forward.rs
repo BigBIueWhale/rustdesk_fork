@@ -663,43 +663,58 @@ async fn run_forward(
     cancellation: &CancellationToken,
 ) -> ResultType<()> {
     log::info!("new port forwarding connection started");
-    let mut forward = forward;
+    let (writer, mut reader) = forward.split();
+    let mut local_writer = Some(writer);
+    let mut local_read_closed = false;
+    let pending_write = None;
+    tokio::pin!(pending_write);
     let mut stream = stream;
-    loop {
-        tokio::select! {
-            biased;
-            _ = cancellation.cancelled() => return Ok(()),
-            res = forward.next() => {
-                match res {
-                    Some(Ok(bytes)) => {
-                        let send = async { stream.send_bytes(bytes.into()).await };
-                        if cancellable_phase(cancellation, TunnelPhase::Relay, send).await?.is_none() {
-                            return Ok(());
-                        }
+    let relay = async {
+        loop {
+            // Read EOF retires the relay only after its admitted local write completes.
+            if local_read_closed && local_writer.is_some() {
+                return Ok(());
+            }
+            tokio::select! {
+                result = async {
+                    match pending_write.as_mut().as_pin_mut() {
+                        Some(write) => write.await,
+                        None => std::future::pending().await,
                     }
-                    Some(Err(err)) => return Err(anyhow!("local tunnel read failed: {err}")),
-                    None => return Ok(()),
+                } => {
+                    local_writer = Some(result?);
+                    pending_write.set(None);
                 }
-            },
-            res = stream.next() => {
-                match res {
-                    Some(Ok(bytes)) => {
-                        let send = async {
-                            forward
-                                .send(bytes)
-                                .await
-                                .map_err(|err| anyhow!("local tunnel write failed: {err}"))
-                        };
-                        if cancellable_phase(cancellation, TunnelPhase::Relay, send).await?.is_none() {
-                            return Ok(());
-                        }
+                res = reader.next(), if !local_read_closed => {
+                    match res {
+                        Some(Ok(bytes)) => stream.send_bytes(bytes.into()).await?,
+                        Some(Err(err)) => return Err(anyhow!("local tunnel read failed: {err}")),
+                        None => local_read_closed = true,
                     }
-                    Some(Err(err)) => return Err(anyhow!("remote tunnel read failed: {err}")),
-                    None => return Ok(()),
+                },
+                res = stream.next(), if local_writer.is_some() => {
+                    match res {
+                        Some(Ok(bytes)) => {
+                            let Some(mut writer) = local_writer.take() else {
+                                bail!("Local tunnel writer is unavailable");
+                            };
+                            // One owned write bounds incoming retention without stalling reads
+                            // from the local application in the opposite direction.
+                            pending_write.set(Some(async move {
+                                writer.send(bytes).await
+                                    .map_err(|err| anyhow!("local tunnel write failed: {err}"))?;
+                                Ok::<_, hbb_common::anyhow::Error>(writer)
+                            }));
+                        }
+                        Some(Err(err)) => return Err(anyhow!("remote tunnel read failed: {err}")),
+                        None => return Ok(()),
+                    }
                 }
-            },
+            }
         }
-    }
+    };
+    cancellable_phase(cancellation, TunnelPhase::Relay, relay).await?;
+    Ok(())
 }
 
 #[cfg(test)]

@@ -124,6 +124,7 @@ case "$#:${8:-}" in
             --writer-retirement) RUST_TEST_PROFILE=writer-retirement ;;
             --config-options) RUST_TEST_PROFILE=config-options ;;
             --compression) RUST_TEST_PROFILE=compression ;;
+            --file-logging) RUST_TEST_PROFILE=file-logging ;;
             *) exit 2 ;;
         esac
         ;;
@@ -3754,6 +3755,12 @@ run_focused_rust_tests() {
                 compress::tests::decompression_history_window_is_independent_of_output_limit
             )
         fi
+        if [ "$RUST_TEST_PROFILE" = file-logging ]; then
+            required_tests=(
+                test::file_logging_rotates_during_a_busy_day
+                test::file_logging_retains_only_the_configured_archives
+            )
+        fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             required_tests=(
                 test::test_get_version_number
@@ -5758,6 +5765,17 @@ run_focused_rust_tests() {
                                     exit "$group_status"
                                 fi
                             done
+                        elif [ "$RUST_TEST_PROFILE" = file-logging ]; then
+                            group_status=0
+                            timeout --signal=TERM --kill-after=5s 20s \
+                                "$test_executable" test::file_logging_ --color never --test-threads=1 --show-output \
+                                || group_status=$?
+                            [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                            if [ "$group_status" -ne 0 ]; then
+                                printf "FILE_LOGGING_ARTIFACT_STOP=observed sha256=%s status=%s unchanged=before-after\n" \
+                                    "$artifact_sha" "$group_status"
+                                exit "$group_status"
+                            fi
                         elif [ "$RUST_TEST_PROFILE" = compression ]; then
                             for group in fs::file_block::tests:: compress::tests::; do
                                 group_status=0
@@ -6555,6 +6573,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=34; fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=12; fi
         if [ "$RUST_TEST_PROFILE" = compression ]; then expected_groups=2; fi
+        if [ "$RUST_TEST_PROFILE" = file-logging ]; then expected_groups=1; fi
         if [ "$RUST_TEST_PROFILE" = config-options ]; then expected_groups=7; fi
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then expected_groups=2; fi
@@ -7544,6 +7563,9 @@ PY
         elif [ "$RUST_TEST_PROFILE" = compression ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'decompression test total differs'
             grep -E '^test (fs::file_block|compress)::tests::[[:alnum:]_]+ [.][.][.] ok$|^DECOMPRESSION_(WINDOW|INPUT)' "$output"
+        elif [ "$RUST_TEST_PROFILE" = file-logging ]; then
+            [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'file logging test total differs'
+            grep -E '^test test::file_logging_[[:alnum:]_]+ [.][.][.] ok$|^FILE_LOG_(ROTATION|RETENTION)' "$output"
         elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'send admission test total differs'
             [ "$(grep -Fxc 'SEND_READ_ALLOCATION=pass cases=3 refusals=3 state=preserved retries=exact eof=exact' "$output")" -eq 1 ] \
@@ -7588,6 +7610,10 @@ PY
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             printf 'WRITER_RETIREMENT_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$hbb_test_artifact_sha" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = file-logging ]; then
+            printf 'FILE_LOGGING_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$hbb_test_artifact_sha" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = compression ]; then

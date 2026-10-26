@@ -402,6 +402,27 @@ pub fn is_domain_port_str(id: &str) -> bool {
     })
 }
 
+#[cfg(any(test, not(debug_assertions)))]
+fn file_logger(
+    is_async: bool,
+    path: std::path::PathBuf,
+) -> Result<flexi_logger::Logger, flexi_logger::FlexiLoggerError> {
+    use flexi_logger::*;
+    Ok(Logger::try_with_env_or_str("debug,rustls=warn")?
+        .log_to_file(FileSpec::default().directory(path))
+        .write_mode(if is_async {
+            WriteMode::Async
+        } else {
+            WriteMode::Direct
+        })
+        .format(opt_format)
+        .rotate(
+            Criterion::Age(Age::Day),
+            Naming::Timestamps,
+            Cleanup::KeepLogFiles(31),
+        ))
+}
+
 pub fn init_log(_is_async: bool, _name: &str) -> Option<flexi_logger::LoggerHandle> {
     static INIT: std::sync::Once = std::sync::Once::new();
     #[allow(unused_mut)]
@@ -424,23 +445,8 @@ pub fn init_log(_is_async: bool, _name: &str) -> Option<flexi_logger::LoggerHand
             if !_name.is_empty() {
                 path.push(_name);
             }
-            use flexi_logger::*;
-            if let Ok(x) = Logger::try_with_env_or_str("debug,rustls=warn") {
-                logger_holder = x
-                    .log_to_file(FileSpec::default().directory(path))
-                    .write_mode(if _is_async {
-                        WriteMode::Async
-                    } else {
-                        WriteMode::Direct
-                    })
-                    .format(opt_format)
-                    .rotate(
-                        Criterion::Age(Age::Day),
-                        Naming::Timestamps,
-                        Cleanup::KeepLogFiles(31),
-                    )
-                    .start()
-                    .ok();
+            if let Ok(logger) = file_logger(_is_async, path) {
+                logger_holder = logger.start().ok();
             }
         }
     });
@@ -450,6 +456,104 @@ pub fn init_log(_is_async: bool, _name: &str) -> Option<flexi_logger::LoggerHand
 #[cfg(test)]
 mod test {
     use super::*;
+
+    struct LogDirectory(std::path::PathBuf);
+
+    impl LogDirectory {
+        fn new() -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "rustdesk-log-rotation-{}",
+                uuid::Uuid::new_v4()
+            ));
+            std::fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+
+        fn logs(&self) -> Vec<std::path::PathBuf> {
+            std::fs::read_dir(&self.0)
+                .unwrap()
+                .map(|entry| entry.unwrap().path())
+                .filter(|path| path.extension().is_some_and(|extension| extension == "log"))
+                .collect()
+        }
+    }
+
+    impl Drop for LogDirectory {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).unwrap();
+        }
+    }
+
+    fn write_log_records(logger: &dyn log::Log, count: usize) {
+        let payload = "x".repeat(16 * 1024);
+        for _ in 0..count {
+            logger.log(
+                &log::Record::builder()
+                    .level(log::Level::Info)
+                    .target("rotation_regression")
+                    .args(format_args!("{payload}"))
+                    .build(),
+            );
+        }
+        logger.log(
+            &log::Record::builder()
+                .level(log::Level::Info)
+                .target("rotation_regression")
+                .args(format_args!("rotation final record"))
+                .build(),
+        );
+    }
+
+    #[test]
+    fn file_logging_rotates_during_a_busy_day() {
+        let directory = LogDirectory::new();
+        let (logger, handle) = file_logger(false, directory.0.clone())
+            .unwrap()
+            .build()
+            .unwrap();
+        write_log_records(logger.as_ref(), 320);
+        handle.shutdown();
+        let logs = directory.logs();
+        let largest = logs.iter()
+            .map(|path| std::fs::metadata(path).unwrap().len())
+            .max()
+            .unwrap();
+        println!("FILE_LOG_ROTATION files={} largest={largest}", logs.len());
+        assert!(logs.len() >= 2, "busy logging must rotate before the day ends");
+        assert!(largest <= 4 * 1024 * 1024 + 17 * 1024);
+        let current = logs.iter()
+            .find(|path| path.to_string_lossy().ends_with("_rCURRENT.log"))
+            .unwrap();
+        assert!(std::fs::read_to_string(current).unwrap()
+            .ends_with("rotation final record\n"));
+    }
+
+    #[test]
+    fn file_logging_retains_only_the_configured_archives() {
+        let directory = LogDirectory::new();
+        let unrelated = directory.0.join("unrelated.keep");
+        std::fs::write(&unrelated, b"preserve this file").unwrap();
+        let (logger, handle) = file_logger(false, directory.0.clone())
+            .unwrap()
+            .build()
+            .unwrap();
+        write_log_records(logger.as_ref(), 34 * 256);
+        handle.shutdown();
+        let logs = directory.logs();
+        let total: u64 = logs.iter()
+            .map(|path| std::fs::metadata(path).unwrap().len())
+            .sum();
+        println!("FILE_LOG_RETENTION files={} bytes={total}", logs.len());
+        assert_eq!(logs.len(), 32, "retain 31 archives and the current file");
+        assert!(logs.iter().all(|path|
+            std::fs::metadata(path).unwrap().len() <= 4 * 1024 * 1024 + 17 * 1024));
+        assert_eq!(std::fs::read(unrelated).unwrap(), b"preserve this file");
+        let current = logs.iter()
+            .find(|path| path.to_string_lossy().ends_with("_rCURRENT.log"))
+            .unwrap();
+        assert!(std::fs::read_to_string(current).unwrap()
+            .ends_with("rotation final record\n"));
+    }
 
     #[test]
     fn test_allow_err() {

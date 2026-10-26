@@ -1135,6 +1135,73 @@ void main() {
     expect(_qualitySlider(tester, 1).value, 45);
   });
 
+  testWidgets('quality and FPS restore earlier values after unconfirmed saves', (tester) async {
+    final failures = <String>[];
+    for (final field in [0, 1]) {
+      final initial = field == 0 ? 50.0 : 30.0;
+      final edited = field == 0 ? 80.0 : 40.0;
+      for (final outcome in ['error', 'null', 'nonfinite']) {
+        for (final during in [true, false]) {
+          final first = Completer<double?>();
+          final retry = Completer<double?>();
+          final calls = <double>[];
+          var stored = initial;
+          Future<double?> save(double value) async {
+            calls.add(value);
+            if (calls.length == 1) {
+              stored = value;
+              return first.future;
+            }
+            if (calls.length == 2) await retry.future;
+            stored = value;
+            return value;
+          }
+          final scenario = '$field/$outcome/$during';
+          await _qualityEditor(tester, editorKey: ValueKey(scenario),
+              saveQuality: field == 0 ? save : null,
+              saveFps: field == 1 ? save : null);
+          await _slideQuality(tester, field, initial);
+          await tester.pump(const Duration(seconds: 1));
+          expect(calls, isEmpty);
+          await _slideQuality(tester, field, edited);
+          await tester.pump(const Duration(seconds: 1));
+          expect(calls, [edited]);
+          if (during) {
+            await _slideQuality(tester, field, initial);
+            await tester.pump(const Duration(seconds: 1));
+            expect(calls, [edited]);
+          }
+          if (outcome == 'error') {
+            first.completeError(StateError('confirmation unavailable'));
+          } else {
+            first.complete(outcome == 'null' ? null : double.nan);
+          }
+          await tester.pump();
+          if (!during) {
+            await tester.pump(const Duration(seconds: 2));
+            expect(calls, [edited]);
+            expect(find.text('Failed'), findsOneWidget);
+            await _slideQuality(tester, field, initial);
+            await tester.pump(const Duration(seconds: 1));
+          }
+          final admitted = calls.length == 2 && calls.last == initial;
+          final waiting = find.byType(LinearProgressIndicator).evaluate().length == 1;
+          expect(stored, edited);
+          retry.complete(initial);
+          await tester.pump();
+          await tester.pump(const Duration(seconds: 2));
+          final restored = stored == initial && calls.length == 2;
+          debugPrint('AUTOSAVE_RESTORE field=$field outcome=$outcome during=$during '
+              'admitted=$admitted waiting=$waiting restored=$restored calls=$calls');
+          if (!admitted || !waiting || !restored) failures.add(scenario);
+          expect(_qualitySlider(tester, field).value, initial);
+          expect(tester.takeException(), isNull);
+        }
+      }
+    }
+    expect(failures, isEmpty);
+  });
+
   testWidgets('quality editor fixed quality disables its More control', (tester) async {
     await _qualityEditor(tester, saveFps: (v) async => v);
     expect(_qualitySlider(tester, 0).onChanged, isNull);
@@ -1311,6 +1378,67 @@ void main() {
     await tester.pump();
     expect(_trackpadController(tester).text, '240');
     expect(tester.widget<Slider>(find.byType(Slider)).value, 240);
+  });
+
+  testWidgets('trackpad restores earlier values after unconfirmed saves', (tester) async {
+    final failures = <String>[];
+    for (final outcome in ['error', 'null', 'out-of-range']) {
+      for (final during in [true, false]) {
+        final first = Completer<int?>();
+        final retry = Completer<int?>();
+        final calls = <int>[];
+        var stored = 100;
+        Future<int?> save(int value) async {
+          calls.add(value);
+          if (calls.length == 1) {
+            stored = value;
+            return first.future;
+          }
+          if (calls.length == 2) await retry.future;
+          stored = value;
+          return value;
+        }
+        final scenario = '$outcome/$during';
+        await _trackpad(tester, fieldKey: ValueKey(scenario), save: save);
+        await _slideTrackpad(tester, 100);
+        await tester.pump(const Duration(seconds: 1));
+        expect(calls, isEmpty);
+        await _slideTrackpad(tester, 250);
+        await tester.pump(const Duration(seconds: 1));
+        expect(calls, [250]);
+        if (during) {
+          await _slideTrackpad(tester, 100);
+          await tester.pump(const Duration(seconds: 1));
+          expect(calls, [250]);
+        }
+        if (outcome == 'error') {
+          first.completeError(StateError('confirmation unavailable'));
+        } else {
+          first.complete(outcome == 'null' ? null : 1001);
+        }
+        await tester.pump();
+        if (!during) {
+          await tester.pump(const Duration(seconds: 2));
+          expect(calls, [250]);
+          expect(find.text('Failed'), findsOneWidget);
+          await _slideTrackpad(tester, 100);
+          await tester.pump(const Duration(seconds: 1));
+        }
+        final admitted = calls.length == 2 && calls.last == 100;
+        final waiting = find.byType(LinearProgressIndicator).evaluate().length == 1;
+        expect(stored, 250);
+        retry.complete(100);
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 2));
+        final restored = stored == 100 && calls.length == 2;
+        debugPrint('AUTOSAVE_RESTORE field=trackpad outcome=$outcome during=$during '
+            'admitted=$admitted waiting=$waiting restored=$restored calls=$calls');
+        if (!admitted || !waiting || !restored) failures.add(scenario);
+        expect(_trackpadController(tester).text, '100');
+        expect(tester.takeException(), isNull);
+      }
+    }
+    expect(failures, isEmpty);
   });
 
   testWidgets('trackpad clean refresh preserves unsubmitted text on rebuild',

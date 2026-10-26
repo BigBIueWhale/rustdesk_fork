@@ -16428,6 +16428,34 @@ source-reviewed for these corrections. The direct common producer has the separa
 fixture below. Source-object continuity and length checks do not establish an immutable content
 snapshot or descriptor-relative initial-open/traversal safety.
 
+**File metadata/job source catalogue — removed; behavioral obligations remain OPEN.**
+The `r_fsbudget_missing` block in `scripts/verify.sh` is deleted: 94 lines,
+including 34 presence checks, four function-name exclusions and a comment-wording
+check. Constants, helper/test names and call spelling cannot establish admission
+ordering, bounded traversal, concurrent scan capacity or retained-job limits.
+Its success message claimed those runtime properties. The four excluded wrapper
+calls are themselves bounded: `read_dir`, `get_recursive_files` and
+`get_empty_dirs_recursive` delegate to explicit default `FileEnumerationBudget`s.
+The source check therefore also mislabeled supported bounded APIs as unbudgeted.
+Production, Rust tests, runtime commands, adjacent source exclusions and normative
+requirements are unchanged; no replacement wording catalogue is added. Exact-byte
+comparison proves only that classified block was removed, and Bash syntax parsing
+passes. No product behavioral run is claimed for this deletion. Existing real-file
+enumeration tests and historical observations below remain, with their stated limits.
+`file-budget-wording-aea763d9.json` retains the classification, unchanged-source
+bindings and fresh isolated ledger count.
+
+**OPEN source finding — viewer transfer-job admission.** In
+`src/client/io_loop.rs::handle_msg_from_ui`, both `SendFiles` and `AddJob` append
+read/write jobs without a retained-job count check; `AddJob` also retains paused
+jobs. The connection-manager/controlled-side checks do not bound those viewer
+vectors. The viewer mailbox bounds queued commands, not accumulated jobs. Required
+follow-up is owner-level admission before enumeration or peer dispatch, explicit
+refusal with legitimate retry, and native saturation/recovery tests covering live
+and paused jobs in both directions. This is source inspection, not a demonstrated
+memory-exhaustion or privilege-escalation result. No product change was made here;
+full-parent and file-metadata execution parks remain in force, as do all other parks.
+
 **Named A/B evidence.** Each accepted correction ran
 `/bin/bash scripts/smoke-verifier-vm-authority.sh --hbb-common-fs`; its filesystem count below
 is accompanied by four configuration, five address/IPv6-formatting and one socket-helper test.

@@ -16,8 +16,8 @@ UNIT = 'rustdesk.service'
 INIT = Path('/etc/init.d/rustdesk')
 UNIT_PATH = Path('/usr/lib/systemd/system/rustdesk.service')
 BASELINE_SHA = '89a2f108215ea75de2cc61624fd37d46e7f05abf904475e62f56ddf6acd137a9'
-RECEIPT = ('DEBIAN_MAINTAINER_NATIVE=pass baseline=remove-refused '
-           'candidate=remove-purge-ok deconfigure=ok init-links=preserved-until-purge '
+RECEIPT = ('DEBIAN_MAINTAINER_NATIVE=pass baseline=disabled-state-lost '
+           'candidate=disabled-state-preserved remove-purge=ok deconfigure=ok '
            'tools=actual package=fixture service=oneshot product=unexecuted')
 ENV = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LC_ALL': 'C', 'HOME': '/root',
        'DEBIAN_FRONTEND': 'noninteractive', 'SYSTEMD_PAGER': '', 'SYSTEMD_COLORS': '0'}
@@ -130,14 +130,20 @@ def main():
                 'baseline package/service did not actually start')
         initial_links = links()
         require(initial_links, 'baseline install did not create actual SysV links')
-        failure = run(['dpkg', '--remove', PACKAGE], expected=1)
-        require('update-rc.d: error:' in failure and '/etc/init.d/rustdesk exists' in failure,
-                f'baseline failed for the wrong reason: {failure}')
-        require(INIT.is_file() and links() == initial_links,
-                'baseline did not retain the installed init script and runlevel links')
+        run(['update-rc.d', 'rustdesk', 'disable'])
+        disabled_links = links()
+        require(disabled_links and disabled_links != initial_links
+                and all('/S' not in path for path in disabled_links),
+                'native helper did not disable actual SysV start links')
+        run(['dpkg', '--remove', PACKAGE])
+        require(status() == 'config-files' and INIT.is_file() and not links(),
+                'baseline did not expose premature loss of disabled SysV state')
+        run(['dpkg', '--install', str(baseline)])
+        require(links() == initial_links, 'baseline reinstall did not restore unwanted defaults')
         print('DEBIAN_MAINTAINER_BASELINE=' + json.dumps({
-            'exit': 1, 'prerm_sha256': BASELINE_SHA, 'dpkg_output': failure,
-            'init_present': True, 'links': initial_links}), flush=True)
+            'remove_exit': 0, 'prerm_sha256': BASELINE_SHA,
+            'disabled_links': disabled_links, 'removed_links': {},
+            'reinstalled_links': links(), 'disabled_state_lost': True}), flush=True)
 
         run(['dpkg', '--install', str(candidate)])
         require(status() == 'installed' and service_state() == 'active',
@@ -145,8 +151,9 @@ def main():
         installed = Path('/var/lib/dpkg/info')
         require((installed / f'{PACKAGE}.prerm').read_bytes() == sources['prerm'],
                 'dpkg did not install the exact candidate prerm')
+        run(['update-rc.d', 'rustdesk', 'disable'])
         candidate_links = links()
-        require(candidate_links == initial_links, 'upgrade altered retained SysV links')
+        require(candidate_links == disabled_links, 'candidate disabled state differs')
         run([str(installed / f'{PACKAGE}.prerm'), 'deconfigure'])
         require(INIT.is_file() and links() == candidate_links and service_state() == 'inactive',
                 'deconfigure failed to stop the fixture while preserving init/link state')
@@ -158,6 +165,13 @@ def main():
                 'removal did not preserve conffile and runlevel links until purge')
         require(service_state() == 'inactive' and not UNIT_PATH.exists(),
                 'package removal left the fixture unit active or installed')
+        run(['dpkg', '--install', str(candidate)])
+        require(status() == 'installed' and service_state() == 'active'
+                and links() == disabled_links,
+                'candidate reinstallation lost the administrator-disabled SysV state')
+        run(['dpkg', '--remove', PACKAGE])
+        require(status() == 'config-files' and links() == disabled_links,
+                'repeated removal lost the retained disabled state')
         for root in roots:
             write(root / 'owned-fixture', b'purge only this disposable test configuration\n')
         run(['dpkg', '--purge', PACKAGE])
@@ -178,6 +192,7 @@ def main():
         require((REPO / 'res/rustdesk.init').read_bytes() == sources['init'], 'init source changed')
     print('DEBIAN_MAINTAINER_ARTIFACTS=' + json.dumps({
         'sources': identities, 'packages': artifacts, 'tools': tools,
+        'candidate_disabled_links': disabled_links, 'candidate_purged_links': {},
         'init_system_helpers': tool_version, 'baseline_commit':
         'a5d3fb539999e11bb2a15543fbc70366c1a3df41'}, sort_keys=True), flush=True)
     print(RECEIPT, flush=True)

@@ -5352,7 +5352,7 @@ elif [ "$MODE" = debian-package-tests ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Debian package guest completion'
     printf '%s\n' "$debian_package_receipt"
 elif [ "$MODE" = debian-maintainer-tests ]; then
-    require_exact_fixed_receipt 'DEBIAN_MAINTAINER_NATIVE=pass baseline=remove-refused candidate=remove-purge-ok deconfigure=ok init-links=preserved-until-purge tools=actual package=fixture service=oneshot product=unexecuted' 'Debian maintainer native regression'
+    require_exact_fixed_receipt 'DEBIAN_MAINTAINER_NATIVE=pass baseline=disabled-state-lost candidate=disabled-state-preserved remove-purge=ok deconfigure=ok tools=actual package=fixture service=oneshot product=unexecuted' 'Debian maintainer native regression'
     require_exact_fixed_receipt "DEBIAN_MAINTAINER_VM=pass fixture_sha256=$(/usr/bin/sha256sum "$SCRIPT_DIR/test-debian-maintainer-native.py" | /usr/bin/awk '{print $1}') prerm_sha256=$(/usr/bin/sha256sum "$REPO_ROOT/res/DEBIAN/prerm" | /usr/bin/awk '{print $1}') source=readonly network=none docker=retired cleanup=joined" 'Debian maintainer finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Debian maintainer guest completion'
 elif [ "$MODE" = debian-elf-role-tests ]; then

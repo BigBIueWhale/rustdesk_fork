@@ -742,6 +742,10 @@ FILE_NAVIGATION_SUITES = {
     },
 }
 PEER_DATA_TESTS = {
+    "chat overlay keeps one listener and current focus behavior",
+    "chat overlay replacement retires the previous focus listener",
+    "chat overlay replacement during delivery revokes the old callback",
+    "chat disposal during overlay delivery retires and refuses bindings",
     "chat Shift Enter preserves the draft with left Shift",
     "chat Shift Enter preserves the draft with right Shift",
     "chat releasing Shift while Enter is held cannot send",

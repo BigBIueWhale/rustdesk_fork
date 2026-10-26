@@ -10,6 +10,7 @@ import 'package:flutter_hbb/common.dart' show desktopType, DesktopType;
 import 'package:flutter_hbb/common/shared_state.dart';
 import 'package:flutter_hbb/common/widgets/chat_page.dart'
     show chatSendButtonBuilder;
+import 'package:flutter_hbb/common/widgets/overlay.dart';
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
 // Compile the tunnel page against the freshly generated bridge in this shard.
 import 'package:flutter_hbb/desktop/pages/port_forward_page.dart';
@@ -311,6 +312,90 @@ ChatModel _chatModel() {
 void main() {
   _voiceOwnerTests();
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('chat overlay keeps one listener and current focus behavior', () {
+    final model = _chatModel();
+    final overlay = BlockableOverlayState();
+    for (var binding = 0; binding < 20; binding++) {
+      model.setOverlayState(overlay);
+    }
+    expect(overlay.middleBlocked.subject.length, 1);
+    overlay.setMiddleBlocked(true);
+    expect(model.isWindowFocus.value, isTrue);
+    overlay.setMiddleBlocked(false);
+    expect(model.isWindowFocus.value, isFalse);
+    model.isWindowFocus.value = true;
+    overlay.setMiddleBlocked(true);
+    expect(model.isWindowFocus.value, isTrue);
+  });
+
+  test('chat overlay replacement retires the previous focus listener', () {
+    final model = _chatModel();
+    final previous = BlockableOverlayState();
+    final current = BlockableOverlayState();
+    model.setOverlayState(previous);
+    previous.setMiddleBlocked(true);
+    model.setOverlayState(current);
+    current.setMiddleBlocked(true);
+    previous.setMiddleBlocked(false);
+    expect(model.isWindowFocus.value, isTrue);
+    expect(previous.middleBlocked.subject.hasListeners, isFalse);
+    expect(current.middleBlocked.subject.length, 1);
+    current.setMiddleBlocked(false);
+    expect(model.isWindowFocus.value, isFalse);
+  });
+
+  test('chat overlay replacement during delivery revokes the old callback',
+      () async {
+    final model = _chatModel();
+    final previous = BlockableOverlayState();
+    final current = BlockableOverlayState();
+    final replacing = previous.middleBlocked.listen((blocked) {
+      if (!blocked) model.setOverlayState(current);
+    });
+    addTearDown(replacing.cancel);
+    model.setOverlayState(previous);
+    previous.setMiddleBlocked(true);
+    previous.setMiddleBlocked(false);
+    expect(model.isWindowFocus.value, isTrue);
+    await Future<void>.delayed(Duration.zero);
+    expect(previous.middleBlocked.subject.length, 1);
+    expect(current.middleBlocked.subject.length, 1);
+    current.setMiddleBlocked(true);
+    current.setMiddleBlocked(false);
+    expect(model.isWindowFocus.value, isFalse);
+  });
+
+  test('chat disposal during overlay delivery retires and refuses bindings',
+      () async {
+    final owner = _UnusedChatOwner();
+    final model = ChatModel(WeakReference<FFI>(owner));
+    final overlay = BlockableOverlayState();
+    var disposed = false;
+    void dispose() {
+      if (disposed) return;
+      disposed = true;
+      model.inputNode.dispose();
+      model.dispose();
+    }
+    addTearDown(dispose);
+    final closing = overlay.middleBlocked.listen((blocked) {
+      if (!blocked) dispose();
+    });
+    addTearDown(closing.cancel);
+    model.setOverlayState(overlay);
+    overlay.setMiddleBlocked(true);
+    overlay.setMiddleBlocked(false);
+    expect(model.isWindowFocus.value, isTrue);
+    await Future<void>.delayed(Duration.zero);
+    expect(overlay.middleBlocked.subject.length, 1);
+    final replacement = BlockableOverlayState();
+    model.setOverlayState(replacement);
+    replacement.setMiddleBlocked(true);
+    replacement.setMiddleBlocked(false);
+    expect(replacement.middleBlocked.subject.hasListeners, isFalse);
+    expect(model.isWindowFocus.value, isTrue);
+  });
+
   late Peers peers;
   late DebugPrintCallback previousDebugPrint;
   final diagnostics = <String?>[];

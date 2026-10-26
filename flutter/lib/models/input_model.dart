@@ -1290,7 +1290,7 @@ class InputModel {
   }
 
   /// Update the pointer lock center position based on current window frame.
-  Future<void> updatePointerLockCenter({Offset? localCenter}) {
+  Future<bool> updatePointerLockCenter({Offset? localCenter}) {
     return _relativeMouse.updatePointerLockCenter(localCenter: localCenter);
   }
 

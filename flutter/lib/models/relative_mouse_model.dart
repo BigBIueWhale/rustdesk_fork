@@ -160,9 +160,12 @@ class RelativeMouseModel {
   // Track whether a recenter operation is in progress to prevent overlapping calls.
   bool _recenterInProgress = false;
 
-  // Request token for async enable operation to prevent stale callbacks.
-  // Incremented on each enable attempt, callbacks check if token still matches.
+  // A mode generation owns its deferred setup and window geometry.
+  // Both a new enable and retirement invalidate earlier work.
   int _enableRequestId = 0;
+
+  bool _isCurrentMode(int requestId, SessionID sessionId) =>
+      !_disposed && _enableRequestId == requestId && getSessionId() == sessionId;
 
   // Throttle buffer for batching mouse move messages (reduces network flooding).
   int _pendingDeltaX = 0;
@@ -327,8 +330,8 @@ class RelativeMouseModel {
 
     // Windows: clip cursor to window rect
     // Linux: use recenter method
-    updatePointerLockCenter().then((_) {
-      _recenterMouse();
+    updatePointerLockCenter().then((ready) {
+      if (ready) _recenterMouse();
     });
   }
 
@@ -380,6 +383,7 @@ class RelativeMouseModel {
   }
 
   bool setRelativeMouseMode(bool value) {
+    if (_disposed) return false;
     // Web is not supported due to Pointer Lock API integration complexity with Flutter's input system
     if (isWeb) {
       return false;
@@ -407,13 +411,14 @@ class RelativeMouseModel {
       try {
         if (isDesktop) {
           final requestId = ++_enableRequestId;
+          final sessionId = getSessionId();
           if (isMacOS) {
             // macOS: Use native relative mouse mode with CGAssociateMouseAndMouseCursorPosition
             // This locks the cursor in place and provides raw delta via NSEvent monitor.
             _enableNativeRelativeMouseMode().then((success) {
               // Guard against stale callback: user may have toggled off relative mode
               // while the async enable was in progress.
-              if (_enableRequestId != requestId) {
+              if (!_isCurrentMode(requestId, sessionId)) {
                 return;
               }
               if (success) {
@@ -427,17 +432,24 @@ class RelativeMouseModel {
               _releaseCursorClip();
             }
 
-            updatePointerLockCenter().then((_) => _recenterMouse()).then((_) {
-              if (_enableRequestId != requestId) {
+            updatePointerLockCenter().then((ready) async {
+              if (!ready ||
+                  !_isCurrentMode(requestId, sessionId) ||
+                  !keyboardPerm() ||
+                  isViewCamera()) {
                 return;
               }
+              await _recenterMouse();
+              if (!_isCurrentMode(requestId, sessionId) ||
+                  !keyboardPerm() ||
+                  isViewCamera()) return;
               _completeEnableRelativeMouseMode();
             }).catchError((e) {
-              if (_enableRequestId != requestId) {
+              if (!_isCurrentMode(requestId, sessionId)) {
                 return;
               }
               debugPrint('[RelMouse] Platform setup failed: $e');
-              _resetState();
+              _disableWithCleanup();
             });
           }
         } else {
@@ -727,6 +739,8 @@ class RelativeMouseModel {
     _recenterInProgress = true;
 
     try {
+      final requestId = _enableRequestId;
+      final sessionId = getSessionId();
       if (!enabled.value) return;
       if (!getPointerInsideImage()) return;
 
@@ -737,7 +751,9 @@ class RelativeMouseModel {
 
       for (int attempt = 0; attempt < _recenterMaxRetries; attempt++) {
         // Check preconditions before each attempt.
-        if (!enabled.value || !getPointerInsideImage()) return;
+        if (!_isCurrentMode(requestId, sessionId) ||
+            !enabled.value ||
+            !getPointerInsideImage()) return;
 
         final ok = bind.mainSetCursorPosition(
           x: center.dx.toInt(),
@@ -765,26 +781,32 @@ class RelativeMouseModel {
     }
   }
 
-  Future<void> updatePointerLockCenter({Offset? localCenter}) async {
-    if (!isDesktop) return;
+  Future<bool> updatePointerLockCenter({Offset? localCenter}) async {
+    if (!isDesktop || _disposed) return false;
+    final requestId = _enableRequestId;
+    final sessionId = getSessionId();
+    final windowId = kWindowId;
+    bool current() =>
+        _isCurrentMode(requestId, sessionId) && kWindowId == windowId;
 
     // Null safety check for kWindowId.
-    if (kWindowId == null) {
+    if (windowId == null) {
       if (enabled.value) {
         _disableWithCleanup();
       }
-      return;
+      return false;
     }
 
     try {
-      final wc = WindowController.fromWindowId(kWindowId!);
+      final wc = WindowController.fromWindowId(windowId);
       final frame = await wc.getFrame();
+      if (!current()) return false;
 
-      if (frame.width <= 0 || frame.height <= 0) {
+      if (!frame.isFinite || frame.width <= 0 || frame.height <= 0) {
         if (enabled.value) {
           _disableWithCleanup();
         }
-        return;
+        return false;
       }
 
       if (localCenter != null) {
@@ -798,7 +820,7 @@ class RelativeMouseModel {
         if (enabled.value) {
           _disableWithCleanup();
         }
-        return;
+        return false;
       }
 
       // Calculate screen coordinates for OS cursor positioning.
@@ -809,7 +831,7 @@ class RelativeMouseModel {
         if (enabled.value) {
           _disableWithCleanup();
         }
-        return;
+        return false;
       }
       final scale = view.devicePixelRatio;
 
@@ -881,13 +903,17 @@ class RelativeMouseModel {
       }
       // macOS: no clip_cursor (CGAssociateMouseAndMouseCursorPosition stops mouse events)
       // Instead, we use recenter method like other platforms.
+      return true;
     } catch (e) {
+      if (!current()) return false;
+      debugPrint('[RelMouse] Window geometry unavailable: $e');
       if (enabled.value) {
         _disableWithCleanup();
       } else {
         _pointerLockCenterLocal = null;
         _pointerLockCenterScreen = null;
       }
+      return false;
     }
   }
 
@@ -903,7 +929,9 @@ class RelativeMouseModel {
     final needsClip = isWindows && !_cursorClipApplied;
     if (needsCenter || needsClip) {
       updatePointerLockCenter()
-          .then((_) => _recenterMouse())
+          .then((ready) async {
+            if (ready) await _recenterMouse();
+          })
           .catchError((Object e, StackTrace st) {
         debugPrint('[RelMouse] updatePointerLockCenter failed: $e\n$st');
         _disableWithCleanup();
@@ -984,6 +1012,7 @@ class RelativeMouseModel {
   }
 
   void _resetState({SessionID? expectedSessionId}) {
+    ++_enableRequestId;
     // Flush any pending delta before clearing state.
     // This ensures the last buffered movement is sent before values are zeroed.
     // Fire-and-forget: we don't wait for the async send to complete.

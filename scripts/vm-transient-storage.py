@@ -25,7 +25,7 @@ def storage_limits(profile, memory_mib):
     if profile == 'media-kernel-tests':
         require(memory_mib == 2048, 'media kernel fixture requires its 2 GiB guest')
         return 4 * GIB, 3 * GIB
-    if profile in ('ledger-token-count', 'authority-smoke'):
+    if profile in ('ledger-token-count', 'authority-smoke', 'fixed-archive-tests'):
         require(memory_mib == 2048, f'{profile} storage profile requires its 2 GiB guest')
         # These guests build no product artifacts; preparation may provision the boot cache.
         return 4 * GIB, GIB
@@ -441,7 +441,7 @@ def main():
     parser.add_argument('--storage-profile',
                         choices=('standard', 'hbb-common-fs', 'linux-logind', 'cpace-recovery-tests',
                                  'flutter-credential-dialog', 'linux-service-build',
-                                 'ledger-token-count', 'authority-smoke', 'x11-focus', 'linux-parent-libtest',
+                                 'ledger-token-count', 'authority-smoke', 'fixed-archive-tests', 'x11-focus', 'linux-parent-libtest',
                                  'linux-resource-limits', 'linux-resolution-lifetime', 'fusermount-process', 'xrandr-acquisition',
                                  'linux-service-uid-tests', 'audio-buffer', 'audio-mailbox', 'file-block', 'control-egress', 'clipboard-response',
                                  'linux-service-receiver', 'linux-flutter-replay', 'installer-package',

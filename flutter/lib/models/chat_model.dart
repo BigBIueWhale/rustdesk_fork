@@ -63,6 +63,8 @@ class ChatModel with ChangeNotifier {
 
   RxBool isWindowFocus = true.obs;
   BlockableOverlayState _blockableOverlayState = BlockableOverlayState();
+  StreamSubscription<bool>? _middleBlockedSubscription;
+  bool _disposed = false;
   final Rx<VoiceCallStatus> _voiceCallStatus = Rx(VoiceCallStatus.notStarted);
 
   Rx<VoiceCallStatus> get voiceCallStatus => _voiceCallStatus;
@@ -80,6 +82,8 @@ class ChatModel with ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    _cancelMiddleBlockedSubscription();
     textController.dispose();
     super.dispose();
   }
@@ -101,16 +105,23 @@ class ChatModel with ChangeNotifier {
   bool get isShowCMSidePage => _isShowCMSidePage;
 
   void setOverlayState(BlockableOverlayState blockableOverlayState) {
+    if (_disposed ||
+        (identical(_blockableOverlayState, blockableOverlayState) &&
+            _middleBlockedSubscription != null)) return;
+    _cancelMiddleBlockedSubscription();
     _blockableOverlayState = blockableOverlayState;
-
-    _blockableOverlayState.addMiddleBlockedListener((v) {
+    _middleBlockedSubscription = _blockableOverlayState.middleBlocked.listen((v) {
       if (!v) {
         isWindowFocus.value = false;
-        if (isWindowFocus.value) {
-          isWindowFocus.toggle();
-        }
       }
     });
+  }
+
+  void _cancelMiddleBlockedSubscription() {
+    // GetX defers removal during delivery; pause revokes the callback immediately.
+    _middleBlockedSubscription?.pause();
+    unawaited(_middleBlockedSubscription?.cancel());
+    _middleBlockedSubscription = null;
   }
 
   final WeakReference<FFI> parent;

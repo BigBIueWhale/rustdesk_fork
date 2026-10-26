@@ -619,10 +619,6 @@ class BlockableOverlayState extends OverlayKeyState {
 
   RxBool get middleBlocked => _middleBlocked;
 
-  void addMiddleBlockedListener(void Function(bool) cb) {
-    _middleBlocked.listen(cb);
-  }
-
   void setMiddleBlocked(bool blocked) {
     if (blocked != _middleBlocked.value) {
       _middleBlocked.value = blocked;

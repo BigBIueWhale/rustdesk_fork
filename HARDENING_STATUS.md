@@ -13956,6 +13956,25 @@ listener snapshots have zero deltas. Chat history/resource bounds, native input/
 integration, all fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN.
 Every user park remains unchanged.
 
+**Chat overlay subscriptions (`abf53c82`) — model correction verified; native view integration OPEN.**
+`ChatModel` retains one overlay subscription. Rebinding the same overlay is idempotent;
+replacement and disposal pause then cancel the old subscription, and disposal refuses
+new bindings. Pausing matters because pinned GetX 4.7.2 defers subscription removal while
+delivering an event. The helper that discarded the subscription and an unreachable focus
+toggle are removed. At unchanged-product preparation `c1db4c0f`, 51 existing cases pass
+and four regressions fail: repeated binding retains 20 listeners, an old overlay marks
+the replacement chat unfocused, and callbacks still run during replacement or disposal.
+The identical Linux Flutter shard passes all 55 cases after correction, plus three
+parser controls, in 268 outer seconds. Existing test bodies remain byte-identical.
+This exercises production Dart and GetX subscription behavior; native desktop/mobile
+page/session integration, broader chat disposal/focus timers, history bounds and R-S0/R-F5
+acceptance remain OPEN. `chat-overlay-dcd34f17.json` retains source/input identities,
+the initial formatting refusal, failed baseline, strict success summary and joined RAM
+cleanup. Final host endpoint snapshots include unattributed changes; no endpoint owner
+was inspected or changed. The owned harness denies host IP sockets. The privileged
+startup/config-loader investigation remains OPEN/PARKED following the user's pivot;
+all other parks and all fifteen credential-native obligations remain open.
+
 **CM close admission and history outcomes — native component and Dart batch verified;
 complete CM/peer and rendered interaction OPEN.** `d7489810` returns a boolean
 through each generation-bound FFI request. Disconnect succeeds only when the exact

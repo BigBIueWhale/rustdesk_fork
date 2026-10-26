@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_hbb/models/model.dart';
 import 'package:flutter_hbb/models/terminal_connection_pool.dart';
 import 'package:flutter_hbb/models/terminal_model.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:xterm/xterm.dart';
 
 class _EqualTerminalOwner {
   @override
@@ -59,6 +61,68 @@ void _close(TerminalModel model) => model.handleTerminalResponse({
     });
 
 void main() {
+  testWidgets('terminal disposal releases only its owned selection controller',
+      (tester) async {
+    final parent = _TerminalParent();
+    final predecessor = _install(parent);
+    addTearDown(predecessor.dispose);
+    final oldController = predecessor.terminalController;
+    final oldBase = predecessor.terminal.buffer.createAnchor(0, 0);
+    final oldExtent = predecessor.terminal.buffer.createAnchor(3, 0);
+    oldController.setSelection(oldBase, oldExtent);
+    expect(oldBase.attached, isTrue);
+    expect(oldExtent.attached, isTrue);
+
+    final successor = _install(parent);
+    addTearDown(successor.dispose);
+    successor.terminal.write('current');
+    final currentController = successor.terminalController;
+    final currentBase = successor.terminal.buffer.createAnchor(0, 0);
+    final currentExtent = successor.terminal.buffer.createAnchor(7, 0);
+    currentController.setSelection(currentBase, currentExtent);
+
+    predecessor.dispose();
+    predecessor.dispose();
+    expect(currentBase.attached, isTrue);
+    expect(currentExtent.attached, isTrue);
+    expect(successor.terminal.buffer.getText(currentController.selection!),
+        'current');
+    expect(oldController.selection, isNull);
+    expect(oldBase.attached, isFalse);
+    expect(oldExtent.attached, isFalse);
+    expect(() => oldController.addListener(() {}), throwsFlutterError);
+    expect(parent.unexpectedAccess, isEmpty);
+  });
+
+  testWidgets('terminal view borrows its controller until model retirement',
+      (tester) async {
+    final parent = _TerminalParent();
+    final model = _install(parent);
+    addTearDown(model.dispose);
+    final controller = model.terminalController;
+    await tester.pumpWidget(MaterialApp(
+      home: TerminalView(model.terminal, controller: controller),
+    ));
+    await tester.pump();
+    model.terminal.write('selected');
+    final base = model.terminal.buffer.createAnchor(0, 0);
+    final extent = model.terminal.buffer.createAnchor(8, 0);
+    controller.setSelection(base, extent);
+    await tester.pump();
+    expect(model.terminal.buffer.getText(controller.selection!), 'selected');
+    await tester.pumpWidget(const SizedBox.shrink());
+    expect(base.attached, isTrue);
+    expect(extent.attached, isTrue);
+    expect(ChangeNotifier.debugAssertNotDisposed(controller), isTrue);
+    model.dispose();
+    expect(controller.selection, isNull);
+    expect(base.attached, isFalse);
+    expect(extent.attached, isFalse);
+    expect(() => controller.addListener(() {}), throwsFlutterError);
+    expect(tester.takeException(), isNull);
+    expect(parent.unexpectedAccess, isEmpty);
+  });
+
   testWidgets('terminal live input follows the complete pre-open buffer',
       (tester) async {
     final parent = _TerminalParent();

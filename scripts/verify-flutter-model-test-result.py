@@ -885,6 +885,8 @@ TERMINAL_OUTPUT_TESTS = {
         "replacement terminal stream cannot complete its predecessor tail",
     },
     "terminal_model_lifecycle_test.dart": {
+        "terminal disposal releases only its owned selection controller",
+        "terminal view borrows its controller until model retirement",
         "terminal live input follows the complete pre-open buffer",
         "terminal live input has one ordered sender",
         "terminal pending input retires on close",

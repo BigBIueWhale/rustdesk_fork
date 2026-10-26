@@ -119,10 +119,7 @@ void main() {
         dispatch: () async {}).then<void>(
             (value) => outcomes.add(value),
             onError: (Object error) { outcomes.add(error); });
-    addTearDown(() async {
-      h.controller.jobResultListener.clear();
-      await waiter;
-    });
+    addTearDown(h.controller.jobResultListener.clear);
     await h.render(tester);
     await tester.tap(find.byIcon(Icons.cancel_outlined));
     expect(h.calls, [[h.session, first.id]]);

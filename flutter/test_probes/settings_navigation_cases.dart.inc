@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_setting_page.dart';
@@ -13,6 +14,9 @@ import 'package:get/get.dart';
 
 class _NativeSettings implements RustdeskImpl {
   final unexpected = <Symbol>[];
+  String recordingDirectory = '/work/nonexistent-settings-recordings';
+  final recordingWrites = <String>[];
+  Future<void> Function(String)? saveRecordingDirectory;
 
   @override
   dynamic noSuchMethod(Invocation call) {
@@ -47,7 +51,15 @@ class _NativeSettings implements RustdeskImpl {
       case #mainSupportedPrivacyModeImpls:
         return '[]';
       case #mainVideoSaveDirectory:
-        return '/work/nonexistent-settings-recordings';
+        return recordingDirectory;
+      case #mainSetLocalOption:
+        if (key != 'video-save-directory') break;
+        final value = call.namedArguments[#value] as String;
+        recordingWrites.add(value);
+        return Future<void>.sync(() async {
+          await saveRecordingDirectory?.call(value);
+          recordingDirectory = value;
+        });
       case #mainSupportRemoveWallpaper:
         return Future<bool>.value(false);
       case #mainGetSoundInputs:
@@ -70,6 +82,39 @@ class _NativeSettings implements RustdeskImpl {
     }
     unexpected.add(call.memberName);
     throw UnsupportedError('Unexpected settings native call: ${call.memberName}');
+  }
+}
+
+class _DirectoryPicker extends FilePicker {
+  final requests = <(String?, Completer<String?>)>[];
+
+  @override
+  Future<String?> getDirectoryPath({
+    String? dialogTitle,
+    bool lockParentWindow = false,
+    String? initialDirectory,
+  }) {
+    final result = Completer<String?>();
+    requests.add((initialDirectory, result));
+    return result.future;
+  }
+
+  void cancelPending() {
+    for (final request in requests) {
+      if (!request.$2.isCompleted) request.$2.complete(null);
+    }
+  }
+}
+
+ElevatedButton _directoryButton(WidgetTester tester) =>
+    tester.widget<ElevatedButton>(find.widgetWithText(ElevatedButton, 'Change'));
+
+Future<Object?> _pressDirectory(VoidCallback callback) async {
+  try {
+    await (callback as dynamic)();
+    return null;
+  } catch (error) {
+    return error;
   }
 }
 
@@ -121,6 +166,8 @@ void main() {
   late _NativeSettings native;
   late _SettingsParent parent;
   late _Tabs tabs;
+  late FilePicker previousPicker;
+  late _DirectoryPicker picker;
 
   setUp(() {
     Get.testMode = true;
@@ -128,12 +175,17 @@ void main() {
     native = _NativeSettings();
     parent = _SettingsParent();
     tabs = _Tabs();
+    previousPicker = FilePicker.platform;
+    picker = _DirectoryPicker();
+    FilePicker.platform = picker;
     installSettingsProbeBinding(native);
     installSettingsProbeParent(parent);
     Get.put<DesktopTabController>(tabs);
   });
 
   tearDown(() {
+    picker.cancelPending();
+    FilePicker.platform = previousPicker;
     parent.serverModel.serverPasswd.dispose();
     parent.serverModel.tabController.state.value.pageController.dispose();
     parent.serverModel.tabController.state.value.scrollController.dispose();
@@ -142,6 +194,130 @@ void main() {
     Get.reset();
     expect(native.unexpected, isEmpty);
     isTest = false;
+  });
+
+  testWidgets('recording directory change admits one picker and one save',
+      (tester) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    native.recordingDirectory = '/work';
+    final write = Completer<void>();
+    native.saveRecordingDirectory = (_) => write.future;
+    await _mount(tester, SettingsTabKey.general);
+    final press = _directoryButton(tester).onPressed!;
+    final first = _pressDirectory(press);
+    final duplicate = _pressDirectory(press);
+    await _settle(tester);
+    final beforeSelection = picker.requests.length;
+    expect(picker.requests.first.$1, '/work');
+    picker.requests.first.$2.complete('/work/chosen-recordings');
+    picker.cancelPending();
+    await _settle(tester);
+    final disabledDuringSave = _directoryButton(tester).onPressed == null;
+    final duringSave = _pressDirectory(press);
+    await _settle(tester);
+    final afterDuplicate = picker.requests.length;
+    picker.cancelPending();
+    write.complete();
+    expect(await first, isNull);
+    expect(await duplicate, isNull);
+    expect(await duringSave, isNull);
+    await _settle(tester);
+    expect(beforeSelection, 1);
+    expect(afterDuplicate, 1);
+    expect(disabledDuringSave, isTrue);
+    expect(native.recordingWrites, ['/work/chosen-recordings']);
+    expect(find.text('/work/chosen-recordings'), findsOneWidget);
+    expect(_directoryButton(tester).onPressed, isNotNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('recording directory closed page cannot apply a picker result',
+      (tester) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await _mount(tester, SettingsTabKey.general);
+    final press = _directoryButton(tester).onPressed!;
+    final pending = _pressDirectory(press);
+    await _settle(tester);
+    expect(picker.requests.single.$1, isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    picker.requests.single.$2.complete('/work/stale-recordings');
+    expect(await pending, isNull);
+    final obsolete = _pressDirectory(press);
+    await _settle(tester);
+    final calls = picker.requests.length;
+    picker.cancelPending();
+    expect(await obsolete, isNull);
+    expect(calls, 1);
+    expect(native.recordingWrites, isEmpty);
+    await _mount(tester, SettingsTabKey.general);
+    expect(find.text('/work/nonexistent-settings-recordings'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('recording directory cancellation and picker failure allow retry',
+      (tester) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await _mount(tester, SettingsTabKey.general);
+    final cancelled = _pressDirectory(_directoryButton(tester).onPressed!);
+    await _settle(tester);
+    picker.requests.last.$2.complete(null);
+    expect(await cancelled, isNull);
+    await _settle(tester);
+    expect(native.recordingWrites, isEmpty);
+    expect(find.text('Failed'), findsNothing);
+    final failed = _pressDirectory(_directoryButton(tester).onPressed!);
+    await _settle(tester);
+    picker.requests.last.$2.completeError(StateError('picker unavailable'));
+    final failure = await failed;
+    await _settle(tester);
+    expect(failure, isNull);
+    expect(find.text('Failed'), findsOneWidget);
+    expect(native.recordingWrites, isEmpty);
+    final retry = _pressDirectory(_directoryButton(tester).onPressed!);
+    await _settle(tester);
+    picker.requests.last.$2.complete('/work/retry-recordings');
+    expect(await retry, isNull);
+    await _settle(tester);
+    expect(native.recordingWrites, ['/work/retry-recordings']);
+    expect(find.text('/work/retry-recordings'), findsOneWidget);
+    expect(find.text('Failed'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('recording directory save failure retries and retires after close',
+      (tester) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final writes = <Completer<void>>[];
+    native.saveRecordingDirectory = (_) {
+      final write = Completer<void>();
+      writes.add(write);
+      return write.future;
+    };
+    await _mount(tester, SettingsTabKey.general);
+    final failed = _pressDirectory(_directoryButton(tester).onPressed!);
+    await _settle(tester);
+    picker.requests.last.$2.complete('/work/failed-recordings');
+    await _settle(tester);
+    writes.single.completeError(StateError('write refused'));
+    expect(await failed, isNull);
+    await _settle(tester);
+    expect(find.text('Failed'), findsOneWidget);
+    expect(find.text('/work/nonexistent-settings-recordings'), findsOneWidget);
+    final retry = _pressDirectory(_directoryButton(tester).onPressed!);
+    await _settle(tester);
+    picker.requests.last.$2.complete('/work/failed-recordings');
+    await _settle(tester);
+    await tester.pumpWidget(const SizedBox.shrink());
+    writes.last.completeError(StateError('write refused after close'));
+    expect(await retry, isNull);
+    await _settle(tester);
+    expect(native.recordingWrites,
+        ['/work/failed-recordings', '/work/failed-recordings']);
+    expect(find.text('Failed'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('settings sidebar and external requests select the current page',

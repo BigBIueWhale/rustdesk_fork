@@ -866,6 +866,10 @@ PEER_DATA_SUITES = {
     "all_peers_loader_test.dart": PEER_LOADER_TESTS,
 }
 SETTINGS_NAVIGATION_TESTS = {
+    "recording directory change admits one picker and one save",
+    "recording directory closed page cannot apply a picker result",
+    "recording directory cancellation and picker failure allow retry",
+    "recording directory save failure retries and retires after close",
     "settings sidebar and external requests select the current page",
     "settings close and reopen retire the exact navigation owner",
     *{f"settings {tab} scrolling survives rebuilds and retires on close"

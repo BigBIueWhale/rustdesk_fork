@@ -115,6 +115,7 @@ class DialogTextField extends StatelessWidget {
   final String? hintText;
   final bool isPassword;
   final bool passwordVisible;
+  final bool enabled;
   final String? errorText;
   final String? helperText;
   final Widget? prefixIcon;
@@ -135,6 +136,7 @@ class DialogTextField extends StatelessWidget {
       this.focusNode,
       this.isPassword = false,
       this.passwordVisible = false,
+      this.enabled = true,
       this.errorText,
       this.helperText,
       this.prefixIcon,
@@ -163,7 +165,7 @@ class DialogTextField extends StatelessWidget {
           child: Column(
             children: [
               Semantics(
-                focusable: true,
+                focusable: enabled,
                 child: isPassword
                     ? PasswordTextField(
                         decoration: decoration,
@@ -171,6 +173,7 @@ class DialogTextField extends StatelessWidget {
                         focusNode: focusNode,
                         autofocus: true,
                         obscureText: !passwordVisible,
+                        enabled: enabled,
                         inputFormatters: inputFormatters,
                         maxLength: maxLength,
                       )
@@ -180,6 +183,7 @@ class DialogTextField extends StatelessWidget {
                         focusNode: focusNode,
                         autofocus: true,
                         keyboardType: keyboardType,
+                        enabled: enabled,
                         inputFormatters: inputFormatters,
                         maxLength: maxLength,
                       ),

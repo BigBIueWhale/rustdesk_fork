@@ -1400,7 +1400,7 @@ class FileController {
             });
             return;
           }
-          submitting = true;
+          setState(() => submitting = true);
           try {
             final actionId = jobController.allocateJobId(selectedSessionId);
             if (actionId == null) return;
@@ -1420,7 +1420,7 @@ class FileController {
             });
             return;
           } finally {
-            submitting = false;
+            if (current()) setState(() => submitting = false);
           }
           if (!current()) return;
           close();
@@ -1433,7 +1433,9 @@ class FileController {
                 title: '${_translate('Rename')} ${ownedItem.name}',
                 controller: textEditingController,
                 errorText: errorText,
+                enabled: !submitting,
               ),
+              if (submitting) const LinearProgressIndicator(),
             ],
           ),
           actions: [
@@ -1447,11 +1449,11 @@ class FileController {
             dialogButton(
               "OK",
               icon: Icon(Icons.done_rounded),
-              onPressed: submit,
+              onPressed: submitting ? null : submit,
               translateText: _translate,
             ),
           ],
-          onSubmit: submit,
+          onSubmit: submitting ? null : submit,
           onCancel: close,
         );
       });

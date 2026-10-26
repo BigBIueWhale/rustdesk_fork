@@ -10935,7 +10935,7 @@ run_flutter_model_tests() {
                 elif [ "$FLUTTER_TEST_PROFILE" = file-metadata ]; then
                     format_paths=(lib/models/file_timestamp.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
-                    format_paths=(lib/models/server_status_refresh_loop.dart test/server_status_refresh_loop_test.dart)
+                    format_paths=(test/server_status_refresh_loop_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
                     format_paths=(lib/models/share_rdp_change_lifecycle.dart test/share_rdp_change_lifecycle_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then

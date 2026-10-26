@@ -4339,12 +4339,15 @@ run_focused_rust_tests() {
                 scripts/test-cm-voice.rs
                 src/client/io_loop.rs src/client/helper.rs scripts/test-viewer-voice.rs scripts/test-viewer-fps.rs
                 scripts/test-controlled-voice.rs src/client.rs
+                scripts/test-controlled-tunnel.rs
                 scripts/test-port-forward-settings.rs src/port_forward.rs
                 scripts/test-rdp-launch.rs scripts/test-tunnel-port-kind.rs src/cli.rs
                 libs/hbb_common/src/tcp.rs
             )
             required_tests=(
                 port_forward_settings::unavailable_mapping_round_refuses_before_persistence
+                controlled_tunnel::controlled_tunnel_close_interrupts_backpressured_target
+                controlled_tunnel::controlled_tunnel_preserves_pending_write_and_healthy_relay
                 port_forward_settings::identical_saved_mapping_still_requests_runtime_application
                 port_forward_settings::mapping_bind_failure_retries_the_saved_target
                 port_forward_settings::saved_mapping_startup_refuses_ambiguous_and_oversized_lists
@@ -6386,7 +6389,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
         printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=36 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
-        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=93 bridge=absent\n'
+        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=95 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=12 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
@@ -6709,6 +6712,10 @@ PY
             || fail 'frame header capacity or actual TCP progress differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'control-egress summary count differs'
+        [ "$(grep -Fxc 'CONTROLLED_TUNNEL_STOP=pass cases=5 blocked=native control=production deadline_ms=500 cleanup=joined peer=double' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^CONTROLLED_TUNNEL_STOP_CASE=observed cause=(shutdown|close|cm-error|cm-eof|cm-failure) blocked=native deadline_ms=500 timely=true joined=true correct=true$' "$output")" -eq 5 ] \
+            && [ "$(grep -Fxc 'CONTROLLED_TUNNEL_CONTINUE=pass pending_bytes=1048576 exact=true nonterminal=consumed directions=2 subsequent=usable cleanup=joined peer=double' "$output")" -eq 1 ] \
+            || fail 'controlled tunnel backpressure cancellation or byte preservation differs'
         [ "$(grep -Fxc 'PF_SETTINGS_STARTUP=pass cases=6 attempts=independent errors=visible saved=unchanged listeners=native cleanup=joined' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^PF_SETTINGS_STARTUP_CASE=observed .* correct=true$' "$output")" -eq 6 ] \
             || fail 'saved mapping startup independence or native cleanup differs'
@@ -6726,7 +6733,7 @@ PY
         [ "$(grep -Fxc 'PF_SETTINGS_ONE_OFF=pass cases=4 invalid=before-bind-and-launch valid=native-listener owner-thread=joined ports=rebindable' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^PF_SETTINGS_ONE_OFF_CASE=observed .* correct=true$' "$output")" -eq 4 ] \
             || fail 'one-off local-port refusal or owned thread/listener finality differs'
-        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=93 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=95 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CONTROL_EGRESS_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'control-egress artifact receipt differs'
         [ "$(grep -Fxc 'CM_VOICE_CALL_ACTION=pass cases=108 identity=exact phase=exact invalid=refused queues=real' "$output")" -eq 1 ] \

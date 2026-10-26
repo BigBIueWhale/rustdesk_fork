@@ -36,6 +36,7 @@ INPUTS = (
     "src/port_forward.rs", "libs/hbb_common/src/tcp.rs",
     "scripts/test-rdp-launch.rs", "scripts/test-tunnel-port-kind.rs", "src/cli.rs",
     "scripts/test-viewer-fps.rs",
+    "scripts/test-controlled-tunnel.rs",
 )
 
 
@@ -89,11 +90,19 @@ def main():
     records = {(p["name"], p["version"], p["source"]): p
                for p in packages if "source" in p}
     connection = inputs["src/server/connection.rs"].decode("utf-8")
+    tunnel_method = between(connection, "    async fn try_port_forward_loop(",
+                            "    fn permission(\n")
+    tunnel_limits = between(connection, "const PORT_FORWARD_SEND_TIMEOUT:",
+                            "const MAX_PEER_DISPLAY_DIMENSION:")
+    tunnel_interval = between(inputs["src/common.rs"].decode("utf-8"),
+                              "pub struct ThrottledInterval {", "pub fn load_custom_client()")
     file_clipboard = inputs["libs/clipboard/src/lib.rs"].decode("utf-8")
     file_clipboard_start = "pub struct ProgressPercent {"
     if file_clipboard.count(file_clipboard_start) != 1:
         raise ValueError("file-clipboard common implementation boundary is ambiguous")
     snippets = {
+        "controlled-tunnel.rs": tunnel_limits + "impl Connection {\n" + tunnel_method + "}\n",
+        "tunnel-interval.rs": tunnel_interval,
         "file-clipboard.rs": (
             "use std::{collections::VecDeque, fmt, sync::{Arc, Mutex, RwLock}};\n"
             "use hbb_common::{lazy_static, tokio::sync::mpsc};\n"
@@ -435,6 +444,8 @@ def main():
             print(f"CONTROL_EGRESS_SOURCE=pass part={name} bytes={len(body.encode())} "
                   f"sha256={digest(body.encode())}", flush=True)
         os.environ["CONTROL_EGRESS_SOURCE"] = str(fixture / "queue.rs")
+        os.environ["CONTROLLED_TUNNEL_SOURCE"] = str(fixture / "controlled-tunnel.rs")
+        os.environ["TUNNEL_INTERVAL_SOURCE"] = str(fixture / "tunnel-interval.rs")
         for part in ("method", "state", "limit"):
             os.environ["VIEWER_FPS_" + part.upper()] = str(fixture / ("viewer-fps-" + part + ".rs"))
         os.environ["CONTROL_EGRESS_TESTS"] = str(fixture / "tests.rs")
@@ -565,13 +576,13 @@ def main():
             print(f"CONTROL_EGRESS_INPUT=pass path={name} bytes={len(body)} sha256={digest(body)}")
         print(f"CONTROL_EGRESS_BUILD=pass seconds={time.monotonic() - started:.3f} "
               f"sha256={artifact_sha}", flush=True)
-        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=93", flush=True)
+        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=95", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("controlled-egress artifact changed during execution")
-            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=93 unchanged=before-after", flush=True)
+            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=95 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("controlled-egress artifact or dependencies changed")
         for name, body in snippets.items():
@@ -580,7 +591,7 @@ def main():
         for name, body in inputs.items():
             if (repo / name).read_bytes() != body:
                 raise ValueError(f"controlled-egress source changed: {name}")
-        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=93 unchanged=before-after",
+        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=95 unchanged=before-after",
               flush=True)
 
 

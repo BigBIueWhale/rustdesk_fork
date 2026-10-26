@@ -6,6 +6,11 @@ pub use tokio;
 pub use lazy_static;
 pub use anyhow::{self, bail};
 pub use libc;
+pub use tokio_util;
+
+#[path = "test-controlled-tunnel.rs"]
+mod controlled_tunnel;
+pub use controlled_tunnel::rustdesk_interval;
 
 include!(env!("CM_CHAT_LOG"));
 include!(env!("CM_CHAT_FFI"));
@@ -89,6 +94,7 @@ mod config {
 }
 include!(env!("CM_PROTO_GETTER"));
 mod ui_cm_interface {
+    pub(crate) use crate::{CmEgressItem, CmEgressReceiver};
     use crate::{config::keys::OPTION_FILE_TRANSFER_MAX_FILES, fs, ipc, CmEgressSender, Data};
     use serde_derive::Serialize;
     use std::{collections::HashMap, fmt, sync::RwLock};

@@ -345,13 +345,20 @@ void main() {
     await tester.pumpWidget(_root(current));
     oldSlider(1.0);
     oldNudge();
-    expect(current.preferences.reads, 0);
-    pending.complete(1.5);
-    await _flush(tester);
-    expect(_percent(tester), '200');
-    expect(current.writer.calls, isEmpty);
-    expect(old.writer.calls, isEmpty);
-    await _finish(tester, [old, current]);
+    try {
+      await _flush(tester);
+      expect(current.preferences.reads, 1);
+      expect(_percent(tester), '200');
+      pending.complete(1.5);
+      await _flush(tester);
+      expect(current.preferences.reads, 1);
+      expect(_percent(tester), '200');
+      expect(current.writer.calls, isEmpty);
+      expect(old.writer.calls, isEmpty);
+    } finally {
+      if (!pending.isCompleted) pending.complete(1.5);
+      await _finish(tester, [old, current]);
+    }
   });
 
   testWidgets('custom scale retired save error cannot replace a new session draft', (tester) async {
@@ -367,13 +374,88 @@ void main() {
     await _flush(tester);
     await tester.tap(find.byKey(const ValueKey('plus')));
     await _debounce(tester);
-    expect(current.writer.calls, isEmpty);
-    pending.completeError(StateError('retired save failed'));
-    await _flush(tester);
-    expect(current.writer.calls, [201]);
-    expect(_percent(tester), '201');
-    expect(find.text('Retry'), findsNothing);
-    await _finish(tester, [old, current]);
+    try {
+      expect(current.writer.calls, [201]);
+      expect(_percent(tester), '201');
+      pending.completeError(StateError('retired save failed'));
+      await _flush(tester);
+      expect(current.writer.calls, [201]);
+      expect(_percent(tester), '201');
+      expect(find.text('Retry'), findsNothing);
+    } finally {
+      if (!pending.isCompleted) pending.complete(101);
+      await _finish(tester, [old, current]);
+    }
+  });
+
+  testWidgets('custom scale retired read completion preserves current loading', (tester) async {
+    final old = _Session();
+    final current = _Session();
+    final oldRead = Completer<double>();
+    final currentRead = Completer<double>();
+    old.preferences.read = (_) => oldRead.future;
+    current.preferences.read = (_) => currentRead.future;
+    try {
+      await tester.pumpWidget(_root(old));
+      await tester.pumpWidget(_root(current));
+      await _flush(tester);
+      expect(current.preferences.reads, 1);
+      oldRead.complete(1.5);
+      await _flush(tester);
+      tester.state<_ControlsState>(find.byType(_Controls)).retryScale();
+      await _flush(tester);
+      expect(current.preferences.reads, 1);
+      currentRead.complete(2.0);
+      await _flush(tester);
+      expect(_percent(tester), '200');
+      expect(current.writer.calls, isEmpty);
+      expect(tester.takeException(), isNull);
+    } finally {
+      if (!oldRead.isCompleted) oldRead.complete(1.5);
+      if (!currentRead.isCompleted) currentRead.complete(2.0);
+      await _finish(tester, [old, current]);
+    }
+  });
+
+  testWidgets('custom scale retired save completion preserves current admission', (tester) async {
+    final old = _Session();
+    final current = _Session()..preferences.percent = 200;
+    final oldSave = Completer<int>();
+    final currentSave = Completer<int>();
+    old.writer.write = (_) => oldSave.future;
+    current.writer.write = (value) => current.writer.calls.length == 1
+        ? currentSave.future : Future.value(value);
+    try {
+      await tester.pumpWidget(_root(old));
+      await _flush(tester);
+      await tester.tap(find.byKey(const ValueKey('plus')));
+      await _debounce(tester);
+      expect(old.writer.calls, [101]);
+      await tester.pumpWidget(_root(current));
+      await _flush(tester);
+      await tester.tap(find.byKey(const ValueKey('plus')));
+      await _debounce(tester);
+      expect(current.writer.calls, [201]);
+      oldSave.complete(101);
+      await _flush(tester);
+      await tester.tap(find.byKey(const ValueKey('plus')));
+      await _debounce(tester);
+      expect(current.writer.calls, [201]);
+      expect(_percent(tester), '202');
+      expect(find.text('Retry'), findsNothing);
+      currentSave.complete(201);
+      await _flush(tester);
+      expect(current.writer.calls, [201, 202]);
+      expect(current.writer.maximumActive, 1);
+      expect(current.preferences.percent, 202);
+      expect(old.preferences.percent, 101);
+      expect(find.text('Retry'), findsNothing);
+      expect(tester.takeException(), isNull);
+    } finally {
+      if (!oldSave.isCompleted) oldSave.complete(101);
+      if (!currentSave.isCompleted) currentSave.complete(201);
+      await _finish(tester, [old, current]);
+    }
   });
 
   testWidgets('custom scale slider preserves limits and its hundred percent detent', (tester) async {

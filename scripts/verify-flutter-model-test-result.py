@@ -196,6 +196,8 @@ CUSTOM_SCALE_TESTS = {
     "custom scale removed widget retires feedback while admitted canvas work settles",
     "custom scale retargeting invalidates old reads and captured handlers",
     "custom scale retired save error cannot replace a new session draft",
+    "custom scale retired read completion preserves current loading",
+    "custom scale retired save completion preserves current admission",
     "custom scale slider preserves limits and its hundred percent detent",
     "replacement custom scale controls wait for admission and retain retry",
     "canvas custom scale admission is shared through publication",
@@ -931,7 +933,7 @@ FILE_METADATA_TESTS = {
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-progress", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-progress", "custom-scale", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -996,6 +998,10 @@ def parse_result(path, profile="models"):
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())
         expected_tests = len(expected_names)
+    elif profile == "custom-scale":
+        expected_suites = {"custom_scale_controls_test.dart"}
+        expected_tests = len(CUSTOM_SCALE_TESTS)
+        expected_names = CUSTOM_SCALE_TESTS
     elif profile == "file-progress":
         expected_suites = {"file_progress_test.dart"}
         expected_tests = len(FILE_PROGRESS_TESTS)
@@ -1110,7 +1116,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-progress", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-progress", "custom-scale", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -1130,6 +1136,7 @@ def main():
         "auto-disconnect": "FLUTTER_AUTO_DISCONNECT_TEST_JSON",
         "directory-ordering": "FLUTTER_DIRECTORY_ORDERING_TEST_JSON",
         "file-navigation": "FLUTTER_FILE_NAVIGATION_TEST_JSON",
+        "custom-scale": "FLUTTER_CUSTOM_SCALE_TEST_JSON",
         "file-progress": "FLUTTER_FILE_PROGRESS_TEST_JSON",
         "peer-data": "FLUTTER_PEER_DATA_TEST_JSON",
         "terminal-output": "FLUTTER_TERMINAL_OUTPUT_TEST_JSON",

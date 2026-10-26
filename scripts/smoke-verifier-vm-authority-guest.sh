@@ -4486,9 +4486,10 @@ run_focused_rust_tests() {
             source_fingerprints=(
                 Cargo.lock libs/hbb_common/src/config.rs libs/hbb_common/src/compress.rs
                 libs/hbb_common/src/fs.rs libs/hbb_common/src/fs/file_block.rs
-                scripts/run-file-block-tests.py
+                scripts/run-file-block-tests.py scripts/test-compression-context.rs
             )
             required_tests=(
+                compression_context::context_allocation_refusal_is_retryable
                 compress::tests::decompression_is_fallible_and_output_bounded
                 compress::tests::decompression_history_window_is_independent_of_output_limit
                 file_block::tests::raw_blocks_borrow_exact_input_and_refuse_excess
@@ -6448,7 +6449,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
         printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=97 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
-        printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=12 bridge=absent\n'
+        printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=13 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
         printf 'FUSE_PROCESS_PROFILE=fusermount-process stage=container-start tests=43 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-fd ]; then
@@ -6907,9 +6908,12 @@ PY
             || fail 'concurrent CM queue ownership, ordering or saturation differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'file-block summary count differs'
-        [ "$(grep -Ec '^FILE_BLOCK_ARTIFACT=pass sha256=[0-9a-f]{64} tests=12 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^FILE_BLOCK_ARTIFACT=pass sha256=[0-9a-f]{64} tests=13 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'FILE_BLOCK_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'file-block artifact receipt differs'
+        [ "$(grep -Fxc 'COMPRESS_CONTEXT=pass cases=3 refusals=6 probes=3 retries=exact context=reused threads=joined' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^COMPRESS_CONTEXT_CASE=observed bytes=(0|1|131072) panics=0 refused=2 attempts=3 exact=true correct=true$' "$output")" -eq 3 ] \
+            || fail 'native compressor context refusal or retry differs'
         [ "$(grep -Fxc 'FILE_COMPRESSION_ALLOCATION=pass cases=3 refusals=3 retries=exact wire=unchanged' "$output")" -eq 1 ] \
             || fail 'compression output allocation refusal or retry differs'
         [ "$(grep -Fxc 'FILE_COMPRESSION_STORAGE=pass cases=5 capacity=wire wire=unchanged decode=exact' "$output")" -eq 1 ] \
@@ -7703,7 +7707,7 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = file-block ]; then
-            grep -E '^test (file_block|compress)::tests::.* \.\.\. ok$|^FILE_BLOCK_(ARTIFACT(_BEFORE|_AFTER)?|DEPENDENCIES|INPUT)=|^FILE_COMPRESSION_(ALLOCATION|CASE|STORAGE(_CASE)?|PACKING(_CASE|_CHILD)?)=|^DECOMPRESSION_INPUT|^SHARED_DECODE_ALLOC' "$output"
+            grep -E '^test ((file_block|compress)::tests::.*|compression_context::context_allocation_refusal_is_retryable) \.\.\. ok$|^FILE_BLOCK_(ARTIFACT(_BEFORE|_AFTER)?|DEPENDENCIES|INPUT)=|^FILE_COMPRESSION_(ALLOCATION|CASE|STORAGE(_CASE)?|PACKING(_CASE|_CHILD)?)=|^DECOMPRESSION_INPUT|^SHARED_DECODE_ALLOC|^COMPRESS_CONTEXT' "$output"
             printf 'FILE_BLOCK_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-file-block-decoder-and-compressor rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

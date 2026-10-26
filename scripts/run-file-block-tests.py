@@ -15,7 +15,7 @@ import tomllib
 PACKAGE = "rustdesk-file-block"
 INPUTS = ("Cargo.lock", "libs/hbb_common/src/config.rs", "libs/hbb_common/src/compress.rs",
           "libs/hbb_common/src/fs.rs", "libs/hbb_common/src/fs/file_block.rs",
-          "scripts/run-file-block-tests.py")
+          "scripts/run-file-block-tests.py", "scripts/test-compression-context.rs")
 
 
 def digest(data):
@@ -65,7 +65,10 @@ def main():
         (fixture / "lib.rs").write_text(
             'mod config { ' + level[0] + ' }\n'
             f'#[path = "{repo}/libs/hbb_common/src/compress.rs"] mod compress;\n'
-            f'#[path = "{repo}/libs/hbb_common/src/fs/file_block.rs"] mod file_block;\n')
+            f'#[path = "{repo}/libs/hbb_common/src/fs/file_block.rs"] mod file_block;\n'
+            f'#[path = "{repo}/scripts/test-compression-context.rs"] mod compression_context;\n')
+        (fixture / "build.rs").write_text(
+            'fn main() { println!("cargo:rustc-link-arg=-Wl,--wrap=ZSTD_createCCtx"); }\n')
         run(["cargo", "generate-lockfile", "--offline", *config], fixture, 30)
         lock_bytes = (fixture / "Cargo.lock").read_bytes()
         dependencies = []
@@ -92,20 +95,20 @@ def main():
             raise ValueError("file-block artifact is absent or ambiguous")
         artifact = candidates[0]
         artifact_sha = digest(artifact.read_bytes())
-        print(f"FILE_BLOCK_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=12", flush=True)
+        print(f"FILE_BLOCK_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=13", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture, 20)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("file-block artifact changed during execution")
-            print(f"FILE_BLOCK_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=12 unchanged=before-after", flush=True)
+            print(f"FILE_BLOCK_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=13 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("file-block artifact or lock changed")
         for name, data in inputs.items():
             if (repo / name).read_bytes() != data:
                 raise ValueError(f"file-block source changed: {name}")
             print(f"FILE_BLOCK_INPUT=pass path={name} bytes={len(data)} sha256={digest(data)}")
-        print(f"FILE_BLOCK_ARTIFACT=pass sha256={artifact_sha} tests=12 unchanged=before-after", flush=True)
+        print(f"FILE_BLOCK_ARTIFACT=pass sha256={artifact_sha} tests=13 unchanged=before-after", flush=True)
 
 
 if __name__ == "__main__":

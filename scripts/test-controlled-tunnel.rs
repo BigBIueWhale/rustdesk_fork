@@ -1,4 +1,4 @@
-//! Exact controlled relay and CM mailbox, with a native TCP target and observed socket writes.
+//! Exact viewer/controlled relays and CM mailbox, with native TCP and observed socket writes.
 //! The authenticated peer is a bounded frame-channel double; this does not exercise CPace.
 use crate::{bail, ipc, log, ResultType};
 use bytes::{Bytes, BytesMut};
@@ -57,6 +57,18 @@ struct Connection {
 }
 include!(env!("CONTROLLED_TUNNEL_SOURCE"));
 
+mod viewer {
+    use super::{ObservedSocket as TcpStream, PeerStream as Stream, *};
+    use std::future::Future;
+    use crate::anyhow::anyhow;
+    include!(env!("VIEWER_TUNNEL_SOURCE"));
+
+    pub(super) async fn run(forward: Framed<TcpStream, BytesCodec>, stream: Stream,
+                           cancellation: &CancellationToken) -> ResultType<()> {
+        run_forward(forward, stream, cancellation).await
+    }
+}
+
 struct Fixture {
     target: TcpStream,
     inbound: mpsc::Sender<io::Result<BytesMut>>,
@@ -68,6 +80,9 @@ struct Fixture {
 }
 impl Fixture {
     async fn new() -> Self {
+        Self::for_role(false).await
+    }
+    async fn for_role(viewer: bool) -> Self {
         let listener = TcpSocket::new_v4().unwrap();
         listener.set_recv_buffer_size(64 * 1024).unwrap();
         listener.bind("127.0.0.1:0".parse().unwrap()).unwrap();
@@ -81,13 +96,18 @@ impl Fixture {
         let (inbound, input) = mpsc::channel(1);
         let (output, outbound) = mpsc::channel(32);
         let (control, mut receiver) = crate::cm_egress_channel();
-        let mut connection = Connection {
-            port_forward_socket: Some(Framed::new(ObservedSocket { socket, blocked: blocked.clone() }, BytesCodec::new())),
-            stream: PeerStream { inbound: input, outbound: output },
-        };
+        let forward = Framed::new(ObservedSocket { socket, blocked: blocked.clone() }, BytesCodec::new());
+        let stream = PeerStream { inbound: input, outbound: output };
         let cancellation = CancellationToken::new();
         let cancel = cancellation.clone();
-        let task = tokio::spawn(async move { connection.try_port_forward_loop(&mut receiver, &cancel).await });
+        let task = tokio::spawn(async move {
+            if viewer {
+                viewer::run(forward, stream, &cancel).await
+            } else {
+                let mut connection = Connection { port_forward_socket: Some(forward), stream };
+                connection.try_port_forward_loop(&mut receiver, &cancel).await
+            }
+        });
         Self { target, inbound, outbound, control: Some(control), cancellation, blocked, task }
     }
     async fn block_target(&mut self) -> Vec<u8> {
@@ -100,7 +120,7 @@ impl Fixture {
     async fn stop(mut self) -> (bool, String) {
         let completed = timeout(500, &mut self.task).await;
         let (timely, reason) = match completed {
-            Ok(result) => (true, result.unwrap().unwrap_err().to_string()),
+            Ok(result) => (true, result.unwrap().err().map(|e| e.to_string()).unwrap_or_else(|| "closed".into())),
             Err(_) => {
                 self.task.abort();
                 assert!(self.task.await.unwrap_err().is_cancelled());
@@ -171,4 +191,42 @@ async fn controlled_tunnel_preserves_pending_write_and_healthy_relay() {
     println!("CONTROLLED_TUNNEL_CONTINUE_RESULT=observed bytes_exact=true nonterminal_consumed={consumed} directions=2 subsequent=usable cleanup=joined");
     assert!(consumed, "nonterminal CM event must be consumed during the blocked write");
     println!("CONTROLLED_TUNNEL_CONTINUE=pass pending_bytes=1048576 exact=true nonterminal=consumed directions=2 subsequent=usable cleanup=joined peer=double");
+}
+
+#[tokio::test]
+async fn tunnel_reverse_direction_progresses_during_native_write_backpressure() {
+    let mut passed = 0;
+    for viewer in [false, true] {
+        let mut fixture = Fixture::for_role(viewer).await;
+        let payload = fixture.block_target().await;
+        fixture.inbound.try_send(Ok(BytesMut::from(&b"next request"[..]))).unwrap();
+        let reverse: Vec<u8> = (0..8192).map(|n| (n % 239) as u8).collect();
+        timeout(5000, fixture.target.write_all(&reverse)).await.unwrap().unwrap();
+        let mut received_reverse = Vec::new();
+        let progressed = timeout(500, async {
+            while received_reverse.len() < reverse.len() {
+                received_reverse.extend_from_slice(&fixture.outbound.recv().await.unwrap());
+            }
+        }).await.is_ok();
+        let bounded = fixture.inbound.capacity() == 0;
+        let mut received = vec![0; payload.len()];
+        timeout(5000, fixture.target.read_exact(&mut received)).await.unwrap().unwrap();
+        assert_eq!(received, payload);
+        let mut next = [0; 12];
+        timeout(5000, fixture.target.read_exact(&mut next)).await.unwrap().unwrap();
+        assert_eq!(&next, b"next request");
+        while received_reverse.len() < reverse.len() {
+            received_reverse.extend_from_slice(&timeout(5000, fixture.outbound.recv()).await.unwrap().unwrap());
+        }
+        assert_eq!(received_reverse, reverse);
+        fixture.cancellation.cancel();
+        let (timely, reason) = fixture.stop().await;
+        assert!(timely && reason == if viewer { "closed" } else { "Server is shutting down" });
+        let correct = progressed && bounded;
+        passed += usize::from(correct);
+        let role = if viewer { "viewer" } else { "controlled" };
+        println!("CONTROLLED_TUNNEL_DUPLEX_CASE=observed role={role} blocked=native reverse_before_drain={progressed} inbound_bounded={bounded} bytes_exact=true subsequent=true joined=true correct={correct}");
+    }
+    assert_eq!(passed, 2);
+    println!("CONTROLLED_TUNNEL_DUPLEX=pass roles=2 pending_bytes=1048576 reverse_bytes=8192 deadline_ms=500 inbound=one-pending-write cleanup=joined peer=double");
 }

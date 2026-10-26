@@ -310,6 +310,8 @@ class _General extends StatefulWidget {
 
 class _GeneralState extends State<_General> {
   bool _languageSaving = false;
+  bool _recordingDirectorySaving = false;
+  bool _recordingDirectoryFailed = false;
 
   @override
   Widget build(BuildContext context) {
@@ -522,6 +524,32 @@ class _GeneralState extends State<_General> {
     return AudioInput(builder: builder, isCm: false, isVoiceCall: false);
   }
 
+  Future<void> _changeRecordingDirectory(String currentDirectory) async {
+    if (!mounted ||
+        _recordingDirectorySaving ||
+        isOptionFixed(kOptionVideoSaveDirectory)) return;
+    setState(() {
+      _recordingDirectorySaving = true;
+      _recordingDirectoryFailed = false;
+    });
+    try {
+      final exists = await Directory(currentDirectory).exists();
+      if (!mounted) return;
+      final selectedDirectory = await FilePicker.platform.getDirectoryPath(
+          initialDirectory: exists ? currentDirectory : null);
+      if (!mounted ||
+          selectedDirectory == null ||
+          isOptionFixed(kOptionVideoSaveDirectory)) return;
+      await bind.mainSetLocalOption(
+          key: kOptionVideoSaveDirectory, value: selectedDirectory);
+    } catch (error) {
+      debugPrint('Failed to change recording directory: $error');
+      if (mounted) _recordingDirectoryFailed = true;
+    } finally {
+      if (mounted) setState(() => _recordingDirectorySaving = false);
+    }
+  }
+
   Widget record(BuildContext context) {
     final showRootDir = isWindows && bind.mainIsInstalled();
     return futureBuilder(future: () async {
@@ -592,29 +620,18 @@ class _GeneralState extends State<_General> {
                     )).marginOnly(left: 10),
               ),
               ElevatedButton(
-                      onPressed: isOptionFixed(kOptionVideoSaveDirectory)
+                      onPressed: isOptionFixed(kOptionVideoSaveDirectory) ||
+                              _recordingDirectorySaving
                           ? null
-                          : () async {
-                              String? initialDirectory;
-                              if (await Directory.fromUri(
-                                      Uri.directory(user_dir))
-                                  .exists()) {
-                                initialDirectory = user_dir;
-                              }
-                              String? selectedDirectory =
-                                  await FilePicker.platform.getDirectoryPath(
-                                      initialDirectory: initialDirectory);
-                              if (selectedDirectory != null) {
-                                if (!await mainSetLocalOption(
-                                        kOptionVideoSaveDirectory,
-                                        selectedDirectory) || !mounted) return;
-                                setState(() {});
-                              }
-                            },
+                          : () => _changeRecordingDirectory(user_dir),
                       child: Text(translate('Change')))
                   .marginOnly(left: 5),
             ],
           ).marginOnly(left: _kContentHMargin),
+        if (_recordingDirectoryFailed)
+          Text(translate('Failed'),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error))
+              .marginOnly(left: _kContentHMargin),
       ]);
     });
   }

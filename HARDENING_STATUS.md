@@ -14347,6 +14347,28 @@ connection-flow correctness/performance.
 
 ### R-S11hm/R-S11e-250 — exact-session file-command and job-result ownership
 
+**Mobile file-action sheet layout — rendered Flutter correction verified; device integration OPEN.**
+`cf5619d8`/`9d4451ce` give the shared transfer-status/selection/paste sheet a bounded
+text column and space for its action buttons. Long title/status text uses ellipsis;
+the sheet keeps a 65-pixel minimum and grows with accessibility text instead of
+forcing a fixed height. Redundant nested rows and the expanding container alignment
+are removed. This follows Flutter's [Row constraint model](https://api.flutter.dev/flutter/widgets/Row-class.html)
+and [Container alignment behavior](https://api.flutter.dev/flutter/widgets/Container/alignment.html).
+At unchanged-product preparation `dca1ac95`, 26 existing cases pass and all three
+new layout checks fail: long text overflows horizontally in both directions and
+three-times text overflows vertically. At `c8454303`, all 29 cases and three parser
+controls pass in the bounded, networkless Linux Flutter 3.24.5 VM. The new tests
+render the production widget on a 320-pixel screen, check text/button bounds,
+tap all three actions in both directions, and check enlarged text with cancellation.
+Two later test finders were narrowed from the nested framework sheets to the app's
+sheet; the original preceding overflow assertions are unchanged. A source-rejected
+alignment candidate was stopped before tests, and an ambiguous-finder run remains
+unaccepted. `mobile-action-sheet-55ce99f9.json` retains sources, per-case results,
+these diagnostics and joined RAM/VM cleanup; every endpoint delta is zero.
+Full mobile pages, Android/iOS devices, native transfers and R-S0/R-F5 acceptance
+remain OPEN. Relative-mouse delayed-send ownership remains OPEN/PARKED at this
+user-directed pivot. All fifteen credential-native actions and earlier parks remain open.
+
 **Mobile file-status cancellation — widget/model correction verified; device integration OPEN.**
 `d77cae4e` gives the production `FileJobStatus` control an exact displayed job,
 captured ID and session. It validates that owner before cancellation/dismissal and

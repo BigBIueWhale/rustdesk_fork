@@ -76,19 +76,13 @@ class _SettingsState extends State<SettingsPage> {
     super.initState();
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      var update = false;
-
-      // R-G7 (§19): the "Start on boot" toggle is removed; boot-start is re-homed in the
-      // native BootReceiver (RECEIVE_BOOT_COMPLETED alone), so there is no opt to read here.
-
+      if (!mounted) return;
       final buildDate = await bind.mainGetBuildDate();
+      if (!mounted) return;
       if (_buildDate != buildDate) {
-        update = true;
-        _buildDate = buildDate;
-      }
-
-      if (update) {
-        setState(() {});
+        setState(() {
+          _buildDate = buildDate;
+        });
       }
     });
   }

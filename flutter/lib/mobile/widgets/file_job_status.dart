@@ -90,8 +90,6 @@ class BottomSheetBody extends StatelessWidget {
 
   @override
   BottomSheet build(BuildContext context) {
-    // ignore: no_leading_underscores_for_local_identifiers
-    final _actions = actions ?? [];
     return BottomSheet(
       builder: (BuildContext context) {
         return Container(
@@ -120,13 +118,13 @@ class BottomSheetBody extends StatelessWidget {
                       )
                     ],
                   ),
-                  Row(children: () {
-                    _actions.add(IconButton(
+                  Row(children: [
+                    ...?actions,
+                    IconButton(
                       icon: Icon(Icons.cancel_outlined),
                       onPressed: onCanceled,
-                    ));
-                    return _actions;
-                  }())
+                    ),
+                  ])
                 ],
               ),
             ));

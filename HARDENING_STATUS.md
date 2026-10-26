@@ -15682,6 +15682,29 @@ global aggregate resources, rendered feedback, faster reusable build inputs and 
 release evidence remain OPEN. Mutating-job dispatch ownership is covered below.
 Every explicit user park remains parked.
 
+**File progress publication (`de940646`) — Dart component A/B verified; rendered/native integration OPEN.**
+`JobController.tryUpdateJobProgress` validates the complete progress event before changing
+the owned job or refreshing its observers. Existing session/action/file-index checks remain;
+speed must be finite and nonnegative, and finished bytes must be a canonical nonnegative
+Dart integer, without imposing the smaller action-ID bound. Invalid numeric fields produce
+a fixed diagnostic without the event payload. This follows the distinction between
+[parsing a double](https://api.dart.dev/dart-core/double/tryParse.html) and checking
+[finiteness](https://api.dart.dev/dart-core/num/isFinite.html).
+The unchanged-product baseline at `6f197164` passes three cases and fails three: all 11
+invalid-speed and all 13 invalid-byte-count vectors change job state, and a rejected marker
+appears in diagnostics. With only the handler changed, all six identical production-model
+cases and three result-parser controls pass. Controls cover valid zero/fractional speed,
+byte counts above 32 bits, invalid identities, stale/unknown jobs and valid recovery after
+every rejected numeric vector. The dedicated `--flutter-model-tests --file-progress` shard
+generates a fresh bridge and retains individual test results. It uses the existing bounded
+Flutter RAM profile; the initial missing profile mapping was refused before VM creation.
+Evidence: `file-progress-526972e6.json`, binding both sources, results, inputs and joined
+VM/RAM cleanup with zero listener deltas. No actual transfer, rendered progress row,
+native bridge transport or installed application ran. Native byte-count precision, terminal
+progress semantics, full-app/platform/resource acceptance, R-S0/R-F5 and release remain OPEN.
+The KDE command-line scan review is OPEN/PARKED at the user's pivot; no correction or
+new privilege-escalation claim was made. All other user parks remain unchanged.
+
 **Mutating file-job dispatch admission — Dart listener/caller A/B ACCEPTED; native mutation/drain/platform integration OPEN.**
 `JobResultListener` retains exact pending objects and dispatch-completion futures independently
 of its keyed response map. `clear()` retires response routing and caller results while unfinished

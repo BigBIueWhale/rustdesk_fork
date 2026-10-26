@@ -982,6 +982,7 @@ for profile, memory, scratch, overlay in (
         ('file-block', 2048, 6, 4),
         ('control-egress', 2048, 6, 4),
         ('clipboard-response', 2048, 6, 4),
+        ('debian-package-tests', 2048, 6, 4),
         ('xrandr-acquisition', 4096, 6, 4),
         ('authority-smoke', 2048, 4, 1),
         ('fixed-archive-tests', 2048, 4, 1),
@@ -1012,7 +1013,8 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
                         ('linux-resource-limits', 2047), ('linux-resource-limits', 4096),
                         ('file-block', 2047), ('file-block', 4096),
                         ('control-egress', 2047), ('control-egress', 4096),
-                        ('clipboard-response', 2047), ('clipboard-response', 4096)):
+                        ('clipboard-response', 2047), ('clipboard-response', 4096),
+                        ('debian-package-tests', 2047), ('debian-package-tests', 4096)):
     try:
         limits(profile, memory)
     except ValueError:
@@ -1021,7 +1023,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
         raise SystemExit('VM storage profile accepted an invalid guest/profile')
 if module['HEADROOM'] != 6 * gib or module['OVERHEAD'] != gib:
     raise SystemExit('VM storage headroom or overhead differs')
-print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=27 refusals=48 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
+print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=28 refusals=50 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
 cli = subprocess.run([sys.executable, '-B', '-I', '-S', sys.argv[1], 'preflight',
                       '--memory-mib', '10240', '--storage-profile', 'linux-flutter-suspend'],
                      capture_output=True, text=True, timeout=5, check=False)
@@ -1040,7 +1042,7 @@ if len(modes) != 38:
     raise SystemExit('VM workload control inventory differs')
 special = {mode: mode for mode in ('ledger-token-count', 'cpace-recovery-tests',
                                   'linux-service-uid-tests', 'hbb-common-fs', 'media-kernel-tests',
-                                  'fixed-archive-tests')}
+                                  'fixed-archive-tests', 'debian-package-tests')}
 special.update({'authority-smoke': 'authority-smoke', 'dependency-inventory': 'authority-smoke',
                 'debian-maintainer-tests': 'authority-smoke',
                 'android-frame-tests': 'x11-focus'})

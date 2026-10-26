@@ -8,6 +8,8 @@ if [ "${MODE:-}" = ledger-token-count ]; then
     readonly VM_STORAGE_PROFILE=ledger-token-count
 elif [ "${MODE:-}" = fixed-archive-tests ]; then
     readonly VM_STORAGE_PROFILE=fixed-archive-tests
+elif [ "${MODE:-}" = debian-package-tests ]; then
+    readonly VM_STORAGE_PROFILE=debian-package-tests
 elif [ "${MODE:-}" = media-kernel-tests ]; then
     readonly VM_STORAGE_PROFILE=media-kernel-tests
 elif [ "${MODE:-}" = authority-smoke ] || [ "${MODE:-}" = dependency-inventory ] \
@@ -98,7 +100,7 @@ else
         android-execution-probe|android-owner-tests|android-peer-build|\
         android-runtime-log-tests|android-rust-lifecycle-tests|android-rust-target-check|\
         apple-conform|cm-file-replay|dart-audit|debian-elf-role-tests|\
-        debian-package-tests|debian-polkit-tests|debian-systemd-lifecycle|\
+        debian-polkit-tests|debian-systemd-lifecycle|\
         flutter-model-tests|flutter-peer-presentation|\
         hbb-common-fs|host-network-tests|linux-flutter-artifact-tests|\
         linux-flutter-engine-build|linux-flutter-engine-prepare|\

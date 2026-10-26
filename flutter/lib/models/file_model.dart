@@ -1828,14 +1828,22 @@ class JobController {
     final jobIndex = getJob(jobId);
     if (jobIndex != -1) {
       final job = jobTable[jobIndex];
+      if (job.type != JobType.transfer || job.state != JobState.paused) {
+        return false;
+      }
       final actionId = job.id;
       final isRemote = job.isRemoteToLocal;
       await _requests.resumeJob(selectedSessionId, actionId, isRemote);
       if (!isCurrentSession(selectedSessionId)) return false;
       final currentIndex = getJob(actionId);
-      if (currentIndex == -1) return false;
-      jobTable[currentIndex].state = JobState.inProgress;
-      jobTable.refresh();
+      if (currentIndex == -1 || !identical(jobTable[currentIndex], job)) {
+        return false;
+      }
+      // A job event can settle the transfer before the bridge reply arrives.
+      if (job.state == JobState.paused) {
+        job.state = JobState.inProgress;
+        jobTable.refresh();
+      }
       return true;
     } else {
       debugPrint("jobId $jobId is not exists");

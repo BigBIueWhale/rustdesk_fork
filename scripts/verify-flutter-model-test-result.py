@@ -742,6 +742,15 @@ FILE_NAVIGATION_SUITES = {
     },
 }
 PEER_DATA_TESTS = {
+    "chat delayed focus preserves current and disabled node behavior",
+    "chat delayed focus retires on overlay unblock and allows reopening",
+    "chat delayed focus retires on overlay replacement and allows reopening",
+    "chat delayed focus retires on window hide and allows reopening",
+    "chat delayed focus retires on overlay hide and allows reopening",
+    "chat delayed focus retires on session close and allows reopening",
+    "chat delayed focus keeps only the latest request",
+    "chat delayed focus disposal retires and refuses later requests",
+    "chat panel closing retires focus before a held window reply",
     "chat overlay keeps one listener and current focus behavior",
     "chat overlay replacement retires the previous focus listener",
     "chat overlay replacement during delivery revokes the old callback",

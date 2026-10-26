@@ -205,17 +205,23 @@ class _ChatDelivery {
 }
 
 class _PanelChat extends ChatModel {
-  _PanelChat(_ChatOwner owner) : super(WeakReference<FFI>(owner));
+  _PanelChat(_ChatOwner owner, {this.liveFocus = false})
+      : super(WeakReference<FFI>(owner));
 
+  final bool liveFocus;
   var focusRequests = 0;
 
   @override
-  void requestChatInputFocus() => focusRequests += 1;
+  void requestChatInputFocus() {
+    focusRequests += 1;
+    if (liveFocus) super.requestChatInputFocus();
+  }
 }
 
 class _ChatPanel {
   final owner = _ChatOwner();
-  late final model = _PanelChat(owner);
+  final bool liveFocus;
+  late final model = _PanelChat(owner, liveFocus: liveFocus);
   final calls = <MethodCall>[];
   var notifications = 0;
   String? failAt;
@@ -227,7 +233,7 @@ class _ChatPanel {
       ? (call.arguments.containsKey('width') ? 'resize' : 'position')
       : call.method;
 
-  _ChatPanel() {
+  _ChatPanel({this.liveFocus = false}) {
     model.addListener(() => notifications += 1);
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
@@ -309,9 +315,170 @@ ChatModel _chatModel() {
   return model;
 }
 
+Future<FocusNode> _mountChatFocusNodes(
+    WidgetTester tester, ChatModel model) async {
+  debugPrint = tester.binding.debugPrintOverride;
+  final other = FocusNode();
+  addTearDown(other.dispose);
+  await tester.pumpWidget(MaterialApp(
+    home: Scaffold(
+      body: Column(children: [
+        Focus(focusNode: model.inputNode, child: const Text('chat')),
+        Focus(focusNode: other, child: const Text('other')),
+      ]),
+    ),
+  ));
+  other.requestFocus();
+  await tester.pump();
+  expect(other.hasPrimaryFocus, isTrue);
+  return other;
+}
+
+Future<void> _unmountChatFocusNodes(WidgetTester tester) async {
+  await tester.pumpWidget(const SizedBox.shrink());
+  await tester.pump(const Duration(seconds: 1));
+}
+
 void main() {
   _voiceOwnerTests();
   TestWidgetsFlutterBinding.ensureInitialized();
+  testWidgets('chat delayed focus preserves current and disabled node behavior',
+      (tester) async {
+    final model = _chatModel();
+    final other = await _mountChatFocusNodes(tester, model);
+    try {
+      model.requestChatInputFocus();
+      await tester.pump(const Duration(milliseconds: 99));
+      expect(other.hasPrimaryFocus, isTrue);
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(model.inputNode.hasPrimaryFocus, isTrue);
+      other.requestFocus();
+      model.inputNode.canRequestFocus = false;
+      await tester.pump();
+      model.requestChatInputFocus();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(other.hasPrimaryFocus, isTrue);
+      model.inputNode.canRequestFocus = true;
+      model.requestChatInputFocus();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(model.inputNode.hasPrimaryFocus, isTrue);
+    } finally {
+      await _unmountChatFocusNodes(tester);
+    }
+  });
+
+  for (final retirement in [
+    'overlay unblock',
+    'overlay replacement',
+    'window hide',
+    'overlay hide',
+    'session close'
+  ]) {
+    testWidgets('chat delayed focus retires on $retirement and allows reopening',
+        (tester) async {
+      final model = _chatModel();
+      final overlay = BlockableOverlayState();
+      model.setOverlayState(overlay);
+      overlay.setMiddleBlocked(true);
+      final other = await _mountChatFocusNodes(tester, model);
+      try {
+        model.requestChatInputFocus();
+        await tester.pump(const Duration(milliseconds: 50));
+        switch (retirement) {
+          case 'overlay unblock':
+            overlay.setMiddleBlocked(false);
+            break;
+          case 'overlay replacement':
+            model.setOverlayState(BlockableOverlayState());
+            break;
+          case 'window hide':
+            model.hideChatWindowOverlay();
+            break;
+          case 'overlay hide':
+            model.hideChatOverlay();
+            break;
+          case 'session close':
+            model.close();
+            break;
+        }
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(other.hasPrimaryFocus, isTrue);
+        model.requestChatInputFocus();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(model.inputNode.hasPrimaryFocus, isTrue);
+      } finally {
+        await _unmountChatFocusNodes(tester);
+      }
+    });
+  }
+
+  testWidgets('chat delayed focus keeps only the latest request', (tester) async {
+    final model = _chatModel();
+    final other = await _mountChatFocusNodes(tester, model);
+    try {
+      model.requestChatInputFocus();
+      await tester.pump(const Duration(milliseconds: 50));
+      model.requestChatInputFocus();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(other.hasPrimaryFocus, isTrue);
+      await tester.pump(const Duration(milliseconds: 49));
+      expect(other.hasPrimaryFocus, isTrue);
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(model.inputNode.hasPrimaryFocus, isTrue);
+    } finally {
+      await _unmountChatFocusNodes(tester);
+    }
+  });
+
+  testWidgets('chat delayed focus disposal retires and refuses later requests',
+      (tester) async {
+    final owner = _UnusedChatOwner();
+    final model = ChatModel(WeakReference<FFI>(owner));
+    final other = await _mountChatFocusNodes(tester, model);
+    var disposed = false;
+    try {
+      model.requestChatInputFocus();
+      await tester.pump(const Duration(milliseconds: 50));
+      model.dispose();
+      disposed = true;
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(other.hasPrimaryFocus, isTrue);
+      model.requestChatInputFocus();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(other.hasPrimaryFocus, isTrue);
+    } finally {
+      await _unmountChatFocusNodes(tester);
+      model.inputNode.dispose();
+      if (!disposed) model.dispose();
+    }
+  });
+
+  testWidgets('chat panel closing retires focus before a held window reply',
+      (tester) async {
+    final panel = _ChatPanel(liveFocus: true);
+    final other = await _mountChatFocusNodes(tester, panel.model);
+    Future<dynamic>? closing;
+    try {
+      await panel.model.toggleCMSidePage();
+      expect(panel.model.isShowCMSidePage, isTrue);
+      panel.holdAt = 'resize';
+      closing = panel.model.toggleCMSidePage();
+      await panel.started.future;
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(other.hasPrimaryFocus, isTrue);
+      panel.released.complete();
+      await closing;
+      expect(panel.model.isShowCMSidePage, isFalse);
+      await panel.model.toggleCMSidePage();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(panel.model.inputNode.hasPrimaryFocus, isTrue);
+    } finally {
+      if (!panel.released.isCompleted) panel.released.complete();
+      await closing;
+      await _unmountChatFocusNodes(tester);
+    }
+  });
+
   test('chat overlay keeps one listener and current focus behavior', () {
     final model = _chatModel();
     final overlay = BlockableOverlayState();

@@ -20,9 +20,9 @@ SUPPORT = {
 def main():
     if (sys.argv[1:] not in [['prepare'], ['verify']]
             or (os.geteuid(), os.getegid()) != (1000, 1000)
-            or Path.cwd() != Path('/work/project')):
+            or Path.cwd() != Path('/work/source/flutter')):
         raise ValueError('settings probe requires its isolated nonroot test entry')
-    repo, project = Path('/source/flutter'), Path('/work/project')
+    repo, project = Path('/source/flutter'), Path('/work/source/flutter')
     prepare = sys.argv[1] == 'prepare'
     for source in sorted((repo / 'lib').rglob('*')):
         if not source.is_file():

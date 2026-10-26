@@ -8511,18 +8511,52 @@ impl Connection {
             log::info!("Running port forwarding loop");
             let mut last_recv_time = Instant::now();
             let mut idle_timer = crate::rustdesk_interval(time::interval(Duration::from_secs(1)));
+            // Retain the same relay future across nonterminal CM messages so a pending
+            // socket write keeps its bytes. Terminal controls remain live during that write.
+            let relay = async {
+                loop {
+                    tokio::select! {
+                        biased;
+                        res = forward.next() => {
+                            if let Some(res) = res {
+                                last_recv_time = Instant::now();
+                                // local target -> seal on the keyed stream -> peer.
+                                self.stream.send_bytes(res?.into()).await?;
+                            } else {
+                                bail!("Forward reset by the peer");
+                            }
+                        },
+                        res = self.stream.next() => {
+                            if let Some(res) = res {
+                                last_recv_time = Instant::now();
+                                // peer -> decrypted frame -> local target.
+                                timeout(PORT_FORWARD_SEND_TIMEOUT, forward.send(res?)).await??;
+                            } else {
+                                bail!("Stream reset by the peer");
+                            }
+                        },
+                        _ = idle_timer.tick() => {
+                            if last_recv_time.elapsed() >= PORT_FORWARD_IDLE_TIMEOUT {
+                                bail!("Timeout");
+                            }
+                        }
+                    }
+                }
+            };
+            tokio::pin!(relay);
             loop {
                 tokio::select! {
                     biased;
                     _ = cancellation.cancelled() => {
                         bail!("Server is shutting down");
                     }
-                    Some(item) = rx_from_cm.recv() => {
+                    item = rx_from_cm.recv() => {
                         let data = match item {
-                            crate::ui_cm_interface::CmEgressItem::Data(data) => data,
-                            crate::ui_cm_interface::CmEgressItem::Failed(failure) => {
+                            Some(crate::ui_cm_interface::CmEgressItem::Data(data)) => data,
+                            Some(crate::ui_cm_interface::CmEgressItem::Failed(failure)) => {
                                 bail!(failure.to_string());
                             }
+                            None => bail!("Connection manager channel closed"),
                         };
                         match data {
                             ipc::Data::Close => {
@@ -8535,29 +8569,7 @@ impl Connection {
                             _ => {}
                         }
                     }
-                    res = forward.next() => {
-                        if let Some(res) = res {
-                            last_recv_time = Instant::now();
-                            // local target -> SEAL (send_bytes on the keyed stream) -> peer.
-                            self.stream.send_bytes(res?.into()).await?;
-                        } else {
-                            bail!("Forward reset by the peer");
-                        }
-                    },
-                    res = self.stream.next() => {
-                        if let Some(res) = res {
-                            last_recv_time = Instant::now();
-                            // peer -> next() already DECRYPTED the frame -> write to the local target.
-                            timeout(PORT_FORWARD_SEND_TIMEOUT, forward.send(res?)).await??;
-                        } else {
-                            bail!("Stream reset by the peer");
-                        }
-                    },
-                    _ = idle_timer.tick() => {
-                        if last_recv_time.elapsed() >= PORT_FORWARD_IDLE_TIMEOUT {
-                            bail!("Timeout");
-                        }
-                    }
+                    result = &mut relay => return result,
                 }
             }
         }

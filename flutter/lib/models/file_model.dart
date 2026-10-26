@@ -1557,11 +1557,11 @@ class JobController {
     return jobID;
   }
 
-  static int? _eventInt(Object? value, {bool positive = false}) {
+  static int? _eventInt(Object? value, {int minimum = 0}) {
     if (value is! String) return null;
     final parsed = int.tryParse(value);
     if (parsed == null || value != parsed.toString()) return null;
-    if (positive ? parsed <= 0 : parsed < 0) return null;
+    if (parsed < minimum) return null;
     if (parsed > _kMaxNativeFileJobInt) return null;
     return parsed;
   }
@@ -1569,8 +1569,9 @@ class JobController {
   void tryUpdateJobProgress(
       Map<String, dynamic> evt, SessionID expectedSessionId) {
     if (!isCurrentSession(expectedSessionId)) return;
-    final id = _eventInt(evt['id'], positive: true);
-    final fileNum = _eventInt(evt['file_num']);
+    final id = _eventInt(evt['id'], minimum: 1);
+    // Progress reports the last completed file, or -1 before the first completes.
+    final fileNum = _eventInt(evt['file_num'], minimum: -1);
     if (id == null || fileNum == null) return;
     final jobIndex = getJob(id);
     if (jobIndex < 0) return;
@@ -1598,7 +1599,7 @@ class JobController {
   Future<bool> jobDone(
       Map<String, dynamic> evt, SessionID expectedSessionId) async {
     if (!isCurrentSession(expectedSessionId)) return false;
-    final id = _eventInt(evt['id'], positive: true);
+    final id = _eventInt(evt['id'], minimum: 1);
     final eventFileNum = _eventInt(evt['file_num']);
     if (id == null || eventFileNum == null) return false;
     jobResultListener.tryComplete(expectedSessionId, evt);
@@ -1626,7 +1627,7 @@ class JobController {
 
   void jobError(Map<String, dynamic> evt, SessionID expectedSessionId) {
     if (!isCurrentSession(expectedSessionId)) return;
-    final id = _eventInt(evt['id'], positive: true);
+    final id = _eventInt(evt['id'], minimum: 1);
     final errValue = evt['err'];
     if (id == null || errValue is! String) return;
     final err = errValue;
@@ -1966,7 +1967,7 @@ class JobResultListener {
 
   bool tryComplete(
       SessionID expectedSessionId, Map<String, dynamic> event) {
-    final actionId = JobController._eventInt(event['id'], positive: true);
+    final actionId = JobController._eventInt(event['id'], minimum: 1);
     final fileNum = JobController._eventInt(event['file_num']);
     if (actionId == null || fileNum == null) return false;
     final key = _JobResultKey(expectedSessionId, actionId, fileNum);
@@ -1987,7 +1988,7 @@ class JobResultListener {
 
   bool tryCompleteError(
       SessionID expectedSessionId, Map<String, dynamic> event) {
-    final actionId = JobController._eventInt(event['id'], positive: true);
+    final actionId = JobController._eventInt(event['id'], minimum: 1);
     final fileNum = JobController._eventInt(event['file_num']);
     final error = event['err'];
     if (actionId == null || fileNum == null || error is! String) return false;
@@ -2356,7 +2357,7 @@ class FileFetcher {
   // event handler to derive an action identity.
   bool tryCompleteRecursiveTaskWithError(
       SessionID expectedSessionId, Map<String, dynamic> event) {
-    final id = JobController._eventInt(event['id'], positive: true);
+    final id = JobController._eventInt(event['id'], minimum: 1);
     final error = event['err'];
     if (id == null || error is! String) return false;
     final pending = _readRecursiveTasks[id];

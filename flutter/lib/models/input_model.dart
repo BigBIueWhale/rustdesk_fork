@@ -1866,11 +1866,14 @@ class InputModel {
       } else if (dy < 0) {
         dy = accel;
       }
-      bind.sessionSendMouse(
-          sessionId: sessionId,
-          msg: '{"type": "wheel", "x": "$dx", "y": "$dy"}');
+      sendWheelScroll(dx, dy, expectedSessionId: sessionId);
     }
   }
+
+  Future<void> sendWheelScroll(int x, int y,
+      {required SessionID expectedSessionId}) => bind.sessionSendMouse(
+      sessionId: expectedSessionId,
+      msg: '{"type": "wheel", "x": "$x", "y": "$y"}');
 
   void refreshMousePos() => handleMouse({
         'buttons': 0,

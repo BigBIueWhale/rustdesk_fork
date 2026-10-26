@@ -59,24 +59,35 @@ class _Input extends InputModel {
       : super(WeakReference<FFI>(owner), keyboardBackend: _Keys());
   final _Owner owner;
   final scrolls = <({SessionID session, int x, int y})>[];
+  final wheels = <({SessionID session, int x, int y})>[];
   final scales = <int>[];
   final scaleTargets = <SessionID>[];
   final pointers = <({SessionID session, String type})>[];
   Future<void> Function()? onScroll;
+  bool viewOnly = false;
+  bool viewCamera = false;
+  bool keyboardAllowed = true;
   @override
   String get id => '';
   @override
-  bool get isViewOnly => false;
+  bool get isViewOnly => viewOnly;
   @override
-  bool get isViewCamera => false;
+  bool get isViewCamera => viewCamera;
   @override
-  bool get keyboardPerm => true;
+  bool get keyboardPerm => keyboardAllowed;
   @override
   bool get showMyCursor => false;
   @override
   bool get useEdgeScroll => false;
 
   // Observe only final native output; gesture processing and timers are real.
+  @override
+  Future<void> sendWheelScroll(int x, int y,
+      {required SessionID expectedSessionId}) {
+    wheels.add((session: expectedSessionId, x: x, y: y));
+    return Future.value();
+  }
+
   @override
   Future<void> sendTrackpadScale(int scale,
       {SessionID? expectedSessionId}) {
@@ -155,6 +166,84 @@ void _run(void Function(FakeAsync, _Owner, _Input) body) {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('wheel ordinary directions retain session and dominant axis', () {
+    _run((clock, owner, input) {
+      for (final delta in [const Offset(20, 0), const Offset(-20, 0),
+          const Offset(0, 20), const Offset(0, -20), const Offset(40, 20),
+          const Offset(20, -40), const Offset(20, 20)]) {
+        input.onPointerSignalImage(PointerScrollEvent(scrollDelta: delta));
+      }
+      expect(input.wheels.map((event) => (event.x, event.y)),
+          [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, 0), (0, 1), (0, -1)]);
+      expect(input.wheels.every((event) => event.session == owner.sessionId),
+          isTrue);
+    });
+  });
+
+  test('wheel inactive owner refuses dispatch and permits fresh input', () {
+    _run((clock, owner, input) {
+      owner.current = false;
+      input.onPointerSignalImage(const PointerScrollEvent(
+          scrollDelta: Offset(0, 20)));
+      expect(input.wheels, isEmpty);
+      owner.sessionId = const Uuid().v4obj();
+      owner.clientOwnerId = const Uuid().v4obj();
+      owner.current = true;
+      input.onPointerSignalImage(const PointerScrollEvent(
+          scrollDelta: Offset(0, 20)));
+      expect(input.wheels, [(session: owner.sessionId, x: 0, y: -1)]);
+    });
+  });
+
+  test('wheel disposed model refuses retained callbacks', () {
+    _run((clock, owner, input) {
+      final callback = input.onPointerSignalImage;
+      input.disposeRelativeMouseMode(expectedSessionId: owner.sessionId);
+      callback(const PointerScrollEvent(scrollDelta: Offset(0, 20)));
+      expect(input.wheels, isEmpty);
+      final replacement = _Owner();
+      try {
+        replacement.inputModel.onPointerSignalImage(const PointerScrollEvent(
+            scrollDelta: Offset(0, 20)));
+        expect(replacement.inputModel.wheels,
+            [(session: replacement.sessionId, x: 0, y: -1)]);
+      } finally {
+        replacement.inputModel.close();
+      }
+    });
+  });
+
+  test('wheel permission refusal permits an authorized retry', () {
+    _run((clock, owner, input) {
+      input.keyboardAllowed = false;
+      input.onPointerSignalImage(const PointerScrollEvent(
+          scrollDelta: Offset(0, 20)));
+      expect(input.wheels, isEmpty);
+      input.keyboardAllowed = true;
+      input.onPointerSignalImage(const PointerScrollEvent(
+          scrollDelta: Offset(0, 20)));
+      expect(input.wheels, [(session: owner.sessionId, x: 0, y: -1)]);
+    });
+  });
+
+  test('wheel view-only and camera refusals retain normal control', () {
+    _run((clock, owner, input) {
+      input.viewOnly = true;
+      input.onPointerSignalImage(const PointerScrollEvent(
+          scrollDelta: Offset(0, 20)));
+      expect(input.wheels, isEmpty);
+      input.viewOnly = false;
+      input.viewCamera = true;
+      input.onPointerSignalImage(const PointerScrollEvent(
+          scrollDelta: Offset(0, 20)));
+      expect(input.wheels, isEmpty);
+      input.viewCamera = false;
+      input.onPointerSignalImage(const PointerScrollEvent(
+          scrollDelta: Offset(0, 20)));
+      expect(input.wheels, [(session: owner.sessionId, x: 0, y: -1)]);
+    });
+  });
 
   test('trackpad gesture orphan update and end emit nothing', () {
     _run((clock, owner, input) {

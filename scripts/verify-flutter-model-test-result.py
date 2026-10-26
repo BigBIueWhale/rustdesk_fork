@@ -511,6 +511,11 @@ PHYSICAL_MOUSE_TESTS = {
 }
 
 TRACKPAD_INPUT_TESTS = {
+    "wheel ordinary directions retain session and dominant axis",
+    "wheel inactive owner refuses dispatch and permits fresh input",
+    "wheel disposed model refuses retained callbacks",
+    "wheel permission refusal permits an authorized retry",
+    "wheel view-only and camera refusals retain normal control",
     "trackpad gesture orphan update and end emit nothing",
     "trackpad gesture changed session cannot inherit pan or fling",
     "trackpad gesture changed client cannot inherit pan or fling",

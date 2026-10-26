@@ -13833,165 +13833,60 @@ metadata decoding with fixed diagnostics. Refused input preserves its exact prio
 platform input, both resolution encodings, positive-dimension filtering, ordering and recovery
 remain covered. Session/type checks stay at the callers; incremental platform merging is separate.
 
-**Outgoing chat reset (`52b9db70`) — model correction verified; session integration OPEN.**
-`ChatModel.resetClientMode()` clears every outgoing message body in place instead of looking
-up an integer in its `MessageKey` map and silently clearing nothing. Incoming history,
-selection, keys, peer metadata and list identity remain intact. Local chat-user creation is
-lazy, so history-only operations do not require native translation startup. On unchanged
-regression preparation `c4224baf`, the two new production-model tests fail because outgoing
-messages survive reset; all ten prior peer tests pass. With only the reset method changed,
-the same isolated Linux Flutter 3.24.5 cohort passes all twelve tests and three result-parser
-checks in 268 outer seconds. Cases cover multiple outgoing peers, both directions for one
-peer, incoming selection, empty/repeated reset, fresh messages after reset and incoming
-reconnect. The ten prior test bodies are byte-identical. Both runs retain unattributed
-external endpoint changes; no host service was inspected or changed, and the accepted
-candidate's harness audit proves host IP-socket creation kernel-denied. QEMU and bounded RAM
-workspaces are retired; baseline failure diagnostics were reconciled under the exact run
-lock. Evidence: `.harness-state/verifier-vm/chat-reset-6b77b932.json`. This is actual Dart-model
-behavior and fresh bridge/import compilation, not a native session or installed-app test.
-Mobile/desktop session integration, message delivery and broader lifecycle, R-S0 and R-F5
-acceptance remain OPEN; all user-parked work stays parked.
+**Chat model and CM recipient handling — component/widget corrections verified; native integration OPEN.**
+The current implementation is in `flutter/lib/models/chat_model.dart`, with the CM
+registry sender in `src/ui_cm_interface.rs` and generation-bearing FFI in
+`src/flutter_ffi.rs`. Retained evidence files below are under
+`.harness-state/verifier-vm/`; their source/artifact bindings and A/B results establish
+the stated component behavior, not complete application acceptance.
 
-**Chat delivery ownership (`b86445fc`) — model correction verified; native integration OPEN.**
-`ChatModel.receive` captures the outgoing session/UI-owner UUIDs and peer, or the incoming
-registry generation and peer, before its first asynchronous wait. It rechecks that owner
-after CM-window, chat-page and minimized-window waits and before committing messages.
-Incoming work retains its admitted client instead of selecting a successor by numeric ID.
-Outgoing session changes do not invalidate a still-current incoming generation. At unchanged
-production preparation `2413796d`, all six retirement/replacement assertions fail while both
-live-delivery controls and the twelve pre-existing cases pass. With only `receive` changed,
-the identical twenty-case production Dart cohort and three parser checks pass in 269 outer
-seconds on pinned Flutter 3.24.5. Cases observe message/selection/latest-key publication,
-notifications, unread state and recorded window/tab effects across controlled page and
-platform-query waits. Existing test bodies are byte-identical. Earlier formatter, fixture
-typing and window-mock failures are retained separately; they are not a clean A/B result.
-Evidence: `.harness-state/verifier-vm/chat-receive-3d2bc867.json`. All run roots and bounded
-RAM workspaces are retired. Host IP-socket creation is kernel-denied; external endpoint
-changes remain unattributed and untouched. These are actual ChatModel tests with fixture
-parents and recorded platform-channel doubles, not native-window or peer/session tests.
-Already-started native window effects, cancellation/drain, message ordering/resource bounds,
-desktop/mobile event and lifecycle integration, installed behavior and R-S0/R-F5/release
-acceptance remain OPEN. Every user park remains unchanged.
+| Surface | Current behavior | Retained evidence |
+| --- | --- | --- |
+| Outgoing reset (`52b9db70`) | `resetClientMode()` clears every outgoing message body in place. Incoming history, selection, keys, peer metadata and list identity survive. Lazy local-user creation keeps history-only operations independent of native translation startup. Tests cover multiple peers, both directions, empty/repeated reset, fresh messages and incoming reconnect. | `chat-reset-6b77b932.json` |
+| Receive ownership (`b86445fc`) | Before the first await, `receive` captures the outgoing session/UI-owner UUIDs and peer, or incoming registry generation and peer. It revalidates after CM-window, chat-page and minimized-window waits and before publication. Incoming work retains its admitted client rather than reselecting a numeric-ID successor; outgoing-session changes do not invalidate a current incoming generation. Tests observe messages, selection, latest key, notifications, unread state and window/tab effects during retirement/replacement and live delivery. | `chat-receive-3d2bc867.json` |
+| CM panel failure/retry (`bd906c6f`) | One serialized `toggleCMSidePage` completes show, size and position before committing visibility, opening unread reset, focus or notifications. Its `finally` releases the busy latch while propagating failures for explicit retry. Selected tab/client comes from the model's owning server. Dimensions, alignment and concurrent-toggle refusal remain. Tests cover failure at each window step in both directions, pending state, overlap, exact retry/layout and repeated healthy cycles. | `chat-panel-retry-f742b8c5.json` |
+| CM recipients and drafts (`8ec0bd83`, `3b6aa100`, `9b12a6c9`) | Native sending validates ID and requested registry generation under one read guard, rejects pending/disconnected owners and retains only the admitted sender. FFI requires the generation; the web signature remains unimplemented. Dart checks the selected peer/ID/live positive generation before bridge/history mutation and retains its parent through submission. Enter and the actual toolbar button share `sendDraft`; only local acceptance clears the composer, bypassing Dash's unconditional clear. Local acceptance remains optimistic and is **not** a peer-delivery acknowledgement. Tests cover reused IDs, delayed sending, missing/invalid/disconnected recipients and accepted/refused drafts through both inputs. | `chat-send-owner-6c616053.json` |
+| Enter handling (`6580a6e2`) | Only fresh unshifted Enter key-down submits. Both Shift keys preserve ordinary editing; Shift release, Enter repeat and another key while Enter is held cannot submit a later draft. Logical-key, Shift and repeat handling follow pinned Flutter 3.24.5 semantics. Empty/refused drafts and recipient admission remain intact. Tests dispatch keyboard events through the mounted production toolbar/model. | `chat-enter-1a4d0742.json` |
+| Overlay subscription (`abf53c82`) | The model retains one subscription; rebinding the same overlay is idempotent. Replacement/disposal pause then cancel the old subscription, and disposal refuses later binding. Pausing revokes callbacks immediately while GetX 4.7.2 defers removal during delivery. Tests cover repeated binding, stale overlay effects and replacement/disposal during callbacks. | `chat-overlay-dcd34f17.json` |
+| Delayed focus (`4166d1f5`) | One cancellable 100 ms timer owns focus. New requests supersede old ones; overlay unblock/replacement, window/overlay hiding, session close and disposal cancel pending focus. CM closing cancels before native-window awaits. Disposal refuses requests; ordinary close permits reopening. Real Flutter focus nodes and timed frames cover retirement, replacement deadlines, disabled/current-node controls and a held CM-window reply. | `chat-focus-7525350d.json` |
 
-**CM side-page failure recovery — model correction verified; native integration OPEN.**
-`bd906c6f` makes `ChatModel.toggleCMSidePage` one serialized transition:
-show, size and position must complete before its visibility flag, opening unread
-reset, focus request or notification commits. A `finally` releases the busy latch
-while propagating failures, allowing an explicit retry. Selected-tab/client lookup
-uses the model's owning server instead of combining global selection with parent
-client state. The duplicated open/close native-call branches are removed; existing
-dimensions, alignment and concurrent-toggle refusal remain.
-At owning-server lookup preparation `a0acfd8a`, all eight new failure/pending
-assertions fail while the repeated healthy transition control and twenty prior
-peer/chat cases pass. With only the transition method changed, the identical
-twenty-nine-case production Dart cohort and three parser controls pass. Cases cover
-show, resize and positioning errors in both directions, unchanged visibility/unread/
-focus/notification state before completion, exact retry calls and layouts, overlapping
-requests and three healthy open/close cycles. The prior twenty test bodies and
-fixtures are byte-identical. One earlier run stopped at the pinned formatter and
-executed no behavior. Evidence: `.harness-state/verifier-vm/chat-panel-retry-f742b8c5.json`.
-These tests execute the production model and vendored window-manager Dart methods
-with controlled window/screen method-channel replies and recorded focus requests.
-Native geometry or partial effects after failure, cancellation/owner drain, real
-chat/file UI and peer operation, other-platform/installed behavior and R-S0/R-F5/
-release acceptance remain OPEN. No LPE closure or displayed-lag cause is claimed;
-all user parks remain unchanged.
+**Evidence scope.** The latest retained Linux Flutter 3.24.5 chat cohort passes 64 cases
+and three result-parser controls. Its actual production model/toolbar, GetX subscriptions
+and Flutter focus behavior run with fixture parents, controlled window/screen method
+channels and positive-send I/O recorders. Panel focus fixtures record requests without
+scheduling focus; the dedicated focus cases execute real focus nodes/timers. Earlier
+unchanged-test A/B comparisons, source/input identities and fresh generated-bridge/import
+compilation are recorded in the individual capsules. Successful Dart runs retain strict
+summary receipts, not per-case success JSON or a compiled test image. Formatter, fixture,
+missing-import and window-mock failures are separate diagnostics, not accepted behavior.
 
-**CM chat recipient binding and refused drafts — component/widget corrections verified;
-complete bridge/peer integration OPEN.** `8ec0bd83` validates numeric ID and requested
-registry generation under one registry read guard, including pending admission and
-disconnected state, then retains only that owner's sender. Chat cannot use a bare-ID
-lookup to select a successor. The FFI requires the generation; the existing unimplemented
-web signature mirrors it without adding a web CM mode. `3b6aa100` checks the selected
-peer, ID and live positive generation before the Dart CM producer changes message/history
-state or invokes the CM bridge. `9b12a6c9` makes Enter and the actual toolbar button share
-`sendDraft`: only local acceptance clears the composer. The toolbar bypasses Dash Chat's
-unconditional post-callback clear. The producer retains its parent through submission.
-Normal chat remains optimistic; local acceptance is not a peer-delivery acknowledgement.
+The native CM sender cohort passes 51 cases using the production registry/FFI sender and
+real queues with controlled schedules: six owner/refusal/recovery schedules, all five
+supported session types and ten exact payloads. Its retained result was reused only after
+all 24 bound inputs were rechecked unchanged. This component result does not execute the
+generated bridge transport, complete CM IPC, full Rust parent or an authenticated peer.
 
-At parameter preparation `dda842bc`, 49 native controls pass and two owner cases fail;
-the replacement mailbox receives stale messages in reused-ID and delayed-thread schedules.
-The same corrected cohort passes all 51 cases, including six owner/refusal/recovery
-schedules, all five supported session types and ten exact payloads. Only the sender part
-changes across 24 input/31 part receipts; prior 48 test bodies remain unchanged.
-The prepared Dart baseline `8ec0bd83` passes thirty cases and fails three stale-target
-assertions; `3b6aa100` passes all thirty-three. At input preparation `9261a9a9`,
-thirty-five controls pass and four draft-retention cases fail. The identical corrected
-thirty-nine-case inventory and three parser controls pass. Actual model refusal and
-the pinned Dash `InputToolbar` execute at Enter/button inputs for missing, reused,
-invalid-generation and disconnected clients. Two valid submission controls double native
-I/O and verify one submission plus clearing at each input. Prior thirty-three bodies stay
-unchanged; fresh bridge/import compilation runs. Candidate Dart evidence retains strict
-summary receipts, not per-case JSON or a compiled test image. The first native fixture compile stopped
-at a missing import without executing behavior. Two early UI runs stopped at formatting
-or a shared debug-print fixture invariant; their diagnostics are retained separately.
+The capsules retain exact joined QEMU/bounded-RAM retirement and listener observations.
+Some runs have unattributed external endpoint changes; the Enter cohort has zero deltas.
+Those exceptions remain recorded, with host IP-socket creation denied in the affected
+owned harnesses and no external endpoint owner inspected or changed. No zero-delta claim
+is made for the whole chat series.
 
-Evidence: `.harness-state/verifier-vm/chat-send-owner-6c616053.json`; source/artifact
-bindings, A/B observations and joined bounded-RAM cleanup are retained. Passed native
-evidence is reused only after all 24 inputs are rechecked unchanged. Native execution
-uses the actual registry/FFI sender and real queues with controlled schedules; widget
-tests use a fixture parent. Generated bridge transport, complete native CM IPC,
-authenticated peer/UI delivery, full Rust parent, installed/other-platform behavior,
-all fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN.
-Every user park remains unchanged.
+**Still OPEN.** Desktop/mobile event, route, view and full session integration; actual
+native geometry and already-started/partial window effects after failure; cancellation
+and owner drain; asynchronous open-after-close, broader ChatModel/FFI ownership and
+disposal; message ordering and history/resource bounds; hardware/soft keyboards, native
+IME and newline insertion; real chat/file UI, native bridge/CM IPC and authenticated
+peer delivery; full Rust parent and installed/other-platform execution. All fifteen
+credential-native actions, R-S0 immunity with complete functionality, R-F5 actual
+presentation/input-visible impairment recovery and long-session freshness, final/cold
+artifact reproducibility, independent reproduction and external review remain OPEN.
+These component results establish neither LPE closure nor the cause of displayed lag.
 
-**Chat Enter event handling (`6580a6e2`) — widget correction verified; native input integration OPEN.**
-The composer submits only on a fresh, unshifted Enter key-down. Both Shift keys leave
-Enter available to ordinary text editing; releasing Shift, repeating Enter or pressing
-another key while Enter is held cannot submit a later draft. The handler uses the event's
-logical key, both-sided Shift state and repeat flag, matching pinned
-[Flutter 3.24.5 keyboard semantics](https://github.com/flutter/flutter/blob/3.24.5/packages/flutter/lib/src/services/raw_keyboard.dart).
-The shared `sendDraft` retains empty/refused drafts and existing recipient admission.
-At preparation `cf8cad4f`, the mounted production toolbar/model cohort passes 48 cases
-and reports three regression errors: right Shift+Enter is consumed, Shift release sends
-the composing draft, and repeat/unrelated-key events submit later drafts. With only the
-handler changed, the identical 51-case inventory and three result-parser controls pass
-in 253 outer seconds. Prior 47 test bodies are byte-identical. Valid submissions replace
-native sending with a recorder; existing refusal cases execute production admission.
-This is Flutter keyboard-dispatch/component evidence, not native IME/newline insertion,
-hardware keyboard, soft-keyboard, bridge transport or authenticated peer delivery.
-Evidence: `chat-enter-1a4d0742.json`, including source/input identities, failed baseline,
-fresh generated bridge, strict success summary and joined bounded-RAM cleanup. All
-listener snapshots have zero deltas. Chat history/resource bounds, native input/session
-integration, all fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN.
-Every user park remains unchanged.
-
-**Chat overlay subscriptions (`abf53c82`) — model correction verified; native view integration OPEN.**
-`ChatModel` retains one overlay subscription. Rebinding the same overlay is idempotent;
-replacement and disposal pause then cancel the old subscription, and disposal refuses
-new bindings. Pausing matters because pinned GetX 4.7.2 defers subscription removal while
-delivering an event. The helper that discarded the subscription and an unreachable focus
-toggle are removed. At unchanged-product preparation `c1db4c0f`, 51 existing cases pass
-and four regressions fail: repeated binding retains 20 listeners, an old overlay marks
-the replacement chat unfocused, and callbacks still run during replacement or disposal.
-The identical Linux Flutter shard passes all 55 cases after correction, plus three
-parser controls, in 268 outer seconds. Existing test bodies remain byte-identical.
-This exercises production Dart and GetX subscription behavior; native desktop/mobile
-page/session integration, broader chat disposal, history bounds and R-S0/R-F5
-acceptance remain OPEN. `chat-overlay-dcd34f17.json` retains source/input identities,
-the initial formatting refusal, failed baseline, strict success summary and joined RAM
-cleanup. Final host endpoint snapshots include unattributed changes; no endpoint owner
-was inspected or changed. The owned harness denies host IP sockets. The privileged
-startup/config-loader investigation remains OPEN/PARKED following the user's pivot;
-all other parks and all fifteen credential-native obligations remain open.
-
-**Chat delayed focus (`4166d1f5`) — Flutter focus lifecycle verified; native integration OPEN.**
-`ChatModel` owns one cancellable 100 ms focus timer. A new request supersedes the old
-one; overlay unblock/replacement, window/overlay hiding, session close and disposal
-retire pending focus. CM panel closing cancels before its native-window awaits.
-Disposal refuses later requests; ordinary close permits fresh reopening. At unchanged
-production preparation `a90259a9`, 56 controls pass and eight focus assertions fail:
-the other mounted node loses primary focus after retirement or before the latest
-request's deadline. The identical corrected Linux Flutter shard passes all 64 cases
-and three parser controls in 265 outer seconds. The nine new cases use real Flutter
-focus nodes and timed frames, including disabled/current-node controls and a held CM
-window reply; existing 55 test bodies remain unchanged and the panel fixture's default
-still records requests without scheduling focus. Native window operations are doubled.
-Actual desktop/mobile route, keyboard/IME and full session integration, broader chat
-ownership/disposal, all credential-native actions and R-S0/R-F5 remain OPEN.
-`chat-focus-7525350d.json` retains source/input identities, the initial formatting
-refusal, failed baseline, strict success summary, endpoint observations and joined
-bounded-RAM cleanup. User parks remain unchanged.
+**OPEN/PARKED.** The privileged startup/config-loader investigation and broader outgoing
+chat conversation/UI-generation authority review remain parked at the user's direction;
+no LPE or wrong-peer delivery was established by those reviews. Logging, Windows VM
+storage and every other existing user park remain unchanged.
 
 **CM close admission and history outcomes — native component and Dart batch verified;
 complete CM/peer and rendered interaction OPEN.** `d7489810` returns a boolean

@@ -313,9 +313,8 @@ class _GeneralState extends State<_General> {
 
   @override
   Widget build(BuildContext context) {
-    final scrollController = ScrollController();
     return ListView(
-      controller: scrollController,
+      primary: false,
       children: [
         // R-G1 / GC (§19): the "Service" Start/Stop card is REMOVED, not Offstage-hidden. The controlled
         // service is pinned always-on (stop-service=N — un-killable by a local UI write, R-X9/R-X10) and
@@ -668,7 +667,6 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
 
   @override
   bool get wantKeepAlive => true;
-  final scrollController = ScrollController();
 
   @override
   Widget build(BuildContext context) {
@@ -683,7 +681,7 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
     // stays immutable at the config funnel regardless of any UI (R-S16: is_option_can_save rejects
     // every pinned write). So the tab is directly usable; pinned values are shown read-only below.
     return SingleChildScrollView(
-        controller: scrollController,
+        primary: false,
         child: Column(
           children: [
             permissions(context),
@@ -870,8 +868,7 @@ class _DisplayState extends State<_Display> {
 
   @override
   Widget build(BuildContext context) {
-    final scrollController = ScrollController();
-    return ListView(controller: scrollController, children: [
+    return ListView(primary: false, children: [
       viewStyle(context),
       scrollStyle(context),
       imageQuality(context),
@@ -1117,9 +1114,8 @@ class _AboutState extends State<_About> {
       final version = data['version'].toString();
       final buildDate = data['buildDate'].toString();
       const linkStyle = TextStyle(decoration: TextDecoration.underline);
-      final scrollController = ScrollController();
       return SingleChildScrollView(
-        controller: scrollController,
+        primary: false,
         child: _Card(title: translate('About RustDesk'), children: [
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,

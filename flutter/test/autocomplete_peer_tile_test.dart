@@ -82,9 +82,6 @@ void main() {
   testWidgets('autocomplete short alias and address remain fully visible',
       (tester) async {
     await _checkTile(tester,
-        width: 320,
-        address: '192.0.2.7',
-        alias: 'Office',
-        truncated: false);
+        width: 320, address: '192.0.2.7', alias: 'Office', truncated: false);
   });
 }

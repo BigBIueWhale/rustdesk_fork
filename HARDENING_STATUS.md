@@ -6059,6 +6059,28 @@ loader/service behavior, release and independent reproduction remain OPEN.
 catalogue and source-mutation tests. Actual archive admission does not import or execute
 `build.py`; an invocation without an archive or explicit self-test is refused. Archive
 ownership, modes, inventory/link, policy, checksum and ELF validators remain unchanged.
+
+**Debian SysV startup-state retention.** `ed441bc7` removes premature `update-rc.d remove`
+from `res/DEBIAN/prerm`; the existing `postrm purge` action owns final link removal.
+The real Debian `dpkg`/helper regression at `481c25a2` demonstrates that the historical
+script deletes administrator-disabled SysV links on removal and restores enabled defaults
+on reinstallation. The corrected script preserves the exact disabled links through
+deconfigure, removal and reinstallation; purge removes the init conffile, links and owned
+configuration while preserving a neighboring service link. Default installation starts a
+harmless oneshot unit; administrator-disabled systemd state stays disabled, and explicit
+starts followed by deconfigure/removal exercise actual service stops. Deconfigure/configure
+branch controls invoke installed scripts with dpkg's maintainer environment; installation,
+upgrade, removal, reinstallation and purge use actual dpkg transactions.
+`--debian-maintainer-tests` passed in 17 outer seconds in the no-NIC bounded-RAM VM, with
+Docker retired before guest-root package operations, exact joins and no host-listener deltas.
+The initial expected removal error was contradicted by the pinned helper: it returned zero
+and deleted the links. That hypothesis and the corrected fixture assumptions are retained,
+not counted as passes. `debian-prerm-state-a5d3fb53.json` binds source, actual tools/packages,
+old/current link maps, raw observations and cleanup. This proves the selected packaging
+behavior using a fixture service; the RustDesk executable and real SysV init process did
+not run. Final product packages, installed application shutdown/credential drain, native
+SysV/OpenRC/runit lifecycle, other upgrade/error paths and R-S0/R-B2 acceptance remain OPEN.
+
 Source RPATH and maintainer-script checks remain in `verify.sh`, with emitted-script
 checks in `build-debian.sh`. The 27 focused package/CLI/native ELF cases and R-S11ac/R-X14
 resource consistency are bound by `debian-archive-admission-229b13d3.json`.

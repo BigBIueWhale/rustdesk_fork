@@ -96,7 +96,7 @@ def main():
             ("clipboard", repo / "libs/clipboard/Cargo.toml", "clipboard", 18,
              ["platform::unix::fuse::cs::fuse_test::"]),
         ):
-            output = run(["cargo", "test", "--offline", "--locked", "-p", package,
+            output = run(["cargo", "test", "--offline", "--locked", "--manifest-path", str(manifest), "-p", package,
                           "--features", "unix-file-copy-paste", "--lib", "--no-run",
                           "--message-format=json", *config], 180)
             messages = [json.loads(line) for line in output.splitlines() if line.startswith(b"{")]

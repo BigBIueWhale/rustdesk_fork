@@ -52,6 +52,9 @@ case inventories, intermediate failures, source/artifact hashes and timings rema
 receipts under `.harness-state/verifier-vm/` and in Git history. Shared current-artifact,
 installed/other-platform, R-S0/R-F5, resource/soak and release obligations below remain OPEN.
 
+**User pivot (2026-10-26):** Same-query autocomplete refresh and selection remain
+OPEN/PARKED. No widget implementation was changed; do not resume automatically.
+
 | Surface | Current state and evidence boundary | Receipt |
 | --- | --- | --- |
 | Recent-peer loader lifetime (`4f4d4d94`) | Cold loading ends on model publication, including an empty result; native request completion alone cannot mark data loaded. The arbitrary delay is removed. Request failures propagate and permit retry; clearing releases the page callback, cached rows and listener and refuses later work. Both connection pages use actual loading state and report request failure while mounted. With the same dependency-injected loader cases and harness, preparation `df78392c` has 78 passes/four failures; the corrected four-suite check passes 82 cases plus three parser controls. This executes the loader and real `Peers` model with controlled requests/publication, while compiling the callers. Full-page loading/error/keyboard behavior, same-query dropdown refresh and selection, missing/out-of-order native publication, full FFI/filesystem, device and installed/R-S0/R-F5 acceptance remain OPEN. Registration ownership stays user-PARKED. The baseline retains two unattributed loopback additions; no endpoint owner was inspected or changed. | `peer-loader-a60fd6f2.json` |
@@ -4556,6 +4559,23 @@ Evidence: `compressed-output-storage-8c3876a9.json`. This adds an allocation
 and copy; full caller/throughput/resource acceptance remains OPEN. Returned
 vector capacity is not allocator usable size or RSS. Complete cursor/clipboard/
 file/terminal, other-platform/installed and release evidence remain required.
+
+**Native compressor context allocation (`cb09e54a`).** The thread-local cache now
+holds only a successfully configured `CCtx`, created through `try_create`.
+Native context allocation refusal returns `OutOfMemory`; a later call can retry,
+and successful contexts are reused. The pinned compression level, empty dictionary,
+`compress2` operation, output ownership and public error-returning API are preserved.
+At unchanged-product preparation `8c628080`, GNU linker wrapping of the native
+`ZSTD_createCCtx` return reproduces six panics: two refusals on each fresh thread
+for empty, one-byte and 128-KiB input. Twelve existing tests pass. The identical
+13-case Linux component suite passes after correction in 0.35s (73s outer):
+six `OutOfMemory` results, three fault probes, exact retries and context reuse.
+Healthy calls use the pinned native library; compressed bytes match the upstream
+compressor and decode exactly. All three test threads join; both A/B VMs and RAM
+workspaces retire with zero endpoint deltas. `compressor-context-cfc43142.json`
+retains source/artifact bindings and observations. This tests the constructor's
+null result, not whole-process memory exhaustion. Other C allocations, full callers,
+other platforms, installed behavior and R-S0/R-F5/release acceptance remain OPEN.
 
 `cc88308c` replaces the shared receive decoder's Rust 1.75 `read_to_end` growth
 with 8-KiB stack reads and fallible output reservation before each append;

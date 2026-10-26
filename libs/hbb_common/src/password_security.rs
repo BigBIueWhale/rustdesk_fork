@@ -432,6 +432,37 @@ mod test {
         use sodiumoxide::base64::{encode, Variant};
         use sodiumoxide::crypto::secretbox;
 
+        #[cfg(target_os = "linux")]
+        if std::env::var_os("RUSTDESK_ENCRYPTED_CLASSIFIER_CHILD").is_some() {
+            let large = format!("00{}", "A".repeat(1024 * 1024));
+            let mut cases = vec![
+                ("large-valid", large.as_bytes().to_vec(), true),
+                ("large-invalid-tail", format!("{large}!").into_bytes(), false),
+                ("large-extra-padding", format!("{large}=").into_bytes(), false),
+                ("short", b"00YWJjZA==".to_vec(), false),
+                ("minimum", format!("00{}", encode([0u8; 16], Variant::Original)).into_bytes(), true),
+                ("missing-prefix", large.as_bytes()[1..].to_vec(), false),
+                ("empty", Vec::new(), false),
+            ];
+            for size in [766, 767, 768, 769, 1535, 1536, 1537] {
+                cases.push(("chunk-boundary", format!("00{}",
+                    encode(vec![0x5au8; size], Variant::Original)).into_bytes(), true));
+            }
+            for (name, input, expected) in cases {
+                let actual = crate::fs::with_allocations_refused(|| is_encrypted(&input));
+                println!("ENCRYPTED_CLASSIFIER_ALLOC=observed case={name} bytes={} accepted={actual} rust_allocations=none", input.len());
+                assert_eq!(actual, expected, "{name}");
+            }
+            let malformed = format!("{large}!");
+            let refused = crate::fs::with_allocations_refused(|| {
+                encrypt_str_or_original(&malformed, 128).is_empty()
+                    && encrypt_vec_or_original(malformed.as_bytes(), 128).is_empty()
+            });
+            println!("ENCRYPTED_CLASSIFIER_WRAPPERS=observed oversized_malformed_refused={refused} rust_allocations=none");
+            assert!(refused);
+            return;
+        }
+
         // Empty data should not be considered encrypted
         assert!(!is_encrypted(b""));
         assert!(!is_encrypted(b"0"));
@@ -466,6 +497,59 @@ mod test {
         // Original unencrypted data should not be detected as encrypted
         assert!(!is_encrypted(b"1"));
         assert!(!is_encrypted("1".as_bytes()));
+
+        let mut comparisons = 0;
+        let mut compare = |input: &[u8]| {
+            let expected = input.starts_with(b"00") && input.len() > VERSION_LEN
+                && sodiumoxide::base64::decode(&input[VERSION_LEN..], Variant::Original)
+                    .map(|value| value.len() >= secretbox::MACBYTES).unwrap_or(false);
+            assert_eq!(is_encrypted(input), expected,
+                "classifier differs from libsodium: case={comparisons} bytes={}", input.len());
+            comparisons += 1;
+        };
+        for size in (0..=40).chain(765..=771).chain(1533..=1539) {
+            let encoded = format!("00{}", encode(vec![0x5au8; size], Variant::Original));
+            compare(encoded.as_bytes());
+            for suffix in ["!", "=", "A", "\n", "\0"] {
+                compare(format!("{encoded}{suffix}").as_bytes());
+            }
+            compare(&encoded.as_bytes()[..encoded.len() - 1]);
+        }
+        let mut candidate = format!("00{}", encode([0u8; 3072], Variant::Original)).into_bytes();
+        for index in [0, 1, 2, 3, 1024, 1025, 1026, 1027, 2048, 2049, 2050, 4094, 4095, 4096, 4097] {
+            let old = candidate[index];
+            for byte in 0..=u8::MAX {
+                candidate[index] = byte;
+                compare(&candidate);
+            }
+            candidate[index] = old;
+        }
+        for size in [16, 17, 766, 767, 1534, 1535] {
+            let padded = format!("00{}", encode(vec![0u8; size], Variant::Original));
+            for suffix in ["AAAA", "AA==", "=", "", "\n"] {
+                compare(format!("{padded}{suffix}").as_bytes());
+            }
+            let mut pad_bits = padded.into_bytes();
+            let last_symbol = pad_bits.iter().rposition(|byte| *byte != b'=').unwrap();
+            for byte in 0..=u8::MAX {
+                pad_bits[last_symbol] = byte;
+                compare(&pad_bits);
+            }
+        }
+        println!("ENCRYPTED_CLASSIFIER_COMPAT=pass comparisons={comparisons} oracle=libsodium-original");
+
+        #[cfg(target_os = "linux")]
+        {
+            let child = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "password_security::test::test_is_encrypted", "--nocapture", "--test-threads=1"])
+                .env("RUSTDESK_ENCRYPTED_CLASSIFIER_CHILD", "1")
+                .output().unwrap();
+            assert!(child.stdout.len() + child.stderr.len() < 8192);
+            println!("{}", String::from_utf8_lossy(&child.stdout));
+            eprintln!("{}", String::from_utf8_lossy(&child.stderr));
+            assert!(child.status.success(), "classifier allocation worker: {}", child.status);
+            println!("ENCRYPTED_CLASSIFIER_CHILD=pass joined=true");
+        }
     }
 
     #[test]

@@ -1,12 +1,8 @@
 use std::{cell::RefCell, convert::TryFrom, io};
-use zstd::bulk::Compressor;
+use zstd::zstd_safe::{self, CCtx, CParameter};
 
-// The library supports regular compression levels from 1 up to ZSTD_maxCLevel(),
-// which is currently 22. Levels >= 20
-// Default level is ZSTD_CLEVEL_DEFAULT==3.
-// value 0 means default, which is controlled by ZSTD_CLEVEL_DEFAULT
 thread_local! {
-    static COMPRESSOR: RefCell<io::Result<Compressor<'static>>> = RefCell::new(Compressor::new(crate::config::COMPRESS_LEVEL));
+    static COMPRESSOR: RefCell<Option<CCtx<'static>>> = const { RefCell::new(None) };
 }
 
 pub fn compress(data: &[u8]) -> io::Result<Vec<u8>> {
@@ -17,16 +13,22 @@ pub fn compress(data: &[u8]) -> io::Result<Vec<u8>> {
                 format!("compression context is unavailable: {err}"),
             )
         })?;
-        let compressor = state.as_mut().map_err(|err| {
-            io::Error::new(
-                err.kind(),
-                format!("compression context initialization failed: {err}"),
-            )
-        })?;
+        let zstd_error = |code| io::Error::new(io::ErrorKind::Other, zstd_safe::get_error_name(code));
+        let compressor = match &mut *state {
+            Some(context) => context,
+            slot @ None => {
+                let mut context = CCtx::try_create()
+                    .ok_or_else(|| io::Error::from(io::ErrorKind::OutOfMemory))?;
+                context.set_parameter(CParameter::CompressionLevel(crate::config::COMPRESS_LEVEL))
+                    .map_err(zstd_error)?;
+                context.load_dictionary(&[]).map_err(zstd_error)?;
+                slot.insert(context)
+            }
+        };
         let mut output = Vec::new();
         output.try_reserve_exact(zstd::zstd_safe::compress_bound(data.len()))
             .map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
-        compressor.compress_to_buffer(data, &mut output)?;
+        compressor.compress2(&mut output, data).map_err(zstd_error)?;
         // Queued compressed payloads must not retain the worst-case workspace.
         if output.capacity() != output.len() {
             let mut packed = Vec::new();

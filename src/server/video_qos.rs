@@ -392,6 +392,8 @@ impl VideoQoS {
                 } else {
                     fps = (dividend_ms / avg_delay).min(devide_fps);
                 }
+                // Congested feedback cannot establish capacity for a higher rate.
+                fps = fps.min(previous_fps);
             }
 
             if avg_delay < DELAY_THRESHOLD_150MS {

@@ -11383,7 +11383,11 @@ run_flutter_model_tests() {
             | tee "$output" \
             | while IFS= read -r progress_line; do
                 if [ "$FLUTTER_TEST_PROFILE" = file-progress ]; then
-                    printf '%s\n' "$progress_line" || exit 1
+                    case "$progress_line" in
+                        FLUTTER_FILE_PROGRESS_STAGE=*) printf '%s\n' "$progress_line" || exit 1 ;;
+                        FLUTTER_*) ;; # Success receipts are published once after final validation.
+                        *) printf '%s\n' "$progress_line" || exit 1 ;;
+                    esac
                     continue
                 fi
                 case "$progress_line" in
@@ -11470,7 +11474,7 @@ run_flutter_model_tests() {
             || fail 'native window-channel artifact binding differs'
         grep -E '^LINUX_WINDOW_CHANNEL_ARTIFACTS=|^WINDOW_CHANNEL_CASE=|^WINDOW_VALUE_' "$output"
     fi
-    if [[ "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = custom-scale ]]; then
+    if [ "$FLUTTER_TEST_PROFILE" = custom-scale ]; then
         grep -E '^\{.*"type":"(start|suite|testStart|testDone|done)"' "$output"
     fi
     if [ "$FLUTTER_TEST_PROFILE" = connect-password ]; then

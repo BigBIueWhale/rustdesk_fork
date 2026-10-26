@@ -669,6 +669,13 @@ FILE_COMMAND_TESTS = {
     "new file job owners share admission with listing owners",
 }
 FILE_PROGRESS_TESTS = {
+    "mobile cancel preserves other jobs and result waiters",
+    "mobile late cancel cannot remove replacement or cleared jobs",
+    "mobile stale status callback cannot act on replacement jobs",
+    "mobile completed status dismisses only displayed job",
+    "mobile cancel failure preserves jobs and permits retry",
+    "mobile cancel obeys session ownership before and after dispatch",
+    "mobile status hides after its only job is cancelled",
     "resume reply preserves earlier done event",
     "resume reply preserves earlier error event",
     "resume reply preserves earlier skipped event",

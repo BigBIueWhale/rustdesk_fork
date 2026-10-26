@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/models/file_model.dart';
+import 'package:flutter_hbb/mobile/widgets/file_job_status.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 import 'package:uuid/uuid.dart';
@@ -56,7 +57,213 @@ class _ResumeHarness {
       controller.resumeJob(7, expectedSessionId: session);
 }
 
+
+class _StatusJob extends JobProgress {
+  @override
+  String display() => 'Rendered status';
+}
+
+class _StatusHarness {
+  final session = const Uuid().v4obj();
+  late var currentSession = session;
+  var nextId = 1;
+  final calls = <List<Object>>[];
+  final replies = <Completer<void>>[];
+  late final controller = JobController(() => currentSession, () => null,
+      isCurrentSession: (actual) => actual == currentSession,
+      requests: JobControllerRequests(
+        cancelJob: (sessionId, actionId) {
+          calls.add([sessionId, actionId]);
+          final reply = Completer<void>();
+          replies.add(reply);
+          return reply.future;
+        },
+        addJob: (_, __, ___, ____, _____, ______, _______) async {},
+        resumeJob: (_, __, ___) async {},
+      ));
+
+  JobProgress add({JobState state = JobState.inProgress}) {
+    final job = _StatusJob()
+      ..id = nextId++
+      ..type = JobType.transfer
+      ..state = state;
+    controller.jobTable.add(job);
+    return job;
+  }
+
+  List<int> get ids => controller.jobTable.map((job) => job.id).toList();
+
+  Future<void> render(WidgetTester tester) => tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          bottomSheet: FileJobStatus(controller: controller,
+              sessionId: session, translateText: (text) => text),
+        ),
+      ));
+
+  VoidCallback action(WidgetTester tester) =>
+      tester.widget<IconButton>(
+          find.widgetWithIcon(IconButton, Icons.cancel_outlined)).onPressed!;
+}
+
+
 void main() {
+
+  testWidgets('mobile cancel preserves other jobs and result waiters',
+      (tester) async {
+    final h = _StatusHarness();
+    final first = h.add();
+    final second = h.add();
+    final outcomes = <Object>[];
+    final waiter = h.controller.jobResultListener.dispatchAndWait(
+        expectedSessionId: h.session, actionId: second.id, fileNum: 0,
+        dispatch: () async {}).then<void>(
+            (value) => outcomes.add(value),
+            onError: (Object error) { outcomes.add(error); });
+    addTearDown(() async {
+      h.controller.jobResultListener.clear();
+      await waiter;
+    });
+    await h.render(tester);
+    await tester.tap(find.byIcon(Icons.cancel_outlined));
+    expect(h.calls, [[h.session, first.id]]);
+    expect(h.ids, [first.id, second.id]);
+    final third = h.add();
+    h.replies.single.complete();
+    await tester.pump();
+    expect(h.ids, [second.id, third.id]);
+    expect(outcomes, isEmpty);
+    expect(find.byIcon(Icons.cancel_outlined), findsOneWidget);
+    expect(h.controller.jobResultListener.tryComplete(h.session,
+        {'id': second.id.toString(), 'file_num': '0'}), isTrue);
+    await waiter;
+    expect(outcomes.single, isA<Map<String, dynamic>>());
+    await tester.tap(find.byIcon(Icons.cancel_outlined));
+    expect(h.calls.last, [h.session, second.id]);
+    h.replies.last.complete();
+    await tester.pump();
+    expect(h.ids, [third.id]);
+  });
+
+  testWidgets('mobile late cancel cannot remove replacement or cleared jobs',
+      (tester) async {
+    for (final replace in [false, true]) {
+      final h = _StatusHarness();
+      final first = h.add();
+      final second = h.add();
+      await h.render(tester);
+      await tester.tap(find.byIcon(Icons.cancel_outlined));
+      h.controller.removeJob(h.session, first.id);
+      JobProgress? replacement;
+      if (replace) {
+        replacement = h.add()..id = first.id;
+      }
+      h.replies.single.complete();
+      await tester.pump();
+      expect(h.ids, [second.id, if (replace) first.id]);
+      if (replacement != null) {
+        expect(identical(h.controller.jobTable.last, replacement), isTrue);
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
+  testWidgets('mobile stale status callback cannot act on replacement jobs',
+      (tester) async {
+    for (final state in [JobState.inProgress, JobState.done, JobState.error]) {
+      final h = _StatusHarness();
+      final first = h.add(state: state);
+      await h.render(tester);
+      final callback = h.action(tester);
+      h.controller.removeJob(h.session, first.id);
+      final replacement = h.add()..id = first.id;
+      final result = (callback as dynamic)();
+      if (result is Future) {
+        if (h.replies.isNotEmpty) h.replies.single.complete();
+        await result;
+      }
+      expect(h.calls, isEmpty);
+      expect(h.ids, [first.id]);
+      expect(identical(h.controller.jobTable.single, replacement), isTrue);
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
+  testWidgets('mobile completed status dismisses only displayed job',
+      (tester) async {
+    for (final state in [JobState.done, JobState.error]) {
+      final h = _StatusHarness();
+      final first = h.add(state: JobState.error);
+      final second = h.add(state: state);
+      await h.render(tester);
+      expect(find.text(state == JobState.done ? 'Successful!' : 'Error!'),
+          findsOneWidget);
+      await tester.tap(find.byIcon(Icons.cancel_outlined));
+      await tester.pump();
+      expect(h.ids, [first.id]);
+      expect(h.calls, isEmpty);
+      expect(find.text('Error!'), findsOneWidget);
+      expect(second.state, state);
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
+  testWidgets('mobile cancel failure preserves jobs and permits retry',
+      (tester) async {
+    final h = _StatusHarness();
+    final first = h.add();
+    final second = h.add();
+    await h.render(tester);
+    final failed = (h.action(tester) as dynamic)() as Future<void>;
+    final observed = expectLater(failed, throwsA(isA<StateError>()));
+    h.replies.single.completeError(StateError('bridge refused'));
+    await observed;
+    await tester.pump();
+    expect(h.ids, [first.id, second.id]);
+    await tester.tap(find.byIcon(Icons.cancel_outlined));
+    expect(h.calls, [[h.session, first.id], [h.session, first.id]]);
+    h.replies.last.complete();
+    await tester.pump();
+    expect(h.ids, [second.id]);
+  });
+
+  testWidgets('mobile cancel obeys session ownership before and after dispatch',
+      (tester) async {
+    final h = _StatusHarness();
+    final first = h.add();
+    await h.render(tester);
+    final callback = h.action(tester);
+    h.currentSession = const Uuid().v4obj();
+    await (callback as dynamic)();
+    expect(h.calls, isEmpty);
+    expect(h.ids, [first.id]);
+    h.currentSession = h.session;
+    final pending = (callback as dynamic)() as Future<void>;
+    expect(h.calls, [[h.session, first.id]]);
+    h.currentSession = const Uuid().v4obj();
+    h.controller.clear();
+    final replacement = h.add();
+    h.replies.single.complete();
+    await pending;
+    expect(h.ids, [replacement.id]);
+  });
+
+  testWidgets('mobile status hides after its only job is cancelled',
+      (tester) async {
+    final h = _StatusHarness();
+    await h.render(tester);
+    expect(find.byIcon(Icons.cancel_outlined), findsNothing);
+    final job = h.add();
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.cancel_outlined));
+    expect(h.calls, [[h.session, job.id]]);
+    expect(h.ids, [job.id]);
+    h.replies.single.complete();
+    await tester.pump();
+    expect(h.ids, isEmpty);
+    expect(find.byIcon(Icons.cancel_outlined), findsNothing);
+  });
+
+
   for (final outcome in ['done', 'error', 'skipped']) {
     test('resume reply preserves earlier $outcome event', () async {
       for (final download in [false, true]) {

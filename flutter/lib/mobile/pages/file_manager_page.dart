@@ -9,6 +9,7 @@ import 'package:toggle_switch/toggle_switch.dart';
 import '../../common.dart';
 import '../../common/widgets/dialog.dart';
 import '../../models/platform_model.dart';
+import '../widgets/file_job_status.dart';
 
 class FileManagerPage extends StatefulWidget {
   FileManagerPage({Key? key, required this.id, this.password}) : super(key: key);
@@ -319,7 +320,6 @@ class _FileManagerPageState extends State<FileManagerPage> {
   Widget? bottomSheet() {
     return Obx(() {
       final selectedItems = getActiveSelectedItems();
-      final jobTable = model.jobController.jobTable;
 
       final localLabel = selectedItems?.isLocal == null
           ? ""
@@ -410,56 +410,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
         }
       }
 
-      if (jobTable.isEmpty) {
-        return Offstage();
-      }
-
-      // Find the first job that is in progress (the one actually transferring data)
-      // Rust backend processes jobs sequentially, so the first inProgress job is the active one
-      final activeJob = jobTable
-              .firstWhereOrNull((job) => job.state == JobState.inProgress) ??
-          jobTable.last;
-
-      switch (activeJob.state) {
-        case JobState.inProgress:
-          return BottomSheetBody(
-            leading: CircularProgressIndicator(),
-            title: translate("Waiting"),
-            text:
-                "${translate("Speed")}:  ${readableFileSize(activeJob.speed)}/s",
-            onCanceled: () async {
-              final expectedSessionId = sessionId;
-              final canceled = await model.jobController.cancelJob(
-                  activeJob.id,
-                  expectedSessionId: expectedSessionId);
-              if (canceled) {
-                model.jobController.clearForSession(expectedSessionId);
-              }
-            },
-          );
-        case JobState.done:
-          return BottomSheetBody(
-            leading: Icon(Icons.check),
-            title: "${translate("Successful")}!",
-            text: activeJob.display(),
-            onCanceled: () =>
-                model.jobController.clearForSession(sessionId),
-          );
-        case JobState.error:
-          return BottomSheetBody(
-            leading: Icon(Icons.error),
-            title: "${translate("Error")}!",
-            text: "",
-            onCanceled: () =>
-                model.jobController.clearForSession(sessionId),
-          );
-        case JobState.none:
-          break;
-        case JobState.paused:
-          // TODO: Handle this case.
-          break;
-      }
-      return Offstage();
+      return FileJobStatus(
+          controller: model.jobController, sessionId: sessionId);
     });
   }
 
@@ -806,69 +758,5 @@ class _FileManagerViewState extends State<FileManagerView> {
                 ButtonStyle(minimumSize: MaterialStateProperty.all(Size(0, 0))),
             onPressed: () => onPressed(list.sublist(0, e.key + 1))))));
     return breadCrumbList;
-  }
-}
-
-class BottomSheetBody extends StatelessWidget {
-  BottomSheetBody(
-      {required this.leading,
-      required this.title,
-      required this.text,
-      this.onCanceled,
-      this.actions});
-
-  final Widget leading;
-  final String title;
-  final String text;
-  final VoidCallback? onCanceled;
-  final List<IconButton>? actions;
-
-  @override
-  BottomSheet build(BuildContext context) {
-    // ignore: no_leading_underscores_for_local_identifiers
-    final _actions = actions ?? [];
-    return BottomSheet(
-      builder: (BuildContext context) {
-        return Container(
-            height: 65,
-            alignment: Alignment.centerLeft,
-            decoration: BoxDecoration(
-                color: MyTheme.accent50,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 15),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      leading,
-                      SizedBox(width: 16),
-                      Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(title, style: TextStyle(fontSize: 18)),
-                          Text(text,
-                              style: TextStyle(fontSize: 14)) // TODO color
-                        ],
-                      )
-                    ],
-                  ),
-                  Row(children: () {
-                    _actions.add(IconButton(
-                      icon: Icon(Icons.cancel_outlined),
-                      onPressed: onCanceled,
-                    ));
-                    return _actions;
-                  }())
-                ],
-              ),
-            ));
-      },
-      onClosing: () {},
-      // backgroundColor: MyTheme.grayBg,
-      enableDrag: false,
-    );
   }
 }

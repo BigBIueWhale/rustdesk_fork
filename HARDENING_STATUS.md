@@ -2080,9 +2080,9 @@ Frame-vector refusal is source reviewed rather than separately injected. Persist
 global/C-heap OOM, full application error consumption and presentation, other native
 targets, installed R-S0, R-F5 recovery/soaks and release acceptance remain OPEN.
 
-**Video QoS — activity-epoch correction passes focused Linux component verification; end-to-end latency OPEN.**
+**Video QoS — congestion recovery correction passes focused Linux component verification; end-to-end latency OPEN.**
 
-At `eae3ac51`, product correction `6c51a5f6` passes all twenty-two controller tests and
+At `5bc386b6`, the congestion recovery correction passes all twenty-two controller tests and
 five quality-application tests in the focused Linux lane. The controller,
 application function and test sources are imported directly; shared configuration,
 protocol types and Quality are production definitions. Elapsed/RTT inputs and the
@@ -2112,6 +2112,9 @@ The current behavior is:
 - Rapid FPS probing requires three consecutive completed samples below 50 ms
   of excess delay; a sample at or above 50 ms resets that streak. The separate
   gradual probe below 150 ms remains available.
+- Completed feedback at or above 150 ms of excess delay cannot increase the viewer's
+  learned rate. The existing congestion reductions and final requested-rate bounds
+  still apply; fresh healthy feedback permits recovery in the same connection.
 - One quality choice per live viewer follows request-admission order; unknown
   viewers cannot publish. Disconnect/replacement retires that owner's choice.
   A changed selected target restores the surviving ratio, or Balanced when none
@@ -2191,6 +2194,7 @@ and release acceptance remain OPEN. All user-parked work remains parked.
 
 | Correction | Native evidence and limits | Retained capsules |
 | --- | --- | --- |
+| Rate growth during continued congestion — `5bc386b6` | At unchanged-product preparation `5c7d72fa`, 26 tests pass and the extended congestion regression fails: 12 of 24 post-outage cases increase the rate while excess delay remains at least 150 ms, including Balanced 1→10 FPS at 150/199 ms. The identical test module passes after correction: all 24 cases hold 1 FPS while congested and recover to the same viewer's requested 20 FPS on healthy feedback. Three presets and eight delay levels cover every existing congestion branch; all 27 component tests pass in 122 outer seconds. Elapsed/RTT inputs and encoder behavior are controlled; no real impairment, codec or presentation acceptance is claimed. Both QEMU children join and their RAM workspaces retire. No host listener is added; one pre-existing endpoint disappears in the corrected run's final snapshot, remains unattributed and is not investigated or changed. Full-app, target-native R-F5 recovery/soak and all user parks remain OPEN. | `qos-congestion-recovery-656fa021.json` |
 | Generation-bound support/activity sinks — `fbf1036c` | Existing capture callers already guarded these writes under the QoS lock; the two shared setters still accepted only a name. Baseline `467ddcad` passes 26 controls and fails the new direct-sink regression: seven of ten cases change state through stale/wrong generations or missing-display activity. The identical regression passes with explicit generation arguments: all eight noncurrent cases preserve support/activity/FPS/ratio/period state, and both current-owner cases apply. All 27 component tests pass in 122 outer seconds. Earlier test data/oracles are unchanged after normalizing the required fixture bindings; legacy parent labels/inventory require 22 shared cases, but that parked lane was not run. Full capture startup/application compilation, real codec/peer/presentation, installed/other-platform and R-S0/R-F5 acceptance remain OPEN. | `qos-generation-02dbb4cd.json` |
 | Bounded activity and unavailable-window retirement — `3d66afeb` | Baseline `142ed23e` passes 25 controls and fails the new seven-case regression: disabled adaptation, an unsupported codec and a blocked sibling retain activity across re-enablement; `usize::MAX` followed by one panics. The identical regression passes after correction, including zero/five/six-frame controls. All 26 component tests pass in 122 outer seconds on one stable artifact. Clock/ratio state and extreme counts are controlled; this is neither a long-uptime run nor a natural counter-overflow observation. The legacy parent inventory/labels now require 21 shared tests, but that parked lane was not run. No attribution or recovery claim for the retained six-second viewer failure follows. Real codec/capture, peer/presentation, other platforms, installed and R-F5 acceptance remain OPEN. | `qos-activity-c2caefba.json` |
 | Live display bitrate ownership — `22b4d3ef` / `98401d5b` | At `30c85201`, all 25 component tests pass. Six paired-display cases preserve the configured aggregate 150-kbps growth ceiling in both publication orders, exact live totals and clamped status above `u32`; nine checks cover removal, replacement, stale/missing publication, stale retirement, final zero and surviving viewer limits. The original 45 bitrate cases and nine joined encoder-owner scenarios pass on the same stable artifact. Source publication is exact-generation scoped and removal retires that display's contribution. A historical-source attempt was refused before VM startup by the unchanged pushed-master authority; no empirical original/fixed failure is claimed. Inputs and encoder boundary are controlled; real codec/peer, capture-loop startup, installed/other-platform, actual presentation/latency and release acceptance remain OPEN. | `qos-display-bitrate-native-30c85201.json` |

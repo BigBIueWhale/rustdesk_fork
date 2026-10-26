@@ -13886,6 +13886,27 @@ authenticated peer/UI delivery, full Rust parent, installed/other-platform behav
 all fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN.
 Every user park remains unchanged.
 
+**Chat Enter event handling (`6580a6e2`) — widget correction verified; native input integration OPEN.**
+The composer submits only on a fresh, unshifted Enter key-down. Both Shift keys leave
+Enter available to ordinary text editing; releasing Shift, repeating Enter or pressing
+another key while Enter is held cannot submit a later draft. The handler uses the event's
+logical key, both-sided Shift state and repeat flag, matching pinned
+[Flutter 3.24.5 keyboard semantics](https://github.com/flutter/flutter/blob/3.24.5/packages/flutter/lib/src/services/raw_keyboard.dart).
+The shared `sendDraft` retains empty/refused drafts and existing recipient admission.
+At preparation `cf8cad4f`, the mounted production toolbar/model cohort passes 48 cases
+and reports three regression errors: right Shift+Enter is consumed, Shift release sends
+the composing draft, and repeat/unrelated-key events submit later drafts. With only the
+handler changed, the identical 51-case inventory and three result-parser controls pass
+in 253 outer seconds. Prior 47 test bodies are byte-identical. Valid submissions replace
+native sending with a recorder; existing refusal cases execute production admission.
+This is Flutter keyboard-dispatch/component evidence, not native IME/newline insertion,
+hardware keyboard, soft-keyboard, bridge transport or authenticated peer delivery.
+Evidence: `chat-enter-1a4d0742.json`, including source/input identities, failed baseline,
+fresh generated bridge, strict success summary and joined bounded-RAM cleanup. All
+listener snapshots have zero deltas. Chat history/resource bounds, native input/session
+integration, all fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN.
+Every user park remains unchanged.
+
 **CM close admission and history outcomes — native component and Dart batch verified;
 complete CM/peer and rendered interaction OPEN.** `d7489810` returns a boolean
 through each generation-bound FFI request. Disconnect succeeds only when the exact

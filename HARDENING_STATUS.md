@@ -8185,6 +8185,28 @@ reproduction or external review follows. Those broader obligations remain OPEN;
 R-S11b/R-S11c and the overall release remain STOP-SHIP.
 
 **Terminal UTF-8, callbacks and parser lifetime — DART COMPONENT PASS; NATIVE I/O OPEN.**
+Terminal input now shares one generation-owned FIFO and one active send
+(`846279d5`). Newly typed input cannot overtake the pre-open buffer or another
+pending send. The separate immediate-send path and copied startup batch are removed.
+Close, successful reopen and disposal clear and replace the queue; a retired drain
+retains its already-started call through completion and can clear only its own queue.
+Every next dispatch rechecks the registered model and exact open object. Send failure
+releases the drain for later input, and another terminal has an independent sender.
+
+The identical two-suite regression at unchanged product `867208c6` passes 28 cases
+and fails seven: pre-open/live overtaking, overlapping live sends, four retirement
+sequences whose later calls had already dispatched, and asynchronous failure ordering.
+Correction `846279d5` passes all 35 cases and three result-parser controls in 278
+outer seconds with pinned Flutter 3.24.5 and freshly generated bindings. The nine
+new cases observe the production model's injected send boundary, including Unicode,
+multiline input, synchronous/asynchronous refusal, fresh retry and independent models.
+An earlier preparation stops at a test-formatting difference and supplies no behavioral
+evidence. `terminal-input-66eaf4d8.json` binds these sources, identical final tests,
+results and joined bounded-RAM cleanup; all endpoint snapshots are unchanged.
+Actual FFI/peer input effects, native cancellation and reconnect, queued-input memory
+and deadline admission, installed/other-platform behavior, R-S0/R-F5 and release
+acceptance remain OPEN. The separately parked receive-parser bounds stay parked.
+
 The server's bounded live/replay batches may split a character after PTY accumulation.
 `TerminalModel` owns one `TerminalOutputDecoder` across packets. Complete text emits
 immediately; an incomplete UTF-8 tail remains until continuation or stream completion.

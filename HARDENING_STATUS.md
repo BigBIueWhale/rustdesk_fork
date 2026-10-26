@@ -6062,6 +6062,20 @@ ownership, modes, inventory/link, policy, checksum and ELF validators remain unc
 Source RPATH and maintainer-script checks remain in `verify.sh`, with emitted-script
 checks in `build-debian.sh`. The 27 focused package/CLI/native ELF cases and R-S11ac/R-X14
 resource consistency are bound by `debian-archive-admission-229b13d3.json`.
+The redundant 342-line `verify-debian-maintainer-scripts.py` checker, its two shared-gate
+calls and emitted-package call are deleted. It matched stripped lines, counts and ordering;
+it did not execute dpkg, a maintainer script or an init manager. Shared source checks for
+helper use, failure masking, forbidden path mutation and service-template authority remain.
+The builder retains exact source-byte comparisons, file/link/mode checks and rejection of
+masked maintainer failures; archive validators and executable lifecycle tests are unchanged.
+The two affected shared-gate messages now distinguish source/archive evidence from installed
+behavior. Both edited shell files parse; exact source comparison and `git diff --check` pass.
+No package build, lifecycle test or product ran for this deletion. Install/upgrade/remove,
+failure recovery, all required init managers and current-release acceptance remain OPEN.
+`debian-maintainer-catalogue-c4fa0c92.json` retains the deletion and fresh ledger-count evidence.
+At the user's topic pivot, unfinished clipboard UTF-8 preparation is preserved in stash
+`f4f8b511361ee0451ee1b67256a43f46af66ed4e`; malformed-text admission and native batch behavior
+remain OPEN/PARKED, with no correction or test result claimed.
 The explicit `--debian-package-tests` integration mode additionally passes the complete
 compiler-dependent archive and production-finalizer self-test using the pinned development
 verifier image. It compiles ELF fixtures, exercises malformed archive/policy/ELF/checksum,

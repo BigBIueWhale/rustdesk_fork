@@ -463,14 +463,6 @@ verify_deb_control_scripts() {
         printf '%s\n' "$masked" >&2
         die "built .deb maintainer scripts mask lifecycle failure"
     fi
-    python3 "$SCRIPT_DIR/verify-debian-maintainer-scripts.py" \
-        --scripts-dir "$tmp_control" \
-        --init-script "$tmp_data/etc/init.d/rustdesk" \
-        --openrc-script "$tmp_data/usr/share/rustdesk/files/openrc/rustdesk" \
-        --runit-run "$tmp_data/usr/share/rustdesk/files/runit/run" \
-        --manual-run "$tmp_data/usr/share/rustdesk/files/manual/rustdesk-service" || {
-        die "built .deb maintainer scripts fail lifecycle semantics"
-    }
 }
 
 debian_compiler_run() {

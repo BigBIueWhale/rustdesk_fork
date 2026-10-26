@@ -9081,13 +9081,6 @@ for template in "$openrc_template" "$runit_template" "$manual_template"; do
   [ "$(stat -c %a "$template")" = 755 ] \
     || r_s11c27p="$r_s11c27p ${template#res/service-managers/}:not-executable"
 done
-python3 scripts/verify-debian-maintainer-scripts.py \
-  --scripts-dir res/DEBIAN \
-  --init-script res/rustdesk.init \
-  --openrc-script "$openrc_template" \
-  --runit-run "$runit_template" \
-  --manual-run "$manual_template" \
-  || r_s11c27p="$r_s11c27p service-template-semantics"
 for token in \
   'command="/usr/bin/rustdesk"' \
   'command_args="--service"' \
@@ -9115,16 +9108,10 @@ for token in \
   grep -qF -- "$token" build.py \
     || r_s11c27p="$r_s11c27p package:${token##*/}"
 done
-for token in \
-  'for template in openrc/rustdesk runit/run manual/rustdesk-service; do' \
-  '--openrc-script "$tmp_data/usr/share/rustdesk/files/openrc/rustdesk"' \
-  '--runit-run "$tmp_data/usr/share/rustdesk/files/runit/run"' \
-  '--manual-run "$tmp_data/usr/share/rustdesk/files/manual/rustdesk-service"'; do
-  grep -qF -- "$token" scripts/build-debian.sh \
-    || r_s11c27p="$r_s11c27p artifact:${token%% *}"
-done
+grep -qF 'for template in openrc/rustdesk runit/run manual/rustdesk-service; do' scripts/build-debian.sh \
+  || r_s11c27p="$r_s11c27p artifact:service-template-validation"
 if [ -n "$r_s11c27p" ]; then echo "  FAIL R-S11c-27p service-manager templates:$r_s11c27p"; rc=1; else
-  echo "  ok  R-S11c-27p Debian payload ships exact OpenRC, runit, and manual templates that start/stop only the foreground --service supervisor and contain no server-child process rediscovery"; fi
+  echo "  ok  R-S11c-27p supplementary service-template source conformance; packaged and installed lifecycle acceptance remains OPEN"; fi
 
 echo "== (3b-iii-h2r) native OpenRC owns one exact supervisor and preserves unrelated RustDesk (R-S11c-27q) =="
 r_s11c27q=
@@ -9680,13 +9667,6 @@ if grep -RInE 'INITSYS|/proc/1/exe|ps -ef|grep -E|awk|sed -i|service rustdesk|sy
   cat "$VERIFY_TMP/rd_verify_r_s11c10j_pkg"
   r_s11c10j="$r_s11c10j maintscript:raw-service-discovery-or-systemctl"
 fi
-python3 scripts/verify-debian-maintainer-scripts.py \
-  --scripts-dir res/DEBIAN \
-  --init-script res/rustdesk.init \
-  --openrc-script res/service-managers/openrc/rustdesk \
-  --runit-run res/service-managers/runit/run \
-  --manual-run res/service-managers/manual/rustdesk-service \
-  || r_s11c10j="$r_s11c10j maintscript:lifecycle-semantics"
 if grep -RInE '\|\|[[:space:]]*true|deb-systemd-(invoke|helper).*\|\|' res/DEBIAN >"$VERIFY_TMP/rd_verify_r_s11c10j_mask"; then
   cat "$VERIFY_TMP/rd_verify_r_s11c10j_mask"
   r_s11c10j="$r_s11c10j maintscript:masked-lifecycle-failure"
@@ -9722,7 +9702,7 @@ if echo "$linux_child_stop_block" | grep -q 'allow_err!(ps.kill())'; then
   r_s11c10j="$r_s11c10j linux:managed-server-child-sigkill-regressed"
 fi
 if [ -n "$r_s11c10j" ]; then echo "  FAIL R-S11c-10j/R-T9/R-S11by/R-S11bz/R-S11e-91/R-S11e-92 Debian package lifecycle/systemd stop:$r_s11c10j"; rc=1; else
-  echo "  ok  R-S11c-10j/R-T9/R-S11by/R-S11bz/R-S11e-91/R-S11e-92 Debian scripts use checked service-manager helpers with no masked failure and mutate no primary systemd or /usr/bin path; dpkg owns the exact vendor unit and sole exact relative command symlink; administrator unit state is untouched and post-removal reload follows dpkg file removal; one build.py constructor finalizes the exact root-owned package tree; unit has cgroup-scoped SIGTERM/TimeoutStopSec with no pkill ExecStop; Linux supervisor SIGTERMs child servers before forced stop"; fi
+  echo "  ok  R-S11c-10j/R-T9/R-S11by/R-S11bz/R-S11e-91/R-S11e-92 supplementary package-source conformance and archive self-tests; current product package and installed lifecycle acceptance remains OPEN"; fi
 
 echo "== (3b-iii-h10v) obsolete generated Docker build helper is absent (R-S11c-10v) =="
 r_s11c10v=

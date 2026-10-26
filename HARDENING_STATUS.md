@@ -4023,6 +4023,32 @@ clipboard nonpublication, fresh authorized reconnect and live/stale/disabled/wro
 principal transactions remain OPEN. The expected pinned Windows golden image and ISO are
 absent. No installed-service or LPE closure follows from these component tests.
 
+**Native clipboard payload conversion — validation before copying; Linux component accepted.**
+`c29abee9` validates borrowed uncompressed bytes against the existing 64 MiB ceiling
+and RGBA geometry before making a fallible owned copy. Copy allocation refusal returns
+`OutOfMemory` through the existing error path. Compressed data retains the bounded
+production decoder and transfers its validated output without another copy. The three
+payload/geometry helpers now live with `src/clipboard/limits.rs`; desktop sanitation,
+native conversion and Android sanitation still call the same helper.
+
+Preparation `9a006eb6` moves the helper bodies without changing their behavior and adds
+two regressions to the existing response/framing component. Its six invalid inputs each
+allocate a payload-sized copy before rejection, and all three allocation-refusal children
+abort; 38 controls pass. The identical 40-case fixture passes after correction: six
+oversize/invalid-RGBA inputs allocate no payload copy, and refused copies of 1, 4,097 and
+67,108,864 bytes return `OutOfMemory` with exact successful retries and unchanged inputs.
+Nine healthy/refusal controls cover empty/text/exact-limit, compressed text, raw and
+compressed RGBA, and malformed compression. Existing response allocation, codec/TCP and
+shared decompression controls also pass. The actual tests take 0.96 seconds; the bounded
+zero-NIC VM transaction takes 103 outer seconds, with unchanged listener inventories and
+joined QEMU/RAM retirement. `clipboard-payload-e7baac39.json` binds sources, artifacts,
+unchanged tests, A/B observations and cleanup. No production dependency or wire change.
+
+This is selective Rust payload-allocation and conversion evidence, not whole-process
+memory-pressure or native clipboard publication proof. Metadata/serde/other native
+allocations, full parent and desktop/mobile caller execution, installed/R-S0/R-F5 and
+release acceptance remain OPEN. All user-parked work remains parked.
+
 **Resolution mutation and Linux command lifetime (R-T4/R-S11c-10c): production components accepted; integration OPEN.**
 The connection retains one resolution-work ticket and awaits off-runtime enumeration,
 mode validation and mutation. Pending ticket retirement revokes native admission;

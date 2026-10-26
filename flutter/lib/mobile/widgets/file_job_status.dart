@@ -93,38 +93,38 @@ class BottomSheetBody extends StatelessWidget {
     return BottomSheet(
       builder: (BuildContext context) {
         return Container(
-            height: 65,
+            constraints: BoxConstraints(minHeight: 65),
             alignment: Alignment.centerLeft,
             decoration: BoxDecoration(
                 color: MyTheme.accent50,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
             child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 15),
+              padding: EdgeInsets.symmetric(horizontal: 15, vertical: 8),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      leading,
-                      SizedBox(width: 16),
-                      Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(title, style: TextStyle(fontSize: 18)),
-                          Text(text,
-                              style: TextStyle(fontSize: 14)) // TODO color
-                        ],
-                      )
-                    ],
-                  ),
-                  Row(children: [
-                    ...?actions,
-                    IconButton(
-                      icon: Icon(Icons.cancel_outlined),
-                      onPressed: onCanceled,
+                  leading,
+                  SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 18)),
+                        Text(text,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 14)),
+                      ],
                     ),
-                  ])
+                  ),
+                  ...?actions,
+                  IconButton(
+                    icon: Icon(Icons.cancel_outlined),
+                    onPressed: onCanceled,
+                  ),
                 ],
               ),
             ));

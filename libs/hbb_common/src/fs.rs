@@ -3997,6 +3997,9 @@ impl TransferJob {
 
     #[inline]
     pub fn resume(&mut self) -> bool {
+        if !self.is_last_job {
+            return false;
+        }
         self.is_last_job = false;
         self.is_resume = true;
         if self.role == TransferRole::Send {

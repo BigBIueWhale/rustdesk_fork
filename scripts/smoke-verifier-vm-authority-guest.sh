@@ -10497,7 +10497,7 @@ run_flutter_model_tests() {
             expected_result='suites=1 tests=26'
         elif [ "$FLUTTER_TEST_PROFILE" = file-metadata ]; then
             result_prefix=FLUTTER_FILE_METADATA_TEST_JSON
-            expected_result='suites=1 tests=23'
+            expected_result='suites=1 tests=16'
         elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
             result_prefix=FLUTTER_SHARE_RDP_TEST_JSON
             expected_result='suites=1 tests=4'
@@ -10546,7 +10546,7 @@ run_flutter_model_tests() {
             memory=3g
             memory_bytes=3221225472
             result_prefix=FLUTTER_FILE_PROGRESS_TEST_JSON
-            expected_result='suites=1 tests=16'
+            expected_result='suites=1 tests=23'
         elif [ "$FLUTTER_TEST_PROFILE" = connect-password ]; then
             memory=3g
             memory_bytes=3221225472

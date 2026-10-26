@@ -287,7 +287,7 @@ class _TrackpadGesture {
   final int pointer;
   final int device;
   final int viewId;
-  double scale = 1.0;
+  int scaleUnits = 0;
   Offset lastDelta = Offset.zero;
 
   bool matches(PointerEvent e) =>
@@ -1517,8 +1517,9 @@ class InputModel {
     if (isViewOnly) return;
     if (isViewCamera) return;
     if (peerPlatform != kPeerPlatformAndroid) {
-      final scale = ((e.scale - gesture.scale) * 1000).toInt();
-      gesture.scale = e.scale;
+      final scaleUnits = ((e.scale - 1.0) * 1000).toInt();
+      final scale = scaleUnits - gesture.scaleUnits;
+      gesture.scaleUnits = scaleUnits;
 
       if (scale != 0) {
         sendTrackpadScale(scale, expectedSessionId: gesture.sessionId);

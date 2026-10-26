@@ -4049,6 +4049,29 @@ memory-pressure or native clipboard publication proof. Metadata/serde/other nati
 allocations, full parent and desktop/mobile caller execution, installed/R-S0/R-F5 and
 release acceptance remain OPEN. All user-parked work remains parked.
 
+**Compressed clipboard RGBA — geometry bounds decoded output; Linux component accepted.**
+`b407b685` checks positive, representable RGBA dimensions and the existing 64 MiB
+image ceiling before constructing the decoder. The checked image byte length becomes
+the shared streaming decoder's output limit; final exact-length validation remains.
+Other formats retain their existing output ceiling, and the independent 64 MiB Zstd
+history-window limit is unchanged. This uses the existing bounded-decoder API without
+new dependencies, wire changes or native clipboard policy changes.
+
+At preparation `4c12b372`, eight invalid/overlong image cases allocate beyond their
+observed output ceilings before refusal; 40 existing tests pass. The identical fixture
+passes all 41 cases after correction. Zero/negative/excessive geometry, 32x32/64x64
+overlong output and a concatenated excess frame make no allocations above the observed
+4 KiB floor or the larger image's 16 KiB bound. Nine controls retain exact images from
+one pixel through 64 MiB, valid concatenated frames, short/malformed refusal and an
+independent decoder history limit. Inputs remain unchanged. The component takes
+1.04 seconds; the bounded zero-NIC VM transaction takes 103 outer seconds and retires
+QEMU/RAM with unchanged listener inventories. `clipboard-rgba-d59c83d4.json` binds
+the unchanged A/B fixture, artifacts, observations, earlier observer correction and
+cleanup. This observes Rust output allocations, not all native decoder memory or CPU.
+Full parent/caller and OS clipboard execution, installed/native privilege boundaries,
+other platforms, sustained resources, R-S0/R-F5 and release acceptance remain OPEN.
+All user parks remain parked.
+
 **Resolution mutation and Linux command lifetime (R-T4/R-S11c-10c): production components accepted; integration OPEN.**
 The connection retains one resolution-work ticket and awaits off-runtime enumeration,
 mode validation and mutation. Pending ticket retirement revokes native admission;

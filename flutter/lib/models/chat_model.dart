@@ -121,20 +121,14 @@ class ChatModel with ChangeNotifier {
   ChatModel(this.parent) {
     inputNode = FocusNode(
       onKey: (_, event) {
-        bool isShiftPressed = event.isKeyPressed(LogicalKeyboardKey.shiftLeft);
-        bool isEnterPressed = event.isKeyPressed(LogicalKeyboardKey.enter);
-
-        // don't send empty messages
-        if (isEnterPressed && isEnterPressed && textController.text.isEmpty) {
-          return KeyEventResult.handled;
+        if (event.logicalKey != LogicalKeyboardKey.enter || event.isShiftPressed) {
+          return KeyEventResult.ignored;
         }
 
-        if (isEnterPressed && !isShiftPressed) {
+        if (event is RawKeyDownEvent && !event.repeat) {
           sendDraft();
-          return KeyEventResult.handled;
         }
-
-        return KeyEventResult.ignored;
+        return KeyEventResult.handled;
       },
     );
   }

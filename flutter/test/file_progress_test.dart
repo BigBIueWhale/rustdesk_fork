@@ -180,7 +180,9 @@ void main() {
         ),
       ),
     ));
-    final state = tester.state(find.byType(BottomSheet));
+    final state = tester.state(find.descendant(
+        of: find.byType(BottomSheetBody),
+        matching: find.byType(BottomSheet)));
     for (var i = 0; i < 3; i++) {
       state.setState(() {});
       await tester.pump();

@@ -13,6 +13,7 @@ import 'package:flutter_hbb/desktop/pages/desktop_setting_page.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_tab_page.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:flutter_hbb/models/server_model.dart';
+import 'package:flutter_hbb/models/server_status_refresh_loop.dart';
 import 'package:flutter_hbb/models/state_model.dart';
 import 'package:flutter_hbb/utils/multi_window_manager.dart';
 import 'package:flutter_hbb/utils/platform_channel.dart';
@@ -44,8 +45,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   var watchIsCanScreenRecording = false;
   var watchIsProcessTrust = false;
   var watchIsInputMonitoring = false;
-  var watchIsCanRecordAudio = false;
-  Timer? _updateTimer;
+  late final ServerStatusRefreshLoop _statusRefreshLoop;
   bool isCardClosed = false;
 
   final RxBool _editHover = false.obs;
@@ -344,15 +344,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
           bind.mainIsInstalledDaemon(prompt: true);
         });
       }
-      //// Disable microphone configuration for macOS. We will request the permission when needed.
-      // else if ((await osxCanRecordAudio() !=
-      //     PermissionAuthorizeType.authorized)) {
-      //   return buildInstallCard("Permissions", "config_microphone", "Configure",
-      //       () async {
-      //     osxRequestAudio();
-      //     watchIsCanRecordAudio = true;
-      //   });
-      // }
     } else if (isLinux) {
       if (bind.isOutgoingOnly()) {
         return Container();
@@ -530,57 +521,47 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     );
   }
 
+  Future<void> _refreshStatus() async {
+    if (!mounted) return;
+    final error = await bind.mainGetError();
+    if (!mounted) return;
+    if (systemError != error) {
+      systemError = error;
+      setState(() {});
+    }
+    final stopped = await mainGetBoolOption(kOptionStopService);
+    if (!mounted) return;
+    if (stopped != svcStopped.value) {
+      svcStopped.value = stopped;
+      setState(() {});
+    }
+    if (watchIsCanScreenRecording &&
+        bind.mainIsCanScreenRecording(prompt: false)) {
+      watchIsCanScreenRecording = false;
+      setState(() {});
+    }
+    if (watchIsProcessTrust && bind.mainIsProcessTrusted(prompt: false)) {
+      watchIsProcessTrust = false;
+      setState(() {});
+    }
+    if (watchIsInputMonitoring && bind.mainIsCanInputMonitoring(prompt: false)) {
+      watchIsInputMonitoring = false;
+      setState(() {});
+    }
+  }
+
   @override
   void initState() {
     super.initState();
-    _updateTimer = periodic_immediate(const Duration(seconds: 1), () async {
-      final error = await bind.mainGetError();
-      if (systemError != error) {
-        systemError = error;
-        setState(() {});
-      }
-      final v = await mainGetBoolOption(kOptionStopService);
-      if (v != svcStopped.value) {
-        svcStopped.value = v;
-        setState(() {});
-      }
-      if (watchIsCanScreenRecording) {
-        if (bind.mainIsCanScreenRecording(prompt: false)) {
-          watchIsCanScreenRecording = false;
-          setState(() {});
-        }
-      }
-      if (watchIsProcessTrust) {
-        if (bind.mainIsProcessTrusted(prompt: false)) {
-          watchIsProcessTrust = false;
-          setState(() {});
-        }
-      }
-      if (watchIsInputMonitoring) {
-        if (bind.mainIsCanInputMonitoring(prompt: false)) {
-          watchIsInputMonitoring = false;
-          // Do not notify for now.
-          // Monitoring may not take effect until the process is restarted.
-          // rustDeskWinManager.call(
-          //     WindowType.RemoteDesktop, kWindowDisableGrabKeyboard, '');
-          setState(() {});
-        }
-      }
-      if (watchIsCanRecordAudio) {
-        if (isMacOS) {
-          Future.microtask(() async {
-            if ((await osxCanRecordAudio() ==
-                PermissionAuthorizeType.authorized)) {
-              watchIsCanRecordAudio = false;
-              setState(() {});
-            }
-          });
-        } else {
-          watchIsCanRecordAudio = false;
-          setState(() {});
-        }
-      }
-    });
+    _statusRefreshLoop = ServerStatusRefreshLoop(
+      interval: const Duration(seconds: 1),
+      refresh: _refreshStatus,
+      onError: (error, stackTrace) => debugPrintStack(
+        label: 'Desktop home status refresh failed: $error',
+        stackTrace: stackTrace,
+      ),
+    );
+    _statusRefreshLoop.start();
     Get.put<RxBool>(svcStopped, tag: 'stop-service');
     rustDeskWinManager.registerActiveWindowListener(onActiveWindowChanged);
 
@@ -704,7 +685,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   void dispose() {
     _uniLinksSubscription?.cancel();
     Get.delete<RxBool>(tag: 'stop-service');
-    _updateTimer?.cancel();
+    unawaited(_statusRefreshLoop.close());
     super.dispose();
   }
 }

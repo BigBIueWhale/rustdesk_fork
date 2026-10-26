@@ -1,11 +1,10 @@
 import 'dart:async';
 
-/// Owns the process-lifetime controlled-side status refresh schedule.
+/// Owns one controlled-side status refresh schedule.
 ///
 /// A refresh turn is never overlapped by a timer tick: the next one-shot timer
 /// is armed only after the complete current turn has settled. [close] cancels a
-/// pending timer and waits for an in-flight turn, which gives tests and any
-/// future process-owner retirement an exact finality boundary.
+/// pending timer and waits for an in-flight turn before retirement completes.
 class ServerStatusRefreshLoop {
   ServerStatusRefreshLoop({
     required Duration interval,
@@ -57,7 +56,7 @@ class ServerStatusRefreshLoop {
   }
 
   void _beginTurn(Future<bool> Function()? initialReady) {
-    final turn = _runTurn(initialReady);
+    final turn = Future<void>.microtask(() => _runTurn(initialReady));
     _activeTurn = turn;
     unawaited(turn.whenComplete(() {
       if (identical(_activeTurn, turn)) {
@@ -70,8 +69,10 @@ class ServerStatusRefreshLoop {
   }
 
   Future<void> _runTurn(Future<bool> Function()? initialReady) async {
+    if (_closed) return;
     try {
-      if (initialReady == null || await initialReady()) {
+      final ready = initialReady == null || await initialReady();
+      if (!_closed && ready) {
         await _refresh();
       }
     } catch (error, stackTrace) {

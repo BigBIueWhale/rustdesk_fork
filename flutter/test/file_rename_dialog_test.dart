@@ -124,6 +124,17 @@ void main() {
       expect(harness.calls.single.name, 'new.txt');
       expect(harness.calls.single.isRemote, isFalse);
       expect(find.byType(CustomAlertDialog), findsOneWidget);
+      final pendingField = tester.widget<TextField>(find.byType(TextField));
+      final pendingDialog =
+          tester.widget<CustomAlertDialog>(find.byType(CustomAlertDialog));
+      final pendingButton = tester.widget<TextButton>(find.ancestor(
+        of: find.text('OK'), matching: find.byType(TextButton)));
+      final pendingProgress =
+          find.byType(LinearProgressIndicator).evaluate().length;
+      debugPrint('RENAME_PENDING field_enabled=${pendingField.enabled} '
+          'submit_enabled=${pendingDialog.onSubmit != null} '
+          'button_enabled=${pendingButton.onPressed != null} '
+          'progress=$pendingProgress');
       await harness.finish(0);
       expect(await first, isNull);
       expect(await duplicate, isNull);
@@ -131,6 +142,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(CustomAlertDialog), findsNothing);
       expect(tester.takeException(), isNull);
+      expect(pendingField.enabled, isFalse);
+      expect(pendingDialog.onSubmit, isNull);
+      expect(pendingButton.onPressed, isNull);
+      expect(pendingProgress, 1);
     } finally {
       await harness.drain(tester);
     }
@@ -192,6 +207,10 @@ void main() {
       expect(await first, isNull);
       await tester.pumpAndSettle();
       expect(find.textContaining('rename denied'), findsOneWidget);
+      expect(tester.widget<TextField>(find.byType(TextField)).enabled, isNot(false));
+      expect(find.byType(LinearProgressIndicator), findsNothing);
+      expect(tester.widget<CustomAlertDialog>(find.byType(CustomAlertDialog))
+          .onSubmit, isNotNull);
       await tester.enterText(find.byType(TextField), 'retry.txt');
       await tester.pumpAndSettle();
       expect(find.textContaining('rename denied'), findsNothing);

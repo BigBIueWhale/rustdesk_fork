@@ -13553,28 +13553,38 @@ the complete connection flow is correct and performant remain release obligation
 
 ### R-S11he/R-S11e-243 — serialized controlled-side status refresh ownership
 
-**SOURCE IMPLEMENTED; SIX SCHEDULER REGRESSIONS PASS; EXACT CURRENT NATIVE/PACKAGE
-EVIDENCE OPEN.** `flutter/lib/models/server_status_refresh_loop.dart` gives the process-owned
-`ServerModel` one one-shot timer and at most one complete active turn, with no queue or catch-up
-path. The next 500-millisecond interval starts after the preceding turn settles. Initial readiness
-is checked once; duplicate start and start-after-close are refused; close cancels pending time and
-awaits active work without rearming. This owner survives viewer-session retirement and does not
-stop Android's persistent foreground service.
+**SOURCE CORRECTED; NINE SCHEDULER REGRESSIONS PASS; EXACT CURRENT NATIVE/PACKAGE
+EVIDENCE OPEN.** `ServerStatusRefreshLoop` owns one one-shot timer and at most one complete
+active turn, with no queue or catch-up path. It records the accepted future before invoking
+readiness or refresh callbacks, so a reentrant close observes and drains that turn. Closure is
+checked before work and after awaited readiness; retirement cannot admit a subsequent refresh.
+Duplicate start and start-after-close are refused. The next interval starts only after settlement.
+The process-owned `ServerModel` retains its 500-millisecond interval and survives viewer-session
+retirement without stopping Android's persistent foreground service.
+
+`DesktopHomePage` now owns a separate instance with a one-second interval. Its error/service reads
+cannot overlap; mounted checks precede the first read and follow each await before another read
+or UI publication. Disposal closes admission; the close future waits for an already-admitted turn,
+whose result cannot update the retired page. Refresh errors are reported and later turns can retry.
+The permanently false microphone-watch field, its dormant asynchronous branch and commented-out
+producer are deleted. Live permission checks and service/credential authority paths remain.
 
 `ServerModel._refreshStatus` fetches one complete CM client snapshot where applicable, reconciles
 it against the captured client-state revision, awaits resulting window operations, then awaits both
 password-status option reads. It does not rely on a count mismatch or discard the returned
-snapshot for another query. The scheduler and its test file still match source
-`d0a13c7a22c1a45f780ad081e4c8606a6091f5d7`, whose generated-bridge checkpoint passed
-21 suites/175 tests. Its retained raw receipt is
-`flutter-model-tests-run.rZ23u5R9mT.serial.log`; this historical result does not
-execute later ServerModel integration or establish current native CM/window behavior.
+snapshot for another query. This model integration is unchanged by the page/scheduler correction.
 
 `flutter/test/server_status_refresh_loop_test.dart` executes slow-turn nonoverlap/full interval,
 one-time readiness, visible refresh failure/later progress, close/drain/no-rearm, cancellation
-before the first turn, and duplicate/restart refusal. Its real
-`flutter test --no-pub test/server_status_refresh_loop_test.dart` remains in
-`scripts/dart-verify.sh`. These are scheduler/model results, not native CM IPC/window operations,
+before the first turn, duplicate/restart refusal, close during readiness and reentrant close from
+both callbacks. `--flutter-model-tests --status-refresh` reproduces three failures against the
+unchanged scheduler while its six old cases pass; candidate `3a1a49d1` passes all nine and three
+result-parser controls in the isolated VM. The same candidate passes the existing 35-case terminal
+shard and its three parser controls with fresh bindings; that import chain compiles the home page
+but does not mount it or execute its native reads. The real scheduler test also remains in
+`scripts/dart-verify.sh`. `home-status-3153494e.json` retains source, baseline/candidate and
+compilation receipts, joined RAM retirement, zero endpoint deltas and the fresh ledger count.
+These results do not establish native CM IPC/window operations, mounted home-page retirement,
 process integration, renderer/compositor behavior, or device/package acceptance. The common
 offline Flutter-tools finalizer is covered by the verification/build authority contract above;
 Windows golden-image freshness still requires reprovisioning, inspection, a new receipt, and repinning.

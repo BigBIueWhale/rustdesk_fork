@@ -10392,12 +10392,30 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `{6D52FC07-14FE-543E-A63D-6A6449DD7FA8}`. This single worktree build is historical native
   evidence, not an exact committed R-B2 double build or installed-lifecycle proof.
 
-  **Current scope and next work.** Filesystem transaction/retirement fixtures and the offline
-  manifest fixture remain; `scripts/verify-wix-nuget-authority.py` and shared wiring are
-  supplementary source checks. Their obsolete requirement/ledger wording checks were deleted
-  in `d61779851794a05991031a136c39f311c5f1fc9d`. No helper, fixture, signature verification,
-  restore, MSI build, or native scenario ran for this documentation correction. A read-only
-  current-state check found both canonical and retired package/cache paths absent, including
+  **Verification cleanup and bounded native replay (`673ad692`).** The 708-line WiX source
+  checker and its 25 string replacements are deleted. They mirrored implementation text,
+  test names and verifier wiring; an isolated run reproduced their stale loader assertion
+  after the actual filesystem tests passed. The shared gate now reports archive-retirement
+  fixtures without claiming signatures or restore ran. Package pins, producer/consumer
+  validation, project/lock files and both executable transaction/retirement suites are unchanged.
+  R-S11cz removes only its supplementary mutation-catalogue mandate; all package, signer,
+  restore and native/release acceptance requirements remain.
+
+  `--fixed-archive-tests` now executes both filesystem suites and the 22 production metadata
+  cases as UID:GID 4000 in the zero-NIC VM. The complete run passes in 14 outer seconds, with
+  unchanged listener snapshots and joined process/scratch retirement. Its dedicated profile
+  requires 2 GiB guest RAM, 4 GiB RAM scratch, a 1 GiB file ceiling, 6 GiB host headroom and
+  1 GiB overhead; peak scratch was 410,415,104 bytes. The previous generic allocation refused
+  before boot at 25,600 MiB required versus 25,182 MiB available. No disk fallback was used.
+  `wix-verification-0d07d617.json` retains source identities, failed runs and final evidence.
+  This is Linux filesystem evidence with fixture bytes and injected responses; package
+  acquisition, cryptographic signature checks, Windows restore/MSI and installed behavior
+  did not run. The separate general archive source catalogue still demands a retired
+  eight-file branch where production now has ten: its broader-gate failure remains OPEN.
+  It is absent from this focused native lane; its shared-gate invocation remains unchanged.
+
+  **Current scope and next work.** The offline manifest fixture remains. A prior read-only
+  availability check found both canonical and retired package/cache paths absent, including
   `online/inputs/wix-nuget-packages`, and `.harness-state/win11-golden.qcow2` absent. Restore
   authenticated inputs and the exact golden environment through their designated authorities,
   then execute exact-current clean Windows builds and inspect native MSI tables and

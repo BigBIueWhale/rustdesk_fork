@@ -14260,6 +14260,31 @@ connection-flow correctness/performance.
 
 ### R-S11hm/R-S11e-250 — exact-session file-command and job-result ownership
 
+**Mobile file-status cancellation — widget/model correction verified; device integration OPEN.**
+`d77cae4e` gives the production `FileJobStatus` control an exact displayed job,
+captured ID and session. It validates that owner before cancellation/dismissal and
+again before removing a row after the bridge reply. Cancellation and completed/error
+dismissal remove only that job; other transfers, recorded outcomes and pending file
+result waiters remain usable. The former mobile callbacks cleared the entire job
+table and its result listeners after requesting cancellation of just one job. The status
+panel is extracted from the page without changing its layout or selection behavior.
+
+At unchanged-cancellation preparation `005d3004`, all sixteen prior cases and two
+new controls pass, while five new ownership assertions fail. The identical corrected
+23-case Linux Flutter 3.24.5 cohort passes, together with three result-parser controls
+and fresh bridge/import generation. Cases cover other/newly-added jobs and live result
+waiters, removed/replaced jobs, stale callbacks, completed/error dismissal, failure
+and retry, session replacement and the last-job empty state. Tests mount the production
+status widget and use the real `JobController`; native cancellation is a controlled
+future/recorder, and translation/status text are test doubles. They do not execute a
+full mobile page/session, native cancellation acknowledgement, filesystem or peer
+transfer. The two earlier timeouts, parser-count failure and duplicated-receipt run
+are separate diagnostics; final verification retains per-case results and joined
+bounded-RAM cleanup in `mobile-file-status-43f0327e.json`.
+Android/iOS device, installed/peer integration, full R-S0/R-F5 and release acceptance
+remain OPEN. All fifteen credential-native actions and every existing user park remain
+unchanged.
+
 **SOURCE CORRECTED; CURRENT DART COMPONENT A/B AND FRESH BRIDGE GENERATION ACCEPTED;
 NATIVE FILESYSTEM, INSTALLED, AND OTHER TARGET-PLATFORM EVIDENCE OPEN.**
 The shared-admission entry below records current evidence; historical invalid transactions

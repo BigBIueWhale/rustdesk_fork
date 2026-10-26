@@ -43,7 +43,8 @@ void main() {
     expect(model.currentTabCachedPeers, hasLength(2));
   });
 
-  testWidgets('peer cache owns its submitted list and refuses external mutation',
+  testWidgets(
+      'peer cache owns its submitted list and refuses external mutation',
       (tester) async {
     final owner = _UnusedOwner();
     final model = _model(owner);
@@ -115,7 +116,8 @@ void main() {
     ]);
   });
 
-  testWidgets('peer cache disposal cancels pending and refuses later publication',
+  testWidgets(
+      'peer cache disposal cancels pending and refuses later publication',
       (tester) async {
     final owner = _UnusedOwner();
     final model = _model(owner);

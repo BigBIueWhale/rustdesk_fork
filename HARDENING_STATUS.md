@@ -15838,6 +15838,27 @@ Native resumed transfers, installed/device presentation, R-S0/R-F5, all fifteen 
 actions and release acceptance remain OPEN. The verification-catalogue exploration and
 all earlier user-parked work remain open and untouched.
 
+**Native transfer resume (`9957f275`) — library A/B verified; application dispatch OPEN.**
+`TransferJob.resume` consumes the restored job's paused state once, sets resume semantics,
+and initializes send-side completed-byte accounting. Both native viewer branches construct
+and enqueue their resume message only when that transition succeeds. Repeated or fresh-active
+requests return without changing the job. The transition uses the job's exclusive mutable
+borrow and completes before an await; no additional queue or lifetime store is needed.
+The behavior-preserving extraction `d5fd4baf` passes twelve existing send/admission checks
+and fails both new real-file cases: a duplicate send resume rolls completed bytes from eight
+back to four, and a receive job accepts a duplicate while owning its output. The corrected
+fourteen-case suite passes. Eight duplicates per direction preserve counters/offsets and
+receive ownership; send reaches exact EOF with unchanged sources, receive publishes four
+exact bytes, and fresh-active/finished jobs refuse resume. The first corrected run passed
+every case but the outer wrapper rejected its renamed scope; `50bb3363` aligns that one
+receipt field and the complete focused VM transaction passes. Product/tests are unchanged
+between corrected runs. `native-resume-fe2b9fb8.json` retains source reconstruction, named
+results, executable digests, pinned inputs, fresh ledger count and joined RAM/VM cleanup;
+all behavioral-run listener deltas are zero. The Rust library ran on Linux with real files;
+the full viewer dispatch, repeated GUI clicks, peer wire traffic, restored-partial handshake,
+installed/device platforms and R-S0/R-F5 acceptance remain OPEN. Parent compilation/runtime
+and every separately user-parked item remain parked; all fifteen credential actions remain OPEN.
+
 **Mutating file-job dispatch admission — Dart listener/caller A/B ACCEPTED; native mutation/drain/platform integration OPEN.**
 `JobResultListener` retains exact pending objects and dispatch-completion futures independently
 of its keyed response map. `clear()` retires response routing and caller results while unfinished

@@ -94,7 +94,6 @@ class BottomSheetBody extends StatelessWidget {
       builder: (BuildContext context) {
         return Container(
             constraints: BoxConstraints(minHeight: 65),
-            alignment: Alignment.centerLeft,
             decoration: BoxDecoration(
                 color: MyTheme.accent50,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(10))),

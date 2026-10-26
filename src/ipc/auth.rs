@@ -2927,12 +2927,32 @@ fn linux_process_has_ancestor(pid: u32, ancestor_pid: u32) -> bool {
 
 #[cfg(target_os = "linux")]
 fn linux_proc_cmdline_args(pid: u32) -> ResultType<Vec<Vec<u8>>> {
-    let mut cmdline = fs::read(format!("/proc/{pid}/cmdline"))?;
+    use std::io::Read;
+
+    // Every supported IPC role has argv[0] and at most two fixed arguments.
+    // Linux permits 32 pages per exec argument, including its terminating NUL.
+    const MAX_ARGS: usize = 3;
+    let read_limit = usize::try_from(unsafe { libc::sysconf(libc::_SC_PAGESIZE) })
+        .ok()
+        .filter(|page_size| *page_size > 0)
+        .and_then(|page_size| page_size.checked_mul(32 * MAX_ARGS))
+        .and_then(|limit| limit.checked_add(1))
+        .ok_or_else(|| anyhow::anyhow!("Invalid Linux process argv byte bound"))?;
+    let mut cmdline = Vec::new();
+    fs::File::open(format!("/proc/{pid}/cmdline"))?
+        .take(read_limit as u64)
+        .read_to_end(&mut cmdline)?;
+    if cmdline.len() >= read_limit {
+        bail!("Linux process argv exceeds its byte bound");
+    }
     if cmdline.is_empty() {
         return Ok(Vec::new());
     }
     if cmdline.last() == Some(&0) {
         cmdline.truncate(cmdline.len() - 1);
+    }
+    if cmdline.split(|byte| *byte == 0).take(MAX_ARGS + 1).count() > MAX_ARGS {
+        bail!("Linux process argv exceeds its argument bound");
     }
     Ok(cmdline
         .split(|byte| *byte == 0)

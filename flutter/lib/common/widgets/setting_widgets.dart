@@ -75,7 +75,7 @@ class CustomImageQualityWidget extends StatefulWidget {
 class _QualityField {
   _QualityField(this.minimum, this.maximum, this.fallback, double input,
       this.writer, this.enabled, this.changed) {
-    value = confirmed = _input = _normalize(input);
+    confirmed = value = _input = _normalize(input);
   }
 
   final double minimum;
@@ -85,7 +85,7 @@ class _QualityField {
   bool enabled;
   final VoidCallback changed;
   late double value;
-  late double confirmed;
+  double? confirmed;
   late double _input;
   Timer? _timer;
   Future<bool>? _pending;
@@ -115,9 +115,9 @@ class _QualityField {
       _timer?.cancel();
       _timer = null;
       _dirty = _ready = failed = _committed = false;
-      value = confirmed = _input = next;
+      confirmed = value = _input = next;
     } else if (next != _input) {
-      _input = confirmed = next;
+      confirmed = _input = next;
       if (!_dirty && !saving) value = next;
     }
   }
@@ -191,8 +191,9 @@ class _QualityField {
         _dirty = value != confirmed;
         success = true;
       } else {
+        confirmed = null;
         failed = value == requested;
-        _dirty = failed || value != confirmed;
+        _dirty = true;
       }
     }
     if (_alive) changed();
@@ -442,7 +443,7 @@ class TrackpadSpeedWidget extends StatefulWidget {
 class _TrackpadSpeedWidgetState extends State<TrackpadSpeedWidget> {
   late final TextEditingController _controller;
   late int _value;
-  late int _confirmed;
+  int? _confirmed;
   late int _inputValue;
   Timer? _debounce;
   bool _dirty = false;
@@ -456,7 +457,7 @@ class _TrackpadSpeedWidgetState extends State<TrackpadSpeedWidget> {
   @override
   void initState() {
     super.initState();
-    _value = _confirmed = _inputValue = _bounded(widget.value.value);
+    _confirmed = _value = _inputValue = _bounded(widget.value.value);
     _controller = TextEditingController(text: _value.toString());
   }
 
@@ -471,12 +472,12 @@ class _TrackpadSpeedWidgetState extends State<TrackpadSpeedWidget> {
       _debounce?.cancel();
       _debounce = null;
       _ready = _dirty = _failed = false;
-      _value = _confirmed = _inputValue = incoming;
+      _confirmed = _value = _inputValue = incoming;
       _controller.text = incoming.toString();
     } else if (incoming != _inputValue) {
       final replaceDraft = !_dirty && !_saving &&
           _controller.text == _value.toString();
-      _inputValue = _confirmed = incoming;
+      _confirmed = _inputValue = incoming;
       if (replaceDraft) {
         _value = incoming;
         _controller.text = incoming.toString();
@@ -569,8 +570,9 @@ class _TrackpadSpeedWidgetState extends State<TrackpadSpeedWidget> {
         }
         _dirty = _value != _confirmed;
       } else {
+        _confirmed = null;
         _failed = _value == requested;
-        _dirty = _failed || _value != _confirmed;
+        _dirty = true;
       }
     });
     if (_ready) unawaited(_save());

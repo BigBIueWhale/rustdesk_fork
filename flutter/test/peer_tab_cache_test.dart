@@ -26,7 +26,7 @@ void main() {
 
     model.setCurrentTabCachedPeers([peer]);
     expect(model.currentTabCachedPeers, isEmpty);
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
     expect(model.currentTabCachedPeers, [peer]);
     expect(notifications, 1);
 
@@ -38,7 +38,7 @@ void main() {
 
     final before = notifications;
     model.setCurrentTabCachedPeers([peer, _peer('192.0.2.2')]);
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
     expect(notifications, before);
     expect(model.currentTabCachedPeers, hasLength(2));
   });
@@ -53,7 +53,7 @@ void main() {
     final input = [peer];
     model.setCurrentTabCachedPeers(input);
     input.clear();
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
     expect(model.currentTabCachedPeers, [peer]);
     expect(() => model.currentTabCachedPeers.clear(), throwsUnsupportedError);
     expect(() => model.currentTabCachedPeers[0] = _peer('192.0.2.9'),
@@ -67,7 +67,7 @@ void main() {
     final model = _model(owner);
     addTearDown(model.dispose);
     model.setCurrentTabCachedPeers([_peer('192.0.2.1')]);
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
     model.setCurrentTab(PeerTabIndex.fav.index);
     expect(model.currentTabCachedPeers, isEmpty);
     model.setMultiSelectionMode(true);
@@ -76,7 +76,7 @@ void main() {
 
     final favorite = _peer('192.0.2.2');
     model.setCurrentTabCachedPeers([favorite]);
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
     model.selectAll();
     expect(model.selectedPeers, [favorite]);
   });
@@ -89,13 +89,13 @@ void main() {
     model.setCurrentTabCachedPeers([_peer('192.0.2.1')]);
     model.setCurrentTab(PeerTabIndex.fav.index);
     model.setCurrentTab(PeerTabIndex.recent.index);
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
     expect(model.currentTabCachedPeers, isEmpty);
 
     final current = _peer('192.0.2.3');
     model.setCurrentTabCachedPeers([current]);
     model.setCurrentTab(PeerTabIndex.recent.index);
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
     expect(model.currentTabCachedPeers, [current]);
   });
 
@@ -110,7 +110,7 @@ void main() {
     model.setCurrentTabCachedPeers([_peer('192.0.2.1')]);
     model.setCurrentTabCachedPeers([]);
     model.setCurrentTabCachedPeers([_peer('192.0.2.2')]);
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
     expect(publications, [
       ['192.0.2.2']
     ]);
@@ -123,11 +123,11 @@ void main() {
     final model = _model(owner);
     model.setCurrentTabCachedPeers([_peer('192.0.2.1')]);
     model.dispose();
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
     expect(tester.takeException(), isNull);
     expect(model.currentTabCachedPeers, isEmpty);
     model.setCurrentTabCachedPeers([_peer('192.0.2.2')]);
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
     expect(tester.takeException(), isNull);
     expect(model.currentTabCachedPeers, isEmpty);
   });

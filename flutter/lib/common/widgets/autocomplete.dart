@@ -11,10 +11,12 @@ class AllPeersLoader {
 
   bool _isPeersLoading = false;
   bool _isPeersLoaded = false;
+  bool _cleared = false;
 
-  late void Function(VoidCallback) setState;
+  void Function(VoidCallback)? _setState;
 
-  bool get needLoad => !_isPeersLoaded && !_isPeersLoading;
+  bool get needLoad =>
+      !_cleared && _setState != null && !_isPeersLoaded && !_isPeersLoading;
   bool get isPeersLoaded => _isPeersLoaded;
   bool get isPeersLoading => _isPeersLoading;
 
@@ -23,32 +25,44 @@ class AllPeersLoader {
         _requestLoad = requestLoad ?? (() => bind.mainLoadRecentPeers());
 
   void init(void Function(VoidCallback) setState) {
-    this.setState = setState;
+    if (_cleared || _setState != null) {
+      throw StateError('peer loader is already initialized or retired');
+    }
+    _setState = setState;
     _recentPeers.addListener(_mergeAllPeers);
   }
 
   void clear() {
+    if (_cleared) return;
+    _cleared = true;
     _recentPeers.removeListener(_mergeAllPeers);
+    _setState = null;
+    peers = [];
+    _isPeersLoading = false;
+    _isPeersLoaded = false;
   }
 
   Future<void> getAllPeers() async {
     if (!needLoad) {
       return;
     }
-    _isPeersLoading = true;
-
-    if (_recentPeers.peers.isEmpty) {
-      _requestLoad();
+    if (_recentPeers.peers.isNotEmpty) {
+      _mergeAllPeers();
+      return;
     }
-    final startTime = DateTime.now();
-    _mergeAllPeers();
-    final diffTime = DateTime.now().difference(startTime).inMilliseconds;
-    if (diffTime < 100) {
-      await Future.delayed(Duration(milliseconds: diffTime));
+    _setState?.call(() => _isPeersLoading = true);
+    try {
+      await _requestLoad();
+    } catch (_) {
+      if (!_cleared && !_isPeersLoaded) {
+        _setState?.call(() => _isPeersLoading = false);
+      }
+      rethrow;
     }
   }
 
   void _mergeAllPeers() {
+    if (_cleared) return;
     // R-G2/R-SV6 + R-X5: a direct-IP fork has no account address book/groups and no LAN
     // discovery — the autocomplete suggests only the local Recent peers.
     List<Peer> parsedPeers = [];
@@ -66,8 +80,8 @@ class AllPeersLoader {
       }
     }
 
-    peers = parsedPeers;
-    setState(() {
+    _setState?.call(() {
+      peers = parsedPeers;
       _isPeersLoading = false;
       _isPeersLoaded = true;
     });

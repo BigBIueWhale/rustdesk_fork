@@ -97,7 +97,9 @@ class _ConnectionPageState extends State<ConnectionPage> {
     _addressEmpty.value = _addressController.text.isEmpty;
     if (_addressFocusNode.hasFocus) {
       if (_allPeersLoader.needLoad) {
-        _allPeersLoader.getAllPeers();
+        unawaited(_allPeersLoader.getAllPeers().catchError((Object _) {
+          if (mounted) showToast(translate('Failed'));
+        }));
       }
 
       final textLength = _addressController.text.length;
@@ -129,7 +131,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
                       if (textEditingValue.text == '') {
                         _autocompleteOpts = const Iterable<Peer>.empty();
                       } else if (_allPeersLoader.peers.isEmpty &&
-                          !_allPeersLoader.isPeersLoaded) {
+                          _allPeersLoader.isPeersLoading) {
                         Peer emptyPeer = Peer.fromJson({'id': ''});
                         _autocompleteOpts = [emptyPeer];
                       } else {
@@ -229,7 +231,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
                                           ),
                                           child: _allPeersLoader
                                                       .peers.isEmpty &&
-                                                  !_allPeersLoader.isPeersLoaded
+                                                  _allPeersLoader.isPeersLoading
                                               ? Container(
                                                   height: 80,
                                                   child: Center(

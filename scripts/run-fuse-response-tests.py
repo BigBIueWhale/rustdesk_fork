@@ -96,8 +96,10 @@ def main():
             ("clipboard", repo / "libs/clipboard/Cargo.toml", "clipboard", 18,
              ["platform::unix::fuse::cs::fuse_test::"]),
         ):
-            output = run(["cargo", "test", "--offline", "--locked", "--manifest-path", str(manifest), "-p", package,
-                          "--features", "unix-file-copy-paste", "--lib", "--no-run",
+            packages = ["-p", PACKAGE]
+            if package != PACKAGE:
+                packages.extend(["-p", package])
+            output = run(["cargo", "test", "--offline", "--locked", *packages, "--lib", "--no-run",
                           "--message-format=json", *config], 180)
             messages = [json.loads(line) for line in output.splitlines() if line.startswith(b"{")]
             candidates = [Path(m["executable"]) for m in messages
@@ -105,6 +107,7 @@ def main():
                           and m.get("manifest_path") == str(manifest)
                           and m.get("target", {}).get("name") == name
                           and m.get("target", {}).get("kind") == ["lib"]
+                          and "unix-file-copy-paste" in m.get("features", [])
                           and m.get("profile", {}).get("test") is True]
             if len(candidates) != 1 or candidates[0].is_symlink() or not candidates[0].is_file():
                 raise ValueError("FUSE dispatch artifact is absent or ambiguous")

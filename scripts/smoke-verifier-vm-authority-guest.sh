@@ -48,6 +48,9 @@ case "$#:${8:-}" in
     8:--debian-package-tests)
         MODE=debian-package-tests
         ;;
+    8:--debian-maintainer-tests)
+        MODE=debian-maintainer-tests
+        ;;
     8:--debian-elf-role-tests)
         MODE=debian-elf-role-tests
         ;;
@@ -1234,6 +1237,21 @@ run_debian_package_tests() {
     fi
     printf 'DEBIAN_POLKIT_TESTS_VM=pass uid=4000 gid=4000 caps=none nnp=yes generator_sha256=%s checker_sha256=%s source=readonly network=none docker=retired scratch=retired cleanup=joined\n' \
         "$(sha256sum "$generator" | awk '{print $1}')" "$(sha256sum "$checker" | awk '{print $1}')"
+}
+
+run_debian_maintainer_tests() {
+    local fixture=$VERIFY_REPO/scripts/test-debian-maintainer-native.py
+    local output=$ROOT/debian-maintainer-tests.out status=0
+    stop_docker_authority
+    /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C HOME=/root \
+        /usr/bin/python3 -B -I -S "$fixture" >"$output" 2>&1 || status=$?
+    [ "$(stat -c '%s' "$output")" -le 65536 ] \
+        || fail 'Debian maintainer diagnostics exceeded their bound'
+    cat "$output"
+    [ "$status" -eq 0 ] || fail "Debian maintainer regression returned $status"
+    printf 'DEBIAN_MAINTAINER_VM=pass fixture_sha256=%s prerm_sha256=%s source=readonly network=none docker=retired cleanup=joined\n' \
+        "$(sha256sum "$fixture" | awk '{print $1}')" \
+        "$(sha256sum "$VERIFY_REPO/res/DEBIAN/prerm" | awk '{print $1}')"
 }
 
 run_debian_archive_integration_tests() {
@@ -12288,6 +12306,11 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     run_debian_systemd_lifecycle
     printf 'VERIFIER_VM_AUTHORITY_SMOKE=pass guest=debian-12 kernel=%s direct_boot=on boot_masks=on docker=%s vm_network=none daemon_bridge=none daemon_forwarding=off daemon_firewall=off lifecycle=installed-debian-artifact\n' \
         "$EXPECTED_KERNEL_RELEASE" "$EXPECTED_VERSION"
+    exit 0
+fi
+
+if [ "$MODE" = debian-maintainer-tests ]; then
+    run_debian_maintainer_tests
     exit 0
 fi
 

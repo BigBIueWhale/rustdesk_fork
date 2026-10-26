@@ -361,6 +361,11 @@ case "$#:${1:-}" in
             || { echo 'Debian polkit-test input/run overrides are forbidden' >&2; exit 2; }
         MODE=debian-polkit-tests
         ;;
+    1:--debian-maintainer-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'Debian maintainer-test input/run overrides are forbidden' >&2; exit 2; }
+        MODE=debian-maintainer-tests
+        ;;
     1:--debian-package-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'Debian package-test input/run overrides are forbidden' >&2; exit 2; }
@@ -590,6 +595,7 @@ case "$#:${1:-}" in
         printf 'Focused archive transaction fixtures: %s --fixed-archive-tests\n' "${0##*/}" >&2
         printf 'Focused Debian authorization dependency tests: %s --debian-polkit-tests\n' "${0##*/}" >&2
         printf 'Compiled Debian archive integration tests: %s --debian-package-tests\n' "${0##*/}" >&2
+        printf 'Native Debian maintainer remove/purge regression: %s --debian-maintainer-tests\n' "${0##*/}" >&2
         printf 'Real VM boot from a private read-only base copy: %s --base-readonly-test\n' "${0##*/}" >&2
         printf 'Focused native Linux app-capsule check: %s --linux-flutter-artifact-tests\n' "${0##*/}" >&2
         printf 'Focused native framebuffer check: %s --android-frame-tests\n' "${0##*/}" >&2
@@ -949,6 +955,10 @@ elif [ "$MODE" = flutter-model-tests ]; then
 elif [ "$MODE" = android-owner-tests ]; then
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=8G
+    readonly VM_MEMORY=2048
+elif [ "$MODE" = debian-maintainer-tests ]; then
+    readonly VM_TIMEOUT_SECONDS=150
+    readonly OVERLAY_SIZE=6G
     readonly VM_MEMORY=2048
 elif [ "$MODE" = debian-package-tests ]; then
     readonly VM_TIMEOUT_SECONDS=300
@@ -2439,7 +2449,7 @@ fi
 frame_inputs_before=
 FOCUSED_TEST_COMMIT=
 FOCUSED_TEST_TREE=
-if [ "$MODE" = media-kernel-tests ] || [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
+if [ "$MODE" = debian-maintainer-tests ] || [ "$MODE" = media-kernel-tests ] || [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
    || [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ] || [ "$MODE" = debian-package-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = host-network-tests ] || [ "$MODE" = dependency-inventory ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
    || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ] \
    || { [ "$MODE" = android-rust-lifecycle-tests ] \
@@ -2459,6 +2469,19 @@ if [ "$MODE" = media-kernel-tests ] || [ "$MODE" = android-frame-tests ] || [ "$
 fi
 debian_polkit_sources_before=
 debian_package_inputs_before=
+debian_maintainer_sources=()
+debian_maintainer_sources_before=
+if [ "$MODE" = debian-maintainer-tests ]; then
+    debian_maintainer_sources=("$SCRIPT_DIR/test-debian-maintainer-native.py"
+        "$REPO_ROOT/res/DEBIAN/preinst" "$REPO_ROOT/res/DEBIAN/postinst"
+        "$REPO_ROOT/res/DEBIAN/prerm" "$REPO_ROOT/res/DEBIAN/postrm"
+        "$REPO_ROOT/res/rustdesk.init")
+    for source in "${debian_maintainer_sources[@]}"; do
+        [ -f "$source" ] && [ ! -L "$source" ] || fail 'Debian maintainer source is absent or ambiguous'
+        verify_committed_test_source "$source"
+    done
+    debian_maintainer_sources_before="$(/usr/bin/sha256sum "${debian_maintainer_sources[@]}")"
+fi
 ledger_token_inputs_before=
 if [ "$MODE" = media-kernel-tests ]; then
     media_sources=("$MEDIA_BOOT_SOURCE" "$MEDIA_GUEST_SOURCE" "$PIN_SOURCE" "$VM_STORAGE_SOURCE" "$SCRIPT_DIR/vm-transient-storage.sh")
@@ -3284,7 +3307,7 @@ for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT
     "$LIB_SOURCE" "$PIN_SOURCE"; do
     [ -f "$source" ] && [ ! -L "$source" ] \
         || fail "verifier-VM source is absent or symlinked: $source"
-    if [ "$MODE" = media-kernel-tests ] || [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
+    if [ "$MODE" = debian-maintainer-tests ] || [ "$MODE" = media-kernel-tests ] || [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
        || [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ] || [ "$MODE" = debian-package-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = dependency-inventory ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
        || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
         verify_committed_test_source "$source"
@@ -4279,6 +4302,20 @@ elif [ "$MODE" = flutter-model-tests ]; then
 elif [ "$MODE" = android-owner-tests ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("source.tar=$ANDROID_OWNER_SOURCE_ARCHIVE")
+elif [ "$MODE" = debian-maintainer-tests ]; then
+    payload_identity=(-uid 0 -gid 0)
+    for source in "${debian_maintainer_sources[@]}"; do
+        lifecycle_payload_grafts+=("repo/${source#"$REPO_ROOT/"}=$source")
+    done
+    debian_prerm_baseline=$VM_TRANSIENT/debian-prerm-before
+    (set -o noclobber; git_closed -C "$REPO_ROOT" show \
+        a5d3fb539999e11bb2a15543fbc70366c1a3df41:res/DEBIAN/prerm >"$debian_prerm_baseline") \
+        || fail 'cannot export the exact Debian prerm baseline'
+    [ "$(/usr/bin/sha256sum "$debian_prerm_baseline" | /usr/bin/awk '{print $1}')" = \
+        89a2f108215ea75de2cc61624fd37d46e7f05abf904475e62f56ddf6acd137a9 ] \
+        || fail 'Debian prerm baseline digest differs'
+    /usr/bin/chmod 400 "$debian_prerm_baseline"
+    lifecycle_payload_grafts+=("repo/res/DEBIAN/prerm-before=$debian_prerm_baseline")
 elif { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ] || [ "$MODE" = debian-package-tests ]; }; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("repo/build.py=$DEBIAN_CONTROL_SOURCE")
@@ -4664,6 +4701,8 @@ elif [ "$MODE" = debian-polkit-tests ]; then
     guest_invocation+=' --debian-polkit-tests'
 elif [ "$MODE" = debian-package-tests ]; then
     guest_invocation+=' --debian-package-tests'
+elif [ "$MODE" = debian-maintainer-tests ]; then
+    guest_invocation+=' --debian-maintainer-tests'
 elif [ "$MODE" = dependency-inventory ]; then
     guest_invocation+=" --dependency-inventory $inventory_index_sha $inventory_helper_sha"
 elif [ "$MODE" = ledger-token-count ]; then
@@ -5312,6 +5351,10 @@ elif [ "$MODE" = debian-package-tests ]; then
     require_exact_fixed_receipt "$debian_package_receipt" 'compiled Debian package test finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Debian package guest completion'
     printf '%s\n' "$debian_package_receipt"
+elif [ "$MODE" = debian-maintainer-tests ]; then
+    require_exact_fixed_receipt 'DEBIAN_MAINTAINER_NATIVE=pass baseline=remove-refused candidate=remove-purge-ok deconfigure=ok init-links=preserved-until-purge tools=actual package=fixture service=oneshot product=unexecuted' 'Debian maintainer native regression'
+    require_exact_fixed_receipt "DEBIAN_MAINTAINER_VM=pass fixture_sha256=$(/usr/bin/sha256sum "$SCRIPT_DIR/test-debian-maintainer-native.py" | /usr/bin/awk '{print $1}') prerm_sha256=$(/usr/bin/sha256sum "$REPO_ROOT/res/DEBIAN/prerm" | /usr/bin/awk '{print $1}') source=readonly network=none docker=retired cleanup=joined" 'Debian maintainer finality'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Debian maintainer guest completion'
 elif [ "$MODE" = debian-elf-role-tests ]; then
     require_exact_fixed_receipt \
         'DEBIAN_ELF_ROLES=pass cases=9 packages=2 gate=elf-partition old-pie=accepted current-pie=refused native-dlopen=refused shared-call=pass runners=types-metadata entry=valid-exit0-invalid-SIGSEGV product=unexecuted cleanup=joined' \
@@ -8319,6 +8362,13 @@ if { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ] ||
         && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
         || fail 'Debian polkit-test source changed during execution'
 fi
+if [ "$MODE" = debian-maintainer-tests ]; then
+    [ "$(/usr/bin/sha256sum "${debian_maintainer_sources[@]}")" = "$debian_maintainer_sources_before" ] \
+        && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
+        && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')" = "$FOCUSED_TEST_TREE" ] \
+        && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
+        || fail 'Debian maintainer source changed during execution'
+fi
 if [ "$MODE" = fixed-archive-tests ]; then
     [ "$(/usr/bin/sha256sum "$FIXED_ARCHIVE_HELPER" \
         "$FIXED_ARCHIVE_MANIFEST" "$FIXED_ARCHIVE_WINDOWS_TOOLS" "$BASE_METADATA_TEST" "$BASE_METADATA_SOURCE" \
@@ -8405,6 +8455,9 @@ elif [ "$MODE" = debian-package-tests ]; then
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = debian-polkit-tests ]; then
     printf 'DEBIAN_POLKIT_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only receiver=unexecuted cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
+elif [ "$MODE" = debian-maintainer-tests ]; then
+    printf 'DEBIAN_MAINTAINER_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly authority=guest-root product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = host-network-tests ]; then
     printf 'VM_HOST_NETWORK_OUTER=pass host_uid=%s commit=%s tree=%s helper_sha256=%s fixture_sha256=%s network=none cleanup=joined elapsed_seconds=%s\n' \

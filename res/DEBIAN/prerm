@@ -16,7 +16,6 @@ case "$1" in
             if [ -d /run/systemd/system ]; then
                 deb-systemd-helper disable "$unit" >/dev/null
             fi
-            update-rc.d "$service" remove >/dev/null
         fi
         ;;
 esac

@@ -10,7 +10,8 @@ elif [ "${MODE:-}" = fixed-archive-tests ]; then
     readonly VM_STORAGE_PROFILE=fixed-archive-tests
 elif [ "${MODE:-}" = media-kernel-tests ]; then
     readonly VM_STORAGE_PROFILE=media-kernel-tests
-elif [ "${MODE:-}" = authority-smoke ] || [ "${MODE:-}" = dependency-inventory ]; then
+elif [ "${MODE:-}" = authority-smoke ] || [ "${MODE:-}" = dependency-inventory ] \
+    || [ "${MODE:-}" = debian-maintainer-tests ]; then
     readonly VM_STORAGE_PROFILE=authority-smoke
 elif [ "${MODE:-}:${REQUEST:-}" = transaction:--maintenance-stage-xrandr-runtime-candidate ]; then
     readonly VM_STORAGE_PROFILE=xrandr-acquisition

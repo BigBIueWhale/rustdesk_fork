@@ -46,8 +46,8 @@ class ResultTests(unittest.TestCase):
             suites = ["file_progress_test.dart"]
             names = sorted(result.FILE_PROGRESS_TESTS)
         elif profile == "peer-data":
-            suites = ["peer_decode_test.dart"]
-            names = sorted(result.PEER_DATA_TESTS)
+            suites = sorted(result.PEER_DATA_SUITES)
+            names = sorted(set().union(*result.PEER_DATA_SUITES.values()))
         elif profile == "file-navigation":
             suites = sorted(result.FILE_NAVIGATION_SUITES)
             names = sorted(set().union(*result.FILE_NAVIGATION_SUITES.values()))
@@ -80,8 +80,9 @@ class ResultTests(unittest.TestCase):
             })
         for test_id, name in enumerate(names):
             suite_id = test_id % len(suites)
-            if profile in ("credential-dialog", "terminal-output", "file-navigation", "modifier-release"):
+            if profile in ("credential-dialog", "terminal-output", "file-navigation", "modifier-release", "peer-data"):
                 inventory = (result.CREDENTIAL_DIALOG_TESTS if profile == "credential-dialog"
+                             else result.PEER_DATA_SUITES if profile == "peer-data"
                              else result.TERMINAL_OUTPUT_TESTS if profile == "terminal-output"
                              else inventory if profile == "modifier-release"
                              else result.FILE_NAVIGATION_SUITES)
@@ -119,7 +120,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("password-fields"), "password-fields"), (1, 4))
         self.assertEqual(self.parse(self.events("share-rdp"), "share-rdp"), (1, 4))
         self.assertEqual(self.parse(self.events("window-dispatch"), "window-dispatch"), (1, 8))
-        self.assertEqual(self.parse(self.events("peer-data"), "peer-data"), (1, 64))
+        self.assertEqual(self.parse(self.events("peer-data"), "peer-data"), (2, 70))
         self.assertEqual(self.parse(self.events("file-progress"), "file-progress"), (1, 23))
         self.assertEqual(self.parse(self.events("custom-scale"), "custom-scale"), (1, 35))
         self.assertEqual(self.parse(self.events("file-navigation"), "file-navigation"), (7, 110))

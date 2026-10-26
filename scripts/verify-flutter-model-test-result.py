@@ -821,6 +821,18 @@ PEER_DATA_TESTS = {
     "resolution metadata refuses partial and private input",
     "resolution metadata preserves both formats and recovery",
 }
+PEER_CACHE_TESTS = {
+    "peer cache publishes current rows and preserves select all",
+    "peer cache owns its submitted list and refuses external mutation",
+    "peer cache clears immediately when the current tab changes",
+    "peer cache retires queued rows across a tab round trip",
+    "peer cache coalesces pending updates to the latest list",
+    "peer cache disposal cancels pending and refuses later publication",
+}
+PEER_DATA_SUITES = {
+    "peer_decode_test.dart": PEER_DATA_TESTS,
+    "peer_tab_cache_test.dart": PEER_CACHE_TESTS,
+}
 TERMINAL_OUTPUT_TESTS = {
     "terminal_output_decoder_test.dart": {
         "terminal UTF-8 survives every two-packet split",
@@ -1044,9 +1056,10 @@ def parse_result(path, profile="models"):
         expected_tests = len(FILE_PROGRESS_TESTS)
         expected_names = FILE_PROGRESS_TESTS
     elif profile == "peer-data":
-        expected_suites = {"peer_decode_test.dart"}
-        expected_tests = len(PEER_DATA_TESTS)
-        expected_names = PEER_DATA_TESTS
+        expected_by_suite = PEER_DATA_SUITES
+        expected_suites = set(expected_by_suite)
+        expected_names = set().union(*expected_by_suite.values())
+        expected_tests = len(expected_names)
     elif profile == "terminal-output":
         expected_by_suite = TERMINAL_OUTPUT_TESTS
         expected_suites = set(expected_by_suite)

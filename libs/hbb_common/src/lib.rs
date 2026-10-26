@@ -417,7 +417,7 @@ fn file_logger(
         })
         .format(opt_format)
         .rotate(
-            Criterion::Age(Age::Day),
+            Criterion::AgeOrSize(Age::Day, 4 * 1024 * 1024),
             Naming::Timestamps,
             Cleanup::KeepLogFiles(31),
         ))

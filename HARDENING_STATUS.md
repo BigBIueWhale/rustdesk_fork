@@ -3122,9 +3122,16 @@ deleted, together with both invocations and the Apple gate's claim to prove peer
 They never executed a credential exchange, kernel peer check, code-signature proof or launchd query.
 The closed service-protocol regression, five launchctl parser tests, three bounded-child process
 tests and their compiled gate commands remain unchanged, as do the shared prohibitions on generic
-credential variants, whole-config transfer and persistent credential mirroring. The Linux password
-source validator remains supplementary. No behavioral test or Apple compilation ran for this
-deletion. The retained models, source checks and historical results do not supply installed
+credential variants, whole-config transfer and persistent credential mirroring. The duplicate
+636-line macOS identity/admission catalogue and its call are also removed from the desktop
+password source checker. It inspected token sequences, source ordering and test-body spelling;
+it did not execute a requester, socket, code-signature or Authorization Services transaction.
+The executable `r_s11e262_` role/audit-token predicates and their shared gate command remain,
+alongside the other password source checks and the shared/Apple checks they overlapped.
+Read-only AST and exact-byte comparison establish that the remaining checker bodies, product,
+Rust tests, gate commands and normative requirements are unchanged. No behavioral test or Apple
+compilation ran for these deletions; `mac-password-catalogue-187c9d91.json` retains the narrow
+deletion evidence and fresh ledger count. The retained models, source checks and historical results do not supply installed
 process/token authorization, real polkit, Authorization Services, named-pipe impersonation or
 protected-action evidence; all fifteen actions still require their native observations above.
 

@@ -553,6 +553,8 @@ class TerminalModel with ChangeNotifier {
     _retireTerminalOutput();
     _retireTerminalInput();
     _markViewReadyScheduled = false;
+    terminalController.clearSelection();
+    terminalController.dispose();
     // Terminal cleanup is handled server-side when service closes
     super.dispose();
   }

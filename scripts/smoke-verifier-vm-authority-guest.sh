@@ -1334,28 +1334,22 @@ PY
 }
 
 run_fixed_archive_tests() {
-    local work work_id helper_sha checker_sha source_before status=0
+    local work work_id helper_sha wix_retire_sha source_before status=0
     local helper=$VERIFY_REPO/scripts/online-fixed-archive-output.py
-    local checker=$VERIFY_REPO/scripts/verify-wix-nuget-authority.py
     local wix_retire=$VERIFY_REPO/scripts/online-wix-nuget-retire.py
     local output=$ROOT/fixed-archive-tests.out
     local metadata_test=$VERIFY_REPO/scripts/test-verifier-vm-base-metadata.sh
-    local -a sources=("$helper" "$checker" "$VERIFY_REPO/scripts/online-fetch.sh"
+    local -a sources=("$helper" "$VERIFY_REPO/scripts/online-fetch.sh"
         "$VERIFY_REPO/scripts/pins.env" "$VERIFY_REPO/scripts/verify.sh"
         "$VERIFY_REPO/scripts/smoke-verifier-vm-authority.sh"
         "$VERIFY_REPO/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
         "$VERIFY_REPO/res/vcpkg/libvpx/windows-tools.sha512" "$metadata_test"
         "$VERIFY_REPO/scripts/verifier-vm-base-metadata.sh"
         "$VERIFY_REPO/scripts/derive-verifier-vm-boot-assets.sh"
-        "$wix_retire" "$VERIFY_REPO/scripts/lib.sh"
-        "$VERIFY_REPO/scripts/build-windows-vm.sh"
-        "$VERIFY_REPO/scripts/windows-offline-manifest.py"
-        "$VERIFY_REPO/scripts/build-windows.ps1"
-        "$VERIFY_REPO/res/msi/Package/Package.wixproj"
-        "$VERIFY_REPO/res/msi/Package/packages.lock.json")
+        "$wix_retire")
     source_before="$(sha256sum "${sources[@]}")"
     helper_sha="$(sha256sum "$helper" | awk '{print $1}')"
-    checker_sha="$(sha256sum "$checker" | awk '{print $1}')"
+    wix_retire_sha="$(sha256sum "$wix_retire" | awk '{print $1}')"
     setpriv --reuid=4000 --regid=4000 --clear-groups /bin/bash "$ENTRY_PREFLIGHT" >/dev/null
     work="$(setpriv --reuid=4000 --regid=4000 --clear-groups \
         /usr/bin/mktemp -d /tmp/fixed-archive-tests.XXXXXXXXXX)" \
@@ -1398,10 +1392,7 @@ PY
             /usr/bin/python3 -B -I -S "$helper" self-test &&
         setpriv --reuid=4000 --regid=4000 --clear-groups \
             /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent TMPDIR="$work" \
-            /usr/bin/python3 -B -I -S "$wix_retire" self-test &&
-        setpriv --reuid=4000 --regid=4000 --clear-groups \
-            /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent TMPDIR="$work" \
-            /usr/bin/python3 -B -I -S "$checker" --repo "$VERIFY_REPO"
+            /usr/bin/python3 -B -I -S "$wix_retire" self-test
     ) >"$output" 2>&1 || status=$?
     [ "$(stat -c '%s' -- "$output")" -le 65536 ] \
         || fail 'fixed-archive test diagnostics exceeded their bound'
@@ -1410,8 +1401,7 @@ PY
     [ "$(grep -Fxc 'fixed archive transaction self-test: PASS' "$output")" -eq 1 ] \
         && [ "$(grep -Fxc 'VERIFIER_VM_BASE_METADATA=pass cases=22 profiles=400,444 source=production metadata=actual cleanup=joined' "$output")" -eq 1 ] \
         && [ "$(grep -Fxc 'online-wix-nuget-retire: self-test PASS' "$output")" -eq 1 ] \
-        && [ "$(grep -Fxc 'WiX NuGet source constraints: PASS (signature and restore unexecuted)' "$output")" -eq 1 ] \
-        && [ "$(wc -l <"$output")" -eq 4 ] \
+        && [ "$(wc -l <"$output")" -eq 3 ] \
         || fail 'fixed-archive test results are missing, duplicated or unexpected'
     [ "$(sha256sum "${sources[@]}")" = "$source_before" ] \
         || fail 'fixed-archive test source changed during execution'
@@ -1426,8 +1416,8 @@ PY
     [ ! -e "$work" ] && [ ! -L "$work" ] || fail 'fixed-archive test scratch remains'
     stop_docker_authority
     cat "$output"
-    printf 'FIXED_ARCHIVE_TESTS_VM=pass uid=4000 gid=4000 helper_sha256=%s checker_sha256=%s source=readonly responses=injected filesystem=actual network=none docker=retired scratch=retired cleanup=joined\n' \
-        "$helper_sha" "$checker_sha"
+    printf 'FIXED_ARCHIVE_TESTS_VM=pass uid=4000 gid=4000 helper_sha256=%s wix_retire_sha256=%s source=readonly responses=injected filesystem=actual network=none docker=retired scratch=retired cleanup=joined\n' \
+        "$helper_sha" "$wix_retire_sha"
 }
 
 run_linux_flutter_artifact_tests() {

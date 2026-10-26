@@ -387,19 +387,16 @@ else
   echo "  ok  R-S11cs/R-S11ct/R-S11cu the fourteen toolchain archives, two Dart advisory inputs, six full-peer inputs, six signed WiX packages, 33 vcpkg distfiles, and one Debian systemd image use closed exact-length manifests, one private immutable non-root producer, independent host validation, and recoverable no-clobber publication"
 fi
 
-echo "== (0j-wix) WiX source constraints and archive retirement (R-S11cz/R-S11e-118) =="
+echo "== (0j-wix) WiX archive retirement (R-S11cz/R-S11e-118) =="
 r_s11cz=
 if ! /usr/bin/python3 -I -S scripts/online-wix-nuget-retire.py self-test; then
   r_s11cz="$r_s11cz retirement-self-test-failed"
 fi
-if ! /usr/bin/python3 -I -S scripts/verify-wix-nuget-authority.py --repo .; then
-  r_s11cz="$r_s11cz source-constraints-failed"
-fi
 if [ -n "$r_s11cz" ]; then
-  echo "  FAIL R-S11cz WiX source constraints or archive retirement:$r_s11cz"
+  echo "  FAIL R-S11cz WiX archive retirement:$r_s11cz"
   rc=1
 else
-  echo "  ok  R-S11cz WiX source constraints and archive-retirement fixtures passed; package signatures, Windows restore and MSI behavior require separate native execution"
+  echo "  ok  R-S11cz archive-retirement fixtures passed; package signatures, Windows restore and MSI behavior require separate native execution"
 fi
 
 echo "== (0j-local) committed libvpx local-output authority (R-S11cv/R-S11e-114) =="

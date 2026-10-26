@@ -8191,6 +8191,30 @@ reproduction or external review follows. Those broader obligations remain OPEN;
 R-S11b/R-S11c and the overall release remain STOP-SHIP.
 
 **Terminal UTF-8, callbacks and parser lifetime — DART COMPONENT PASS; NATIVE I/O OPEN.**
+`TerminalModel.dispose()` clears its owned selection anchors and disposes its
+`TerminalController` exactly once (`13e9cce1`). Desktop and mobile pages already
+dispose their model; `TerminalView` borrows the supplied controller. At unchanged
+product `96a3a32d`, both new cases retain a selection after model disposal while
+35 existing cases pass. The identical two-suite/37-case shard passes at `2aa0b73a`,
+with three result-parser controls, fresh bindings and pinned Flutter 3.24.5, in
+262 outer seconds. It checks real selection anchors, independent replacement-model
+selection, repeated disposal, and mounted-view/unmount ownership. An intermediate
+run was rejected by a stale parser-control count and has no accepted product verdict.
+All three runs join QEMU and retire bounded RAM scratch with zero endpoint deltas.
+`terminal-controller-d3a22fa8.json` binds the sources, results and cleanup. This is
+model/widget evidence with a strict parent double; full terminal-page/native peer,
+physical desktop/mobile, long-session resource and installed/R-S0 acceptance remain OPEN.
+
+**OPEN — native terminal size admission.** `OpenTerminal`/`ResizeTerminal` carry
+`uint32` rows/columns (`message.proto:905–914`), while `TerminalServiceProxy`'s
+open/helper-open/resize sinks narrow them with `as u16`. The inspected connection,
+enqueue and action-dispatch path checks authority but not dimension range; zero
+survives and values above 65535 truncate. A separate native-service slice must
+establish supported platform bounds and reject invalid dimensions before opening,
+remapping or resizing a session, with actual PTY/helper allow/refusal coverage.
+This is a source correctness finding, without a native reproduction or demonstrated
+privilege escalation. Native service code is unchanged in the controller slice.
+
 Terminal input now shares one generation-owned FIFO and one active send
 (`846279d5`). Newly typed input cannot overtake the pre-open buffer or another
 pending send. The separate immediate-send path and copied startup batch are removed.

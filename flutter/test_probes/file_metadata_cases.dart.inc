@@ -61,9 +61,9 @@ void main() {
       final ordinary = values([0, -1, 1]);
       final normal = _sortList(ordinary, SortBy.modified, ascending);
       expect(normal.map((entry) => entry.modifiedTime).toList(),
-          ascending ? [1, 0, -1] : [-1, 0, 1]);
+          ascending ? [-1, 0, 1] : [1, 0, -1]);
       final input = values([0, wrap, -wrap, limit + 1, 1700000000]);
-      final expected = [wrap, limit + 1, 1700000000, 0, -wrap];
+      final expected = [-wrap, 0, 1700000000, limit + 1, wrap];
       final result = _sortList(input, SortBy.modified, ascending);
       expect(result.map((entry) => entry.modifiedTime).toList(),
           ascending ? expected : expected.reversed.toList());

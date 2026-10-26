@@ -84,6 +84,34 @@ class _LocalCompletionHarness {
 
 enum _RemoteListing { directory, empty, recursive }
 
+class _MeasuredEntry extends Entry {
+  int metadataReads = 0;
+
+  @override
+  String get name {
+    metadataReads++;
+    return super.name;
+  }
+
+  @override
+  int get size {
+    metadataReads++;
+    return super.size;
+  }
+
+  @override
+  int get modifiedTime {
+    metadataReads++;
+    return super.modifiedTime;
+  }
+}
+
+Entry _sortEntry(int type, String name, int modified, [int size = 0]) => Entry()
+  ..entryType = type
+  ..name = name
+  ..modifiedTime = modified
+  ..size = size;
+
 class _RemoteListingHarness {
   var session = const Uuid().v4obj();
   final dispatches = <SessionID>[];
@@ -220,11 +248,97 @@ class _ListingHarness {
 }
 
 void main() {
+  for (final sort in [SortBy.modified, SortBy.size]) {
+    test('numeric ${sort.name} sorting has bounded metadata work', () {
+      final failures = <String>[];
+      for (final count in [256, 2048]) {
+        for (final ascending in [false, true]) {
+          final entries = List.generate(count, (index) {
+            final rank = (index * 577) % count;
+            return _MeasuredEntry()
+              ..name = 'entry-$index'
+              ..path = '/listing/entry-$index'
+              ..size = 9007199254740992 + rank
+              ..modifiedTime = rank - count ~/ 2;
+          });
+          final directory = FileDirectory()..entries = [...entries];
+          final watch = Stopwatch()..start();
+          directory.changeSortStyle(sort, ascending: ascending);
+          watch.stop();
+          final reads = entries.fold<int>(0, (sum, e) => sum + e.metadataReads);
+          if (reads > count * 128) {
+            failures.add('work:$count:$ascending:$reads');
+          }
+          final identities = Set<Entry>.identity()..addAll(directory.entries);
+          expect(directory.entries.length, count);
+          expect(identities.length, count);
+          expect(entries.every(identities.contains), isTrue);
+          var ordered = true;
+          for (var index = 1; index < count; index++) {
+            final previous = directory.entries[index - 1];
+            final current = directory.entries[index];
+            final order = sort == SortBy.size
+                ? previous.size.compareTo(current.size)
+                : previous.modifiedTime.compareTo(current.modifiedTime);
+            ordered = ordered && (ascending ? order <= 0 : order >= 0);
+          }
+          if (!ordered) failures.add('order:$count:$ascending');
+          debugPrint('FILE_NUMERIC_SORT sort=${sort.name} count=$count '
+              'ascending=$ascending reads=$reads ordered=$ordered '
+              'micros=${watch.elapsedMicroseconds}');
+          for (var index = 0; index < count; index++) {
+            final rank = (index * 577) % count;
+            expect(entries[index].path, '/listing/entry-$index');
+            expect(entries[index].name, 'entry-$index');
+            expect(entries[index].size, 9007199254740992 + rank);
+            expect(entries[index].modifiedTime, rank - count ~/ 2);
+          }
+        }
+      }
+      expect(failures, isEmpty);
+    });
+  }
+
+  test('every sort preserves drives directories files and selection', () {
+    final failures = <String>[];
+    for (final sort in SortBy.values) {
+      for (final ascending in [false, true]) {
+        final harness = _ListingHarness();
+        final entries = [
+          _sortEntry(3, 'C:', 1),
+          _sortEntry(3, 'D:', 1),
+          _sortEntry(1, 'folder', 2),
+          _sortEntry(2, 'link', 2),
+          _sortEntry(4, 'file.txt', 3, 5),
+          _sortEntry(5, 'link.txt', 3, 5),
+        ];
+        harness.controller.directory.value.entries = [...entries];
+        harness.controller.selectedItems.add(entries.first);
+        harness.controller.changeSortStyle(sort, ascending: ascending);
+        final result = harness.controller.directory.value.entries;
+        debugPrint('FILE_SORT_ENTRIES sort=${sort.name} ascending=$ascending '
+            'before=${entries.length} after=${result.length}');
+        final identities = Set<Entry>.identity()..addAll(result);
+        if (result.length != entries.length ||
+            identities.length != entries.length ||
+            !entries.every(identities.contains)) {
+          failures.add('${sort.name}:$ascending');
+        }
+        expect(harness.controller.selectedItems.items, [entries.first]);
+        if (sort != SortBy.modified && result.length == entries.length) {
+          expect(result.take(4).every((e) => e.isDirectory || e.isDrive), isTrue);
+          expect(result.skip(4).every((e) => e.isFile), isTrue);
+        }
+      }
+    }
+    expect(failures, isEmpty);
+  });
+
   final descending = {
     SortBy.name: ['gamma.m', 'beta.a', 'alpha.z'],
     SortBy.type: ['alpha.z', 'gamma.m', 'beta.a'],
-    SortBy.modified: ['alpha.z', 'gamma.m', 'beta.a'],
-    SortBy.size: ['beta.a', 'gamma.m', 'alpha.z'],
+    SortBy.modified: ['beta.a', 'gamma.m', 'alpha.z'],
+    SortBy.size: ['alpha.z', 'gamma.m', 'beta.a'],
   };
 
   for (final sort in descending.keys) {

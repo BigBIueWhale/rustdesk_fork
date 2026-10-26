@@ -591,6 +591,9 @@ DIRECTORY_ORDERING_TESTS = {
     "resolved home reply completes its directory request",
 }
 FILE_NAVIGATION_TESTS = {
+    "numeric modified sorting has bounded metadata work",
+    "numeric size sorting has bounded metadata work",
+    "every sort preserves drives directories files and selection",
     "peer compatibility failure prevents transfer dispatch",
     "refresh retires the preceding directory selection",
     "navigation retires the preceding directory selection",

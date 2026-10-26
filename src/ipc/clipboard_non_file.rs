@@ -158,14 +158,14 @@ mod tests {
 
         thread_local! {
             static STATE: Cell<(usize, usize)> = const { Cell::new((0, 0)) };
-            static SIZE: Cell<(usize, usize)> = const { Cell::new((0, 0)) };
+            static SIZE: Cell<(usize, usize, bool)> = const { Cell::new((0, 0, false)) };
         }
 
         fn refuse(size: usize) -> bool {
             let _ = SIZE.try_with(|state| {
-                let (target, count) = state.get();
-                if target != 0 && target == size {
-                    state.set((target, count + 1));
+                let (target, count, above) = state.get();
+                if target != 0 && (if above { size > target } else { size == target }) {
+                    state.set((target, count + 1, above));
                 }
             });
             STATE.try_with(|state| {
@@ -202,13 +202,21 @@ mod tests {
         static ALLOCATOR: Allocator = Allocator;
 
         pub(super) fn observe_size<T>(size: usize, action: impl FnOnce() -> T) -> (T, usize) {
+            observe_sizes(size, false, action)
+        }
+
+        pub(super) fn observe_above_size<T>(size: usize, action: impl FnOnce() -> T) -> (T, usize) {
+            observe_sizes(size, true, action)
+        }
+
+        fn observe_sizes<T>(size: usize, above: bool, action: impl FnOnce() -> T) -> (T, usize) {
             struct Reset;
             impl Drop for Reset {
-                fn drop(&mut self) { SIZE.with(|state| state.set((0, 0))); }
+                fn drop(&mut self) { SIZE.with(|state| state.set((0, 0, false))); }
             }
             SIZE.with(|state| {
-                assert_eq!(state.get(), (0, 0));
-                state.set((size, 0));
+                assert_eq!(state.get(), (0, 0, false));
+                state.set((size, 0, above));
             });
             let reset = Reset;
             let result = action();
@@ -286,10 +294,13 @@ mod tests {
             content.extend_from_slice(&oversized);
             let input = rgba(content, width, height);
             let original = input.content.clone();
-            let (result, excess_allocations) = allocations::observe_size(65536, || clipboard_content_for_native(&input));
+            // Invalid geometry permits no decoded output; a 4 KiB observation floor
+            // excludes metadata/error allocations from this output-storage check.
+            let ceiling = if case == "large-image" { 16384 } else { 4096 };
+            let (result, excess_allocations) = allocations::observe_above_size(ceiling, || clipboard_content_for_native(&input));
             let refused = result.is_err();
             let unchanged = input.content == original;
-            println!("CLIPBOARD_RGBA_LIMIT_CASE=observed case={case} excess_allocations={excess_allocations} refused={refused} unchanged={unchanged}");
+            println!("CLIPBOARD_RGBA_LIMIT_CASE=observed case={case} ceiling={ceiling} excess_allocations={excess_allocations} refused={refused} unchanged={unchanged}");
             failures += usize::from(!refused || !unchanged || excess_allocations != 0);
         }
 

@@ -6711,7 +6711,7 @@ PY
             && [ "$(grep -Ec '^CLIPBOARD_PAYLOAD_ALLOC_CASE=observed bytes=(1|4097|67108864) error=Some\(OutOfMemory\) retry_exact=true unchanged=true$' "$output")" -eq 3 ] \
             || fail 'native clipboard payload admission or allocation recovery differs'
         [ "$(grep -Fxc 'CLIPBOARD_RGBA_LIMIT=pass cases=8 excess_allocations=0 input=unchanged' "$output")" -eq 1 ] \
-            && [ "$(grep -Ec '^CLIPBOARD_RGBA_LIMIT_CASE=observed case=[a-z-]+ excess_allocations=0 refused=true unchanged=true$' "$output")" -eq 8 ] \
+            && [ "$(grep -Ec '^CLIPBOARD_RGBA_LIMIT_CASE=observed case=[a-z-]+ ceiling=(4096|16384) excess_allocations=0 refused=true unchanged=true$' "$output")" -eq 8 ] \
             && [ "$(grep -Fxc 'CLIPBOARD_RGBA_CONTROLS=pass cases=9 exact_limit=67108864 concatenated=exact short=refused malformed=refused history=independent' "$output")" -eq 1 ] \
             || fail 'compressed RGBA geometry admission differs'
         [ "$(grep -Ec '^CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=41 unchanged=before-after$' "$output")" -eq 1 ] \

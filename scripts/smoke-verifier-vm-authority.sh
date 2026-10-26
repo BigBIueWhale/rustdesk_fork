@@ -6182,7 +6182,7 @@ elif [ "$MODE" = linux-systemd-notification-tests ]; then
 elif [ "$MODE" = linux-service-uid-tests ]; then
     mapfile -t uid_policy_artifacts < <(
         /usr/bin/grep -Eo \
-            "LINUX_SERVICE_UID_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=19 artifact_sha256=[0-9a-f]{64}" \
+            "LINUX_SERVICE_UID_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=20 artifact_sha256=[0-9a-f]{64}" \
             "$SERIAL_LOG" || true
     )
     [ "${#uid_policy_artifacts[@]}" -eq 1 ] \
@@ -6203,6 +6203,9 @@ elif [ "$MODE" = linux-service-uid-tests ]; then
     require_exact_fixed_receipt \
         'LINUX_KERNEL_ARGV=pass cases=35 layouts=7 ordinary=7 empty_name=7 extra_empty=21 source=procfs children=joined' \
         'Linux exact command-line argument positions and process roles'
+    require_exact_fixed_receipt \
+        'LINUX_KERNEL_ARGV_BOUNDS=pass controls=7 refusals=3 children=10 max_argc=3 max_bytes=393216 source=procfs children_state=joined' \
+        'Linux process-role command-line resource bounds'
     require_exact_fixed_receipt \
         'LINUX_KERNEL_ARGV_BYTES=pass layouts=7 children=14 mutations=7 snapshots=21 invalid_bytes=preserved unicode=distinct children_state=joined' \
         'Linux same-process raw command-line identity and Unicode separation'

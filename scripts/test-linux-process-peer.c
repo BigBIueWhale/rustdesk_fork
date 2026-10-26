@@ -11,6 +11,7 @@
 #include <unistd.h>
 
 _Static_assert(SYS_pidfd_open == 434, "fixture requires the Linux x86_64 pidfd ABI");
+_Static_assert(_SC_PAGESIZE == 30, "fixture requires the Linux x86_64 page-size query ABI");
 _Static_assert(sizeof(struct pollfd) == 8 && offsetof(struct pollfd, events) == 4 &&
                offsetof(struct pollfd, revents) == 6 && POLLIN == 1, "poll ABI differs");
 
@@ -83,6 +84,14 @@ static void *serve(void *argument) {
                 _exit(6);
             continue;
         }
+        if (command == 'z') {
+            if (!settings->mutable_argument)
+                _exit(5);
+            memset(settings->mutable_argument, 0, strlen(settings->mutable_argument));
+            if (write(fd, &command, 1) != 1)
+                _exit(6);
+            continue;
+        }
         char *mutable = command == 'm' ? settings->mutable_argument :
                         command == 'e' ? settings->mutable_environment : NULL;
         if (!mutable)
@@ -105,30 +114,27 @@ int main(int argc, char **argv) {
     int result = exec_duplicate_environment(argv);
     if (result)
         return result;
-    const char *argv_path = getenv("LINUX_IDENTITY_ARGV_SOCKET");
-    if (!argv_path && (argc != 4 || (strcmp(argv[2], "0") && strcmp(argv[2], "1"))))
+    const char *path = getenv("LINUX_IDENTITY_ARGV_SOCKET");
+    const char *dumpable = getenv("LINUX_IDENTITY_DUMPABLE");
+    const char *leader_exit = getenv("LINUX_IDENTITY_LEADER_EXIT");
+    if (argc < 1 || !path || !dumpable || !leader_exit ||
+        (strcmp(dumpable, "0") && strcmp(dumpable, "1")) ||
+        (strcmp(leader_exit, "0") && strcmp(leader_exit, "1")))
         return 7;
     static struct settings settings;
-    const char *path = argv_path ? argv_path : argv[1];
     size_t length = strlen(path);
     if (length >= sizeof(settings.path))
         return 10;
     memcpy(settings.path, path, length + 1);
-    settings.dumpable = argv_path ? 1 : argv[2][0] - '0';
-    settings.mutable_argument = argv_path ? argv[0] : NULL;
+    settings.dumpable = dumpable[0] - '0';
+    settings.mutable_argument = argv[0];
     const char *environment_key = getenv("LINUX_IDENTITY_ENV_KEY");
     settings.mutable_environment = environment_key ? getenv(environment_key) : NULL;
-    if (argv_path) {
-        serve(&settings);
-        return 0;
-    }
-    if (!strcmp(argv[3], "leader-exit")) {
+    if (leader_exit[0] == '1') {
         pthread_t worker;
         if (pthread_create(&worker, NULL, serve, &settings) != 0)
             return 8;
         pthread_exit(NULL);
     }
-    if (strcmp(argv[3], "normal"))
-        return 9;
     serve(&settings);
 }

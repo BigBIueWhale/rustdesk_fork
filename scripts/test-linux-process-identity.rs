@@ -43,13 +43,14 @@ mod linux_process_identity_tests {
             let mut command = Command::new(std::env::var_os("LINUX_IDENTITY_PEER_PROBE").unwrap());
             command.env_remove(crate::common::CM_LAUNCH_TOKEN_ENV)
                 .env_remove(crate::common::CM_LAUNCH_PARENT_ENV)
-                .envs(environment.iter().map(|(key, value)| (*key, value)));
+                .envs(environment.iter().map(|(key, value)| (*key, value)))
+                .env("LINUX_IDENTITY_ARGV_SOCKET", root.join("peer"))
+                .env("LINUX_IDENTITY_DUMPABLE", dumpable.to_string())
+                .env("LINUX_IDENTITY_LEADER_EXIT", if leader_exit { "1" } else { "0" });
             if let Some(argv) = argv {
-                command.arg0(&argv[0]).args(&argv[1..])
-                    .env("LINUX_IDENTITY_ARGV_SOCKET", root.join("peer"));
+                command.arg0(&argv[0]).args(&argv[1..]);
             } else {
-                command.arg(root.join("peer")).arg(dumpable.to_string())
-                    .arg(if leader_exit { "leader-exit" } else { "normal" });
+                command.arg("--server");
             }
             let child = command
                 .stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::inherit())
@@ -227,12 +228,15 @@ mod linux_process_identity_tests {
                     expected_bytes.push(0);
                 }
                 assert_eq!(kernel, expected_bytes, "exec argv and actual kernel data differ");
-                let actual: Vec<String> = linux_proc_cmdline_args(owner.pid()).unwrap()
-                    .into_iter().map(String::from_utf8).collect::<Result<_, _>>().unwrap();
-                let admitted = roles(&actual);
                 let expected_admission = if kind == "extra-empty" { [false; 6] } else { expected_roles };
-                let correct = actual == expected && admitted == expected_admission;
-                println!("LINUX_KERNEL_ARGV_CASE=observed layout={layout} kind={kind} position={position:?} kernel_argc={} parsed_argc={} expected={expected_admission:?} actual={admitted:?} correct={correct}", expected.len(), actual.len());
+                let actual = linux_proc_cmdline_args(owner.pid());
+                let correct = match &actual {
+                    Ok(args) => args.iter().map(Vec::as_slice).eq(expected.iter().map(String::as_bytes))
+                        && roles(&args.iter().cloned().map(String::from_utf8)
+                            .collect::<Result<Vec<_>, _>>().unwrap()) == expected_admission,
+                    Err(_) => expected.len() > 3 && expected_admission == [false; 6],
+                };
+                println!("LINUX_KERNEL_ARGV_CASE=observed layout={layout} kind={kind} position={position:?} kernel_argc={} parsed_argc={:?} expected={expected_admission:?} correct={correct}", expected.len(), actual.as_ref().ok().map(Vec::len));
                 owner.request_exit();
                 owner.join();
                 failures += usize::from(!correct);
@@ -242,6 +246,60 @@ mod linux_process_identity_tests {
         assert_eq!(cases, 35);
         assert_eq!(failures, 0, "empty arguments must not disappear before exact role admission");
         println!("LINUX_KERNEL_ARGV=pass cases=35 layouts=7 ordinary=7 empty_name=7 extra_empty=21 source=procfs children=joined");
+    }
+
+    #[test]
+    fn kernel_role_argv_bounds_refuse_before_argument_allocation() {
+        let page = usize::try_from(unsafe { libc::sysconf(libc::_SC_PAGESIZE) }).unwrap();
+        assert_eq!(page, 4096, "native fixture requires the admitted x86_64 page size");
+        let string_limit = page * 32;
+        let layouts: &[&[&str]] = &[
+            &[], &["--password"], &["--password-stdin"], &["--server"],
+            &["--server", crate::common::SERVICE_OWNED_SERVER_ARG],
+            &["--cm"], &["--cm-no-ui"],
+        ];
+        for (layout, tail) in layouts.iter().enumerate() {
+            let mut argv = vec![OsString::from_vec(vec![b'A'; string_limit - 1])];
+            argv.extend(tail.iter().map(|arg| OsString::from(*arg)));
+            let mut owner = Owner::spawn_with_argv(1, false, Some(&argv));
+            assert_eq!(owner.credentials().uid, unsafe { geteuid() });
+            let actual = linux_proc_cmdline_args(owner.pid()).unwrap();
+            assert_eq!(actual[0], vec![b'A'; string_limit - 1]);
+            assert!(actual[1..].iter().map(Vec::as_slice).eq(tail.iter().map(|arg| arg.as_bytes())));
+            let raw = fs::read(format!("/proc/{}/cmdline", owner.pid())).unwrap();
+            assert_eq!(actual.iter().flat_map(|arg| arg.iter().copied().chain(std::iter::once(0)))
+                .collect::<Vec<_>>(), raw);
+            owner.request_exit();
+            owner.join();
+            println!("LINUX_KERNEL_ARGV_BOUND_CONTROL=pass layout={layout} argv0_bytes={} argc={} preserved=true", string_limit - 1, actual.len());
+        }
+        let mut failures = 0;
+        for kind in ["count", "rewritten-nuls", "bytes"] {
+            let argv = match kind {
+                "count" => vec![OsString::from("probe"), OsString::from("--server"),
+                    OsString::from(crate::common::SERVICE_OWNED_SERVER_ARG), OsString::new()],
+                "rewritten-nuls" => vec![OsString::from_vec(vec![b'A'; 65535])],
+                "bytes" => vec![OsString::from_vec(vec![b'A'; string_limit - 1]); 4],
+                _ => unreachable!(),
+            };
+            let mut owner = Owner::spawn_with_argv(1, false, Some(&argv));
+            if kind == "rewritten-nuls" { owner.mutate(b'z'); }
+            let raw = fs::read(format!("/proc/{}/cmdline", owner.pid())).unwrap();
+            match kind {
+                "count" => assert_eq!(raw.split(|&byte| byte == 0).count() - 1, 4),
+                "rewritten-nuls" => { assert_eq!(raw.len(), 65536); assert!(raw.iter().all(|&byte| byte == 0)); }
+                "bytes" => assert_eq!(raw.len(), string_limit * 4),
+                _ => unreachable!(),
+            }
+            let actual = linux_proc_cmdline_args(owner.pid());
+            let refused = actual.is_err();
+            println!("LINUX_KERNEL_ARGV_BOUND_CASE=observed kind={kind} kernel_bytes={} parsed_argc={:?} refused={refused}", raw.len(), actual.as_ref().ok().map(Vec::len));
+            owner.request_exit();
+            owner.join();
+            failures += usize::from(!refused);
+        }
+        assert_eq!(failures, 0, "unsupported argv must refuse before per-argument allocation");
+        println!("LINUX_KERNEL_ARGV_BOUNDS=pass controls=7 refusals=3 children=10 max_argc=3 max_bytes=393216 source=procfs children_state=joined");
     }
 
     #[test]

@@ -116,9 +116,9 @@ def main():
                   'extern crate self as anyhow;\n'
                   '#[macro_export] macro_rules! anyhow { ($($arg:tt)*) => { '
                   'Box::<dyn std::error::Error + Send + Sync>::from(format!($($arg)*)) }; }\n'
-                  'mod libc { pub const SYS_pidfd_open: i64 = 434; pub const POLLIN: i16 = 1;\n'
+                  'mod libc { pub const SYS_pidfd_open: i64 = 434; pub const POLLIN: i16 = 1; pub const _SC_PAGESIZE: i32 = 30;\n'
                   '#[repr(C)] pub struct pollfd { pub fd: i32, pub events: i16, pub revents: i16 }\n'
-                  'extern "C" { pub fn syscall(number: i64, ...) -> i64; '
+                  'extern "C" { pub fn syscall(number: i64, ...) -> i64; pub fn sysconf(name: i32) -> i64; '
                   'pub fn poll(fds: *mut pollfd, count: usize, timeout: i32) -> i32; } }\n'
                   '#[derive(Clone, Debug, Eq, PartialEq)]\n' + identity_body)
     print(f"LINUX_KERNEL_IDENTITY_SOURCE=sha256={digest(inputs['src/ipc/auth.rs'])} "
@@ -146,7 +146,7 @@ def main():
     subprocess.run(["rustc", "--edition=2021", "--test", str(source), "-o", str(artifact)],
                    check=True, timeout=30)
     identity = digest(artifact.read_bytes())
-    print(f"TRUSTED_EXECUTABLE_BUILD=sha256={identity} tests=19", flush=True)
+    print(f"TRUSTED_EXECUTABLE_BUILD=sha256={identity} tests=20", flush=True)
     environment = {key: value for key, value in os.environ.items()
                    if not key.startswith("LINUX_IDENTITY_")}
     environment["LINUX_IDENTITY_PEER_PROBE"] = str(peer)

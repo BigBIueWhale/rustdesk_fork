@@ -3974,6 +3974,7 @@ run_focused_rust_tests() {
             linux_process_identity_tests::exited_unreaped_peer_is_not_live
             linux_process_identity_tests::exited_leader_with_live_worker_keeps_process_identity
             linux_process_identity_tests::kernel_cmdline_preserves_empty_argument_positions
+            linux_process_identity_tests::kernel_role_argv_bounds_refuse_before_argument_allocation
             linux_process_identity_tests::kernel_process_identity_preserves_non_utf8_argv_bytes
             linux_process_identity_tests::kernel_role_environment_rejects_invalid_utf8_without_rewriting_values
             linux_process_identity_tests::kernel_service_child_role_preserves_exact_argument_positions

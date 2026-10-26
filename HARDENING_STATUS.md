@@ -3186,7 +3186,7 @@ Desktop IPC and mobile FFI callers, policy pins, credential storage and privileg
 receivers are unchanged. The removed states were already unreachable under the pins;
 this is obsolete-model removal, not a demonstrated authentication bypass or LPE fix.
 
-The current Linux library passes all 206 tests/seven groups in 142 outer seconds.
+At the named source, the Linux library passed all 206 tests/seven groups in 142 outer seconds.
 Twenty-four policy combinations exercise stored/default/overwrite layers,
 empty/retired/unknown/current values and both visibility choices. Password approval
 and permanent-password policy remain effective, visibility follows its option, and
@@ -3211,6 +3211,20 @@ entries. They were not executed; they are removed from the live suite at this
 pivot rather than leaving an unfinished regression cohort active. The production
 getter, cache and legacy-decryption path are unchanged. Resume only on explicit
 direction; no failure reproduction, correction or acceptance is claimed.
+
+**Encrypted-value classification — OPEN/PARKED at the next user pivot.**
+Test preparation `40eadaf9` reproduced a 786,432-byte allocation for a 1 MiB
+candidate; the allocation-refusal child aborted while 205 controls passed.
+Candidate `900026df` replaces whole-payload decoding with fixed scratch, but its
+compatibility regression fails at case 1025 (non-ASCII input); the allocation
+worker is unreached. The current configuration cohort therefore remains red.
+No oracle correction, follow-up run or acceptance is claimed. Both exact VMs
+and RAM workspaces are gone; bounded diagnostics remain under
+`encrypted-classifier-baseline.1y14hDcQm1` and
+`encrypted-classifier-rejected.e461KXlu54`. The rejected run's final listener
+snapshot contains one unattributed loopback addition; it was not inspected or
+modified. Source and evidence remain preserved, and this item will not resume
+automatically. The connection-prompt evidence below also records this pivot.
 
 **PRS value admission (`552c4fef`, `6193e94b`).** One shared validator governs
 durable wrapping, decoded storage and runtime installation: explicit clear or canonical
@@ -4315,6 +4329,27 @@ Preference and submission callbacks are controlled fixtures; this is current
 Linux Flutter component execution and generated-bridge compilation, not an
 actual Rust/peer/IPC transaction or current Flutter 3.47.5 app artifact. Real peer,
 native Android/iOS keyboard and installed-service acceptance remain OPEN.
+
+**Connection-password text preservation (`62018bcb`).** The shared prompt
+passes the exact editor text to the existing session/round-owned submission.
+It no longer trims password characters; empty input still refuses and Rust
+remains the NFC/Argon2id authority under R-P1. The rendered regression replaces
+the old test's trimming expectation. Unchanged product at `31dc20dc` has five
+passes and two failures (leading space and retry text); the identical Dart tests
+at `62018bcb` pass all seven cases. Sixteen subcases cover OK and submit callbacks
+with plain, leading/trailing/both ASCII spaces, nonbreaking/wide spaces,
+decomposed Unicode and space-only text, plus empty and duplicate refusal.
+Existing preference, cancellation, disposal and retry controls remain.
+The dedicated `--flutter-model-tests --connect-password` profile generates
+the current bridge and runs only this suite, plus three result-parser controls;
+the parked credential API cohort is not run. Bounded, networkless Linux VM
+evidence, exact source, before/after results and joined RAM cleanup are retained
+in `connect-password-text-900026df.json`. The baseline has no listener additions
+and two unattributed loopback removals; no host service was inspected or changed.
+This is Flutter dialog/callback execution, not a real peer or installed credential
+transaction. Permanent-password settings still trim text and remain a separate
+OPEN issue within parked provisioning work. Native devices, full authentication,
+all fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN.
 
 **Password input policy: source corrected; focused component/channel tests accepted.** The
 connection-password reveal control and both permanent-password fields use

@@ -821,12 +821,11 @@ readonly ONLINE_FETCH_ENTRY_PREFLIGHT="$SCRIPT_DIR/verify-online-fetch-vm-entry.
 readonly ONLINE_FETCH_AUTHORITY_CHECKER="$SCRIPT_DIR/verify-online-fetch-container-authority.py"
 readonly ONLINE_FETCH_RENAME_CHECKER="$SCRIPT_DIR/verify-online-fetch-virtiofs-rename.py"
 readonly FIXED_ARCHIVE_HELPER="$SCRIPT_DIR/online-fixed-archive-output.py"
-readonly FIXED_ARCHIVE_CHECKER="$SCRIPT_DIR/verify-online-fetch-fixed-archive-authority.py"
+readonly FIXED_ARCHIVE_CHECKER="$SCRIPT_DIR/verify-wix-nuget-authority.py"
 readonly FIXED_ARCHIVE_MANIFEST="$REPO_ROOT/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
 readonly FIXED_ARCHIVE_WINDOWS_TOOLS="$REPO_ROOT/res/vcpkg/libvpx/windows-tools.sha512"
 readonly -a FIXED_ARCHIVE_WIX_SOURCES=(
     "$SCRIPT_DIR/online-wix-nuget-retire.py"
-    "$SCRIPT_DIR/verify-wix-nuget-authority.py"
     "$SCRIPT_DIR/build-windows-vm.sh"
     "$SCRIPT_DIR/windows-offline-manifest.py"
     "$SCRIPT_DIR/build-windows.ps1"
@@ -4400,7 +4399,7 @@ elif [ "$MODE" = fixed-archive-tests ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=(
         "repo/scripts/online-fixed-archive-output.py=$FIXED_ARCHIVE_HELPER"
-        "repo/scripts/verify-online-fetch-fixed-archive-authority.py=$FIXED_ARCHIVE_CHECKER"
+        "repo/scripts/verify-wix-nuget-authority.py=$FIXED_ARCHIVE_CHECKER"
         "repo/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt=$FIXED_ARCHIVE_MANIFEST"
         "repo/res/vcpkg/libvpx/windows-tools.sha512=$FIXED_ARCHIVE_WINDOWS_TOOLS"
         "repo/scripts/test-verifier-vm-base-metadata.sh=$BASE_METADATA_TEST"

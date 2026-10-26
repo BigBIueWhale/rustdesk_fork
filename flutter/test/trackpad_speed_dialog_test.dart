@@ -64,28 +64,47 @@ void main() {
     expect(manager.existing('trackpad'), isFalse);
   });
 
-  testWidgets('trackpad dialog retains failed saves for identical retry', (tester) async {
+  testWidgets('trackpad dialog confirms retries after unconfirmed saves', (tester) async {
     final manager = await _manager(tester);
     for (final mode in ['throw', 'null', 'mismatch']) {
-      final calls = <int>[];
-      final result = _open(manager, (value) async {
-        calls.add(value);
-        if (calls.length > 1) return value;
-        if (mode == 'throw') throw StateError('write denied');
-        return mode == 'null' ? null : 100;
-      });
-      await tester.pump();
-      await tester.enterText(find.byType(TextField), '235');
-      await tester.tap(find.text('Close'));
-      await tester.pump();
-      expect(find.text('Failed'), findsOneWidget);
-      expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, '235');
-      expect(tester.widget<TextField>(find.byType(TextField)).enabled, isTrue);
-      await tester.tap(find.text('Retry'));
-      await tester.pump();
-      await result;
-      expect(calls, [235, 235]);
-      expect(tester.takeException(), isNull);
+      for (final retry in [235, 100]) {
+        final calls = <int>[];
+        final pending = Completer<int?>();
+        var stored = 100;
+        final result = _open(manager, (value) async {
+          calls.add(value);
+          if (calls.length > 1) {
+            final effective = await pending.future;
+            stored = effective!;
+            return effective;
+          }
+          stored = mode == 'mismatch' ? 300 : value;
+          if (mode == 'throw') throw StateError('confirmation unavailable');
+          return mode == 'null' ? null : stored;
+        });
+        await tester.pump();
+        await tester.enterText(find.byType(TextField), '235');
+        await tester.tap(find.text('Close'));
+        await tester.pump();
+        expect(find.text('Failed'), findsOneWidget);
+        expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, '235');
+        expect(tester.widget<TextField>(find.byType(TextField)).enabled, isTrue);
+        await tester.enterText(find.byType(TextField), '$retry');
+        await tester.tap(find.text('Retry'));
+        await tester.pump();
+        debugPrint('TRACKPAD_RETRY mode=$mode requested=$retry '
+            'calls=$calls pending=${manager.existing('trackpad')} stored=$stored');
+        expect(calls, [235, retry]);
+        expect(manager.existing('trackpad'), isTrue);
+        expect(tester.widget<TextField>(find.byType(TextField)).enabled, isFalse);
+        expect(stored, mode == 'mismatch' ? 300 : 235);
+        pending.complete(retry);
+        await tester.pump();
+        await result;
+        expect(stored, retry);
+        expect(manager.existing('trackpad'), isFalse);
+        expect(tester.takeException(), isNull);
+      }
     }
   });
 

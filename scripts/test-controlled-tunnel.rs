@@ -6,7 +6,7 @@ use futures::{future::poll_fn, SinkExt, StreamExt};
 use std::{io, pin::Pin, sync::Arc, task::{Context, Poll}};
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf},
-    net::{TcpListener, TcpSocket, TcpStream},
+    net::{TcpSocket, TcpStream},
     sync::{mpsc, Notify},
     time::{self, Duration, Instant, Interval},
 };
@@ -168,6 +168,7 @@ async fn controlled_tunnel_preserves_pending_write_and_healthy_relay() {
     fixture.cancellation.cancel();
     let (timely, reason) = fixture.stop().await;
     assert!(timely && reason == "Server is shutting down");
+    println!("CONTROLLED_TUNNEL_CONTINUE_RESULT=observed bytes_exact=true nonterminal_consumed={consumed} directions=2 subsequent=usable cleanup=joined");
     assert!(consumed, "nonterminal CM event must be consumed during the blocked write");
     println!("CONTROLLED_TUNNEL_CONTINUE=pass pending_bytes=1048576 exact=true nonterminal=consumed directions=2 subsequent=usable cleanup=joined peer=double");
 }

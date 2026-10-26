@@ -656,6 +656,14 @@ FILE_COMMAND_TESTS = {
     "inline file job completion and reentrant clear cannot retain slots",
     "new file job owners share admission with listing owners",
 }
+FILE_PROGRESS_TESTS = {
+    'file progress accepts zero fractional speed and large byte counts',
+    'file progress refuses invalid speeds without partial mutation',
+    'file progress refuses invalid byte counts without partial mutation',
+    'file progress refuses invalid action and file identities',
+    'file progress preserves current jobs on stale or unknown events',
+    'file progress diagnostics do not disclose rejected event contents',
+}
 FILE_NAVIGATION_SUITES = {
     "peer_credential_badge_test.dart": {
         "confirmed forget clears matching badges without another read",
@@ -920,7 +928,7 @@ FILE_METADATA_TESTS = {
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-progress", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -985,6 +993,10 @@ def parse_result(path, profile="models"):
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())
         expected_tests = len(expected_names)
+    elif profile == "file-progress":
+        expected_suites = {"file_progress_test.dart"}
+        expected_tests = len(FILE_PROGRESS_TESTS)
+        expected_names = FILE_PROGRESS_TESTS
     elif profile == "peer-data":
         expected_suites = {"peer_decode_test.dart"}
         expected_tests = len(PEER_DATA_TESTS)
@@ -1095,7 +1107,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-progress", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -1115,6 +1127,7 @@ def main():
         "auto-disconnect": "FLUTTER_AUTO_DISCONNECT_TEST_JSON",
         "directory-ordering": "FLUTTER_DIRECTORY_ORDERING_TEST_JSON",
         "file-navigation": "FLUTTER_FILE_NAVIGATION_TEST_JSON",
+        "file-progress": "FLUTTER_FILE_PROGRESS_TEST_JSON",
         "peer-data": "FLUTTER_PEER_DATA_TEST_JSON",
         "terminal-output": "FLUTTER_TERMINAL_OUTPUT_TEST_JSON",
         "connect-password": "FLUTTER_CONNECT_PASSWORD_TEST_JSON",

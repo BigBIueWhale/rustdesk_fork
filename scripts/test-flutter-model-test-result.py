@@ -39,6 +39,9 @@ class ResultTests(unittest.TestCase):
         elif profile == "window-dispatch":
             suites = ["desktop_window_dispatch_test.dart"]
             names = sorted(result.WINDOW_DISPATCH_TESTS)
+        elif profile == "file-progress":
+            suites = ["file_progress_test.dart"]
+            names = sorted(result.FILE_PROGRESS_TESTS)
         elif profile == "peer-data":
             suites = ["peer_decode_test.dart"]
             names = sorted(result.PEER_DATA_TESTS)
@@ -114,6 +117,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("share-rdp"), "share-rdp"), (1, 4))
         self.assertEqual(self.parse(self.events("window-dispatch"), "window-dispatch"), (1, 8))
         self.assertEqual(self.parse(self.events("peer-data"), "peer-data"), (1, 51))
+        self.assertEqual(self.parse(self.events("file-progress"), "file-progress"), (1, 6))
         self.assertEqual(self.parse(self.events("file-navigation"), "file-navigation"), (7, 110))
         self.assertEqual(self.parse(self.events("terminal-output"), "terminal-output"), (2, 26))
         self.assertEqual(self.parse(self.events("modifier-release"), "modifier-release"), (4, 93))
@@ -152,7 +156,7 @@ class ResultTests(unittest.TestCase):
                         path.unlink()
 
     def test_focused_inventory_is_exact(self):
-        for profile in ("frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "modifier-release"):
+        for profile in ("frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-progress", "file-navigation", "modifier-release"):
             events = self.events(profile)
             for edit in ("rename", "duplicate", "suite", "missing", "wrong-suite"):
                 with self.subTest(profile=profile, edit=edit):
@@ -176,7 +180,7 @@ class ResultTests(unittest.TestCase):
                         self.parse(changed, profile)
 
     def test_failure_skip_and_incomplete_are_rejected(self):
-        for profile in ("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "modifier-release"):
+        for profile in ("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-progress", "file-navigation", "modifier-release"):
             events = self.events(profile)
             done_index = next(
                 i for i, event in enumerate(events) if event["type"] == "testDone"

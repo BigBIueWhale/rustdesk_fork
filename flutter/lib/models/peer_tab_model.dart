@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 import 'dart:math';
@@ -81,7 +82,8 @@ class PeerTabModel with ChangeNotifier {
   bool _disposed = false;
   bool _multiSelectionMode = false;
   bool get multiSelectionMode => _multiSelectionMode;
-  List<Peer> _currentTabCachedPeers = List.empty(growable: true);
+  List<Peer> _currentTabCachedPeers = const [];
+  Timer? _peerCacheUpdate;
   List<Peer> get currentTabCachedPeers => _currentTabCachedPeers;
   bool _isShiftDown = false;
   bool get isShiftDown => _isShiftDown;
@@ -142,10 +144,15 @@ class PeerTabModel with ChangeNotifier {
 
   setCurrentTab(int index) {
     if (_currentTab != index) {
-      _selectionGeneration = Object();
-      _currentTab = index;
+      _setCurrentTab(index);
       notifyListeners();
     }
+  }
+
+  void _setCurrentTab(int index) {
+    _selectionGeneration = Object();
+    _clearCurrentTabCachedPeers();
+    _currentTab = index;
   }
 
   String tabTooltip(int index) {
@@ -210,18 +217,27 @@ class PeerTabModel with ChangeNotifier {
     notifyListeners();
   }
 
-  // `notifyListeners()` will cause many rebuilds.
-  // So, we need to reduce the calls to "notifyListeners()" only when necessary.
-  // A better way is to use a new model.
+  // The view publishes during build; defer notification and keep only its latest
+  // list until the current tab changes or the model is disposed.
   setCurrentTabCachedPeers(List<Peer> peers) {
-    Future.delayed(Duration.zero, () {
+    if (_disposed) return;
+    final snapshot = List<Peer>.unmodifiable(peers);
+    _peerCacheUpdate?.cancel();
+    _peerCacheUpdate = Timer(Duration.zero, () {
+      _peerCacheUpdate = null;
       final isPreEmpty = _currentTabCachedPeers.isEmpty;
-      _currentTabCachedPeers = peers;
+      _currentTabCachedPeers = snapshot;
       final isNowEmpty = _currentTabCachedPeers.isEmpty;
       if (isPreEmpty != isNowEmpty) {
         notifyListeners();
       }
     });
+  }
+
+  void _clearCurrentTabCachedPeers() {
+    _peerCacheUpdate?.cancel();
+    _peerCacheUpdate = null;
+    _currentTabCachedPeers = const [];
   }
 
   selectAll() {
@@ -248,10 +264,10 @@ class PeerTabModel with ChangeNotifier {
       if (_isVisible[index] != visible) {
         _isVisible[index] = visible;
         if (index == _currentTab && !visible) {
+          _clearCurrentTabCachedPeers();
           _trySetCurrentTabToFirstVisibleEnabled();
         } else if (visible && visibleEnabledOrderedIndexs.length == 1) {
-          _selectionGeneration = Object();
-          _currentTab = index;
+          _setCurrentTab(index);
         }
         notifyListeners();
       }
@@ -262,8 +278,7 @@ class PeerTabModel with ChangeNotifier {
   _trySetCurrentTabToFirstVisibleEnabled() {
     if (!visibleEnabledOrderedIndexs.contains(_currentTab)) {
       if (visibleEnabledOrderedIndexs.isNotEmpty) {
-        _selectionGeneration = Object();
-        _currentTab = visibleEnabledOrderedIndexs.first;
+        _setCurrentTab(visibleEnabledOrderedIndexs.first);
       }
     }
   }
@@ -301,6 +316,7 @@ class PeerTabModel with ChangeNotifier {
   void dispose() {
     _disposed = true;
     _selectionGeneration = Object();
+    _clearCurrentTabCachedPeers();
     super.dispose();
   }
 }

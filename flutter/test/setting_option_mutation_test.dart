@@ -1209,6 +1209,48 @@ void main() {
     expect(_qualitySlider(tester, 1).onChanged, isNotNull);
   });
 
+  testWidgets('quality and FPS rebuilds preserve unconfirmed saves', (tester) async {
+    for (final field in [0, 1]) {
+      final confirmed = field == 0 ? 80.0 : 40.0;
+      final edited = field == 0 ? 90.0 : 50.0;
+      final retry = Completer<double?>();
+      final calls = <double>[];
+      var stored = field == 0 ? 50.0 : 30.0;
+      Future<double?> save(double value) async {
+        calls.add(value);
+        if (calls.length == 3) await retry.future;
+        stored = value;
+        return calls.length == 2 ? null : value;
+      }
+      Future<void> build({bool refreshed = false}) => _qualityEditor(tester,
+          editorKey: ValueKey(field),
+          quality: refreshed && field == 0 ? confirmed : 50,
+          fps: refreshed && field == 1 ? confirmed : 30,
+          saveQuality: field == 0 ? save : null,
+          saveFps: field == 1 ? save : null);
+      await build();
+      await _slideQuality(tester, field, confirmed);
+      await tester.pump(const Duration(seconds: 1));
+      expect(calls, [confirmed]);
+      await _slideQuality(tester, field, edited);
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('Failed'), findsOneWidget);
+      await build(refreshed: true);
+      expect(_qualitySlider(tester, field).value, edited);
+      expect(find.text('Failed'), findsOneWidget);
+      await _slideQuality(tester, field, confirmed);
+      await tester.pump(const Duration(seconds: 1));
+      expect(calls, [confirmed, edited, confirmed]);
+      expect(stored, edited);
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+      retry.complete(confirmed);
+      await tester.pump();
+      expect(stored, confirmed);
+      expect(find.text('Failed'), findsNothing);
+      expect(tester.takeException(), isNull);
+    }
+  });
+
   testWidgets('quality editor hiding FPS cancels its queued save', (tester) async {
     final calls = <double>[];
     Future<double?> save(double v) async { calls.add(v); return v; }
@@ -1454,6 +1496,38 @@ void main() {
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pump(const Duration(seconds: 1));
     expect(calls, [275]);
+  });
+
+  testWidgets('trackpad rebuilds preserve unconfirmed saves', (tester) async {
+    final retry = Completer<int?>();
+    final calls = <int>[];
+    var stored = 100;
+    Future<int?> save(int value) async {
+      calls.add(value);
+      if (calls.length == 3) await retry.future;
+      stored = value;
+      return calls.length == 2 ? null : value;
+    }
+    await _trackpad(tester, save: save);
+    await _slideTrackpad(tester, 200);
+    await tester.pump(const Duration(seconds: 1));
+    expect(calls, [200]);
+    await _slideTrackpad(tester, 250);
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Failed'), findsOneWidget);
+    await _trackpad(tester, value: 200, save: save);
+    expect(_trackpadController(tester).text, '250');
+    expect(find.text('Failed'), findsOneWidget);
+    await _slideTrackpad(tester, 200);
+    await tester.pump(const Duration(seconds: 1));
+    expect(calls, [200, 250, 200]);
+    expect(stored, 250);
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    retry.complete(200);
+    await tester.pump();
+    expect(stored, 200);
+    expect(find.text('Failed'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('trackpad replacement retires old edits and pending completion',

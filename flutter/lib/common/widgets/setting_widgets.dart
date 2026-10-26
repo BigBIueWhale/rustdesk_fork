@@ -117,7 +117,8 @@ class _QualityField {
       _dirty = _ready = failed = _committed = false;
       confirmed = value = _input = next;
     } else if (next != _input) {
-      confirmed = _input = next;
+      _input = next;
+      if (confirmed != null) confirmed = next;
       if (!_dirty && !saving) value = next;
     }
   }
@@ -477,7 +478,8 @@ class _TrackpadSpeedWidgetState extends State<TrackpadSpeedWidget> {
     } else if (incoming != _inputValue) {
       final replaceDraft = !_dirty && !_saving &&
           _controller.text == _value.toString();
-      _confirmed = _inputValue = incoming;
+      _inputValue = incoming;
+      if (_confirmed != null) _confirmed = incoming;
       if (replaceDraft) {
         _value = incoming;
         _controller.text = incoming.toString();

@@ -127,8 +127,9 @@ void main() {
       final pendingField = tester.widget<TextField>(find.byType(TextField));
       final pendingDialog =
           tester.widget<CustomAlertDialog>(find.byType(CustomAlertDialog));
-      final pendingButton = tester.widget<TextButton>(find.ancestor(
-        of: find.text('OK'), matching: find.byType(TextButton)));
+      final pendingButton = tester.widget<ButtonStyleButton>(find.ancestor(
+        of: find.text('OK'),
+        matching: find.byWidgetPredicate((widget) => widget is ButtonStyleButton)));
       final pendingProgress =
           find.byType(LinearProgressIndicator).evaluate().length;
       debugPrint('RENAME_PENDING field_enabled=${pendingField.enabled} '

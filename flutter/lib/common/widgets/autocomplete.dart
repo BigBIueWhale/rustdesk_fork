@@ -5,6 +5,8 @@ import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/peer_card.dart';
 
 class AllPeersLoader {
+  final Peers _recentPeers;
+  final Future<void> Function() _requestLoad;
   List<Peer> peers = [];
 
   bool _isPeersLoading = false;
@@ -14,16 +16,19 @@ class AllPeersLoader {
 
   bool get needLoad => !_isPeersLoaded && !_isPeersLoading;
   bool get isPeersLoaded => _isPeersLoaded;
+  bool get isPeersLoading => _isPeersLoading;
 
-  AllPeersLoader();
+  AllPeersLoader({Peers? recentPeers, Future<void> Function()? requestLoad})
+      : _recentPeers = recentPeers ?? gFFI.recentPeersModel,
+        _requestLoad = requestLoad ?? (() => bind.mainLoadRecentPeers());
 
   void init(void Function(VoidCallback) setState) {
     this.setState = setState;
-    gFFI.recentPeersModel.addListener(_mergeAllPeers);
+    _recentPeers.addListener(_mergeAllPeers);
   }
 
   void clear() {
-    gFFI.recentPeersModel.removeListener(_mergeAllPeers);
+    _recentPeers.removeListener(_mergeAllPeers);
   }
 
   Future<void> getAllPeers() async {
@@ -32,8 +37,8 @@ class AllPeersLoader {
     }
     _isPeersLoading = true;
 
-    if (gFFI.recentPeersModel.peers.isEmpty) {
-      bind.mainLoadRecentPeers();
+    if (_recentPeers.peers.isEmpty) {
+      _requestLoad();
     }
     final startTime = DateTime.now();
     _mergeAllPeers();
@@ -48,13 +53,13 @@ class AllPeersLoader {
     // discovery — the autocomplete suggests only the local Recent peers.
     List<Peer> parsedPeers = [];
     Set<String> peerIds = {};
-    for (final peer in gFFI.recentPeersModel.peers) {
+    for (final peer in _recentPeers.peers) {
       if (!peerIds.contains(peer.id)) {
         parsedPeers.add(peer);
         peerIds.add(peer.id);
       }
     }
-    for (final id in gFFI.recentPeersModel.restPeerIds) {
+    for (final id in _recentPeers.restPeerIds) {
       if (!peerIds.contains(id)) {
         parsedPeers.add(Peer.fromJson({'id': id}));
         peerIds.add(id);

@@ -839,10 +839,20 @@ AUTOCOMPLETE_PEER_TESTS = {
     "autocomplete plain long address fits 320 pixels",
     "autocomplete short alias and address remain fully visible",
 }
+PEER_LOADER_TESTS = {
+    "peer loader waits for data beyond the request receipt",
+    "peer loader accepts an empty published result",
+    "peer loader retains cached metadata and unique remaining addresses",
+    "peer loader does not dispatch overlapping requests",
+    "peer loader request failure remains retryable and not loaded",
+    "peer loader clear refuses later loading and model publication",
+    "peer loader clear retires a pending request and its failure",
+}
 PEER_DATA_SUITES = {
     "peer_decode_test.dart": PEER_DATA_TESTS,
     "peer_tab_cache_test.dart": PEER_CACHE_TESTS,
     "autocomplete_peer_tile_test.dart": AUTOCOMPLETE_PEER_TESTS,
+    "all_peers_loader_test.dart": PEER_LOADER_TESTS,
 }
 TERMINAL_OUTPUT_TESTS = {
     "terminal_output_decoder_test.dart": {

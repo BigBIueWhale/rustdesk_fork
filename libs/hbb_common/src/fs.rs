@@ -3996,6 +3996,16 @@ impl TransferJob {
     }
 
     #[inline]
+    pub fn resume(&mut self) -> bool {
+        self.is_last_job = false;
+        self.is_resume = true;
+        if self.role == TransferRole::Send {
+            self.set_finished_size_on_resume();
+        }
+        true
+    }
+
+    #[inline]
     pub fn set_finished_size_on_resume(&mut self) {
         if self.is_resume && self.file_num > 0 {
             let finished_size: u64 = self
@@ -10352,6 +10362,86 @@ mod tests {
     #[tokio::test]
     async fn send_digest_refuses_changed_lengths_before_wire_publication() {
         assert_send_digest_size_admission(true).await;
+    }
+
+    #[tokio::test]
+    async fn transfer_resume_send_is_once_and_preserves_live_progress() {
+        let tmp = TestTempDir::new("rustdesk_resume_send_once");
+        std::fs::create_dir_all(&tmp.path).unwrap();
+        for name in ["first.zip", "second.zip"] {
+            std::fs::write(tmp.join(name), b"data").unwrap();
+        }
+        let mut job = TransferJob::new_read(
+            311, JobType::Generic, "remote".into(), tmp.path.clone(),
+            1, false, false, false,
+        ).unwrap();
+        job.is_last_job = true;
+        assert!(!job.is_read_step_ready());
+        assert!(job.resume());
+        assert!(job.is_resume && job.is_read_step_ready());
+        assert_eq!(job.finished_size(), 4);
+        job.init_data_stream_for_cm().await.unwrap();
+        let block = job.read().await.unwrap().unwrap();
+        assert_eq!(block.data.as_ref(), b"data");
+        assert_eq!(job.finished_size(), 8);
+        let state = (job.file_num, job.send_file_offset, job.transferred());
+        for _ in 0..8 {
+            let accepted = job.resume();
+            assert_eq!((accepted, job.finished_size()), (false, 8));
+            assert_eq!((job.file_num, job.send_file_offset, job.transferred()), state);
+        }
+        assert!(job.read().await.unwrap().unwrap().data.is_empty());
+        assert!(job.read().await.unwrap().is_none());
+        assert_eq!(job.finished_size(), 8);
+        assert!(!job.resume());
+        for name in ["first.zip", "second.zip"] {
+            assert_eq!(std::fs::read(tmp.join(name)).unwrap(), b"data");
+        }
+        let mut fresh = TransferJob::new_read(
+            312, JobType::Generic, "remote".into(), tmp.path.clone(),
+            0, false, false, false,
+        ).unwrap();
+        assert!(!fresh.resume());
+        assert!(!fresh.is_resume);
+        assert_eq!(fresh.finished_size(), 0);
+        println!("TRANSFER_RESUME_SEND=pass first=accepted duplicates=8 progress=preserved bytes=4 eof=exact fresh=refused sources=unchanged");
+    }
+
+    #[tokio::test]
+    async fn transfer_resume_receive_is_once_and_preserves_owned_output() {
+        let tmp = TestTempDir::new("rustdesk_resume_receive_once");
+        std::fs::create_dir_all(&tmp.path).unwrap();
+        let mut job = TransferJob::new_write(
+            313, JobType::Generic, "remote".into(), tmp.path.clone(),
+            0, false, true, false,
+        );
+        job.is_last_job = true;
+        assert!(job.resume());
+        assert!(job.is_resume && !job.is_last_job);
+        let mut entry = new_file_entry("incoming.bin");
+        entry.size = 4;
+        job.set_files(vec![entry]).unwrap();
+        job.write(FileTransferBlock {
+            id: 313, file_num: 0, data: b"data".to_vec().into(),
+            ..Default::default()
+        }).await.unwrap();
+        let state = (job.file_num, job.receive_file_offset, job.finished_size(), job.transferred());
+        for _ in 0..8 {
+            assert!(!job.resume());
+            assert_eq!((job.file_num, job.receive_file_offset, job.finished_size(), job.transferred()), state);
+            assert!(job.receive_write_claim.is_some() && job.data_stream.is_some());
+        }
+        job.finish_current_write_file().await.unwrap();
+        assert_eq!(std::fs::read(tmp.join("incoming.bin")).unwrap(), b"data");
+        assert!(!job.resume());
+        let mut fresh = TransferJob::new_write(
+            314, JobType::Generic, "remote".into(), tmp.path.clone(),
+            0, false, true, false,
+        );
+        assert!(!fresh.resume());
+        assert!(!fresh.is_resume);
+        assert!(fresh.receive_write_claim.is_none() && fresh.data_stream.is_none());
+        println!("TRANSFER_RESUME_RECEIVE=pass first=accepted duplicates=8 owner=preserved bytes=4 final=exact fresh=refused");
     }
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]

@@ -3362,6 +3362,8 @@ run_focused_rust_tests() {
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
             source_fingerprints+=(scripts/fixtures/file-send-digest-before-size-admission.rs libs/hbb_common/src/fs/file_block.rs)
             required_tests=(
+                fs::tests::transfer_resume_send_is_once_and_preserves_live_progress
+                fs::tests::transfer_resume_receive_is_once_and_preserves_owned_output
                 fs::tests::send_digest_refuses_changed_lengths_before_cm_wait
                 fs::tests::send_digest_refuses_changed_lengths_before_wire_publication
                 fs::file_block::tests::allocation_refusal_returns_error_and_preserves_retry
@@ -5828,6 +5830,15 @@ run_focused_rust_tests() {
                                     exit "$group_status"
                                 fi
                             done
+                            group_status=0
+                            timeout --signal=TERM --kill-after=5s 20s \
+                                "$test_executable" fs::tests::transfer_resume_ --color never --test-threads=1 --show-output \
+                                || group_status=$?
+                            [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                            if [ "$group_status" -ne 0 ]; then
+                                printf "FILE_SEND_DIGEST_ARTIFACT_STOP=observed sha256=%s status=%s unchanged=before-after\n" "$artifact_sha" "$group_status"
+                                exit "$group_status"
+                            fi
                         else
                         "$test_executable" platform::linux::tests::r_s11at_loginctl_output_ \
                             --color never --test-threads=1 --show-output
@@ -6568,8 +6579,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     )
     if [ "$MODE" = hbb-common-fs ]; then
         expected_groups=9
-        # The two digest cases share one invocation; all other send cases run exactly.
-        if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=$(( ${#required_tests[@]} - 1 )); fi
+        # The digest pair and resume pair each share one invocation.
+        if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=$(( ${#required_tests[@]} - 2 )); fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=34; fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=12; fi
         if [ "$RUST_TEST_PROFILE" = compression ]; then expected_groups=2; fi
@@ -7576,7 +7587,7 @@ PY
                 || fail 'nonterminal send-job retention differs'
             [ "$(grep -Fxc 'READ_JOB_BACKPRESSURE=pass cases=4 byte_refusals=3 channel_refusals=1 selected=retired survivors=exact writer=joined permits=returned receipt=closed storage=retired' "$output")" -eq 1 ] \
                 || fail 'native backpressure send-job retirement differs'
-            grep -E '^test fs::(tests::(send_(digest_|read_buffer_)|read_step_)|file_block::tests::allocation_refusal_).* \.\.\. ok$|^test tcp::writer_lifetime_tests::read_jobs_retire_before_native_writer_pressure_errors \.\.\. ok$|^SEND_DIGEST_(BEFORE|SIZE)=|^SEND_READ_ALLOCATION(_CASE)?=|^FILE_COMPRESSION_(ALLOCATION|CASE)=|^READ_TERMINAL_RETIREMENT(_CASE)?=|^READ_NONTERMINAL_RETIREMENT=|^READ_JOB_BACKPRESSURE(_CASE)?=|^READ_CONFIRMATION_READY=' "$output"
+            grep -E '^test fs::(tests::(send_(digest_|read_buffer_)|read_step_|transfer_resume_)|file_block::tests::allocation_refusal_).* \.\.\. ok$|^test tcp::writer_lifetime_tests::read_jobs_retire_before_native_writer_pressure_errors \.\.\. ok$|^SEND_DIGEST_(BEFORE|SIZE)=|^SEND_READ_ALLOCATION(_CASE)?=|^FILE_COMPRESSION_(ALLOCATION|CASE)=|^READ_TERMINAL_RETIREMENT(_CASE)?=|^READ_NONTERMINAL_RETIREMENT=|^READ_JOB_BACKPRESSURE(_CASE)?=|^READ_CONFIRMATION_READY=|^TRANSFER_RESUME_' "$output"
         else
         grep -E '^test platform::linux::tests::r_s11at_loginctl_output_.* \.\.\. ok$|^LOGINCTL_(WAIT_AUTHORITY|LOST_WAIT)=' "$output"
         if [ "$HBB_LOGIND_NATIVE" -eq 0 ]; then
@@ -7621,7 +7632,7 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$hbb_test_artifact_sha" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
-            printf 'FILE_SEND_DIGEST_VM=pass commit=%s tree=%s tests=12 artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default scope=send-digest-and-read-admission cleanup=joined\n' \
+            printf 'FILE_SEND_DIGEST_VM=pass commit=%s tree=%s tests=14 artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default scope=transfer-resume-and-send-admission cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$hbb_test_artifact_sha" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         else

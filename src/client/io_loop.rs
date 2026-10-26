@@ -2106,8 +2106,9 @@ impl<T: InvokeUiSession> Remote<T> {
             Data::ResumeJob((id, is_remote)) => {
                 if is_remote {
                     if let Some(job) = get_job(id, &mut self.write_jobs) {
-                        job.is_last_job = false;
-                        job.is_resume = true;
+                        if !job.resume() {
+                            return true;
+                        }
                         let file_num = job.file_num;
                         let message = fs::new_send(
                             id,
@@ -2122,9 +2123,9 @@ impl<T: InvokeUiSession> Remote<T> {
                     }
                 } else {
                     if let Some(job) = get_job(id, &mut self.read_jobs) {
-                        job.is_last_job = false;
-                        job.is_resume = true;
-                        job.set_finished_size_on_resume();
+                        if !job.resume() {
+                            return true;
+                        }
                         #[cfg(not(windows))]
                         let files = job.files().clone();
                         #[cfg(windows)]

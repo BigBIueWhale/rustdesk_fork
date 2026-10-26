@@ -22,6 +22,7 @@ mod write_permission_native_tests;
 #[cfg(all(test, target_os = "linux"))]
 mod write_screenshot_native_tests;
 use limits::{
+    clipboard_content_for_native, native_clipboard_payload_within_limit,
     MAX_NATIVE_CLIPBOARD_ITEMS, MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES,
     MAX_NATIVE_CLIPBOARD_SPECIAL_NAME_BYTES, MAX_NATIVE_CLIPBOARD_TOTAL_BYTES,
 };
@@ -80,54 +81,6 @@ enum ClipboardUpdateRequest {
     },
     #[cfg(all(feature = "unix-file-copy-paste", not(target_os = "windows")))]
     TryEmptyFiles { side: ClipboardSide, conn_id: i32 },
-}
-
-fn rgba_clipboard_len(width: i32, height: i32) -> Option<usize> {
-    let width = usize::try_from(width).ok()?;
-    let height = usize::try_from(height).ok()?;
-    if width == 0 || height == 0 {
-        return None;
-    }
-    width.checked_mul(height)?.checked_mul(4)
-}
-
-pub(crate) fn native_clipboard_payload_within_limit(
-    format: hbb_common::message_proto::ClipboardFormat,
-    width: i32,
-    height: i32,
-    len: usize,
-) -> bool {
-    if len > MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES {
-        return false;
-    }
-    if format == hbb_common::message_proto::ClipboardFormat::ImageRgba {
-        return rgba_clipboard_len(width, height).is_some_and(|expected| expected == len);
-    }
-    true
-}
-
-fn clipboard_content_for_native(
-    clipboard: &hbb_common::message_proto::Clipboard,
-) -> ResultType<Vec<u8>> {
-    let format = clipboard
-        .format
-        .enum_value()
-        .map_err(|e| hbb_common::anyhow::anyhow!("invalid clipboard format: {e}"))?;
-    let data = if clipboard.compress {
-        hbb_common::compress::try_decompress(&clipboard.content)?
-    } else {
-        clipboard.content.to_vec()
-    };
-    if !native_clipboard_payload_within_limit(format, clipboard.width, clipboard.height, data.len())
-    {
-        bail!(
-            "oversized or invalid clipboard payload before native handoff: format={format:?}, width={}, height={}, bytes={}",
-            clipboard.width,
-            clipboard.height,
-            data.len()
-        );
-    }
-    Ok(data)
 }
 
 fn sanitize_clipboard_for_native_proto(

@@ -158,9 +158,16 @@ mod tests {
 
         thread_local! {
             static STATE: Cell<(usize, usize)> = const { Cell::new((0, 0)) };
+            static SIZE: Cell<(usize, usize)> = const { Cell::new((0, 0)) };
         }
 
-        fn refuse() -> bool {
+        fn refuse(size: usize) -> bool {
+            let _ = SIZE.try_with(|state| {
+                let (target, count) = state.get();
+                if target != 0 && target == size {
+                    state.set((target, count + 1));
+                }
+            });
             STATE.try_with(|state| {
                 let (target, count) = state.get();
                 if target == 0 {
@@ -175,15 +182,15 @@ mod tests {
 
         unsafe impl GlobalAlloc for Allocator {
             unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-                if refuse() { std::ptr::null_mut() } else { System.alloc(layout) }
+                if refuse(layout.size()) { std::ptr::null_mut() } else { System.alloc(layout) }
             }
 
             unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-                if refuse() { std::ptr::null_mut() } else { System.alloc_zeroed(layout) }
+                if refuse(layout.size()) { std::ptr::null_mut() } else { System.alloc_zeroed(layout) }
             }
 
             unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, size: usize) -> *mut u8 {
-                if refuse() { std::ptr::null_mut() } else { System.realloc(pointer, layout, size) }
+                if refuse(size) { std::ptr::null_mut() } else { System.realloc(pointer, layout, size) }
             }
 
             unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
@@ -193,6 +200,22 @@ mod tests {
 
         #[global_allocator]
         static ALLOCATOR: Allocator = Allocator;
+
+        pub(super) fn observe_size<T>(size: usize, action: impl FnOnce() -> T) -> (T, usize) {
+            struct Reset;
+            impl Drop for Reset {
+                fn drop(&mut self) { SIZE.with(|state| state.set((0, 0))); }
+            }
+            SIZE.with(|state| {
+                assert_eq!(state.get(), (0, 0));
+                state.set((size, 0));
+            });
+            let reset = Reset;
+            let result = action();
+            let count = SIZE.with(|state| state.get().1);
+            drop(reset);
+            (result, count)
+        }
 
         pub(super) fn observe<T>(target: usize, action: impl FnOnce() -> T) -> (T, usize) {
             struct Reset;
@@ -209,6 +232,103 @@ mod tests {
             drop(reset);
             (result, count)
         }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn native_payload_validation_precedes_copying() {
+        use crate::clipboard::limits::{clipboard_content_for_native, MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES};
+        let mut failures = 0;
+        for (case, format, width, height, length) in [
+            ("oversize", ClipboardFormat::Text, 0, 0, MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES + 1),
+            ("zero-width", ClipboardFormat::ImageRgba, 0, 1, 4097),
+            ("negative-height", ClipboardFormat::ImageRgba, 1, -1, 4097),
+            ("excessive-geometry", ClipboardFormat::ImageRgba, i32::MAX, i32::MAX, 4097),
+            ("short-rgba", ClipboardFormat::ImageRgba, 32, 32, 4095),
+            ("long-rgba", ClipboardFormat::ImageRgba, 32, 32, 4097),
+        ] {
+            let input = Clipboard {
+                content: vec![0x5a; length].into(), width, height, format: format.into(),
+                ..Default::default()
+            };
+            let (result, copies) = allocations::observe_size(length, || clipboard_content_for_native(&input));
+            let refused = result.is_err();
+            let unchanged = input.content.len() == length && input.content.iter().all(|byte| *byte == 0x5a);
+            println!("CLIPBOARD_PAYLOAD_VALIDATION_CASE=observed case={case} payload_allocations={copies} refused={refused} unchanged={unchanged}");
+            failures += usize::from(!refused || !unchanged || copies != 0);
+        }
+        assert_eq!(failures, 0, "invalid native clipboard content must refuse before copying its payload");
+        println!("CLIPBOARD_PAYLOAD_VALIDATION=pass cases=6 payload_allocations=0 input=unchanged");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn native_payload_copy_refusal_preserves_exact_retry() {
+        use crate::clipboard::limits::{clipboard_content_for_native, MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES};
+        use std::{os::unix::process::ExitStatusExt, process::Command};
+        if let Ok(size) = std::env::var("RD_CLIPBOARD_PAYLOAD_ALLOC_CASE") {
+            let size: usize = size.parse().unwrap();
+            assert!([1, 4097, MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES].contains(&size));
+            let input = Clipboard {
+                content: vec![0x5a; size].into(), format: ClipboardFormat::Text.into(),
+                ..Default::default()
+            };
+            let (result, _) = allocations::observe(1, || clipboard_content_for_native(&input));
+            let kind = result.as_ref().err().and_then(|error| error.downcast_ref::<io::Error>()).map(io::Error::kind);
+            let retry = clipboard_content_for_native(&input).unwrap();
+            let exact = retry.as_slice() == input.content.as_ref();
+            let unchanged = input.content.len() == size && input.content.iter().all(|byte| *byte == 0x5a);
+            println!("CLIPBOARD_PAYLOAD_ALLOC_CASE=observed bytes={size} error={kind:?} retry_exact={exact} unchanged={unchanged}");
+            assert_eq!(kind, Some(io::ErrorKind::OutOfMemory));
+            assert!(exact && unchanged);
+            return;
+        }
+        for size in [0, 1, 4097, MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES] {
+            let input = Clipboard {
+                content: vec![0x5a; size].into(), format: ClipboardFormat::Text.into(),
+                ..Default::default()
+            };
+            assert_eq!(clipboard_content_for_native(&input).unwrap().as_slice(), input.content.as_ref());
+        }
+        for size in [0, 4097] {
+            let expected = vec![0x42; size];
+            let input = Clipboard {
+                content: hbb_common::compress::compress(&expected).unwrap().into(),
+                compress: true, format: ClipboardFormat::Text.into(), ..Default::default()
+            };
+            assert_eq!(clipboard_content_for_native(&input).unwrap(), expected);
+        }
+        for compressed in [false, true] {
+            let expected = vec![0x42; 32 * 32 * 4];
+            let input = Clipboard {
+                content: if compressed { hbb_common::compress::compress(&expected).unwrap() } else { expected.clone() }.into(),
+                compress: compressed, width: 32, height: 32, format: ClipboardFormat::ImageRgba.into(),
+                ..Default::default()
+            };
+            assert_eq!(clipboard_content_for_native(&input).unwrap(), expected);
+        }
+        assert!(clipboard_content_for_native(&Clipboard {
+            content: Bytes::from_static(b"not a compressed clipboard"), compress: true,
+            format: ClipboardFormat::Text.into(), ..Default::default()
+        }).is_err());
+        let thread = std::thread::current();
+        let name = thread.name().unwrap();
+        let mut passed = 0;
+        for size in [1, 4097, MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES] {
+            let output = Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", name, "--nocapture", "--test-threads=1"])
+                .env("RD_CLIPBOARD_PAYLOAD_ALLOC_CASE", size.to_string()).output().unwrap();
+            let expected = format!("observed bytes={size} error=Some(OutOfMemory) retry_exact=true unchanged=true");
+            let records: Vec<_> = String::from_utf8_lossy(&output.stdout).lines()
+                .filter_map(|line| line.split_once("CLIPBOARD_PAYLOAD_ALLOC_CASE=").map(|(_, value)| value.to_owned())).collect();
+            for record in &records { println!("CLIPBOARD_PAYLOAD_ALLOC_CASE={record}"); }
+            print!("{}", String::from_utf8_lossy(&output.stderr));
+            let correct = output.status.success() && records == [expected];
+            println!("CLIPBOARD_PAYLOAD_ALLOC_CHILD=observed bytes={size} success={} signal={:?} correct={correct}", output.status.success(), output.status.signal());
+            passed += usize::from(correct);
+        }
+        assert_eq!(passed, 3, "native payload copying must return allocation failure and allow an exact retry");
+        println!("CLIPBOARD_PAYLOAD_ALLOC=pass refused=3 controls=9 input=unchanged retries=exact children=joined");
     }
 
     #[cfg(target_os = "linux")]

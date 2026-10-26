@@ -2226,6 +2226,23 @@ admits 6 GiB guest RAM, 7 GiB RAM scratch, 6 GiB host headroom and 1 GiB overhea
 (20 GiB total), with a 6 GiB hard file ceiling and no disk fallback. Rejected
 setup is not behavioral evidence.
 
+**Viewer automatic FPS (`4fdba9f7`) — congestion cannot raise an admitted limit.**
+The viewer caps a congestion-triggered FPS update at its last locally admitted
+request; initial limits, actual decreases and healthy-feedback recovery remain.
+At unchanged-product preparation `a6051dbe`, the production `fps_control` method
+raises four of six backed-up viewer limits, including 1→3 and 3→9 FPS; 92 other
+tests pass. The identical fixture passes after correction with all 93 tests in
+124 outer seconds. Four hold cases emit no higher limit, two genuine decreases
+still publish, and all six recover to the requested 20 FPS on healthy observations.
+Initial publication, failed-send cache preservation and stopped-decoder refusal
+also pass. The complete method and state/capacity declarations are extracted from
+production; decode/mailbox/UI observations are controlled doubles, while outgoing
+protobuf messages cross a real local channel. This does not execute a decoder,
+network peer, complete connection loop or presented pixels. Both VM owners join,
+their bounded RAM workspaces retire, and all endpoint snapshots are unchanged.
+`viewer-fps-congestion-badf36ab.json` binds A/B source, fixtures, artifacts and
+cleanup. Current full-app, actual recovery/soak and all user-parked work stay OPEN.
+
 **Shared R-F5 acceptance remains OPEN.** Execute exact current peer artifacts through
 capture, encode, transport, decode and actual presentation; measure frame age and
 input-to-visible response with clock uncertainty, healthy/recovered envelopes,

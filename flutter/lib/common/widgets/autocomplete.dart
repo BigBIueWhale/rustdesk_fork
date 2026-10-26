@@ -161,19 +161,21 @@ class AutocompletePeerTileState extends State<AutocompletePeerTile> {
                                                           .titleSmall,
                                                     )),
                                                     widget.peer.alias.isNotEmpty
-                                                        ? Padding(
-                                                            padding:
-                                                                const EdgeInsets
-                                                                    .only(
-                                                                    left: 5,
-                                                                    right: 5),
-                                                            child: Text(
-                                                              "(${widget.peer.id})",
-                                                              style: greyStyle,
-                                                              overflow:
-                                                                  TextOverflow
-                                                                      .ellipsis,
-                                                            ))
+                                                        ? Flexible(
+                                                            child: Padding(
+                                                                padding:
+                                                                    const EdgeInsets
+                                                                        .only(
+                                                                        left: 5,
+                                                                        right: 5),
+                                                                child: Text(
+                                                                  "(${widget.peer.id})",
+                                                                  style:
+                                                                      greyStyle,
+                                                                  overflow:
+                                                                      TextOverflow
+                                                                          .ellipsis,
+                                                                )))
                                                         : Container(),
                                                   ])),
                                               Align(

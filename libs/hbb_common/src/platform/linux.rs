@@ -1127,6 +1127,11 @@ mod tests {
                 std::thread::sleep(std::time::Duration::from_secs(10));
             }
             "moderate" => std::io::stdout().write_all(&vec![b'X'; 600 * 1024]).unwrap(),
+            "released-success" => {
+                let mut release = [0_u8; 1];
+                std::io::stdin().read_exact(&mut release).unwrap();
+                assert_eq!(release, [b'G']);
+            }
             "success" => std::io::stdout()
                 .write_all(b"loginctl fixture payload\n")
                 .unwrap(),
@@ -1422,6 +1427,107 @@ mod tests {
         run_healthy("after.pid");
         assert_eq!(descriptors(), before);
         println!("LOGINCTL_WAIT_AUTHORITY=pass disposition={role} refusal=before-spawn restored=success children=reaped descriptors=unchanged");
+    }
+
+    #[test]
+    fn r_s11at_loginctl_output_lost_wait_status_refuses_and_retires() {
+        use std::io::Write;
+        const ROLE: &str = "RUSTDESK_TEST_LOGINCTL_LOST_WAIT";
+        const TEST: &str = "platform::linux::tests::r_s11at_loginctl_output_lost_wait_status_refuses_and_retires";
+        let Ok(role) = std::env::var(ROLE) else {
+            for role in ["ignored", "no-child-wait", "other-waiter"] {
+                let output = Command::new(std::env::current_exe().unwrap())
+                    .env_clear()
+                    .env(ROLE, role)
+                    .args(["--exact", TEST, "--nocapture", "--test-threads=1"])
+                    .output()
+                    .unwrap();
+                assert!(output.stdout.len() + output.stderr.len() < 8192);
+                let stdout = String::from_utf8(output.stdout).unwrap();
+                assert!(output.status.success(), "{role}: {stdout}{}",
+                    String::from_utf8_lossy(&output.stderr));
+                assert!(stdout.contains("test result: ok. 1 passed; 0 failed; 0 ignored;"));
+                let receipt = format!("LOGINCTL_LOST_WAIT=pass cause={role} admitted=live status=refused owner=retired recovery=success descriptors=unchanged");
+                assert!(stdout.contains(&receipt));
+                println!("{receipt}");
+            }
+            return;
+        };
+        assert!(matches!(role.as_str(), "ignored" | "no-child-wait" | "other-waiter"));
+        let temp = LoginctlFixtureDirectory::new();
+        let descriptors = || std::fs::read_dir("/proc/self/fd").unwrap().count();
+        let before = descriptors();
+        let pid_file = temp.path().join("child.pid");
+        let mut command = loginctl_fixture_command("released-success", &pid_file);
+        command.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null());
+        let mut owner = OwnedAuthorizationChild::spawn(&mut command).unwrap();
+        let pid = owner.child.id() as libc::pid_t;
+        let descriptor = owner.pidfd.as_ref().unwrap().as_raw_fd();
+        let mut release = owner.child.stdin.take().unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        while !pid_file.exists() {
+            assert!(std::time::Instant::now() < deadline, "fixture did not start");
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        assert_eq!(std::fs::read_to_string(&pid_file).unwrap(), pid.to_string());
+        assert!(owner.try_wait().unwrap().is_none());
+
+        let mut previous: libc::sigaction = unsafe { std::mem::zeroed() };
+        assert_eq!(unsafe { libc::sigaction(libc::SIGCHLD, std::ptr::null(), &mut previous) }, 0);
+        if role != "other-waiter" {
+            let mut action: libc::sigaction = unsafe { std::mem::zeroed() };
+            action.sa_sigaction = if role == "ignored" { libc::SIG_IGN } else { libc::SIG_DFL };
+            action.sa_flags = if role == "no-child-wait" { libc::SA_NOCLDWAIT } else { 0 };
+            assert_eq!(unsafe { libc::sigemptyset(&mut action.sa_mask) }, 0);
+            assert_eq!(unsafe { libc::sigaction(libc::SIGCHLD, &action, std::ptr::null_mut()) }, 0);
+            let mut observed: libc::sigaction = unsafe { std::mem::zeroed() };
+            assert_eq!(unsafe { libc::sigaction(libc::SIGCHLD, std::ptr::null(), &mut observed) }, 0);
+            assert_eq!(observed.sa_sigaction, action.sa_sigaction);
+            assert_eq!(observed.sa_flags & libc::SA_NOCLDWAIT, action.sa_flags);
+        }
+        release.write_all(b"G").unwrap();
+        drop(release);
+        if role == "other-waiter" {
+            let mut status = 0;
+            loop {
+                let result = unsafe { libc::waitpid(pid, &mut status, libc::WNOHANG) };
+                if result == pid {
+                    break;
+                }
+                assert_eq!(result, 0, "foreign wait failed: {}", io::Error::last_os_error());
+                assert!(std::time::Instant::now() < deadline, "fixture did not exit");
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+            assert!(libc::WIFEXITED(status));
+            assert_eq!(libc::WEXITSTATUS(status), 0);
+        }
+        let mut poll = libc::pollfd { fd: descriptor, events: libc::POLLIN, revents: 0 };
+        assert_eq!(unsafe { libc::poll(&mut poll, 1, 3000) }, 1);
+        assert_ne!(poll.revents & (libc::POLLIN | libc::POLLHUP), 0);
+        assert_eq!(poll.revents & (libc::POLLERR | libc::POLLNVAL), 0);
+        assert_eq!(owner.try_wait().unwrap_err().raw_os_error(), Some(libc::ECHILD));
+        assert!(!owner.reaped);
+        assert_eq!(owner.terminate_and_reap().unwrap_err().raw_os_error(), Some(libc::ECHILD));
+        assert!(owner.reaped);
+        owner.terminate_and_reap().unwrap();
+        drop(owner);
+        assert_eq!(unsafe { libc::fcntl(descriptor, libc::F_GETFD) }, -1);
+        assert_eq!(io::Error::last_os_error().raw_os_error(), Some(libc::EBADF));
+        assert_loginctl_fixture_reaped(&pid_file);
+        assert_eq!(unsafe { libc::sigaction(libc::SIGCHLD, &previous, std::ptr::null_mut()) }, 0);
+
+        let healthy_pid = temp.path().join("healthy.pid");
+        let mut lookup = LoginctlLookup::new(
+            std::time::Instant::now() + LOGINCTL_LOOKUP_TIMEOUT, &|| false,
+        );
+        let output = capture_loginctl_output(
+            &mut loginctl_fixture_command("success", &healthy_pid), &mut lookup,
+        ).unwrap();
+        assert!(output.status.success());
+        assert!(String::from_utf8(output.stdout).unwrap().contains("loginctl fixture payload\n"));
+        assert_loginctl_fixture_reaped(&healthy_pid);
+        assert_eq!(descriptors(), before);
+        println!("LOGINCTL_LOST_WAIT=pass cause={role} admitted=live status=refused owner=retired recovery=success descriptors=unchanged");
     }
 
     #[test]

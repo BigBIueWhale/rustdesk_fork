@@ -3166,6 +3166,7 @@ run_focused_rust_tests() {
             platform::linux::tests::r_s11at_loginctl_output_overflow_refuses_later_children
             platform::linux::tests::r_s11at_loginctl_output_owner_reaps_and_closes_pidfd_on_unwind
             platform::linux::tests::r_s11at_loginctl_output_requires_waitable_children
+            platform::linux::tests::r_s11at_loginctl_output_lost_wait_status_refuses_and_retires
             test::direct_address_ipv4
             test::direct_address_ipv6_formatting
             test::direct_address_hostname_port
@@ -3287,7 +3288,7 @@ run_focused_rust_tests() {
             image_index=$DEV_CHECK_IMAGE_ID
             toolchain_mode=devcheck-image
             toolchain_mount=()
-            required_tests=("${required_tests[@]:0:9}")
+            required_tests=("${required_tests[@]:0:10}")
             required_tests+=(
                 platform::linux::tests::r_s11e40_loginctl_queries_are_typed_and_noninteractive
                 platform::linux::tests::r_s11e40_loginctl_session_list_supplies_only_generated_ids
@@ -7499,7 +7500,7 @@ PY
                 || fail 'native backpressure send-job retirement differs'
             grep -E '^test fs::(tests::(send_(digest_|read_buffer_)|read_step_)|file_block::tests::allocation_refusal_).* \.\.\. ok$|^test tcp::writer_lifetime_tests::read_jobs_retire_before_native_writer_pressure_errors \.\.\. ok$|^SEND_DIGEST_(BEFORE|SIZE)=|^SEND_READ_ALLOCATION(_CASE)?=|^FILE_COMPRESSION_(ALLOCATION|CASE)=|^READ_TERMINAL_RETIREMENT(_CASE)?=|^READ_NONTERMINAL_RETIREMENT=|^READ_JOB_BACKPRESSURE(_CASE)?=|^READ_CONFIRMATION_READY=' "$output"
         else
-        grep -E '^test platform::linux::tests::r_s11at_loginctl_output_.* \.\.\. ok$|^LOGINCTL_WAIT_AUTHORITY=' "$output"
+        grep -E '^test platform::linux::tests::r_s11at_loginctl_output_.* \.\.\. ok$|^LOGINCTL_(WAIT_AUTHORITY|LOST_WAIT)=' "$output"
         if [ "$HBB_LOGIND_NATIVE" -eq 0 ]; then
             grep -E '^test socket_client::tests::(single_address_connect_owns_the_literal_socket|bind_collision_preserves_the_native_error) \.\.\. ok$' "$output"
             grep -E '^test (tcp::(writer_receipt_tests|eof_tests)|bytes_codec::tests)::.* \.\.\. ok$' "$output"

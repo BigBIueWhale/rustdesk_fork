@@ -824,6 +824,15 @@ readonly FIXED_ARCHIVE_HELPER="$SCRIPT_DIR/online-fixed-archive-output.py"
 readonly FIXED_ARCHIVE_CHECKER="$SCRIPT_DIR/verify-online-fetch-fixed-archive-authority.py"
 readonly FIXED_ARCHIVE_MANIFEST="$REPO_ROOT/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
 readonly FIXED_ARCHIVE_WINDOWS_TOOLS="$REPO_ROOT/res/vcpkg/libvpx/windows-tools.sha512"
+readonly -a FIXED_ARCHIVE_WIX_SOURCES=(
+    "$SCRIPT_DIR/online-wix-nuget-retire.py"
+    "$SCRIPT_DIR/verify-wix-nuget-authority.py"
+    "$SCRIPT_DIR/build-windows-vm.sh"
+    "$SCRIPT_DIR/windows-offline-manifest.py"
+    "$SCRIPT_DIR/build-windows.ps1"
+    "$REPO_ROOT/res/msi/Package/Package.wixproj"
+    "$REPO_ROOT/res/msi/Package/packages.lock.json"
+)
 readonly BASE_METADATA_TEST="$SCRIPT_DIR/test-verifier-vm-base-metadata.sh"
 readonly BASE_METADATA_SOURCE="$SCRIPT_DIR/verifier-vm-base-metadata.sh"
 readonly ONLINE_PUB_CACHE_OUTPUT_SOURCE="$SCRIPT_DIR/online-pub-cache-output.py"
@@ -2543,13 +2552,15 @@ if [ "$MODE" = debian-package-tests ]; then
 fi
 if [ "$MODE" = fixed-archive-tests ]; then
     for source in "$FIXED_ARCHIVE_HELPER" "$FIXED_ARCHIVE_CHECKER" \
-        "$FIXED_ARCHIVE_MANIFEST" "$FIXED_ARCHIVE_WINDOWS_TOOLS" "$BASE_METADATA_TEST" "$BASE_METADATA_SOURCE"; do
+        "$FIXED_ARCHIVE_MANIFEST" "$FIXED_ARCHIVE_WINDOWS_TOOLS" "$BASE_METADATA_TEST" "$BASE_METADATA_SOURCE" \
+        "${FIXED_ARCHIVE_WIX_SOURCES[@]}"; do
         [ -f "$source" ] && [ ! -L "$source" ] || fail 'fixed-archive test source is absent or ambiguous'
         verify_committed_test_source "$source"
     done
     fixed_archive_sources_before="$(/usr/bin/sha256sum \
         "$FIXED_ARCHIVE_HELPER" "$FIXED_ARCHIVE_CHECKER" \
-        "$FIXED_ARCHIVE_MANIFEST" "$FIXED_ARCHIVE_WINDOWS_TOOLS" "$BASE_METADATA_TEST" "$BASE_METADATA_SOURCE")"
+        "$FIXED_ARCHIVE_MANIFEST" "$FIXED_ARCHIVE_WINDOWS_TOOLS" "$BASE_METADATA_TEST" "$BASE_METADATA_SOURCE" \
+        "${FIXED_ARCHIVE_WIX_SOURCES[@]}")"
 fi
 FLUTTER_REPLAY_INPUT_SOURCE=
 if [ "$FLUTTER_APP_REPLAY" -eq 1 ]; then
@@ -4395,6 +4406,9 @@ elif [ "$MODE" = fixed-archive-tests ]; then
         "repo/scripts/test-verifier-vm-base-metadata.sh=$BASE_METADATA_TEST"
         "repo/scripts/derive-verifier-vm-boot-assets.sh=$BOOT_DERIVER"
     )
+    for source in "${FIXED_ARCHIVE_WIX_SOURCES[@]}"; do
+        lifecycle_payload_grafts+=("repo/${source#"$REPO_ROOT/"}=$source")
+    done
 elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=(
@@ -5433,6 +5447,8 @@ PY
 elif [ "$MODE" = fixed-archive-tests ]; then
     fixed_archive_vm_receipt="FIXED_ARCHIVE_TESTS_VM=pass uid=4000 gid=4000 helper_sha256=$(/usr/bin/sha256sum "$FIXED_ARCHIVE_HELPER" | /usr/bin/awk '{print $1}') checker_sha256=$(/usr/bin/sha256sum "$FIXED_ARCHIVE_CHECKER" | /usr/bin/awk '{print $1}') source=readonly responses=injected filesystem=actual network=none docker=retired scratch=retired cleanup=joined"
     require_exact_fixed_receipt 'fixed archive transaction self-test: PASS' 'adversarial archive transaction result'
+    require_exact_fixed_receipt 'online-wix-nuget-retire: self-test PASS' 'WiX archive retirement result'
+    require_exact_fixed_receipt 'WiX NuGet source constraints: PASS (signature and restore unexecuted)' 'WiX source constraint result'
     require_exact_fixed_receipt 'VERIFIER_VM_BASE_METADATA=pass cases=22 profiles=400,444 source=production metadata=actual cleanup=joined' 'base metadata admission result'
     require_exact_fixed_receipt "$fixed_archive_vm_receipt" 'fixed-archive source and finality result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'fixed-archive guest completion'
@@ -8308,7 +8324,8 @@ if { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ] ||
 fi
 if [ "$MODE" = fixed-archive-tests ]; then
     [ "$(/usr/bin/sha256sum "$FIXED_ARCHIVE_HELPER" "$FIXED_ARCHIVE_CHECKER" \
-        "$FIXED_ARCHIVE_MANIFEST" "$FIXED_ARCHIVE_WINDOWS_TOOLS" "$BASE_METADATA_TEST" "$BASE_METADATA_SOURCE")" = "$fixed_archive_sources_before" ] \
+        "$FIXED_ARCHIVE_MANIFEST" "$FIXED_ARCHIVE_WINDOWS_TOOLS" "$BASE_METADATA_TEST" "$BASE_METADATA_SOURCE" \
+        "${FIXED_ARCHIVE_WIX_SOURCES[@]}")" = "$fixed_archive_sources_before" ] \
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')" = "$FOCUSED_TEST_TREE" ] \
         && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \

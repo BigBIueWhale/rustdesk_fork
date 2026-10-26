@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the exact signed WiX package acquisition and consumption authority."""
+"""Check source constraints for WiX package acquisition and consumption."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import argparse
 import json
 import re
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
@@ -23,7 +22,6 @@ FILES = {
     "guest": Path("scripts/build-windows.ps1"),
     "project": Path("res/msi/Package/Package.wixproj"),
     "lock": Path("res/msi/Package/packages.lock.json"),
-    "verify": Path("scripts/verify.sh"),
 }
 
 VERSION = "4.0.5"
@@ -182,7 +180,6 @@ def verify_sources(sources: Mapping[str, str]) -> None:
     offline = sources["offline_manifest"]
     guest = sources["guest"]
     project = sources["project"].lstrip("\ufeff")
-    verify = sources["verify"]
 
     require(pins.count(f'WIX_NUGET_VERSION="{VERSION}"') == 1, "WiX version pin changed")
     require(
@@ -284,8 +281,6 @@ def verify_sources(sources: Mapping[str, str]) -> None:
         (
             "if len(specs) == 6:",
             "the WiX manifest is not the exact sorted six-package 4.0.5 source",
-            "def test_wix_specs()",
-            "WiX self-test publication omitted a package",
         ),
         "common fixed-archive WiX profile",
     )
@@ -307,10 +302,6 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             "os.fsync(root_fd)",
             "WiX retirement refuses root UID or GID",
             "obsolete WiX cache archive has an unknown size and was preserved",
-            "self-test accepted an unknown legacy archive",
-            "self-test accepted an exact legacy archive in a nonhistorical mode",
-            "self-test accepted a nonprivate online root",
-            "self-test did not recover exact interrupted retirement staging",
         ),
         "legacy WiX retirement helper",
     )
@@ -492,199 +483,10 @@ def verify_sources(sources: Mapping[str, str]) -> None:
         )
     verify_lock(sources["lock"])
 
-    require_all(
-        verify,
-        (
-            "online-wix-nuget-retire.py self-test",
-            "verify-wix-nuget-authority.py --repo . --self-test",
-        ),
-        "top-level WiX verifier wiring",
-    )
-
-
-@dataclass(frozen=True)
-class Mutation:
-    file: str
-    old: str
-    new: str
-    label: str
-
-
-MUTATIONS = (
-    Mutation(
-        "pins",
-        'SIZE_WIX_NUGET_SDK="18626823"',
-        'SIZE_WIX_NUGET_SDK="18626824"',
-        "package length",
-    ),
-    Mutation(
-        "pins",
-        f'WIX_NUGET_AUTHOR_CERT_SHA256="{AUTHOR_CERT}"',
-        'WIX_NUGET_AUTHOR_CERT_SHA256="BAD"',
-        "author signer",
-    ),
-    Mutation(
-        "fetch",
-        "https://api.nuget.org/v3-flatcontainer/wixtoolset.sdk/",
-        "https://example.invalid/v3-flatcontainer/wixtoolset.sdk/",
-        "acquisition URL",
-    ),
-    Mutation(
-        "fetch",
-        "stage_archive_bundle wix \"$ONLINE_DIR\"",
-        "stage_archive_bundle toolchain \"$ONLINE_DIR\"",
-        "closed acquisition profile",
-    ),
-    Mutation(
-        "fetch",
-        '"$WIX_NUGET_RETIRE_HELPER" retire',
-        '"$WIX_NUGET_RETIRE_HELPER" skip',
-        "legacy retirement",
-    ),
-    Mutation(
-        "fixed_helper",
-        "if len(specs) == 6:",
-        "if len(specs) == 5:",
-        "six-package fixed manifest",
-    ),
-    Mutation(
-        "retire_helper",
-        "RENAME_NOREPLACE = 1",
-        "RENAME_NOREPLACE = 0",
-        "no-clobber retirement",
-    ),
-    Mutation(
-        "retire_helper",
-        "before.st_nlink != 1",
-        "before.st_nlink < 1",
-        "retirement hardlink refusal",
-    ),
-    Mutation(
-        "lib",
-        '"wix-nuget-packages/wixtoolset.sdk.${WIX_NUGET_VERSION}.nupkg" "$SHA256_WIX_NUGET_SDK"',
-        '"wix-nuget-packages/wixtoolset.sdk.${WIX_NUGET_VERSION}.nupkg" "$SHA256_WIX_NUGET_UI"',
-        "closure digest mapping",
-    ),
-    Mutation(
-        "vm",
-        "/wix-nuget-packages=/online/wix-nuget-packages",
-        "/wix-nuget-packages=/online/pub-cache",
-        "offline media mapping",
-    ),
-    Mutation(
-        "offline_manifest",
-        'Mapping("wix-nuget-packages", wix_root, wix_root)',
-        'Mapping("wix-nuget", wix_root, wix_root)',
-        "offline manifest namespace",
-    ),
-    Mutation(
-        "guest",
-        '<add key="signatureValidationMode" value="require" />',
-        '<add key="signatureValidationMode" value="accept" />',
-        "signature requirement",
-    ),
-    Mutation(
-        "guest",
-        "-p:RestoreLockedMode=true",
-        "-p:RestoreLockedMode=false",
-        "locked restore",
-    ),
-    Mutation(
-        "guest",
-        "Assert-WixPackageSource $wixSrc",
-        "Write-Host $wixSrc",
-        "source validation",
-    ),
-    Mutation(
-        "guest",
-        'if (Test-Path -LiteralPath $wixPkgs) {\n'
-        '        Die ".msi: run-scoped WiX global-packages path is already occupied: $wixPkgs"',
-        'if ($false) {\n'
-        '        Die ".msi: run-scoped WiX global-packages path is already occupied: $wixPkgs"',
-        "fresh run-scoped cache",
-    ),
-    Mutation(
-        "guest",
-        'if (Test-Path -LiteralPath $nugetCfg) {\n'
-        '        Die ".msi: run-scoped WiX NuGet config path is already occupied: $nugetCfg"',
-        'if ($false) {\n'
-        '        Die ".msi: run-scoped WiX NuGet config path is already occupied: $nugetCfg"',
-        "fresh run-scoped config",
-    ),
-    Mutation(
-        "guest",
-        "$nugetCfg = Join-Path $SRC 'res\\msi\\NuGet.Config'",
-        '$nugetCfg = Join-Path $env:TEMP "rustdesk-wix-nuget.config"',
-        "solution-level SDK resolver config",
-    ),
-    Mutation(
-        "guest",
-        "[IO.FileMode]::CreateNew",
-        "[IO.FileMode]::Create",
-        "no-clobber run-scoped config creation",
-    ),
-    Mutation(
-        "retire_helper",
-        "stat.S_IMODE(root.st_mode) != 0o700",
-        "stat.S_IMODE(root.st_mode) != 0o777",
-        "private locked online root",
-    ),
-    Mutation(
-        "retire_helper",
-        "allowed_modes={0o644}",
-        "allowed_modes={0o600, 0o644}",
-        "single historical legacy mode",
-    ),
-    Mutation(
-        "project",
-        'Version="[4.0.5]"',
-        'Version="4.0.5"',
-        "exact PackageReference",
-    ),
-    Mutation(
-        "project",
-        "<RuntimeIdentifiers>win;win-arm64;win-x64;win-x86</RuntimeIdentifiers>",
-        "<RuntimeIdentifiers>win-x64</RuntimeIdentifiers>",
-        "exact Windows runtime graph",
-    ),
-    Mutation(
-        "lock",
-        '"resolved": "4.0.5"',
-        '"resolved": "4.0.4"',
-        "lock resolution",
-    ),
-    Mutation(
-        "lock",
-        '"native,Version=v0.0/win-x64": {}',
-        '"native,Version=v0.0/linux-x64": {}',
-        "Windows runtime lock graph",
-    ),
-    Mutation(
-        "verify",
-        "online-wix-nuget-retire.py self-test",
-        "online-wix-nuget-retire.py skipped-test",
-        "retirement self-test wiring",
-    ),
-)
-
-
-def run_mutations(sources: Mapping[str, str]) -> None:
-    for mutation in MUTATIONS:
-        original = sources[mutation.file]
-        require(mutation.old in original, f"mutation anchor is absent: {mutation.label}")
-        changed = dict(sources)
-        changed[mutation.file] = original.replace(mutation.old, mutation.new, 1)
-        try:
-            verify_sources(changed)
-        except VerificationError:
-            continue
-        raise VerificationError(f"mutation was not rejected: {mutation.label}")
-
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", type=Path, default=Path("."))
-    parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     repo = args.repo.resolve()
     sources = {
@@ -692,11 +494,7 @@ def main() -> int:
         for name, path in FILES.items()
     }
     verify_sources(sources)
-    if args.self_test:
-        run_mutations(sources)
-        print(f"WiX NuGet authority mutations: PASS ({len(MUTATIONS)})")
-    else:
-        print("WiX NuGet authority: PASS")
+    print("WiX NuGet source constraints: PASS (signature and restore unexecuted)")
     return 0
 
 

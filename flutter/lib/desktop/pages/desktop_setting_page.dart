@@ -310,8 +310,6 @@ class _General extends StatefulWidget {
 
 class _GeneralState extends State<_General> {
   bool _languageSaving = false;
-  bool _recordingDirectorySaving = false;
-  bool _recordingDirectoryFailed = false;
 
   @override
   Widget build(BuildContext context) {
@@ -335,7 +333,7 @@ class _GeneralState extends State<_General> {
         // compiled out of every build and AV1/libaom is runtime-quarantined, so the card had no
         // supported state and only ever rendered Offstage (hidden ≠ removed, the R-G1 trap).
         if (!isWeb) audio(context),
-        if (!isWeb) record(context),
+        if (!isWeb) _Recording(),
         // R-X12 / R-G1 (§19): the "Wayland" settings card is removed, not hidden. Its only render
         // condition is a non-empty wayland-restore-token, but the Wayland/pipewire capture path
         // (scrap `mod wayland`) is compiled out (R-X12) and nothing persists that token, so it is
@@ -524,6 +522,57 @@ class _GeneralState extends State<_General> {
     return AudioInput(builder: builder, isCm: false, isVoiceCall: false);
   }
 
+  Widget language() {
+    return futureBuilder(future: () async {
+      String langs = await bind.mainGetLangs();
+      return {'langs': langs};
+    }(), hasData: (res) {
+      Map<String, String> data = res as Map<String, String>;
+      List<dynamic> langsList = jsonDecode(data['langs']!);
+      Map<String, String> langsMap = {for (var v in langsList) v[0]: v[1]};
+      final options = <String, String>{defaultOptionLang: translate('Default'), ...langsMap};
+      String currentKey = bind.mainGetLocalOption(key: kCommConfKeyLang);
+      if (!options.containsKey(currentKey)) {
+        currentKey = defaultOptionLang;
+      }
+      final isOptFixed = isOptionFixed(kCommConfKeyLang);
+      return ComboBox(
+        options: options,
+        selectedKey: currentKey,
+        onChanged: (key) async {
+          if (!mounted || _languageSaving) return;
+          setState(() => _languageSaving = true);
+          try {
+            if (!await mainSetLocalOption(kCommConfKeyLang, key) || !mounted) return;
+            key = bind.mainGetLocalOption(key: kCommConfKeyLang);
+            if (isWeb) reloadCurrentWindow();
+            if (!isWeb) reloadAllWindows();
+            if (!isWeb) bind.mainChangeLanguage(lang: key);
+          } finally {
+            if (mounted) setState(() => _languageSaving = false);
+          }
+        },
+        enabled: !isOptFixed && !_languageSaving,
+      ).marginOnly(left: _kContentHMargin);
+    });
+  }
+}
+
+class _Recording extends StatefulWidget {
+  const _Recording();
+
+  @override
+  State<_Recording> createState() => _RecordingState();
+}
+
+class _RecordingState extends State<_Recording>
+    with AutomaticKeepAliveClientMixin {
+  bool _recordingDirectorySaving = false;
+  bool _recordingDirectoryFailed = false;
+
+  @override
+  bool get wantKeepAlive => true;
+
   Future<void> _changeRecordingDirectory(String currentDirectory) async {
     if (!mounted ||
         _recordingDirectorySaving ||
@@ -550,7 +599,9 @@ class _GeneralState extends State<_General> {
     }
   }
 
-  Widget record(BuildContext context) {
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
     final showRootDir = isWindows && bind.mainIsInstalled();
     return futureBuilder(future: () async {
       String user_dir = bind.mainVideoSaveDirectory(root: false);
@@ -633,41 +684,6 @@ class _GeneralState extends State<_General> {
                   style: TextStyle(color: Theme.of(context).colorScheme.error))
               .marginOnly(left: _kContentHMargin),
       ]);
-    });
-  }
-
-  Widget language() {
-    return futureBuilder(future: () async {
-      String langs = await bind.mainGetLangs();
-      return {'langs': langs};
-    }(), hasData: (res) {
-      Map<String, String> data = res as Map<String, String>;
-      List<dynamic> langsList = jsonDecode(data['langs']!);
-      Map<String, String> langsMap = {for (var v in langsList) v[0]: v[1]};
-      final options = <String, String>{defaultOptionLang: translate('Default'), ...langsMap};
-      String currentKey = bind.mainGetLocalOption(key: kCommConfKeyLang);
-      if (!options.containsKey(currentKey)) {
-        currentKey = defaultOptionLang;
-      }
-      final isOptFixed = isOptionFixed(kCommConfKeyLang);
-      return ComboBox(
-        options: options,
-        selectedKey: currentKey,
-        onChanged: (key) async {
-          if (!mounted || _languageSaving) return;
-          setState(() => _languageSaving = true);
-          try {
-            if (!await mainSetLocalOption(kCommConfKeyLang, key) || !mounted) return;
-            key = bind.mainGetLocalOption(key: kCommConfKeyLang);
-            if (isWeb) reloadCurrentWindow();
-            if (!isWeb) reloadAllWindows();
-            if (!isWeb) bind.mainChangeLanguage(lang: key);
-          } finally {
-            if (mounted) setState(() => _languageSaving = false);
-          }
-        },
-        enabled: !isOptFixed && !_languageSaving,
-      ).marginOnly(left: _kContentHMargin);
     });
   }
 }

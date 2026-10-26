@@ -227,6 +227,15 @@ void main() {
     picker.requests.first.$2.complete('/work/chosen-recordings');
     picker.cancelPending();
     await _settle(tester);
+    final scroll = tester.state<ScrollableState>(find.descendant(
+      of: find.byWidgetPredicate((widget) => widget.runtimeType.toString() == '_General'),
+      matching: find.byType(Scrollable),
+    ));
+    final offset = scroll.position.pixels;
+    scroll.position.jumpTo(0);
+    await _settle(tester);
+    scroll.position.jumpTo(offset);
+    await _settle(tester);
     final disabledDuringSave = _directoryButton(tester).onPressed == null;
     final duringSave = _pressDirectory(press);
     await _settle(tester);

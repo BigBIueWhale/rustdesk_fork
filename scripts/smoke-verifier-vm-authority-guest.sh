@@ -10815,6 +10815,8 @@ run_flutter_model_tests() {
                         printf "FLUTTER_FILE_NAVIGATION_STAGE=%s seconds=%s\n" "$1" "$SECONDS"
                     elif [ "$FLUTTER_TEST_PROFILE" = auto-disconnect ]; then
                         printf "FLUTTER_AUTO_DISCONNECT_STAGE=%s seconds=%s\n" "$1" "$SECONDS"
+                    elif [ "$FLUTTER_TEST_PROFILE" = file-progress ]; then
+                        printf "FLUTTER_FILE_PROGRESS_STAGE=%s seconds=%s\n" "$1" "$SECONDS"
                     fi
                 }
                 file_navigation_stage extract-toolchains
@@ -11176,11 +11178,19 @@ run_flutter_model_tests() {
                     /bin/bash /source/scripts/run-linux-window-channel-tests.sh
                 fi
                 file_navigation_stage execute-tests
-                if ! timeout --signal=TERM --kill-after=10s "$test_budget" \
-                    flutter test --no-pub --reporter json --concurrency="$test_concurrency" \
-                        --timeout=30s "${test_fail_fast[@]}" \
-                        "${tests[@]}" >/work/test.json 2>/work/test.err; then
-                    tail -c 4194304 /work/test.json >&2
+                run_flutter_tests() {
+                    timeout --signal=TERM --kill-after=10s "$test_budget" \
+                        flutter test --no-pub --reporter json --concurrency="$test_concurrency" \
+                            --timeout=30s "${test_fail_fast[@]}" "${tests[@]}"
+                }
+                test_status=0
+                if [ "$FLUTTER_TEST_PROFILE" = file-progress ]; then
+                    run_flutter_tests 2>/work/test.err | tee /work/test.json || test_status=$?
+                else
+                    run_flutter_tests >/work/test.json 2>/work/test.err || test_status=$?
+                fi
+                if [ "$test_status" -ne 0 ]; then
+                    [ "$FLUTTER_TEST_PROFILE" = file-progress ] || tail -c 4194304 /work/test.json >&2
                     tail -c 1048576 /work/test.err >&2
                     exit 1
                 fi
@@ -11195,7 +11205,7 @@ run_flutter_model_tests() {
                     exit 1
                 fi
                 file_navigation_stage source-postconditions
-                if [[ "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = auto-disconnect || "$FLUTTER_TEST_PROFILE" = share-rdp || "$FLUTTER_TEST_PROFILE" = connect-password ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = auto-disconnect || "$FLUTTER_TEST_PROFILE" = share-rdp || "$FLUTTER_TEST_PROFILE" = connect-password ]]; then
                     cat /work/test.json
                 fi
                 if [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
@@ -11367,11 +11377,15 @@ run_flutter_model_tests() {
     elif [ "$FLUTTER_TEST_PROFILE" = terminal-output ]; then
         printf 'FLUTTER_TERMINAL_OUTPUT_STAGE=run-production-terminal-tests\n'
     fi
-    if [[ "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
+    if [[ "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = auto-disconnect || "$FLUTTER_TEST_PROFILE" = file-progress ]]; then
         local -a flutter_start_status
         if "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" 2>&1 \
             | tee "$output" \
             | while IFS= read -r progress_line; do
+                if [ "$FLUTTER_TEST_PROFILE" = file-progress ]; then
+                    printf '%s\n' "$progress_line" || exit 1
+                    continue
+                fi
                 case "$progress_line" in
                     FLUTTER_FILE_NAVIGATION_STAGE=*|FLUTTER_AUTO_DISCONNECT_STAGE=*)
                         printf '%s\n' "$progress_line" || exit 1 ;;
@@ -11388,8 +11402,10 @@ run_flutter_model_tests() {
         "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
             >"$output" 2>&1 || container_status=$?
     fi
-    [ "$container_status" -eq 0 ] \
-        || { tail -c 6291456 "$output" >&2; fail "focused Flutter model tests exited with status $container_status"; }
+    if [ "$container_status" -ne 0 ]; then
+        [ "$FLUTTER_TEST_PROFILE" = file-progress ] || tail -c 6291456 "$output" >&2
+        fail "focused Flutter model tests exited with status $container_status"
+    fi
     [ "$(stat -c '%s' -- "$output")" -le 4194304 ] \
         || fail 'focused Flutter-test output exceeds its bound'
     if [ "$bridge_required" -eq 1 ]; then

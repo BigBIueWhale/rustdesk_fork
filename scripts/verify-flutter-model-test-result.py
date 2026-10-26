@@ -913,7 +913,7 @@ FILE_METADATA_TESTS = {
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -986,6 +986,10 @@ def parse_result(path, profile="models"):
         expected_by_suite = TERMINAL_OUTPUT_TESTS
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())
+        expected_tests = len(expected_names)
+    elif profile == "connect-password":
+        expected_suites = {"connect_password_dialog_lifecycle_test.dart"}
+        expected_names = CREDENTIAL_DIALOG_TESTS["connect_password_dialog_lifecycle_test.dart"]
         expected_tests = len(expected_names)
     elif profile == "credential-dialog":
         expected_by_suite = CREDENTIAL_DIALOG_TESTS
@@ -1084,7 +1088,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -1106,6 +1110,7 @@ def main():
         "file-navigation": "FLUTTER_FILE_NAVIGATION_TEST_JSON",
         "peer-data": "FLUTTER_PEER_DATA_TEST_JSON",
         "terminal-output": "FLUTTER_TERMINAL_OUTPUT_TEST_JSON",
+        "connect-password": "FLUTTER_CONNECT_PASSWORD_TEST_JSON",
         "credential-dialog": "FLUTTER_CREDENTIAL_DIALOG_TEST_JSON",
     }[arguments.profile]
     print("{}=pass suites={} tests={}".format(prefix, suites, tests))

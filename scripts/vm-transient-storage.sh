@@ -27,6 +27,7 @@ elif [ "${MODE:-}" = hbb-common-fs ] && [ "${HBB_LOGIND_NATIVE:-}" = 0 ] \
     && [ "${HBB_FUSE_READ_TESTS:-}" = 0 ]; then
     readonly VM_STORAGE_PROFILE=hbb-common-fs
 elif [[ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:credential-dialog \
+    || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:connect-password \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:terminal-output \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:peer-data \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:file-navigation \

@@ -119,32 +119,65 @@ void main() {
 
   testWidgets('connect submit admits one accepted replacement attempt',
       (tester) async {
-    final events = <String>[];
-    await _show(tester,
-        readRemember: () async => false,
-        submitPassword: (password, remember) {
-          events.add('submit:$password:$remember');
-          return true;
-        },
-        close: () => events.add('close'),
-        onAccepted: () => events.add('accepted'));
-    await tester.enterText(find.byType(TextField), ' Runtime1x ');
-    final dialog =
-        tester.widget<CustomAlertDialog>(find.byType(CustomAlertDialog));
-    dialog.onSubmit!();
-    dialog.onSubmit!();
-    expect(events, ['submit:Runtime1x:false', 'close', 'accepted']);
+    const passwords = {
+      'plain': 'Runtime1x',
+      'leading': ' Runtime1x',
+      'trailing': 'Runtime1x ',
+      'both': ' Runtime1x ',
+      'nonbreaking': '\u00a0Runtime1x\u00a0',
+      'wide': '\u3000Runtime1x\u3000',
+      'combining': ' Cafe\u0301-1x ',
+      'spaces': '   ',
+    };
+    for (final button in [false, true]) {
+      for (final entry in passwords.entries) {
+        final events = <String>[];
+        final submitted = <String>[];
+        await _show(tester,
+            owner: '$button:${entry.key}',
+            readRemember: () async => false,
+            submitPassword: (password, remember) {
+              submitted.add(password);
+              events.add('submit:$remember');
+              return true;
+            },
+            close: () => events.add('close'),
+            onAccepted: () => events.add('accepted'));
+        final dialog =
+            tester.widget<CustomAlertDialog>(find.byType(CustomAlertDialog));
+        dialog.onSubmit!();
+        await tester.tap(_button('OK'));
+        expect(events, isEmpty);
+        await tester.enterText(find.byType(TextField), entry.value);
+        if (button) {
+          await tester.tap(_button('OK'));
+        } else {
+          dialog.onSubmit!();
+        }
+        dialog.onSubmit!();
+        final preserved =
+            submitted.length == 1 && submitted.single == entry.value;
+        debugPrint('CONNECT_PASSWORD_EXACT case=${entry.key} button=$button '
+            'preserved=$preserved');
+        expect(submitted, [entry.value], reason: '$button:${entry.key}');
+        expect(events, ['submit:false', 'close', 'accepted']);
+      }
+    }
   });
 
   testWidgets('rejected connect submission retains its prompt for retry',
       (tester) async {
     var attempts = 0;
     var accepted = 0;
+    final submitted = <String>[];
     await _show(tester,
         readRemember: () async => true,
-        submitPassword: (_, __) => ++attempts == 2,
+        submitPassword: (password, _) {
+          submitted.add(password);
+          return ++attempts == 2;
+        },
         onAccepted: () => accepted++);
-    await tester.enterText(find.byType(TextField), 'Runtime1x');
+    await tester.enterText(find.byType(TextField), ' Runtime1x\u00a0');
     await tester.tap(find.text('OK'));
     await tester.pump();
     expect(attempts, 1);
@@ -154,6 +187,7 @@ void main() {
     await tester.pump();
     expect(attempts, 2);
     expect(accepted, 1);
+    expect(submitted, [' Runtime1x\u00a0', ' Runtime1x\u00a0']);
   });
 
   testWidgets('cancel retires a pending connect preference and callbacks',

@@ -64,6 +64,7 @@ class ChatModel with ChangeNotifier {
   RxBool isWindowFocus = true.obs;
   BlockableOverlayState _blockableOverlayState = BlockableOverlayState();
   StreamSubscription<bool>? _middleBlockedSubscription;
+  Timer? _chatInputFocusTimer;
   bool _disposed = false;
   final Rx<VoiceCallStatus> _voiceCallStatus = Rx(VoiceCallStatus.notStarted);
 
@@ -83,6 +84,7 @@ class ChatModel with ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _cancelChatInputFocus();
     _cancelMiddleBlockedSubscription();
     textController.dispose();
     super.dispose();
@@ -108,10 +110,12 @@ class ChatModel with ChangeNotifier {
     if (_disposed ||
         (identical(_blockableOverlayState, blockableOverlayState) &&
             _middleBlockedSubscription != null)) return;
+    _cancelChatInputFocus();
     _cancelMiddleBlockedSubscription();
     _blockableOverlayState = blockableOverlayState;
     _middleBlockedSubscription = _blockableOverlayState.middleBlocked.listen((v) {
       if (!v) {
+        _cancelChatInputFocus();
         isWindowFocus.value = false;
       }
     });
@@ -225,6 +229,7 @@ class ChatModel with ChangeNotifier {
   }
 
   hideChatWindowOverlay() {
+    _cancelChatInputFocus();
     if (chatWindowOverlayEntry != null) {
       _blockableOverlayState.setMiddleBlocked(false);
       chatWindowOverlayEntry!.remove();
@@ -251,6 +256,7 @@ class ChatModel with ChangeNotifier {
   }
 
   hideChatOverlay() {
+    _cancelChatInputFocus();
     if (!_isChatOverlayHide()) {
       hideChatIconOverlay();
       hideChatWindowOverlay();
@@ -294,6 +300,7 @@ class ChatModel with ChangeNotifier {
     _togglingCMSidePage = true;
     try {
       final show = !_isShowCMSidePage;
+      if (!show) _cancelChatInputFocus();
       final server = show ? parent.target?.serverModel : null;
       final currentSelectedTab = server?.tabController.state.value.selectedTabInfo;
       final client = server?.clients.firstWhereOrNull(
@@ -551,6 +558,7 @@ class ChatModel with ChangeNotifier {
   }
 
   close() {
+    _cancelChatInputFocus();
     hideChatIconOverlay();
     hideChatWindowOverlay();
     notifyListeners();
@@ -565,11 +573,19 @@ class ChatModel with ChangeNotifier {
   }
 
   void requestChatInputFocus() {
-    Timer(Duration(milliseconds: 100), () {
+    if (_disposed) return;
+    _cancelChatInputFocus();
+    _chatInputFocusTimer = Timer(const Duration(milliseconds: 100), () {
+      _chatInputFocusTimer = null;
       if (inputNode.hasListeners && inputNode.canRequestFocus) {
         inputNode.requestFocus();
       }
     });
+  }
+
+  void _cancelChatInputFocus() {
+    _chatInputFocusTimer?.cancel();
+    _chatInputFocusTimer = null;
   }
 
   void onVoiceCallWaiting() {

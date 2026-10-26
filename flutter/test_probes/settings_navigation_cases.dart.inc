@@ -118,6 +118,20 @@ Future<Object?> _pressDirectory(VoidCallback callback) async {
   }
 }
 
+Future<void> _mountRecording(WidgetTester tester) async {
+  await _mount(tester, SettingsTabKey.general);
+  final button = find.widgetWithText(ElevatedButton, 'Change');
+  final scrollable = find.descendant(
+      of: find.byWidgetPredicate((widget) => widget.runtimeType.toString() == '_General'),
+      matching: find.byType(Scrollable));
+  for (var i = 0; i < 12 && button.evaluate().isEmpty; i++) {
+    await tester.drag(scrollable, const Offset(0, -150));
+    await _settle(tester);
+  }
+  await tester.ensureVisible(button);
+  await _settle(tester);
+}
+
 class _SettingsParent implements FFI {
   @override
   late final ServerModel serverModel = ServerModel(WeakReference(this));
@@ -202,7 +216,7 @@ void main() {
     native.recordingDirectory = '/work';
     final write = Completer<void>();
     native.saveRecordingDirectory = (_) => write.future;
-    await _mount(tester, SettingsTabKey.general);
+    await _mountRecording(tester);
     final press = _directoryButton(tester).onPressed!;
     final first = _pressDirectory(press);
     final duplicate = _pressDirectory(press);
@@ -235,7 +249,7 @@ void main() {
   testWidgets('recording directory closed page cannot apply a picker result',
       (tester) async {
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    await _mount(tester, SettingsTabKey.general);
+    await _mountRecording(tester);
     final press = _directoryButton(tester).onPressed!;
     final pending = _pressDirectory(press);
     await _settle(tester);
@@ -250,7 +264,7 @@ void main() {
     expect(await obsolete, isNull);
     expect(calls, 1);
     expect(native.recordingWrites, isEmpty);
-    await _mount(tester, SettingsTabKey.general);
+    await _mountRecording(tester);
     expect(find.text('/work/nonexistent-settings-recordings'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
     expect(tester.takeException(), isNull);
@@ -259,7 +273,7 @@ void main() {
   testWidgets('recording directory cancellation and picker failure allow retry',
       (tester) async {
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    await _mount(tester, SettingsTabKey.general);
+    await _mountRecording(tester);
     final cancelled = _pressDirectory(_directoryButton(tester).onPressed!);
     await _settle(tester);
     picker.requests.last.$2.complete(null);
@@ -296,7 +310,7 @@ void main() {
       writes.add(write);
       return write.future;
     };
-    await _mount(tester, SettingsTabKey.general);
+    await _mountRecording(tester);
     final failed = _pressDirectory(_directoryButton(tester).onPressed!);
     await _settle(tester);
     picker.requests.last.$2.complete('/work/failed-recordings');

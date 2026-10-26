@@ -119,6 +119,17 @@ WINDOW_DISPATCH_TESTS = {
     "window dispatch refuses a malformed sender envelope",
     "window dispatch joins event failure before replying",
 }
+STATUS_REFRESH_TESTS = {
+    "close waits for readiness without admitting a refresh",
+    "reentrant close drains the accepted readiness turn",
+    "reentrant close drains the accepted refresh turn",
+    "never overlaps a slow refresh and waits a full interval",
+    "initial readiness is checked once before periodic refresh",
+    "a failed turn is visible and does not wedge later turns",
+    "close drains the active turn and prevents rearming",
+    "close cancels the deferred first turn before it begins",
+    "refuses duplicate start and restart after close",
+}
 SHARE_RDP_TESTS = {
     "r_s11ir an unmounted owner refuses admission",
     "r_s11ir duplicate UI actions share one synchronous request latch",
@@ -1012,7 +1023,7 @@ FILE_METADATA_TESTS = {
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-progress", "custom-scale", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "window-dispatch", "status-refresh", "peer-data", "file-progress", "custom-scale", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -1027,6 +1038,10 @@ def parse_result(path, profile="models"):
         expected_suites = {"file_metadata_probe_test.dart"}
         expected_tests = len(FILE_METADATA_TESTS)
         expected_names = FILE_METADATA_TESTS
+    elif profile == "status-refresh":
+        expected_suites = {"server_status_refresh_loop_test.dart"}
+        expected_tests = len(STATUS_REFRESH_TESTS)
+        expected_names = STATUS_REFRESH_TESTS
     elif profile == "share-rdp":
         expected_suites = {"share_rdp_change_lifecycle_test.dart"}
         expected_tests = len(SHARE_RDP_TESTS)
@@ -1196,7 +1211,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "window-dispatch", "peer-data", "file-progress", "custom-scale", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "window-dispatch", "status-refresh", "peer-data", "file-progress", "custom-scale", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -1210,6 +1225,7 @@ def main():
         "direct-address": "FLUTTER_DIRECT_ADDRESS_TEST_JSON",
         "file-metadata": "FLUTTER_FILE_METADATA_TEST_JSON",
         "password-fields": "FLUTTER_PASSWORD_FIELD_TEST_JSON",
+        "status-refresh": "FLUTTER_STATUS_REFRESH_TEST_JSON",
         "share-rdp": "FLUTTER_SHARE_RDP_TEST_JSON",
         "window-dispatch": "FLUTTER_WINDOW_DISPATCH_TEST_JSON",
         "modifier-release": "FLUTTER_MODIFIER_RELEASE_TEST_JSON",

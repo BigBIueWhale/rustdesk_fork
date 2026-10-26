@@ -40,6 +40,7 @@ elif [[ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:credential-d
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:file-metadata \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:frame-queue \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:share-rdp \
+    || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:status-refresh \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:window-dispatch ]]; then
     readonly VM_STORAGE_PROFILE=flutter-credential-dialog
 elif [ "${MODE:-}:${PEER_BUILD_PROFILE:-}" = android-peer-build:bounded ]; then

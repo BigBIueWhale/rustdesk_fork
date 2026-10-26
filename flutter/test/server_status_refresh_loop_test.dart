@@ -6,6 +6,69 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   const interval = Duration(milliseconds: 500);
 
+  testWidgets('close waits for readiness without admitting a refresh',
+      (tester) async {
+    final ready = Completer<bool>();
+    var turns = 0;
+    var closed = false;
+    final loop = ServerStatusRefreshLoop(
+      interval: interval,
+      refresh: () async {
+        turns += 1;
+      },
+      onError: (error, stackTrace) => fail('unexpected error: $error'),
+    );
+    loop.start(initialReady: () => ready.future);
+    await tester.pump(Duration.zero);
+    final closing = loop.close().then((_) => closed = true);
+    await tester.pump();
+    final closedWhilePending = closed;
+    ready.complete(true);
+    await tester.pump();
+    await closing;
+    await tester.pump(const Duration(seconds: 5));
+    expect(closedWhilePending, isFalse);
+    expect(closed, isTrue);
+    expect(turns, 0);
+  });
+
+  for (final phase in ['readiness', 'refresh']) {
+    testWidgets('reentrant close drains the accepted $phase turn',
+        (tester) async {
+      final release = Completer<void>();
+      var closed = false;
+      Future<void>? closing;
+      late ServerStatusRefreshLoop loop;
+      Future<void> retire() async {
+        closing = loop.close().then((_) => closed = true);
+        await release.future;
+      }
+
+      loop = ServerStatusRefreshLoop(
+        interval: interval,
+        refresh: phase == 'refresh' ? retire : () async {},
+        onError: (error, stackTrace) => fail('unexpected error: $error'),
+      );
+      loop.start(
+        initialReady: phase == 'readiness'
+            ? () async {
+                await retire();
+                return true;
+              }
+            : null,
+      );
+      await tester.pump(Duration.zero);
+      final closedWhilePending = closed;
+      release.complete();
+      await tester.pump();
+      await closing;
+      await tester.pump(const Duration(seconds: 5));
+      expect(closing, isNotNull);
+      expect(closedWhilePending, isFalse);
+      expect(closed, isTrue);
+    });
+  }
+
   testWidgets('never overlaps a slow refresh and waits a full interval',
       (tester) async {
     final firstEntered = Completer<void>();

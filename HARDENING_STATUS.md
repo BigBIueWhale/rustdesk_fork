@@ -3480,6 +3480,15 @@ successful per-case JSON and compiled images are not retained. Actual native
 FFI/storage faults, complete settings-page/device interaction, cross-control/process
 writers and other target platforms remain OPEN.
 
+**Edge-scroll restoration — OPEN/PARKED at the user's pivot.** Preparation `e59f932b`
+adds two regressions, with no product correction. The already-started disposable-VM
+run `0CdmIpFIMg` reports both failures: all five controlled error/null/mismatch
+scenarios drop the explicit restore. The existing 330 cases pass. The raw serial
+is `flutter-model-tests-run.0CdmIpFIMg.serial.log`; its bounded diagnostics are
+retained as `edge-restore-baseline.0CdmIpFIMg`. QEMU and its RAM workspace are gone,
+and all four listener snapshots have zero additions/removals. The 332-case shard
+therefore remains red; no rerun or edge-scroll implementation is claimed.
+
 **User-parked verifier item.** The CPace integration lane's fixed case counts remain
 OPEN/PARKED pending reconciliation with the compiled inventory. Its last RAM-admission
 refusal created no VM or scratch workspace. All earlier explicit parks remain parked.
@@ -11078,10 +11087,20 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   and the final-artifact scenario has not been rerun.
   Installed current-`master` behavior therefore remains open, as do cold
   R-B2/R-B10 outputs, the other Linux supervisors, cross-version/native/device
-  performance and soak, independent reproduction, and R-V3 review. The former
-  916-line/44-mutation lifecycle checker was replaced with a compact
-  architectural invariant, and the duplicate workspace-verifier block was
-  compressed to the current VM topology; neither is counted as runtime evidence.
+  performance and soak, independent reproduction, and R-V3 review.
+
+  **Lifecycle wording checks deleted.** The 306-line
+  `verify-debian-systemd-lifecycle-authority.py`, its shared-gate invocation,
+  duplicate lifecycle string catalogue, native-component import and two payload
+  entries are removed. They inspected text and file metadata without executing
+  a staging container, systemd transaction, process identity check or release
+  artifact. Shell parsing and executable-mode checks remain, explicitly labelled
+  as source checks. The real staging-profile fixture, private-XDO dependency and
+  input-delivery component assertions, installed-package lifecycle script and
+  final-artifact release invocation remain. Bash/Dash parsing, Python AST parsing,
+  reference review and diff checks validate this deletion; no fresh staging,
+  native component, installed service or release execution is claimed. Historical
+  source-catalogue passes above and in Git are not current behavioral evidence.
 
 - **R-S11dm/R-S11e-131 — release-parent and workspace authority: source
   implemented; full release transport and cold/native acceptance OPEN.**

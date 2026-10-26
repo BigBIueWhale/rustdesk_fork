@@ -222,11 +222,6 @@ def resolved_dependencies(path, environment=None):
 def runtime_stage():
     source = ROOT / 'scripts/stage-debian-systemd-runtime-libs.sh'
     text = source.read_text()
-    spec = importlib.util.spec_from_file_location(
-        'stage_authority', ROOT / 'scripts/verify-debian-systemd-lifecycle-authority.py')
-    stage_authority = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(stage_authority)
-    stage_authority.validate_stage(text)
     prefix = '    runtime_library_stage_run "$DEV_CHECK_IMAGE_CONFIG_ID"'
     require(text.count(prefix) == 1, 'production staging command is ambiguous')
     start = text.index(prefix)

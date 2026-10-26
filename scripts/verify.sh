@@ -8849,18 +8849,6 @@ grep -qF 'DEBIAN_SYSV_INSTALLED_LIFECYCLE=pass os=debian-%s portable_uid=%s stal
 if [ -n "$r_s11c27l" ]; then echo "  FAIL R-S11c-27l installed Debian SysV lifecycle:$r_s11c27l"; rc=1; else
   echo "  ok  R-S11c-27l supplementary Debian SysV service lifecycle/package source and fixture conformance; native VM acceptance remains OPEN"; fi
 
-echo "== (3b-iii-h2m1) Debian systemd lifecycle has one VM-only staging authority (R-S11dl/R-S11e-130) =="
-r_s11dl=
-if ! python3 -I -S scripts/verify-debian-systemd-lifecycle-authority.py --repo .; then
-  r_s11dl="$r_s11dl focused-authority-gate-failed"
-fi
-if [ -n "$r_s11dl" ]; then
-  echo "  FAIL R-S11dl Debian systemd lifecycle VM authority:$r_s11dl"
-  rc=1
-else
-  echo "  ok  R-S11e-130 installed-Debian lifecycle dependency staging exists only inside the common no-NIC verifier VM; VM-root Docker admits one bounded numeric-nonroot profile and is joined before installed RustDesk starts"
-fi
-
 echo "== (3b-iii-h2m2) Docker-free release-parent authority (R-S11dm/R-S11e-131) =="
 r_s11dm=
 if ! python3 -I -S scripts/verify-release-parent-authority.py --repo .; then
@@ -8873,96 +8861,25 @@ else
   echo "  ok  R-S11e-131 release parent has no Docker authority, passes only pinned content IDs to VM-only children, and normalizes/removes only its exact current-user tree through retained descriptors"
 fi
 
-echo "== (3b-iii-h2n) installed Debian systemd lifecycle is isolated, exact, and noninterfering (R-S11c-27m) =="
-r_s11c27m=
+echo "== (3b-iii-h2n) Debian systemd harness shell syntax and file modes =="
+systemd_source_errors=
 systemd_host=scripts/smoke-verifier-vm-authority.sh
-systemd_vm_guest=scripts/smoke-verifier-vm-authority-guest.sh
-systemd_stage=scripts/stage-debian-systemd-runtime-libs.sh
 systemd_guest=scripts/smoke-debian-systemd-lifecycle-guest.sh
-systemd_loginctl=scripts/smoke-debian-systemd-loginctl.sh
-for syntax_source in "$systemd_host" "$systemd_vm_guest" "$systemd_stage" "$systemd_guest" "$systemd_loginctl"; do
-  bash -n "$syntax_source" || r_s11c27m="$r_s11c27m smoke-shell-syntax-invalid:$syntax_source"
+for syntax_source in "$systemd_host" "$systemd_guest" \
+  scripts/smoke-verifier-vm-authority-guest.sh \
+  scripts/stage-debian-systemd-runtime-libs.sh scripts/smoke-debian-systemd-loginctl.sh; do
+  bash -n "$syntax_source" || systemd_source_errors="$systemd_source_errors syntax:$syntax_source"
+  [ "$(stat -c %a "$syntax_source")" = 755 ] \
+    || systemd_source_errors="$systemd_source_errors mode:$syntax_source"
 done
-dash -n "$systemd_loginctl" || r_s11c27m="$r_s11c27m loginctl-shell-syntax-invalid"
-for executable in "$systemd_host" "$systemd_vm_guest" "$systemd_stage" "$systemd_guest" "$systemd_loginctl"; do
-  [ "$(stat -c %a "$executable")" = 755 ] \
-    || r_s11c27m="$r_s11c27m ${executable##*/}:not-executable"
-done
-for token in \
-  '--debian-systemd-lifecycle' \
-  'VERIFIER_VM_INPUT_ROOT' \
-  'VERIFIER_VM_RUN_ROOT' \
-  'verify-debian-package-authority.py' \
-  'payload_identity=(-uid 4000 -gid 4000)' \
-  '-nic none' \
-  'media=cdrom,readonly=on' \
-  'VERIFIER_VM_DEBIAN_SYSTEMD_LIFECYCLE=pass' \
-  'channels=unix listeners=no-harness-addition'; do
-  grep -qF -- "$token" "$systemd_host" \
-    || r_s11c27m="$r_s11c27m host:${token%% *}"
-done
-if grep -Eq -- '--privileged|--pid[= ]host|--network[= ]host|--publish|--cap-add|/var/run/docker.sock|-nic[[:space:]]+(user|tap|bridge)|hostfwd|guestfwd|-virtfs|-fsdev|sudo[[:space:]]' "$systemd_host" "$systemd_vm_guest" "$systemd_stage"; then
-  r_s11c27m="$r_s11c27m host-authority-or-connectivity-regressed"
+dash -n scripts/smoke-debian-systemd-loginctl.sh \
+  || systemd_source_errors="$systemd_source_errors loginctl-dash-syntax"
+if [ -n "$systemd_source_errors" ]; then
+  echo "  FAIL systemd harness source files:$systemd_source_errors"
+  rc=1
+else
+  echo "  ok  systemd harness shell syntax and executable modes; no lifecycle or isolation behavior executed"
 fi
-[ "$(grep -cF -- '-nic none' "$systemd_host")" = 1 ] \
-  || r_s11c27m="$r_s11c27m qemu-network-disable-not-singular"
-for token in \
-  'setpriv --reuid=4000 --regid=4000 --clear-groups' \
-  'setpriv --reuid=4001 --regid=4001 --clear-groups' \
-  'stop_docker_authority' \
-  'mount -o remount,bind,ro,nodev,nosuid,noexec "$libraries"' \
-  '/bin/bash "$SYSTEMD_LIFECYCLE_SCRIPT" --release-deb' \
-  'docker=retired network=none cleanup=joined'; do
-  grep -qF -- "$token" "$systemd_vm_guest" \
-    || r_s11c27m="$r_s11c27m vm-guest:${token%% *}"
-done
-for token in \
-  '[ "$(id -u)" = 0 ]' \
-  '[ "$(cat /proc/1/comm)" = systemd ]' \
-  '[ -d /run/systemd/system ]' \
-  '[ "${VERSION_CODENAME:-}" = bookworm ]' \
-  '*,ro,*)' \
-  'install -o root -g root -m 0755 "$LOGINCTL_SOURCE" /usr/bin/loginctl' \
-  'cmp -s "$UNIT_SOURCE" /usr/lib/systemd/system/rustdesk.service' \
-  'systemd-analyze verify /usr/lib/systemd/system/rustdesk.service' \
-  'not main_cgroup.endswith("/system.slice/rustdesk.service")' \
-  'status.get("PPid") != str(main_pid)' \
-  'status.get("Uid", "").split() != [str(seat_uid)] * 4' \
-  'status.get("Gid", "").split() != [str(seat_gid)] * 4' \
-  'if int(status.get(capability_set, "1"), 16) != 0' \
-  'status.get("NoNewPrivs") != "1"' \
-  'argv[1:] != [b"--server", b"--service-owned-server", b""]' \
-  'systemd-run --unit="$PORTABLE_UNIT"' \
-  'systemctl restart "$UNIT"' \
-  'systemctl stop "$UNIT"' \
-  'systemctl start "$UNIT"' \
-  'systemctl kill --kill-whom=main --signal=KILL "$UNIT"' \
-  'systemctl show "$UNIT" -p NRestarts --value' \
-  'assert_process_gone "$precrash_child" "$precrash_child_start"' \
-  'assert_portable_alive' \
-  'dpkg -r "$PACKAGE"' \
-  'dpkg --purge "$PACKAGE"' \
-  'DEBIAN_SYSTEMD_INSTALLED_LIFECYCLE=pass os=debian-%s systemd=%s seat_uid=%s portable_uid=%s crash_generation=%s'; do
-  grep -qF -- "$token" "$systemd_guest" \
-    || r_s11c27m="$r_s11c27m guest:${token%% *}"
-done
-for token in \
-  '"3:--no-pager --no-legend list-sessions")' \
-  '"5:--no-pager --property=State show-session -- 1")' \
-  '"5:--no-pager --property=Type show-session -- 1")' \
-  '"6:--no-pager --property=Display --property=Scope show-session -- 1")' \
-  '"6:--no-pager --property=State --property=Seat show-session -- 1")' \
-  '1 4001 rdseat seat0' \
-  'State=active' \
-  'Type=x11' \
-  'Display=:0' \
-  'Scope=session-1.scope' \
-  'exit 64'; do
-  grep -qF -- "$token" "$systemd_loginctl" \
-    || r_s11c27m="$r_s11c27m loginctl:${token%% *}"
-done
-if [ -n "$r_s11c27m" ]; then echo "  FAIL R-S11c-27m installed Debian systemd lifecycle:$r_s11c27m"; rc=1; else
-  echo "  ok  R-S11c-27m the common no-NIC VM retires its exact Docker daemon before the exact installed package/unit lifecycle, then proves non-root child/cgroup identity, stop/restart/crash recovery, and portable sibling noninterference"; fi
 
 echo "== (3b-iii-h2n1) final Debian artifact is hash/commit-bound into the installed lifecycle before publication (R-S11c-27s) =="
 r_s11c27s=

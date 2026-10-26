@@ -12796,34 +12796,6 @@ if [ -n "$r_d3a_missing" ]; then
 else
   echo "  ok  R-D3a systemd sandbox keeps owner-terminal mount semantics; clipboard FUSE uses fixed-helper fd passing"
 fi
-# R-T7 (§20): every frame on a KEYED (Dual) stream MUST be AEAD-authenticated — the ≤1-byte
-# decrypt bypass is removed (the one path by which a byte could reach the application parser
-# unauthenticated; also the closure of the unkeyed→keyed boundary, R-T6). The legacy single-key
-# `Encrypt` cipher (which carried the only ≤1-byte bypass) was excised entirely at R-A6, so this
-# now asserts ZERO `bytes.len() <= 1` in tcp.rs — the keyed edge is CPace/Dual-only.
-r_t7_n=$(grep -c 'bytes.len() <= 1' libs/hbb_common/src/tcp.rs 2>/dev/null || true)
-if [ "${r_t7_n:-99}" -gt 0 ]; then
-  echo "  FAIL R-T7: a <=1-byte decrypt bypass remains in tcp.rs (found $r_t7_n) — must be ZERO"; rc=1
-else
-  echo "  ok  R-T7 <=1-byte AEAD bypass fully removed (single-key Encrypt excised, R-A6)"
-fi
-# R-T7/R-A1 follow-on: after AEAD succeeds, a malformed protobuf `Message` frame is still an
-# authenticated protocol violation. It MUST close/poison the session, not be silently ignored and
-# leave the keyed connection in a weird state. Gate both post-key dispatch roots: responder
-# (connection.rs) and initiator/viewer (client/io_loop.rs). The old pattern was:
-#   if let Ok(msg_in) = Message::parse_from_bytes(...) { dispatch(msg_in) }
-# with no `else`; that made parse failures no-ops.
-r_t7_parse_missing=
-grep -q 'Malformed post-key Message frame' src/server/connection.rs || r_t7_parse_missing="$r_t7_parse_missing server-close-marker"
-grep -q 'Malformed post-key Message frame from peer' src/client/io_loop.rs || r_t7_parse_missing="$r_t7_parse_missing client-close-marker"
-if grep -qE 'if let Ok\(msg_in\) = Message::parse_from_bytes\(&?(bytes|data)\)' src/server/connection.rs src/client/io_loop.rs; then
-  r_t7_parse_missing="$r_t7_parse_missing silent-if-let-parse-regressed"
-fi
-if [ -n "$r_t7_parse_missing" ]; then
-  echo "  FAIL R-T7/R-A1: malformed post-key Message parse does not fail closed:$r_t7_parse_missing"; rc=1
-else
-  echo "  ok  R-T7/R-A1 malformed post-key Message parse fails closed (server + viewer)"
-fi
 # R-T9 (§20): graceful shutdown on SIGTERM/SIGINT. A process-wide CancellationToken (server.rs) is
 # cancelled by the retained signal/listener lifecycle owner (direct_service.rs); the accept loop
 # then stops accepting and drops its listener, every live session's run-loop drains via its

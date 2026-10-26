@@ -58,6 +58,9 @@ OPEN/PARKED. No widget implementation was changed; do not resume automatically.
 **User pivot (2026-10-27):** Default-display radio save admission and effective-value
 feedback remain OPEN/PARKED. Research only; no implementation or new tests were added.
 
+**User pivot (2026-10-27):** Native terminal size admission remains OPEN/PARKED.
+The source finding below is retained; do not resume automatically.
+
 | Surface | Current state and evidence boundary | Receipt |
 | --- | --- | --- |
 | Desktop settings navigation and scrolling (`b0f60986`, `243294d9`) | Selected-tab state stays page-local; the owned `PageController` is disposed and its registration removed. The sidebar and General/Safety/Display/About use Flutter-owned scrolling with `primary: false`; four unused, undisposed external controllers are deleted. A disposable Linux VM mounts the exact settings page with fresh bindings and explicit native/parent/outer-tab doubles: sidebar and external selection, all four initial-tab close/reopen cycles, and each section's scroll position across three rebuilds and retirement. Baseline: two navigation cases pass, four external-controller disposal checks fail; corrected: all six cases and three result-parser controls pass. Two earlier fixture preflight/compile failures provide no product evidence. All runs join QEMU and retire RAM scratch. The baseline has one unattributed added UDP endpoint (`0.0.0.0:51981`), retained exactly without owner inspection or mutation; the candidate has zero endpoint deltas. This is rendered Flutter component evidence, not native settings writes/persistence, resource soaks, other-platform/device, R-S0/R-F5 or release acceptance; those remain OPEN. | `settings-navigation-7ea344d0.json`; `settings-rendered-d0dda407.json` |
@@ -4025,6 +4028,21 @@ recording/playback, native allocation-failure/heap evidence,
 hardware and installed-root recording, creator/wrong-principal and authorized UI/read
 transactions, native Apple ACLs and Windows/macOS acceptance remain OPEN.
 These named Linux component results establish no overall recording or LPE closure.
+
+**Transport verification classification — source-wording checks removed.**
+The two R-T7/R-A1 blocks in `scripts/verify.sh` checked an old short-frame expression,
+two log strings and one spelling of `if let` parsing, then reported authentication
+and fail-closed success. Those 28 lines are deleted: they neither exercised a frame
+nor established that a parse error terminates either dispatch loop. Actual codec/TCP,
+CPace and forged-frame smoke tests and their invocations are retained byte-for-byte,
+as are product code and normative requirements. Current source still routes normal
+and EOF decoding through `SecretboxCodec::open_frame`; the server awaits `on_close`
+and breaks on malformed protobuf, while the viewer returns false to its caller.
+These are source observations. A current-artifact, authenticated malformed-protobuf
+transaction through both full dispatch loops, with observed refusal and cleanup,
+remains OPEN; the lower-level tests do not establish it. Shell syntax and exact-diff
+inspection cover this deletion, not runtime acceptance. Evidence and the fresh ledger
+count are retained in `transport-wording-770bdc8f.json`.
 
 **Frame EOF handling — Linux common codec/TCP component ACCEPTED; installed/platform evidence OPEN.**
 `libs/hbb_common/src/bytes_codec.rs` reports `UnexpectedEof` for an unfinished header or

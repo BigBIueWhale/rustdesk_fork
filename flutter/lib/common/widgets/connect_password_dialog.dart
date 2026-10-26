@@ -96,7 +96,7 @@ class _ConnectPasswordDialogState extends State<ConnectPasswordDialog> {
 
   void _submit() {
     if (!mounted || !_canSubmit) return;
-    final password = _password.text.trim();
+    final password = _password.text;
     if (password.isEmpty) return;
     _submitted = true;
     var accepted = false;

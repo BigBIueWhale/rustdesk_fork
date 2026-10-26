@@ -55,6 +55,9 @@ installed/other-platform, R-S0/R-F5, resource/soak and release obligations below
 **User pivot (2026-10-26):** Same-query autocomplete refresh and selection remain
 OPEN/PARKED. No widget implementation was changed; do not resume automatically.
 
+**User pivot (2026-10-27):** Default-display radio save admission and effective-value
+feedback remain OPEN/PARKED. Research only; no implementation or new tests were added.
+
 | Surface | Current state and evidence boundary | Receipt |
 | --- | --- | --- |
 | Desktop settings navigation and scrolling (`b0f60986`, `243294d9`) | Selected-tab state stays page-local; the owned `PageController` is disposed and its registration removed. The sidebar and General/Safety/Display/About use Flutter-owned scrolling with `primary: false`; four unused, undisposed external controllers are deleted. A disposable Linux VM mounts the exact settings page with fresh bindings and explicit native/parent/outer-tab doubles: sidebar and external selection, all four initial-tab close/reopen cycles, and each section's scroll position across three rebuilds and retirement. Baseline: two navigation cases pass, four external-controller disposal checks fail; corrected: all six cases and three result-parser controls pass. Two earlier fixture preflight/compile failures provide no product evidence. All runs join QEMU and retire RAM scratch. The baseline has one unattributed added UDP endpoint (`0.0.0.0:51981`), retained exactly without owner inspection or mutation; the candidate has zero endpoint deltas. This is rendered Flutter component evidence, not native settings writes/persistence, resource soaks, other-platform/device, R-S0/R-F5 or release acceptance; those remain OPEN. | `settings-navigation-7ea344d0.json`; `settings-rendered-d0dda407.json` |
@@ -208,6 +211,7 @@ obligation mapping, exact comparisons and any counts for their named historical 
 
 | Documentation scope | Current contract or disposition | Retained classification |
 | --- | --- | --- |
+| Android signing-authority specification | R-S11di's historical repair narrative is deleted; its complete VM admission, guest Docker, identity/secret/publication and acceptance contract remains byte-identical. Appendix C #226/#262, other requirements, IDs, anchors and links are unchanged. The R-S11di status entry retains the historical authority-only evidence and all open identity/APK/device/cold-release/native/review boundaries. Product and verification code are unchanged. | `signing-contract-3ae6f9bd.json` |
 | Privileged process finding descriptions | Appendix C #121/#132/#142 state the enduring password-argument disclosure, configuration-driven HKLM replay and inherited-descriptor failure classes. Historical implementation inventories and exploit-status narration are deleted. All three required-disposition cells, formal clauses, IDs, anchors and links remain unchanged. Product and verification code are unchanged; target-native and installed acceptance, all fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN. | `privilege-findings-aefb22ba.json` |
 | Apple acceptance evidence | Section 15 follows R-R2's three-target source gate and exact-artifact native acceptance. The claim that `cargo check` proves Apple hardening and the duplicate all-device/SSH assurance box are deleted; their live obligations remain in R-R2, R-S0, R-S2/R-S13/R-S19, R-A4, R-X1/R-X4/R-P5 and R-V3. Formal clauses, product and verifier code are unchanged. Source compilation, installed/native Apple behavior, all fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN. | `apple-acceptance-contract-517c2d25.json` |
 | Linux authorization/lifecycle helper evidence | R-S11y/R-S11aa retain empty environments, fixed images/actions/targets, descriptor ordering, actual-child regressions and installed acceptance; mandates for source/mutation catalogues are removed. The verifier deletes two test-text inspection loops and reports its retained production-source checks as source checks. The executable pkcheck/systemctl tests, existing systemctl test invocation and every product byte remain unchanged. This deletion does not execute the child tests or establish polkit/systemd behavior; parent/installed, all fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN. | `helper-environment-evidence-f9ffdf44.json` |
@@ -11095,29 +11099,19 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 - **R-S11di/R-S11e-127 — Android signing-identity Docker authority — REAL VM
   AUTHORITY PASS 2026-09-15; ONE-TIME GENERATOR/IDENTITY, APK/DEVICE, COLD RELEASE,
   NATIVE, AND EXTERNAL-REVIEW EVIDENCE OPEN.**
-  The prior generator used `/var/run/docker.sock`. Strong inner-container flags did not remove the
-  root-equivalent host daemon's authority over host mounts and container interpretation. This was real
-  build-execution debt, not evidence that the established identity changed, Docker escaped, a listener was
-  exposed, host RustDesk or firewall/network state changed, or the host was compromised.
+  `scripts/gen-android-keystore.sh` authenticates R-S11dh before repository shell/pins or default signing
+  paths. Provenance and all three R-S11cg operations use the fixed guest client, principal-scoped socket,
+  root-read-only configuration, empty environment and pre/post daemon-generation proof; there is no host,
+  rootless-host, TCP or ambient-client fallback. The complete contract is R-S11di and Appendix C #262.
 
-  `scripts/gen-android-keystore.sh` now refuses numeric UID/GID zero, then authenticates R-S11dh before
-  repository shell/pins or default signing-path resolution. Image provenance and all three R-S11cg launches
-  use only the fixed guest client, principal-scoped guest Unix socket, root-read-only canonical configuration,
-  and live VM-root daemon generation. Each operation gets an empty client environment and pre/post authority
-  replay. Host/rootless/TCP Docker, ambient routing/configuration, and fallback paths are absent.
-
-  `--self-test-vm-authority` exits before worker validation, a default signing path, scratch, or signing-input
-  access and makes one real guest client/server version request. The real no-NIC KVM run completed in 22
-  seconds: VM root and UID/GID 4001 were refused; UID/GID 4000 passed; the identity-untouched receipt and
-  compact source gate passed; host listeners were invariant; and QEMU, capture, sockets, overlay, payload, and
-  private run state were joined and removed. The earlier 718-line mutation catalog and 362-line independent
-  verifier-of-verifier block were deleted; the retained 318-line checker binds the no-host-fallback, fixed
-  provenance, launch shapes, secret flow, and harness wiring directly.
-
-  The established keystore/password and the normal one-time generator were not invoked, listed, opened,
-  hashed, mounted, inspected, rotated, regenerated, or mutated. No APK/device, current cold release, or native
-  app behavior was exercised. No host Docker/root, VM NIC, published port, non-loopback listener, host process
-  scan, RustDesk service/configuration, Haggai, firewall, or network-state mutation was used.
+  Historical authority-only evidence recorded in `23acaf34`: the no-NIC KVM check took 22 seconds, refused VM root
+  and UID/GID 4001, admitted UID/GID 4000, performed the real client/server version request before any
+  signing-path/input/scratch access, and passed the compact source gate. Host listeners were invariant;
+  QEMU, capture, sockets, overlay, payload and private run state were joined and retired. The established
+  identity and normal generator were untouched. This is historical authority evidence, not a current
+  generator, APK, device, installed/native, cold R-B2/R-B10 or R-V3 result; those obligations remain OPEN.
+  Earlier repair narration and deleted catalogue history remain in Git. No product or authority test ran
+  for the specification cleanup recorded in `signing-contract-3ae6f9bd.json`.
 - **R-S11dj/R-S11e-128 — Android artifact-builder Docker authority —
   REAL NETWORKLESS KVM ENTRY VERIFIED 2026-09-15; NORMAL VM BUILD TRANSPORT,
   CURRENT APK, COLD RELEASE, DEVICE, AND EXTERNAL-REVIEW EVIDENCE REMAIN OPEN.**

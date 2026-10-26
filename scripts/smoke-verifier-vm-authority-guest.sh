@@ -12135,7 +12135,7 @@ for verify_source in verify.sh \
     bounded-unix-stream-capture.py \
     linux-flutter-artifact.py test-linux-flutter-artifact.py \
     dart-audit.sh dart-audit-result.py \
-    verify-dart-verifier-authority.py verify-dart-audit-authority.py \
+    verify-dart-audit-authority.py \
     smoke-verifier-vm-authority.sh smoke-verifier-vm-authority-guest.sh \
     verify-vm-entry-preflight.sh verify-scan.sh \
     verify-private-tree-closure.py lib.sh pins.env; do
@@ -13517,20 +13517,6 @@ dart_audit_result_gate_output="$(
     || fail "Dart-audit result behavioral result differs: $dart_audit_result_gate_output"
 printf '%s\n' "$dart_audit_result_gate_output"
 printf 'VERIFIER_VM_DART_AUDIT_RESULT_GATE=pass decisions=31\n'
-
-dart_frb_source_gate_output="$(
-    setpriv --reuid=4000 --regid=4000 --clear-groups \
-        /usr/bin/python3 -I -S \
-        "$VERIFY_REPO/scripts/verify-dart-verifier-authority.py" \
-        --repo "$VERIFY_REPO" --self-test
-)" || fail 'Dart/FRB verifier-VM focused source/mutation gate failed'
-if [[ "$dart_frb_source_gate_output" =~ ^verify-dart-verifier-authority:\ ok\ \(([1-9][0-9]*)\ mutations\ rejected\)$ ]]; then
-    dart_frb_source_gate_mutations=${BASH_REMATCH[1]}
-else
-    fail "Dart/FRB verifier-VM focused source/mutation result differs: $dart_frb_source_gate_output"
-fi
-printf '%s\n' "$dart_frb_source_gate_output"
-printf 'VERIFIER_VM_DART_FRB_SOURCE_GATE=pass mutations=%s\n' "$dart_frb_source_gate_mutations"
 
 smoke_selected_input="$(setpriv --reuid=4000 --regid=4000 --clear-groups \
     /bin/bash "$smoke_input_work/select.sh" "$smoke_input_work/good" portable-rootless)" \

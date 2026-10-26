@@ -56,6 +56,7 @@ installed/other-platform, R-S0/R-F5, resource/soak and release obligations below
 | --- | --- | --- |
 | CM read-block payload ownership (`fecb67ed`) | The admitted `Bytes` moves into the outgoing protobuf without a forwarding allocation/copy; earlier fallible admission still releases unrelated backing. Session/job/generation, size and wire checks stay intact. The 38-case Linux component covers six storage forms under selective allocation refusal, exact bytes/pointers and backing lifetime. Complete authenticated handlers, CM IPC, filesystem/peer effects and root execution remain OPEN. | `cm-read-block-move-a6599f3a.json` |
 | File timestamp representation (`534488f3`) | Desktop/mobile rows share bounded seconds-to-date formatting; unsupported dates show `—`, and sorting uses original seconds. Sixteen Dart cases cover range/overflow, pre-epoch/2038, drive rows and metadata retention; mobile delegation is source-reviewed. Success retains a strict result summary, not per-case JSON or a compiled image. Rendered rows, native filesystem/mobile behavior and directory-ordering/Home parks remain OPEN. | `file-timestamps-fe769b80.json` |
+| File-list numeric sorting — user-PARKED (`05f0b473`) | Preparation only; product unchanged. Run `G1V3ouRCT7` completed with 105 passing and five failing cases: four direction/work failures and one invalid drive-selection fixture. Numeric comparisons rescan metadata; type/size drive retention remains source-observed only because the fixture stopped early. Fix the fixture before claiming drive/selection evidence. Do not resume automatically. Exact QEMU joined, RAM workspace gone, all listener snapshots unchanged; bounded failed diagnostics retained. | `dart-catalogue-removal-05f0b473.json` |
 | Focused viewer suspension — retained-app recovery failure; current-app acceptance OPEN | The retained `31f8e5ef` Linux X11 app stays on the same window/TCP connection through pidfd-owned STOP/CONT. With the corrected four-FPS fixture, its 2-second pause recovers, but the 6-second pause fails the four-fresh-frames/2.5-second gate despite prompt first freshness; the 12-second cycle is unreached. The controller retains 64 bounded samples without changing thresholds; the 6,614-ms maximum includes stale recovery. This does not locate the delay or establish current-app behavior. Ring-wrap/clock/history/sleep/identity/cancellation faults, network impairment, input-visible timing and multi-hour R-F5 acceptance remain OPEN; prior dialog failure and all parks remain. | `viewer-suspend-runtime-e1ae606d.json`, `viewer-recovery-observation-c90e4afb.json` |
 | Frame observer progress and full-window coverage | The observer counts advancing identities, excludes deadline-late samples and includes both preceding gaps and the unobserved tail, capped at the window end. Twenty-nine synthetic C cases distinguish healthy 80/1,000-ms tails from a 1,040-ms refusal; real-X11 oracle/geometry/identity controls and controller compilation pass. No RustDesk app/device runs. Diagnostic/clock/history/sleep/identity/cancellation faults, current-app latency and the retained-app recovery failure remain OPEN; thresholds and resource policy are unchanged. | `observer-window-overrun-19daee8b.json`, `observer-window-tail-dd55ee9d.json`, `observer-window-deadline-d1f2f826.json`, `observer-fresh-gap-25c024aa.json`, `frame-progress-7f5e0497.json` |
 | VM workload admission (`744cd77f`) | Only explicitly configured workloads may select `standard`; missing/unconfigured classes refuse before allocation. Native Bash A/B retains legitimate profiles and rejects the four former fallthroughs, with profile, filesystem, supervisor/startup, root-entry and child-wait controls. Specialized limits and cleanup are unchanged. Full Windows/media RAM admission and product/installed acceptance remain OPEN. | `closed-vm-workloads-6ad50b54.json` |
@@ -7647,7 +7648,19 @@ exists only to make the current source disposition discoverable.
 - R-S11e-66 — macOS administrator-script environment finality
 - R-S11e-67 — Linux clipboard fusermount process-context finality
 - R-S11bb/R-S11e-68 — IPC phase coverage; native acceptance OPEN (above)
-- R-S11bc/R-S11e-69 — Dart/FRB verifier container authority
+- R-S11bc/R-S11e-69 — Dart/FRB verifier container authority; native acceptance OPEN.
+  The 1,166-line `verify-dart-verifier-authority.py` wording catalogue, its 125
+  in-memory substitutions, both callers and the VM's catalogue-success requirement
+  are deleted. It read script text and never ran the scripts, analyzer, containers
+  or product tests whose behavior it described. The actual Dart/FRB scripts,
+  offline finalizer, VM preflight, root/foreign-principal refusal and allowed-entry
+  scenarios, analyzer/compiler/widget/native tests and their negative controls
+  remain unchanged. A direct filesystem check retains R-S11bd's prohibition on
+  both retired parallel verifier paths, including dangling symlinks. Shell syntax,
+  reference closure and byte-preservation review validate this deletion; the full
+  authority profile and Dart transaction were not rerun. Complete input/write-domain,
+  resource/failure/cleanup coverage, cold artifacts and installed acceptance remain
+  OPEN. Evidence: `dart-catalogue-removal-05f0b473.json`.
 - R-S11bd/R-S11e-70 — one confined owner for Flutter-side Rust verification
 - R-S11be/R-S11e-71 — Dart advisory result and scanner authority
 - R-S11bf/R-S11e-72 — Rust advisory freshness, result finality, and scanner authority

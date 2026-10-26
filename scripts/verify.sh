@@ -4406,21 +4406,12 @@ if grep -Eq 'MacosServiceOwnedPasswordRequest|macos_store_service_owned_password
 fi
 if [ -n "$r_s11b2" ]; then echo "  FAIL R-S11b-2 raw password IPC closure:$r_s11b2"; rc=1; else
   echo "  ok  R-S11b/R-S11c/R-S11g/R-S11h/R-S11i/R-S11cb password bodies use only fixed raw _password/_service_password frames; Linux root-durable PRS replication uses raw _service_credential plus a nondumpable exact child, macOS exactly-owned native proof and wiping authorization, Windows retained first-instance pipe and SCM durability, keyed replay finality, and shutdown drain are source-gated"; fi
-# R-S11bc/R-S11dh/R-S11e-69: Dart/FRB analysis may mutate only a disposable
-# invoking-user-owned snapshot. The real repository and private offline inputs
-# remain immutable evidence; both containers have one bounded, networkless,
-# non-root authority shape, and FRB Docker operations require verifier-VM authority.
-echo "== (3b-iii-c-0a) Dart/FRB verifier confinement and verifier-VM authority (R-S11bc/R-S11dh/R-S11e-69) =="
-r_s11bc=""
-python3 scripts/verify-dart-verifier-authority.py --repo . --self-test \
-  || r_s11bc="$r_s11bc semantic-or-mutation-contract-invalid"
-python3 -c 'from pathlib import Path; p = Path("scripts/verify-dart-verifier-authority.py"); compile(p.read_text(encoding="utf-8"), str(p), "exec")' \
-  || r_s11bc="$r_s11bc validator-python-syntax-invalid"
-if [ -n "$r_s11bc" ]; then
-  echo "  FAIL R-S11bc Dart/FRB verifier container authority:$r_s11bc"; rc=1
-else
-  echo "  ok  R-S11bc/R-S11dh Dart/FRB verification retains immutable pins, private snapshots, non-root bounded networkless containers, and verifier-VM-only Dart/FRB Docker authority while leaving the real worktree unchanged"
-fi
+# R-S11bd: Flutter-side Rust verification has one owner in dart-verify.sh.
+for retired in scripts/flutter-verify.sh scripts/Dockerfile.fluttercheck; do
+  if [ -e "$retired" ] || [ -L "$retired" ]; then
+    echo "  FAIL R-S11bd retired Flutter verifier remains: $retired"; rc=1
+  fi
+done
 echo "== (3b-iii-c-1) Windows service-owned child tree supervision (R-S11e-19) =="
 r_s11e19=
 windows_launch_native=$(awk '/HANDLE LaunchProcessWin/,/^    }/' src/platform/windows.cc)

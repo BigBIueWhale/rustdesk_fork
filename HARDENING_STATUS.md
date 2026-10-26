@@ -1449,6 +1449,28 @@ and global drain; the bounded process reaper owns OS-thread joins. Local relay
 readers are constructed only after authorized `PeerInfo`. Mobile tunnel construction
 and consumers remain excluded by R-S11/R-T17 and Appendix C #127.
 
+**Controlled target backpressure (`63e00bd0`).**
+`Connection::try_port_forward_loop` now retains one pinned relay future while
+independently receiving shutdown and CM controls. A blocked local-target write no
+longer hides those controls behind the 120-second send timeout. Shutdown, close,
+CM error, queue failure and receiver EOF retire the relay; nonterminal CM messages
+preserve the same pending write. The keyed transport, target authority, write/idle
+limits and parent cleanup path are unchanged.
+The Linux component executes the exact relay method, production CM mailbox and
+interval against an observed native TCP target; the authenticated peer is a bounded
+frame-channel double. The baseline missed all five 500-ms stop deadlines and could
+not consume a nonterminal message during backpressure. The corrected artifact passes
+all five, joins the exact relay task and observes target EOF. A continuation control
+receives the pending 1 MiB byte-for-byte, keeps both directions usable and accepts a
+subsequent request. All 95 focused tests pass in the admitted zero-NIC VM; source,
+artifact, rejected first-run diagnostic capture, baseline replay and joined cleanup
+receipts are in `controlled-tunnel-cancellation-9e713178.json`.
+The parent still retains `tx_from_cm_holder`, so the component EOF case does not
+establish actual CM-process-exit detection. Full-parent/installed CPace peers,
+macOS/Windows execution, simultaneous bidirectional saturation, resource/soak and
+complete R-S0/R-T17 acceptance remain OPEN. The separate password-timing, video and
+other parked work stays OPEN/PARKED.
+
 The shared verifier selects target, mapping, supervisor, admission, relay-gating and
 exclusive-bind Rust regressions. Apple source/cross-compile checks and test definitions
 are supplementary. Exact current Linux, macOS and Windows acceptance remains OPEN:

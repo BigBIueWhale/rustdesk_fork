@@ -13593,142 +13593,88 @@ artifacts; cold R-B2/R-B10 equality; independent reproduction; and external revi
 
 ### R-S11hi/R-S11e-246 — bounded format-first peer-audio decoder mailbox (2026-08-22)
 
-**Linux mailbox, portable PCM and playback-failure components accepted at the named
-sources below; whole-app, device and installed/platform acceptance OPEN.**
+**Named Linux components and historical Linux parent playback tests accepted;
+current whole-app, device, installed/other-platform and release acceptance OPEN.**
+R-S11hi and Appendix C #369 own the normative mailbox/worker contract. The state
+below summarizes named source evidence, not fresh execution of the current tree.
 
-The outgoing viewer and accepted controlled-call playback share private
-`src/client/audio_mailbox.rs`: one immutable first-format identity, one pending
-format, at most eight timestamped frames and terminal state. The receiver waits
-on a condition-variable predicate. Admission checks the supported Opus rates,
-one/two channels and 4,096-byte packet limit before mutation. Frames before format,
-unsupported input and changed formats refuse; duplicates coalesce. Format is
-delivered first, capacity replaces the oldest frame, and dequeue drops frames
-older than one second. Close clears payloads and wakes the receiver. No polling,
-secondary queue, per-message worker or nested runtime is added. Accepted messages
-retain only format scalars or copied packet bytes, without unknown
-protobuf fields or a larger shared backing allocation. The queue bounds packet
-data to 32,768 bytes plus fixed metadata; this does not bound network parsing,
-in-flight decoding, native/device buffering or total process memory.
-Packet and deque capacity are reserved fallibly before eviction or publication.
-Reservation refusal closes admission and clears pending work under the state mutex,
-then wakes receivers and returns `ResourceUnavailable` for explicit caller reporting.
-The closed owner keeps its first-format key and refuses further admission.
+The viewer and accepted controlled-call playback share private
+`src/client/audio_mailbox.rs`: first-format authority, one pending format, eight
+timestamped packets of at most 4,096 bytes, oldest replacement, one-second dequeue
+expiry and a condition-variable receiver. Unsupported rate/channel, pre-format,
+changed-format and oversized input refuse without disturbing admitted work;
+duplicate formats coalesce. Accepted payloads retain only format scalars or an
+owned packet copy, excluding unknown protobuf fields and shared excess backing.
+Fallible packet/deque reservation precedes eviction/publication; refusal clears
+work, closes admission with `ResourceUnavailable` and wakes the receiver.
+Close/receiver destruction clears work before worker completion. Packet storage
+is bounded to 32,768 bytes plus fixed metadata; parser, decoder, device and
+whole-process memory are separate.
 
-Non-Linux PCM playback uses private `src/client/audio_buffer.rs`; each output
-attempt creates one immutable rate/channel geometry with checked dimensions and
-fallible ring-storage reservation. `AudioHandler` starts without a PCM ring,
-publishes it only after output activation, and retires it on terminal failure.
-There is no eager default ring or in-place resize. Each producer owns its histogram
-and monotonic shrink window; the callback shares only its ring. First observation
-arms twelve seconds, a due observation affects only that buffer, and a backwards
-observation logs and restarts without trimming. Replacing an output gives it fresh
-PCM, statistics and clock, including equal-capacity or equal-format attempts.
-Trimming drops complete interleaved frames. The existing capacity, newest-PCM
-retention and shrink heuristic remain. Callback filling uses `try_lock`, converts
-directly into the output slice and pads short or contended quanta with converted
-silence. Contention preserves queued PCM; poison is fatal. The old shared mutable
-clock, callback sleep, blocking readiness/ring acquisition and temporary output
-vector are absent.
+Non-Linux `src/client/audio_buffer.rs` gives each output attempt immutable checked
+rate/channel geometry, fallibly reserved PCM, producer-owned statistics and a
+monotonic twelve-second shrink window. Backwards observations restart without
+trimming; replacement retires the old PCM/statistics/clock, even at equal capacity.
+Trimming preserves complete interleaved frames and newest-PCM retention.
+Callbacks use `try_lock`, convert directly into the supplied slice, and supply
+converted silence on shortage/contention without consuming inaccessible PCM;
+poison remains fatal. No callback sleep, blocking ring/readiness acquisition or
+temporary output vector remains.
 
-Decoder setup fallibly reserves its existing one-second `f32` PCM capacity before
-native Opus construction. Refusal retires the failed handler without starting
-playback. After dispatch, `new_audio_thread` exits on terminal handler failure;
-receiver destruction closes admission and clears pending work before worker completion.
+Decoder storage reserves the existing one-second f32 capacity before native Opus
+construction. Terminal decode/output failure retires that owner's decoder/output,
+preserves its format identity and closes the mailbox; replay cannot restart it.
+Each CPAL attempt owns distinct readiness/failure/PCM state: pending failure
+refuses activation while allowing setup fallback; stale callbacks cannot affect
+a successor; active failure wakes the worker without another packet.
+`OwnedMediaThread` and the bounded completion pool retain close/join authority.
+Controlled playback keeps accepted-call input authority and its separate format.
 
-Each CPAL output attempt owns separate readiness, failure and PCM state. Pending
-failure refuses activation while preserving setup fallback; retired callbacks
-cannot ready or close a successor. Active failure closes the mailbox and wakes
-the decoder without another packet; the worker owns stream destruction.
-`AudioHandler::fail_audio` makes decoder construction/decode, output setup and
-Linux PulseAudio write failure terminal for that owner, retires decoder/output
-and retains first-format identity. Replay cannot recreate playback; a fresh
-owner can recover. `OwnedMediaThread` retains the non-cloneable sender and decoder
-handle; the bounded completion pool owns joining after close or hard Drop.
-Controlled playback retains accepted-call input authority and a separate pinned
-format; refused fresh decoders close and join.
+Android `FrameRaw` consumer handoff swaps the owned frame and returns cleared
+destination storage for reuse. Ingress still copies JNI bytes synchronously.
+Reservation before borrowing/copying preserves pending bytes, allocation, original
+freshness and generation on refusal; expired frames remain expired and later
+successful publication recovers. Existing enable/comparison/timeout/generation
+guards remain.
 
-**Android raw capture handoff (`35082dd6`).** `FrameRaw::take` swaps the
-already-owned frame into the consumer and clears the returned storage for producer
-reuse. JNI ingress still copies Java-owned memory synchronously; timeout, comparison,
-enable and generation checks are unchanged. At `42968093`, all 45 other cases pass,
-while refused consumer allocation aborts empty/undersized-buffer children and
-preallocated-buffer children fail ownership-transfer checks. The identical corrected
-46-case cohort passes: four destination geometries over three rounds transfer the
-exact source pointer and bytes with zero calling-thread Rust allocations and reuse
-the old destination allocation. Disabled/empty/equal/changed/expired/stale/retired/
-successor behavior is preserved. Eight existing comparison/generation tests and
-all 36 prior audio cases remain. `android-raw-handoff-fbdc88de.json` binds the exact
-sources/artifacts, child outcomes and joined bounded-RAM cleanup. This executes
-complete portable Rust modules in Linux. JNI/JVM, Android OS audio/video,
-Android-native producer-copy failure, full application and native latency/lifecycle
-acceptance remain OPEN.
-
-**Android raw publication storage (`cdb032e7`).** `FrameRaw` reserves the
-incoming copy's storage before borrowing JNI bytes or changing pending data.
-Reservation refusal logs a dropped update and preserves pending bytes, pointer,
-capacity, original freshness timestamp and generation. An expired pending frame
-still expires; a later successful update publishes fresh bytes normally. At
-`f620bdf8`, all 47 other cases pass, while four allocation-refusal children
-abort: empty storage, growth, expired pending data and a successor generation.
-The identical corrected 48-case cohort passes all six publication children:
-four handled storage refusals and two allocation-free reuse controls. Five input/
-owner guards preserve state and clock, and source-buffer mutation after publication
-does not alter the owned copy. The prior 46 tests, including allocation-free consumer
-handoff, remain unchanged. `android-raw-publication-85b6d1e6.json` binds the
-exact sources/artifacts, state observations and joined bounded-RAM cleanup.
-This is portable Rust execution on Linux with selective payload-allocation faults;
-JNI/JVM and Android device execution, logging/runtime allocation failure under
-persistent global exhaustion, native latency/lifecycle, full-app, R-S0/R-F5 and
-installed/release acceptance remain OPEN.
-
-**Retained evidence.** Capsules below are under `.harness-state/verifier-vm/`.
-Counts refer to their named historical sources, not fresh current-tree execution.
-
-| Surface | Executed evidence and limit | Capsule |
+| Surface / named source | Accepted observation and material limit | Retained capsule |
 | --- | --- | --- |
-| Decoder PCM storage and worker failure — `04c07a0f` | With unchanged production code at `19f93281`, 35 controls pass; ten refused PCM allocations abort their child processes, and malformed native Opus leaves its worker parked with admission open. The identical fixture passes all 36 cases after correction: ten supported rate/channel pairs preserve real encoded/decoded PCM, ten storage refusals naturally close/join only the failed worker while existing and fresh workers decode, and a native decode error closes without sender-drop cleanup. All 22 new child processes, including the positive allocation-abort probe, join. The exact format/frame/failure/worker methods execute with the root-locked wrapper and pinned VM's Opus 1.3.1; playback uses a controlled PCM sink. Behavior takes 1.18s, outer run 103s. This is targeted Rust PCM-storage refusal and native codec/worker evidence, not global/C-heap exhaustion, physical output, full-parent or installed acceptance. Stalled playback cancellation remains OPEN/PARKED. | `audio-decoder-storage-9a7b4ddb.json` |
-| Output PCM storage — `451d28c8` | Preparation `ecca736f` preserves the old allocator behind the new constructor API: 22 controls pass, while all four refused-ring cases and all five zero/overflow geometry cases panic; three healthy formats also allocate an unnecessary default ring. The identical 24-case fixture passes after correction: reservation refusal returns `OutOfMemory`, invalid geometry returns `InvalidInput` before ring allocation, another buffer retains its queued samples, and four fresh outputs preserve exact samples/silence with one configured ring each. The 35-case mailbox component also passes and typechecks the complete CPAL setup method against the locked dependency. An initial corrected component pass had a stale outer count label; its raw result is retained separately from the corrected export. This is controlled calling-thread Rust ring-storage refusal, not global exhaustion, Arc/decoder/backend allocation, a physical device or complete target-parent acceptance. | `audio-buffer-allocation-5229777b.json` |
-| Frame-storage refusal — `d6fefa11` | At API preparation `c6dbf459`, 34 controls and six healthy child cases pass; all ten refused-allocation children abort on packet or deque storage, so the new regression fails. The identical 35-case fixture passes after correction. Refusal at empty, growing and full queues returns `ResourceUnavailable`, clears pending format/frames, closes replay admission and leaves a fresh mailbox functional. Six finite-budget healthy cases preserve exact bytes, FIFO and oldest replacement at one and 4,096 bytes. The positive 31-byte refusal probe aborts as required; all seventeen children join. Artifact hashes remain stable. This is controlled Rust-allocation refusal and mailbox state evidence, not whole-runtime/C-heap exhaustion, native decoder/device or installed acceptance; stalled Linux playback cancellation remains OPEN/PARKED. | `audio-mailbox-allocation-bb158770.json` |
-| Format-first admission — `847f5566` | Twelve actual mailbox tests with production-generated protobuf cover ordering, fixed format, count/age limits, oversized refusal with state preservation, exact packet bound, parsed unknown-field stripping, backing-owner release, native receiver wake/join on sender loss and admission closure after receiver loss. Every fixture dependency matches the root lock. No decoder/device ran. | `audio-mailbox-accepted-847f5566.json` |
-| Per-buffer clock — `a30df600` | Eight production-buffer cases cover exact interval, independent owners, backwards time, resize/no-op, bounded retention and four joined workers over 200 injected intervals. Linux executes the real locked ring with controlled Instants; it does not measure device timing. The first resumed poll was terminal, so no live manual source observation is claimed. | `audio-buffer-accepted-a30df600.json` |
-| Callback fill — product `908dd918`, evidence `406579e9` | Sixteen cases include ten actual dasp sample-type conversions, signed/unsigned silence, FIFO/underflow, held-producer return before release, poison and a positive allocation-counter control followed by zero calling-thread Rust allocations in 1,000 warmed fills and a contended fill. Backend allocations and universal real-time safety are unproved. | `audio-callback-accepted-406579e9.json` |
-| Output-attempt failure — `1969d79d` | Thirty-two cases: seventeen mailbox, fourteen buffer and one extracted callback. Native threads distinguish the old logging-only callback's blocked owner from current wake/retirement, and cover failed setup/replacement, late callbacks, payload release and 64 joined readiness/failure races. The complete current setup method typechecks against locked CPAL; no device opens and the drop witness is a fixture. | `cpal-output-failure-1969d79d.json` |
-| PCM channel alignment — `4bc6afdf` | Preparation `af6f6699` passes 32 controls and fails two new cases: a 44.1-kHz/three-channel trim splits a frame, and equal-capacity stereo-to-mono replacement retains old state. The identical module passes all 34 cases after correction: sixteen buffer, seventeen mailbox and one extracted callback. Queue/output samples preserve channel order at 44.1/48 kHz and one through eight channels; replacement retires old PCM/statistics/clock and preserves new PCM. | `audio-frame-alignment-4bc6afdf.json` |
-| Linux playback failure — `fac93f54` | The complete Linux parent test artifact and private PulseAudio 16.1 null sink execute two identical old/current handler tests. Old `c3114e43` fails both. Current playback drains, exact native stream removal causes failure, decoder/output retire, malformed Opus and replay refuse, a fresh owner recovers and native task-ID sets return to baseline. Build 246s, behavior 11s, outer 326s. This accepts that parent build and output-error finality, not stalled-call cancellation. | `audio-playback-native-fac93f54.json` |
+| Mailbox admission — `847f5566` | Twelve real-mailbox/generated-protobuf cases cover format/order/count/age/size, unknown-field stripping, backing retirement and native wake/join. No decoder/device or historical A/B ran. | `audio-mailbox-accepted-847f5566.json` |
+| Mailbox storage — `d6fefa11` | Identical 35-case fixture replaces ten aborting packet/deque allocation refusals with terminal `ResourceUnavailable`; six healthy controls preserve bytes/order/replacement. All seventeen children join, including the positive allocator-refusal probe. Selective calling-thread Rust allocation only. | `audio-mailbox-allocation-bb158770.json` |
+| PCM ring storage — `451d28c8` | Identical 24-case fixture replaces four allocation and five geometry panics with `OutOfMemory`/`InvalidInput`; fresh outputs use one configured ring and preserve another buffer. The 35-case mailbox component also passes and typechecks complete CPAL setup. Earlier stale outer-count export is separate. | `audio-buffer-allocation-5229777b.json` |
+| PCM clock — `a30df600` | Eight production-buffer/locked-ring cases cover exact interval, independent owners, backwards time, resize/no-op and retention; four workers join after 200 injected intervals each. No native wall-time soak or historical A/B. | `audio-buffer-accepted-a30df600.json` |
+| Callback fill — product `908dd918`, evidence `406579e9` | Sixteen cases cover ten actual dasp conversions, signed/unsigned silence, FIFO/underflow, held-producer nonblocking return and poison. A positive allocation control precedes zero measured-thread Rust allocations over 1,000 warmed fills and one contended fill. No first-use/backend or universal real-time claim. | `audio-callback-accepted-406579e9.json` |
+| Output-attempt failure — `1969d79d` | Thirty-two cases execute mailbox/buffer and the extracted callback on native threads, including failed setup/replacement, stale callbacks, payload release and 64 readiness/failure races. The old logging-only callback requires sender-drop cleanup. Locked CPAL setup typechecks; no device opens and the stream-drop witness is a fixture. | `cpal-output-failure-1969d79d.json` |
+| PCM channel alignment — `4bc6afdf` | Two old-product failures become 34 passes: complete-frame trimming at 44.1 kHz/three channels and fresh state on equal-capacity format replacement. Sixteen queue/output format observations preserve channel order across 44.1/48 kHz and one–eight channels. | `audio-frame-alignment-4bc6afdf.json` |
+| Decoder storage/finality — `04c07a0f` | Identical 36-case fixture replaces ten PCM-allocation aborts and a worker left waiting after malformed Opus with owned close/join; ten supported rate/channel pairs and existing/fresh workers preserve decoding. All 22 new children join. Exact methods execute with root-locked wrapper, Opus 1.3.1 and controlled PCM sink. Baseline initial method/linkage receipts are absent; candidate exports them. No blanket global/C-heap exhaustion or physical output claim. | `audio-decoder-storage-9a7b4ddb.json` |
+| Linux playback failure — `fac93f54` | Complete Linux parent test artifact/private PulseAudio 16.1 null sink executes two identical old/current tests. Current playback drains; exact stream removal and malformed Opus retire output/decoder; replay refuses, fresh owner recovers and task IDs return to baseline. Build 246s, behavior 11s, outer 326s. This accepts historical output-error finality, not stalled-call cancellation. | `audio-playback-native-fac93f54.json` |
+| Android raw handoff — `35082dd6` | Corrected 46-case cohort preserves 45 controls and transfers exact pointers/bytes without consumer Rust allocation over four destination geometries/three rounds; old empty/undersized children abort and preallocated children fail ownership checks. Prior comparison/generation and audio cases remain. Portable Rust on Linux, not JNI/JVM/Android capture. | `android-raw-handoff-fbdc88de.json` |
+| Android raw publication — `cdb032e7` | Corrected 48-case cohort preserves the prior 46 cases. Four old allocation-refusal children abort; corrected refusals preserve pending storage/age/generation, two reuse controls remain allocation-free, five input/owner guards preserve state, and source mutation cannot change the owned copy. Selective payload faults with an unconfigured logger, not persistent/global diagnostic/runtime exhaustion or JNI/device execution. | `android-raw-publication-85b6d1e6.json` |
 
-`--audio-mailbox-tests` imports the real mailbox and buffer, production proto/build
-script, exact setup/error callback and decoder/worker methods, and portable Android
-raw/generation/comparison modules with root-locked dependencies.
-All 34 cases passed at `15ed3f4d` in 106 outer seconds under the dedicated
-`audio-mailbox` RAM profile. CPAL setup typechecking is not a complete non-Linux
-parent build or physical stream execution. `audio-mailbox-profile-15ed3f4d.json`
-binds the source/artifact, sixteen channel-format observations, old/current
-callback wake/retirement controls, storage limits and joined cleanup. The current
-export at `cdb032e7` retains all 48 named outcomes, including the 46 prior audio/raw
-cases, allocation/codec cases and callback observations; the guest checks that
-same inventory before export.
-`--audio-buffer-tests` passed all eighteen cases at `87dbc335` in 73 outer seconds:
-sixteen production-buffer cases and two real conversion/allocation fixtures.
-Both audio profiles retain the 2 GiB guest and admit 6 GiB RAM scratch,
-6 GiB host headroom and 1 GiB overhead, with a 4 GiB hard file ceiling and no disk
-fallback. This replaces the generic 16 GiB scratch reservation that refused a
-25 GiB admission before any case ran; measured scratch stayed below 3.2 GiB.
-`audio-buffer-profile-87dbc335.json` binds the unchanged sources/dependencies,
-all eighteen named assertions, actual storage limits and joined cleanup. This
-is Linux portable-buffer execution, not CPAL/device or complete-parent acceptance.
-The shared gate still runs the compiled mailbox and buffer tests plus retained worker-finality
-coverage. The retired 356-line wording checker and its calls remain deleted;
-no replacement source-string catalogue is needed.
+The `--audio-mailbox-tests` lane imports real mailbox/buffer, production proto/build
+script, exact setup/error/decoder/worker methods and portable Android raw modules
+with root-locked dependencies. Its latest retained export at `cdb032e7` checks all
+48 named outcomes. `audio-mailbox-profile-15ed3f4d.json` retains the earlier 34-case
+profile run and sixteen channel-format/callback observations.
+`--audio-buffer-tests` has an eighteen-case run at `87dbc335` (sixteen production
+buffer and two conversion/allocation cases), retained in
+`audio-buffer-profile-87dbc335.json`. Both focused profiles admit 2 GiB guest,
+6 GiB RAM scratch, 6 GiB headroom and 1 GiB overhead, with a 4 GiB hard file ceiling,
+no disk fallback and joined cleanup. The old generic-profile RAM refusal ran no
+cases. The shared gate retains compiled mailbox/buffer and worker-finality tests;
+the retired 356-line wording checker remains deleted.
 
-Rejected setup stays separate: the first callback export omitted two names; its
-corrected export retains all sixteen, without a cross-run byte-equality claim.
-The callback RAM refusal and mailbox preflight refusal ran no product behavior.
-Earlier PulseAudio compile, link/cgroup-OOM, control-command and summary-export
-failures remain unaccepted. Their capsules and raw receipts remain retained.
-Historical endpoint changes are unattributed and untouched; do not infer global
-host invariance. Accepted transactions bind their exact sources/artifacts,
-observations and joined VM/Docker/RAM cleanup; none establishes current release
-or deployed-artifact causation.
+All capsules resolve under `.harness-state/verifier-vm/`. Rejected compile,
+link/OOM, preflight, control-command and export attempts remain unaccepted.
+The initial callback export omitted names; only its corrected export retains all
+sixteen, without a cross-run byte-equality claim. Historical endpoint changes are
+unattributed and untouched; no global host-invariance claim follows.
+Source-bound component results and CPAL typechecking do not establish complete
+non-Linux parents, backend allocation/teardown, continuous output health,
+physical devices, installed authority or deployed-defect causation.
+Intermediate histories remain in Git at `ab45461b`; document classification,
+unchanged obligations/references and fresh counting are retained in
+`audio-ledger-ab45461b.json`.
 
 **Linux cancellation remains OPEN/PARKED by user direction.** Stalled synchronous
 PulseAudio construction/write/drain and worker shutdown during a stall are

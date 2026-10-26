@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_hbb/models/model.dart';
@@ -58,6 +59,152 @@ void _close(TerminalModel model) => model.handleTerminalResponse({
     });
 
 void main() {
+  testWidgets('terminal live input follows the complete pre-open buffer',
+      (tester) async {
+    final parent = _TerminalParent();
+    final sent = <String>[];
+    final firstSent = Completer<void>();
+    final model = _install(parent, sendInput: (data) async {
+      sent.add(data);
+      if (data == 'first') await firstSent.future;
+    });
+    addTearDown(model.dispose);
+    await model.sendVirtualKey('first');
+    await model.sendVirtualKey('second');
+    _open(model);
+    final live = model.sendVirtualKey('third');
+    final whilePending = List<String>.of(sent);
+    firstSent.complete();
+    await tester.pump();
+    await live;
+    expect(whilePending, ['first']);
+    expect(sent, ['first', 'second', 'third']);
+    expect(parent.unexpectedAccess, isEmpty);
+  });
+
+  testWidgets('terminal live input has one ordered sender', (tester) async {
+    final parent = _TerminalParent();
+    final sent = <String>[];
+    final firstSent = Completer<void>();
+    var active = 0;
+    var peak = 0;
+    final model = _install(parent, sendInput: (data) async {
+      active++;
+      if (active > peak) peak = active;
+      sent.add(data);
+      if (sent.length == 1) await firstSent.future;
+      active--;
+    });
+    addTearDown(model.dispose);
+    _open(model);
+    await tester.pump();
+    final first = model.sendVirtualKey('echo π');
+    final second = model.sendVirtualKey('\r');
+    final third = model.sendVirtualKey('next\nline');
+    final whilePending = List<String>.of(sent);
+    firstSent.complete();
+    await tester.pump();
+    await Future.wait([first, second, third]);
+    expect(whilePending, ['echo π']);
+    expect(sent, ['echo π', '\r', 'next\nline']);
+    expect(peak, 1);
+    expect(active, 0);
+    await model.sendVirtualKey('later');
+    expect(sent.last, 'later');
+    expect(parent.unexpectedAccess, isEmpty);
+  });
+
+  for (final retirement in ['close', 'reopen', 'replace', 'dispose']) {
+    testWidgets('terminal pending input retires on $retirement', (tester) async {
+      final parent = _TerminalParent();
+      final sent = <String>[];
+      final firstSent = Completer<void>();
+      Future<void> send(String data) async {
+        sent.add(data);
+        if (data == 'old first') await firstSent.future;
+      }
+
+      final model = _install(parent, sendInput: send);
+      addTearDown(model.dispose);
+      _open(model);
+      await tester.pump();
+      final first = model.sendVirtualKey('old first');
+      final second = model.sendVirtualKey('old second');
+      if (retirement == 'close') {
+        _close(model);
+        await model.sendVirtualKey('current');
+        firstSent.complete();
+        await tester.pump();
+        _open(model);
+      } else if (retirement == 'reopen') {
+        _open(model);
+        await model.sendVirtualKey('current');
+      } else {
+        if (retirement == 'dispose') model.dispose();
+        final successor = _install(parent, sendInput: send);
+        addTearDown(successor.dispose);
+        _open(successor);
+        await successor.sendVirtualKey('current');
+      }
+      if (!firstSent.isCompleted) firstSent.complete();
+      await tester.pump();
+      await Future.wait([first, second]);
+      expect(sent, ['old first', 'current']);
+      expect(parent.unexpectedAccess, isEmpty);
+    });
+  }
+
+  for (final synchronous in [false, true]) {
+    testWidgets('terminal input recovers after send failure sync=$synchronous',
+        (tester) async {
+      final parent = _TerminalParent();
+      final sent = <String>[];
+      final model = _install(parent, sendInput: (data) {
+        sent.add(data);
+        if (data == 'refused') {
+          if (synchronous) throw StateError('controlled send refusal');
+          return Future<void>.error(StateError('controlled send refusal'));
+        }
+        return Future<void>.value();
+      });
+      addTearDown(model.dispose);
+      await model.sendVirtualKey('refused');
+      await model.sendVirtualKey('buffered');
+      _open(model);
+      final current = model.sendVirtualKey('current');
+      await tester.pump();
+      await current;
+      expect(sent, ['refused', 'buffered', 'current']);
+      await model.sendVirtualKey('retry');
+      expect(sent.last, 'retry');
+      expect(tester.takeException(), isNull);
+      expect(parent.unexpectedAccess, isEmpty);
+    });
+  }
+
+  testWidgets('terminal input stalls only its own model', (tester) async {
+    final firstParent = _TerminalParent();
+    final secondParent = _TerminalParent();
+    final firstSent = Completer<void>();
+    final sent = <String>[];
+    final first = _install(firstParent, sendInput: (_) => firstSent.future);
+    final second =
+        _install(secondParent, sendInput: (data) async => sent.add(data));
+    addTearDown(first.dispose);
+    addTearDown(second.dispose);
+    _open(first);
+    _open(second);
+    await tester.pump();
+    final pending = first.sendVirtualKey('stalled');
+    await second.sendVirtualKey('independent');
+    expect(sent, ['independent']);
+    firstSent.complete();
+    await tester.pump();
+    await pending;
+    expect(firstParent.unexpectedAccess, isEmpty);
+    expect(secondParent.unexpectedAccess, isEmpty);
+  });
+
   for (final viewReady in [false, true]) {
     testWidgets('terminal CSI parser resets across reopen ready=$viewReady',
         (tester) async {

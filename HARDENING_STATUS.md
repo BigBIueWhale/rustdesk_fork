@@ -277,6 +277,32 @@ The temporary private-copy resolver diagnostic is removed. Evidence:
 live LPE. Full-parent/native Android and other-platform, installed, advisory/cold
 artifact and R-S0/R-F5/release acceptance remain OPEN; parked producers stay parked.
 
+**Unused clipboard dependency chain (`546fa719`).** Root and clipboard manifests
+remove eight unused declarations for the older `x11-clipboard`/`x11rb` stack,
+`once_cell` and `percent-encoding`. Five exclusively orphaned lock records disappear:
+Git `x11-clipboard` 0.8.1, `x11rb`/`x11rb-protocol` 0.12.0, `gethostname` 0.3.0 and
+`winapi-wsapoll` 0.1.2. Packages fall from 836 to 831, Git records from 31 to 30,
+and distinct Git source URLs from 22 to 21. The active X11 listener, registry
+`x11-clipboard` 0.9.2, shared dependencies, file-copy feature and all product Rust
+sources remain. Retained versions, sources, checksums and resolved edges are unchanged
+apart from the eight removed root/clipboard edges. The inventory also reconciles
+preexisting drift from the earlier five-package Wayland removal; its old 841-record
+expectation was reproduced as a failing isolated check before this change.
+The clipboard component runner now seeds its private lock from the root lock,
+selects the fixture and clipboard together, and requires the compiled file-copy
+feature. This preserves pinned offline resolution within the existing 1 GiB
+container and 2 GiB guest limits; no storage limit is raised.
+All 43 existing helper, dispatcher and file-copy routing tests pass in 154 outer
+seconds on pinned Rust 1.75; the separate dependency inventory passes. The three
+executables remain byte-identical through execution. These are real helper/FD
+lifecycles and compiled clipboard/dispatcher components with controlled publication,
+not a mounted filesystem or desktop clipboard session. QEMU owners join and RAM
+workspaces retire. One post-run endpoint addition is retained as unattributed;
+no process investigation or host mutation was performed.
+Evidence: `clipboard-dependencies-12dc3926.json`. This removes unused build inputs;
+full-app/native clipboard publication, mounted FUSE, other-platform compilation,
+installed authority, advisory/cold/release and R-S0/R-F5 acceptance remain OPEN.
+
 | Maintained guide or package documentation | Current disposition and remaining limits |
 | --- | --- |
 | `docs/ANDROID-SERVER.md` | Distinct foreground-service, task and capture-grant lifetimes; actual screen-sharing control and separate listener/capture status; no ADB consent override or unsupported per-launch/privacy claims. Current APK/device/native acceptance remains OPEN. Classification: `android-operator-guide-source-c8807899.json`. |
@@ -2242,6 +2268,8 @@ network peer, complete connection loop or presented pixels. Both VM owners join,
 their bounded RAM workspaces retire, and all endpoint snapshots are unchanged.
 `viewer-fps-congestion-badf36ab.json` binds A/B source, fixtures, artifacts and
 cleanup. Current full-app, actual recovery/soak and all user-parked work stay OPEN.
+The automatic-FPS cache lifetime review across reconnect and settings changes is
+OPEN/PARKED at the user's pivot; no reconnect defect or correction was established.
 
 **Shared R-F5 acceptance remains OPEN.** Execute exact current peer artifacts through
 capture, encode, transport, decode and actual presentation; measure frame age and

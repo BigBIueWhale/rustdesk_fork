@@ -115,7 +115,8 @@ void main() {
   });
 
   for (final retirement in ['close', 'reopen', 'replace', 'dispose']) {
-    testWidgets('terminal pending input retires on $retirement', (tester) async {
+    testWidgets('terminal pending input retires on $retirement',
+        (tester) async {
       final parent = _TerminalParent();
       final sent = <String>[];
       final firstSent = Completer<void>();

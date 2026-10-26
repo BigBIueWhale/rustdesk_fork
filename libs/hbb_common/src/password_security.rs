@@ -31,13 +31,26 @@ const FORMAT_V1: u8 = 1;
 // Reference: secretbox::seal returns ciphertext length = plaintext length + MACBYTES
 // https://github.com/sodiumoxide/sodiumoxide/blob/3057acb1a030ad86ed8892a223d64036ab5e8523/src/crypto/secretbox/xsalsa20poly1305.rs#L67
 fn is_encrypted(v: &[u8]) -> bool {
+    use ::base64::{engine::general_purpose::STANDARD, Engine as _};
+
     if v.len() <= VERSION_LEN || !v.starts_with(b"00") {
         return false;
     }
-    match base64::decode(&v[VERSION_LEN..], base64::Variant::Original) {
-        Ok(decoded) => decoded.len() >= sodiumoxide::crypto::secretbox::MACBYTES,
-        Err(_) => false,
+    const ENCODED_CHUNK_SIZE: usize = 1024;
+    let mut decoded = [0u8; ENCODED_CHUNK_SIZE / 4 * 3];
+    let mut chunks = v[VERSION_LEN..].chunks(ENCODED_CHUNK_SIZE).peekable();
+    let mut decoded_len = 0;
+    while let Some(chunk) = chunks.next() {
+        let Ok(length) = STANDARD.decode_slice(chunk, &mut decoded) else {
+            return false;
+        };
+        // Padding is valid only at the end of the complete payload.
+        if chunks.peek().is_some() && length != decoded.len() {
+            return false;
+        }
+        decoded_len += length;
     }
+    decoded_len >= secretbox::MACBYTES
 }
 
 pub fn encrypt_str_or_original(s: &str, max_len: usize) -> String {

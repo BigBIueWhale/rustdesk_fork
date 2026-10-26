@@ -20,11 +20,21 @@ class FileJobStatus extends StatelessWidget {
         return Offstage();
       }
 
-      // Find the first job that is in progress (the one actually transferring data)
-      // Rust backend processes jobs sequentially, so the first inProgress job is the active one
+      // Show the first active job, otherwise the newest recorded outcome.
       final activeJob = jobTable
               .firstWhereOrNull((job) => job.state == JobState.inProgress) ??
           jobTable.last;
+      final jobId = activeJob.id;
+
+      bool ownsJob() {
+        if (!controller.isCurrentSession(sessionId)) return false;
+        final index = controller.getJob(jobId);
+        return index >= 0 && identical(jobTable[index], activeJob);
+      }
+
+      void dismiss() {
+        if (ownsJob()) controller.removeJob(sessionId, jobId);
+      }
 
       switch (activeJob.state) {
         case JobState.inProgress:
@@ -34,13 +44,10 @@ class FileJobStatus extends StatelessWidget {
             text:
                 "${_translate("Speed")}:  ${readableFileSize(activeJob.speed)}/s",
             onCanceled: () async {
-              final expectedSessionId = sessionId;
+              if (!ownsJob()) return;
               final canceled = await controller.cancelJob(
-                  activeJob.id,
-                  expectedSessionId: expectedSessionId);
-              if (canceled) {
-                controller.clearForSession(expectedSessionId);
-              }
+                  jobId, expectedSessionId: sessionId);
+              if (canceled) dismiss();
             },
           );
         case JobState.done:
@@ -48,16 +55,14 @@ class FileJobStatus extends StatelessWidget {
             leading: Icon(Icons.check),
             title: "${_translate("Successful")}!",
             text: activeJob.display(),
-            onCanceled: () =>
-                controller.clearForSession(sessionId),
+            onCanceled: dismiss,
           );
         case JobState.error:
           return BottomSheetBody(
             leading: Icon(Icons.error),
             title: "${_translate("Error")}!",
             text: "",
-            onCanceled: () =>
-                controller.clearForSession(sessionId),
+            onCanceled: dismiss,
           );
         case JobState.none:
           break;

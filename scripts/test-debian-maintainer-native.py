@@ -32,9 +32,14 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def run(arguments, *, expected=0):
+def run(arguments, *, expected=0, maintainer=None):
+    environment = dict(ENV)
+    if maintainer is not None:
+        environment.update(DPKG_MAINTSCRIPT_PACKAGE=PACKAGE,
+                           DPKG_MAINTSCRIPT_NAME=maintainer,
+                           DPKG_MAINTSCRIPT_ARCH='all')
     process = subprocess.Popen(arguments, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                               env=ENV, start_new_session=True)
+                               env=environment, start_new_session=True)
     try:
         output, _ = process.communicate(timeout=30)
     except subprocess.TimeoutExpired:
@@ -46,7 +51,8 @@ def run(arguments, *, expected=0):
             f'command exit {process.returncode}, expected {expected}: {arguments!r}: {output!r}')
     decoded = output.decode('utf-8', errors='strict')
     print('DEBIAN_MAINTAINER_COMMAND=' + json.dumps({
-        'argv': arguments, 'exit': process.returncode, 'output': decoded}), flush=True)
+        'argv': arguments, 'exit': process.returncode, 'maintainer': maintainer,
+        'output': decoded}), flush=True)
     return decoded
 
 
@@ -164,10 +170,10 @@ def main():
         require(candidate_links == disabled_links, 'candidate disabled state differs')
         run(['systemctl', 'start', UNIT])
         require(service_state() == 'active', 'explicit start did not activate the disabled fixture')
-        run([str(installed / f'{PACKAGE}.prerm'), 'deconfigure'])
+        run([str(installed / f'{PACKAGE}.prerm'), 'deconfigure'], maintainer='prerm')
         require(INIT.is_file() and links() == candidate_links and service_state() == 'inactive',
                 'deconfigure failed to stop the fixture while preserving init/link state')
-        run([str(installed / f'{PACKAGE}.postinst'), 'configure'])
+        run([str(installed / f'{PACKAGE}.postinst'), 'configure'], maintainer='postinst')
         require(service_state() == 'inactive' and links() == disabled_links,
                 'configure did not preserve administrator-disabled startup state')
         run(['systemctl', 'start', UNIT])

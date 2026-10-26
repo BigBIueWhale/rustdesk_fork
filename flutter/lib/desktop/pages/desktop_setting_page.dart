@@ -38,7 +38,6 @@ const double _kTitleFontSize = 20;
 const double _kContentFontSize = 15;
 const Color _accentColor = MyTheme.accent;
 const String _kSettingPageControllerTag = 'settingPageController';
-const String _kSettingPageTabKeyTag = 'settingPageTabKey';
 
 class _TabInfo {
   late final SettingsTabKey key;
@@ -84,9 +83,6 @@ class DesktopSettingPage extends StatefulWidget {
         DesktopTabPage.onAddSetting(initialPage: page);
         PageController controller =
             Get.find<PageController>(tag: _kSettingPageControllerTag);
-        Rx<SettingsTabKey> selected =
-            Get.find<Rx<SettingsTabKey>>(tag: _kSettingPageTabKeyTag);
-        selected.value = page;
         controller.jumpToPage(index);
       } else {
         DesktopTabPage.onAddSetting(initialPage: page);
@@ -113,7 +109,6 @@ class _DesktopSettingPageState extends State<DesktopSettingPage>
       initialIndex = 0;
     }
     selectedTab = DesktopSettingPage.tabKeys[initialIndex].obs;
-    Get.put<Rx<SettingsTabKey>>(selectedTab, tag: _kSettingPageTabKeyTag);
     controller = PageController(initialPage: initialIndex);
     Get.put<PageController>(controller, tag: _kSettingPageControllerTag);
     controller.addListener(() {
@@ -133,9 +128,9 @@ class _DesktopSettingPageState extends State<DesktopSettingPage>
 
   @override
   void dispose() {
-    super.dispose();
     Get.delete<PageController>(tag: _kSettingPageControllerTag);
-    Get.delete<RxInt>(tag: _kSettingPageTabKeyTag);
+    controller.dispose();
+    super.dispose();
   }
 
   List<_TabInfo> _settingTabs() {
@@ -256,9 +251,8 @@ class _DesktopSettingPageState extends State<DesktopSettingPage>
   }
 
   Widget _listView({required List<_TabInfo> tabs}) {
-    final scrollController = ScrollController();
     return ListView(
-      controller: scrollController,
+      primary: false,
       children: tabs.map((tab) => _listItem(tab: tab)).toList(),
     );
   }

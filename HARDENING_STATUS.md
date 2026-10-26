@@ -15817,6 +15817,27 @@ is source-reviewed. Full native transfer/presentation,
 byte-count precision, terminal semantics, R-S0/R-F5, all credential actions and release
 acceptance remain OPEN; every user park stays unchanged.
 
+**File-transfer resume replies (`50d44aea`) — Dart component A/B verified; native integration OPEN.**
+`JobController.resumeJob` admits only a paused transfer and retains that exact job across
+the asynchronous bridge reply. The native `resume_job` only enqueues a command; its
+acknowledgement cannot supersede a completion, error or skipped-file event already received.
+After the await, the same current-session job may transition from paused to in-progress;
+a removed/replaced job refuses publication, and a terminal state remains terminal. This
+uses Dart's [await ordering](https://dart.dev/libraries/async/async-await) and
+[object identity](https://api.dart.dev/dart-core/identical.html), with no new lifetime store.
+The unchanged-product baseline `2b1e2e5b` passes eleven cases and fails five: three terminal
+states become in-progress, a replacement is accepted, and a nonpaused job is dispatched.
+The identical sixteen-case `--flutter-model-tests --file-progress` inventory and three
+result-parser controls pass with the correction. Controls cover upload/download resume,
+removed/replaced jobs, stale sessions, bridge failure followed by retry, and refusal of
+nonpaused/nontransfer jobs; the previous nine progress tests remain unchanged. Tests drive
+the production controller with held bridge futures, not native file I/O or the full page.
+`file-resume-3ecaa37b.json` binds A/B sources, individual results, pinned inputs, fresh ledger
+count and joined bounded-RAM cleanup. Both behavioral runs have zero listener deltas.
+Native resumed transfers, installed/device presentation, R-S0/R-F5, all fifteen credential
+actions and release acceptance remain OPEN. The verification-catalogue exploration and
+all earlier user-parked work remain open and untouched.
+
 **Mutating file-job dispatch admission — Dart listener/caller A/B ACCEPTED; native mutation/drain/platform integration OPEN.**
 `JobResultListener` retains exact pending objects and dispatch-completion futures independently
 of its keyed response map. `clear()` retires response routing and caller results while unfinished

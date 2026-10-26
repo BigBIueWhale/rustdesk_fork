@@ -394,7 +394,7 @@ class InputModel {
   // trackpad
   _TrackpadGesture? _trackpadGesture;
   _TrackpadFling? _trackpadFling;
-  bool _trackpadDisposed = false;
+  bool _disposed = false;
   bool _flingSendPending = false;
   final _flingBaseDelay = 30;
   final _trackpadAdjustPeerLinux = 0.06;
@@ -1418,7 +1418,7 @@ class InputModel {
   }
 
   void disposeRelativeMouseMode({SessionID? expectedSessionId}) {
-    _trackpadDisposed = true;
+    _disposed = true;
     _trackpadGesture = null;
     _trackpadScrollOwner = null;
     _trackpadScrollUnsent = Offset.zero;
@@ -1474,7 +1474,7 @@ class InputModel {
   void onPointerPanZoomStart(PointerPanZoomStartEvent e) {
     _stopTrackpadFling();
     _trackpadGesture = null;
-    if (_trackpadDisposed) return;
+    if (_disposed) return;
     final owner = parent.target;
     if (owner == null ||
         !owner.isCurrentSessionOwner(owner.sessionId, owner.clientOwnerId)) {
@@ -1500,7 +1500,7 @@ class InputModel {
     final gesture = _trackpadGesture;
     if (gesture == null) return null;
     final owner = parent.target;
-    if (_trackpadDisposed ||
+    if (_disposed ||
         owner == null ||
         !owner.isCurrentSessionOwner(gesture.sessionId, gesture.clientOwnerId)) {
       _trackpadGesture = null;
@@ -1603,7 +1603,7 @@ class InputModel {
   bool _isCurrentTrackpadFling(_TrackpadFling fling) {
     final owner = parent.target;
     return identical(_trackpadFling, fling) &&
-        !_trackpadDisposed &&
+        !_disposed &&
         owner != null &&
         owner.isCurrentSessionOwner(fling.sessionId, fling.clientOwnerId) &&
         !isViewOnly &&
@@ -1663,7 +1663,7 @@ class InputModel {
     final delta = gesture.lastDelta;
     _trackpadGesture = null;
     _stopTrackpadFling();
-    if (_trackpadDisposed || isViewOnly) return;
+    if (_disposed || isViewOnly) return;
     if (isViewCamera) return;
     if (peerPlatform == kPeerPlatformAndroid) {
       handlePointerEvent('touch', kMouseEventTypePanEnd, e.position,
@@ -1823,8 +1823,11 @@ class InputModel {
   /// scroll deltas that are independent of cursor position. Games and 3D applications
   /// handle scroll events the same way regardless of mouse mode.
   void onPointerSignalImage(PointerSignalEvent e) {
-    if (isViewOnly) return;
-    if (isViewCamera) return;
+    final owner = parent.target;
+    if (_disposed || owner == null) return;
+    final expectedSessionId = owner.sessionId;
+    if (!owner.isCurrentSessionOwner(expectedSessionId, owner.clientOwnerId) ||
+        isViewOnly || !keyboardPerm || isViewCamera) return;
     if (e is PointerScrollEvent) {
       final rawDx = e.scrollDelta.dx;
       final rawDy = e.scrollDelta.dy;
@@ -1866,7 +1869,7 @@ class InputModel {
       } else if (dy < 0) {
         dy = accel;
       }
-      sendWheelScroll(dx, dy, expectedSessionId: sessionId);
+      sendWheelScroll(dx, dy, expectedSessionId: expectedSessionId);
     }
   }
 

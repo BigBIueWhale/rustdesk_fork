@@ -374,7 +374,8 @@ void main() {
     'overlay hide',
     'session close'
   ]) {
-    testWidgets('chat delayed focus retires on $retirement and allows reopening',
+    testWidgets(
+        'chat delayed focus retires on $retirement and allows reopening',
         (tester) async {
       final model = _chatModel();
       final overlay = BlockableOverlayState();
@@ -412,7 +413,8 @@ void main() {
     });
   }
 
-  testWidgets('chat delayed focus keeps only the latest request', (tester) async {
+  testWidgets('chat delayed focus keeps only the latest request',
+      (tester) async {
     final model = _chatModel();
     final other = await _mountChatFocusNodes(tester, model);
     try {

@@ -1034,12 +1034,13 @@ for caller in ('smoke-verifier-vm-authority.sh', 'online-fetch-vm.sh'):
     modes.update(re.findall(r'\bMODE=([a-z][a-z0-9-]*)', shell.with_name(caller).read_text()))
 # This closed CLI arm derives MODE from its argument instead of a literal assignment.
 modes.add('android-frame-tests')
-if len(modes) != 37:
+if len(modes) != 38:
     raise SystemExit('VM workload control inventory differs')
 special = {mode: mode for mode in ('ledger-token-count', 'cpace-recovery-tests',
                                   'linux-service-uid-tests', 'hbb-common-fs', 'media-kernel-tests',
                                   'fixed-archive-tests')}
 special.update({'authority-smoke': 'authority-smoke', 'dependency-inventory': 'authority-smoke',
+                'debian-maintainer-tests': 'authority-smoke',
                 'android-frame-tests': 'x11-focus'})
 cases = [(mode, {}, special.get(mode, 'standard')) for mode in sorted(modes)]
 cases.extend([('hbb-common-fs', {'HBB_LOGIND_NATIVE': '1'}, 'linux-logind'),
@@ -1081,9 +1082,9 @@ printf '%s\\n' "$VM_STORAGE_PROFILE"
         'pass': passed}, sort_keys=True), flush=True)
 print('VM_TRANSIENT_WORKLOAD_OBSERVED=' + json.dumps({
     'modes': len(modes), 'controls': controls, 'refusals': refusals}, sort_keys=True), flush=True)
-if (controls, refusals) != (45, 5):
+if (controls, refusals) != (46, 5):
     raise SystemExit('VM workload resource admission cases failed')
-print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=37 controls=45 refusals=5 allocation=not-entered')
+print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=38 controls=46 refusals=5 allocation=not-entered')
 PY
     for operation in preflight reserve check watch run; do
         root_status=0

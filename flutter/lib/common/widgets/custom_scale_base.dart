@@ -20,8 +20,8 @@ abstract class CustomScaleControls<T extends StatefulWidget> extends State<T> {
   Timer? _scaleTimer;
   CanvasModel? _deferredReadCanvas;
   VoidCallback? _deferredReadListener;
-  bool _saving = false;
-  bool _loading = false;
+  int? _savingGeneration;
+  int? _loadingGeneration;
   bool _dirty = false;
   bool _failed = false;
   int _generation = 0;
@@ -34,6 +34,8 @@ abstract class CustomScaleControls<T extends StatefulWidget> extends State<T> {
 
   int get scaleValue => _scaleValue;
   double get scalePos => _scalePos;
+  bool get _saving => _savingGeneration == _generation;
+  bool get _loading => _loadingGeneration == _generation;
   bool get _operationPending => _saving || (_loading && !_dirty);
 
   @protected
@@ -146,7 +148,7 @@ abstract class CustomScaleControls<T extends StatefulWidget> extends State<T> {
       _deferRead(canvas, generation);
       return;
     }
-    setState(() => _loading = true);
+    setState(() => _loadingGeneration = generation);
     try {
       final value = await canvas.readCustomScalePercent(owner: owner);
       if (!_current(generation) || !owner.isCurrent ||
@@ -166,10 +168,9 @@ abstract class CustomScaleControls<T extends StatefulWidget> extends State<T> {
       if (_current(generation) && owner.isCurrent &&
           revision == _revision && !_dirty) setState(() => _failed = true);
     } finally {
-      _loading = false;
-      if (mounted) {
-        setState(() {});
-        if (generation != _generation && !_dirty) _loadScale();
+      if (_loadingGeneration == generation) {
+        _loadingGeneration = null;
+        if (_current(generation)) setState(() {});
       }
     }
   }
@@ -207,7 +208,7 @@ abstract class CustomScaleControls<T extends StatefulWidget> extends State<T> {
     final generation = _generation;
     final revision = _revision;
     final submitted = _scaleValue;
-    _saving = true;
+    _savingGeneration = generation;
     setState(() {});
     try {
       final effective = await canvas.applyCustomScalePercent(submitted, owner: owner);
@@ -232,11 +233,12 @@ abstract class CustomScaleControls<T extends StatefulWidget> extends State<T> {
         setState(() => _failed = true);
       }
     } finally {
-      _saving = false;
-      if (mounted) {
-        setState(() {});
-        if (_dirty && _scaleTimer == null &&
-            (generation != _generation || revision != _revision)) _saveScale();
+      if (_savingGeneration == generation) {
+        _savingGeneration = null;
+        if (_current(generation)) {
+          setState(() {});
+          if (_dirty && _scaleTimer == null && revision != _revision) _saveScale();
+        }
       }
     }
   }

@@ -4309,6 +4309,7 @@ run_focused_rust_tests() {
                 clipboard_non_file::tests::framed_receiver_allocation_refusal_preserves_exact_contents
                 clipboard_non_file::tests::native_payload_validation_precedes_copying
                 clipboard_non_file::tests::native_payload_copy_refusal_preserves_exact_retry
+                clipboard_non_file::tests::compressed_rgba_output_obeys_declared_geometry
                 compress::tests::decompression_history_window_is_independent_of_output_limit
                 compress::tests::decompression_is_fallible_and_output_bounded
                 bytes_codec::tests::test_codec1
@@ -6394,7 +6395,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = cliprdr-read ]; then
         printf 'CLIPRDR_READ_PROFILE=cliprdr-read stage=container-start tests=12 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
-        printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=40 bridge=absent windows=unexecuted\n'
+        printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=41 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
         printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=97 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
@@ -6709,7 +6710,11 @@ PY
             && [ "$(grep -Fxc 'CLIPBOARD_PAYLOAD_ALLOC=pass refused=3 controls=9 input=unchanged retries=exact children=joined' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^CLIPBOARD_PAYLOAD_ALLOC_CASE=observed bytes=(1|4097|67108864) error=Some\(OutOfMemory\) retry_exact=true unchanged=true$' "$output")" -eq 3 ] \
             || fail 'native clipboard payload admission or allocation recovery differs'
-        [ "$(grep -Ec '^CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=40 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Fxc 'CLIPBOARD_RGBA_LIMIT=pass cases=8 excess_allocations=0 input=unchanged' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^CLIPBOARD_RGBA_LIMIT_CASE=observed case=[a-z-]+ excess_allocations=0 refused=true unchanged=true$' "$output")" -eq 8 ] \
+            && [ "$(grep -Fxc 'CLIPBOARD_RGBA_CONTROLS=pass cases=9 exact_limit=67108864 concatenated=exact short=refused malformed=refused history=independent' "$output")" -eq 1 ] \
+            || fail 'compressed RGBA geometry admission differs'
+        [ "$(grep -Ec '^CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256=[0-9a-f]{64} tests=41 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CM_CLIPBOARD_RESPONSE_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'CM clipboard response artifact receipt differs'
         [ "$(grep -Fxc 'CLIPBOARD_RESTORE_ALLOC=pass cases=5 retry=exact zero_copy=true coalesced=true probe=SIGABRT children=joined' "$output")" -eq 1 ] \
@@ -7631,7 +7636,7 @@ PY
             printf 'CLIPRDR_READ_VM=pass commit=%s tree=%s tests=%s baseline_failed=7 baseline_controls=5 target=linux-x86_64 scope=portable-production-C-reader windows=unexecuted concurrency=unexecuted uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed"
         elif [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
-            grep -E '^test (clipboard_non_file|bytes_codec|compress)::tests::.* \.\.\. ok$|^CM_CLIPBOARD_RESPONSE_(ARTIFACT(_BEFORE|_AFTER)?|DEPENDENCIES|INPUT)=|^CLIPBOARD_PAYLOAD_|^CLIPBOARD_RESTORE_ALLOC|^CLIPBOARD_PREPARE_ALLOC|^BYTES_CODEC_' "$output"
+            grep -E '^test (clipboard_non_file|bytes_codec|compress)::tests::.* \.\.\. ok$|^CM_CLIPBOARD_RESPONSE_(ARTIFACT(_BEFORE|_AFTER)?|DEPENDENCIES|INPUT)=|^CLIPBOARD_PAYLOAD_|^CLIPBOARD_RGBA_|^CLIPBOARD_RESTORE_ALLOC|^CLIPBOARD_PREPARE_ALLOC|^BYTES_CODEC_' "$output"
             printf 'CM_CLIPBOARD_RESPONSE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-clipboard-payload-response-and-framing windows=unexecuted rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

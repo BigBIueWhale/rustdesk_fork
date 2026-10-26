@@ -263,6 +263,58 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
+    fn compressed_rgba_output_obeys_declared_geometry() {
+        use crate::clipboard::limits::clipboard_content_for_native;
+        let encode = |data: &[u8]| hbb_common::compress::compress(data).unwrap();
+        let rgba = |content: Vec<u8>, width, height| Clipboard {
+            content: content.into(), compress: true, width, height,
+            format: ClipboardFormat::ImageRgba.into(), ..Default::default()
+        };
+        let oversized = encode(&vec![0x5a; 65536]);
+        let mut failures = 0;
+        for (case, width, height, concatenated) in [
+            ("zero-width", 0, 1, false),
+            ("zero-height", 1, 0, false),
+            ("negative-width", -1, 1, false),
+            ("negative-height", 1, -1, false),
+            ("excessive-geometry", i32::MAX, i32::MAX, false),
+            ("small-image", 32, 32, false),
+            ("large-image", 64, 64, false),
+            ("concatenated", 32, 32, true),
+        ] {
+            let mut content = if concatenated { encode(&vec![0x42; 4096]) } else { Vec::new() };
+            content.extend_from_slice(&oversized);
+            let input = rgba(content, width, height);
+            let original = input.content.clone();
+            let (result, excess_allocations) = allocations::observe_size(65536, || clipboard_content_for_native(&input));
+            let refused = result.is_err();
+            let unchanged = input.content == original;
+            println!("CLIPBOARD_RGBA_LIMIT_CASE=observed case={case} excess_allocations={excess_allocations} refused={refused} unchanged={unchanged}");
+            failures += usize::from(!refused || !unchanged || excess_allocations != 0);
+        }
+
+        for (width, height) in [(1, 1), (32, 32), (64, 64), (4096, 4096)] {
+            let expected = vec![0x5a; (width * height * 4) as usize];
+            let input = rgba(encode(&expected), width, height);
+            assert_eq!(clipboard_content_for_native(&input).unwrap(), expected);
+        }
+        let mut concatenated = encode(&[0x42; 2048]);
+        concatenated.extend_from_slice(&encode(&[0x42; 2048]));
+        assert_eq!(clipboard_content_for_native(&rgba(concatenated, 32, 32)).unwrap(), vec![0x42; 4096]);
+        assert!(clipboard_content_for_native(&rgba(encode(&[0x42; 4095]), 32, 32)).is_err());
+        assert!(clipboard_content_for_native(&rgba(b"invalid compression".to_vec(), 32, 32)).is_err());
+        // RFC 8878: an explicit 64 MiB history window and a final four-byte raw block.
+        let mut window = vec![0x28, 0xb5, 0x2f, 0xfd, 0, 0x80, 33, 0, 0, 1, 2, 3, 4];
+        assert_eq!(clipboard_content_for_native(&rgba(window.clone(), 1, 1)).unwrap(), [1, 2, 3, 4]);
+        window[5] = 0x88; // A 128 MiB history window is independently refused.
+        assert!(clipboard_content_for_native(&rgba(window, 1, 1)).is_err());
+        println!("CLIPBOARD_RGBA_CONTROLS=pass cases=9 exact_limit=67108864 concatenated=exact short=refused malformed=refused history=independent");
+        assert_eq!(failures, 0, "compressed RGBA must not allocate output beyond its declared geometry");
+        println!("CLIPBOARD_RGBA_LIMIT=pass cases=8 excess_allocations=0 input=unchanged");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
     fn native_payload_copy_refusal_preserves_exact_retry() {
         use crate::clipboard::limits::{clipboard_content_for_native, MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES};
         use std::{os::unix::process::ExitStatusExt, process::Command};

@@ -269,6 +269,74 @@ void main() {
     });
   });
 
+  for (final direction in [1, -1]) {
+    test('trackpad slow pinch ${direction > 0 ? "in" : "out"} retains cumulative zoom', () {
+      _run((clock, owner, input) {
+        input.begin();
+        for (var step = 1; step <= 2048; step++) {
+          input.update(0, scale: 1 + direction * step / 4096);
+        }
+        expect(input.scales.fold<int>(0, (sum, value) => sum + value),
+            direction * 500);
+        expect(input.scales.every((value) => value == direction), isTrue);
+        expect(input.scaleTargets.every((target) => target == owner.sessionId),
+            isTrue);
+        expect(input.scrolls, isEmpty);
+        input.end();
+        expect(input.scales.last, 0);
+        expect(clock.nonPeriodicTimerCount, 0);
+      });
+    });
+  }
+
+  test('trackpad pinch total is independent of event subdivision', () {
+    _run((clock, owner, input) {
+      input.begin();
+      input.update(0, scale: 1 + 100 / 512);
+      final coarse = input.scales.single;
+      expect(coarse, 195);
+      input.end();
+      input.clearOutput();
+      input.begin();
+      for (var step = 1; step <= 100; step++) {
+        input.update(0, scale: 1 + step / 512);
+      }
+      expect(input.scales.fold<int>(0, (sum, value) => sum + value), coarse);
+      expect(input.scrolls, isEmpty);
+    });
+  });
+
+  test('trackpad pinch reversal preserves zoom within one wire unit', () {
+    _run((clock, owner, input) {
+      input.begin();
+      for (final step in [1, 2, 3, 2, 1, 0, -1, -2, -3, -2, -1, 0]) {
+        input.update(0, scale: 1 + step / 512);
+        final total = input.scales.fold<int>(0, (sum, value) => sum + value);
+        expect((total - step * 1000 / 512).abs(), lessThan(1));
+        final count = input.scales.length;
+        input.update(0, scale: 1 + step / 512);
+        expect(input.scales.length, count);
+      }
+      expect(input.scales.fold<int>(0, (sum, value) => sum + value), 0);
+      expect(input.scrolls, isEmpty);
+    });
+  });
+
+  test('trackpad pinch remainder retires with its gesture', () {
+    _run((clock, owner, input) {
+      for (final pointer in [1, 2, 3]) {
+        input.begin(pointer: pointer);
+        input.update(0, scale: 1 + 3 / 4096, pointer: pointer);
+        input.end(pointer: pointer);
+      }
+      expect(input.scales, [0, 0, 0]);
+      input.begin(pointer: 4);
+      input.update(0, scale: 1.5, pointer: 4);
+      expect(input.scales, [0, 0, 0, 500]);
+      expect(input.scrolls, isEmpty);
+    });
+  });
+
   test('trackpad gesture fractional remainder belongs to its exact owner', () {
     for (final identity in ['session', 'client']) {
       _run((clock, owner, input) {

@@ -15705,6 +15705,32 @@ progress semantics, full-app/platform/resource acceptance, R-S0/R-F5 and release
 The KDE command-line scan review is OPEN/PARKED at the user's pivot; no correction or
 new privilege-escalation claim was made. All other user parks remain unchanged.
 
+**First-file progress (`1e6b6703`) — model/widget A/B verified; full transfer integration OPEN.**
+The native upload/download progress producer reports `job.file_num() - 1`: `-1` is
+the valid last-completed index while the first file is still transferring. The Dart
+handler previously rejected that update, suppressing its byte/speed progress. Its
+integer decoder now takes an explicit minimum: progress indexes admit `-1`, action
+IDs remain positive, and completion/error result file identities remain nonnegative.
+Canonical spelling, upper bounds, owner checks and atomic numeric validation remain.
+The prior negative-index fixture incorrectly classified `-1` progress as invalid;
+it now rejects `-2` and malformed spellings while preserving negative-action refusal.
+At unchanged-product `fffdffe6`, seven cases pass and both first-file widget cases fail
+because the expected 40% text is absent. The identical nine-case inventory and three
+parser controls pass after correction. Upload/download cases exercise the production
+model plus pinned `percent_indicator` 4.2.5, manually rebuild at 0%, 40% and 60%, and
+check zero then one completed file while the job remains active. A pending-command
+control refuses `-1` success/error/completion and subsequently accepts its exact file 0.
+The full desktop page, automatic reactive rebuilding, native I/O/event transport and
+installed/device transfer are not exercised. No source-growth/progress-bar clamp was
+added: native sending already checks declared file length and refuses changed lengths.
+Evidence: `first-file-progress-dcee0719.json`, including unchanged A/B tests, individual
+results, source/input bindings and joined bounded-RAM cleanup. No listener was added;
+the corrected run's final snapshot records one unattributed removal of a pre-existing
+loopback endpoint. Its owner was not inspected or changed. First-file event production
+is source-reviewed. Full native transfer/presentation,
+byte-count precision, terminal semantics, R-S0/R-F5, all credential actions and release
+acceptance remain OPEN; every user park stays unchanged.
+
 **Mutating file-job dispatch admission — Dart listener/caller A/B ACCEPTED; native mutation/drain/platform integration OPEN.**
 `JobResultListener` retains exact pending objects and dispatch-completion futures independently
 of its keyed response map. `clear()` retires response routing and caller results while unfinished

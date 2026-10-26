@@ -131,7 +131,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("file-progress"), "file-progress"), (1, 26))
         self.assertEqual(self.parse(self.events("custom-scale"), "custom-scale"), (1, 35))
         self.assertEqual(self.parse(self.events("file-navigation"), "file-navigation"), (7, 110))
-        self.assertEqual(self.parse(self.events("terminal-output"), "terminal-output"), (2, 35))
+        self.assertEqual(self.parse(self.events("terminal-output"), "terminal-output"), (2, 37))
         self.assertEqual(self.parse(self.events("settings-navigation"), "settings-navigation"), (1, 10))
         self.assertEqual(self.parse(self.events("modifier-release"), "modifier-release"), (4, 103))
         self.assertEqual(self.parse(self.events("connect-password"), "connect-password"), (1, 7))

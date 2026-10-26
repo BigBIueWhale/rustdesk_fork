@@ -10123,32 +10123,27 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   fourteen-download proof. Historical adversarial/interrupted-publication fixtures and
   disposable all-fourteen HTTPS evidence remain in Git/audit; they are not current-VM acceptance.
 
-  The focused source supplement scopes its consumer check to actual admission/hash/qcow2
-  work; the obsolete global literal count and wrong-occurrence metadata mutation are gone
-  (`32ec8bf0`). The shared base-metadata production helper is now consumed by both the
-  networkless launcher and boot-asset deriver (`88fcbcef`; R-S11cu below). The unchanged
-  archive helper's real-filesystem adversarial fixtures, including interrupted/no-clobber
-  publication and unsafe output refusal, and 61 source mutations passed the latest
-  `/usr/bin/bash scripts/smoke-verifier-vm-authority.sh --fixed-archive-tests` as
-  session 47268/exit 0 in 18 VM seconds at `88fcbcef`, tree
-  `4146bedecba5617055926af0abd3a78f9c741e72`. This shard also passed 22 actual base-metadata
-  cases as UID:GID 4000:4000. HTTP responses are injected, not live TLS/network traffic;
-  source mutations are supplementary, not native privilege-boundary scenarios.
-  Sources/pinned inputs stayed unchanged; complete before/during/after host endpoint checks
-  found no additions; guest-only Docker, scratch, VM and disk retired. No test image or
-  RustDesk product was loaded/built/executed and no unrelated integration partition reran.
-  Current raw `fixed-archive-tests-run.1iFxxJYnlL.serial.log` under the verifier-VM root
-  is 66,200 bytes / SHA-256 `8cbd906a3d6428e78ada2b6db7dd83d935fbb119c4920f265d9d5fa17a2e408b`.
-  It binds unchanged helper SHA-256 `c3cf1022b61a9074a2e5ff77a9e71b9ab06304593bdbf497a20bb973f82fdaa9`
-  and checker SHA-256 `c54ec679f4337acdf40883dd90c677ac9a9a2e43be8dc26571a58c59d7d9a943`.
-  `evidence/base-metadata-run.1iFxxJYnlL.outer.receipt` retains the final-poll excerpt,
-  explicitly assistant-captured and nonindependent. The superseded 23-second shard remains
-  in its raw serial and Git/audit; it is not another current behavioral requirement.
-  Two earlier pre-transaction failures (caller working directory, then that unrelated
-  source assertion) downloaded nothing;
-  their bounded `evidence/fixed-archives-run.{nDzmr1aAB0,aDDGR2dDAl}.*` logs are retained.
-  The source supplement now scopes one-stage/order protection to full no-argument dispatch
-  and protects the closed phase; no broad catalog is an acquisition prerequisite.
+  **Verification scope corrected.** The 1,241-line
+  `verify-online-fetch-fixed-archive-authority.py` and its 61 in-memory string mutations
+  are deleted, together with the shared-gate invocation. The catalogue duplicated pins,
+  parsed source text and checked test/error strings and its own wiring without executing
+  the altered acquisition code. Run `PSzDQU4oRL` reproduced its stale eight-file branch
+  assertion; production already requires ten full-peer inputs and rejects substitution
+  in an executable regression. The gate now reports the actual archive-transaction and
+  Dart advisory-input fixtures. Production manifests/pins, coordinator/producer checks,
+  SHA-512 consumers, host-isolation source invariant and executable fixtures are unchanged.
+
+  **Retained behavioral evidence.** The unchanged production archive and WiX retirement
+  suites plus 22 base-metadata cases passed as UID:GID 4000 in the bounded zero-NIC VM at
+  `673ad692`, in 14 outer seconds. Raw `fixed-archive-tests-run.Fdm4OybmLz.serial.log`
+  (67,302 bytes; SHA-256 `dcad478f1885baafd166b0c1b2e3b7bae6eeefbbfb38628ea5258f84f296e0f0`)
+  binds the helper SHA-256 `28b9a66377889aa450791d1e480bf326f1b354ee720126f97dd9033ec154c347`,
+  unchanged listeners and joined cleanup. This slice reuses that exact helper/fixture
+  evidence; it does not rerun passed behavior or the full gate. Fixture bytes and injected
+  HTTP responses do not establish live HTTPS, actual producers or complete cold inputs.
+  `archive-verification-b55db4f8.json` binds classification, retained evidence, unchanged
+  source hashes and the final ledger count. Earlier `88fcbcef` receipts remain historical
+  in Git/audit; string-mutation counts are not native acceptance.
   **OPEN:** current cold all-fourteen response/redirect coverage, the complete canonical input closure,
   moving operator-captured rustup-init, Cargo/dependency producers, Windows Flutter engine/Pub/WiX,
   maintenance publication, signing/golden/operator assets, exact cold R-B2/R-B10 artifacts,
@@ -10410,9 +10405,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `wix-verification-0d07d617.json` retains source identities, failed runs and final evidence.
   This is Linux filesystem evidence with fixture bytes and injected responses; package
   acquisition, cryptographic signature checks, Windows restore/MSI and installed behavior
-  did not run. The separate general archive source catalogue still demands a retired
-  eight-file branch where production now has ten: its broader-gate failure remains OPEN.
-  It is absent from this focused native lane; its shared-gate invocation remains unchanged.
+  did not run. The separate stale general archive source catalogue and its shared-gate
+  invocation are now deleted under R-S11cs above; the full gate and actual acquisition,
+  package and release acceptance remain unexecuted for these cleanup slices.
 
   **Current scope and next work.** The offline manifest fixture remains. A prior read-only
   availability check found both canonical and retired package/cache paths absent, including

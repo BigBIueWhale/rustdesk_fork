@@ -891,6 +891,13 @@ def write_file(path, contents, mode):
     path.chmod(mode)
 
 
+def synthetic_maintainer_scripts():
+    return {
+        name: f"#!/bin/sh\nset -e\n# {name}\nexit 0\n".encode("ascii")
+        for name in ("preinst", "postinst", "prerm", "postrm")
+    }
+
+
 def make_synthetic_tree(root, polkit_policy):
     write_file(
         root / "DEBIAN/control",
@@ -903,8 +910,8 @@ def make_synthetic_tree(root, polkit_policy):
         0o644,
     )
     write_file(root / "DEBIAN/md5sums", "", 0o644)
-    for script in ("preinst", "postinst", "prerm", "postrm"):
-        write_file(root / f"DEBIAN/{script}", "#!/bin/sh\nset -e\nexit 0\n", 0o755)
+    for script, contents in synthetic_maintainer_scripts().items():
+        write_file(root / f"DEBIAN/{script}", contents.decode("ascii"), 0o755)
     for name in sorted(DATA_REQUIRED_FILES):
         path = root / name[2:]
         if name == "./usr/share/rustdesk/rustdesk":
@@ -1550,6 +1557,9 @@ def run_desktop_resource_self_test(repo):
         write_file(admission_repo / POLKIT_POLICY_SOURCE, policy.decode("ascii"), 0o644)
         unit = staging / "usr/lib/systemd/system/rustdesk.service"
         write_file(admission_repo / "res/rustdesk.service", unit.read_text(), 0o644)
+        for name in ("preinst", "postinst", "prerm", "postrm"):
+            write_file(admission_repo / "res/DEBIAN" / name,
+                       (staging / "DEBIAN" / name).read_text(), 0o644)
         write_file(admission_repo / "build.py",
                    'raise RuntimeError("producer executed during archive admission")\n', 0o644)
         command = [sys.executable, "-B", "-I", "-S", str(Path(__file__).resolve()),
@@ -2676,15 +2686,52 @@ def run_self_test(repo, polkit_policy):
         admission_repo = tmp / "admission-source"
         write_file(admission_repo / POLKIT_POLICY_SOURCE, polkit_policy.decode("utf-8"), 0o644)
         write_file(admission_repo / "res/rustdesk.service", expected_systemd_unit.decode("utf-8"), 0o644)
+        for name, contents in synthetic_maintainer_scripts().items():
+            write_file(admission_repo / "res/DEBIAN" / name, contents.decode("ascii"), 0o644)
         archives = (good_deb, tmp / "production-finalizer.deb")
         command = [sys.executable, "-B", "-I", "-S", str(Path(__file__).resolve()),
                    "--repo", str(admission_repo)]
+        valid_command = list(command)
         for archive in archives:
-            command.extend(("--deb", str(archive)))
-        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            valid_command.extend(("--deb", str(archive)))
+        result = subprocess.run(valid_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         expected_output = "".join(f"ok  Debian package archive verified: {path}\n" for path in archives).encode()
         if result.returncode != 0 or result.stdout != expected_output:
             raise ValidationError(f"valid package CLI admission failed: {result.returncode} {result.stdout[:8192]!r}")
+        script_cases = {}
+        script_failures = []
+        for name, contents in synthetic_maintainer_scripts().items():
+            changed = tmp / f"changed-{name}.deb"
+            write_modified_deb(good_deb, changed, control_transform=replace_tar_member(
+                "./" + name, contents=b"#!/bin/sh\nexit 42\n",
+            ))
+            source = admission_repo / "res/DEBIAN" / name
+            for kind, archive, diagnostic in (
+                ("changed", changed, f"bytes differ from res/DEBIAN/{name}"),
+                ("missing-source", good_deb, f"cannot read res/DEBIAN/{name}"),
+            ):
+                if kind == "missing-source":
+                    source.unlink()
+                try:
+                    result = subprocess.run(command + ["--deb", str(archive)],
+                                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                            timeout=10)
+                finally:
+                    if kind == "missing-source":
+                        source.write_bytes(contents)
+                case = f"{kind}-{name}"
+                script_cases[case] = {
+                    "archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+                    "source_sha256": hashlib.sha256(contents).hexdigest(),
+                    "returncode": result.returncode,
+                }
+                if (result.returncode != 1 or diagnostic.encode() not in result.stdout
+                        or b"Traceback" in result.stdout or b"ok  " in result.stdout):
+                    script_failures.append(f"{case}: {result.returncode} {result.stdout[:1024]!r}")
+        if script_failures:
+            raise ValidationError("maintainer-script CLI admission failed: " +
+                                  json.dumps(script_cases, sort_keys=True) + " " +
+                                  "; ".join(script_failures))
         compiler = shutil.which("cc")
         if compiler is None:
             raise ValidationError("fixture compiler disappeared")
@@ -2698,6 +2745,7 @@ def run_self_test(repo, polkit_policy):
             },
             "compiler_sha256": hashlib.sha256(Path(compiler).read_bytes()).hexdigest(),
             "cli_verified_archives": len(archives),
+            "maintainer_cli_cases": script_cases,
         }, sort_keys=True, separators=(",", ":")))
 
 

@@ -1336,8 +1336,12 @@ from pathlib import Path
 lines=Path(sys.argv[1]).read_text().splitlines()
 assert lines[0].startswith("DEBIAN_PACKAGE_SELF_TEST_ARTIFACTS=")
 value=json.loads(lines[0].split("=",1)[1])
-assert set(value)=={"fixture_archive_sha256","production_archive_sha256","runner_sha256","libraries_sha256","compiler_sha256","cli_verified_archives"}
+assert set(value)=={"fixture_archive_sha256","production_archive_sha256","runner_sha256","libraries_sha256","compiler_sha256","cli_verified_archives","maintainer_cli_cases"}
 assert value["cli_verified_archives"]==2 and len(value["libraries_sha256"])==12
+assert set(value["maintainer_cli_cases"])=={kind+"-"+name for kind in ("changed","missing-source") for name in ("preinst","postinst","prerm","postrm")}
+for case in value["maintainer_cli_cases"].values():
+ assert set(case)=={"archive_sha256","source_sha256","returncode"} and case["returncode"]==1
+ assert all(re.fullmatch("[0-9a-f]{64}",case[key]) for key in ("archive_sha256","source_sha256"))
 for digest in [value[name] for name in ("fixture_archive_sha256","production_archive_sha256","runner_sha256","compiler_sha256")]+list(value["libraries_sha256"].values()):
  assert re.fullmatch("[0-9a-f]{64}",digest)
 PY

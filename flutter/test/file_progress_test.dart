@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/models/file_model.dart';
@@ -25,7 +27,139 @@ class _ProgressHarness {
       {'id': '7', 'file_num': '3', 'speed': '12.5', 'finished_size': '40'};
 }
 
+class _ResumeHarness {
+  final session = const Uuid().v4obj();
+  late var currentSession = session;
+  final calls = <List<Object>>[];
+  final replies = <Completer<void>>[];
+  late final controller = JobController(() => currentSession, () => null,
+      isCurrentSession: (actual) => actual == currentSession,
+      nextJobId: () => 7,
+      requests: JobControllerRequests(
+        cancelJob: (_, __) async {},
+        addJob: (_, __, ___, ____, _____, ______, _______) async {},
+        resumeJob: (sessionId, actionId, isRemote) {
+          calls.add([sessionId, actionId, isRemote]);
+          final reply = Completer<void>();
+          replies.add(reply);
+          return reply.future;
+        },
+      ));
+
+  _ResumeHarness() {
+    controller.addTransferJob(Entry()..path = '/source/file', true, session);
+    job.state = JobState.paused;
+  }
+
+  JobProgress get job => controller.jobTable.single;
+  Future<bool> resume() =>
+      controller.resumeJob(7, expectedSessionId: session);
+}
+
 void main() {
+  for (final outcome in ['done', 'error', 'skipped']) {
+    test('resume reply preserves earlier $outcome event', () async {
+      for (final download in [false, true]) {
+        final h = _ResumeHarness();
+        h.job.isRemoteToLocal = download;
+        h.job.totalSize = 100;
+        final resumed = h.resume();
+        expect(h.calls, [[h.session, 7, download]]);
+        final event = {'id': '7', 'file_num': '0'};
+        if (outcome == 'done') {
+          expect(await h.controller.jobDone(event, h.session), isTrue);
+        } else {
+          h.controller.jobError(
+              {...event, 'err': outcome}, h.session);
+        }
+        final expected = outcome == 'error' ? JobState.error : JobState.done;
+        expect(h.job.state, expected);
+        final before = [h.job.err, h.job.fileNum, h.job.finishedSize];
+        h.replies.single.complete();
+        expect(await resumed, isTrue);
+        expect(h.job.state, expected);
+        expect([h.job.err, h.job.fileNum, h.job.finishedSize], before);
+      }
+    });
+  }
+
+  test('resume reply cannot mutate a removed or replacement job', () async {
+    for (final replace in [false, true]) {
+      final h = _ResumeHarness();
+      final original = h.job;
+      final resumed = h.resume();
+      expect(h.controller.removeJob(h.session, 7), isTrue);
+      if (replace) {
+        h.controller.addTransferJob(
+            Entry()..path = '/source/replacement', false, h.session);
+        h.job.state = JobState.paused;
+      }
+      h.replies.single.complete();
+      expect(await resumed, isFalse);
+      expect(original.state, JobState.paused);
+      if (replace) expect(h.job.state, JobState.paused);
+    }
+  });
+
+  test('resume accepts current paused jobs and refuses stale sessions', () async {
+    for (final download in [false, true]) {
+      final h = _ResumeHarness();
+      h.job.isRemoteToLocal = download;
+      final resumed = h.resume();
+      expect(h.calls, [[h.session, 7, download]]);
+      expect(h.job.state, JobState.paused);
+      h.replies.single.complete();
+      expect(await resumed, isTrue);
+      expect(h.job.state, JobState.inProgress);
+    }
+    final h = _ResumeHarness();
+    final resumed = h.resume();
+    h.currentSession = const Uuid().v4obj();
+    h.replies.single.complete();
+    expect(await resumed, isFalse);
+    expect(h.job.state, JobState.paused);
+    expect(await h.resume(), isFalse);
+    expect(await h.controller.resumeJob(8), isFalse);
+    expect(h.calls, hasLength(1));
+  });
+
+  test('resume bridge failure preserves the job and permits retry', () async {
+    final h = _ResumeHarness();
+    final failed = expectLater(h.resume(), throwsA(isA<StateError>()));
+    h.replies.single.completeError(StateError('bridge failed'));
+    await failed;
+    expect(h.job.state, JobState.paused);
+    final retried = h.resume();
+    h.replies.last.complete();
+    expect(await retried, isTrue);
+    expect(h.job.state, JobState.inProgress);
+    expect(h.calls, hasLength(2));
+  });
+
+  test('resume refuses nonpaused and nontransfer jobs before dispatch', () async {
+    final h = _ResumeHarness();
+    for (final state in JobState.values.where((s) => s != JobState.paused)) {
+      h.job.state = state;
+      final resumed = h.resume();
+      if (h.replies.isNotEmpty) {
+        h.replies.removeLast().complete();
+      }
+      expect(await resumed, isFalse);
+      expect(h.job.state, state);
+    }
+    h.job.state = JobState.paused;
+    for (final type in JobType.values.where((t) => t != JobType.transfer)) {
+      h.job.type = type;
+      final resumed = h.resume();
+      if (h.replies.isNotEmpty) {
+        h.replies.removeLast().complete();
+      }
+      expect(await resumed, isFalse);
+      expect(h.job.state, JobState.paused);
+    }
+    expect(h.calls, isEmpty);
+  });
+
   test('file progress accepts zero fractional speed and large byte counts', () {
     final h = _ProgressHarness();
     for (final size in ['0', '4294967296', '9007199254740992']) {

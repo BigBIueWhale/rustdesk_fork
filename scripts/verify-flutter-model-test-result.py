@@ -669,6 +669,13 @@ FILE_COMMAND_TESTS = {
     "new file job owners share admission with listing owners",
 }
 FILE_PROGRESS_TESTS = {
+    "resume reply preserves earlier done event",
+    "resume reply preserves earlier error event",
+    "resume reply preserves earlier skipped event",
+    "resume reply cannot mutate a removed or replacement job",
+    "resume accepts current paused jobs and refuses stale sessions",
+    "resume bridge failure preserves the job and permits retry",
+    "resume refuses nonpaused and nontransfer jobs before dispatch",
     "first file upload progress renders before file completion",
     "first file download progress renders before file completion",
     "before-first progress index cannot complete a file command",

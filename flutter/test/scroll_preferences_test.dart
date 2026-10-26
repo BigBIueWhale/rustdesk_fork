@@ -267,6 +267,52 @@ void main() {
     current.dispose();
   });
 
+  testWidgets('scroll menu restores thickness after an unconfirmed backend effect', (tester) async {
+    final failures = <String>[];
+    for (final outcome in ['error', 'mismatch']) {
+      final s = _Session()..preferences.style = kRemoteScrollStyleEdge;
+      final retry = Completer<int>();
+      s.writer.thickness = (value) async {
+        if (s.writer.calls.length == 1) {
+          s.preferences.thickness = value;
+          if (outcome == 'error') throw StateError('confirmation unavailable');
+          return value + 1;
+        }
+        return retry.future;
+      };
+      await _menu(tester, s);
+      await _flush(tester);
+      _slider(tester).onChanged!(80);
+      await _debounce(tester);
+      expect(s.writer.calls, [('thickness', 80)]);
+      expect(s.preferences.thickness, 80);
+      expect(s.canvasModel.edgeScrollEdgeThickness, 100);
+      expect(find.text('Failed'), findsOneWidget);
+      await _menu(tester, s);
+      _slider(tester).onChanged!(100);
+      await _debounce(tester);
+      final admitted = s.writer.calls.length == 2 &&
+          s.writer.calls.last == ('thickness', 100);
+      final waiting = s.canvasModel.scrollPreferenceSavePending &&
+          _barChoice(tester).onChanged == null;
+      expect(s.preferences.thickness, 80);
+      retry.complete(100);
+      await _flush(tester);
+      final restored = s.preferences.thickness == 100 &&
+          s.canvasModel.edgeScrollEdgeThickness == 100;
+      debugPrint('EDGE_RESTORE_MENU outcome=$outcome admitted=$admitted '
+          'waiting=$waiting restored=$restored calls=${s.writer.calls}');
+      if (!admitted || !waiting || !restored) failures.add(outcome);
+      expect(_slider(tester).value, 100);
+      expect(s.canvasModel.scrollPreferenceSavePending, isFalse);
+      expect(_barChoice(tester).onChanged, isNotNull);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      s.dispose();
+    }
+    expect(failures, isEmpty);
+  });
+
   testWidgets('scroll menu read failure retries without writing defaults', (tester) async {
     final s = _Session();
     s.preferences.readStyle = (call) => call == 1
@@ -391,6 +437,53 @@ void main() {
     await _debounce(tester);
     expect(calls, isEmpty);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('edge thickness rebuild preserves an unconfirmed restore', (tester) async {
+    final failures = <String>[];
+    for (final outcome in ['error', 'null', 'mismatch']) {
+      final key = ValueKey(outcome);
+      final retry = Completer<int?>();
+      final calls = <int>[];
+      var stored = 100;
+      var waiting = false;
+      Future<int?> save(int value) async {
+        calls.add(value);
+        if (calls.length == 3) {
+          waiting = true;
+          await retry.future;
+          waiting = false;
+        }
+        stored = value;
+        if (calls.length != 2) return value;
+        if (outcome == 'error') throw StateError('confirmation unavailable');
+        return outcome == 'null' ? null : value + 1;
+      }
+      await _controls(tester, key: key, save: save);
+      _slider(tester).onChanged!(80);
+      await _debounce(tester);
+      expect(calls, [80]);
+      _slider(tester).onChanged!(90);
+      await _debounce(tester);
+      expect(find.text('Failed'), findsOneWidget);
+      await _controls(tester, key: key, value: 80, save: save);
+      expect(_slider(tester).value, 90);
+      expect(find.text('Failed'), findsOneWidget);
+      _slider(tester).onChanged!(80);
+      await _debounce(tester);
+      final admitted = calls.length == 3 && calls.last == 80;
+      final held = waiting;
+      expect(stored, 90);
+      retry.complete(80);
+      await _flush(tester);
+      final restored = stored == 80 && !waiting;
+      debugPrint('EDGE_RESTORE_REBUILD outcome=$outcome admitted=$admitted '
+          'waiting=$held restored=$restored calls=$calls');
+      if (!admitted || !held || !restored) failures.add(outcome);
+      expect(_slider(tester).value, 80);
+      expect(tester.takeException(), isNull);
+    }
+    expect(failures, isEmpty);
   });
 
   testWidgets('edge thickness removed admitted work retires feedback', (tester) async {

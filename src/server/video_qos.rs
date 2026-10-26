@@ -1512,6 +1512,40 @@ mod tests {
         let quality_not_increased = qos.ratio() <= previous_ratio;
         println!("VIDEO_QOS_CONGESTION=observed excess_ms={excess} rate_reduced={rate_reduced} quality_not_increased={quality_not_increased}");
         assert!(excess >= DELAY_THRESHOLD_150MS && rate_reduced && quality_not_increased);
+
+        let mut outcomes = Vec::new();
+        for quality in [ImageQuality::Low, ImageQuality::Balanced, ImageQuality::Best] {
+            for excess in [150, 199, 200, 299, 300, 599, 600, 1000] {
+                let mut qos = controller_with_baseline(20);
+                qos.user_image_quality(7, quality.value());
+                qos.user_custom_fps(7, 20);
+                for _ in 0..2 {
+                    qos.user_network_delay(7, 4020);
+                }
+                assert_eq!(qos.fps(), MIN_FPS);
+                let mut rates = Vec::new();
+                let mut nonincreasing = true;
+                for _ in 0..3 {
+                    let before = qos.fps();
+                    qos.user_network_delay(7, 20 + excess);
+                    nonincreasing &= qos.fps() <= before;
+                    rates.push(qos.fps());
+                }
+                let measured = qos.users[&7].delay.avg_delay();
+                for _ in 0..60 {
+                    qos.user_network_delay(7, 20);
+                }
+                let recovered = qos.fps() == 20 && qos.users.len() == 1
+                    && qos.users[&7].custom_fps == Some(20)
+                    && qos.users[&7].delay.avg_delay() == 0;
+                println!("VIDEO_QOS_CONGESTION=observed kind=post-outage quality={quality:?} excess_ms={excess} measured_ms={measured} rates={rates:?} nonincreasing={nonincreasing} recovered={recovered}");
+                outcomes.push(measured == excess && nonincreasing && recovered);
+            }
+        }
+        let failures = outcomes.iter().filter(|&&ok| !ok).count();
+        println!("VIDEO_QOS_CONGESTION=complete kind=post-outage cases={} failures={failures}", outcomes.len());
+        assert_eq!(failures, 0,
+            "continued congestion cannot justify increasing the sending rate after an outage");
     }
 
     #[test]

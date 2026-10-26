@@ -6095,7 +6095,7 @@ elif [ "$MODE" = hbb-common-fs ]; then
         hbb_receipt_scope='root=readonly caps=none nnp=on apparmor=docker-default snapshot=readonly mounted_fuse=unexecuted cleanup=joined'
     elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
         hbb_receipt_kind=FILE_SEND_DIGEST_VM
-        hbb_receipt_scope='root=readonly caps=none nnp=on apparmor=docker-default scope=send-digest-and-read-admission cleanup=joined'
+        hbb_receipt_scope='root=readonly caps=none nnp=on apparmor=docker-default scope=transfer-resume-and-send-admission cleanup=joined'
     elif [ "$RUST_TEST_PROFILE" = file-metadata ]; then
         hbb_receipt_kind=FILE_METADATA_VM
     elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then

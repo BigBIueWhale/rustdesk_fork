@@ -8701,6 +8701,23 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   application acceptance. Concurrent procfs/exec races, all fifteen credential
   actions, R-S0/R-F5, platform/release acceptance and all user parks remain OPEN.
 
+  **Linux role argv resource bounds (`7382ed58`).** The process-role reader caps
+  procfs input at three kernel-maximum-length exec arguments plus one overflow
+  detection byte, then refuses more than three arguments before per-argument
+  allocation. Exact bytes, empty positions and complete role checks remain.
+  At unchanged product `0da740c2`, nineteen controls pass but the new regression
+  fails: four arguments, 524,288 input bytes and a 65,536-byte argv region rewritten
+  to NULs all enter the snapshot; the latter creates 65,536 vector entries.
+  The identical fixture passes all twenty component tests after correction.
+  Seven supported layouts preserve a kernel-maximum 131,071-byte program-name
+  argument; all three excessive-input cases refuse and every peer joins.
+  The corrected outer run takes 31s. `linux-argv-bounds-407793ad.json` retains
+  the A/B source/artifacts, actual procfs observations and bounded-RAM cleanup.
+  This fixes component allocation amplification; it does not demonstrate an
+  escalation or installed denial of service. Full parent/installed receiver,
+  concurrent procfs/exec races, complete functionality, R-S0/R-F5 and release
+  acceptance remain OPEN; all user parks remain unchanged.
+
   **Linux supervisor child argv (`c709c756`).** Retained service-child record
   revalidation preserves every argument position: it removes only one final NUL
   and consumes exactly the program-name slot plus the two existing role flags,

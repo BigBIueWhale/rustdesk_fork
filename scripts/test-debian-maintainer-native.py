@@ -152,19 +152,26 @@ def main():
         candidate_status = status()
         candidate_service = service_state()
         run(['systemctl', 'show', UNIT, '--property=LoadState,ActiveState,SubState,Result,UnitFileState'])
-        require(candidate_status == 'installed' and candidate_service == 'active',
+        require(candidate_status == 'installed' and candidate_service == 'inactive',
                 f'candidate upgrade state differs: package={candidate_status} service={candidate_service}')
+        require(run(['systemctl', 'show', '--property=UnitFileState', '--value', UNIT]).strip()
+                == 'disabled', 'upgrade did not preserve native systemd disablement')
         installed = Path('/var/lib/dpkg/info')
         require((installed / f'{PACKAGE}.prerm').read_bytes() == sources['prerm'],
                 'dpkg did not install the exact candidate prerm')
         run(['update-rc.d', 'rustdesk', 'disable'])
         candidate_links = links()
         require(candidate_links == disabled_links, 'candidate disabled state differs')
+        run(['systemctl', 'start', UNIT])
+        require(service_state() == 'active', 'explicit start did not activate the disabled fixture')
         run([str(installed / f'{PACKAGE}.prerm'), 'deconfigure'])
         require(INIT.is_file() and links() == candidate_links and service_state() == 'inactive',
                 'deconfigure failed to stop the fixture while preserving init/link state')
         run([str(installed / f'{PACKAGE}.postinst'), 'configure'])
-        require(service_state() == 'active', 'configure did not restart after deconfigure')
+        require(service_state() == 'inactive' and links() == disabled_links,
+                'configure did not preserve administrator-disabled startup state')
+        run(['systemctl', 'start', UNIT])
+        require(service_state() == 'active', 'fixture was not active before package removal')
 
         run(['dpkg', '--remove', PACKAGE])
         require(status() == 'config-files' and INIT.is_file() and links() == candidate_links,
@@ -172,7 +179,7 @@ def main():
         require(service_state() == 'inactive' and not UNIT_PATH.exists(),
                 'package removal left the fixture unit active or installed')
         run(['dpkg', '--install', str(candidate)])
-        require(status() == 'installed' and service_state() == 'active'
+        require(status() == 'installed' and service_state() == 'inactive'
                 and links() == disabled_links,
                 'candidate reinstallation lost the administrator-disabled SysV state')
         run(['dpkg', '--remove', PACKAGE])

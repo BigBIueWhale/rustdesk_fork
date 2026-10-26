@@ -38,8 +38,22 @@ pub(crate) fn clipboard_content_for_native(
         .format
         .enum_value()
         .map_err(|e| hbb_common::anyhow::anyhow!("invalid clipboard format: {e}"))?;
+    let output_limit = if format == hbb_common::message_proto::ClipboardFormat::ImageRgba {
+        rgba_clipboard_len(clipboard.width, clipboard.height)
+            .filter(|length| *length <= MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES)
+            .ok_or_else(|| hbb_common::anyhow::anyhow!(
+                "invalid clipboard image geometry: width={}, height={}",
+                clipboard.width,
+                clipboard.height,
+            ))?
+    } else {
+        MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES
+    };
     let data: Cow<'_, [u8]> = if clipboard.compress {
-        Cow::Owned(hbb_common::compress::try_decompress(&clipboard.content)?)
+        Cow::Owned(hbb_common::compress::try_decompress_with_limit(
+            &clipboard.content,
+            output_limit,
+        )?)
     } else {
         Cow::Borrowed(&clipboard.content)
     };

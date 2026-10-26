@@ -929,6 +929,25 @@ real UIPI/desktop failures and installed/resource/release acceptance.
 are absent; native execution and the full verification gate were not run.
 No Linux component result is Windows acceptance.
 
+### Relative mouse setup — generation-owned; native cursor acceptance OPEN
+
+`85314f0a` makes deferred geometry and enable completion belong to the captured
+mode generation, session and window. Disable, session reset and disposal retire
+the generation; disposed models refuse new enable requests. Geometry returns an
+explicit success result and rejects missing, failed, nonfinite or empty frames.
+Stale replies cannot publish coordinates, recenter the cursor or disable a newer
+mode; Windows/Linux enable completion rechecks keyboard/camera admission.
+The unchanged nine-case Flutter probe reproduces eight failures at `93040b77`,
+including an old-coordinate warp request; the normal enable/disable control and
+103 existing input cases pass. At `85314f0a`, all 112 cases and three parser controls
+pass in the zero-NIC Linux VM (280 seconds). The model and channel decoder are real;
+window replies and native effects are controlled doubles, with exact source-copy
+checks. Both runs join QEMU, retire bounded RAM scratch and have zero endpoint deltas.
+Evidence: `.harness-state/verifier-vm/relative-enable-67ce683b.json`.
+Actual OS cursor locking/warping, focus and session transitions, macOS pending native
+enable ownership/cleanup, other deferred input work, resource soaks, installed/R-S0
+and R-F5 acceptance remain OPEN. This is not a demonstrated privilege-escalation fix.
+
 ### Keyboard state and Linux Enigo XDO — admission before input; integration OPEN
 
 **Retirement finality:** provider24 changes `xdo_free` from void to a checked

@@ -18,6 +18,9 @@ mod cursor_echo;
 #[path = "test-viewer-voice.rs"]
 mod viewer_voice;
 
+#[path = "test-viewer-fps.rs"]
+mod viewer_fps;
+
 #[path = "test-controlled-voice.rs"]
 mod controlled_voice;
 

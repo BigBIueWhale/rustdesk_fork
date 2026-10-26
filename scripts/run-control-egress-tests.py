@@ -35,6 +35,7 @@ INPUTS = (
     "src/client.rs", "scripts/test-port-forward-settings.rs",
     "src/port_forward.rs", "libs/hbb_common/src/tcp.rs",
     "scripts/test-rdp-launch.rs", "scripts/test-tunnel-port-kind.rs", "src/cli.rs",
+    "scripts/test-viewer-fps.rs",
 )
 
 
@@ -276,6 +277,16 @@ def main():
         inputs["src/flutter_ffi.rs"].decode("utf-8"),
         "pub fn cm_handle_incoming_voice_call(", "pub fn set_voice_call_input_device(")
     viewer = inputs["src/client/io_loop.rs"].decode("utf-8")
+    snippets["viewer-fps-method.rs"] = (
+        "impl ViewerFps {\n" + between(viewer, "    fn fps_control(",
+            "    fn check_view_camera_support(") + "}\n")
+    snippets["viewer-fps-state.rs"] = between(
+        viewer, "#[derive(Debug, Default)]\nstruct FpsControl {", "struct VideoThread {")
+    queue_limits = re.findall(r"^pub const VIDEO_FRAME_QUEUE_CAPACITY: usize = [0-9]+;\n",
+                              client, re.MULTILINE)
+    if len(queue_limits) != 1:
+        raise ValueError("viewer video queue capacity is absent or ambiguous")
+    snippets["viewer-fps-limit.rs"] = queue_limits[0]
     snippets["viewer-voice-stop.rs"] = (
         "impl ViewerVoice {\n" + between(
             viewer, "    async fn stop_voice_call(&mut self) {",
@@ -424,6 +435,8 @@ def main():
             print(f"CONTROL_EGRESS_SOURCE=pass part={name} bytes={len(body.encode())} "
                   f"sha256={digest(body.encode())}", flush=True)
         os.environ["CONTROL_EGRESS_SOURCE"] = str(fixture / "queue.rs")
+        for part in ("method", "state", "limit"):
+            os.environ["VIEWER_FPS_" + part.upper()] = str(fixture / ("viewer-fps-" + part + ".rs"))
         os.environ["CONTROL_EGRESS_TESTS"] = str(fixture / "tests.rs")
         os.environ["CONTROL_EGRESS_LIMIT"] = str(fixture / "packet-limit.rs")
         os.environ["FILE_CLIPBOARD_SOURCE"] = str(fixture / "file-clipboard.rs")
@@ -552,13 +565,13 @@ def main():
             print(f"CONTROL_EGRESS_INPUT=pass path={name} bytes={len(body)} sha256={digest(body)}")
         print(f"CONTROL_EGRESS_BUILD=pass seconds={time.monotonic() - started:.3f} "
               f"sha256={artifact_sha}", flush=True)
-        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=92", flush=True)
+        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=93", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("controlled-egress artifact changed during execution")
-            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=92 unchanged=before-after", flush=True)
+            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=93 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("controlled-egress artifact or dependencies changed")
         for name, body in snippets.items():
@@ -567,7 +580,7 @@ def main():
         for name, body in inputs.items():
             if (repo / name).read_bytes() != body:
                 raise ValueError(f"controlled-egress source changed: {name}")
-        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=92 unchanged=before-after",
+        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=93 unchanged=before-after",
               flush=True)
 
 

@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_hbb/models/file_model.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:percent_indicator/percent_indicator.dart';
 import 'package:uuid/uuid.dart';
 
 class _ProgressHarness {
@@ -71,7 +73,10 @@ void main() {
   test('file progress refuses invalid action and file identities', () {
     final h = _ProgressHarness();
     for (final key in ['id', 'file_num']) {
-      for (final value in <Object?>[null, 7, '-1', '01', '2147483648', 'bad']) {
+      for (final value in <Object?>[
+        null, 7, key == 'id' ? '-1' : '-2', '-01', ' -1', '-1.0',
+        '01', '2147483648', 'bad'
+      ]) {
         h.controller.tryUpdateJobProgress(
             h.event()..[key] = value, h.session);
         expect(h.snapshot, [2, 10.0, 20, false]);
@@ -104,5 +109,76 @@ void main() {
     }
     expect(messages.join('\n'), isNot(contains('private-event-marker')));
     expect(messages.join('\n'), isNot(contains('finished_size')));
+  });
+
+  for (final download in [false, true]) {
+    final direction = download ? 'download' : 'upload';
+    testWidgets('first file $direction progress renders before file completion',
+        (tester) async {
+      final h = _ProgressHarness();
+      h.job
+        ..fileNum = 0
+        ..finishedSize = 0
+        ..totalSize = 100
+        ..fileCount = 2
+        ..isRemoteToLocal = download;
+      Future<void> render() => tester.pumpWidget(MaterialApp(
+            home: Scaffold(
+              body: Column(children: [
+                Text(h.job.getStatus()),
+                LinearPercentIndicator(
+                  animateFromLastPercent: true,
+                  center: Text(h.job.percentText),
+                  percent: h.job.percent,
+                ),
+              ]),
+            ),
+          ));
+
+      await render();
+      expect(find.text('0%'), findsOneWidget);
+      h.controller.tryUpdateJobProgress(
+          h.event()..['file_num'] = '-1', h.session);
+      await render();
+      expect(find.text('40%'), findsOneWidget);
+      expect(h.job.getStatus(), startsWith('0/2 files'));
+      expect(h.snapshot, [-1, 12.5, 40, true]);
+      expect(h.job.state, JobState.inProgress);
+      expect(tester.takeException(), isNull);
+
+      h.controller.tryUpdateJobProgress(
+          h.event()
+            ..['file_num'] = '0'
+            ..['finished_size'] = '60',
+          h.session);
+      await render();
+      expect(find.text('60%'), findsOneWidget);
+      expect(h.job.getStatus(), startsWith('1/2 files'));
+      expect(h.snapshot, [0, 12.5, 60, true]);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  test('before-first progress index cannot complete a file command', () async {
+    final h = _ProgressHarness();
+    final listener = h.controller.jobResultListener;
+    final result = listener.dispatchAndWait(
+        expectedSessionId: h.session,
+        actionId: 7,
+        fileNum: 0,
+        dispatch: () async {});
+    try {
+      final beforeFirst = h.event()..['file_num'] = '-1';
+      expect(await h.controller.jobDone(beforeFirst, h.session), isFalse);
+      expect(h.job.state, JobState.inProgress);
+      expect(listener.tryComplete(h.session, beforeFirst), isFalse);
+      expect(listener.tryCompleteError(
+          h.session, {...beforeFirst, 'err': 'unowned'}), isFalse);
+      expect(listener.tryComplete(
+          h.session, h.event()..['file_num'] = '0'), isTrue);
+      expect((await result)['file_num'], '0');
+    } finally {
+      listener.clear();
+    }
   });
 }

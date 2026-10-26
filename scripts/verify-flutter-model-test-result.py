@@ -657,6 +657,9 @@ FILE_COMMAND_TESTS = {
     "new file job owners share admission with listing owners",
 }
 FILE_PROGRESS_TESTS = {
+    "first file upload progress renders before file completion",
+    "first file download progress renders before file completion",
+    "before-first progress index cannot complete a file command",
     'file progress accepts zero fractional speed and large byte counts',
     'file progress refuses invalid speeds without partial mutation',
     'file progress refuses invalid byte counts without partial mutation',

@@ -377,6 +377,7 @@ void main() {
       model.inputNode.dispose();
       model.dispose();
     }
+
     addTearDown(dispose);
     final closing = overlay.middleBlocked.listen((blocked) {
       if (!blocked) dispose();

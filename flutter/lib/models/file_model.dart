@@ -1569,22 +1569,30 @@ class JobController {
   void tryUpdateJobProgress(
       Map<String, dynamic> evt, SessionID expectedSessionId) {
     if (!isCurrentSession(expectedSessionId)) return;
-    try {
-      final id = _eventInt(evt['id'], positive: true);
-      final fileNum = _eventInt(evt['file_num']);
-      if (id == null || fileNum == null) return;
-      final jobIndex = getJob(id);
-      if (jobIndex >= 0 && jobTable.length > jobIndex) {
-        final job = jobTable[jobIndex];
-        job.fileNum = fileNum;
-        job.speed = double.parse(evt['speed']);
-        job.finishedSize = int.parse(evt['finished_size']);
-        job.recvJobRes = true;
-        jobTable.refresh();
-      }
-    } catch (e) {
-      debugPrint("Failed to tryUpdateJobProgress, evt: ${evt.toString()}");
+    final id = _eventInt(evt['id'], positive: true);
+    final fileNum = _eventInt(evt['file_num']);
+    if (id == null || fileNum == null) return;
+    final jobIndex = getJob(id);
+    if (jobIndex < 0) return;
+    final speedValue = evt['speed'];
+    final sizeValue = evt['finished_size'];
+    final speed = speedValue is String ? double.tryParse(speedValue) : null;
+    final finishedSize = sizeValue is String ? int.tryParse(sizeValue) : null;
+    if (speed == null ||
+        !speed.isFinite ||
+        speed < 0 ||
+        finishedSize == null ||
+        finishedSize < 0 ||
+        sizeValue != finishedSize.toString()) {
+      debugPrint('Failed to update file progress: invalid numeric fields');
+      return;
     }
+    final job = jobTable[jobIndex];
+    job.fileNum = fileNum;
+    job.speed = speed;
+    job.finishedSize = finishedSize;
+    job.recvJobRes = true;
+    jobTable.refresh();
   }
 
   Future<bool> jobDone(

@@ -829,9 +829,17 @@ PEER_CACHE_TESTS = {
     "peer cache coalesces pending updates to the latest list",
     "peer cache disposal cancels pending and refuses later publication",
 }
+AUTOCOMPLETE_PEER_TESTS = {
+    "autocomplete aliased long address fits 220 pixels",
+    "autocomplete plain long address fits 220 pixels",
+    "autocomplete aliased long address fits 320 pixels",
+    "autocomplete plain long address fits 320 pixels",
+    "autocomplete short alias and address remain fully visible",
+}
 PEER_DATA_SUITES = {
     "peer_decode_test.dart": PEER_DATA_TESTS,
     "peer_tab_cache_test.dart": PEER_CACHE_TESTS,
+    "autocomplete_peer_tile_test.dart": AUTOCOMPLETE_PEER_TESTS,
 }
 TERMINAL_OUTPUT_TESTS = {
     "terminal_output_decoder_test.dart": {

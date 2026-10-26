@@ -78,7 +78,8 @@ def main():
                 raise ValueError(f"FUSE dispatch command failed: {result.returncode}")
             return result.stdout
 
-        run(["cargo", "generate-lockfile", "--offline", *config], 30)
+        (root / "Cargo.lock").write_bytes(inputs["Cargo.lock"])
+        run(["cargo", "metadata", "--offline", "--format-version=1", *config], 30)
         lock = (root / "Cargo.lock").read_bytes()
         for p in tomllib.loads(lock.decode())["package"]:
             if "source" not in p:

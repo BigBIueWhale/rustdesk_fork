@@ -13,7 +13,6 @@ pub fn compress(data: &[u8]) -> io::Result<Vec<u8>> {
                 format!("compression context is unavailable: {err}"),
             )
         })?;
-        let zstd_error = |code| io::Error::new(io::ErrorKind::Other, zstd_safe::get_error_name(code));
         let compressor = match &mut *state {
             Some(context) => context,
             slot @ None => {
@@ -49,6 +48,53 @@ pub(crate) fn with_busy_compressor_for_test<T>(action: impl FnOnce() -> T) -> T 
     })
 }
 
+fn zstd_error(code: usize) -> io::Error {
+    io::Error::new(io::ErrorKind::Other, zstd_safe::get_error_name(code))
+}
+
+struct DecoderOperation(zstd_safe::DCtx<'static>);
+
+impl zstd::stream::raw::Operation for DecoderOperation {
+    fn run<C: zstd_safe::WriteBuf + ?Sized>(
+        &mut self,
+        input: &mut zstd_safe::InBuffer<'_>,
+        output: &mut zstd_safe::OutBuffer<'_, C>,
+    ) -> io::Result<usize> {
+        self.0.decompress_stream(output, input).map_err(zstd_error)
+    }
+
+    fn reinit(&mut self) -> io::Result<()> {
+        self.0.reset(zstd_safe::ResetDirective::SessionOnly)
+            .map(|_| ()).map_err(zstd_error)
+    }
+
+    fn finish<C: zstd_safe::WriteBuf + ?Sized>(
+        &mut self,
+        _output: &mut zstd_safe::OutBuffer<'_, C>,
+        finished_frame: bool,
+    ) -> io::Result<usize> {
+        if finished_frame {
+            Ok(0)
+        } else {
+            Err(io::Error::new(io::ErrorKind::UnexpectedEof, "incomplete frame"))
+        }
+    }
+}
+
+/// Own a fallibly allocated decoder with borrowed input and bounded history.
+pub(crate) fn decoder_with_window_limit(
+    data: &[u8],
+    max_window_log: u32,
+) -> io::Result<impl io::Read + '_> {
+    let mut context = zstd_safe::DCtx::try_create()
+        .ok_or_else(|| io::Error::from(io::ErrorKind::OutOfMemory))?;
+    context.init().map_err(zstd_error)?;
+    context.load_dictionary(&[]).map_err(zstd_error)?;
+    context.set_parameter(zstd_safe::DParameter::WindowLogMax(max_window_log))
+        .map_err(zstd_error)?;
+    Ok(zstd::stream::zio::Reader::new(data, DecoderOperation(context)))
+}
+
 /// The default decoded-output ceiling and the shared decoder's independent
 /// history-window ceiling (R-S7). File blocks use their own stricter decoder.
 const MAX_DECOMPRESSED: usize = 64 * 1024 * 1024;
@@ -57,8 +103,7 @@ const MAX_DECOMPRESSED: usize = 64 * 1024 * 1024;
 /// limit. Decode and limit failures remain explicit receive errors.
 pub fn try_decompress_with_limit(data: &[u8], max_decompressed: usize) -> io::Result<Vec<u8>> {
     use io::Read;
-    let mut decoder = zstd::stream::read::Decoder::with_buffer(data)?;
-    decoder.window_log_max(MAX_DECOMPRESSED.ilog2())?;
+    let decoder = decoder_with_window_limit(data, MAX_DECOMPRESSED.ilog2())?;
     let read_limit = u64::try_from(max_decompressed)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "decompression limit overflow"))?;
     let read_limit = read_limit.checked_add(1).ok_or_else(|| {

@@ -3355,6 +3355,30 @@ production loading, logging and recovery are byte-identical in this slice.
 Full app/installed logger sinks and permissions, previous log retention, native
 other-platform, R-S0/R-F5 and release acceptance remain OPEN.
 
+**File-log size rotation (`88c90361`).** The shared release file-logger builder
+rotates at either a day boundary or after 4 MiB, retaining the existing timestamp
+naming and 31-archive policy. Quiet logging keeps daily rotation; busy logging no
+longer accumulates an entire day's output in one file. The preparation `7ed45077`
+extracts the existing builder without changing its policy and adds a focused
+`--file-logging-tests` profile. Both real-file cases fail under that daily-only
+policy: one current file reaches 5,260,877 bytes, and sustained writes leave one
+143,093,837-byte file. Those failures precede the later preservation assertions.
+The same tests pass after the one-expression policy change: the busy case has two
+files, largest 4,208,640 bytes, and the sustained case retains 31 archives plus
+current, totaling 130,467,917 bytes after joined cleanup. Every tested file stays
+within the threshold plus the bounded test record; the final record and unrelated
+file survive. The Linux Rust 1.75 library artifact executes both cases in 0.10
+seconds, 133 outer seconds including its isolated build; 573 other cases are
+filtered out. No parked configuration/filesystem/transport cohort runs.
+`file-log-rotation-5207cdbe.json` binds source, artifacts, actual outcomes and joined
+RAM cleanup; all before/during/after listener snapshots are unchanged. This runs
+the production builder with the pinned flexi_logger 0.27.4 and real files, not the
+complete release startup or installed privileged logger. Rotation is a threshold,
+not a strict disk quota: one record can overshoot, background cleanup can lag, and
+existing oversized archives retire under normal retention. Record-size bounds,
+multiple-process/log-family behavior, filesystem permissions/races, actual daily
+rollover, native other-platform, flood/soak, R-S0/R-F5 and release acceptance remain OPEN.
+
 **Retired TCP-disable query (`658d5270`).** The unused
 `is_disable_tcp_listen()` resolver is deleted. Both former rendezvous callers
 were removed by `ec589b8c`; current source has no caller. The direct listener,

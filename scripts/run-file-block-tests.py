@@ -68,7 +68,7 @@ def main():
             f'#[path = "{repo}/libs/hbb_common/src/fs/file_block.rs"] mod file_block;\n'
             f'#[path = "{repo}/scripts/test-compression-context.rs"] mod compression_context;\n')
         (fixture / "build.rs").write_text(
-            'fn main() { println!("cargo:rustc-link-arg=-Wl,--wrap=ZSTD_createCCtx"); }\n')
+            'fn main() { println!("cargo:rustc-link-arg=-Wl,--wrap=ZSTD_createCCtx,--wrap=ZSTD_createDCtx,--wrap=ZSTD_freeDCtx"); }\n')
         run(["cargo", "generate-lockfile", "--offline", *config], fixture, 30)
         lock_bytes = (fixture / "Cargo.lock").read_bytes()
         dependencies = []
@@ -95,20 +95,20 @@ def main():
             raise ValueError("file-block artifact is absent or ambiguous")
         artifact = candidates[0]
         artifact_sha = digest(artifact.read_bytes())
-        print(f"FILE_BLOCK_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=13", flush=True)
+        print(f"FILE_BLOCK_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=15", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture, 20)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("file-block artifact changed during execution")
-            print(f"FILE_BLOCK_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=13 unchanged=before-after", flush=True)
+            print(f"FILE_BLOCK_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=15 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("file-block artifact or lock changed")
         for name, data in inputs.items():
             if (repo / name).read_bytes() != data:
                 raise ValueError(f"file-block source changed: {name}")
             print(f"FILE_BLOCK_INPUT=pass path={name} bytes={len(data)} sha256={digest(data)}")
-        print(f"FILE_BLOCK_ARTIFACT=pass sha256={artifact_sha} tests=13 unchanged=before-after", flush=True)
+        print(f"FILE_BLOCK_ARTIFACT=pass sha256={artifact_sha} tests=15 unchanged=before-after", flush=True)
 
 
 if __name__ == "__main__":

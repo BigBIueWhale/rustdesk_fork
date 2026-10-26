@@ -2726,6 +2726,10 @@ impl<T: InvokeUiSession> Remote<T> {
             if should_decrease && limited_fps < max_queue_len {
                 auto_fps = limited_fps / 2;
             }
+            if should_decrease {
+                // A decode backlog cannot justify raising the admitted sending limit.
+                auto_fps = auto_fps.min(last_auto_fps.unwrap_or(custom_fps));
+            }
             if auto_fps < 1 {
                 auto_fps = 1;
             }

@@ -107,6 +107,88 @@ class _StatusHarness {
 
 
 void main() {
+  for (final direction in TextDirection.values) {
+    testWidgets('mobile action sheet keeps long ${direction.name} text and actions inside a narrow screen',
+        (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(320, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      final title = List.filled(8, 'Selected files').join(' ');
+      final detail = List.filled(8, '123456789 items from this device').join(' ');
+      final calls = <String>[];
+      await tester.pumpWidget(MaterialApp(
+        home: Directionality(
+          textDirection: direction,
+          child: Scaffold(
+            bottomSheet: BottomSheetBody(
+              leading: const Icon(Icons.check),
+              title: title,
+              text: detail,
+              actions: [
+                IconButton(icon: const Icon(Icons.compare_arrows),
+                    onPressed: () => calls.add('switch')),
+                IconButton(icon: const Icon(Icons.delete_forever),
+                    onPressed: () => calls.add('delete')),
+              ],
+              onCanceled: () => calls.add('cancel'),
+            ),
+          ),
+        ),
+      ));
+      expect(tester.takeException(), isNull);
+      final sheet = tester.getRect(find.byType(BottomSheet));
+      for (final text in [title, detail]) {
+        final bounds = tester.getRect(find.text(text));
+        expect(sheet.contains(bounds.topLeft), isTrue);
+        expect(sheet.contains(bounds.bottomRight), isTrue);
+      }
+      for (final icon in [Icons.compare_arrows, Icons.delete_forever,
+          Icons.cancel_outlined]) {
+        final button = find.widgetWithIcon(IconButton, icon);
+        final bounds = tester.getRect(button);
+        expect(sheet.contains(bounds.center), isTrue);
+        expect(bounds.left, greaterThanOrEqualTo(0));
+        expect(bounds.right, lessThanOrEqualTo(320));
+        await tester.tap(button);
+      }
+      expect(calls, ['switch', 'delete', 'cancel']);
+    });
+  }
+
+  testWidgets('mobile action sheet grows for accessibility text without overflow',
+      (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 640);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    var canceled = false;
+    await tester.pumpWidget(MaterialApp(
+      home: MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(3)),
+        child: Scaffold(
+          bottomSheet: BottomSheetBody(
+            leading: const Icon(Icons.check),
+            title: 'Selected',
+            text: '1 item',
+            onCanceled: () => canceled = true,
+          ),
+        ),
+      ),
+    ));
+    expect(tester.takeException(), isNull);
+    final sheet = tester.getRect(find.byType(BottomSheet));
+    expect(sheet.height, greaterThan(65));
+    expect(sheet.height, lessThan(320));
+    for (final text in ['Selected', '1 item']) {
+      final bounds = tester.getRect(find.text(text));
+      expect(sheet.contains(bounds.topLeft), isTrue);
+      expect(sheet.contains(bounds.bottomRight), isTrue);
+    }
+    await tester.tap(find.byIcon(Icons.cancel_outlined));
+    expect(canceled, isTrue);
+  });
+
 
   testWidgets('mobile action sheet preserves supplied actions across rebuilds',
       (tester) async {

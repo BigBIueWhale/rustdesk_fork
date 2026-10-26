@@ -693,6 +693,9 @@ FILE_COMMAND_TESTS = {
     "new file job owners share admission with listing owners",
 }
 FILE_PROGRESS_TESTS = {
+    "mobile action sheet keeps long ltr text and actions inside a narrow screen",
+    "mobile action sheet keeps long rtl text and actions inside a narrow screen",
+    "mobile action sheet grows for accessibility text without overflow",
     "mobile action sheet preserves supplied actions across rebuilds",
     "mobile action sheet accepts immutable action lists",
     "mobile action sheet child rebuild keeps one disabled cancel",

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/foundation.dart';
@@ -30,7 +31,8 @@ class TerminalModel with ChangeNotifier {
   bool get _isCurrent =>
       !_disposed && identical(parent.terminalModels[terminalId], this);
 
-  final _inputBuffer = <String>[];
+  var _inputBuffer = ListQueue<String>();
+  Completer<void>? _inputDrain;
   // Buffer for output data received before terminal view has valid dimensions.
   // This prevents NaN errors when writing to terminal before layout is complete.
   final _pendingOutputChunks = <_TerminalOutputChunk>[];
@@ -60,16 +62,10 @@ class TerminalModel with ChangeNotifier {
     if (isMobileOrWebMobile && data == '\n') {
       data = '\r';
     }
-    if (_terminalOpened) {
-      // Send user input to remote terminal
-      try {
-        await _sendInput(data);
-      } catch (e) {
-        debugPrint('[TerminalModel] Error sending terminal input: $e');
-      }
-    } else {
-      debugPrint('[TerminalModel] Terminal not opened yet, buffering input');
-      _inputBuffer.add(data);
+    _inputBuffer.addLast(data);
+    final generation = _openGeneration;
+    if (_terminalOpened && generation != null) {
+      await _processBufferedInputAsync(generation);
     }
   }
 
@@ -211,6 +207,7 @@ class TerminalModel with ChangeNotifier {
       if (!_isCurrent || !identical(_openGeneration, generation)) return;
       _openGeneration = null;
       _terminalOpened = false;
+      _retireTerminalInput();
       _retireTerminalOutput();
       notifyListeners();
     }
@@ -302,6 +299,7 @@ class TerminalModel with ChangeNotifier {
         '[TerminalModel] Terminal opened response: success=$success, message=$message, service_id=$serviceId');
 
     if (success) {
+      if (_terminalOpened) _retireTerminalInput();
       _retireTerminalOutput();
       _outputDecoder = TerminalOutputDecoder();
       final generation = Object();
@@ -355,18 +353,39 @@ class TerminalModel with ChangeNotifier {
     }
   }
 
-  Future<void> _processBufferedInputAsync(Object generation) async {
-    final buffer = List<String>.from(_inputBuffer);
-    _inputBuffer.clear();
+  Future<void> _processBufferedInputAsync(Object generation) {
+    final active = _inputDrain;
+    if (active != null) return active.future;
+    final completion = Completer<void>();
+    _inputDrain = completion;
+    unawaited(_drainTerminalInput(_inputBuffer, generation, completion));
+    return completion.future;
+  }
 
-    for (final data in buffer) {
-      if (!_isCurrent || !identical(_openGeneration, generation)) return;
-      try {
-        await _sendInput(data);
-      } catch (e) {
-        debugPrint('[TerminalModel] Error sending buffered input: $e');
+  Future<void> _drainTerminalInput(ListQueue<String> buffer, Object generation,
+      Completer<void> completion) async {
+    try {
+      while (_isCurrent &&
+          identical(_openGeneration, generation) &&
+          buffer.isNotEmpty) {
+        final data = buffer.removeFirst();
+        try {
+          await _sendInput(data);
+        } catch (e) {
+          debugPrint('[TerminalModel] Error sending terminal input: $e');
+        }
       }
+    } finally {
+      buffer.clear();
+      if (identical(_inputDrain, completion)) _inputDrain = null;
+      completion.complete();
     }
+  }
+
+  void _retireTerminalInput() {
+    _inputBuffer.clear();
+    _inputBuffer = ListQueue<String>();
+    _inputDrain = null;
   }
 
   void _handleTerminalData(Map<String, dynamic> evt) {
@@ -505,7 +524,7 @@ class TerminalModel with ChangeNotifier {
   void _handleTerminalClosed(Map<String, dynamic> evt) {
     _openGeneration = null;
     _terminalOpened = false;
-    _inputBuffer.clear();
+    _retireTerminalInput();
     _retireTerminalOutput();
     final int exitCode = evt['exit_code'] ?? 0;
     _writeToTerminal('\r\nTerminal closed with exit code: $exitCode\r\n');
@@ -532,7 +551,7 @@ class TerminalModel with ChangeNotifier {
     _openGeneration = null;
     _terminalOpened = false;
     _retireTerminalOutput();
-    _inputBuffer.clear();
+    _retireTerminalInput();
     _markViewReadyScheduled = false;
     // Terminal cleanup is handled server-side when service closes
     super.dispose();

@@ -4560,22 +4560,30 @@ and copy; full caller/throughput/resource acceptance remains OPEN. Returned
 vector capacity is not allocator usable size or RSS. Complete cursor/clipboard/
 file/terminal, other-platform/installed and release evidence remain required.
 
-**Native compressor context allocation (`cb09e54a`).** The thread-local cache now
-holds only a successfully configured `CCtx`, created through `try_create`.
-Native context allocation refusal returns `OutOfMemory`; a later call can retry,
-and successful contexts are reused. The pinned compression level, empty dictionary,
-`compress2` operation, output ownership and public error-returning API are preserved.
-At unchanged-product preparation `8c628080`, GNU linker wrapping of the native
-`ZSTD_createCCtx` return reproduces six panics: two refusals on each fresh thread
-for empty, one-byte and 128-KiB input. Twelve existing tests pass. The identical
-13-case Linux component suite passes after correction in 0.35s (73s outer):
-six `OutOfMemory` results, three fault probes, exact retries and context reuse.
-Healthy calls use the pinned native library; compressed bytes match the upstream
-compressor and decode exactly. All three test threads join; both A/B VMs and RAM
-workspaces retire with zero endpoint deltas. `compressor-context-cfc43142.json`
-retains source/artifact bindings and observations. This tests the constructor's
-null result, not whole-process memory exhaustion. Other C allocations, full callers,
-other platforms, installed behavior and R-S0/R-F5/release acceptance remain OPEN.
+**Native codec context allocation (`cb09e54a`, `802bb4d3`).** Compression caches
+only a successfully configured `CCtx`; shared and file-block decoding own a fresh
+`DCtx` per call. Both use `try_create`, return `OutOfMemory` on native constructor
+refusal and allow later calls to retry. The decoder retains Zstd's `zio::Reader`
+with a private operation that preserves incomplete-frame refusal and session-only
+reset between frames. Input stays borrowed; shared 64-MiB and file-block 128-KiB
+history ceilings, output loops/limits, compression level/dictionary/bytes and
+caller APIs are unchanged. Context ownership covers return and error paths.
+
+`compressor-context-cfc43142.json` retains the earlier 13-case A/B: six constructor
+panics become six errors, with exact retry and successful context reuse. The decoder
+A/B at unchanged-product `a3e31da3` passes fourteen tests and reproduces eighteen
+panics across default, limited and file-block entry points, each with empty,
+one-byte and 128-KiB output. The identical fixture passes all fifteen tests after
+correction in 0.40s (73s outer): eighteen errors, nine native fault probes, exact
+retries, eighteen observed native context frees and borrowed raw-file controls.
+Complete/concatenated frames, every tested truncation offset in first/second frames,
+trailing garbage and existing history/output/allocation controls pass.
+`decoder-context-9b5e832c.json` binds exact sources, unchanged A/B tests and pinned
+dependencies, actual artifacts, observations and joined bounded-RAM cleanup;
+both decoder A/B runs have zero endpoint deltas. Healthy calls use the real native
+library; injected null returns model constructor refusal, not whole-process memory
+exhaustion. Other C allocations, full callers, other platforms, installed behavior
+and R-S0/R-F5/release acceptance remain OPEN. All user parks remain in force.
 
 `cc88308c` replaces the shared receive decoder's Rust 1.75 `read_to_end` growth
 with 8-KiB stack reads and fallible output reservation before each append;

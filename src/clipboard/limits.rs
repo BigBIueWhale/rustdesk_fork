@@ -1,4 +1,5 @@
 use hbb_common::{bail, ResultType};
+use std::{borrow::Cow, io};
 
 /// Clipboard content ceilings apply independently to wire and decoded bytes.
 pub(crate) const MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES: usize = 64 * 1024 * 1024;
@@ -37,10 +38,10 @@ pub(crate) fn clipboard_content_for_native(
         .format
         .enum_value()
         .map_err(|e| hbb_common::anyhow::anyhow!("invalid clipboard format: {e}"))?;
-    let data = if clipboard.compress {
-        hbb_common::compress::try_decompress(&clipboard.content)?
+    let data: Cow<'_, [u8]> = if clipboard.compress {
+        Cow::Owned(hbb_common::compress::try_decompress(&clipboard.content)?)
     } else {
-        clipboard.content.to_vec()
+        Cow::Borrowed(&clipboard.content)
     };
     if !native_clipboard_payload_within_limit(format, clipboard.width, clipboard.height, data.len())
     {
@@ -51,5 +52,14 @@ pub(crate) fn clipboard_content_for_native(
             data.len()
         );
     }
-    Ok(data)
+    match data {
+        Cow::Owned(data) => Ok(data),
+        Cow::Borrowed(data) => {
+            let mut output = Vec::new();
+            output.try_reserve_exact(data.len())
+                .map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+            output.extend_from_slice(data);
+            Ok(output)
+        }
+    }
 }

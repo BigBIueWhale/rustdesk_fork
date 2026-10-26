@@ -30,6 +30,7 @@ POLKIT_POLICY_DEFAULTS = {
     "allow_inactive": "auth_admin",
     "allow_active": "auth_admin",
 }
+MAINTAINER_SCRIPTS = ("preinst", "postinst", "prerm", "postrm")
 CONFFILE_PATHS = (
     "./etc/init.d/rustdesk",
 )
@@ -211,6 +212,17 @@ def load_polkit_policy(repo):
         raise ValidationError(f"cannot read {POLKIT_POLICY_SOURCE}: {err}") from err
     validate_polkit_policy(contents, str(POLKIT_POLICY_SOURCE))
     return contents
+
+
+def load_maintainer_scripts(repo):
+    scripts = {}
+    for name in MAINTAINER_SCRIPTS:
+        source = Path("res/DEBIAN") / name
+        try:
+            scripts[name] = (repo / source).read_bytes()
+        except OSError as err:
+            raise ValidationError(f"cannot read {source}: {err}") from err
+    return scripts
 
 
 def normalize_tar_name(name):
@@ -839,7 +851,10 @@ def validate_polkit_dependency(contents, label):
         raise ValidationError(f"{label}: required standalone polkitd dependency is absent")
 
 
-def validate_deb(deb, expected_systemd_unit=None, expected_polkit_policy=None):
+def validate_deb(deb, expected_systemd_unit=None, expected_polkit_policy=None,
+                 *, expected_maintainer_scripts):
+    if set(expected_maintainer_scripts) != set(MAINTAINER_SCRIPTS):
+        raise ValidationError("expected maintainer-script inventory differs")
     data_tar = tar_stream_from_deb(deb, "--fsys-tarfile")
     data_members = tar_members_from_stream(data_tar, f"{deb}:--fsys-tarfile")
     control_tar = tar_stream_from_deb(deb, "--ctrl-tarfile")
@@ -856,6 +871,11 @@ def validate_deb(deb, expected_systemd_unit=None, expected_polkit_policy=None):
         require_symlink(data_members, path, target, f"{deb}:data")
     for path, (kind, mode) in CONTROL_REQUIRED.items():
         require_member(control_members, path, kind, mode, f"{deb}:control")
+    for name in MAINTAINER_SCRIPTS:
+        path = "./" + name
+        actual = archive_member_bytes(control_tar, control_members[path], f"{deb}:control:{path}")
+        if actual != expected_maintainer_scripts[name]:
+            raise ValidationError(f"{deb}:control:{path}: bytes differ from res/DEBIAN/{name}")
     validate_conffiles(control_tar, control_members, f"{deb}:control")
     if expected_systemd_unit is not None:
         actual_systemd_unit = archive_member_bytes(
@@ -1251,7 +1271,8 @@ def expect_validation_failure(
     expected_polkit_policy=None,
 ):
     try:
-        validate_deb(deb, expected_systemd_unit, expected_polkit_policy)
+        validate_deb(deb, expected_systemd_unit, expected_polkit_policy,
+                     expected_maintainer_scripts=synthetic_maintainer_scripts())
     except ValidationError as err:
         if expected in str(err):
             return
@@ -1674,7 +1695,9 @@ def run_production_finalizer_self_test(repo, tmp, polkit_policy):
 
     produced = tmp / "production-finalizer.deb"
     build_deb(staging, produced, root_owner_group=True, regenerate_md5=False)
-    validate_deb(produced, expected_polkit_policy=polkit_policy)
+    validate_deb(produced, expected_polkit_policy=polkit_policy,
+                 expected_maintainer_scripts={name: (source_scripts / name).read_bytes()
+                                              for name in MAINTAINER_SCRIPTS})
 
     unexpected = tmp / "unexpected-control"
     shutil.copytree(staging, unexpected, symlinks=True)
@@ -1864,7 +1887,8 @@ def run_self_test(repo, polkit_policy):
         expected_systemd_unit = (
             good_tree / "usr/lib/systemd/system/rustdesk.service"
         ).read_bytes()
-        validate_deb(good_deb, expected_systemd_unit, polkit_policy)
+        validate_deb(good_deb, expected_systemd_unit, polkit_policy,
+                     expected_maintainer_scripts=synthetic_maintainer_scripts())
 
         permissive_polkit_policy = polkit_policy.replace(
             b"<allow_active>auth_admin</allow_active>",
@@ -2777,11 +2801,13 @@ def main():
         if args.self_test:
             run_self_test(repo, polkit_policy)
         expected_systemd_unit = (repo / "res/rustdesk.service").read_bytes() if args.deb else None
+        expected_maintainer_scripts = load_maintainer_scripts(repo) if args.deb else None
         for deb in args.deb:
             validate_deb(
                 Path(deb).resolve(),
                 expected_systemd_unit,
                 polkit_policy,
+                expected_maintainer_scripts=expected_maintainer_scripts,
             )
     except ValidationError as err:
         fail(str(err))

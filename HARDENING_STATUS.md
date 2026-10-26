@@ -3486,6 +3486,28 @@ test duplication; broader installed, platform and release acceptance is unchange
 | Last-peer history | LocalConfig stores its private candidate before publication, preserving replacement/clear failure and identical retry. Unchanged history avoids a write. Exact registry/session admission precedes history, storage failure preserves the admitted session and duplicate refusal cannot advance history. Unused LocalConfig geometry APIs/storage are absent; old-format files retain live preferences and omit retired geometry on the next save. Active Flutter/per-peer geometry paths remain. | Config component and actual session-add/native bridge with storage denial and healthy retry: `last-peer-159cb6bf.json`. No network peer; full remembered-peer desktop/mobile interaction remains OPEN. |
 | Ordinary option storage and framed transaction (`9fbb652a`, `4e7e2f4a`) | Config2 reads preserve failed sources. Linux single-key saves share the LocalConfig/display-default transaction: a stable owned per-record lease holds a fresh reread, selected mutation, conditional durable replacement and confirmed-cache publication through one retained directory. The previous process-local read/replace path and private whole-record store are removed. Read-only satisfied/missing-empty no-ops, fixed read errors, strict present-value decoding, immutable policy pins and receiver authority remain. Other platforms retain process-local ordering. | At preparation `f066a7b7`, two extended separate-process regressions fail for ordinary options: a completed other-key change is lost, and a held lease is ignored in 3 ms with file/cache changes; 185 controls pass before failure skips the last two groups. The same three test bodies at `4e7e2f4a` pass across all three stores in the 202-case Linux cohort: completed changes survive, contention returns TimedOut near one second with file/cache/lease preserved, the identical retry succeeds, and owner-process exit releases the lock while retaining its inode. Descriptors return 4 to 4. Existing corruption/permission, no-write idempotence, sparse/missing, eight-thread, credential and policy controls pass. `ordinary-option-transaction-f066a7b7.json` binds sources, artifacts, actual A/B outcomes and joined bounded-RAM cleanup. Earlier `ordinary-option-source-9fbb652a.json`, `option-persistence-f895b8a0.json` and `main-ipc-framing-4278b228.json` retain source-admission and framed receiver/permit evidence. These are nonroot Linux library scenarios. Mixed-version/noncooperating writers, peer/credential transactions, namespace/ACL/mount/network-filesystem races, physical crash durability, setting/audio effects, current full app/UI/FFI and installed endpoint/root/cross-UID/role/restart, other target OS, R-S0/R-F5 and release acceptance remain OPEN. |
 
+**Custom-scale session retargeting (`858ef9bb`).** The shared editor scopes loading
+and saving to its session generation. A reused widget can read and save for its new
+session while the old session's admitted work settles; an old completion cannot
+clear the new operation's busy state or publish feedback. Canvas-level admission
+still serializes saves to the same canvas, including replacement controls.
+At preparation `e6f497b6`, four rendered regressions fail because the new session
+starts neither its read nor its save while the predecessor is pending; 31 controls
+pass. Later-completion assertions in those four cases are unreached on the baseline.
+The identical 35-case suite passes after correction in 262 outer seconds, including
+late success/error, current-operation admission, queued edits, retry, old captured
+handlers and disposal. The focused `--flutter-model-tests --custom-scale` profile
+uses fresh bindings and the existing bounded RAM profile; three result-parser
+controls also pass. The broader settings shard is not run and its parks remain.
+`scale-session-d6456173.json` binds sources, complete named outcomes, serial logs and
+joined cleanup. Neither run adds a host listener. The baseline after-snapshot loses
+pre-existing loopback endpoint `127.0.0.1:9238`, recorded as unattributed without
+owner inspection or intervention; the corrected run has no endpoint differences.
+This is production Flutter widget/model execution with controlled preference/save
+futures, not native persistence or complete desktop/mobile menu/session execution.
+Those integrations, other platforms, resource/soak, R-S0/R-F5 and installed privilege
+acceptance remain OPEN. Windows harness storage work is user-parked and remains OPEN.
+
 **Autosave restoration (`8d9bc485`).** Quality, FPS and trackpad controls represent
 the confirmed value as unknown after an exception, null or invalid save result.
 An explicit newer edit remains dirty even when it restores an earlier value;

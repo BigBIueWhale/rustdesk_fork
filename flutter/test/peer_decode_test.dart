@@ -579,6 +579,112 @@ void main() {
     });
   }
 
+  for (final side in ['left', 'right']) {
+    testWidgets('chat Shift Enter preserves the draft with $side Shift',
+        (tester) async {
+      debugPrint = tester.binding.debugPrintOverride;
+      final owner = _ChatOwner();
+      final model = _DraftChat(owner, interceptSubmission: true);
+      final shift = side == 'left'
+          ? LogicalKeyboardKey.shiftLeft
+          : LogicalKeyboardKey.shiftRight;
+      final enterResults = <KeyEventResult>[];
+      final handler = model.inputNode.onKey!;
+      model.inputNode.onKey = (node, event) {
+        final result = handler(node, event);
+        if (event.logicalKey == LogicalKeyboardKey.enter) {
+          enterResults.add(result);
+        }
+        return result;
+      };
+      try {
+        await _mountDraftToolbar(tester, model);
+        await tester.enterText(find.byType(TextField), 'Multiline draft');
+        await tester.pump();
+        await tester.sendKeyDownEvent(shift);
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.sendKeyUpEvent(shift);
+
+        expect(enterResults, [KeyEventResult.ignored, KeyEventResult.ignored]);
+        expect(model.submitted, isEmpty);
+        expect(model.textController.text, 'Multiline draft');
+        expect(model.inputNode.hasFocus, isTrue);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        model.inputNode.dispose();
+        model.dispose();
+        owner.serverModel.tabController.state.value.pageController.dispose();
+      }
+    });
+  }
+
+  testWidgets('chat releasing Shift while Enter is held cannot send',
+      (tester) async {
+    debugPrint = tester.binding.debugPrintOverride;
+    final owner = _ChatOwner();
+    final model = _DraftChat(owner, interceptSubmission: true);
+    try {
+      await _mountDraftToolbar(tester, model);
+      await tester.enterText(find.byType(TextField), 'Still composing');
+      await tester.pump();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.enter);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      final afterShift = model.textController.text;
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.enter);
+
+      expect(model.submitted, isEmpty);
+      expect(afterShift, 'Still composing');
+      expect(model.textController.text, 'Still composing');
+      expect(tester.takeException(), isNull);
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      model.inputNode.dispose();
+      model.dispose();
+      owner.serverModel.tabController.state.value.pageController.dispose();
+    }
+  });
+
+  testWidgets('chat held Enter cannot submit a later draft', (tester) async {
+    debugPrint = tester.binding.debugPrintOverride;
+    final owner = _ChatOwner();
+    final model = _DraftChat(owner, interceptSubmission: true);
+    try {
+      await _mountDraftToolbar(tester, model);
+      await tester.enterText(find.byType(TextField), 'First draft');
+      await tester.pump();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.enter);
+      expect(model.submitted, ['First draft']);
+      expect(model.textController.text, isEmpty);
+
+      await tester.enterText(find.byType(TextField), 'Repeat draft');
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.enter);
+      final afterRepeat = model.textController.text;
+      await tester.enterText(find.byType(TextField), 'Other key draft');
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      final afterOtherKey = model.textController.text;
+      await tester.enterText(find.byType(TextField), 'Release draft');
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.enter);
+      final afterRelease = model.textController.text;
+      final beforeFreshPress = List<String>.of(model.submitted);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+
+      expect(beforeFreshPress, ['First draft']);
+      expect(afterRepeat, 'Repeat draft');
+      expect(afterOtherKey, 'Other key draft');
+      expect(afterRelease, 'Release draft');
+      expect(model.submitted, ['First draft', 'Release draft']);
+      expect(model.textController.text, isEmpty);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      model.inputNode.dispose();
+      model.dispose();
+      owner.serverModel.tabController.state.value.pageController.dispose();
+    }
+  });
+
   test('chat panel completes repeated open and close transitions', () async {
     final panel = _ChatPanel();
     for (var cycle = 0; cycle < 3; cycle++) {

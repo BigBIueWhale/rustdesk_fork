@@ -113,7 +113,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("password-fields"), "password-fields"), (1, 4))
         self.assertEqual(self.parse(self.events("share-rdp"), "share-rdp"), (1, 4))
         self.assertEqual(self.parse(self.events("window-dispatch"), "window-dispatch"), (1, 8))
-        self.assertEqual(self.parse(self.events("peer-data"), "peer-data"), (1, 47))
+        self.assertEqual(self.parse(self.events("peer-data"), "peer-data"), (1, 51))
         self.assertEqual(self.parse(self.events("file-navigation"), "file-navigation"), (7, 110))
         self.assertEqual(self.parse(self.events("terminal-output"), "terminal-output"), (2, 26))
         self.assertEqual(self.parse(self.events("modifier-release"), "modifier-release"), (4, 93))

@@ -719,6 +719,10 @@ FILE_NAVIGATION_SUITES = {
     },
 }
 PEER_DATA_TESTS = {
+    "chat Shift Enter preserves the draft with left Shift",
+    "chat Shift Enter preserves the draft with right Shift",
+    "chat releasing Shift while Enter is held cannot send",
+    "chat held Enter cannot submit a later draft",
     "CM voice callback retains its exact owner across client mutation",
     "CM voice identity changes update retained native client state",
     "CM close batch retains rows after accepted submissions",

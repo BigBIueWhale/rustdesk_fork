@@ -44,7 +44,10 @@ def run(arguments, *, expected=0):
     require(len(output) <= 65536, f'command diagnostics exceeded bound: {arguments!r}')
     require(process.returncode == expected,
             f'command exit {process.returncode}, expected {expected}: {arguments!r}: {output!r}')
-    return output.decode('utf-8', errors='strict')
+    decoded = output.decode('utf-8', errors='strict')
+    print('DEBIAN_MAINTAINER_COMMAND=' + json.dumps({
+        'argv': arguments, 'exit': process.returncode, 'output': decoded}), flush=True)
+    return decoded
 
 
 def links():
@@ -146,8 +149,11 @@ def main():
             'reinstalled_links': links(), 'disabled_state_lost': True}), flush=True)
 
         run(['dpkg', '--install', str(candidate)])
-        require(status() == 'installed' and service_state() == 'active',
-                'candidate upgrade did not restore the installed active fixture')
+        candidate_status = status()
+        candidate_service = service_state()
+        run(['systemctl', 'show', UNIT, '--property=LoadState,ActiveState,SubState,Result,UnitFileState'])
+        require(candidate_status == 'installed' and candidate_service == 'active',
+                f'candidate upgrade state differs: package={candidate_status} service={candidate_service}')
         installed = Path('/var/lib/dpkg/info')
         require((installed / f'{PACKAGE}.prerm').read_bytes() == sources['prerm'],
                 'dpkg did not install the exact candidate prerm')

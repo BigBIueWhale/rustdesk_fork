@@ -669,6 +669,9 @@ FILE_COMMAND_TESTS = {
     "new file job owners share admission with listing owners",
 }
 FILE_PROGRESS_TESTS = {
+    "mobile action sheet preserves supplied actions across rebuilds",
+    "mobile action sheet accepts immutable action lists",
+    "mobile action sheet child rebuild keeps one disabled cancel",
     "mobile cancel preserves other jobs and result waiters",
     "mobile late cancel cannot remove replacement or cleared jobs",
     "mobile stale status callback cannot act on replacement jobs",

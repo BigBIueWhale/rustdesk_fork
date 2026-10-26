@@ -8040,7 +8040,7 @@ else
             'focused Flutter custom scale receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = file-progress ]; then
         require_exact_fixed_receipt \
-            "FLUTTER_FILE_PROGRESS_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=23 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-file-progress-tests cleanup=joined" \
+            "FLUTTER_FILE_PROGRESS_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=26 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-file-progress-tests cleanup=joined" \
             'focused Flutter file progress receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = connect-password ]; then
         require_exact_fixed_receipt \

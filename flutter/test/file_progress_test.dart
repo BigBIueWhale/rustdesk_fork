@@ -108,6 +108,91 @@ class _StatusHarness {
 
 void main() {
 
+  testWidgets('mobile action sheet preserves supplied actions across rebuilds',
+      (tester) async {
+    var customCalls = 0;
+    var cancelCalls = 0;
+    final action = IconButton(
+        icon: const Icon(Icons.compare_arrows),
+        onPressed: () => customCalls++);
+    final actions = [action];
+    Future<void> render() => tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+            bottomSheet: BottomSheetBody(
+              leading: const Icon(Icons.check),
+              title: 'Selected',
+              text: '1 item',
+              actions: actions,
+              onCanceled: () => cancelCalls++,
+            ),
+          ),
+        ));
+
+    for (var i = 0; i < 3; i++) {
+      await render();
+      expect(tester.takeException(), isNull);
+      expect(find.byIcon(Icons.cancel_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.compare_arrows), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.compare_arrows));
+      await tester.tap(find.byIcon(Icons.cancel_outlined));
+    }
+    expect(actions, [action]);
+    expect(customCalls, 3);
+    expect(cancelCalls, 3);
+  });
+
+  testWidgets('mobile action sheet accepts immutable action lists',
+      (tester) async {
+    const actions = [
+      IconButton(icon: Icon(Icons.delete_forever), onPressed: null),
+    ];
+    var cancelCalls = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        bottomSheet: BottomSheetBody(
+          leading: const Icon(Icons.check),
+          title: 'Selected',
+          text: '1 item',
+          actions: actions,
+          onCanceled: () => cancelCalls++,
+        ),
+      ),
+    ));
+    expect(tester.takeException(), isNull);
+    expect(actions, hasLength(1));
+    expect(find.byIcon(Icons.cancel_outlined), findsOneWidget);
+    final supplied = tester.widget<IconButton>(
+        find.widgetWithIcon(IconButton, Icons.delete_forever));
+    expect(identical(supplied, actions.single), isTrue);
+    expect(supplied.onPressed, isNull);
+    await tester.tap(find.byIcon(Icons.cancel_outlined));
+    expect(cancelCalls, 1);
+  });
+
+  testWidgets('mobile action sheet child rebuild keeps one disabled cancel',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        bottomSheet: BottomSheetBody(
+          leading: const Icon(Icons.check),
+          title: 'Selected',
+          text: '0 items',
+        ),
+      ),
+    ));
+    final state = tester.state<BottomSheetState>(find.byType(BottomSheet));
+    for (var i = 0; i < 3; i++) {
+      state.setState(() {});
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      expect(find.byIcon(Icons.cancel_outlined), findsOneWidget);
+      expect(tester.widget<IconButton>(
+          find.widgetWithIcon(IconButton, Icons.cancel_outlined)).onPressed,
+          isNull);
+    }
+  });
+
+
   testWidgets('mobile cancel preserves other jobs and result waiters',
       (tester) async {
     final h = _StatusHarness();

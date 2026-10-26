@@ -13967,13 +13967,31 @@ the replacement chat unfocused, and callbacks still run during replacement or di
 The identical Linux Flutter shard passes all 55 cases after correction, plus three
 parser controls, in 268 outer seconds. Existing test bodies remain byte-identical.
 This exercises production Dart and GetX subscription behavior; native desktop/mobile
-page/session integration, broader chat disposal/focus timers, history bounds and R-S0/R-F5
+page/session integration, broader chat disposal, history bounds and R-S0/R-F5
 acceptance remain OPEN. `chat-overlay-dcd34f17.json` retains source/input identities,
 the initial formatting refusal, failed baseline, strict success summary and joined RAM
 cleanup. Final host endpoint snapshots include unattributed changes; no endpoint owner
 was inspected or changed. The owned harness denies host IP sockets. The privileged
 startup/config-loader investigation remains OPEN/PARKED following the user's pivot;
 all other parks and all fifteen credential-native obligations remain open.
+
+**Chat delayed focus (`4166d1f5`) — Flutter focus lifecycle verified; native integration OPEN.**
+`ChatModel` owns one cancellable 100 ms focus timer. A new request supersedes the old
+one; overlay unblock/replacement, window/overlay hiding, session close and disposal
+retire pending focus. CM panel closing cancels before its native-window awaits.
+Disposal refuses later requests; ordinary close permits fresh reopening. At unchanged
+production preparation `a90259a9`, 56 controls pass and eight focus assertions fail:
+the other mounted node loses primary focus after retirement or before the latest
+request's deadline. The identical corrected Linux Flutter shard passes all 64 cases
+and three parser controls in 265 outer seconds. The nine new cases use real Flutter
+focus nodes and timed frames, including disabled/current-node controls and a held CM
+window reply; existing 55 test bodies remain unchanged and the panel fixture's default
+still records requests without scheduling focus. Native window operations are doubled.
+Actual desktop/mobile route, keyboard/IME and full session integration, broader chat
+ownership/disposal, all credential-native actions and R-S0/R-F5 remain OPEN.
+`chat-focus-7525350d.json` retains source/input identities, the initial formatting
+refusal, failed baseline, strict success summary, endpoint observations and joined
+bounded-RAM cleanup. User parks remain unchanged.
 
 **CM close admission and history outcomes — native component and Dart batch verified;
 complete CM/peer and rendered interaction OPEN.** `d7489810` returns a boolean

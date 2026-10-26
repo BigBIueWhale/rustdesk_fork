@@ -29,6 +29,7 @@ elif [ "${MODE:-}" = hbb-common-fs ] && [ "${HBB_LOGIND_NATIVE:-}" = 0 ] \
 elif [[ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:credential-dialog \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:connect-password \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:terminal-output \
+    || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:settings-navigation \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:peer-data \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:custom-scale \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:file-progress \

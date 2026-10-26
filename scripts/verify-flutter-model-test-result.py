@@ -865,6 +865,12 @@ PEER_DATA_SUITES = {
     "autocomplete_peer_tile_test.dart": AUTOCOMPLETE_PEER_TESTS,
     "all_peers_loader_test.dart": PEER_LOADER_TESTS,
 }
+SETTINGS_NAVIGATION_TESTS = {
+    "settings sidebar and external requests select the current page",
+    "settings close and reopen retire the exact navigation owner",
+    *{f"settings {tab} scrolling survives rebuilds and retires on close"
+      for tab in ("general", "safety", "display", "about")},
+}
 TERMINAL_OUTPUT_TESTS = {
     "terminal_output_decoder_test.dart": {
         "terminal UTF-8 survives every two-packet split",
@@ -1023,7 +1029,7 @@ FILE_METADATA_TESTS = {
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "window-dispatch", "status-refresh", "peer-data", "file-progress", "custom-scale", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "status-refresh", "peer-data", "file-progress", "custom-scale", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -1104,6 +1110,10 @@ def parse_result(path, profile="models"):
         expected_by_suite = PEER_DATA_SUITES
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())
+        expected_tests = len(expected_names)
+    elif profile == "settings-navigation":
+        expected_suites = {"settings_navigation_probe_test.dart"}
+        expected_names = SETTINGS_NAVIGATION_TESTS
         expected_tests = len(expected_names)
     elif profile == "terminal-output":
         expected_by_suite = TERMINAL_OUTPUT_TESTS
@@ -1211,7 +1221,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "window-dispatch", "status-refresh", "peer-data", "file-progress", "custom-scale", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "status-refresh", "peer-data", "file-progress", "custom-scale", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -1235,6 +1245,7 @@ def main():
         "custom-scale": "FLUTTER_CUSTOM_SCALE_TEST_JSON",
         "file-progress": "FLUTTER_FILE_PROGRESS_TEST_JSON",
         "peer-data": "FLUTTER_PEER_DATA_TEST_JSON",
+        "settings-navigation": "FLUTTER_SETTINGS_NAVIGATION_TEST_JSON",
         "terminal-output": "FLUTTER_TERMINAL_OUTPUT_TEST_JSON",
         "connect-password": "FLUTTER_CONNECT_PASSWORD_TEST_JSON",
         "credential-dialog": "FLUTTER_CREDENTIAL_DIALOG_TEST_JSON",

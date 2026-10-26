@@ -9,6 +9,19 @@ import stat
 import sys
 
 
+RELATIVE_MOUSE_ENABLE_TESTS = {
+    "relative mouse current geometry enables once and disables",
+    "relative mouse disable retires a delayed enable",
+    "relative mouse old geometry cannot warp a replacement mode",
+    "relative mouse disposal closes pending and future admission",
+    "relative mouse invalid geometry stays disabled and permits retry",
+    "relative mouse missing window and failed geometry do not enable",
+    "relative mouse session reset retires the old geometry request",
+    "relative mouse enable rechecks permission and camera admission",
+    "relative mouse stale geometry error preserves the current mode",
+}
+
+
 REVERSE_WHEEL_TESTS = {
     "reverse wheel reads and writes capture both owner identifiers",
     "reverse wheel bounds admission before native dispatch",
@@ -1091,6 +1104,7 @@ def parse_result(path, profile="models"):
             "input_mouse_buttons_test.dart": PHYSICAL_MOUSE_TESTS,
             "trackpad_fling_test.dart": TRACKPAD_INPUT_TESTS,
             "input_side_buttons_test.dart": SIDE_BUTTON_TESTS,
+            "relative_mouse_enable_probe_test.dart": RELATIVE_MOUSE_ENABLE_TESTS,
         }
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())

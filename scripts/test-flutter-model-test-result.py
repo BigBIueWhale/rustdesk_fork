@@ -72,6 +72,7 @@ class ResultTests(unittest.TestCase):
                 "input_mouse_buttons_test.dart": result.PHYSICAL_MOUSE_TESTS,
                 "trackpad_fling_test.dart": result.TRACKPAD_INPUT_TESTS,
                 "input_side_buttons_test.dart": result.SIDE_BUTTON_TESTS,
+                "relative_mouse_enable_probe_test.dart": result.RELATIVE_MOUSE_ENABLE_TESTS,
             }
             suites = sorted(inventory)
             names = sorted(set().union(*inventory.values()))
@@ -133,7 +134,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("file-navigation"), "file-navigation"), (7, 110))
         self.assertEqual(self.parse(self.events("terminal-output"), "terminal-output"), (2, 37))
         self.assertEqual(self.parse(self.events("settings-navigation"), "settings-navigation"), (1, 10))
-        self.assertEqual(self.parse(self.events("modifier-release"), "modifier-release"), (4, 103))
+        self.assertEqual(self.parse(self.events("modifier-release"), "modifier-release"), (5, 112))
         self.assertEqual(self.parse(self.events("connect-password"), "connect-password"), (1, 7))
         self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (9, 83))
         with tempfile.TemporaryDirectory() as root:

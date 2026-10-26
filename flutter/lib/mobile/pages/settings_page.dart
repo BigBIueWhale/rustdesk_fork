@@ -44,10 +44,7 @@ class SettingsPage extends StatefulWidget implements PageShape {
 // controlled session is active. The user-selectable never / service-on modes (the enum, the
 // option mappers, and the settings radio) are excised; the behavior is fixed in server_model.
 
-class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
-  final _hasIgnoreBattery =
-      false; //androidVersion >= 26; // remove because not work on every device
-  var _ignoreBatteryOpt = false;
+class _SettingsState extends State<SettingsPage> {
   var _showTerminalExtraKeys = false;
   var _enableAbr = false;
   var _autoRecordIncomingSession = false;
@@ -77,16 +74,9 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       var update = false;
-
-      if (_hasIgnoreBattery) {
-        if (await checkAndUpdateIgnoreBatteryStatus()) {
-          update = true;
-        }
-      }
 
       // R-G7 (§19): the "Start on boot" toggle is removed; boot-start is re-homed in the
       // native BootReceiver (RECEIVE_BOOT_COMPLETED alone), so there is no opt to read here.
@@ -102,36 +92,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
       }
     });
   }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      () async {
-        final ibs = await checkAndUpdateIgnoreBatteryStatus();
-        if (ibs) {
-          setState(() {});
-        }
-      }();
-    }
-  }
-
-  Future<bool> checkAndUpdateIgnoreBatteryStatus() async {
-    final res = await AndroidPermissionManager.check(
-        kRequestIgnoreBatteryOptimizations);
-    if (_ignoreBatteryOpt != res) {
-      _ignoreBatteryOpt = res;
-      return true;
-    } else {
-      return false;
-    }
-  }
-
 
   @override
   Widget build(BuildContext context) {
@@ -226,44 +186,6 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
               },
       )
     ];
-    if (_hasIgnoreBattery) {
-      enhancementsTiles.insert(
-          0,
-          SettingsTile.switchTile(
-              initialValue: _ignoreBatteryOpt,
-              title: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(translate('Keep RustDesk background service')),
-                    Text('* ${translate('Ignore Battery Optimizations')}',
-                        style: Theme.of(context).textTheme.bodySmall),
-                  ]),
-              onToggle: (v) async {
-                if (v) {
-                  await AndroidPermissionManager.request(
-                      kRequestIgnoreBatteryOptimizations);
-                } else {
-                  final res = await gFFI.dialogManager.show<bool>(
-                      (setState, close, context) => CustomAlertDialog(
-                            title: Text(translate("Open System Setting")),
-                            content: Text(translate(
-                                "android_open_battery_optimizations_tip")),
-                            actions: [
-                              dialogButton("Cancel",
-                                  onPressed: () => close(), isOutline: true),
-                              dialogButton(
-                                "Open System Setting",
-                                onPressed: () => close(true),
-                              ),
-                            ],
-                          ));
-                  if (res == true) {
-                    AndroidPermissionManager.startAction(
-                        kActionApplicationDetailsSettings);
-                  }
-                }
-              }));
-    }
     // R-G7 (§19): the user-settable "Start on boot" toggle is removed — the hardened
     // controlled box has no runtime knobs (R-D2). Boot-start is re-homed unconditionally in
     // the native BootReceiver (RECEIVE_BOOT_COMPLETED alone, gated only on the battery-opt

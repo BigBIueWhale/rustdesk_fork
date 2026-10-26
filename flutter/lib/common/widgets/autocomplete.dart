@@ -162,6 +162,7 @@ class AutocompletePeerTileState extends State<AutocompletePeerTile> {
                                                     )),
                                                     widget.peer.alias.isNotEmpty
                                                         ? Flexible(
+                                                            flex: 2,
                                                             child: Padding(
                                                                 padding:
                                                                     const EdgeInsets

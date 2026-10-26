@@ -1471,6 +1471,25 @@ macOS/Windows execution, simultaneous bidirectional saturation, resource/soak an
 complete R-S0/R-T17 acceptance remain OPEN. The separate password-timing, video and
 other parked work stays OPEN/PARKED.
 
+**Reverse traffic during local backpressure (`fb35ed89`).** Both the viewer
+`run_forward` and controlled relay split local reading from writing and retain at
+most one pinned local write. That write no longer prevents reverse local reads;
+the next peer frame waits until it completes. Data selection is fair while outer
+cancellation/CM control keeps priority. No background task or unbounded queue is
+introduced. Local read EOF retires the relay after its already-admitted write
+completes. The production keyed transport, admission limits and authorization are
+unchanged. Native TCP component A/B reproduced the blocked reverse direction in
+both old methods and now observes 8 KiB reverse delivery within 500 ms while a
+1 MiB local write remains blocked, bounded next-frame intake, exact resumed bytes,
+a usable subsequent request and joined cleanup. Two added native EOF controls
+preserve the admitted 1 MiB write; the existing cancellation/continuation cases
+also pass. All 97 focused tests pass; evidence is in
+`tunnel-duplex-2c58d21d.json`. The peer remains a frame-channel double, so installed
+CPace peers, sustained simultaneous large transfers, keyed-writer pacing/draining,
+and other-platform acceptance remain OPEN. General TCP half-close semantics are
+also OPEN: local read EOF still ends the relay after that admitted write rather
+than signaling one closed direction while continuing the other.
+
 The shared verifier selects target, mapping, supervisor, admission, relay-gating and
 exclusive-bind Rust regressions. Apple source/cross-compile checks and test definitions
 are supplementary. Exact current Linux, macOS and Windows acceptance remains OPEN:

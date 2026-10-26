@@ -133,10 +133,13 @@ void main() {
     Get.put<DesktopTabController>(tabs);
   });
 
-  tearDown(() async {
+  tearDown(() {
+    parent.serverModel.serverPasswd.dispose();
+    parent.serverModel.tabController.state.value.pageController.dispose();
+    parent.serverModel.tabController.state.value.scrollController.dispose();
     parent.serverModel.controller.dispose();
     parent.serverModel.dispose();
-    await Get.reset();
+    Get.reset();
     expect(native.unexpected, isEmpty);
     isTest = false;
   });

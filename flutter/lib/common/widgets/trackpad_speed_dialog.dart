@@ -24,6 +24,7 @@ class TrackpadSpeedDialog extends StatefulWidget {
 class _TrackpadSpeedDialogState extends State<TrackpadSpeedDialog> {
   late final _speed = SimpleWrapper(widget.initialSpeed);
   late int? _draft = widget.initialSpeed;
+  bool _saveAttempted = false;
   bool _saving = false;
   bool _failed = false;
 
@@ -50,11 +51,12 @@ class _TrackpadSpeedDialogState extends State<TrackpadSpeedDialog> {
     }
     final requested = draft.clamp(kMinTrackpadSpeed, kMaxTrackpadSpeed);
     _speed.value = requested;
-    if (requested == widget.initialSpeed) {
+    if (!_saveAttempted && requested == widget.initialSpeed) {
       widget.close();
       return;
     }
     setState(() {
+      _saveAttempted = true;
       _saving = true;
       _failed = false;
     });

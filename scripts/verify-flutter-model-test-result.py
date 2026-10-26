@@ -458,7 +458,7 @@ KEYBOARD_MODE_REFRESH_TESTS = {
 }
 TRACKPAD_DIALOG_TESTS = {
     "trackpad dialog stages raw text until committed Close",
-    "trackpad dialog retains failed saves for identical retry",
+    "trackpad dialog confirms retries after unconfirmed saves",
     "trackpad dialog admits one save and blocks pending Escape",
     "trackpad dialog retirement cannot close a replacement",
     "trackpad dialog Escape and unchanged Close perform no save",

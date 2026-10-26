@@ -6203,6 +6203,23 @@ catalogue and source-mutation tests. Actual archive admission does not import or
 `build.py`; an invocation without an archive or explicit self-test is refused. Archive
 ownership, modes, inventory/link, policy, checksum and ELF validators remain unchanged.
 
+**Debian maintainer-script byte admission (`81f8f9e9`).** The independent archive
+validator now requires all four expected source scripts and compares each control
+member byte-for-byte before acceptance. The CLI reads `res/DEBIAN/{preinst,postinst,
+prerm,postrm}` and refuses a missing source; the build wrapper's existing comparison
+is retained. At unchanged-checker `002ff084`, actual CLI execution accepts all four
+altered-script archives and all four missing-source cases. The same eight cases are
+refused at `468fba70`, while two valid packages and the complete archive/finalizer
+self-test pass in 35 outer seconds. No maintainer script or RustDesk product is
+executed. A prior candidate was refused before VM startup for insufficient RAM.
+The focused package profile now admits 2 GiB guest RAM, 6 GiB scratch, a 4 GiB file
+ceiling and the unchanged 6 GiB host headroom; the accepted run peaks below 4 GiB
+scratch. Baseline and candidate join QEMU and retire RAM with zero listener deltas.
+`package-scripts-5e609d89.json` retains source, archive and script digests, observed
+CLI results, storage controls and the ledger count. This closes the standalone
+script-byte admission gap; source provenance, current release packages, installed
+script/service behavior, independent reproduction and R-S0 acceptance remain OPEN.
+
 **Debian SysV startup-state retention.** `ed441bc7` removes premature `update-rc.d remove`
 from `res/DEBIAN/prerm`; the existing `postrm purge` action owns final link removal.
 The real Debian `dpkg`/helper regression at `481c25a2` demonstrates that the historical
@@ -6245,8 +6262,8 @@ The explicit `--debian-package-tests` integration mode additionally passes the c
 compiler-dependent archive and production-finalizer self-test using the pinned development
 verifier image. It compiles ELF fixtures, exercises malformed archive/policy/ELF/checksum,
 owner/mode/inventory/link refusal, and production staging/finalizer failure cases, then
-admits both valid fixture packages through the actual CLI with only unit/policy source
-files present. Exact package, runner, library and compiler digests are retained.
+admits both valid fixture packages through the actual CLI with unit/policy and the four
+maintainer-script source files present. Exact package, runner, library and compiler digests are retained.
 Execution uses the no-NIC bounded-RAM VM and one nonroot, capability-free, no-new-privileges
 container with read-only root/source, three source-file mounts and one private scratch
 mount; exact container/image, scratch and VM retirement are required before acceptance.

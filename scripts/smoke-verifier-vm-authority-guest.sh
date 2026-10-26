@@ -979,6 +979,7 @@ for profile, memory, scratch, overlay in (
         ('clipboard-response', 2048, 6, 4),
         ('xrandr-acquisition', 4096, 6, 4),
         ('authority-smoke', 2048, 4, 1),
+        ('fixed-archive-tests', 2048, 4, 1),
         ('media-kernel-tests', 2048, 4, 3),
         ('ledger-token-count', 2048, 4, 1)):
     if limits(profile, memory) != (scratch * gib, overlay * gib):
@@ -997,6 +998,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
                         ('xrandr-acquisition', 2048), ('xrandr-acquisition', 8192),
                         ('linux-service-receiver', 4095), ('linux-service-receiver', 8192),
                         ('authority-smoke', 2047), ('authority-smoke', 4096),
+                        ('fixed-archive-tests', 2047), ('fixed-archive-tests', 4096),
                         ('media-kernel-tests', 2047), ('media-kernel-tests', 4096),
                         ('fusermount-process', 2047), ('fusermount-process', 4096),
                         ('linux-service-uid-tests', 2047), ('linux-service-uid-tests', 4096),
@@ -1014,7 +1016,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
         raise SystemExit('VM storage profile accepted an invalid guest/profile')
 if module['HEADROOM'] != 6 * gib or module['OVERHEAD'] != gib:
     raise SystemExit('VM storage headroom or overhead differs')
-print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=26 refusals=46 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
+print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=27 refusals=48 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
 cli = subprocess.run([sys.executable, '-B', '-I', '-S', sys.argv[1], 'preflight',
                       '--memory-mib', '10240', '--storage-profile', 'linux-flutter-suspend'],
                      capture_output=True, text=True, timeout=5, check=False)
@@ -1032,7 +1034,8 @@ modes.add('android-frame-tests')
 if len(modes) != 37:
     raise SystemExit('VM workload control inventory differs')
 special = {mode: mode for mode in ('ledger-token-count', 'cpace-recovery-tests',
-                                  'linux-service-uid-tests', 'hbb-common-fs', 'media-kernel-tests')}
+                                  'linux-service-uid-tests', 'hbb-common-fs', 'media-kernel-tests',
+                                  'fixed-archive-tests')}
 special.update({'authority-smoke': 'authority-smoke', 'dependency-inventory': 'authority-smoke',
                 'android-frame-tests': 'x11-focus'})
 cases = [(mode, {}, special.get(mode, 'standard')) for mode in sorted(modes)]

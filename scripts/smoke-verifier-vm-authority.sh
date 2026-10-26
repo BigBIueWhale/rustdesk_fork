@@ -5374,7 +5374,7 @@ elif [ "$MODE" = dependency-inventory ]; then
         'actual dependency inventory and index binding'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'dependency inventory guest completion'
 elif [ "$MODE" = ledger-token-count ]; then
-    require_exact_fixed_receipt 'VM_TRANSIENT_PROFILE_LIMITS=pass profiles=26 refusals=46 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1' \
+    require_exact_fixed_receipt 'VM_TRANSIENT_PROFILE_LIMITS=pass profiles=27 refusals=48 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1' \
         'VM storage profile limits and guest binding'
     require_exact_fixed_receipt 'VM_TRANSIENT_SUSPEND_CLI=pass profile=linux-flutter-suspend guest_mib=10240 required_mib=23552 insufficient_ram=refused allocation=not-entered' \
         'actual suspension profile CLI and RAM refusal'

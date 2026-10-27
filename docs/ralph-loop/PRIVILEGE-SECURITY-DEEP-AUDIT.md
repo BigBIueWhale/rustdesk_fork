@@ -107629,3 +107629,15 @@ RAM peaks 6,362,456,064/6,363,570,176 bytes; durable run peaks
 join with exit 0, RAM workspaces disappear and active run markers are retired.
 Bounded diagnostics remain in peer-layout-baseline.ayeZPPAiIQ and
 peer-layout-receipt.CC2tsNj3c8. Broad acceptance and every prior park stay open.
+
+Fresh ledger count at 4617eda360facccdaa5c4cc113f80ef1440b2a91 passes as
+aBfzVSjJwh in 29 outer seconds: 349,022 tokens / 1,585,172 bytes, input SHA-256
+b16959d7c73f62b103af23e732410c92527f67390d93302246fe38c2c6241a04.
+The established tiktoken 0.12.0/cl100k_base/encode_ordinary method passes all
+seven controls and whole-file byte round trip, within the approximate 400,000-token
+budget. ledger-token-count-run.aBfzVSjJwh.serial.log is 96,206 bytes, SHA-256
+81a95a093d3f31cd757adcac9b7b75093a2b4b22bf1872cd9097a2cb95ee8d9b.
+QEMU joins, RAM scratch and active markers are absent. Before/during endpoint
+deltas are zero; the final snapshot retains one unattributed 18-byte endpoint
+removal, with no owner inspection or mutation. Product/test bytes remain those
+executed in CC2tsNj3c8; controlling instructions and all twelve stashes are unchanged.

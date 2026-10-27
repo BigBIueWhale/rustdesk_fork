@@ -1029,6 +1029,7 @@ static int wait_for_current_frames(Display *display, const ViewerWindow *viewer,
     } observations[OBSERVATION_LIMIT];
     uint64_t start = monotonic_millis();
     uint64_t deadline = start + timeout_ms;
+    uint64_t previous = start;
     uint64_t samples = 0U, valid_age_samples = 0U;
     int64_t last_state = -1;
     unsigned int distinct = 0U, retained = 0U, next = 0U;
@@ -1036,14 +1037,30 @@ static int wait_for_current_frames(Display *display, const ViewerWindow *viewer,
     const char *failure = "deadline";
     *first_fresh_ms = 0U;
     *maximum_age_ms = 0U;
-    while (monotonic_millis() < deadline) {
+    if (start == 0U || deadline < start) {
+        failure = "clock";
+        goto failed;
+    }
+    for (;;) {
         uint64_t now, captured_us = 0U;
         int64_t state;
         uint64_t age = 0U;
         int age_valid;
+        now = monotonic_millis();
+        if (now == 0U || now < previous) {
+            failure = "clock";
+            break;
+        }
+        previous = now;
+        if (now >= deadline) break;
         state = viewer_state(display, viewer, &captured_us);
         age_valid = x11_frame_age(history, "/coord", state, captured_us, &age) == 0;
         now = monotonic_millis();
+        if (now == 0U || now < previous) {
+            failure = "clock";
+            break;
+        }
+        previous = now;
         observations[next].elapsed_ms = now - start;
         observations[next].captured_us = captured_us;
         observations[next].age_ms = age;
@@ -1081,6 +1098,7 @@ static int wait_for_current_frames(Display *display, const ViewerWindow *viewer,
             break;
         }
     }
+failed:
     saved_errno = errno;
     fprintf(stderr, "FLUTTER_PEER_FRESHNESS_WAIT_FAILED reason=%s timeout_ms=%u "
             "required=%u distinct=%u samples=%llu valid_age_samples=%llu "
@@ -1115,6 +1133,7 @@ static int observe_current_frames_for_duration(Display *source, Display *display
                                                unsigned int *distinct_states) {
     uint64_t start = monotonic_millis();
     uint64_t deadline = start + duration_ms;
+    uint64_t previous = start;
     uint64_t last_fresh = start;
     int64_t last_state = -1;
     const char *trace_value = getenv("RUSTDESK_PRESENTATION_TRACE");
@@ -1123,7 +1142,8 @@ static int observe_current_frames_for_duration(Display *source, Display *display
     *maximum_gap_ms = 0U;
     *maximum_age_ms = 0U;
     *distinct_states = 0U;
-    while (monotonic_millis() < deadline) {
+    if (start == 0U || deadline < start) return -1;
+    for (;;) {
         uint64_t now, captured_us = 0U;
         uint64_t age;
         uint64_t gap;
@@ -1132,12 +1152,18 @@ static int observe_current_frames_for_duration(Display *source, Display *display
         int age_valid;
         int fresh;
 
+        now = monotonic_millis();
+        if (now == 0U || now < previous) return -1;
+        previous = now;
+        if (now >= deadline) break;
         if (trace_enabled) {
             observed_source_state = source_state(source);
         }
         state = viewer_state(display, viewer, &captured_us);
         age_valid = x11_frame_age(history, "/coord", state, captured_us, &age) == 0;
         now = monotonic_millis();
+        if (now == 0U || now < previous) return -1;
+        previous = now;
         if (age_valid && age > *maximum_age_ms) {
             *maximum_age_ms = age;
         }

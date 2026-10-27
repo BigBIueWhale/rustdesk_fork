@@ -107954,3 +107954,35 @@ the production constructor uses 32 MiB, correcting the initial audit wording abo
 the supplied 64-MiB case. The original ten scenarios remain unchanged; an eleventh
 positive control now exercises the actual default constructor and its constant.
 No claim is made that this additional control ran on the baseline.
+
+Candidate 9d6a2d2a100236898d9e0b94459fe09cd9a19668 passes as rVUrY9jGRV:
+all 27 workload tests and eleven capacity scenarios, complete outer acceptance in
+139 seconds. The original ten capacity cases and byte/overflow assertions are
+unchanged. Actual 24/16-bit X11 capture, direct/repng allocation refusal, retry and
+the independently decoded 150-byte PNG pass; all 8,514 native pixels have the
+expected colors and opaque alpha. The native driver requires the eleven-case result
+before its accepted PNG receipt. Successful serial filtering retains that accepted
+result, not the individual capacity observations; the baseline retains all ten.
+This is production-writer/native capture component evidence, not full application,
+peer delivery, installed privilege, other-platform or whole-process memory acceptance.
+
+Source/artifact binding:
+- Baseline tree 0c6fa30ebe2becc761bbd8179010692963976b02; writer SHA-256
+  519f91e9d75bb2bf8e73ca118697e1fc2c2f4f9ed335541ecae2252db10f7656.
+- Candidate tree 24d973eec4358c67151190b55ee690ce3e6fb333; writer SHA-256
+  b5808b0cafa3a7a7d140789ab1e412beda38b71b00ad6c2291903895d4beb7f1;
+  executed scrap artifact ba8e05d39b3719d542ae101c10aab7885c57a6b4d563bce159bd842968280cbe.
+- Rust 1.75.0, cargo closure b1c746659a19393c8f38e5b36ab76f357d4f7089c53cf45ffca8a45ec7a4f1d6;
+  devcheck index/runtime 1e6f1bde1aa3e2154a2970f8a75bfdb58899b9e44d742ab15b62c29d8b76145f /
+  5bf549eb60a88e1039a751ffb37de390b655895c20009db97fb48f54e09415fa.
+
+Retained android-rust-lifecycle-tests-run serials: 9fP1HCJbA2 is 121,263 bytes,
+SHA-256 ff9746a9280a097a7db1031a32df348cdea70b9fc742338b36b12f01eda3ec0c;
+rVUrY9jGRV is 121,923 bytes,
+SHA-256 c6ab3e2b1264b7330d73c983c91bd55076dcf7809caa861cbb037ae999fe202a.
+Matching storage/listener records show supervisor durations 142.163/142.742 seconds,
+RAM scratch peaks 3,806,728,192/3,806,289,920 bytes and durable peaks 3,354,624 bytes
+each. Both exact QEMU children join with exit 0, RAM workspaces disappear, and all
+endpoint deltas are zero. The existing 6-GiB guest/7-GiB scratch/6-GiB file ceiling
+profile is unchanged. No active run remains. All controlling files and user parks
+are unchanged. The following ledger count does not repeat the product tests.

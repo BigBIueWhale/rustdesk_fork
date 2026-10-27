@@ -2167,6 +2167,23 @@ system-wide memory exhaustion or the whole screenshot worker. Real hardware and
 other-platform capture, screenshot requests/responses and worker recovery,
 clipboard/viewer behavior, installed/LPE, R-S0/R-F5 and release acceptance remain OPEN.
 
+**Screenshot PNG retained capacity — Linux component accepted.** `9d6a2d2a`
+clips geometric buffer growth to the selected output budget and reserves that
+capacity fallibly. Length refusal still precedes allocation, and allocation failure
+preserves existing bytes. Baseline `3d899c27` exceeds eight of ten supplied capacity
+limits, including 4,097 -> 8,192 bytes and 64 -> 66 MiB. Those ten scenarios remain
+unchanged and pass after correction; an additional candidate control passes through
+the actual default constructor's 32-MiB limit. All 27 screenshot/codec tests pass in
+139 outer seconds, including direct/encoder allocation refusal, retry, byte-limit
+refusal and real 24/16-bit X11 capture with independently decoded exact pixels.
+Both VMs join, retire bounded RAM scratch and have zero endpoint deltas. The failed
+baseline stops the X11 driver before native capture; its 24 other component passes
+are not complete workload acceptance. Audit journal “Screenshot PNG storage capacity”
+and raw `9fP1HCJbA2`/`rVUrY9jGRV` records bind source, artifacts and cleanup.
+This bounds the writer's allocation requests and observes retained capacity on Linux;
+codec workspaces, allocator overhead, whole-process RSS, full screenshot request/worker
+integration, other platforms, installed/R-S0/R-F5 and release acceptance remain OPEN.
+
 **Decoded video RGB storage — native conversion component accepted; app acceptance OPEN.**
 
 `21a9dd7c` reserves decoded output fallibly before resizing and publishes dimensions
@@ -8619,6 +8636,15 @@ codec advisory-watch (`docs/NATIVE-CODEC-WATCH.md`), the `rustdesk-org` Dart
 git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
 ## Open residuals (tracked, not regressions)
+
+- **Linux wallpaper restoration — OPEN, source finding.** The current remover saves
+  one path, but the pinned wallpaper.rs XFCE backend reads only the first `last-image`
+  property and writes all matching properties. Distinct display/workspace backgrounds
+  can therefore be replaced by that first path on restoration. The Linux wrapper also
+  ignores dark-background read/write errors. Exact per-property capture/restoration,
+  failure handling and isolated desktop verification remain required. No wallpaper
+  change, native reproduction or privilege-escalation claim is made. See the audit
+  journal's screenshot-capacity investigation for the pinned dependency reference.
 
 - **Linux service-child lifecycle ownership — OPEN.** Source topology and release-gate
   wiring are implemented; exact-current installed/cold-artifact acceptance remains OPEN.

@@ -1569,6 +1569,29 @@ and global drain; the bounded process reaper owns OS-thread joins. Local relay
 readers are constructed only after authorized `PeerInfo`. Mobile tunnel construction
 and consumers remain excluded by R-S11/R-T17 and Appendix C #127.
 
+**Independent tunnel-owner reaping (`506a5800`).** The shared reaper joins finished
+owners independently, retaining live owners and their handles. One nonblocking
+32-permit admission covers queued, pending and joining owners; capacity is released
+after the exact native join and before its result is published. Dropped waiters
+retain ownership, idle reaping blocks, and pending owners are checked every 50 ms.
+Exhaustion or failed handoff retains the existing fail-stop policy.
+
+The identical Linux component suite at baseline `68554b4d` passes 97 controls and
+fails four regressions: all ten independent-owner deadlines, progress after a
+dropped waiter, supervisor shutdown beside a live one-off listener, and total
+32-owner admission. Candidate `506a5800` passes all 101 tests in 141 outer seconds,
+including exact success/error/panic results within 500 ms, 64 later joins, native
+listener preservation/rebind and isolated 32-accept/33-fail-stop children. The
+production reaper, one-off launcher and supervisor execute; peer relay is a
+close-waiting double. Two earlier runs retained failure counts but omitted the
+case details; the bounded guest failure filter is corrected. Every VM joins and
+retires RAM scratch. Those diagnostic runs each retain one unattributed endpoint
+removal; the candidate retains one addition, without owner inspection. Receipt:
+`tunnel-reaper-de88c2e2.json`. Full application/installed authenticated peers,
+macOS/Windows, long-session CPU/resource/cleanup behavior, R-S0/R-F5 and release
+acceptance remain OPEN. General tunnel half-close and all other user parks remain
+OPEN/PARKED.
+
 **Controlled target backpressure (`63e00bd0`).**
 `Connection::try_port_forward_loop` now retains one pinned relay future while
 independently receiving shutdown and CM controls. A blocked local-target write no

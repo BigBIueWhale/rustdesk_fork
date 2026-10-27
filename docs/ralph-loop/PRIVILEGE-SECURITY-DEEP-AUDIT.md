@@ -107348,3 +107348,55 @@ invocation comparison and a fresh complete ledger count. No product or native tu
 test runs for this verifier-only deletion. tunnel-verifier-ef043d43.json retains
 source identities, classified checks, the parked fixture result and count/cleanup
 evidence. Installed credentials, R-S0/R-F5 and release acceptance remain OPEN.
+
+### 2026-10-27 — independent, bounded native tunnel-owner reaping
+
+R-T17's shared reaper synchronously joined each handoff in FIFO order. The live CLI
+one-off launcher hands its owner over while its listener remains open; that join
+therefore withheld completion of unrelated finished supervisors. Its queue cap also
+excluded the join already in progress, admitting 33 retained owners instead of 32.
+
+The replacement in 506a5800 retains unfinished handles and joins only finished
+owners. A private owned permit spans handoff, queue, pending storage and native join.
+It is released before completion publication, so an awakened caller can reuse the
+capacity. Idle receive blocks; pending work is checked every 50 ms. Receiver closure
+drains pending owners. Overflow, disconnected handoff and bootstrap failure keep
+fail-stop semantics; an unsuccessful handoff retains its request until abort.
+No caller/runtime thread performs the OS join and no new worker thread is created
+per request. The outer session, mapping/connection limits, relay and authentication
+paths are unchanged.
+
+Rust 1.75 documents is_finished followed by join as the nonblocking join pattern;
+join remains the native completion/synchronization boundary:
+https://raw.githubusercontent.com/rust-lang/rust/1.75.0/library/std/src/thread/mod.rs
+The pinned Tokio 1.44.2 owned semaphore permit releases its slot on drop:
+https://raw.githubusercontent.com/tokio-rs/tokio/tokio-1.44.2/tokio/src/sync/semaphore.rs
+
+The unchanged-product baseline 68554b4d/Y8x4zigE2z passes 97 controls and fails all
+four new regressions. Ten held/finished owner combinations miss 500-ms completion
+while preserving their eventual success/error/panic result. A dropped first waiter
+blocks all later progress; real supervisor close misses the same deadline beside
+a still-live native one-off listener. Both listeners become rebindable after final
+cleanup. The capacity child accepts both 32 and 33 owners. Candidate
+506a5800/FhCuPJJYsH passes the identical 101-case suite: ten timely exact results,
+64 later joins while the first waiter is dropped, retained/reclaimed owner result,
+independent supervisor close with the one-off listener preserved, and joined native
+listener cleanup. The 32-owner child succeeds and the 33rd-owner child exits via
+SIGABRT with core files disabled. Production reaper/supervisor/one-off code and
+native threads/listeners execute; the authenticated relay remains a waiting double.
+
+Preparations f3aac3e5/rlhVAjCuLL and b119b360/RZZhovEajV retained 97/3 and 97/4
+pass/fail counts but lost detailed failure output in the guest filter. An attempted
+Python output rearrangement targeted the wrong stage and is removed. 68554b4d fixes
+the actual guest filter with a separate 160-line failure-report bound, before the
+accepted baseline. Their raw diagnostics are retained, not upgraded to case evidence.
+All four exact QEMU processes join and bounded RAM workspaces retire. The two early
+runs each record one unattributed endpoint removal; the accepted baseline has zero
+deltas and the candidate records one 19-byte endpoint addition. The harness cannot
+create host IP sockets; no foreign owner was inspected or changed.
+
+tunnel-reaper-de88c2e2.json binds source, unchanged A/B tests/orchestration, native
+artifacts/results, diagnostic limitations, cleanup and the fresh ledger count.
+Parent application/installed peers, other target OSes, prolonged CPU/resource and
+cleanup soaks, current release artifacts and R-S0/R-F5 acceptance remain OPEN.
+General TCP half-close, clipboard keystrokes and all prior user parks stay parked.

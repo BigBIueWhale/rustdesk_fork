@@ -32,10 +32,9 @@ class DirectListenerStatusWidget extends StatefulWidget {
 
 class _DirectListenerStatusWidgetState
     extends State<DirectListenerStatusWidget> {
-  // The desktop GUI and the controlled `--server` are separate processes. Read both facts over
-  // main IPC: the actual listener-bound state controls reachability, while the password fact only
-  // selects the actionable explanation when the listener is not bound. Keep this asynchronous
-  // because the cross-process read can wait for the IPC timeout when the service is unavailable.
+  // The desktop GUI and controlled `--server` are separate processes. Read listener state over
+  // main IPC; only an unreachable listener needs the password fact to select its explanation.
+  // Keep this asynchronous because the cross-process read can wait for the IPC timeout.
   bool _reachable = false;
   bool _passwordConfigured = false;
   bool _polling = false;
@@ -105,12 +104,13 @@ class _DirectListenerStatusWidgetState
 
   _refreshStatus() async {
     // A failed IPC round trip can approach the polling interval; never overlap status reads.
-    if (_polling) return;
+    if (_polling || !mounted) return;
     _polling = true;
     try {
       final reachable =
           (await bind.mainGetCommon(key: 'direct-listener-bound')) == 'true';
-      final passwordConfigured =
+      if (!mounted) return;
+      final passwordConfigured = !reachable &&
           (await bind.mainGetCommon(key: 'permanent-password-set')) ==
               'true';
       if (mounted &&

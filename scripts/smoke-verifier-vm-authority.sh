@@ -330,7 +330,7 @@ case "$#:${1:-}" in
         MODE=flutter-model-tests
         ;;
     2:--flutter-model-tests)
-        [[ "$2" = --frame-queue || "$2" = --direct-address || "$2" = --file-metadata || "$2" = --password-fields || "$2" = --share-rdp || "$2" = --connect-password || "$2" = --credential-dialog || "$2" = --terminal-output || "$2" = --settings-navigation || "$2" = --window-dispatch || "$2" = --menu-button || "$2" = --draggable-divider || "$2" = --list-search || "$2" = --peer-search || "$2" = --tab-selection || "$2" = --status-refresh || "$2" = --peer-data || "$2" = --file-progress || "$2" = --file-search || "$2" = --clipboard-keystrokes || "$2" = --floating-position || "$2" = --virtual-joystick || "$2" = --virtual-mouse-buttons || "$2" = --custom-scale || "$2" = --audio-input || "$2" = --reconnect || "$2" = --file-navigation || "$2" = --directory-ordering || "$2" = --modifier-release || "$2" = --auto-disconnect ]] \
+        [[ "$2" = --frame-queue || "$2" = --direct-address || "$2" = --file-metadata || "$2" = --password-fields || "$2" = --share-rdp || "$2" = --connect-password || "$2" = --credential-dialog || "$2" = --terminal-output || "$2" = --settings-navigation || "$2" = --desktop-theme || "$2" = --window-dispatch || "$2" = --menu-button || "$2" = --draggable-divider || "$2" = --list-search || "$2" = --peer-search || "$2" = --tab-selection || "$2" = --status-refresh || "$2" = --peer-data || "$2" = --file-progress || "$2" = --file-search || "$2" = --clipboard-keystrokes || "$2" = --floating-position || "$2" = --virtual-joystick || "$2" = --virtual-mouse-buttons || "$2" = --custom-scale || "$2" = --audio-input || "$2" = --reconnect || "$2" = --file-navigation || "$2" = --directory-ordering || "$2" = --modifier-release || "$2" = --auto-disconnect ]] \
             && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'focused Flutter shard or input/run authority differs' >&2; exit 2; }
@@ -619,6 +619,7 @@ case "$#:${1:-}" in
         printf 'Focused credential dialog lifetime: %s --flutter-model-tests --credential-dialog\n' "${0##*/}" >&2
         printf 'Focused terminal output and model lifetime: %s --flutter-model-tests --terminal-output\n' "${0##*/}" >&2
         printf 'Rendered settings navigation: %s --flutter-model-tests --settings-navigation\n' "${0##*/}" >&2
+        printf 'Rendered desktop theme and settings controls: %s --flutter-model-tests --desktop-theme\n' "${0##*/}" >&2
         printf 'Focused desktop window error replies: %s --flutter-model-tests --window-dispatch\n' "${0##*/}" >&2
         printf 'Focused status refresh retirement: %s --flutter-model-tests --status-refresh\n' "${0##*/}" >&2
         printf 'Rendered menu button accessibility: %s --flutter-model-tests --menu-button\n' "${0##*/}" >&2
@@ -665,6 +666,10 @@ readonly FLUTTER_APP_REPLAY FLUTTER_APP_COMMIT FLUTTER_APP_EXPECTED_MANIFEST_SHA
 readonly FLUTTER_TEST_PROFILE
 readonly RUST_TEST_PROFILE
 readonly FLUTTER_APP_ENGINE_COMMIT FLUTTER_APP_ENGINE_ARCHIVE_SHA256 FLUTTER_APP_ENGINE_MANIFEST_SHA256
+FLUTTER_SETTINGS_TEST_COUNT=46
+if [ "$FLUTTER_TEST_PROFILE" = desktop-theme ]; then
+    FLUTTER_SETTINGS_TEST_COUNT=16
+fi
 if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ] || [ "$FLUTTER_APP_REPLAY" -eq 1 ]; then
     [[ "$FLUTTER_APP_ENGINE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
         && [[ "$FLUTTER_APP_ENGINE_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
@@ -1706,7 +1711,7 @@ flutter_peer_input_inventory() {
 flutter_model_input_inventory() {
     local -a directories=("$ONLINE_INPUTS" "$PUB_CACHE_ROOT")
     local -a files=("$FLUTTER_TEST_ARCHIVE" "$DEB_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE")
-    if [[ "$FLUTTER_TEST_PROFILE" = models || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
+    if [[ "$FLUTTER_TEST_PROFILE" = models || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
         directories+=("$CARGO_VENDOR_ROOT")
         files+=("$RUST_TEST_ARCHIVE" "$LLVM_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN")
     fi
@@ -2906,7 +2911,7 @@ elif [ "$MODE" = flutter-model-tests ]; then
         "$DEB_BUILDER_ARCHIVE:$DEB_BUILDER_IMAGE_ARCHIVE_SIZE:$SHA256_DEB_BUILDER_IMAGE_ARCHIVE"
         "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE"
     )
-    if [[ "$FLUTTER_TEST_PROFILE" = models || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
+    if [[ "$FLUTTER_TEST_PROFILE" = models || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
         flutter_inputs+=(
             "$RUST_TEST_ARCHIVE:$SIZE_RUST_1_75:$SHA256_RUST_1_75"
             "$LLVM_TEST_ARCHIVE:$SIZE_LLVM_15_0_6:$SHA256_LLVM_15_0_6"
@@ -2924,7 +2929,7 @@ elif [ "$MODE" = flutter-model-tests ]; then
             || fail "sealed focused-test input metadata differs: $path"
         verify_sha256 "$path" "$digest"
     done
-    if [[ "$FLUTTER_TEST_PROFILE" = models || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
+    if [[ "$FLUTTER_TEST_PROFILE" = models || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
         [ -f "$FRB_CODEGEN" ] && [ ! -L "$FRB_CODEGEN" ] \
             && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$FRB_CODEGEN")" = \
                  "$HOST_UID:$HOST_GID:500:1:$SIZE_FLUTTER_PEER_FRB_CODEGEN" ] \
@@ -8161,9 +8166,9 @@ else
         require_exact_fixed_receipt \
             "FLUTTER_CREDENTIAL_DIALOG_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=9 tests=83 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-credential-dialog-tests cleanup=joined" \
             'focused Flutter credential-dialog receipt'
-    elif [ "$FLUTTER_TEST_PROFILE" = settings-navigation ]; then
+    elif [[ "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme ]]; then
         require_exact_fixed_receipt \
-            "FLUTTER_SETTINGS_NAVIGATION_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=46 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-settings-native-doubles cleanup=joined" \
+            "FLUTTER_SETTINGS_NAVIGATION_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=$FLUTTER_SETTINGS_TEST_COUNT flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-settings-native-doubles cleanup=joined" \
             'focused Flutter settings navigation receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = terminal-output ]; then
         decoder_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/models/terminal_output_decoder.dart" | /usr/bin/awk '{print $1}')"
@@ -8997,7 +9002,7 @@ else
     elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
         printf 'FLUTTER_CREDENTIAL_DIALOG_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=production-dart-credential-dialog-tests cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
-    elif [ "$FLUTTER_TEST_PROFILE" = settings-navigation ]; then
+    elif [[ "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme ]]; then
         printf 'FLUTTER_SETTINGS_NAVIGATION_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=rendered-settings-native-doubles cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$FLUTTER_TEST_PROFILE" = terminal-output ]; then

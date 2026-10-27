@@ -108205,3 +108205,37 @@ Six rendered cases extend the existing isolated settings probe, whose native
 configuration and notification boundaries are explicit doubles. The production
 page and MyTheme path are executed unchanged for the baseline; no real native
 theme broadcast, installed application or OS window appearance is claimed.
+
+Baseline `d12e9471` / VM `dgvDWweoFF` executes all six new theme cases:
+five fail on the claimed behavior and the effective-value/Follow System control
+passes. Duplicate clicks admit `dark`, empty/system and `light` before the first
+save settles; a closed-page callback admits a second write; a newly fixed
+preference still admits the retained callback; write failure has no inline
+failure state; notification failure escapes as a StateError. The ten existing
+desktop navigation/recording cases pass. The broad settings-navigation profile
+also executes thirty mobile cases, including twenty-one failures from the
+already parked mobile-boolean preparation. They remain open and are not changed.
+The candidate therefore uses the new `--desktop-theme` selector: the same six
+theme bodies plus those ten existing desktop controls, with an exact sixteen-case
+result inventory. The broad profile retains all forty-six cases unchanged.
+
+Baseline serial: 149,805 bytes, SHA-256
+`1f2bf039c967a5163bb177162c3ef2ed43795a7c9b6da37c2dfeb15ec8f6840a`.
+The 4 GiB guest/7 GiB RAM scratch profile completed in 258.509 supervisor seconds;
+peak scratch 6,365,868,032 bytes, durable evidence 3,387,392 bytes. QEMU 3097546
+joined with exit 0 and RAM `run.vkrzhcrn` retired. Before/during endpoint deltas
+are zero; the final snapshot has one unattributed removal, left untouched.
+After exact process/workspace/socket checks, bounded diagnostics are retained at
+`theme-baseline.dgvDWweoFF`; no active run marker remains.
+
+The correction gives `_GeneralState` one pending theme change and retains that
+state across PageView eviction. Admission checks mounted, pending and current
+fixed-option state before persistence; controls disable until completion. The
+existing global preference/broadcast transaction drains after close, but its
+retired page cannot admit another action or update state. Write refusal and
+notification exceptions leave a visible translated failure and permit retry.
+The existing receiver-derived effective theme and Follow System semantics remain.
+There is no timer, queue, dependency, new credential/policy operation or change to
+MyTheme/native theme transport. Other windows and OS theme propagation still need
+their native evidence; this is page-owned admission, not global cross-window
+transaction serialization.

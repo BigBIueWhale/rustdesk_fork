@@ -308,11 +308,17 @@ class _General extends StatefulWidget {
   State<_General> createState() => _GeneralState();
 }
 
-class _GeneralState extends State<_General> {
+class _GeneralState extends State<_General> with AutomaticKeepAliveClientMixin {
   bool _languageSaving = false;
+  bool _themeSaving = false;
+  bool _themeFailed = false;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return ListView(
       primary: false,
       children: [
@@ -347,28 +353,44 @@ class _GeneralState extends State<_General> {
   Widget theme() {
     final current = MyTheme.getThemeModePreference().toShortString();
     onChanged(String value) async {
-      if (!await MyTheme.changeDarkMode(MyTheme.themeModeFromString(value)) ||
-          !mounted) return;
-      setState(() {});
+      if (!mounted || _themeSaving || isOptionFixed(kCommConfKeyTheme)) return;
+      setState(() {
+        _themeSaving = true;
+        _themeFailed = false;
+      });
+      try {
+        final saved =
+            await MyTheme.changeDarkMode(MyTheme.themeModeFromString(value));
+        if (mounted) _themeFailed = !saved;
+      } catch (error) {
+        debugPrint('Failed to change theme: $error');
+        if (mounted) _themeFailed = true;
+      } finally {
+        if (mounted) setState(() => _themeSaving = false);
+      }
     }
 
-    final isOptFixed = isOptionFixed(kCommConfKeyTheme);
+    final enabled = !isOptionFixed(kCommConfKeyTheme) && !_themeSaving;
     return _Card(title: 'Theme', children: [
       _Radio<String>(context,
           value: 'light',
           groupValue: current,
           label: 'Light',
-          onChanged: isOptFixed ? null : onChanged),
+          onChanged: enabled ? onChanged : null),
       _Radio<String>(context,
           value: 'dark',
           groupValue: current,
           label: 'Dark',
-          onChanged: isOptFixed ? null : onChanged),
+          onChanged: enabled ? onChanged : null),
       _Radio<String>(context,
           value: 'system',
           groupValue: current,
           label: 'Follow System',
-          onChanged: isOptFixed ? null : onChanged),
+          onChanged: enabled ? onChanged : null),
+      if (_themeFailed)
+        Text(translate('Failed'),
+                style: TextStyle(color: Theme.of(context).colorScheme.error))
+            .marginOnly(left: _kContentHMargin),
     ]);
   }
 

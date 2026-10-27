@@ -175,7 +175,7 @@ case "$#:${8:-}" in
         MODE=flutter-model-tests
         ;;
     13:--flutter-model-tests)
-        [[ "${13}" = --frame-queue || "${13}" = --direct-address || "${13}" = --file-metadata || "${13}" = --password-fields || "${13}" = --share-rdp || "${13}" = --connect-password || "${13}" = --credential-dialog || "${13}" = --terminal-output || "${13}" = --settings-navigation || "${13}" = --window-dispatch || "${13}" = --menu-button || "${13}" = --draggable-divider || "${13}" = --list-search || "${13}" = --peer-search || "${13}" = --tab-selection || "${13}" = --status-refresh || "${13}" = --peer-data || "${13}" = --file-progress || "${13}" = --file-search || "${13}" = --clipboard-keystrokes || "${13}" = --floating-position || "${13}" = --virtual-joystick || "${13}" = --virtual-mouse-buttons || "${13}" = --custom-scale || "${13}" = --audio-input || "${13}" = --reconnect || "${13}" = --file-navigation || "${13}" = --directory-ordering || "${13}" = --modifier-release || "${13}" = --auto-disconnect ]] || exit 2
+        [[ "${13}" = --frame-queue || "${13}" = --direct-address || "${13}" = --file-metadata || "${13}" = --password-fields || "${13}" = --share-rdp || "${13}" = --connect-password || "${13}" = --credential-dialog || "${13}" = --terminal-output || "${13}" = --settings-navigation || "${13}" = --desktop-theme || "${13}" = --window-dispatch || "${13}" = --menu-button || "${13}" = --draggable-divider || "${13}" = --list-search || "${13}" = --peer-search || "${13}" = --tab-selection || "${13}" = --status-refresh || "${13}" = --peer-data || "${13}" = --file-progress || "${13}" = --file-search || "${13}" = --clipboard-keystrokes || "${13}" = --floating-position || "${13}" = --virtual-joystick || "${13}" = --virtual-mouse-buttons || "${13}" = --custom-scale || "${13}" = --audio-input || "${13}" = --reconnect || "${13}" = --file-navigation || "${13}" = --directory-ordering || "${13}" = --modifier-release || "${13}" = --auto-disconnect ]] || exit 2
         MODE=flutter-model-tests
         FLUTTER_TEST_PROFILE=${13#--}
         ;;
@@ -283,6 +283,10 @@ case "$#:${8:-}" in
         exit 2
         ;;
 esac
+FLUTTER_SETTINGS_TEST_COUNT=46
+if [ "$FLUTTER_TEST_PROFILE" = desktop-theme ]; then
+    FLUTTER_SETTINGS_TEST_COUNT=16
+fi
 readonly RUST_TEST_PROFILE
 readonly DOCKER_ARCHIVE=$1
 readonly ENTRY_PREFLIGHT=$2
@@ -10576,7 +10580,7 @@ run_flutter_model_tests() {
     local memory=8g memory_bytes=8589934592 result_prefix=FLUTTER_MODEL_TEST_JSON
     local -a toolchain_mounts=()
     local bridge_required=0
-    if [[ "$FLUTTER_TEST_PROFILE" = models || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
+    if [[ "$FLUTTER_TEST_PROFILE" = models || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
         bridge_required=1
         toolchain_mounts=(
             --mount "type=bind,source=$cargo_vendor,target=/online/cargo-vendor,readonly"
@@ -10630,11 +10634,11 @@ run_flutter_model_tests() {
         elif [ "$FLUTTER_TEST_PROFILE" = window-dispatch ]; then
             result_prefix=FLUTTER_WINDOW_DISPATCH_TEST_JSON
             expected_result='suites=1 tests=8'
-        elif [ "$FLUTTER_TEST_PROFILE" = settings-navigation ]; then
+        elif [[ "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme ]]; then
             memory=3g
             memory_bytes=3221225472
             result_prefix=FLUTTER_SETTINGS_NAVIGATION_TEST_JSON
-            expected_result='suites=1 tests=46'
+            expected_result="suites=1 tests=$FLUTTER_SETTINGS_TEST_COUNT"
         elif [ "$FLUTTER_TEST_PROFILE" = terminal-output ]; then
             memory=3g
             memory_bytes=3221225472
@@ -10748,7 +10752,7 @@ run_flutter_model_tests() {
             printf 'FLUTTER_PASSWORD_FIELD_STAGE=verify-source-and-inputs\n'
         elif [ "$FLUTTER_TEST_PROFILE" = window-dispatch ]; then
             printf 'FLUTTER_WINDOW_DISPATCH_STAGE=verify-source-and-inputs\n'
-        elif [ "$FLUTTER_TEST_PROFILE" = settings-navigation ]; then
+        elif [[ "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme ]]; then
             printf 'FLUTTER_SETTINGS_NAVIGATION_STAGE=verify-source-and-inputs\n'
         elif [ "$FLUTTER_TEST_PROFILE" = terminal-output ]; then
             printf 'FLUTTER_TERMINAL_OUTPUT_STAGE=verify-source-and-inputs\n'
@@ -11015,7 +11019,7 @@ run_flutter_model_tests() {
                 if [ "$FLUTTER_BRIDGE_REQUIRED" -eq 1 ]; then
                     mkdir /work/cargo-home
                     tar -C /work/toolchain -xf /inputs/rust.tar.xz
-                    if [[ "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
+                    if [[ "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
                         llvm_root=clang+llvm-15.0.6-x86_64-linux-gnu-ubuntu-18.04
                         tar -C /work/toolchain -xf /inputs/llvm.tar.xz \
                             "$llvm_root/lib/libclang.so" \
@@ -11066,7 +11070,7 @@ run_flutter_model_tests() {
                 export PATH=/work/flutter-shim:$PATH
                 project_root=/source/flutter
                 codegen_source=/source
-                if [[ "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
                     cp -a /source /work/source
                     codegen_source=/work/source
                     project_root=/work/source/flutter
@@ -11129,7 +11133,7 @@ run_flutter_model_tests() {
                     format_paths=(lib/common/widgets/password_text_field.dart test/password_text_field_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = window-dispatch ]; then
                     format_paths=(test/desktop_window_dispatch_test.dart)
-                elif [ "$FLUTTER_TEST_PROFILE" = settings-navigation ]; then
+                elif [[ "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme ]]; then
                     format_paths=()
                 elif [ "$FLUTTER_TEST_PROFILE" = terminal-output ]; then
                     format_paths=(lib/models/terminal_model.dart lib/models/terminal_output_decoder.dart test/terminal_output_decoder_test.dart test/terminal_model_lifecycle_test.dart)
@@ -11334,7 +11338,7 @@ run_flutter_model_tests() {
                     tests=(test/password_text_field_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = window-dispatch ]; then
                     tests=(test/desktop_window_dispatch_test.dart)
-                elif [ "$FLUTTER_TEST_PROFILE" = settings-navigation ]; then
+                elif [[ "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme ]]; then
                     python3 -B -I -S /source/scripts/prepare-settings-navigation-probe.py prepare
                     tests=(test_probes/settings_navigation_probe_test.dart)
                     test_budget=120s
@@ -11440,6 +11444,9 @@ run_flutter_model_tests() {
                     test_budget=900s
                 fi
                 test_name_filter=()
+                if [ "$FLUTTER_TEST_PROFILE" = desktop-theme ]; then
+                    test_name_filter=(--name "^(desktop theme|recording directory|settings )")
+                fi
                 if [ "$FLUTTER_TEST_PROFILE" = audio-input ]; then
                     test_name_filter=(--name "^audio ")
                 fi
@@ -11460,13 +11467,13 @@ run_flutter_model_tests() {
                             --timeout=30s "${test_fail_fast[@]}" "${test_name_filter[@]}" "${tests[@]}"
                 }
                 test_status=0
-                if [[ "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = file-navigation ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme || "$FLUTTER_TEST_PROFILE" = file-navigation ]]; then
                     run_flutter_tests 2>/work/test.err | tee /work/test.json || test_status=$?
                 else
                     run_flutter_tests >/work/test.json 2>/work/test.err || test_status=$?
                 fi
                 if [ "$test_status" -ne 0 ]; then
-                    [[ "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = file-navigation ]] || tail -c 4194304 /work/test.json >&2
+                    [[ "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme || "$FLUTTER_TEST_PROFILE" = file-navigation ]] || tail -c 4194304 /work/test.json >&2
                     tail -c 1048576 /work/test.err >&2
                     exit 1
                 fi
@@ -11547,7 +11554,7 @@ run_flutter_model_tests() {
                     elif [ "$FLUTTER_TEST_PROFILE" = window-dispatch ]; then
                         diff -r /source/flutter/third_party/desktop_multi_window third_party/desktop_multi_window
                         cmp /source/flutter/test/desktop_window_dispatch_test.dart test/desktop_window_dispatch_test.dart
-                    elif [ "$FLUTTER_TEST_PROFILE" = settings-navigation ]; then
+                    elif [[ "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme ]]; then
                         python3 -B -I -S /source/scripts/prepare-settings-navigation-probe.py verify
                     elif [ "$FLUTTER_TEST_PROFILE" = terminal-output ]; then
                         diff -r --exclude=generated_bridge.dart \
@@ -11728,7 +11735,7 @@ run_flutter_model_tests() {
         printf 'FLUTTER_CONNECT_PASSWORD_STAGE=run-production-connect-password-tests\n'
     elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
         printf 'FLUTTER_CREDENTIAL_DIALOG_STAGE=run-production-dialog-tests\n'
-    elif [ "$FLUTTER_TEST_PROFILE" = settings-navigation ]; then
+    elif [[ "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme ]]; then
         printf 'FLUTTER_SETTINGS_NAVIGATION_STAGE=run-rendered-settings-tests\n'
     elif [ "$FLUTTER_TEST_PROFILE" = terminal-output ]; then
         printf 'FLUTTER_TERMINAL_OUTPUT_STAGE=run-production-terminal-tests\n'
@@ -11816,7 +11823,7 @@ run_flutter_model_tests() {
     printf '%s\n' "$tools_freshness_line"
     printf 'FLUTTER_TEST_RESULT_PARSER=pass tests=3\n'
     printf '%s\n' "$result_line"
-    if [ "$FLUTTER_TEST_PROFILE" = settings-navigation ]; then
+    if [[ "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme ]]; then
         [ "$(grep -Ec '^SETTINGS_NAVIGATION_SOURCE=(prepare|verify) page=[0-9a-f]{64} tests=[0-9a-f]{64} page_copy=exact native_binding=double parent=double platform=double$' "$output")" -eq 2 ] \
             || fail 'settings navigation source receipts differ'
         grep -E '^(SETTINGS_NAVIGATION_SOURCE=|\{)' "$output"
@@ -11940,9 +11947,9 @@ run_flutter_model_tests() {
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$password_sha256" "$tests_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
-    elif [ "$FLUTTER_TEST_PROFILE" = settings-navigation ]; then
-        printf 'FLUTTER_SETTINGS_NAVIGATION_TESTS_VM=pass commit=%s tree=%s suites=1 tests=46 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-settings-native-doubles cleanup=joined\n' \
-            "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
+    elif [[ "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme ]]; then
+        printf 'FLUTTER_SETTINGS_NAVIGATION_TESTS_VM=pass commit=%s tree=%s suites=1 tests=%s flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-settings-native-doubles cleanup=joined\n' \
+            "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$FLUTTER_SETTINGS_TEST_COUNT" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$SHA256_PUB_CACHE_CLOSURE_V1" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = terminal-output ]; then

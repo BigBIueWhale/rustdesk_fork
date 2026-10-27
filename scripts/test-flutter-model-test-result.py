@@ -90,9 +90,12 @@ class ResultTests(unittest.TestCase):
         elif profile == "file-navigation":
             suites = sorted(result.FILE_NAVIGATION_SUITES)
             names = sorted(set().union(*result.FILE_NAVIGATION_SUITES.values()))
-        elif profile == "settings-navigation":
+        elif profile in {"settings-navigation", "desktop-theme"}:
             suites = ["settings_navigation_probe_test.dart"]
             names = sorted(result.SETTINGS_NAVIGATION_TESTS)
+            if profile == "desktop-theme":
+                names = [name for name in names
+                         if name.startswith(("desktop theme", "recording directory", "settings "))]
         elif profile == "terminal-output":
             suites = sorted(result.TERMINAL_OUTPUT_TESTS)
             names = sorted(set().union(*result.TERMINAL_OUTPUT_TESTS.values()))
@@ -187,6 +190,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("file-navigation"), "file-navigation"), (7, 125))
         self.assertEqual(self.parse(self.events("terminal-output"), "terminal-output"), (2, 37))
         self.assertEqual(self.parse(self.events("settings-navigation"), "settings-navigation"), (1, 46))
+        self.assertEqual(self.parse(self.events("desktop-theme"), "desktop-theme"), (1, 16))
         self.assertEqual(self.parse(self.events("modifier-release"), "modifier-release"), (5, 112))
         self.assertEqual(self.parse(self.events("connect-password"), "connect-password"), (1, 7))
         self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (9, 98))
@@ -223,7 +227,7 @@ class ResultTests(unittest.TestCase):
                         path.unlink()
 
     def test_focused_inventory_is_exact(self):
-        for profile in ("frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "modifier-release"):
+        for profile in ("frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "modifier-release"):
             events = self.events(profile)
             for edit in ("rename", "duplicate", "suite", "missing", "wrong-suite"):
                 with self.subTest(profile=profile, edit=edit):
@@ -247,7 +251,7 @@ class ResultTests(unittest.TestCase):
                         self.parse(changed, profile)
 
     def test_failure_skip_and_incomplete_are_rejected(self):
-        for profile in ("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "modifier-release"):
+        for profile in ("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "modifier-release"):
             events = self.events(profile)
             done_index = next(
                 i for i, event in enumerate(events) if event["type"] == "testDone"

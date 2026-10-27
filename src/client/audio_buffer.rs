@@ -1,15 +1,96 @@
 use hbb_common::log;
 use ringbuf::{ring_buffer::RbBase, Rb};
 use std::{
+    collections::VecDeque,
     sync::{Arc, Mutex, TryLockError},
     time::{Duration, Instant},
 };
 
 pub const AUDIO_BUFFER_MS: usize = 3000;
 const SHRINK_INTERVAL: Duration = Duration::from_secs(12);
+const MAX_PCM_AGE: Duration = Duration::from_secs(1);
+// More than one second of the shortest (2.5 ms) Opus packets, with a hard
+// count bound even if a producer supplies smaller PCM blocks.
+const MAX_PCM_SPANS: usize = 512;
+
+struct PcmSpan {
+    samples: usize,
+    queued_at: Instant,
+}
+
+pub(super) struct AudioSamples {
+    pcm: ringbuf::HeapRb<f32>,
+    spans: VecDeque<PcmSpan>,
+    span_limit: usize,
+}
+
+impl AudioSamples {
+    pub(super) fn capacity(&self) -> usize {
+        self.pcm.capacity()
+    }
+
+    pub(super) fn occupied_len(&self) -> usize {
+        self.pcm.occupied_len()
+    }
+
+    fn consume_spans(&mut self, mut samples: usize) {
+        while samples > 0 {
+            let Some(span) = self.spans.front_mut() else {
+                // Only this owner can change PCM or its age accounting.
+                panic!("audio PCM has no admission age");
+            };
+            let consumed = samples.min(span.samples);
+            samples -= consumed;
+            span.samples -= consumed;
+            if span.samples == 0 {
+                self.spans.pop_front();
+            }
+        }
+    }
+
+    fn skip(&mut self, samples: usize) {
+        let skipped = samples.min(self.occupied_len());
+        self.pcm.skip(skipped);
+        self.consume_spans(skipped);
+    }
+
+    fn pop(&mut self) -> Option<f32> {
+        let sample = self.pcm.pop()?;
+        self.consume_spans(1);
+        Some(sample)
+    }
+
+    fn expire(&mut self, now: Instant) {
+        while let Some(span) = self.spans.front() {
+            if now.checked_duration_since(span.queued_at)
+                .map_or(false, |age| age <= MAX_PCM_AGE)
+            {
+                break;
+            }
+            self.skip(span.samples);
+        }
+    }
+
+    fn append(&mut self, buffer: &[f32], now: Instant) -> usize {
+        self.expire(now);
+        if buffer.is_empty() {
+            return self.occupied_len();
+        }
+        let buffer = &buffer[buffer.len().saturating_sub(self.capacity())..];
+        self.skip((self.occupied_len() + buffer.len()).saturating_sub(self.capacity()));
+        if self.spans.len() == self.span_limit {
+            if let Some(span) = self.spans.front() {
+                self.skip(span.samples);
+            }
+        }
+        self.pcm.push_slice_overwrite(buffer);
+        self.spans.push_back(PcmSpan { samples: buffer.len(), queued_at: now });
+        self.occupied_len()
+    }
+}
 
 pub(super) struct AudioBuffer {
-    pub(super) samples: Arc<Mutex<ringbuf::HeapRb<f32>>>,
+    pub(super) samples: Arc<Mutex<AudioSamples>>,
     sample_rate_channels: usize,
     channels: usize,
     occupancy_samples: [usize; 30],
@@ -26,10 +107,14 @@ impl AudioBuffer {
             .filter(|&samples| samples > 0
                 && samples <= isize::MAX as usize / std::mem::size_of::<f32>())
             .ok_or_else(invalid_geometry)?;
-        let samples = ringbuf::HeapRb::<f32>::try_new(capacity)
+        let pcm = ringbuf::HeapRb::<f32>::try_new(capacity)
+            .map_err(|_| std::io::Error::from(std::io::ErrorKind::OutOfMemory))?;
+        let span_limit = capacity.min(MAX_PCM_SPANS);
+        let mut spans = VecDeque::new();
+        spans.try_reserve_exact(span_limit)
             .map_err(|_| std::io::Error::from(std::io::ErrorKind::OutOfMemory))?;
         Ok(Self {
-            samples: Arc::new(Mutex::new(samples)),
+            samples: Arc::new(Mutex::new(AudioSamples { pcm, spans, span_limit })),
             sample_rate_channels,
             channels,
             occupancy_samples: [0; 30],
@@ -104,18 +189,7 @@ impl AudioBuffer {
     /// will be kept.
     fn append_pcm2(&self, buffer: &[f32]) -> usize {
         let mut lock = self.samples.lock().unwrap();
-        let cap = lock.capacity();
-        if buffer.len() > cap {
-            lock.push_slice_overwrite(buffer);
-            return cap;
-        }
-
-        let having = lock.occupied_len() + buffer.len();
-        if having > cap {
-            lock.skip(having - cap);
-        }
-        lock.push_slice_overwrite(buffer);
-        lock.occupied_len()
+        lock.append(buffer, Instant::now())
     }
 
     /// append pcm to audio buffer, trying to drop data
@@ -128,12 +202,15 @@ impl AudioBuffer {
 }
 
 pub(super) fn fill_output<T>(
-    samples: &Mutex<ringbuf::HeapRb<f32>>,
+    samples: &Mutex<AudioSamples>,
     output: &mut [T],
     convert: fn(f32) -> T,
 ) {
     let mut samples = match samples.try_lock() {
-        Ok(samples) => Some(samples),
+        Ok(mut samples) => {
+            samples.expire(Instant::now());
+            Some(samples)
+        }
         Err(TryLockError::WouldBlock) => None,
         Err(TryLockError::Poisoned(error)) => panic!("audio PCM ring was poisoned: {error}"),
     };
@@ -183,7 +260,7 @@ mod tests {
         assert_eq!(queued(&buffer), 6);
         assert!(buffer.occupancy_samples.iter().all(|&count| count == 0));
         let mut samples = [0.; 6];
-        buffer.samples.lock().unwrap().pop_slice(&mut samples);
+        fill_output(&buffer.samples, &mut samples, |sample| sample);
         assert_eq!(samples, [2., 3., 4., 5., 6., 7.]);
     }
 
@@ -309,11 +386,11 @@ mod tests {
         buffer.append_pcm(&[10., 11., 12., 13.]);
         assert_eq!(queued(&buffer), 12);
         let mut samples = [0.; 12];
-        buffer.samples.lock().unwrap().pop_slice(&mut samples);
+        fill_output(&buffer.samples, &mut samples, |sample| sample);
         assert_eq!(samples, [2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13.]);
         buffer.append_pcm(&[9.; 20]);
         assert_eq!(queued(&buffer), 12);
-        buffer.samples.lock().unwrap().pop_slice(&mut samples);
+        fill_output(&buffer.samples, &mut samples, |sample| sample);
         assert_eq!(samples, [9.; 12]);
     }
 
@@ -437,6 +514,60 @@ mod tests {
         }
         assert!(failures.is_empty(), "expired PCM was replayed: {failures:?}");
         println!("AUDIO_PCM_EXPIRY=pass cases=4 deadline_ms=1000 fresh=preserved partial=expired contention=nonblocking recovery=exact");
+    }
+
+    #[test]
+    fn pcm_age_accounting_survives_overflow_partial_reads_and_exact_expiry() {
+        let buffer = AudioBuffer::new(4, 1).unwrap();
+        let mut samples = buffer.samples.lock().unwrap();
+        let start = Instant::now();
+        samples.append(&[1.; 8], start);
+        assert_eq!(samples.pop(), Some(1.));
+        samples.append(&[2.; 8], start + Duration::from_millis(500));
+        assert_eq!(samples.occupied_len(), 12);
+        samples.expire(start + MAX_PCM_AGE);
+        assert_eq!(samples.occupied_len(), 12);
+        samples.expire(start + MAX_PCM_AGE + Duration::from_nanos(1));
+        assert_eq!(samples.occupied_len(), 8);
+        samples.skip(3);
+        assert_eq!(samples.pop(), Some(2.));
+        assert_eq!(samples.occupied_len(), 4);
+        assert_eq!(samples.spans.front().unwrap().samples, 4);
+        samples.append(&[], start + Duration::from_millis(1500));
+        assert_eq!(samples.occupied_len(), 4);
+        samples.expire(start + Duration::from_millis(1500) + Duration::from_nanos(1));
+        assert_eq!(samples.occupied_len(), 0);
+        assert!(samples.spans.is_empty());
+        samples.append(&[3.], start + Duration::from_secs(10));
+        samples.expire(start);
+        assert!(samples.pop().is_none(), "unknown age must not publish PCM");
+    }
+
+    #[test]
+    fn pcm_age_storage_is_bounded_and_retires_whole_stereo_blocks() {
+        let buffer = AudioBuffer::new(48000, 2).unwrap();
+        let mut samples = buffer.samples.lock().unwrap();
+        let capacity = samples.spans.capacity();
+        let start = Instant::now();
+        for index in 0..700 {
+            samples.append(&[index as f32, -(index as f32)], start);
+            assert!(samples.spans.len() <= MAX_PCM_SPANS);
+            assert_eq!(samples.spans.capacity(), capacity);
+            assert_eq!(samples.occupied_len(), samples.spans.iter().map(|span| span.samples).sum::<usize>());
+        }
+        assert_eq!(samples.occupied_len(), 2 * MAX_PCM_SPANS);
+        for index in 700 - MAX_PCM_SPANS..700 {
+            assert_eq!(samples.pop(), Some(index as f32));
+            assert_eq!(samples.pop(), Some(-(index as f32)));
+        }
+        assert!(samples.spans.is_empty());
+        assert!(samples.pop().is_none());
+        assert!(capacity >= MAX_PCM_SPANS);
+        samples.append(&[7., -7.], start);
+        samples.expire(start + MAX_PCM_AGE + Duration::from_nanos(1));
+        assert!(samples.spans.is_empty());
+        assert_eq!(samples.occupied_len(), 0);
+        assert_eq!(samples.spans.capacity(), capacity);
     }
 
     #[test]

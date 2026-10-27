@@ -12,11 +12,9 @@ mod before_capture_pcm;
 mod capture_pcm;
 
 use dasp_sample::{FromSample, Sample};
-use ringbuf::{ring_buffer::RbBase, Rb};
 use std::{
     alloc::{GlobalAlloc, Layout, System},
     cell::Cell,
-    sync::Mutex,
 };
 
 struct AllocationCounter;
@@ -31,9 +29,17 @@ thread_local! {
     static RING_REFUSE_BYTES: Cell<usize> = const { Cell::new(0) };
     static RING_REFUSALS: Cell<usize> = const { Cell::new(0) };
     static RING_LARGE_ALLOCATIONS: Cell<usize> = const { Cell::new(0) };
+    static REFUSE_METADATA: Cell<bool> = const { Cell::new(false) };
+    static METADATA_REFUSALS: Cell<usize> = const { Cell::new(0) };
 }
 
 fn ring_allocation_refused(bytes: usize, alignment: usize) -> bool {
+    if alignment > std::mem::align_of::<f32>() && bytes >= 4096
+        && REFUSE_METADATA.try_with(Cell::get).unwrap_or(false)
+    {
+        METADATA_REFUSALS.with(|count| count.set(count.get() + 1));
+        return true;
+    }
     if !RING_TRACKING.try_with(Cell::get).unwrap_or(false) || alignment != 4 {
         return false;
     }
@@ -147,9 +153,9 @@ fn convert<T: Sample + FromSample<f32>>(value: f32) -> T {
 #[test]
 fn fill_converts_all_cpal_sample_types_with_correct_silence() {
     fn check<T: Sample + FromSample<f32> + std::fmt::Debug>() {
-        let mut ring = ringbuf::HeapRb::new(4);
-        ring.push_slice_overwrite(&[-0.5, 0.25]);
-        let ring = Mutex::new(ring);
+        let mut buffer = audio_buffer::AudioBuffer::new(4, 1).unwrap();
+        buffer.append_pcm(&[-0.5, 0.25]);
+        let ring = &buffer.samples;
         let mut output = [T::EQUILIBRIUM; 4];
         audio_buffer::fill_output(&ring, &mut output, T::from_sample);
         assert_eq!(
@@ -177,24 +183,24 @@ fn fill_converts_all_cpal_sample_types_with_correct_silence() {
 
 #[test]
 fn fill_has_no_allocations_in_the_warmed_normal_path() {
-    let ring = Mutex::new(ringbuf::HeapRb::new(64));
+    let mut buffer = audio_buffer::AudioBuffer::new(64, 1).unwrap();
     let mut output = [0.; 64];
-    audio_buffer::fill_output(&ring, &mut output, convert::<f32>);
+    audio_buffer::fill_output(&buffer.samples, &mut output, convert::<f32>);
     assert!(allocations_during(|| {
         std::hint::black_box(vec![0u8; 32]);
     }) > 0, "allocation counter must observe its positive control");
     let mut observed = 0;
     for _ in 0..1000 {
-        ring.lock().unwrap().push_slice_overwrite(&[0.5; 64]);
+        buffer.append_pcm(&[0.5; 64]);
         observed += allocations_during(|| {
-            audio_buffer::fill_output(&ring, &mut output, convert::<f32>);
+            audio_buffer::fill_output(&buffer.samples, &mut output, convert::<f32>);
         });
         assert_eq!(output, [0.5; 64]);
     }
     assert_eq!(observed, 0);
-    let _producer = ring.lock().unwrap();
+    let _producer = buffer.samples.lock().unwrap();
     assert_eq!(allocations_during(|| {
-        audio_buffer::fill_output(&ring, &mut output, convert::<f32>);
+        audio_buffer::fill_output(&buffer.samples, &mut output, convert::<f32>);
     }), 0);
     assert_eq!(output, [0.; 64]);
 }
@@ -356,4 +362,34 @@ fn invalid_pcm_geometry_refuses_before_storage_allocation() {
     }
     assert_eq!(failures, 0, "invalid output geometry must refuse before allocating a ring");
     println!("AUDIO_BUFFER_GEOMETRY=pass cases=5 allocations=0 panics=0");
+}
+
+#[test]
+fn pcm_age_reservation_is_fallible_and_fresh_output_recovers() {
+    fn refuse_metadata<T>(action: impl FnOnce() -> T) -> (T, usize) {
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) { REFUSE_METADATA.with(|flag| flag.set(false)); }
+        }
+        METADATA_REFUSALS.with(|count| count.set(0));
+        REFUSE_METADATA.with(|flag| assert!(!flag.replace(true)));
+        let reset = Reset;
+        let result = action();
+        drop(reset);
+        (result, METADATA_REFUSALS.with(Cell::get))
+    }
+    let (probe, refused) = refuse_metadata(|| Vec::<u64>::new().try_reserve_exact(1024));
+    assert!(probe.is_err());
+    assert_eq!(refused, 1);
+    let (result, refused) = refuse_metadata(|| {
+        std::panic::catch_unwind(|| audio_buffer::AudioBuffer::new(48000, 2))
+    });
+    assert_eq!(refused, 1);
+    assert!(matches!(result, Ok(Err(error)) if error.kind() == std::io::ErrorKind::OutOfMemory));
+    let mut recovered = audio_buffer::AudioBuffer::new(48000, 2).unwrap();
+    recovered.append_pcm(&[0.25, -0.5]);
+    let mut output = [9.; 4];
+    audio_buffer::fill_output(&recovered.samples, &mut output, convert::<f32>);
+    assert_eq!(output, [0.25, -0.5, 0., 0.]);
+    println!("AUDIO_PCM_METADATA=pass probe=refused reservation=fallible recovery=exact");
 }

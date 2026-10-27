@@ -6763,30 +6763,34 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fuse
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
     mapfile -t buffer_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'AUDIO_BUFFER_ARTIFACT=pass sha256=[0-9a-f]{64} tests=25 unchanged=before-after$'
+            'AUDIO_BUFFER_ARTIFACT=pass sha256=[0-9a-f]{64} tests=28 unchanged=before-after$'
     )
     [ "${#buffer_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'AUDIO_BUFFER_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'audio-buffer artifact receipt differs'
     require_exact_fixed_receipt \
-        "AUDIO_BUFFER_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=25 target=linux-x86_64 scope=production-portable-pcm-buffer rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "AUDIO_BUFFER_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=28 target=linux-x86_64 scope=production-portable-pcm-buffer rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused audio-buffer receipt'
     require_exact_fixed_receipt \
         'AUDIO_BUFFER_RESERVATION=pass cases=4 probe=panic survivor=preserved recovery=pass' \
         'audio-buffer storage refusal and recovery'
     require_exact_fixed_receipt 'AUDIO_BUFFER_GEOMETRY=pass cases=5 allocations=0 panics=0' \
         'audio-buffer invalid output geometry'
+    require_exact_fixed_receipt 'AUDIO_PCM_EXPIRY=pass cases=4 deadline_ms=1000 fresh=preserved partial=expired contention=nonblocking recovery=exact' \
+        'audio-buffer expiry and fresh recovery'
+    require_exact_fixed_receipt 'AUDIO_PCM_METADATA=pass probe=refused reservation=fallible recovery=exact' \
+        'audio-buffer age metadata reservation'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'audio-buffer cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
     mapfile -t audio_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'AUDIO_MAILBOX_ARTIFACT=pass sha256=[0-9a-f]{64} tests=49 unchanged=before-after$'
+            'AUDIO_MAILBOX_ARTIFACT=pass sha256=[0-9a-f]{64} tests=51 unchanged=before-after$'
     )
     [ "${#audio_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'AUDIO_MAILBOX_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'audio-mailbox artifact receipt differs'
     require_exact_fixed_receipt \
-        "AUDIO_MAILBOX_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=49 target=linux-x86_64 scope=production-mailbox-and-generated-protobuf rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "AUDIO_MAILBOX_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=51 target=linux-x86_64 scope=production-mailbox-and-generated-protobuf rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused audio-mailbox receipt'
     require_exact_fixed_receipt \
         'ANDROID_RAW_TRANSFER=pass cases=4 rounds=3 copy_allocations=0 pointer=transferred producer_storage=reused payload=exact probe=SIGABRT children=joined scope=portable-linux' \
@@ -8729,10 +8733,10 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'FUSE_FD_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=9 scope=production-descriptor-transfer network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
-        printf 'AUDIO_BUFFER_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=25 scope=production-portable-pcm-buffer network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'AUDIO_BUFFER_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=28 scope=production-portable-pcm-buffer network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
-        printf 'AUDIO_MAILBOX_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=49 scope=production-mailbox-and-generated-protobuf network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'AUDIO_MAILBOX_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=51 scope=production-mailbox-and-generated-protobuf network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = resolution-restoration ]; then
         printf 'RESOLUTION_RESTORATION_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=6 scope=production-record-identity-with-callback-fixtures network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

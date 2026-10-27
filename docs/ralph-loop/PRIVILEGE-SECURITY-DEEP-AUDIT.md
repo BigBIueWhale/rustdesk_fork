@@ -108091,3 +108091,25 @@ interleaved stereo, and packet duration. Rust VecDeque documents fallible exact
 reservation and FIFO ownership; neither count bounds nor capacity reserve imply
 freshness. References: https://www.opus-codec.org/docs/opus_api-1.3.1/group__opus__decoder.html
 and https://doc.rust-lang.org/std/collections/struct.VecDeque.html.
+
+Baseline 63e782b26b82adb7c2b517f206755f05d6acb9d4 / 3DGu0z4fyt executes
+25 tests: 24 controls pass and all four expiry observations replay the old tail.
+Artifact 0eee5d0532c47ca2b8daed8a1873bc8ec98587e2bb677d0b147bc5a27704d7c4;
+serial 91,533 bytes / ab079612d5de9e6a6b2387cdc8e6c268a9c82f3eb3af4f3d48de31c0041d6456.
+QEMU 3036431 joins with exit 0; RAM run.z2j0jzi7 retires; all endpoint deltas
+are zero. Failed diagnostics are retained as pcm-expiry-baseline.3DGu0z4fyt.
+
+The correction gives the existing PCM owner a fallibly preallocated FIFO of at
+most 512 admission spans (or the smaller sample capacity). Each span tracks its
+remaining samples and original monotonic arrival; consumption, overflow and
+adaptive trimming retire matching metadata. Expiry before append and callback
+dequeue discards old or unclassifiable ages without refreshing them. Metadata
+pressure evicts the oldest remaining block before publication. No callback
+allocation, blocking acquisition, timer, restart or secondary worker is added.
+The one-second bound applies at local PCM dequeue, not physical presentation.
+The original four-case baseline body is unchanged. Three additional candidate
+checks cover age accounting/boundaries, metadata capacity/stereo order, and native
+allocator refusal with fresh-output recovery: 28 buffer cases and 51 shared
+mailbox cases. Existing conversion/allocation checks use the same production
+buffer owner so sample writes cannot bypass its metadata. Full platform parents,
+physical output and end-to-end recovery remain separate open acceptance.

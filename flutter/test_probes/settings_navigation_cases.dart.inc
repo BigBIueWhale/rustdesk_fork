@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/mobile/pages/settings_page.dart' as mobile;
@@ -183,6 +186,20 @@ Finder _keepAwakeTile() => find.ancestor(
     matching: find.byType(SettingsTile));
 
 Future<void> _mountMobile(WidgetTester tester, TargetPlatform platform) async {
+  // Branding is outside this settings probe; the application source is unchanged.
+  tester.binding.defaultBinaryMessenger.setMockMessageHandler('flutter/assets',
+      (message) async {
+    final key = utf8.decode(message!.buffer.asUint8List(
+        message.offsetInBytes, message.lengthInBytes));
+    if (key == 'AssetManifest.bin') {
+      return const StandardMessageCodec().encodeMessage(<String, Object>{});
+    }
+    if (key == 'assets/logo.png') {
+      return ByteData.sublistView(base64Decode(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='));
+    }
+    return null;
+  });
   await tester.binding.setSurfaceSize(const Size(400, 600));
   await tester.pumpWidget(ChangeNotifierProvider<FfiModel>(
     create: (_) => _MobileSettingsModel(),

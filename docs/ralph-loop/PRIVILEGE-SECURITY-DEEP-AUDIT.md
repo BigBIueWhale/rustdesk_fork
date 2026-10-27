@@ -108803,3 +108803,16 @@ and expectations are unchanged. Flutter's
 [InkWell documentation](https://api.flutter.dev/flutter/material/InkWell-class.html)
 requires the Material paint owner and explains why a transparent local Material
 keeps feedback visible above the peer card. Candidate verification is pending.
+
+Candidate attempt `ofT68Rcgl1` at `a360d341` is rejected: the result-validator
+import raises KeyError because the new profile referenced `PEER_DATA_SUITES`;
+the existing nine badge cases actually belong to `FILE_NAVIGATION_SUITES`.
+The serial retained no per-case verdicts before that failure, so this is not an
+accepted product pass. Correct only that inventory reference and rerun the exact
+same product and tests. Serial: 67,451 bytes, SHA-256
+`45b99c111cd3b48ba8f67229d6376f39f1c3f3c6b7e4a7b2d7b8e078b23ba1fe`.
+QEMU 3428383 joins with exit 0; RAM `run.4ao9r82v` is absent. Supervisor 254.562
+seconds; peak RAM scratch 6,361,956,352 bytes; durable diagnostics 3,301,376 bytes.
+Before/during endpoint deltas are zero; final one-endpoint/18-byte removal is
+unattributed and untouched. Completed diagnostics are retained as
+`credential-badge-parser.ofT68Rcgl1`; all active run roots are absent.

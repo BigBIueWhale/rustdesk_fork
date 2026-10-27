@@ -1371,7 +1371,7 @@ CLIPBOARD_KEYSTROKES_TESTS = {
 
 
 CREDENTIAL_BADGE_SUITES = {
-    "peer_credential_badge_test.dart": PEER_DATA_SUITES["peer_credential_badge_test.dart"],
+    "peer_credential_badge_test.dart": FILE_NAVIGATION_SUITES["peer_credential_badge_test.dart"],
     "peer_credential_badge_accessibility_test.dart": {
         "credential retry exposes a labelled enabled button action",
         "credential retry activates once with Enter",

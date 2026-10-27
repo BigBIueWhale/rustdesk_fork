@@ -107587,3 +107587,45 @@ native effects throw. Constructor tests do not mount the complete Recent/Favorit
 page or claim native storage/persistence. Product source is unchanged for baseline.
 Installed/native authority and all fifteen credential actions remain OPEN, as do
 R-S0/R-F5, other platforms, full-page behavior, resource soaks and release acceptance.
+
+Baseline 3ee4d81c1bab936930c4ec51c788ac46951ea7f6 ran the unchanged product
+using /bin/bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests
+--peer-search. Run ayeZPPAiIQ completed with eight passes and two failures:
+invalid values expose five FormatExceptions and four wrong List selections;
+reload exposes retained/incorrect List state. The six rendered search controls,
+all supported integer spellings and storage-error propagation pass.
+
+Product b1804d7aabf33fca83804dbfa1e2a3838efaa28a (tree
+8b60b40fdab0fa642b917d53fe8fd68fac1159d7) replaces repeated throwing parsing
+with one tryParse and enum-range selection in _loadLocalOptions. No native API,
+write, dependency or privilege path changes. The identical command/cases run as
+CC2tsNj3c8 and pass all ten cases plus three result-parser controls. This is actual
+Flutter 3.24.5/Linux page-constructor and rendered-search evidence with fresh
+generated bindings, preference/translation doubles and no host product execution.
+Complete UI mounting/native persistence/device acceptance is not established.
+
+Both checks use the same test bytes: SHA-256
+5a9b6c41e50313150916abeea1f3e39eda0c1a36af3eecfce1f8906bd454e2be.
+Product widget SHA-256 changes from
+e97125d15dffe58df4fdd1f150afdf3bd27c7e6fa831efb4145d28b81c39dbbe to
+dd8cd01192c667c0d28b888bcdb3ece13dadbdb27ea0474817ff8d3948be5bcf.
+The candidate guest emits its exact-source pass, but the outer command exits 1:
+its expected literal still required six tests and the old evidence label. The
+outer literal is corrected to the existing ten-case guest result. Read-only
+comparison substitutes the executed source/tree, unchanged widget/test digests
+and authenticated pins and matches exactly one retained receipt. No native
+result is fabricated or rerun for this metadata-only correction; no new whole-run
+outer pass is claimed. Shell syntax and diff checks pass.
+
+Retained serials under .harness-state/verifier-vm (with adjacent storage and
+listener records): flutter-model-tests-run.ayeZPPAiIQ.serial.log, 79,840 bytes,
+SHA-256 d15a55637ba659e97bc876b7fa1d150b166c566325aad6d14186e217d58c326a;
+flutter-model-tests-run.CC2tsNj3c8.serial.log, 73,278 bytes, SHA-256
+69590e9d3b04f6fae6a852d67f2062c4f10a7207294c18865443b3205a38ea1f.
+The existing profile admits 4-GiB guest RAM, 7-GiB RAM scratch, 6-GiB file ceiling
+and 6-GiB host headroom. Storage-supervisor durations are 255.582/296.827 seconds;
+RAM peaks 6,362,456,064/6,363,570,176 bytes; durable run peaks
+3,313,664/3,309,568 bytes. Every endpoint delta is zero. Exact QEMU processes
+join with exit 0, RAM workspaces disappear and active run markers are retired.
+Bounded diagnostics remain in peer-layout-baseline.ayeZPPAiIQ and
+peer-layout-receipt.CC2tsNj3c8. Broad acceptance and every prior park stay open.

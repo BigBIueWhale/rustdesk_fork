@@ -108719,3 +108719,14 @@ left untouched, with no process-owner inspection. This is formatter/rendered-fie
 evidence, not full page, native FFI, OS input-method or authenticated tunnel
 acceptance. All installed/native security and release obligations remain open.
 The ledger records this exact boundary; a fresh ledger token count follows.
+
+Ledger run `U322KO2KHQ` at `6b2de269` counts **351,755 tokens / 1,598,058 bytes**,
+SHA-256 `7f779ddffbd1c777dd15ff794c45eb7032da0f3b08cd88bfdd9a6f99f748abb7`.
+Pinned tiktoken-0.12.0/cl100k_base/encode_ordinary, seven controls and whole-input
+UTF-8 round trip pass; the approximate 400,000-token budget remains met. Serial:
+97,242 bytes, SHA-256 `26c6a675e336ba6c32962381fcccafb29e26e25fdba9c53a46c1a00ee111e15c`.
+Outer/supervisor lifetime 28/31.685 seconds; peak RAM scratch 402,210,816 bytes,
+durable evidence 147,456 bytes. QEMU 3349413 joins with exit 0; RAM `run.kuwkbffm`
+and active run roots are absent. Every listener delta is zero. All twelve parked
+stashes retain their original object IDs. This receipt changes neither the counted
+ledger nor tested product.

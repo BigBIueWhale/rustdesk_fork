@@ -108459,3 +108459,20 @@ profile uses pinned Flutter 3.24.5, exact source copies and strict result parsin
 it does not import the native binding or run the product on the host. Run the
 unchanged product baseline before correction, then the identical cases afterward.
 This preparation commit makes no product change and claims no test pass.
+
+Baseline `c96b98cc`, bounded-RAM run `acYXmKsZRW`: the unchanged widget compiles;
+all six semantics cases fail because the labelled node lacks checked/enabled
+flags, while the two pointer/keyboard cases pass. Test execution is 4.569 seconds;
+supervisor lifetime 116.227 seconds. Serial is 85,268 bytes, SHA-256
+`983cc29ec08f02e3ac36fde7e0310ff6bb58fa22021ed1d36a3ea859e5bf194c`.
+Peak RAM scratch is 4,049,928,192 bytes and durable evidence 3,317,760 bytes.
+QEMU 3228837 is joined with exit 0; RAM `run.nz1detgh` is absent. No listener
+additions occurred; one unattributed final endpoint removal is left untouched.
+The failed diagnostic root is identity-renamed to
+`setting-checkbox-baseline.acYXmKsZRW` after process/socket/RAM retirement proof.
+
+The candidate adds only MergeSemantics around the existing interactive row.
+The existing Checkbox supplies checked/enabled flags; its text supplies the
+label. The same row action delegates to the unchanged SettingBooleanControl,
+and the progress/failure siblings retain their own feedback. The test file and
+all eight expectations remain byte-identical for the candidate run.

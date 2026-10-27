@@ -32,7 +32,7 @@ class SettingCheckbox extends StatelessWidget {
     builder: (current, change, saving, failed) => Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start, children: [
-      GestureDetector(
+      MergeSemantics(child: GestureDetector(
         onTap: change != null ? () => change(!current) : null,
         child: Row(children: [
           Padding(
@@ -46,7 +46,7 @@ class SettingCheckbox extends StatelessWidget {
           ),
           Expanded(child: Text(label, style: labelStyle)),
         ]),
-      ),
+      )),
       if (saving) const SizedBox(height: 2, child: LinearProgressIndicator()),
       if (failed) Text(failureText),
     ]),

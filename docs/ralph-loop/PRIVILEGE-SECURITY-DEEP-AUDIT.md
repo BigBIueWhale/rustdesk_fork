@@ -109768,3 +109768,17 @@ endpoint deltas are zero; the final inventory has one unattributed addition
 and the listener audit passes. All user-parked work stays parked. Full heap pressure,
 other native allocation paths, application/installed/platform and R-S0/R-F5/release
 acceptance remain open. The ledger records this exact evidence scope.
+
+Fresh ledger count at `fc1ac7b9d3e54c6ad6d76199790bc91d71666de4`, tree
+`29e3cbdabd3021498e69000906c0aeefb276ed21`, passes as `cfCqyDyO4f`:
+354,368 tokens (+284), 1,610,374 bytes (+1,239), SHA-256
+`151b623ee99c2371a9551c7b0a00a7b4d85f57574b463b940ad1b6aa14b84b67`.
+Pinned counting, seven controls and the complete UTF-8 round trip pass, within
+the approximate 400,000-token budget. Storage admission's 29 profiles/52 refusals
+and 38 workloads/53 controls/5 refusals pass. Serial 96,876 bytes, SHA-256
+`5d31b9b93b400036adb47a123ed9be094b48107f93f271fa0db3ab984c18f413`.
+Outer/supervisor lifetime 29/32.113 seconds, peak RAM scratch 402,292,736 bytes,
+durable evidence 151,552 bytes. QEMU 3910982 joins with exit 0; its PID,
+RAM `run.8g3vpdd4` and active run roots are absent. Before/during endpoint deltas
+are zero; after contains one unattributed 18-byte addition, without owner inspection.
+This audit-only receipt changes neither the counted ledger nor tested sources.

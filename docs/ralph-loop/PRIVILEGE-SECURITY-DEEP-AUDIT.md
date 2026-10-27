@@ -108986,3 +108986,16 @@ preference/save futures and platform themes. Full menus, native accessibility,
 physical mobile/desktop input, native storage, installed and release acceptance
 remain open. Requirements and live instructions are unchanged. The ledger count
 is verified separately; the broad hardening goal remains active and incomplete.
+
+Fresh ledger count `1lzla4UfwB` at `9a95e7e90a2fe68959705cad7e3f5b3bb232c49d`
+passes: 352,319 tokens / 1,600,689 bytes, input SHA-256
+`900d8b0c26824657a722564fbc7ad7d3bc84824299aad831f4901b7042be37ec`.
+Pinned tiktoken-0.12.0/cl100k_base/encode_ordinary, seven controls and the full
+UTF-8 round trip pass; the approximate 400,000-token budget remains met. Serial:
+99,469 bytes, SHA-256 `c5c1a0d0301756c5096af2d72ebfeba387306492a1dc6dd2225786a8c1a1c0bf`.
+Outer/supervisor lifetime 28/31.451 seconds; peak RAM scratch 402,350,080 bytes,
+durable evidence 151,552 bytes. QEMU 3526561 joins with exit 0; RAM `run.h76mublf`
+and all active run roots are absent. All listener deltas are zero and all thirteen
+stash IDs remain unchanged. This receipt changes neither the counted ledger nor
+tested product. The completed slice is a zoom usability correction; broad
+hardening and target-native acceptance remain open.

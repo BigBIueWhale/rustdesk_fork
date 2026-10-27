@@ -7,9 +7,12 @@ const _divider = ValueKey('divider');
 const _pane = ValueKey('pane');
 
 Widget _subject(ValueChanged<double>? onMove,
-    {Axis axis = Axis.vertical, VoidCallback? onHover}) {
+    {Axis axis = Axis.vertical, VoidCallback? onHover,
+    TextDirection direction = TextDirection.ltr}) {
   var extent = 100.0;
   return MaterialApp(
+    builder: (context, child) =>
+        Directionality(textDirection: direction, child: child!),
     home: Scaffold(
       body: Center(
         child: StatefulBuilder(builder: (context, setState) {
@@ -44,6 +47,75 @@ Widget _subject(ValueChanged<double>? onMove,
 }
 
 void main() {
+  for (final kind in [PointerDeviceKind.mouse, PointerDeviceKind.touch]) {
+    testWidgets('divider RTL ${kind.name} drag follows the pointer',
+        (tester) async {
+      final moves = <double>[];
+      await tester.pumpWidget(
+          _subject(moves.add, direction: TextDirection.rtl));
+      final start = tester.getCenter(find.byKey(_divider));
+      final pointer = await tester.startGesture(start, kind: kind);
+      await pointer.moveBy(const Offset(-30, 7));
+      await tester.pump();
+      expect(tester.getSize(find.byKey(_pane)).width, 130);
+      expect(tester.getCenter(find.byKey(_divider)).dx, start.dx - 30);
+      await pointer.moveBy(const Offset(12, -3));
+      await tester.pump();
+      expect(tester.getSize(find.byKey(_pane)).width, 118);
+      expect(tester.getCenter(find.byKey(_divider)).dx, start.dx - 18);
+      expect(moves.fold(0.0, (sum, delta) => sum + delta), 18);
+      await pointer.up();
+      await pointer.removePointer();
+    });
+  }
+
+  testWidgets('divider horizontal RTL drag keeps vertical distance',
+      (tester) async {
+    final moves = <double>[];
+    await tester.pumpWidget(_subject(moves.add,
+        axis: Axis.horizontal, direction: TextDirection.rtl));
+    final start = tester.getCenter(find.byKey(_divider));
+    final pointer = await tester.startGesture(start);
+    await pointer.moveBy(const Offset(8, 30));
+    await tester.pump();
+    expect(tester.getSize(find.byKey(_pane)).height, 130);
+    expect(tester.getCenter(find.byKey(_divider)).dy, start.dy + 30);
+    await pointer.moveBy(const Offset(-3, -12));
+    await tester.pump();
+    expect(tester.getSize(find.byKey(_pane)).height, 118);
+    expect(moves.fold(0.0, (sum, delta) => sum + delta), 18);
+    await pointer.up();
+  });
+
+  for (final direction in TextDirection.values) {
+    testWidgets('divider change to ${direction.name} retires the active drag',
+        (tester) async {
+      final moves = <double>[];
+      final previous = direction == TextDirection.rtl
+          ? TextDirection.ltr : TextDirection.rtl;
+      await tester.pumpWidget(_subject(moves.add, direction: previous));
+      final pointer = await tester.startGesture(
+          tester.getCenter(find.byKey(_divider)));
+      await pointer.moveBy(const Offset(30, 0));
+      await tester.pump();
+      expect(moves, isNotEmpty);
+      await tester.pumpWidget(_subject(moves.add, direction: direction));
+      moves.clear();
+      await pointer.moveBy(const Offset(30, 0));
+      await tester.pump();
+      expect(moves, isEmpty);
+      expect(tester.getSize(find.byKey(_pane)).width, 100);
+      await pointer.up();
+      final fresh = await tester.startGesture(
+          tester.getCenter(find.byKey(_divider)));
+      await fresh.moveBy(Offset(direction == TextDirection.rtl ? -30 : 30, 0));
+      await tester.pump();
+      expect(tester.getSize(find.byKey(_pane)).width, 130);
+      expect(moves.fold(0.0, (sum, delta) => sum + delta), 30);
+      await fresh.up();
+    });
+  }
+
   testWidgets('divider primary mouse drag resizes columns by exact distance',
       (tester) async {
     final moves = <double>[];

@@ -10558,7 +10558,7 @@ run_flutter_model_tests() {
             expected_result='suites=1 tests=6'
         elif [ "$FLUTTER_TEST_PROFILE" = draggable-divider ]; then
             result_prefix=FLUTTER_DRAGGABLE_DIVIDER_TEST_JSON
-            expected_result='suites=1 tests=9'
+            expected_result='suites=1 tests=14'
         elif [ "$FLUTTER_TEST_PROFILE" = list-search ]; then
             result_prefix=FLUTTER_LIST_SEARCH_TEST_JSON
             expected_result='suites=1 tests=6'
@@ -11705,7 +11705,7 @@ run_flutter_model_tests() {
         local widget_sha256
         widget_sha256="$(sha256sum "$source_root/flutter/lib/desktop/widgets/dragable_divider.dart" | awk '{print $1}')"
         tests_sha256="$(sha256sum "$source_root/flutter/test/draggable_divider_test.dart" | awk '{print $1}')"
-        printf 'FLUTTER_DRAGGABLE_DIVIDER_TESTS_VM=pass commit=%s tree=%s suites=1 tests=9 flutter=3.24.5 widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-draggable-divider-tests cleanup=joined\n' \
+        printf 'FLUTTER_DRAGGABLE_DIVIDER_TESTS_VM=pass commit=%s tree=%s suites=1 tests=14 flutter=3.24.5 widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-draggable-divider-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$widget_sha256" "$tests_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

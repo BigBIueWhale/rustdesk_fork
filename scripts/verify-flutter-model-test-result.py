@@ -141,6 +141,11 @@ MENU_BUTTON_TESTS = {
     "menu button disabled rebuild refuses activation and can recover",
 }
 DRAGGABLE_DIVIDER_TESTS = {
+    "divider RTL mouse drag follows the pointer",
+    "divider RTL touch drag follows the pointer",
+    "divider horizontal RTL drag keeps vertical distance",
+    "divider change to ltr retires the active drag",
+    "divider change to rtl retires the active drag",
     "divider primary mouse drag resizes columns by exact distance",
     "divider secondary and middle drags leave columns unchanged",
     "divider touch drag preserves axis distance",

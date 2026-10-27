@@ -8014,7 +8014,7 @@ else
         widget_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/desktop/widgets/dragable_divider.dart" | /usr/bin/awk '{print $1}')"
         widget_tests_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test/draggable_divider_test.dart" | /usr/bin/awk '{print $1}')"
         require_exact_fixed_receipt \
-            "FLUTTER_DRAGGABLE_DIVIDER_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=9 flutter=$FLUTTER_VERSION widget=$widget_sha256 tests_source=$widget_tests_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-draggable-divider-tests cleanup=joined" \
+            "FLUTTER_DRAGGABLE_DIVIDER_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=14 flutter=$FLUTTER_VERSION widget=$widget_sha256 tests_source=$widget_tests_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-draggable-divider-tests cleanup=joined" \
             'focused Flutter draggable-divider receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = list-search ]; then
         widget_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/desktop/widgets/list_search_action_listener.dart" | /usr/bin/awk '{print $1}')"

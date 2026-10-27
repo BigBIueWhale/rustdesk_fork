@@ -143,7 +143,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("direct-address"), "direct-address"), (1, 19))
         self.assertEqual(self.parse(self.events("password-fields"), "password-fields"), (1, 4))
         self.assertEqual(self.parse(self.events("menu-button"), "menu-button"), (1, 6))
-        self.assertEqual(self.parse(self.events("draggable-divider"), "draggable-divider"), (1, 9))
+        self.assertEqual(self.parse(self.events("draggable-divider"), "draggable-divider"), (1, 14))
         self.assertEqual(self.parse(self.events("list-search"), "list-search"), (1, 6))
         self.assertEqual(self.parse(self.events("peer-search"), "peer-search"), (1, 6))
         self.assertEqual(self.parse(self.events("tab-selection"), "tab-selection"), (2, 31))

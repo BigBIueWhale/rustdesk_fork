@@ -109476,3 +109476,26 @@ modification/change times. The open context owns closure on success or error.
 The regression bytes, all inventories and runtime recipes remain unchanged.
 These checks detect the exercised observable changes; they do not authenticate a
 test producer or provide an atomic snapshot against an arbitrary privileged writer.
+
+Candidate `49f22b0ecd4de973c682193e2a9c4f73a6889754`, tree
+`5b0596a63cf6a18f9d93a8c0af75ce4138a54f23`, passes the identical focused command
+as `otpaf6OSrS`: all three parser methods, the five formerly failing regressions,
+existing controls, 25 actual Flutter address cases and offline-tool freshness.
+The oversized-line traced allocation is below 4,194,304 bytes. Parser SHA-256 is
+`a9887cc7ba9500b82b136bda5ad0eadc471509976be1d03f012fc2e20be63c33`; unchanged
+regression SHA-256 is `ac333f53e64251b59aac303f6659b355c8b099ddca048b47ce191a8dc46cf82d`.
+Serial is 68,486 bytes, SHA-256
+`6e13c967da199845ae8c6dd8900a703d632afb29ed37688db5d55a9f4170ff25`.
+Outer/supervisor lifetime is 100/104.058 seconds; peak RAM scratch 4,050,186,240
+bytes and durable evidence 3,301,376 bytes. QEMU 3777378 joins with exit 0;
+its PID, RAM `run.tx88bnir` and active run roots are absent; all endpoint deltas
+are zero. Read-only AST parsing and `git diff --check` pass. Only the parser and
+its regression change executable behavior; product, inventories, runner recipes,
+normative requirements and live instructions remain unchanged.
+
+The ledger also removes stale hard-coded inventory totals and states the existing
+scope accurately: focused profiles bind their named cases, while the full model
+checkpoint checks suites and total but does not bind individual names to suites.
+That separate exact-inventory gap remains OPEN; this run does not execute or claim
+the full model checkpoint. All previously parked and native/release obligations
+remain open.

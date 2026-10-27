@@ -5230,8 +5230,10 @@ The model checkpoint's test total is one reviewed data file,
 `scripts/flutter-model-test-count.txt`, shared by the parser, parser fixtures, guest
 summary and outer receipt check. The guest copies it beside the immutable validator
 before giving the test process its source workspace; both receive read-only mounts.
-The configured 26-suite/310-case inventory, successful non-skipped completion and terminal checks remain
-mandatory; the fixed queue shard requires its exact 26 named tests. This removes
+The configured suite inventory and test total, successful non-skipped completion
+and terminal checks remain mandatory. Focused profiles additionally check their
+named cases; the model checkpoint does not yet bind individual names to suites.
+Exact model-case inventory remains OPEN. This removes
 the stale-summary duplication that rejected an otherwise successful native run.
 At `1b9f1d0c` (tree `3b573a19`), both source-bound zero-NIC transactions passed:
 the queue shard's 24 named tests in 107 VM seconds and the model checkpoint's 23 suites/
@@ -5242,6 +5244,18 @@ overlay remains. Retained full raw serials are `flutter-model-tests-run.hRcpK8Iz
 and `flutter-model-tests-run.IF3CyuilTJ.serial.log`; exact hashes are in the audit journal.
 This is harness maintenance, not an app behavior fix or closure of the faster
 prepared-native inner-loop work; VM timing excludes host preparation.
+
+**Result-file admission (`49f22b0e`).** The parser validates and reads one no-follow,
+nonblocking opened descriptor, bounds reads before allocation and requires matching
+length/link/modification metadata at EOF. Baseline `hAkL0FXQnG` reproduces four
+accepted file-change schedules and oversized-line allocation of 12,775,334 bytes.
+The identical regressions pass after correction in `otpaf6OSrS`, including the
+4-MiB traced-allocation ceiling, all existing parser controls and 25 real Flutter
+address tests (100 outer seconds). Both QEMU processes join, RAM workspaces retire
+and endpoint deltas are zero. Exact evidence is in the audit entry “2026-10-28 —
+retained bounded Flutter result-file admission”. This establishes parser/file
+behavior in the Linux guest, not producer authenticity, an atomic hostile-writer
+snapshot, whole-app behavior or native privilege acceptance.
 
 ### Android runtime — intermittent presentation remains OPEN
 

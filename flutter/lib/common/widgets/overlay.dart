@@ -265,7 +265,11 @@ class DraggableKeyPosition {
     if (value.isNotEmpty) {
       final parts = value.split(',');
       if (parts.length == 2) {
-        return Offset(double.parse(parts[0]), double.parse(parts[1]));
+        final x = double.tryParse(parts[0]);
+        final y = double.tryParse(parts[1]);
+        if (x != null && y != null && x.isFinite && y.isFinite) {
+          return Offset(x, y);
+        }
       }
     }
     return DraggablePositions.kInvalidDraggablePosition;

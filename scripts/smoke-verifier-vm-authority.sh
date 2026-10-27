@@ -8050,7 +8050,7 @@ else
         widget_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/common/widgets/start_ellipsis_text.dart" | /usr/bin/awk '{print $1}')"
         widget_tests_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test/start_ellipsis_text_test.dart" | /usr/bin/awk '{print $1}')"
         require_exact_fixed_receipt \
-            "FLUTTER_PATH_LABEL_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=8 flutter=$FLUTTER_VERSION widget=$widget_sha256 tests_source=$widget_tests_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-path-label-tests cleanup=joined" \
+            "FLUTTER_PATH_LABEL_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=16 flutter=$FLUTTER_VERSION widget=$widget_sha256 tests_source=$widget_tests_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-path-label-tests cleanup=joined" \
             'focused Flutter path-label receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = setting-checkbox ]; then
         widget_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/common/widgets/setting_checkbox.dart" | /usr/bin/awk '{print $1}')"

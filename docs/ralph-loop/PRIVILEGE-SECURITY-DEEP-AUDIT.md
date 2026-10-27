@@ -109082,3 +109082,26 @@ durable evidence 151,552 bytes. QEMU 3593395 joins with exit 0; its PID, RAM
 `run.5ahlmk24` and all active run roots are absent. All listener deltas are zero.
 All thirteen stash IDs remain unchanged. This audit-only receipt changes neither
 the counted ledger nor the tested product.
+
+## 2026-10-27 user pivot — filename endings after line breaks
+
+The user requests a different aspect. Installer-ledger consolidation and further
+clipboard acquisition review are left OPEN/PARKED with no edits or runtime claims;
+all earlier parks remain. The R-S11ia–R-S11io table still leaves all fifteen native
+action acceptances open, along with installed functionality, R-S0/R-F5, resource,
+artifact, independent-reproduction and external-review obligations.
+
+The new slice is file-transfer filename presentation. `StartEllipsisText` measures
+only the width of a one-line TextPainter, so a hard line break can hide the actual
+filename ending while passing the fit check. Unbounded width bypasses fitting
+altogether. Flutter's [didExceedMaxLines contract](https://api.flutter.dev/flutter/painting/TextPainter/didExceedMaxLines.html)
+distinguishes omitted lines from fitting content. The intended presentation keeps
+the longest complete-grapheme suffix that fits one line, prefixes truncation with
+an ellipsis, and preserves the entire original accessibility label. No filename,
+filesystem operation, remote session or privileged action is changed.
+
+Eight new rendered cases cover LF, CRLF and Unicode line/paragraph separators at
+bounded and unbounded width; eight existing fit/grapheme/accessibility/font cases
+remain. Baseline execution precedes the product correction in the existing
+networkless, bounded-RAM path-label shard. Native file-manager/device acceptance
+will remain open beyond this production-widget observation.

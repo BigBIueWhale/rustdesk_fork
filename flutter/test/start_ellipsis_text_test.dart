@@ -79,6 +79,48 @@ void main() {
     );
   }, semanticsEnabled: true);
 
+  for (final separator in {
+    'LF': '\n',
+    'CRLF': '\r\n',
+    'line separator': '\u2028',
+    'paragraph separator': '\u2029',
+  }.entries) {
+    for (final bounded in [true, false]) {
+      final layout = bounded ? 'bounded' : 'unbounded';
+      testWidgets('keeps filename end after ${separator.key} in $layout width',
+          (tester) async {
+        final original = 'prefix${separator.value}report.exe';
+        final label = StartEllipsisText(original, style: style);
+        await tester.pumpWidget(MaterialApp(
+          home: Material(
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: bounded
+                  ? SizedBox(width: 400, child: label)
+                  : Row(mainAxisSize: MainAxisSize.min, children: [label]),
+            ),
+          ),
+        ));
+
+        final visible = tester.widget<Text>(find.byType(Text)).data!;
+        expect(visible, '…report.exe');
+        expect(tester.getSemantics(find.byType(Text)),
+            containsSemantics(label: original));
+        final paragraph =
+            tester.renderObject<RenderParagraph>(find.byType(RichText));
+        final boxes = paragraph.getBoxesForSelection(TextSelection(
+            baseOffset: visible.length - 4, extentOffset: visible.length));
+        expect(boxes, isNotEmpty,
+            reason: 'The actual filename extension must be laid out');
+        for (final box in boxes) {
+          expect(box.left, greaterThanOrEqualTo(0));
+          expect(box.right, lessThanOrEqualTo(paragraph.size.width + 0.01));
+        }
+        expect(tester.takeException(), isNull);
+      }, semanticsEnabled: true);
+    }
+  }
+
   for (final inherited in [true, false]) {
     for (final overflowing in [false, true]) {
       final styleName = inherited ? 'inherited' : 'explicit';

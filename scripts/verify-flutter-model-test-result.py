@@ -78,6 +78,11 @@ PATH_LABEL_TESTS = {
     "never cuts a grapheme cluster",
     "exposes the complete text to assistive technology",
     *{
+        f"keeps filename end after {separator} in {layout} width"
+        for separator in ("LF", "CRLF", "line separator", "paragraph separator")
+        for layout in ("bounded", "unbounded")
+    },
+    *{
         f"bold accessibility preserves {size} filename end with {style} style"
         for size in ("fitting", "truncated")
         for style in ("inherited", "explicit")

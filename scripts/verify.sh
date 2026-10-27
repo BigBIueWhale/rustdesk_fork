@@ -11817,10 +11817,9 @@ echo "== Android app-open exact-generation MainService startup and callback-work
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
   direct_service::direct_connection_task_tests:: -- --test-threads=1
 echo "  ok  R-S11hq parent cancellation owns and joins every accepted child task (Tokio unit behavior; Android native evidence remains separate)"
-# R-T13 (§20, SHOULD): Android controlled-side networking lifecycle. The foreground service must
-# observe network loss/availability and drive the existing direct-listener rebuild path (`listener =
-# None`, not a full server restart), and the R-T10 TCP keepalive must be paired with a foreground
-# partial wakelock so probes continue during radio sleep/Doze.
+# R-T13 supplementary wiring checks. The listener-state tests above execute generation
+# admission; these patterns do not prove network callbacks, listener rebinding or power behavior.
+# A partial wake lock does not bypass Doze. Device network-change/Doze recovery remains required.
 r_t13=
 grep -qF 'ConnectivityManager.NetworkCallback' "$ms" || r_t13="$r_t13 no-NetworkCallback"
 grep -qF 'override fun onAvailable(network: Network)' "$ms" || r_t13="$r_t13 no-onAvailable"
@@ -11843,97 +11842,13 @@ grep -qF 'android_request_listener_rebuild(' src/flutter_ffi.rs || r_t13="$r_t13
 grep -qF 'static ANDROID_LISTENER_OWNER: Mutex<AndroidListenerOwner>' src/direct_service.rs || r_t13="$r_t13 no-serialized-listener-owner"
 grep -qF 'fn request_rebuild(&mut self, expected_generation: u64) -> Option<u64>' src/android_listener_lifecycle.rs || r_t13="$r_t13 no-generation-bound-rebuild-transition"
 grep -qF 'fn android_listener_lifecycle_snapshot(expected_generation: u64) -> Option<u64>' src/direct_service.rs || r_t13="$r_t13 no-atomic-generation-epoch-snapshot"
-grep -qF 'R-T13: rebuilding direct listener after exact-generation Android network change' src/direct_service.rs || r_t13="$r_t13 no-exact-generation-rebuild-log"
 grep -qF 'listener = None;' src/direct_service.rs || r_t13="$r_t13 no-listener-none-rebuild"
-grep -qF 'stale_network_callback_cannot_advance_replacement_generation_epoch' src/android_listener_lifecycle.rs || r_t13="$r_t13 no-generation-aba-regression"
-if ! /usr/bin/python3 -I -S - "$ms" flutter/android/app/src/main/kotlin/ffi.kt src/flutter_ffi.rs src/direct_service.rs src/android_listener_lifecycle.rs <<'PY'
-import pathlib
-import sys
-
-main_service = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
-kotlin_ffi = pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")
-rust_ffi = pathlib.Path(sys.argv[3]).read_text(encoding="utf-8")
-direct = pathlib.Path(sys.argv[4]).read_text(encoding="utf-8")
-lifecycle = pathlib.Path(sys.argv[5]).read_text(encoding="utf-8")
-
-def between(text: str, start: str, end: str) -> str:
-    begin = text.index(start)
-    finish = text.index(end, begin)
-    return text[begin:finish]
-
-request = between(
-    main_service,
-    "    private fun requestDirectListenerRebuild(reason: String) {",
-    "\n    @Synchronized\n    private fun registerNetworkCallback()",
-)
-destroy = between(
-    main_service,
-    "    override fun onDestroy() {",
-    "\n    override fun onTaskRemoved(",
-)
-retirement = between(
-    main_service,
-    "    private fun retireControlledServiceGeneration(generation: Long, reason: String): Boolean {",
-    "\n    override fun onCreate()",
-)
-jni = between(
-    rust_ffi,
-    "    pub unsafe extern \"system\" fn Java_ffi_FFI_rebuildDirectServerListener(",
-    "\n    #[no_mangle]\n    pub unsafe extern \"system\" fn Java_ffi_FFI_translateLocale(",
-)
-transition = between(
-    lifecycle,
-    "    pub(crate) fn request_rebuild(&mut self, expected_generation: u64) -> Option<u64> {",
-    "\n    pub(crate) fn snapshot(&self, expected_generation: u64) -> Option<u64> {",
-)
-server_loop = between(
-    direct,
-    "async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {",
-    "\n// R-D4:",
-)
-rebind = "                    listener = None;\n                    continue;"
-
-ok = (
-    "external fun rebuildDirectServerListener(generation: Long): Boolean" in kotlin_ffi
-    and "@Volatile\n    private var nativeServerGeneration = 0L" in main_service
-    and request.index("val generation = nativeServerGeneration")
-        < request.index("generation <= 0L")
-        < request.index("FFI.rebuildDirectServerListener(generation)")
-    and destroy.index("releaseControlledConnectionResources()")
-        < destroy.index('retireControlledServiceGeneration(generation, "MainService destruction")')
-        < destroy.index("unregisterNetworkCallback()")
-        < destroy.index("FFI.releaseService(this)")
-    and retirement.index("FFI.deactivateServer(this, retirement.generation)")
-        < retirement.index("FFI.retireServerGeneration(this, retirement.generation)")
-        < retirement.index("nativeServerGeneration = 0L")
-    and "generation: jlong" in jni
-    and jni.index("u64::try_from(generation)")
-        < jni.index("android_request_listener_rebuild(")
-        < jni.index('\"android-network-change\"')
-    and transition.index("self.phase != AndroidListenerPhase::Active")
-        < transition.index("expected_generation == 0")
-        < transition.index("self.generation != expected_generation")
-        < transition.index("let Some(next) = self.rebuild_epoch.checked_add(1) else")
-        < transition.index("self.phase = AndroidListenerPhase::StopRequested")
-        < transition.index("self.rebuild_epoch = next")
-    and "android_listener_lifecycle_snapshot(my_generation)" in server_loop
-    and rebind in server_loop
-    and server_loop.index("let rebuild_epoch = match android_listener_lifecycle_snapshot(my_generation)")
-        < server_loop.index("if rebuild_epoch != seen_rebuild_epoch")
-        < server_loop.index(rebind)
-    and "LISTENER_REBUILD_EPOCH" not in direct
-    and "ANDROID_SERVER_GENERATION" not in direct
-    and "request_direct_listener_rebuild(" not in direct
-)
-raise SystemExit(0 if ok else 1)
-PY
-then
-  r_t13="$r_t13 exact-generation-lifecycle-order-regressed"
-fi
+grep -qE 'LISTENER_REBUILD_EPOCH|ANDROID_SERVER_GENERATION|request_direct_listener_rebuild[(]' src/direct_service.rs \
+  && r_t13="$r_t13 retired-global-rebuild-authority"
 if [ -n "$r_t13" ]; then
-  echo "  FAIL R-T13: Android network-change listener rebuild / partial-wakelock keepalive missing:$r_t13"; rc=1
+  echo "  FAIL R-T13: Android network-change / wake-lock source wiring missing:$r_t13"; rc=1
 else
-  echo "  ok  R-T13 Android network lifecycle: exact MainService generation -> serialized JNI rebuild admission -> listener=None rebind, with stale callbacks rejected and foreground partial wakelock for TCP keepalive"
+  echo "  ok  R-T13 source wiring present; Android network-change, Doze recovery and cleanup require device execution"
 fi
 # R-X4 (custom_server): the custom-rendezvous-server-from-exe-name feature is excised. The installer
 # could embed a rendezvous/api server in the exe NAME (rustdesk-host=... ; rustdesk-licensed-<b64>.exe),

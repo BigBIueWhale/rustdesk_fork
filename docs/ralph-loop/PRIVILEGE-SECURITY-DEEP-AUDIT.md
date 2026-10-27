@@ -107279,3 +107279,39 @@ cannot create IP sockets, and no owner inspection or intervention occurs.
 cleanup and a fresh ledger count. Full file-manager/physical-keyboard/native-layout
 integration, wall-clock expiry, installed privilege and R-S0/R-F5/release acceptance
 remain OPEN. The host product/services and foreign-owner state are untouched.
+
+### 2026-10-27 — user pivot; remove duplicate Android network-lifecycle catalogue
+
+The file-manager visible-row search work is OPEN/PARKED at the user's direction.
+Preparation e353d469 changes only the fixture and focused harness. Baseline
+rfExYeBFbq exits 1 with twelve test errors; missing MyTheme.tabbar theme setup
+causes widget-build errors and subsequent layout failures. It does not establish
+the intended behavioral baseline. The joined VM's RAM workspace is gone and its
+bounded diagnostics are retained as file-search-parked.rfExYeBFbq. All snapshots
+except the last have zero deltas; the last removes one unattributed baseline
+endpoint. No foreign owner was inspected. No fixture repair or product edit follows
+the pivot. The raw credential deadline investigation remains separately parked.
+
+The new slice concerns verification quality. scripts/verify.sh's R-T13 block used
+84 lines of Python to compare strings and statement order across five source files.
+It duplicated generation-state observations made by the three existing executable
+AndroidListenerLifecycle tests, and inferred cross-language/OS lifecycle behavior
+without starting Android, delivering callbacks, observing a listener or entering
+Doze. Separate greps required a log message and a test function's spelling. These
+checks are deleted. The small source-wiring checks remain; the old catalogue's
+three forbidden global-rebuild names move into one explicit source scan. No
+behavioral tests, native gate invocations, requirements or production files change.
+
+The comment claiming a partial wake lock keeps probes running during Doze is also
+removed. Android's official documentation says Doze suspends network access and
+ignores wake locks, with specific exemptions; a wake lock alone is not proof of
+reachability: https://developer.android.com/training/monitoring-device-state/doze-standby
+The success message now reports source wiring and explicitly leaves device
+network-change, Doze recovery and cleanup acceptance open, as R-T13 already requires.
+
+Validation is read-only exact-byte comparison of the retained gate and test
+invocations, bash -n scripts/verify.sh and git diff --check. No Android behavioral
+run is claimed for a verifier-only deletion. android-network-wiring-e353d469.json
+binds the diff, parked-run evidence and fresh complete ledger count. All fifteen
+installed credential actions, device recovery, R-S0/R-F5, release and independent
+acceptance remain OPEN. Live instructions, all prior parks and stashes are preserved.

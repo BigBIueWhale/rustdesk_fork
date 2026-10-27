@@ -18,12 +18,15 @@ class ListSearchActionListener extends StatelessWidget {
   @mustCallSuper
   @override
   Widget build(BuildContext context) {
-    return KeyboardListener(
+    return Focus(
         autofocus: true,
-        onKeyEvent: (kv) {
+        onFocusChange: (hasFocus) {
+          if (!hasFocus) buffer.clear();
+        },
+        onKeyEvent: (_, kv) {
           final ch = kv.character;
           if (ch == null) {
-            return;
+            return KeyEventResult.ignored;
           }
           final action = buffer.input(ch);
           switch (action) {
@@ -34,6 +37,7 @@ class ListSearchActionListener extends StatelessWidget {
               onNext(buffer.buffer);
               break;
           }
+          return KeyEventResult.ignored;
         },
         focusNode: node,
         child: child);
@@ -52,6 +56,10 @@ class TimeoutStringBuffer {
 
   TimeoutStringBuffer() {
     _duration = DateTime.now();
+  }
+
+  void clear() {
+    _buffer = "";
   }
 
   ListSearchAction input(String ch) {

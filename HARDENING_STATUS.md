@@ -319,6 +319,7 @@ fresh ledger count. Native/installed acceptance and all user parks remain OPEN.
 
 | Documentation scope | Current contract or disposition | Retained classification |
 | --- | --- | --- |
+| Linux whiteboard parent lifetime | R-S11cd and Appendix C #223 now refer to R-S11hn's existing process-lifetime contract. The stale creating-thread-death mandate contradicted that contract and the `ddd1010a` implementation; its repair-history introduction is also removed. Exact parent/socket generation, role-bound mutual proof, nondumpability, forbidden fallbacks and all native acceptance obligations remain. R-S11hn, product sources and tests are unchanged. Current installed/native and release acceptance remain OPEN. | Git history and the 2026-10-27 audit-journal entry; fresh document counts are recorded there. |
 | Authentication-settings selectors | R-X7a states the permanent-only policy, absence of approval/verification/OTP selectors on every Flutter front-end, and required authorized permanent-password setup. Its claims that the removed selectors still ship and that the policy pin is future work are deleted. Current desktop/mobile source and removal commits `c1d53644`/`e1e980ed` support that classification. Other specification bytes, requirement/finding IDs, anchors, links, product and verification code are unchanged. Native provisioning/settings, all fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN. | Git history and the 2026-10-27 audit-journal entry; fresh document counts are recorded there. |
 | Android signing-authority specification | R-S11di's historical repair narrative is deleted; its complete VM admission, guest Docker, identity/secret/publication and acceptance contract remains byte-identical. Appendix C #226/#262, other requirements, IDs, anchors and links are unchanged. The R-S11di status entry retains the historical authority-only evidence and all open identity/APK/device/cold-release/native/review boundaries. Product and verification code are unchanged. | `signing-contract-3ae6f9bd.json` |
 | Privileged process finding descriptions | Appendix C #121/#132/#142 state the enduring password-argument disclosure, configuration-driven HKLM replay and inherited-descriptor failure classes. Historical implementation inventories and exploit-status narration are deleted. All three required-disposition cells, formal clauses, IDs, anchors and links remain unchanged. Product and verification code are unchanged; target-native and installed acceptance, all fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN. | `privilege-findings-aefb22ba.json` |
@@ -8637,7 +8638,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
 ## Open residuals (tracked, not regressions)
 
-- **Linux wallpaper restoration — OPEN, source finding.** The current remover saves
+- **Linux wallpaper restoration — OPEN/PARKED at the user's request, source finding.** The current remover saves
   one path, but the pinned wallpaper.rs XFCE backend reads only the first `last-image`
   property and writes all matching properties. Distinct display/workspace backgrounds
   can therefore be replaced by that first path on restoration. The Linux wrapper also

@@ -107995,3 +107995,45 @@ controls and the whole-file round trip. The serial is 97,070 bytes, SHA-256
 4c9bab2f3b1a4224b2c8e1a4baeac01a6200cbfc88d03a336f5aaad70417b87b.
 Exact QEMU is joined; RAM scratch and active markers are absent; endpoint deltas
 are zero. No passed product test was repeated for documentation finalization.
+
+### 2026-10-27 — user pivot; whiteboard lifetime specification consistency
+
+Linux wallpaper restoration is OPEN/PARKED at the user's explicit request to
+work on another aspect. Its per-display/workspace restoration and dark-background
+failure findings remain recorded. No wallpaper source, test or runtime changed.
+
+This slice addresses the separate binding document-role cleanup. R-S11cd still
+mandated PR_SET_PDEATHSIG(SIGKILL), tying the helper to the creating server thread,
+while R-S11hn forbids that mode and requires a retained process pidfd. The code
+correction ddd1010a46f9fd950b4a922a1e00e097d03df0d8 removed that launch hook and
+added process observation; it updated R-S11hn but left R-S11cd contradictory.
+Current src/whiteboard/client.rs::whiteboard_helper_command and server.rs::
+pin_whiteboard_launch_parent/start_ipc still implement that process contract.
+The ledger's historical creator-thread survival and pre-proof parent-exit cases
+remain evidence for their recorded artifact only; they were not rerun here.
+
+Primary Linux documentation confirms the distinction: PR_SET_PDEATHSIG follows
+the creating thread; pidfd_open with flags zero refers to the process. The
+proc_pid_exe page separately confirms the ptrace access check. Sources consulted:
+https://man7.org/linux/man-pages/man2/PR_SET_PDEATHSIG.2const.html
+https://man7.org/linux/man-pages/man2/pidfd_open.2.html
+https://man7.org/linux/man-pages/man5/proc_pid_exe.5.html
+
+R-S11cd now points to R-S11hn's existing pidfd/terminal-finalizer requirement and
+expressly excludes creating-thread death as process-lifetime authority. Its
+obsolete admission-repair narration is removed. Appendix C #223 makes the same
+process distinction. Exact parent/socket PID/UID/start-time admission, role-bound
+mutual proof, nondumpability, forbidden fallbacks, other-platform proofs and all
+native/installed acceptance obligations remain. R-S11hn itself is byte-identical.
+No product, test, verifier or live instruction file is changed.
+
+Exact comparison changes only specification lines 435 and 1604: all 411 numbered
+requirement declarations, finding IDs, anchors and links are preserved. The sole
+reference-inventory change is two additional references to existing R-S11hn.
+Changed HTML is balanced and git diff --check passes. Before/after specification
+sizes are 1,683,194/1,682,997 bytes; prior 368,770-token evidence is reusable because
+the pre-edit whole-file SHA-256 still equals
+ed4d6461731c9fd34e252fe3104fc713e56cee2e14331726d9cffd727bfffeb5.
+Fresh two-document counts and exact isolated cleanup are recorded after execution.
+All fifteen credential actions, R-S0/R-F5, current native/installed and release
+acceptance, and every existing user park remain OPEN/PARKED.

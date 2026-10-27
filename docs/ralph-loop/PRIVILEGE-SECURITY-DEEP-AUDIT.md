@@ -109404,3 +109404,20 @@ and one unattributed removal (18 bytes); no owner or foreign process was inspect
 The listener audit accepts no harness addition, not an unchanged host inventory.
 The compact ledger update records the deletion, component evidence and language
 park; all broader and previously parked obligations remain open.
+
+Fresh ledger count at source `4fc5c4126a07630e6bfdef0c3b2567645decb393`, tree
+`8286eda5b9d6cbc85c9dafd321ab9060a913435b`, passes as `00F2IRAub0` with the
+unchanged `--ledger-token-count` recipe: 353,282 tokens (+287), 1,605,267 bytes
+(+1,301), SHA-256
+`316800aa09640dbb6eb7918b49ae15de62a1cdd6fbea3a3bf0f5f80a55e0a321`.
+Pinned tiktoken-0.12.0/cl100k_base/encode_ordinary, seven controls and the complete
+UTF-8 round trip pass; the approximate 400,000-token budget remains met.
+Serial is 97,693 bytes, SHA-256
+`609d9d040f52acb7ed57f299097a15451c5f144efdbba526d870bc5dfc7d3d08`.
+Outer/supervisor lifetime is 29/31.846 seconds; RAM scratch peaks at 402,280,448
+bytes and durable evidence at 151,552 bytes. QEMU 3754975 joins with exit 0;
+its PID, RAM `run.p2q_nxo2` and active run roots are absent. Before/during endpoint
+differences are zero; after records one unattributed addition (18 bytes) and no
+removal. Owned IP sockets are kernel-denied and the harness listener audit passes;
+the unrelated endpoint is neither attributed nor inspected. This audit-only receipt
+changes neither the counted ledger nor the normative specification.

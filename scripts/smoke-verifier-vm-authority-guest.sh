@@ -163,7 +163,7 @@ case "$#:${8:-}" in
             || "${13}" = --linux-resolution-lifetime || "${13}" = --audio-mailbox \
             || "${13}" = --recording-output || "${13}" = --viewer-video || "${13}" = --video-qos || "${13}" = --video-vpx || "${13}" = --video-qos-controller || "${13}" = --option-ack || "${13}" = --resolution-parent || "${13}" = --file-receive-caller || "${13}" = --viewer-credentials || "${13}" = --viewer-resume || "${13}" = --local-file-listing \
             || "${13}" = --audio-buffer || "${13}" = --fusermount-fd \
-            || "${13}" = --fusermount-process || "${13}" = --file-block || "${13}" = --control-egress \
+            || "${13}" = --fusermount-process || "${13}" = --file-block || "${13}" = --control-egress || "${13}" = --android-key-modifiers \
             || "${13}" = --clipboard-response || "${13}" = --cliprdr-read || "${13}" = --android-client-drain || "${13}" = --cm-read-tick ]] || exit 2
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=${13#--}
@@ -4484,6 +4484,27 @@ run_focused_rust_tests() {
                 bytes_codec::tests::eof_preserves_complete_empty_coalesced_frames
                 bytes_codec::tests::eof_preserves_oversized_frame_refusal
             )
+        elif [ "$RUST_TEST_PROFILE" = android-key-modifiers ]; then
+            container_name=rustdesk-android-key-modifier-tests
+            memory=1g
+            memory_bytes=1073741824
+            tmpfs_size=64m
+            source_fingerprints=(
+                Cargo.lock src/server/connection.rs src/keyboard.rs src/common.rs
+                libs/hbb_common/build.rs libs/hbb_common/src/protos/mod.rs
+                libs/hbb_common/protos/message.proto libs/hbb_common/protos/rendezvous.proto
+                scripts/test-android-key-modifiers.rs scripts/run-android-key-modifier-tests.py
+            )
+            required_tests=(
+                tests::physical_modifiers_survive_until_their_release
+                tests::modifier_sides_release_independently
+                tests::repeat_and_tap_do_not_corrupt_held_state
+                tests::legacy_modifiers_and_locks_survive_rewriting
+                tests::legacy_release_clears_a_physical_hold
+                tests::translate_modifiers_follow_physical_transitions
+                tests::connection_modifiers_are_isolated
+                tests::nonmodifiers_never_become_held_modifiers
+            )
         elif [ "$RUST_TEST_PROFILE" = file-block ]; then
             container_name=rustdesk-file-block-tests
             memory=1g
@@ -6039,6 +6060,11 @@ run_focused_rust_tests() {
                                 /source /tmp/cargo-home/config.toml
                             exit 0
                         fi
+                        if [ "$RUST_TEST_PROFILE" = android-key-modifiers ]; then
+                            python3 -I -S /source/scripts/run-android-key-modifier-tests.py \
+                                /source /tmp/cargo-home/config.toml
+                            exit 0
+                        fi
                         if [ "$RUST_TEST_PROFILE" = file-block ]; then
                             python3 -I -S /source/scripts/run-file-block-tests.py \
                                 /source /tmp/cargo-home/config.toml
@@ -6458,6 +6484,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=41 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
         printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=97 bridge=absent\n'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = android-key-modifiers ]; then
+        printf 'ANDROID_KEY_MODIFIERS_PROFILE=android-key-modifiers stage=container-start tests=8 bridge=absent android=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         printf 'FILE_BLOCK_PROFILE=file-block stage=container-start tests=15 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-process ]; then
@@ -6916,6 +6944,11 @@ PY
         [ "$(grep -Fxc 'CM_QUEUE_CONCURRENT=pass case=fifo producers=8 messages=128 raw_source=retired payload=exact threads=joined' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'CM_QUEUE_CONCURRENT=pass case=saturation producers=8 admitted=8 refused=8 terminal=once stale=refused fresh=usable threads=joined' "$output")" -eq 1 ] \
             || fail 'concurrent CM queue ownership, ordering or saturation differs'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = android-key-modifiers ]; then
+        [ "${#result_lines[@]}" -eq 1 ] || fail 'Android key modifier summary count differs'
+        [ "$(grep -Ec '^ANDROID_KEY_MODIFIERS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=8 unchanged=before-after$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'ANDROID_KEY_MODIFIERS_ARTIFACT=' "$output")" -eq 1 ] \
+            || fail 'Android key modifier artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'file-block summary count differs'
         [ "$(grep -Ec '^FILE_BLOCK_ARTIFACT=pass sha256=[0-9a-f]{64} tests=15 unchanged=before-after$' "$output")" -eq 1 ] \
@@ -7717,6 +7750,11 @@ PY
         elif [ "$RUST_TEST_PROFILE" = control-egress ]; then
             grep -E '^test ((control_egress_tests|cm_egress_tests)::.*|cursor_echo::sender::.*|viewer_voice::tests::.*|viewer_fps::.*|controlled_voice::tests::.*|controlled_tunnel::.*|port_forward_settings::.*|ui_cm_interface::(chat_tests|disconnect_tests|voice_tests)::.*|file_clipboard::(tests|allocation_tests)::.*|bytes_codec::tests::.*|queue_growth_failure_is_terminal_and_releases_retained_messages|cm_queue_growth_failure_is_terminal_and_releases_payloads|cm_queue_admission_owns_only_raw_payload_bytes|cm_queue_concurrent_[a-z_]+|cm_directory_[a-z_]+|cm_read_block_[a-z_]+|recent_document_markers_preserve_existing_objects_and_refuse_creation_failure) \.\.\. ok$|^CONTROL_EGRESS_(ARTIFACT(_BEFORE|_AFTER)?|BUILD|DEPENDENCIES|INPUT|SOURCE|DEFAULT|CONCURRENCY)=|^RECENT_DOCUMENT_|^CURSOR_ECHO_|^VIEWER_VOICE_|VIEWER_FPS_|^CONTROLLED_TUNNEL_|^CONTROLLED_VOICE_|^PF_SETTINGS_|^RDP_LAUNCH_|^CM_(CHAT|DISCONNECT|HISTORY|CLOSE|VOICE)_|^(CONTROL|CM)_QUEUE_ALLOC|^CM_QUEUE_CONCURRENT|^CM_DIRECTORY_|^CM_BATCH_|^CM_SIZE_|^CM_PROTO_|^CM_READ_BLOCK_|^FILE_CLIP_QUEUE_|^CM_RAW_BACKING|^BYTES_CODEC_' "$output"
             printf 'CONTROL_EGRESS_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-control-cm-egress-and-framing rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = android-key-modifiers ]; then
+            grep -E '^test tests::.* \.\.\. ok$|^ANDROID_KEY_MODIFIERS_' "$output"
+            printf 'ANDROID_KEY_MODIFIERS_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-android-modifier-rewrite android=unexecuted rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = file-block ]; then

@@ -161,6 +161,12 @@ case "$#:${1:-}" in
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=control-egress
         ;;
+    1:--android-key-modifier-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'Android key modifier input/run overrides are forbidden' >&2; exit 2; }
+        MODE=android-rust-lifecycle-tests
+        RUST_TEST_PROFILE=android-key-modifiers
+        ;;
     1:--file-block-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'file-block input/run overrides are forbidden' >&2; exit 2; }
@@ -910,7 +916,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         || "$RUST_TEST_PROFILE" = linux-resolution-lifetime || "$RUST_TEST_PROFILE" = audio-mailbox \
         || "$RUST_TEST_PROFILE" = audio-buffer || "$RUST_TEST_PROFILE" = fusermount-fd \
         || "$RUST_TEST_PROFILE" = fusermount-process || "$RUST_TEST_PROFILE" = file-block \
-        || "$RUST_TEST_PROFILE" = control-egress \
+        || "$RUST_TEST_PROFILE" = control-egress || "$RUST_TEST_PROFILE" = android-key-modifiers \
         || "$RUST_TEST_PROFILE" = clipboard-response || "$RUST_TEST_PROFILE" = cliprdr-read ]]; then
         readonly VM_MEMORY=2048
     else
@@ -6680,6 +6686,14 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = cont
         'CM_QUEUE_CONCURRENT=pass case=saturation producers=8 admitted=8 refused=8 terminal=once stale=refused fresh=usable threads=joined' \
         'concurrent CM saturation has one terminal outcome and exact retirement'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'control-egress cloud-init completion'
+elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = android-key-modifiers ]; then
+    [ "$(/usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -Ec '^ANDROID_KEY_MODIFIERS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=8 unchanged=before-after$')" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fc 'ANDROID_KEY_MODIFIERS_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
+        || fail 'Android key modifier artifact receipt differs'
+    require_exact_fixed_receipt \
+        "ANDROID_KEY_MODIFIERS_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=8 target=linux-x86_64 scope=production-android-modifier-rewrite android=unexecuted rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        'focused Android key modifier receipt'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Android key modifier cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
     mapfile -t block_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
@@ -8650,6 +8664,9 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = control-egress ]; then
         printf 'CONTROL_EGRESS_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=97 scope=production-control-cm-egress-and-framing network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
+    elif [ "$RUST_TEST_PROFILE" = android-key-modifiers ]; then
+        printf 'ANDROID_KEY_MODIFIERS_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=8 scope=production-android-modifier-rewrite android=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = file-block ]; then
         printf 'FILE_BLOCK_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=15 scope=production-file-block-decoder-and-compressor network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

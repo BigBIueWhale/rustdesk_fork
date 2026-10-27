@@ -109421,3 +109421,34 @@ differences are zero; after records one unattributed addition (18 bytes) and no
 removal. Owned IP sockets are kernel-denied and the harness listener audit passes;
 the unrelated endpoint is neither attributed nor inspected. This audit-only receipt
 changes neither the counted ledger nor the normative specification.
+
+## 2026-10-28 — retained bounded Flutter result-file admission
+
+The preceding goal turn completed the direct-address catalogue deletion and its
+component verification. At `ee8575b2`, `parse_result` separately lstats a result
+pathname and opens it, checks only the pre-open file size/link count, and allocates
+an entire line before enforcing its length. A replaced pathname can therefore
+select different bytes, a changed/link-shared file can be accepted, and a long
+line can exceed its intended allocation bound before refusal. These are verifier
+input defects, not a demonstrated RustDesk privilege escalation or evidence that
+any retained product run was forged.
+
+The intended owner is one no-follow, nonblocking opened regular-file descriptor.
+Its initial metadata bounds admission and subsequent reads; successful EOF must
+match that admitted length and unchanged size/link/modification metadata. Line
+allocation is bounded before decoding. The existing test inventory, failure,
+skip, completion and source-isolation requirements remain in force. Python 3.11's
+[descriptor APIs](https://docs.python.org/3.11/library/os.html#os.open) and
+[bounded readline](https://docs.python.org/3.11/library/io.html#io.IOBase.readline)
+support this design. The Dart [JSON reporter contract](https://github.com/dart-lang/test/blob/master/pkgs/test/doc/json_reporter.md)
+permits interleaved events and late errors; no new event-order restriction is
+part of this file-admission correction.
+
+The regression uses real temporary files inside the isolated guest, with metadata
+observation hooks scheduling replacement, growth, truncation, a second hard link
+and a same-size rewrite. A six-MiB malformed line checks traced Python allocation
+before refusal; static special/linked/oversized inputs and healthy profiles remain
+controls. The fixture does not impersonate a native application or prove whole-process
+RSS. First run the unchanged parser to establish the failure, then the corrected
+parser through the same existing focused address profile. All product parks,
+fifteen native credential acceptances and R-S0/R-F5 remain open.

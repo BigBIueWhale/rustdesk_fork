@@ -8,7 +8,9 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+import tracemalloc
 import unittest
+from unittest import mock
 
 
 sys.dont_write_bytecode = True
@@ -263,7 +265,7 @@ class ResultTests(unittest.TestCase):
                     with self.assertRaises(result.ResultError):
                         self.parse(changed, profile)
 
-    def test_failure_skip_and_incomplete_are_rejected(self):
+    def test_failure_skip_incomplete_and_changed_inputs_are_rejected(self):
         for profile in ("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "modifier-release"):
             events = self.events(profile)
             done_index = next(
@@ -286,6 +288,82 @@ class ResultTests(unittest.TestCase):
                         changed.append({"type": "print", "message": "late"})
                     with self.assertRaises(result.ResultError):
                         self.parse(changed, profile)
+
+        valid = "".join(json.dumps(event) + "\n"
+                        for event in self.events("direct-address")).encode()
+        for kind in ("missing", "directory", "symlink", "hardlink", "fifo", "oversized"):
+            with self.subTest(result_file=kind), tempfile.TemporaryDirectory() as root:
+                path = Path(root) / "test.json"
+                target = Path(root) / "target.json"
+                target.write_bytes(valid)
+                if kind == "directory":
+                    path.mkdir()
+                elif kind == "symlink":
+                    path.symlink_to(target)
+                elif kind == "hardlink":
+                    os.link(target, path)
+                elif kind == "fifo":
+                    os.mkfifo(path)
+                elif kind == "oversized":
+                    with path.open("wb") as stream:
+                        stream.truncate(result.MAXIMUM_BYTES + 1)
+                with self.assertRaises((OSError, result.ResultError)):
+                    result.parse_result(path, "direct-address")
+                self.assertEqual(target.read_bytes(), valid)
+
+        for change in ("replacement", "growth", "truncation", "hardlink", "rewrite"):
+            with self.subTest(result_change=change), tempfile.TemporaryDirectory() as root:
+                path = Path(root) / "test.json"
+                original = valid + b"invalid trailing event\n" if change == "replacement" else valid
+                path.write_bytes(original)
+                initial = path.stat()
+                target = Path(root) / "replacement.json"
+                target.write_bytes(valid)
+                observed = []
+
+                def after_metadata(read_metadata):
+                    def read(*args, **kwargs):
+                        metadata = read_metadata(*args, **kwargs)
+                        if not observed and (metadata.st_dev, metadata.st_ino) == (
+                                initial.st_dev, initial.st_ino):
+                            observed.append(True)
+                            if change == "replacement":
+                                path.rename(Path(root) / "original.json")
+                                path.symlink_to(target)
+                            elif change == "growth":
+                                path.write_bytes(b'{"type":"print","message":"added"}\n' + valid)
+                            elif change == "truncation":
+                                path.write_bytes(valid[:-1])
+                            elif change == "hardlink":
+                                os.link(path, Path(root) / "second-link.json")
+                            else:
+                                path.write_bytes(valid)
+                                os.utime(path, ns=(initial.st_atime_ns,
+                                                  initial.st_mtime_ns + 1_000_000_000))
+                        return metadata
+                    return read
+
+                with mock.patch.object(result.os, "lstat", side_effect=after_metadata(os.lstat)), \
+                        mock.patch.object(result.os, "fstat", side_effect=after_metadata(os.fstat)):
+                    with self.assertRaises((OSError, result.ResultError)):
+                        result.parse_result(path, "direct-address")
+                self.assertEqual(observed, [True])
+                self.assertEqual(target.read_bytes(), valid)
+                if change == "replacement":
+                    self.assertEqual((Path(root) / "original.json").read_bytes(), original)
+
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "test.json"
+            path.write_bytes(b" " * (6 * result.MAXIMUM_LINE_BYTES) + b"\n")
+            tracemalloc.start()
+            try:
+                with self.assertRaises(result.ResultError):
+                    result.parse_result(path, "direct-address")
+                _, peak = tracemalloc.get_traced_memory()
+            finally:
+                tracemalloc.stop()
+            self.assertLess(peak, 4 * result.MAXIMUM_LINE_BYTES,
+                            "an oversized line was allocated before refusal")
 
 
 if __name__ == "__main__":

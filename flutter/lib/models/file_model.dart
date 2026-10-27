@@ -2649,7 +2649,9 @@ class JobProgress {
   int lastTransferredSize = 0;
 
   double get percent =>
-      totalSize > 0 ? (finishedSize.toDouble() / totalSize) : 0.0;
+      totalSize > 0
+          ? (finishedSize / totalSize).clamp(0.0, 1.0).toDouble()
+          : 0.0;
   String get percentText => '${(percent * 100).toStringAsFixed(0)}%';
 
   clear() {

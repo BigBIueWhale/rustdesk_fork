@@ -108999,3 +108999,33 @@ and all active run roots are absent. All listener deltas are zero and all thirte
 stash IDs remain unchanged. This receipt changes neither the counted ledger nor
 tested product. The completed slice is a zoom usability correction; broad
 hardening and target-native acceptance remain open.
+
+## 2026-10-27 user pivot — floating panels and the on-screen keyboard
+
+The user explicitly requests another aspect. Observer-clock work at pushed
+`b9dccd50` is set aside, including its unfinished ledger/count closure. Its
+baseline `h7MXihGmPE` and candidate `6uFJh0DGjO` evidence remains retained; this
+pivot does not claim current-app latency recovery. Earlier parked work remains
+parked. The current R-S11ia–R-S11io checklist still has all fifteen native action
+acceptances open, alongside R-S0/R-F5, installed functionality, resource/soak,
+artifact, independent reproduction and external-review obligations.
+
+The new slice concerns floating-panel keyboard layout. Both `checkKeyboard`
+implementations in `flutter/lib/common/widgets/overlay.dart` require the previous
+and current frames to have a keyboard before adjusting the panel, so the first
+nonzero inset can leave it covered. Their subtraction can also place its top
+above the screen when the keyboard leaves less space than the panel height.
+Flutter's [viewInsets contract](https://api.flutter.dev/flutter/widgets/MediaQueryData/viewInsets.html)
+defines the obscured area in the current layout; the first nonzero observation
+already requires adjustment. Preserve the pre-keyboard Y coordinate once per
+visibility cycle, act on current inset immediately, clamp the top to zero when
+the panel cannot fit, and restore the saved Y when the keyboard closes. This is
+local presentation state; it grants no service or remote-session authority.
+
+The existing isolated floating-position shard now adds eight rendered cases for
+both production widgets: first inset/repeated cycle/restoration, initial mount
+with a visible keyboard, a short usable viewport, and an unobscured control.
+The position/storage adapter is controlled; native keyboard delivery, preference
+persistence and the full chat page are outside this focused observation. Existing
+eight position parsing/rendering/error cases remain. Baseline execution precedes
+the product correction; no new VM profile or resource exception is introduced.

@@ -197,7 +197,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("custom-scale"), "custom-scale"), (1, 39))
         self.assertEqual(self.parse(self.events("virtual-mouse-buttons"), "virtual-mouse-buttons"), (1, 17))
         self.assertEqual(self.parse(self.events("virtual-joystick"), "virtual-joystick"), (1, 8))
-        self.assertEqual(self.parse(self.events("floating-position"), "floating-position"), (1, 8))
+        self.assertEqual(self.parse(self.events("floating-position"), "floating-position"), (1, 16))
         self.assertEqual(self.parse(self.events("clipboard-keystrokes"), "clipboard-keystrokes"), (1, 12))
         self.assertEqual(self.parse(self.events("file-search"), "file-search"), (1, 12))
         self.assertEqual(self.parse(self.events("file-navigation"), "file-navigation"), (7, 125))

@@ -18,7 +18,98 @@ overlay.DraggableKeyPosition _load(String value, [String? key]) {
   return position;
 }
 
+class _MemoryPosition extends overlay.DraggableKeyPosition {
+  _MemoryPosition(this.pos) : super('keyboard-position');
+
+  @override
+  Offset pos;
+  final updates = <Offset>[];
+
+  @override
+  void update(Offset value) {
+    pos = value;
+    updates.add(value);
+  }
+
+  // These cases start inside the screen and isolate keyboard layout from storage.
+  @override
+  void tryAdjust(double w, double h, double scale) {}
+}
+
+Future<void> _keyboardPanel(WidgetTester tester, _MemoryPosition position,
+    String kind, double inset, {double height = 80}) async {
+  await tester.pumpWidget(MaterialApp(
+    home: MediaQuery(
+      data: MediaQueryData(size: const Size(800, 600),
+          viewInsets: EdgeInsets.only(bottom: inset)),
+      child: kind == 'ios'
+          ? overlay.IOSDraggable(position: position, width: 120, height: height,
+              builder: (_) => const SizedBox.expand(key: ValueKey('panel')))
+          : overlay.Draggable(position: position, width: 120, height: height,
+              checkKeyboard: true,
+              builder: (_, __) => const SizedBox.expand(key: ValueKey('panel'))),
+    ),
+  ));
+}
+
+void _expectPanel(WidgetTester tester, _MemoryPosition position, double y) {
+  final panel = find.ancestor(of: find.byKey(const ValueKey('panel')),
+      matching: find.byType(Positioned));
+  expect(tester.getTopLeft(panel), Offset(40, y));
+  expect(position.pos, Offset(40, y));
+  expect(tester.takeException(), isNull);
+}
+
 void main() {
+  for (final kind in ['standard', 'ios']) {
+    testWidgets('floating $kind panel avoids the first keyboard inset and restores',
+        (tester) async {
+      final position = _MemoryPosition(const Offset(40, 450));
+      await _keyboardPanel(tester, position, kind, 0);
+      _expectPanel(tester, position, 450);
+      await _keyboardPanel(tester, position, kind, 300);
+      _expectPanel(tester, position, 220);
+      await _keyboardPanel(tester, position, kind, 350);
+      _expectPanel(tester, position, 170);
+      await _keyboardPanel(tester, position, kind, 0);
+      _expectPanel(tester, position, 450);
+      await _keyboardPanel(tester, position, kind, 200);
+      _expectPanel(tester, position, 320);
+      await _keyboardPanel(tester, position, kind, 0);
+      _expectPanel(tester, position, 450);
+    });
+
+    testWidgets('floating $kind panel opens above an already visible keyboard',
+        (tester) async {
+      final position = _MemoryPosition(const Offset(40, 450));
+      await _keyboardPanel(tester, position, kind, 300);
+      _expectPanel(tester, position, 220);
+      await _keyboardPanel(tester, position, kind, 0);
+      _expectPanel(tester, position, 450);
+    });
+
+    testWidgets('floating $kind panel keeps its top reachable in a short viewport',
+        (tester) async {
+      final position = _MemoryPosition(const Offset(40, 150));
+      await _keyboardPanel(tester, position, kind, 250, height: 400);
+      await _keyboardPanel(tester, position, kind, 300, height: 400);
+      _expectPanel(tester, position, 0);
+      await _keyboardPanel(tester, position, kind, 0, height: 400);
+      _expectPanel(tester, position, 150);
+    });
+
+    testWidgets('floating $kind panel preserves an unobscured position',
+        (tester) async {
+      final position = _MemoryPosition(const Offset(40, 40));
+      await _keyboardPanel(tester, position, kind, 0);
+      await _keyboardPanel(tester, position, kind, 300);
+      _expectPanel(tester, position, 40);
+      expect(position.updates, isEmpty);
+      await _keyboardPanel(tester, position, kind, 0);
+      _expectPanel(tester, position, 40);
+    });
+  }
+
   test('floating position preserves finite saved coordinates', () {
     const values = {
       '0,0': Offset.zero,

@@ -107830,3 +107830,37 @@ ledger-token-count-run.Ao5HicjJh6.serial.log: 98,219 bytes, SHA-256
 b1ac75b01f4e7321b70dbe0e34f74baf93293ca93d606fb8ac2d2c441abf6b15.
 QEMU is joined; RAM workspace and active markers are absent; all endpoint deltas
 are zero. No product check is repeated after the accepted eight-case run.
+
+## Mobile virtual mouse button press ownership — investigation (2026-10-27)
+
+Continuation from clean/pushed fa609666d8091ef8134a1ae2aa24b3e2a9c89ff0.
+The previous turn is concrete product/runtime progress; the broader goal and
+all fifteen installed credential actions remain OPEN. All user parks, including
+peer sorting, remain in force.
+
+Relevant source: FloatingLeftRightButton starts a 200-ms timer, sets the global
+isSpecialHoldDragActive flag, awaits CursorModel.syncCursorPosition, then calls
+InputModel.tapDown. Pointer up/cancel independently sends tapUp before that await
+may complete. Disposal cancels only the timer, with no matched release. The two
+buttons share one global Boolean; releasing one clears the other's hold state.
+InputModel.tapDown/tapUp resolve the mutable current session independently, while
+FFI.start on mobile reuses its model objects with a fresh UUID after mobileReset.
+The native session_send_mouse sink looks up the UUID provided by the bridge.
+These are source findings, not a runtime or privilege-escalation claim.
+
+Intended ownership: each virtual button press retains its pointer, button and
+session through preparation, down admission and matching release. Release before
+admission prevents down; an admitted down drains an ordered release to the original
+session even if its widget retires. Independent buttons retain independent holds;
+the pending work and admission must remain bounded. Rendered baseline preparation
+adds seventeen cases using the production widgets and InputModel, fresh bindings,
+controlled cursor-sync/native-send futures and preference/native-input doubles.
+The --virtual-mouse-buttons profile reuses the existing bounded RAM workload;
+its additional resource-mapping control is included in both exact count receipts.
+No product changes precede the baseline.
+
+Primary references: api.flutter.dev/flutter/gestures/PointerEvent/pointer.html,
+api.flutter.dev/flutter/widgets/Listener/onPointerCancel.html,
+api.flutter.dev/flutter/widgets/State/dispose.html and
+api.dart.dev/dart-async/Future-class.html. Pointer identity belongs to one contact;
+disposal is terminal and asynchronous ordering/error ownership must be explicit.

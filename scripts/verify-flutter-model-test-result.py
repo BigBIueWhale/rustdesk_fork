@@ -1253,6 +1253,22 @@ RECONNECT_SUITES = {
 }
 
 
+VIRTUAL_MOUSE_BUTTONS_TESTS = {
+    f'virtual {button} button {case}'
+    for button in ('left', 'right')
+    for case in (
+        'quick tap releases once',
+        'early cancellation emits nothing',
+        'release retires pending cursor sync',
+        'cancel retires pending cursor sync',
+        'removal retires pending cursor sync',
+        'replacement retires pending cursor sync',
+        'release waits for admitted down',
+        'removal releases an admitted hold',
+    )
+} | {'virtual buttons release their own simultaneous holds'}
+
+
 VIRTUAL_JOYSTICK_TESTS = {
     f'virtual joystick {mode} {case}'
     for mode in ('absolute', 'relative')
@@ -1310,7 +1326,7 @@ CLIPBOARD_KEYSTROKES_TESTS = {
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -1417,6 +1433,10 @@ def parse_result(path, profile="models"):
         expected_suites = {"custom_scale_controls_test.dart"}
         expected_tests = len(CUSTOM_SCALE_TESTS)
         expected_names = CUSTOM_SCALE_TESTS
+    elif profile == "virtual-mouse-buttons":
+        expected_suites = {"virtual_mouse_button_probe_test.dart"}
+        expected_tests = len(VIRTUAL_MOUSE_BUTTONS_TESTS)
+        expected_names = VIRTUAL_MOUSE_BUTTONS_TESTS
     elif profile == "virtual-joystick":
         expected_suites = {"virtual_joystick_test.dart"}
         expected_tests = len(VIRTUAL_JOYSTICK_TESTS)
@@ -1552,7 +1572,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -1579,6 +1599,7 @@ def main():
         "directory-ordering": "FLUTTER_DIRECTORY_ORDERING_TEST_JSON",
         "file-navigation": "FLUTTER_FILE_NAVIGATION_TEST_JSON",
         "custom-scale": "FLUTTER_CUSTOM_SCALE_TEST_JSON",
+        "virtual-mouse-buttons": "FLUTTER_VIRTUAL_MOUSE_BUTTONS_TEST_JSON",
         "virtual-joystick": "FLUTTER_VIRTUAL_JOYSTICK_TEST_JSON",
         "floating-position": "FLUTTER_FLOATING_POSITION_TEST_JSON",
         "clipboard-keystrokes": "FLUTTER_CLIPBOARD_KEYSTROKES_TEST_JSON",

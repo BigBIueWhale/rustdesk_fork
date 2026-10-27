@@ -63,7 +63,7 @@ impl AudioSamples {
     fn expire(&mut self, now: Instant) {
         while let Some(span) = self.spans.front() {
             if now.checked_duration_since(span.queued_at)
-                .map_or(false, |age| age <= MAX_PCM_AGE)
+                .map_or(true, |age| age <= MAX_PCM_AGE)
             {
                 break;
             }
@@ -540,7 +540,9 @@ mod tests {
         assert!(samples.spans.is_empty());
         samples.append(&[3.], start + Duration::from_secs(10));
         samples.expire(start);
-        assert!(samples.pop().is_none(), "unknown age must not publish PCM");
+        assert_eq!(samples.occupied_len(), 1, "a backwards clock cannot justify expiry");
+        samples.expire(start + Duration::from_secs(11) + Duration::from_nanos(1));
+        assert!(samples.pop().is_none(), "a backwards observation must not refresh the age");
     }
 
     #[test]

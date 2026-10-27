@@ -108103,7 +108103,7 @@ The correction gives the existing PCM owner a fallibly preallocated FIFO of at
 most 512 admission spans (or the smaller sample capacity). Each span tracks its
 remaining samples and original monotonic arrival; consumption, overflow and
 adaptive trimming retire matching metadata. Expiry before append and callback
-dequeue discards old or unclassifiable ages without refreshing them. Metadata
+dequeue discards expired ages without refreshing them. Metadata
 pressure evicts the oldest remaining block before publication. No callback
 allocation, blocking acquisition, timer, restart or secondary worker is added.
 The one-second bound applies at local PCM dequeue, not physical presentation.
@@ -108122,3 +108122,13 @@ all four added buffer tests and the three shared mailbox tests. Product code is
 unchanged for the rerun. Failed diagnostics remain as pcm-expiry-inventory.nfJPVtjN2W;
 exact QEMU and RAM are retired. Two unrelated after-run endpoint removals are
 unattributed and untouched; no listener was added by this work.
+
+At 2b27e998, the complete 28-case buffer lane JF8AJmQlcG and 51-case mailbox
+consumer/typecheck lane Ru6JHWltrm pass. Final requirement review finds that
+R-S11hi forbids using a backwards clock observation to justify dropping PCM;
+the first implementation treated that observation as expiry. Correct that case
+to preserve the original admission timestamp and let a later forward observation
+expire it. The focused accounting test checks both preservation and later expiry.
+The buffer lane is rerun for this behavioral change; the already-passed mailbox
+consumer/API check is retained for its exact source, not relabeled as the final
+artifact. No output API, decoder, worker, or platform setup changes in this review.

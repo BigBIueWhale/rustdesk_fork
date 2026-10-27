@@ -109649,3 +109649,16 @@ SendInput/GetCursorPos observations, DPI and topology changes, monitor gaps,
 installed/current peer artifacts and release acceptance remain open. It does not
 establish local privilege-escalation immunity or R-F5 latency. The ledger records
 this scope and the user's parser pivot; all earlier parks remain parked.
+
+Fresh ledger count at `ef5ae5600418f906a1eaa31504dddf0e4e334275`, tree
+`3e6b2f6dea3140f3cd1e326d14d444ccba70ea82`, passes as `qDzn55Y5hC`:
+353,878 tokens (+388), 1,608,051 bytes (+1,791), SHA-256
+`cc6e47c37f5faac8837cf81f69e7480fab0597d767bb68e4c5292b47dc03b215`.
+Pinned counting, seven controls, the complete UTF-8 round trip, 29 storage profiles
+and 52 guest/profile refusals pass; the approximate 400,000-token budget remains met.
+Serial 96,808 bytes, SHA-256
+`cdfdbd32e4171a426b2431a7ca3038810b78c29e945afc084ca53ec2ffbf3961`.
+Outer/supervisor lifetime 29/31.949 seconds; peak RAM scratch 402,354,176 bytes,
+durable evidence 147,456 bytes. QEMU 3857268 joins with exit 0; its PID, RAM
+`run.tstnhcz6` and active run roots are absent. All endpoint deltas are zero.
+This audit-only receipt changes neither the counted ledger nor the specification.

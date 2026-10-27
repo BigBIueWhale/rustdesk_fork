@@ -108668,3 +108668,10 @@ existing nineteen address tests remain unchanged. Use the existing focused
 direct-address VM profile with all twenty-five cases and exact formatter digest
 and source-copy comparison; no chat tests, parent application or native tunnel
 is executed. A/B results and limits follow after actual execution.
+
+Preparation run `juI3SVZRT5` at `cfe88840` stops at one new test's formatter
+line wrapping, before behavioral execution. Apply only the emitted two-line
+format correction and repeat the baseline. Serial: 68,794 bytes, SHA-256
+`86cdc94df513a219930f6a50ca6be53164a33b446c6655c610cbdcf7ade21e34`.
+Every endpoint delta is zero; exact QEMU exit and RAM retirement are verified.
+The bounded diagnostic root is retained as `port-edit-format.juI3SVZRT5`.

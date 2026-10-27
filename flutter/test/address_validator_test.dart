@@ -71,8 +71,8 @@ void main() {
           text: text,
           selection: TextSelection.collapsed(offset: text.length),
         );
-        expect(portNumberInputFormatter.formatEditUpdate(previous, edit),
-            previous,
+        expect(
+            portNumberInputFormatter.formatEditUpdate(previous, edit), previous,
             reason: text);
       }
     });

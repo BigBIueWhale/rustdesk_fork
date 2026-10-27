@@ -15885,8 +15885,31 @@ the full file-manager page and native transfers are not executed. Both runs fini
 within five minutes, retain zero endpoint deltas and join QEMU/RAM cleanup.
 `resume-pending-b73c859c.json` binds both sources, raw results, storage and fresh ledger
 count. Native retained-job admission, automatic restore/resume, full-page error
-feedback, installed/device behavior, R-S0/R-F5 and release acceptance remain OPEN;
+feedback execution, installed/device behavior, R-S0/R-F5 and release acceptance remain OPEN;
 all user parks are preserved.
+
+**Resume failure status (`a3c3637d`) — Dart controller/formatter A/B verified.**
+Manual Resume catches request failure, returns false and publishes the error only
+to its exact current paused transfer. The transfer stays paused and retryable;
+its status includes the failure until an accepted retry clears it. Removed,
+replaced, stale-session and terminal jobs retain their state. The pending-object
+admission still releases in `finally`; only native request execution is inside
+the error handler. The existing desktop status text/tooltip consumes this formatter;
+no global toast or callback-only error handling is added.
+Preparation `dcf34982` passes 30 controls and fails six cases: five request errors
+escape and the status formatter omits the error. Four cases are new and two existing
+failure/retry cases now require the handled false result and retained status.
+The identical 36-case inventory and harness pass with the correction, plus three
+result-parser controls. Cases exercise held bridge futures, synchronous exceptions,
+both transfer directions, retry, retirement and terminal-event ordering. The
+formatter's display-label method is controlled; full-page rendering and native
+requests/filesystem/peer effects are not executed. Both runs finish within five
+minutes and join QEMU/RAM cleanup. No endpoint is added; the corrected final snapshot
+records one unattributed removal of pre-existing TCP `127.0.0.1:8765`, whose owner is
+not inspected or changed. `resume-failure-7177b471.json` retains exact evidence and
+fresh ledger count. Full-page reactive error/retry presentation, automatic restore,
+native retained-job admission, installed/device behavior, R-S0/R-F5, all credential
+actions, release acceptance and every user park remain OPEN.
 
 **Native transfer resume (`9957f275`) — library A/B verified; application dispatch OPEN.**
 `TransferJob.resume` consumes the restored job's paused state once, sets resume semantics,

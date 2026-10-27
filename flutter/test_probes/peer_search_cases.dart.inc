@@ -180,7 +180,9 @@ void main() {
     expect(find.text('Other dialog'), findsOneWidget);
     pending.complete('1');
     await harness.pump(tester);
-    expect(find.text('Other dialog'), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.text('Other dialog').hitTestable(), findsOneWidget);
+    expect(globalKey.currentState!.canPop(), isTrue);
     expect(peerCardUiType.value, PeerUiType.tile);
     expect(binding.writes, ['1']);
   });

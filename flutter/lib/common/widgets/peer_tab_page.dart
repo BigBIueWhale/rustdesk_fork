@@ -649,94 +649,88 @@ class PeerViewDropdown extends StatefulWidget {
 }
 
 class _PeerViewDropdownState extends State<PeerViewDropdown> {
+  bool _saving = false;
+
+  Future<void> _saveLayout(PeerUiType value) async {
+    if (!mounted || _saving || isOptionFixed(kOptionPeerCardUiType)) return;
+    setState(() => _saving = true);
+    try {
+      final stored = await saveLocalFlutterOption(
+        kOptionPeerCardUiType,
+        value.index.toString(),
+        showFailure: () {
+          if (mounted) showToast(translate('Failed'));
+        },
+      );
+      if (stored == null || !mounted) return;
+      final index = int.tryParse(stored);
+      if (index == null || index < 0 || index >= PeerUiType.values.length) {
+        showToast(translate('Failed'));
+        return;
+      }
+      peerCardUiType.value = PeerUiType.values[index];
+      if (index != value.index) showToast(translate('Failed'));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final List<PeerUiType> types = [
-      PeerUiType.grid,
-      PeerUiType.tile,
-      PeerUiType.list
-    ];
-    final style = TextStyle(
-        color: Theme.of(context).textTheme.titleLarge?.color,
-        fontSize: MenuConfig.fontSize,
-        fontWeight: FontWeight.normal);
-    List<PopupMenuEntry> items = List.empty(growable: true);
-    items.add(PopupMenuItem(
-        height: 36,
-        enabled: false,
-        child: Text(translate("Change view"), style: style)));
-    for (var e in PeerUiType.values) {
-      items.add(PopupMenuItem(
-          height: 36,
-          child: Obx(() => Center(
-                child: SizedBox(
-                  height: 36,
-                  child: getRadio<PeerUiType>(
-                      Tooltip(
-                          message: translate(types.indexOf(e) == 0
-                              ? 'Big tiles'
-                              : types.indexOf(e) == 1
-                                  ? 'Small tiles'
-                                  : 'List'),
-                          child: Icon(
-                            e == PeerUiType.grid
-                                ? Icons.grid_view_rounded
-                                : e == PeerUiType.list
-                                    ? Icons.view_list_rounded
-                                    : Icons.view_agenda_rounded,
-                            size: 18,
-                          )),
-                      e,
-                      peerCardUiType.value,
-                      dense: true,
-                      isOptionFixed(kOptionPeerCardUiType)
-                          ? null
-                          : (PeerUiType? v) async {
-                              if (v != null) {
-                                final stored = await saveLocalFlutterOption(
-                                    kOptionPeerCardUiType, v.index.toString());
-                                if (stored == null || !mounted) return;
-                                final index = int.tryParse(stored);
-                                if (index == null ||
-                                    index < 0 ||
-                                    index >= PeerUiType.values.length) {
-                                  showToast(translate('Failed'));
-                                  return;
-                                }
-                                peerCardUiType.value = PeerUiType.values[index];
-                                setState(() {});
-                                if (Navigator.canPop(context)) {
-                                  Navigator.pop(context);
-                                }
-                              }
-                            }),
+    return Obx(() {
+      final current = peerCardUiType.value;
+      return SizedBox(
+        width: 28,
+        height: 28,
+        child: PopupMenuButton<PeerUiType>(
+          tooltip: translate('Change view'),
+          enabled: !_saving && !isOptionFixed(kOptionPeerCardUiType),
+          padding: const EdgeInsets.all(4),
+          icon: _saving
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Icon(
+                  current == PeerUiType.grid
+                      ? Icons.grid_view_rounded
+                      : current == PeerUiType.list
+                          ? Icons.view_list_rounded
+                          : Icons.view_agenda_rounded,
+                  size: 18,
                 ),
-              ))));
-    }
-
-    var menuPos = RelativeRect.fromLTRB(0, 0, 0, 0);
-    return _hoverAction(
-        context: context,
-        toolTip: translate('Change view'),
-        child: Icon(
-          peerCardUiType.value == PeerUiType.grid
-              ? Icons.grid_view_rounded
-              : peerCardUiType.value == PeerUiType.list
-                  ? Icons.view_list_rounded
-                  : Icons.view_agenda_rounded,
-          size: 18,
+          onSelected: _saveLayout,
+          itemBuilder: (context) => [
+            PopupMenuItem<PeerUiType>(
+              height: 36,
+              enabled: false,
+              child: Text(translate('Change view')),
+            ),
+            for (final type in PeerUiType.values)
+              CheckedPopupMenuItem<PeerUiType>(
+                value: type,
+                checked: type == current,
+                height: 36,
+                child: Tooltip(
+                  message: translate(type == PeerUiType.grid
+                      ? 'Big tiles'
+                      : type == PeerUiType.tile
+                          ? 'Small tiles'
+                          : 'List'),
+                  child: Icon(
+                    type == PeerUiType.grid
+                        ? Icons.grid_view_rounded
+                        : type == PeerUiType.list
+                            ? Icons.view_list_rounded
+                            : Icons.view_agenda_rounded,
+                    size: 18,
+                  ),
+                ),
+              ),
+          ],
         ),
-        onTapDown: (details) {
-          final x = details.globalPosition.dx;
-          final y = details.globalPosition.dy;
-          menuPos = RelativeRect.fromLTRB(x, y, x, y);
-        },
-        onTap: () => showMenu(
-              context: context,
-              position: menuPos,
-              items: items,
-              elevation: 8,
-            ));
+      );
+    });
   }
 }
 

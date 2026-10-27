@@ -221,6 +221,10 @@ TAB_SELECTION_SUITES = {
 }
 
 PEER_SEARCH_TESTS = {
+    "peer layout loads all supported saved choices",
+    "peer layout rejects invalid saved choices without throwing",
+    "peer layout reload replaces a previous choice and recovers",
+    "peer layout preserves storage errors and current state",
     "peer search opens focused and publishes typed text",
     "peer search keeps focus and caret through parent rebuilds",
     "peer search does not change selection when focus leaves",

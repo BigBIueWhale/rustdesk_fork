@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install a translation-only native double for the real peer search widget in its VM."""
+"""Install native preference/translation doubles for peer widgets in their VM."""
 
 import hashlib
 import os
@@ -47,7 +47,7 @@ def main():
     print(f'PEER_SEARCH_SOURCE={sys.argv[1]} '
           f'widget={hashlib.sha256(widget).hexdigest()} '
           f'tests={hashlib.sha256(cases).hexdigest()} '
-          'widget_copy=exact translation=double', flush=True)
+          'widget_copy=exact translation_and_preferences=double', flush=True)
 
 
 if __name__ == '__main__':

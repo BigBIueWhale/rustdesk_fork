@@ -1,12 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_hbb/common/widgets/peer_card.dart';
 import 'package:flutter_hbb/common/widgets/peer_tab_page.dart';
 import 'package:flutter_hbb/common/widgets/peers_view.dart';
+import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/generated_bridge.dart';
 import 'package:flutter_hbb/models/native_model.dart';
 import 'package:flutter_hbb/models/state_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _Binding implements RustdeskImpl {
+  String layout = '';
+  Object? readError;
+  final reads = <String>[];
+
+  @override
+  bool mainIsOptionFixed({required String key, dynamic hint}) => false;
+
+  @override
+  String getLocalFlutterOption({required String k, dynamic hint}) {
+    expect(k, kOptionPeerCardUiType);
+    reads.add(k);
+    if (readError != null) throw readError!;
+    return layout;
+  }
+
   @override
   String translate({required String name, required String locale, dynamic hint}) =>
       name;
@@ -56,11 +73,76 @@ FocusNode _fieldFocus(WidgetTester tester) =>
     tester.widget<EditableText>(find.byType(EditableText)).focusNode;
 
 void main() {
+  late _Binding binding;
   setUp(() {
-    installPeerSearchProbeBinding(_Binding());
+    binding = _Binding();
+    installPeerSearchProbeBinding(binding);
+    peerCardUiType.value = PeerUiType.grid;
     peerSearchTextController.clear();
     peerSearchText.value = '';
     stateGlobal.isPortrait.value = false;
+  });
+
+  testWidgets('peer layout loads all supported saved choices', (tester) async {
+    for (final entry in {
+      '0': PeerUiType.grid,
+      '1': PeerUiType.tile,
+      '2': PeerUiType.list,
+      '+1': PeerUiType.tile,
+      '01': PeerUiType.tile,
+      ' 2 ': PeerUiType.list,
+      '0x2': PeerUiType.list,
+    }.entries) {
+      binding.layout = entry.key;
+      binding.reads.clear();
+      const PeerTabPage().createState();
+      expect(peerCardUiType.value, entry.value, reason: entry.key);
+      expect(binding.reads, [kOptionPeerCardUiType]);
+      expect(binding.layout, entry.key);
+    }
+  });
+
+  testWidgets('peer layout rejects invalid saved choices without throwing',
+      (tester) async {
+    final outcomes = <String, String>{};
+    for (final value in [
+      '', ' ', 'broken', '1.0', 'NaN', '-1', '3', '2147483647',
+      '99999999999999999999999999999999999999',
+    ]) {
+      binding.layout = value;
+      peerCardUiType.value = PeerUiType.list;
+      try {
+        const PeerTabPage().createState();
+        outcomes[value] = peerCardUiType.value.name;
+      } catch (error) {
+        outcomes[value] = error.runtimeType.toString();
+      }
+      expect(binding.layout, value);
+    }
+    debugPrint('PEER_LAYOUT_INVALID=$outcomes');
+    expect(outcomes.values, everyElement('grid'));
+  });
+
+  testWidgets('peer layout reload replaces a previous choice and recovers',
+      (tester) async {
+    final observed = <PeerUiType>[];
+    for (final value in ['2', '', '1', '-1', '2']) {
+      binding.layout = value;
+      const PeerTabPage().createState();
+      observed.add(peerCardUiType.value);
+    }
+    expect(observed, [PeerUiType.list, PeerUiType.grid, PeerUiType.tile,
+      PeerUiType.grid, PeerUiType.list]);
+  });
+
+  testWidgets('peer layout preserves storage errors and current state',
+      (tester) async {
+    final failure = StateError('storage unavailable');
+    binding.readError = failure;
+    peerCardUiType.value = PeerUiType.tile;
+    expect(() => const PeerTabPage().createState(), throwsA(same(failure)));
+    expect(peerCardUiType.value, PeerUiType.tile);
+    expect(binding.reads, [kOptionPeerCardUiType]);
   });
 
   testWidgets('peer search opens focused and publishes typed text', (tester) async {

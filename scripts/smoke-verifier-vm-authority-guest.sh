@@ -10598,7 +10598,7 @@ run_flutter_model_tests() {
             memory=3g
             memory_bytes=3221225472
             result_prefix=FLUTTER_PEER_SEARCH_TEST_JSON
-            expected_result='suites=1 tests=6'
+            expected_result='suites=1 tests=10'
         elif [ "$FLUTTER_TEST_PROFILE" = tab-selection ]; then
             memory=3g
             memory_bytes=3221225472
@@ -11855,7 +11855,7 @@ run_flutter_model_tests() {
         local widget_sha256
         widget_sha256="$(sha256sum "$source_root/flutter/lib/common/widgets/peer_tab_page.dart" | awk '{print $1}')"
         tests_sha256="$(sha256sum "$source_root/flutter/test_probes/peer_search_cases.dart.inc" | awk '{print $1}')"
-        printf 'FLUTTER_PEER_SEARCH_TESTS_VM=pass commit=%s tree=%s suites=1 tests=6 flutter=3.24.5 widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-peer-search-tests cleanup=joined\n' \
+        printf 'FLUTTER_PEER_SEARCH_TESTS_VM=pass commit=%s tree=%s suites=1 tests=10 flutter=3.24.5 widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=peer-page-construction-and-rendered-search-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$widget_sha256" "$tests_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

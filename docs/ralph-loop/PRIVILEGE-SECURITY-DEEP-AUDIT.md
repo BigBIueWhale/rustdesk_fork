@@ -107558,3 +107558,32 @@ token budget. Retained ledger-token-count-run.xhdIMZlgzk.serial.log is 96,216
 bytes, SHA-256 1f957ffac37f0ec1a95962b84fa93088570f1d342cce95d9f3fbacb1fd31eb47.
 All endpoint deltas are zero. Exact QEMU, RAM workspace and active run markers
 are absent after joined cleanup. No product source changed after its accepted run.
+
+### 2026-10-27 — user pivot: saved peer-list layout loading
+
+The user explicitly directed another aspect. File-transfer decoder/writer and
+truncated-frame research is OPEN/PARKED, with no product or fixture changes and
+no new execution. Do not resume automatically. All earlier parks remain.
+
+At 8b239bea, PeerTabPage construction calls _loadLocalOptions, which parses the
+saved peer-card-ui-type with int.parse (flutter/lib/common/widgets/peer_tab_page.dart:
+59–69). Noninteger text throws; any other integer outside 0/1 becomes List, and
+an empty preference retains the previous process-global choice. The dropdown
+writes enum indices and already checks readback against the three-value range.
+This is user-owned presentation state, with no privileged policy or write required
+for loading. Supported indices must select their layout; absent, malformed or
+out-of-range content must select the normal Grid default. Actual read failures
+must propagate without changing the current state or repairing storage.
+
+Dart's primary int.parse/tryParse contracts confirm FormatException versus null:
+https://api.dart.dev/dart-core/int/parse.html and
+https://api.dart.dev/dart-core/int/tryParse.html. Preserve existing representable
+integer spellings and apply the same enum bounds as the write readback path.
+
+Preparation adds four real page-constructor cases to the existing peer-search
+VM shard, retaining its six rendered focus/search controls. The VM-only binding
+double supplies translation and exact preference/fixed-option reads; unimplemented
+native effects throw. Constructor tests do not mount the complete Recent/Favorites
+page or claim native storage/persistence. Product source is unchanged for baseline.
+Installed/native authority and all fifteen credential actions remain OPEN, as do
+R-S0/R-F5, other platforms, full-page behavior, resource soaks and release acceptance.

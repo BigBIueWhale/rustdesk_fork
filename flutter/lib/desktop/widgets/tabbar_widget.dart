@@ -153,23 +153,12 @@ class DesktopTabController {
   /// For addTab, tabPage has not been initialized, set [callOnSelected] to false,
   /// and call [onSelected] at the end of initState
   bool jumpTo(int index, {bool callOnSelected = true}) {
-    if (!isDesktop || index < 0) {
+    if (!isDesktop || index < 0 || index >= state.value.tabs.length) {
       return false;
     }
     state.update((val) {
       if (val != null) {
         val.selected = index;
-        Future.delayed(Duration(milliseconds: 100), (() {
-          if (val.pageController.hasClients) {
-            val.pageController.jumpToPage(index);
-          }
-          val.scrollController.itemCount = val.tabs.length;
-          if (val.scrollController.hasClients &&
-              val.scrollController.itemCount > index) {
-            val.scrollController
-                .scrollToItem(index, center: false, animate: true);
-          }
-        }));
       }
     });
     if ((isDesktop && (bind.isIncomingOnly() || bind.isOutgoingOnly())) ||
@@ -586,39 +575,46 @@ class _DesktopTabState extends State<DesktopTab>
     ]);
   }
 
-  List<Widget> _tabWidgets = [];
+  void _scheduleSelectedTab(DesktopTabState tabState) {
+    final index = tabState.selected;
+    final count = tabState.tabs.length;
+    if (index < 0 || index >= count) return;
+    final tab = tabState.tabs[index];
+    final owner = controller;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          !identical(controller, owner) ||
+          !identical(state.value, tabState) ||
+          tabState.selected != index ||
+          tabState.tabs.length != count ||
+          !identical(tabState.tabs[index], tab)) {
+        return;
+      }
+      if (tabState.pageController.hasClients) {
+        tabState.pageController.jumpToPage(index);
+      }
+      tabState.scrollController.itemCount = count;
+      if (tabState.scrollController.hasClients) {
+        tabState.scrollController
+            .scrollToItem(index, center: false, animate: true);
+      }
+    });
+  }
+
   Widget _buildPageView() {
     final child = Container(
-        child: Obx(() => PageView(
-            controller: state.value.pageController,
+        child: Obx(() {
+          final tabState = state.value;
+          _scheduleSelectedTab(tabState);
+          return PageView(
+            controller: tabState.pageController,
             physics: NeverScrollableScrollPhysics(),
-            children: () {
-              if (DesktopTabType.cm == tabType) {
-                // Fix when adding a new tab still showing closed tabs with the same peer id, which would happen after the DesktopTab was stateful.
-                return state.value.tabs.map((tab) {
-                  return tab.page;
-                }).toList();
-              }
-
-              /// to-do refactor, separate connection state and UI state for remote session.
-              /// [workaround] PageView children need an immutable list, after it has been passed into PageView
-              final tabLen = state.value.tabs.length;
-              if (tabLen == _tabWidgets.length) {
-                return _tabWidgets;
-              } else if (_tabWidgets.isNotEmpty &&
-                  tabLen == _tabWidgets.length + 1) {
-                /// On add. Use the previous list(pointer) to prevent item's state init twice.
-                /// *[_tabWidgets.isNotEmpty] means TabsWindow(remote_tab_page or file_manager_tab_page) opened before, but was hidden. In this case, we have to reload, otherwise the child can't be built.
-                _tabWidgets.add(state.value.tabs.last.page);
-                return _tabWidgets;
-              } else {
-                /// On remove or change. Use new list(pointer) to reload list children so that items loading order is normal.
-                /// the Widgets in list must enable [AutomaticKeepAliveClientMixin]
-                final newList = state.value.tabs.map((v) => v.page).toList();
-                _tabWidgets = newList;
-                return newList;
-              }
-            }())));
+            children: tabState.tabs.map((tab) => KeyedSubtree(
+              key: ObjectKey(tab),
+              child: tab.page,
+            )).toList(),
+          );
+        }));
     if (tabType == DesktopTabType.remoteScreen) {
       return Container(color: kColorCanvas, child: child);
     } else {

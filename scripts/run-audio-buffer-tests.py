@@ -101,7 +101,7 @@ def main():
         print(f"AUDIO_BUFFER_ARTIFACT_STOP=observed sha256={artifact_sha} unchanged=before-after", flush=True)
         if execution_error is not None:
             raise execution_error
-        print(f"AUDIO_BUFFER_ARTIFACT=pass sha256={artifact_sha} tests=24 unchanged=before-after", flush=True)
+        print(f"AUDIO_BUFFER_ARTIFACT=pass sha256={artifact_sha} tests=25 unchanged=before-after", flush=True)
 
 
 if __name__ == "__main__":

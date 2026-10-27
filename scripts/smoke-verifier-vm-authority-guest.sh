@@ -6520,9 +6520,9 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = fusermount-fd ]; then
         printf 'FUSE_FD_PROFILE=fusermount-fd stage=container-start tests=9 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
-        printf 'AUDIO_BUFFER_PROFILE=audio-buffer stage=container-start tests=24 bridge=absent\n'
+        printf 'AUDIO_BUFFER_PROFILE=audio-buffer stage=container-start tests=25 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
-        printf 'AUDIO_MAILBOX_PROFILE=audio-mailbox stage=container-start tests=48 bridge=absent\n'
+        printf 'AUDIO_MAILBOX_PROFILE=audio-mailbox stage=container-start tests=49 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
         printf 'WHITEBOARD_CLIENT_STATE_PROFILE=whiteboard-client stage=container-start tests=9 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-presentation ]; then
@@ -7034,7 +7034,7 @@ PY
             || fail 'FUSE fd baseline case count differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-buffer ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'audio-buffer summary count differs'
-        [ "$(grep -Ec '^AUDIO_BUFFER_ARTIFACT=pass sha256=[0-9a-f]{64} tests=24 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^AUDIO_BUFFER_ARTIFACT=pass sha256=[0-9a-f]{64} tests=25 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'AUDIO_BUFFER_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'audio-buffer artifact receipt differs'
         grep -Fxq 'AUDIO_BUFFER_RESERVATION=pass cases=4 probe=panic survivor=preserved recovery=pass' "$output" \
@@ -7042,7 +7042,7 @@ PY
             || fail 'audio-buffer reservation or geometry outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = audio-mailbox ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'audio-mailbox summary count differs'
-        [ "$(grep -Ec '^AUDIO_MAILBOX_ARTIFACT=pass sha256=[0-9a-f]{64} tests=48 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^AUDIO_MAILBOX_ARTIFACT=pass sha256=[0-9a-f]{64} tests=49 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'AUDIO_MAILBOX_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'audio-mailbox artifact receipt differs'
         [ "$(grep -Fxc 'ANDROID_RAW_TRANSFER=pass cases=4 rounds=3 copy_allocations=0 pointer=transferred producer_storage=reused payload=exact probe=SIGABRT children=joined scope=portable-linux' "$output")" -eq 1 ] \

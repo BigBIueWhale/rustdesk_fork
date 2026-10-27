@@ -391,6 +391,55 @@ mod tests {
     }
 
     #[test]
+    fn expired_pcm_is_silent_and_cannot_be_refreshed() {
+        let mut buffers: Vec<_> = (0..4)
+            .map(|_| AudioBuffer::new(48000, 2).unwrap())
+            .collect();
+        for buffer in &mut buffers {
+            buffer.append_pcm(&[1., -1., 2., -2.]);
+        }
+        let mut first_frame = [0.; 2];
+        fill_output(&buffers[2].samples, &mut first_frame, |sample| sample);
+        assert_eq!(first_frame, [1., -1.]);
+
+        let start = Instant::now();
+        std::thread::sleep(Duration::from_millis(1100));
+        assert!(start.elapsed() >= Duration::from_secs(1));
+        let mut failures = Vec::new();
+        for (case, buffer) in buffers.iter_mut().enumerate() {
+            if case == 1 || case == 2 {
+                buffer.append_pcm(&[3., -3.]);
+            }
+            if case == 3 {
+                let held = buffer.samples.lock().unwrap();
+                let mut contended = [9.; 4];
+                fill_output(&buffer.samples, &mut contended, |sample| sample);
+                assert_eq!(contended, [0.; 4]);
+                drop(held);
+            }
+            let expected = if case == 1 || case == 2 {
+                [3., -3., 0., 0.]
+            } else {
+                [0.; 4]
+            };
+            let mut actual = [9.; 4];
+            fill_output(&buffer.samples, &mut actual, |sample| sample);
+            println!("AUDIO_PCM_EXPIRY_CASE=observed case={case} actual={actual:?} expected={expected:?}");
+            if actual != expected || queued(buffer) != 0 {
+                failures.push(case);
+            }
+            buffer.append_pcm(&[4., -4.]);
+            let mut recovered = [9.; 2];
+            fill_output(&buffer.samples, &mut recovered, |sample| sample);
+            if recovered != [4., -4.] {
+                failures.push(case);
+            }
+        }
+        assert!(failures.is_empty(), "expired PCM was replayed: {failures:?}");
+        println!("AUDIO_PCM_EXPIRY=pass cases=4 deadline_ms=1000 fresh=preserved partial=expired contention=nonblocking recovery=exact");
+    }
+
+    #[test]
     fn output_fill_returns_while_the_producer_holds_the_ring() {
         let buffer = full_buffer();
         let ring = Arc::clone(&buffer.samples);

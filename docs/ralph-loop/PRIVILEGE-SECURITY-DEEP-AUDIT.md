@@ -108056,3 +108056,38 @@ peak RAM scratch and 147,456 bytes peak durable run storage. QEMU 3003376 joined
 with exit 0. Identity-checked post-run inspection confirms its absence, retirement
 of /dev/shm/rustdesk-fork-vm-1000/run.itoemwlc and no active run markers. All three
 endpoint inventories have zero additions/removals. No product runtime was executed.
+
+### 2026-10-27 — decoded playback PCM freshness investigation
+
+The preceding document correction is complete progress. All fifteen installed
+credential actions and the overall goal remain open; wallpaper and every earlier
+user park remain parked. This slice concerns the non-Linux portable PCM output
+buffer, not the parked Linux PulseAudio stalled-call cancellation work.
+
+Source path: AudioHandler::handle_frame decodes and converts PCM, then calls
+AudioBuffer::append_pcm. The compressed mailbox rejects packets older than one
+second, but the decoded ring retains only f32 values. Its three-second sample
+capacity and twelve-second occupancy adjustment do not expire an old tail after
+output stalls. fill_output can subsequently publish those samples unchanged.
+
+The intended owner is the existing output attempt's single PCM mutex. Retained
+PCM must carry its own admission age; incoming PCM must not renew older samples.
+At callback dequeue, expire blocks older than one second, preserve complete
+interleaved frames, keep silence/nonblocking contention behavior, and allow fresh
+PCM to recover without recreating the output. Sample and timestamp storage must
+both be bounded and reserved fallibly before output activation. This is a local
+PCM-queue deadline, not capture-to-speaker, device, or R-F5 acceptance.
+
+Before product changes, one four-case real-clock regression exercises the exact
+production ring and output-fill function: stopped callbacks, new PCM after a gap,
+a partly consumed stereo block, and producer-lock contention followed by resume.
+It retains fresh stereo ordering and post-expiry recovery controls. The focused
+audio-buffer export becomes 25 tests; its shared module increases the mailbox
+inventory to 49. No extra VM profile or larger resource admission is introduced.
+The baseline must execute in the established bounded-RAM audio-buffer VM lane.
+
+Research: the Opus 1.3.1 decoder contract defines ordered stateful decoding,
+interleaved stereo, and packet duration. Rust VecDeque documents fallible exact
+reservation and FIFO ownership; neither count bounds nor capacity reserve imply
+freshness. References: https://www.opus-codec.org/docs/opus_api-1.3.1/group__opus__decoder.html
+and https://doc.rust-lang.org/std/collections/struct.VecDeque.html.

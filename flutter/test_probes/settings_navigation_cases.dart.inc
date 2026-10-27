@@ -283,14 +283,19 @@ void main() {
       final completion = Completer<String>();
       native.saveKeepAwake = (_) => completion.future;
       await _mountMobile(tester, platform);
+      await tester.binding.setSurfaceSize(const Size(400, 320));
+      await tester.pump();
       final change = tile(tester).onToggle!;
       change(false);
       change(false);
       await tester.pump();
       tester.state(find.byType(mobile.SettingsPage)).setState(() {});
       await tester.pump();
-      final position = tester.state<ScrollableState>(find.byType(Scrollable)).position;
-      position.jumpTo(position.maxScrollExtent);
+      final position = tester.state<ScrollableState>(find.descendant(
+          of: find.byType(SettingsList),
+          matching: find.byType(Scrollable)).first).position;
+      final maxScroll = position.maxScrollExtent;
+      position.jumpTo(maxScroll);
       await tester.pump();
       position.jumpTo(0);
       await tester.pump();
@@ -300,6 +305,7 @@ void main() {
       final pendingWrites = List<String>.of(native.keepAwakeWrites);
       completion.complete('N');
       await _settle(tester);
+      expect(maxScroll, greaterThan(0));
       expect(pendingWrites, ['N']);
       expect(blocked, isTrue);
       expect(progress, 1);

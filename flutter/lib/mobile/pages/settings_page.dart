@@ -53,6 +53,8 @@ class _SettingsState extends State<SettingsPage> {
   var _buildDate = "";
   var _autoDisconnectTimeout = "";
   var _preventSleepWhileConnected = true;
+  bool _savingPreventSleep = false;
+  bool _preventSleepSaveFailed = false;
 
   _SettingsState() {
     _enableAbr = option2bool(
@@ -84,6 +86,34 @@ class _SettingsState extends State<SettingsPage> {
           _buildDate = buildDate;
         });
       }
+    });
+  }
+
+  Future<void> _setPreventSleepWhileConnected(bool value) async {
+    if (!mounted || _savingPreventSleep || value == _preventSleepWhileConnected) {
+      return;
+    }
+    setState(() {
+      _savingPreventSleep = true;
+      _preventSleepSaveFailed = false;
+    });
+    bool? effective;
+    try {
+      await bind.mainSetLocalOption(
+          key: kOptionKeepAwakeDuringOutgoingSessions,
+          value: bool2option(kOptionKeepAwakeDuringOutgoingSessions, value));
+      if (!mounted) return;
+      effective =
+          mainGetLocalBoolOptionSync(kOptionKeepAwakeDuringOutgoingSessions);
+    } catch (error) {
+      debugPrint('Failed to save keep-awake setting: $error');
+    }
+    if (!mounted) return;
+    final acknowledged = effective;
+    setState(() {
+      _savingPreventSleep = false;
+      _preventSleepSaveFailed = acknowledged != value;
+      if (acknowledged != null) _preventSleepWhileConnected = acknowledged;
     });
   }
 
@@ -239,18 +269,20 @@ class _SettingsState extends State<SettingsPage> {
           ),
           if (!incomingOnly)
             SettingsTile.switchTile(
-              title:
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   Text(translate('keep-awake-during-outgoing-sessions-label')),
+                  if (_savingPreventSleep)
+                    const LinearProgressIndicator(minHeight: 2),
+                  if (_preventSleepSaveFailed) Text(translate('Failed')),
+                ],
+              ),
               initialValue: _preventSleepWhileConnected,
-              onToggle: (v) async {
-                if (!await mainSetLocalBoolOption(
-                        kOptionKeepAwakeDuringOutgoingSessions, v) ||
-                    !mounted) return;
-                setState(() {
-                  _preventSleepWhileConnected = mainGetLocalBoolOptionSync(
-                      kOptionKeepAwakeDuringOutgoingSessions);
-                });
-              },
+              enabled: !_savingPreventSleep,
+              onToggle:
+                  _savingPreventSleep ? null : _setPreventSleepWhileConnected,
             ),
         ]),
         // R-R2b / R-G1 (§19): no "Hardware Codec" section — hwcodec/vram AND mediacodec (Android's

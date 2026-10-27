@@ -41,7 +41,7 @@ Future<Color> _background(WidgetTester tester) async {
     final image = await boundary.toImage(pixelRatio: 1);
     try {
       final bytes = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
-      final offset = (30 * image.width + 10) * 4;
+      final offset = (8 * image.width + 50) * 4;
       return Color.fromARGB(bytes.getUint8(offset + 3), bytes.getUint8(offset),
           bytes.getUint8(offset + 1), bytes.getUint8(offset + 2));
     } finally {
@@ -55,7 +55,7 @@ void main() {
   testWidgets('menu button exposes its enabled role and action', (tester) async {
     await tester.pumpWidget(_subject(() {}));
     expect(
-      tester.getSemantics(find.byType(MenuButton)),
+      tester.getSemantics(find.text('Action')),
       containsSemantics(
         label: 'Action',
         isButton: true,
@@ -70,7 +70,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(_subject(null));
     expect(
-      tester.getSemantics(find.byType(MenuButton)),
+      tester.getSemantics(find.text('Action')),
       containsSemantics(
         label: 'Action',
         isButton: true,

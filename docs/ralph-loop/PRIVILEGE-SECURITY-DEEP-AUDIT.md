@@ -106968,3 +106968,72 @@ retained in .harness-state/verifier-vm/account-ledger-f5df7a96.json. No new prod
 behavior test is justified by this documentation-only slice. All fifteen native
 credential actions, current application/package absence inventories, R-S0/R-F5,
 independent reproduction and release acceptance remain OPEN; the goal stays active.
+
+## 2026-10-27 — Folder-summary validation and atomic Dart publication
+
+The preceding documentation turn was progress. The current installed-credential
+checklist still leaves all fifteen actions open. Continued with a distinct
+file-transfer presentation correction; audio, terminal and other user parks
+were not resumed. At 910822c4, JobController.updateFolderFiles directly decodes
+dynamic JSON, requires total_size to be a double and writes fileCount before
+converting the total to int. Malformed fields can throw, nonfinite conversion
+can occur after the first mutation, and non-transfer rows can receive summaries.
+The decoded map is also printed. These are model/boundary findings, not a
+demonstrated network exploit, production secret leak or new LPE closure.
+
+Reviewed the exact Dart handler, callers, JobProgress storage, native
+Interface/Flutter producer and IoLoop call sites. The only-count producer emits
+id, num_entries and total_size; its compact payload is comfortably below the
+256-code-unit admission cap. Native total_size currently passes through f64.
+The producer's unchecked u64 accumulation and precision loss remain separate
+open work; this slice does not claim to correct native byte-count accuracy.
+Primary language references:
+- https://api.dart.dev/dart-convert/JsonDecoder/convert.html — dynamic decoded
+  value kinds and FormatException.
+- https://api.dart.dev/dart-core/double/truncate.html — fractional truncation
+  and nonfinite refusal.
+- https://api.dart.dev/dart-core/num/operator_equals.html — numeric equality
+  between integer and floating-point values.
+
+Preparation 296f3bc0 adds seven real production-model/widget cases to the existing
+36-case file-progress suite and changes only its exact inventory/count receipts.
+The previous 36 bodies remain byte-identical. Unchanged-product CZwZhpcXJw
+passes 37 and fails six: integer-total type errors, malformed/numeric-field
+exceptions, a nontransfer row update and visible mutation after an extra-field
+event. The renderer reaches and passes its initial state check, then fails
+after that invalid update; this is not a fixture-mount failure. Some later
+assertions in failing cases are not reached and are not independent baseline
+observations. Exact serial: 103,784 bytes, SHA-256
+caf9214045c0ef2634de665be82fa58a3a719355c6067ed78f992b8abde91f8b.
+
+Product 513aa1b5 changes only updateFolderFiles: validate complete shape, bounded
+identity/count, finite nonnegative whole total and representable integer before
+publishing both fields to the current transfer. It retains the native numeric
+form and accepts exact integer JSON totals without a double round trip. Fixed
+diagnostics replace map printing. No dependency, protocol, Rust producer,
+runtime, queue, thread or privileged operation changes.
+
+The identical tests/harness pass all 43 cases plus three result-parser controls
+in csCU73LxCw, with fresh generated bridge/import compilation. Its serial is
+101,907 bytes, SHA-256
+51cebb057c9e811acd76439424b21d6ee1aea28420c363f1c8fd16df4af1a6db.
+Cases execute the production controller; one mounts a real Obx/Text view and
+observes rejection followed by valid recovery. JSON/native events are controlled
+inputs. No complete file manager, actual native transfer, full Rust parent,
+installed service or physical device executes.
+
+Both runs use /bin/bash scripts/smoke-verifier-vm-authority.sh
+--flutter-model-tests --file-progress with pushed/frozen source, authenticated
+offline inputs, no-NIC guests and confined guest-only containers. QEMU joins
+and bounded RAM retires. Baseline listener deltas are zero. Candidate adds none;
+its final endpoint-only snapshot removes eleven pre-existing entries (198 bytes),
+retained as unattributed with no owner inspection or mutation. Exact idle-lock,
+PID/workspace absence and bounded-file checks preserve the baseline diagnostic
+as folder-summary-baseline.CZwZhpcXJw. Individual outcomes, source comparison,
+storage/listener evidence and the fresh ledger count are bound in
+.harness-state/verifier-vm/folder-summary-910822c4.json.
+
+Requirements/live instructions and all parked product surfaces remain unchanged.
+Native summary precision, complete app/FFI/transfer/device behavior, R-S0/R-F5,
+all fifteen installed credential actions, resource/soak and release/independent
+acceptance remain OPEN. The broad goal remains active.

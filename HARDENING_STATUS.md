@@ -15575,6 +15575,32 @@ progress semantics, full-app/platform/resource acceptance, R-S0/R-F5 and release
 The KDE command-line scan review is OPEN/PARKED at the user's pivot; no correction or
 new privilege-escalation claim was made. All other user parks remain unchanged.
 
+**Folder-summary admission (`513aa1b5`) — Dart model/widget A/B verified; native integration OPEN.**
+`JobController.updateFolderFiles` admits a bounded three-field JSON object, positive
+native action ID, nonnegative integer file count and finite whole-byte total that
+fits the Dart integer field. Integer totals preserve their exact value; the native
+producer's existing floating-point totals remain accepted within that domain.
+Validation finishes before either field changes. Only the current session's
+matching transfer row receives the update; malformed/oversized/extra-field events,
+invalid numbers and other job types preserve state. Diagnostics omit the payload.
+
+At unchanged-product preparation `296f3bc0`, 37 cases pass and six new cases fail
+on integer typing, malformed input, invalid numeric fields, wrong job type and
+rendered mutation. The identical 43-case suite and three parser controls pass
+after correction in 268 outer seconds, with fresh bridge/import compilation.
+Seven new cases cover native numeric forms, exact integers through signed-64 max,
+256/257-code-unit input admission, refusal without partial mutation, stale/unknown
+owners and rendered rejection/recovery using the real reactive job list.
+Native events are controlled inputs; full file-manager/native transfer and byte
+precision in `make_fd_flutter` remain OPEN. Its floating-point conversion and
+unchecked accumulator are unchanged and receive no new correctness claim.
+
+`folder-summary-910822c4.json` retains identical A/B tests/harness, individual
+outcomes, source/input bindings and joined bounded-RAM cleanup. Baseline listener
+deltas are zero; candidate adds none and retains eleven unattributed removals
+without owner inspection. Installed/platform, R-S0/R-F5, all fifteen credential
+actions and release acceptance remain OPEN; all user parks stay unchanged.
+
 **First-file progress (`1e6b6703`) — model/widget A/B verified; full transfer integration OPEN.**
 The native upload/download progress producer reports `job.file_num() - 1`: `-1` is
 the valid last-completed index while the first file is still transferring. The Dart

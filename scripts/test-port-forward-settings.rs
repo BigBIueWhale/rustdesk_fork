@@ -81,6 +81,10 @@ mod rdp_launch_tests;
 #[path = "test-tunnel-port-kind.rs"]
 mod tunnel_port_kind_tests;
 
+#[cfg(pf_settings_results)]
+#[path = "test-tunnel-reaper.rs"]
+mod reaper_tests;
+
 struct Fixture { root: PathBuf, session: Session }
 impl Fixture {
     fn new(sender: Option<ViewerCommandSender>) -> Self {

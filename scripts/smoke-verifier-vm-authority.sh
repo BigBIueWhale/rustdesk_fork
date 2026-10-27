@@ -6537,14 +6537,23 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clip
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
     mapfile -t control_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=97 unchanged=before-after$'
+            'CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=100 unchanged=before-after$'
     )
     [ "${#control_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'CONTROL_EGRESS_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'control-egress artifact receipt differs'
     require_exact_fixed_receipt \
-        "CONTROL_EGRESS_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=97 target=linux-x86_64 scope=production-control-cm-egress-and-framing rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "CONTROL_EGRESS_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=100 target=linux-x86_64 scope=production-control-cm-egress-and-framing rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused control-egress receipt'
+    require_exact_fixed_receipt \
+        'PF_REAPER_ORDER=pass cases=10 deadline_ms=500 owners=native results=exact cleanup=joined' \
+        'finished tunnel owners are joined independently'
+    require_exact_fixed_receipt \
+        'PF_REAPER_REUSE=pass later_owners=64 pending_waiter=dropped retained_until_exit=true result=reclaimed' \
+        'dropped tunnel waiters preserve bounded independent reaping'
+    require_exact_fixed_receipt \
+        'PF_REAPER_CAPACITY=pass accepted=32 overflow=33 action=SIGABRT child_cleanup=waited core=disabled' \
+        'tunnel reaper retains at most 32 queued or pending owners'
     require_exact_fixed_receipt \
         'CONTROLLED_TUNNEL_STOP=pass cases=5 blocked=native control=production deadline_ms=500 cleanup=joined peer=double' \
         'controlled tunnel close interrupts native socket backpressure'
@@ -8692,7 +8701,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'CM_CLIPBOARD_RESPONSE_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=43 scope=production-clipboard-payload-response-and-framing windows=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = control-egress ]; then
-        printf 'CONTROL_EGRESS_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=97 scope=production-control-cm-egress-and-framing network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'CONTROL_EGRESS_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=100 scope=production-control-cm-egress-and-framing network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = android-key-modifiers ]; then
         printf 'ANDROID_KEY_MODIFIERS_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=8 scope=production-android-modifier-rewrite android=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

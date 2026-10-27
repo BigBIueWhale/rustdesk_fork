@@ -1241,8 +1241,24 @@ FLOATING_POSITION_TESTS = {
 }
 
 
+FILE_SEARCH_TESTS = {
+    'file search selects only visible entries in both panes',
+    'file search uses the filtered row index for scrolling',
+    'file search follows directory replacement without parent rebuild',
+    'file search cycles current visible rows and wraps',
+    'file search restarts after its selected row disappears',
+    'file search reflects a new visible row order',
+    'file search repeats Unicode graphemes',
+    'file search repeats after multi-selection',
+    'file search retired callbacks do not alter current selection',
+    'file search retired sessions ignore both callbacks',
+    'file search missing matches and empty listings clear selection',
+    'file search preserves unfiltered prefix and repeat behavior',
+}
+
+
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -1352,6 +1368,10 @@ def parse_result(path, profile="models"):
         expected_suites = {"draggable_position_test.dart"}
         expected_tests = len(FLOATING_POSITION_TESTS)
         expected_names = FLOATING_POSITION_TESTS
+    elif profile == "file-search":
+        expected_suites = {"file_search_probe_test.dart"}
+        expected_tests = len(FILE_SEARCH_TESTS)
+        expected_names = FILE_SEARCH_TESTS
     elif profile == "file-progress":
         expected_suites = {"file_progress_test.dart"}
         expected_tests = len(FILE_PROGRESS_TESTS)
@@ -1471,7 +1491,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -1499,6 +1519,7 @@ def main():
         "file-navigation": "FLUTTER_FILE_NAVIGATION_TEST_JSON",
         "custom-scale": "FLUTTER_CUSTOM_SCALE_TEST_JSON",
         "floating-position": "FLUTTER_FLOATING_POSITION_TEST_JSON",
+        "file-search": "FLUTTER_FILE_SEARCH_TEST_JSON",
         "audio-input": "FLUTTER_AUDIO_INPUT_TEST_JSON",
         "reconnect": "FLUTTER_RECONNECT_TEST_JSON",
         "file-progress": "FLUTTER_FILE_PROGRESS_TEST_JSON",

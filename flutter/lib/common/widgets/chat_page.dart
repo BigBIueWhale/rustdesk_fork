@@ -101,9 +101,14 @@ class ChatPage extends StatelessWidget implements PageShape {
                                 (e) => e.id == chatModel.currentKey.connId)
                             ?.disconnected ==
                         true;
-            return Stack(
+            return Column(
               children: [
-                LayoutBuilder(builder: (context, constraints) {
+                if (chatModel.historyLimited)
+                  Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Text(translate('chat-history-limited-tip')),
+                  ),
+                Expanded(child: LayoutBuilder(builder: (context, constraints) {
                   final chat = DashChat(
                     onSend: chatModel.send,
                     currentUser: chatModel.me,
@@ -175,7 +180,7 @@ class ChatPage extends StatelessWidget implements PageShape {
                     ),
                   );
                   return SelectionArea(child: chat);
-                }),
+                })),
               ],
             ).paddingOnly(bottom: 8);
           },

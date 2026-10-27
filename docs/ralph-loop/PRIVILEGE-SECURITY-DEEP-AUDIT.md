@@ -108612,3 +108612,27 @@ collection write refusal, and capacity reuse after reset. The existing 86 peer-d
 cases remain unchanged. Run the unchanged-product baseline, then the same five-suite
 94-case profile in the bounded-RAM VM; source copies and exact case inventory remain
 enforced. This preparation changes tests/receipts only and claims no behavioral pass.
+
+Baseline `741fc501`, run `IzKShmw2yS`: **87 pass / seven fail**. The retained
+message list reaches 300 instead of 256; the 4-Ki-unit message case retains 128
+instead of 64; oversized text retains 262,150 units; conversation counts reach
+80/65/80 in insertion, recency and empty-selection cases; the exposed map accepts
+clear(). All 86 prior cases and the new reset/reuse control pass. Execution takes
+11.906 seconds, supervisor lifetime 263.048 seconds. Serial is 142,201 bytes,
+SHA-256 `fe0074815e5f8170c2db0269fbfc0b3e1922f4ba0f4d97486110540fc6dfb19f`.
+QEMU 3278192 joins with exit 0; RAM `run.x1oowk06` is absent. Peak RAM scratch is
+6,367,498,240 bytes, durable diagnostics 3,375,104 bytes. No endpoint additions;
+one unattributed final removal remains untouched. The exact failed diagnostic
+root is identity-renamed to `chat-history-baseline.IzKShmw2yS` after retirement.
+
+Candidate implements bounded MessageBody storage and one bounded ChatModel body
+lookup/creation path. List/map views reject structural mutation and preserve
+list/body identity across reset. Only an oversized display copy is shortened;
+existing plain-text message objects and sending remain otherwise unchanged.
+ChatPage places the history-limited notice above the remaining expanded chat
+area. The new notice key is added to the master and locale maps as feature
+vocabulary, with English source and empty untranslated entries; all previous
+translation bytes are unchanged. The compiled native translation fallback is
+source-reviewed; the focused Dart run does not execute the native translator or
+the complete ChatPage/device layout. Both test source files remain byte-identical
+to the baseline; the candidate repeats the same 94 cases.

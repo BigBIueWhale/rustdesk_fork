@@ -636,5 +636,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("The server does not require explicit deployment.", "Poslužitelj ne zahtijeva eksplicitno postavljanje."),
         ("Unknown response.", "Nepoznat odgovor."),
         ("Why this happens", "Zašto se ovo događa"),
+        ("chat-history-limited-tip", ""),
     ].iter().cloned().collect();
 }

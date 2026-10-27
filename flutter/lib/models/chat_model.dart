@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:dash_chat_2/dash_chat_2.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
@@ -40,21 +41,48 @@ class MessageKey {
 }
 
 class MessageBody {
+  static const maxMessages = 256;
+  static const maxTextCodeUnits = 256 * 1024;
+
   ChatUser chatUser;
-  List<ChatMessage> chatMessages;
-  MessageBody(this.chatUser, this.chatMessages);
+  final List<ChatMessage> _chatMessages = [];
+  late final List<ChatMessage> chatMessages = UnmodifiableListView(_chatMessages);
+  int _textCodeUnits = 0;
+  bool _historyLimited = false;
+  bool get historyLimited => _historyLimited;
+
+  MessageBody(this.chatUser);
 
   void insert(ChatMessage cm) {
-    chatMessages.insert(0, cm);
+    var stored = cm;
+    if (cm.text.length > maxTextCodeUnits) {
+      var end = maxTextCodeUnits - 1;
+      final last = cm.text.codeUnitAt(end - 1);
+      if (last >= 0xd800 && last <= 0xdbff) end--;
+      stored = ChatMessage(user: cm.user, createdAt: cm.createdAt,
+          text: '${cm.text.substring(0, end)}…');
+      _historyLimited = true;
+    }
+    while (_chatMessages.isNotEmpty &&
+        (_chatMessages.length >= maxMessages ||
+            _textCodeUnits + stored.text.length > maxTextCodeUnits)) {
+      _textCodeUnits -= _chatMessages.removeLast().text.length;
+      _historyLimited = true;
+    }
+    _chatMessages.insert(0, stored);
+    _textCodeUnits += stored.text.length;
   }
 
   void clear() {
-    chatMessages.clear();
+    _chatMessages.clear();
+    _textCodeUnits = 0;
+    _historyLimited = false;
   }
 }
 
 class ChatModel with ChangeNotifier {
   static final clientModeID = -1;
+  static const maxConversations = 64;
 
   OverlayEntry? chatIconOverlayEntry;
   OverlayEntry? chatWindowOverlayEntry;
@@ -96,11 +124,17 @@ class ChatModel with ChangeNotifier {
   );
 
   late final Map<MessageKey, MessageBody> _messages = {};
+  late final Map<MessageKey, MessageBody> _messagesView =
+      UnmodifiableMapView(_messages);
+  bool _conversationHistoryLimited = false;
 
   MessageKey _currentKey = MessageKey('', -2); // -2 is invalid value
   late bool _isShowCMSidePage = false;
 
-  Map<MessageKey, MessageBody> get messages => _messages;
+  Map<MessageKey, MessageBody> get messages => _messagesView;
+
+  bool get historyLimited => _conversationHistoryLimited ||
+      (_messages[_currentKey]?.historyLimited ?? false);
 
   MessageKey get currentKey => _currentKey;
 
@@ -334,16 +368,12 @@ class ChatModel with ChangeNotifier {
           .firstWhereOrNull((client) => client.peerId == key.peerId)
           ?.name;
     }
-    if (!_messages.containsKey(key)) {
-      final chatUser = ChatUser(
+    final body = _bodyFor(key, _messages[key]?.chatUser ?? ChatUser(
         id: key.peerId,
         firstName: peerName,
-      );
-      _messages[key] = MessageBody(chatUser, []);
-    } else {
-      if (peerName != null && peerName.isNotEmpty) {
-        _messages[key]?.chatUser.firstName = peerName;
-      }
+      ));
+    if (peerName != null && peerName.isNotEmpty) {
+      body.chatUser.firstName = peerName;
     }
     _currentKey = key;
     notifyListeners();
@@ -513,10 +543,23 @@ class ChatModel with ChangeNotifier {
 
   insertMessage(MessageKey key, ChatMessage message) {
     updateConnIdOfKey(key);
-    if (!_messages.containsKey(key)) {
-      _messages[key] = MessageBody(message.user, []);
+    _bodyFor(key, message.user).insert(message);
+  }
+
+  MessageBody _bodyFor(MessageKey key, ChatUser user) {
+    final existing = _messages.remove(key);
+    if (existing != null) {
+      _messages[key] = existing;
+      return existing;
     }
-    _messages[key]?.insert(message);
+    if (_messages.length >= maxConversations) {
+      final oldest = _messages.keys.firstWhere((key) => key != _currentKey);
+      _messages.remove(oldest);
+      _conversationHistoryLimited = true;
+    }
+    final body = MessageBody(user);
+    _messages[key] = body;
+    return body;
   }
 
   updateConnIdOfKey(MessageKey key) {

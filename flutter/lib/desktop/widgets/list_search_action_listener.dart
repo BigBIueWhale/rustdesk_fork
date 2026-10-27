@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class ListSearchActionListener extends StatelessWidget {
   final FocusNode node;
@@ -24,6 +25,12 @@ class ListSearchActionListener extends StatelessWidget {
           if (!hasFocus) buffer.clear();
         },
         onKeyEvent: (_, kv) {
+          final keyboard = HardwareKeyboard.instance;
+          // Ctrl+Alt can produce text through AltGr keyboard layouts.
+          if (keyboard.isMetaPressed ||
+              (keyboard.isControlPressed && !keyboard.isAltPressed)) {
+            return KeyEventResult.ignored;
+          }
           final ch = kv.character;
           if (ch == null) {
             return KeyEventResult.ignored;

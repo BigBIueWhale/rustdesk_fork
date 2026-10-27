@@ -528,7 +528,7 @@ void main() {
       ..state = JobState.paused
       ..isRemoteToLocal = false;
     h.controller.jobTable.add(other);
-    final first = expectLater(h.resume(), throwsA(isA<StateError>()));
+    final first = expectLater(h.resume(), completion(isFalse));
     final second = h.controller.resumeJob(8, expectedSessionId: h.session);
     expect(h.calls, [[h.session, 7, true], [h.session, 8, false]]);
     h.replies[1].complete();
@@ -548,11 +548,13 @@ void main() {
     }
     expect(await duplicate, isFalse);
     expect(original.state, JobState.paused);
+    expect(original.err, contains('bridge failed'));
     final retry = h.resume();
     h.replies.last.complete();
     expect(await retry, isTrue);
     expect(h.calls, hasLength(3));
     expect(original.state, JobState.inProgress);
+    expect(original.err, isEmpty);
   });
 
   test('retired resume cannot release replacement job admission', () async {
@@ -583,16 +585,109 @@ void main() {
   });
 
   test('resume bridge failure preserves the job and permits retry', () async {
-    final h = _ResumeHarness();
-    final failed = expectLater(h.resume(), throwsA(isA<StateError>()));
-    h.replies.single.completeError(StateError('bridge failed'));
-    await failed;
-    expect(h.job.state, JobState.paused);
-    final retried = h.resume();
-    h.replies.last.complete();
-    expect(await retried, isTrue);
-    expect(h.job.state, JobState.inProgress);
-    expect(h.calls, hasLength(2));
+    for (final download in [false, true]) {
+      final h = _ResumeHarness();
+      h.job.isRemoteToLocal = download;
+      final failed = expectLater(h.resume(), completion(isFalse));
+      h.replies.single.completeError(StateError('bridge failed'));
+      await failed;
+      expect(h.job.state, JobState.paused);
+      expect(h.job.err, contains('bridge failed'));
+      final retried = h.resume();
+      expect(h.job.err, contains('bridge failed'));
+      h.replies.last.complete();
+      expect(await retried, isTrue);
+      expect(h.job.state, JobState.inProgress);
+      expect(h.job.err, isEmpty);
+      expect(h.calls, [[h.session, 7, download], [h.session, 7, download]]);
+    }
+  });
+
+  test('resume failure cannot publish to retired or replacement jobs', () async {
+    for (final retirement in ['removed', 'replaced', 'session']) {
+      final h = _ResumeHarness();
+      final original = h.job;
+      final failed = expectLater(h.resume(), completion(isFalse));
+      if (retirement == 'session') {
+        h.currentSession = const Uuid().v4obj();
+      } else {
+        h.controller.clear();
+        if (retirement == 'replaced') {
+          h.controller.addTransferJob(
+              Entry()..path = '/replacement', false, h.session);
+          h.job.state = JobState.paused;
+          h.job.err = 'replacement status';
+        }
+      }
+      h.replies.single.completeError(StateError('retired failure'));
+      await failed;
+      expect(original.state, JobState.paused);
+      expect(original.err, isEmpty);
+      if (retirement == 'replaced') {
+        expect(h.job.state, JobState.paused);
+        expect(h.job.err, 'replacement status');
+      }
+    }
+  });
+
+  test('resume failure preserves an earlier terminal event', () async {
+    for (final outcome in ['done', 'error', 'skipped']) {
+      final h = _ResumeHarness();
+      final failed = expectLater(h.resume(), completion(isFalse));
+      final event = {'id': '7', 'file_num': '0'};
+      if (outcome == 'done') {
+        expect(await h.controller.jobDone(event, h.session), isTrue);
+      } else {
+        h.controller.jobError({...event, 'err': outcome}, h.session);
+      }
+      final before = [h.job.state, h.job.err, h.job.fileNum, h.job.finishedSize];
+      h.replies.single.completeError(StateError('late bridge failure'));
+      await failed;
+      expect([h.job.state, h.job.err, h.job.fileNum, h.job.finishedSize], before);
+    }
+  });
+
+  test('synchronous resume failure publishes status and releases retry', () async {
+    final session = const Uuid().v4obj();
+    var fail = true;
+    var calls = 0;
+    final controller = JobController(() => session, () => null,
+        isCurrentSession: (actual) => actual == session,
+        nextJobId: () => 7,
+        requests: JobControllerRequests(
+          cancelJob: (_, __) async {},
+          addJob: (_, __, ___, ____, _____, ______, _______) async {},
+          resumeJob: (_, __, ___) {
+            calls++;
+            if (fail) throw StateError('synchronous failure');
+            return Future.value();
+          },
+        ));
+    controller.addTransferJob(Entry()..path = '/file', true, session);
+    final job = controller.jobTable.single..state = JobState.paused;
+    expect(await controller.resumeJob(7), isFalse);
+    expect(job.state, JobState.paused);
+    expect(job.err, contains('synchronous failure'));
+    fail = false;
+    expect(await controller.resumeJob(7), isTrue);
+    expect(job.state, JobState.inProgress);
+    expect(job.err, isEmpty);
+    expect(calls, 2);
+  });
+
+  test('paused transfer status includes its resume failure', () {
+    // The status formatter is production code; translation alone is controlled.
+    final job = _StatusJob()
+      ..type = JobType.transfer
+      ..state = JobState.paused
+      ..fileCount = 2
+      ..err = 'resume request refused';
+    expect(job.getStatus(), 'Rendered status: resume request refused, 0/2 files');
+    job.err = '';
+    expect(job.getStatus(), 'Rendered status, 0/2 files');
+    job.state = JobState.inProgress;
+    job.err = 'old failure';
+    expect(job.getStatus(), '0/2 files');
   });
 
   test('resume refuses nonpaused and nontransfer jobs before dispatch', () async {

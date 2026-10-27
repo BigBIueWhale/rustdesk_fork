@@ -7406,6 +7406,132 @@ mod tests {
         println!("READ_CONFIRMATION_READY=pass waiting_cases=2");
     }
 
+    fn observe_read_turn(
+        response: FileResponse,
+        received: &mut [Vec<u8>],
+        phases: &mut [u8],
+    ) -> (usize, &'static str) {
+        match response.union.expect("one file response") {
+            file_response::Union::Block(block) => {
+                let index = usize::try_from(block.id - 1000).expect("known job id");
+                assert_eq!(block.file_num, 0);
+                assert_eq!(phases[index], 0, "no data after EOF or Done");
+                let bytes = file_block::decode(&block.data, block.compressed)
+                    .expect("decode the real sender block");
+                if bytes.is_empty() {
+                    phases[index] = 1;
+                    (index, "eof")
+                } else {
+                    received[index].extend_from_slice(&bytes);
+                    (index, "data")
+                }
+            }
+            file_response::Union::Done(done) => {
+                let index = usize::try_from(done.id - 1000).expect("known job id");
+                assert_eq!(done.file_num, 1);
+                assert_eq!(phases[index], 1, "one EOF precedes one Done");
+                phases[index] = 2;
+                (index, "done")
+            }
+            _ => panic!("unexpected file response"),
+        }
+    }
+
+    #[tokio::test]
+    async fn read_step_round_robin_preserves_transfer_lifetimes() {
+        let mut results = Vec::new();
+        for scenario in [2, 3, MAX_ACTIVE_FILE_TRANSFER_READ_JOBS_PER_CONN, 0] {
+            let mixed = scenario == 0;
+            let count = if mixed { 5 } else { scenario };
+            let tmp = TestTempDir::new("rustdesk_read_turns");
+            std::fs::create_dir_all(&tmp.path).expect("create source directory");
+            let mut jobs = Vec::new();
+            let mut contents = Vec::new();
+            for index in 0..count {
+                let size = if mixed && index != 2 { index + 6 }
+                    else { 2 * FILE_TRANSFER_BLOCK_SIZE + 17 };
+                // Different bytes for every job and block expose duplication or misrouting.
+                let content: Vec<u8> = (0..size)
+                    .map(|offset| (index * 3 + offset / FILE_TRANSFER_BLOCK_SIZE) as u8)
+                    .collect();
+                let source = tmp.join(&format!("source-{index}.txt"));
+                std::fs::write(&source, &content).expect("create source");
+                jobs.push(TransferJob::new_read(
+                    1000 + index as i32, JobType::Generic, index.to_string(), source,
+                    0, false, false, mixed && index == 1,
+                ).expect("admit source"));
+                contents.push(content);
+            }
+            let (mut sender, mut receiver) = keyed_read_job_tcp_pair(8 * 1024).await;
+            let mut pending = None;
+            if mixed {
+                pending = jobs.pop();
+                jobs[0].is_last_job = true;
+                let (_, response) = read_job_tcp_step(
+                    &mut jobs, &mut sender, &mut receiver,
+                ).await;
+                assert!(matches!(response.union,
+                    Some(file_response::Union::Digest(digest))
+                        if digest.id == 1001 && digest.file_size == 7));
+            }
+            let mut received = vec![Vec::new(); count];
+            let mut phases = vec![0; count];
+            let mut timeline = Vec::new();
+            let mut bounded_progress = true;
+            let turns = if mixed { 17 } else { 5 * count };
+            for turn in 0..turns {
+                if mixed && turn == 4 {
+                    let paused = jobs.iter_mut().find(|job| job.id() == 1000)
+                        .expect("retain paused job");
+                    assert!(paused.is_last_job && paused.data_stream.is_none());
+                    assert_eq!((paused.finished_size(), paused.transferred()), (0, 0));
+                    paused.is_last_job = false;
+                    let waiting = jobs.iter_mut().find(|job| job.id() == 1001)
+                        .expect("retain waiting job");
+                    assert!(waiting.file_is_waiting() && !waiting.file_confirmed());
+                    assert!(waiting.data_stream.is_some());
+                    assert_eq!((waiting.finished_size(), waiting.transferred()), (0, 0));
+                    waiting.confirm_with_offset(0, 0).await.expect("confirm waiting job");
+                    jobs.push(pending.take().expect("admit one new job"));
+                }
+                let (_, response) = read_job_tcp_step(
+                    &mut jobs, &mut sender, &mut receiver,
+                ).await;
+                timeline.push(observe_read_turn(response, &mut received, &mut phases));
+                if !mixed && turn + 1 == count {
+                    bounded_progress = jobs.len() == count && jobs.iter().all(|job|
+                        job.finished_size() == FILE_TRANSFER_BLOCK_SIZE as u64
+                            && job.send_file_offset == FILE_TRANSFER_BLOCK_SIZE as u64);
+                }
+            }
+            assert!(jobs.is_empty(), "every exact job retires");
+            assert!(pending.is_none());
+            assert_eq!(received, contents, "all peer bytes are exact and ordered");
+            assert!(phases.iter().all(|phase| *phase == 2));
+            for (index, content) in contents.iter().enumerate() {
+                assert_eq!(std::fs::read(tmp.join(&format!("source-{index}.txt")))
+                    .expect("read unchanged source"), *content);
+            }
+            assert!(tokio::time::timeout(Duration::from_millis(20), receiver.next())
+                .await.is_err(), "no duplicate frame after completion");
+            join_read_job_tcp_pair(&mut sender, &mut receiver).await;
+            let fair = if mixed {
+                timeline[..4] == [(2, "data"), (3, "data"), (2, "data"), (3, "eof")]
+                    && timeline[4..9] ==
+                        [(0, "data"), (1, "data"), (2, "data"), (3, "done"), (4, "data")]
+            } else {
+                bounded_progress && timeline[..count].iter().enumerate()
+                    .all(|(index, event)| *event == (index, "data"))
+            };
+            println!("READ_ROUND_ROBIN_CASE=observed jobs={count} mixed={mixed} fair={fair} first_turns={:?} bytes=exact eof=once done=once writers=joined",
+                &timeline[..count.min(9)]);
+            results.push(fair);
+        }
+        assert!(results.iter().all(|fair| *fair),
+            "every ready transfer must receive a bounded turn before an earlier transfer repeats");
+        println!("READ_ROUND_ROBIN=pass cases=4 max_jobs=32 pause=preserved confirmation=preserved new_job=admitted bytes=exact eof=once done=once writers=joined");
+    }
+
     #[tokio::test]
     async fn read_step_compressor_refusal_reports_error_and_preserves_other_job() {
         use std::future::Future;

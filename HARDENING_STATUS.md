@@ -409,6 +409,7 @@ fresh ledger count. Native/installed acceptance and all user parks remain OPEN.
 | Clipboard authority | Appendix C #107 | `clipboard-authority-document-role-481712e2.json` |
 | Credential storage | R-S9 | `rs9-credential-contract-5753c573.json` |
 | CPace | R-P5/R-P11 | `cpace-specification-role-8903ad60.json` |
+| CPace wire contract | R-P14 retains unconditional direct-TCP keying in both roles/all five session types, a dedicated pre-key decoder, the exact four messages, confirmation-before-handoff, small framing and adversarial review. The retired `secure`/identity-bootstrap migration narrative and redundant parser rationale are deleted. Confirmation names the existing per-role completion boundary and `set_session_keys`; R-P14a's sequence reference and API name are corrected. All 411 requirement declarations, IDs/links, other clauses, product sources and executable verification remain unchanged. Current native/installed, R-S0/R-F5, timing, independent cryptographic and release acceptance remain OPEN. | Audit entry “2026-10-28 — CPace wire-contract documentation correction” |
 | Risk register | §13 | `debt-register-document-role-28c2e775.json` |
 | Verification clauses | Source, artifact and target-native evidence have separate scopes | `verification-clause-classification-a5946201.json` |
 | Audit and authentication authority | R-A6; no CM operator-accept authority under R-S2/R-S18; credential-unavailable parking and socket retirement remain required | `audit-contract-document-role-313c3d27.json` |

@@ -109165,3 +109165,52 @@ bytes and durable evidence 147,456 bytes. QEMU 3652925 joins with exit 0; its PI
 RAM `run.38ef6l0c` and all active run roots are absent. Final inventory removes
 one unattributed endpoint, left untouched. This audit-only closure changes neither
 the counted ledger nor the verified widget; all earlier parks remain open.
+
+## 2026-10-28 — CPace wire-contract documentation correction
+
+The preceding turn made verified product progress: the filename correction and
+its sixteen-case acceptance are pushed through `2adfaa9f`. All fifteen
+R-S11ia–R-S11io native action acceptances remain open; installed functionality,
+R-S0/R-F5, resource, artifact, independent reproduction and external review remain
+required. Installer-ledger, clipboard-acquisition and observer-clock work stay
+parked, together with every earlier user park.
+
+This slice advances the binding separation of normative requirements from history.
+R-P14 still describes the removed `secure`-gated SignedId/PublicKey bootstrap as
+live, gives a migration recipe and names the retired `set_key` API. Git
+`84531101fff58d3f33c93db0b397c395bbb03d0d` records the original upstream-plan
+rationale; it is useful history rather than a current operating mode. Current
+source inspection covers `server.rs::create_tcp_connection` and
+`authenticate_tcp_stream`, `client.rs::key_initiator`, both shared CPace drivers,
+the PAKE confirmation states, `set_session_keys` and the dedicated proto schema.
+The responder checks Ta and completes the step-four send before returning keys;
+the initiator checks Tb before returning keys. Both application callers install
+only the successful role-oriented result.
+
+The pinned [draft-21 §10.4](https://www.ietf.org/archive/id/draft-irtf-cfrg-cpace-21.html#section-10.4)
+describes each participant's authenticator and receiver-side verification. The
+fork's mandatory confirmation and fixed order remain stronger application choices
+under its unchanged R-P3/R-P14a contracts. The replacement spells out those
+existing role-local completion boundaries rather than implying that one endpoint
+can observe the other endpoint's internal tag check. No fifth message, different
+MAC, construction, suite, draft pin, key derivation or keying fallback is added.
+
+R-P14 is rewritten as the continuing wire contract. It preserves unconditional
+keying for both roles/all session types, absence of identity-key bootstrap and
+box sealing, dedicated top-level Cpace parsing before keying, the exact four-message
+sequence and byte lengths, constant-time peer-tag checks, two directional keys,
+no early application/authorization handoff, failure refusal, small framing and
+R-V1 review. R-P14a changes only its sequence reference and key-installation API
+name. The adjacent deadline, limiter, replay, nonce, vector, timing and review
+requirements remain byte-identical, as does every other specification clause.
+
+Read-only comparison establishes exact unchanged bytes outside those two clauses,
+all 411 requirement declarations, all IDs/links and the touched reference set.
+The four-message sequence is byte-identical; the changed HTML is balanced.
+Specification size falls from 1,682,997 to 1,682,089 bytes (908 bytes removed).
+The baseline SHA-256 equals the previously counted
+`25234a4b77a9d03ad5f3b56c6bffa92291d5e2e77aeb9c92786cdeb05c0ee0f6`,
+so its 368,732-token receipt remains applicable. Product, tests, verifier recipes,
+AGENTS and live loop instructions are unchanged. No product runtime is claimed;
+native/installed, timing, cryptographic review and release acceptance remain open.
+Fresh isolated counts of both documents follow separately.

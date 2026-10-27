@@ -24,7 +24,12 @@ class _MobileCustomScaleControlsState extends CustomScaleControls<MobileCustomSc
     // Smaller button size for mobile
     const smallBtnConstraints = BoxConstraints(minWidth: 32, minHeight: 32);
 
-    final sliderControl = buildScaleSlider(label: '$scaleValue%');
+    final sliderControl = SliderTheme(
+      data: SliderTheme.of(context).copyWith(
+        showValueIndicator: ShowValueIndicator.always,
+      ),
+      child: buildScaleSlider(label: '$scaleValue%'),
+    );
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),

@@ -1677,7 +1677,6 @@ class _CustomScaleMenuControlsState
 
     final sliderControl = Semantics(
       label: translate('Custom scale slider'),
-      value: '$scaleValue%',
       child: SliderTheme(
         data: SliderTheme.of(context).copyWith(
           activeTrackColor: colorScheme.primary,

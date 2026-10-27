@@ -51,8 +51,9 @@ abstract class CustomScaleControls<T extends StatefulWidget> extends State<T> {
     value: scalePos,
     min: 0.0,
     max: 1.0,
-    divisions: maxPercent - minPercent,
     label: label,
+    semanticFormatterCallback: (position) =>
+        '${_mapPosToPercent(_snapNormalizedPos(position))}%',
     onChanged: onSliderChanged,
   );
 

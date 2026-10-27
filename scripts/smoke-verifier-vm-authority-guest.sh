@@ -10664,7 +10664,7 @@ run_flutter_model_tests() {
             memory=3g
             memory_bytes=3221225472
             result_prefix=FLUTTER_AUTO_DISCONNECT_TEST_JSON
-            expected_result='suites=13 tests=334'
+            expected_result='suites=13 tests=338'
         elif [ "$FLUTTER_TEST_PROFILE" = directory-ordering ]; then
             memory=3g
             memory_bytes=3221225472
@@ -10709,7 +10709,7 @@ run_flutter_model_tests() {
             memory=3g
             memory_bytes=3221225472
             result_prefix=FLUTTER_CUSTOM_SCALE_TEST_JSON
-            expected_result='suites=1 tests=35'
+            expected_result='suites=1 tests=39'
         elif [ "$FLUTTER_TEST_PROFILE" = audio-input ]; then
             memory=3g
             memory_bytes=3221225472

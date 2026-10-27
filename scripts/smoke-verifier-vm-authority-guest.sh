@@ -10732,7 +10732,7 @@ run_flutter_model_tests() {
             expected_result='suites=9 tests=83'
         else
             result_prefix=FLUTTER_DIRECT_ADDRESS_TEST_JSON
-            expected_result='suites=1 tests=19'
+            expected_result='suites=1 tests=25'
         fi
         source_mount+=,readonly
         source_writable=false

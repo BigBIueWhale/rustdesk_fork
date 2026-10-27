@@ -108693,3 +108693,13 @@ old value. An explicit match-end check rejects trailing newline rather than
 silently stripping it or admitting a partial match. The tests are unchanged.
 This changes local editing only; no runtime/session/network/credential authority
 or native tunnel behavior is inferred from the component tests.
+
+Candidate `2c83ce0f`, run `RpzoTnpuVf`, passes all twenty-five behavioral cases
+and three parser controls, but the guest's separate summary expectation still
+says nineteen. The overall run correctly fails receipt validation. Correct that
+single stale count; preserve the tests and formatter unchanged for final replay.
+Serial: 67,488 bytes, SHA-256
+`0ce6225f51c0a303a156db45f67f13c0c8bb4cea04c8c81bda6afd7dd0c7d00c`.
+QEMU 3336062 joins with exit 0; RAM `run.odisi7zi` is absent. One unattributed
+final endpoint addition remains untouched. Diagnostics are identity-renamed to
+`port-edit-receipt.RpzoTnpuVf`; no overall acceptance is claimed for this run.

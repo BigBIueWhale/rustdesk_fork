@@ -251,15 +251,17 @@ class DraggableMobileActions extends StatelessWidget {
 
 class DraggableKeyPosition {
   final String key;
+  final String Function(String key) _readOption;
   Offset _pos;
   late Debouncer<int> _debouncerStore;
-  DraggableKeyPosition(this.key)
-      : _pos = DraggablePositions.kInvalidDraggablePosition;
+  DraggableKeyPosition(this.key, {String Function(String key)? readOption})
+      : _readOption = readOption ?? ((key) => bind.getLocalFlutterOption(k: key)),
+        _pos = DraggablePositions.kInvalidDraggablePosition;
 
   get pos => _pos;
 
   _loadPosition(String k) {
-    final value = bind.getLocalFlutterOption(k: k);
+    final value = _readOption(k);
     if (value.isNotEmpty) {
       final parts = value.split(',');
       if (parts.length == 2) {

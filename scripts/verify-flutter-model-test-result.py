@@ -1224,8 +1224,20 @@ RECONNECT_SUITES = {
 }
 
 
+FLOATING_POSITION_TESTS = {
+    'floating position preserves finite saved coordinates',
+    'floating position treats absent or wrong arity as unset',
+    'floating position rejects malformed coordinates without throwing',
+    'floating position rejects nonfinite coordinates',
+    'floating position reload discards an invalid saved checkpoint',
+    'floating position invalid data leaves other positions loadable',
+    'floating position places the actual draggable at saved coordinates',
+    'floating position preserves storage read errors',
+}
+
+
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -1331,6 +1343,10 @@ def parse_result(path, profile="models"):
         expected_suites = {"custom_scale_controls_test.dart"}
         expected_tests = len(CUSTOM_SCALE_TESTS)
         expected_names = CUSTOM_SCALE_TESTS
+    elif profile == "floating-position":
+        expected_suites = {"draggable_position_test.dart"}
+        expected_tests = len(FLOATING_POSITION_TESTS)
+        expected_names = FLOATING_POSITION_TESTS
     elif profile == "file-progress":
         expected_suites = {"file_progress_test.dart"}
         expected_tests = len(FILE_PROGRESS_TESTS)
@@ -1450,7 +1466,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -1477,6 +1493,7 @@ def main():
         "directory-ordering": "FLUTTER_DIRECTORY_ORDERING_TEST_JSON",
         "file-navigation": "FLUTTER_FILE_NAVIGATION_TEST_JSON",
         "custom-scale": "FLUTTER_CUSTOM_SCALE_TEST_JSON",
+        "floating-position": "FLUTTER_FLOATING_POSITION_TEST_JSON",
         "audio-input": "FLUTTER_AUDIO_INPUT_TEST_JSON",
         "reconnect": "FLUTTER_RECONNECT_TEST_JSON",
         "file-progress": "FLUTTER_FILE_PROGRESS_TEST_JSON",

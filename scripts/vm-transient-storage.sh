@@ -34,6 +34,7 @@ elif [[ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:credential-d
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:settings-navigation \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:peer-data \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:custom-scale \
+    || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:floating-position \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:audio-input \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:reconnect \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:file-progress \

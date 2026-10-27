@@ -52,6 +52,12 @@ def run(arguments, directory, *, timeout=30):
         raise ValueError("controlled-egress output exceeds 2 MiB")
     print(result.stdout.decode("utf-8", errors="replace"), end="", flush=True)
     if result.returncode != 0:
+        # Keep the failure reports after verbose successful-test output so the
+        # guest's bounded diagnostic tail retains the actual failing observations.
+        start = result.stdout.find(b"\nfailures:\n")
+        end = result.stdout.find(b"\nsuccesses:\n", start)
+        if start >= 0 and end > start:
+            print(result.stdout[start:end].decode("utf-8", errors="replace"), flush=True)
         raise ValueError(f"controlled-egress command failed: {result.returncode}")
     return result.stdout
 
@@ -585,13 +591,13 @@ def main():
             print(f"CONTROL_EGRESS_INPUT=pass path={name} bytes={len(body)} sha256={digest(body)}")
         print(f"CONTROL_EGRESS_BUILD=pass seconds={time.monotonic() - started:.3f} "
               f"sha256={artifact_sha}", flush=True)
-        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=100", flush=True)
+        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=101", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("controlled-egress artifact changed during execution")
-            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=100 unchanged=before-after", flush=True)
+            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=101 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("controlled-egress artifact or dependencies changed")
         for name, body in snippets.items():
@@ -600,7 +606,7 @@ def main():
         for name, body in inputs.items():
             if (repo / name).read_bytes() != body:
                 raise ValueError(f"controlled-egress source changed: {name}")
-        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=100 unchanged=before-after",
+        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=101 unchanged=before-after",
               flush=True)
 
 

@@ -178,3 +178,44 @@ fn reaper_capacity_counts_queued_and_pending_owners_together() {
     assert!(correct, "reaper capacity did not admit 32 owners and fail-stop the 33rd");
     println!("PF_REAPER_CAPACITY=pass accepted=32 overflow=33 action=SIGABRT child_cleanup=waited core=disabled");
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn live_one_off_listener_does_not_delay_supervisor_close() {
+    let fixture = Fixture::new(None);
+    let reservation = tcp::new_exclusive_listener("127.0.0.1:0").await.unwrap();
+    let one_off_addr = reservation.local_addr().unwrap();
+    let second = tcp::new_exclusive_listener("127.0.0.1:0").await.unwrap();
+    let supervisor_addr = second.local_addr().unwrap();
+    drop(reservation);
+    let (control, receiver) = port_forward_control();
+    let session = fixture.session.clone();
+    let one_off = tokio::spawn(listen_one_off(
+        session.get_id(), i32::from(one_off_addr.port()), session,
+        receiver, "localhost".into(), 22,
+    ));
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while fixture.session.listener_starts.load(Ordering::SeqCst) != 1 {
+            tokio::task::yield_now().await;
+        }
+    }).await.unwrap();
+    drop(second);
+    let supervisor = PortForwardSupervisorOwner::start(fixture.session.clone()).unwrap();
+    supervisor.add((i32::from(supervisor_addr.port()), "localhost".into(), 22).into())
+        .await.unwrap();
+    let mut close = Box::pin(supervisor.close_and_join());
+    let early = tokio::time::timeout(Duration::from_millis(500), &mut close).await;
+    let timely = early.is_ok();
+    let one_off_live = tcp::new_exclusive_listener(one_off_addr).await.is_err();
+    control.close();
+    tokio::time::timeout(Duration::from_secs(2), one_off).await.unwrap().unwrap().unwrap();
+    match early {
+        Ok(result) => result.unwrap(),
+        Err(_) => tokio::time::timeout(Duration::from_secs(2), close).await.unwrap().unwrap(),
+    }
+    let rebindable = tcp::new_exclusive_listener(one_off_addr).await.is_ok()
+        && tcp::new_exclusive_listener(supervisor_addr).await.is_ok();
+    println!("PF_REAPER_LISTENERS=observed timely={timely} one_off_live={one_off_live} rebindable={rebindable}");
+    assert!(timely && one_off_live && rebindable,
+        "a live one-off mapping delayed supervisor shutdown or retained a listener");
+    println!("PF_REAPER_NATIVE=pass listeners=2 supervisor=independent deadline_ms=500 one_off=preserved cleanup=joined ports=rebindable");
+}

@@ -4401,6 +4401,7 @@ run_focused_rust_tests() {
                 port_forward_settings::reaper_tests::finished_owner_is_joined_while_an_earlier_owner_remains_live
                 port_forward_settings::reaper_tests::dropped_waiter_retains_owner_and_allows_repeated_independent_joins
                 port_forward_settings::reaper_tests::reaper_capacity_counts_queued_and_pending_owners_together
+                port_forward_settings::reaper_tests::live_one_off_listener_does_not_delay_supervisor_close
                 controlled_tunnel::controlled_tunnel_close_interrupts_backpressured_target
                 controlled_tunnel::controlled_tunnel_preserves_pending_write_and_healthy_relay
                 controlled_tunnel::tunnel_reverse_direction_progresses_during_native_write_backpressure
@@ -6497,7 +6498,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
         printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=43 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
-        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=100 bridge=absent\n'
+        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=101 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = android-key-modifiers ]; then
         printf 'ANDROID_KEY_MODIFIERS_PROFILE=android-key-modifiers stage=container-start tests=8 bridge=absent android=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
@@ -6859,7 +6860,7 @@ PY
         [ "$(grep -Fxc 'PF_SETTINGS_ONE_OFF=pass cases=4 invalid=before-bind-and-launch valid=native-listener owner-thread=joined ports=rebindable' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^PF_SETTINGS_ONE_OFF_CASE=observed .* correct=true$' "$output")" -eq 4 ] \
             || fail 'one-off local-port refusal or owned thread/listener finality differs'
-        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=100 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=101 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CONTROL_EGRESS_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'control-egress artifact receipt differs'
         [ "$(grep -Fxc 'CM_VOICE_CALL_ACTION=pass cases=108 identity=exact phase=exact invalid=refused queues=real' "$output")" -eq 1 ] \

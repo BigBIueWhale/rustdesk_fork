@@ -98,12 +98,24 @@ class DesktopTabController {
 
   /// index, key
   Function(int, String)? onRemoved;
-  Function(String)? onSelected;
+  Function(String)? _onSelected;
+  Object _selection = Object();
   Future<void> Function()? onCloseWindow;
   Future<void> Function(TabInfo, bool closeSession)? onBeforeRemove;
 
   DesktopTabController(
-      {required this.tabType, this.onRemoved, this.onSelected});
+      {required this.tabType, this.onRemoved, Function(String)? onSelected})
+      : _onSelected = onSelected;
+
+  set onSelected(Function(String)? callback) => _onSelected = callback;
+
+  bool _isCurrentSelection(TabInfo tab, Object selection) {
+    final current = state.value;
+    return identical(_selection, selection) &&
+        current.selected >= 0 &&
+        current.selected < current.tabs.length &&
+        identical(current.tabs[current.selected], tab);
+  }
 
   int get length => state.value.tabs.length;
 
@@ -121,13 +133,7 @@ class DesktopTabController {
       toIndex = state.value.tabs.length - 1;
       assert(toIndex >= 0);
     }
-    try {
-      // tabPage has not been initialized, call `onSelected` at the end of initState
-      jumpTo(toIndex, callOnSelected: false);
-    } catch (e) {
-      // call before binding controller will throw
-      debugPrint("Failed to jumpTo: $e");
-    }
+    jumpTo(toIndex);
   }
 
   void remove(int index) {
@@ -139,6 +145,7 @@ class DesktopTabController {
     state.value.tabs.removeAt(index);
     state.value.scrollController.itemCount = state.value.tabs.length;
     if (state.value.tabs.isEmpty) {
+      _selection = Object();
       state.value.selected = 0;
       state.refresh();
     } else {
@@ -150,30 +157,21 @@ class DesktopTabController {
     onRemoved?.call(index, key);
   }
 
-  /// For addTab, tabPage has not been initialized, set [callOnSelected] to false,
-  /// and call [onSelected] at the end of initState
-  bool jumpTo(int index, {bool callOnSelected = true}) {
+  bool jumpTo(int index) {
     if (!isDesktop || index < 0 || index >= state.value.tabs.length) {
       return false;
     }
+    _selection = Object();
     state.update((val) {
       if (val != null) {
         val.selected = index;
       }
     });
-    if ((isDesktop && (bind.isIncomingOnly() || bind.isOutgoingOnly())) ||
-        callOnSelected) {
-      if (state.value.tabs.length > index) {
-        final key = state.value.tabs[index].key;
-        onSelected?.call(key);
-      }
-    }
     return true;
   }
 
-  bool jumpToByKey(String key, {bool callOnSelected = true}) =>
-      jumpTo(state.value.tabs.indexWhere((tab) => tab.key == key),
-          callOnSelected: callOnSelected);
+  bool jumpToByKey(String key) =>
+      jumpTo(state.value.tabs.indexWhere((tab) => tab.key == key));
 
   bool jumpToByKeyAndDisplay(String key, int display, {bool isCamera = false}) {
     for (int i = 0; i < state.value.tabs.length; i++) {
@@ -183,7 +181,7 @@ class DesktopTabController {
             ? (tab.page as ViewCameraPage).ffi
             : (tab.page as RemotePage).ffi;
         if (ffi.ffiModel.pi.currentDisplay == display) {
-          return jumpTo(i, callOnSelected: true);
+          return jumpTo(i);
         }
       }
     }
@@ -210,6 +208,7 @@ class DesktopTabController {
   }
 
   void clear() {
+    _selection = Object();
     state.value.tabs.clear();
     state.refresh();
   }
@@ -227,6 +226,7 @@ class DesktopTabController {
       // while cleanup is pending, the next loop iteration retires it before
       // window/engine destruction instead of mistaking it for an old tab.
       final closingTabs = tabs.toSet();
+      _selection = Object();
       state.value.tabs.removeWhere(closingTabs.contains);
       state.value.scrollController.itemCount = state.value.tabs.length;
       if (state.value.tabs.isNotEmpty) {
@@ -242,6 +242,56 @@ class DesktopTabController {
   Widget? widget(String key) {
     return state.value.tabs.firstWhereOrNull((tab) => tab.key == key)?.page;
   }
+}
+
+class _DesktopTabPage extends StatefulWidget {
+  final DesktopTabController controller;
+  final TabInfo tab;
+
+  _DesktopTabPage({required this.controller, required this.tab})
+      : super(key: ObjectKey(tab));
+
+  @override
+  State<_DesktopTabPage> createState() => _DesktopTabPageState();
+}
+
+class _DesktopTabPageState extends State<_DesktopTabPage> {
+  Object? _notifiedSelection;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleSelection();
+  }
+
+  @override
+  void didUpdateWidget(covariant _DesktopTabPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _scheduleSelection();
+  }
+
+  void _scheduleSelection() {
+    final owner = widget.controller;
+    final tab = widget.tab;
+    final selection = owner._selection;
+    if (!identical(_notifiedSelection, selection) &&
+        owner._isCurrentSelection(tab, selection)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted ||
+            !identical(widget.controller, owner) ||
+            !identical(widget.tab, tab) ||
+            identical(_notifiedSelection, selection) ||
+            !owner._isCurrentSelection(tab, selection)) {
+          return;
+        }
+        _notifiedSelection = selection;
+        owner._onSelected?.call(tab.key);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.tab.page;
 }
 
 class TabThemeConf {
@@ -609,10 +659,9 @@ class _DesktopTabState extends State<DesktopTab>
           return PageView(
             controller: tabState.pageController,
             physics: NeverScrollableScrollPhysics(),
-            children: tabState.tabs.map((tab) => KeyedSubtree(
-              key: ObjectKey(tab),
-              child: tab.page,
-            )).toList(),
+            children: tabState.tabs
+                .map((tab) => _DesktopTabPage(controller: controller, tab: tab))
+                .toList(),
           );
         }));
     if (tabType == DesktopTabType.remoteScreen) {

@@ -41,9 +41,12 @@ class _TerminalTabPageState extends State<TerminalTabPage> {
 
   _TerminalTabPageState(Map<String, dynamic> params) {
     Get.put(DesktopTabController(tabType: DesktopTabType.terminal));
-    tabController.onSelected = (id) {
-      WindowController.fromWindowId(windowId())
-          .setTitle(getWindowNameWithId(id));
+    tabController.onSelected = (key) {
+      final page = tabController.widget(key);
+      if (page is TerminalPage) {
+        WindowController.fromWindowId(windowId())
+            .setTitle(getWindowNameWithId(page.id));
+      }
     };
     tabController.onRemoved = (_, id) => onRemoveId(id);
     tabController.onCloseWindow = _closeWindowFromConnection;

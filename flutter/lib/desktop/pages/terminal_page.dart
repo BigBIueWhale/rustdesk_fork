@@ -91,8 +91,6 @@ class _TerminalPageState extends State<TerminalPage>
 
     // Initialize terminal connection
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      widget.tabController.onSelected?.call(widget.id);
-
       // Check if this is a new connection or additional terminal
       // Note: When a connection exists, the ref count will be > 1 after this terminal is added
       final isExistingConnection =

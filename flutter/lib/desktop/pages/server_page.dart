@@ -382,10 +382,6 @@ class _CmHeaderState extends State<_CmHeader>
         _time.value = _time.value + 1;
       }
     });
-    // Call onSelected in post frame callback, since we cannot guarantee that the callback will not call setState.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      gFFI.serverModel.tabController.onSelected?.call(client.id.toString());
-    });
   }
 
   @override

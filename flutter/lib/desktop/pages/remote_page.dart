@@ -192,10 +192,6 @@ class _RemotePageState extends State<RemotePage>
     // }
 
     _blockableOverlayState.applyFfi(_ffi);
-    // Call onSelected in post frame callback, since we cannot guarantee that the callback will not call setState.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      widget.tabController?.onSelected?.call(widget.id);
-    });
 
     // Register callback to cancel debounce timer when relative mouse mode is disabled
     _ffi.inputModel.onRelativeMouseModeDisabled =

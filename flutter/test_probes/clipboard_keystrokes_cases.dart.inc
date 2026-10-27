@@ -54,7 +54,7 @@ class _Session implements FFI {
   @override
   ConnType connType = ConnType.defaultConn;
   @override
-  final ffiModel = _Model();
+  final _Model ffiModel = _Model();
   bool current = true;
   @override
   bool isCurrentSession(SessionID id) => current && id == sessionId;

@@ -3909,8 +3909,8 @@ run_focused_rust_tests() {
         )
     elif [ "$MODE" = linux-pa-authority-tests ]; then
         container_name=rustdesk-linux-pa-authority-tests
-        memory=8g
-        memory_bytes=8589934592
+        memory=5g
+        memory_bytes=5368709120
         tmpfs_size=3g
         image_archive=$inputs/verifier-images/devcheck.docker.tar.gz
         image_config=$DEV_CHECK_IMAGE_CONFIG_ID
@@ -3930,8 +3930,6 @@ run_focused_rust_tests() {
             src/server/service.rs
         )
         if [ "$LINUX_PA_PLAYBACK" -eq 1 ]; then
-            memory=5g
-            memory_bytes=5368709120
             source_fingerprints+=(Cargo.toml src/client.rs src/client/audio_mailbox.rs
                 src/client/audio_playback_tests.rs scripts/fixtures/audio-playback-before-finality.rs)
         fi
@@ -3947,6 +3945,9 @@ run_focused_rust_tests() {
             ipc::pulse_audio::tests::accepted_owner_close_interrupts_silent_capture_wait
             ipc::pulse_audio::tests::real_monitor_capture_revokes_after_audio_stops
             ipc::pulse_audio::tests::real_kernel_pa_admission_refuses_same_uid_child_with_token
+            ipc::pulse_audio::tests::real_source_selection_tracks_default_output
+            ipc::pulse_audio::tests::real_source_selection_rejects_unavailable_or_ambiguous_requests
+            ipc::pulse_audio::tests::real_source_selection_retires_on_device_removal_and_refuses_move
         )
         if [ "$LINUX_PA_PLAYBACK" -eq 1 ]; then
             required_tests=(

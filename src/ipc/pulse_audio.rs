@@ -296,6 +296,212 @@ pub async fn start_pa() {
 mod tests {
     use super::*;
 
+    type NativeCapture<'a> =
+        std::pin::Pin<Box<dyn std::future::Future<Output = ResultType<()>> + 'a>>;
+
+    async fn native_pactl_output(args: &[&str]) -> std::process::Output {
+        assert_eq!(std::env::var("RUSTDESK_PA_NATIVE_TEST").unwrap(), "1");
+        let mut command = tokio::process::Command::new(
+            std::env::var("RUSTDESK_PA_NATIVE_PACTL").unwrap(),
+        );
+        command.args(args).kill_on_drop(true);
+        tokio::time::timeout(Duration::from_secs(2), command.output())
+            .await.unwrap().unwrap()
+    }
+
+    async fn native_pactl(args: &[&str]) -> String {
+        let output = native_pactl_output(args).await;
+        assert!(output.status.success(), "pactl {args:?}: {}",
+            String::from_utf8_lossy(&output.stderr));
+        String::from_utf8(output.stdout).unwrap().trim().to_owned()
+    }
+
+    async fn native_source(name: &str, description: &str) -> (u32, u32, String) {
+        let module = native_pactl(&[
+            "load-module", "module-null-sink", &format!("sink_name={name}"),
+            &format!("sink_properties=device.description={description}"),
+        ]).await.parse::<u32>().unwrap();
+        let sources: serde_json::Value =
+            serde_json::from_str(&native_pactl(&["--format=json", "list", "sources"]).await)
+                .unwrap();
+        let monitor = format!("{name}.monitor");
+        let matches: Vec<_> = sources.as_array().unwrap().iter()
+            .filter(|source| source["name"].as_str() == Some(monitor.as_str())).collect();
+        assert_eq!(matches.len(), 1);
+        (module, matches[0]["index"].as_u64().unwrap() as u32,
+            matches[0]["description"].as_str().unwrap().to_owned())
+    }
+
+    async fn native_recording() -> (u32, u32) {
+        let text = native_pactl(&["list", "short", "source-outputs"]).await;
+        let rows: Vec<_> = text.lines().collect();
+        assert_eq!(rows.len(), 1);
+        let fields: Vec<_> = rows[0].split_whitespace().collect();
+        (fields[0].parse().unwrap(), fields[1].parse().unwrap())
+    }
+
+    async fn native_frame(
+        capture: &mut NativeCapture<'_>,
+        client: &mut ConnectionTmpl<tokio::net::UnixStream>,
+    ) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                tokio::select! {
+                    result = &mut *capture => panic!("capture ended before a frame: {result:?}"),
+                    frame = client.next_pulse_audio_frame_timeout(100) => {
+                        if frame.unwrap().is_some() { break; }
+                    }
+                }
+            }
+        }).await.unwrap();
+    }
+
+    async fn native_capture_ends(
+        capture: &mut NativeCapture<'_>,
+        client: &mut ConnectionTmpl<tokio::net::UnixStream>,
+    ) -> bool {
+        tokio::time::timeout(Duration::from_millis(750), async {
+            loop {
+                tokio::select! {
+                    result = &mut *capture => break result.is_err(),
+                    frame = client.next_pulse_audio_frame_timeout(100) => { frame.unwrap(); }
+                }
+            }
+        }).await.unwrap_or(false)
+    }
+
+    async fn native_request_refused(
+        peer: &LinuxProcessIdentity, token: &str, source: &str,
+    ) -> bool {
+        let (helper_socket, client_socket) = tokio::net::UnixStream::pair().unwrap();
+        let mut helper = ConnectionTmpl::new_pulse_audio(helper_socket);
+        let mut client = ConnectionTmpl::new_pulse_audio(client_socket);
+        let mut capture: NativeCapture<'_> =
+            Box::pin(super::capture(&mut helper, peer, token, source));
+        let refused = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                tokio::select! {
+                    result = &mut capture => break result.is_err(),
+                    frame = client.next_pulse_audio_frame_timeout(100) => {
+                        if frame.unwrap().is_some() { break false; }
+                    }
+                }
+            }
+        }).await.unwrap();
+        drop(capture);
+        drop(helper);
+        drop(client);
+        assert_native_record_streams(0).await;
+        refused
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "requires the private native PulseAudio source fixture"]
+    async fn real_source_selection_tracks_default_output() {
+        assert_native_record_streams(0).await;
+        let original_default = native_pactl(&["get-default-sink"]).await;
+        let first = native_source("rd_default_first", "rd_default_first").await;
+        let second = native_source("rd_default_second", "rd_default_second").await;
+        native_pactl(&["set-default-sink", "rd_default_second"]).await;
+        let authority = crate::audio_service::PaCaptureNativeFixture::new().unwrap();
+        let peer = current_linux_process_identity().unwrap();
+        let (helper_socket, client_socket) = tokio::net::UnixStream::pair().unwrap();
+        let mut helper = ConnectionTmpl::new_pulse_audio(helper_socket);
+        let mut client = ConnectionTmpl::new_pulse_audio(client_socket);
+        let mut capture: NativeCapture<'_> =
+            Box::pin(super::capture(&mut helper, &peer, authority.token(), ""));
+        native_frame(&mut capture, &mut client).await;
+        let selected = native_recording().await.1;
+        native_pactl(&["set-default-sink", "rd_default_first"]).await;
+        let retired = native_capture_ends(&mut capture, &mut client).await;
+        drop(capture);
+        drop(helper);
+        drop(client);
+        assert_native_record_streams(0).await;
+        let (helper_socket, client_socket) = tokio::net::UnixStream::pair().unwrap();
+        let mut helper = ConnectionTmpl::new_pulse_audio(helper_socket);
+        let mut client = ConnectionTmpl::new_pulse_audio(client_socket);
+        let mut capture: NativeCapture<'_> =
+            Box::pin(super::capture(&mut helper, &peer, authority.token(), ""));
+        native_frame(&mut capture, &mut client).await;
+        let replacement = native_recording().await.1;
+        drop(capture);
+        drop(helper);
+        drop(client);
+        assert_native_record_streams(0).await;
+        native_pactl(&["set-default-sink", &original_default]).await;
+        native_pactl(&["unload-module", &second.0.to_string()]).await;
+        native_pactl(&["unload-module", &first.0.to_string()]).await;
+        println!("PA_SOURCE_DEFAULT selected={selected} expected={} retired={retired} replacement={replacement} replacement_expected={}", second.1, first.1);
+        assert_eq!(selected, second.1, "capture must use the current default output");
+        assert!(retired, "default-output change must retire the old capture");
+        assert_eq!(replacement, first.1, "fresh capture must resolve the new default");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "requires the private native PulseAudio source fixture"]
+    async fn real_source_selection_rejects_unavailable_or_ambiguous_requests() {
+        assert_native_record_streams(0).await;
+        let first = native_source("rd_explicit_first", "rd_explicit_description").await;
+        let authority = crate::audio_service::PaCaptureNativeFixture::new().unwrap();
+        let peer = current_linux_process_identity().unwrap();
+        let (helper_socket, client_socket) = tokio::net::UnixStream::pair().unwrap();
+        let mut helper = ConnectionTmpl::new_pulse_audio(helper_socket);
+        let mut client = ConnectionTmpl::new_pulse_audio(client_socket);
+        let mut capture: NativeCapture<'_> =
+            Box::pin(super::capture(&mut helper, &peer, authority.token(), &first.2));
+        native_frame(&mut capture, &mut client).await;
+        let selected = native_recording().await.1;
+        drop(capture);
+        drop(helper);
+        drop(client);
+        assert_native_record_streams(0).await;
+        let missing = native_request_refused(&peer, authority.token(), "rd_absent_source_description").await;
+        let second = native_source("rd_explicit_second", "rd_explicit_description").await;
+        assert_eq!(first.2, second.2, "fixture must publish duplicate descriptions");
+        let ambiguous = native_request_refused(&peer, authority.token(), &first.2).await;
+        native_pactl(&["unload-module", &second.0.to_string()]).await;
+        let recovered = !native_request_refused(&peer, authority.token(), &first.2).await;
+        native_pactl(&["unload-module", &first.0.to_string()]).await;
+        println!("PA_SOURCE_EXPLICIT selected={selected} expected={} missing_refused={missing} ambiguous_refused={ambiguous} recovered={recovered}", first.1);
+        assert_eq!(selected, first.1);
+        assert!(missing, "missing explicit device must not capture a fallback monitor");
+        assert!(ambiguous, "duplicate descriptions must not select an arbitrary device");
+        assert!(recovered, "unique explicit device must recover without daemon restart");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "requires the private native PulseAudio source fixture"]
+    async fn real_source_selection_retires_on_device_removal_and_refuses_move() {
+        assert_native_record_streams(0).await;
+        let source = native_source("rd_owned_source", "rd_owned_description").await;
+        let authority = crate::audio_service::PaCaptureNativeFixture::new().unwrap();
+        let peer = current_linux_process_identity().unwrap();
+        let (helper_socket, client_socket) = tokio::net::UnixStream::pair().unwrap();
+        let mut helper = ConnectionTmpl::new_pulse_audio(helper_socket);
+        let mut client = ConnectionTmpl::new_pulse_audio(client_socket);
+        let mut capture: NativeCapture<'_> =
+            Box::pin(super::capture(&mut helper, &peer, authority.token(), &source.2));
+        native_frame(&mut capture, &mut client).await;
+        let recording = native_recording().await;
+        let moved = native_pactl_output(&[
+            "move-source-output", &recording.0.to_string(), "rd_pa_test.monitor",
+        ]).await.status.success();
+        let after_move = native_recording().await.1;
+        native_pactl(&["unload-module", &source.0.to_string()]).await;
+        let retired = native_capture_ends(&mut capture, &mut client).await;
+        drop(capture);
+        drop(helper);
+        drop(client);
+        assert_native_record_streams(0).await;
+        println!("PA_SOURCE_LIFETIME initial={} expected={} move_accepted={moved} after_move={after_move} removal_retired={retired}", recording.1, source.1);
+        assert_eq!(recording.1, source.1);
+        assert!(!moved, "recording must reject a move to an unselected device");
+        assert_eq!(after_move, source.1);
+        assert!(retired, "device removal must terminate the capture");
+    }
+
+
     async fn assert_native_record_streams(expected: usize) {
         let deadline = tokio::time::Instant::now() + Duration::from_millis(750);
         loop {

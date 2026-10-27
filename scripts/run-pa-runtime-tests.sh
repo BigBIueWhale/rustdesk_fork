@@ -70,9 +70,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 if [ "${2:-}" != --product-pair ]; then
-    if [ "${2:-}" = --playback ]; then
-        export CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
-    fi
+    export CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
     source /source/scripts/linux-parent-test-build.sh
     build_linux_parent_test "$WORK" PA_RUNTIME
 fi
@@ -169,8 +167,7 @@ else
     run_tests ipc::test::linux_pulse_audio_channel_uses_closed_bounded_protocol
     run_tests server::service::pa_dispatch_tests::
     run_tests ipc::pulse_audio::tests:: \
-        --skip real_monitor_capture_revokes_after_audio_stops \
-        --skip real_kernel_pa_admission_refuses_same_uid_child_with_token
+        --skip real_
     run_tests ipc::pulse_audio::tests::real_ --ignored --show-output
     printf 'PA_RUNTIME_ARTIFACT=pass sha256=%s executable=%s groups=5 unchanged=before-between-after execution_seconds=%s\n' \
         "$artifact_sha" "$test_executable" "$((SECONDS - execution_started))"

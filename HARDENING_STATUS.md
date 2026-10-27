@@ -265,6 +265,15 @@ Evidence filenames in the tables are relative to `.harness-state/verifier-vm/`.
 The specification is the current contract; these receipts retain classification,
 obligation mapping, exact comparisons and any counts for their named historical inputs.
 
+**Rust test-source catalogues retired.** Eight loops in `scripts/verify.sh` only
+searched for test names or assertion spelling in terminal, Windows service,
+Linux desktop, socket-surface and tunnel sources. Those loops and four unused
+test-text captures are deleted (97 lines). Every test body, executable test command,
+result inventory and production-source predicate remains unchanged. Exact source
+comparison, shell syntax and diff checks cover this deletion; no product runtime
+test ran for it. `test-source-catalogues-911ad100.json` retains the comparison and
+fresh ledger count. Native/installed acceptance and all user parks remain OPEN.
+
 | Documentation scope | Current contract or disposition | Retained classification |
 | --- | --- | --- |
 | Android signing-authority specification | R-S11di's historical repair narrative is deleted; its complete VM admission, guest Docker, identity/secret/publication and acceptance contract remains byte-identical. Appendix C #226/#262, other requirements, IDs, anchors and links are unchanged. The R-S11di status entry retains the historical authority-only evidence and all open identity/APK/device/cold-release/native/review boundaries. Product and verification code are unchanged. | `signing-contract-3ae6f9bd.json` |
@@ -4273,6 +4282,19 @@ cleanup. This observes Rust output allocations, not all native decoder memory or
 Full parent/caller and OS clipboard execution, installed/native privilege boundaries,
 other platforms, sustained resources, R-S0/R-F5 and release acceptance remain OPEN.
 All user parks remain parked.
+
+**Aggregate clipboard decode budget — OPEN/PARKED at the user's pivot.**
+Candidate `911ad100` passes each item's remaining decoded-byte allowance before
+copying or decoding. Preparation `e606b669` fails the allocation regression in all
+six scenarios (42 other tests pass); candidate run `IHSULdvt6H` passes all 43 tests,
+including exact-64-MiB valid updates. The already-running candidate completed at
+the pivot, with QEMU joined, RAM retired and zero endpoint deltas. Baseline
+`87dQiwckNY` also retired but recorded one unattributed added endpoint; it is
+negative component evidence, not an accepted full transaction. Retained run
+evidence is included in `test-source-catalogues-911ad100.json`. Further clipboard
+work is parked. This result bounds decoded bytes and observed output-allocation
+requests, not total RSS, spare capacity or codec memory; full parent, native
+clipboard, desktop/mobile, installed and release acceptance remain OPEN.
 
 **Resolution mutation and Linux command lifetime (R-T4/R-S11c-10c): production components accepted; integration OPEN.**
 The connection retains one resolution-work ticket and awaits off-runtime enumeration,

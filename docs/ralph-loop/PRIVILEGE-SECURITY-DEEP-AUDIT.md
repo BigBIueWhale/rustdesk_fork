@@ -107097,3 +107097,44 @@ instructions, all Rust product code, file transfers and the parked audio/global
 dispatch/credential work remain unchanged. Full application/native/platform
 history integration, R-S0/R-F5, installed credential actions, independent/release
 acceptance and the broad goal remain OPEN.
+
+## 2026-10-27 — User pivot to verification catalogue retirement
+
+The user explicitly requested another aspect. Further aggregate clipboard work is
+OPEN/PARKED. Its existing candidate 911ad100 was already committed and pushed;
+the running component transaction IHSULdvt6H completed with 43 passing tests in
+1.83 seconds (112 seconds outer). Six excessive aggregate cases refuse without
+output-allocation requests above the remaining decoded-byte budget; healthy
+exact-limit, empty-after-full, malformed refusal and retry controls pass.
+Artifact b2fdde3ad8ae2d2b6b9c04bc58b2719f2d8f018fc8351394453748dea99a1349
+is unchanged before/after. QEMU joined, its RAM workspace retired and all endpoint
+deltas are zero. Preparation e606b669, run 87dQiwckNY, previously passed 42 and
+failed one: all six scenarios observed one excessive allocation before refusal.
+That baseline retired but has one unattributed 19-byte endpoint addition; no
+foreign owner was inspected. Its failure tail does not retain every test line.
+Neither run establishes total RSS, spare capacity, native clipboard publication,
+full-parent compilation or installed privilege-boundary acceptance.
+
+The new slice removes eight Rust test-text catalogues from scripts/verify.sh,
+plus their four unused awk captures: 97 lines in total. They used grep to seek
+test names or literal assertions, without compiling or executing a test or
+checking a result. Comments, disabled functions or inert assertion text could
+satisfy these probes. They provide no behavioral observation to preserve.
+The removal covers the terminal-service/helper names, Windows service/credential
+names, Linux selected-display/headless assertions, socket-surface names and tunnel
+test names. It does not resume any parked product work in those areas.
+
+All remaining verifier bytes are identical after those twelve exact deletions.
+The Windows terminal_, windows_service_ and windows_credential_ cargo commands
+remain in build-windows.ps1; Linux r_s11e42_/r_s11hs_/r_s11e43_ and tunnel cargo
+commands remain in verify.sh. The VM's socket-surface required-result inventory
+is unchanged. These are preserved execution paths, not fresh execution claims.
+Every product/test file, runtime harness, requirement and live instruction is
+unchanged. bash -n and git diff --check pass. No product runtime or full verifier
+was run for this deletion-only correction. The existing parked parent compile
+failure and missing Windows/native/installed evidence remain open.
+
+The bounded test-source-catalogues-911ad100.json capsule retains exact deletion
+classification, source/file identities, the completed clipboard runs and fresh
+whole-ledger token count. All fifteen installed credential actions, R-S0/R-F5,
+independent/native/release acceptance and the broad goal remain OPEN.

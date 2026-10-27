@@ -1773,49 +1773,6 @@ fi
 if grep -Fq 'proxy.handle_action(&action)' src/server/connection.rs || grep -Fq 'allow_err!(self.handle_terminal_action(action).await)' src/server/connection.rs; then
   r_s11c25="$r_s11c25 terminal-action-runs-on-connection-or-error-swallowed"
 fi
-for test_name in \
-  persistent_service_binds_exact_terminal_principal \
-  preactivation_rollback_preserves_existing_committed_service \
-  detached_monitor_revokes_authority_and_sessions \
-  stale_proxy_and_opening_are_rejected_after_epoch_change \
-  simultaneous_opening_reservation_is_exclusive \
-  terminal_session_limit_includes_opening_reservations \
-  lease_timer_detects_monitor_revocation_while_attached \
-  terminal_input_backpressure_is_nonblocking \
-  revocation_cancels_in_flight_opening_at_barrier \
-  revoked_registry_entry_is_immediately_replaceable \
-  authority_monitor_does_not_wait_for_held_session_mutex \
-  activation_does_not_wait_for_held_session_mutex \
-  activation_rejects_worker_failure_after_checkpoint \
-  generic_output_stays_quiescent_after_fatal_authority \
-  closed_session_arc_aba_preserves_replacement \
-  terminal_action_queue_backpressure_is_nonblocking \
-  fatal_authority_propagates_through_persistence_and_action_admission \
-  detached_dead_session_is_removed_and_reaped \
-  detached_broken_writer_is_removed_and_reaped \
-  helper_reader_completion_waits_for_process_status \
-  direct_reader_completion_requeries_child_status_before_close \
-  direct_reader_status_grace_expires_as_failure \
-  writer_completion_is_immediate_transport_failure \
-  opened_response_publication_precedes_session_output \
-  direct_pty_exit_drains_real_output_before_close \
-  orderly_exit_drains_all_output_before_close \
-  output_poll_batch_is_bounded_during_continuous_refill \
-  output_poll_is_fair_across_continuous_sessions \
-  teardown_admission_does_not_wait_for_session_cleanup \
-  teardown_permit_pool_is_bounded_and_released \
-  dead_reconnect_preserves_surviving_session_sync; do
-  grep -Fq "fn $test_name" src/server/terminal_service.rs || r_s11c25="$r_s11c25 test-$test_name-missing"
-done
-for test_name in \
-  pipe_acl_rights_are_directional \
-  synchronous_pipe_directions_restore_blocking_io \
-  external_opening_cancellation_stops_pipe_polling \
-  synchronous_read_is_cancelled_before_join \
-  delayed_synchronous_read_is_cancelled_after_not_found_race \
-  shutdown_latch_prevents_read_reentry_after_accepted_cancellation; do
-  grep -Fq "fn $test_name" src/server/terminal_helper.rs || r_s11c25="$r_s11c25 test-$test_name-missing"
-done
 grep -Fq 'cargo test --offline --locked --lib --features flutter --color never terminal_' scripts/build-windows.ps1 || r_s11c25="$r_s11c25 native-windows-runtime-gate-missing"
 if [ -n "$r_s11c25" ]; then echo "  FAIL R-S11c-25 Windows terminal service principal authority:$r_s11c25"; rc=1; else
   echo "  ok  R-S11c-25 Windows service terminals use a served-session token, transactional epoch lease, detached logoff revocation, logon-scoped synchronous pipes, isolated user environment, and kill-on-close helper job; LocalSystem direct PTY is denied"; fi
@@ -4460,22 +4417,6 @@ fi
 if echo "$windows_service_run" | grep -Eq 'ServiceControl::Shutdown|Data::Close|tokio::spawn'; then
   r_s11e19="$r_s11e19 obsolete-or-detached-service-lifecycle-path-present"
 fi
-for test_name in \
-  windows_service_launches_only_for_a_current_target_session \
-  windows_service_preserves_live_port_forwards_during_session_handoff \
-  windows_service_retires_idle_child_before_replacement \
-  windows_service_reaps_a_dead_main_process_regardless_of_forward_state \
-  windows_service_keeps_the_tree_for_its_current_session \
-  windows_service_child_shutdown_has_a_fixed_deadline; do
-  grep -q "fn $test_name" src/platform/windows.rs || r_s11e19="$r_s11e19 test-missing:$test_name"
-done
-for test_name in \
-  windows_credential_stop_before_apply_prevents_replica_admission \
-  windows_credential_apply_before_stop_is_awaited_before_stop_linearizes \
-  windows_credential_job_stop_retries_until_empty_and_aborts_on_lost_authority \
-  windows_credential_model_stop_after_admission_finishes_commit_and_skips_replica; do
-  grep -q "fn $test_name" src/ipc.rs || r_s11e19="$r_s11e19 test-missing:$test_name"
-done
 if ! python3 - <<'PY'
 from pathlib import Path
 
@@ -5228,9 +5169,6 @@ x11_environment_authority=$(awk '/fn xauthority_from_environ_for_display/,/impl 
 x11_snapshot_authority=$(awk '/impl DesktopProcessSnapshot/,/#\[link\(name = "gtk-3"\)\]/' src/platform/linux.rs)
 x11_desktop_authority=$(awk '/fn get_display_x11/,/pub fn refresh/' src/platform/linux.rs)
 x11_refresh_authority=$(awk '/fn refresh_selected_environment/,/    #\[cfg\(test\)\]/' src/platform/linux.rs)
-x11_shared_tests=$(awk '/fn r_s11e42_x11_display_names_are_local_and_canonical/,/fn r_s11e40_session_display_fallback_is_binary_owned/' libs/hbb_common/src/platform/linux.rs)
-x11_socket_tests=$(awk '/fn r_s11hs_x11_socket_names_and_ambiguity_fail_closed/,/fn test_desktop_env/' src/platform/linux.rs)
-x11_root_tests=$(awk '/fn r_s11e42_xauthority_is_bound_to_the_selected_display/,/^}/' src/platform/linux.rs)
 for binding in \
   'Display,' \
   'Self::Display => "Display"' \
@@ -5350,25 +5288,6 @@ for fixture in scripts/smoke-service-loginctl.sh scripts/smoke-debian-systemd-lo
   grep -qF "'Scope=session-1.scope'" "$fixture" \
     || r_s11e42="$r_s11e42 ${fixture##*/}:scope-result-missing"
 done
-for test_binding in \
-  'fn r_s11e42_x11_display_names_are_local_and_canonical()' \
-  'normalize_local_x_display_name(":0007.02")' \
-  'local_x_display_names_share_server(":7", ":0007.02")' \
-  '"localhost:0"' \
-  'fn r_s11hs_empty_logind_display_retains_exact_session_scope()' \
-  'b"Scope=session-2.scope\nDisplay=\n"' \
-  'fn r_s11hs_x11_socket_names_and_ambiguity_fail_closed()' \
-  'fn r_s11hs_x11_server_principal_is_selected_user_or_root()' \
-  'assert!(x11_server_uid_is_admissible(0, 1000));' \
-  'assert!(!x11_server_uid_is_admissible(999, 1000));' \
-  'fn r_s11hs_x11_socket_peer_cgroup_is_the_exact_session_scope()' \
-  'b"0::/system.slice/docker.scope\n"' \
-  'unique_x11_socket_display([0, 7])' \
-  'fn r_s11e42_xauthority_is_bound_to_the_selected_display()' \
-  'xauthority_from_environ_for_display(selected, ":8")' \
-  'b"DISPLAY=host:7\0XAUTHORITY=/tmp/remote.auth\0"'; do
-  grep -qF "$test_binding" <<<"$x11_shared_tests$x11_socket_tests$x11_root_tests" || r_s11e42="$r_s11e42 focused-regression-missing"
-done
 if [ -n "$r_s11e42" ]; then echo "  FAIL R-S11e-42 Linux selected X11 session display authority:$r_s11e42"; rc=1; else
   echo "  ok  R-S11e-42/R-S11hs X11 DISPLAY is either the exact selected logind value or one unique kernel-pinned selected-user-or-root X server in that session Scope, with exact pathname/peer/process UID agreement; process Xauthority hints describe only that endpoint"; fi
 
@@ -5379,19 +5298,10 @@ echo "== (3b-iii-d9c2) Linux obsolete Xorg process authority (R-S11ac/R-S11e-43)
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e43_ --color never
 r_s11e43=
 xorg_headless_authority=$(awk '/pub fn is_headless\(&self\)/,/fn apply_environment/' src/platform/linux.rs)
-xorg_headless_test=$(awk '/fn r_s11e43_headless_state_is_derived_from_the_selected_session/,/fn test_desktop_env/' src/platform/linux.rs)
 xorg_launcher_history=$(awk '/R-X14 \/ R-S18/,/lazy_static::lazy_static/' src/platform/linux_desktop_manager.rs)
 xorg_headless_compact=$(printf '%s' "$xorg_headless_authority" | tr -d '[:space:]')
 [ "$xorg_headless_compact" = 'pubfnis_headless(&self)->bool{self.sid.is_empty()}fnapply_environment(&mutself,environment:DesktopSessionEnvironment){' ] \
   || r_s11e43="$r_s11e43 headless-not-selected-session-only"
-for test_binding in \
-  'fn r_s11e43_headless_state_is_derived_from_the_selected_session()' \
-  'let mut desktop = Desktop::default();' \
-  'assert!(desktop.is_headless());' \
-  'desktop.sid = "selected-session".to_owned();' \
-  'assert!(!desktop.is_headless());'; do
-  grep -qF "$test_binding" <<<"$xorg_headless_test" || r_s11e43="$r_s11e43 focused-regression-missing"
-done
 grep -qF 'existing-session DISCOVERY only' <<<"$xorg_launcher_history" \
   || r_s11e43="$r_s11e43 launcher-deletion-record-missing"
 if grep -Eq 'pam::|std::process::Command|Command::new|try_start_x_session|start_x11|start_xorg' src/platform/linux_desktop_manager.rs; then
@@ -13202,9 +13112,6 @@ if grep -q '/proc/self/net/' "$r_a4_surface"; then r_a4_platform="$r_a4_platform
 for feature in '"iphlpapi"' '"iprtrmib"' '"tcpmib"' '"udpmib"' '"winerror"' '"ws2def"'; do
   grep -q "$feature" libs/hbb_common/Cargo.toml || r_a4_platform="$r_a4_platform hbb_common-winapi:$feature"
 done
-for test in unbound_ipv4_udp_is_refused unbound_ipv6_udp_is_refused foreign_process_udp_is_not_part_of_this_process_surface; do
-  grep -q "fn $test(" "$r_a4_surface" || r_a4_platform="$r_a4_platform socket_surface:$test"
-done
 if [ -n "$r_a4_platform" ]; then
   echo "  FAIL R-A4: Windows/Android process-owned socket-surface assertion gap:$r_a4_platform"; rc=1
 else
@@ -14420,10 +14327,6 @@ ui_owner_impl=$(awk '/impl PortForwardSupervisorOwner/,/^}/' src/ui_session_inte
 ui_owner_drop=$(awk '/impl Drop for PortForwardSupervisorOwner/,/^}/' src/ui_session_interface.rs)
 if grep -qF '.join()' <<<"$one_off_join$ui_owner_impl$ui_owner_drop"; then r_t17_missing="$r_t17_missing synchronous-join-fallback"; fi
 grep -qF 'drain_replaced_port_forward(mappings, port).await;' src/ui_session_interface.rs || r_t17_missing="$r_t17_missing duplicate-old-drain"
-for test_name in cancellation_covers_connect_keying_login_and_relay control_eof_and_close_are_terminal_and_rdp_launch_coalesces mapping_shutdown_drains_every_owned_task process_reaper_joins_one_off_owner_and_reports_result cancellation_reaper_handoff_returns_before_owner_exit local_relay_is_not_entered_before_authorization mapping_admission_rejects_literal_33rd_and_recovers connection_admission_enforces_literal_32_and_128_boundaries_and_recovers sustained_ready_completion_reaping_keeps_join_set_bounded duplicate_replacement_drains_old_mapping_before_returning outer_owner_drop_closes_and_drains_independent_runtime_mappings second_exclusive_listener_bind_is_refused hostile_reuseaddr_socket_cannot_bind_exclusive_listener_port; do
-  verify_scan_capture "$VERIFY_TMP/r_t17_$test_name" -rIF "fn $test_name" src libs/hbb_common/src \
-    || r_t17_missing="$r_t17_missing test:$test_name"
-done
 if [ -n "$r_t17_missing" ]; then
   echo "  FAIL R-T17/PF-1..PF-5 tunnel mapping closure incomplete:$r_t17_missing"; rc=1
 else

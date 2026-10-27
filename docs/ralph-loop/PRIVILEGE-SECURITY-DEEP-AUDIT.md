@@ -109029,3 +109029,44 @@ The position/storage adapter is controlled; native keyboard delivery, preference
 persistence and the full chat page are outside this focused observation. Existing
 eight position parsing/rendering/error cases remain. Baseline execution precedes
 the product correction; no new VM profile or resource exception is introduced.
+
+Baseline preparation `fb3db4c389a022547482ae3fd67587b8f7f3d75b`, run
+`VqtYF0EhIA`, executes all sixteen cases: ten pass and six fail. For each widget,
+the first keyboard transition and mounting with an already visible keyboard
+leave Y=450 instead of 220; the short viewport places Y=-100 instead of zero.
+The eight retained parsing/rendering controls and two unobscured-position controls
+pass. Terminal harness exit is 1. Serial: 86,947 bytes, SHA-256
+`b4b2f45dcb77e741488a8db05c8573b8b9ed7c891b0ef2d200e674e35ff1d8d0`.
+Supervisor lifetime 255.225 seconds; peak RAM scratch 6,365,913,088 bytes and
+durable run evidence 3,321,856 bytes. QEMU 3571712 joins with exit 0, its PID is
+absent and RAM `run.daod2g4s` is gone. Final inventory removes one unattributed
+endpoint; it is left untouched. Exact owned failed diagnostics are retained as
+`floating-keyboard-baseline.VqtYF0EhIA` by locked no-replace rename after cleanup;
+no disposable disks remain there.
+
+Correction `9aa65ff447a8d9f1f391689d16d5a0c5ed801d6e`, tree
+`25fe39adcab04fc3cde6b116f0da3d281ac83e08`, changes only the two production
+keyboard calculations. Adjustment uses current visibility immediately, computes
+a nonnegative upper Y bound, and updates only if the panel exceeds that bound.
+This also avoids repeated position writes when an oversized panel is already at
+zero. The existing saved-height capture and restoration remain intact. The tests
+and harness are byte-identical to baseline.
+
+Candidate `sFcgZLvEn6` passes all sixteen cases and the strict suite/name/count
+receipt; terminal harness exit is 0. Command for both runs:
+`/bin/bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --floating-position`.
+The production Dart widgets run inside Linux Flutter 3.24.5 in a networkless,
+nonroot container inside the disposable VM. The final test stream completes in
+8.376 seconds; outer/supervisor lifetime is 268/272.644 seconds. Serial:
+77,521 bytes, SHA-256
+`f3e8d331ee1b43e3444c0fbbc0e1449ea796d6495a3f58e8495c236d6d6c81ed`.
+Peak RAM scratch is 6,367,354,880 bytes; durable evidence is 3,317,760 bytes.
+QEMU 3581538 joins with exit 0; its PID, RAM `run.uv7kinq0` and all active run
+roots are absent. Final inventory adds one unattributed endpoint; no owner is
+inspected or changed. The harness's own IP sockets remain kernel-denied.
+
+Shell syntax and whitespace checks pass. No physical mobile keyboard, full chat
+page, native preference persistence or installed app is claimed. Those acceptance
+boundaries and all prior parks remain open. The live instructions and normative
+requirements are unchanged. This turn is product-correction progress; the broad
+hardening goal remains active and incomplete. The ledger count follows separately.

@@ -108852,3 +108852,60 @@ durable evidence 147,456 bytes. QEMU 3461723 joins with exit 0; RAM `run.vxk0ylh
 and all active run roots are absent; all listener deltas are zero. All thirteen
 parked stash IDs remain unchanged. This receipt does not edit the counted ledger
 or tested product. Broad hardening goal remains active and incomplete.
+
+## 2026-10-27 — duplicate Linux credential-receiver catalogues
+
+Previous goal turn: **progress**, with credential-status retry product correction,
+four reproduced accessibility failures, a complete 14-case candidate pass and
+joined VM retirement. Current baseline `871e28440a696952fe4a74f5c59298103b792276`
+is clean and pushed. User parks remain binding; this slice does not resume the
+tunnel-page draft, advisory review or native credential/identity investigations.
+
+Current R-S11ia–io checklist was reread: all fifteen actions remain source-implemented
+with installed/native acceptance OPEN. Those are the macOS LaunchAgent requester;
+Windows RDP requester; Windows credential/control requester; macOS password
+admission; Linux polkit admission; Windows credential queue; Linux credential
+response; Linux replica writer; Linux child runtime receiver; macOS credential
+receiver; Linux initial receiver; macOS replica admission; macOS policy writer;
+macOS policy verification; and macOS external-form publication. Their shared
+authorized/refused effects, persistence/restart, identity/race and failure/drain
+evidence, exact artifacts, independent reproduction, external review, R-S0 and
+R-F5 remain required. Nothing here establishes a native privilege boundary.
+
+Classification: `verify-linux-service-password-ipc.py` contained
+`verify_linux_runtime_prs_receiver_authority` (baseline lines 2733–2970) and
+`verify_linux_credential_runtime_prs_receiver_authority` (2971–3122). They duplicate
+the R-S11ii/R-S11ik catalogues in `verify.sh` (2951–3204): private/non-cloneable
+receiver shape, exact role/fixed endpoint, retained parent equality, consuming
+typed admission, request UUID/deadline, ledger preparation, worker ownership and
+runtime-only installation. Their operations parse fields and require/forbid token
+sequences and source ordering; they execute no socket, identity proof, credential
+exchange, durable/runtime mutation or shutdown. The runtime obligations are real;
+maintaining a second implementation-shaped catalogue is not additional native
+evidence. Neither normative clause requires these duplicate Python functions.
+
+Delete those two complete functions and only their two validation calls: **392
+lines / 17,863 bytes removed**, with no replacement catalogue. Keep the shared
+checks, the remaining desktop checker and its raw endpoint/fallback prohibitions,
+the native receiver fixture, all product and Rust tests, all gate commands and
+the complete normative contracts. No type, authority, owner or runtime path is
+changed. This is explicitly authorized duplicate-verification cleanup, not a
+claim to fix the unresolved installed receiver behavior.
+
+Read-only Python AST inspection (without importing/executing the verifier) proves
+the new module identical to the old after exactly those two FunctionDef removals
+and two call removals. All other 24 top-level functions/classes have byte-identical
+bodies, including all nine retained validation calls. Module size changes from
+3,434 lines / 178,818 bytes to 3,042 lines / 160,955 bytes; SHA-256 changes from
+`72605e61b67c3762e7c52e296cee70f25af6ba4be23d00956c28173ae98d24de` to
+`c69fe3096a4c0b061f0afe4c6e3047f83982c4aae43950b8a9b8178912dd08a1`.
+The shared `verify.sh` remains SHA-256
+`fde20d26a620b6b527eb43702bedab353bc79ffbca61b2f4571bb483a99fc30e`;
+the native receiver fixture remains
+`7654e2075f6946e986b6b0366d0d5c35c13fea0a0648f240d69b984c3b07977c`.
+Exact-byte comparisons also retain IPC/auth/password, Linux platform, config,
+requirements and live instruction files. Reference search found no other caller
+of either deleted function. Whitespace review passes. No product test, native
+receiver, installed service or remaining checker execution is represented by
+these inspection results. The ledger count is verified separately in its bounded
+networkless VM; the broad goal remains active.

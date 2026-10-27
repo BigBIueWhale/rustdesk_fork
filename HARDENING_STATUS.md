@@ -3367,6 +3367,15 @@ deletion evidence and fresh ledger count. The retained models, source checks and
 process/token authorization, real polkit, Authorization Services, named-pipe impersonation or
 protected-action evidence; all fifteen actions still require their native observations above.
 
+The desktop password checker also drops its two duplicate Linux runtime-PRS receiver
+catalogues: 392 lines including their invocations. The shared R-S11ii/R-S11ik
+receiver checks remain in `scripts/verify.sh`; raw-wire, endpoint separation,
+identity, coordinator, finality, bootstrap and caller checks remain unchanged in
+the desktop checker. Read-only AST/byte comparison verifies only that deletion.
+Product code, runtime tests and gate commands are unchanged; no receiver or
+remaining-checker runtime pass is claimed. Classification and count are in the
+audit entry “2026-10-27 — duplicate Linux credential-receiver catalogues”.
+
 **Shared acceptance still required.** Each action needs current target-OS compilation and focused
 tests, the exact installed artifact and authorized/refused principals; its authorized effect,
 persistence or runtime-only behavior,

@@ -108239,3 +108239,11 @@ There is no timer, queue, dependency, new credential/policy operation or change 
 MyTheme/native theme transport. Other windows and OS theme propagation still need
 their native evidence; this is page-owned admission, not global cross-window
 transaction serialization.
+
+The first `--desktop-theme` launch at `0b3d2db1` was refused before VM creation:
+the new selector had not yet been mapped in vm-transient-storage.sh and selected
+the standard 27,648 MiB total admission instead of the existing settings profile.
+The shared shell mapping now selects the same 4 GiB guest, 7 GiB RAM scratch,
+6 GiB hard file ceiling, 6 GiB headroom and 1 GiB overhead as the executed baseline.
+No resource ceiling, monitor, isolation or joined-cleanup rule is relaxed. The
+failed preflight left no active run roots; it is not a behavioral test result.

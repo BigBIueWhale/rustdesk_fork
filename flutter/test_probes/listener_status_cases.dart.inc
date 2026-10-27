@@ -35,10 +35,12 @@ class _Binding implements RustdeskImpl {
 
   Future<void> show(WidgetTester tester, {Key? key}) async {
     installListenerStatusProbeBinding(this);
+    await tester.binding.setSurfaceSize(const Size(1400, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(body: DirectListenerStatusWidget(key: key)),
     ));
-    await tester.pump();
+    await tester.pump(Duration.zero);
   }
 
   Future<void> reply(WidgetTester tester, int index, String value) async {

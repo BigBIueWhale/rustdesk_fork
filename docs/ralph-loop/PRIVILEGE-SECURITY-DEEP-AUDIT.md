@@ -109743,3 +109743,28 @@ upstream-equivalent wire bytes, exact decode and matching native allocation/free
 counts after join. The existing fifteen regressions remain selected. The new
 sixteen-test inventory uses the existing bounded RAM VM profile and unchanged
 network/identity/source/artifact/cleanup admission. Execution is pending.
+
+At `361f56823643c4701df98b791d1e27445aa164e2`, tree
+`82810d1b249f93564e708a7ee0007b625e289fbd`, focused run `j0R1z1uzAK` passes
+all sixteen tests in 0.42 seconds. Each healthy probe observes exactly two native
+allocations: the context and its workspace. Refusing allocation 2 returns an IO
+error without unwind for all three sizes; two subsequent compressions reuse that
+same context and match the upstream wire bytes and original decoded input.
+Each of the six healthy/fault workers retires two successful native allocations
+with two frees after join. All fifteen prior controls pass. This confirms correct
+existing behavior for these native failure/recovery cases; no product correction
+or expanded privilege/installed claim is made.
+
+Test artifact SHA-256
+`a0a7013906542ca229a4f93960e890ac0e3bb3802959df6bbe3834395a30d8be`
+is stable before/after; source/dependencies, nonroot offline execution and complete
+inner/outer receipts pass. Serial 86,144 bytes, SHA-256
+`3cacd0e2f88685463ea1a697337ceeaff89e8883188338b99dba55cda1754e14`.
+Outer/supervisor lifetime 82/85.343 seconds, peak bounded RAM scratch
+3,471,880,192 bytes and durable evidence 3,325,952 bytes. QEMU 3902238 joins with
+exit 0; its PID, RAM `run.vvft38kg` and active run roots are absent. The first three
+endpoint deltas are zero; the final inventory has one unattributed addition
+(18 bytes). No endpoint owner was inspected. Owned IP sockets remain kernel-denied
+and the listener audit passes. All user-parked work stays parked. Full heap pressure,
+other native allocation paths, application/installed/platform and R-S0/R-F5/release
+acceptance remain open. The ledger records this exact evidence scope.

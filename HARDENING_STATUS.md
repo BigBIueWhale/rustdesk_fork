@@ -4939,6 +4939,22 @@ library; injected null returns model constructor refusal, not whole-process memo
 exhaustion. Other C allocations, full callers, other platforms, installed behavior
 and R-S0/R-F5/release acceptance remain OPEN. All user parks remain in force.
 
+**Native compressor workspace refusal (`361f5682`).** The existing component lane
+now exercises the actual Zstd workspace allocation after successful CCtx creation.
+Test-only custom-memory callbacks use libc allocation, then refuse each post-creation
+allocation observed by healthy probes at one byte, 128 KiB and 4 MiB. All three
+refusals return an error without unwind; each has two exact retries through the same
+cached context, matching upstream wire bytes and decoded input. All six healthy/fault
+workers join with two successful native allocations and two frees each. The unchanged
+product passes all sixteen selected cases in 0.42 seconds (82 seconds outer).
+Artifact `a0a7013906542ca229a4f93960e890ac0e3bb3802959df6bbe3834395a30d8be`
+is stable before/after; run `j0R1z1uzAK` retains source/dependency and joined RAM/VM
+evidence in the audit entry “2026-10-28 — native compressor workspace allocation”.
+This adds real failure/recovery coverage without a production correction. It does
+not establish global heap-exhaustion behavior, arbitrary input/level/dictionary
+coverage, native decoder workspace failure, throughput/soak or full caller/platform,
+installed and R-S0/R-F5/release acceptance. Those obligations remain OPEN.
+
 `cc88308c` replaces the shared receive decoder's Rust 1.75 `read_to_end` growth
 with 8-KiB stack reads and fallible output reservation before each append;
 allocation refusal returns `OutOfMemory` without reserving the entire caller

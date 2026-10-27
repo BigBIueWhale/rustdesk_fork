@@ -109274,3 +109274,43 @@ missing exact-current impairment, input-visible and long-session evidence remain
 open. All fifteen native credential actions and R-S0/R-F5 acceptance remain open.
 Only this audit record changes; the counted ledger/specification and live
 instructions are unchanged.
+
+## 2026-10-28 — native texture notification contract consistency
+
+The preceding turn reviewed sources without a product correction or runtime
+acceptance. This continuation follows the native handoff and finds a concrete
+specification contradiction. R-S11ez requires notification coalescing in both
+platform regressions, and R-S11fp requires one initial coalesced notification
+and describes first-pending notification. Commit
+`f9755e98216253417ea9a3ee6fc1f5592015c5ad` removed exactly that suppression from
+the Linux, Windows and macOS plugins: every admitted update notifies even while
+replacing an unconsumed pending frame. Both maintained C++ regressions require
+two marks for two updates before any copy, followed by a third explicit re-arm.
+The specification must not require restoring the removed behavior.
+
+The pinned Flutter engine's
+[Shell::OnPlatformViewMarkTextureFrameAvailable](https://github.com/flutter/engine/blob/a18df97ca57a249df5d8d68cd0820600223ce262/shell/common/shell.cc#L1097)
+posts texture marking to the raster runner and frame scheduling to the UI runner;
+its [Engine::ScheduleFrame](https://github.com/flutter/engine/blob/a18df97ca57a249df5d8d68cd0820600223ce262/shell/common/engine.cc#L433)
+requests an animator frame. Those operations do not give the plugin a durable
+receipt that its pending pixels were displayed. This supports distinguishing
+bounded latest-pixel storage from repeated registrar scheduling; it does not
+prove the cause of an unresolved target-native latency failure.
+
+R-S11fp now explicitly requires notification for every admitted desktop native
+update, including replacement before copy, with only latest pending pixels.
+R-S11ez's Linux and portable-Windows regression duties agree, and Appendix C #324
+includes the same ordinary-update duty alongside explicit recovery. Idle
+re-notification remains a no-op; failed recovery retains pending pixels and
+prevents peer refresh. Exact owner selection, error propagation, retirement,
+presented-storage lifetime, native acceptance and isolation remain unchanged.
+Software RGBA publication events, refresh demand and controlled-video wakes keep
+their independently specified coalescing; no blanket notification rule is added.
+
+The focused presentation source guard still protects isolation, source/artifact
+binding and renderer selection; it is retained. Product sources, executable
+regressions and every verifier invocation are unchanged. Verification here is
+exact document comparison, requirement/anchor/link preservation and whitespace
+validation, followed by fresh isolated document counts. No product execution or
+new presentation/LPE acceptance is claimed. All fifteen native credential
+actions, R-S0/R-F5 and previously parked work remain open.

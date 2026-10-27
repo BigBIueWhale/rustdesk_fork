@@ -3214,6 +3214,11 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   presentation acceptance OPEN. Exact focus/resume/tab
   recovery first re-arms an already-pending frame on the published texture, then requests fresh peer video;
   idle/pre-first-frame state remains valid and stale pointer/UI owners are refused.
+  Each admitted native update also notifies the registrar while replacing only the latest pending pixels.
+  R-S11ez/R-S11fp and Appendix C #324 now agree with `f9755e98` and the Linux/Windows regressions;
+  their stale notification-coalescing requirement is removed. This contract correction changes no product
+  or test code and supplies no new native execution. Software mailbox events and recovery demand retain
+  their separate coalescing rules.
 - **R-S11fq/R-S11e-204 Linux service-child terminal authority** — Source closed. The privileged supervisor selects
   one fixed literal `TERM` from service-owned platform policy after `env_clear`; it does not enumerate user
   processes, ingest their environment, or parse an ambient-selected terminfo database. The 337-line terminal

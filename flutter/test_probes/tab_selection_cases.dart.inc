@@ -29,12 +29,24 @@ class _Harness {
     onRemoved: (_, key) => removed.add(key),
   );
 
-  Future<void> show(WidgetTester tester, {String active = 'b', int count = 4}) async {
+  Widget appWidget() => MaterialApp(home: Scaffold(body: DesktopTab(
+    controller: controller,
+    showLogo: false,
+    showMinimize: false,
+    showMaximize: false,
+    showClose: false,
+  )));
+
+  Future<void> show(WidgetTester tester, {
+    String active = 'b',
+    int count = 4,
+    Map<String, Widget> pages = const {},
+  }) async {
     for (final key in ['a', 'b', 'c', 'd'].take(count)) {
       controller.state.value.tabs.add(TabInfo(
         key: key,
         label: key,
-        page: Center(key: ValueKey('page:$key'), child: Text('page:$key')),
+        page: pages[key] ?? Center(key: ValueKey('page:$key'), child: Text('page:$key')),
       ));
     }
     controller.state.value.scrollController.itemCount = count;
@@ -44,13 +56,7 @@ class _Harness {
       controller.state.value.pageController.dispose();
       controller.state.value.scrollController.dispose();
     });
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: DesktopTab(
-      controller: controller,
-      showLogo: false,
-      showMinimize: false,
-      showMaximize: false,
-      showClose: false,
-    ))));
+    await tester.pumpWidget(appWidget());
     await select(tester, active);
     expectPage(active);
     selected.clear();
@@ -72,6 +78,53 @@ class _Harness {
     expect(controller.state.value.pageController.page,
         controller.state.value.selected.toDouble());
     expect(find.text('page:$key').hitTestable(), findsOneWidget);
+  }
+}
+
+class _TrackedPage extends StatefulWidget {
+  final String id;
+  final String generation;
+  final VoidCallback created;
+  final VoidCallback retired;
+
+  _TrackedPage(this.id, this.generation, this.created, this.retired)
+      : super(key: ValueKey('tracked:$id'));
+
+  @override
+  State<_TrackedPage> createState() => _TrackedPageState();
+}
+
+class _TrackedPageState extends State<_TrackedPage>
+    with AutomaticKeepAliveClientMixin {
+  late final String generation;
+  int clicks = 0;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    generation = widget.generation;
+    widget.created();
+  }
+
+  @override
+  void dispose() {
+    widget.retired();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Text('page:${widget.id}'),
+      ElevatedButton(
+        onPressed: () => setState(() => clicks++),
+        child: Text('$generation:$clicks'),
+      ),
+    ]));
   }
 }
 
@@ -158,5 +211,142 @@ void main() {
     expect(harness.controller.length, 4);
     expect(harness.selected, isEmpty);
     expect(harness.removed, isEmpty);
+  });
+
+  testWidgets('tab selection refuses indices outside the current list', (tester) async {
+    final harness = _Harness();
+    await harness.show(tester);
+    for (final index in [-1, harness.controller.length, 2147483647]) {
+      expect(harness.controller.jumpTo(index), isFalse);
+      await harness.settle(tester);
+      harness.expectPage('b');
+      expect(harness.selected, isEmpty);
+    }
+  });
+
+  testWidgets('tab selection presents the selected page after layout', (tester) async {
+    final harness = _Harness();
+    await harness.show(tester);
+    harness.controller.jumpToByKey('d');
+    await tester.pump();
+    await tester.pump();
+    harness.expectPage('d');
+    expect(harness.selected, ['d']);
+  });
+
+  testWidgets('tab selection supersedes an older deferred switch', (tester) async {
+    final harness = _Harness();
+    await harness.show(tester, active: 'a');
+    harness.controller.jumpToByKey('b');
+    await tester.pump(const Duration(milliseconds: 50));
+    harness.controller.jumpToByKey('d');
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump();
+    harness.expectPage('d');
+    await harness.settle(tester);
+    harness.expectPage('d');
+  });
+
+  testWidgets('tab selection retires a removed deferred page index', (tester) async {
+    final harness = _Harness();
+    await harness.show(tester, active: 'a');
+    final pages = <double>[];
+    final pageController = harness.controller.state.value.pageController;
+    pageController.addListener(() => pages.add(pageController.page!));
+    harness.controller.jumpToByKey('d');
+    await tester.pump(const Duration(milliseconds: 50));
+    harness.controller.remove(3);
+    pages.clear();
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump();
+    expect(pages, everyElement(lessThanOrEqualTo(2.0)));
+    harness.expectPage('c');
+  });
+
+  testWidgets('tab selection applies on mounting after unmounted requests', (tester) async {
+    final harness = _Harness();
+    await harness.show(tester, active: 'a');
+    await tester.pumpWidget(const SizedBox.shrink());
+    harness.controller.jumpToByKey('d');
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pumpWidget(harness.appWidget());
+    await tester.pump();
+    harness.expectPage('d');
+  });
+
+  testWidgets('tab selection cannot replay a retired view switch', (tester) async {
+    final harness = _Harness();
+    await harness.show(tester, active: 'a');
+    harness.controller.jumpToByKey('d');
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pumpWidget(const SizedBox.shrink());
+    harness.controller.jumpToByKey('a');
+    await tester.pumpWidget(harness.appWidget());
+    await tester.pump();
+    harness.expectPage('a');
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump();
+    harness.expectPage('a');
+  });
+
+  testWidgets('tab selection replaces same-count pages between frames', (tester) async {
+    final harness = _Harness();
+    await harness.show(tester);
+    harness.controller.remove(0);
+    harness.controller.add(TabInfo(
+      key: 'e', label: 'e',
+      page: const Center(key: ValueKey('page:e'), child: Text('page:e')),
+    ));
+    await harness.settle(tester);
+    expect(harness.controller.length, 4);
+    harness.expectPage('e');
+    expect(find.text('page:a'), findsNothing);
+  });
+
+  testWidgets('tab selection gives a same-key replacement fresh page state', (tester) async {
+    final harness = _Harness();
+    var created = 0;
+    var retired = 0;
+    await harness.show(tester, pages: {
+      'b': _TrackedPage('b', 'old', () => created++, () => retired++),
+    });
+    await tester.tap(find.text('old:0'));
+    await tester.pump();
+    expect(find.text('old:1'), findsOneWidget);
+    await harness.controller.closeBy('b');
+    harness.controller.add(TabInfo(
+      key: 'b', label: 'b',
+      page: _TrackedPage('b', 'new', () => created++, () => retired++),
+    ));
+    await harness.settle(tester);
+    harness.expectPage('b');
+    expect(find.text('new:0').hitTestable(), findsOneWidget);
+    expect(find.text('old:1'), findsNothing);
+    expect(created, 2);
+    expect(retired, 1);
+  });
+
+  testWidgets('tab selection preserves surviving page state across list changes', (tester) async {
+    final harness = _Harness();
+    var created = 0;
+    var retired = 0;
+    await harness.show(tester, pages: {
+      'b': _TrackedPage('b', 'survivor', () => created++, () => retired++),
+    });
+    await tester.tap(find.text('survivor:0'));
+    await tester.pump();
+    harness.controller.add(TabInfo(
+      key: 'e', label: 'e',
+      page: const Center(key: ValueKey('page:e'), child: Text('page:e')),
+    ));
+    await harness.settle(tester);
+    harness.expectPage('e');
+    await harness.controller.closeBy('a');
+    await harness.settle(tester);
+    await harness.select(tester, 'b');
+    harness.expectPage('b');
+    expect(find.text('survivor:1').hitTestable(), findsOneWidget);
+    expect(created, 1);
+    expect(retired, 0);
   });
 }

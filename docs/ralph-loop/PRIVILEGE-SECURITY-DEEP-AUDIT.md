@@ -108430,3 +108430,32 @@ the compact verifier edit and the two progress documents. Every other tracked so
 build/workflow input and test is unchanged. `bash -n scripts/verify.sh` and
 `git diff --check` pass. The forbidden paths are not copied into an isolated fixture
 or contacted just to manufacture runtime evidence for an absence-only change.
+
+## 2026-10-27 user pivot — settings checkbox accessibility
+
+The user explicitly requests another aspect. Leave further Server Pro cleanup
+and its outstanding ledger-count receipt OPEN/PARKED at pushed `d235c97b`;
+all prior parks remain in force. Current installed acceptance for all fifteen
+R-S11ia–R-S11io credential actions, native lifecycle/platform behavior, R-S0/R-F5,
+release artifacts, independent reproduction and external review remains open.
+
+The new slice is the shared `SettingCheckbox`, used by desktop `_OptionCheckBox`
+and `DefaultOptionCheckbox`. Its label and native Checkbox are siblings inside
+a GestureDetector, with no merged semantics. The label's accessible action
+therefore lacks the associated checked and enabled state. The intended owner is
+one labelled checkbox node, with the existing SettingBooleanControl retaining
+sole write admission, acknowledgement and failure handling. No setting authority,
+persistence API, mobile Boolean workflow or privileged receiver is changed.
+
+Official Flutter CheckboxListTile and MergeSemantics documentation prescribe
+one merged node for this exact label/checkbox composition:
+https://api.flutter.dev/flutter/material/CheckboxListTile-class.html and
+https://api.flutter.dev/flutter/widgets/MergeSemantics-class.html.
+Use MergeSemantics around only the interactive row; saving and failure feedback
+remain outside it. Eight focused widget cases cover both values and enabled
+states, actual semantics-action dispatch during save and failure/retry, pointer
+label/box activation and keyboard Space. The bounded-RAM `--setting-checkbox`
+profile uses pinned Flutter 3.24.5, exact source copies and strict result parsing;
+it does not import the native binding or run the product on the host. Run the
+unchanged product baseline before correction, then the identical cases afterward.
+This preparation commit makes no product change and claims no test pass.

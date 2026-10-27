@@ -394,21 +394,6 @@ pub mod client {
         }
     }
 
-    #[cfg(target_os = "android")]
-    pub fn map_key_to_control_key(key: &rdev::Key) -> Option<ControlKey> {
-        match key {
-            Key::Alt => Some(ControlKey::Alt),
-            Key::ShiftLeft => Some(ControlKey::Shift),
-            Key::ControlLeft => Some(ControlKey::Control),
-            Key::MetaLeft => Some(ControlKey::Meta),
-            Key::AltGr => Some(ControlKey::RAlt),
-            Key::ShiftRight => Some(ControlKey::RShift),
-            Key::ControlRight => Some(ControlKey::RControl),
-            Key::MetaRight => Some(ControlKey::RWin),
-            _ => None,
-        }
-    }
-
     pub fn event_lock_screen() -> KeyEvent {
         let mut key_event = KeyEvent::new();
         key_event.set_control_key(ControlKey::LockScreen);

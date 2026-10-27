@@ -6,8 +6,6 @@ use crate::clipboard::{ClipboardSide, ClipboardWriteOwner};
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 use crate::clipboard_file::*;
 use crate::input::{MOUSE_TYPE_MASK, MOUSE_TYPE_TRACKPAD, MOUSE_TYPE_WHEEL};
-#[cfg(target_os = "android")]
-use crate::keyboard::client::map_key_to_control_key;
 #[cfg(target_os = "linux")]
 use crate::platform::linux_desktop_manager;
 #[cfg(any(target_os = "windows", target_os = "linux"))]
@@ -5119,7 +5117,7 @@ pub struct Connection {
     voice_call_input: Option<audio_service::VoiceCallInputLease>,
     options_in_login: Option<OptionMessage>,
     #[cfg(target_os = "android")]
-    pressed_modifiers: HashSet<rdev::Key>,
+    pressed_modifiers: HashSet<ControlKey>,
     #[cfg(target_os = "linux")]
     linux_headless_handle: LinuxHeadlessHandle,
     closed: bool,
@@ -9173,41 +9171,59 @@ impl Connection {
                         );
                         return false;
                     }
-                    let key = match me.mode.enum_value() {
-                        Ok(KeyboardMode::Map) => {
-                            Some(crate::keyboard::keycode_to_rdev_key(me.chr()))
+                    let key = match (&me.union, me.mode.enum_value()) {
+                        (Some(key_event::Union::ControlKey(key)), _)
+                            if crate::is_modifier(&me) =>
+                        {
+                            key.enum_value().ok()
                         }
-                        Ok(KeyboardMode::Translate) => {
-                            if let Some(key_event::Union::Chr(code)) = me.union {
-                                Some(crate::keyboard::keycode_to_rdev_key(code & 0x0000FFFF))
+                        (
+                            Some(key_event::Union::Chr(code)),
+                            Ok(mode @ (KeyboardMode::Map | KeyboardMode::Translate)),
+                        ) => {
+                            let code = if mode == KeyboardMode::Translate {
+                                code & 0x0000_FFFF
                             } else {
-                                None
+                                *code
+                            };
+                            // Android KeyEvent keycodes, independent of the viewer platform.
+                            match code {
+                                57 => Some(ControlKey::Alt),
+                                58 => Some(ControlKey::RAlt),
+                                59 => Some(ControlKey::Shift),
+                                60 => Some(ControlKey::RShift),
+                                113 => Some(ControlKey::Control),
+                                114 => Some(ControlKey::RControl),
+                                117 => Some(ControlKey::Meta),
+                                118 => Some(ControlKey::RWin),
+                                _ => None,
                             }
                         }
                         _ => None,
-                    }
-                    .filter(crate::keyboard::is_modifier);
+                    };
 
-                    let is_press =
-                        (me.press || me.down) && !(crate::is_modifier(&me) || key.is_some());
-
-                    if let Some(key) = key {
-                        if is_press {
-                            self.pressed_modifiers.insert(key);
-                        } else {
-                            self.pressed_modifiers.remove(&key);
+                    // A press is a complete tap; it cannot change an existing hold.
+                    if !me.press {
+                        if let Some(key) = key {
+                            if me.down {
+                                self.pressed_modifiers.insert(key);
+                            } else {
+                                self.pressed_modifiers.remove(&key);
+                            }
                         }
                     }
 
-                    let mut modifiers = vec![];
-
-                    for key in self.pressed_modifiers.iter() {
-                        if let Some(control_key) = map_key_to_control_key(key) {
-                            modifiers.push(EnumOrUnknown::new(control_key));
+                    for key in self
+                        .pressed_modifiers
+                        .iter()
+                        .copied()
+                        .chain(key.filter(|_| me.press))
+                    {
+                        let modifier = EnumOrUnknown::new(key);
+                        if !me.modifiers.contains(&modifier) {
+                            me.modifiers.push(modifier);
                         }
                     }
-
-                    me.modifiers = modifiers;
 
                     if let Err(err) = validate_key_input(&me) {
                         log::warn!(

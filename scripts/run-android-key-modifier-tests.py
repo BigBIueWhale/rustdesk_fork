@@ -72,22 +72,15 @@ def main():
     if branch.count(start) != 1 or branch.count(end) != 2:
         raise ValueError("Android rewrite/validation boundaries differ")
     rewrite = branch[branch.index(start):branch.rindex(end)]
-    keyboard = inputs["src/keyboard.rs"].decode()
-    modifier = between(keyboard, 'pub fn is_modifier(key: &rdev::Key)',
-                       '#[inline]\n#[allow(dead_code)]\npub fn is_modifier_code')
-    mapping = between(keyboard, '    pub fn map_key_to_control_key(', '    pub fn event_lock_screen()')
     common = between(inputs["src/common.rs"].decode(), 'pub fn is_modifier(evt: &KeyEvent)',
                      '#[inline]\npub fn get_app_name()')
-    android_decoder = '    return rdev::android_key_from_code(keycode);'
-    if keyboard.count(android_decoder) != 1:
-        raise ValueError("production Android keycode decoder differs")
+    fields = re.findall(r'(?m)^    pressed_modifiers: HashSet<ControlKey>,$', connection)
+    if len(fields) != 1:
+        raise ValueError("production connection modifier ownership differs")
     wrapper = ('use std::collections::HashSet;\nuse protobuf::{Message, Enum, EnumOrUnknown};\n'
-               'use rdev::Key;\n'
                f'#[path = "{repo}/libs/hbb_common/src/protos/mod.rs"] mod protos;\n'
-               'use protos::message::*;\n' + common + mapping +
-               'mod keyboard { use super::*;\n' + modifier +
-               'pub fn keycode_to_rdev_key(keycode: u32) -> Key {\n' + android_decoder + '\n}\n}\n'
-               '#[derive(Default)] struct Connection { pressed_modifiers: HashSet<rdev::Key> }\n'
+               'use protos::message::*;\n' + common +
+               '#[derive(Default)] struct Connection {\n' + fields[0] + '\n}\n'
                'impl Connection { fn rewrite(&mut self, mut me: KeyEvent) -> KeyEvent {\n' + rewrite + '\nme\n} }\n'
                f'#[path = "{repo}/scripts/test-android-key-modifiers.rs"] mod tests;\n')
     with socket.socket() as canary:
@@ -108,7 +101,7 @@ def main():
         (fixture / "lib.rs").write_text(wrapper)
         (fixture / "Cargo.toml").write_text(
             f'[package]\nname = "{PACKAGE}"\nversion = "0.0.0"\nedition = "2021"\n'
-            '[dependencies]\nrdev = { git = "https://github.com/rustdesk-org/rdev" }\n'
+            '[dependencies]\n'
             f'bytes = "={version("bytes")}"\n'
             f'protobuf = {{ version = "={version("protobuf")}", features = ["with-bytes"] }}\n'
             '[build-dependencies]\n'

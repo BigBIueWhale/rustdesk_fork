@@ -159,20 +159,24 @@ LIST_SEARCH_TESTS = {
     "list search preserves a prefix across a parent rebuild",
     "list search resets repeated character cycling after focus leaves",
 }
-TAB_SELECTION_TESTS = {
-    "tab selection after closing background last",
-    "tab selection after closing background middle right",
-    "tab selection after closing background left",
-    "tab selection after closing active middle",
-    "tab selection after closing active first",
-    "tab selection after closing active last",
-    "tab selection resets after closing the only tab",
-    "tab selection follows the user during delayed close",
-    "tab selection survives failed retirement",
-    "tab removal waits for exact resource retirement",
-    "failed retirement keeps the exact tab and reports failure",
-    "window close retires every snapshotted tab before clearing",
-    "delayed close cannot remove a replacement with the same key",
+TAB_SELECTION_SUITES = {
+    "tab_selection_probe_test.dart": {
+        "tab selection after closing background last",
+        "tab selection after closing background middle right",
+        "tab selection after closing background left",
+        "tab selection after closing active middle",
+        "tab selection after closing active first",
+        "tab selection after closing active last",
+        "tab selection resets after closing the only tab",
+        "tab selection follows the user during delayed close",
+        "tab selection survives failed retirement",
+    },
+    "desktop_tab_retirement_test.dart": {
+        "tab removal waits for exact resource retirement",
+        "failed retirement keeps the exact tab and reports failure",
+        "window close retires every snapshotted tab before clearing",
+        "delayed close cannot remove a replacement with the same key",
+    },
 }
 
 PEER_SEARCH_TESTS = {
@@ -1141,9 +1145,10 @@ def parse_result(path, profile="models"):
         expected_tests = len(PEER_SEARCH_TESTS)
         expected_names = PEER_SEARCH_TESTS
     elif profile == "tab-selection":
-        expected_suites = {"tab_selection_probe_test.dart", "desktop_tab_retirement_test.dart"}
-        expected_tests = len(TAB_SELECTION_TESTS)
-        expected_names = TAB_SELECTION_TESTS
+        expected_by_suite = TAB_SELECTION_SUITES
+        expected_suites = set(expected_by_suite)
+        expected_names = set().union(*expected_by_suite.values())
+        expected_tests = len(expected_names)
     elif profile == "status-refresh":
         expected_suites = {"server_status_refresh_loop_test.dart"}
         expected_tests = len(STATUS_REFRESH_TESTS)

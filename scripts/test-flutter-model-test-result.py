@@ -43,8 +43,8 @@ class ResultTests(unittest.TestCase):
             suites = ["peer_search_probe_test.dart"]
             names = sorted(result.PEER_SEARCH_TESTS)
         elif profile == "tab-selection":
-            suites = ["tab_selection_probe_test.dart", "desktop_tab_retirement_test.dart"]
-            names = sorted(result.TAB_SELECTION_TESTS)
+            suites = sorted(result.TAB_SELECTION_SUITES)
+            names = sorted(set().union(*result.TAB_SELECTION_SUITES.values()))
         elif profile == "status-refresh":
             suites = ["server_status_refresh_loop_test.dart"]
             names = sorted(result.STATUS_REFRESH_TESTS)
@@ -102,8 +102,9 @@ class ResultTests(unittest.TestCase):
             })
         for test_id, name in enumerate(names):
             suite_id = test_id % len(suites)
-            if profile in ("credential-dialog", "terminal-output", "file-navigation", "modifier-release", "peer-data"):
+            if profile in ("credential-dialog", "terminal-output", "file-navigation", "modifier-release", "peer-data", "tab-selection"):
                 inventory = (result.CREDENTIAL_DIALOG_TESTS if profile == "credential-dialog"
+                             else result.TAB_SELECTION_SUITES if profile == "tab-selection"
                              else result.PEER_DATA_SUITES if profile == "peer-data"
                              else result.TERMINAL_OUTPUT_TESTS if profile == "terminal-output"
                              else inventory if profile == "modifier-release"

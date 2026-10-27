@@ -14,10 +14,23 @@ const PA_MAX_FRAGMENT_BYTES: usize = PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES * 32;
 
 #[derive(Default)]
 struct PaSourceLookup {
-    selected: Option<String>,
-    monitor: Option<String>,
+    selected: Option<PaSource>,
+    ambiguous: bool,
     done: bool,
     failed: bool,
+}
+
+struct PaSource {
+    name: String,
+    index: u32,
+}
+
+#[derive(Default)]
+struct PaDefaultOutput {
+    name: Option<String>,
+    subscribed: Option<bool>,
+    done: bool,
+    changed: bool,
 }
 
 #[derive(Default)]
@@ -135,6 +148,60 @@ where
         wait_for_pa(stream, peer, token, &mut last_authority_check).await?;
     }
 
+    let default_output = Rc::new(RefCell::new(PaDefaultOutput::default()));
+    if requested_source.is_empty() {
+        let observed = Rc::clone(&default_output);
+        context.set_subscribe_callback(Some(Box::new(move |facility, _, _| {
+            if facility == Some(pulse::context::subscribe::Facility::Server) {
+                observed.borrow_mut().changed = true;
+            }
+        })));
+        let subscribed = Rc::clone(&default_output);
+        let subscription = context.subscribe(
+            pulse::context::subscribe::InterestMaskSet::SERVER,
+            move |success| subscribed.borrow_mut().subscribed = Some(success),
+        );
+        let observed = Rc::clone(&default_output);
+        let introspector = context.introspect();
+        let operation = introspector.get_server_info(move |info| {
+            let mut output = observed.borrow_mut();
+            output.name = info
+                .default_sink_name
+                .as_deref()
+                .filter(|name| !name.is_empty() && name.len() <= 1024)
+                .map(str::to_owned);
+            output.done = true;
+        });
+        let deadline = Instant::now() + PA_SETUP_TIMEOUT;
+        loop {
+            iterate_pa(&mut mainloop)?;
+            if context.get_state() != pulse::context::State::Ready {
+                bail!("PulseAudio context disconnected during default-output lookup");
+            }
+            {
+                let output = default_output.borrow();
+                if output.subscribed == Some(false) {
+                    bail!("PulseAudio default-output observation failed");
+                }
+                if output.changed {
+                    bail!("PulseAudio default output changed during source lookup");
+                }
+                if output.done && output.subscribed == Some(true) {
+                    break;
+                }
+            }
+            if Instant::now() >= deadline {
+                bail!("PulseAudio default-output lookup timed out");
+            }
+            wait_for_pa(stream, peer, token, &mut last_authority_check).await?;
+        }
+        drop(operation);
+        drop(subscription);
+    }
+    let default_sink = default_output.borrow().name.clone();
+    if requested_source.is_empty() && default_sink.is_none() {
+        bail!("PulseAudio default output is unavailable");
+    }
     let lookup = Rc::new(RefCell::new(PaSourceLookup::default()));
     let callback_lookup = Rc::clone(&lookup);
     let requested = requested_source.to_owned();
@@ -144,17 +211,24 @@ where
         match item {
             pulse::callbacks::ListResult::Item(info) => {
                 if let Some(name) = info.name.as_ref() {
-                    if name.len() > 1024 {
+                    if name.is_empty() || name.len() > 1024 {
                         return;
                     }
-                    if lookup.monitor.is_none() && name.contains("monitor") {
-                        lookup.monitor = Some(name.to_string());
-                    }
-                    if lookup.selected.is_none()
-                        && !requested.is_empty()
-                        && info.description.as_deref() == Some(requested.as_str())
-                    {
-                        lookup.selected = Some(name.to_string());
+                    let matches = if requested.is_empty() {
+                        info.monitor_of_sink.is_some()
+                            && info.monitor_of_sink_name.as_deref() == default_sink.as_deref()
+                    } else {
+                        info.description.as_deref() == Some(requested.as_str())
+                    };
+                    if matches {
+                        if lookup.selected.is_some() {
+                            lookup.ambiguous = true;
+                        } else {
+                            lookup.selected = Some(PaSource {
+                                name: name.to_string(),
+                                index: info.index,
+                            });
+                        }
                     }
                 }
             }
@@ -165,14 +239,14 @@ where
     let deadline = Instant::now() + PA_SETUP_TIMEOUT;
     loop {
         iterate_pa(&mut mainloop)?;
+        if context.get_state() != pulse::context::State::Ready {
+            bail!("PulseAudio context disconnected during source lookup");
+        }
         if lookup.borrow().failed {
             bail!("PulseAudio source lookup failed");
         }
         if lookup.borrow().done {
             break;
-        }
-        if context.get_state() != pulse::context::State::Ready {
-            bail!("PulseAudio context disconnected during source lookup");
         }
         if Instant::now() >= deadline {
             bail!("PulseAudio source lookup timed out");
@@ -183,9 +257,15 @@ where
     drop(introspector);
     let source = {
         let mut lookup = lookup.borrow_mut();
-        lookup.selected.take().or_else(|| lookup.monitor.take())
+        if lookup.ambiguous {
+            bail!("PulseAudio source selection is ambiguous");
+        }
+        lookup.selected.take()
     }
-    .ok_or_else(|| anyhow::anyhow!("no PulseAudio source or monitor available"))?;
+    .ok_or_else(|| anyhow::anyhow!("selected PulseAudio source is unavailable"))?;
+    if default_output.borrow().changed {
+        bail!("PulseAudio default output changed during source lookup");
+    }
 
     let spec = pulse::sample::Spec {
         format: pulse::sample::Format::F32le,
@@ -201,12 +281,24 @@ where
         minreq: u32::MAX,
         fragsize: PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES as u32,
     };
-    recorder.connect_record(Some(&source), Some(&attr), pulse::stream::FlagSet::NOFLAGS)?;
+    recorder.connect_record(
+        Some(&source.name),
+        Some(&attr),
+        pulse::stream::FlagSet::DONT_MOVE,
+    )?;
     let deadline = Instant::now() + PA_SETUP_TIMEOUT;
     loop {
         iterate_pa(&mut mainloop)?;
+        if context.get_state() != pulse::context::State::Ready || default_output.borrow().changed {
+            bail!("PulseAudio output changed during recording setup");
+        }
         match recorder.get_state() {
-            pulse::stream::State::Ready => break,
+            pulse::stream::State::Ready => {
+                if recorder.get_device_index() != Some(source.index) {
+                    bail!("PulseAudio recording source changed during connection");
+                }
+                break;
+            }
             pulse::stream::State::Failed | pulse::stream::State::Terminated => {
                 bail!("PulseAudio record stream did not become ready")
             }
@@ -217,13 +309,17 @@ where
         }
         wait_for_pa(stream, peer, token, &mut last_authority_check).await?;
     }
-    log::info!("pa monitor: {:?}", source);
+    log::info!("pa source: {:?}", source.name);
 
     let mut frames = PaCaptureFrames::default();
     loop {
         iterate_pa(&mut mainloop)?;
+        if default_output.borrow().changed {
+            bail!("PulseAudio default output changed");
+        }
         if context.get_state() != pulse::context::State::Ready
             || recorder.get_state() != pulse::stream::State::Ready
+            || recorder.get_device_index() != Some(source.index)
         {
             bail!("PulseAudio capture stream disconnected");
         }

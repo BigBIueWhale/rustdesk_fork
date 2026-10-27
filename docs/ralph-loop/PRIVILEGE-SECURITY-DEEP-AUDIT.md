@@ -107474,3 +107474,25 @@ existing isolated two-document token counter. No product behavior is executed
 or newly accepted. Current installed/native evidence for all fifteen credential
 actions, full app/settings functionality, R-S0/R-F5 and release acceptance remain
 OPEN. Exact count and cleanup results follow after the committed source runs.
+
+Completed source b76c4a51dce0223fd2f710e909d1dbffd72fe1f0 was clean and pushed.
+`/bin/bash scripts/smoke-verifier-vm-authority.sh --ledger-token-count --requirements`
+passed as run S9si7CrryT in 29 outer seconds. The established tiktoken 0.12.0 /
+cl100k_base / encode_ordinary method passed seven controls and byte round trips:
+ledger 348,304 tokens / 1,581,661 bytes, SHA-256
+fd47e759d644f85266908a276072c2c2ad1bee9f22f388b8175d312aba2aa685;
+requirements 368,770 tokens / 1,683,194 bytes, SHA-256
+ed4d6461731c9fd34e252fe3104fc713e56cee2e14331726d9cffd727bfffeb5.
+The ledger remains within its approximate 400,000-token budget. R-X7a shrank
+from 2,028 to 1,682 UTF-8 bytes; every other specification byte is unchanged.
+`git diff --check`, clause markup and requirement/finding/anchor/link inventories
+passed. All twelve stashes and controlling instruction files remain unchanged.
+
+Retained serial: `.harness-state/verifier-vm/ledger-token-count-run.S9si7CrryT.serial.log`,
+99,310 bytes, SHA-256 6b0111c024b636c8c84168cff1a823a5538af1bda37039861b1c568201a5e801.
+The adjacent storage/listener receipts record joined QEMU exit 0, no listener
+deltas, and retirement of `/dev/shm/rustdesk-fork-vm-1000/run.coe9ghej`.
+Post-run identity checks confirm the exact QEMU PID, RAM workspace and active run
+markers are absent. The bounded workspace peaked at 402,309,120 allocated bytes;
+the owned durable run directory peaked at 151,552 bytes. Product execution was
+unexecuted, as appropriate for this documentation-only correction.

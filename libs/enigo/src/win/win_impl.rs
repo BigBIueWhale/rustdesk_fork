@@ -111,13 +111,21 @@ impl MouseControllable for Enigo {
     }
 
     fn mouse_move_to(&mut self, x: i32, y: i32) -> crate::ResultType {
+        let x = super::absolute_pointer::normalize_absolute(
+            x,
+            unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) },
+            unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) },
+        )?;
+        let y = super::absolute_pointer::normalize_absolute(
+            y,
+            unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) },
+            unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) },
+        )?;
         mouse_event(
             MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
             0,
-            (x - unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) }) * 65535
-                / unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) },
-            (y - unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) }) * 65535
-                / unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) },
+            x,
+            y,
         )
     }
 

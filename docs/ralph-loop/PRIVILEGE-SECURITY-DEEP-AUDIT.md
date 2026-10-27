@@ -109545,3 +109545,48 @@ duplicate, wrong-suite, missing-case and wrong-suite-file regressions. Run that
 unchanged acceptance logic first, then enforce exact pairs. Product sources/tests,
 native credential actions, R-S0/R-F5, all earlier parks and full model execution
 remain open; no live instruction or normative requirement is changed.
+
+## 2026-10-28 — user pivot to Windows pointer coordinates
+
+The user explicitly requested a different aspect. Exact model-result inventory
+enforcement is OPEN/PARKED at preparation `fa342297`; do not resume automatically.
+Its already-started baseline `oqK3uathmq` completed with exactly three failing
+model cases (renamed, duplicated and wrong-suite names accepted), three test
+methods in 0.181 seconds. No parser correction was applied and no full model
+checkpoint ran. Serial SHA-256 is
+`b8a13c198963237cd8f5d258e145c4164b7a91a46cfd3cd05640a4070ee907ca`
+(68,829 bytes). Supervisor lifetime 82.85 seconds; peak RAM scratch
+4,050,755,584 bytes, durable evidence 3,305,472 bytes. QEMU 3816640 joined with
+exit 0, RAM `run.7l2arpnt` and the PID are absent, and all four endpoint deltas
+are zero. Under the exact root lock, the bounded diagnostic directory was
+renamed without replacement to `model-case-inventory-parked.oqK3uathmq`;
+active run roots are absent. This preserves the failing evidence, not acceptance.
+
+The new slice is Windows absolute pointer normalization. At `fa342297`,
+`libs/enigo/src/win/win_impl.rs::mouse_move_to` subtracts the virtual origin and
+multiplies by 65535 in i32 before dividing by an unchecked desktop extent.
+`src/server/input_service.rs::handle_mouse_simulation_` passes the absolute
+MouseEvent coordinates to that method. The source path can overflow or divide
+by zero; catch_unwind is not a valid coordinate conversion and optimized builds
+can wrap. Even ordinary coordinates target a pixel boundary and can round into
+the preceding pixel. This is a concrete correctness finding, not an LPE claim.
+
+Primary research: Microsoft's [MOUSEINPUT contract](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-mouseinput)
+uses normalized 0–65535 coordinates with VIRTUALDESK selecting the whole desktop;
+the [virtual screen](https://learn.microsoft.com/en-us/windows/win32/gdi/the-virtual-screen)
+may have a negative origin. The [UI Automation implementation](https://source.dot.net/UIAutomationClientSideProviders/MS/Internal/AutomationProxies/Input.cs.html)
+explains the 65536-wide pixel bins and boundary-rounding problem. The intended
+conversion uses widened arithmetic, validates extent and membership, and selects
+an integer inside the requested pixel's bin. Both axes must admit before SendInput.
+This preserves negative coordinates and refuses malformed/stale-outside requests
+without native input. Monitor topology/DPI races and actual Windows cursor effects
+still require a target-native run.
+
+Preparation extracts the existing arithmetic unchanged into its Windows module
+and adds five direct production-function tests: negative-origin controls, exhaustive
+pixel round trips across small/ordinary/large extents, invalid extents, out-of-range
+coordinates and extreme origins. A focused Linux VM compiles that module with
+optimization and overflow checks disabled. Its 2 GiB guest, 6 GiB bounded RAM scratch
+and 4 GiB file ceiling use the shared admission/monitor/joined-cleanup orchestration.
+This is arithmetic component evidence only; the Windows VM launcher remains
+unexecuted because its storage acceptance is still open. No product runs on the host.

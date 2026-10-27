@@ -1257,8 +1257,24 @@ FILE_SEARCH_TESTS = {
 }
 
 
+CLIPBOARD_KEYSTROKES_TESTS = {
+    'clipboard keystrokes send current Unicode text unchanged',
+    'clipboard keystrokes ignore an unavailable clipboard',
+    'clipboard keystrokes are absent in view only mode',
+    'clipboard keystrokes preserve role and keyboard restrictions',
+    'clipboard keystrokes stale callback refuses clipboard access',
+    'clipboard keystrokes replaced owner refuses clipboard access',
+    'clipboard keystrokes close during read prevents input',
+    'clipboard keystrokes session replacement during read prevents input',
+    'clipboard keystrokes owner replacement during read prevents input',
+    'clipboard keystrokes permission loss during read prevents input',
+    'clipboard keystrokes view only change during read prevents input',
+    'clipboard keystrokes unrelated metadata change preserves input',
+}
+
+
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -1368,6 +1384,10 @@ def parse_result(path, profile="models"):
         expected_suites = {"draggable_position_test.dart"}
         expected_tests = len(FLOATING_POSITION_TESTS)
         expected_names = FLOATING_POSITION_TESTS
+    elif profile == "clipboard-keystrokes":
+        expected_suites = {"clipboard_keystrokes_probe_test.dart"}
+        expected_tests = len(CLIPBOARD_KEYSTROKES_TESTS)
+        expected_names = CLIPBOARD_KEYSTROKES_TESTS
     elif profile == "file-search":
         expected_suites = {"file_search_probe_test.dart"}
         expected_tests = len(FILE_SEARCH_TESTS)
@@ -1491,7 +1511,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -1519,6 +1539,7 @@ def main():
         "file-navigation": "FLUTTER_FILE_NAVIGATION_TEST_JSON",
         "custom-scale": "FLUTTER_CUSTOM_SCALE_TEST_JSON",
         "floating-position": "FLUTTER_FLOATING_POSITION_TEST_JSON",
+        "clipboard-keystrokes": "FLUTTER_CLIPBOARD_KEYSTROKES_TEST_JSON",
         "file-search": "FLUTTER_FILE_SEARCH_TEST_JSON",
         "audio-input": "FLUTTER_AUDIO_INPUT_TEST_JSON",
         "reconnect": "FLUTTER_RECONNECT_TEST_JSON",

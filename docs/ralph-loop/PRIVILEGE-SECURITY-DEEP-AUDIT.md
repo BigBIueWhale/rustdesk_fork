@@ -107641,3 +107641,31 @@ QEMU joins, RAM scratch and active markers are absent. Before/during endpoint
 deltas are zero; the final snapshot retains one unattributed 18-byte endpoint
 removal, with no owner inspection or mutation. Product/test bytes remain those
 executed in CC2tsNj3c8; controlling instructions and all twelve stashes are unchanged.
+
+### 2026-10-27 — peer-layout selection and save lifetime
+
+Previous turn is PROGRESS (b1804d7a and retained native Flutter results). Current
+c688f6a1 is clean/pushed. All user parks remain. The R-S11b/c source topology is
+largely implemented, while all fifteen credential actions still require current
+installed/native evidence, authorized effects/refusals and lifecycle acceptance.
+
+Source review of PeerViewDropdown finds radio callbacks dispatching asynchronous
+writes without pending admission or pre-dispatch lifetime replay, then calling
+Navigator.pop(context) after readback. That context belongs to the underlying
+page, so an intervening dismissal/new dialog can redirect the pop. The shared
+save helper catches failures and reads back after completion but does not own
+menu routes or widget lifetime. Sorting was read for comparison; this slice
+changes only layout selection. No privilege boundary is claimed closed.
+
+Use the typed PopupMenuButton/CheckedPopupMenuItem result contract, with the menu
+owning its own dismissal and the mounted layout control owning one pending save.
+Retired/fixed callbacks cannot start work. Accepted native writes drain, while
+retired UI cannot publish or display a late failure. Publish valid actual readback
+and report mismatch, invalid readback or save failure without claiming success.
+Primary research: Flutter's exact 3.24.5 popup_menu.dart shows selection dismisses
+the menu and PopupMenuButton refuses its completion after owner retirement:
+https://raw.githubusercontent.com/flutter/flutter/3.24.5/packages/flutter/lib/src/material/popup_menu.dart.
+The existing VM-only native double now controls delayed writes, errors and fixed
+policy. Nine rendered menu/save cases extend the ten existing constructor/search
+cases. Product remains unchanged for the before comparison. Cross-control/process
+save ordering and complete native settings persistence remain broader open work.

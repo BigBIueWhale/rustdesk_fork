@@ -221,6 +221,13 @@ TAB_SELECTION_SUITES = {
 }
 
 PEER_SEARCH_TESTS = {
+    "peer layout selection owns one save through rebuild",
+    "peer layout save cannot close a later dialog",
+    "peer layout retired menu cannot start a save",
+    "peer layout retired save drains without late error feedback",
+    *{f"peer layout {failure} failure reports and permits retry"
+      for failure in ("write", "readback", "invalid", "mismatch")},
+    "peer layout cancellation and newly fixed policy refuse writes",
     "peer layout loads all supported saved choices",
     "peer layout rejects invalid saved choices without throwing",
     "peer layout reload replaces a previous choice and recovers",

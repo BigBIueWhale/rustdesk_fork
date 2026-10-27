@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_hbb/common.dart' show MyTheme, globalKey;
 import 'package:flutter_hbb/common/widgets/peer_card.dart';
 import 'package:flutter_hbb/common/widgets/peer_tab_page.dart';
 import 'package:flutter_hbb/common/widgets/peers_view.dart';
@@ -12,9 +16,20 @@ class _Binding implements RustdeskImpl {
   String layout = '';
   Object? readError;
   final reads = <String>[];
+  final writes = <String>[];
+  Future<String> Function(String)? save;
+  bool fixed = false;
 
   @override
-  bool mainIsOptionFixed({required String key, dynamic hint}) => false;
+  bool mainIsOptionFixed({required String key, dynamic hint}) => fixed;
+
+  @override
+  Future<void> setLocalFlutterOption(
+      {required String k, required String v, dynamic hint}) async {
+    expect(k, kOptionPeerCardUiType);
+    writes.add(v);
+    layout = await save?.call(v) ?? v;
+  }
 
   @override
   String getLocalFlutterOption({required String k, dynamic hint}) {
@@ -72,6 +87,55 @@ class _Harness {
 FocusNode _fieldFocus(WidgetTester tester) =>
     tester.widget<EditableText>(find.byType(EditableText)).focusNode;
 
+class _LayoutHarness {
+  late StateSetter rebuild;
+  bool visible = true;
+
+  Future<void> mount(WidgetTester tester) async {
+    await tester.pumpWidget(MaterialApp(
+      navigatorKey: globalKey,
+      theme: MyTheme.lightTheme,
+      home: Scaffold(body: StatefulBuilder(builder: (context, setState) {
+        rebuild = setState;
+        return Row(children: [
+          if (visible) const PeerViewDropdown(),
+          TextButton(onPressed: () => showDialog<void>(
+            context: context,
+            builder: (_) => const AlertDialog(content: Text('Other dialog')),
+          ), child: const Text('Open other dialog')),
+        ]);
+      })),
+    ));
+    addTearDown(() async {
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
+  Future<void> open(WidgetTester tester) async {
+    await tester.tap(find.byTooltip('Change view'));
+    await pump(tester);
+  }
+
+  Future<void> choose(WidgetTester tester, [String choice = 'Small tiles']) async {
+    if (find.byTooltip(choice).evaluate().isEmpty) await open(tester);
+    if (find.byTooltip(choice).evaluate().isNotEmpty) {
+      await tester.tap(find.byTooltip(choice));
+    }
+    await pump(tester);
+  }
+
+  Future<void> pump(WidgetTester tester) async {
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+  }
+
+  Future<void> dismiss(WidgetTester tester) async {
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await pump(tester);
+  }
+}
+
 void main() {
   late _Binding binding;
   setUp(() {
@@ -81,6 +145,115 @@ void main() {
     peerSearchTextController.clear();
     peerSearchText.value = '';
     stateGlobal.isPortrait.value = false;
+  });
+
+  testWidgets('peer layout selection owns one save through rebuild', (tester) async {
+    final pending = Completer<String>();
+    binding.save = (_) => pending.future;
+    final harness = _LayoutHarness();
+    await harness.mount(tester);
+    await harness.choose(tester);
+    final menuClosed = find.byTooltip('Small tiles').evaluate().isEmpty;
+    final before = peerCardUiType.value;
+    harness.rebuild(() {});
+    await harness.pump(tester);
+    await harness.choose(tester, 'List');
+    final pendingWrites = binding.writes.toList();
+    pending.complete('1');
+    await harness.pump(tester);
+    expect(menuClosed, isTrue);
+    expect(before, PeerUiType.grid);
+    expect(pendingWrites, ['1']);
+    expect(peerCardUiType.value, PeerUiType.tile);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('peer layout save cannot close a later dialog', (tester) async {
+    final pending = Completer<String>();
+    binding.save = (_) => pending.future;
+    final harness = _LayoutHarness();
+    await harness.mount(tester);
+    await harness.choose(tester);
+    await harness.dismiss(tester);
+    await tester.tap(find.text('Open other dialog'));
+    await harness.pump(tester);
+    expect(find.text('Other dialog'), findsOneWidget);
+    pending.complete('1');
+    await harness.pump(tester);
+    expect(find.text('Other dialog'), findsOneWidget);
+    expect(peerCardUiType.value, PeerUiType.tile);
+    expect(binding.writes, ['1']);
+  });
+
+  testWidgets('peer layout retired menu cannot start a save', (tester) async {
+    final harness = _LayoutHarness();
+    await harness.mount(tester);
+    await harness.open(tester);
+    harness.rebuild(() => harness.visible = false);
+    await harness.pump(tester);
+    await harness.choose(tester);
+    expect(binding.writes, isEmpty);
+    expect(peerCardUiType.value, PeerUiType.grid);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('peer layout retired save drains without late error feedback',
+      (tester) async {
+    final pending = Completer<String>();
+    binding.save = (_) => pending.future;
+    final harness = _LayoutHarness();
+    await harness.mount(tester);
+    await harness.choose(tester);
+    await harness.dismiss(tester);
+    harness.rebuild(() => harness.visible = false);
+    await harness.pump(tester);
+    pending.completeError(StateError('save refused after close'));
+    await harness.pump(tester);
+    expect(binding.writes, ['1']);
+    expect(binding.reads, isEmpty);
+    expect(peerCardUiType.value, PeerUiType.grid);
+    expect(find.text('Failed'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final failure in ['write', 'readback', 'invalid', 'mismatch']) {
+    testWidgets('peer layout $failure failure reports and permits retry',
+        (tester) async {
+      binding.save = (value) async {
+        if (failure == 'write') throw StateError('save refused');
+        if (failure == 'readback') binding.readError = StateError('read refused');
+        return failure == 'invalid' ? 'broken' : failure == 'mismatch' ? '2' : value;
+      };
+      final harness = _LayoutHarness();
+      await harness.mount(tester);
+      await harness.choose(tester);
+      expect(find.text('Failed'), findsOneWidget);
+      expect(peerCardUiType.value,
+          failure == 'mismatch' ? PeerUiType.list : PeerUiType.grid);
+      await tester.pump(const Duration(seconds: 4));
+      binding.readError = null;
+      binding.save = null;
+      await harness.choose(tester);
+      expect(binding.writes, ['1', '1']);
+      expect(binding.layout, '1');
+      expect(peerCardUiType.value, PeerUiType.tile);
+      expect(find.text('Failed'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('peer layout cancellation and newly fixed policy refuse writes',
+      (tester) async {
+    final harness = _LayoutHarness();
+    await harness.mount(tester);
+    await harness.open(tester);
+    await harness.dismiss(tester);
+    expect(binding.writes, isEmpty);
+    await harness.open(tester);
+    binding.fixed = true;
+    await harness.choose(tester);
+    expect(binding.writes, isEmpty);
+    expect(peerCardUiType.value, PeerUiType.grid);
   });
 
   testWidgets('peer layout loads all supported saved choices', (tester) async {

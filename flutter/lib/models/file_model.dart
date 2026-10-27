@@ -1835,15 +1835,26 @@ class JobController {
       if (!_resumingJobs.add(job)) return false;
       final actionId = job.id;
       final isRemote = job.isRemoteToLocal;
-      try {
-        await _requests.resumeJob(selectedSessionId, actionId, isRemote);
+      bool isCurrentJob() {
         if (!isCurrentSession(selectedSessionId)) return false;
         final currentIndex = getJob(actionId);
-        if (currentIndex == -1 || !identical(jobTable[currentIndex], job)) {
+        return currentIndex != -1 && identical(jobTable[currentIndex], job);
+      }
+
+      try {
+        try {
+          await _requests.resumeJob(selectedSessionId, actionId, isRemote);
+        } catch (error) {
+          if (isCurrentJob() && job.state == JobState.paused) {
+            job.err = error.toString();
+            jobTable.refresh();
+          }
           return false;
         }
+        if (!isCurrentJob()) return false;
         // A job event can settle the transfer before the bridge reply arrives.
         if (job.state == JobState.paused) {
+          job.err = '';
           job.state = JobState.inProgress;
           jobTable.refresh();
         }
@@ -2682,6 +2693,9 @@ class JobProgress {
       var res = "";
       if (state != JobState.inProgress && state != JobState.none) {
         res += display();
+      }
+      if (state == JobState.paused && err.isNotEmpty) {
+        res += ': $err';
       }
       if (filesStr.isNotEmpty) {
         if (res.isNotEmpty) {

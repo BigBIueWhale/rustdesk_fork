@@ -10590,7 +10590,7 @@ run_flutter_model_tests() {
             memory=3g
             memory_bytes=3221225472
             result_prefix=FLUTTER_SETTINGS_NAVIGATION_TEST_JSON
-            expected_result='suites=1 tests=10'
+            expected_result='suites=1 tests=18'
         elif [ "$FLUTTER_TEST_PROFILE" = terminal-output ]; then
             memory=3g
             memory_bytes=3221225472

@@ -4654,6 +4654,10 @@ run_focused_rust_tests() {
                 capture_pcm_reuses_warmed_storage_without_allocating
                 configured_pcm_reservation_refusal_returns_error_and_preserves_recovery
                 invalid_pcm_geometry_refuses_before_storage_allocation
+                pcm_age_reservation_is_fallible_and_fresh_output_recovers
+                audio_buffer::tests::expired_pcm_is_silent_and_cannot_be_refreshed
+                audio_buffer::tests::pcm_age_accounting_survives_overflow_partial_reads_and_exact_expiry
+                audio_buffer::tests::pcm_age_storage_is_bounded_and_retires_whole_stereo_blocks
                 audio_buffer::tests::output_fill_consumes_fifo_and_pads_a_short_quantum
                 audio_buffer::tests::empty_output_fill_is_all_silence
                 audio_buffer::tests::output_fill_preserves_next_quantum_order
@@ -4708,6 +4712,9 @@ run_focused_rust_tests() {
                 output_error_callback_wakes_the_idle_owner_and_joins_off_callback
                 frame_admission_allocation_failure_is_terminal_and_recoverable
                 decoder_storage_failure_closes_worker_and_preserves_native_opus
+                audio_buffer::tests::expired_pcm_is_silent_and_cannot_be_refreshed
+                audio_buffer::tests::pcm_age_accounting_survives_overflow_partial_reads_and_exact_expiry
+                audio_buffer::tests::pcm_age_storage_is_bounded_and_retires_whole_stereo_blocks
                 android_raw::take_moves_owned_storage_without_allocation
                 android_raw::take_preserves_terminal_and_generation_semantics
                 android_raw::publication_storage_refusal_preserves_pending_state_and_recovers

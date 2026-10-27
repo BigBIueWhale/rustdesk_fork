@@ -108113,3 +108113,12 @@ allocator refusal with fresh-output recovery: 28 buffer cases and 51 shared
 mailbox cases. Existing conversion/allocation checks use the same production
 buffer owner so sample writes cannot bypass its metadata. Full platform parents,
 physical output and end-to-end recovery remain separate open acceptance.
+
+Candidate 4dfc021b / nfJPVtjN2W reports 28/28 component tests passing in 2.03s,
+then rejects export because the guest's required-name inventory was still 24.
+This is not accepted artifact evidence: the serial contains the summary but no
+final artifact/individual-outcome export. The inventory is corrected to include
+all four added buffer tests and the three shared mailbox tests. Product code is
+unchanged for the rerun. Failed diagnostics remain as pcm-expiry-inventory.nfJPVtjN2W;
+exact QEMU and RAM are retired. Two unrelated after-run endpoint removals are
+unattributed and untouched; no listener was added by this work.

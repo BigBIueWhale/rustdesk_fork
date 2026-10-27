@@ -1484,6 +1484,7 @@ class JobController {
   final IsCurrentSession isCurrentSession;
   final JobControllerRequests _requests;
   final int Function() _nextJobId;
+  final _resumingJobs = Set<JobProgress>.identity();
   SessionID get sessionId => getSessionID();
   OverlayDialogManager? get alogManager => getDialogManager();
   int _lastTimeShowMsgbox = DateTime.now().millisecondsSinceEpoch;
@@ -1831,20 +1832,25 @@ class JobController {
       if (job.type != JobType.transfer || job.state != JobState.paused) {
         return false;
       }
+      if (!_resumingJobs.add(job)) return false;
       final actionId = job.id;
       final isRemote = job.isRemoteToLocal;
-      await _requests.resumeJob(selectedSessionId, actionId, isRemote);
-      if (!isCurrentSession(selectedSessionId)) return false;
-      final currentIndex = getJob(actionId);
-      if (currentIndex == -1 || !identical(jobTable[currentIndex], job)) {
-        return false;
+      try {
+        await _requests.resumeJob(selectedSessionId, actionId, isRemote);
+        if (!isCurrentSession(selectedSessionId)) return false;
+        final currentIndex = getJob(actionId);
+        if (currentIndex == -1 || !identical(jobTable[currentIndex], job)) {
+          return false;
+        }
+        // A job event can settle the transfer before the bridge reply arrives.
+        if (job.state == JobState.paused) {
+          job.state = JobState.inProgress;
+          jobTable.refresh();
+        }
+        return true;
+      } finally {
+        _resumingJobs.remove(job);
       }
-      // A job event can settle the transfer before the bridge reply arrives.
-      if (job.state == JobState.paused) {
-        job.state = JobState.inProgress;
-        jobTable.refresh();
-      }
-      return true;
     } else {
       debugPrint("jobId $jobId is not exists");
       return false;

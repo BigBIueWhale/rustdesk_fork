@@ -108840,3 +108840,15 @@ Futures, not native credential storage/FFI, full peer-card integration, OS scree
 readers or installed application acceptance. Those and all R-S11/R-S0/R-F5 and
 user-parked work remain OPEN. The ledger records only this result and the explicit
 tunnel-page pivot; its fresh token count follows separately.
+
+Ledger closure: `EsiwxVfAMk` at `03da96d8289b8640dbfe819245475d7bd4d50995`
+counts 351,994 tokens / 1,599,055 bytes, input SHA-256
+`d08d617e546bd3bc5366058f3d1918a756ebeefb5687299e92b628d056dbc5c1`.
+Pinned tiktoken-0.12.0/cl100k_base/encode_ordinary, seven controls and full UTF-8
+round trip pass; the approximate 400,000-token budget is met. Serial: 97,605 bytes,
+SHA-256 `e6d1e9e70c96798b56bbcd713cc56bd5cd310bfb44062a3f3ecfa62671ef305c`.
+Outer/supervisor lifetime 29/31.724 seconds; peak RAM scratch 402,219,008 bytes,
+durable evidence 147,456 bytes. QEMU 3461723 joins with exit 0; RAM `run.vxk0ylhg`
+and all active run roots are absent; all listener deltas are zero. All thirteen
+parked stash IDs remain unchanged. This receipt does not edit the counted ledger
+or tested product. Broad hardening goal remains active and incomplete.

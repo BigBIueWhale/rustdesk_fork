@@ -90,7 +90,8 @@ void main() {
       testWidgets('keeps filename end after ${separator.key} in $layout width',
           (tester) async {
         final original = 'prefix${separator.value}report.exe';
-        final label = StartEllipsisText(original, style: style);
+        final label = StartEllipsisText(original,
+            style: style.copyWith(letterSpacing: 0));
         await tester.pumpWidget(MaterialApp(
           home: Material(
             child: Align(

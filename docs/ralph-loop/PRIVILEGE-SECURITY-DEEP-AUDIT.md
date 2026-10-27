@@ -107908,3 +107908,32 @@ round trip. The 97,178-byte serial has SHA-256
 5313772f3a6605f0f21086bf50cee27dd2cfdc2bbcb2c25eb38954bc9e412aeb.
 Exact QEMU is joined; RAM scratch and active markers are absent. All endpoint
 deltas are zero. No application or behavioral test was executed for this count.
+
+## Screenshot PNG storage capacity (2026-10-27)
+
+Continuation from d549aadfd5d69165daabaeb21e5b30bc325a3855. The preceding
+verifier correction is concrete progress. All user parks remain in force; the
+clipboard budget entry explicitly parks further clipboard work and is not resumed.
+All fifteen installed credential actions and the broader goal remain OPEN.
+
+src/server/screenshot_png.rs checks the next byte length against max_bytes, then
+uses Vec::try_reserve, whose geometric spare capacity may exceed that ceiling.
+The intended change bounds the retained output allocation request as well as length,
+while keeping fallible amortized growth and preserving bytes on allocation refusal.
+It does not claim to bound codec workspaces, allocator bookkeeping or whole-process RSS.
+The existing exact-production-writer test gains ten capacity observations, including
+the actual 64-MiB ceiling, empty/tiny limits and growth across a non-power-of-two
+boundary. Each also checks exact bytes, empty writes and refusal beyond the limit.
+Its driver requires the new result; existing allocation, PNG decoding and native
+X11 controls remain. No product change precedes the bounded-RAM --video-vpx-tests
+baseline. Rust Vec try_reserve/try_reserve_exact documentation confirms the spare
+capacity distinction: https://doc.rust-lang.org/std/vec/struct.Vec.html.
+
+Separate source-only audit finding: Linux WallPaperRemover retains only wallpaper::get
+and optional get_dark results. At the pinned wallpaper.rs ce4a0cd3 revision, XFCE
+get reads the first last-image property while set writes every matching property;
+restoration can therefore overwrite distinct display/workspace backgrounds with
+the first path. The Linux wrapper also discards dark-read/write errors. No desktop
+execution, privilege-escalation claim or wallpaper correction is made here. Exact
+per-property snapshot/restore and explicit failure ownership need a separate slice.
+Primary source: https://github.com/rustdesk-org/wallpaper.rs/tree/ce4a0cd3f58327c7cc44d15a63706fb0c022bacf/src/linux.

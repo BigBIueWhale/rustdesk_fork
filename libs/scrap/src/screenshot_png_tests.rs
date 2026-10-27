@@ -83,5 +83,26 @@ fn allocation_refusal_preserves_png_bytes_and_reaches_encoder() {
         write!(&mut hex, "{byte:02x}").unwrap();
     }
     println!("SCREENSHOT_PNG_BOUNDED_HEX={hex}");
+    let input = vec![0x5a; 33 * 1024 * 1024];
+    let mut capacities_bounded = true;
+    for (limit, first) in [
+        (0, 0), (1, 1), (4, 4), (7, 7), (8, 8), (9, 8),
+        (65, 33), (128, 65), (4097, 4096),
+        (64 * 1024 * 1024, 33 * 1024 * 1024),
+    ] {
+        let mut writer = BoundedScreenshotPng::with_limit(limit);
+        writer.write_all(&input[..first]).unwrap();
+        writer.write_all(&input[..limit - first]).unwrap();
+        assert_eq!(writer.write(&[]).unwrap(), 0);
+        assert_eq!(writer.write(b"x").unwrap_err().kind(), io::ErrorKind::InvalidData);
+        let bytes = writer.into_bytes();
+        let capacity = bytes.capacity();
+        assert_eq!(bytes.len(), limit);
+        assert!(bytes.iter().all(|byte| *byte == 0x5a));
+        println!("SCREENSHOT_PNG_CAPACITY=observed limit={limit} capacity={capacity} bytes={}", bytes.len());
+        capacities_bounded &= capacity <= limit;
+    }
+    assert!(capacities_bounded, "PNG storage capacity exceeded the output budget");
+    println!("SCREENSHOT_PNG_CAPACITY_NATIVE=pass cases=10 bytes=preserved limits=preserved");
     println!("SCREENSHOT_PNG_ALLOC_NATIVE=pass refusals=2 direct=OutOfMemory encoder=OutOfMemory prefix=preserved retry=pass byte_limit=preserved fresh_png_bytes={}", png.len());
 }

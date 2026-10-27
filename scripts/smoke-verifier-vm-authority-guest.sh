@@ -175,7 +175,7 @@ case "$#:${8:-}" in
         MODE=flutter-model-tests
         ;;
     13:--flutter-model-tests)
-        [[ "${13}" = --frame-queue || "${13}" = --direct-address || "${13}" = --file-metadata || "${13}" = --password-fields || "${13}" = --share-rdp || "${13}" = --connect-password || "${13}" = --credential-dialog || "${13}" = --terminal-output || "${13}" = --settings-navigation || "${13}" = --window-dispatch || "${13}" = --menu-button || "${13}" = --draggable-divider || "${13}" = --status-refresh || "${13}" = --peer-data || "${13}" = --file-progress || "${13}" = --custom-scale || "${13}" = --file-navigation || "${13}" = --directory-ordering || "${13}" = --modifier-release || "${13}" = --auto-disconnect ]] || exit 2
+        [[ "${13}" = --frame-queue || "${13}" = --direct-address || "${13}" = --file-metadata || "${13}" = --password-fields || "${13}" = --share-rdp || "${13}" = --connect-password || "${13}" = --credential-dialog || "${13}" = --terminal-output || "${13}" = --settings-navigation || "${13}" = --window-dispatch || "${13}" = --menu-button || "${13}" = --draggable-divider || "${13}" = --list-search || "${13}" = --status-refresh || "${13}" = --peer-data || "${13}" = --file-progress || "${13}" = --custom-scale || "${13}" = --file-navigation || "${13}" = --directory-ordering || "${13}" = --modifier-release || "${13}" = --auto-disconnect ]] || exit 2
         MODE=flutter-model-tests
         FLUTTER_TEST_PROFILE=${13#--}
         ;;
@@ -10521,6 +10521,9 @@ run_flutter_model_tests() {
         elif [ "$FLUTTER_TEST_PROFILE" = draggable-divider ]; then
             result_prefix=FLUTTER_DRAGGABLE_DIVIDER_TEST_JSON
             expected_result='suites=1 tests=9'
+        elif [ "$FLUTTER_TEST_PROFILE" = list-search ]; then
+            result_prefix=FLUTTER_LIST_SEARCH_TEST_JSON
+            expected_result='suites=1 tests=6'
         elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
             result_prefix=FLUTTER_STATUS_REFRESH_TEST_JSON
             expected_result='suites=1 tests=9'
@@ -10602,6 +10605,8 @@ run_flutter_model_tests() {
             printf 'FLUTTER_MENU_BUTTON_STAGE=verify-source-and-inputs\n'
         elif [ "$FLUTTER_TEST_PROFILE" = draggable-divider ]; then
             printf 'FLUTTER_DRAGGABLE_DIVIDER_STAGE=verify-source-and-inputs\n'
+        elif [ "$FLUTTER_TEST_PROFILE" = list-search ]; then
+            printf 'FLUTTER_LIST_SEARCH_STAGE=verify-source-and-inputs\n'
         elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
             printf 'FLUTTER_STATUS_REFRESH_STAGE=verify-source-and-inputs\n'
         elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
@@ -10963,6 +10968,8 @@ run_flutter_model_tests() {
                     format_paths=()
                 elif [ "$FLUTTER_TEST_PROFILE" = draggable-divider ]; then
                     format_paths=()
+                elif [ "$FLUTTER_TEST_PROFILE" = list-search ]; then
+                    format_paths=()
                 elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
                     format_paths=(test/server_status_refresh_loop_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
@@ -11138,6 +11145,8 @@ run_flutter_model_tests() {
                     tests=(test/menu_button_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = draggable-divider ]; then
                     tests=(test/draggable_divider_test.dart)
+                elif [ "$FLUTTER_TEST_PROFILE" = list-search ]; then
+                    tests=(test/list_search_action_listener_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
                     tests=(test/server_status_refresh_loop_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
@@ -11265,7 +11274,7 @@ run_flutter_model_tests() {
                     exit 1
                 fi
                 file_navigation_stage source-postconditions
-                if [[ "$FLUTTER_TEST_PROFILE" = menu-button || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = auto-disconnect || "$FLUTTER_TEST_PROFILE" = share-rdp || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = modifier-release ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = menu-button || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = list-search || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = auto-disconnect || "$FLUTTER_TEST_PROFILE" = share-rdp || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = modifier-release ]]; then
                     cat /work/test.json
                 fi
                 if [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
@@ -11304,6 +11313,9 @@ run_flutter_model_tests() {
                     elif [ "$FLUTTER_TEST_PROFILE" = draggable-divider ]; then
                         cmp /source/flutter/lib/desktop/widgets/dragable_divider.dart lib/desktop/widgets/dragable_divider.dart
                         cmp /source/flutter/test/draggable_divider_test.dart test/draggable_divider_test.dart
+                    elif [ "$FLUTTER_TEST_PROFILE" = list-search ]; then
+                        cmp /source/flutter/lib/desktop/widgets/list_search_action_listener.dart lib/desktop/widgets/list_search_action_listener.dart
+                        cmp /source/flutter/test/list_search_action_listener_test.dart test/list_search_action_listener_test.dart
                     elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
                         cmp /source/flutter/lib/models/server_status_refresh_loop.dart lib/models/server_status_refresh_loop.dart
                         cmp /source/flutter/test/server_status_refresh_loop_test.dart test/server_status_refresh_loop_test.dart
@@ -11427,6 +11439,8 @@ run_flutter_model_tests() {
         printf 'FLUTTER_MENU_BUTTON_STAGE=run-production-widget-tests\n'
     elif [ "$FLUTTER_TEST_PROFILE" = draggable-divider ]; then
         printf 'FLUTTER_DRAGGABLE_DIVIDER_STAGE=run-production-widget-tests\n'
+    elif [ "$FLUTTER_TEST_PROFILE" = list-search ]; then
+        printf 'FLUTTER_LIST_SEARCH_STAGE=run-production-widget-tests\n'
     elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
         printf 'FLUTTER_STATUS_REFRESH_STAGE=run-production-lifecycle-tests\n'
     elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
@@ -11565,7 +11579,7 @@ run_flutter_model_tests() {
             || fail 'native window-channel artifact binding differs'
         grep -E '^LINUX_WINDOW_CHANNEL_ARTIFACTS=|^WINDOW_CHANNEL_CASE=|^WINDOW_VALUE_' "$output"
     fi
-    if [[ "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = draggable-divider ]]; then
+    if [[ "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = list-search ]]; then
         grep -E '^\{.*"type":"(start|suite|testStart|testDone|done)"' "$output"
     fi
     if [ "$FLUTTER_TEST_PROFILE" = connect-password ]; then
@@ -11609,6 +11623,14 @@ run_flutter_model_tests() {
         widget_sha256="$(sha256sum "$source_root/flutter/lib/desktop/widgets/dragable_divider.dart" | awk '{print $1}')"
         tests_sha256="$(sha256sum "$source_root/flutter/test/draggable_divider_test.dart" | awk '{print $1}')"
         printf 'FLUTTER_DRAGGABLE_DIVIDER_TESTS_VM=pass commit=%s tree=%s suites=1 tests=9 flutter=3.24.5 widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-draggable-divider-tests cleanup=joined\n' \
+            "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
+            "$widget_sha256" "$tests_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
+            "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+    elif [ "$FLUTTER_TEST_PROFILE" = list-search ]; then
+        local widget_sha256
+        widget_sha256="$(sha256sum "$source_root/flutter/lib/desktop/widgets/list_search_action_listener.dart" | awk '{print $1}')"
+        tests_sha256="$(sha256sum "$source_root/flutter/test/list_search_action_listener_test.dart" | awk '{print $1}')"
+        printf 'FLUTTER_LIST_SEARCH_TESTS_VM=pass commit=%s tree=%s suites=1 tests=6 flutter=3.24.5 widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-list-search-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$widget_sha256" "$tests_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

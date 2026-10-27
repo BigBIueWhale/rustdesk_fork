@@ -91,12 +91,22 @@ class _PeerCredentialBadgeState extends State<PeerCredentialBadge> {
           return const SizedBox.shrink();
         }
         if (snapshot.hasError) {
+          final message = '${snapshot.error}\n${widget.retryLabel}';
           return Tooltip(
-            message: '${snapshot.error}\n${widget.retryLabel}',
-            child: GestureDetector(
-              onTap: () => _retry(generation),
-              child: Icon(Icons.error_outline,
-                  size: widget.size, color: Colors.white),
+            message: message,
+            excludeFromSemantics: true,
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                onTap: () => _retry(generation),
+                child: Semantics(
+                  label: message,
+                  button: true,
+                  enabled: true,
+                  child: Icon(Icons.error_outline,
+                      size: widget.size, color: Colors.white),
+                ),
+              ),
             ),
           );
         }

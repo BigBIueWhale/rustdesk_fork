@@ -108777,3 +108777,29 @@ The source-bound networkless VM retains the shared RAM admission, file ceilings,
 monitor, exclusive lock and joined cleanup. No host application/test or unrelated
 parked cohort runs. Native credential storage/FFI, full cards and target OS
 accessibility integration remain separate acceptance work.
+
+Baseline `dUFlWZfePN` at `7c80769a69c850e99c218fdf8fd11deea9e924db`
+reproduces all four failures: no labelled/button/focusable semantics, neither
+Enter nor Space starts a retry, and focus pixels remain transparent. All ten
+pointer/ownership controls pass (two loader events are not behavioral tests).
+Serial: 85,600 bytes, SHA-256
+`d7b5565bc620aa30c31cc4e44f8618c992bea63f7e04e58b6a6e5ef10026811d`.
+QEMU 3405822 joins with exit 0; `/dev/shm/rustdesk-fork-vm-1000/run.w8k5q6cq`
+is absent. Supervisor lifetime 285.971 seconds; peak RAM scratch 6,363,594,752
+bytes; durable diagnostics 3,325,952 bytes. Before/during endpoint deltas are zero;
+final inventory has 49 additions/one removal (882/18 encoded bytes), unattributed
+and untouched. Exact completed diagnostics are retained as
+`credential-badge-baseline.dUFlWZfePN`; no active run root remains. The initial
+launch refused the entry script's group-write metadata before creating a VM;
+removing group write from that owned repository entry restored its required 0755.
+
+Candidate keeps `_retry` and all read/generation/forget logic byte-unchanged.
+Material/InkWell supplies traversal, activation and painted focus. Explicit
+button/enabled/label semantics include the existing error and translated Retry;
+Tooltip excludes duplicate semantics. The icon dimensions and peer-card placement
+remain unchanged. The three retained callback tests now capture InkWell's actual
+public `onTap` instead of the removed GestureDetector's callback; their operations
+and expectations are unchanged. Flutter's
+[InkWell documentation](https://api.flutter.dev/flutter/material/InkWell-class.html)
+requires the Material paint owner and explains why a transparent local Material
+keeps feedback visible above the peer card. Candidate verification is pending.

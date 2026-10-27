@@ -118,9 +118,9 @@ void main() {
     harness.calls.single.result.completeError(StateError('read denied'));
     await tester.pumpAndSettle();
     final retry = tester
-        .widget<GestureDetector>(find.ancestor(
+        .widget<InkWell>(find.ancestor(
             of: find.byIcon(Icons.error_outline),
-            matching: find.byType(GestureDetector)).first)
+            matching: find.byType(InkWell)).first)
         .onTap!;
     expect(
         await mainForgetPassword('selected', forgetPassword: (_) async {}),
@@ -165,9 +165,9 @@ void main() {
     expect(tester.widget<Tooltip>(find.byType(Tooltip)).message,
         contains('read denied'));
     final retry = tester
-        .widget<GestureDetector>(find.ancestor(
+        .widget<InkWell>(find.ancestor(
             of: find.byIcon(Icons.error_outline),
-            matching: find.byType(GestureDetector)).first)
+            matching: find.byType(InkWell)).first)
         .onTap!;
     retry();
     retry();
@@ -209,9 +209,9 @@ void main() {
     harness.calls.single.result.completeError(StateError('read denied'));
     await tester.pumpAndSettle();
     final retry = tester
-        .widget<GestureDetector>(find.ancestor(
+        .widget<InkWell>(find.ancestor(
             of: find.byIcon(Icons.error_outline),
-            matching: find.byType(GestureDetector)).first)
+            matching: find.byType(InkWell)).first)
         .onTap!;
     await tester.pumpWidget(harness.view('replacement'));
     retry();

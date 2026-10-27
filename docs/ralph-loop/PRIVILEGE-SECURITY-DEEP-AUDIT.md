@@ -108816,3 +108816,27 @@ seconds; peak RAM scratch 6,361,956,352 bytes; durable diagnostics 3,301,376 byt
 Before/during endpoint deltas are zero; final one-endpoint/18-byte removal is
 unattributed and untouched. Completed diagnostics are retained as
 `credential-badge-parser.ofT68Rcgl1`; all active run roots are absent.
+
+Accepted candidate `VdElZUEnV1` at
+`4975454ea499fb25ea700e5adabb660de44a891f`, tree
+`73abd597d1869aa3d052588278cbc69f1897b78f`: all 14 behavioral cases and three
+result-parser controls pass. The five new cases are byte-identical to the failed
+baseline. Production and retained tests are unchanged from `a360d341`; only the
+result inventory reference was corrected. Both suites, their exact case names,
+source copies and digests pass the focused profile. Command:
+`/bin/bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --credential-badge`.
+Serial: 76,767 bytes, SHA-256
+`5681e71809f7ea1b3c33a804c72f17c4bd2b6642876d382ed8310f8f09d971f6`.
+Widget SHA-256 `22e1dbf415fe15c31c4b6f3f65bc7b21e12a5a557263b2a447fff83109040f88`;
+accessibility cases SHA-256 `7b8448e525b0a698af7c58973d65245c18385f58522568737d1995b21f6b28b6`.
+Outer/supervisor lifetime 274/281.047 seconds; actual Flutter test stream 9.813
+seconds. Peak RAM scratch 6,363,201,536 bytes; durable evidence 3,313,664 bytes.
+QEMU 3444247 joins with exit 0; RAM `run.pfl88awh` and all active run roots are
+absent. Before/during endpoint deltas are zero; final 18-byte addition is
+unattributed and untouched. Host IP socket creation remained kernel-denied.
+
+This establishes rendered Flutter control behavior with controlled backend
+Futures, not native credential storage/FFI, full peer-card integration, OS screen
+readers or installed application acceptance. Those and all R-S11/R-S0/R-F5 and
+user-parked work remain OPEN. The ledger records only this result and the explicit
+tunnel-page pivot; its fresh token count follows separately.

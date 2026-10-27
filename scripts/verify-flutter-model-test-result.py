@@ -963,6 +963,9 @@ PEER_DATA_TESTS = {
     "peer decode redacts invalid shapes and field values",
     "peer decode preserves valid metadata and recovers after refusal",
     "peer decode accepts empty input without a diagnostic",
+    "peer snapshot refuses malformed envelopes without partial publication",
+    "peer snapshot refuses a malformed final row atomically",
+    "peer snapshot admits native address separators and complete clearing",
     "cached peer decode refuses data without payload diagnostics",
     "cached peer decode preserves snapshots and recovers after refusal",
     "platform metadata refuses input without payload diagnostics",
@@ -986,6 +989,7 @@ AUTOCOMPLETE_PEER_TESTS = {
     "autocomplete short alias and address remain fully visible",
 }
 PEER_LOADER_TESTS = {
+    "peer loader ignores refused snapshots before and after valid data",
     "peer loader waits for data beyond the request receipt",
     "peer loader accepts an empty published result",
     "peer loader retains cached metadata and unique remaining addresses",

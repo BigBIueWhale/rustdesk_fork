@@ -1252,7 +1252,7 @@ void main() {
     peers.updatePeers({'peers': malformed});
 
     expect(peers.peers, isEmpty);
-    expect(notifications, 1);
+    expect(notifications, 0);
     expect(diagnostics, ['peers(): invalid peer data']);
     expect(diagnostics.join(), isNot(contains(secret)));
   });
@@ -1277,7 +1277,7 @@ void main() {
       expect(peers.peers, isEmpty);
     }
 
-    expect(notifications, invalid.length);
+    expect(notifications, 0);
     expect(
         diagnostics, List.filled(invalid.length, 'peers(): invalid peer data'));
     expect(diagnostics.join(), isNot(contains(secret)));
@@ -1300,10 +1300,12 @@ void main() {
     peers.updatePeers({'peers': valid, 'ids': 'next,other'});
     expect(peers.restPeerIds, ['next', 'other']);
     expect(diagnostics, isEmpty);
+    final previousPeers = peers.peers;
+    final previousIds = peers.restPeerIds;
 
     peers.updatePeers({'peers': '[invalid'});
-    expect(peers.peers, isEmpty);
-    expect(peers.restPeerIds, isEmpty);
+    expect(peers.peers, same(previousPeers));
+    expect(peers.restPeerIds, same(previousIds));
 
     peers.updatePeers({'peers': valid});
     final peer = peers.peers.single;
@@ -1317,8 +1319,84 @@ void main() {
     expect(peer.rdpUsername, metadata['rdpUsername']);
     expect(peer.loginName, metadata['loginName']);
     expect(peer.note, metadata['note']);
-    expect(notifications, 3);
+    expect(notifications, 2);
     expect(diagnostics, ['peers(): invalid peer data']);
+  });
+
+  test('peer snapshot refuses malformed envelopes without partial publication',
+      () {
+    const secret = 'SyntheticPrivateSnapshot';
+    peers.updatePeers({
+      'peers': '[{"id":"192.0.2.1","alias":"Current"}]',
+      'ids': '192.0.2.2',
+    });
+    final previousPeers = peers.peers;
+    final previousIds = peers.restPeerIds;
+    final invalid = <Map<String, dynamic>>[
+      {},
+      {'peers': null},
+      {'peers': 7},
+      {'peers': <String>[secret]},
+      {'peers': <String, String>{'private': secret}},
+      {'peers': '[]', 'ids': 7},
+      {'peers': '[]', 'ids': <String>[secret]},
+      {'peers': '[]', 'ids': <String, String>{'private': secret}},
+      {'peers': '[]', 'ids': '192.0.2.3,,192.0.2.4'},
+    ];
+    for (final event in invalid) {
+      expect(() => peers.updatePeers(event), returnsNormally);
+      expect(peers.peers, same(previousPeers));
+      expect(peers.restPeerIds, same(previousIds));
+      expect(notifications, 1);
+    }
+    expect(
+        diagnostics, List.filled(invalid.length, 'peers(): invalid peer data'));
+    expect(diagnostics.join(), isNot(contains(secret)));
+    peers.updatePeers({'peers': '[{"id":"192.0.2.5"}]'});
+    expect(peers.peers.single.id, '192.0.2.5');
+    expect(peers.restPeerIds, isEmpty);
+    expect(notifications, 2);
+  });
+
+  test('peer snapshot refuses a malformed final row atomically', () {
+    peers.updatePeers({
+      'peers': '[{"id":"192.0.2.1"}]',
+      'ids': '192.0.2.2',
+    });
+    final previousPeers = peers.peers;
+    final previousIds = peers.restPeerIds;
+    peers.updatePeers({
+      'peers': '[{"id":"192.0.2.3"},{"username":[]}]',
+      'ids': '192.0.2.4',
+    });
+    expect(peers.peers, same(previousPeers));
+    expect(peers.restPeerIds, same(previousIds));
+    expect(notifications, 1);
+    expect(diagnostics, ['peers(): invalid peer data']);
+  });
+
+  test('peer snapshot admits native address separators and complete clearing',
+      () {
+    final observed = <List<String>>[];
+    peers.addListener(() => observed.add([
+          ...peers.peers.map((peer) => peer.id),
+          ...peers.restPeerIds,
+        ]));
+    peers.updatePeers({
+      'peers': '[{"id":"192.0.2.1"}]',
+      'ids': '192.0.2.2, [2001:db8::1]:21118, example.test',
+    });
+    expect(observed, [
+      ['192.0.2.1', '192.0.2.2', '[2001:db8::1]:21118', 'example.test']
+    ]);
+    for (final empty in ['', '[]']) {
+      peers.updatePeers({'peers': empty, 'ids': ''});
+      expect(peers.peers, isEmpty);
+      expect(peers.restPeerIds, isEmpty);
+      expect(observed.last, isEmpty);
+    }
+    expect(notifications, 3);
+    expect(diagnostics, isEmpty);
   });
 
   test('peer decode accepts empty input without a diagnostic', () {

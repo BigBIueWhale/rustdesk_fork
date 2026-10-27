@@ -38,6 +38,35 @@ class _LoaderHarness {
 }
 
 void main() {
+  test('peer loader ignores refused snapshots before and after valid data',
+      () async {
+    final h = _LoaderHarness();
+    final request = h.loader.getAllPeers();
+    h.requests.single.complete();
+    await request;
+    final pendingPublications = h.publications;
+    h.source.updatePeers({'peers': '[invalid'});
+    expect(h.loader.isPeersLoaded, isFalse);
+    expect(h.loader.isPeersLoading, isTrue);
+    expect(h.publications, pendingPublications);
+    h.publish([
+      {'id': '192.0.2.1', 'alias': 'Current'}
+    ], ids: '192.0.2.2, 192.0.2.3');
+    expect(h.loader.peers.map((peer) => peer.id),
+        ['192.0.2.1', '192.0.2.2', '192.0.2.3']);
+    expect(h.loader.isPeersLoaded, isTrue);
+    expect(h.loader.isPeersLoading, isFalse);
+    final current = h.loader.peers;
+    final publications = h.publications;
+    h.source.updatePeers({'peers': '[]', 'ids': 7});
+    expect(h.loader.peers, same(current));
+    expect(h.publications, publications);
+    h.publish([]);
+    expect(h.loader.peers, isEmpty);
+    expect(h.loader.isPeersLoaded, isTrue);
+    expect(h.publications, publications + 1);
+  });
+
   test('peer loader waits for data beyond the request receipt', () async {
     final h = _LoaderHarness();
     final request = h.loader.getAllPeers();

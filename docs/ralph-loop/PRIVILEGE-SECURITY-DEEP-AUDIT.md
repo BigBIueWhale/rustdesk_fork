@@ -109314,3 +109314,28 @@ exact document comparison, requirement/anchor/link preservation and whitespace
 validation, followed by fresh isolated document counts. No product execution or
 new presentation/LPE acceptance is claimed. All fifteen native credential
 actions, R-S0/R-F5 and previously parked work remain open.
+
+Exact comparison passes: only the specified R-S11ez/R-S11fp and Appendix C #324
+edits occur in requirements; all 411 requirement declarations, 34 HTML IDs and
+211 links remain identical, and touched markup is balanced. The ledger changes
+only by the five-line R-S11fp status addition. Product, tests, verifier recipes
+and live instructions are unchanged; `git diff --check` passes.
+
+Source `ec2d1f8341a68c3d85adb6ba7973a68d3e2d5a5a`, tree
+`f135c2368aada0ffb2729911a880a2cef7191cab`, passes
+`/bin/bash scripts/smoke-verifier-vm-authority.sh --ledger-token-count --requirements`
+as `8MsxrdCbKx`. Pinned tiktoken-0.12.0/cl100k_base/encode_ordinary, seven
+controls and both complete UTF-8 round trips pass. Requirements: 368,543 tokens
+(+118), 1,682,755 bytes (+666), SHA-256
+`c3318eaff2bb29e618ea8895c57ba9cdeee581e421b3716af634ba04d21fed87`.
+Ledger: 352,995 tokens (+94), 1,603,966 bytes (+450), SHA-256
+`efc0a715435c855006b0ef362b349ae8c84c3f727117a21779be81383f96c38d`;
+its approximate 400,000-token budget remains met.
+
+Serial: 97,398 bytes, SHA-256
+`6e8b27a2caca89993993b79405b15f0c3fe59a4b3e91c73ce8a0ca670e95a7df`.
+Outer/supervisor lifetime is 27/30.927 seconds, peak RAM scratch 402,485,248
+bytes and durable evidence 147,456 bytes. QEMU 3709184 joins with exit 0;
+its PID, RAM `run.v1n504lq` and all active run roots are absent. Before/during/
+after endpoint differences are zero. This audit-only receipt changes neither
+counted document and adds no product/native acceptance claim.

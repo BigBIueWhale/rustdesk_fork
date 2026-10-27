@@ -108369,3 +108369,17 @@ native OS preference propagation and other-device/platform execution remain
 open, as do installed credential acceptance, R-S0/R-F5, release/independent
 review and every user park. The following ledger update is documentation only;
 its fresh exact-input token count is recorded separately.
+
+Ledger count at `decaf88b`, run `ZsOJYBqjw2`: **350,981 tokens / 1,594,299
+bytes**, SHA-256
+`c790626d2909deb2ed3d5b2caff487ae50b8f232e7e9ec3fb2ef9fac0138c6ee`.
+Pinned tiktoken-0.12.0/cl100k_base/encode_ordinary, all seven controls and the
+whole-input UTF-8 round trip pass; the approximate 400,000-token budget remains
+met. Serial: 96,599 bytes, SHA-256
+`7402157d11066e9042bf92effc177629e96470a09f5712da5633cacef7e38afd`.
+Outer/supervisor time 30/33.178 seconds; peak RAM scratch 402,399,232 bytes,
+durable evidence 151,552 bytes. QEMU 3190886 joined with exit 0; RAM
+`run.00mml4_s` and active run roots are absent. Before/during listener deltas are
+zero; the final snapshot retains one unattributed endpoint removal, left
+untouched. All twelve parked stashes are unchanged. This audit-only receipt
+changes neither the counted ledger nor tested product.

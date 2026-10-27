@@ -3420,6 +3420,32 @@ multiple-process/log-family behavior, filesystem permissions/races, actual daily
 rollover, native other-platform, flood/soak, R-S0/R-F5 and release acceptance remain OPEN.
 The single-record bounding follow-up is user-parked; the pivot continues with input behavior.
 
+**Windows service log namespace — OPEN authority gap; native exploitability unverified.**
+The LocalSystem service calls `Config::initialize_windows_service_owned_root` and
+then `init_log(false, "service")` (`src/platform/windows.rs:2970`). The retained,
+ACL-checked root is `ProgramData/<app>/config`, but `Config::log_path` takes its
+parent and selects the sibling `log`; `init_log` appends `service`. The MSI's
+protected SYSTEM/Administrators `PermissionEx` applies to `App.MachineConfigFolder`,
+not that sibling. `windows_machine_config::initialize` no-reparse walks its config
+path and validates the final config handle's owner/DACL; that proof is neither a
+log-directory proof nor a retained authority for later log pathname operations.
+The pinned flexi_logger 0.27.4 builder uses `create_dir_all` and following metadata;
+its writer uses ordinary create/truncate opens, timestamp rotation uses pathname
+rename, and retention removes pathname matches. These operations have no connection
+to the retained configuration handle. The source gap is established; default installed
+ACLs, a non-admin-controlled parent/log entry and actual protected-file effects have
+not been exercised on Windows, so no completed LPE or native refusal is claimed.
+`service-log-authority-53724d08.json` binds the source chain, installer scope and
+dependency-file checksums. Next work must establish one retained privileged logging
+namespace across creation, reopen, rotation and cleanup, preserving authorized logging
+and retention. Installed Windows acceptance must observe legitimate logging/restart/
+rotation and foreign-owner, reparse, hard-link and replacement refusals without changing
+protected sentinels. A path-selection-only patch or relabeling pre-existing untrusted
+contents would not establish that contract. Windows VM storage acceptance and native
+execution remain open; no Windows VM or parked single-record work ran here. Linux's
+service-role home selection was also traced to the effective UID's passwd home, without
+establishing native log-directory/leaf safety. R-S0 and all existing parks remain OPEN.
+
 **Retired TCP-disable query (`658d5270`).** The unused
 `is_disable_tcp_listen()` resolver is deleted. Both former rendezvous callers
 were removed by `ec589b8c`; current source has no caller. The direct listener,

@@ -1,9 +1,28 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:characters/characters.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common/widgets/start_ellipsis_text.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() async {
+    final root = Platform.environment['FLUTTER_ROOT'];
+    if (root == null) throw StateError('Flutter SDK font location is missing');
+    final loader = FontLoader('PathLabelTest');
+    for (final weight in ['Regular', 'Bold']) {
+      loader.addFont(File('$root/bin/cache/artifacts/material_fonts/'
+              'Roboto-$weight.ttf')
+          .readAsBytes()
+          .then(ByteData.sublistView));
+    }
+    await loader.load();
+  });
+
   const style = TextStyle(fontFamily: 'Ahem', fontSize: 10);
 
   Widget subject(String text, double width) => MaterialApp(
@@ -59,4 +78,68 @@ void main() {
       containsSemantics(label: original),
     );
   }, semanticsEnabled: true);
+
+  for (final inherited in [true, false]) {
+    for (final overflowing in [false, true]) {
+      final styleName = inherited ? 'inherited' : 'explicit';
+      final sizeName = overflowing ? 'truncated' : 'fitting';
+      testWidgets(
+          'bold accessibility preserves $sizeName filename end with $styleName style',
+          (tester) async {
+        const original = 'reports/iiiiiiiiiiiiiiiiiiii.txt';
+        const font = TextStyle(
+            inherit: false, fontFamily: 'PathLabelTest', fontSize: 24,
+            fontWeight: FontWeight.normal, color: Colors.black);
+        final sample = overflowing ? '…iiiiiiii.txt' : original;
+        double width(FontWeight weight) {
+          final painter = TextPainter(
+              text: TextSpan(text: sample, style: font.copyWith(fontWeight: weight)),
+              textDirection: TextDirection.ltr)..layout();
+          try {
+            return painter.width;
+          } finally {
+            painter.dispose();
+          }
+        }
+        final regular = width(FontWeight.normal);
+        final bold = width(FontWeight.bold);
+        expect(bold, greaterThan(regular + 1), reason: 'Real font metrics must differ');
+        final available = (regular + bold) / 2;
+        final label = StartEllipsisText(original, style: inherited ? null : font);
+
+        Future<String> render(bool boldText) async {
+          await tester.pumpWidget(Directionality(
+              textDirection: TextDirection.ltr,
+              child: MediaQuery(
+                  data: MediaQueryData(boldText: boldText),
+                  child: DefaultTextStyle(
+                      style: font,
+                      child: Align(
+                          alignment: Alignment.topLeft,
+                          child: SizedBox(width: available, child: label))))));
+          final text = tester.widget<Text>(find.byType(Text));
+          final visible = text.data!;
+          expect(text.semanticsLabel, original);
+          expect(visible, endsWith('.txt'));
+          final paragraph = tester.renderObject<RenderParagraph>(find.byType(RichText));
+          final boxes = paragraph.getBoxesForSelection(TextSelection(
+              baseOffset: visible.length - 4, extentOffset: visible.length));
+          expect(boxes, isNotEmpty);
+          for (final box in boxes) {
+            expect(box.left, greaterThanOrEqualTo(0));
+            expect(box.right, lessThanOrEqualTo(paragraph.size.width + 0.01),
+                reason: 'The rendered filename extension must remain inside the label');
+          }
+          return visible;
+        }
+
+        final normalText = await render(false);
+        expect(normalText, overflowing ? startsWith('…') : original);
+        final boldText = await render(true);
+        expect(boldText, startsWith('…'));
+        expect(boldText.length, lessThan(normalText.length));
+        expect(await render(false), normalText);
+      });
+    }
+  }
 }

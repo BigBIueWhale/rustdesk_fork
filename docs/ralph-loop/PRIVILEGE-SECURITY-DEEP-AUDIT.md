@@ -108295,3 +108295,29 @@ durable evidence 147,456 bytes. QEMU 3131787 joined with exit 0, RAM
 zero; the final snapshot has one unattributed endpoint removal, left untouched.
 All twelve parked stashes retain their original identities. The following
 audit-only receipt commit changes neither the counted ledger nor tested product.
+
+## 2026-10-27 user pivot — filename accessibility layout
+
+The user's new pivot leaves whiteboard verifier/filter and historical-ledger
+cleanup OPEN/PARKED. That investigation made no edits and ran no behavioral check;
+do not resume it automatically. All earlier user parks remain in force.
+
+This slice addresses `StartEllipsisText`: its suffix measurement inherits the
+ordinary style but omits the system bold-text preference. The child `Text` applies
+that preference separately, so the selected filename ending can exceed the width
+the widget reserved for it. Flutter 3.24.5's authoritative implementation confirms
+the merge in `packages/flutter/lib/src/widgets/text.dart:614–615`:
+https://raw.githubusercontent.com/flutter/flutter/3.24.5/packages/flutter/lib/src/widgets/text.dart.
+The intended behavior is to measure using the same effective typography as the
+rendered Text, while preserving complete graphemes, the filename suffix and full
+accessibility label. No session, native setting or privileged operation is added.
+
+Preparation retains the four original renderer tests and adds four real-font
+cases: fitting/truncated labels with inherited/explicit style, toggling bold on
+and off around the same widget. The observation is the rendered `.txt` selection
+box relative to its actual paragraph bounds, not source text or a mocked fitter.
+Regular and bold Roboto come from the existing authenticated Flutter SDK; no font
+or dependency download is introduced. The `--flutter-model-tests --path-labels`
+shard uses the existing bounded RAM profile, source/artifact binding, strict
+eight-case result inventory and three parser controls. The aggregate model count
+increases by four. Product source is unchanged for the baseline; execution follows.

@@ -72,6 +72,17 @@ EXPECTED_SUITES = {
     "terminal_output_decoder_test.dart",
     "terminal_model_lifecycle_test.dart",
 }
+PATH_LABEL_TESTS = {
+    "leaves fitting text unchanged",
+    "retains the longest fitting suffix",
+    "never cuts a grapheme cluster",
+    "exposes the complete text to assistive technology",
+    *{
+        f"bold accessibility preserves {size} filename end with {style} style"
+        for size in ("fitting", "truncated")
+        for style in ("inherited", "explicit")
+    },
+}
 FRAME_QUEUE_TESTS = {
     "retains one running frame and only the latest successor per display",
     "different displays drain independently",
@@ -1332,7 +1343,7 @@ CLIPBOARD_KEYSTROKES_TESTS = {
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "path-labels", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -1347,6 +1358,10 @@ def parse_result(path, profile="models"):
         expected_suites = {"file_metadata_probe_test.dart"}
         expected_tests = len(FILE_METADATA_TESTS)
         expected_names = FILE_METADATA_TESTS
+    elif profile == "path-labels":
+        expected_suites = {"start_ellipsis_text_test.dart"}
+        expected_tests = len(PATH_LABEL_TESTS)
+        expected_names = PATH_LABEL_TESTS
     elif profile == "menu-button":
         expected_by_suite = MENU_BUTTON_SUITES
         expected_suites = set(expected_by_suite)
@@ -1581,7 +1596,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "path-labels", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -1596,6 +1611,7 @@ def main():
         "file-metadata": "FLUTTER_FILE_METADATA_TEST_JSON",
         "password-fields": "FLUTTER_PASSWORD_FIELD_TEST_JSON",
         "menu-button": "FLUTTER_MENU_BUTTON_TEST_JSON",
+        "path-labels": "FLUTTER_PATH_LABEL_TEST_JSON",
         "draggable-divider": "FLUTTER_DRAGGABLE_DIVIDER_TEST_JSON",
         "list-search": "FLUTTER_LIST_SEARCH_TEST_JSON",
         "peer-search": "FLUTTER_PEER_SEARCH_TEST_JSON",

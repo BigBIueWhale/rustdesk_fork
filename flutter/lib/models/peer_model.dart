@@ -85,30 +85,36 @@ class Peers extends ChangeNotifier {
 
   @visibleForTesting
   void updatePeers(Map<String, dynamic> evt) {
-    if (getInitPeers != null) {
-      peers = getInitPeers?.call() ?? [];
-    } else {
-      peers = _decodePeers(evt['peers']);
+    final nextPeers = getInitPeers?.call() ?? _decodePeers(evt['peers']);
+    if (nextPeers == null) return;
+    final ids = evt['ids'];
+    if (ids != null && ids is! String) {
+      debugPrint('peers(): invalid peer data');
+      return;
+    }
+    final nextIds = ids is String && ids.isNotEmpty
+        ? ids.split(',').map((id) => id.trim()).toList()
+        : <String>[];
+    if (nextIds.any((id) => id.isEmpty)) {
+      debugPrint('peers(): invalid peer data');
+      return;
     }
 
-    restPeerIds = [];
-    if (evt['ids'] != null) {
-      restPeerIds = (evt['ids'] as String).split(',');
-    }
-
+    peers = nextPeers;
+    restPeerIds = nextIds;
     notifyListeners();
   }
 
-  List<Peer> _decodePeers(String peersStr) {
+  List<Peer>? _decodePeers(Object? peersStr) {
     try {
       if (peersStr == "") return [];
-      List<dynamic> peers = json.decode(peersStr);
+      List<dynamic> peers = json.decode(peersStr as String);
       return peers.map((peer) {
         return Peer.fromJson(peer as Map<String, dynamic>);
       }).toList();
     } catch (_) {
       debugPrint('peers(): invalid peer data');
     }
-    return [];
+    return null;
   }
 }

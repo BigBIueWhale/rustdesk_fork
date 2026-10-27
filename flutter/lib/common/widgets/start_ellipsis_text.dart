@@ -32,16 +32,14 @@ class StartEllipsisText extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final visibleText = constraints.hasBoundedWidth
-            ? _fitSuffix(
-                text,
-                constraints.maxWidth,
-                effectiveStyle,
-                textDirection,
-                textScaler,
-                locale,
-              )
-            : text;
+        final visibleText = _fitSuffix(
+          text,
+          constraints.maxWidth,
+          effectiveStyle,
+          textDirection,
+          textScaler,
+          locale,
+        );
         return Text(
           visibleText,
           style: style,
@@ -77,7 +75,7 @@ String _fitSuffix(
     bool fits(String candidate) {
       painter.text = TextSpan(text: candidate, style: style);
       painter.layout();
-      return painter.width <= maxWidth;
+      return !painter.didExceedMaxLines && painter.width <= maxWidth;
     }
 
     if (fits(text)) {

@@ -172,7 +172,7 @@ class _Tabs implements DesktopTabController {
       throw UnsupportedError('Unexpected desktop tab call: ${call.memberName}');
 }
 
-class _MobileSettingsModel implements FfiModel {
+class _MobileSettingsModel with ChangeNotifier implements FfiModel {
   @override
   dynamic noSuchMethod(Invocation call) =>
       throw UnsupportedError('Unexpected mobile model call: ${call.memberName}');
@@ -184,8 +184,8 @@ Finder _keepAwakeTile() => find.ancestor(
 
 Future<void> _mountMobile(WidgetTester tester, TargetPlatform platform) async {
   await tester.binding.setSurfaceSize(const Size(400, 600));
-  await tester.pumpWidget(Provider<FfiModel>.value(
-    value: _MobileSettingsModel(),
+  await tester.pumpWidget(ChangeNotifierProvider<FfiModel>(
+    create: (_) => _MobileSettingsModel(),
     child: MaterialApp(
       theme: MyTheme.lightTheme.copyWith(platform: platform),
       home: Scaffold(body: mobile.SettingsPage()),

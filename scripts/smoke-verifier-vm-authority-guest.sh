@@ -3946,6 +3946,7 @@ run_focused_rust_tests() {
             ipc::pulse_audio::tests::accepted_owner_close_interrupts_silent_capture_wait
             ipc::pulse_audio::tests::real_monitor_capture_revokes_after_audio_stops
             ipc::pulse_audio::tests::real_kernel_pa_admission_refuses_same_uid_child_with_token
+            ipc::pulse_audio::tests::real_source_names_select_devices_with_duplicate_descriptions
             ipc::pulse_audio::tests::real_source_selection_tracks_default_output
             ipc::pulse_audio::tests::real_source_selection_rejects_unavailable_or_ambiguous_requests
             ipc::pulse_audio::tests::real_source_selection_retires_on_device_removal_and_refuses_move
@@ -7716,6 +7717,7 @@ PY
                 "$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256"
         else
         printf '%s\n' "${pa_artifact_receipts[@]}" "${pa_retirement_receipts[@]}"
+        grep -E '^test [a-z0-9_:]+ \.\.\. ok$|^PA_SOURCE_' "$output"
         grep -E '^PA_RUNTIME_BUILD=(started|pass) ' "$output"
         printf 'LINUX_PA_AUTHORITY_VM=pass commit=%s tree=%s tests=%s rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s pa_candidate=%s pa_native=monitor-capture-revocation-and-same-uid-peer-refusal uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \

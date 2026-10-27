@@ -493,6 +493,60 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     #[ignore = "requires the private native PulseAudio source fixture"]
+    async fn real_source_names_select_devices_with_duplicate_descriptions() {
+        async fn selected_source(peer: &LinuxProcessIdentity, token: &str, name: &str) -> Option<u32> {
+            let (helper_socket, client_socket) = tokio::net::UnixStream::pair().unwrap();
+            let mut helper = ConnectionTmpl::new_pulse_audio(helper_socket);
+            let mut client = ConnectionTmpl::new_pulse_audio(client_socket);
+            let mut capture: NativeCapture<'_> =
+                Box::pin(super::capture(&mut helper, peer, token, name));
+            let started = tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    tokio::select! {
+                        _ = &mut capture => break false,
+                        frame = client.next_pulse_audio_frame_timeout(100) => {
+                            if frame.unwrap().is_some() { break true; }
+                        }
+                    }
+                }
+            }).await.unwrap();
+            let source = if started { Some(native_recording().await.1) } else { None };
+            drop(capture);
+            drop(helper);
+            drop(client);
+            assert_native_record_streams(0).await;
+            source
+        }
+
+        assert_native_record_streams(0).await;
+        let original_default = native_pactl(&["get-default-source"]).await;
+        let first = native_source("rd_named_first", "rd_shared_description").await;
+        let second = native_source("rd_named_second", "rd_shared_description").await;
+        assert_eq!(first.2, second.2);
+        let sources = tokio::task::spawn_blocking(crate::platform::linux::get_pa_sources)
+            .await.unwrap();
+        native_pactl(&["set-default-source", "rd_named_second.monitor"]).await;
+        let default = tokio::task::spawn_blocking(crate::common::get_default_sound_input)
+            .await.unwrap();
+        let authority = crate::audio_service::PaCaptureNativeFixture::new().unwrap();
+        let peer = current_linux_process_identity().unwrap();
+        let selected_first = selected_source(&peer, authority.token(), "rd_named_first.monitor").await;
+        let selected_second = selected_source(&peer, authority.token(), "rd_named_second.monitor").await;
+        let description_refused = native_request_refused(&peer, authority.token(), &first.2).await;
+        native_pactl(&["set-default-source", &original_default]).await;
+        native_pactl(&["unload-module", &second.0.to_string()]).await;
+        native_pactl(&["unload-module", &first.0.to_string()]).await;
+        println!("PA_SOURCE_NAMES first={selected_first:?} expected_first={} second={selected_second:?} expected_second={} default={default:?} description_refused={description_refused}", first.1, second.1);
+        assert!(sources.contains(&("rd_named_first.monitor".to_owned(), first.2.clone())));
+        assert!(sources.contains(&("rd_named_second.monitor".to_owned(), second.2.clone())));
+        assert_eq!(selected_first, Some(first.1));
+        assert_eq!(selected_second, Some(second.1));
+        assert_eq!(default.as_deref(), Some("rd_named_second.monitor"));
+        assert!(description_refused);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "requires the private native PulseAudio source fixture"]
     async fn real_source_selection_tracks_default_output() {
         assert_native_record_streams(0).await;
         let original_default = native_pactl(&["get-default-sink"]).await;

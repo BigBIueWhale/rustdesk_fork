@@ -108909,3 +108909,16 @@ of either deleted function. Whitespace review passes. No product test, native
 receiver, installed service or remaining checker execution is represented by
 these inspection results. The ledger count is verified separately in its bounded
 networkless VM; the broad goal remains active.
+
+Fresh ledger count `t0XISnh3Av` at `e48d0bb27c218bf3251add81e9bb8b0998c34f53`
+passes: 352,126 tokens / 1,599,694 bytes, SHA-256
+`3c21b32c073095708330343f5a0b5effc18da97b46dcd6d90ac582154c896209`.
+The pinned tiktoken-0.12.0/cl100k_base/encode_ordinary recipe, seven controls and
+whole-input UTF-8 round trip pass; the approximate 400,000-token budget remains
+met. Serial: 96,984 bytes, SHA-256
+`bfe0bd6662c17672fad2540ae52bb57cb63a70dc52f3d29f7cfa555785271a4b`.
+Outer/supervisor lifetime 29/31.920 seconds; peak RAM scratch 402,284,544 bytes;
+durable evidence 147,456 bytes. QEMU 3479763 joins with exit 0; RAM `run.isfvpovd`
+and all active run roots are absent. All endpoint deltas are zero and all thirteen
+parked stash IDs are preserved. This receipt edits neither the counted ledger nor
+the inspected checker. Product/native acceptance and the broad goal remain open.

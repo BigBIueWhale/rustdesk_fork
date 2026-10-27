@@ -994,6 +994,13 @@ PEER_DATA_SUITES = {
     "all_peers_loader_test.dart": PEER_LOADER_TESTS,
 }
 SETTINGS_NAVIGATION_TESTS = {
+    *{f"mobile keep awake {skin} {case}"
+      for skin in ("android", "iOS")
+      for case in (
+          "owns save through rebuild and scrolling",
+          "failure and mismatch permit identical retry",
+          "readback errors stay local and retry",
+          "close drains admitted save and retires callbacks")},
     "recording directory change admits one picker and one save",
     "recording directory closed page cannot apply a picker result",
     "recording directory cancellation and picker failure allow retry",

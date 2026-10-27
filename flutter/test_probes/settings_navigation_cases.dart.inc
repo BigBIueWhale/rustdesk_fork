@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common.dart';
+import 'package:flutter_hbb/consts.dart';
+import 'package:flutter_hbb/mobile/pages/settings_page.dart' as mobile;
 import 'package:flutter_hbb/desktop/pages/desktop_setting_page.dart';
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
 import 'package:flutter_hbb/generated_bridge.dart';
@@ -11,12 +13,18 @@ import 'package:flutter_hbb/models/native_model.dart';
 import 'package:flutter_hbb/models/server_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+import 'package:provider/provider.dart';
+import 'package:settings_ui/settings_ui.dart';
 
 class _NativeSettings implements RustdeskImpl {
   final unexpected = <Symbol>[];
   String recordingDirectory = '/work/nonexistent-settings-recordings';
   final recordingWrites = <String>[];
   Future<void> Function(String)? saveRecordingDirectory;
+  String keepAwake = 'Y';
+  final keepAwakeWrites = <String>[];
+  Future<String> Function(String)? saveKeepAwake;
+  bool refuseKeepAwakeRead = false;
 
   @override
   dynamic noSuchMethod(Invocation call) {
@@ -34,7 +42,12 @@ class _NativeSettings implements RustdeskImpl {
       case #mainGetUseTextureRender:
         return false;
       case #mainGetBuildinOption:
+        return '';
       case #mainGetLocalOption:
+        if (key == kOptionKeepAwakeDuringOutgoingSessions) {
+          if (refuseKeepAwakeRead) throw StateError('readback unavailable');
+          return keepAwake;
+        }
         return '';
       case #mainGetOptionSync:
         if (key == 'access-mode') return 'full';
@@ -53,6 +66,13 @@ class _NativeSettings implements RustdeskImpl {
       case #mainVideoSaveDirectory:
         return recordingDirectory;
       case #mainSetLocalOption:
+        if (key == kOptionKeepAwakeDuringOutgoingSessions) {
+          final value = call.namedArguments[#value] as String;
+          keepAwakeWrites.add(value);
+          return Future<void>.sync(() async {
+            keepAwake = await saveKeepAwake?.call(value) ?? value;
+          });
+        }
         if (key != 'video-save-directory') break;
         final value = call.namedArguments[#value] as String;
         recordingWrites.add(value);
@@ -152,6 +172,28 @@ class _Tabs implements DesktopTabController {
       throw UnsupportedError('Unexpected desktop tab call: ${call.memberName}');
 }
 
+class _MobileSettingsModel implements FfiModel {
+  @override
+  dynamic noSuchMethod(Invocation call) =>
+      throw UnsupportedError('Unexpected mobile model call: ${call.memberName}');
+}
+
+Finder _keepAwakeTile() => find.ancestor(
+    of: find.text('keep-awake-during-outgoing-sessions-label'),
+    matching: find.byType(SettingsTile));
+
+Future<void> _mountMobile(WidgetTester tester, TargetPlatform platform) async {
+  await tester.binding.setSurfaceSize(const Size(400, 600));
+  await tester.pumpWidget(Provider<FfiModel>.value(
+    value: _MobileSettingsModel(),
+    child: MaterialApp(
+      theme: MyTheme.lightTheme.copyWith(platform: platform),
+      home: Scaffold(body: mobile.SettingsPage()),
+    ),
+  ));
+  await _settle(tester);
+}
+
 Future<void> _settle(WidgetTester tester) async {
   await tester.pump();
   await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
@@ -210,6 +252,121 @@ void main() {
     expect(native.unexpected, isEmpty);
     isTest = false;
   });
+
+  for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
+    final skin = platform.name;
+    SettingsTile tile(WidgetTester tester) =>
+        tester.widget<SettingsTile>(_keepAwakeTile());
+    Finder status(Type type) => find.descendant(
+        of: _keepAwakeTile(), matching: find.byType(type));
+
+    testWidgets('mobile keep awake $skin owns save through rebuild and scrolling',
+        (tester) async {
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final completion = Completer<String>();
+      native.saveKeepAwake = (_) => completion.future;
+      await _mountMobile(tester, platform);
+      final change = tile(tester).onToggle!;
+      change(false);
+      change(false);
+      await tester.pump();
+      tester.state(find.byType(mobile.SettingsPage)).setState(() {});
+      await tester.pump();
+      final position = tester.state<ScrollableState>(find.byType(Scrollable)).position;
+      position.jumpTo(position.maxScrollExtent);
+      await tester.pump();
+      position.jumpTo(0);
+      await tester.pump();
+      final blocked = tile(tester).onToggle == null;
+      final progress = status(LinearProgressIndicator).evaluate().length;
+      change(false);
+      final pendingWrites = List<String>.of(native.keepAwakeWrites);
+      completion.complete('N');
+      await _settle(tester);
+      expect(pendingWrites, ['N']);
+      expect(blocked, isTrue);
+      expect(progress, 1);
+      expect(tile(tester).initialValue, isFalse);
+      expect(tile(tester).onToggle, isNotNull);
+      expect(native.keepAwake, 'N');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('mobile keep awake $skin failure and mismatch permit identical retry',
+        (tester) async {
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      var attempts = 0;
+      native.saveKeepAwake = (value) async {
+        attempts++;
+        if (attempts == 1) throw StateError('save unavailable');
+        return attempts == 2 ? 'Y' : value;
+      };
+      await _mountMobile(tester, platform);
+      for (var attempt = 0; attempt < 2; attempt++) {
+        tile(tester).onToggle!(false);
+        await _settle(tester);
+        expect(tile(tester).initialValue, isTrue);
+        expect(find.descendant(of: _keepAwakeTile(), matching: find.text('Failed')),
+            findsOneWidget);
+        expect(tile(tester).onToggle, isNotNull);
+      }
+      tile(tester).onToggle!(false);
+      await _settle(tester);
+      expect(native.keepAwakeWrites, ['N', 'N', 'N']);
+      expect(tile(tester).initialValue, isFalse);
+      expect(find.text('Failed'), findsNothing);
+      tile(tester).onToggle!(true);
+      await _settle(tester);
+      expect(native.keepAwakeWrites.last, 'Y');
+      expect(tile(tester).initialValue, isTrue);
+    });
+
+    testWidgets('mobile keep awake $skin readback errors stay local and retry',
+        (tester) async {
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final escaped = <Object>[];
+      native.saveKeepAwake = (value) async {
+        native.refuseKeepAwakeRead = true;
+        return value;
+      };
+      await _mountMobile(tester, platform);
+      runZonedGuarded(() => tile(tester).onToggle!(false),
+          (Object error, StackTrace stack) => escaped.add(error));
+      await _settle(tester);
+      expect(escaped, isEmpty);
+      expect(tile(tester).initialValue, isTrue);
+      expect(find.text('Failed'), findsOneWidget);
+      native.refuseKeepAwakeRead = false;
+      native.saveKeepAwake = null;
+      tile(tester).onToggle!(false);
+      await _settle(tester);
+      expect(native.keepAwakeWrites, ['N', 'N']);
+      expect(tile(tester).initialValue, isFalse);
+      expect(find.text('Failed'), findsNothing);
+    });
+
+    testWidgets('mobile keep awake $skin close drains admitted save and retires callbacks',
+        (tester) async {
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final completion = Completer<String>();
+      native.saveKeepAwake = (_) => completion.future;
+      await _mountMobile(tester, platform);
+      final change = tile(tester).onToggle!;
+      change(false);
+      await tester.pumpWidget(const SizedBox.shrink());
+      change(false);
+      completion.complete('N');
+      await _settle(tester);
+      change(true);
+      await _settle(tester);
+      expect(native.keepAwakeWrites, ['N']);
+      expect(native.keepAwake, 'N');
+      await _mountMobile(tester, platform);
+      expect(tile(tester).initialValue, isFalse);
+      expect(tile(tester).onToggle, isNotNull);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('recording directory change admits one picker and one save',
       (tester) async {

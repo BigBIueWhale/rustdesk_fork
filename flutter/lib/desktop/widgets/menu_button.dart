@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-class MenuButton extends StatefulWidget {
+class MenuButton extends StatelessWidget {
   final GestureTapCallback? onPressed;
   final Color color;
   final Color hoverColor;
@@ -22,39 +22,31 @@ class MenuButton extends StatefulWidget {
   });
 
   @override
-  State<MenuButton> createState() => _MenuButtonState();
-}
-
-class _MenuButtonState extends State<MenuButton> {
-  bool _isHover = false;
-  final double _borderRadius = 8.0;
-
-  @override
   Widget build(BuildContext context) {
+    final borderRadius = BorderRadius.circular(8);
     return Padding(
-      padding: widget.padding,
+      padding: padding,
       child: Tooltip(
         waitDuration: Duration(milliseconds: 300),
-        message: widget.tooltip,
+        message: tooltip,
         child: Material(
           type: MaterialType.transparency,
-          child: Container(
+          child: Ink(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(_borderRadius),
-              color: _isHover ? widget.hoverColor : widget.color,
+              borderRadius: borderRadius,
+              color: color,
             ),
             child: InkWell(
-              hoverColor: widget.hoverColor,
-              onHover: (val) {
-                setState(() {
-                  _isHover = val;
-                });
-              },
-              borderRadius: BorderRadius.circular(_borderRadius),
-              splashColor: widget.splashColor,
-              enableFeedback: widget.enableFeedback,
-              onTap: widget.onPressed,
-              child: widget.child,
+              hoverColor: hoverColor,
+              borderRadius: borderRadius,
+              splashColor: splashColor,
+              enableFeedback: enableFeedback,
+              onTap: onPressed,
+              child: Semantics(
+                button: true,
+                enabled: onPressed != null,
+                child: child,
+              ),
             ),
           ),
         ),

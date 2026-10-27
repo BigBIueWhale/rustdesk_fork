@@ -3075,8 +3075,6 @@ if grep -qE 'sameServer|same_server' "$REPO/flutter/lib/models/peer_model.dart";
 fi
 grep -qF 'fn cm_presentation_contract_omits_connection_only_permissions()' "$REPO/src/ui_cm_interface.rs" \
   || r_g9="$r_g9 cm-serialization-regression-missing"
-grep -qF "expect(serialized, isNot(contains('same_server')));" "$REPO/flutter/test/peer_model_test.dart" \
-  || r_g9="$r_g9 saved-peer-serialization-regression-missing"
 for permission in Restart Recording BlockInput; do
   grep -qF "conn.send_permission(Permission::$permission, false).await;" "$REPO/src/server/connection.rs" \
     || r_g9="$r_g9 server-permission-path-missing-$permission"

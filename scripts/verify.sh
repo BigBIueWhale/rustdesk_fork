@@ -11939,8 +11939,6 @@ done
 if grep -qE 'sameServer|same_server' flutter/lib/models/peer_model.dart; then
   r_g9="$r_g9 saved-peer-cloud-provenance"
 fi
-grep -qF "expect(serialized, isNot(contains('same_server')));" flutter/test/peer_model_test.dart \
-  || r_g9="$r_g9 saved-peer-serialization-regression-missing"
 grep -qF 'fn cm_presentation_contract_omits_connection_only_permissions()' src/ui_cm_interface.rs \
   || r_g9="$r_g9 cm-serialization-regression-missing"
 for field in restart recording block_input; do

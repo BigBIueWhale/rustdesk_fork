@@ -107864,3 +107864,37 @@ api.flutter.dev/flutter/widgets/Listener/onPointerCancel.html,
 api.flutter.dev/flutter/widgets/State/dispose.html and
 api.dart.dev/dart-async/Future-class.html. Pointer identity belongs to one contact;
 disposal is terminal and asynchronous ordering/error ownership must be explicit.
+
+User pivot (2026-10-27): this virtual-button investigation is OPEN/PARKED;
+do not resume automatically. No product correction was applied. Baseline
+PErInhKEZN at dd27da7eb6370f3f515bb5db09958096b4aa5252 completes with four
+passing quick-tap/early-cancel controls and thirteen failing ordering, retirement,
+replacement and simultaneous-hold cases. This is rendered Flutter component
+evidence with controlled native adapters, not device input or an LPE demonstration.
+The serial is 110,008 bytes, SHA-256
+52448dcc964959c011f02be4941b1a01fbfa6d9c62479958f1184cf293dfc57f.
+The supervisor records 254.236 seconds, 6,363,938,816 bytes peak RAM scratch and
+3,342,336 bytes peak durable run storage. Exact QEMU 2888370 joined with exit 0;
+RAM workspace run.6b8w5hb5 is absent. Under the identity-checked idle run lock,
+bounded diagnostics were retained without deletion as virtual-buttons-parked.PErInhKEZN.
+Before/during endpoint deltas are zero; the final snapshot retains an unattributed
+19-byte removal. No foreign owner was inspected or changed; no active run remains.
+
+## Retired peer-serialization verifier assertions (2026-10-27)
+
+At the user's pivot, work moved to verification correctness. Source history shows
+c0bf7675ab59ddb192ef65c02a35bdab575aa68b removed the account metadata export
+API, including Peer.toJson. Preparation 125a7bd333b9aa477e9dbf3b1214dc18d48199f0
+replaced its test with actual metadata loading and retired-field checks. Both
+scripts/verify.sh and scripts/apple-conform-check.sh still required the exact
+deleted assertion `expect(serialized, isNot(contains('same_server')));`, producing
+the false saved-peer-serialization-regression-missing result on current source.
+
+Delete only those two two-line assertions. The current peer tests, their Dart/VM
+invocations, the executable CM serialization test and its command, the remaining
+shared/Apple/Dart R-G9 source checks, positive capability paths and normative
+requirements are unchanged. No replacement test-name or test-body spelling check
+is added. Read-only exact-deletion comparison, Bash syntax and git diff --check
+validate the narrow edit; full catalogs and application tests are not rerun.
+This fixes verifier correctness only. Installed/native acceptance for all fifteen
+credential actions, R-S0/R-F5, release and every user-parked item remain OPEN.

@@ -1253,6 +1253,18 @@ RECONNECT_SUITES = {
 }
 
 
+VIRTUAL_JOYSTICK_TESTS = {
+    f'virtual joystick {mode} {case}'
+    for mode in ('absolute', 'relative')
+    for case in (
+        'drag and cancellation stop movement',
+        'early cancellation prevents movement',
+        'removal stops queued movement',
+        'removal before hold prevents movement',
+    )
+}
+
+
 FLOATING_POSITION_TESTS = {
     'floating position preserves finite saved coordinates',
     'floating position treats absent or wrong arity as unset',
@@ -1298,7 +1310,7 @@ CLIPBOARD_KEYSTROKES_TESTS = {
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -1405,6 +1417,10 @@ def parse_result(path, profile="models"):
         expected_suites = {"custom_scale_controls_test.dart"}
         expected_tests = len(CUSTOM_SCALE_TESTS)
         expected_names = CUSTOM_SCALE_TESTS
+    elif profile == "virtual-joystick":
+        expected_suites = {"virtual_joystick_test.dart"}
+        expected_tests = len(VIRTUAL_JOYSTICK_TESTS)
+        expected_names = VIRTUAL_JOYSTICK_TESTS
     elif profile == "floating-position":
         expected_suites = {"draggable_position_test.dart"}
         expected_tests = len(FLOATING_POSITION_TESTS)
@@ -1536,7 +1552,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -1563,6 +1579,7 @@ def main():
         "directory-ordering": "FLUTTER_DIRECTORY_ORDERING_TEST_JSON",
         "file-navigation": "FLUTTER_FILE_NAVIGATION_TEST_JSON",
         "custom-scale": "FLUTTER_CUSTOM_SCALE_TEST_JSON",
+        "virtual-joystick": "FLUTTER_VIRTUAL_JOYSTICK_TEST_JSON",
         "floating-position": "FLUTTER_FLOATING_POSITION_TEST_JSON",
         "clipboard-keystrokes": "FLUTTER_CLIPBOARD_KEYSTROKES_TEST_JSON",
         "file-search": "FLUTTER_FILE_SEARCH_TEST_JSON",

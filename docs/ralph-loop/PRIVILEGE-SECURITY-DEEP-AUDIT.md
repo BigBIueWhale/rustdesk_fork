@@ -107727,3 +107727,34 @@ Exact QEMU joins; RAM workspace and active markers are absent. Before/during
 endpoint deltas are zero; final snapshot retains one unattributed 18-byte addition
 without owner inspection or mutation. Product/test bytes, controlling instructions
 and all twelve stashes remain unchanged after the accepted behavioral run.
+
+## User pivot: mobile virtual joystick callback lifetime (2026-10-27)
+
+The user directs another aspect. Peer sorting remains OPEN/PARKED: source review
+only, no product or test changes and no runtime claim. Do not resume it automatically.
+All earlier parks remain. The new slice starts from d835e61f8f9c54b2f640faa58ea0608bfe461b7f.
+
+Source finding: VirtualJoystick in floating_mouse_widgets.dart starts a 120-ms hold
+timer, then uses common.dart periodic_immediate. That helper schedules a separate
+zero-delay Future and returns only the periodic Timer. Disposal cancels the hold
+and periodic timers but leaves the queued Future and nonzero offset. Its callback
+can therefore invoke the movement adapter after the widget has been removed.
+This is a candidate UI lifetime defect, not demonstrated remote input or privilege
+escalation. An absent onPanCancel is not evidence of this defect: the pinned
+Flutter 3.24.5 monodrag recognizer sends an accepted pointer cancellation through
+onEnd. No cancellation-handler patch is proposed.
+
+Intended ownership: this mounted joystick owns every scheduled movement callback;
+removal retires future movement while preserving normal hold, release, cancellation
+and fresh-drag behavior. The focused eight-case --virtual-joystick profile mounts
+the actual widget, exercises both absolute/relative adapters, and holds ready
+zero-delay callbacks until after removal. Gesture dispatch and other timers remain
+real Flutter test-framework operations; native movement adapters are explicit
+doubles. The profile uses the existing bounded-RAM Flutter workload and fresh
+bindings. Baseline execution precedes any product change.
+
+Primary references inspected: Flutter 3.24.5 packages/flutter/lib/src/gestures/monodrag.dart
+(PointerCancelEvent, didStopTrackingLastPointer), api.flutter.dev/flutter/flutter_test/TestGesture/cancel.html,
+and api.dart.dev/dart-async/Timer/cancel.html. The local periodic_immediate body is
+the source of the separate queued Future. Full mobile/device input, session
+retargeting and R-S0/R-F5/installed-platform acceptance remain OPEN.

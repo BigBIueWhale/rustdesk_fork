@@ -108569,3 +108569,46 @@ durable evidence 155,648 bytes. QEMU 3254884 joins with exit 0; RAM `run.cnzk6wu
 and active run roots are absent. Before/during endpoint deltas are zero; the final
 inventory has one unattributed 18-byte endpoint addition, left untouched without
 owner inspection. This receipt changes neither the counted ledger nor product.
+
+## 2026-10-27 bounded recent chat history
+
+Previous goal turn: progress (unused alternate remote-signing client removed,
+references and unchanged builders verified). Rechecked clean pushed `edcdc04e`.
+All fifteen R-S11ia–R-S11io installed actions and the shared native/platform,
+R-S0/R-F5, artifact/reproduction/review obligations remain open. All user parks,
+including outgoing ChatModel.send generation authority, remain in force.
+
+Source trace: both keyed chat receivers (`src/client/io_loop.rs` and
+`src/server/connection.rs`) use PeerTextGate, which bounds received text to
+4 KiB and admission to eight events per ten seconds. Flutter ChatModel.receive
+eventually calls insertMessage; MessageBody.insert prepends forever, and both
+insertMessage and changeCurrentKey can create unlimited retained conversations.
+The rate limit bounds arrival rate, not accumulated history over long sessions.
+ChatPage consumes these retained collections directly. This is a retained-UI
+resource defect, not a new credential or privileged-action finding.
+
+The intended history owner keeps at most 64 recent conversations, at most 256
+messages per conversation, and at most 256 Ki UTF-16 text units per conversation
+(32 MiB aggregate text storage at two bytes per unit, excluding object/metadata
+overhead). New activity refreshes recency; eviction preserves the currently
+selected conversation. Both empty selection and message insertion use one
+bounded conversation-creation path. Retire oldest messages first; a single
+oversized local message gets a separate bounded history copy with a Unicode-safe
+ellipsis, leaving the object submitted to the sender unchanged. Expose read-only
+collection views and a visible history-limited notice. No persisted chat database,
+network retry, connection teardown, or change to sending/generation authority.
+
+Dart documents String.length in UTF-16 units and unmodifiable list/map views:
+https://api.dart.dev/dart-core/String/length.html,
+https://api.dart.dev/dart-collection/UnmodifiableListView-class.html and
+https://api.dart.dev/dart-collection/UnmodifiableMapView-class.html.
+Reviewed the exact pinned Dash-Chat-2 ChatMessage definition at
+`bd6b5b41254e57c5bcece202ebfb234de63e6487`; this app constructs plain text messages
+with user and time, and no remote attachment graph enters this history path.
+
+Eight new cases exercise message/text limits, oversized Unicode with unchanged
+sender input, selected/recent conversation retention, empty-conversation creation,
+collection write refusal, and capacity reuse after reset. The existing 86 peer-data
+cases remain unchanged. Run the unchanged-product baseline, then the same five-suite
+94-case profile in the bounded-RAM VM; source copies and exact case inventory remain
+enforced. This preparation changes tests/receipts only and claims no behavioral pass.

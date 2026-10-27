@@ -955,6 +955,16 @@ FILE_NAVIGATION_SUITES = {
         "overwrite dialog omits unavailable remember control",
     },
 }
+CHAT_HISTORY_TESTS = {
+    "chat history retains the newest 256 messages",
+    "chat history bounds retained text independently of message count",
+    "chat oversized history copy preserves submitted text and Unicode",
+    "chat conversation retention protects selection and newest histories",
+    "chat recently updated history survives conversation eviction",
+    "chat empty selected conversations share the retention ceiling",
+    "chat retained collection views cannot bypass admission",
+    "chat clearing history releases its text capacity for reuse",
+}
 PEER_DATA_TESTS = {
     "chat delayed focus preserves current and disabled node behavior",
     "chat delayed focus retires on overlay unblock and allows reopening",
@@ -1050,6 +1060,7 @@ PEER_LOADER_TESTS = {
     "peer loader clear retires a pending request and its failure",
 }
 PEER_DATA_SUITES = {
+    "chat_history_test.dart": CHAT_HISTORY_TESTS,
     "peer_decode_test.dart": PEER_DATA_TESTS,
     "peer_tab_cache_test.dart": PEER_CACHE_TESTS,
     "autocomplete_peer_tile_test.dart": AUTOCOMPLETE_PEER_TESTS,

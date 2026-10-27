@@ -107715,3 +107715,15 @@ an unattributed addition/removal respectively, without inspecting or changing it
 owner. Cross-control/process ordering, full-page/native persistence, mobile/device,
 all fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN.
 No passed behavioral check is repeated after this acceptance; ledger counting follows.
+
+The fresh --ledger-token-count at bbf186c97ea8088c6c1dc97581d87b5ba4ea60c6
+passes as Md4SisAiyu in 28 outer seconds: 349,090 tokens / 1,585,411 bytes,
+input SHA-256 02d7e0901e88fd0dca84b41750173cc35aaf4e5748ee1d17c5ef9b4d529872a6.
+The established tiktoken 0.12.0/cl100k_base/encode_ordinary method passes seven
+controls and whole-file round trip, within the approximate 400,000-token budget.
+ledger-token-count-run.Md4SisAiyu.serial.log: 98,470 bytes, SHA-256
+0241d8f68c0002a9c216af9ec3481b9b03e7f50667a9a367d2f4661fe00e0015.
+Exact QEMU joins; RAM workspace and active markers are absent. Before/during
+endpoint deltas are zero; final snapshot retains one unattributed 18-byte addition
+without owner inspection or mutation. Product/test bytes, controlling instructions
+and all twelve stashes remain unchanged after the accepted behavioral run.

@@ -235,7 +235,7 @@ void main() {
   testWidgets('custom scale accessibility reports zoom across the full range', (tester) async {
     final semantics = tester.ensureSemantics();
     try {
-      for (final percent in [5, 50, 100, 250, 1000]) {
+      for (final percent in [5, 50, 99, 100, 101, 250, 1000]) {
         final session = _Session()..preferences.percent = percent;
         try {
           await tester.pumpWidget(_root(session));

@@ -812,12 +812,15 @@ class _VirtualJoystickState extends State<VirtualJoystick> {
           _dragStartTimer = Timer(const Duration(milliseconds: 120), () {
             // 3. If the timer fires, it's a drag. Start the continuous movement timer.
             _continuousMoveTimer?.cancel();
-            _continuousMoveTimer =
-                periodic_immediate(const Duration(milliseconds: 20), () async {
+            void sendMovement() {
               if (_offset != Offset.zero) {
                 _sendMovement(_offsetToPanDelta(_offset) * _moveStep * _speed);
               }
-            });
+            }
+
+            _continuousMoveTimer = Timer.periodic(
+                const Duration(milliseconds: 20), (_) => sendMovement());
+            sendMovement();
           });
         },
         onPanUpdate: (details) {

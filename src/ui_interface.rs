@@ -275,7 +275,7 @@ pub fn get_options() -> String {
 #[inline]
 #[cfg(feature = "flutter")]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn get_sound_inputs() -> Vec<String> {
+pub fn get_sound_inputs() -> Vec<(String, String)> {
     let mut a = Vec::new();
     #[cfg(not(target_os = "linux"))]
     {
@@ -305,19 +305,12 @@ pub fn get_sound_inputs() -> Vec<String> {
             .join()
             .ok();
         for name in inputs.lock().unwrap().drain(..) {
-            a.push(name);
+            a.push((name.clone(), name));
         }
     }
     #[cfg(target_os = "linux")]
     {
-        let inputs: Vec<String> = crate::platform::linux::get_pa_sources()
-            .drain(..)
-            .map(|x| x.1)
-            .collect();
-
-        for name in inputs {
-            a.push(name);
-        }
+        a = crate::platform::linux::get_pa_sources();
     }
     a
 }

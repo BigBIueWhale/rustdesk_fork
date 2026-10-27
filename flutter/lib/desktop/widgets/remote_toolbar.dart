@@ -2526,16 +2526,16 @@ class _VoiceCallMenu extends StatelessWidget {
       final audioInput = AudioInput(
         builder: (devices, currentDevice, setDevice) {
           return Column(
-            children: devices
+            children: devices.entries
                 .map((d) => RdoMenuButton<String>(
                       child: Container(
                         child: Text(
-                          d,
+                          d.value,
                           overflow: TextOverflow.ellipsis,
                         ),
                         constraints: BoxConstraints(maxWidth: 250),
                       ),
-                      value: d,
+                      value: d.key,
                       groupValue: currentDevice,
                       onChanged: (v) {
                         if (v != null) setDevice(v);

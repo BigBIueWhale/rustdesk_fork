@@ -218,7 +218,7 @@ where
                         info.monitor_of_sink.is_some()
                             && info.monitor_of_sink_name.as_deref() == default_sink.as_deref()
                     } else {
-                        info.description.as_deref() == Some(requested.as_str())
+                        name.as_ref() == requested.as_str()
                     };
                     if matches {
                         if lookup.selected.is_some() {
@@ -599,7 +599,7 @@ mod tests {
         let mut helper = ConnectionTmpl::new_pulse_audio(helper_socket);
         let mut client = ConnectionTmpl::new_pulse_audio(client_socket);
         let mut capture: NativeCapture<'_> =
-            Box::pin(super::capture(&mut helper, &peer, authority.token(), &first.2));
+            Box::pin(super::capture(&mut helper, &peer, authority.token(), "rd_explicit_first.monitor"));
         native_frame(&mut capture, &mut client).await;
         let selected = native_recording().await.1;
         drop(capture);
@@ -611,7 +611,7 @@ mod tests {
         assert_eq!(first.2, second.2, "fixture must publish duplicate descriptions");
         let ambiguous = native_request_refused(&peer, authority.token(), &first.2).await;
         native_pactl(&["unload-module", &second.0.to_string()]).await;
-        let recovered = !native_request_refused(&peer, authority.token(), &first.2).await;
+        let recovered = !native_request_refused(&peer, authority.token(), "rd_explicit_first.monitor").await;
         native_pactl(&["unload-module", &first.0.to_string()]).await;
         println!("PA_SOURCE_EXPLICIT selected={selected} expected={} missing_refused={missing} ambiguous_refused={ambiguous} recovered={recovered}", first.1);
         assert_eq!(selected, first.1);
@@ -631,7 +631,7 @@ mod tests {
         let mut helper = ConnectionTmpl::new_pulse_audio(helper_socket);
         let mut client = ConnectionTmpl::new_pulse_audio(client_socket);
         let mut capture: NativeCapture<'_> =
-            Box::pin(super::capture(&mut helper, &peer, authority.token(), &source.2));
+            Box::pin(super::capture(&mut helper, &peer, authority.token(), "rd_owned_source.monitor"));
         native_frame(&mut capture, &mut client).await;
         let recording = native_recording().await;
         let moved = native_pactl_output(&[

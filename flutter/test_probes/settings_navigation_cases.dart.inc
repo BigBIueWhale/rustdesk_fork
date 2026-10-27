@@ -127,7 +127,9 @@ class _NativeSettings implements RustdeskImpl {
       case #mainSupportRemoveWallpaper:
         return Future<bool>.value(false);
       case #mainGetSoundInputs:
-        return Future<List<String>>.value(['Mic A']);
+        return Future<List<SoundInput>>.value([
+          SoundInput(id: 'Mic A', label: 'Mic A'),
+        ]);
       case #mainGetLangs:
         return Future<String>.value('[["en","English"]]');
       case #mainGetOption:

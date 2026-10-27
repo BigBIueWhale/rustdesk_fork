@@ -5756,7 +5756,7 @@ echo "== (3b-iii-d9c5) Linux privileged service-to-tray boundary (R-S11af/R-S11e
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e46_ --color never
 r_s11e46=
 linux_ui_policy=$(awk '/fn linux_user_session_ui_allowed\(/,/^}/' src/core_main.rs)
-linux_root_policy=$(awk '/fn effective_uid_is_root\(/,/pub fn get_pa_monitor\(/' src/platform/linux.rs)
+linux_root_policy=$(awk '/fn effective_uid_is_root\(/,/pub fn get_pa_sources\(/' src/platform/linux.rs)
 empty_arg_tray_launch=$(awk '/if args\.is_empty\(\)/,/^    }/' src/core_main.rs)
 server_tray_launch=$(awk '/else if args\[0\] == "--server"/,/#\[cfg\(any\(target_os = "linux", target_os = "windows"\)\)\]/' src/core_main.rs)
 tray_receiver=$(awk '/if args\[0\] == "--tray"/,/else if args\[0\] == "--install-service"/' src/core_main.rs)

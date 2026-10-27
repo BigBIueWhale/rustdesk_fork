@@ -508,7 +508,7 @@ class _GeneralState extends State<_General> {
 
     builder(devices, currentDevice, setDevice) {
       final child = ComboBox(
-        options: {for (final device in devices) device: device},
+        options: devices,
         selectedKey: currentDevice,
         onChanged: (key) async {
           await setDevice(key);

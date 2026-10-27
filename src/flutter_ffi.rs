@@ -1071,11 +1071,22 @@ pub fn session_send_selected_session_id(session_id: SessionID, sid: String) {
     }
 }
 
-pub fn main_get_sound_inputs() -> Vec<String> {
+pub struct SoundInput {
+    pub id: String,
+    pub label: String,
+}
+
+pub fn main_get_sound_inputs() -> Vec<SoundInput> {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    return get_sound_inputs();
+    return get_sound_inputs()
+        .into_iter()
+        .map(|(id, label)| SoundInput { id, label })
+        .collect();
     #[cfg(any(target_os = "android", target_os = "ios"))]
-    vec![String::from("")]
+    vec![SoundInput {
+        id: String::new(),
+        label: String::new(),
+    }]
 }
 
 pub fn main_get_login_device_info() -> SyncReturn<String> {

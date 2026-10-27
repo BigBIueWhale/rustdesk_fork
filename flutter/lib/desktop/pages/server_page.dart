@@ -697,7 +697,7 @@ class _CmControlPanel extends StatelessWidget {
                       !client.disconnected &&
                       client.inVoiceCall;
                   if (!isCurrent()) return;
-                  Map<String, Object> devicesInfo;
+                  AudioInputDevices devicesInfo;
                   try {
                     devicesInfo = await AudioInput.getDevicesInfo(true, true);
                   } catch (error) {
@@ -706,7 +706,7 @@ class _CmControlPanel extends StatelessWidget {
                     return;
                   }
                   if (!isCurrent()) return;
-                  List<String> devices = devicesInfo['devices'] as List<String>;
+                  final devices = devicesInfo.devices;
                   if (devices.isEmpty) {
                     msgBox(
                       gFFI.sessionId,
@@ -719,7 +719,7 @@ class _CmControlPanel extends StatelessWidget {
                     return;
                   }
 
-                  String currentDevice = devicesInfo['current'] as String;
+                  final currentDevice = devicesInfo.current;
                   final x = details.globalPosition.dx;
                   final y = details.globalPosition.dy;
                   final position = RelativeRect.fromLTRB(x, y, x, y);
@@ -730,15 +730,15 @@ class _CmControlPanel extends StatelessWidget {
                   showMenu(
                     context: context,
                     position: position,
-                    items: devices
+                    items: devices.entries
                         .map((d) => PopupMenuItem<String>(
-                              value: d,
+                              value: d.key,
                               height: 18,
                               padding: EdgeInsets.zero,
-                              onTap: () => selectDevice(d),
+                              onTap: () => selectDevice(d.key),
                               child: IgnorePointer(
                                   child: RadioMenuButton(
-                                value: d,
+                                value: d.key,
                                 groupValue: currentDevice,
                                 onChanged: (v) {
                                   if (v != null)
@@ -746,7 +746,7 @@ class _CmControlPanel extends StatelessWidget {
                                 },
                                 child: Container(
                                   child: Text(
-                                    d,
+                                    d.value,
                                     overflow: TextOverflow.ellipsis,
                                     maxLines: 1,
                                   ),

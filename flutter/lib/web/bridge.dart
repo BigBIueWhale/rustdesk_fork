@@ -8,6 +8,13 @@ import 'dart:html' as html;
 
 import 'package:flutter_hbb/consts.dart';
 
+class SoundInput {
+  const SoundInput({required this.id, required this.label});
+
+  final String id;
+  final String label;
+}
+
 class PeerCredentialStatus {
   const PeerCredentialStatus({
     required this.hasSavedPrs,
@@ -1032,7 +1039,7 @@ class RustdeskImpl {
         () => js.context.callMethod('setByName', ['selected_sid', sid]));
   }
 
-  Future<List<String>> mainGetSoundInputs({dynamic hint}) {
+  Future<List<SoundInput>> mainGetSoundInputs({dynamic hint}) {
     throw UnimplementedError("mainGetSoundInputs");
   }
 

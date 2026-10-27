@@ -11,9 +11,9 @@ import 'package:flutter_hbb/mobile/widgets/default_option_switch.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settings_ui/settings_ui.dart';
 
-Map<String, Object> _audioDevices(String current,
+AudioInputDevices _audioDevices(String current,
         {List<String> devices = const ['Mic A', 'Mic B', 'Mic C']}) =>
-    {'devices': devices, 'current': current};
+    AudioInputDevices({for (final device in devices) device: device}, current);
 
 Widget _audioControls(AudioInputDeviceLoader load,
         {AudioInputDeviceWriter? write,
@@ -1673,7 +1673,7 @@ void main() {
       (tester) async {
     for (final synchronous in [false, true]) {
       var calls = 0;
-      Future<Map<String, Object>> load(bool cm, bool voice) {
+      Future<AudioInputDevices> load(bool cm, bool voice) {
         if (++calls == 1) {
           if (synchronous) throw StateError('read failed');
           return Future.error(StateError('read failed'));
@@ -1695,9 +1695,9 @@ void main() {
 
   testWidgets('audio parent rebuild retains its pending read and later refreshes',
       (tester) async {
-    final completion = Completer<Map<String, Object>>();
+    final completion = Completer<AudioInputDevices>();
     var calls = 0;
-    Future<Map<String, Object>> load(bool cm, bool voice) {
+    Future<AudioInputDevices> load(bool cm, bool voice) {
       calls++;
       return completion.future;
     }
@@ -1715,9 +1715,9 @@ void main() {
 
   testWidgets('audio stale retry cannot start duplicate pending reads',
       (tester) async {
-    final completion = Completer<Map<String, Object>>();
+    final completion = Completer<AudioInputDevices>();
     var calls = 0;
-    Future<Map<String, Object>> load(bool cm, bool voice) => ++calls == 1
+    Future<AudioInputDevices> load(bool cm, bool voice) => ++calls == 1
         ? Future.error(StateError('first read failed'))
         : completion.future;
     await tester.pumpWidget(_audioControls(load));
@@ -1738,10 +1738,10 @@ void main() {
   testWidgets('audio role replacement ignores old data and error completion',
       (tester) async {
     for (final failOld in [false, true]) {
-      final old = Completer<Map<String, Object>>();
-      final current = Completer<Map<String, Object>>();
+      final old = Completer<AudioInputDevices>();
+      final current = Completer<AudioInputDevices>();
       final roles = <bool>[];
-      Future<Map<String, Object>> load(bool cm, bool voice) {
+      Future<AudioInputDevices> load(bool cm, bool voice) {
         roles.add(cm);
         expect(voice, isTrue);
         return cm ? current.future : old.future;
@@ -1771,11 +1771,11 @@ void main() {
     for (final dispose in [false, true]) {
       var oldReads = 0;
       var newReads = 0;
-      Future<Map<String, Object>> old(bool cm, bool voice) {
+      Future<AudioInputDevices> old(bool cm, bool voice) {
         oldReads++;
         return Future.error(StateError('read failed'));
       }
-      Future<Map<String, Object>> replacement(bool cm, bool voice) async {
+      Future<AudioInputDevices> replacement(bool cm, bool voice) async {
         newReads++;
         return _audioDevices('Mic B');
       }
@@ -1816,7 +1816,7 @@ void main() {
       final values = {false: 'Mic A', true: 'Mic C'};
       final writes = <String>[];
       AudioINputSetDevice? select;
-      Future<Map<String, Object>> load(bool cm, bool voice) async =>
+      Future<AudioInputDevices> load(bool cm, bool voice) async =>
           _audioDevices(values[cm]!);
       Future<void> write(String device, bool cm, bool voice) async {
         writes.add('$cm:$voice:$device');
@@ -1848,10 +1848,10 @@ void main() {
   testWidgets('audio live write waits then publishes confirmed readback',
       (tester) async {
     final completion = Completer<void>();
-    final readback = Completer<Map<String, Object>>();
+    final readback = Completer<AudioInputDevices>();
     var reads = 0;
     AudioINputSetDevice? select;
-    Future<Map<String, Object>> load(bool cm, bool voice) => ++reads == 1
+    Future<AudioInputDevices> load(bool cm, bool voice) => ++reads == 1
         ? Future.value(_audioDevices('Mic A')) : readback.future;
     await tester.pumpWidget(_audioControls(load,
         write: (device, cm, voice) => completion.future,
@@ -1879,7 +1879,7 @@ void main() {
     var current = 'Mic A';
     var reads = 0;
     AudioINputSetDevice? select;
-    Future<Map<String, Object>> load(bool cm, bool voice) async {
+    Future<AudioInputDevices> load(bool cm, bool voice) async {
       reads++;
       return _audioDevices(current);
     }
@@ -1922,11 +1922,11 @@ void main() {
     var newReads = 0;
     var current = 'Mic C';
     AudioINputSetDevice? select;
-    Future<Map<String, Object>> oldLoad(bool cm, bool voice) async {
+    Future<AudioInputDevices> oldLoad(bool cm, bool voice) async {
       oldReads++;
       return _audioDevices('Mic A');
     }
-    Future<Map<String, Object>> newLoad(bool cm, bool voice) async {
+    Future<AudioInputDevices> newLoad(bool cm, bool voice) async {
       newReads++;
       return _audioDevices(current);
     }
@@ -1971,7 +1971,7 @@ void main() {
       var reads = 0;
       var current = 'Mic A';
       AudioINputSetDevice? select;
-      Future<Map<String, Object>> load(bool cm, bool voice) async {
+      Future<AudioInputDevices> load(bool cm, bool voice) async {
         reads++;
         return _audioDevices(current);
       }

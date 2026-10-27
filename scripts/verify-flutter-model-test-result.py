@@ -1179,8 +1179,23 @@ FILE_METADATA_TESTS = {
 }
 
 
+AUDIO_INPUT_SUITES = {
+    "setting_option_mutation_test.dart": {
+        name for name in SETTING_OPTION_TESTS if name.startswith("audio ")
+    },
+    "audio_input_selection_test.dart": {
+        'audio choices retain distinct identifiers for duplicate labels',
+        'audio choices separate translated system sound from device identity',
+        'audio choices preserve current identity across labels and ordering',
+        'audio dropdown selects each duplicate device by identifier',
+        'audio dropdown retains unavailable selection without a default write',
+        'audio dropdown sends the empty system identifier and preserves named devices',
+    },
+}
+
+
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "audio-input", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -1269,6 +1284,11 @@ def parse_result(path, profile="models"):
         expected_names = DIRECTORY_ORDERING_TESTS
     elif profile == "file-navigation":
         expected_by_suite = FILE_NAVIGATION_SUITES
+        expected_suites = set(expected_by_suite)
+        expected_names = set().union(*expected_by_suite.values())
+        expected_tests = len(expected_names)
+    elif profile == "audio-input":
+        expected_by_suite = AUDIO_INPUT_SUITES
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())
         expected_tests = len(expected_names)
@@ -1395,7 +1415,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "audio-input", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -1422,6 +1442,7 @@ def main():
         "directory-ordering": "FLUTTER_DIRECTORY_ORDERING_TEST_JSON",
         "file-navigation": "FLUTTER_FILE_NAVIGATION_TEST_JSON",
         "custom-scale": "FLUTTER_CUSTOM_SCALE_TEST_JSON",
+        "audio-input": "FLUTTER_AUDIO_INPUT_TEST_JSON",
         "file-progress": "FLUTTER_FILE_PROGRESS_TEST_JSON",
         "peer-data": "FLUTTER_PEER_DATA_TEST_JSON",
         "settings-navigation": "FLUTTER_SETTINGS_NAVIGATION_TEST_JSON",

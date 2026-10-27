@@ -15853,7 +15853,7 @@ acknowledgement cannot supersede a completion, error or skipped-file event alrea
 After the await, the same current-session job may transition from paused to in-progress;
 a removed/replaced job refuses publication, and a terminal state remains terminal. This
 uses Dart's [await ordering](https://dart.dev/libraries/async/async-await) and
-[object identity](https://api.dart.dev/dart-core/identical.html), with no new lifetime store.
+[object identity](https://api.dart.dev/dart-core/identical.html).
 The unchanged-product baseline `2b1e2e5b` passes eleven cases and fails five: three terminal
 states become in-progress, a replacement is accepted, and a nonpaused job is dispatched.
 The identical sixteen-case `--flutter-model-tests --file-progress` inventory and three
@@ -15866,6 +15866,27 @@ count and joined bounded-RAM cleanup. Both behavioral runs have zero listener de
 Native resumed transfers, installed/device presentation, R-S0/R-F5, all fifteen credential
 actions and release acceptance remain OPEN. The verification-catalogue exploration and
 all earlier user-parked work remain open and untouched.
+
+**Pending Resume admission (`1aea384e`) — Dart controller A/B verified.**
+`JobController.resumeJob` retains one pending request per exact transfer object until
+the bridge future settles, using an [identity set](https://api.dart.dev/dart-core/Set/Set.identity.html).
+Repeated callbacks refuse before dispatch; independent jobs proceed, failure permits
+retry, and a retired completion cannot release a replacement's admission. Clearing
+the visible job table does not discard pending ownership. Existing terminal-event,
+session and object checks still control publication. Rust already consumes a job's
+paused state once; this correction removes redundant UI-to-native requests, without
+claiming duplicate file effects or a demonstrated escalation.
+Unchanged-product preparation `6d64e008` passes 29 existing cases and fails all three
+new duplicate-request assertions. With the identical tests and harness, the correction
+passes 32 cases plus three result-parser controls in the isolated Linux Flutter 3.24.5
+lane. The new cases cover both directions, independent jobs, failed dispatch/retry,
+and clear/replacement with the same numeric ID. Bridge replies are controlled futures;
+the full file-manager page and native transfers are not executed. Both runs finish
+within five minutes, retain zero endpoint deltas and join QEMU/RAM cleanup.
+`resume-pending-b73c859c.json` binds both sources, raw results, storage and fresh ledger
+count. Native retained-job admission, automatic restore/resume, full-page error
+feedback, installed/device behavior, R-S0/R-F5 and release acceptance remain OPEN;
+all user parks are preserved.
 
 **Native transfer resume (`9957f275`) — library A/B verified; application dispatch OPEN.**
 `TransferJob.resume` consumes the restored job's paused state once, sets resume semantics,

@@ -11319,13 +11319,13 @@ run_flutter_model_tests() {
                             --timeout=30s "${test_fail_fast[@]}" "${tests[@]}"
                 }
                 test_status=0
-                if [[ "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = settings-navigation ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = file-navigation ]]; then
                     run_flutter_tests 2>/work/test.err | tee /work/test.json || test_status=$?
                 else
                     run_flutter_tests >/work/test.json 2>/work/test.err || test_status=$?
                 fi
                 if [ "$test_status" -ne 0 ]; then
-                    [ "$FLUTTER_TEST_PROFILE" = file-progress ] || tail -c 4194304 /work/test.json >&2
+                    [[ "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = file-navigation ]] || tail -c 4194304 /work/test.json >&2
                     tail -c 1048576 /work/test.err >&2
                     exit 1
                 fi

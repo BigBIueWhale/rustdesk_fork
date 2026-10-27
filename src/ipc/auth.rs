@@ -5597,7 +5597,7 @@ mod tests {
             );
         }
         assert!(!super::linux_service_owned_password_client_argv_is_expected(
-            &[]
+            &[] as &[String]
         ));
     }
 

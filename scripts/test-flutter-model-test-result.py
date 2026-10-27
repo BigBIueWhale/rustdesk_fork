@@ -45,6 +45,9 @@ class ResultTests(unittest.TestCase):
         elif profile == "list-search":
             suites = ["list_search_action_listener_test.dart"]
             names = sorted(result.LIST_SEARCH_TESTS)
+        elif profile == "credential-badge":
+            suites = sorted(result.CREDENTIAL_BADGE_SUITES)
+            names = sorted(set().union(*result.CREDENTIAL_BADGE_SUITES.values()))
         elif profile == "peer-search":
             suites = ["peer_search_probe_test.dart"]
             names = sorted(result.PEER_SEARCH_TESTS)
@@ -132,8 +135,9 @@ class ResultTests(unittest.TestCase):
             })
         for test_id, name in enumerate(names):
             suite_id = test_id % len(suites)
-            if profile in ("credential-dialog", "terminal-output", "file-navigation", "modifier-release", "peer-data", "tab-selection", "status-refresh", "audio-input", "reconnect", "menu-button"):
+            if profile in ("credential-dialog", "terminal-output", "file-navigation", "modifier-release", "peer-data", "tab-selection", "status-refresh", "audio-input", "reconnect", "credential-badge", "menu-button"):
                 inventory = (result.AUDIO_INPUT_SUITES if profile == "audio-input"
+                             else result.CREDENTIAL_BADGE_SUITES if profile == "credential-badge"
                              else result.MENU_BUTTON_SUITES if profile == "menu-button"
                              else result.RECONNECT_SUITES if profile == "reconnect"
                              else result.CREDENTIAL_DIALOG_TESTS if profile == "credential-dialog"
@@ -180,6 +184,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("setting-checkbox"), "setting-checkbox"), (1, 8))
         self.assertEqual(self.parse(self.events("draggable-divider"), "draggable-divider"), (1, 14))
         self.assertEqual(self.parse(self.events("list-search"), "list-search"), (1, 11))
+        self.assertEqual(self.parse(self.events("credential-badge"), "credential-badge"), (2, 14))
         self.assertEqual(self.parse(self.events("peer-search"), "peer-search"), (1, 19))
         self.assertEqual(self.parse(self.events("tab-selection"), "tab-selection"), (2, 31))
         self.assertEqual(self.parse(self.events("status-refresh"), "status-refresh"), (2, 16))
@@ -235,7 +240,7 @@ class ResultTests(unittest.TestCase):
                         path.unlink()
 
     def test_focused_inventory_is_exact(self):
-        for profile in ("frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "modifier-release"):
+        for profile in ("frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "modifier-release"):
             events = self.events(profile)
             for edit in ("rename", "duplicate", "suite", "missing", "wrong-suite"):
                 with self.subTest(profile=profile, edit=edit):
@@ -259,7 +264,7 @@ class ResultTests(unittest.TestCase):
                         self.parse(changed, profile)
 
     def test_failure_skip_and_incomplete_are_rejected(self):
-        for profile in ("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "modifier-release"):
+        for profile in ("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "modifier-release"):
             events = self.events(profile)
             done_index = next(
                 i for i, event in enumerate(events) if event["type"] == "testDone"

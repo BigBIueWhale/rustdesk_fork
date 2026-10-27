@@ -1370,8 +1370,20 @@ CLIPBOARD_KEYSTROKES_TESTS = {
 }
 
 
+CREDENTIAL_BADGE_SUITES = {
+    "peer_credential_badge_test.dart": PEER_DATA_SUITES["peer_credential_badge_test.dart"],
+    "peer_credential_badge_accessibility_test.dart": {
+        "credential retry exposes a labelled enabled button action",
+        "credential retry activates once with Enter",
+        "credential retry activates once with Space",
+        "credential retry paints keyboard focus",
+        "credential retry pointer activation admits one pending read",
+    },
+}
+
+
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -1407,6 +1419,11 @@ def parse_result(path, profile="models"):
         expected_suites = {"list_search_action_listener_test.dart"}
         expected_tests = len(LIST_SEARCH_TESTS)
         expected_names = LIST_SEARCH_TESTS
+    elif profile == "credential-badge":
+        expected_by_suite = CREDENTIAL_BADGE_SUITES
+        expected_suites = set(expected_by_suite)
+        expected_tests = sum(map(len, expected_by_suite.values()))
+        expected_names = set().union(*expected_by_suite.values())
     elif profile == "peer-search":
         expected_suites = {"peer_search_probe_test.dart"}
         expected_tests = len(PEER_SEARCH_TESTS)
@@ -1628,7 +1645,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -1647,6 +1664,7 @@ def main():
         "setting-checkbox": "FLUTTER_SETTING_CHECKBOX_TEST_JSON",
         "draggable-divider": "FLUTTER_DRAGGABLE_DIVIDER_TEST_JSON",
         "list-search": "FLUTTER_LIST_SEARCH_TEST_JSON",
+        "credential-badge": "FLUTTER_CREDENTIAL_BADGE_TEST_JSON",
         "peer-search": "FLUTTER_PEER_SEARCH_TEST_JSON",
         "tab-selection": "FLUTTER_TAB_SELECTION_TEST_JSON",
         "status-refresh": "FLUTTER_STATUS_REFRESH_TEST_JSON",

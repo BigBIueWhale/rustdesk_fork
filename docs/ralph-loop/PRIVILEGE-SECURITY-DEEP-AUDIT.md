@@ -108730,3 +108730,50 @@ durable evidence 147,456 bytes. QEMU 3349413 joins with exit 0; RAM `run.kuwkbff
 and active run roots are absent. Every listener delta is zero. All twelve parked
 stashes retain their original object IDs. This receipt changes neither the counted
 ledger nor tested product.
+
+## 2026-10-27 — user pivot: credential-status retry accessibility
+
+The user explicitly requested another aspect. Tunnel-page controller ownership
+remains OPEN/PARKED: its seven-file probe draft is preserved in stash
+`e7df9fd4b8b868506bf34c32244c291867ab9950`, based on `9574d967`.
+No tunnel controller product change or probe execution occurred. All twelve older
+stash IDs remain unchanged; all earlier user parks, including chat history and
+tunnel-owner/half-close follow-up, remain binding. No automatic resumption.
+
+Prior iteration made progress: port draft preservation is implemented and its
+25-case cohort passed. This invocation reread the canonical prompt/project rules,
+current R-S11 ledger and relevant requirements. R-S11ia–io remain source-implemented
+with installed/native acceptance OPEN: macOS LaunchAgent requester, Windows RDP
+requester, Windows service credential/control requester, macOS password admission,
+Linux polkit admission, Windows credential queue, Linux response, Linux replica
+writer, Linux child receiver, macOS credential receiver, Linux initial receiver,
+macOS replica admission, macOS policy writer, macOS policy verification and macOS
+external-form publication. Authorized/refused effects, persistence/restart, races,
+failure/drain/resource evidence, artifacts, independent reproduction, external
+review, R-S0 and R-F5 remain open. This UI slice closes none of those boundaries.
+
+The independent finding is `PeerCredentialBadge.build`: its error tooltip wraps
+only a GestureDetector and icon. Recent/favourite peer cards use it at both list
+and grid sites. The retry is pointer-only, has no button role or keyboard focus
+indication, and cannot be reached by normal keyboard traversal. Existing `_retry`
+already retains mounted/current-generation/one-pending-read admission. Keep that
+owner unchanged and use Material/InkWell for the interaction, with explicit
+button/enabled semantics. This is a read-only status retry, not credential mutation.
+
+Primary research: Flutter's
+[focus/action detector](https://api.flutter.dev/flutter/widgets/FocusableActionDetector-class.html)
+documents traversal/actions and the separation from visual feedback;
+[IconButton](https://api.flutter.dev/flutter/material/IconButton-class.html)
+documents Material ownership and minimum hit dimensions. The existing small
+positioned badge requires preserving its layout; the repository MenuButton already
+uses Material/InkWell plus button semantics for keyboard and painted focus.
+
+Before product editing, add five rendered cases: labelled button/semantic action,
+Tab then Enter, Tab then Space, painted focus and pointer duplicate admission.
+Run those alongside the nine existing badge ownership/forget/error cases only,
+using the new `--flutter-model-tests --credential-badge` profile. Expected baseline
+is four accessibility failures with pointer and ownership controls passing.
+The source-bound networkless VM retains the shared RAM admission, file ceilings,
+monitor, exclusive lock and joined cleanup. No host application/test or unrelated
+parked cohort runs. Native credential storage/FFI, full cards and target OS
+accessibility integration remain separate acceptance work.

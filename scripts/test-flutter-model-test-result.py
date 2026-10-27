@@ -173,7 +173,7 @@ class ResultTests(unittest.TestCase):
             self.parse(self.events("frame-queue"), "frame-queue"),
             (1, len(result.FRAME_QUEUE_TESTS)),
         )
-        self.assertEqual(self.parse(self.events("direct-address"), "direct-address"), (1, 19))
+        self.assertEqual(self.parse(self.events("direct-address"), "direct-address"), (1, 25))
         self.assertEqual(self.parse(self.events("password-fields"), "password-fields"), (1, 4))
         self.assertEqual(self.parse(self.events("menu-button"), "menu-button"), (2, 14))
         self.assertEqual(self.parse(self.events("path-labels"), "path-labels"), (1, 8))

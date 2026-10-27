@@ -108636,3 +108636,35 @@ translation bytes are unchanged. The compiled native translation fallback is
 source-reviewed; the focused Dart run does not execute the native translator or
 the complete ChatPage/device layout. Both test source files remain byte-identical
 to the baseline; the candidate repeats the same 94 cases.
+
+## 2026-10-27 user pivot: tunnel port draft preservation
+
+The user explicitly requests another aspect. Chat-history candidate `bad25c04`
+is pushed, but its candidate execution and final ledger acceptance are OPEN/PARKED;
+do not run that check under this pivot. All earlier parks remain. Rechecked the
+current authority table: all fifteen R-S11ia–io installed/native actions and
+R-S0/R-F5, artifact, independent reproduction and review acceptance remain open.
+
+This slice concerns the desktop tunnel form's numeric text editing, separately
+from parked tunnel-owner and half-close work. `PortForwardPage.buildTunnelAddRow`
+shares one whole-number regular expression through FilteringTextInputFormatter
+for both port fields. Filtering rewrites unmatched content and selection; an
+out-of-range digit or malformed paste can therefore destroy the existing draft.
+The intended edit transaction accepts a complete valid numeric draft or preserves
+the complete previous TextEditingValue, including selection. Empty text remains
+editable; the existing zero draft is not backend permission to bind port zero.
+The Rust admission, network topology, session authority and Add operation remain
+unchanged. The separately observed page-controller disposal issue remains open.
+
+Primary research: Flutter's FilteringTextInputFormatter documentation recommends
+a full-string predicate instead of positional regexes in a character filter:
+https://api.flutter.dev/flutter/services/FilteringTextInputFormatter-class.html.
+Reviewed pinned Flutter 3.24.5 services/text_formatter.dart as well:
+https://raw.githubusercontent.com/flutter/flutter/3.24.5/packages/flutter/lib/src/services/text_formatter.dart.
+Extract the exact existing formatter for direct execution, retaining the same
+pattern and behavior in the baseline. Six new cases exercise valid/invalid text,
+selection/composition, rendered invalid digit/paste, and clear/replacement. The
+existing nineteen address tests remain unchanged. Use the existing focused
+direct-address VM profile with all twenty-five cases and exact formatter digest
+and source-copy comparison; no chat tests, parent application or native tunnel
+is executed. A/B results and limits follow after actual execution.

@@ -123,6 +123,12 @@ FRAME_QUEUE_TESTS = {
     "detached displays remain inside the queue-wide key bound",
 }
 DIRECT_ADDRESS_TESTS = {
+    "tunnel port editing accepts empty and canonical 16-bit numeric drafts",
+    "tunnel port editing rejects the whole invalid edit without changing the draft",
+    "tunnel port editing preserves selection and composition of accepted text",
+    "tunnel port editing an out-of-range digit preserves the visible port",
+    "tunnel port editing invalid paste preserves the selected port and cursor",
+    "tunnel port editing clearing and replacing a port still works",
     "direct-address normalization (R-G2/R-SV5) trims only surrounding whitespace",
     "direct-address normalization (R-G2/R-SV5) preserves malformed interior whitespace for fail-closed validation",
     "direct-address normalization (R-G2/R-SV5) controller exposes address semantics without rewriting the target",

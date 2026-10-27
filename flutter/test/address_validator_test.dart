@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_hbb/common/formatter/direct_address.dart';
+import 'package:flutter_hbb/common/formatter/port_number.dart';
 
 Widget _addressField(DirectAddressTextEditingController controller) =>
     MaterialApp(
@@ -12,6 +13,130 @@ Widget _addressField(DirectAddressTextEditingController controller) =>
     );
 
 void main() {
+  group('tunnel port editing', () {
+    const previous = TextEditingValue(
+      text: '21118',
+      selection: TextSelection(baseOffset: 1, extentOffset: 4),
+    );
+
+    test('accepts empty and canonical 16-bit numeric drafts', () {
+      for (final text in [
+        '',
+        '0',
+        '1',
+        '9',
+        '10',
+        '99',
+        '100',
+        '999',
+        '1000',
+        '9999',
+        '10000',
+        '59999',
+        '60000',
+        '64999',
+        '65000',
+        '65499',
+        '65500',
+        '65529',
+        '65530',
+        '65535'
+      ]) {
+        final edit = TextEditingValue(
+          text: text,
+          selection: TextSelection.collapsed(offset: text.length),
+        );
+        expect(portNumberInputFormatter.formatEditUpdate(previous, edit), edit,
+            reason: text);
+      }
+    });
+
+    test('rejects the whole invalid edit without changing the draft', () {
+      for (final text in [
+        '65536',
+        '99999',
+        '123456',
+        '-1',
+        '+1',
+        '01',
+        '00000',
+        '21x18',
+        ' 21118',
+        '21118 ',
+        '21118\n',
+        '٢١',
+        '🙂'
+      ]) {
+        final edit = TextEditingValue(
+          text: text,
+          selection: TextSelection.collapsed(offset: text.length),
+        );
+        expect(portNumberInputFormatter.formatEditUpdate(previous, edit),
+            previous,
+            reason: text);
+      }
+    });
+
+    test('preserves selection and composition of accepted text', () {
+      const edit = TextEditingValue(
+        text: '12345',
+        selection: TextSelection(baseOffset: 4, extentOffset: 1),
+        composing: TextRange(start: 1, end: 4),
+      );
+      expect(portNumberInputFormatter.formatEditUpdate(previous, edit), edit);
+    });
+
+    Future<TextEditingController> showField(
+        WidgetTester tester, String text) async {
+      final controller = TextEditingController(text: text);
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: TextField(
+          controller: controller,
+          inputFormatters: [portNumberInputFormatter],
+        )),
+      ));
+      await tester.showKeyboard(find.byType(TextField));
+      return controller;
+    }
+
+    testWidgets('an out-of-range digit preserves the visible port',
+        (tester) async {
+      final controller = await showField(tester, '6553');
+      await tester.enterText(find.byType(TextField), '65536');
+      expect(controller.text, '6553');
+      expect(find.text('6553'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), '65535');
+      expect(controller.text, '65535');
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('invalid paste preserves the selected port and cursor',
+        (tester) async {
+      final controller = await showField(tester, previous.text);
+      controller.value = previous;
+      tester.testTextInput.updateEditingValue(const TextEditingValue(
+        text: '2invalid8',
+        selection: TextSelection.collapsed(offset: 8),
+      ));
+      await tester.pump();
+      expect(controller.value, previous);
+      expect(find.text(previous.text), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('clearing and replacing a port still works', (tester) async {
+      final controller = await showField(tester, '21118');
+      await tester.enterText(find.byType(TextField), '');
+      expect(controller.text, isEmpty);
+      await tester.enterText(find.byType(TextField), '443');
+      expect(controller.text, '443');
+      expect(find.text('443'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  });
+
   group('direct-address normalization (R-G2/R-SV5)', () {
     test('trims only surrounding whitespace', () {
       expect(normalizeDirectAddress('  192.168.1.10:21118  '),

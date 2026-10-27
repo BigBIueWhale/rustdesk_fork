@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
+import 'package:flutter_hbb/common/formatter/port_number.dart';
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
 import 'package:flutter_hbb/models/model.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
@@ -174,10 +175,7 @@ class _PortForwardPageState extends State<PortForwardPage>
   }
 
   buildTunnelAddRow(BuildContext context) {
-    var portInputFormatter = [
-      FilteringTextInputFormatter.allow(RegExp(
-          r'^([0-9]|[1-9]\d|[1-9]\d{2}|[1-9]\d{3}|[1-5]\d{4}|6[0-4]\d{3}|65[0-4]\d{2}|655[0-2]\d|6553[0-5])$'))
-    ];
+    final portInputFormatter = [portNumberInputFormatter];
 
     return Container(
       height: _kRowHeight,

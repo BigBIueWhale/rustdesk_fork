@@ -5,6 +5,7 @@ class DraggableDivider extends StatefulWidget {
   final Axis axis;
   final double thickness;
   final Color color;
+  /// Change in the preceding pane's extent, following the layout direction.
   final Function(double)? onPointerMove;
   final VoidCallback? onHover;
   final EdgeInsets padding;
@@ -25,7 +26,10 @@ class DraggableDivider extends StatefulWidget {
 class _DraggableDividerState extends State<DraggableDivider> {
   @override
   Widget build(BuildContext context) {
+    final direction = widget.axis == Axis.vertical
+        ? Directionality.of(context) : TextDirection.ltr;
     return GestureDetector(
+      key: ValueKey(direction),
       behavior: HitTestBehavior.opaque,
       dragStartBehavior: DragStartBehavior.down,
       excludeFromSemantics: true,
@@ -37,7 +41,8 @@ class _DraggableDividerState extends State<DraggableDivider> {
       },
       onHorizontalDragUpdate:
           widget.axis == Axis.vertical && widget.onPointerMove != null
-              ? (event) => widget.onPointerMove?.call(event.delta.dx)
+              ? (event) => widget.onPointerMove?.call(
+                  direction == TextDirection.rtl ? -event.delta.dx : event.delta.dx)
               : null,
       onVerticalDragUpdate:
           widget.axis == Axis.horizontal && widget.onPointerMove != null

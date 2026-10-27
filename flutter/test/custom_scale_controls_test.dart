@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart' show SessionID;
 import 'package:flutter_hbb/common/widgets/custom_scale_base.dart';
 import 'package:flutter_hbb/consts.dart';
@@ -144,16 +145,18 @@ class _ControlsState extends CustomScaleControls<_Controls> {
   @override
   Widget build(BuildContext context) => Column(children: [
     Text('$scaleValue', key: const ValueKey('percent')),
-    Slider(value: scalePos, onChanged: onSliderChanged),
+    buildScaleSlider(),
     TextButton(key: const ValueKey('minus'), onPressed: nudgeScale(-1), child: const Text('-')),
     TextButton(key: const ValueKey('plus'), onPressed: nudgeScale(1), child: const Text('+')),
     buildScaleStatus(),
   ]);
 }
 
-Widget _root(_Session session, {Key key = const ValueKey('controls'), ValueChanged<int>? changed}) =>
-    MaterialApp(home: Scaffold(body: SizedBox(width: 400,
-      child: _Controls(key: key, session: session, changed: changed))));
+Widget _root(_Session session, {Key key = const ValueKey('controls'), ValueChanged<int>? changed,
+    TargetPlatform platform = TargetPlatform.linux, TextDirection direction = TextDirection.ltr}) =>
+    MaterialApp(theme: ThemeData(platform: platform), home: Directionality(
+      textDirection: direction, child: Scaffold(body: SizedBox(width: 400,
+        child: _Controls(key: key, session: session, changed: changed)))));
 
 String _percent(WidgetTester tester) => tester.widget<Text>(find.byKey(const ValueKey('percent'))).data!;
 Future<void> _flush(WidgetTester tester) async { await tester.pump(); await tester.pump(); }
@@ -172,6 +175,102 @@ List<Object> _canvasState(_Session session) => [session.canvasModel.x, session.c
   session.canvasModel.scrollX, session.canvasModel.scrollY, session.inputModel.refreshes];
 
 void main() {
+  testWidgets('custom scale keyboard moves through the hundred percent detent', (tester) async {
+    for (final platform in [TargetPlatform.linux, TargetPlatform.macOS,
+        TargetPlatform.android, TargetPlatform.iOS]) {
+      for (final direction in TextDirection.values) {
+        for (final increase in [false, true]) {
+          final session = _Session();
+          try {
+            await tester.pumpWidget(_root(session, platform: platform, direction: direction));
+            await _flush(tester);
+            await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+            final right = increase == (direction == TextDirection.ltr);
+            await tester.sendKeyEvent(right ? LogicalKeyboardKey.arrowRight : LogicalKeyboardKey.arrowLeft);
+            await _debounce(tester);
+            final first = int.parse(_percent(tester));
+            expect(first, increase ? greaterThan(100) : lessThan(100));
+            expect(session.writer.calls, [first]);
+            await tester.sendKeyEvent(increase ? LogicalKeyboardKey.arrowUp : LogicalKeyboardKey.arrowDown);
+            await _debounce(tester);
+            final second = int.parse(_percent(tester));
+            expect(second, increase ? greaterThan(first) : lessThan(first));
+            expect(session.writer.calls, [first, second]);
+          } finally {
+            await _finish(tester, [session]);
+          }
+        }
+      }
+    }
+  });
+
+  testWidgets('custom scale accessibility actions move away from the detent', (tester) async {
+    final semantics = tester.ensureSemantics();
+    try {
+      for (final increase in [false, true]) {
+        final session = _Session();
+        try {
+          await tester.pumpWidget(_root(session));
+          await _flush(tester);
+          final node = tester.getSemantics(find.byType(Slider));
+          final predicted = increase ? node.getSemanticsData().increasedValue
+              : node.getSemanticsData().decreasedValue;
+          tester.binding.pipelineOwner.semanticsOwner!.performAction(node.id,
+              increase ? ui.SemanticsAction.increase : ui.SemanticsAction.decrease);
+          await _debounce(tester);
+          final percent = int.parse(_percent(tester));
+          expect(percent, increase ? greaterThan(100) : lessThan(100));
+          expect(predicted, '$percent%');
+          expect(tester.getSemantics(find.byType(Slider)).getSemanticsData().value, '$percent%');
+          expect(session.writer.calls, [percent]);
+        } finally {
+          await _finish(tester, [session]);
+        }
+      }
+    } finally {
+      semantics.dispose();
+    }
+  });
+
+  testWidgets('custom scale accessibility reports zoom across the full range', (tester) async {
+    final semantics = tester.ensureSemantics();
+    try {
+      for (final percent in [5, 50, 100, 250, 1000]) {
+        final session = _Session()..preferences.percent = percent;
+        try {
+          await tester.pumpWidget(_root(session));
+          await _flush(tester);
+          expect(tester.getSemantics(find.byType(Slider)).getSemanticsData().value, '$percent%');
+          expect(session.writer.calls, isEmpty);
+        } finally {
+          await _finish(tester, [session]);
+        }
+      }
+    } finally {
+      semantics.dispose();
+    }
+  });
+
+  testWidgets('custom scale buttons preserve precise steps and clamp at both ends', (tester) async {
+    for (final percent in [5, 99, 100, 101, 999, 1000]) {
+      final session = _Session()..preferences.percent = percent;
+      try {
+        await tester.pumpWidget(_root(session));
+        await _flush(tester);
+        await tester.tap(find.byKey(const ValueKey('plus')));
+        await _debounce(tester);
+        final raised = (percent + 1).clamp(5, 1000);
+        expect(_percent(tester), '$raised');
+        await tester.tap(find.byKey(const ValueKey('minus')));
+        await _debounce(tester);
+        expect(_percent(tester), '${(raised - 1).clamp(5, 1000)}');
+        expect(session.writer.maximumActive, 1);
+      } finally {
+        await _finish(tester, [session]);
+      }
+    }
+  });
+
   testWidgets('custom scale initializes percentage and normalized position together', (tester) async {
     final session = _Session();
     final pending = Completer<double>();

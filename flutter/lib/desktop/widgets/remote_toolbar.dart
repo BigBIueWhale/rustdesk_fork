@@ -1693,17 +1693,7 @@ class _CustomScaleMenuControlsState
             displayValueForNormalized: (t) => mapPosToPercent(t),
           ),
         ),
-        child: Slider(
-          value: scalePos,
-          min: 0.0,
-          max: 1.0,
-          // Use a wide range of divisions (calculated as (CustomScaleControls.maxPercent - CustomScaleControls.minPercent)) to provide ~1% precision increments.
-          // This allows users to set precise scale values. Lower values would require more fine-tuning via the +/- buttons, which is undesirable for big ranges.
-          divisions:
-              (CustomScaleControls.maxPercent - CustomScaleControls.minPercent)
-                  .round(),
-          onChanged: onSliderChanged,
-        ),
+        child: buildScaleSlider(),
       ),
     );
 

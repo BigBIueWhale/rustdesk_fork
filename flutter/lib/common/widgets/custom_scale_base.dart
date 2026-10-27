@@ -46,6 +46,16 @@ abstract class CustomScaleControls<T extends StatefulWidget> extends State<T> {
 
   int mapPosToPercent(double p) => _mapPosToPercent(p);
 
+  @protected
+  Widget buildScaleSlider({String? label}) => Slider(
+    value: scalePos,
+    min: 0.0,
+    max: 1.0,
+    divisions: maxPercent - minPercent,
+    label: label,
+    onChanged: onSliderChanged,
+  );
+
   static const int minPercent = kScaleCustomMinPercent;
   static const int pivotPercent = kScaleCustomPivotPercent; // 100% should be at 1/3 of track
   static const int maxPercent = kScaleCustomMaxPercent;

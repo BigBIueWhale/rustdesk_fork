@@ -346,6 +346,10 @@ SCROLL_PREFERENCE_TESTS = {
 }
 
 CUSTOM_SCALE_TESTS = {
+    "custom scale keyboard moves through the hundred percent detent",
+    "custom scale accessibility actions move away from the detent",
+    "custom scale accessibility reports zoom across the full range",
+    "custom scale buttons preserve precise steps and clamp at both ends",
     "canvas changed scroll mode retires a pending view style read",
     "canvas scroll mode change cancels and joins its queued timer",
     "canvas asynchronous view read leaves event handling available",

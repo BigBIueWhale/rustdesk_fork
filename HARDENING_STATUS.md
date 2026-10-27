@@ -16243,7 +16243,7 @@ review and release acceptance remain OPEN.
 | Whole-list receive completion | `finalize_write` first requires successful file-list admission, then requires the active file's exact next index to equal the whole admitted list length before consuming the stream or publishing the claim. A missing or rejected list cannot become a successful empty transfer. Explicitly admitted empty and skipped lists retain their no-stream completion path. |
 | Send length and EOF | `read` owns a per-file position and probes at most the admitted remainder plus one byte, capped at 128 KiB. Short EOF or overrun closes the stream and fails before publishing the affected block or changing counters/file number. Successful seek establishes the position; skip, retirement, fresh open and exact EOF reset it. |
 | Overwrite digest size | `get_current_digest` requires the retained source's observed length to equal the admitted entry size before either CM or keyed TCP digest publication and before entering confirmation wait. A changed length refuses without replacing list authority or advancing counters; later read/EOF checks remain required. |
-| Direct read-step retirement | `handle_read_jobs` selects the first `is_read_step_ready` entry, bypassing outstanding overwrite confirmation while retaining paused jobs. The viewer uses that same predicate for write-completion context. The selected vector entry owns initialization and reading, retires before its terminal notification is awaited, and returns at most one exact writer receipt. Notification failure propagates; a nonterminal admission error does not remove the active job. The separate initializer and numeric-ID finished list are deleted. Linux library/keyed-TCP refusal checks pass; application/platform integration remains OPEN below. |
+| Direct read-step retirement | `handle_read_jobs` selects the first `is_read_step_ready` entry, bypassing outstanding overwrite confirmation while retaining paused jobs. The viewer uses that same predicate for write-completion context. The selected vector entry owns initialization and reading, retires before its terminal notification is awaited, and returns at most one exact writer receipt. Each successful nonterminal frame moves that exact entry behind the other jobs; paused/waiting jobs retain ownership and the relative order of other entries is preserved. Both viewer and controlled write contexts use the same readiness predicate. Notification failure propagates; a nonterminal admission error does not remove the active job. The separate initializer and numeric-ID finished list are deleted. Linux library/keyed-TCP refusal checks pass; application/platform integration remains OPEN below. |
 | Send resume source ownership | `set_stream_offset` checks metadata and seeks on the retained send `FileStream`; it does not reopen the pathname to replace an active stream. A first open remains provisional until length validation and seek succeed. Refused offsets preserve confirmation and accounting. |
 | Resume admitted size | Both roles reject offsets beyond the admitted entry size before path resolution, open, seek or accounting. Send also checks the retained object's actual length; in-place growth does not enlarge the admitted authority. |
 | File confirmation entry | Every filesystem-backed skip, overwrite and resume action requires a present entry at the exact matching current index before changing flags, counters, streams or cleanup state. Empty and completed lists cannot confirm an absent file; a present zero-byte file remains valid. |
@@ -16268,9 +16268,34 @@ size/allocation/retirement/backpressure checks. Evidence and cleanup are retaine
 This executes the common library and native keyed TCP with fixture keys, not PAKE, the
 viewer application or installed services. The viewer context change is source-reviewed;
 full-parent execution remains parked. The separate CM scheduling path remains
-OPEN/PARKED and unchanged, including the analogous waiting-selection gap. General
-scheduler fairness, real-peer/app/platform acceptance, R-S0/R-F5 and release acceptance
-remain OPEN.
+OPEN/PARKED and unchanged, including the analogous waiting-selection gap. The common
+sender's bounded-turn correction follows below. CM scheduling, real-peer/app/platform
+acceptance, R-S0/R-F5 and release acceptance remain OPEN.
+
+**Concurrent direct-send progress — Linux library/keyed TCP comparison ACCEPTED; application/platform integration OPEN.**
+
+`80425cc9` gives each ready job one admitted frame per turn, then rotates that exact
+entry behind the other jobs. Digest, data and EOF admission yield; terminal jobs
+retain removal-before-notification, and failed admission does not rotate a survivor.
+The controlled write tracker now uses the same readiness predicate as the producer
+and viewer, so a waiting job cannot supply another job's receipt context.
+At unchanged-product preparation `529a0268`, all four new scheduling scenarios
+fail after exact bytes, one EOF/Done per file and joined socket writers; the earlier
+fourteen checks complete. The identical candidate workload passes all fifteen
+tests in 143 outer seconds. Actual files and keyed guest-loopback TCP cover 2, 3
+and 32 concurrent jobs plus pause/resume, overwrite confirmation, completion and
+new-job admission. Every ready job advances within the turn bound; this is not a
+wall-clock or network-latency guarantee. Both VMs join and retire bounded RAM.
+The baseline final snapshot retains one unattributed endpoint addition; candidate
+snapshots have zero deltas. No foreign owner was inspected or changed.
+Raw evidence is retained under `.harness-state/verifier-vm/` as
+`hbb-common-fs-run.7SsipNWufD.serial.log` and
+`hbb-common-fs-run.DiYZysAOoA.serial.log`, with adjacent storage/listener receipts;
+source/artifact hashes and classification are in the audit journal. The test body
+and harness are identical across the comparison. The controlled caller change is
+source-reviewed only; complete parents, real PAKE/peer/UI behavior, native installed
+authority, other platforms, sustained/resource/latency acceptance and R-S0/R-F5/release
+remain OPEN. The separate CM scheduler and full-parent build remain user-PARKED.
 
 **CM read-tick scheduling — OPEN/PARKED at the user's request; no automatic resumption.**
 Source `e3544227` selects and retires one exact send job per tick; initialization failure

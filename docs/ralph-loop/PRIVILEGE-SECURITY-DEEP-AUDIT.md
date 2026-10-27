@@ -107496,3 +107496,55 @@ Post-run identity checks confirm the exact QEMU PID, RAM workspace and active ru
 markers are absent. The bounded workspace peaked at 402,309,120 allocated bytes;
 the owned durable run directory peaked at 151,552 bytes. Product execution was
 unexecuted, as appropriate for this documentation-only correction.
+
+### 2026-10-27 — bounded progress across concurrent direct-send jobs
+
+The previous documentation turn made verified progress. All earlier user parks
+remain. The common outbound sender selected the first ready entry on every tick,
+leaving later transfers idle until it completed. The corrected owner model gives
+each ready job one admitted frame, then moves that exact survivor behind the other
+entries. Paused/unconfirmed owners remain intact; terminal removal and admission
+failure retain their previous behavior. The controlled write tracker now selects
+context with the producer's is_read_step_ready predicate, as the viewer already did.
+Receivers and CmFileModel identify jobs by ID; scheduling does not change per-file
+ordering or adopt producer order as existing log-row order. Rust's in-place slice
+rotation contract supports the operation on the selected nonempty suffix:
+https://doc.rust-lang.org/std/primitive.slice.html#method.rotate_left
+
+Preparation 529a0268b8cf1c9be56533de18dab66b38b65304 adds one regression with four
+actual-file/keyed-TCP scenarios. Baseline 7SsipNWufD completes fourteen controls;
+the new case fails all four progress observations after verifying exact bytes,
+one EOF/Done per file, unchanged source contents and joined socket writers.
+Candidate 80425cc9c553833e8d94a7588e119a7c6b053e1e passes all fifteen checks as
+DiYZysAOoA in 143 outer seconds using the identical command:
+`/bin/bash scripts/smoke-verifier-vm-authority.sh --file-send-digest-tests`.
+Cases cover 2, 3 and 32 concurrent jobs and a mixed queue with pause/resume,
+genuine overwrite confirmation, short/long files, completion and new admission.
+The complete filesystem test module and harness are identical between sources;
+test-module SHA-256 ebf3292181f98a966ff72d5fd123cf327373c2d0dc9fcdd84c40c1bb103c5ff8.
+Baseline artifact: ea6440cae7244f27c51bffa041ed5f656a21156971019f87136331ada4d91e6d.
+Candidate artifact: 891c76f4cbc10f3ff185c445eec930ace091c5e259676e5787c1b7d833b8ae01.
+
+Retained serials in .harness-state/verifier-vm, with adjacent storage/listener receipts:
+
+- hbb-common-fs-run.7SsipNWufD.serial.log: 83,188 bytes, SHA-256
+  a8f451ff442cb324aee43a5641f069db79381769a7c0bd60c9d0ac28f8e4e42e.
+- hbb-common-fs-run.DiYZysAOoA.serial.log: 77,661 bytes, SHA-256
+  8e5bf7a4cf4c1ccb263b49af2007ee94e003f5e36133f43daf9688666e33e1a8.
+
+Both use the existing 6-GiB guest/6-GiB RAM scratch/4-GiB file ceiling profile
+with 6-GiB host headroom. RAM peaks: 3,473,977,344 and 3,473,780,736 allocated
+bytes; durable run peaks: 3,321,856 and 3,309,568 bytes. Exact QEMU joins and
+RAM retirement are verified; no active run marker remains. Baseline diagnostics
+are preserved in send-fairness-baseline.7SsipNWufD. Its final snapshot adds one
+unattributed 18-byte endpoint; earlier baseline and all candidate deltas are zero.
+No foreign endpoint or process owner was inspected or changed.
+
+Evidence is Linux shared-library execution, actual files, compression/protobuf,
+fixture-keyed TCP and exact writer receipts. The controlled caller predicate is
+source-reviewed only; no complete parent, PAKE, installed root service or physical
+device ran. Turn bounds do not establish wall-clock latency. CM scheduling and
+full-parent work stay parked. Native/installed authority, all fifteen credential
+actions, app/settings functionality, other platforms, resource/latency soaks,
+R-S0/R-F5, cold release equality and external review remain OPEN. Focused shell
+syntax and diff checks pass; the fresh complete ledger count follows.

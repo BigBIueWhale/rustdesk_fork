@@ -496,6 +496,92 @@ void main() {
     expect(h.calls, hasLength(1));
   });
 
+  test('resume admits one pending request per exact job', () async {
+    for (final download in [false, true]) {
+      final h = _ResumeHarness();
+      h.job.isRemoteToLocal = download;
+      final first = h.resume();
+      final duplicate = h.resume();
+      try {
+        expect(h.calls, [[h.session, 7, download]]);
+        expect(h.job.state, JobState.paused);
+      } finally {
+        for (final reply in h.replies) {
+          reply.complete();
+        }
+        await Future.wait([first, duplicate]);
+      }
+      expect(await first, isTrue);
+      expect(await duplicate, isFalse);
+      expect(h.job.state, JobState.inProgress);
+      expect(await h.resume(), isFalse);
+    }
+  });
+
+  test('resume pending ownership permits independent jobs and failure retry',
+      () async {
+    final h = _ResumeHarness();
+    final original = h.job;
+    final other = JobProgress()
+      ..id = 8
+      ..type = JobType.transfer
+      ..state = JobState.paused
+      ..isRemoteToLocal = false;
+    h.controller.jobTable.add(other);
+    final first = expectLater(h.resume(), throwsA(isA<StateError>()));
+    final second = h.controller.resumeJob(8, expectedSessionId: h.session);
+    expect(h.calls, [[h.session, 7, true], [h.session, 8, false]]);
+    h.replies[1].complete();
+    expect(await second, isTrue);
+    expect(other.state, JobState.inProgress);
+    expect(original.state, JobState.paused);
+    final duplicate = h.resume();
+    try {
+      expect(h.calls, hasLength(2));
+    } finally {
+      h.replies[0].completeError(StateError('bridge failed'));
+      for (final reply in h.replies.skip(2)) {
+        reply.complete();
+      }
+      await first;
+      await duplicate;
+    }
+    expect(await duplicate, isFalse);
+    expect(original.state, JobState.paused);
+    final retry = h.resume();
+    h.replies.last.complete();
+    expect(await retry, isTrue);
+    expect(h.calls, hasLength(3));
+    expect(original.state, JobState.inProgress);
+  });
+
+  test('retired resume cannot release replacement job admission', () async {
+    final h = _ResumeHarness();
+    final original = h.job;
+    final first = h.resume();
+    h.controller.clear();
+    h.controller.addTransferJob(
+        Entry()..path = '/source/replacement', false, h.session);
+    h.job.state = JobState.paused;
+    final second = h.resume();
+    expect(h.calls, [[h.session, 7, true], [h.session, 7, false]]);
+    h.replies[0].complete();
+    expect(await first, isFalse);
+    expect(original.state, JobState.paused);
+    final duplicate = h.resume();
+    try {
+      expect(h.calls, hasLength(2));
+    } finally {
+      for (final reply in h.replies.skip(1)) {
+        reply.complete();
+      }
+      await Future.wait([second, duplicate]);
+    }
+    expect(await second, isTrue);
+    expect(await duplicate, isFalse);
+    expect(h.job.state, JobState.inProgress);
+  });
+
   test('resume bridge failure preserves the job and permits retry', () async {
     final h = _ResumeHarness();
     final failed = expectLater(h.resume(), throwsA(isA<StateError>()));

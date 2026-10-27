@@ -1336,11 +1336,21 @@ void main() {
       {},
       {'peers': null},
       {'peers': 7},
-      {'peers': <String>[secret]},
-      {'peers': <String, String>{'private': secret}},
+      {
+        'peers': <String>[secret]
+      },
+      {
+        'peers': <String, String>{'private': secret}
+      },
       {'peers': '[]', 'ids': 7},
-      {'peers': '[]', 'ids': <String>[secret]},
-      {'peers': '[]', 'ids': <String, String>{'private': secret}},
+      {
+        'peers': '[]',
+        'ids': <String>[secret]
+      },
+      {
+        'peers': '[]',
+        'ids': <String, String>{'private': secret}
+      },
       {'peers': '[]', 'ids': '192.0.2.3,,192.0.2.4'},
     ];
     for (final event in invalid) {

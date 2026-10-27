@@ -10871,7 +10871,7 @@ run_flutter_model_tests() {
              "$(( ${#model_test_count} + 1 ))" ] \
         || fail 'focused Flutter model-test count is malformed'
     if [ "$FLUTTER_TEST_PROFILE" = models ]; then
-        expected_result="suites=25 tests=$model_test_count"
+        expected_result="suites=26 tests=$model_test_count"
     fi
     chown -R 1000:1000 "$source_root" "$work_root"
     chmod 0700 "$work_root"
@@ -11471,7 +11471,7 @@ run_flutter_model_tests() {
                         test/terminal_output_decoder_test.dart
                         test/terminal_model_lifecycle_test.dart
                     )
-                    [ "${#tests[@]}" -eq 25 ]
+                    [ "${#tests[@]}" -eq 26 ]
                     test_budget=900s
                 fi
                 test_name_filter=()

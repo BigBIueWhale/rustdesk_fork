@@ -24,8 +24,10 @@ spec.loader.exec_module(result)
 class ResultTests(unittest.TestCase):
     def events(self, profile):
         if profile == "models":
-            suites = sorted(result.EXPECTED_SUITES)
-            names = ["model {}".format(i) for i in range(result.model_test_count())]
+            suites = sorted(result.MODEL_TESTS)
+            model_cases = [(suite, name) for suite in suites
+                           for name in sorted(result.MODEL_TESTS[suite])]
+            names = [name for _, name in model_cases]
         elif profile == "frame-queue":
             suites = ["latest_frame_queue_test.dart"]
             names = sorted(result.FRAME_QUEUE_TESTS)
@@ -137,6 +139,8 @@ class ResultTests(unittest.TestCase):
             })
         for test_id, name in enumerate(names):
             suite_id = test_id % len(suites)
+            if profile == "models":
+                suite_id = suites.index(model_cases[test_id][0])
             if profile in ("credential-dialog", "terminal-output", "file-navigation", "modifier-release", "peer-data", "tab-selection", "status-refresh", "audio-input", "reconnect", "credential-badge", "menu-button"):
                 inventory = (result.AUDIO_INPUT_SUITES if profile == "audio-input"
                              else result.CREDENTIAL_BADGE_SUITES if profile == "credential-badge"
@@ -173,7 +177,7 @@ class ResultTests(unittest.TestCase):
     def test_complete_profiles(self):
         self.assertEqual(
             self.parse(self.events("models"), "models"),
-            (len(result.EXPECTED_SUITES), result.model_test_count()),
+            (len(result.MODEL_TESTS), result.model_test_count()),
         )
         self.assertEqual(
             self.parse(self.events("frame-queue"), "frame-queue"),
@@ -241,8 +245,8 @@ class ResultTests(unittest.TestCase):
                     elif kind != "missing":
                         path.unlink()
 
-    def test_focused_inventory_is_exact(self):
-        for profile in ("frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "modifier-release"):
+    def test_inventory_is_exact(self):
+        for profile in ("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "modifier-release"):
             events = self.events(profile)
             for edit in ("rename", "duplicate", "suite", "missing", "wrong-suite"):
                 with self.subTest(profile=profile, edit=edit):

@@ -109513,3 +109513,35 @@ RAM `run.x5tttg7j` and active run roots are absent. Before/during deltas are zer
 after has one unattributed endpoint addition (18 bytes), without owner inspection.
 Owned IP sockets remain kernel-denied and the harness listener audit passes.
 This audit-only receipt changes neither counted document.
+
+## 2026-10-28 — exact model test-case inventory
+
+Previous turn made progress: result-file admission was corrected and its five
+regressions passed. At `6e0a5cfa`, the model profile still accepts arbitrary names,
+duplicates and wrong-suite assignments when the aggregate count matches. Its
+fixture even supplies invented `model N` names. The full checkpoint is separately
+parked (stash `58a6d019`); this correction uses the focused address transaction to
+exercise the result parser and does not execute the parked model or product suites.
+
+The reviewed model inventory now maps each suite to its intended case names,
+reusing existing focused inventories where complete. Current declarations expand
+to 26 suites/357 cases, rather than the stale 327 total. The file-command model
+inventory includes its existing failed-recursive-cleanup case; that parked focused
+profile and its product source remain unchanged. The guest's two stale 25-suite
+assertions are corrected to the already selected 26; neither test selection nor
+runtime/storage budgets change. Static template/declaration matching and manual
+parameter-domain review support this inventory, not a full-checkpoint pass claim.
+
+The [Dart JSON reporter protocol](https://github.com/dart-lang/test/blob/master/pkgs/test/doc/json_reporter.md)
+defines a test's full group-prefixed name and suite ID separately from its opaque
+run ID. Admission therefore requires the exact (suite, name) pair, one successful
+non-skipped completion per expected pair, and the retained finality/error checks.
+Opaque IDs and event interleaving cannot substitute one case for another. The
+declared aggregate remains a separately checked total shared by inner/outer receipts.
+
+Preparation changes inventory/fixtures and stale totals only; model acceptance is
+still count-based for the baseline. Add the model profile to the existing rename,
+duplicate, wrong-suite, missing-case and wrong-suite-file regressions. Run that
+unchanged acceptance logic first, then enforce exact pairs. Product sources/tests,
+native credential actions, R-S0/R-F5, all earlier parks and full model execution
+remain open; no live instruction or normative requirement is changed.

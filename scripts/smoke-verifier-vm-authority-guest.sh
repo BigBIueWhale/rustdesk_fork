@@ -6601,9 +6601,15 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         if [ "$RUST_TEST_PROFILE" = control-egress ] \
             && grep -Eq '^CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256=[0-9a-f]{64} tests=[0-9]+$' "$output"; then
             awk '
+                /^failures:$/ { failure_report = 1 }
+                failure_report {
+                    if (++failure_lines > 160) exit 1
+                    print
+                    next
+                }
                 /^(VIEWER_VOICE_MISMATCH_CASE|CM_VOICE_OWNER_CASE|CM_CHAT_OWNER_CASE)=/ { next }
                 /^(CM_DISCONNECT_OWNER_CASE|CM_CLOSE_RESULT_CASE)=.* correct=true$/ { next }
-                /^(CONTROL_EGRESS_|RECENT_DOCUMENT_|CURSOR_ECHO_|VIEWER_VOICE_|VIEWER_FPS_|CONTROLLED_VOICE_|CONTROLLED_TUNNEL_|PF_SETTINGS_|RDP_LAUNCH_|test |CM_|CONTROL_QUEUE_|FILE_CLIP_QUEUE_|BYTES_CODEC_|memory allocation of )/ {
+                /^(CONTROL_EGRESS_|RECENT_DOCUMENT_|CURSOR_ECHO_|VIEWER_VOICE_|VIEWER_FPS_|CONTROLLED_VOICE_|CONTROLLED_TUNNEL_|PF_REAPER_|PF_SETTINGS_|RDP_LAUNCH_|test |CM_|CONTROL_QUEUE_|FILE_CLIP_QUEUE_|BYTES_CODEC_|memory allocation of )/ {
                     if (++records > 576) exit 1
                     print
                 }

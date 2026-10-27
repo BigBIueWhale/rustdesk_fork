@@ -109662,3 +109662,36 @@ Outer/supervisor lifetime 29/31.949 seconds; peak RAM scratch 402,354,176 bytes,
 durable evidence 147,456 bytes. QEMU 3857268 joins with exit 0; its PID, RAM
 `run.tstnhcz6` and active run roots are absent. All endpoint deltas are zero.
 This audit-only receipt changes neither the counted ledger nor the specification.
+
+## 2026-10-28 — retired config protocol verification
+
+The user's new pivot leaves the macOS mouse-button coordinate investigation
+OPEN/PARKED after source research only; no product/test change or Apple execution
+was made. Do not resume it automatically. Earlier parks remain in effect.
+
+At `ea68fb9c`, the shared verifier has two whole-file `SyncConfig` searches in
+`src/ipc.rs`; the Apple gate has two more. All four match only line 11729 of
+`ordinary_option_ack_waits_for_persistence`: the deliberately forbidden framed
+request named `retired_config`. The four actual declarations (`Data`,
+`MainIpcRequest`, `ServiceIpcRequest`, `ServiceIpcResponse`) contain no such variant.
+The old source checks therefore reject useful negative coverage, independently
+of whether the product rejects the frame. The shared verifier also searches a
+deleted `async fn handle` body, producing no coverage.
+
+The correction consolidates the prohibition onto those four declarations in
+each verifier, using the existing Apple item extraction. The shared scan retains
+the complete awk output before grep so early grep completion cannot conceal a
+match through pipeline failure. Duplicate server scans and the obsolete handler
+scan are removed; one server-import scan per verifier remains. Existing directional
+protocol checks, receiver authority, framed negative cases and every cargo-test
+command remain. No product code, runtime test, normative requirement or instruction
+file changes. This is a verifier false-positive correction, not an LPE finding.
+
+Read-only source comparison confirms the unique negative-fixture occurrence,
+all four declarations and byte-identical `src/ipc.rs`, `src/server.rs` and
+`requirements.html`. Both shell syntax checks, Python AST parsing of the Apple
+gate's two embedded blocks and `git diff --check` pass. The full shared/Apple
+catalogues, compilation and native IPC tests are not run or claimed. Installed
+credential authority for all fifteen actions, R-S0/R-F5 and release acceptance
+remain OPEN. The current-state ledger records this correction and the pivot;
+its fresh count follows separately.

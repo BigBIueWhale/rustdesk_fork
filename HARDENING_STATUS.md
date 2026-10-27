@@ -52,6 +52,11 @@ case inventories, intermediate failures, source/artifact hashes and timings rema
 receipts under `.harness-state/verifier-vm/` and in Git history. Shared current-artifact,
 installed/other-platform, R-S0/R-F5, resource/soak and release obligations below remain OPEN.
 
+**User pivot (2026-10-28):** The macOS mouse-button coordinate investigation
+remains OPEN/PARKED after source research only. No product or test change was
+made. Do not resume automatically. Work moved to the IPC verification correction
+recorded under documentation and verification architecture.
+
 **User pivot (2026-10-28):** Exact model-result inventory enforcement remains
 OPEN/PARKED at preparation `fa342297`. Baseline `oqK3uathmq` reproduces three
 parser failures; no parser correction or full model checkpoint ran. The shared
@@ -355,6 +360,17 @@ result inventory and production-source predicate remains unchanged. Exact source
 comparison, shell syntax and diff checks cover this deletion; no product runtime
 test ran for it. `test-source-catalogues-911ad100.json` retains the comparison and
 fresh ledger count. Native/installed acceptance and all user parks remain OPEN.
+
+**Retired whole-config protocol verification.** The shared and Apple gates now
+check the four relevant protocol declarations for `SyncConfig`. Their former
+whole-file scans falsely rejected the existing framed negative test that sends
+that forbidden message. Duplicate scans and a check of the deleted `handle`
+function are removed. Server import checks, closed-protocol checks, production
+code, executable test bodies and test commands remain. Source comparison and
+shell/Python syntax inspection cover this verifier correction; no full gate,
+product compilation or native IPC execution is claimed. The audit entry
+“2026-10-28 — retired config protocol verification” retains the classification
+and fresh ledger count. Current native/installed and release acceptance remain OPEN.
 
 | Documentation scope | Current contract or disposition | Retained classification |
 | --- | --- | --- |

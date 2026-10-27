@@ -1122,6 +1122,8 @@ def analyze(sources):
             "WindowsServiceSasIpcResponse::DispatchAccepted { accepted: true }",
         ]) and "send_json_timeout(" not in sas_client and "next_timeout(" not in sas_client)
         main_request = item(ipc, "pub enum MainIpcRequest")
+        need("b1", "whole-config-ipc-variant-present",
+             "SyncConfig" not in data + main_request + service_request + service_response)
         need("b1", "service-variant-remains-in-data-union", not any(token in data for token in [
             "MacosServiceOwned",
             "RequestServiceOwned",
@@ -2683,7 +2685,6 @@ fi
 
 echo "== (2b-i) R-S11b-1 macOS _service is bounded control IPC, never a password/config bus =="
 r_s11b=$(<"$apple_password_gate_dir/r_s11b")
-grep -q 'SyncConfig' "$REPO/src/ipc.rs" && r_s11b="$r_s11b whole-config-ipc-variant-present"
 grep -q 'SyncConfig' "$REPO/src/server.rs" && r_s11b="$r_s11b server-whole-config-import-present"
 grep -q 'send_service_request_timeout(&ServiceIpcRequest::LivenessProbe {}, 1000)' "$REPO/src/ipc/fs.rs" || r_s11b="$r_s11b service-probe-not-typed-liveness"
 grep -q 'Ok(Some(ServiceIpcResponse::Liveness {}))' "$REPO/src/ipc/fs.rs" || r_s11b="$r_s11b service-probe-not-validating-typed-response"
@@ -2785,8 +2786,6 @@ for token in \
   grep -Fq "$token" "$REPO/libs/hbb_common/src/config.rs" &&
     r_s11b2="$r_s11b2 retired-salt-reader-surface-present:$token"
 done
-grep -q 'SyncConfig' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 whole-config-ipc-variant-present"
-grep -q 'SyncConfig' "$REPO/src/server.rs" && r_s11b2="$r_s11b2 server-whole-config-import-present"
 main_config_enum=$(awk '/pub enum MainConfigKey/,/^}/' "$REPO/src/ipc.rs")
 main_config_handler=$(awk '/MainIpcRequest::Config\(key\) => \{/,/MainIpcRequest::SetOption\(value\) => \{/' "$REPO/src/ipc.rs")
 echo "$main_config_enum" | grep -q 'PermanentPasswordStorageAndSalt' && r_s11b2="$r_s11b2 credential-storage-main-config-key-present"

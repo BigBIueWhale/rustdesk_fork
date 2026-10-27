@@ -888,8 +888,6 @@ grep -q 'STATUS_FRAME_BYTES: usize = 32' src/ipc/password.rs                    
 grep -q 'ACK_FRAME_BYTES: usize = 28' src/ipc/password.rs                              || r_s11="$r_s11 windows-password-ack-cap-missing"
 grep -q 'MainIpcRequest::SetOption(value)' src/ipc.rs                                 || r_s11="$r_s11 typed-option-arm-missing"
 grep -q 'MainIpcRequest::SetVoiceCallInput(value)' src/ipc.rs                         || r_s11="$r_s11 typed-voice-input-arm-missing"
-grep -q 'SyncConfig' src/ipc.rs && r_s11="$r_s11 whole-config-ipc-variant-present"
-grep -q 'SyncConfig' src/server.rs && r_s11="$r_s11 server-whole-config-import-present"
 grep -q 'permanent-password-user-owned-writable' src/ipc.rs                            || r_s11="$r_s11 password-writability-receiver-missing"
 grep -q 'permanent-password-user-owned-writable' src/flutter_ffi.rs                    || r_s11="$r_s11 password-writability-ffi-missing"
 grep -q 'permanent-password-writable' src/flutter_ffi.rs                              || r_s11="$r_s11 owner-aware-password-writability-ffi-missing"
@@ -2454,11 +2452,9 @@ grep -q 'pub(crate) enum WindowsServiceSasIpcRequest' src/ipc.rs || r_s11b="$r_s
 grep -q 'pub(crate) enum WindowsServiceSasIpcResponse' src/ipc.rs || r_s11b="$r_s11b windows-sas-response-type-missing"
 grep -q 'transaction_tasks.spawn(handle_windows_service_ipc_request' src/platform/windows.rs || r_s11b="$r_s11b windows-service-transactions-not-tracked"
 grep -q 'while !transaction_tasks.is_empty()' src/platform/windows.rs || r_s11b="$r_s11b windows-service-transactions-not-drained-on-stop"
-if grep -q 'SyncConfig' src/ipc.rs; then
+ipc_config_protocols=$(awk '/^pub(\(crate\))? enum (Data|MainIpcRequest|ServiceIpcRequest|ServiceIpcResponse) \{/,/^}/' src/ipc.rs)
+if grep -qw 'SyncConfig' <<<"$ipc_config_protocols"; then
   r_s11b="$r_s11b whole-config-ipc-variant-present"
-fi
-if awk '/^async fn handle\(/,/^}/' src/ipc.rs | grep -qE 'Data::SyncConfig\(Some\([^)]*\)\)[[:space:]]*=>'; then
-  r_s11b="$r_s11b whole-config-write-handler-present"
 fi
 if grep -q 'SyncConfig' src/server.rs; then
   r_s11b="$r_s11b server-whole-config-import-present"

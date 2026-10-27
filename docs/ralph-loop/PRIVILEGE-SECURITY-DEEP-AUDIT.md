@@ -108498,3 +108498,14 @@ or LPE boundary is claimed closed. The shared shell files parse, whitespace revi
 passes, and the full source catalog is not rerun for this UI-only correction.
 The current ledger is updated for this slice and the explicit park; its fresh
 exact-input token count follows without resuming the parked Server Pro work.
+
+Ledger count at `aa17b407`, run `Y1PrljvwYq`: **351,395 tokens / 1,596,331
+bytes**, SHA-256 `6363e5dd7161d5f4cf4c26fe6798f3863c15f74786240f2b373b116f3fbb3f80`.
+Pinned tiktoken-0.12.0/cl100k_base/encode_ordinary, seven controls and the complete
+UTF-8 round trip pass; the approximate 400,000-token budget remains met.
+Serial is 98,209 bytes, SHA-256
+`1a71460e91094ba47b49b27fd77b6e7055919d8d8101fe9194d5d94529bdbfd5`.
+Outer/supervisor lifetime is 28/31.17 seconds; peak RAM scratch 402,206,720 bytes,
+durable evidence 151,552 bytes. QEMU 3244415 joins with exit 0; RAM `run.696g6ks3`
+and active run roots are absent. Every listener delta is zero. This receipt-only
+update changes neither the counted ledger nor tested product.

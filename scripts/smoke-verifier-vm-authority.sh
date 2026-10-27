@@ -8032,7 +8032,7 @@ else
         widget_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/desktop/widgets/tabbar_widget.dart" | /usr/bin/awk '{print $1}')"
         widget_tests_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test_probes/tab_selection_cases.dart.inc" | /usr/bin/awk '{print $1}')"
         require_exact_fixed_receipt \
-            "FLUTTER_TAB_SELECTION_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=2 tests=22 flutter=$FLUTTER_VERSION widget=$widget_sha256 tests_source=$widget_tests_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-tab-selection-tests cleanup=joined" \
+            "FLUTTER_TAB_SELECTION_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=2 tests=31 flutter=$FLUTTER_VERSION widget=$widget_sha256 tests_source=$widget_tests_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-tab-selection-tests cleanup=joined" \
             'focused Flutter tab-selection receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
         lifecycle_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/models/server_status_refresh_loop.dart" | /usr/bin/awk '{print $1}')"

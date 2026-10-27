@@ -349,4 +349,131 @@ void main() {
     expect(created, 1);
     expect(retired, 0);
   });
+
+  testWidgets('tab notification follows new page initialization', (tester) async {
+    final harness = _Harness();
+    await harness.show(tester);
+    var initialized = false;
+    final notifications = <bool>[];
+    harness.controller.onSelected = (key) {
+      expect(key, 'e');
+      notifications.add(initialized);
+    };
+    harness.controller.add(TabInfo(
+      key: 'e', label: 'e',
+      page: _TrackedPage('e', 'new', () => initialized = true, () {}),
+    ));
+    expect(notifications, isEmpty);
+    await harness.settle(tester);
+    harness.expectPage('e');
+    expect(notifications, [true]);
+  });
+
+  testWidgets('tab notification selects an existing tab without replacement', (tester) async {
+    final harness = _Harness();
+    await harness.show(tester, active: 'a');
+    await harness.select(tester, 'b');
+    final original = harness.controller.state.value.tabs[1];
+    await harness.select(tester, 'a');
+    harness.selected.clear();
+    harness.controller.add(TabInfo(
+      key: 'b', label: 'replacement',
+      page: const Text('unexpected replacement'),
+    ));
+    await harness.settle(tester);
+    harness.expectPage('b');
+    expect(harness.controller.state.value.tabs[1], same(original));
+    expect(find.text('unexpected replacement'), findsNothing);
+    expect(harness.selected, ['b']);
+  });
+
+  testWidgets('tab notification coalesces superseded selections before layout', (tester) async {
+    final harness = _Harness();
+    await harness.show(tester, active: 'a');
+    harness.controller.jumpToByKey('b');
+    harness.controller.jumpToByKey('d');
+    await harness.settle(tester);
+    harness.expectPage('d');
+    expect(harness.selected, ['d']);
+  });
+
+  testWidgets('tab notification waits for an unmounted selection to mount', (tester) async {
+    final harness = _Harness();
+    await harness.show(tester, active: 'a');
+    await tester.pumpWidget(const SizedBox.shrink());
+    harness.controller.jumpToByKey('d');
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(harness.selected, isEmpty);
+    await tester.pumpWidget(harness.appWidget());
+    await harness.settle(tester);
+    harness.expectPage('d');
+    expect(harness.selected, ['d']);
+  });
+
+  testWidgets('tab notification reapplies the selected tab after remount', (tester) async {
+    final harness = _Harness();
+    await harness.show(tester);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(harness.appWidget());
+    await harness.settle(tester);
+    harness.expectPage('b');
+    expect(harness.selected, ['b']);
+  });
+
+  testWidgets('tab notification is not repeated for a parent rebuild', (tester) async {
+    final harness = _Harness();
+    await harness.show(tester);
+    for (var i = 0; i < 3; i++) {
+      await tester.pumpWidget(harness.appWidget());
+      await harness.settle(tester);
+      harness.expectPage('b');
+    }
+    expect(harness.selected, isEmpty);
+  });
+
+  testWidgets('tab notification retires a same-key replacement before dispatch', (tester) async {
+    final harness = _Harness();
+    await harness.show(tester, active: 'a');
+    var replacementInitialized = false;
+    final notifications = <bool>[];
+    harness.controller.onSelected = (key) {
+      if (key == 'b') notifications.add(replacementInitialized);
+    };
+    tester.binding.addPostFrameCallback((_) {
+      harness.controller.remove(1);
+      harness.controller.add(TabInfo(
+        key: 'b', label: 'b',
+        page: _TrackedPage('b', 'replacement',
+            () => replacementInitialized = true, () {}),
+      ));
+    });
+    harness.controller.jumpToByKey('b');
+    await harness.settle(tester);
+    harness.expectPage('b');
+    expect(notifications, [true]);
+  });
+
+  testWidgets('tab notification permits a reentrant selection without duplicates', (tester) async {
+    final harness = _Harness();
+    await harness.show(tester, active: 'a');
+    harness.controller.onSelected = (key) {
+      harness.selected.add(key);
+      if (key == 'b') harness.controller.jumpToByKey('d');
+    };
+    harness.controller.jumpToByKey('b');
+    await harness.settle(tester);
+    harness.expectPage('d');
+    expect(harness.selected, ['b', 'd']);
+  });
+
+  testWidgets('tab notification retires selection cleared before layout', (tester) async {
+    final harness = _Harness();
+    await harness.show(tester, active: 'a');
+    harness.controller.jumpToByKey('b');
+    harness.controller.clear();
+    await harness.settle(tester);
+    expect(harness.controller.length, 0);
+    expect(harness.selected, isEmpty);
+    expect(find.text('page:b'), findsNothing);
+  });
 }

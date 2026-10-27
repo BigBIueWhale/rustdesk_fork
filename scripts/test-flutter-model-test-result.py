@@ -145,7 +145,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("draggable-divider"), "draggable-divider"), (1, 9))
         self.assertEqual(self.parse(self.events("list-search"), "list-search"), (1, 6))
         self.assertEqual(self.parse(self.events("peer-search"), "peer-search"), (1, 6))
-        self.assertEqual(self.parse(self.events("tab-selection"), "tab-selection"), (2, 22))
+        self.assertEqual(self.parse(self.events("tab-selection"), "tab-selection"), (2, 31))
         self.assertEqual(self.parse(self.events("status-refresh"), "status-refresh"), (1, 9))
         self.assertEqual(self.parse(self.events("share-rdp"), "share-rdp"), (1, 4))
         self.assertEqual(self.parse(self.events("window-dispatch"), "window-dispatch"), (1, 8))

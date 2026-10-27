@@ -140,6 +140,17 @@ MENU_BUTTON_TESTS = {
     "menu button activates once per keyboard or pointer action",
     "menu button disabled rebuild refuses activation and can recover",
 }
+DRAGGABLE_DIVIDER_TESTS = {
+    "divider primary mouse drag resizes columns by exact distance",
+    "divider secondary and middle drags leave columns unchanged",
+    "divider touch drag preserves axis distance",
+    "divider hover chooses axis cursor without resizing",
+    "divider disabled state neither resizes nor advertises resizing",
+    "divider disabling an active drag requires a fresh pointer",
+    "divider cancelled drag releases input for the next drag",
+    "divider trackpad scrolling leaves columns unchanged",
+    "divider axis change retires an active drag",
+}
 STATUS_REFRESH_TESTS = {
     "close waits for readiness without admitting a refresh",
     "reentrant close drains the accepted readiness turn",
@@ -1066,7 +1077,7 @@ FILE_METADATA_TESTS = {
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "status-refresh", "peer-data", "file-progress", "custom-scale", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "status-refresh", "peer-data", "file-progress", "custom-scale", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -1085,6 +1096,10 @@ def parse_result(path, profile="models"):
         expected_suites = {"menu_button_test.dart"}
         expected_tests = len(MENU_BUTTON_TESTS)
         expected_names = MENU_BUTTON_TESTS
+    elif profile == "draggable-divider":
+        expected_suites = {"draggable_divider_test.dart"}
+        expected_tests = len(DRAGGABLE_DIVIDER_TESTS)
+        expected_names = DRAGGABLE_DIVIDER_TESTS
     elif profile == "status-refresh":
         expected_suites = {"server_status_refresh_loop_test.dart"}
         expected_tests = len(STATUS_REFRESH_TESTS)
@@ -1263,7 +1278,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "status-refresh", "peer-data", "file-progress", "custom-scale", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "status-refresh", "peer-data", "file-progress", "custom-scale", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -1278,6 +1293,7 @@ def main():
         "file-metadata": "FLUTTER_FILE_METADATA_TEST_JSON",
         "password-fields": "FLUTTER_PASSWORD_FIELD_TEST_JSON",
         "menu-button": "FLUTTER_MENU_BUTTON_TEST_JSON",
+        "draggable-divider": "FLUTTER_DRAGGABLE_DIVIDER_TEST_JSON",
         "status-refresh": "FLUTTER_STATUS_REFRESH_TEST_JSON",
         "share-rdp": "FLUTTER_SHARE_RDP_TEST_JSON",
         "window-dispatch": "FLUTTER_WINDOW_DISPATCH_TEST_JSON",

@@ -11,6 +11,7 @@ class _Subject {
   final leftBuffer = TimeoutStringBuffer();
   final rightBuffer = TimeoutStringBuffer();
   final events = <String>[];
+  final shortcuts = <ShortcutActivator, VoidCallback>{};
   var leftResult = '';
   var rightResult = '';
 
@@ -29,7 +30,7 @@ class _Subject {
               });
             }
 
-            return Column(children: [
+            return CallbackShortcuts(bindings: shortcuts, child: Column(children: [
               ListSearchActionListener(
                 node: left,
                 buffer: leftBuffer,
@@ -45,7 +46,7 @@ class _Subject {
                 child: Text(rightResult),
               ),
               TextField(focusNode: other),
-            ]);
+            ]));
           }),
         ),
       );
@@ -85,6 +86,82 @@ void main() {
     TimeoutStringBuffer.timeoutMilliSec = 60000;
   });
   tearDown(() => TimeoutStringBuffer.timeoutMilliSec = originalTimeout);
+
+  for (final modifier in [
+    LogicalKeyboardKey.controlLeft,
+    LogicalKeyboardKey.controlRight,
+    LogicalKeyboardKey.metaLeft,
+    LogicalKeyboardKey.metaRight,
+  ]) {
+    testWidgets('list search ignores ${modifier.keyLabel} shortcuts',
+        (tester) async {
+      final subject = _Subject();
+      var commands = 0;
+      final control = modifier == LogicalKeyboardKey.controlLeft ||
+          modifier == LogicalKeyboardKey.controlRight;
+      for (final shift in [false, true]) {
+        subject.shortcuts[SingleActivator(LogicalKeyboardKey.keyC,
+            control: control, meta: !control, shift: shift)] = () => commands++;
+      }
+      await subject.show(tester);
+      for (final shift in [false, true]) {
+        subject.leftBuffer.clear();
+        subject.events.clear();
+        commands = 0;
+        await _type(tester, LogicalKeyboardKey.keyA, 'a');
+        await tester.sendKeyDownEvent(modifier);
+        if (shift) await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.keyC,
+            character: shift ? 'C' : 'c');
+        await tester.sendKeyRepeatEvent(LogicalKeyboardKey.keyC,
+            character: shift ? 'C' : 'c');
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.keyC);
+        if (shift) await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+        await tester.sendKeyUpEvent(modifier);
+        await tester.pump();
+        expect(commands, 2, reason: 'shortcut propagation, shift=$shift');
+        expect(subject.events, ['left:search:a'], reason: 'shift=$shift');
+        expect(subject.leftBuffer.buffer, 'a');
+        expect(find.text('left:search:a'), findsOneWidget);
+        await _type(tester, LogicalKeyboardKey.keyB, 'b');
+        expect(subject.events, ['left:search:a', 'left:search:ab']);
+      }
+    });
+  }
+
+  testWidgets('list search preserves shifted Option and AltGr characters',
+      (tester) async {
+    final subject = _Subject();
+    await subject.show(tester);
+    for (final (modifiers, character) in [
+      (<LogicalKeyboardKey>[], 'é'),
+      (<LogicalKeyboardKey>[], '😀'),
+      ([LogicalKeyboardKey.shiftLeft], 'A'),
+      ([LogicalKeyboardKey.altLeft], 'ß'),
+      ([LogicalKeyboardKey.altRight], '@'),
+      ([LogicalKeyboardKey.controlLeft, LogicalKeyboardKey.altRight], '@'),
+      ([LogicalKeyboardKey.controlLeft, LogicalKeyboardKey.altLeft], '€'),
+      ([LogicalKeyboardKey.controlRight, LogicalKeyboardKey.altRight,
+        LogicalKeyboardKey.shiftRight], 'É'),
+    ]) {
+      subject.leftBuffer.clear();
+      subject.events.clear();
+      for (final modifier in modifiers) {
+        await tester.sendKeyDownEvent(modifier);
+      }
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.keyQ, character: character);
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.keyQ, character: character);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.keyQ);
+      for (final modifier in modifiers.reversed) {
+        await tester.sendKeyUpEvent(modifier);
+      }
+      await tester.pump();
+      final query = character.toLowerCase();
+      expect(subject.events, ['left:search:$query', 'left:next:$query']);
+      expect(subject.leftBuffer.buffer, query);
+      expect(find.text('left:next:$query'), findsOneWidget);
+    }
+  });
 
   testWidgets('list search accumulates and cycles while focus stays inside',
       (tester) async {

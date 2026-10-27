@@ -8018,7 +8018,7 @@ else
         widget_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/desktop/widgets/list_search_action_listener.dart" | /usr/bin/awk '{print $1}')"
         widget_tests_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test/list_search_action_listener_test.dart" | /usr/bin/awk '{print $1}')"
         require_exact_fixed_receipt \
-            "FLUTTER_LIST_SEARCH_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=6 flutter=$FLUTTER_VERSION widget=$widget_sha256 tests_source=$widget_tests_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-list-search-tests cleanup=joined" \
+            "FLUTTER_LIST_SEARCH_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=11 flutter=$FLUTTER_VERSION widget=$widget_sha256 tests_source=$widget_tests_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-list-search-tests cleanup=joined" \
             'focused Flutter list-search receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = peer-search ]; then
         widget_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/common/widgets/peer_tab_page.dart" | /usr/bin/awk '{print $1}')"

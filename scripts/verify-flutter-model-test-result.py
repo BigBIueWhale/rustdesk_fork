@@ -157,6 +157,11 @@ DRAGGABLE_DIVIDER_TESTS = {
     "divider axis change retires an active drag",
 }
 LIST_SEARCH_TESTS = {
+    "list search ignores Control Left shortcuts",
+    "list search ignores Control Right shortcuts",
+    "list search ignores Meta Left shortcuts",
+    "list search ignores Meta Right shortcuts",
+    "list search preserves shifted Option and AltGr characters",
     "list search accumulates and cycles while focus stays inside",
     "list search starts fresh after focus returns from another control",
     "list search keeps pane histories separate after switching back",

@@ -106775,3 +106775,57 @@ while an earlier write is pending, concurrent windows/processes, other mobile sw
 installed credential authority, complete R-S0/R-F5 acceptance and release/independent
 review remain OPEN. Requirements and live instructions are unchanged. The overall goal
 remains active.
+
+## 2026-10-27 — user pivot: bounded transfer-percentage rendering; settings work parked
+
+The user explicitly requested another aspect. Mobile Boolean settings preparation
+65fda51f remains OPEN/PARKED: run XL2UqoLzyZ finished with 19 passing and 21 failing
+rendered cases, but its proposed product patch was never applied. Exact QEMU exit,
+RAM retirement and diagnostic reconciliation are retained; all four listener
+snapshots have zero additions/removals. Do not resume that work automatically.
+
+The selected product correction is limited to JobProgress.percent in
+flutter/lib/models/file_model.dart. tryUpdateJobProgress admits finite nonnegative
+speed and canonical nonnegative byte counts without requiring finishedSize <=
+totalSize. The desktop transfer row supplies percent and percentText directly to
+LinearPercentIndicator. Its pinned 4.2.5 constructor throws outside [0,1].
+This is a presentation failure for inconsistent counts, not proof that a real
+native transfer exceeds its admitted size: native send/receive length guards remain
+in libs/hbb_common/src/fs.rs and were not changed or re-executed.
+
+The getter now bounds only the displayed ratio to [0,1], preserving zero for an
+unknown/nonpositive total. Raw reported bytes, total metadata, state and terminal
+success/error handling remain unchanged. A full bar does not mark a job done.
+The two existing upload/download rendered cases now exercise 140/100, unknown
+total, ordinary recovery to 50%, exact completion-sized counts, the maximum
+admitted signed byte count and return to zero. They assert preserved raw counts
+and in-progress state; the 36-case suite inventory and harness recipe are unchanged.
+
+Primary research:
+- https://pub.dev/documentation/percent_indicator/latest/linear_percent_indicator/LinearPercentIndicator/LinearPercentIndicator.html
+  documents and exposes the constructor range check for the pinned 4.2.5 dependency.
+- https://api.dart.dev/dart-core/num/clamp.html defines bounded numeric projection;
+  the positive integer denominator prevents division by zero.
+
+Unchanged-product preparation ca9b0464 runs the expanded tests. Baseline
+Bo98k43hGc fails both directional rendering cases at the real constructor with
+ratio 1.4; the other 34 cases pass. Product f8bf2ee7 changes only the getter.
+Candidate AmTwyLseEN passes all 36 cases and three result-parser controls;
+the complete harness exits zero in 271 outer seconds (8,770 ms test execution).
+Both runs use the identical tests and
+/bin/bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --file-progress.
+The source is clean/pushed and frozen during each run; fresh bridge generation,
+authenticated offline inputs, zero-NIC guests and guest-only confined containers
+remain in use. Both VMs join and retire RAM scratch; all four listener snapshots in each run
+have zero additions/removals. Peak scratch is approximately 6.37 GB, within the
+7 GiB admission, and retained diagnostic allocation peaks at 3,325,952 bytes.
+
+Retained source identities, raw output digests, case outcomes, storage finality,
+listener observations, the parked settings baseline and the fresh complete-ledger
+count are bound in .harness-state/verifier-vm/transfer-percent-65fda51f.json.
+This is production Dart model plus rendered dependency-widget evidence using
+controlled progress events. It does not mount the complete desktop file-manager
+page, run a native file transfer, prove device behavior, close the separately
+parked deletion/sorting work, or establish R-S0/R-F5/release acceptance. Those
+obligations, all fifteen installed credential actions and independent review
+remain OPEN. Requirements and live instruction files are unchanged.

@@ -34,20 +34,28 @@ pub(crate) fn native_clipboard_payload_within_limit(
 pub(crate) fn clipboard_content_for_native(
     clipboard: &hbb_common::message_proto::Clipboard,
 ) -> ResultType<Vec<u8>> {
+    clipboard_content_for_native_with_limit(clipboard, MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES)
+}
+
+fn clipboard_content_for_native_with_limit(
+    clipboard: &hbb_common::message_proto::Clipboard,
+    max_payload_bytes: usize,
+) -> ResultType<Vec<u8>> {
+    let max_payload_bytes = max_payload_bytes.min(MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES);
     let format = clipboard
         .format
         .enum_value()
         .map_err(|e| hbb_common::anyhow::anyhow!("invalid clipboard format: {e}"))?;
     let output_limit = if format == hbb_common::message_proto::ClipboardFormat::ImageRgba {
         rgba_clipboard_len(clipboard.width, clipboard.height)
-            .filter(|length| *length <= MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES)
+            .filter(|length| *length <= max_payload_bytes)
             .ok_or_else(|| hbb_common::anyhow::anyhow!(
                 "invalid clipboard image geometry: width={}, height={}",
                 clipboard.width,
                 clipboard.height,
             ))?
     } else {
-        MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES
+        max_payload_bytes
     };
     let data: Cow<'_, [u8]> = if clipboard.compress {
         Cow::Owned(hbb_common::compress::try_decompress_with_limit(
@@ -57,7 +65,8 @@ pub(crate) fn clipboard_content_for_native(
     } else {
         Cow::Borrowed(&clipboard.content)
     };
-    if !native_clipboard_payload_within_limit(format, clipboard.width, clipboard.height, data.len())
+    if data.len() > output_limit
+        || !native_clipboard_payload_within_limit(format, clipboard.width, clipboard.height, data.len())
     {
         bail!(
             "oversized or invalid clipboard payload before native handoff: format={format:?}, width={}, height={}, bytes={}",
@@ -83,6 +92,7 @@ pub(crate) const CLIPBOARD_FORMAT_EXCEL_XML_SPREADSHEET: &'static str = "XML Spr
 
 fn sanitize_clipboard_for_native_proto(
     mut clipboard: hbb_common::message_proto::Clipboard,
+    remaining_bytes: usize,
 ) -> ResultType<Option<hbb_common::message_proto::Clipboard>> {
     let format = clipboard
         .format
@@ -106,7 +116,7 @@ fn sanitize_clipboard_for_native_proto(
     } else {
         clipboard.special_name.clear();
     }
-    let data = clipboard_content_for_native(&clipboard)?;
+    let data = clipboard_content_for_native_with_limit(&clipboard, remaining_bytes)?;
     clipboard.content = data.into();
     clipboard.compress = false;
     Ok(Some(clipboard))
@@ -124,10 +134,10 @@ pub(crate) fn sanitize_multi_clipboards_for_native_proto(
         return None;
     }
 
-    let mut total = 0usize;
+    let mut remaining = MAX_NATIVE_CLIPBOARD_TOTAL_BYTES;
     let mut sanitized = Vec::with_capacity(clipboards.len());
     for clipboard in clipboards {
-        let clipboard = match sanitize_clipboard_for_native_proto(clipboard) {
+        let clipboard = match sanitize_clipboard_for_native_proto(clipboard, remaining) {
             Ok(Some(clipboard)) => clipboard,
             Ok(None) => {
                 log::warn!("dropping unsupported clipboard item before native handoff");
@@ -138,21 +148,13 @@ pub(crate) fn sanitize_multi_clipboards_for_native_proto(
                 return None;
             }
         };
-        total = match total.checked_add(clipboard.content.len()) {
-            Some(total) => total,
+        remaining = match remaining.checked_sub(clipboard.content.len()) {
+            Some(remaining) => remaining,
             None => {
-                log::warn!("dropping clipboard update with overflowing aggregate payload size");
+                log::warn!("clipboard item exceeded its remaining aggregate budget");
                 return None;
             }
         };
-        if total > MAX_NATIVE_CLIPBOARD_TOTAL_BYTES {
-            log::warn!(
-                "dropping clipboard update with oversized aggregate payload before native handoff: {} > {}",
-                total,
-                MAX_NATIVE_CLIPBOARD_TOTAL_BYTES
-            );
-            return None;
-        }
         sanitized.push(clipboard);
     }
     if sanitized.is_empty() {

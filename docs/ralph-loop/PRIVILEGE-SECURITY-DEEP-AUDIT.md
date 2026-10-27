@@ -107185,3 +107185,51 @@ fresh complete-ledger count. The tests exercise the real Dart model and widgets,
 not a native reconnect or authenticated peer. Connection-attempt duration, actual
 post-outage presentation, platform/installed behavior, R-S0/R-F5, long-session
 resources, independent/release acceptance and the full goal remain OPEN.
+
+## 2026-10-27 — Reject invalid saved floating-window coordinates
+
+The preceding reconnect slice is verified progress. Current R-S11b/R-S11c review
+still leaves all fifteen installed credential actions open; all explicit parks
+remain in force. This slice addresses R-S0 application correctness, not a new
+local privilege-escalation finding. Requirements and live instructions are unchanged.
+
+Source path: main.dart loads draggablePositions before runApp on mobile and before
+constructing desktop Remote/ViewCamera windows. overlay.dart DraggableKeyPosition
+reads the local Flutter preference through flutter_ffi.rs and LocalConfig. That
+map returns strings without coordinate validation. The loader calls double.parse
+on two comma-separated fields: malformed numbers throw before UI creation, while
+NaN and infinity are accepted as positions. Existing callers already supply an
+initial location when the saved position is unset.
+
+The contract is one position consisting of two finite coordinates. An invalid
+saved value has the existing unset meaning; valid positions retain their values
+for the existing layout/adjustment code. Loading performs no write or authority
+operation. Storage errors are not converted into missing data. Official Dart
+documentation confirms that tryParse alone still accepts NaN and infinity:
+https://api.dart.dev/dart-core/double/tryParse.html
+https://api.dart.dev/dart-core/num/isFinite.html
+
+Preparation f1d2fcd9 adds a controlled preference-reader dependency with the same
+production default, eight real loader/widget tests, and a focused isolated shard.
+Baseline cD5pNOxVD3 passes four controls and fails four cases. All eight malformed
+vectors throw FormatException; all nine nonfinite vectors escape unset admission.
+Reload publishes invalid data, and a malformed first position interrupts later
+loads. Assertions after those failing points are not baseline execution claims.
+The exact failed diagnostics retire to floating-position-baseline.cD5pNOxVD3
+only after QEMU joins and its RAM workspace disappears.
+
+Product b47f57c5 changes only parsing to tryParse plus both-coordinate finiteness.
+Candidate XrJUqAyaUs passes all eight unchanged cases and three parser controls;
+Flutter reports 8.466 seconds, and the complete VM takes 275 seconds. Tests cover
+valid signed/fractional/scientific values across all three keys, absent/wrong-arity
+values, malformed/nonfinite input, reload recovery, independent positions, actual
+rendered placement and propagation of backend errors. Fresh generated bindings
+and all nongenerated Dart library bytes are checked against the sealed source.
+Both transactions join QEMU, retire bounded RAM and have zero endpoint deltas.
+
+The floating-position-d6364e2a.json capsule binds the exact source, test inventory,
+raw results, pinned environment, storage/listeners, retirement and fresh complete
+ledger count. This is Linux Flutter loader/widget evidence with controlled reads;
+full application startup, native storage, physical/mobile/platform behavior,
+R-S0/R-F5, installed credential actions, independent/release acceptance and the
+full goal remain OPEN. No host product, service or foreign-owner inspection ran.

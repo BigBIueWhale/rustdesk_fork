@@ -109234,3 +109234,43 @@ are zero. The specification, ledger and source/code checks above are the scope
 of this result. Product/native execution and broad goal completion are not
 claimed; all previously open acceptances and parks remain unchanged. This
 audit-only receipt changes neither counted document.
+
+## 2026-10-28 — user pivot to display recovery; bounded source review
+
+The user explicitly requests another aspect. The unfinished shared-handshake /
+transport review is left open. This review switches to R-F5 display freshness;
+it does not resume the parked observer-clock closure, parent compilation repair,
+installer consolidation, clipboard acquisition or earlier parked work. Reviewed
+source is `58c6450c5298431e5aaed9b8ee9e249fc2ebfc8f`.
+
+The receive path in `src/client/io_loop.rs::handle_msg_from_peer` carries the
+receive instant into the bounded mailbox after the exact receipt. In
+`src/client.rs`, mailbox dequeue and completed decode both enforce its age;
+overflow, stale work and decoder failure request a new independent frame.
+Generation checks reject obsolete decoder completion. These are existing
+protections, not new fixes or a capture-to-presentation latency measurement.
+
+The Flutter review follows `LatestFrameQueue`, its shared drain pool,
+`ExactRgbaPublicationOrder`, `ImageModel::onRgba`/`update`, the software RGBA
+handler and `utils/image.dart`. Pending work is latest-wins; detached engine
+work retains capacity; image commit rejects a lower late publication and a
+retired presentation/topology owner. The Linux texture plugin replaces its
+pending buffer and notifies on every admitted update. No new reproducible defect
+was established in these paths, so no product change or new test is justified
+by this review alone.
+
+Primary API review: Flutter's
+[getNextFrame](https://api.flutter.dev/flutter/dart-ui/Codec/getNextFrame.html)
+returns an asynchronous result whose image the caller must dispose;
+[Image.dispose](https://api.flutter.dev/flutter/dart-ui/Image/dispose.html)
+releases one handle, with underlying release after the last handle. Those
+contracts support retaining ownership through completion; they do not establish
+engine completion latency or cancellation. Current public documentation is
+background research, not evidence that a particular pinned engine ran.
+
+No runtime was executed, no new artifact acceptance is claimed, and no resource
+or latency bound was relaxed. The ledger's retained-app suspension failure and
+missing exact-current impairment, input-visible and long-session evidence remain
+open. All fifteen native credential actions and R-S0/R-F5 acceptance remain open.
+Only this audit record changes; the counted ledger/specification and live
+instructions are unchanged.

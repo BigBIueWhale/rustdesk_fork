@@ -3800,6 +3800,20 @@ futures, not native persistence or complete desktop/mobile menu/session executio
 Those integrations, other platforms, resource/soak, R-S0/R-F5 and installed privilege
 acceptance remain OPEN. Windows harness storage work is user-parked and remains OPEN.
 
+**Custom-scale keyboard and accessibility (`74744707`).** Following the user's
+pivot from credential-receiver catalogue cleanup, desktop/mobile zoom controls
+share one continuous slider. Keyboard and accessibility adjustments can leave
+the 100% snap point; announcements report effective zoom rather than track position.
+The +/- buttons retain one-point precision, including 99%/101%, and the mobile
+value indicator remains enabled. Baseline `a066f53b` reproduces three failures
+with 36 controls passing; the corrected focused Flutter run passes all 39 cases
+and three result-parser controls in 271 outer seconds. The audit entry
+“2026-10-27 — zoom slider keyboard and accessibility” records source and run
+identities. This is shared widget/model evidence with controlled preferences
+and platform themes. Complete desktop/mobile menus, native screen readers,
+persistence and installed/native security acceptance remain OPEN; existing parks
+and all fifteen credential actions remain open.
+
 **Autosave restoration (`8d9bc485`).** Quality, FPS and trackpad controls represent
 the confirmed value as unknown after an exception, null or invalid save result.
 An explicit newer edit remains dirty even when it restores an earlier value;

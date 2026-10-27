@@ -108922,3 +108922,67 @@ durable evidence 147,456 bytes. QEMU 3479763 joins with exit 0; RAM `run.isfvpov
 and all active run roots are absent. All endpoint deltas are zero and all thirteen
 parked stash IDs are preserved. This receipt edits neither the counted ledger nor
 the inspected checker. Product/native acceptance and the broad goal remain open.
+
+## 2026-10-27 — zoom slider keyboard and accessibility
+
+The user explicitly pivots to another aspect. Prior catalogue cleanup is committed
+and pushed at `6e8d46c3`; further credential-receiver work remains open. This slice
+addresses viewer zoom usability. Existing user parks and all thirteen stash IDs
+are preserved. The current R-S11ia–io checklist was reread: macOS LaunchAgent,
+Windows RDP, Windows credential/control, macOS password, Linux polkit, Windows
+credential queue, Linux credential response, Linux replica writer, Linux child
+receiver, macOS credential receiver, Linux initial receiver, macOS replica
+admission, macOS policy writer, macOS read-only verification and macOS external-form
+publication all still require installed/native acceptance. Shared effects,
+persistence/restart, races, finality, resources, exact artifacts, independent
+reproduction, external review, R-S0 and R-F5 remain OPEN.
+
+The two zoom sliders used 995 equal track divisions despite a nonlinear zoom
+mapping and a 100% snap region. Flutter 3.24.5's keyboard/semantic adjustment moves
+one division, which the shared callback snaps back to 100%. Its default semantic
+percentage describes the track, not the zoom. Primary research:
+[pinned Slider implementation](https://github.com/flutter/flutter/blob/3.24.5/packages/flutter/lib/src/material/slider.dart)
+and [semanticFormatterCallback](https://api.flutter.dev/flutter/material/Slider/semanticFormatterCallback.html).
+The correction uses the continuous slider's platform adjustment, retains pointer
+snapping and precise +/- buttons, and formats current/predicted accessibility
+values through the actual zoom conversion. Current 99%/101% selections remain
+exact; only proposed track adjustments use snapping. Desktop's duplicate semantic
+value is removed; mobile explicitly retains its value indicator. Both callers use
+the same small slider builder. Session ownership, persistence, debounce and retry
+remain unchanged; no IPC or privilege authority changes.
+
+Preparation `a066f53b2061bd3db4a2cb0c53f4c6f9b04c7396` extracts the existing slider
+construction without changing its behavior. Run `Hw8KSbD6pR` reproduces three
+failures: keyboard and semantic decrease remain at 100%; 5% zoom announces 0%.
+Thirty-six cases pass, including all 35 previous controls. Each failed loop stops
+at its first failing expectation; later combinations are not baseline evidence.
+Serial: 140,835 bytes, SHA-256
+`216f3d4386229b1f70ba9b2e24f4c3a7b71d6047957adc3de8d925234d1fc3bc`.
+Supervisor lifetime 253.906 seconds; peak RAM scratch 6,366,199,808 bytes; durable
+evidence 3,379,200 bytes. QEMU 3500201 joins with exit 0 and RAM `run.jxg8fbs4`
+is absent. The bounded diagnostic root is retained as
+`zoom-slider-baseline.Hw8KSbD6pR`. Final endpoint inventory has one addition and
+one removal (18 bytes each); both are unattributed and untouched.
+
+Correction `74744707575a96f9c8d416cb2ac63507fd19f265`, tree
+`0bec852c2f04a07f134b1e0b5054858adaa7eb05`, passes all 39 cases and three parser
+controls in run `dUhym26B5F`. The only test change after baseline adds 99%/101% to
+the value-announcement loop. Keyboard cases exercise both directions, repeated
+changes, LTR/RTL and Linux/macOS/Android/iOS themes inside Linux Flutter; semantic
+actions check their predicted and actual values. Exact-step/bounds and all old
+save/retirement/retry controls pass. The broader settings inventory is updated
+from 334 to 338 but is not executed. Command:
+`/bin/bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --custom-scale`.
+Serial: 89,621 bytes, SHA-256
+`cd5d6984ed0b7e06f802431187f419b4ff488b6d9434e252db58270740ec76e3`.
+Outer/supervisor lifetime 271/279.153 seconds; actual Flutter stream 9.371 seconds.
+Peak RAM scratch 6,367,969,280 bytes; durable evidence 3,321,856 bytes. QEMU 3513407
+joins with exit 0; RAM `run.3g713hs0` and all active run roots are absent. There
+are no endpoint additions; intermediate/final removals are unattributed and
+untouched. Product execution stayed in the networkless VM/container.
+
+This establishes shared production slider/model behavior with controlled
+preference/save futures and platform themes. Full menus, native accessibility,
+physical mobile/desktop input, native storage, installed and release acceptance
+remain open. Requirements and live instructions are unchanged. The ledger count
+is verified separately; the broad hardening goal remains active and incomplete.

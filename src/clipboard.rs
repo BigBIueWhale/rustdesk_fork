@@ -23,6 +23,7 @@ mod write_permission_native_tests;
 mod write_screenshot_native_tests;
 use limits::{
     clipboard_content_for_native, native_clipboard_payload_within_limit,
+    sanitize_multi_clipboards_for_native_proto, CLIPBOARD_FORMAT_EXCEL_XML_SPREADSHEET,
     MAX_NATIVE_CLIPBOARD_ITEMS, MAX_NATIVE_CLIPBOARD_PAYLOAD_BYTES,
     MAX_NATIVE_CLIPBOARD_SPECIAL_NAME_BYTES, MAX_NATIVE_CLIPBOARD_TOTAL_BYTES,
 };
@@ -44,8 +45,6 @@ pub const CLIPBOARD_INTERVAL: u64 = 333;
 // This format is used to store the flag in the clipboard.
 const RUSTDESK_CLIPBOARD_OWNER_FORMAT: &'static str = "dyn.com.rustdesk.owner";
 
-// Add special format for Excel XML Spreadsheet
-const CLIPBOARD_FORMAT_EXCEL_XML_SPREADSHEET: &'static str = "XML Spreadsheet";
 #[cfg(all(target_os = "linux", feature = "unix-file-copy-paste"))]
 pub(crate) const MAX_FILE_CLIPBOARD_URLS: usize = 1024;
 #[cfg(all(target_os = "linux", feature = "unix-file-copy-paste"))]
@@ -81,89 +80,6 @@ enum ClipboardUpdateRequest {
     },
     #[cfg(all(feature = "unix-file-copy-paste", not(target_os = "windows")))]
     TryEmptyFiles { side: ClipboardSide, conn_id: i32 },
-}
-
-fn sanitize_clipboard_for_native_proto(
-    mut clipboard: hbb_common::message_proto::Clipboard,
-) -> ResultType<Option<hbb_common::message_proto::Clipboard>> {
-    let format = clipboard
-        .format
-        .enum_value()
-        .map_err(|e| hbb_common::anyhow::anyhow!("invalid clipboard format: {e}"))?;
-    if format == hbb_common::message_proto::ClipboardFormat::Special {
-        if clipboard.special_name.len() > MAX_NATIVE_CLIPBOARD_SPECIAL_NAME_BYTES {
-            bail!(
-                "clipboard special format has oversized name before native handoff: {} > {}",
-                clipboard.special_name.len(),
-                MAX_NATIVE_CLIPBOARD_SPECIAL_NAME_BYTES
-            );
-        }
-        if clipboard.special_name != CLIPBOARD_FORMAT_EXCEL_XML_SPREADSHEET {
-            log::warn!(
-                "dropping unsupported clipboard special format before native handoff: bytes={}",
-                clipboard.special_name.len()
-            );
-            return Ok(None);
-        }
-    } else {
-        clipboard.special_name.clear();
-    }
-    let data = clipboard_content_for_native(&clipboard)?;
-    clipboard.content = data.into();
-    clipboard.compress = false;
-    Ok(Some(clipboard))
-}
-
-fn sanitize_multi_clipboards_for_native_proto(
-    clipboards: Vec<hbb_common::message_proto::Clipboard>,
-) -> Option<MultiClipboards> {
-    if clipboards.len() > MAX_NATIVE_CLIPBOARD_ITEMS {
-        log::warn!(
-            "dropping clipboard update with too many items before native handoff: {} > {}",
-            clipboards.len(),
-            MAX_NATIVE_CLIPBOARD_ITEMS
-        );
-        return None;
-    }
-
-    let mut total = 0usize;
-    let mut sanitized = Vec::with_capacity(clipboards.len());
-    for clipboard in clipboards {
-        let clipboard = match sanitize_clipboard_for_native_proto(clipboard) {
-            Ok(Some(clipboard)) => clipboard,
-            Ok(None) => {
-                log::warn!("dropping unsupported clipboard item before native handoff");
-                continue;
-            }
-            Err(error) => {
-                log::warn!("refusing invalid clipboard update before native handoff: {error}");
-                return None;
-            }
-        };
-        total = match total.checked_add(clipboard.content.len()) {
-            Some(total) => total,
-            None => {
-                log::warn!("dropping clipboard update with overflowing aggregate payload size");
-                return None;
-            }
-        };
-        if total > MAX_NATIVE_CLIPBOARD_TOTAL_BYTES {
-            log::warn!(
-                "dropping clipboard update with oversized aggregate payload before native handoff: {} > {}",
-                total,
-                MAX_NATIVE_CLIPBOARD_TOTAL_BYTES
-            );
-            return None;
-        }
-        sanitized.push(clipboard);
-    }
-    if sanitized.is_empty() {
-        return None;
-    }
-    Some(MultiClipboards {
-        clipboards: sanitized,
-        ..Default::default()
-    })
 }
 
 #[cfg(all(target_os = "linux", feature = "unix-file-copy-paste"))]

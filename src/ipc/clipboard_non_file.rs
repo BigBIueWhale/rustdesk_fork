@@ -153,6 +153,105 @@ mod tests {
     use super::*;
 
     #[cfg(target_os = "linux")]
+    #[test]
+    fn clipboard_aggregate_budget_precedes_payload_allocation() {
+        use crate::clipboard::limits::sanitize_multi_clipboards_for_native_proto;
+        let raw: Bytes = vec![0x5a; MAX_NATIVE_CLIPBOARD_TOTAL_BYTES].into();
+        let compressed: Bytes = hbb_common::compress::compress(&raw).unwrap().into();
+        let mut concatenated = hbb_common::compress::compress(&raw[..raw.len() / 2]).unwrap();
+        concatenated.extend_from_slice(&hbb_common::compress::compress(&raw[raw.len() / 2..]).unwrap());
+        let concatenated: Bytes = concatenated.into();
+        let mut failures = 0;
+        for (case, prefix_mib, format, content, compress) in [
+            ("raw", 16, ClipboardFormat::Text, raw.clone(), false),
+            ("compressed", 16, ClipboardFormat::Text, compressed.clone(), true),
+            ("rgba", 16, ClipboardFormat::ImageRgba, compressed.clone(), true),
+            ("concatenated", 16, ClipboardFormat::Text, concatenated, true),
+            ("small-prefix", 8, ClipboardFormat::Text, compressed.clone(), true),
+            ("large-prefix", 24, ClipboardFormat::Text, compressed, true),
+        ] {
+            let prefix = prefix_mib * 1024 * 1024;
+            let remaining = MAX_NATIVE_CLIPBOARD_TOTAL_BYTES - prefix;
+            let input = vec![
+                Clipboard {
+                    content: vec![b'a'; prefix].into(),
+                    format: ClipboardFormat::Text.into(),
+                    ..Default::default()
+                },
+                Clipboard {
+                    content, compress, format: format.into(), width: 4096, height: 4096,
+                    ..Default::default()
+                },
+            ];
+            let original = input.clone();
+            let (result, excess_allocations) = allocations::observe_above_size(remaining, || {
+                sanitize_multi_clipboards_for_native_proto(input)
+            });
+            let refused = result.is_none();
+            let unchanged = original[0].content.iter().all(|byte| *byte == b'a')
+                && if compress {
+                    hbb_common::compress::try_decompress(&original[1].content).unwrap().as_slice() == raw.as_ref()
+                } else { original[1].content == raw };
+            println!("CLIPBOARD_AGGREGATE_CASE=observed case={case} remaining={remaining} excess_allocations={excess_allocations} refused={refused} unchanged={unchanged}");
+            failures += usize::from(!refused || !unchanged || excess_allocations != 0);
+        }
+        assert_eq!(failures, 0, "remaining aggregate bytes must constrain copying and decoding before allocation");
+        println!("CLIPBOARD_AGGREGATE=pass cases=6 excess_allocations=0 input=unchanged");
+    }
+
+    #[test]
+    fn clipboard_aggregate_budget_preserves_complete_updates() {
+        use crate::clipboard::limits::{
+            sanitize_multi_clipboards_for_native_proto, CLIPBOARD_FORMAT_EXCEL_XML_SPREADSHEET,
+        };
+        let prefix: Bytes = vec![b'a'; 16 * 1024 * 1024].into();
+        let suffix = vec![b'b'; MAX_NATIVE_CLIPBOARD_TOTAL_BYTES - prefix.len()];
+        let input = vec![
+            Clipboard { content: prefix.clone(), format: ClipboardFormat::Text.into(), ..Default::default() },
+            Clipboard {
+                content: hbb_common::compress::compress(&suffix).unwrap().into(), compress: true,
+                format: ClipboardFormat::Html.into(), special_name: "irrelevant".to_owned(),
+                ..Default::default()
+            },
+            Clipboard {
+                content: hbb_common::compress::compress(b"").unwrap().into(), compress: true,
+                format: ClipboardFormat::Special.into(), special_name: CLIPBOARD_FORMAT_EXCEL_XML_SPREADSHEET.to_owned(),
+                ..Default::default()
+            },
+            Clipboard {
+                content: Bytes::from_static(b"not a zstd frame"), compress: true,
+                format: ClipboardFormat::Special.into(), special_name: "unsupported".to_owned(),
+                ..Default::default()
+            },
+        ];
+        let output = sanitize_multi_clipboards_for_native_proto(input.clone()).unwrap();
+        assert_eq!(output.clipboards.len(), 3);
+        assert_eq!(output.clipboards[0].content, prefix);
+        assert_eq!(output.clipboards[1].content.as_ref(), suffix.as_slice());
+        assert!(output.clipboards[1].special_name.is_empty());
+        assert_eq!(output.clipboards[2].special_name, CLIPBOARD_FORMAT_EXCEL_XML_SPREADSHEET);
+        assert!(output.clipboards[2].content.is_empty());
+        assert!(output.clipboards.iter().all(|item| !item.compress));
+        assert_eq!(output.clipboards.iter().map(|item| item.content.len()).sum::<usize>(), MAX_NATIVE_CLIPBOARD_TOTAL_BYTES);
+        drop(output);
+        for (case, last) in [
+            ("one-extra-byte", Clipboard { content: Bytes::from_static(b"x"), format: ClipboardFormat::Text.into(), ..Default::default() }),
+            ("malformed-empty", Clipboard { content: Bytes::from_static(b"bad"), compress: true, format: ClipboardFormat::Html.into(), ..Default::default() }),
+            ("unknown-format", Clipboard { format: hbb_common::protobuf::EnumOrUnknown::from_i32(999), ..Default::default() }),
+        ] {
+            let mut refused = input.clone();
+            refused.push(last);
+            assert!(sanitize_multi_clipboards_for_native_proto(refused).is_none(), "{case}");
+        }
+        assert!(sanitize_multi_clipboards_for_native_proto(Vec::new()).is_none());
+        assert!(sanitize_multi_clipboards_for_native_proto(vec![Clipboard::new(); MAX_NATIVE_CLIPBOARD_ITEMS + 1]).is_none());
+        let retry = sanitize_multi_clipboards_for_native_proto(input).unwrap();
+        assert_eq!(retry.clipboards[0].content, prefix);
+        assert_eq!(retry.clipboards[1].content.as_ref(), suffix.as_slice());
+        println!("CLIPBOARD_AGGREGATE_CONTROLS=pass exact_total=67108864 empty_after_full=accepted unsupported=filtered malformed=refused extra=refused retry=exact");
+    }
+
+    #[cfg(target_os = "linux")]
     mod allocations {
         use std::{alloc::{GlobalAlloc, Layout, System}, cell::Cell};
 

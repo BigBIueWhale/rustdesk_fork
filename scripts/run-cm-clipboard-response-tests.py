@@ -71,7 +71,7 @@ def main():
         (fixture / "Cargo.toml").write_text(
             f'[package]\nname = "{PACKAGE}"\nversion = "0.0.0"\nedition = "2021"\n'
             '[dependencies]\nbytes = { version = "=1.11.1", features = ["serde"] }\n'
-            'anyhow = "=1.0.103"\nzstd = "=0.13.1"\n'
+            'anyhow = "=1.0.103"\nzstd = "=0.13.1"\nlog = "=0.4.22"\n'
             'serde = "=1.0.228"\nserde_derive = "=1.0.228"\n'
             'protobuf = { version = "=3.7.2", features = ["with-bytes"] }\n'
             'tokio-util = { version = "=0.7.15", features = ["codec"] }\n'
@@ -82,7 +82,7 @@ def main():
             '[lib]\nname = "rustdesk_cm_clipboard_response"\npath = "lib.rs"\n')
         (fixture / "lib.rs").write_text(
             'extern crate self as hbb_common;\npub use bytes;\npub use protobuf;\npub use tokio_util;\n'
-            'pub use anyhow::{self, bail};\npub type ResultType<T> = anyhow::Result<T>;\n'
+            'pub use anyhow::{self, bail};\npub use log;\npub type ResultType<T> = anyhow::Result<T>;\n'
             'mod config { ' + level[0] + ' }\n'
             f'#[path = "{repo}/libs/hbb_common/src/compress.rs"] pub mod compress;\n'
             'mod clipboard {\n'
@@ -117,20 +117,20 @@ def main():
             raise ValueError("CM clipboard response artifact is absent or ambiguous")
         artifact = candidates[0]
         artifact_sha = digest(artifact.read_bytes())
-        print(f"CM_CLIPBOARD_RESPONSE_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=41", flush=True)
+        print(f"CM_CLIPBOARD_RESPONSE_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=43", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture, 20)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("CM clipboard response artifact changed during execution")
-            print(f"CM_CLIPBOARD_RESPONSE_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=41 unchanged=before-after", flush=True)
+            print(f"CM_CLIPBOARD_RESPONSE_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=43 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("CM clipboard response artifact or lock changed")
         for name, data in inputs.items():
             if (repo / name).read_bytes() != data:
                 raise ValueError(f"CM clipboard response source changed: {name}")
             print(f"CM_CLIPBOARD_RESPONSE_INPUT=pass path={name} bytes={len(data)} sha256={digest(data)}")
-        print(f"CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256={artifact_sha} tests=41 unchanged=before-after", flush=True)
+        print(f"CM_CLIPBOARD_RESPONSE_ARTIFACT=pass sha256={artifact_sha} tests=43 unchanged=before-after", flush=True)
 
 
 if __name__ == "__main__":

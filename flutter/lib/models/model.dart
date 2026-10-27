@@ -1210,7 +1210,8 @@ class FfiModel with ChangeNotifier {
       _timer = Timer(Duration(seconds: _reconnects), () {
         retry(dialogManager, sessionId);
       });
-      _reconnects *= 2;
+      // Keep automatic recovery available during a prolonged outage.
+      _reconnects = min(_reconnects * 2, 30);
     } else {
       _reconnects = 1;
       _offlineReconnectStartTime = null;

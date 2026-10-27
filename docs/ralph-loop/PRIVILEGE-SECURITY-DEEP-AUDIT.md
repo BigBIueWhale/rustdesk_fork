@@ -109105,3 +109105,51 @@ bounded and unbounded width; eight existing fit/grapheme/accessibility/font case
 remain. Baseline execution precedes the product correction in the existing
 networkless, bounded-RAM path-label shard. Native file-manager/device acceptance
 will remain open beyond this production-widget observation.
+
+Baseline `2e21a4f08613c875e257b44f17a8248ee9b557ca`, run `IFrUm1uvVT`,
+passes the eight controls and fails all eight new suffix assertions: the Text
+still contains the original multiline name rather than `…report.exe`. Later
+assertions in each failed case are not baseline evidence. Serial: 92,370 bytes,
+SHA-256 `46968352cd0fe5d3c35884bf0847a7d4171a728d525636286f7f840afb6a06cf`.
+Supervisor lifetime is 82.435 seconds, peak RAM scratch 4,052,250,624 bytes and
+durable evidence 3,338,240 bytes. QEMU 3616338 joins with exit 0; its PID and
+RAM `run.09e9jcea` are absent. The bounded failed diagnostics are retained by
+locked no-replace rename as `filename-line-break-baseline.IFrUm1uvVT`.
+
+Product correction `4888d3f7d0198c4121298e4027ee670cf4ed1d31` requires
+`!painter.didExceedMaxLines` in the existing fit predicate and removes the
+unbounded-width bypass. No format normalization, filename mutation or new
+dependency is introduced. Run `0rLGJUzQbt` selects the correct suffixes but
+fails four unbounded selection-box assertions by 0.125 logical pixels with
+inherited letter spacing; twelve cases pass. The test fixture is corrected
+at `1f733e7d` to use explicit zero letter spacing. Run `ws4G3XUcND` then
+returns success from Flutter but stops at the parser self-test's stale eight-case
+expectation; it does not establish final inventory acceptance. `fe2a1029` fixes
+that count. These two intermediate diagnostic roots are retained as
+`filename-line-break-spacing.0rLGJUzQbt` and
+`filename-line-break-count.ws4G3XUcND`; both exact QEMU processes joined and
+their RAM workspaces retired. Every intermediate final inventory adds one
+unattributed endpoint; no owner was inspected or changed.
+
+Final source `fe2a1029e06af09d3786363b8fb141cd105105e3`, tree
+`c191852da65155cd95025bd73660ce3c1b87d305`, passes all sixteen named cases
+and three parser controls in `WCiLcArqXR`. Command for all four runs:
+`/bin/bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --path-labels`.
+The production widget executes in Linux Flutter 3.24.5 inside the existing
+networkless, nonroot VM container. Visible suffix, full accessibility label and
+actual extension selection boxes pass alongside the eight original controls.
+Serial: 76,835 bytes, SHA-256
+`47f3a20092f1ffd63f0392fea79d1b874523f8af599099280985e5b8eb73b982`.
+Outer/supervisor lifetime is 100/104.090 seconds; peak RAM scratch is
+4,050,612,224 bytes and durable evidence 3,313,664 bytes. QEMU 3642455 joins
+with exit 0; its PID, RAM `run.39r02zq1` and all active run roots are absent.
+Final inventory removes one unattributed endpoint, left untouched; the harness's
+own IP sockets remain kernel-denied. Product code is byte-identical to `4888d3f7`.
+
+Whitespace and shell syntax checks pass. The broader model inventory is updated
+from 319 to 327 but is not run. Full file-manager interaction, actual remote
+filenames, native accessibility and other-device/platform acceptance remain open.
+Requirements and live instructions are unchanged; all thirteen stashes remain.
+Earlier parks, including installer documentation, clipboard review and observer
+latency closure, remain open. This is verified display-correctness progress, not
+a local-privilege or release acceptance claim. The broad goal remains incomplete.

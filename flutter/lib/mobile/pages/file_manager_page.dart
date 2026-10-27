@@ -354,10 +354,11 @@ class _FileManagerPageState extends State<FileManagerPage> {
                       ? () async {
                           if (selectedItems.items.isNotEmpty) {
                             final expectedSessionId = sessionId;
-                            await currentFileController
+                            final completed = await currentFileController
                                 .removeAction(selectedItems,
                                     expectedSessionId: expectedSessionId);
-                            if (!mounted ||
+                            if (!completed ||
+                                !mounted ||
                                 !gFFI.isCurrentSession(expectedSessionId)) {
                               return;
                             }

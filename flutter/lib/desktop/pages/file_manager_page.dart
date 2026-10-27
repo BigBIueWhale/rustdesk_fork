@@ -882,11 +882,12 @@ class _FileManagerViewState extends State<FileManagerView> {
                           onPressed: SelectedItems.valid(selectedItems.items)
                               ? () async {
                                   if (!isCurrentSession) return;
-                                  await (controller
+                                  final completed = await (controller
                                       .removeAction(selectedItems,
                                           expectedSessionId:
                                               expectedSessionId));
-                                  if (!mounted ||
+                                  if (!completed ||
+                                      !mounted ||
                                       !_ffi.isCurrentSession(
                                           expectedSessionId)) return;
                                   selectedItems.clear();

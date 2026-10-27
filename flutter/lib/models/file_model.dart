@@ -1043,19 +1043,36 @@ class FileController {
     }
   }
 
-  Future<void> removeAction(SelectedItems items,
+  Future<bool> removeAction(SelectedItems items,
       {SessionID? expectedSessionId}) async {
     if (items.isLocal != isLocal) {
       debugPrint("Failed to removeFile, wrong files");
-      return;
+      return false;
     }
     final selectedSessionId = expectedSessionId ?? sessionId;
-    if (!_isCurrentSession(selectedSessionId)) return;
+    if (!_isCurrentSession(selectedSessionId)) return false;
+    final manager = dialogManager;
+    try {
+      await _removeSelected(items, selectedSessionId, manager);
+      return _isCurrentSession(selectedSessionId);
+    } catch (error) {
+      if (!_isCurrentSession(selectedSessionId)) return false;
+      if (manager != null) {
+        msgBox(selectedSessionId, 'custom-error-nook-nocancel-hasclose',
+            _translate("Error"), error.toString(), '', manager);
+      } else {
+        debugPrint("removeAction error msgbox failed: $error");
+      }
+      return false;
+    }
+  }
+
+  Future<void> _removeSelected(SelectedItems items, SessionID selectedSessionId,
+      OverlayDialogManager? manager) async {
     final selectedEntries = items.items
         .map(_FileOperationEntry.fromEntry)
         .toList(growable: false);
     final isWindows = options.value.isWindows;
-    final manager = dialogManager;
     final confirmationState = _RemoveConfirmationState();
     for (final item in selectedEntries) {
       if (!_isCurrentSession(selectedSessionId)) return;
@@ -1072,22 +1089,9 @@ class FileController {
         if (jobID == null) return;
         title = _translate("Not an empty directory");
         manager?.showLoading(_translate("Waiting"));
-        final FileDirectory fd;
-        try {
-          fd = await fileFetcher.fetchDirectoryRecursiveToRemove(
-              jobID, item.path, items.isLocal, true,
-              expectedSessionId: selectedSessionId);
-        } catch (error) {
-          if (!_isCurrentSession(selectedSessionId)) return;
-          manager?.dismissAll();
-          if (manager != null) {
-            msgBox(selectedSessionId, 'custom-error-nook-nocancel-hasclose',
-                _translate("Error"), error.toString(), '', manager);
-          } else {
-            debugPrint("removeAction error msgbox failed: $error");
-          }
-          continue;
-        }
+        final fd = await fileFetcher.fetchDirectoryRecursiveToRemove(
+            jobID, item.path, items.isLocal, true,
+            expectedSessionId: selectedSessionId);
         if (!_isCurrentSession(selectedSessionId)) return;
         if (fd.path.isEmpty) {
           fd.path = item.path;

@@ -220,7 +220,7 @@ acceptance remain OPEN. Parked source, window/dispatcher and producer work remai
 
 `requirements.html` owns the normative product, security and build contracts.
 This ledger owns current conformance, evidence limits and open work. Git history and
-`/tmp/privilege_securiry_deep_audit.md` retain superseded analysis and execution history.
+`docs/ralph-loop/PRIVILEGE-SECURITY-DEEP-AUDIT.md` retain superseded analysis and execution history.
 The document classifications below establish their named document/source comparisons;
 they do not establish compiler, scanner, installed, native or release acceptance.
 Historical repair narratives and size/token comparisons are archived in Git, including
@@ -11729,7 +11729,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   publication, cleanup/failure races, cold double-build equality, installed
   runtime, independent reproduction, and external review remain OPEN.
   Detailed failed attempts and old verifier counts remain in Git history and
-  `/tmp/privilege_securiry_deep_audit.md`, not this live ledger.
+  `docs/ralph-loop/PRIVILEGE-SECURITY-DEEP-AUDIT.md`, not this live ledger.
 - **R-S11dv/R-S11e-140 — Debian result publication is private-until-verified,
   exact-object, no-clobber, and authority-terminal — SOURCE AND CONFINED
   SOURCE/MUTATION/FILESYSTEM VERIFICATION COMPLETE 2026-07-26; COLD RELEASE,

@@ -108383,3 +108383,50 @@ durable evidence 151,552 bytes. QEMU 3190886 joined with exit 0; RAM
 zero; the final snapshot retains one unattributed endpoint removal, left
 untouched. All twelve parked stashes are unchanged. This audit-only receipt
 changes neither the counted ledger nor tested product.
+
+## 2026-10-27 obsolete Server Pro administration tools
+
+Previous goal turn: progress (the committed filename renderer fix reproduces four
+failures before correction and passes all eight identical cases afterward).
+Current R-S11b/R-S11c acceptance still leaves all fifteen installed credential
+actions, native lifecycle/platform behavior, R-S0/R-F5, cold release artifacts,
+independent reproduction and external review open. Every user park remains.
+
+Classification at clean pushed source `52dfc90c`: `res/ab.py`, `users.py`,
+`user-groups.py`, `device-groups.py`, `devices.py`, `audits.py` and `strategies.py`
+are seven independent executable Python CLI tools. They accept a server URL and
+bearer token and operate the Server Pro account/address-book/device/group/audit/
+strategy APIs; the account and address-book tools also construct password-bearing
+requests. All seven entered with upstream import `c2abd3b3` and have no later
+change. Complete source review and read-only AST analysis identify 2,539 lines,
+87,245 bytes and 56 requests call sites. Imports are only requests and standard
+library modules; each has its own CLI entry point.
+
+Primary upstream documentation explicitly identifies these Python management
+tools with the Server Pro web console:
+https://rustdesk.com/docs/en/self-host/rustdesk-server-pro/console/.
+The design implication follows this fork's existing R-SV6/R-SV6a and direct-only
+requirements: there is no supported account/control-plane operation to preserve
+in these tools. Tracked-tree filename and import/reference searches, including
+hidden workflow files, found no caller; build, packaging and workflow inspection
+found no input dependency. The separate remote-signing task utility has a different
+purpose and is outside this deletion. This is removal of executable repository
+residue, not evidence that the RustDesk binary exposed a new escalation or that
+an external server has been changed.
+
+Delete the seven complete files without a compatibility wrapper or replacement
+CLI. Extend the existing R-SV6a source inventory by six lines to reject restored
+files, directories and dangling symlinks at those exact paths. Its success text
+now identifies source evidence. No requirement, live instruction, product Rust/
+Dart/native source, dependency, build recipe or runtime test is changed. No script
+is imported or executed and no Server Pro API is contacted. Native product tests
+and the full source catalog are not rerun for removal of unconsumed tools; exact
+source absence/reference checks, unchanged-consumer comparison, shell parsing and
+whitespace review are the relevant verification. The fresh ledger count follows.
+
+Verification passes: all seven paths are absent, no other tracked text file refers
+to their path or basename, and the changed-path set is exactly those seven deletions,
+the compact verifier edit and the two progress documents. Every other tracked source,
+build/workflow input and test is unchanged. `bash -n scripts/verify.sh` and
+`git diff --check` pass. The forbidden paths are not copied into an isolated fixture
+or contacted just to manufacture runtime evidence for an absence-only change.

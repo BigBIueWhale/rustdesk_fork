@@ -12086,6 +12086,12 @@ ra6_clean 'api\.telegram\.org|send_2fa_code_to_telegram|get_chatid_telegram' 'R-
 # not merely its HTTP sink: no argv token/password parser, cross-principal IPC scope, deploy ABI,
 # API/audit/avatar resolver, stale account profile consumer, or account-only built-in keys.
 r_sv6a=""
+for r_sv6a_tool in res/ab.py res/users.py res/user-groups.py res/device-groups.py \
+    res/devices.py res/audits.py res/strategies.py; do
+  if [ -e "$r_sv6a_tool" ] || [ -L "$r_sv6a_tool" ]; then
+    r_sv6a="$r_sv6a retired-server-pro-tool:$r_sv6a_tool"
+  fi
+done
 r_sv6a_core_main=$(awk '/^pub fn core_main\(\)/{capture=1} capture{print} /^fn core_main_invoke_new_connection\(/{exit}' src/core_main.rs)
 r_sv6a_scope=$(awk '/^fn is_user_main_ipc_scope_cli_command\(/{capture=1} capture{print} capture && /^}/{exit}' src/core_main.rs)
 echo "$r_sv6a_core_main" | grep -qF 'args[0] == "--assign"' && r_sv6a="$r_sv6a assign-handler-present"
@@ -12117,7 +12123,7 @@ grep -qF '(OPTION_API_SERVER, ""),' libs/hbb_common/src/config.rs || r_sv6a="$r_
 if [ -n "$r_sv6a" ]; then
   echo "  FAIL R-SV6a account/control-plane structural excision:$r_sv6a"; rc=1
 else
-  echo "  ok  R-SV6a account/control-plane authority absent; logout/API-server presentation contracts are deleted and the empty stale-config mask remains"
+  echo "  ok  R-SV6a account/control-plane source inventory: retired Python tools and presentation contracts absent; empty stale-config mask retained"
 fi
 ra6_clean 'api/devices/deploy|api/devices/cli|admin\.rustdesk\.com' 'R-SV6/R-SV6a account endpoint and hardwired API host literals' || rc=1
 # R-SV6b/R-SV4/R-X6: direct-IP routing and login identity have no dormant rendezvous resolver,

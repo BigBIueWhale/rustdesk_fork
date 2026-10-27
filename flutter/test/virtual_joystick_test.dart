@@ -59,7 +59,7 @@ class _Joystick {
 
   Future<TestGesture> drag(WidgetTester tester) async {
     final center = tester.getCenter(find.byType(VirtualJoystick));
-    final gesture = await tester.startGesture(center);
+    final gesture = await tester.startGesture(center + const Offset(10, 0));
     await gesture.moveBy(const Offset(40, 0));
     await tester.pump();
     expect(cursor.blockEvents, isTrue);
@@ -92,8 +92,10 @@ void main() {
       expect(joystick.movements.length, greaterThan(initial));
       await gesture.cancel();
       await joystick.expectStopped(tester);
+      final beforeRetry = joystick.movements.length;
       final retry = await joystick.drag(tester);
       await tester.pump(const Duration(milliseconds: 200));
+      expect(joystick.movements.length, greaterThan(beforeRetry));
       await retry.up();
       await joystick.expectStopped(tester);
     });

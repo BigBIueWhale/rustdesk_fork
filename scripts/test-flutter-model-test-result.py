@@ -60,6 +60,9 @@ class ResultTests(unittest.TestCase):
         elif profile == "audio-input":
             suites = sorted(result.AUDIO_INPUT_SUITES)
             names = sorted(set().union(*result.AUDIO_INPUT_SUITES.values()))
+        elif profile == "reconnect":
+            suites = sorted(result.RECONNECT_SUITES)
+            names = sorted(set().union(*result.RECONNECT_SUITES.values()))
         elif profile == "custom-scale":
             suites = ["custom_scale_controls_test.dart"]
             names = sorted(result.CUSTOM_SCALE_TESTS)
@@ -105,8 +108,9 @@ class ResultTests(unittest.TestCase):
             })
         for test_id, name in enumerate(names):
             suite_id = test_id % len(suites)
-            if profile in ("credential-dialog", "terminal-output", "file-navigation", "modifier-release", "peer-data", "tab-selection", "status-refresh", "audio-input"):
+            if profile in ("credential-dialog", "terminal-output", "file-navigation", "modifier-release", "peer-data", "tab-selection", "status-refresh", "audio-input", "reconnect"):
                 inventory = (result.AUDIO_INPUT_SUITES if profile == "audio-input"
+                             else result.RECONNECT_SUITES if profile == "reconnect"
                              else result.CREDENTIAL_DIALOG_TESTS if profile == "credential-dialog"
                              else result.STATUS_REFRESH_SUITES if profile == "status-refresh"
                              else result.TAB_SELECTION_SUITES if profile == "tab-selection"
@@ -157,6 +161,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("peer-data"), "peer-data"), (4, 86))
         self.assertEqual(self.parse(self.events("file-progress"), "file-progress"), (1, 43))
         self.assertEqual(self.parse(self.events("audio-input"), "audio-input"), (2, 17))
+        self.assertEqual(self.parse(self.events("reconnect"), "reconnect"), (2, 11))
         self.assertEqual(self.parse(self.events("custom-scale"), "custom-scale"), (1, 35))
         self.assertEqual(self.parse(self.events("file-navigation"), "file-navigation"), (7, 125))
         self.assertEqual(self.parse(self.events("terminal-output"), "terminal-output"), (2, 37))
@@ -197,7 +202,7 @@ class ResultTests(unittest.TestCase):
                         path.unlink()
 
     def test_focused_inventory_is_exact(self):
-        for profile in ("frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "audio-input", "file-navigation", "modifier-release"):
+        for profile in ("frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "audio-input", "reconnect", "file-navigation", "modifier-release"):
             events = self.events(profile)
             for edit in ("rename", "duplicate", "suite", "missing", "wrong-suite"):
                 with self.subTest(profile=profile, edit=edit):
@@ -221,7 +226,7 @@ class ResultTests(unittest.TestCase):
                         self.parse(changed, profile)
 
     def test_failure_skip_and_incomplete_are_rejected(self):
-        for profile in ("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "audio-input", "file-navigation", "modifier-release"):
+        for profile in ("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "audio-input", "reconnect", "file-navigation", "modifier-release"):
             events = self.events(profile)
             done_index = next(
                 i for i, event in enumerate(events) if event["type"] == "testDone"

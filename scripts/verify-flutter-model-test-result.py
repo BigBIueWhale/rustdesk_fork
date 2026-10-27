@@ -1205,8 +1205,27 @@ AUDIO_INPUT_SUITES = {
 }
 
 
+RECONNECT_SUITES = {
+    'reconnect_backoff_test.dart': {
+        'reconnect timer backoff stays bounded through repeated failures',
+        'reconnect countdown agrees with the capped timer',
+        'reconnect nonretry message cancels and resets the delay',
+        'reconnect model reset retires callbacks and resets the delay',
+        'reconnect replacement rejects an already queued callback',
+        'reconnect retired session refuses scheduling and timer actions',
+        'reconnect keyed event cancels and resets the delay',
+    },
+    'reconnect_schedule_authority_test.dart': {
+        'a replaced reconnect callback can never claim the session',
+        'credential recovery retires and suppresses generic retries',
+        'only native connection admission ends credential recovery',
+        'owner reset invalidates every callback from the old owner',
+    },
+}
+
+
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "audio-input", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -1300,6 +1319,11 @@ def parse_result(path, profile="models"):
         expected_tests = len(expected_names)
     elif profile == "audio-input":
         expected_by_suite = AUDIO_INPUT_SUITES
+        expected_suites = set(expected_by_suite)
+        expected_names = set().union(*expected_by_suite.values())
+        expected_tests = len(expected_names)
+    elif profile == "reconnect":
+        expected_by_suite = RECONNECT_SUITES
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())
         expected_tests = len(expected_names)
@@ -1426,7 +1450,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "audio-input", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -1454,6 +1478,7 @@ def main():
         "file-navigation": "FLUTTER_FILE_NAVIGATION_TEST_JSON",
         "custom-scale": "FLUTTER_CUSTOM_SCALE_TEST_JSON",
         "audio-input": "FLUTTER_AUDIO_INPUT_TEST_JSON",
+        "reconnect": "FLUTTER_RECONNECT_TEST_JSON",
         "file-progress": "FLUTTER_FILE_PROGRESS_TEST_JSON",
         "peer-data": "FLUTTER_PEER_DATA_TEST_JSON",
         "settings-navigation": "FLUTTER_SETTINGS_NAVIGATION_TEST_JSON",

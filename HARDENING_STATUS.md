@@ -13973,6 +13973,12 @@ rate/channel geometry, fallibly reserved PCM, producer-owned statistics and a
 monotonic twelve-second shrink window. Backwards observations restart without
 trimming; replacement retires the old PCM/statistics/clock, even at equal capacity.
 Trimming preserves complete interleaved frames and newest-PCM retention.
+PCM and admission-age spans now share one owner. At most 512 spans (or the smaller
+sample capacity) are reserved fallibly before activation; overflow, consumption
+and trimming retire matching metadata. Append and callback dequeue expire blocks
+older than one second. New PCM never refreshes older PCM; a backward clock
+observation preserves the original timestamp. This bounds local queued age,
+not capture-to-speaker latency or native device buffering.
 Callbacks use `try_lock`, convert directly into the supplied slice, and supply
 converted silence on shortage/contention without consuming inaccessible PCM;
 poison remains fatal. No callback sleep, blocking ring/readiness acquisition or
@@ -13996,6 +14002,7 @@ guards remain.
 
 | Surface / named source | Accepted observation and material limit | Retained capsule |
 | --- | --- | --- |
+| PCM expiry — `c82f2d3d` | Four unchanged baseline cases replay stale PCM after callback pause, fresh append, partial stereo consumption and contention; the correction passes all four plus 24 controls/new checks. The 28-case final buffer run covers exact expiry, backward-time preservation/later expiry, bounded metadata, channel order, allocation refusal/recovery and allocation-free warmed callback filling. The 51-case mailbox/CPAL-method check passed at `2b27e998` before the final backward-clock adjustment; it is evidence for that exact source. These are portable/native-thread Linux components, without physical CPAL output or complete platform parents. | 2026-10-27 decoded-PCM audit entry; runs `3DGu0z4fyt`, `JF8AJmQlcG`, `Ru6JHWltrm`, `Ipwp4U1ryI` |
 | Mailbox admission — `847f5566` | Twelve real-mailbox/generated-protobuf cases cover format/order/count/age/size, unknown-field stripping, backing retirement and native wake/join. No decoder/device or historical A/B ran. | `audio-mailbox-accepted-847f5566.json` |
 | Mailbox storage — `d6fefa11` | Identical 35-case fixture replaces ten aborting packet/deque allocation refusals with terminal `ResourceUnavailable`; six healthy controls preserve bytes/order/replacement. All seventeen children join, including the positive allocator-refusal probe. Selective calling-thread Rust allocation only. | `audio-mailbox-allocation-bb158770.json` |
 | PCM ring storage — `451d28c8` | Identical 24-case fixture replaces four allocation and five geometry panics with `OutOfMemory`/`InvalidInput`; fresh outputs use one configured ring and preserve another buffer. The 35-case mailbox component also passes and typechecks complete CPAL setup. Earlier stale outer-count export is separate. | `audio-buffer-allocation-5229777b.json` |
@@ -14010,8 +14017,9 @@ guards remain.
 
 The `--audio-mailbox-tests` lane imports real mailbox/buffer, production proto/build
 script, exact setup/error/decoder/worker methods and portable Android raw modules
-with root-locked dependencies. Its latest retained export at `cdb032e7` checks all
-48 named outcomes. `audio-mailbox-profile-15ed3f4d.json` retains the earlier 34-case
+with root-locked dependencies. Its 51-case export at `2b27e998` checks the changed
+buffer consumer/API; the final clock adjustment passes the 28-case buffer lane at
+`c82f2d3d`. `audio-mailbox-profile-15ed3f4d.json` retains the earlier 34-case
 profile run and sixteen channel-format/callback observations.
 `--audio-buffer-tests` has an eighteen-case run at `87dbc335` (sixteen production
 buffer and two conversion/allocation cases), retained in

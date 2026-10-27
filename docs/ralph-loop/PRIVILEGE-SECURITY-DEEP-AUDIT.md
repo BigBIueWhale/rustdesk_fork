@@ -108132,3 +108132,41 @@ expire it. The focused accounting test checks both preservation and later expiry
 The buffer lane is rerun for this behavioral change; the already-passed mailbox
 consumer/API check is retained for its exact source, not relabeled as the final
 artifact. No output API, decoder, worker, or platform setup changes in this review.
+
+Final source c82f2d3d4592461309e2efc20869bdcd950a31fd passes all 28 buffer
+tests as Ipwp4U1ryI: 2.01s behavior, 66s outer execution. The original four
+real-clock cases preserve their baseline bodies and now output the exact expected
+fresh samples/silence. Exact expiry and backward-time recovery, bounded span
+accounting, channel alignment, sample/metadata allocator refusal, ten sample-type
+conversions and zero warmed callback Rust allocations all pass. Executed artifact
+7d0a4ac1ec59c26337e50340c60909d78a4e6ea0acc58ce9ee5122e4c0a29e8b remains
+byte-identical before/after; production buffer SHA-256 is
+3580355812eae9e271b0cadd4f0a141b15db33b5c8f34abf3157494aedd0683d.
+The final artifact's source tree is dac20391f04a9f9b18de3e12855ec6e5638e6a7d.
+
+The preceding 2b27e998 shared-consumer run Ru6JHWltrm passes 51 tests in 2.40s
+(109s outer), artifact
+063113e5496d7b71b5ef8b6f4ff673b38f61eef441c4e7b1c19ba26ef91a1152.
+It typechecks the exact extracted CPAL build method against the changed buffer
+owner and executes production mailbox/native-thread/Opus components. Opus is
+1.3.1, library SHA-256 b9b1c55e42d607ec1fe5f8fa4b1418d6bf6a342db5488551e9b2343bd847589c;
+the playback sink is controlled and no physical audio device opens. That consumer
+API is unchanged by c82f2d3d; no claim upgrades its artifact to the final source.
+
+Retained android-rust-lifecycle-tests-run serials:
+- JF8AJmQlcG: 74,324 bytes, f5448135c89999eaace6b78bf764b8cd827b0ff629cf08ef1e407553cd847080;
+  accepted initial buffer artifact c348355f02cd1f819cf491376b388fa54d404028ce1cd9e82d52b5518e73f5bf.
+- Ru6JHWltrm: 93,385 bytes, 63155ba8fe695f884794559ef032432752148c20f76d34081bb8cc1581018efd.
+- Ipwp4U1ryI: 74,800 bytes, ec056d6d4ba776c52ab388a7168c6bf68a06bfae28de4066f10f36a07226c808.
+Matching storage records show final QEMU 3073322 joined with exit 0 and RAM
+run.smy85u9d retired; its peak scratch/durable storage is 3,472,654,336/3,313,664
+bytes over 70.364 supervisor seconds. Final endpoint deltas are zero. All earlier
+run QEMU/RAM owners are also joined/absent; JF8AJmQlcG has two unrelated endpoint
+additions and Ru6JHWltrm two removals, left unattributed and untouched. Each owned
+harness remains kernel-confined against host IP sockets. No active marker remains.
+
+The root lock, Rust 1.75.0 and admitted devcheck/vendor inputs are unchanged;
+each serial retains their identities. No whole-parent build, native CPAL device,
+installed service, end-to-end latency/soak, broad memory-exhaustion or LPE closure
+is claimed. All fifteen credential actions, R-S0/R-F5, release acceptance and
+every existing user park remain open. Fresh ledger count follows separately.

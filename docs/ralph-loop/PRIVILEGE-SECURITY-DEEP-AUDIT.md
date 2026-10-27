@@ -107233,3 +107233,49 @@ ledger count. This is Linux Flutter loader/widget evidence with controlled reads
 full application startup, native storage, physical/mobile/platform behavior,
 R-S0/R-F5, installed credential actions, independent/release acceptance and the
 full goal remain OPEN. No host product, service or foreign-owner inspection ran.
+
+### 2026-10-27 — user-directed pivot: file-list quick-search shortcuts
+
+The raw credential IPC deadline investigation is OPEN/PARKED at the user's pivot;
+no credential code, tests or coordinator runs change here. The current R-S11b/c/i
+ledger still requires installed/native acceptance for all fifteen credential
+actions. Privileged receiver, packaging, platform and release obligations remain.
+
+`ListSearchActionListener.onKeyEvent` accepted every non-null character without
+checking modifiers. Its file-manager onSearch/onNext callbacks clear or replace
+selection (`file_manager_page.dart` around 1140–1184), so command key events could
+also drive filename search. The local contract is that Meta and Ctrl-without-Alt
+commands preserve the prefix and propagate to shortcut handlers; text entry,
+including Shift, Option and AltGr, retains the existing search/cycling behavior.
+No session, native action or privilege authority changes.
+
+Research: Flutter's KeyEvent character is layout-produced text, while keyboard
+state supplies modifiers. The exact pinned Windows engine test shows AltGr as
+ControlLeft plus AltRight; rejecting every Control-modified character would break
+that input. Sources: https://api.flutter.dev/flutter/services/KeyEvent/character.html
+and https://raw.githubusercontent.com/flutter/engine/3.24.5/shell/platform/windows/keyboard_unittests.cc
+(AltGrModifiedKey). No new platform fallback or dependency is introduced.
+
+Preparation 2d5addad adds five cases to the existing focused list-search shard.
+Baseline U9VP2KSGv8 passes seven cases and fails four shortcut assertions: each
+left/right Ctrl/Meta press and repeat changes prefix `a` to `acc`, even while the
+ancestor shortcut receives both events. Shifted and later recovery assertions
+after those failures are not baseline execution claims. Product 83d52d70 adds
+only the services import and modifier check. Intermediate gJt56Fakwh reaches the
+parser self-test, which still expects six cases; no final product receipt exists
+for that run. Commit 7a64f12d changes only that expectation to eleven.
+
+Final akfD0FzX8Q passes all eleven unchanged widget cases and three parser controls:
+both sides of Ctrl/Meta, shifted/unshifted press and repeat, shortcut propagation,
+prefix continuation, eight Unicode/Shift/Option/AltGr combinations and six prior
+focus cases. Flutter reports 4.482 seconds; the outer run takes 103 seconds.
+The exact production widget and fixture bytes are compared before/after execution.
+All three no-NIC VMs join and retire their bounded RAM workspaces. Baseline and
+final endpoint snapshots have no deltas. The intermediate after-snapshot records
+unattributed added UDP 0.0.0.0:34715 and removed TCP 127.0.0.1:9245; the orchestrator
+cannot create IP sockets, and no owner inspection or intervention occurs.
+
+`list-shortcuts-128cd0b5.json` binds source, A/B outcomes, the receipt failure,
+cleanup and a fresh ledger count. Full file-manager/physical-keyboard/native-layout
+integration, wall-clock expiry, installed privilege and R-S0/R-F5/release acceptance
+remain OPEN. The host product/services and foreign-owner state are untouched.

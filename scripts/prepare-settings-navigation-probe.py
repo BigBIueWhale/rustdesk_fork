@@ -13,7 +13,12 @@ SUPPORT = {
         '  PlatformFFI.instance._ffiBind = binding;\n}\n'),
     'lib/common.dart': (
         '\nvoid installSettingsProbeParent(FFI parent) {\n'
-        '  _globalFFI = parent;\n}\n'),
+        '  _globalFFI = parent;\n}\n'
+        '\nvoid installSettingsProbeAndroid(bool android) {\n'
+        '  isAndroid = android;\n'
+        '  isLinux = !android;\n'
+        '  isDesktop = !android;\n'
+        '  isMobile = android;\n}\n'),
 }
 
 
@@ -32,13 +37,20 @@ def main():
             continue
         original = source.read_bytes()
         target = project / relative
-        expected = original + SUPPORT.get(relative, '').encode('utf-8')
+        expected = original
+        if relative == 'lib/common.dart':
+            for name in ('isAndroid', 'isLinux', 'isDesktop'):
+                declaration = f'final {name} = {name}_;'.encode()
+                if expected.count(declaration) != 1:
+                    raise ValueError(f'settings platform declaration differs: {name}')
+                expected = expected.replace(declaration,
+                    f'bool {name} = {name}_;'.encode())
+        expected += SUPPORT.get(relative, '').encode('utf-8')
         if prepare:
             if target.read_bytes() != original:
                 raise ValueError(f'settings probe source differs: {relative}')
             if relative in SUPPORT:
-                with target.open('ab') as stream:
-                    stream.write(SUPPORT[relative].encode('utf-8'))
+                target.write_bytes(expected)
         if target.read_bytes() != expected:
             raise ValueError(f'settings probe copy differs: {relative}')
     source = repo / 'test_probes/settings_navigation_cases.dart.inc'
@@ -54,7 +66,7 @@ def main():
     print(f'SETTINGS_NAVIGATION_SOURCE={sys.argv[1]} '
           f'page={hashlib.sha256(page).hexdigest()} '
           f'tests={hashlib.sha256(cases).hexdigest()} '
-          'page_copy=exact native_binding=double parent=double', flush=True)
+          'page_copy=exact native_binding=double parent=double platform=double', flush=True)
 
 
 if __name__ == '__main__':

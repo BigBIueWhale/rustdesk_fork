@@ -994,6 +994,16 @@ PEER_DATA_SUITES = {
     "all_peers_loader_test.dart": PEER_LOADER_TESTS,
 }
 SETTINGS_NAVIGATION_TESTS = {
+    *{f"mobile boolean {key} {case}"
+      for key in ("enable-abr", "allow-auto-disconnect", "allow-auto-record-incoming",
+                  "allow-auto-record-outgoing", "enable-show-terminal-extra-keys")
+      for case in (
+          "owns one save across rebuild and scroll",
+          "refusal and mismatch preserve retry",
+          "readback error stays local and retries",
+          "admitted write drains after close")},
+    "mobile boolean fixed options cannot dispatch a save",
+    "mobile boolean unrelated options retain independent admission",
     *{f"mobile keep awake {skin} {case}"
       for skin in ("android", "iOS")
       for case in (

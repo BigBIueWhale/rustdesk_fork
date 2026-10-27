@@ -19,6 +19,21 @@ import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:settings_ui/settings_ui.dart';
 
+const _mobileBooleans = [
+  (key: kOptionEnableAbr, label: 'Adaptive bitrate', local: false,
+    initial: true, before: '', after: 'N'),
+  (key: kOptionAllowAutoDisconnect, label: 'auto_disconnect_option_tip', local: false,
+    initial: false, before: '', after: 'Y'),
+  (key: kOptionAllowAutoRecordIncoming,
+    label: 'Automatically record incoming sessions', local: false,
+    initial: false, before: '', after: 'Y'),
+  (key: kOptionAllowAutoRecordOutgoing,
+    label: 'Automatically record outgoing sessions', local: true,
+    initial: false, before: '', after: 'Y'),
+  (key: kOptionEnableShowTerminalExtraKeys, label: 'Show terminal extra keys', local: true,
+    initial: true, before: '', after: 'N'),
+];
+
 class _NativeSettings implements RustdeskImpl {
   final unexpected = <Symbol>[];
   String recordingDirectory = '/work/nonexistent-settings-recordings';
@@ -28,6 +43,23 @@ class _NativeSettings implements RustdeskImpl {
   final keepAwakeWrites = <String>[];
   Future<String> Function(String)? saveKeepAwake;
   bool refuseKeepAwakeRead = false;
+  final options = {for (final option in _mobileBooleans) option.key: option.before};
+  final optionWrites = <(bool, String, String)>[];
+  final optionReaders = <String, int>{};
+  final saveOptions = <String, Future<String> Function(String)>{};
+  final refuseOptionReads = <String>{};
+  final fixedOptions = <String>{};
+
+  String readOption(String key) {
+    optionReaders.update(key, (count) => count + 1, ifAbsent: () => 1);
+    if (refuseOptionReads.contains(key)) throw StateError('option readback unavailable');
+    return options[key]!;
+  }
+
+  Future<void> writeOption(bool local, String key, String value) async {
+    optionWrites.add((local, key, value));
+    options[key] = await saveOptions[key]?.call(value) ?? value;
+  }
 
   @override
   dynamic noSuchMethod(Invocation call) {
@@ -40,10 +72,11 @@ class _NativeSettings implements RustdeskImpl {
       case #isDisableSettings:
       case #isCustomClient:
       case #mainIsInstalled:
-      case #mainIsOptionFixed:
       case #mainAudioSupportLoopback:
       case #mainGetUseTextureRender:
         return false;
+      case #mainIsOptionFixed:
+        return fixedOptions.contains(key);
       case #mainGetBuildinOption:
         return '';
       case #mainGetLocalOption:
@@ -51,8 +84,10 @@ class _NativeSettings implements RustdeskImpl {
           if (refuseKeepAwakeRead) throw StateError('readback unavailable');
           return keepAwake;
         }
+        if (options.containsKey(key)) return readOption(key as String);
         return '';
       case #mainGetOptionSync:
+        if (options.containsKey(key)) return readOption(key as String);
         if (key == 'access-mode') return 'full';
         if (key == 'verification-method') return 'use-permanent-password';
         return '';
@@ -76,6 +111,9 @@ class _NativeSettings implements RustdeskImpl {
             keepAwake = await saveKeepAwake?.call(value) ?? value;
           });
         }
+        if (options.containsKey(key)) {
+          return writeOption(true, key as String, call.namedArguments[#value] as String);
+        }
         if (key != 'video-save-directory') break;
         final value = call.namedArguments[#value] as String;
         recordingWrites.add(value);
@@ -83,6 +121,9 @@ class _NativeSettings implements RustdeskImpl {
           await saveRecordingDirectory?.call(value);
           recordingDirectory = value;
         });
+      case #mainSetOption:
+        if (!options.containsKey(key)) break;
+        return writeOption(false, key as String, call.namedArguments[#value] as String);
       case #mainSupportRemoveWallpaper:
         return Future<bool>.value(false);
       case #mainGetSoundInputs:
@@ -90,6 +131,9 @@ class _NativeSettings implements RustdeskImpl {
       case #mainGetLangs:
         return Future<String>.value('[["en","English"]]');
       case #mainGetOption:
+        if (options.containsKey(key)) {
+          return Future<String>.sync(() => readOption(key as String));
+        }
         return Future<String>.value('');
       case #mainGetCommon:
         if (key == 'permanent-password-writable') {
@@ -185,6 +229,23 @@ Finder _keepAwakeTile() => find.ancestor(
     of: find.text('keep-awake-during-outgoing-sessions-label'),
     matching: find.byType(SettingsTile));
 
+Finder _booleanTile(String label) => find.ancestor(
+    of: find.text(label), matching: find.byType(SettingsTile));
+
+Future<void> _showBoolean(WidgetTester tester, String label) async {
+  final scrollable = find.descendant(
+      of: find.byType(SettingsList), matching: find.byType(Scrollable)).first;
+  tester.state<ScrollableState>(scrollable).position.jumpTo(0);
+  await _settle(tester);
+  for (var attempt = 0; attempt < 20 && _booleanTile(label).evaluate().isEmpty;
+      attempt++) {
+    await tester.drag(scrollable, const Offset(0, -180));
+    await _settle(tester);
+  }
+  await tester.ensureVisible(_booleanTile(label));
+  await _settle(tester);
+}
+
 Future<void> _mountMobile(WidgetTester tester, TargetPlatform platform) async {
   // Branding is outside this settings probe; the application source is unchanged.
   tester.binding.defaultBinaryMessenger.setMockMessageHandler('flutter/assets',
@@ -258,6 +319,7 @@ void main() {
   });
 
   tearDown(() {
+    installSettingsProbeAndroid(false);
     picker.cancelPending();
     FilePicker.platform = previousPicker;
     parent.serverModel.serverPasswd.dispose();
@@ -268,6 +330,164 @@ void main() {
     Get.reset();
     expect(native.unexpected, isEmpty);
     isTest = false;
+  });
+
+  for (final option in _mobileBooleans) {
+    SettingsTile tile(WidgetTester tester) =>
+        tester.widget<SettingsTile>(_booleanTile(option.label));
+    Future<void> mount(WidgetTester tester) async {
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      installSettingsProbeAndroid(true);
+      await _mountMobile(tester, TargetPlatform.android);
+      await _showBoolean(tester, option.label);
+    }
+
+    testWidgets('mobile boolean ${option.key} owns one save across rebuild and scroll',
+        (tester) async {
+      final completion = Completer<String>();
+      native.saveOptions[option.key] = (_) => completion.future;
+      await mount(tester);
+      final change = tile(tester).onToggle!;
+      change(!option.initial);
+      change(!option.initial);
+      await tester.pump();
+      tester.state(find.byType(mobile.SettingsPage)).setState(() {});
+      await tester.pump();
+      final position = tester.state<ScrollableState>(find.descendant(
+          of: find.byType(SettingsList), matching: find.byType(Scrollable)).first).position;
+      final offset = position.pixels;
+      final opposite = offset < position.maxScrollExtent / 2
+          ? position.maxScrollExtent : 0.0;
+      position.jumpTo(opposite);
+      await tester.pump();
+      position.jumpTo(offset);
+      await tester.pump();
+      final disabled = tile(tester).onToggle == null;
+      final progress = find.descendant(of: _booleanTile(option.label),
+          matching: find.byType(LinearProgressIndicator)).evaluate().length;
+      change(!option.initial);
+      final pendingWrites = List.of(native.optionWrites);
+      completion.complete(option.after);
+      await _settle(tester);
+      expect((opposite - offset).abs(), greaterThan(0));
+      expect(pendingWrites, [(option.local, option.key, option.after)]);
+      expect(disabled, isTrue);
+      expect(progress, 1);
+      expect(tile(tester).initialValue, !option.initial);
+      expect(tile(tester).onToggle, isNotNull);
+    });
+
+    testWidgets('mobile boolean ${option.key} refusal and mismatch preserve retry',
+        (tester) async {
+      var writes = 0;
+      native.saveOptions[option.key] = (value) async {
+        if (++writes == 1) throw StateError('option save refused');
+        return writes == 2 ? option.before : value;
+      };
+      await mount(tester);
+      final initialReads = native.optionReaders[option.key];
+      for (var attempt = 0; attempt < 2; attempt++) {
+        tile(tester).onToggle!(!option.initial);
+        await _settle(tester);
+        expect(tile(tester).initialValue, option.initial);
+        if (attempt == 0) expect(native.optionReaders[option.key], initialReads);
+        expect(find.descendant(of: _booleanTile(option.label),
+            matching: find.text('Failed')), findsOneWidget);
+      }
+      tile(tester).onToggle!(!option.initial);
+      await _settle(tester);
+      expect(tile(tester).initialValue, !option.initial);
+      expect(find.text('Failed'), findsNothing);
+      tile(tester).onToggle!(option.initial);
+      await _settle(tester);
+      expect(tile(tester).initialValue, option.initial);
+      expect(native.optionWrites, [
+        for (var i = 0; i < 3; i++) (option.local, option.key, option.after),
+        (option.local, option.key, option.before),
+      ]);
+    });
+
+    testWidgets('mobile boolean ${option.key} readback error stays local and retries',
+        (tester) async {
+      final escaped = <Object>[];
+      native.saveOptions[option.key] = (value) async {
+        native.refuseOptionReads.add(option.key);
+        return value;
+      };
+      await mount(tester);
+      runZonedGuarded(() => tile(tester).onToggle!(!option.initial),
+          (Object error, StackTrace stack) => escaped.add(error));
+      await _settle(tester);
+      expect(escaped, isEmpty);
+      expect(tile(tester).initialValue, option.initial);
+      expect(find.text('Failed'), findsOneWidget);
+      native.refuseOptionReads.clear();
+      native.saveOptions.clear();
+      tile(tester).onToggle!(!option.initial);
+      await _settle(tester);
+      expect(native.optionWrites, List.filled(2, (option.local, option.key, option.after)));
+      expect(tile(tester).initialValue, !option.initial);
+      expect(find.text('Failed'), findsNothing);
+    });
+
+    testWidgets('mobile boolean ${option.key} admitted write drains after close',
+        (tester) async {
+      final completion = Completer<String>();
+      native.saveOptions[option.key] = (_) => completion.future;
+      await mount(tester);
+      final change = tile(tester).onToggle!;
+      change(!option.initial);
+      await tester.pumpWidget(const SizedBox.shrink());
+      change(!option.initial);
+      completion.complete(option.after);
+      await _settle(tester);
+      change(option.initial);
+      await _settle(tester);
+      expect(native.optionWrites, [(option.local, option.key, option.after)]);
+      expect(native.options[option.key], option.after);
+      await _mountMobile(tester, TargetPlatform.android);
+      await _showBoolean(tester, option.label);
+      expect(tile(tester).initialValue, !option.initial);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('mobile boolean fixed options cannot dispatch a save', (tester) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    native.fixedOptions.addAll(_mobileBooleans.map((option) => option.key));
+    installSettingsProbeAndroid(true);
+    await _mountMobile(tester, TargetPlatform.android);
+    for (final option in _mobileBooleans) {
+      await _showBoolean(tester, option.label);
+      expect(tester.widget<SettingsTile>(_booleanTile(option.label)).onToggle, isNull);
+    }
+    expect(native.optionWrites, isEmpty);
+  });
+
+  testWidgets('mobile boolean unrelated options retain independent admission', (tester) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final abr = Completer<String>();
+    final recording = Completer<String>();
+    native.saveOptions[kOptionEnableAbr] = (_) => abr.future;
+    native.saveOptions[kOptionAllowAutoRecordIncoming] = (_) => recording.future;
+    installSettingsProbeAndroid(true);
+    await _mountMobile(tester, TargetPlatform.android);
+    await _showBoolean(tester, 'Adaptive bitrate');
+    final changeAbr = tester.widget<SettingsTile>(_booleanTile('Adaptive bitrate')).onToggle!;
+    // Both rows share the same page, even when one is outside the current viewport.
+    await _showBoolean(tester, 'Automatically record incoming sessions');
+    final changeRecording = tester.widget<SettingsTile>(
+        _booleanTile('Automatically record incoming sessions')).onToggle!;
+    changeAbr(false);
+    changeRecording(true);
+    final pending = List.of(native.optionWrites);
+    abr.complete('N');
+    recording.complete('Y');
+    await _settle(tester);
+    expect(pending, [(false, kOptionEnableAbr, 'N'),
+        (false, kOptionAllowAutoRecordIncoming, 'Y')]);
+    expect(native.options[kOptionEnableAbr], 'N');
+    expect(native.options[kOptionAllowAutoRecordIncoming], 'Y');
   });
 
   for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {

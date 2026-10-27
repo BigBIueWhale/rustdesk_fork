@@ -106708,3 +106708,70 @@ listener identities, cleanup, research and count. This is rendered Linux Flutter
 evidence with controlled pointer events, not full file-manager/native-device/platform execution.
 Accessibility beyond pointer/cursor behavior and shared R-S0/R-F5/installed/release obligations
 remain OPEN. Goal remains active; this slice is complete.
+
+## 2026-10-27 — User pivot: mobile keep-awake setting (PROGRESS)
+
+The user explicitly requested another aspect. Read-only service/config/audio and latency
+exploration remains open; it produced no product change or native acceptance. All prior
+parks and twelve stashes remain. This slice corrects the mobile settings page's
+keep-awake-during-outgoing-sessions control, not service credential authority.
+
+Before correction, the inline onToggle dispatched before checking mounted, admitted
+overlapping calls, and performed a potentially throwing readback in setState. Save
+failure only reached the generic transient toast. The page now owns a single pending
+save, refuses stale/duplicate admission before the native call, disables the switch and
+shows progress, publishes only the readback, and reports failure/mismatch locally with
+an identical retry. Already-admitted work drains after page closure; late completion
+cannot update a retired page or display a global toast. Page ownership preserves admission
+when a lazily rendered settings row scrolls out of view. The native option key, Y/N
+encoding and persistence API are unchanged. No privilege boundary is relaxed.
+
+Research:
+- https://api.flutter.dev/flutter/widgets/State/mounted.html — mounted state bounds UI lifetime.
+- https://api.flutter.dev/flutter/material/Switch/onChanged.html — the parent owns the
+  displayed value and null disables callback admission; a Future-returning callback
+  does not serialize subsequent invocations.
+- Reviewed the pinned settings_ui 2.0.2 source: Theme.platform selects the skin; its
+  settings list is lazy, so pending ownership belongs to the retained page.
+
+Sources and observations:
+- Base dc9bb4f70bf1d6141378df0213a92e7f8dc9cb09.
+- Fixture preparation 11339f0c: zie40Aeqyn rejects plain Provider for a Listenable;
+  all eight new cases fail before mounting. It is excluded from product evidence.
+- Fixture correction 6235dc1e: nNIA0nPEP0 exposes the omitted logo asset and cannot
+  mount the mobile page. It is also excluded. Native bindings, notifier and branding
+  asset are explicit doubles; the production page itself is copied exactly.
+- Baseline d987e08f: DWWSUjV85S passes ten controls and reproduces six product failures:
+  absent persistent failure feedback, escaping readback errors, and retired callbacks
+  producing N,N,Y writes instead of only the admitted N. Both layout skins reproduce
+  each failure. Two scrolling cases stop at an ambiguous fixture selector, so their
+  failures are excluded rather than described as product evidence.
+- Product d5490eae376ed7829e328ea8d4b7292d8055262c fixes the page and scopes that selector
+  to the outer settings list, using a smaller viewport and nonzero scroll assertion.
+  LU9lTiZd62 passes all 18 behavioral cases and three parser controls, but the guest
+  wrapper still expects ten cases and rejects complete workload acceptance.
+- Harness correction 32b6e957 reconciles that last expected count. RFrKIfBvuy exits 0:
+  all 18 cases and three parser controls pass, 273 outer seconds / 12438 ms Flutter.
+  The final snapshot adds tcp 127.0.0.1:9226 and removes two pre-existing UDP endpoints;
+  these unattributed changes are retained without owner inspection or mutation. The
+  harness kernel policy denies owned IP sockets. The final run and
+  fresh ledger count, exact source/tree and input identities, individual outcomes,
+  serial/storage/listener hashes, timings and cleanup are retained in
+  .harness-state/verifier-vm/mobile-keep-awake-dc9bb4f7.json.
+- The six accepted baseline failure cases and ten controls are byte-identical between
+  baseline and final; only the two scrolling cases changed. The capsule records that
+  exact fixture diff. Product bytes remain unchanged after d5490eae.
+- All runs use /bin/bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests
+  --settings-navigation, with frozen clean pushed source, fresh bindings, no guest NIC,
+  guest-only containers and shared bounded RAM storage. QEMU joins and RAM retirement
+  are verified. Rejected diagnostics are retained in identity-checked renamed run
+  directories. The first preparation has an unattributed added tcp 127.0.0.1:9223
+  endpoint; its owner was neither inspected nor changed. Other observations remain
+  explicit in the capsule; no blanket claim about all listener snapshots is made.
+
+This is rendered Linux Flutter component evidence in Android/iOS layouts, not native
+mobile-device execution. Real settings persistence and power behavior, page reopen
+while an earlier write is pending, concurrent windows/processes, other mobile switches,
+installed credential authority, complete R-S0/R-F5 acceptance and release/independent
+review remain OPEN. Requirements and live instructions are unchanged. The overall goal
+remains active.

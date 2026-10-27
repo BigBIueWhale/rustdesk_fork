@@ -3,7 +3,20 @@ pub(super) fn normalize_absolute(
     origin: i32,
     extent: i32,
 ) -> Result<i32, &'static str> {
-    Ok((coordinate - origin) * 65535 / extent)
+    if !(1..=65536).contains(&extent) {
+        return Err("desktop extent cannot be represented by absolute mouse input");
+    }
+    let extent = i64::from(extent);
+    let pixel = i64::from(coordinate) - i64::from(origin);
+    if !(0..extent).contains(&pixel) {
+        return Err("absolute mouse coordinate is outside the virtual desktop");
+    }
+    // Windows maps 65536 normalized positions onto the desktop pixels. Select
+    // the middle integer in this pixel's bin, including bins narrower than two
+    // normalized positions. Rounding the geometric centre down can leave the bin.
+    let first = (pixel * 65536 + extent - 1) / extent;
+    let after = ((pixel + 1) * 65536 + extent - 1) / extent;
+    Ok(((first + after - 1) / 2) as i32)
 }
 
 #[cfg(test)]

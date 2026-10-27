@@ -109590,3 +109590,26 @@ optimization and overflow checks disabled. Its 2 GiB guest, 6 GiB bounded RAM sc
 and 4 GiB file ceiling use the shared admission/monitor/joined-cleanup orchestration.
 This is arithmetic component evidence only; the Windows VM launcher remains
 unexecuted because its storage acceptance is still open. No product runs on the host.
+
+Baseline `18af62c705992d36012abe54c2ae01942b1a2ca0` / run `nXMLOO1hUP`
+executes the optimized production arithmetic: one negative-origin control passes,
+four regressions fail. The two-pixel layout maps requested pixel 1 back to pixel 0;
+the extreme-origin offset comparison also fails, and invalid dimensions/outside
+coordinates return success. This baseline does not retain its compiled artifact
+digest because the success-only artifact receipt was not reached. Source/compiler
+and failure output are retained; no Windows kernel behavior ran.
+Serial 72,954 bytes, SHA-256
+`f3c6dafee8ae28ea4a329e85787ed4d23639053890f04838a5d326eaf9e3b5f4`.
+Supervisor 73.31 seconds, peak RAM scratch 3,486,842,880 bytes and durable
+evidence 3,305,472 bytes. QEMU 3840732 joined with exit 0; its PID and RAM
+`run.6ux5niid` are absent. All four endpoint deltas are zero. Exact locked
+retirement retains the diagnostic directory as `windows-pointer-baseline.nXMLOO1hUP`.
+
+The correction validates a positive extent with at most 65536 distinguishable
+pixels, widens both operands before subtracting, and rejects offsets outside
+that extent. For pixel p and extent e it derives the half-open integer bin
+`[ceil(p*65536/e), ceil((p+1)*65536/e))`, then selects its middle integer.
+The admitted bin is nonempty and within 0–65535; all intermediate values fit i64.
+This also handles near-65536-wide layouts where simply truncating a fractional
+pixel centre can still select the previous pixel. Both axes are checked before
+the existing SendInput path. The five tests and VM execution recipe are unchanged.

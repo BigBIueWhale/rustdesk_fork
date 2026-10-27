@@ -109499,3 +109499,17 @@ checkpoint checks suites and total but does not bind individual names to suites.
 That separate exact-inventory gap remains OPEN; this run does not execute or claim
 the full model checkpoint. All previously parked and native/release obligations
 remain open.
+
+Ledger count at `9a91408f5c234bbec5a070177a63cc0db3d4e6de`, tree
+`1b764e0dce82adee51fb4f01fbb0cbd287cb3e67`, passes as `10ENNCD2Ie`:
+353,490 tokens (+208), 1,606,260 bytes (+993), SHA-256
+`3438bfc7b5766e0e3312f552be5f684c0ecc53aba4a912219ef9e675f5cbf204`.
+Pinned counting, seven controls and the complete UTF-8 round trip pass; the
+approximate 400,000-token budget remains met. Serial: 98,952 bytes, SHA-256
+`fdcee46f682b14182052c93d398e920ee4014e1172b937239b6fcfe8b9f3b7f2`.
+Outer/supervisor lifetime is 28/31.192 seconds, peak RAM scratch 402,350,080 bytes
+and durable evidence 155,648 bytes. QEMU 3786075 joins with exit 0; its PID,
+RAM `run.x5tttg7j` and active run roots are absent. Before/during deltas are zero;
+after has one unattributed endpoint addition (18 bytes), without owner inspection.
+Owned IP sockets remain kernel-denied and the harness listener audit passes.
+This audit-only receipt changes neither counted document.

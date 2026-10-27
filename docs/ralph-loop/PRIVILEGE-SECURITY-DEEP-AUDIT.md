@@ -108476,3 +108476,25 @@ The existing Checkbox supplies checked/enabled flags; its text supplies the
 label. The same row action delegates to the unchanged SettingBooleanControl,
 and the progress/failure siblings retain their own feedback. The test file and
 all eight expectations remain byte-identical for the candidate run.
+
+Candidate `3175a035`, tree `2f2724a4e3ce40a1ab7cb20b1d0c53cbe1533845`,
+run `PHNeKKYmCv`: all eight exact cases and all three result-parser controls pass.
+The actual framework semantics actions observe pending-write refusal and successful
+acknowledgement, failure with retained unchecked state, and explicit retry. Pointer
+label/box actions and keyboard Space each produce one write. Test execution takes
+4.151 seconds; outer/supervisor lifetime is 100/104.582 seconds. Serial is 71,567
+bytes, SHA-256 `13a8c78cab2d28798b7f0c7424758c32108a9053868645d0666fea4343d428f1`.
+Widget SHA-256 is `8762c04e991d0b0b277831d0015594764fb462fdaa366c591d87ef4e362b2ce1`;
+unchanged test SHA-256 is `acf9bcbebab3336b17a60726d2e4129a25252a23f6fe23cc9aeacb94e04aa244`.
+SettingBooleanControl remains byte-identical throughout. QEMU 3236773 joins with
+exit 0; RAM `run.21q80q9z` and active run roots are absent. Peak RAM scratch is
+4,050,714,624 bytes and durable evidence 3,305,472 bytes. Every candidate listener
+delta is zero. All twelve parked stashes are unchanged.
+
+This establishes rendered Linux Flutter component semantics and activation with
+a controlled setting writer. Full-page settings, native persistence, actual screen
+readers, physical devices and other platforms remain open. No privileged receiver
+or LPE boundary is claimed closed. The shared shell files parse, whitespace review
+passes, and the full source catalog is not rerun for this UI-only correction.
+The current ledger is updated for this slice and the explicit park; its fresh
+exact-input token count follows without resuming the parked Server Pro work.

@@ -1384,10 +1384,10 @@ void main() {
         ]));
     peers.updatePeers({
       'peers': '[{"id":"192.0.2.1"}]',
-      'ids': '192.0.2.2, [2001:db8::1]:21118, example.test',
+      'ids': '192.0.2.2, 192.0.2.3:21118, Peer.Example.:02118',
     });
     expect(observed, [
-      ['192.0.2.1', '192.0.2.2', '[2001:db8::1]:21118', 'example.test']
+      ['192.0.2.1', '192.0.2.2', '192.0.2.3:21118', 'Peer.Example.:02118']
     ]);
     for (final empty in ['', '[]']) {
       peers.updatePeers({'peers': empty, 'ids': ''});

@@ -1069,12 +1069,32 @@ class FileController {
 
   Future<void> _removeSelected(SelectedItems items, SessionID selectedSessionId,
       OverlayDialogManager? manager) async {
-    final selectedEntries = items.items
-        .map(_FileOperationEntry.fromEntry)
-        .toList(growable: false);
+    final selectedEntries = <_FileOperationEntry, Entry>{
+      for (final entry in items.items) _FileOperationEntry.fromEntry(entry): entry,
+    };
+    final listedDirectory = directory.value;
+    final listedPath = listedDirectory.path;
     final isWindows = options.value.isWindows;
+    void removeDeletedEntry(_FileOperationEntry item, Entry entry) {
+      if (!_isCurrentSession(selectedSessionId) ||
+          !identical(directory.value, listedDirectory) ||
+          listedDirectory.path != listedPath ||
+          entry.path != item.path ||
+          !listedDirectory.entries.any((current) => identical(current, entry))) {
+        return;
+      }
+      listedDirectory.entries = listedDirectory.entries
+          .where((current) => !identical(current, entry))
+          .toList();
+      items.remove(entry);
+      if (!identical(items, selectedItems)) selectedItems.remove(entry);
+      directory.refresh();
+    }
+
     final confirmationState = _RemoveConfirmationState();
-    for (final item in selectedEntries) {
+    for (final selection in selectedEntries.entries) {
+      final item = selection.key;
+      final listedEntry = selection.value;
       if (!_isCurrentSession(selectedSessionId)) return;
       final removeAsLeaf = item.isFile || item.isDirectoryLink;
       var title = "";
@@ -1114,6 +1134,7 @@ class FileController {
           if (confirm == true) {
             if (!await _sendRemoveEmptyDir(selectedSessionId, item.path,
                 deleteJobId, isWindows)) return;
+            removeDeletedEntry(item, listedEntry);
           } else {
             jobController.updateJobStatus(selectedSessionId, deleteJobId,
                 error: "cancel", state: JobState.done);
@@ -1160,11 +1181,13 @@ class FileController {
             final res = await _removeFileAndWait(selectedSessionId,
                 entries[i].path, i, deleteJobId);
             if (!_isCurrentSession(selectedSessionId)) return;
+            if (removeAsLeaf) removeDeletedEntry(item, listedEntry);
             if (!removeAsLeaf &&
                 item.isDirectory &&
                 res['file_num'] == (entries.length - 1).toString()) {
               if (!await _sendRemoveEmptyDir(selectedSessionId, item.path,
                   deleteJobId, isWindows)) return;
+              removeDeletedEntry(item, listedEntry);
             }
           } else {
             jobController.updateJobStatus(selectedSessionId, deleteJobId,
@@ -1181,6 +1204,7 @@ class FileController {
                     res['file_num'] == (entries.length - 1).toString()) {
                   if (!await _sendRemoveEmptyDir(selectedSessionId, item.path,
                       deleteJobId, isWindows)) return;
+                  removeDeletedEntry(item, listedEntry);
                 }
               }
             } else {

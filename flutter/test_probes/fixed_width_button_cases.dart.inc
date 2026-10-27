@@ -24,15 +24,29 @@ Widget _subject(bool outline, VoidCallback pressed) => MaterialApp(
     body: Center(
       child: RepaintBoundary(
         key: _surface,
-        child: FixedWidthButton(
-          width: 150,
-          padding: 8,
-          radius: 10,
-          isOutline: outline,
-          borderColor: Colors.green,
-          text: 'Configure',
-          textSize: 20,
-          onTap: pressed,
+        child: SizedBox(
+          height: 60,
+          child: Material(
+            color: Colors.white,
+            child: DecoratedBox(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(colors: [
+                  Color.fromARGB(255, 226, 66, 188),
+                  Color.fromARGB(255, 244, 114, 124),
+                ]),
+              ),
+              child: FixedWidthButton(
+                width: 150,
+                padding: 8,
+                radius: 10,
+                isOutline: outline,
+                borderColor: Colors.green,
+                text: 'Configure',
+                textSize: 20,
+                onTap: pressed,
+              ),
+            ),
+          ),
         ),
       ),
     ),

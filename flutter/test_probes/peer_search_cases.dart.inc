@@ -128,6 +128,7 @@ class _LayoutHarness {
   Future<void> pump(WidgetTester tester) async {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
   }
 
   Future<void> dismiss(WidgetTester tester) async {

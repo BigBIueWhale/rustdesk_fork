@@ -109070,3 +109070,15 @@ page, native preference persistence or installed app is claimed. Those acceptanc
 boundaries and all prior parks remain open. The live instructions and normative
 requirements are unchanged. This turn is product-correction progress; the broad
 hardening goal remains active and incomplete. The ledger count follows separately.
+
+Fresh ledger count `DKr89o7kWA` at `ae73c6c75c9cc7e589cf9789fc35c4b25d1449be`
+passes: 352,521 tokens / 1,601,708 bytes, input SHA-256
+`7ce1463a836267a536249f2bbef7d91e052e11f09ff8a16a1e82901af261bcaa`.
+Pinned tiktoken-0.12.0/cl100k_base/encode_ordinary, seven controls and the full
+UTF-8 round trip pass; the approximate 400,000-token budget remains met. Serial:
+98,582 bytes, SHA-256 `1dfb7c0a297a17df32176338300842bf0da608c4c19b808b7b97277e979988a9`.
+Outer/supervisor lifetime is 29/31.545 seconds; peak RAM scratch 402,354,176 bytes,
+durable evidence 151,552 bytes. QEMU 3593395 joins with exit 0; its PID, RAM
+`run.5ahlmk24` and all active run roots are absent. All listener deltas are zero.
+All thirteen stash IDs remain unchanged. This audit-only receipt changes neither
+the counted ledger nor the tested product.

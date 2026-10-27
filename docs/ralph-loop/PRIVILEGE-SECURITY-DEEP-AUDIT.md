@@ -107400,3 +107400,49 @@ artifacts/results, diagnostic limitations, cleanup and the fresh ledger count.
 Parent application/installed peers, other target OSes, prolonged CPU/resource and
 cleanup soaks, current release artifacts and R-S0/R-F5 acceptance remain OPEN.
 General TCP half-close, clipboard keystrokes and all prior user parks stay parked.
+
+### 2026-10-27 — user pivot; desktop help-card button accessibility
+
+Further tunnel-owner reaper work is OPEN/PARKED at the user's direction. The
+completed 506a5800 correction and evidence remain; installed, other-platform and
+soak acceptance are not closed. All prior user parks remain unchanged.
+
+FixedWidthButton is used by desktop_home_page.dart's help cards, including macOS
+Configure/Install presentation. Its InkWell painted feedback on an ancestor
+Material, beneath its own opaque fill or the card's opaque gradient. Its semantics
+exposed a tap action but no button/enabled role. The corrected b9f56325 gives the
+button a local transparent Material, paints the same decoration through Ink, and
+adds the role. Align preserves the existing Container alignment/layout contract.
+Radius, dimensions, text fitting, hover/press colors, callbacks and translation
+remain. The separate unused Button class has no callers and is deleted.
+
+Flutter's pinned 3.24.5 implementation documents the decoration/ink paint order:
+https://raw.githubusercontent.com/flutter/flutter/3.24.5/packages/flutter/lib/src/material/ink_decoration.dart
+The framework's button property supplies the assistive-technology role:
+https://api.flutter.dev/flutter/semantics/SemanticsProperties/button.html
+
+Preparation 46fc89e5/ORjAuV7qtI runs fourteen cases: ten pass and four fail.
+Its outlined-button screenshot excludes the underlying Material, so that focus
+result is not accepted as a complete-card observation. 4f820360 corrects the
+fixture to capture Material, the card gradient and button together. The unchanged-
+product kPF3QfTSpY baseline again passes ten controls and fails four regressions:
+both styles lack the role and show their original fill/gradient instead of focus.
+Candidate b9f56325/W6Hn7Yc89C passes the identical fourteen tests plus three parser
+controls in 106 outer seconds. Only button.dart differs between those A/B sources.
+
+The no-NIC Linux VM renders the complete production widget body and exact theme
+constants under Flutter 3.24.5. Translation is an identity fixture; it does not load
+the Rust core. Tests observe actual semantics, rasterized focus, Enter/Space/tap
+activation, cancelled presses and unchanged geometry. The generated sources are
+checked before/after candidate execution. The six existing MenuButton tests remain.
+All three QEMU owners join and their bounded RAM workspaces retire. The initial
+and candidate final snapshots each remove one unattributed 18-byte endpoint; the
+accepted baseline records that removal in both during snapshots and afterward.
+No foreign process or endpoint owner is inspected or changed.
+
+help-button-a6b1a8d0.json binds source, fixtures, exact A/B outcomes, initial
+observer limitation, storage/cleanup and the fresh complete ledger count.
+Full help-card routing, native screen readers, installed macOS permission/helper
+actions, other platforms, all fifteen credential actions, R-S0/R-F5 and release
+acceptance remain OPEN. This is a presentation correction, not installed authority
+or local privilege-escalation acceptance.

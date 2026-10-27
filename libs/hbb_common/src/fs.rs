@@ -4755,7 +4755,10 @@ pub async fn handle_read_jobs(
     };
     let job = &mut jobs[index];
     match job.init_data_stream(stream).await {
-        Ok(Some(receipt)) => return Ok((String::new(), Some(receipt))),
+        Ok(Some(receipt)) => {
+            jobs[index..].rotate_left(1);
+            return Ok((String::new(), Some(receipt)));
+        }
         Ok(None) => {}
         Err(err) => {
             let id = job.id();
@@ -4796,6 +4799,10 @@ pub async fn handle_read_jobs(
         Some(message) => Some(stream.send_with_receipt(&message).await?),
         None => None,
     };
+    if !finished && receipt.is_some() {
+        // One admitted frame is one turn; preserve every other job's relative order.
+        jobs[index..].rotate_left(1);
+    }
     Ok((job_log, receipt))
 }
 

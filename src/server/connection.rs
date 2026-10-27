@@ -6910,7 +6910,7 @@ impl Connection {
                         let context = conn
                             .read_jobs
                             .iter()
-                            .find(|job| !job.is_last_job)
+                            .find(|job| job.is_read_step_ready())
                             .or_else(|| conn.read_jobs.first())
                             .map(|job| {
                                 ControlledFileWriteContext::transfer_data(

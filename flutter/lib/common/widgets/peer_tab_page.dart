@@ -61,13 +61,11 @@ class _PeerTabPageState extends State<PeerTabPage>
 
   void _loadLocalOptions() {
     final uiType = bind.getLocalFlutterOption(k: kOptionPeerCardUiType);
-    if (uiType != '') {
-      peerCardUiType.value = int.parse(uiType) == 0
-          ? PeerUiType.grid
-          : int.parse(uiType) == 1
-              ? PeerUiType.tile
-              : PeerUiType.list;
-    }
+    final index = int.tryParse(uiType);
+    peerCardUiType.value =
+        index != null && index >= 0 && index < PeerUiType.values.length
+            ? PeerUiType.values[index]
+            : PeerUiType.grid;
   }
 
   Future<void> handleTabSelection(int tabIndex) async {

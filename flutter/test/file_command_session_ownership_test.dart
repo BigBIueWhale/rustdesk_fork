@@ -175,6 +175,7 @@ class _DeleteHarness {
   var failAllocation = false;
   var failListing = false;
   var refreshes = 0;
+  final recursiveEntries = <Map<String, Object>>[];
   late JobController jobs;
   late FileFetcher fetcher;
   late FileController controller;
@@ -188,8 +189,9 @@ class _DeleteHarness {
           if (failAllocation) throw StateError('allocation failed');
           return ++nextId;
         });
-    String listing(String path, int id) =>
-        jsonEncode({'id': id, 'path': path, 'entries': []});
+    String listing(String path, int id) => jsonEncode({
+      'id': id, 'path': path, 'entries': id == 0 ? [] : recursiveEntries,
+    });
     fetcher = FileFetcher(() => currentSession,
         requests: FileFetcherRequests(
           readDirectory: (actual, path, hidden) async {
@@ -244,6 +246,9 @@ class _DeleteHarness {
     selected.clear();
     selected.add(entry);
     selected.add(_file('successor', '/files/successor'));
+    controller.directory.value.entries = [
+      ...selected.items, _file('untouched', '/files/untouched'),
+    ];
     final Future<dynamic> operation = controller.removeAction(selected);
     final result = operation.then<Object?>((value) => value,
         onError: (Object error, StackTrace _) => error);
@@ -269,6 +274,12 @@ class _DeleteHarness {
     }
   }
 
+  Future<void> replySuccess(int index, {bool localDirectory = false}) async {
+    if (localDirectory) return;
+    final call = calls[index];
+    await jobs.jobDone({'id': '${call[0]}', 'file_num': '${call[3]}'}, session);
+  }
+
   Future<void> drain(WidgetTester tester) async {
     currentSession = const Uuid().v4obj();
     manager.dismissAll();
@@ -282,6 +293,176 @@ class _DeleteHarness {
 }
 
 void main() {
+  for (final local in [false, true]) {
+    for (final directory in [false, true]) {
+      testWidgets('confirmed ${local ? "local" : "remote"} ${directory ? "directory" : "file"} leaves the listing before a later failure',
+          (tester) async {
+        final h = _DeleteHarness(isLocal: local);
+        await h.mount(tester);
+        try {
+          final result = h.start(directory: directory);
+          final listing = h.controller.directory.value;
+          final first = listing.entries.first;
+          final remaining = listing.entries.skip(1).toList();
+          await h.confirm(tester);
+          await h.replySuccess(0, localDirectory: local && directory);
+          await tester.pump();
+          expect(listing.entries.first, same(first));
+          expect(h.controller.selectedItems.items, hasLength(2));
+          h.dispatches.first.complete();
+          await tester.pumpAndSettle();
+          expect(listing.entries, remaining);
+          expect(h.controller.selectedItems.items, [remaining.first]);
+          expect(h.refreshes, 0);
+          await h.confirm(tester);
+          h.fail();
+          await tester.pumpAndSettle();
+          expect(await result, isFalse);
+          expect(listing.entries, remaining);
+          expect(h.controller.selectedItems.items, [remaining.first]);
+          expect(h.jobs.jobTable.map((job) => job.state),
+              [JobState.done, JobState.error]);
+          expect(h.calls, hasLength(2));
+        } finally {
+          await h.drain(tester);
+        }
+      });
+    }
+  }
+
+  testWidgets('delete result preserves replacement listings and changed entry paths',
+      (tester) async {
+    for (final replacement in ['listing', 'entry', 'path', 'session']) {
+      final h = _DeleteHarness();
+      await h.mount(tester);
+      try {
+        final result = h.start();
+        final listing = h.controller.directory.value;
+        final original = listing.entries.first;
+        await h.confirm(tester);
+        final fresh = _file('first', '/files/first');
+        if (replacement == 'listing' || replacement == 'session') {
+          h.controller.directory.value = FileDirectory()
+            ..path = '/files'
+            ..entries = [fresh];
+        } else if (replacement == 'entry') {
+          listing.entries = [fresh];
+        } else {
+          original.path = '/files/renamed';
+          listing.entries = [original];
+        }
+        final current = h.controller.directory.value;
+        final preserved = current.entries.single;
+        h.controller.selectedItems.selectAll([preserved]);
+        if (replacement == 'session') {
+          h.currentSession = const Uuid().v4obj();
+          h.jobs.clear();
+        } else {
+          await h.replySuccess(0);
+        }
+        h.dispatches.first.complete();
+        await tester.pumpAndSettle();
+        expect(h.controller.directory.value, same(current));
+        expect(current.entries, [preserved]);
+        expect(h.controller.selectedItems.items, [preserved]);
+        if (replacement != 'session') {
+          await h.confirm(tester);
+          h.fail();
+          await tester.pumpAndSettle();
+        }
+        expect(await result, isFalse);
+        expect(current.entries, [preserved]);
+        expect(h.controller.selectedItems.items, [preserved]);
+      } finally {
+        await h.drain(tester);
+      }
+    }
+  });
+
+  testWidgets('recursive deletion keeps its row until directory cleanup settles',
+      (tester) async {
+    for (final local in [false, true]) {
+      final h = _DeleteHarness(isLocal: local);
+      h.recursiveEntries.add({'name': 'child', 'entry_type': 4,
+          'modified_time': 0, 'size': 1});
+      await h.mount(tester);
+      try {
+        final result = h.start(directory: true);
+        final listing = h.controller.directory.value;
+        final original = listing.entries.first;
+        final remaining = listing.entries.skip(1).toList();
+        await h.confirm(tester);
+        await h.replySuccess(0);
+        h.dispatches.first.complete();
+        await tester.pumpAndSettle();
+        expect(h.calls, hasLength(2));
+        expect(listing.entries.first, same(original));
+        await h.replySuccess(1, localDirectory: local);
+        await tester.pump();
+        expect(listing.entries.first, same(original));
+        h.dispatches[1].complete();
+        await tester.pumpAndSettle();
+        expect(listing.entries, remaining);
+        expect(h.controller.selectedItems.items, [remaining.first]);
+        await h.confirm(tester);
+        h.fail();
+        await tester.pumpAndSettle();
+        expect(await result, isFalse);
+        expect(listing.entries, remaining);
+      } finally {
+        await h.drain(tester);
+      }
+    }
+  });
+
+  testWidgets('failed recursive cleanup preserves the directory row and selection',
+      (tester) async {
+    final h = _DeleteHarness();
+    h.recursiveEntries.add({'name': 'child', 'entry_type': 4,
+        'modified_time': 0, 'size': 1});
+    await h.mount(tester);
+    try {
+      final result = h.start(directory: true);
+      final listing = h.controller.directory.value;
+      final before = listing.entries.toList();
+      await h.confirm(tester);
+      await h.replySuccess(0);
+      h.dispatches.first.complete();
+      await tester.pumpAndSettle();
+      h.fail(directory: true);
+      await tester.pumpAndSettle();
+      expect(await result, isFalse);
+      expect(listing.entries, before);
+      expect(h.controller.selectedItems.items, before.take(2));
+      expect(h.jobs.jobTable.single.state, JobState.error);
+    } finally {
+      await h.drain(tester);
+    }
+  });
+
+  testWidgets('skipping a deletion preserves its row through a later failure',
+      (tester) async {
+    final h = _DeleteHarness();
+    await h.mount(tester);
+    try {
+      final result = h.start();
+      final listing = h.controller.directory.value;
+      final before = listing.entries.toList();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      await h.confirm(tester);
+      h.fail();
+      await tester.pumpAndSettle();
+      expect(await result, isFalse);
+      expect(listing.entries, before);
+      expect(h.controller.selectedItems.items, before.take(2));
+      expect(h.calls.single[1], '/files/successor');
+    } finally {
+      await h.drain(tester);
+    }
+  });
+
   for (final local in [false, true]) {
     for (final directory in [false, true]) {
       testWidgets('delete ${local ? "local" : "remote"} ${directory ? "directory" : "file"} failure is visible and stops the batch',

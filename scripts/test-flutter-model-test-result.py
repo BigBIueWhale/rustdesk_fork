@@ -152,7 +152,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("peer-data"), "peer-data"), (4, 82))
         self.assertEqual(self.parse(self.events("file-progress"), "file-progress"), (1, 36))
         self.assertEqual(self.parse(self.events("custom-scale"), "custom-scale"), (1, 35))
-        self.assertEqual(self.parse(self.events("file-navigation"), "file-navigation"), (7, 117))
+        self.assertEqual(self.parse(self.events("file-navigation"), "file-navigation"), (7, 125))
         self.assertEqual(self.parse(self.events("terminal-output"), "terminal-output"), (2, 37))
         self.assertEqual(self.parse(self.events("settings-navigation"), "settings-navigation"), (1, 10))
         self.assertEqual(self.parse(self.events("modifier-release"), "modifier-release"), (5, 112))

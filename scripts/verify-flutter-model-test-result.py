@@ -741,6 +741,14 @@ FILE_NAVIGATION_TESTS = {
     "new local listing owners share retained dispatch admission",
 }
 FILE_COMMAND_TESTS = {
+    "confirmed remote file leaves the listing before a later failure",
+    "confirmed remote directory leaves the listing before a later failure",
+    "confirmed local file leaves the listing before a later failure",
+    "confirmed local directory leaves the listing before a later failure",
+    "delete result preserves replacement listings and changed entry paths",
+    "recursive deletion keeps its row until directory cleanup settles",
+    "failed recursive cleanup preserves the directory row and selection",
+    "skipping a deletion preserves its row through a later failure",
     "delete remote file failure is visible and stops the batch",
     "delete remote directory failure is visible and stops the batch",
     "delete local file failure is visible and stops the batch",

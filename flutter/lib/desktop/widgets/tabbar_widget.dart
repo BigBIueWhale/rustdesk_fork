@@ -136,18 +136,15 @@ class DesktopTabController {
     if (index < 0 || index > len - 1) return;
     final key = state.value.tabs[index].key;
     final currentSelected = state.value.selected;
-    int toIndex = 0;
-    if (index == len - 1) {
-      toIndex = max(0, currentSelected - 1);
-    } else if (index < len - 1 && index < currentSelected) {
-      toIndex = max(0, currentSelected - 1);
-    }
     state.value.tabs.removeAt(index);
     state.value.scrollController.itemCount = state.value.tabs.length;
     if (state.value.tabs.isEmpty) {
       state.value.selected = 0;
       state.refresh();
     } else {
+      final toIndex = index < currentSelected
+          ? currentSelected - 1
+          : min(currentSelected, state.value.tabs.length - 1);
       jumpTo(toIndex);
     }
     onRemoved?.call(index, key);

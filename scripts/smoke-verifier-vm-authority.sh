@@ -330,7 +330,7 @@ case "$#:${1:-}" in
         MODE=flutter-model-tests
         ;;
     2:--flutter-model-tests)
-        [[ "$2" = --frame-queue || "$2" = --direct-address || "$2" = --file-metadata || "$2" = --password-fields || "$2" = --share-rdp || "$2" = --connect-password || "$2" = --credential-dialog || "$2" = --terminal-output || "$2" = --settings-navigation || "$2" = --window-dispatch || "$2" = --menu-button || "$2" = --draggable-divider || "$2" = --list-search || "$2" = --peer-search || "$2" = --status-refresh || "$2" = --peer-data || "$2" = --file-progress || "$2" = --custom-scale || "$2" = --file-navigation || "$2" = --directory-ordering || "$2" = --modifier-release || "$2" = --auto-disconnect ]] \
+        [[ "$2" = --frame-queue || "$2" = --direct-address || "$2" = --file-metadata || "$2" = --password-fields || "$2" = --share-rdp || "$2" = --connect-password || "$2" = --credential-dialog || "$2" = --terminal-output || "$2" = --settings-navigation || "$2" = --window-dispatch || "$2" = --menu-button || "$2" = --draggable-divider || "$2" = --list-search || "$2" = --peer-search || "$2" = --tab-selection || "$2" = --status-refresh || "$2" = --peer-data || "$2" = --file-progress || "$2" = --custom-scale || "$2" = --file-navigation || "$2" = --directory-ordering || "$2" = --modifier-release || "$2" = --auto-disconnect ]] \
             && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'focused Flutter shard or input/run authority differs' >&2; exit 2; }
@@ -625,6 +625,7 @@ case "$#:${1:-}" in
         printf 'Rendered file-column divider dragging: %s --flutter-model-tests --draggable-divider\n' "${0##*/}" >&2
         printf 'Rendered list-search focus lifetime: %s --flutter-model-tests --list-search\n' "${0##*/}" >&2
         printf 'Rendered peer-search focus lifetime: %s --flutter-model-tests --peer-search\n' "${0##*/}" >&2
+        printf 'Rendered connection-tab selection: %s --flutter-model-tests --tab-selection\n' "${0##*/}" >&2
         printf 'Focused peer decode privacy: %s --flutter-model-tests --peer-data\n' "${0##*/}" >&2
         printf 'Focused file progress privacy: %s --flutter-model-tests --file-progress\n' "${0##*/}" >&2
         printf 'Focused custom scale controls: %s --flutter-model-tests --custom-scale\n' "${0##*/}" >&2
@@ -1703,7 +1704,7 @@ flutter_peer_input_inventory() {
 flutter_model_input_inventory() {
     local -a directories=("$ONLINE_INPUTS" "$PUB_CACHE_ROOT")
     local -a files=("$FLUTTER_TEST_ARCHIVE" "$DEB_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE")
-    if [[ "$FLUTTER_TEST_PROFILE" = models || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
+    if [[ "$FLUTTER_TEST_PROFILE" = models || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
         directories+=("$CARGO_VENDOR_ROOT")
         files+=("$RUST_TEST_ARCHIVE" "$LLVM_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN")
     fi
@@ -2903,7 +2904,7 @@ elif [ "$MODE" = flutter-model-tests ]; then
         "$DEB_BUILDER_ARCHIVE:$DEB_BUILDER_IMAGE_ARCHIVE_SIZE:$SHA256_DEB_BUILDER_IMAGE_ARCHIVE"
         "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE"
     )
-    if [[ "$FLUTTER_TEST_PROFILE" = models || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
+    if [[ "$FLUTTER_TEST_PROFILE" = models || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
         flutter_inputs+=(
             "$RUST_TEST_ARCHIVE:$SIZE_RUST_1_75:$SHA256_RUST_1_75"
             "$LLVM_TEST_ARCHIVE:$SIZE_LLVM_15_0_6:$SHA256_LLVM_15_0_6"
@@ -2921,7 +2922,7 @@ elif [ "$MODE" = flutter-model-tests ]; then
             || fail "sealed focused-test input metadata differs: $path"
         verify_sha256 "$path" "$digest"
     done
-    if [[ "$FLUTTER_TEST_PROFILE" = models || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
+    if [[ "$FLUTTER_TEST_PROFILE" = models || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
         [ -f "$FRB_CODEGEN" ] && [ ! -L "$FRB_CODEGEN" ] \
             && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$FRB_CODEGEN")" = \
                  "$HOST_UID:$HOST_GID:500:1:$SIZE_FLUTTER_PEER_FRB_CODEGEN" ] \
@@ -8027,6 +8028,12 @@ else
         require_exact_fixed_receipt \
             "FLUTTER_PEER_SEARCH_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=6 flutter=$FLUTTER_VERSION widget=$widget_sha256 tests_source=$widget_tests_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-peer-search-tests cleanup=joined" \
             'focused Flutter peer-search receipt'
+    elif [ "$FLUTTER_TEST_PROFILE" = tab-selection ]; then
+        widget_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/desktop/widgets/tabbar_widget.dart" | /usr/bin/awk '{print $1}')"
+        widget_tests_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test_probes/tab_selection_cases.dart.inc" | /usr/bin/awk '{print $1}')"
+        require_exact_fixed_receipt \
+            "FLUTTER_TAB_SELECTION_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=2 tests=13 flutter=$FLUTTER_VERSION widget=$widget_sha256 tests_source=$widget_tests_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-tab-selection-tests cleanup=joined" \
+            'focused Flutter tab-selection receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
         lifecycle_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/models/server_status_refresh_loop.dart" | /usr/bin/awk '{print $1}')"
         lifecycle_tests_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test/server_status_refresh_loop_test.dart" | /usr/bin/awk '{print $1}')"
@@ -8876,6 +8883,9 @@ else
             "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$FLUTTER_TEST_PROFILE" = peer-search ]; then
         printf 'FLUTTER_PEER_SEARCH_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=rendered-peer-search-tests cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
+    elif [ "$FLUTTER_TEST_PROFILE" = tab-selection ]; then
+        printf 'FLUTTER_TAB_SELECTION_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=rendered-tab-selection-tests cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
         printf 'FLUTTER_STATUS_REFRESH_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=production-dart-status-refresh-tests cleanup=joined elapsed_seconds=%s\n' \

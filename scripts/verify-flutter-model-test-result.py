@@ -159,6 +159,22 @@ LIST_SEARCH_TESTS = {
     "list search preserves a prefix across a parent rebuild",
     "list search resets repeated character cycling after focus leaves",
 }
+TAB_SELECTION_TESTS = {
+    "tab selection after closing background last",
+    "tab selection after closing background middle right",
+    "tab selection after closing background left",
+    "tab selection after closing active middle",
+    "tab selection after closing active first",
+    "tab selection after closing active last",
+    "tab selection resets after closing the only tab",
+    "tab selection follows the user during delayed close",
+    "tab selection survives failed retirement",
+    "tab removal waits for exact resource retirement",
+    "failed retirement keeps the exact tab and reports failure",
+    "window close retires every snapshotted tab before clearing",
+    "delayed close cannot remove a replacement with the same key",
+}
+
 PEER_SEARCH_TESTS = {
     "peer search opens focused and publishes typed text",
     "peer search keeps focus and caret through parent rebuilds",
@@ -1093,7 +1109,7 @@ FILE_METADATA_TESTS = {
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "status-refresh", "peer-data", "file-progress", "custom-scale", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -1124,6 +1140,10 @@ def parse_result(path, profile="models"):
         expected_suites = {"peer_search_probe_test.dart"}
         expected_tests = len(PEER_SEARCH_TESTS)
         expected_names = PEER_SEARCH_TESTS
+    elif profile == "tab-selection":
+        expected_suites = {"tab_selection_probe_test.dart", "desktop_tab_retirement_test.dart"}
+        expected_tests = len(TAB_SELECTION_TESTS)
+        expected_names = TAB_SELECTION_TESTS
     elif profile == "status-refresh":
         expected_suites = {"server_status_refresh_loop_test.dart"}
         expected_tests = len(STATUS_REFRESH_TESTS)
@@ -1302,7 +1322,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "status-refresh", "peer-data", "file-progress", "custom-scale", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -1320,6 +1340,7 @@ def main():
         "draggable-divider": "FLUTTER_DRAGGABLE_DIVIDER_TEST_JSON",
         "list-search": "FLUTTER_LIST_SEARCH_TEST_JSON",
         "peer-search": "FLUTTER_PEER_SEARCH_TEST_JSON",
+        "tab-selection": "FLUTTER_TAB_SELECTION_TEST_JSON",
         "status-refresh": "FLUTTER_STATUS_REFRESH_TEST_JSON",
         "share-rdp": "FLUTTER_SHARE_RDP_TEST_JSON",
         "window-dispatch": "FLUTTER_WINDOW_DISPATCH_TEST_JSON",

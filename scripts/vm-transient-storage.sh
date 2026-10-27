@@ -47,6 +47,7 @@ elif [[ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:credential-d
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:draggable-divider \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:list-search \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:peer-search \
+    || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:tab-selection \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:status-refresh \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:window-dispatch ]]; then
     readonly VM_STORAGE_PROFILE=flutter-credential-dialog

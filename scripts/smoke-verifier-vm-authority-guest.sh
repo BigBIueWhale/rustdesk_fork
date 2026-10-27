@@ -175,7 +175,7 @@ case "$#:${8:-}" in
         MODE=flutter-model-tests
         ;;
     13:--flutter-model-tests)
-        [[ "${13}" = --frame-queue || "${13}" = --direct-address || "${13}" = --file-metadata || "${13}" = --password-fields || "${13}" = --share-rdp || "${13}" = --connect-password || "${13}" = --credential-dialog || "${13}" = --terminal-output || "${13}" = --settings-navigation || "${13}" = --window-dispatch || "${13}" = --menu-button || "${13}" = --draggable-divider || "${13}" = --list-search || "${13}" = --peer-search || "${13}" = --status-refresh || "${13}" = --peer-data || "${13}" = --file-progress || "${13}" = --custom-scale || "${13}" = --file-navigation || "${13}" = --directory-ordering || "${13}" = --modifier-release || "${13}" = --auto-disconnect ]] || exit 2
+        [[ "${13}" = --frame-queue || "${13}" = --direct-address || "${13}" = --file-metadata || "${13}" = --password-fields || "${13}" = --share-rdp || "${13}" = --connect-password || "${13}" = --credential-dialog || "${13}" = --terminal-output || "${13}" = --settings-navigation || "${13}" = --window-dispatch || "${13}" = --menu-button || "${13}" = --draggable-divider || "${13}" = --list-search || "${13}" = --peer-search || "${13}" = --tab-selection || "${13}" = --status-refresh || "${13}" = --peer-data || "${13}" = --file-progress || "${13}" = --custom-scale || "${13}" = --file-navigation || "${13}" = --directory-ordering || "${13}" = --modifier-release || "${13}" = --auto-disconnect ]] || exit 2
         MODE=flutter-model-tests
         FLUTTER_TEST_PROFILE=${13#--}
         ;;
@@ -10532,7 +10532,7 @@ run_flutter_model_tests() {
     local memory=8g memory_bytes=8589934592 result_prefix=FLUTTER_MODEL_TEST_JSON
     local -a toolchain_mounts=()
     local bridge_required=0
-    if [[ "$FLUTTER_TEST_PROFILE" = models || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
+    if [[ "$FLUTTER_TEST_PROFILE" = models || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
         bridge_required=1
         toolchain_mounts=(
             --mount "type=bind,source=$cargo_vendor,target=/online/cargo-vendor,readonly"
@@ -10567,6 +10567,11 @@ run_flutter_model_tests() {
             memory_bytes=3221225472
             result_prefix=FLUTTER_PEER_SEARCH_TEST_JSON
             expected_result='suites=1 tests=6'
+        elif [ "$FLUTTER_TEST_PROFILE" = tab-selection ]; then
+            memory=3g
+            memory_bytes=3221225472
+            result_prefix=FLUTTER_TAB_SELECTION_TEST_JSON
+            expected_result='suites=2 tests=13'
         elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
             result_prefix=FLUTTER_STATUS_REFRESH_TEST_JSON
             expected_result='suites=1 tests=9'
@@ -10652,6 +10657,8 @@ run_flutter_model_tests() {
             printf 'FLUTTER_LIST_SEARCH_STAGE=verify-source-and-inputs\n'
         elif [ "$FLUTTER_TEST_PROFILE" = peer-search ]; then
             printf 'FLUTTER_PEER_SEARCH_STAGE=verify-source-and-inputs\n'
+        elif [ "$FLUTTER_TEST_PROFILE" = tab-selection ]; then
+            printf 'FLUTTER_TAB_SELECTION_STAGE=verify-source-and-inputs\n'
         elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
             printf 'FLUTTER_STATUS_REFRESH_STAGE=verify-source-and-inputs\n'
         elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
@@ -10913,7 +10920,7 @@ run_flutter_model_tests() {
                 if [ "$FLUTTER_BRIDGE_REQUIRED" -eq 1 ]; then
                     mkdir /work/cargo-home
                     tar -C /work/toolchain -xf /inputs/rust.tar.xz
-                    if [[ "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
+                    if [[ "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
                         llvm_root=clang+llvm-15.0.6-x86_64-linux-gnu-ubuntu-18.04
                         tar -C /work/toolchain -xf /inputs/llvm.tar.xz \
                             "$llvm_root/lib/libclang.so" \
@@ -10964,7 +10971,7 @@ run_flutter_model_tests() {
                 export PATH=/work/flutter-shim:$PATH
                 project_root=/source/flutter
                 codegen_source=/source
-                if [[ "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
                     cp -a /source /work/source
                     codegen_source=/work/source
                     project_root=/work/source/flutter
@@ -11016,6 +11023,8 @@ run_flutter_model_tests() {
                 elif [ "$FLUTTER_TEST_PROFILE" = list-search ]; then
                     format_paths=()
                 elif [ "$FLUTTER_TEST_PROFILE" = peer-search ]; then
+                    format_paths=()
+                elif [ "$FLUTTER_TEST_PROFILE" = tab-selection ]; then
                     format_paths=()
                 elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
                     format_paths=(test/server_status_refresh_loop_test.dart)
@@ -11199,6 +11208,11 @@ run_flutter_model_tests() {
                     tests=(test_probes/peer_search_probe_test.dart)
                     test_budget=120s
                     test_concurrency=1
+                elif [ "$FLUTTER_TEST_PROFILE" = tab-selection ]; then
+                    python3 -B -I -S /source/scripts/prepare-tab-selection-probe.py prepare
+                    tests=(test_probes/tab_selection_probe_test.dart test/desktop_tab_retirement_test.dart)
+                    test_budget=120s
+                    test_concurrency=1
                 elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
                     tests=(test/server_status_refresh_loop_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
@@ -11326,7 +11340,7 @@ run_flutter_model_tests() {
                     exit 1
                 fi
                 file_navigation_stage source-postconditions
-                if [[ "$FLUTTER_TEST_PROFILE" = menu-button || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = list-search || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = auto-disconnect || "$FLUTTER_TEST_PROFILE" = share-rdp || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = modifier-release ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = menu-button || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = list-search || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = auto-disconnect || "$FLUTTER_TEST_PROFILE" = share-rdp || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = modifier-release ]]; then
                     cat /work/test.json
                 fi
                 if [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
@@ -11370,6 +11384,8 @@ run_flutter_model_tests() {
                         cmp /source/flutter/test/list_search_action_listener_test.dart test/list_search_action_listener_test.dart
                     elif [ "$FLUTTER_TEST_PROFILE" = peer-search ]; then
                         python3 -B -I -S /source/scripts/prepare-peer-search-probe.py verify
+                    elif [ "$FLUTTER_TEST_PROFILE" = tab-selection ]; then
+                        python3 -B -I -S /source/scripts/prepare-tab-selection-probe.py verify
                     elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
                         cmp /source/flutter/lib/models/server_status_refresh_loop.dart lib/models/server_status_refresh_loop.dart
                         cmp /source/flutter/test/server_status_refresh_loop_test.dart test/server_status_refresh_loop_test.dart
@@ -11497,6 +11513,8 @@ run_flutter_model_tests() {
         printf 'FLUTTER_LIST_SEARCH_STAGE=run-production-widget-tests\n'
     elif [ "$FLUTTER_TEST_PROFILE" = peer-search ]; then
         printf 'FLUTTER_PEER_SEARCH_STAGE=run-production-widget-tests\n'
+    elif [ "$FLUTTER_TEST_PROFILE" = tab-selection ]; then
+        printf 'FLUTTER_TAB_SELECTION_STAGE=run-production-widget-tests\n'
     elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
         printf 'FLUTTER_STATUS_REFRESH_STAGE=run-production-lifecycle-tests\n'
     elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
@@ -11635,7 +11653,7 @@ run_flutter_model_tests() {
             || fail 'native window-channel artifact binding differs'
         grep -E '^LINUX_WINDOW_CHANNEL_ARTIFACTS=|^WINDOW_CHANNEL_CASE=|^WINDOW_VALUE_' "$output"
     fi
-    if [[ "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = list-search ]]; then
+    if [[ "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = list-search ]]; then
         grep -E '^\{.*"type":"(start|suite|testStart|testDone|done)"' "$output"
     fi
     if [ "$FLUTTER_TEST_PROFILE" = connect-password ]; then
@@ -11695,6 +11713,14 @@ run_flutter_model_tests() {
         widget_sha256="$(sha256sum "$source_root/flutter/lib/common/widgets/peer_tab_page.dart" | awk '{print $1}')"
         tests_sha256="$(sha256sum "$source_root/flutter/test_probes/peer_search_cases.dart.inc" | awk '{print $1}')"
         printf 'FLUTTER_PEER_SEARCH_TESTS_VM=pass commit=%s tree=%s suites=1 tests=6 flutter=3.24.5 widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-peer-search-tests cleanup=joined\n' \
+            "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
+            "$widget_sha256" "$tests_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
+            "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+    elif [ "$FLUTTER_TEST_PROFILE" = tab-selection ]; then
+        local widget_sha256
+        widget_sha256="$(sha256sum "$source_root/flutter/lib/desktop/widgets/tabbar_widget.dart" | awk '{print $1}')"
+        tests_sha256="$(sha256sum "$source_root/flutter/test_probes/tab_selection_cases.dart.inc" | awk '{print $1}')"
+        printf 'FLUTTER_TAB_SELECTION_TESTS_VM=pass commit=%s tree=%s suites=2 tests=13 flutter=3.24.5 widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-tab-selection-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$widget_sha256" "$tests_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

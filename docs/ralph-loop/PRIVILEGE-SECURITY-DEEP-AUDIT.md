@@ -108170,3 +108170,38 @@ each serial retains their identities. No whole-parent build, native CPAL device,
 installed service, end-to-end latency/soak, broad memory-exhaustion or LPE closure
 is claimed. All fifteen credential actions, R-S0/R-F5, release acceptance and
 every existing user park remain open. Fresh ledger count follows separately.
+
+The completed ledger-count run `ZHKwWoauf2` binds source `ff90946b` and
+HARDENING_STATUS.md SHA-256
+`82c651c8f9be60e1575864a9138f6d9bcfc58c3bd2937d879ea36775fbc23ab1`:
+350,458 tokens / 1,591,835 bytes by the pinned tiktoken-0.12.0/cl100k_base
+encode_ordinary method, seven controls and exact round trip. Serial SHA-256
+`ecab95296fb653d9897660ecd3bf5934e24d624f83f95ded80d711f0181de0f3`
+(101,126 bytes); supervisor 31.585 seconds, peak RAM scratch 402,198,528 bytes,
+durable evidence 155,648 bytes. QEMU 3080938 was joined with exit 0; RAM
+`run.m_0_ixc3` and active markers are absent, and all listener deltas are zero.
+This is a completed earlier run, recovered from its bounded receipts without rerunning it.
+
+### 2026-10-27 user pivot — desktop theme save ownership
+
+Further decoded-PCM/audio acceptance is OPEN/PARKED at the user's explicit
+request to work on another aspect; accepted component results above are retained.
+The new slice is desktop theme selection. At `ff90946b`, the General page's
+`theme()` callback calls `MyTheme.changeDarkMode` before any admission check,
+keeps all three controls enabled through asynchronous persistence/notification,
+and checks mounted only after completion. Retained callbacks can start another
+write after close or after the preference becomes fixed; notification errors
+escape the UI. The setting remains an ordinary user-owned local preference.
+One mounted settings-page owner should admit one change, retain it through
+tab navigation, drain an already-admitted global preference change on close,
+and retire its own callbacks. No privileged settings path changes.
+
+Primary research: Flutter's State/setState lifecycle requires terminal disposal
+and mounted UI updates; AutomaticKeepAliveClientMixin preserves state through
+lazy page eviction when wantKeepAlive and super.build are used. References:
+https://api.flutter.dev/flutter/widgets/State/setState.html and
+https://api.flutter.dev/flutter/widgets/AutomaticKeepAliveClientMixin/build.html.
+Six rendered cases extend the existing isolated settings probe, whose native
+configuration and notification boundaries are explicit doubles. The production
+page and MyTheme path are executed unchanged for the baseline; no real native
+theme broadcast, installed application or OS window appearance is claimed.

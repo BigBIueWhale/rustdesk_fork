@@ -1034,6 +1034,12 @@ PEER_DATA_SUITES = {
     "all_peers_loader_test.dart": PEER_LOADER_TESTS,
 }
 SETTINGS_NAVIGATION_TESTS = {
+    "desktop theme owns one save across clicks rebuilds and tab changes",
+    "desktop theme write failure remains visible and permits retry",
+    "desktop theme notification failure stays local and permits retry",
+    "desktop theme close drains admitted save and retires callbacks",
+    "desktop theme fixed preference rejects retained callbacks",
+    "desktop theme publishes effective preference and follow system",
     *{f"mobile boolean {key} {case}"
       for key in ("enable-abr", "allow-auto-disconnect", "allow-auto-record-incoming",
                   "allow-auto-record-outgoing", "enable-show-terminal-extra-keys")

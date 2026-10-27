@@ -186,7 +186,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("file-search"), "file-search"), (1, 12))
         self.assertEqual(self.parse(self.events("file-navigation"), "file-navigation"), (7, 125))
         self.assertEqual(self.parse(self.events("terminal-output"), "terminal-output"), (2, 37))
-        self.assertEqual(self.parse(self.events("settings-navigation"), "settings-navigation"), (1, 40))
+        self.assertEqual(self.parse(self.events("settings-navigation"), "settings-navigation"), (1, 46))
         self.assertEqual(self.parse(self.events("modifier-release"), "modifier-release"), (5, 112))
         self.assertEqual(self.parse(self.events("connect-password"), "connect-password"), (1, 7))
         self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (9, 98))

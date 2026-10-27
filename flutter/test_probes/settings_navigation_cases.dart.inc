@@ -36,6 +36,11 @@ const _mobileBooleans = [
 
 class _NativeSettings implements RustdeskImpl {
   final unexpected = <Symbol>[];
+  String theme = 'light';
+  final themeWrites = <String>[];
+  final themeBroadcasts = <String>[];
+  Future<String> Function(String)? saveTheme;
+  Future<void> Function(String)? broadcastTheme;
   String recordingDirectory = '/work/nonexistent-settings-recordings';
   final recordingWrites = <String>[];
   Future<void> Function(String)? saveRecordingDirectory;
@@ -80,6 +85,7 @@ class _NativeSettings implements RustdeskImpl {
       case #mainGetBuildinOption:
         return '';
       case #mainGetLocalOption:
+        if (key == kCommConfKeyTheme) return theme;
         if (key == kOptionKeepAwakeDuringOutgoingSessions) {
           if (refuseKeepAwakeRead) throw StateError('readback unavailable');
           return keepAwake;
@@ -104,6 +110,13 @@ class _NativeSettings implements RustdeskImpl {
       case #mainVideoSaveDirectory:
         return recordingDirectory;
       case #mainSetLocalOption:
+        if (key == kCommConfKeyTheme) {
+          final value = call.namedArguments[#value] as String;
+          themeWrites.add(value);
+          return Future<void>.sync(() async {
+            theme = await saveTheme?.call(value) ?? value;
+          });
+        }
         if (key == kOptionKeepAwakeDuringOutgoingSessions) {
           final value = call.namedArguments[#value] as String;
           keepAwakeWrites.add(value);
@@ -126,6 +139,10 @@ class _NativeSettings implements RustdeskImpl {
         return writeOption(false, key as String, call.namedArguments[#value] as String);
       case #mainSupportRemoveWallpaper:
         return Future<bool>.value(false);
+      case #mainChangeTheme:
+        final mode = call.namedArguments[#dark] as String;
+        themeBroadcasts.add(mode);
+        return Future<void>.sync(() async => await broadcastTheme?.call(mode));
       case #mainGetSoundInputs:
         return Future<List<SoundInput>>.value([
           SoundInput(id: 'Mic A', label: 'Mic A'),
@@ -292,6 +309,25 @@ Future<void> _mount(WidgetTester tester, SettingsTabKey tab) async {
 PageController _controller() =>
     Get.find<PageController>(tag: 'settingPageController');
 
+Future<void> _mountTheme(WidgetTester tester) async {
+  desktopType = DesktopType.main;
+  addTearDown(() {
+    desktopType = null;
+    return tester.binding.setSurfaceSize(null);
+  });
+  await tester.binding.setSurfaceSize(const Size(1000, 420));
+  await tester.pumpWidget(GetMaterialApp(
+    theme: MyTheme.lightTheme,
+    darkTheme: MyTheme.darkTheme,
+    home: DesktopSettingPage(initialTabkey: SettingsTabKey.general),
+  ));
+  await _settle(tester);
+}
+
+Radio<String> _themeRadio(WidgetTester tester, String value) =>
+    tester.widget<Radio<String>>(find.byWidgetPredicate(
+        (widget) => widget is Radio<String> && widget.value == value));
+
 void _expectSelection(WidgetTester tester, SettingsTabKey tab) {
   final dynamic state = tester.state(find.byType(DesktopSettingPage));
   expect(state.selectedTab.value, tab);
@@ -332,6 +368,122 @@ void main() {
     Get.reset();
     expect(native.unexpected, isEmpty);
     isTest = false;
+  });
+
+  testWidgets('desktop theme owns one save across clicks rebuilds and tab changes',
+      (tester) async {
+    final save = Completer<String>();
+    native.saveTheme = (_) => save.future;
+    await _mountTheme(tester);
+    final stale = _themeRadio(tester, 'dark').onChanged!;
+    stale('dark');
+    stale('system');
+    await _settle(tester);
+    final disabled = _themeRadio(tester, 'dark').onChanged == null;
+    _controller().jumpToPage(DesktopSettingPage.tabKeys.indexOf(SettingsTabKey.about));
+    await _settle(tester);
+    _controller().jumpToPage(0);
+    await _settle(tester);
+    final stillDisabled = _themeRadio(tester, 'dark').onChanged == null;
+    stale('light');
+    final admitted = List<String>.of(native.themeWrites);
+    save.complete('dark');
+    await _settle(tester);
+    expect(admitted, ['dark']);
+    expect(disabled && stillDisabled, isTrue);
+    expect(_themeRadio(tester, 'dark').groupValue, 'dark');
+    expect(_themeRadio(tester, 'light').onChanged, isNotNull);
+    expect(native.themeBroadcasts, ['dark']);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('desktop theme write failure remains visible and permits retry',
+      (tester) async {
+    native.saveTheme = (_) => Future<String>.error(StateError('write refused'));
+    await _mountTheme(tester);
+    await tester.tap(find.text('Dark'));
+    await _settle(tester);
+    final failed = find.text('Failed').evaluate().isNotEmpty;
+    expect(native.theme, 'light');
+    expect(native.themeBroadcasts, isEmpty);
+    native.saveTheme = null;
+    await tester.tap(find.text('Dark'));
+    await _settle(tester);
+    expect(failed, isTrue);
+    expect(native.themeWrites, ['dark', 'dark']);
+    expect(native.themeBroadcasts, ['dark']);
+    expect(find.text('Failed'), findsNothing);
+  });
+
+  testWidgets('desktop theme notification failure stays local and permits retry',
+      (tester) async {
+    final escaped = <Object>[];
+    native.broadcastTheme = (_) => Future<void>.error(StateError('notification refused'));
+    await _mountTheme(tester);
+    runZonedGuarded(() => _themeRadio(tester, 'dark').onChanged!('dark'),
+        (Object error, StackTrace stack) => escaped.add(error));
+    await _settle(tester);
+    final failed = find.text('Failed').evaluate().isNotEmpty;
+    native.broadcastTheme = null;
+    await tester.tap(find.text('Dark'));
+    await _settle(tester);
+    expect(escaped, isEmpty);
+    expect(failed, isTrue);
+    expect(native.themeWrites, ['dark', 'dark']);
+    expect(native.themeBroadcasts, ['dark', 'dark']);
+    expect(find.text('Failed'), findsNothing);
+  });
+
+  testWidgets('desktop theme close drains admitted save and retires callbacks',
+      (tester) async {
+    final save = Completer<String>();
+    native.saveTheme = (_) => save.future;
+    await _mountTheme(tester);
+    final stale = _themeRadio(tester, 'dark').onChanged!;
+    stale('dark');
+    await _settle(tester);
+    await tester.pumpWidget(GetMaterialApp(
+      theme: MyTheme.lightTheme,
+      darkTheme: MyTheme.darkTheme,
+      home: const SizedBox.shrink(),
+    ));
+    await _settle(tester);
+    stale('light');
+    final admitted = List<String>.of(native.themeWrites);
+    save.complete('dark');
+    await _settle(tester);
+    expect(admitted, ['dark']);
+    expect(native.theme, 'dark');
+    expect(native.themeBroadcasts, ['dark']);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('desktop theme fixed preference rejects retained callbacks',
+      (tester) async {
+    await _mountTheme(tester);
+    final stale = _themeRadio(tester, 'dark').onChanged!;
+    native.fixedOptions.add(kCommConfKeyTheme);
+    stale('dark');
+    await _settle(tester);
+    expect(native.themeWrites, isEmpty);
+    expect(native.themeBroadcasts, isEmpty);
+  });
+
+  testWidgets('desktop theme publishes effective preference and follow system',
+      (tester) async {
+    native.saveTheme = (_) async => 'light';
+    await _mountTheme(tester);
+    await tester.tap(find.text('Dark'));
+    await _settle(tester);
+    expect(_themeRadio(tester, 'light').groupValue, 'light');
+    expect(native.themeBroadcasts, ['light']);
+    native.saveTheme = null;
+    await tester.tap(find.text('Follow System'));
+    await _settle(tester);
+    expect(native.themeWrites, ['dark', defaultOptionTheme]);
+    expect(native.themeBroadcasts, ['light', 'system']);
+    expect(_themeRadio(tester, 'system').groupValue, 'system');
+    expect(tester.takeException(), isNull);
   });
 
   for (final option in _mobileBooleans) {

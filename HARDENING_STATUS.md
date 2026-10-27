@@ -16933,35 +16933,36 @@ release input (archive SHA-256
 manifest SHA-256
 `e09cd86e2c54ef0df9348fad5343ce051b2ee28fecc7808e50228474fd32da34`).
 
-**Native capture replacement and recording-stream retirement passed** at
-`3d0ae341e7fe87f634d6cee6c91b141a4eb3d661`
-(tree `9671f2a2053202b177bc58fcde29c1215e6d1c67`). The actual capture function
-records from the private native monitor, revokes after source audio is unloaded,
-rejects the predecessor token, and starts a fresh subscriber authority without
-restarting the daemon. Dropping the old guard leaves 500 ms of authorized
-successor capture with four nonzero frames; independent successor revocation
-terminates capture within the test's 600-ms bound. Native `pactl` recording-stream
-counts are `0,1,0,1,1,0`: before/during/after the first capture, during the successor,
-after old-guard retirement, and after successor retirement. These are test-owned
-subscriber/socket fixtures, not an installed server/CM pair or real subscriber churn.
+**Native source selection and recording retirement passed — `6325be96`.**
+System Sound resolves the current default output's monitor through PulseAudio
+metadata. An explicit description must select exactly one available source;
+missing or duplicate descriptions cannot fall back to another monitor. Recording
+uses `DONT_MOVE` and checks the resolved native source index. Default-output
+changes retire that transaction; a fresh capture resolves the new default.
+Device removal terminates capture instead of moving it to an unselected source.
 
-The zero-NIC, guest-only networkless UID/GID 1000 Docker transaction passed all
-eleven named authority/protocol/native tests, including actual Unix kernel-peer
-same-UID wrong-principal refusal with a copied token and refusal before a silent
-wrong-principal client sends a request. One completed Cargo library test artifact,
-SHA-256 `d7223c83fbd658b34a4dbaddfd5ab461c8d19f68444d6f0ab7087ec1a7d93fd5`,
-is selected from compiler metadata and stays unchanged before, between, and after
-the five groups. The cold build took 145 seconds, behavioral execution 10 seconds,
-and the outer integration 224 seconds; separate budgets are 600/120 seconds.
-Source and authenticated input authorities stayed read-only; capabilities were
-dropped, the offline canary passed, owners joined, and the exact scratch root and
-disks retired. Independent host listener snapshots were byte-identical with no
-addition. Raw serial
-`.harness-state/verifier-vm/linux-pa-authority-tests-run.ZL954lTPIu.serial.log`
-is 71,111 bytes, SHA-256
-`5d52e40621ad3cc9dacb74e0f0507a97db04b6b24bed2574ddc191ee408eb875`;
-outer log and listener observations are retained in
-`.harness-state/verifier-vm/pa-native-3d0ae341-evidence/`.
+Identical tests at `52585900` reproduce all three defects: wrong default monitor,
+missing/ambiguous-device fallback, and recording movement with failed retirement.
+The eleven existing authority/protocol/lifetime cases pass there. The corrected
+source passes all fourteen named cases in five groups on one unchanged parent
+library artifact, SHA-256
+`38ddb64b4bff6a3d3a95fe35c16b873105d755e21b96075a6df7d6a6a3ccdbdb`.
+The new cases query real daemon recording-source IDs, change its default, attempt
+native movement and remove the selected device. Existing same-UID copied-token
+refusal, silence/owner EOF and revocation/replacement cases remain passing;
+recording counts remain `0,1,0,1,1,0`, with four nonzero successor frames after
+old-owner retirement. These use test-owned subscriber/socket fixtures and private
+PulseAudio 16.1 null sinks, not installed service principals or physical devices.
+
+The zero-NIC VM and networkless UID/GID 1000 container use the shared admitted RAM
+workspace: 6 GiB guest, 7 GiB scratch, 6 GiB overlay ceiling, monitored/joined
+cleanup. Build/behavior/outer times are 169/27/265 seconds. Candidate listener
+snapshots have zero changes; two earlier attempts retain unattributed additions
+without owner inspection. Source/input identities, baseline raw outcomes,
+candidate aggregate receipts, cleanup and fresh ledger count are retained in
+`.harness-state/verifier-vm/pa-source-selection-197c249a.json`. The guest verifies
+each required test's success before emitting its aggregate receipt; successful
+per-case source-ID printouts are not retained in the serial output.
 
 The prior zero-NIC attempt at `5273d7880898dcb581676cdfc24dd52acddadb7e`
 ended with VM-owner status 137 before any test result; its cause remains unproven.
@@ -16973,7 +16974,10 @@ reconciled and removed. That failed run supplies no executable or whole-run acce
 
 **Still OPEN:** installed-service/root principals, wrong-UID and PID-reuse
 races, real subscriber churn and capture restart, sustained latency,
-CPU/memory/handle bounds, real-device changes, and other platforms. The
+CPU/memory/handle bounds, real-device changes, and other platforms. The UI still
+stores descriptions, so duplicate device names need a distinct selection path.
+Whole-service automatic recovery and peer audio after default-output changes are
+not established by directly starting a fresh capture in the native fixture. The
 ordinary-user process-pair run proves neither installed service authority nor
 capture-to-present latency. Earlier incremental fixtures and superseded run
 receipts remain in Git history and the deep-audit journal, not in this

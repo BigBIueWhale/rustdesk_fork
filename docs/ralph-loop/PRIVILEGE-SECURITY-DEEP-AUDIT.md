@@ -106829,3 +106829,79 @@ page, run a native file transfer, prove device behavior, close the separately
 parked deletion/sorting work, or establish R-S0/R-F5/release acceptance. Those
 obligations, all fifteen installed credential actions and independent review
 remain OPEN. Requirements and live instruction files are unchanged.
+
+## 2026-10-27 — Linux PulseAudio source selection and recording ownership
+
+Continued the requested pivot with Linux audio capture; the parked mobile Boolean
+settings and other parked topics remain untouched. Source at 197c249a selected the
+first name containing "monitor" for System Sound and fell back to that monitor
+when an explicit description was missing. Duplicate descriptions selected the first
+match. Native recording used NOFLAGS, so PulseAudio could move it after selection.
+The UI supplies descriptions; its System Sound choice supplies the empty string.
+This is a source-selection/privacy and lifecycle defect, not a demonstrated new
+root escalation or acceptance of the overall local-authority boundary.
+
+The selected model binds each admitted capture to one resolved native source name
+and index. Empty selection resolves the current default sink's monitor from native
+metadata. Explicit selection requires one matching description. DONT_MOVE plus
+index checks prevents a native move from silently changing the captured device.
+A server/default-output change retires default capture; device removal terminates
+recording. Setup remains deadline-bound and observes owner EOF/live authority.
+No new runtime, dependency, listener, generic IPC route or permissive fallback is
+introduced. Existing audio-service terminal errors reach its bounded retry policy;
+this slice tests fresh capture directly, not the full service retry/peer path.
+
+Primary references reviewed alongside pinned libpulse-binding 2.28.1 source:
+- https://www.freedesktop.org/software/pulseaudio/doxygen/structpa__source__info.html
+  supplies source index/name and monitor-of-sink metadata.
+- https://www.freedesktop.org/software/pulseaudio/doxygen/structpa__server__info.html
+  supplies the current default sink; context subscriptions observe server changes.
+- https://www.freedesktop.org/software/pulseaudio/doxygen/def_8h.html and
+  https://www.freedesktop.org/software/pulseaudio/doxygen/stream_8h.html define
+  DONT_MOVE and recording-source selection.
+- https://manpages.debian.org/bookworm/pulseaudio-utils/pactl.1.en.html defines the
+  native source-output inventory, default changes, module removal and move command.
+
+Preparation 4a66d75c adds three real-daemon tests and admits the focused profile
+through the existing linux-parent-libtest RAM limits. Both audio variants now use
+the existing two-job, nonincremental, debug-info-free build settings and 6 GiB
+guest/5 GiB container memory. No storage ceiling or live monitor is weakened.
+The first run nxWg8KgTE4 stops at E0283 in an existing unrelated empty-argv test:
+no behavior ran. Test-only prerequisite 52585900 types that empty slice as String;
+production authentication predicates are unchanged. Baseline 3ayGXqHtld then
+passes eleven cases and fails precisely the three new cases. Native observations:
+explicit selected=1/expected=1 but missing_refused=false and ambiguous_refused=false;
+recording moves from source 3 to 0 and removal_retired=false; default selects 0
+instead of 5, does not retire, and replacement selects 0 instead of 4.
+
+Product 6325be96 changes only src/ipc/pulse_audio.rs. Candidate nPXbHLMVOK exits
+zero with all fourteen required tests passing on artifact
+38ddb64b4bff6a3d3a95fe35c16b873105d755e21b96075a6df7d6a6a3ccdbdb.
+Test bytes and harness are identical to the valid baseline. Native movement is
+refused, missing/ambiguous requests emit no frame, device/default changes retire
+within the 750-ms test bound, and unique selection/fresh default capture succeeds.
+Existing copied-token/principal, silent cancellation, revocation and replacement
+cases also pass. Build takes 169 seconds, behavior 27, outer run 265. The guest
+requires every exact test-success line and five successful summaries before its
+aggregate receipt. Successful individual source-ID printouts are not exported;
+the retained candidate record is that checked aggregate plus artifact identity.
+
+All three runs use /bin/bash scripts/smoke-verifier-vm-authority.sh
+--linux-pa-authority-tests with frozen pushed source, authenticated offline inputs,
+zero-NIC guests, confined guest-only containers and shared bounded RAM scratch.
+Exact QEMU processes join and workspaces disappear. Candidate scratch peaks at
+5,371,203,584 bytes and durable diagnostics at 3,301,376 bytes. Candidate listener
+snapshots have zero additions/removals. The build refusal has one final unattributed
+tcp 127.0.0.1:8765 addition; the baseline has five final unattributed UDP additions.
+Their exact endpoint evidence is retained without inspecting or changing owners.
+Both rejected run directories were identity-checked and renamed after joined
+cleanup. Source, raw output, storage/listener identities, diagnostic retirement
+and the fresh complete-ledger count are bound in
+.harness-state/verifier-vm/pa-source-selection-197c249a.json.
+
+Still OPEN: UI disambiguation of duplicate friendly names, physical devices and
+PipeWire, whole-service recovery and end-to-end peer audio after device changes,
+installed root/service principals and identity races, sustained resource/latency
+acceptance, other platforms, R-S0/R-F5, release artifacts and independent review.
+No complete settings functionality or universal escalation immunity is claimed.
+Requirements and live instructions remain unchanged; the overall goal stays active.

@@ -108247,3 +108247,37 @@ The shared shell mapping now selects the same 4 GiB guest, 7 GiB RAM scratch,
 6 GiB hard file ceiling, 6 GiB headroom and 1 GiB overhead as the executed baseline.
 No resource ceiling, monitor, isolation or joined-cleanup rule is relaxed. The
 failed preflight left no active run roots; it is not a behavioral test result.
+
+Accepted candidate: `f557b015a4f57e755cc2b4809e14d2ebdb7fb154`, tree
+`bf3ff1d784d2b2e7cbe022f3c3e71a9e17e6319c`, product correction `0b3d2db1`.
+Command: `/bin/bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --desktop-theme`.
+VM `V60ZTEXT7T` returns outer exit 0 in 272 seconds. All sixteen named cases
+pass without skips, and the three result-parser regressions pass, including
+missing/duplicate/wrong-name/wrong-suite/failure/skip/incomplete rejection for
+the new selector. The six theme bodies and ten controls are byte-identical to
+baseline: complete probe SHA-256
+`0a1f23938ade29121a7b7001cbb51b7496e31716609057701bc7cb04785da15f`.
+Production page SHA-256
+`279811981e4ad327e2cff24997c6935f1b5c76169e0cfbedcf77c076ed49bfe6`
+matches before/after execution. Flutter 3.24.5, generated bridge, vendor,
+Pub closure and nonroot network-none builder identities are retained in the
+serial. This is actual rendered Flutter behavior with controlled native Futures,
+not a real installed preference store or native window-theme broadcast.
+
+Serial `flutter-model-tests-run.V60ZTEXT7T.serial.log`: 78,359 bytes, SHA-256
+`41a56cbce321a460636b832cc432e0922d06229672afe0f4fb33102f69a0affb`.
+Storage receipt: 277.967 supervisor seconds, peak RAM scratch 6,363,267,072 bytes,
+peak durable evidence 3,317,760 bytes. QEMU 3116064 joined with exit 0; RAM
+`run.e95_7vsh`, active markers and owned endpoints are absent. Before/during
+listener deltas are zero; the final inventory has one unattributed addition and
+one removal. No foreign owner was inspected or touched, and the harness remained
+kernel-confined against host IP sockets. No global listener invariance is claimed.
+
+The final product diff changes only the General settings page; the focused
+selector reuses the existing settings fixture and bounded resource profile.
+No requirement, live instruction, native theme transport, parked source, or
+stash changes. `git diff --check` and edited shell parsing pass. Current installed
+credential acceptance, all fifteen authority actions, R-S0/R-F5, independent
+review, release acceptance and every prior user park remain open. No additional
+product check is required for the documentation-only ledger update; its fresh
+token count is recorded next.

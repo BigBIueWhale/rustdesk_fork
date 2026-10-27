@@ -107812,3 +107812,21 @@ repo/Git operations and owned isolation only; controlling instructions and all
 twelve stashes remain unchanged. Full device/input/session-retargeting acceptance,
 all fifteen credential actions, R-S0/R-F5 and release remain OPEN. The eight-case
 behavioral run will not be repeated for the following ledger-only count.
+
+Ledger-count preflight XlmoU7RyQz passes all 52 admission controls and five
+refusals but stops at the stale expected count of 51 before tokenization. Commit
+c579b4fb updates the three count/receipt literals for the added joystick case;
+no profile, resource limit, product or behavioral test changes. Its failed serial
+is 79,030 bytes, SHA-256 81191ef591c27d64f6d4bcbf90dd7fa4fbb688cf63fef3dec2ecd7110ecc11aa;
+QEMU joins, RAM retires, and diagnostics remain as joystick-count-preflight.XlmoU7RyQz.
+Final inventory retains one unattributed endpoint removal without owner inspection.
+
+Fresh --ledger-token-count at c579b4fbec897b5a66508bfc7d860b45b150bf74 passes
+as Ao5HicjJh6 in 28 outer seconds: 349,352 tokens / 1,586,715 bytes, SHA-256
+b4c66e4165e9a07f3cb8a2f5ec850957223ef8b3e6b9e2a4128f4954f467f10a.
+The established tiktoken 0.12.0/cl100k_base/encode_ordinary method passes seven
+controls and the whole-file round trip, within the approximate 400,000-token budget.
+ledger-token-count-run.Ao5HicjJh6.serial.log: 98,219 bytes, SHA-256
+b1ac75b01f4e7321b70dbe0e34f74baf93293ca93d606fb8ac2d2c441abf6b15.
+QEMU is joined; RAM workspace and active markers are absent; all endpoint deltas
+are zero. No product check is repeated after the accepted eight-case run.

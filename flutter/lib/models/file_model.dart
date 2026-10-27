@@ -1899,19 +1899,51 @@ class JobController {
   void updateFolderFiles(
       Map<String, dynamic> evt, SessionID expectedSessionId) {
     if (!isCurrentSession(expectedSessionId)) return;
-    // ret: "{\"id\":1,\"num_entries\":12,\"total_size\":1264822.0}"
-    Map<String, dynamic> info = json.decode(evt['info']);
-    int id = info['id'];
-    int num_entries = info['num_entries'];
-    double total_size = info['total_size'];
-    final jobIndex = getJob(id);
-    if (jobIndex != -1) {
-      final job = jobTable[jobIndex];
-      job.fileCount = num_entries;
-      job.totalSize = total_size.toInt();
-      jobTable.refresh();
+    final encoded = evt['info'];
+    // The native summary contains only an action ID, count and byte total.
+    if (encoded is! String || encoded.length > 256) {
+      debugPrint('Failed to update folder summary: invalid event');
+      return;
     }
-    debugPrint("update folder files: $info");
+    final Object? decoded;
+    try {
+      decoded = json.decode(encoded);
+    } on FormatException {
+      debugPrint('Failed to update folder summary: invalid event');
+      return;
+    }
+    if (decoded is! Map<String, dynamic> || decoded.length != 3) {
+      debugPrint('Failed to update folder summary: invalid event');
+      return;
+    }
+    final id = decoded['id'];
+    final fileCount = decoded['num_entries'];
+    final totalSize = decoded['total_size'];
+    if (id is! int ||
+        id <= 0 ||
+        id > _kMaxNativeFileJobInt ||
+        fileCount is! int ||
+        fileCount < 0 ||
+        fileCount > _kMaxNativeFileJobInt ||
+        totalSize is! num ||
+        !totalSize.isFinite ||
+        totalSize < 0 ||
+        (totalSize is double && totalSize >= 9223372036854775808.0)) {
+      debugPrint('Failed to update folder summary: invalid event');
+      return;
+    }
+    final bytes = totalSize.toInt();
+    if (bytes != totalSize) {
+      debugPrint('Failed to update folder summary: invalid event');
+      return;
+    }
+    final jobIndex = getJob(id);
+    if (jobIndex == -1) return;
+    final job = jobTable[jobIndex];
+    if (job.type != JobType.transfer) return;
+    job.fileCount = fileCount;
+    job.totalSize = bytes;
+    jobTable.refresh();
   }
 
   void clear() {

@@ -5032,6 +5032,15 @@ universal reproducibility promise, fresh-key setup recipe and same-source checks
 it now links the existing independent manifest-verification and signing-recovery procedures. This is
 documentation correction, not new build/runtime/release evidence.
 
+**Retired remote-signing task client (R-B2/R-B10).** The unused `res/job.py`
+CLI is deleted: 321 lines and nine HTTP request sites. Its remote task/download
+flow had no current build, package, workflow or test consumer and contradicts
+the unsigned non-Android release contract. Exact source/history/reference checks
+and whitespace review pass; build recipes, Android signing, artifact verification
+and product/test code are unchanged. No signing server, build or native product
+was executed. Cold release and installed acceptance remain OPEN; detailed scope
+is in the audit entry “2026-10-27 retired remote-signing task client”.
+
 ### R-S11bb/R-S11e-68 — IPC phase coverage; native acceptance OPEN
 
 Focused source checks in `scripts/verify.sh`, `scripts/apple-conform-check.sh`, and

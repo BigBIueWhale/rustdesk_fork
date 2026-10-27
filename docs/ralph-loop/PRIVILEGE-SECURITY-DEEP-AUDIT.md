@@ -108509,3 +108509,46 @@ Outer/supervisor lifetime is 28/31.17 seconds; peak RAM scratch 402,206,720 byte
 durable evidence 151,552 bytes. QEMU 3244415 joins with exit 0; RAM `run.696g6ks3`
 and active run roots are absent. Every listener delta is zero. This receipt-only
 update changes neither the counted ledger nor tested product.
+
+## 2026-10-27 retired remote-signing task client
+
+Previous goal turn: progress (the settings checkbox correction changes the
+accessible state and passes the identical eight-case check after six baseline
+failures). Rechecked clean pushed `73edd63f` and the current R-S11 authority
+table: all fifteen installed credential actions, native/platform behavior,
+R-S0/R-F5, release artifacts, independent reproduction and external review remain
+open. Every user park remains; this slice concerns the separate remote-signing
+task client, not the parked Server Pro administration tools.
+
+Complete `res/job.py` review and read-only AST inspection identify 321 lines,
+9,543 bytes and nine HTTP request sites. SHA-256 before removal:
+`a71f277242c2a51d623545d24bb60fc5374210a45d49bc2e6a7f290817bf1f5f`.
+It entered in upstream import `c2abd3b3`; `8f9e9d76` only removed the obsolete
+printer-directory signing exception. The standalone CLI accepts an environment
+server URL and bearer value, uploads binaries, polls a remote task, and downloads
+replacement bytes directly over the original path. `sign_one_file` ignores the
+download result and reports success once remote task state says done; no local
+signature or expected-artifact verification follows. These are source findings,
+not evidence that a current release recipe invokes the tool or that an installed
+application exposes a new privilege escalation.
+
+Microsoft's primary SignTool documentation distinguishes actual signature/trust
+verification and its checked result from a task-service reply:
+https://learn.microsoft.com/en-us/windows/win32/seccrypto/using-signtool-to-verify-a-file-signature.
+The applicable local decision is already fixed by R-B2: non-Android artifacts
+ship unsigned and are authenticated through independently received manifest
+identity; Android retains its stable pinned local identity. R-B10 confines
+network acquisition to the authenticated input workflow. Therefore delete this
+unsupported alternate tool completely instead of repairing or preserving its
+remote-signing API.
+
+Tracked-tree references to its path, filename and distinctive entry points are
+absent outside the file. Current Windows/Debian/Android builders, packaging,
+Flutter assets and the disabled-workflow policy have no consumer. The file is
+deleted without a wrapper, replacement or new source catalogue. All product,
+build/signing recipes, lockfiles, artifact verification and existing tests remain
+unchanged. Exact deletion/reference checks and `git diff --check` are appropriate
+for this unused-file removal; no module import, API call, signer, product build
+or native test is run. The ledger records only this source disposition and
+retains every missing cold-build, artifact, installed and independent-review
+obligation. A fresh exact-input ledger count follows.

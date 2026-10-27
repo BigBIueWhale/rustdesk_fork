@@ -108552,3 +108552,20 @@ for this unused-file removal; no module import, API call, signer, product build
 or native test is run. The ledger records only this source disposition and
 retains every missing cold-build, artifact, installed and independent-review
 obligation. A fresh exact-input ledger count follows.
+
+Deletion verification passes: exactly the obsolete client and two progress
+documents differ; the path is absent, all other tracked text has no consumer
+reference, and reviewed build/signing recipes retain their pre-edit SHA-256.
+`git diff --check` passes. Removal is pushed as `e97e9eaf`.
+
+Ledger run `jFMWC3dS0Z` at that source counts **351,530 tokens / 1,596,965
+bytes**, SHA-256 `00d171a3070ff0d830d8731a9bb9a5d3ba37677aa85a56ffea52c7acf8eb99a1`.
+Pinned tiktoken-0.12.0/cl100k_base/encode_ordinary, seven controls and whole-input
+UTF-8 round trip pass; the approximate 400,000-token budget remains met. Serial:
+99,496 bytes, SHA-256
+`be064f70b654f01c9e507f51c61197eaaa2f46d1d3d867dd4d60e2ddcaac762d`.
+Outer/supervisor lifetime 28/31.185 seconds; peak RAM scratch 402,403,328 bytes,
+durable evidence 155,648 bytes. QEMU 3254884 joins with exit 0; RAM `run.cnzk6wuk`
+and active run roots are absent. Before/during endpoint deltas are zero; the final
+inventory has one unattributed 18-byte endpoint addition, left untouched without
+owner inspection. This receipt changes neither the counted ledger nor product.

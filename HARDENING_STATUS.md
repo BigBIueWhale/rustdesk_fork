@@ -52,6 +52,12 @@ case inventories, intermediate failures, source/artifact hashes and timings rema
 receipts under `.harness-state/verifier-vm/` and in Git history. Shared current-artifact,
 installed/other-platform, R-S0/R-F5, resource/soak and release obligations below remain OPEN.
 
+**User pivot (2026-10-28):** Mobile language-dialog save ownership remains
+OPEN/PARKED. Its one-file unexecuted regression draft is preserved in stash
+`96b6bdf874460a7d2eac7bd045e14a5347d33794`; no product correction or focused
+harness profile was applied. Do not resume automatically. Work moved to the
+direct-address source-catalogue deletion below.
+
 **User pivot (2026-10-27):** Tunnel-page text/scroll controller ownership remains
 OPEN/PARKED. Its seven-file unexecuted test draft is preserved in stash
 `e7df9fd4b8b868506bf34c32244c291867ab9950`; no controller product change was made.
@@ -13013,6 +13019,19 @@ presence is supplementary and does not prove exact packaged bytes or native beha
 Debian/Android/Windows R-B2/R-B10 transaction, native Apple/device coverage where applicable, independent
 reproduction, and external review remain governed by their open ledger rows. A regression or contrary runtime result
 reopens the affected claim; the removed historical “do not re-open” instruction carried no authority.
+
+**Direct-address verification cleanup (`3ce29ac6`).** The duplicate Dart and Apple
+source catalogues and shared behavioral wording/count assertions are deleted
+(102 net lines). The shared retired numeric-ID API/file absence check remains.
+The unchanged 25 address/controller/TextField tests and three result-parser controls
+pass in isolated run `SWq2Z5THRd` (109 outer seconds, pinned Flutter 3.24.5).
+The existing Dart test command, focused profile, product and requirements are unchanged.
+QEMU joined and RAM scratch retired; no endpoint was added, and one baseline
+endpoint removal remains unattributed without owner inspection. Exact source,
+serial, storage and cleanup evidence is in the audit entry “2026-10-28 — user pivot;
+direct-address source-catalogue deletion”. This is focused component evidence;
+full gate execution, connect-page dispatch, peer-card rendering, native Apple/device
+and installed/release acceptance remain OPEN.
 
 The orphaned host-pin canonicalizer, `libs/address_it` crate and stale `relay_route_tests`
 invocation are deleted. Candidate `2a373f2562566fec28f48c62596c1c0ecb3eaba8` passed the existing

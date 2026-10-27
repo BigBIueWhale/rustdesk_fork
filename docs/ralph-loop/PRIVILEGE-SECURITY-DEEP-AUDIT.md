@@ -109375,3 +109375,32 @@ Apple/device/installed artifacts, all fifteen credential actions and R-S0/R-F5 r
 OPEN. No product, test, normative requirement or live instruction file is changed.
 The next verification is the existing 25-case address shard in the bounded zero-NIC
 VM; its result will be attributed only to the layer actually executed.
+
+Read-only exact-byte comparison confirms the three scripts match only their
+classified deletions and narrowed shared message. All other script bytes, product,
+tests, runtime recipes, requirements and live instructions remain unchanged.
+`bash -n` passes for all three edited gates and `git diff --check` passes.
+
+Source `3ce29ac669f73c1e8285ca1344d2a64701db5fe2`, tree
+`76fcbbf8f56580f65bf8bad7a855211748926c46`, passes
+`/bin/bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --direct-address`
+as `SWq2Z5THRd`: one suite, all 25 required cases, three result-parser controls
+and offline-tool freshness on pinned Flutter 3.24.5. The validator SHA-256 is
+`9e89765ea46ebb73266844913905cd7fda6391b7e1106415117d5fec47a78b9c`, port formatter
+`601eb6e1d32e0feb74fc6bdd37d3f0e1525b2ff499e7ecc31ffebe86e4fb905f`, test source
+`5b2a15150a023adcdd66c72e6e7d85837f92ba56dfc587fca7d3c0ac357e2313`, shared vectors
+`d203ee293b1a37b61222545c4ce753c49ffcfb3c0e8e23b877a26e087af1ca77`.
+This executes production Dart/component behavior, not Rust dispatch, network peers,
+complete connection pages, the full shell gates or an Apple/device artifact.
+
+Retained serial: `.harness-state/verifier-vm/flutter-model-tests-run.SWq2Z5THRd.serial.log`,
+67,197 bytes, SHA-256
+`a28707b043f9f07a9e1998fa24a178201b72b8d83243d1536dd411fb4458f600`.
+Outer/supervisor lifetime is 109/113.564 seconds; RAM scratch peaks at
+4,051,218,432 bytes and durable run evidence at 3,305,472 bytes. QEMU 3745762
+joins with exit 0; its PID, RAM `run.pueu65th` and active run roots are absent.
+Before/during endpoint differences are zero. The final snapshot has no additions
+and one unattributed removal (18 bytes); no owner or foreign process was inspected.
+The listener audit accepts no harness addition, not an unchanged host inventory.
+The compact ledger update records the deletion, component evidence and language
+park; all broader and previously parked obligations remain open.

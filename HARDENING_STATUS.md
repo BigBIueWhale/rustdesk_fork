@@ -95,6 +95,15 @@ and 21 failing cases. The proposed product patch was not applied. QEMU joined,
 RAM scratch retired and failed diagnostics were reconciled without deletion.
 Do not resume automatically. Work moved to file-transfer percentage rendering below.
 
+**User pivot (2026-10-27):** Linux audio device identity and UI selection remain
+OPEN/PARKED. Preparation `2edea60c` and candidate `f5df7a96` are pushed. Native
+baseline `GlxpzGBmud` passes 14 tests and fails the new source-name case; candidate
+`Xpx8oOCvqz` stops at compile error E0277 in `src/platform/linux.rs:2787`, before
+behavior runs. The error formats a ControllerError with Display, which it does not
+implement. No candidate or Flutter acceptance is claimed. Both QEMU processes join,
+RAM workspaces retire and all listener deltas are zero. Diagnostics are preserved.
+Do not resume automatically. Work moved to the R-S11hj current-state ledger cleanup.
+
 | Surface | Current state and evidence boundary | Receipt |
 | --- | --- | --- |
 | File-transfer percentage rendering (`f8bf2ee7`) | The display ratio is bounded to 0–100%, preserving reported bytes, total metadata and transfer state. The unchanged-product baseline at `ca9b0464` throws in the real progress-bar constructor at 140% for upload and download; 34 other cases pass. The identical 36-case Linux Flutter suite passes after correction, plus three result-parser controls, including unknown totals, large byte counts and recovery to ordinary progress. This is production model and rendered dependency-widget evidence with controlled events. Complete file-manager/native-transfer/device behavior and shared R-S0/R-F5/release acceptance remain OPEN. Both VMs join and retire bounded RAM scratch with zero listener deltas. | `transfer-percent-65fda51f.json` |
@@ -13906,438 +13915,114 @@ closure; every separately parked task stays OPEN/PARKED.
 
 ### R-S11hj/R-S11e-247 — complete account storage and presentation authority excision
 
-**SOURCE CORRECTED; FOCUSED DART/LOADER-BRIDGE CHECKS PASS; APPLICATION, PACKAGE,
-AND INSTALLED-ARTIFACT EVIDENCE OPEN.** The direct-only fork has no live account/address-book/group
-UI or control plane. Its inherited record types, encrypted raw stores, FFI/web save/load/clear
-surface, account options, password-provenance flag, main-status variants, recursive asset packaging,
-and retired icon fonts are absent rather than replaced by a worker or migration protocol.
-Existing `*_ab`/`*_group` files remain untouched inert bytes. Live peer TOML and direct-session
-display-name/avatar, CPace, password, and connection-token state remain separate.
+**Source corrected; focused historical component checks accepted; current application,
+package and installed-artifact acceptance OPEN.** The direct-only fork has no account,
+address-book or group control plane. Inherited records/raw stores, save/load/clear
+bridges, account options and status variants, credential-provenance fields, recursive
+asset admission and retired icon fonts are removed. Existing `*_ab`/`*_group` files
+remain untouched inert bytes. Live peer TOML transactions, build-local display-name/
+avatar metadata and direct-session CPace/password/token state remain separate.
 
-**Direct viewer connection inputs — Linux API integration ACCEPTED; platform acceptance OPEN.**
-`ecc166be` removes the ignored rendezvous-key/account-token arguments from the viewer
-connection factories, network loop, tunnel listener and mapping supervisor, including
-their reads and per-connection copies. The unused constant-key getter and its equality
-assertions are deleted. The real retired-key option masking regression remains;
-R-P5/R-X4's inert baked metadata has no connection consumer. CLI `-k`/`--key` is absent.
-The shared production command parser rejects all four tested separate/attached spellings
-while preserving direct targets, tunnel mappings and the value-free server flag.
-The zero-NIC transaction compiled the complete Linux Flutter library and passed 22 cases:
-four parser, ten tunnel, four mapping-owner, three real-CPace resume and one config-pin
-case. It also compiled the actual CLI binary callers with `linux-pkg-config,cli`;
-the CLI binary itself was not executed. Parent compilation took 144 seconds and native
-tests one second; the complete integration VM took 485 seconds. Source and executable
-hashes stayed stable and bounded RAM/VM cleanup joined. Endpoint records retain an
-unattributed final snapshot change rather than claim whole-host listener invariance.
-`.harness-state/verifier-vm/viewer-connection-inputs-ecc166be.json` binds the exact
-source/artifact, named outcomes, inputs, endpoint deltas and cleanup. This is removal
-of an already-discarded API path, not a new authentication-bypass or LPE closure.
-Full viewer/CLI peer behavior, installed-service, other-platform and release evidence
-remain OPEN. The separately parked credential-factory follow-up below stays parked.
+The tables describe current source and the evidence for the named historical commits.
+They do not establish fresh validation of the current tree. All capsules are retained
+under `.harness-state/verifier-vm/`; detailed case inventories, intermediate failures,
+artifact/input hashes and timings belong there and in Git history.
 
-**Viewer remembered credentials and session correlation — Linux component A/B accepted.**
-`0295d420` initializes the remember choice from the stored CPace PRS. Peer metadata
-preserves a remembered PRS when no fresh value was staged, persists a fresh PRS only
-when chosen, clears it when remember is off, and clears the retired password hash.
-The obsolete account-provenance enum, handler hash and account credential-sync event
-are deleted. Connection tokens contain only one nonzero session correlation ID;
-unknown fields, retired credential/provenance payloads and malformed IDs refuse.
-Invalid-token diagnostics contain no supplied value.
-
-**Direct credential API follow-up — OPEN/PARKED by explicit user pivot.**
-The pushed candidate removes the retired shared-password routing flag from Dart,
-native and web session factories and handoffs. At `0248c624`, fresh bridge generation
-and the full Linux Flutter-feature Rust library build passed eleven focused tests,
-including twelve explicit/empty-password session-factory schedules. The Dart
-credential cohort stopped at the formatter check for `test/peer_model_test.dart`
-before behavioral execution; it is not accepted. No formatting repair or rerun was
-made after the pivot. `shared-password-native-0248c624.json` and
-`shared-password-parked-0248c624.json` under `.harness-state/verifier-vm/` retain the
-exact evidence and joined bounded-RAM/VM cleanup. Dart compilation/behavior, native
-bus/window/peer handoff and installed/platform acceptance remain open. Do not
-automatically resume this item.
-
-The complete Linux library with `linux-pkg-config` ran the same eight production
-handler/storage/serde cases: valid-storage baseline `7713b5c6` had six assertion
-failures and two passing controls; `0295d420` passed all eight. The fixture supplies
-one private read-only machine identity and proves real storage-key availability
-and encrypted credential readback before the affected actions. Three redundant
-legacy-hash tests are removed. Sealed `viewer-credential-baseline-7713b5c6.json`
-and `viewer-credential-corrected-0295d420.json` under `.harness-state/verifier-vm/`
-bind exact source/artifact/results, unchanged test/fixture inputs, source and
-endpoint freezes, and joined bounded-RAM cleanup. The earlier missing-key run and
-fixture-shape refusal are retained as unaccepted setup evidence.
-This is assistant-observed Linux component execution; the parked follow-up above
-separately compiles the Linux Flutter-feature parent. Actual native bus/window/token/
-CPace handoff, cross-version, installed/platform and independent acceptance remain
-OPEN; no production log leak or new LPE closure is claimed.
-
-The Recent/Favorite presentation mapper no longer exports the legacy password hash. Dart `Peer`
-has no credential/group fields, outbound serializers, copy/equality APIs or redundant constructor;
-its loading and autocomplete placeholders use the retained local-metadata parser. The unused
-address-book-specific recent-peer loader and web stub are deleted. At `b7b976ec`, a healthy peer
-loaded before a retired hash field caused the old parser's type error; fail-fast omitted later cases.
-At `730bb9b0`, the unchanged peer tests and credential cohort passed all eight suites/63 cases plus
-three result-parser controls in 284 outer seconds on pinned Flutter 3.24.5. Fresh Dart and both Rust
-bridges exclude the retired loader; inspection errors refuse success. Complete source/control and
-endpoint freezes, raw serial and joined bounded-RAM cleanup are retained in
-`.harness-state/verifier-vm/peer-metadata-corrected-730bb9b0.json`.
-This proves Dart metadata behavior, import compilation and that named generated-API absence;
-it does not execute the Rust mapper, whole connection pages, real platform IMEs or installed peers.
-Peer-list and cached-session decoding use fixed failure diagnostics while retaining their
-list-clearing/notification and null-refusal behavior. `PeerInfo` owns full platform/resolution
-metadata decoding with fixed diagnostics. Refused input preserves its exact prior field. Valid snapshots, quiet empty
-platform input, both resolution encodings, positive-dimension filtering, ordering and recovery
-remain covered. Session/type checks stay at the callers; incremental platform merging is separate.
-
-**Chat model and CM recipient handling — component/widget corrections verified; native integration OPEN.**
-The current implementation is in `flutter/lib/models/chat_model.dart`, with the CM
-registry sender in `src/ui_cm_interface.rs` and generation-bearing FFI in
-`src/flutter_ffi.rs`. Retained evidence files below are under
-`.harness-state/verifier-vm/`; their source/artifact bindings and A/B results establish
-the stated component behavior, not complete application acceptance.
-
-| Surface | Current behavior | Retained evidence |
+| Surface | Current behavior and accepted evidence | Receipt |
 | --- | --- | --- |
-| Outgoing reset (`52b9db70`) | `resetClientMode()` clears every outgoing message body in place. Incoming history, selection, keys, peer metadata and list identity survive. Lazy local-user creation keeps history-only operations independent of native translation startup. Tests cover multiple peers, both directions, empty/repeated reset, fresh messages and incoming reconnect. | `chat-reset-6b77b932.json` |
-| Receive ownership (`b86445fc`) | Before the first await, `receive` captures the outgoing session/UI-owner UUIDs and peer, or incoming registry generation and peer. It revalidates after CM-window, chat-page and minimized-window waits and before publication. Incoming work retains its admitted client rather than reselecting a numeric-ID successor; outgoing-session changes do not invalidate a current incoming generation. Tests observe messages, selection, latest key, notifications, unread state and window/tab effects during retirement/replacement and live delivery. | `chat-receive-3d2bc867.json` |
-| CM panel failure/retry (`bd906c6f`) | One serialized `toggleCMSidePage` completes show, size and position before committing visibility, opening unread reset, focus or notifications. Its `finally` releases the busy latch while propagating failures for explicit retry. Selected tab/client comes from the model's owning server. Dimensions, alignment and concurrent-toggle refusal remain. Tests cover failure at each window step in both directions, pending state, overlap, exact retry/layout and repeated healthy cycles. | `chat-panel-retry-f742b8c5.json` |
-| CM recipients and drafts (`8ec0bd83`, `3b6aa100`, `9b12a6c9`) | Native sending validates ID and requested registry generation under one read guard, rejects pending/disconnected owners and retains only the admitted sender. FFI requires the generation; the web signature remains unimplemented. Dart checks the selected peer/ID/live positive generation before bridge/history mutation and retains its parent through submission. Enter and the actual toolbar button share `sendDraft`; only local acceptance clears the composer, bypassing Dash's unconditional clear. Local acceptance remains optimistic and is **not** a peer-delivery acknowledgement. Tests cover reused IDs, delayed sending, missing/invalid/disconnected recipients and accepted/refused drafts through both inputs. | `chat-send-owner-6c616053.json` |
-| Enter handling (`6580a6e2`) | Only fresh unshifted Enter key-down submits. Both Shift keys preserve ordinary editing; Shift release, Enter repeat and another key while Enter is held cannot submit a later draft. Logical-key, Shift and repeat handling follow pinned Flutter 3.24.5 semantics. Empty/refused drafts and recipient admission remain intact. Tests dispatch keyboard events through the mounted production toolbar/model. | `chat-enter-1a4d0742.json` |
-| Overlay subscription (`abf53c82`) | The model retains one subscription; rebinding the same overlay is idempotent. Replacement/disposal pause then cancel the old subscription, and disposal refuses later binding. Pausing revokes callbacks immediately while GetX 4.7.2 defers removal during delivery. Tests cover repeated binding, stale overlay effects and replacement/disposal during callbacks. | `chat-overlay-dcd34f17.json` |
-| Delayed focus (`4166d1f5`) | One cancellable 100 ms timer owns focus. New requests supersede old ones; overlay unblock/replacement, window/overlay hiding, session close and disposal cancel pending focus. CM closing cancels before native-window awaits. Disposal refuses requests; ordinary close permits reopening. Real Flutter focus nodes and timed frames cover retirement, replacement deadlines, disabled/current-node controls and a held CM-window reply. | `chat-focus-7525350d.json` |
+| Direct connection inputs (`ecc166be`) | Ignored rendezvous-key/account-token parameters, reads/copies and the unused key getter are deleted from viewer, loop and tunnel factories. The shared CLI parser rejects separate/attached `-k`/`--key`, retaining direct targets, mappings and the value-free server flag. R-P5/R-X4 baked metadata stays inert; retired-key masking coverage remains. The Linux Flutter library compiled and passed 22 parser/tunnel/mapping/CPace/config cases; actual CLI callers compiled, but the CLI binary was not run. | `viewer-connection-inputs-ecc166be.json` |
+| Remembered credentials and correlation (`0295d420`) | The stored CPace PRS initializes remember state; no fresh PRS preserves a remembered value, an elected fresh PRS persists, and remember-off clears it. Retired password hashes/provenance and account sync are removed. Tokens carry only a nonzero session correlation ID; malformed IDs, unknown/retired fields refuse with value-free diagnostics. The same eight production handler/storage/serde cases fail six assertions before correction and pass all eight afterward, using a private read-only machine identity and proven encrypted storage readback. | `viewer-credential-baseline-7713b5c6.json`, `viewer-credential-corrected-0295d420.json` |
+| Peer metadata (`730bb9b0`) | Recent/Favorite export omits the legacy password hash. Dart Peer has no credential/group fields or unused serializers/copy/equality/constructor; placeholders use its local-metadata parser. The unused account-specific recent-peer loader and web stub are deleted. Identical peer/credential tests pass eight suites/63 cases plus three parser controls after the old parser fails on a retired field. Fresh bridge/import checks establish the named API absence, not execution of the Rust mapper or full connection pages. | `peer-metadata-corrected-730bb9b0.json` |
+| Metadata diagnostics (`c4acc5ce`, `d5c61913`) | Peer-list/cached-session failures use fixed diagnostics while retaining list clearing/notification and null refusal. PeerInfo full platform/resolution decoding preserves each refused field; valid/empty snapshots, both resolution formats, positive dimensions, ordering and recovery remain covered. Session/type checks stay at callers; incremental merging is separate. Ten corrected Dart cases and three parser controls pass. The live baseline exposes synthetic values in two failed cases but its whole transaction is unaccepted because of two unattributed endpoint additions. | `live-peer-baseline-6dfedef7.json`, `live-peer-corrected-c4acc5ce.json`, `cached-peer-baseline-110cc6d3.json`, `cached-peer-corrected-d5c61913.json` |
 
-**Evidence scope.** The latest retained Linux Flutter 3.24.5 chat cohort passes 64 cases
-and three result-parser controls. Its actual production model/toolbar, GetX subscriptions
-and Flutter focus behavior run with fixture parents, controlled window/screen method
-channels and positive-send I/O recorders. Panel focus fixtures record requests without
-scheduling focus; the dedicated focus cases execute real focus nodes/timers. Earlier
-unchanged-test A/B comparisons, source/input identities and fresh generated-bridge/import
-compilation are recorded in the individual capsules. Successful Dart runs retain strict
-summary receipts, not per-case success JSON or a compiled test image. Formatter, fixture,
-missing-import and window-mock failures are separate diagnostics, not accepted behavior.
+**Direct credential API — OPEN/PARKED by user instruction.** Candidate `0248c624`
+removes the retired shared-password routing flag from native/Dart/web factories and
+handoffs. Fresh bridge generation, Linux Flutter-library compilation and eleven tests
+(including twelve explicit/empty-password factory schedules) passed. Dart stopped at
+the `test/peer_model_test.dart` formatter check before behavior; no repair or rerun
+followed the pivot. `shared-password-native-0248c624.json` and
+`shared-password-parked-0248c624.json` retain evidence and joined cleanup. Dart
+compilation/behavior, native bus/window/peer handoff and installed/platform acceptance
+remain open. Do not resume automatically.
 
-The native CM sender cohort passes 51 cases using the production registry/FFI sender and
-real queues with controlled schedules: six owner/refusal/recovery schedules, all five
-supported session types and ten exact payloads. Its retained result was reused only after
-all 24 bound inputs were rechecked unchanged. This component result does not execute the
-generated bridge transport, complete CM IPC, full Rust parent or an authenticated peer.
+**Chat and CM current state.** Implementations are in
+`flutter/lib/models/chat_model.dart`, `flutter/lib/models/server_model.dart`,
+`src/ui_cm_interface.rs`, `src/flutter_ffi.rs`, `src/client/io_loop.rs` and
+`src/server/connection.rs`.
 
-The capsules retain exact joined QEMU/bounded-RAM retirement and listener observations.
-Some runs have unattributed external endpoint changes; the Enter cohort has zero deltas.
-Those exceptions remain recorded, with host IP-socket creation denied in the affected
-owned harnesses and no external endpoint owner inspected or changed. No zero-delta claim
-is made for the whole chat series.
+| Surface | Current behavior and evidence boundary | Receipt |
+| --- | --- | --- |
+| Outgoing chat reset (`52b9db70`) | Clears outgoing message bodies in place, preserving incoming history, selection, keys, metadata and list identity. Lazy local-user creation avoids native translation startup for history-only actions. Tests cover repeated/empty reset, new messages and incoming reconnect. | `chat-reset-6b77b932.json` |
+| Chat receive ownership (`b86445fc`) | Captures outgoing session/UI-owner UUIDs and peer, or incoming registry generation and peer, before awaiting. Revalidates after CM-window/page/minimization waits and before publication; incoming delivery retains its admitted client. Tests observe messages, selection, keys, notifications, unread and window/tab effects across retirement/replacement. | `chat-receive-3d2bc867.json` |
+| CM panel failure/retry (`bd906c6f`) | Serializes show/size/position before committing visibility, unread reset, focus or notification. Failure propagates and releases the busy latch for retry. Selection comes from the owning server. Tests cover each failed window step, overlap, layout and healthy cycles; actual native partial effects remain open. | `chat-panel-retry-f742b8c5.json` |
+| Recipients and drafts (`8ec0bd83`, `3b6aa100`, `9b12a6c9`) | Native sending validates ID/generation under one registry read guard and retains only that live sender. Dart retains its parent and checks peer/ID/positive generation before bridge/history mutation. Enter and toolbar use sendDraft; only local acceptance clears the composer. This is optimistic admission, not peer-delivery acknowledgement. Tests cover reused IDs, delayed sending and invalid/disconnected recipients. | `chat-send-owner-6c616053.json` |
+| Enter handling (`6580a6e2`) | Only fresh unshifted Enter down submits; either Shift preserves editing. Shift release, repeat or another key during held Enter cannot send a later draft. Mounted toolbar/model keyboard-event tests preserve empty/refused drafts and recipient admission. | `chat-enter-1a4d0742.json` |
+| Overlay subscription (`abf53c82`) | Same-overlay binding is idempotent. Replacement/disposal pauses then cancels the owned subscription, revoking callbacks before GetX's deferred removal. Disposal refuses rebinding; tests cover callback-time replacement/disposal. | `chat-overlay-dcd34f17.json` |
+| Delayed focus (`4166d1f5`) | One cancellable 100-ms timer; new requests supersede old ones. Overlay unblock/replacement, hiding, close and disposal cancel it; CM closing cancels before window awaits. Disposal refuses new requests while ordinary close allows reopening. Tests execute real focus nodes/timers, retirement and a held window reply. | `chat-focus-7525350d.json` |
+| CM close/history (`d7489810`) | Generation-bound close returns true only on live mailbox admission; history dismissal only on exact disconnected-record removal. Batch close captures live owners, skips history, joins requests and reports false/error replies. Registry events remain UI owners; desktop retirement waits for batch admission, and mobile notification cancellation follows native retirement. Admission is not peer teardown. Native result baseline passes 55/fails two; corrected 57 cases pass. Dart batch baseline passes 42/fails three; corrected 45 cases and three parser controls pass. | `cm-close-admission-073543c5.json`, `cm-disconnect-owner-feb8f4cd.json` |
+| CM voice commands (`a51224db`, extended by `c0a9a93d`) | Accept/Dismiss/Stop require the displayed generation; only a live Remote/ViewCamera sender is cloned under the registry guard before nonblocking admission. UI awaits truthful admission. Submission no longer cancels Android notifications; serialized current-generation voice-state callbacks own cancellation. The generation-only baseline passes 58/fails two; corrected 60 cases pass. Kotlin notification changes are source-reviewed only. The per-call row below is the current command contract. | `cm-voice-owner-a82d8f2a.json` |
+| Viewer voice replies/cancellation (`bd528a32`) | Stop clears pending ownership even with no active audio; remote close includes pending work. Only a matching reply consumes the pending ID, synchronously before awaiting. Start-failure and exact active-audio stop paths remain. Identical production-control-flow tests pass 61/fail three before correction, then pass 64, including mismatches, duplicate/late replies, manual and remote cancellation. Audio, transport, callbacks and clock are doubles. | `viewer-voice-finality-77b80354.json` |
+| Viewer voice request creation (`b292e2bf`) | One private checked AtomicI64 namespace issues positive, process-lifetime IDs independent of wall time; invalid/exhausted state refuses without mutation. Pending/active overlap refuses before mint/send, ownership installs before send, waiting follows success, and failed send clears pending state and ends that transport round. The req_timestamp field carries this ID; ack_timestamp is diagnostic. IDs are neither credentials nor durable across restart. Baseline passes 64/fails five; corrected 69 cases pass, covering joined issuers, allocator exhaustion, stale replies and retry. The global-exhaustion UI path is source-only. | `viewer-voice-requests-432b6236.json` |
+| Controlled voice admission (`6c33c79a`) | Requires the exact positive peer ID after Remote/ViewCamera admission, then refuses pending/active overlap. CM notification failure/timeout clears pending state, calls cleanup with lock=false and returns false before the generic tail. The five-second deadline/failure latch remains. Baseline passes 70/fails three; corrected 73 cases pass with real closed/full bounded Tokio queues and generated protobufs. Post-auth identity, lease, clock and cleanup effects are doubles; complete cleanup and release-abort behavior are unexecuted. | `controlled-voice-admission-161fc857.json` |
+| CM per-call authority (`c0a9a93d`) | Closed command/event enums carry positive call IDs issued without reuse/wrap within the connection and scoped by its capability/generation. Registry transitions require exact phase/ID and retain a consumed-ID watermark. FFI validates the immutable displayed connection/generation/call triple; the controlled consumer rechecks it on dequeue. Respond is pending-only; Stop active-only. Client equality/copy/serialization includes call ID; old unbound variants/effect APIs are deleted. Native baseline passes 74/fails three; identical 77 cases pass after correction. Fresh bridge/import checks plus 47 Dart cases and three parser controls pass, including triple retention and model value semantics. Real IPC fixtures are adapted but unexecuted. | `cm-call-authority-d14134b4.json` |
 
-**Still OPEN.** Desktop/mobile event, route, view and full session integration; actual
-native geometry and already-started/partial window effects after failure; cancellation
-and owner drain; asynchronous open-after-close, broader ChatModel/FFI ownership and
-disposal; message ordering and history/resource bounds; hardware/soft keyboards, native
-IME and newline insertion; real chat/file UI, native bridge/CM IPC and authenticated
-peer delivery; full Rust parent and installed/other-platform execution. All fifteen
-credential-native actions, R-S0 immunity with complete functionality, R-F5 actual
-presentation/input-visible impairment recovery and long-session freshness, final/cold
-artifact reproducibility, independent reproduction and external review remain OPEN.
-These component results establish neither LPE closure nor the cause of displayed lag.
+**Evidence limits and cleanup.** Historical Linux Flutter chat evidence passes 64
+cases plus three parser controls on pinned Flutter 3.24.5, using production models/
+toolbar, GetX subscriptions and real focus behavior with fixture parents, controlled
+window/screen channels and send-I/O recorders. Panel tests record focus requests;
+the dedicated focus cases execute timers/nodes. Native chat sending passes 51
+production-registry/FFI/queue cases, including all five supported session types;
+reuse followed revalidation of all 24 bound inputs. These are component results,
+not generated bridge transport, full native parent, CM IPC or authenticated peers.
 
-**OPEN/PARKED.** The privileged startup/config-loader investigation and broader outgoing
-chat conversation/UI-generation authority review remain parked at the user's direction;
-no LPE or wrong-peer delivery was established by those reviews. Logging, Windows VM
-storage and every other existing user park remain unchanged.
+CM close/voice Dart cohorts execute production batch/model behavior with request
+doubles; voice button/dialog interaction and notification effects are not tested.
+Native voice cohorts execute the selected production bodies, real bounded queues
+and generated protobufs, with audio/transport/post-auth effects doubled. Public
+network voice schema is unchanged. Web placeholders remain unimplemented and
+unsupported iOS receivers refuse. Current call IDs strengthen the earlier
+generation-only command model; earlier receipts do not prove the later contract.
 
-**CM close admission and history outcomes — native component and Dart batch verified;
-complete CM/peer and rendered interaction OPEN.** `d7489810` returns a boolean
-through each generation-bound FFI request. Disconnect succeeds only when the exact
-current live owner's real mailbox accepts Close; stale/pending/disconnected owners,
-a missing receiver or queue refusal return false. History dismissal succeeds only
-when its exact current disconnected record is removed. Unsupported iOS entrypoints
-return false; existing web signatures remain unimplemented.
+Successful Dart runs retain strict summaries and generated hashes, not per-case
+success JSON or a compiled test image. Formatter, fixture, missing-import, mock and
+setup failures remain separate diagnostics. The native voice printer omitted some
+successful prior mismatch rows; their unchanged test/source binding is retained.
+All named transactions retain joined QEMU and bounded-RAM cleanup. Some have
+unattributed endpoint changes, including the direct-input and live-metadata
+baseline runs; no whole-series zero-delta claim is made. Chat Enter and corrected
+live-metadata transactions have zero deltas. Where host IP-socket creation was
+denied by the owned harness, external endpoint owners were still neither inspected
+nor changed.
 
-`requestCmClientClosures` captures live ID/generation pairs before waiting, skips
-disconnected history, joins every submitted request and reports false replies or
-bridge errors. `ServerModel.closeAll` delegates to it and has no manual client/tab
-retirement. Existing owner-checked remove events and full snapshots remain the UI
-state owners. Desktop close waits for batch admission before retiring its FFI; failed
-single actions are visible, and history-window closure requires actual removal.
-Mobile Disconnect no longer cancels a notification on submission; existing native
-retirement callbacks own that effect. Admission is not peer-teardown acknowledgement.
+**Remaining acceptance — OPEN.** Exact-current Rust application compilation,
+complete fresh-bridge absence inspection, package asset/symbol inventories and
+installed-platform checks are still required for account removal. R-S11gr's
+bridge/model checkpoint supplies neither complete compilation nor package absence.
 
-At bool-result preparation `37ab3d27`, 55 controls pass and two new result
-cases fail: replies report success without queue admission or registry removal.
-The identical corrected 57-case native cohort passes eight close-result schedules
-and six history-result schedules, including gone/saturated mailboxes, invalid/pending/
-stale targets, normal admission/removal and repeated dismissal. All prior 55 bodies
-remain unchanged; only the receiver part changes across 25 input/33 part receipts.
-Earlier exact-owner five-type, sibling and delayed-command A/B evidence remains in
-`cm-disconnect-owner-feb8f4cd.json`.
+For the retained direct, metadata, chat and CM features, the following remain open:
 
-The prepared Dart baseline `3eac7829` passes 42 controls and fails false-result,
-mixed-result and disconnected-history cases. The identical 45-case cohort and three
-parser controls pass after correction, with fresh bridge/import compilation. Tests
-execute the actual production batch function over real Client state and explicit
-request-I/O doubles; accepted/refused/mixed requests, joined bridge errors, captured
-owners across replacement and empty/history-only snapshots are observed. Prior 39
-test bodies remain untouched. One earlier run stopped at pinned formatting without
-executing behavior; its diagnostic is retained separately. Candidate output retains strict summaries and generated
-hashes rather than per-case JSON or a compiled test image.
+- Actual viewer/CLI peers; Rust mapper/event delivery; native bus/window/token/CPace
+  handoff; full connection pages; metadata/diagnostic secrecy in package logs.
+- Desktop/mobile route/view/session integration; chat ordering and history/resource
+  bounds; native geometry and partial window effects; asynchronous open-after-close,
+  broader model/FFI ownership, cancellation, owner drain and disposal.
+- Rendered close/history/voice controls and dialog lifetime; real native bridge/CM
+  IPC and authenticated delivery/teardown; per-call identity across complete peer
+  paths; physical microphone/audio, subscription/input leases and resource finality.
+- MainService compilation, Android notifications/device behavior, hardware/soft
+  keyboards, native IMEs/newline insertion and platform window effects.
+- Process restart/cross-version and full parent/installed/other-platform execution;
+  resource soaks, background/focus/reconnect/cleanup and faster prepared-runtime reuse.
+- All fifteen credential-native actions; R-S0 immunity with complete functionality;
+  R-F5 actual displayed/input-visible latency recovery and long-session freshness;
+  exact cold R-B2/R-B10 artifacts, independent reproduction and R-V3 external review.
 
-Evidence: `.harness-state/verifier-vm/cm-close-admission-073543c5.json`. Source/artifact
-bindings and joined bounded-RAM cleanup are retained. Complete native CM IPC and peer
-teardown, full ServerModel/rendered controls, native window/notification effects,
-resource finality/drain, full Rust parent, installed/other-platform behavior,
-voice-call lifecycle, all fifteen credential actions, R-S0/R-F5 and release
-acceptance remain OPEN. All full-parent/bootstrap and other user parks are unchanged.
-
-**CM voice command ownership — native component verified; complete voice lifecycle
-and Android notification behavior OPEN.** `a51224db` requires the displayed
-Client's registry generation through both Accept/Dismiss and Stop FFI methods.
-The receiver clones only the exact current live Remote/ViewCamera owner's sender
-under the registry read lock, then releases the lock before nonblocking queue
-admission. Invalid generations, pending replacement, disconnected or reused owners,
-wrong session types, receiver loss and saturation refuse. The former bare-ID
-sender lookup is removed; no voice action reselects a successor. The returned
-boolean means queue admission, not peer response or audio completion. Unsupported
-iOS receivers return false; web methods remain explicitly unimplemented.
-
-Desktop/mobile callers carry the retained Client generation, await the result and
-show refusal/errors. Their ID-only notification cancellation on submission is
-removed. Android's existing serialized, current-generation voice-state callback
-cancels a request notification when the accepted state is no longer incoming;
-the incoming branch still posts it. This two-line Kotlin branch is source-reviewed
-only: MainService compilation and device notification effects did not run.
-
-At API preparation `3a435b6a`, generation is deliberately ignored and unit
-completion is represented by true, preserving the old lookup/submission behavior.
-The native cohort passes 58 controls and fails two new tests. All three delayed
-actions reach the successor mailbox, and invalid/pending/disconnected/wrong-type
-requests can queue. The identical corrected 60-case cohort passes. Six allowed
-Remote/ViewCamera action controls preserve siblings; 42 owner/type/result cases
-and three joined delayed actions prove exact queue selection and truthful
-admission. All prior 57 bodies and locked dependencies are unchanged; only the
-sender and voice-receiver parts differ across 26 input/36 part receipts.
-
-The existing 45-case Dart cohort and three parser controls pass with fresh pinned
-bridge generation and caller/import compilation. These tests do not execute the
-voice buttons, dialog, native bridge transport or notification branch; no new
-Dart voice-behavior claim is made. Strict summaries and generated hashes are
-retained rather than per-case successful JSON or a compiled Dart image.
-
-Evidence: `.harness-state/verifier-vm/cm-voice-owner-a82d8f2a.json`.
-Complete native CM IPC, authenticated peer/audio and resource finality, rendered
-controls/dialog lifetime, MainService/device notifications, per-call identity
-within one registry generation, full parent, installed/other-platform behavior,
-all fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN.
-Every full-parent/bootstrap and other user park remains unchanged.
-
-**Viewer voice reply consumption and pending cancellation — production control flow
-verified with I/O doubles; full native audio/peer acceptance OPEN.** `bd528a32`
-clears the pending voice-request slot at the start of `stop_voice_call`, including
-the early return with no active audio. A remote close treats a pending request as
-owned work and routes it through that stop method. An unmatched response leaves
-the pending slot intact; only a matching timestamp consumes it, synchronously
-before the first response await. Accepted/refused behavior, prior exact audio stop,
-start failure notification and explicit peer close retain their existing paths.
-The destructive pre-validation `mem::replace` is removed.
-
-At unchanged-product preparation `cd9ac810`, 61 tests pass and three new tests
-fail. All 24 mismatches consume the current pending request and suppress its
-subsequent valid response. Manual stop leaves the slot live: late acceptance calls
-audio start, while late refusal publishes an extra close callback. Remote close
-also fails pending-only or pending-plus-active cancellation. The identical corrected
-64-case cohort passes: four accepted/refused/replacement/start-failure controls,
-eight duplicate replies, 24 mismatch schedules, two manual cancellations and eight
-remote-close schedules. Late replies are delivered before any replacement request.
-All prior 60 bodies and locked dependencies stay unchanged. Across 29 inputs
-and 40 parts, only `src/client/io_loop.rs` and its receive/stop parts differ.
-An earlier 61/3 run omitted new per-case output; its bounded diagnostic is retained
-separately, and the repeated unchanged-product baseline supplies full observations.
-The first corrected execution passed all 64 but its final VM receipt interleaved
-with shutdown output; the exact candidate was repeated for outer acceptance.
-
-The executed bodies are the actual production VoiceCallRequest/Response branches,
-manual-close branch, stop method and message constructors, with generated protobufs.
-Audio start/stop, handler callbacks, transport and clock are explicit fixture doubles.
-This proves control-flow state and effect selection; it does not execute the complete
-IoLoop, microphone, subscription/input lease, real transport or displayed interaction.
-Flutter, public FFI, constructors, wire schema, controlled-side service/CM and Android
-sources are unchanged; no fresh Dart or parent build is claimed.
-
-Evidence: `.harness-state/verifier-vm/viewer-voice-finality-77b80354.json`.
-Full parent/IoLoop and real-peer/native audio/device cleanup, rendered controls,
-end-to-end request identity and admission, CM per-call identity, Android
-notification/device behavior, installed/other-platform execution, all fifteen
-credential actions, R-S0/R-F5, soak and release acceptance remain OPEN.
-All full-parent/bootstrap and other user parks remain unchanged.
-
-**Viewer voice request creation — process-lifetime identity and single-owner
-admission verified in the native component; full peer/installed acceptance OPEN.**
-`b292e2bf` mints positive request IDs from one private checked AtomicI64 namespace,
-shared across viewer contexts and independent of wall time. IDs cannot wrap or
-repeat within that process, including after cancellation or send failure.
-Exhaustion or invalid counter state refuses without mutation. The request
-constructor returns its NonZeroI64 owner together with the exact message; a
-separate close constructor does not mint a request ID or read the clock. The existing
-`req_timestamp` wire field carries the ID; response `ack_timestamp` remains
-diagnostic. Schema and public FFI are unchanged. This namespace is not an
-authentication credential or durable uniqueness across process restart;
-fresh authenticated transports remain required.
-
-NewVoiceCall preserves an existing pending or active owner without minting,
-sending or publishing another waiting event. An idle request installs the exact
-owner before send and reports waiting only after success. Send error clears
-pending authority, reports closed/error and returns false to end that transport
-round. This is control-flow finality, not proof of complete socket or audio cleanup.
-
-API preparation `7f22b236` retains clock minting, overwrite and logged-only
-send failure under the new typed surface. It preserves ordinary positive-clock
-behavior; zero clock now refuses rather than reproducing the earlier unwrap panic.
-Its 69-case baseline passes 64 and fails all five new tests. Frozen-clock
-constructors produce one ID across 64 callers; zero/negative/backward clocks
-cannot establish valid fresh ownership. Duplicate commands overwrite pending
-state or add a request during active audio. After cancel/new at a frozen clock,
-the retired reply consumes the new request. Failed send still reports waiting
-and a late reply invokes audio start.
-
-The identical corrected cohort passes 69/69 in 2.05 native seconds, 106 outer.
-Five clock inputs and four joined threads yield distinct positive IDs. The actual
-allocator core admits its last positive ID, then refuses without wrapping; local
-counter instances also prove negative-state refusal. All four owner states,
-four stale-reply retry combinations, and failed-send plus fresh-owner recovery
-pass. Core exhaustion is executed; the live global counter's exhaustion UI path
-is source-wired only. All prior 64 assertions and locked dependencies remain.
-Across 29 inputs/41 parts, only the helper allocator and new-request branch differ.
-The server change is exactly its close-constructor import/call; no server parent
-executes. Existing cancellation/receive/stop and constructors execute with generated
-protobufs and explicit audio, handler, transport and clock doubles. Flutter and
-public FFI sources are unchanged; no new Dart, full parent or device run is claimed.
-
-Evidence: `.harness-state/verifier-vm/viewer-voice-requests-432b6236.json`.
-Complete Remote/IoLoop, real-peer/transport/audio/device and resource finality,
-rendered waiting/error behavior, process-restart/cross-version evidence,
-controlled request validation and CM per-call authority, Android notifications,
-installed/other-platform behavior, all fifteen credential actions, R-S0/R-F5,
-soak and release acceptance remain OPEN. All full-parent/bootstrap and other
-user parks are unchanged.
-
-**Controlled voice-request admission — native component verified; full server/CM
-per-call acceptance OPEN.** `6c33c79a` requires the exact positive peer ID after the
-actual Remote/ViewCamera predicate and before pending ownership. Zero and negative
-IDs refuse without a CM notice; the wall-clock replacement and eager fallback
-unwrap are removed. Pending/active overlap still refuses. A closed or timed-out
-CM notification clears the just-installed pending ID, runs connection cleanup
-with locking disabled and returns false. The failure latch and five-second queue
-deadline are preserved. The old outer loop already closed after this latch;
-this correction does not establish an earlier indefinite leak or installed crash.
-
-At unchanged-product preparation `b761dae0`, 70 tests pass and three new tests
-fail. Twelve invalid-ID/clock cases either queue an invented/negative ID or catch
-the eager-unwrap panic; six positive-ID cases with zero clock catch the same panic.
-Both real CM failures retain pending 42 and return true. The corrected 73-case
-cohort passes in 7.02 native seconds, 109 outer, including 30 valid/type/overlap controls, 12 invalid cases, six
-zero-clock positive cases and closed/full real Tokio channels. The full channel
-executes the production five-second deadline; its filler survives and no incoming
-notice is accepted. Positive 1, 42 and i64::MAX remain exact for both allowed types.
-
-All four test bodies and prior 69 assertions are unchanged across A/B. The final
-fixture adds only an on_close double checking the actual reason/lock arguments.
-Across 30 input/44 part receipts, only connection.rs, that auxiliary double and
-the extracted request arm differ. The type predicates, CM sender/deadline,
-dependencies and other parts remain exact. Source review also covers the normal
-tail and closed guard: cleanup with lock=false precedes the generic End/lock=true
-tail, preserving CM-failure policy. An intermediate 73/73 execution is retained;
-the final candidate is rerun for this cleanup correction.
-
-Actual request/type/sender bodies and generated protobufs execute in the isolated
-Linux component with real bounded CM channels. Post-auth identity, input-lease
-presence, wall clock, unused voice-close and on_close effects are explicit doubles.
-No complete server, CPace/kernel identity, native CM IPC, physical audio or installed
-artifact executes. The caught panic uses the test profile; release abort behavior
-is unexecuted. Scope is admission/control flow, not complete cleanup or LPE immunity.
-
-Evidence: `.harness-state/verifier-vm/controlled-voice-admission-161fc857.json`.
-Complete peer/CM per-call authority, native audio/resource finality, rendered UI,
-full parent, installed/other-platform behavior, all fifteen credential actions,
-R-S0/R-F5, soak and release acceptance remain OPEN. All user parks are unchanged.
-
-**CM voice per-call authority — source and Linux component verified; full native
-IPC/audio/UI acceptance OPEN.** `c0a9a93d` replaces the bare bool response/string
-stop protocol with separate closed command/event enums carrying a call ID. The
-connection mints checked positive IDs independently of peer request timestamps,
-retains an ID through pending/active ownership and retires it on refusal/close.
-IDs do not wrap or repeat within a connection; existing connection capability and
-registry generation scope them across connection lifetimes. They are not new
-credentials or durable identities.
-
-CM state mutation belongs to the registry: only a live voice-capable current owner
-may publish a fresh Incoming while idle, Started for its exact pending call, or
-Closed for its exact pending/active call. A retained consumed-ID watermark refuses
-replayed incoming IDs. Invalid transitions preserve state. CM FFI admission checks
-the displayed registry generation, positive call ID and required phase before
-cloning its sender. The private controlled dispatcher rechecks type, call ID and
-phase when the queued command is consumed; only pending calls accept Respond and
-only active calls accept Stop. Old actions cannot select a later call.
-
-Desktop/mobile/dialog callbacks retain an immutable triple of connection ID,
-registry generation and call ID before installation. Client equality, copying,
-serialization and incremental state updates include the call ID. Web placeholders
-require the new argument; iOS retains explicit refusal. The old IPC variants and
-public unbound controlled effect methods are removed. Network voice schema and
-viewer behavior are unchanged. Desktop/Android real-IPC test fixtures are adapted
-but unexecuted; full parent/bootstrap remains parked.
-
-Typed API preparation `d16e3baf` deliberately retains old selection. The native
-77-case baseline passes 74 and fails all three new authority tests. Each action
-admits 36 ID/phase combinations although only two are valid; the controlled
-dispatcher also selects 36. Event updates admit 36 each instead of 6/2/4 valid
-Incoming/Started/Closed transitions. The identical corrected cohort passes 77/77
-in 7.05 native seconds, 109 outer. Each of the three new matrices executes 108
-contexts; issuer controls cover both allowed types, repeated peer IDs, last
-positive ID, exhaustion and negative counter refusal. All prior 73 assertions
-remain, with typed message/phase fixture adaptations. Across 30 inputs/45 parts,
-only connection.rs, ui_cm_interface.rs and their registry/sender/command parts
-differ. Locked dependencies and tests are identical A/B.
-
-Actual registry, FFI, real CM queues, request issuance and controlled command
-dispatch execute. Post-auth identity, lease presence, clock, audio/close/send
-effects are explicit doubles. Complete handlers, native CM IPC, OS principals,
-physical audio and cleanup are not established. The bounded failed-run printer
-omits 24 successful prior viewer mismatch rows; its unchanged test passes and
-retains its source binding. The unchanged 512-record ceiling remains.
-
-Fresh pinned bridge generation and caller/import compilation pass with 47 Dart
-cases and three result-parser controls in 259 outer seconds. Two new production
-model tests retain the immutable triple after Client mutation and verify voice-ID
-equality/copy/serialization. Existing 45 controls pass. These do not execute voice
-buttons/dialogs, native bridge transport or Android notifications. The first Dart
-attempt stopped before generation/tests on one formatting wrap; its diagnostic
-and joined retirement are retained. No duplicate native run followed that Dart-only
-format correction.
-
-Evidence: `.harness-state/verifier-vm/cm-call-authority-d14134b4.json`.
-Real peer/CM IPC and audio/resource finality, rendered voice controls/dialogs,
-Android notification/device behavior, full parent, installed/other-platform and
-cross-version execution, all fifteen credential actions, R-S0/R-F5, soak and
-release acceptance remain OPEN. All user parks remain unchanged.
-
-Historical `--flutter-model-tests --peer-data` source `c4acc5ce` passed all ten named tests and three
-result-parser controls in 277 outer seconds with fresh bridge/import compilation. The same tests
-on `6dfedef7` passed eight cases and failed the two live-metadata privacy cases, exposing synthetic
-private values in actual Dart exception diagnostics. That whole baseline transaction remains
-unaccepted because two unattributed host endpoint additions were recorded and left untouched.
-The corrected transaction has matching source/control captures, unchanged endpoint inventories
-and joined bounded-RAM cleanup. Evidence is retained in
-`.harness-state/verifier-vm/live-peer-baseline-6dfedef7.json` and
-`.harness-state/verifier-vm/live-peer-corrected-c4acc5ce.json`; prior cached-decoder A/B evidence
-remains in `cached-peer-baseline-110cc6d3.json` and `cached-peer-corrected-d5c61913.json` there.
-These are production Dart/model results on Linux. Actual Rust event delivery, native window/peer/
-installed-platform and package log capture, broader diagnostic secrecy, prepared-runtime reuse
-and faster focused setup remain OPEN. No performance improvement is claimed.
-
-Exact-current Rust application compilation, complete fresh bridge absence inspection, built-package asset/symbol inventories,
-installed-platform checks, cold R-B2/R-B10 equality, independent reproduction, and external review
-remain required. R-S11gr's generated-bridge/model checkpoint is not a complete compilation or
-account-symbol/package absence inventory. Broader cross-platform connection-flow, latency,
-resource, background/focus, reconnect, and cleanup acceptance also remains OPEN.
+No new authentication-bypass/LPE closure, production log leak, performance gain or
+cause of displayed lag is established by these component results. The privileged
+startup/config-loader and broader outgoing chat generation reviews remain
+OPEN/PARKED; neither established LPE or wrong-peer delivery. Credential-factory,
+full-parent/bootstrap, logging, Windows VM storage and every other user park remain
+parked. Documentation consolidation does not authorize resuming them.
 
 ### R-S11hk/R-S11e-248 — bounded exact-session file-confirm ownership
 
@@ -16934,7 +16619,7 @@ manifest SHA-256
 `e09cd86e2c54ef0df9348fad5343ce051b2ee28fecc7808e50228474fd32da34`).
 
 **Native source selection and recording retirement passed — `6325be96`.**
-System Sound resolves the current default output's monitor through PulseAudio
+At that historical source, System Sound resolves the current default output's monitor through PulseAudio
 metadata. An explicit description must select exactly one available source;
 missing or duplicate descriptions cannot fall back to another monitor. Recording
 uses `DONT_MOVE` and checks the resolved native source index. Default-output
@@ -16974,8 +16659,9 @@ reconciled and removed. That failed run supplies no executable or whole-run acce
 
 **Still OPEN:** installed-service/root principals, wrong-UID and PID-reuse
 races, real subscriber churn and capture restart, sustained latency,
-CPU/memory/handle bounds, real-device changes, and other platforms. The UI still
-stores descriptions, so duplicate device names need a distinct selection path.
+CPU/memory/handle bounds, real-device changes, and other platforms. Distinct-ID UI
+selection is now the unaccepted `f5df7a96` candidate, OPEN/PARKED after its native
+compile failure as recorded in the user-pivot entry above; no UI acceptance ran.
 Whole-service automatic recovery and peer audio after default-output changes are
 not established by directly starting a fresh capture in the native fixture. The
 ordinary-user process-pair run proves neither installed service authority nor

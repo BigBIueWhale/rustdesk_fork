@@ -106912,3 +106912,59 @@ installed root/service principals and identity races, sustained resource/latency
 acceptance, other platforms, R-S0/R-F5, release artifacts and independent review.
 No complete settings functionality or universal escalation immunity is claimed.
 Requirements and live instructions remain unchanged; the overall goal stays active.
+
+## 2026-10-27 — User pivot: park audio identity; consolidate R-S11hj current state
+
+The user explicitly requested another aspect. Audio device identity and its UI
+integration are OPEN/PARKED; no further audio fix or test was performed after
+that request. Preparation 2edea60c adds a real PulseAudio source-name regression.
+Baseline GlxpzGBmud passes fourteen cases and fails the new case: both explicit
+native names refuse, and the default-input result is None. Source discovery itself
+passes; it is not empty. The earlier in-memory diagnostic-retirement reason
+incorrectly called discovery empty and is not evidence of that claim.
+
+Candidate f5df7a96 carries native source IDs separately from labels through the
+Rust/Dart bridge and all three selectors, uses exact-name capture, and obtains
+the default source from server info. It also prepares the focused --audio-input
+Flutter profile. Existing descriptions require explicit reselection. Research
+used PulseAudio source/server-info API documentation, Flutter DropdownButton's
+distinct-value contract, and pinned rust-pulsectl 0.2.12 source (its source
+get_default_device uses the default sink name). These are design inputs, not
+acceptance. The already-running candidate Xpx8oOCvqz finishes with exit 1 before
+behavior: E0277 at src/platform/linux.rs:2787 because ControllerError lacks Display.
+No compile repair, Flutter execution, candidate pass or installed acceptance is claimed.
+Serial SHA-256 e32d0f3c172d8aff397e629c69b84c7880918d867cf627a813bd0b88dbcf35ea
+binds its 81,175 bytes. Both native runs join QEMU, retire RAM scratch and have
+zero additions/removals in all listener snapshots. After exact identity, absent
+PID/workspace/socket and bounded-file checks under the shared idle lock, candidate
+diagnostics are preserved as pa-source-names-parked-build.Xpx8oOCvqz.
+
+The new slice addresses the binding documentation-architecture backlog. At
+f5df7a96, the R-S11hj/R-S11e-247 ledger section contains 435 lines/34,626 bytes:
+account absence and retained peer metadata alongside chat/CM/voice implementation
+history, repeated runtime caveats, detailed A/B schedules and duplicate release
+obligations. Read the full section, its normative contract, service-authority
+checklist and Appendix C #25–#29 before classification. Current source locations
+and all 24 retained receipt paths were inspected. No obsolete artifact or test
+was deleted merely because it was large; no product or verifier was changed.
+
+The replacement preserves the section heading/anchor, every receipt reference,
+current behavior, positive/refusal outcomes, actual evidence layers and unique
+open acceptance obligations. Detailed historical schedules, setup failures and
+timings remain in those capsules and Git history. Shared limitations are stated
+once. In particular, the later CM per-call contract is distinguished from earlier
+generation-only evidence; queue admission remains distinct from peer completion;
+component doubles never become installed/native acceptance. The credential API,
+startup/chat review, full-parent/bootstrap and other explicit parks remain parked.
+The whole-file requirements and live instruction bytes are unchanged, as are all
+product, test, harness and dependency files. The top-level audio park and the
+historical-audio evidence qualification are the only other ledger edits.
+
+Before editing, the complete ledger is 1,585,536 bytes, SHA-256
+b14f6cf4a4517c5565c1a97a0460266b08e798666be5bfecc4f9d49a7ba17f07,
+with the existing exact-input count of 348,883 tokens. Read-only scope, receipt,
+heading and byte comparisons plus a fresh isolated complete-ledger count are
+retained in .harness-state/verifier-vm/account-ledger-f5df7a96.json. No new product
+behavior test is justified by this documentation-only slice. All fifteen native
+credential actions, current application/package absence inventories, R-S0/R-F5,
+independent reproduction and release acceptance remain OPEN; the goal stays active.

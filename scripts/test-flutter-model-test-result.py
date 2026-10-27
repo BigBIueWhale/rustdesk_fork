@@ -155,7 +155,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("share-rdp"), "share-rdp"), (1, 4))
         self.assertEqual(self.parse(self.events("window-dispatch"), "window-dispatch"), (1, 8))
         self.assertEqual(self.parse(self.events("peer-data"), "peer-data"), (4, 82))
-        self.assertEqual(self.parse(self.events("file-progress"), "file-progress"), (1, 36))
+        self.assertEqual(self.parse(self.events("file-progress"), "file-progress"), (1, 43))
         self.assertEqual(self.parse(self.events("audio-input"), "audio-input"), (2, 17))
         self.assertEqual(self.parse(self.events("custom-scale"), "custom-scale"), (1, 35))
         self.assertEqual(self.parse(self.events("file-navigation"), "file-navigation"), (7, 125))

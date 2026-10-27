@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/models/file_model.dart';
 import 'package:flutter_hbb/mobile/widgets/file_job_status.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 import 'package:uuid/uuid.dart';
 
@@ -107,6 +109,171 @@ class _StatusHarness {
 
 
 void main() {
+
+  test('folder summary accepts native whole-number totals', () {
+    final h = _ProgressHarness();
+    h.job.fileCount = 2;
+    h.job.totalSize = 100;
+    for (final sample in [
+      (count: 0, bytes: 0.0),
+      (count: 3, bytes: 1264822.0),
+      (count: 10000, bytes: 4294967296.0),
+      (count: 1, bytes: 9007199254740992.0),
+    ]) {
+      final before = h.snapshot;
+      h.controller.updateFolderFiles(
+          {'info': jsonEncode({'id': 7, 'num_entries': sample.count,
+            'total_size': sample.bytes})}, h.session);
+      expect(h.job.fileCount, sample.count);
+      expect(h.job.totalSize, sample.bytes.toInt());
+      expect(h.snapshot, before);
+      expect(h.job.state, JobState.inProgress);
+    }
+  });
+
+  test('folder summary accepts exact integer totals without rounding', () {
+    final h = _ProgressHarness();
+    for (final bytes in [0, 4294967297, 9007199254740993, 9223372036854775807]) {
+      h.controller.updateFolderFiles(
+          {'info': jsonEncode({'id': 7, 'num_entries': 1,
+            'total_size': bytes})}, h.session);
+      expect(h.job.fileCount, 1);
+      expect(h.job.totalSize, bytes);
+    }
+  });
+
+  test('folder summary refuses malformed shapes and oversized input', () {
+    final h = _ProgressHarness();
+    h.job.fileCount = 2;
+    h.job.totalSize = 100;
+    final valid = '{"id":7,"num_entries":3,"total_size":120.0}';
+    final rejected = <Object?>[
+      null, true, 7, <Object>[], <String, Object>{},
+      '', '{', 'null', 'false', '7', '[]', '{}',
+      '{"id":7,"num_entries":3}', '[$valid]', '$valid trailing',
+      '{"id":7,"num_entries":3,"total_size":120.0,"extra":"private-summary"}',
+      valid.padRight(257),
+    ];
+    final exceptions = <int>[];
+    final changed = <int>[];
+    for (var i = 0; i < rejected.length; i++) {
+      try {
+        h.controller.updateFolderFiles({'info': rejected[i]}, h.session);
+      } catch (_) {
+        exceptions.add(i);
+      }
+      if (h.job.fileCount != 2 || h.job.totalSize != 100) changed.add(i);
+      h.job.fileCount = 2;
+      h.job.totalSize = 100;
+    }
+    expect(exceptions, isEmpty);
+    expect(changed, isEmpty);
+    h.controller.updateFolderFiles({'info': valid.padRight(256)}, h.session);
+    expect([h.job.fileCount, h.job.totalSize], [3, 120]);
+  });
+
+  test('folder summary refuses invalid action and count fields', () {
+    final exceptions = <String>[];
+    final changed = <String>[];
+    for (final field in ['id', 'num_entries']) {
+      for (final value in <Object?>[
+        null, true, '7', <Object>[], <String, Object>{}, -1,
+        1.5, 7.0, 2147483648, if (field == 'id') 0,
+      ]) {
+        final h = _ProgressHarness();
+        h.job.fileCount = 2;
+        h.job.totalSize = 100;
+        final info = <String, Object?>{
+          'id': 7, 'num_entries': 3, 'total_size': 120.0,
+        }..[field] = value;
+        final label = '$field/${value.runtimeType}/$value';
+        try {
+          h.controller.updateFolderFiles({'info': jsonEncode(info)}, h.session);
+        } catch (_) {
+          exceptions.add(label);
+        }
+        if (h.job.fileCount != 2 || h.job.totalSize != 100) changed.add(label);
+      }
+    }
+    expect(exceptions, isEmpty);
+    expect(changed, isEmpty);
+  });
+
+  test('folder summary refuses invalid totals without partial mutation', () {
+    final exceptions = <String>[];
+    final changed = <String>[];
+    for (final value in [
+      'null', 'true', '"120"', '[]', '{}', '-1.0', '0.5',
+      '1e999', '-1e999', '9223372036854775808.0', '1e30',
+    ]) {
+      final h = _ProgressHarness();
+      h.job.fileCount = 2;
+      h.job.totalSize = 100;
+      try {
+        h.controller.updateFolderFiles(
+            {'info': '{"id":7,"num_entries":3,"total_size":$value}'}, h.session);
+      } catch (_) {
+        exceptions.add(value);
+      }
+      if (h.job.fileCount != 2 || h.job.totalSize != 100) changed.add(value);
+      h.controller.updateFolderFiles(
+          {'info': '{"id":7,"num_entries":4,"total_size":200.0}'}, h.session);
+      expect([h.job.fileCount, h.job.totalSize], [4, 200]);
+    }
+    expect(exceptions, isEmpty);
+    expect(changed, isEmpty);
+  });
+
+  test('folder summary preserves stale unknown and nontransfer owners', () {
+    final h = _ProgressHarness();
+    h.job.fileCount = 2;
+    h.job.totalSize = 100;
+    final info = {'info': '{"id":7,"num_entries":3,"total_size":120.0}'};
+    h.controller.updateFolderFiles(info, const Uuid().v4obj());
+    h.controller.updateFolderFiles(
+        {'info': '{"id":8,"num_entries":3,"total_size":120.0}'}, h.session);
+    expect([h.job.fileCount, h.job.totalSize], [2, 100]);
+    for (final type in [JobType.none, JobType.deleteFile, JobType.deleteDir]) {
+      h.job.type = type;
+      h.controller.updateFolderFiles(info, h.session);
+      expect([h.job.fileCount, h.job.totalSize], [2, 100]);
+    }
+    h.job.type = JobType.transfer;
+    h.controller.updateFolderFiles(info, h.session);
+    expect([h.job.fileCount, h.job.totalSize], [3, 120]);
+  });
+
+  testWidgets('folder summary renders recovery without disclosing payloads',
+      (tester) async {
+    final h = _ProgressHarness();
+    h.job.fileCount = 2;
+    h.job.totalSize = 100;
+    final messages = <String>[];
+    final original = debugPrint;
+    debugPrint = (message, {wrapWidth}) => messages.add(message ?? '');
+    try {
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body: Obx(() {
+        final job = h.controller.jobTable.single;
+        return Text('${job.fileCount} files / ${job.totalSize} bytes');
+      }))));
+      expect(find.text('2 files / 100 bytes'), findsOneWidget);
+      h.controller.updateFolderFiles(
+          {'info': '{"id":7,"num_entries":3,"total_size":120.0,'
+              '"extra":"private-folder-marker"}'}, h.session);
+      await tester.pump();
+      expect(find.text('2 files / 100 bytes'), findsOneWidget);
+      h.controller.updateFolderFiles(
+          {'info': '{"id":7,"num_entries":4,"total_size":200.0}'}, h.session);
+      await tester.pump();
+      expect(find.text('4 files / 200 bytes'), findsOneWidget);
+      expect(messages.join('\n'), isNot(contains('private-folder-marker')));
+      expect(tester.takeException(), isNull);
+    } finally {
+      debugPrint = original;
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
   for (final direction in TextDirection.values) {
     testWidgets('mobile action sheet keeps long ${direction.name} text and actions inside a narrow screen',
         (tester) async {

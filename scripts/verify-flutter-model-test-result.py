@@ -798,6 +798,13 @@ FILE_COMMAND_TESTS = {
     "new file job owners share admission with listing owners",
 }
 FILE_PROGRESS_TESTS = {
+    "folder summary accepts native whole-number totals",
+    "folder summary accepts exact integer totals without rounding",
+    "folder summary refuses malformed shapes and oversized input",
+    "folder summary refuses invalid action and count fields",
+    "folder summary refuses invalid totals without partial mutation",
+    "folder summary preserves stale unknown and nontransfer owners",
+    "folder summary renders recovery without disclosing payloads",
     "mobile action sheet keeps long ltr text and actions inside a narrow screen",
     "mobile action sheet keeps long rtl text and actions inside a narrow screen",
     "mobile action sheet grows for accessibility text without overflow",

@@ -107758,3 +107758,57 @@ Primary references inspected: Flutter 3.24.5 packages/flutter/lib/src/gestures/m
 and api.dart.dev/dart-async/Timer/cancel.html. The local periodic_immediate body is
 the source of the separate queued Future. Full mobile/device input, session
 retargeting and R-S0/R-F5/installed-platform acceptance remain OPEN.
+
+Result: b7f81c859ad01f0b34f67080f736571553f4255c replaces only this control's
+periodic_immediate call. A synchronous first send and a retained periodic Timer
+eliminate the unowned zero-delay Future; the existing disposal and pan-end paths
+cancel both owned timers. No mounted guard hides an otherwise runnable callback.
+No change to the shared helper, movement adapters, gesture recognizer or peer sort.
+
+Preparation 2a0bc6f57bde705c751bb66d45c26c4ec4ab9740 compiles the widget but
+T8GA8fE0jo stops all eight cases at a fixture assertion: center-down correctly has
+zero movement. 02a691adc29c27754696d70aefb07ba2128e3e66 starts the test gesture
+off-center and explicitly observes fresh-drag recovery. Product bytes are unchanged.
+At that baseline, mnwHorVvW9 passes six controls and fails both queued-removal cases:
+after unmount, releasing the ready callback increases movement-adapter calls from
+two to three. The same eight test bodies at b7f81c85 pass as dnrYbLxrxD, including
+the actual Flutter pointer-cancel paths before/after hold, normal drag/up, retry,
+early removal and delayed ready-callback delivery in absolute/relative modes.
+Three parser controls and complete outer acceptance pass in 277 seconds. Tests
+observe rendered production widget/gesture/timer behavior and explicit movement
+adapter doubles; no actual remote pointer, mobile OS or native input sink is claimed.
+
+Source identities:
+- Baseline tree 178edb2de53df99ba96b144d8af72cfe97df1fea; widget SHA-256
+  75ada52235a596878389dfa12f18c8504d5a7678eb992b5f3bb7950c81063b39.
+- Candidate tree 8410a71cf26a2485a81c1467d9abef19bb03bda7; widget SHA-256
+  c4cbfd3b99d11e514b19805b6889c04ac5d925cda607bb67e85d9e93d614d463.
+- Identical baseline/candidate test SHA-256
+  45b1734dabc12eed989c7f642b93a466bf5881f347dc027afcb1b3abcafe6203.
+- Flutter 3.24.5; fresh FRB tool 5f8b26a0aadbe8a14aa7cb3ba5ca55e7d1a6d5c751381d3119e73cfc686c2ad0;
+  cargo closure b1c746659a19393c8f38e5b36ab76f357d4f7089c53cf45ffca8a45ec7a4f1d6;
+  pub closure e3e364cd012f19a374655ade92fc49e5c1aa631de367575ad9c5368908264c12.
+  Builder index/runtime 48596720e13492e8a511b35ad88932f23f19dd9271b9eb3da3c12c016698dabb /
+  304b251e77fafe03192e035cc22479e0909d688035fbd30b1ac685e878ae9646.
+
+Retained serials in .harness-state/verifier-vm with matching storage/listener records:
+- flutter-model-tests-run.T8GA8fE0jo.serial.log: 86,790 bytes,
+  2eaa592dbdda9b009b4322c18f1427672f971be792802841c1dbf6515e39a0eb.
+- flutter-model-tests-run.mnwHorVvW9.serial.log: 75,727 bytes,
+  7a5e4faf766f5d6896acafc0bdc728853ada2ff46a896f186a1d3e7d63299606.
+- flutter-model-tests-run.dnrYbLxrxD.serial.log: 72,463 bytes,
+  ef03cb775002f482d5dd866b6ef74f87072a9bc9f485925641114ff4e9e3098c.
+
+All three use the existing 4-GiB guest/7-GiB RAM scratch/6-GiB file ceiling profile.
+Supervisor durations are 257.853/255.286/282.992 seconds; RAM peaks are
+6,362,632,192/6,366,105,600/6,364,073,984 bytes; durable peaks are
+3,321,856/3,313,664/3,305,472 bytes. Exact QEMU processes join with exit 0 and all
+RAM workspaces disappear. Failed diagnostics are identity-reconciled without
+deletion as joystick-fixture.T8GA8fE0jo and joystick-baseline.mnwHorVvW9. No active
+marker remains. Fixture endpoint deltas are zero. Baseline/candidate before/during
+deltas are zero; final snapshots retain an unattributed 18-byte addition and
+36-byte removal respectively, without owner inspection or mutation. Ordinary
+repo/Git operations and owned isolation only; controlling instructions and all
+twelve stashes remain unchanged. Full device/input/session-retargeting acceptance,
+all fifteen credential actions, R-S0/R-F5 and release remain OPEN. The eight-case
+behavioral run will not be repeated for the following ledger-only count.

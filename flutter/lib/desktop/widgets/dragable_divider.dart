@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 class DraggableDivider extends StatefulWidget {
@@ -24,16 +25,31 @@ class DraggableDivider extends StatefulWidget {
 class _DraggableDividerState extends State<DraggableDivider> {
   @override
   Widget build(BuildContext context) {
-    return Listener(
-      onPointerMove: (event) {
-        final dl = widget.axis == Axis.horizontal
-            ? event.localDelta.dy
-            : event.localDelta.dx;
-        widget.onPointerMove?.call(dl);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      dragStartBehavior: DragStartBehavior.down,
+      excludeFromSemantics: true,
+      supportedDevices: const {
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.touch,
+        PointerDeviceKind.stylus,
+        PointerDeviceKind.invertedStylus,
       },
-      onPointerHover: (event) => widget.onHover?.call(),
+      onHorizontalDragUpdate:
+          widget.axis == Axis.vertical && widget.onPointerMove != null
+              ? (event) => widget.onPointerMove?.call(event.delta.dx)
+              : null,
+      onVerticalDragUpdate:
+          widget.axis == Axis.horizontal && widget.onPointerMove != null
+              ? (event) => widget.onPointerMove?.call(event.delta.dy)
+              : null,
       child: MouseRegion(
-        cursor: SystemMouseCursors.resizeLeftRight,
+        onHover: (event) => widget.onHover?.call(),
+        cursor: widget.onPointerMove == null
+            ? SystemMouseCursors.basic
+            : widget.axis == Axis.vertical
+                ? SystemMouseCursors.resizeLeftRight
+                : SystemMouseCursors.resizeUpDown,
         child: Padding(
           padding: widget.padding,
           child: Container(

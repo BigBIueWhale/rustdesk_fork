@@ -741,6 +741,13 @@ FILE_NAVIGATION_TESTS = {
     "new local listing owners share retained dispatch admission",
 }
 FILE_COMMAND_TESTS = {
+    "delete remote file failure is visible and stops the batch",
+    "delete remote directory failure is visible and stops the batch",
+    "delete local file failure is visible and stops the batch",
+    "delete local directory failure is visible and stops the batch",
+    "delete listing failure stops before the next selected entry",
+    "delete allocation failure is visible and permits a fresh retry",
+    "delete retired failure cannot replace the current dialog",
     "native file-job allocation failures cannot dispatch fallback IDs",
     "retired send continuation cannot target replacement session",
     "send operation snapshots entries and directory arguments at admission",

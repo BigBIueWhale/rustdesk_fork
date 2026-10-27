@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/dialog.dart';
+import 'package:flutter_hbb/common/widgets/overlay.dart';
 import 'package:flutter_hbb/models/file_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uuid/uuid.dart';
@@ -160,7 +161,206 @@ Matcher get _capacityError => isA<StateError>().having(
 Matcher get _retiredError => isA<StateError>().having(
     (error) => error.message, 'message', 'Superseded file-transfer session');
 
+class _DeleteHarness {
+  _DeleteHarness({this.isLocal = false});
+
+  final bool isLocal;
+  final session = const Uuid().v4obj();
+  late var currentSession = session;
+  final manager = OverlayDialogManager(translateText: _identityTranslate);
+  final calls = <List<Object>>[];
+  final dispatches = <Completer<void>>[];
+  final results = <Future<Object?>>[];
+  var nextId = 0;
+  var failAllocation = false;
+  var failListing = false;
+  var refreshes = 0;
+  late JobController jobs;
+  late FileFetcher fetcher;
+  late FileController controller;
+
+  Future<void> mount(WidgetTester tester) async {
+    final overlay = BlockableOverlayState();
+    manager.setOverlayState(overlay);
+    jobs = JobController(() => currentSession, () => manager,
+        isCurrentSession: (actual) => actual == currentSession,
+        nextJobId: () {
+          if (failAllocation) throw StateError('allocation failed');
+          return ++nextId;
+        });
+    String listing(String path, int id) =>
+        jsonEncode({'id': id, 'path': path, 'entries': []});
+    fetcher = FileFetcher(() => currentSession,
+        requests: FileFetcherRequests(
+          readDirectory: (actual, path, hidden) async {
+            refreshes++;
+            fetcher.tryCompleteTask(actual, listing(path, 0), 'false');
+          },
+          readLocalDirectory: (actual, path, hidden) async {
+            refreshes++;
+            return listing(path, 0);
+          },
+          readEmptyDirectories: (_, __, ___) async {},
+          readDirectoryTree: (actual, id, path, remote, hidden) async {
+            if (failListing) throw StateError('listing denied');
+            fetcher.tryCompleteTask(actual, listing(path, id), '${!remote}');
+          },
+        ));
+    Future<void> dispatch(int id, String path, bool remote, int fileNum) {
+      calls.add([id, path, remote, fileNum]);
+      final pending = Completer<void>();
+      dispatches.add(pending);
+      return pending.future;
+    }
+    controller = FileController(
+      isLocal: isLocal,
+      getSessionID: () => currentSession,
+      getDialogManager: () => manager,
+      isCurrentSession: (actual) => actual == currentSession,
+      getPeerPlatform: () => 'Linux',
+      comparePeerVersion: (_) => 1,
+      jobController: jobs,
+      fileFetcher: fetcher,
+      getOtherSideDirectoryData: () =>
+          DirectoryData(FileDirectory(), DirectoryOptions()),
+      translateText: _identityTranslate,
+      requests: _controllerRequests(
+        removeFile: (actual, id, path, remote, num) =>
+            dispatch(id, path, remote, num),
+        removeEmptyDirectories: (actual, id, path, remote) =>
+            dispatch(id, path, remote, 0),
+      ),
+    );
+    controller.directory.value.path = '/files';
+    await tester.pumpWidget(MaterialApp(
+      home: BlockableOverlay(state: overlay, underlying: const SizedBox.expand()),
+    ));
+  }
+
+  Future<Object?> start({bool directory = false}) {
+    final entry = _file('first', '/files/first');
+    if (directory) entry.entryType = 0;
+    final selected = controller.selectedItems;
+    selected.clear();
+    selected.add(entry);
+    selected.add(_file('successor', '/files/successor'));
+    final Future<dynamic> operation = controller.removeAction(selected);
+    final result = operation.then<Object?>((value) => value,
+        onError: (Object error, StackTrace _) => error);
+    results.add(result);
+    return result;
+  }
+
+  Future<void> confirm(WidgetTester tester) async {
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+  }
+
+  void fail({bool directory = false}) {
+    final call = calls.last;
+    if (directory && isLocal) {
+      dispatches.last.completeError(StateError('delete denied'));
+    } else {
+      jobs.jobError({
+        'id': '${call[0]}', 'file_num': '${call[3]}', 'err': 'delete denied',
+      }, session);
+      dispatches.last.complete();
+    }
+  }
+
+  Future<void> drain(WidgetTester tester) async {
+    currentSession = const Uuid().v4obj();
+    manager.dismissAll();
+    jobs.clear();
+    for (final dispatch in dispatches) {
+      if (!dispatch.isCompleted) dispatch.complete();
+    }
+    await Future.wait(results);
+    await tester.pumpWidget(const SizedBox.shrink());
+  }
+}
+
 void main() {
+  for (final local in [false, true]) {
+    for (final directory in [false, true]) {
+      testWidgets('delete ${local ? "local" : "remote"} ${directory ? "directory" : "file"} failure is visible and stops the batch',
+          (tester) async {
+        final h = _DeleteHarness(isLocal: local);
+        await h.mount(tester);
+        addTearDown(() => h.drain(tester));
+        final result = h.start(directory: directory);
+        await h.confirm(tester);
+        expect(h.calls, hasLength(1));
+        h.fail(directory: directory);
+        await tester.pumpAndSettle();
+        expect(await result, isFalse);
+        expect(find.textContaining('delete denied', findRichText: true), findsWidgets);
+        expect(h.jobs.jobTable.single.state, JobState.error);
+        expect(h.calls, hasLength(1));
+        expect(h.refreshes, 0);
+        expect(h.controller.selectedItems.items, hasLength(2));
+      });
+    }
+  }
+
+  testWidgets('delete listing failure stops before the next selected entry',
+      (tester) async {
+    final h = _DeleteHarness()..failListing = true;
+    await h.mount(tester);
+    addTearDown(() => h.drain(tester));
+    final result = h.start(directory: true);
+    await tester.pumpAndSettle();
+    expect(await result, isFalse);
+    expect(find.textContaining('listing denied', findRichText: true), findsWidgets);
+    expect(h.calls, isEmpty);
+    expect(h.refreshes, 0);
+    expect(find.text('This is irreversible!'), findsNothing);
+  });
+
+  testWidgets('delete allocation failure is visible and permits a fresh retry',
+      (tester) async {
+    final h = _DeleteHarness()..failAllocation = true;
+    await h.mount(tester);
+    addTearDown(() => h.drain(tester));
+    final failed = h.start();
+    await tester.pumpAndSettle();
+    expect(await failed, isFalse);
+    expect(find.textContaining('allocation failed', findRichText: true), findsWidgets);
+    expect(h.calls, isEmpty);
+    h.manager.dismissAll();
+    h.failAllocation = false;
+    final retry = h.start();
+    await h.confirm(tester);
+    await h.jobs.jobDone({'id': '1', 'file_num': '0'}, h.session);
+    h.dispatches.single.complete();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(await retry, isTrue);
+    expect(h.jobs.jobTable.first.state, JobState.done);
+    expect(h.calls, hasLength(1));
+    expect(h.refreshes, 1);
+  });
+
+  testWidgets('delete retired failure cannot replace the current dialog',
+      (tester) async {
+    final h = _DeleteHarness();
+    await h.mount(tester);
+    addTearDown(() => h.drain(tester));
+    final result = h.start(directory: true);
+    await h.confirm(tester);
+    h.currentSession = const Uuid().v4obj();
+    h.jobs.clear();
+    msgBox(h.currentSession, 'custom-error', 'Error', 'Current dialog', '', h.manager);
+    h.dispatches.single.completeError(StateError('retired failure'));
+    await tester.pumpAndSettle();
+    expect(await result, isFalse);
+    expect(find.textContaining('Current dialog', findRichText: true), findsWidgets);
+    expect(find.textContaining('retired failure', findRichText: true), findsNothing);
+    expect(h.calls, hasLength(1));
+  });
+
   test('native file-job allocation failures cannot dispatch fallback IDs',
       () async {
     final session = const Uuid().v4obj();

@@ -108281,3 +108281,17 @@ credential acceptance, all fifteen authority actions, R-S0/R-F5, independent
 review, release acceptance and every prior user park remain open. No additional
 product check is required for the documentation-only ledger update; its fresh
 token count is recorded next.
+
+Ledger count at `660c6090`, run `EcCgQCs8Nw`: **350,709 tokens / 1,593,000
+bytes**, input SHA-256
+`3d367a8366df8a8ae13b40058537c5e890732c3bb753a7529325cd14f7f6a912`.
+The pinned tiktoken-0.12.0/cl100k_base/encode_ordinary method, seven controls
+and exact UTF-8 round trip pass, below the approximate 400,000-token budget.
+Serial: 97,412 bytes, SHA-256
+`0cdae956299415e16f5e4cdc079170bfc0f539b757ac66c2a8888fd07b1870ac`.
+Outer/supervisor times are 29/31.476 seconds; peak RAM scratch 402,329,600 bytes,
+durable evidence 147,456 bytes. QEMU 3131787 joined with exit 0, RAM
+`run._4timd29` retired, and no active run roots remain. Before/during deltas are
+zero; the final snapshot has one unattributed endpoint removal, left untouched.
+All twelve parked stashes retain their original identities. The following
+audit-only receipt commit changes neither the counted ledger nor tested product.

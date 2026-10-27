@@ -107548,3 +107548,13 @@ full-parent work stay parked. Native/installed authority, all fifteen credential
 actions, app/settings functionality, other platforms, resource/latency soaks,
 R-S0/R-F5, cold release equality and external review remain OPEN. Focused shell
 syntax and diff checks pass; the fresh complete ledger count follows.
+
+At clean pushed 46768bdb, --ledger-token-count passed as xhdIMZlgzk in 28 outer
+seconds: 348,753 tokens / 1,583,816 bytes, input SHA-256
+7e467837f4018996fed3beec6c64d143dca926fbc66ff9c9cdf6e5dbb92ceab3.
+The established tiktoken 0.12.0 / cl100k_base / encode_ordinary method passed
+seven controls and the complete byte round trip, within the approximate 400,000
+token budget. Retained ledger-token-count-run.xhdIMZlgzk.serial.log is 96,216
+bytes, SHA-256 1f957ffac37f0ec1a95962b84fa93088570f1d342cce95d9f3fbacb1fd31eb47.
+All endpoint deltas are zero. Exact QEMU, RAM workspace and active run markers
+are absent after joined cleanup. No product source changed after its accepted run.

@@ -109613,3 +109613,18 @@ The admitted bin is nonempty and within 0–65535; all intermediate values fit i
 This also handles near-65536-wide layouts where simply truncating a fractional
 pixel centre can still select the previous pixel. Both axes are checked before
 the existing SendInput path. The five tests and VM execution recipe are unchanged.
+
+Candidate `9dfd6eb6` / `vrGIgMm9nd` passes all five tests, including 535,116
+pixel round trips, on artifact
+`988477abc61d054a19e1fbf70e4aa3a4ac2aa5cf515091836d66c1ef6683e68f`.
+The enclosing runner correctly rejects the transaction because the new profile
+omitted its required offline socket canary. Add the actual ENETUNREACH check
+before compilation; product and tests remain unchanged. This is a harness repair,
+not an accepted overall run or a reason to weaken the isolation gate.
+Serial 70,397 bytes, SHA-256
+`098e09ceebb6ab475ab33ebd53668e676520988f3eb1b20b5004992db45b03f0`.
+Supervisor 66.912 seconds, peak RAM 3,408,461,824 bytes and durable evidence
+3,305,472 bytes. QEMU 3846487 joined with exit 0, PID and RAM `run.bid49d_3`
+are absent, all four endpoint deltas are zero, and exact locked retirement retains
+`windows-pointer-canary-missing.vrGIgMm9nd`. A repeated focused run is necessary
+to establish the corrected harness finality and isolation evidence.

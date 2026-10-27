@@ -6171,10 +6171,20 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                             exit 0
                         fi
                         if [ "$RUST_TEST_PROFILE" = windows-pointer ]; then
+                            python3 -I -S -c '\''import errno, socket
+with socket.socket() as canary:
+    try:
+        canary.connect(("192.0.2.1", 9))
+    except OSError as error:
+        assert error.errno == errno.ENETUNREACH, error
+    else:
+        raise SystemExit("Windows pointer component canary connected")
+print("R-B10 canary: build confirmed network-isolated (offline compile stage).")'\''
                             test_executable=/cargo-target/windows-pointer-tests
                             rustc --edition=2018 --test -O -C overflow-checks=off \
                                 /source/scripts/test-windows-pointer.rs -o "$test_executable"
                             artifact_sha="$(sha256sum "$test_executable" | cut -d " " -f 1)"
+                            printf "WINDOWS_POINTER_ARTIFACT_BEFORE=sha256=%s\n" "$artifact_sha"
                             "$test_executable" --test-threads=1 --color never
                             [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
                             printf "WINDOWS_POINTER_ARTIFACT=pass sha256=%s tests=5 optimized=true overflow_checks=false unchanged=before-after\n" "$artifact_sha"
@@ -7969,7 +7979,7 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = windows-pointer ]; then
-            grep -E '^test absolute_pointer::tests::.* \.\.\. ok$|^WINDOWS_POINTER_ARTIFACT=' "$output"
+            grep -E '^test absolute_pointer::tests::.* \.\.\. ok$|^WINDOWS_POINTER_ARTIFACT(_BEFORE)?=' "$output"
             printf 'WINDOWS_POINTER_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-normalization windows=unexecuted rust=1.75.0 devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = linux-resource-limits ]; then

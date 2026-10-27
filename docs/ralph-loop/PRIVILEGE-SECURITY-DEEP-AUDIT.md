@@ -109695,3 +109695,17 @@ catalogues, compilation and native IPC tests are not run or claimed. Installed
 credential authority for all fifteen actions, R-S0/R-F5 and release acceptance
 remain OPEN. The current-state ledger records this correction and the pivot;
 its fresh count follows separately.
+
+Fresh ledger count at `e18acca796de35276533e111219ab1ce195d19e2`, tree
+`d4c45fdbf5fdd197d5e9a6a0dcbecce46bcde075`, passes as `WhpHxgTcDP`:
+354,084 tokens (+206), 1,609,135 bytes (+1,084), SHA-256
+`abe040f8bb79a1f61b406cce9c29528c4e3afc7dee74e0ffcbf3d66d73f6de2b`.
+Pinned counting, seven controls and the full UTF-8 round trip pass; the approximate
+400,000-token budget remains met. Storage admission covers 29 profiles/52 refusals
+and 38 workloads/53 controls/5 refusals. Serial 99,418 bytes, SHA-256
+`1cc8d3874ebb9cd9d30f32691e3a05f9335448eb323a7f264e27cda7fb2b9f0f`.
+Outer/supervisor lifetime 32/34.74 seconds, peak RAM scratch 402,092,032 bytes,
+durable evidence 151,552 bytes. QEMU 3883259 joins with exit 0; its PID,
+RAM `run.sgonwyfj` and active run roots are absent. All three endpoint deltas
+are zero. This count executes no product or corrected source gate. This audit-only
+receipt changes neither the counted ledger nor the specification.

@@ -109153,3 +109153,15 @@ Requirements and live instructions are unchanged; all thirteen stashes remain.
 Earlier parks, including installer documentation, clipboard review and observer
 latency closure, remain open. This is verified display-correctness progress, not
 a local-privilege or release acceptance claim. The broad goal remains incomplete.
+
+Fresh ledger count `mfdB0uWAcR` at `bb99cdc64f1815b12c2743a82975165eac4aa09a`
+passes: 352,747 tokens / 1,602,731 bytes, input SHA-256
+`4acb187ea1e22bcd90c2f3efd8b65872ee6a4e5ff5c28ff1a861ae2bcb75620e`.
+Pinned tiktoken-0.12.0/cl100k_base/encode_ordinary, seven controls and the complete
+UTF-8 round trip pass; the approximate 400,000-token budget remains met. Serial:
+96,348 bytes, SHA-256 `5236a29e9c45f747866b825e833fa3e39f4f8de0a67961dcbd4ecf514cbbda15`.
+Outer/supervisor lifetime is 28/30.874 seconds; peak RAM scratch is 402,354,176
+bytes and durable evidence 147,456 bytes. QEMU 3652925 joins with exit 0; its PID,
+RAM `run.38ef6l0c` and all active run roots are absent. Final inventory removes
+one unattributed endpoint, left untouched. This audit-only closure changes neither
+the counted ledger nor the verified widget; all earlier parks remain open.

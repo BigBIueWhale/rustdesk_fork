@@ -109628,3 +109628,24 @@ Supervisor 66.912 seconds, peak RAM 3,408,461,824 bytes and durable evidence
 are absent, all four endpoint deltas are zero, and exact locked retirement retains
 `windows-pointer-canary-missing.vrGIgMm9nd`. A repeated focused run is necessary
 to establish the corrected harness finality and isolation evidence.
+
+Accepted component run `xqETEKY6pJ` at `9cd906535a24497933bc9f77455904dc009c0db2`,
+tree `495c66df4afc01fe946fda3282ba568c7b0d2674`, passes all five tests, the actual
+network canary and complete harness finality. The optimized artifact is unchanged
+from the first candidate:
+`988477abc61d054a19e1fbf70e4aa3a4ac2aa5cf515091836d66c1ef6683e68f`.
+Test-module bytes are identical at preparation, correction and harness repair,
+SHA-256 `4d2977fb7a86925790f347658d69147f290067a4b36635483b7e332230025b41`.
+Serial 66,502 bytes, SHA-256
+`606d08ac97b2e4d965e17caf4b1a582afe74dc252f783d93bf85b51d9c7d11e0`.
+Outer/supervisor lifetime 60/64.44 seconds; peak RAM scratch 3,381,067,776 bytes,
+durable evidence 3,301,376 bytes. QEMU 3851606 joins with exit 0; its PID,
+RAM `run.6xmi5oop` and active run roots are absent. Before/during endpoint deltas
+are zero; after has one unattributed removal (18 bytes), without owner inspection.
+Owned IP sockets remain kernel-denied and the listener audit passes.
+
+This closes the portable arithmetic regression only. Windows compilation and
+SendInput/GetCursorPos observations, DPI and topology changes, monitor gaps,
+installed/current peer artifacts and release acceptance remain open. It does not
+establish local privilege-escalation immunity or R-F5 latency. The ledger records
+this scope and the user's parser pivot; all earlier parks remain parked.

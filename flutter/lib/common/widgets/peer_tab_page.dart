@@ -527,6 +527,29 @@ class PeerSearchBar extends StatefulWidget {
 
 class _PeerSearchBarState extends State<PeerSearchBar> {
   var drawer = false;
+  final _focusNode = FocusNode();
+  final _focused = false.obs;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode.addListener(_onFocusChanged);
+  }
+
+  void _onFocusChanged() {
+    _focused.value = _focusNode.hasFocus;
+    if (_focusNode.hasFocus) {
+      peerSearchTextController.selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: peerSearchTextController.text.length);
+    }
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -548,14 +571,6 @@ class _PeerSearchBarState extends State<PeerSearchBar> {
   }
 
   Widget _buildSearchBar() {
-    RxBool focused = false.obs;
-    FocusNode focusNode = FocusNode();
-    focusNode.addListener(() {
-      focused.value = focusNode.hasFocus;
-      peerSearchTextController.selection = TextSelection(
-          baseOffset: 0,
-          extentOffset: peerSearchTextController.value.text.length);
-    });
     return Obx(() => Container(
           width: stateGlobal.isPortrait.isTrue ? 120 : 140,
           decoration: BoxDecoration(
@@ -578,7 +593,7 @@ class _PeerSearchBarState extends State<PeerSearchBar> {
                         onChanged: (searchText) {
                           peerSearchText.value = searchText;
                         },
-                        focusNode: focusNode,
+                        focusNode: _focusNode,
                         textAlign: TextAlign.start,
                         maxLines: 1,
                         cursorColor: Theme.of(context)
@@ -593,7 +608,7 @@ class _PeerSearchBarState extends State<PeerSearchBar> {
                           contentPadding:
                               const EdgeInsets.symmetric(vertical: 6),
                           hintText:
-                              focused.value ? null : translate("Search address"),
+                              _focused.value ? null : translate("Search address"),
                           hintStyle: TextStyle(
                               fontSize: 14, color: Theme.of(context).hintColor),
                           border: InputBorder.none,

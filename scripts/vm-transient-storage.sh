@@ -110,7 +110,7 @@ else
         flutter-model-tests|flutter-peer-presentation|\
         hbb-common-fs|host-network-tests|linux-flutter-artifact-tests|\
         linux-flutter-engine-build|linux-flutter-engine-prepare|\
-        linux-pa-authority-tests|linux-service-receiver-tests|\
+        linux-service-receiver-tests|\
         linux-systemd-notification-tests|rust-audit|transaction|x11-display-tests)
             readonly VM_STORAGE_PROFILE=standard
             ;;

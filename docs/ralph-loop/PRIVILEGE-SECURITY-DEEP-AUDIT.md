@@ -106899,6 +106899,13 @@ cleanup. Source, raw output, storage/listener identities, diagnostic retirement
 and the fresh complete-ledger count are bound in
 .harness-state/verifier-vm/pa-source-selection-197c249a.json.
 
+The first final count run Y7xpdQAttp stops before tokenization: its resource
+control still expects the former standard profile for audio. The correction
+updates that existing expectation to linux-parent-libtest and removes the now
+unreachable audio entry from the standard fallback list. Product/test bytes and
+effective audio admission remain unchanged. This rejected count's QEMU joins,
+RAM retires and all three listener deltas are zero; diagnostics are retained.
+
 Still OPEN: UI disambiguation of duplicate friendly names, physical devices and
 PipeWire, whole-service recovery and end-to-end peer audio after device changes,
 installed root/service principals and identity races, sustained resource/latency

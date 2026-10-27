@@ -10577,7 +10577,7 @@ run_flutter_model_tests() {
             expected_result='suites=1 tests=16'
         elif [ "$FLUTTER_TEST_PROFILE" = menu-button ]; then
             result_prefix=FLUTTER_MENU_BUTTON_TEST_JSON
-            expected_result='suites=1 tests=6'
+            expected_result='suites=2 tests=14'
         elif [ "$FLUTTER_TEST_PROFILE" = draggable-divider ]; then
             result_prefix=FLUTTER_DRAGGABLE_DIVIDER_TEST_JSON
             expected_result='suites=1 tests=14'
@@ -11267,7 +11267,8 @@ run_flutter_model_tests() {
                     tests=(test_probes/file_metadata_probe_test.dart)
                     test_concurrency=1
                 elif [ "$FLUTTER_TEST_PROFILE" = menu-button ]; then
-                    tests=(test/menu_button_test.dart)
+                    python3 -B -I -S /source/scripts/prepare-help-button-probe.py /source /work/project
+                    tests=(test/menu_button_test.dart test_probes/fixed_width_button_probe_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = draggable-divider ]; then
                     tests=(test/draggable_divider_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = list-search ]; then
@@ -11470,8 +11471,12 @@ run_flutter_model_tests() {
                         cmp /source/flutter/lib/desktop/pages/file_manager_page.dart lib/desktop/pages/file_manager_page.dart
                         cmp /source/flutter/test_probes/file_metadata_cases.dart.inc test_probes/file_metadata_cases.dart.inc
                     elif [ "$FLUTTER_TEST_PROFILE" = menu-button ]; then
+                        python3 -B -I -S /source/scripts/prepare-help-button-probe.py /source /work/project verify
                         cmp /source/flutter/lib/desktop/widgets/menu_button.dart lib/desktop/widgets/menu_button.dart
                         cmp /source/flutter/test/menu_button_test.dart test/menu_button_test.dart
+                        cmp /source/flutter/lib/desktop/widgets/button.dart lib/desktop/widgets/button.dart
+                        cmp /source/flutter/lib/common.dart lib/common.dart
+                        cmp /source/flutter/test_probes/fixed_width_button_cases.dart.inc test_probes/fixed_width_button_cases.dart.inc
                     elif [ "$FLUTTER_TEST_PROFILE" = draggable-divider ]; then
                         cmp /source/flutter/lib/desktop/widgets/dragable_divider.dart lib/desktop/widgets/dragable_divider.dart
                         cmp /source/flutter/test/draggable_divider_test.dart test/draggable_divider_test.dart
@@ -11784,6 +11789,9 @@ run_flutter_model_tests() {
     if [ "$FLUTTER_TEST_PROFILE" = connect-password ]; then
         grep -F 'CONNECT_PASSWORD_EXACT ' "$output"
     fi
+    if [ "$FLUTTER_TEST_PROFILE" = menu-button ]; then
+        grep -E '^(HELP_BUTTON_|\{)' "$output"
+    fi
     if [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
         grep -E 'FILE_NUMERIC_SORT |FILE_SORT_ENTRIES ' "$output"
     fi
@@ -11813,7 +11821,7 @@ run_flutter_model_tests() {
         local widget_sha256
         widget_sha256="$(sha256sum "$source_root/flutter/lib/desktop/widgets/menu_button.dart" | awk '{print $1}')"
         tests_sha256="$(sha256sum "$source_root/flutter/test/menu_button_test.dart" | awk '{print $1}')"
-        printf 'FLUTTER_MENU_BUTTON_TESTS_VM=pass commit=%s tree=%s suites=1 tests=6 flutter=3.24.5 widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-menu-button-tests cleanup=joined\n' \
+        printf 'FLUTTER_MENU_BUTTON_TESTS_VM=pass commit=%s tree=%s suites=2 tests=14 flutter=3.24.5 widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-menu-button-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$widget_sha256" "$tests_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

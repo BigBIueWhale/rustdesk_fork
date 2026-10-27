@@ -31,8 +31,8 @@ class ResultTests(unittest.TestCase):
             suites = ["file_metadata_probe_test.dart"]
             names = sorted(result.FILE_METADATA_TESTS)
         elif profile == "menu-button":
-            suites = ["menu_button_test.dart"]
-            names = sorted(result.MENU_BUTTON_TESTS)
+            suites = sorted(result.MENU_BUTTON_SUITES)
+            names = sorted(set().union(*result.MENU_BUTTON_SUITES.values()))
         elif profile == "draggable-divider":
             suites = ["draggable_divider_test.dart"]
             names = sorted(result.DRAGGABLE_DIVIDER_TESTS)
@@ -117,8 +117,9 @@ class ResultTests(unittest.TestCase):
             })
         for test_id, name in enumerate(names):
             suite_id = test_id % len(suites)
-            if profile in ("credential-dialog", "terminal-output", "file-navigation", "modifier-release", "peer-data", "tab-selection", "status-refresh", "audio-input", "reconnect"):
+            if profile in ("credential-dialog", "terminal-output", "file-navigation", "modifier-release", "peer-data", "tab-selection", "status-refresh", "audio-input", "reconnect", "menu-button"):
                 inventory = (result.AUDIO_INPUT_SUITES if profile == "audio-input"
+                             else result.MENU_BUTTON_SUITES if profile == "menu-button"
                              else result.RECONNECT_SUITES if profile == "reconnect"
                              else result.CREDENTIAL_DIALOG_TESTS if profile == "credential-dialog"
                              else result.STATUS_REFRESH_SUITES if profile == "status-refresh"
@@ -159,7 +160,7 @@ class ResultTests(unittest.TestCase):
         )
         self.assertEqual(self.parse(self.events("direct-address"), "direct-address"), (1, 19))
         self.assertEqual(self.parse(self.events("password-fields"), "password-fields"), (1, 4))
-        self.assertEqual(self.parse(self.events("menu-button"), "menu-button"), (1, 6))
+        self.assertEqual(self.parse(self.events("menu-button"), "menu-button"), (2, 14))
         self.assertEqual(self.parse(self.events("draggable-divider"), "draggable-divider"), (1, 14))
         self.assertEqual(self.parse(self.events("list-search"), "list-search"), (1, 11))
         self.assertEqual(self.parse(self.events("peer-search"), "peer-search"), (1, 6))

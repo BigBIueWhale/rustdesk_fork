@@ -140,6 +140,19 @@ MENU_BUTTON_TESTS = {
     "menu button activates once per keyboard or pointer action",
     "menu button disabled rebuild refuses activation and can recover",
 }
+MENU_BUTTON_SUITES = {
+    "menu_button_test.dart": MENU_BUTTON_TESTS,
+    "fixed_width_button_probe_test.dart": {
+        f"help button {variant} {case}"
+        for variant in ("filled", "outline")
+        for case in (
+            "exposes its role and action",
+            "paints keyboard focus",
+            "activates once per keyboard or pointer action",
+            "preserves geometry and retires cancelled presses",
+        )
+    },
+}
 DRAGGABLE_DIVIDER_TESTS = {
     "divider RTL mouse drag follows the pointer",
     "divider RTL touch drag follows the pointer",
@@ -1290,9 +1303,10 @@ def parse_result(path, profile="models"):
         expected_tests = len(FILE_METADATA_TESTS)
         expected_names = FILE_METADATA_TESTS
     elif profile == "menu-button":
-        expected_suites = {"menu_button_test.dart"}
-        expected_tests = len(MENU_BUTTON_TESTS)
-        expected_names = MENU_BUTTON_TESTS
+        expected_by_suite = MENU_BUTTON_SUITES
+        expected_suites = set(expected_by_suite)
+        expected_names = set().union(*expected_by_suite.values())
+        expected_tests = len(expected_names)
     elif profile == "draggable-divider":
         expected_suites = {"draggable_divider_test.dart"}
         expected_tests = len(DRAGGABLE_DIVIDER_TESTS)

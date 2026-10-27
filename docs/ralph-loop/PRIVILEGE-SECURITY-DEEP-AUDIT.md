@@ -109339,3 +109339,39 @@ bytes and durable evidence 147,456 bytes. QEMU 3709184 joins with exit 0;
 its PID, RAM `run.v1n504lq` and all active run roots are absent. Before/during/
 after endpoint differences are zero. This audit-only receipt changes neither
 counted document and adds no product/native acceptance claim.
+
+## 2026-10-28 — user pivot; direct-address source-catalogue deletion
+
+The user requests another aspect. Mobile language-dialog save ownership remains
+OPEN/PARKED. Its unexecuted one-file regression draft is preserved in stash
+`96b6bdf874460a7d2eac7bd045e14a5347d33794`; no product correction or new harness
+profile was applied. Do not resume it automatically. All earlier parks remain.
+
+At source `00ac85f05ffdeadd3922c3b07132bc9cefbb855e`, three shell gates repeat
+R-G2/R-SV5 source-text catalogues. They require a particular controller declaration,
+one-line normalizer, connect signature, autocomplete expression and exactly three
+peer-card expressions. They cannot establish the claimed target preservation or
+rendered behavior: unrelated/dead matching text can satisfy them, while equivalent
+valid implementations can fail. The Dart and Apple copies are deleted outright.
+The shared gate retains only the structural absence check for the retired numeric-ID
+formatter file/APIs and describes only that property. The change removes 102 net
+lines; it does not replace the catalogues with another wording matrix.
+
+The production normalizer/controller/predicate and their 25 executable regression
+cases remain unchanged in `flutter/test/address_validator_test.dart`. They cover
+outer versus interior whitespace, direct-address acceptance/refusal, shared Rust/Dart
+vectors, hostname bounds, port editing and delayed initial restoration through actual
+TextFields. Both the Dart gate's existing test command and the isolated focused
+profile remain unchanged, as does the exact-name result inventory. Flutter's
+[widget-test documentation](https://docs.flutter.dev/cookbook/testing/widget/introduction)
+describes building/interacting with widgets and checking observed results; this is
+background methodology, not evidence that the pinned SDK or a complete app ran.
+
+The required boundary is unchanged: preserve the entered target except surrounding
+whitespace, reject forbidden route syntax/numeric IDs, and leave the retired ID API
+absent. Full connect-page dispatch and peer-card presentation are not established by
+either the removed greps or the focused controller suite. Parent/native connections,
+Apple/device/installed artifacts, all fifteen credential actions and R-S0/R-F5 remain
+OPEN. No product, test, normative requirement or live instruction file is changed.
+The next verification is the existing 25-case address shard in the bounded zero-NIC
+VM; its result will be attributed only to the layer actually executed.

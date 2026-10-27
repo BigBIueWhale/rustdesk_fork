@@ -5855,6 +5855,9 @@ elif [ "$MODE" = android-frame-tests ]; then
         'X11_OBSERVER_OVERRUN=pass cases=4 scope=controller-aggregation inputs=synthetic window_end=bounded late_progress=refused' \
         'actual controller loop bounds late-acquisition gaps to its observation window'
     require_exact_fixed_receipt \
+        'X11_OBSERVER_CLOCK=pass cases=13 scope=controller-aggregation inputs=synthetic failed=refused backward=refused equal=accepted' \
+        'actual controller loops refuse invalid clock observations immediately'
+    require_exact_fixed_receipt \
         'ANDROID_FRAME_NATIVE_X11_CASES=pass full_bits=32 reordered=refused incomplete=refused ambiguous=refused unknown=refused clock=refused mode=refused link=refused fifo=refused history=bounded uncertainty=sticky cleanup=joined' \
         'shared C frame-oracle identity/authority cases'
     require_exact_fixed_receipt \

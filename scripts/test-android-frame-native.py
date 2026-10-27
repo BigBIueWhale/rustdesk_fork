@@ -40,7 +40,16 @@ typedef struct { int failed; unsigned int count; } SourceHistory;
 #define SAMPLE_INTERVAL_MS 40U
 static uint64_t clock_ms, sample_age;
 static unsigned int sample_index, mode;
-static uint64_t monotonic_millis(void) { return clock_ms; }
+static unsigned int clock_calls, clock_fault_call;
+static uint64_t clock_fault_value;
+static uint64_t monotonic_millis(void) {
+    clock_calls += 1U;
+    if (clock_calls == clock_fault_call) {
+        errno = EIO;
+        return clock_fault_value;
+    }
+    return 1000U + clock_ms;
+}
 static int sleep_millis(unsigned int duration) {
     if (mode == 16U && sample_index == 38U) clock_ms += 2000U;
     if ((mode == 17U && sample_index == 50U) ||
@@ -298,6 +307,40 @@ int main(void) {
         REQUIRE(overruns_passed);
     }
     puts("X11_OBSERVER_OVERRUN=pass cases=4 scope=controller-aggregation inputs=synthetic window_end=bounded late_progress=refused");
+    {
+        const struct {
+            unsigned int duration, fault_call;
+            uint64_t fault_value;
+        } cases[] = {
+            {0U, 1U, 0U}, {0U, 2U, 0U}, {0U, 3U, 0U}, {0U, 5U, 0U},
+            {1U, 1U, 0U}, {1U, 2U, 0U}, {1U, 3U, 0U}, {1U, 5U, 0U},
+            {1U, 61U, 0U},
+            {0U, 2U, 900U}, {0U, 5U, 900U},
+            {1U, 2U, 900U}, {1U, 5U, 900U},
+        };
+        int clocks_passed = 1;
+        for (size_t index = 0U; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+            mode = 8U; clock_ms = 0U; sample_index = 0U; clock_calls = 0U;
+            clock_fault_call = cases[index].fault_call;
+            clock_fault_value = cases[index].fault_value;
+            history = (SourceHistory){0};
+            if (cases[index].duration) {
+                status = observe_current_frames_for_duration(NULL, NULL, &viewer, &history,
+                    1200U, &maximum_gap, &maximum_age, &distinct);
+            } else {
+                status = wait_for_current_frames(NULL, &viewer, &history, 500U, 2U,
+                    &first_fresh, &maximum_age);
+            }
+            int passed = status == -1 && clock_calls == clock_fault_call;
+            printf("X11_OBSERVER_CLOCK_CASE duration=%u fault_call=%u fault_value=%llu "
+                   "status=%d calls=%u passed=%s\n", cases[index].duration,
+                   clock_fault_call, (unsigned long long)clock_fault_value,
+                   status, clock_calls, passed ? "true" : "false");
+            clocks_passed = clocks_passed && passed;
+        }
+        REQUIRE(clocks_passed);
+    }
+    puts("X11_OBSERVER_CLOCK=pass cases=13 scope=controller-aggregation inputs=synthetic failed=refused backward=refused equal=accepted");
     return 0;
 }
 '''

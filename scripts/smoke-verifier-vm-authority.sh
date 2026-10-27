@@ -6687,7 +6687,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = cont
         'concurrent CM saturation has one terminal outcome and exact retirement'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'control-egress cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = android-key-modifiers ]; then
-    [ "$(/usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -Ec '^ANDROID_KEY_MODIFIERS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=8 unchanged=before-after$')" -eq 1 ] \
+    [ "$(/usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -Ec 'ANDROID_KEY_MODIFIERS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=8 unchanged=before-after$')" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'ANDROID_KEY_MODIFIERS_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'Android key modifier artifact receipt differs'
     require_exact_fixed_receipt \

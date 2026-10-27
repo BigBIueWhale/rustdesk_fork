@@ -13933,7 +13933,30 @@ artifact/input hashes and timings belong there and in Git history.
 | Direct connection inputs (`ecc166be`) | Ignored rendezvous-key/account-token parameters, reads/copies and the unused key getter are deleted from viewer, loop and tunnel factories. The shared CLI parser rejects separate/attached `-k`/`--key`, retaining direct targets, mappings and the value-free server flag. R-P5/R-X4 baked metadata stays inert; retired-key masking coverage remains. The Linux Flutter library compiled and passed 22 parser/tunnel/mapping/CPace/config cases; actual CLI callers compiled, but the CLI binary was not run. | `viewer-connection-inputs-ecc166be.json` |
 | Remembered credentials and correlation (`0295d420`) | The stored CPace PRS initializes remember state; no fresh PRS preserves a remembered value, an elected fresh PRS persists, and remember-off clears it. Retired password hashes/provenance and account sync are removed. Tokens carry only a nonzero session correlation ID; malformed IDs, unknown/retired fields refuse with value-free diagnostics. The same eight production handler/storage/serde cases fail six assertions before correction and pass all eight afterward, using a private read-only machine identity and proven encrypted storage readback. | `viewer-credential-baseline-7713b5c6.json`, `viewer-credential-corrected-0295d420.json` |
 | Peer metadata (`730bb9b0`) | Recent/Favorite export omits the legacy password hash. Dart Peer has no credential/group fields or unused serializers/copy/equality/constructor; placeholders use its local-metadata parser. The unused account-specific recent-peer loader and web stub are deleted. Identical peer/credential tests pass eight suites/63 cases plus three parser controls after the old parser fails on a retired field. Fresh bridge/import checks establish the named API absence, not execution of the Rust mapper or full connection pages. | `peer-metadata-corrected-730bb9b0.json` |
-| Metadata diagnostics (`c4acc5ce`, `d5c61913`) | Peer-list/cached-session failures use fixed diagnostics while retaining list clearing/notification and null refusal. PeerInfo full platform/resolution decoding preserves each refused field; valid/empty snapshots, both resolution formats, positive dimensions, ordering and recovery remain covered. Session/type checks stay at callers; incremental merging is separate. Ten corrected Dart cases and three parser controls pass. The live baseline exposes synthetic values in two failed cases but its whole transaction is unaccepted because of two unattributed endpoint additions. | `live-peer-baseline-6dfedef7.json`, `live-peer-corrected-c4acc5ce.json`, `cached-peer-baseline-110cc6d3.json`, `cached-peer-corrected-d5c61913.json` |
+| Metadata diagnostics (`c4acc5ce`, `d5c61913`) | Peer-list/cached-session failures use fixed diagnostics; the original peer-list clearing/notification is superseded by the atomic snapshot correction below, while cached-session null refusal remains. PeerInfo full platform/resolution decoding preserves each refused field; valid/empty snapshots, both resolution formats, positive dimensions, ordering and recovery remain covered. Session/type checks stay at callers; incremental merging is separate. Ten corrected Dart cases and three parser controls pass. The live baseline exposes synthetic values in two failed cases but its whole transaction is unaccepted because of two unattributed endpoint additions. | `live-peer-baseline-6dfedef7.json`, `live-peer-corrected-c4acc5ce.json`, `cached-peer-baseline-110cc6d3.json`, `cached-peer-corrected-d5c61913.json` |
+
+**Peer history snapshots (`6fc33995`) — Dart component A/B verified; full application/native integration OPEN.**
+`Peers.updatePeers` now prepares the peer rows and pending-address list before
+publishing either or notifying listeners. A refused decode is distinct from a
+valid empty list; invalid payload/ID types, malformed JSON/rows and empty ID
+segments preserve both previous list objects without notification. Native empty
+messages still clear both lists. Pending IDs consume the native comma/space
+separator and preserve address case, root-dot and port spelling. Diagnostics
+remain fixed and payload-free. Recent and Favorites use the same model.
+
+At unchanged-product baseline `6785948d`, 79 cases pass and seven fail on unwanted
+notification/list clearing, a missing-payload type error, retained separator spaces
+and premature autocomplete completion. Some later assertions in failing cases are
+not reached. The identical four-suite/86-case cohort and three parser controls
+pass after correction, with fresh bridge/import compilation. Tests execute the
+production peer model and autocomplete loader with controlled events; no actual
+native history scan, complete application, platform event transport or network
+connection runs. Successful execution retains the strict named-inventory summary,
+not per-case success JSON. The earlier formatter-only failure is not behavioral
+evidence. Exact sources, logs, controls, joined VM/RAM cleanup and fresh ledger
+count are retained in `peer-snapshots-0afe17ae.json`; endpoint deltas are zero.
+Full platform/installed behavior, global dispatch lifetime, R-S0/R-F5, all fifteen
+credential actions and release acceptance remain OPEN. All user parks remain.
 
 **Direct credential API — OPEN/PARKED by user instruction.** Candidate `0248c624`
 removes the retired shared-password routing flag from native/Dart/web factories and
@@ -15594,6 +15617,8 @@ owners and rendered rejection/recovery using the real reactive job list.
 Native events are controlled inputs; full file-manager/native transfer and byte
 precision in `make_fd_flutter` remain OPEN. Its floating-point conversion and
 unchecked accumulator are unchanged and receive no new correctness claim.
+The native producer follow-up is OPEN/PARKED at the user's explicit pivot;
+no implementation was made before switching to peer-history publication.
 
 `folder-summary-910822c4.json` retains identical A/B tests/harness, individual
 outcomes, source/input bindings and joined bounded-RAM cleanup. Baseline listener

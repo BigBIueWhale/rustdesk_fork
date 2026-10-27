@@ -107037,3 +107037,63 @@ Requirements/live instructions and all parked product surfaces remain unchanged.
 Native summary precision, complete app/FFI/transfer/device behavior, R-S0/R-F5,
 all fifteen installed credential actions, resource/soak and release/independent
 acceptance remain OPEN. The broad goal remains active.
+
+## 2026-10-27 — User pivot to atomic Recent/Favorite history publication
+
+The user explicitly pivoted away from native file-transfer summaries. That
+unimplemented producer-precision follow-up remains OPEN/PARKED; no Rust summary
+code changed. The existing fifteen installed credential actions remain open.
+Selected a separate peer-history model correction after reading controlling
+instructions, service-authority status, relevant requirements, native producers,
+Flutter consumers and the existing focused tests.
+
+At 0afe17ae, Peers.updatePeers assigns decoded rows before checking pending IDs.
+_decodePeers returns an empty list on failure, indistinguishable from a successful
+empty snapshot. Missing/wrong payload types throw before its typed helper enters;
+a wrong IDs type can throw after rows have changed. The native Windows batched
+producer joins pending addresses with comma-space while Dart splits only on comma.
+AllPeersLoader treats every notification as a successful load, so malformed input
+can falsely complete it. These are UI/model correctness findings; no new LPE or
+production disclosure is claimed.
+
+Language/framework references:
+
+- https://api.dart.dev/dart-convert/JsonDecoder/convert.html documents decoded
+  dynamic value kinds and FormatException.
+- https://api.flutter.dev/flutter/foundation/ChangeNotifier/notifyListeners.html
+  documents notification delivery; notifications expose committed model state.
+
+The local design publishes one complete accepted snapshot and retains the prior
+snapshot on refusal. Address normalization removes surrounding separator
+whitespace only, consistent with R-G2; initiation validation remains its own sink.
+
+Tests/inventory are prepared by f622d5b1, 73e09f55 and 6785948d. The first run,
+uj8l5bZtPX, stops at the formatter before behavioral execution and is preserved
+as peer-snapshot-format.uj8l5bZtPX. Four added cases exercise malformed envelopes,
+partial-row refusal, native separators/empty snapshots and the actual autocomplete
+loader; three existing cases now require refusal without publication.
+At unchanged-product 6785948d, run 1kKaIBCecF passes 79 and fails seven. Observed
+failures are spurious notifications, cleared current lists, a missing-payload
+TypeError, untrimmed producer separators and premature loader completion. Later
+vectors in a failing case are not independent baseline observations. Diagnostics
+are preserved as peer-snapshot-baseline.1kKaIBCecF after exact joined cleanup.
+
+Product 6fc33995 changes only flutter/lib/models/peer_model.dart. Decode refusal
+returns null; pending IDs are validated and split/trimmed before either list is
+assigned. Empty segments refuse; valid empty producer messages clear both lists.
+The exact same tests and harness pass four suites/86 cases and three parser
+controls in candidate joL7pon9b7, with fresh bridge/import compilation. Tests use
+production models and controlled event/request inputs. No full app, actual native
+history scan, installed service, network peer or physical device ran. Successful
+raw per-case JSON is not retained by this shard; its strict inventory summary is.
+Both A/B runs and the formatter-only run use the existing admitted no-NIC VM and
+guest-only confined container profile; QEMU joins and bounded RAM retires. All
+endpoint deltas are zero, with no foreign-owner inspection.
+
+The bounded capsule .harness-state/verifier-vm/peer-snapshots-0afe17ae.json binds
+source comparisons, run logs, failures, input/bridge receipts, storage/listeners,
+retirement and the fresh complete-ledger token count. Requirements, live
+instructions, all Rust product code, file transfers and the parked audio/global
+dispatch/credential work remain unchanged. Full application/native/platform
+history integration, R-S0/R-F5, installed credential actions, independent/release
+acceptance and the broad goal remain OPEN.

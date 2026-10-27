@@ -109214,3 +109214,23 @@ so its 368,732-token receipt remains applicable. Product, tests, verifier recipe
 AGENTS and live loop instructions are unchanged. No product runtime is claimed;
 native/installed, timing, cryptographic review and release acceptance remain open.
 Fresh isolated counts of both documents follow separately.
+
+Source `39702ec23f31eadcd4f6c1a6dd7625dedcd9696f` passes the canonical
+`/bin/bash scripts/smoke-verifier-vm-authority.sh --ledger-token-count --requirements`
+as `GH3Hmrd6fN`, with pinned tiktoken-0.12.0/cl100k_base/encode_ordinary, seven
+controls and both complete UTF-8 round trips. Requirements: 368,732 -> 368,425
+tokens (-307), 1,682,997 -> 1,682,089 bytes (-908), SHA-256
+`0a2e28397235f67f74707aabef20791774e3a25c5df4c42ebc39fec7aef308cd`.
+Ledger: 352,747 -> 352,901 tokens (+154), 1,602,731 -> 1,603,516 bytes,
+SHA-256 `a1cc236fb6b2001048d526d6cc6971386eb742538436dbb59749ae00800e581f`.
+The ledger remains within its approximate 400,000-token budget.
+
+Serial: 99,038 bytes, SHA-256
+`62c0025e6b2328d2ca84a7c1b0f1c343183683511c84b127c0adc6cf7c8a4ddf`.
+Outer/supervisor lifetime is 28/31.028 seconds; peak RAM scratch 402,419,712
+bytes and durable evidence 151,552 bytes. QEMU 3670152 joins with exit 0; its
+PID, RAM `run.6cecn864` and all active run roots are absent. All endpoint deltas
+are zero. The specification, ledger and source/code checks above are the scope
+of this result. Product/native execution and broad goal completion are not
+claimed; all previously open acceptances and parks remain unchanged. This
+audit-only receipt changes neither counted document.

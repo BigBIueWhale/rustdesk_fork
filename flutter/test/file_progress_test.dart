@@ -844,6 +844,28 @@ void main() {
       expect(h.job.getStatus(), startsWith('1/2 files'));
       expect(h.snapshot, [0, 12.5, 60, true]);
       expect(tester.takeException(), isNull);
+
+      for (final sample in [
+        (total: 100, bytes: 140, text: '100%'),
+        (total: 0, bytes: 140, text: '0%'),
+        (total: 100, bytes: 50, text: '50%'),
+        (total: 100, bytes: 100, text: '100%'),
+        (total: 1, bytes: 9223372036854775807, text: '100%'),
+        (total: 100, bytes: 0, text: '0%'),
+      ]) {
+        h.job.totalSize = sample.total;
+        h.controller.tryUpdateJobProgress(
+            h.event()
+              ..['file_num'] = '0'
+              ..['finished_size'] = sample.bytes.toString(),
+            h.session);
+        await render();
+        expect(tester.takeException(), isNull);
+        expect(find.text(sample.text), findsOneWidget);
+        expect(h.job.finishedSize, sample.bytes);
+        expect(h.job.totalSize, sample.total);
+        expect(h.job.state, JobState.inProgress);
+      }
     });
   }
 

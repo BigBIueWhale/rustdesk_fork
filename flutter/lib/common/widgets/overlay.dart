@@ -424,11 +424,11 @@ class _DraggableState extends State<Draggable> {
     }
 
     // onKeyboardVisible
-    if (_keyboardVisible && currentVisible) {
+    if (currentVisible) {
       final sumHeight = bottomHeight + widget.height;
       final contextHeight = MediaQuery.of(context).size.height;
-      if (sumHeight + position.dy > contextHeight) {
-        final y = contextHeight - sumHeight;
+      final y = contextHeight > sumHeight ? contextHeight - sumHeight : 0.0;
+      if (position.dy > y) {
         setState(() {
           widget.position.update(Offset(position.dx, y));
         });
@@ -512,11 +512,11 @@ class IOSDraggableState extends State<IOSDraggable> {
     }
 
     // onKeyboardVisible
-    if (_keyboardVisible && currentVisible) {
+    if (currentVisible) {
       final sumHeight = bottomHeight + _height;
       final contextHeight = MediaQuery.of(context).size.height;
-      if (sumHeight + position.pos.dy > contextHeight) {
-        final y = contextHeight - sumHeight;
+      final y = contextHeight > sumHeight ? contextHeight - sumHeight : 0.0;
+      if (position.pos.dy > y) {
         setState(() {
           position.update(Offset(position.pos.dx, y));
         });

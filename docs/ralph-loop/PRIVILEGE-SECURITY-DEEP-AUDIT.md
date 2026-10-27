@@ -107315,3 +107315,36 @@ run is claimed for a verifier-only deletion. android-network-wiring-e353d469.jso
 binds the diff, parked-run evidence and fresh complete ledger count. All fifteen
 installed credential actions, device recovery, R-S0/R-F5, release and independent
 acceptance remain OPEN. Live instructions, all prior parks and stashes are preserved.
+
+### 2026-10-27 — user pivot; remove redundant desktop tunnel source checks
+
+Clipboard-keystroke admission is OPEN/PARKED at the user's direction. Preparations
+bf92a798 and ef043d43 are pushed, with no product correction. Run gaUv7pmG1y failed
+to compile its fixture before behavior ran; the explicit concrete model type is
+corrected but unexecuted. The exact QEMU joined, RAM scratch retired and all four
+listener deltas were zero. Diagnostics remain in clipboard-keystrokes-fixture.gaUv7pmG1y.
+Neither the toolbar admission work nor broader native text-input authority is closed.
+
+The separate R-T17 slice removes 27 positive source checks from scripts/verify.sh:
+declarations, local-variable and thread-name spelling, helper/test names, and abort
+occurrence counts. These do not establish lifetime, cleanup or socket behavior.
+Nineteen focused production-bound, wiring and forbidden-path checks remain, along
+with all five existing executable Rust invocations and their unchanged test bodies.
+The actual regressions exercise target validation/isolation, phase cancellation,
+control coalescing/EOF, task drain, owner reaping, mapping/connection admission,
+replacement and exclusive bind. Those component tests still do not establish the
+complete installed/native matrix. The source-success output no longer claims full
+cancellation/drain. Product code, requirements, native test definitions and VM
+inventories are unchanged; general tunnel half-close remains separately parked.
+
+Microsoft documents that SO_EXCLUSIVEADDRUSE must be applied before bind and that
+second-bind behavior depends on address and socket options. Finding an option or
+test name in source does not execute that boundary. The Windows hostile-reuseaddr
+test remains, as does its native acceptance obligation:
+https://learn.microsoft.com/en-us/windows/win32/winsock/so-exclusiveaddruse
+
+Validation: bash -n scripts/verify.sh, git diff --check, exact retained-source/test-
+invocation comparison and a fresh complete ledger count. No product or native tunnel
+test runs for this verifier-only deletion. tunnel-verifier-ef043d43.json retains
+source identities, classified checks, the parked fixture result and count/cleanup
+evidence. Installed credentials, R-S0/R-F5 and release acceptance remain OPEN.

@@ -84,6 +84,14 @@ joined and RAM scratch retired. Failed diagnostics are preserved in
 baseline endpoint removal, without owner inspection. Do not resume automatically.
 Work moved to Android network-lifecycle verifier cleanup.
 
+**User pivot (2026-10-27):** Clipboard-keystroke action admission remains
+OPEN/PARKED. Preparations `bf92a798` and `ef043d43` are pushed; no product change
+was made. Run `gaUv7pmG1y` stopped at a fixture type error before behavior ran;
+the corrected fixture has not run. QEMU joined, RAM scratch retired and all
+listener deltas were zero. Diagnostics remain in
+`clipboard-keystrokes-fixture.gaUv7pmG1y`. Do not resume automatically.
+Work moved to the desktop tunnel verifier below.
+
 **User pivot (2026-10-27):** File-deletion row publication remains OPEN/PARKED.
 Preparation `c57667a6` and product `4bdc799b` are pushed; the already-running candidate
 finished with exit 1 after the pivot. Raw runs `memOlQqRwO` and `UvBpC70MCB` are retained,
@@ -1604,7 +1612,13 @@ than signaling one closed direction while continuing the other.
 
 The shared verifier selects target, mapping, supervisor, admission, relay-gating and
 exclusive-bind Rust regressions. Apple source/cross-compile checks and test definitions
-are supplementary. Exact current Linux, macOS and Windows acceptance remains OPEN:
+are supplementary. Its R-T17 source block now drops 27 declaration, spelling and
+occurrence-count checks; 19 focused bound, wiring and forbidden-path checks remain.
+All five executable Rust test invocations, their test bodies and VM inventories are
+unchanged. Shell syntax and exact retained-source comparison pass; no native run is
+claimed for this deletion. The output now identifies source evidence instead of
+claiming full cancellation/drain. Receipt: `tunnel-verifier-ef043d43.json`.
+Exact current Linux, macOS and Windows acceptance remains OPEN:
 execute allowed/refused targets, exclusive binds (including hostile Windows
 `SO_REUSEADDR`), cancellation through every setup/relay phase, EOF, removal,
 replacement, capacity exhaustion/recovery, eager reaping and cleanup. Observe native

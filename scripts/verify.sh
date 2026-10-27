@@ -14191,61 +14191,36 @@ echo "== (PF) desktop port-forward mapping authority, ownership, admission, and 
 "${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config client::tests::port_forward_target_validation_fails_closed --color never
 "${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config ui_session_interface::port_forward_mapping_tests --color never
 "${RUN[@]}" cargo test --offline --locked -p hbb_common --lib exclusive_listener_tests::second_exclusive_listener_bind_is_refused --color never
+# Supplementary source checks for production bounds, wiring, and forbidden paths.
+# Behavioral results come from the Rust tests above; native platform acceptance is separate.
 r_t17_missing=
-grep -qF 'pub struct PortForwardTarget' src/client.rs || r_t17_missing="$r_t17_missing immutable-target-type"
-grep -qF 'const MAX_PORT_FORWARD_HOST_BYTES: usize = 253;' src/client.rs || r_t17_missing="$r_t17_missing host-byte-cap"
-grep -qF "strip_prefix('[')" src/client.rs || r_t17_missing="$r_t17_missing bracketed-ipv6-only"
-grep -qF 'parse::<std::net::Ipv6Addr>()' src/client.rs || r_t17_missing="$r_t17_missing ipv6-parse"
-grep -qF 'pub async fn start_port_forward' src/client.rs || r_t17_missing="$r_t17_missing explicit-tunnel-login-api"
 if grep -qE 'pub port_forward:[[:space:]]*\(' src/client.rs; then r_t17_missing="$r_t17_missing shared-target-state"; fi
 grep -qF 'tcp::new_exclusive_listener' src/port_forward.rs || r_t17_missing="$r_t17_missing exclusive-loopback-listener"
-grep -qF 'pub async fn new_exclusive_listener' libs/hbb_common/src/tcp.rs || r_t17_missing="$r_t17_missing exclusive-listener-helper"
-grep -qF 'socket.set_reuseaddr(true)?;' libs/hbb_common/src/tcp.rs || r_t17_missing="$r_t17_missing socket-option-error-not-propagated"
 grep -qF 'set_exclusive_addr_use(&socket)?;' libs/hbb_common/src/tcp.rs || r_t17_missing="$r_t17_missing windows-exclusive-option"
 grep -qF 'SO_EXCLUSIVEADDRUSE' libs/hbb_common/src/tcp.rs || r_t17_missing="$r_t17_missing windows-exclusive-constant"
-grep -qF 'hostile_reuseaddr_socket_cannot_bind_exclusive_listener_port' libs/hbb_common/src/tcp.rs || r_t17_missing="$r_t17_missing windows-hostile-second-bind-test"
 if grep -qE 'new_listener\([^\n]*true' src/port_forward.rs; then r_t17_missing="$r_t17_missing reusable-mapping-listener"; fi
 grep -qF 'const MAX_PORT_FORWARD_CONNECTIONS_PER_MAPPING: usize = 32;' src/port_forward.rs || r_t17_missing="$r_t17_missing per-mapping-connection-cap"
 grep -qF 'const MAX_PORT_FORWARD_CONNECTIONS_PROCESS: usize = 128;' src/port_forward.rs || r_t17_missing="$r_t17_missing process-connection-cap"
-grep -qF 'let Some(permits) = admission.try_admit()' src/port_forward.rs || r_t17_missing="$r_t17_missing nonblocking-connection-admission"
-grep -qF 'let _permits = permits;' src/port_forward.rs || r_t17_missing="$r_t17_missing lifetime-connection-permits"
-grep -qF 'let cancellation = CancellationToken::new();' src/port_forward.rs || r_t17_missing="$r_t17_missing mapping-cancellation"
-grep -qF 'let mut tasks = JoinSet::<ConnectionTaskResult>::new();' src/port_forward.rs || r_t17_missing="$r_t17_missing mapping-joinset"
-grep -qF 'reap_ready_tasks(&mut tasks' src/port_forward.rs || r_t17_missing="$r_t17_missing eager-completion-reaping"
-grep -qF 'drain_join_set(&mut tasks' src/port_forward.rs || r_t17_missing="$r_t17_missing connection-task-drain"
 pf_setup=$(awk '/async fn connect_and_login/,/^}/' src/port_forward.rs)
 if grep -qE 'forward\.next|Data::Login|Data::Message|Vec::new' <<<"$pf_setup"; then r_t17_missing="$r_t17_missing prelogin-local-read-or-obsolete-control"; fi
 grep -qF 'relay_after_authorization(setup' src/port_forward.rs || r_t17_missing="$r_t17_missing authorization-before-relay"
 if grep -qF 'allow_err!' src/port_forward.rs; then r_t17_missing="$r_t17_missing silent-tunnel-io-error"; fi
 grep -qF 'pub const MAX_OWNED_PORT_FORWARD_MAPPINGS: usize = 32;' libs/hbb_common/src/config.rs || r_t17_missing="$r_t17_missing process-mapping-cap"
-grep -qF 'fn try_acquire() -> Result<Self, String>' src/port_forward.rs || r_t17_missing="$r_t17_missing opaque-process-mapping-admission"
 if grep -qE 'PortForwardMappingPermit::try_acquire\([^)]' src/port_forward.rs src/ui_session_interface.rs; then r_t17_missing="$r_t17_missing caller-selected-mapping-semaphore"; fi
 grep -qF 'mpsc::channel(1)' src/port_forward.rs || r_t17_missing="$r_t17_missing one-slot-mapping-control"
 if grep -qE 'listen(_admitted|_one_off)?\([^)]*UnboundedReceiver<Data>' src/port_forward.rs; then r_t17_missing="$r_t17_missing general-data-listener-control"; fi
 grep -qF 'mpsc::channel::<PortForwardSupervisorCommand>(MAX_OWNED_PORT_FORWARD_MAPPINGS)' src/ui_session_interface.rs || r_t17_missing="$r_t17_missing bounded-supervisor-command-channel"
-grep -qF '.name("rustdesk-port-forward-owner".to_owned())' src/ui_session_interface.rs || r_t17_missing="$r_t17_missing dedicated-owner-thread"
-grep -qF 'tokio::runtime::Builder::new_current_thread()' src/ui_session_interface.rs || r_t17_missing="$r_t17_missing independent-owner-runtime"
-grep -qF '.name("rustdesk-port-forward-one-off".to_owned())' src/port_forward.rs || r_t17_missing="$r_t17_missing cli-dedicated-owner-thread"
 grep -qF 'const PORT_FORWARD_OWNER_REAPER_CAPACITY: usize = MAX_OWNED_PORT_FORWARD_MAPPINGS;' src/port_forward.rs || r_t17_missing="$r_t17_missing bounded-owner-reaper-capacity"
 grep -qF 'std::sync::mpsc::sync_channel(PORT_FORWARD_OWNER_REAPER_CAPACITY)' src/port_forward.rs || r_t17_missing="$r_t17_missing bounded-owner-reaper-channel"
-grep -qF '.name("rustdesk-port-forward-owner-reaper".to_owned())' src/port_forward.rs || r_t17_missing="$r_t17_missing process-owner-reaper"
-grep -qF 'ensure_port_forward_owner_reaper();' src/port_forward.rs || r_t17_missing="$r_t17_missing one-off-reaper-prebootstrap"
-grep -qF 'ensure_port_forward_owner_reaper();' src/ui_session_interface.rs || r_t17_missing="$r_t17_missing supervisor-reaper-prebootstrap"
 grep -qF 'PORT_FORWARD_OWNER_REAPER.try_send(request)' src/port_forward.rs || r_t17_missing="$r_t17_missing nonblocking-owner-handoff"
-[ "$(grep -cF 'std::process::abort();' src/port_forward.rs)" -ge 2 ] || r_t17_missing="$r_t17_missing fail-stop-owner-handoff"
-grep -qF 'while let Some(command) = commands.recv().await' src/ui_session_interface.rs || r_t17_missing="$r_t17_missing supervisor-eof-terminal"
-grep -qF 'drain_owned_port_forwards(&mut mappings).await;' src/ui_session_interface.rs || r_t17_missing="$r_t17_missing supervisor-eof-drain"
-grep -qF 'join_port_forward_supervisor_off_runtime(thread).await' src/ui_session_interface.rs || r_t17_missing="$r_t17_missing normal-owner-reaper-join"
-grep -qF 'reap_port_forward_supervisor(thread);' src/ui_session_interface.rs || r_t17_missing="$r_t17_missing cancellation-owner-reaper-handoff"
 one_off_join=$(awk '/async fn join_one_off_owner_off_runtime/,/^}/' src/port_forward.rs)
 ui_owner_impl=$(awk '/impl PortForwardSupervisorOwner/,/^}/' src/ui_session_interface.rs)
 ui_owner_drop=$(awk '/impl Drop for PortForwardSupervisorOwner/,/^}/' src/ui_session_interface.rs)
 if grep -qF '.join()' <<<"$one_off_join$ui_owner_impl$ui_owner_drop"; then r_t17_missing="$r_t17_missing synchronous-join-fallback"; fi
-grep -qF 'drain_replaced_port_forward(mappings, port).await;' src/ui_session_interface.rs || r_t17_missing="$r_t17_missing duplicate-old-drain"
 if [ -n "$r_t17_missing" ]; then
-  echo "  FAIL R-T17/PF-1..PF-5 tunnel mapping closure incomplete:$r_t17_missing"; rc=1
+  echo "  FAIL R-T17/PF-1..PF-5 supplementary source checks:$r_t17_missing"; rc=1
 else
-  echo "  ok  R-T17/PF-1..PF-5 immutable bounded targets, exclusive loopback bind, EOF-driven owned supervisor, bounded mapping/connection admission, full cancellation/drain, and post-PeerInfo local reads"
+  echo "  ok  R-T17/PF-1..PF-5 source bounds, wiring, and forbidden-path checks; installed/platform acceptance remains open"
 fi
 
 # R-S5/R-A3/R-A9/R-F1/R-D6: supplementary sealed-relay source checks. The codec, TCP stream

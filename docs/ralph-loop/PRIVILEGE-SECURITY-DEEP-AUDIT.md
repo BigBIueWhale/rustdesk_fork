@@ -108675,3 +108675,21 @@ format correction and repeat the baseline. Serial: 68,794 bytes, SHA-256
 `86cdc94df513a219930f6a50ca6be53164a33b446c6655c610cbdcf7ade21e34`.
 Every endpoint delta is zero; exact QEMU exit and RAM retirement are verified.
 The bounded diagnostic root is retained as `port-edit-format.juI3SVZRT5`.
+
+Baseline `da7e69b0`, run `iaJiBEROmF`: **22 pass / three fail**. Rejection of
+`65536` returns an empty value instead of the prior selected `21118`; the rendered
+digit case clears `6553`, and the rendered paste case clears `21118` and collapses
+its selection to zero. All nineteen existing address tests and three valid-edit
+controls pass. Serial: 85,297 bytes, SHA-256
+`36bd69be42a37cf8e1e36648b31e8a4a5ecb82daea019e79062dd5090a496369`.
+Supervisor lifetime 82.021 seconds; peak RAM scratch 4,050,120,704 bytes, durable
+diagnostics 3,317,760 bytes. QEMU 3328154 joins with exit 0 and RAM `run.kvkbf9m5`
+is gone. Endpoint additions are zero; one final unattributed 18-byte removal is
+left untouched. The root is identity-renamed to `port-edit-baseline.iaJiBEROmF`.
+
+The candidate uses one complete-edit predicate: empty or canonical ASCII numeric
+drafts at most 65535 retain the new value; every refused edit returns the entire
+old value. An explicit match-end check rejects trailing newline rather than
+silently stripping it or admitting a partial match. The tests are unchanged.
+This changes local editing only; no runtime/session/network/credential authority
+or native tunnel behavior is inferred from the component tests.

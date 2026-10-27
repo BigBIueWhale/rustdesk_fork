@@ -216,6 +216,18 @@ STATUS_REFRESH_TESTS = {
     "close cancels the deferred first turn before it begins",
     "refuses duplicate start and restart after close",
 }
+STATUS_REFRESH_SUITES = {
+    "server_status_refresh_loop_test.dart": STATUS_REFRESH_TESTS,
+    "listener_status_probe_test.dart": {
+        "reachable listener publishes without a password read",
+        "unreachable listener reports configured password false",
+        "unreachable listener reports configured password true",
+        "listener polling never overlaps either pending read",
+        "retired listener refuses a follow-up password read",
+        "retired password read cannot update a replacement listener",
+        "a stopped listener reads a fresh password explanation",
+    },
+}
 SHARE_RDP_TESTS = {
     "r_s11ir an unmounted owner refuses admission",
     "r_s11ir duplicate UI actions share one synchronous request latch",
@@ -1183,9 +1195,10 @@ def parse_result(path, profile="models"):
         expected_names = set().union(*expected_by_suite.values())
         expected_tests = len(expected_names)
     elif profile == "status-refresh":
-        expected_suites = {"server_status_refresh_loop_test.dart"}
-        expected_tests = len(STATUS_REFRESH_TESTS)
-        expected_names = STATUS_REFRESH_TESTS
+        expected_by_suite = STATUS_REFRESH_SUITES
+        expected_suites = set(expected_by_suite)
+        expected_names = set().union(*expected_by_suite.values())
+        expected_tests = len(expected_names)
     elif profile == "share-rdp":
         expected_suites = {"share_rdp_change_lifecycle_test.dart"}
         expected_tests = len(SHARE_RDP_TESTS)

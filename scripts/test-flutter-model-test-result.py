@@ -46,8 +46,8 @@ class ResultTests(unittest.TestCase):
             suites = sorted(result.TAB_SELECTION_SUITES)
             names = sorted(set().union(*result.TAB_SELECTION_SUITES.values()))
         elif profile == "status-refresh":
-            suites = ["server_status_refresh_loop_test.dart"]
-            names = sorted(result.STATUS_REFRESH_TESTS)
+            suites = sorted(result.STATUS_REFRESH_SUITES)
+            names = sorted(set().union(*result.STATUS_REFRESH_SUITES.values()))
         elif profile == "share-rdp":
             suites = ["share_rdp_change_lifecycle_test.dart"]
             names = sorted(result.SHARE_RDP_TESTS)
@@ -102,8 +102,9 @@ class ResultTests(unittest.TestCase):
             })
         for test_id, name in enumerate(names):
             suite_id = test_id % len(suites)
-            if profile in ("credential-dialog", "terminal-output", "file-navigation", "modifier-release", "peer-data", "tab-selection"):
+            if profile in ("credential-dialog", "terminal-output", "file-navigation", "modifier-release", "peer-data", "tab-selection", "status-refresh"):
                 inventory = (result.CREDENTIAL_DIALOG_TESTS if profile == "credential-dialog"
+                             else result.STATUS_REFRESH_SUITES if profile == "status-refresh"
                              else result.TAB_SELECTION_SUITES if profile == "tab-selection"
                              else result.PEER_DATA_SUITES if profile == "peer-data"
                              else result.TERMINAL_OUTPUT_TESTS if profile == "terminal-output"
@@ -146,7 +147,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("list-search"), "list-search"), (1, 6))
         self.assertEqual(self.parse(self.events("peer-search"), "peer-search"), (1, 6))
         self.assertEqual(self.parse(self.events("tab-selection"), "tab-selection"), (2, 31))
-        self.assertEqual(self.parse(self.events("status-refresh"), "status-refresh"), (1, 9))
+        self.assertEqual(self.parse(self.events("status-refresh"), "status-refresh"), (2, 16))
         self.assertEqual(self.parse(self.events("share-rdp"), "share-rdp"), (1, 4))
         self.assertEqual(self.parse(self.events("window-dispatch"), "window-dispatch"), (1, 8))
         self.assertEqual(self.parse(self.events("peer-data"), "peer-data"), (4, 82))

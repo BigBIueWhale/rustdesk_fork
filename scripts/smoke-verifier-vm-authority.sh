@@ -1704,7 +1704,7 @@ flutter_peer_input_inventory() {
 flutter_model_input_inventory() {
     local -a directories=("$ONLINE_INPUTS" "$PUB_CACHE_ROOT")
     local -a files=("$FLUTTER_TEST_ARCHIVE" "$DEB_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE")
-    if [[ "$FLUTTER_TEST_PROFILE" = models || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
+    if [[ "$FLUTTER_TEST_PROFILE" = models || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
         directories+=("$CARGO_VENDOR_ROOT")
         files+=("$RUST_TEST_ARCHIVE" "$LLVM_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN")
     fi
@@ -2904,7 +2904,7 @@ elif [ "$MODE" = flutter-model-tests ]; then
         "$DEB_BUILDER_ARCHIVE:$DEB_BUILDER_IMAGE_ARCHIVE_SIZE:$SHA256_DEB_BUILDER_IMAGE_ARCHIVE"
         "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE"
     )
-    if [[ "$FLUTTER_TEST_PROFILE" = models || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
+    if [[ "$FLUTTER_TEST_PROFILE" = models || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
         flutter_inputs+=(
             "$RUST_TEST_ARCHIVE:$SIZE_RUST_1_75:$SHA256_RUST_1_75"
             "$LLVM_TEST_ARCHIVE:$SIZE_LLVM_15_0_6:$SHA256_LLVM_15_0_6"
@@ -2922,7 +2922,7 @@ elif [ "$MODE" = flutter-model-tests ]; then
             || fail "sealed focused-test input metadata differs: $path"
         verify_sha256 "$path" "$digest"
     done
-    if [[ "$FLUTTER_TEST_PROFILE" = models || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
+    if [[ "$FLUTTER_TEST_PROFILE" = models || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
         [ -f "$FRB_CODEGEN" ] && [ ! -L "$FRB_CODEGEN" ] \
             && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$FRB_CODEGEN")" = \
                  "$HOST_UID:$HOST_GID:500:1:$SIZE_FLUTTER_PEER_FRB_CODEGEN" ] \
@@ -8037,8 +8037,10 @@ else
     elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
         lifecycle_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/models/server_status_refresh_loop.dart" | /usr/bin/awk '{print $1}')"
         lifecycle_tests_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test/server_status_refresh_loop_test.dart" | /usr/bin/awk '{print $1}')"
+        widget_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/desktop/pages/connection_page.dart" | /usr/bin/awk '{print $1}')"
+        widget_tests_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test_probes/listener_status_cases.dart.inc" | /usr/bin/awk '{print $1}')"
         require_exact_fixed_receipt \
-            "FLUTTER_STATUS_REFRESH_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=9 flutter=$FLUTTER_VERSION lifecycle=$lifecycle_sha256 tests_source=$lifecycle_tests_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-status-refresh-tests cleanup=joined" \
+            "FLUTTER_STATUS_REFRESH_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=2 tests=16 flutter=$FLUTTER_VERSION lifecycle=$lifecycle_sha256 tests_source=$lifecycle_tests_sha256 widget=$widget_sha256 widget_tests=$widget_tests_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-status-refresh-tests cleanup=joined" \
             'focused Flutter status-refresh receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
         lifecycle_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/models/share_rdp_change_lifecycle.dart" | /usr/bin/awk '{print $1}')"

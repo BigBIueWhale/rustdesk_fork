@@ -40,6 +40,11 @@ enum PortForwardOwnerJoinRequest {
     },
 }
 
+struct AdmittedPortForwardOwnerJoin {
+    request: PortForwardOwnerJoinRequest,
+    permit: OwnedSemaphorePermit,
+}
+
 pub(crate) struct PortForwardMappingPermit {
     _permit: OwnedSemaphorePermit,
 }
@@ -66,7 +71,9 @@ lazy_static::lazy_static! {
         Arc::new(Semaphore::new(MAX_PORT_FORWARD_CONNECTIONS_PROCESS));
     static ref PROCESS_PORT_FORWARD_MAPPING_ADMISSION: Arc<Semaphore> =
         Arc::new(Semaphore::new(MAX_OWNED_PORT_FORWARD_MAPPINGS));
-    static ref PORT_FORWARD_OWNER_REAPER: std::sync::mpsc::SyncSender<PortForwardOwnerJoinRequest> = {
+    static ref PORT_FORWARD_OWNER_REAPER_ADMISSION: Arc<Semaphore> =
+        Arc::new(Semaphore::new(PORT_FORWARD_OWNER_REAPER_CAPACITY));
+    static ref PORT_FORWARD_OWNER_REAPER: std::sync::mpsc::SyncSender<AdmittedPortForwardOwnerJoin> = {
         let (sender, receiver) =
             std::sync::mpsc::sync_channel(PORT_FORWARD_OWNER_REAPER_CAPACITY);
         if std::thread::Builder::new()
@@ -80,32 +87,79 @@ lazy_static::lazy_static! {
     };
 }
 
-fn run_port_forward_owner_reaper(receiver: std::sync::mpsc::Receiver<PortForwardOwnerJoinRequest>) {
-    while let Ok(request) = receiver.recv() {
-        match request {
-            PortForwardOwnerJoinRequest::OneOff { thread, completed } => {
-                let result = thread
-                    .join()
-                    .map_err(|_| anyhow!("Port-forward owner thread panicked"))
-                    .and_then(|result| result);
-                let _ = completed.send(result);
+fn run_port_forward_owner_reaper(receiver: std::sync::mpsc::Receiver<AdmittedPortForwardOwnerJoin>) {
+    const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
+    let mut pending =
+        Vec::<AdmittedPortForwardOwnerJoin>::with_capacity(PORT_FORWARD_OWNER_REAPER_CAPACITY);
+    let mut input_open = true;
+    loop {
+        let mut index = 0;
+        while index < pending.len() {
+            let finished = match &pending[index].request {
+                PortForwardOwnerJoinRequest::OneOff { thread, .. } => thread.is_finished(),
+                PortForwardOwnerJoinRequest::Supervisor { thread, .. } => thread.is_finished(),
+            };
+            if !finished {
+                index += 1;
+                continue;
             }
-            PortForwardOwnerJoinRequest::Supervisor { thread, completed } => {
-                let result = thread
-                    .join()
-                    .map_err(|_| "Port-forward owner thread panicked".to_owned());
-                if let Some(completed) = completed {
+            let AdmittedPortForwardOwnerJoin { request, permit } = pending.swap_remove(index);
+            match request {
+                PortForwardOwnerJoinRequest::OneOff { thread, completed } => {
+                    let result = thread
+                        .join()
+                        .map_err(|_| anyhow!("Port-forward owner thread panicked"))
+                        .and_then(|result| result);
+                    // Completion also publishes recovered capacity to the waiting caller.
+                    drop(permit);
                     let _ = completed.send(result);
-                } else if let Err(err) = result {
-                    log::error!("{}", err);
+                }
+                PortForwardOwnerJoinRequest::Supervisor { thread, completed } => {
+                    let result = thread
+                        .join()
+                        .map_err(|_| "Port-forward owner thread panicked".to_owned());
+                    drop(permit);
+                    if let Some(completed) = completed {
+                        let _ = completed.send(result);
+                    } else if let Err(err) = result {
+                        log::error!("{}", err);
+                    }
                 }
             }
+        }
+        if !input_open {
+            if pending.is_empty() {
+                return;
+            }
+            std::thread::sleep(POLL_INTERVAL);
+            continue;
+        }
+        let next = if pending.is_empty() {
+            receiver
+                .recv()
+                .map_err(|_| std::sync::mpsc::RecvTimeoutError::Disconnected)
+        } else {
+            receiver.recv_timeout(POLL_INTERVAL)
+        };
+        match next {
+            Ok(request) => pending.push(request),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => input_open = false,
         }
     }
 }
 
 fn handoff_port_forward_owner(request: PortForwardOwnerJoinRequest) {
-    if PORT_FORWARD_OWNER_REAPER.try_send(request).is_err() {
+    // One permit covers queueing, pending ownership and the exact native join.
+    let permit = match PORT_FORWARD_OWNER_REAPER_ADMISSION
+        .clone()
+        .try_acquire_owned()
+    {
+        Ok(permit) => permit,
+        Err(_) => std::process::abort(),
+    };
+    let request = AdmittedPortForwardOwnerJoin { request, permit };
+    if let Err(_owned_request) = PORT_FORWARD_OWNER_REAPER.try_send(request) {
         std::process::abort();
     }
 }

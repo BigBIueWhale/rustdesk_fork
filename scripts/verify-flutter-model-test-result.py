@@ -1572,11 +1572,6 @@ def parse_result(path, profile="models"):
         expected_tests = len(expected_names)
     else:
         expected_tests = model_test_count()
-    metadata = os.lstat(path)
-    require(stat.S_ISREG(metadata.st_mode), "result is not one regular file")
-    require(metadata.st_nlink == 1, "result has multiple links")
-    require(metadata.st_size <= MAXIMUM_BYTES, "result exceeds its byte bound")
-
     suites = {}
     tests = {}
     completed = set()
@@ -1585,8 +1580,20 @@ def parse_result(path, profile="models"):
     events = 0
     visible_successes = 0
     visible_names = set()
-    with open(path, "rb") as stream:
-        for raw_line in stream:
+    with open(path, "rb", opener=lambda name, flags: os.open(
+            name, flags | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)) as stream:
+        metadata = os.fstat(stream.fileno())
+        require(stat.S_ISREG(metadata.st_mode), "result is not one regular file")
+        require(metadata.st_nlink == 1, "result has multiple links")
+        require(metadata.st_size <= MAXIMUM_BYTES, "result exceeds its byte bound")
+        bytes_read = 0
+        while True:
+            raw_line = stream.readline(min(
+                MAXIMUM_LINE_BYTES, metadata.st_size - bytes_read) + 1)
+            if not raw_line:
+                break
+            bytes_read += len(raw_line)
+            require(bytes_read <= metadata.st_size, "result grew while reading")
             events += 1
             require(events <= MAXIMUM_EVENTS, "result exceeds its event bound")
             require(len(raw_line) <= MAXIMUM_LINE_BYTES, "result line exceeds its byte bound")
@@ -1645,6 +1652,12 @@ def parse_result(path, profile="models"):
             elif event_type == "done":
                 done_events += 1
                 require(event.get("success") is True, "final test result is not successful")
+        after = os.fstat(stream.fileno())
+        require(bytes_read == metadata.st_size, "result length changed while reading")
+        require(after.st_nlink == 1 and
+                (after.st_size, after.st_mtime_ns, after.st_ctime_ns) ==
+                (metadata.st_size, metadata.st_mtime_ns, metadata.st_ctime_ns),
+                "result changed while reading")
 
     require(events > 0, "result is empty")
     require(starts == 1, "start event is absent or duplicated")

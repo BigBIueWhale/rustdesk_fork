@@ -109452,3 +109452,27 @@ controls. The fixture does not impersonate a native application or prove whole-p
 RSS. First run the unchanged parser to establish the failure, then the corrected
 parser through the same existing focused address profile. All product parks,
 fifteen native credential acceptances and R-S0/R-F5 remain open.
+
+Baseline `379c278e2230fda4180ae36aff87cd79e1cd5509`, tree
+`f97ae911c07aec5e458cb6c1204f1f0a221c0bb8`, reproduces all five new failures in
+run `hAkL0FXQnG`: replacement, growth, hard-link creation and same-size rewrite
+are accepted, and oversized-line traced allocation peaks at 12,775,334 bytes
+against the 4,194,304-byte regression ceiling. Three parser methods execute in
+0.159 seconds, with five failures; this is a rejected run, not an accepted product
+checkpoint. The serial is 70,880 bytes, SHA-256
+`4ed3d00cb3aa8de21adc7e1f03795369442076126664fb820d9a3c962ed2ecdc`.
+Supervisor lifetime is 82.556 seconds; peak RAM scratch 4,050,644,992 bytes and
+durable evidence 3,305,472 bytes. QEMU 3770872 joins with exit 0, RAM
+`run.4q9lpy8p` is absent and all endpoint deltas are zero. The exact terminal
+diagnostic directory is renamed without deletion to
+`flutter-result-input-baseline.hAkL0FXQnG`, identity `66306:104260943`, only after
+joined-process, absent-socket/workspace and bounded owned-file checks.
+
+The parser now opens with no-follow/nonblocking/close-on-exec flags and checks
+the retained stream's metadata. Each read is bounded by both the line limit and
+remaining admitted file length plus one refusal byte. EOF and final descriptor
+metadata must agree with the original length, single-link state and nanosecond
+modification/change times. The open context owns closure on success or error.
+The regression bytes, all inventories and runtime recipes remain unchanged.
+These checks detect the exercised observable changes; they do not authenticate a
+test producer or provide an atomic snapshot against an arbitrary privileged writer.

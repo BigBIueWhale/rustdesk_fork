@@ -23,7 +23,8 @@ fn modifiers(event: &KeyEvent) -> HashSet<ControlKey> {
 fn physical_modifiers_survive_until_their_release() {
     for (code, modifier) in [(57, ControlKey::Alt), (58, ControlKey::RAlt),
         (59, ControlKey::Shift), (60, ControlKey::RShift),
-        (113, ControlKey::Control), (114, ControlKey::RControl), (117, ControlKey::Meta)] {
+        (113, ControlKey::Control), (114, ControlKey::RControl),
+        (117, ControlKey::Meta), (118, ControlKey::RWin)] {
         let mut owner = Connection::default();
         assert_eq!(modifiers(&apply(&mut owner, physical(code, true))), HashSet::from([modifier]));
         for down in [true, false] {
@@ -51,13 +52,13 @@ fn repeat_and_tap_do_not_corrupt_held_state() {
     for _ in 0..3 { apply(&mut owner, physical(113, true)); }
     let mut tap = physical(113, true);
     tap.press = true;
-    apply(&mut owner, tap);
+    assert_eq!(modifiers(&apply(&mut owner, tap)), HashSet::from([ControlKey::Control]));
     let held = apply(&mut owner, physical(29, true));
     assert_eq!(held.modifiers, vec![ControlKey::Control.into()]);
     apply(&mut owner, physical(113, false));
     let mut tap = physical(59, false);
     tap.press = true;
-    apply(&mut owner, tap);
+    assert_eq!(modifiers(&apply(&mut owner, tap)), HashSet::from([ControlKey::Shift]));
     assert!(apply(&mut owner, physical(29, true)).modifiers.is_empty());
 }
 
@@ -83,6 +84,14 @@ fn legacy_release_clears_a_physical_hold() {
     release.mode = KeyboardMode::Legacy.into();
     release.set_control_key(ControlKey::Control);
     apply(&mut owner, release);
+    assert!(apply(&mut owner, physical(29, true)).modifiers.is_empty());
+    let mut down = KeyEvent::new();
+    down.mode = KeyboardMode::Legacy.into();
+    down.set_control_key(ControlKey::RControl);
+    down.down = true;
+    apply(&mut owner, down);
+    assert_eq!(modifiers(&apply(&mut owner, physical(29, true))), HashSet::from([ControlKey::RControl]));
+    apply(&mut owner, physical(114, false));
     assert!(apply(&mut owner, physical(29, true)).modifiers.is_empty());
 }
 

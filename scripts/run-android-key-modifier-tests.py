@@ -109,6 +109,7 @@ def main():
         (fixture / "Cargo.toml").write_text(
             f'[package]\nname = "{PACKAGE}"\nversion = "0.0.0"\nedition = "2021"\n'
             '[dependencies]\nrdev = { git = "https://github.com/rustdesk-org/rdev" }\n'
+            f'bytes = "={version("bytes")}"\n'
             f'protobuf = {{ version = "={version("protobuf")}", features = ["with-bytes"] }}\n'
             '[build-dependencies]\n'
             f'protobuf-codegen = "={version("protobuf-codegen")}"\n'

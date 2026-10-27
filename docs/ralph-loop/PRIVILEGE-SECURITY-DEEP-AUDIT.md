@@ -108703,3 +108703,19 @@ Serial: 67,488 bytes, SHA-256
 QEMU 3336062 joins with exit 0; RAM `run.odisi7zi` is absent. One unattributed
 final endpoint addition remains untouched. Diagnostics are identity-renamed to
 `port-edit-receipt.RpzoTnpuVf`; no overall acceptance is claimed for this run.
+
+Final replay `3cd140dc`, run `q0WS2foMLe`, passes all **25 identical cases**,
+three parser controls, source-copy/digest checks, guest receipt and outer cleanup.
+The production formatter and tests are byte-identical to the prior candidate;
+the single expected-count correction resolves the receipt failure. Outer lifetime
+103 seconds, supervisor 107.012 seconds. Serial: 67,451 bytes, SHA-256
+`29112c204b5165216caa7e5571e616599e1915e4bbeda309534ab9f22a7e68b1`.
+Formatter SHA-256 `601eb6e1d32e0feb74fc6bdd37d3f0e1525b2ff499e7ecc31ffebe86e4fb905f`;
+tests SHA-256 `5b2a15150a023adcdd66c72e6e7d85837f92ba56dfc587fca7d3c0ac357e2313`.
+Peak RAM scratch 4,050,251,776 bytes, durable diagnostics 3,305,472 bytes.
+QEMU 3342347 joins with exit 0; RAM `run.k11g9hiw` and active run roots are absent.
+Before/during endpoint deltas are zero; one final unattributed 18-byte addition is
+left untouched, with no process-owner inspection. This is formatter/rendered-field
+evidence, not full page, native FFI, OS input-method or authenticated tunnel
+acceptance. All installed/native security and release obligations remain open.
+The ledger records this exact boundary; a fresh ledger token count follows.

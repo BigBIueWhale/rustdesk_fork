@@ -1605,6 +1605,21 @@ for capture's separate connection. No installed identity, LPE or release closure
 
 ## Desktop TCP tunnels — native acceptance OPEN
 
+**Port-field draft preservation (`2c83ce0f`).** Both numeric fields use the shared
+`port_number.dart` complete-edit predicate: valid drafts and clearing remain usable;
+an invalid digit or paste preserves the previous text, selection and composing
+state. No partial matching or character stripping can turn a refused edit into a
+different port. Baseline `da7e69b0` clears the draft in three regressions while
+22 controls pass; corrected source at `3cd140dc` passes all 25 identical focused
+cases and three result-parser controls in 103 outer VM seconds. These execute the
+production formatter and rendered TextFields, with exact source-copy/digest checks,
+joined QEMU and retired RAM storage. Earlier formatting and receipt-count failures
+are retained in the 2026-10-27 audit entry. Complete PortForwardPage/native FFI,
+OS input methods, authenticated tunnel sessions and installed/platform acceptance
+remain OPEN; the separate page-controller disposal finding and all user parks,
+including tunnel-owner/half-close follow-up, remain OPEN. Backend authority and
+network behavior are unchanged.
+
 R-T17/PF-1–PF-5 owns the complete desktop port-forward/RDP contract. The current
 source uses a private immutable `PortForwardTarget` in `src/client.rs`, exclusive
 loopback listeners in `libs/hbb_common/src/tcp.rs`, and mapping/connection admission,

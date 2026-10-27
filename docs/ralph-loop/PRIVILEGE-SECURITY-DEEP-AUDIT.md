@@ -108037,3 +108037,22 @@ ed4d6461731c9fd34e252fe3104fc713e56cee2e14331726d9cffd727bfffeb5.
 Fresh two-document counts and exact isolated cleanup are recorded after execution.
 All fifteen credential actions, R-S0/R-F5, current native/installed and release
 acceptance, and every existing user park remain OPEN/PARKED.
+
+Committed source d8e5aeab5eb97c5239a9db511173bc18abc21ac1 was clean and pushed;
+`/bin/bash scripts/smoke-verifier-vm-authority.sh --ledger-token-count --requirements`
+passed as yQf1elOxYD in 29 outer seconds. Pinned tiktoken 0.12.0/cl100k_base/
+encode_ordinary passed seven controls and both complete byte round trips:
+- Requirements: 368,770 -> 368,732 tokens; 1,683,194 -> 1,682,997 bytes;
+  SHA-256 25234a4b77a9d03ad5f3b56c6bffa92291d5e2e77aeb9c92786cdeb05c0ee0f6.
+- Ledger: 350,024 -> 350,160 tokens; 1,589,890 -> 1,590,542 bytes;
+  SHA-256 abb0b94bca3c7f1e3589792cdeeea2309febc28ba91db98c3225036b7206d46f.
+The ledger remains within its approximate 400,000-token budget. Its changes are
+the exact document disposition and the user's wallpaper park, not a new closure.
+
+Retained ledger-token-count-run.yQf1elOxYD.serial.log is 98,145 bytes, SHA-256
+df02cb36279da3f8ec08de82c472158b6f778bdd60beb5cc0dce548d0c2ab850.
+Adjacent storage/listener records show 31.295 supervisor seconds, 402,255,872 bytes
+peak RAM scratch and 147,456 bytes peak durable run storage. QEMU 3003376 joined
+with exit 0. Identity-checked post-run inspection confirms its absence, retirement
+of /dev/shm/rustdesk-fork-vm-1000/run.itoemwlc and no active run markers. All three
+endpoint inventories have zero additions/removals. No product runtime was executed.

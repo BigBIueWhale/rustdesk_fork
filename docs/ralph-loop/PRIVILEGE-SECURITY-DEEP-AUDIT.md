@@ -107446,3 +107446,31 @@ Full help-card routing, native screen readers, installed macOS permission/helper
 actions, other platforms, all fifteen credential actions, R-S0/R-F5 and release
 acceptance remain OPEN. This is a presentation correction, not installed authority
 or local privilege-escalation acceptance.
+
+### 2026-10-27 — user pivot; authentication-settings specification cleanup
+
+Connection-start credential derivation and peer-receive timeout investigation
+remain OPEN/PARKED. No product or fixture change was made and no runtime result
+was produced for that investigation. All earlier user parks remain in force.
+
+R-X7a still described live desktop/mobile approval and verification selectors and
+said the R-S16 pin would land later. Desktop removal c1d53644 and mobile removal
+e1e980ed, plus the current desktop password card and mobile popup, establish that
+this is obsolete implementation narration. The remaining action in both source
+paths is Set permanent password. The focused structural check in verify.sh
+continues to prohibit selector writers and is unchanged.
+
+R-X7a now states the enduring requirement: both exact policy pins and their read/
+write funnels; no password/click/both, one-time/permanent/both, length or numeric
+OTP selector in any shipped Flutter front-end; removal rather than hiding or
+disabling; and functional authorized permanent-password setup through the
+enforcing owner. R-S11b/R-S11i and R-S0 supply that existing operation authority
+and functionality obligation. No product, verifier, test or live instruction
+file is changed. Other specification bytes and all requirement/finding IDs,
+anchors and links are preserved. Git history retains the superseded paragraph.
+
+Verification is document classification, exact diff/reference review and the
+existing isolated two-document token counter. No product behavior is executed
+or newly accepted. Current installed/native evidence for all fifteen credential
+actions, full app/settings functionality, R-S0/R-F5 and release acceptance remain
+OPEN. Exact count and cleanup results follow after the committed source runs.

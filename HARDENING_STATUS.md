@@ -97,6 +97,11 @@ The focused correction `506a5800` and its accepted component evidence remain;
 parent application, installed/other-platform and soak acceptance are still open.
 Do not resume automatically. Work moved to desktop help-card accessibility.
 
+**User pivot (2026-10-27):** Connection-start credential derivation and peer-receive
+timeout investigation remain OPEN/PARKED. Source review only; no implementation,
+fixture or runtime result was added. Do not resume automatically. Work moved to
+the authentication-settings specification cleanup below.
+
 **User pivot (2026-10-27):** File-deletion row publication remains OPEN/PARKED.
 Preparation `c57667a6` and product `4bdc799b` are pushed; the already-running candidate
 finished with exit 1 after the pivot. Raw runs `memOlQqRwO` and `UvBpC70MCB` are retained,
@@ -300,6 +305,7 @@ fresh ledger count. Native/installed acceptance and all user parks remain OPEN.
 
 | Documentation scope | Current contract or disposition | Retained classification |
 | --- | --- | --- |
+| Authentication-settings selectors | R-X7a states the permanent-only policy, absence of approval/verification/OTP selectors on every Flutter front-end, and required authorized permanent-password setup. Its claims that the removed selectors still ship and that the policy pin is future work are deleted. Current desktop/mobile source and removal commits `c1d53644`/`e1e980ed` support that classification. Other specification bytes, requirement/finding IDs, anchors, links, product and verification code are unchanged. Native provisioning/settings, all fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN. | Git history and the 2026-10-27 audit-journal entry; fresh document counts are recorded there. |
 | Android signing-authority specification | R-S11di's historical repair narrative is deleted; its complete VM admission, guest Docker, identity/secret/publication and acceptance contract remains byte-identical. Appendix C #226/#262, other requirements, IDs, anchors and links are unchanged. The R-S11di status entry retains the historical authority-only evidence and all open identity/APK/device/cold-release/native/review boundaries. Product and verification code are unchanged. | `signing-contract-3ae6f9bd.json` |
 | Privileged process finding descriptions | Appendix C #121/#132/#142 state the enduring password-argument disclosure, configuration-driven HKLM replay and inherited-descriptor failure classes. Historical implementation inventories and exploit-status narration are deleted. All three required-disposition cells, formal clauses, IDs, anchors and links remain unchanged. Product and verification code are unchanged; target-native and installed acceptance, all fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN. | `privilege-findings-aefb22ba.json` |
 | Apple acceptance evidence | Section 15 follows R-R2's three-target source gate and exact-artifact native acceptance. The claim that `cargo check` proves Apple hardening and the duplicate all-device/SSH assurance box are deleted; their live obligations remain in R-R2, R-S0, R-S2/R-S13/R-S19, R-A4, R-X1/R-X4/R-P5 and R-V3. Formal clauses, product and verifier code are unchanged. Source compilation, installed/native Apple behavior, all fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN. | `apple-acceptance-contract-517c2d25.json` |

@@ -288,18 +288,21 @@ void main() {
           (tester) async {
         final h = _DeleteHarness(isLocal: local);
         await h.mount(tester);
-        addTearDown(() => h.drain(tester));
-        final result = h.start(directory: directory);
-        await h.confirm(tester);
-        expect(h.calls, hasLength(1));
-        h.fail(directory: directory);
-        await tester.pumpAndSettle();
-        expect(await result, isFalse);
-        expect(find.textContaining('delete denied', findRichText: true), findsWidgets);
-        expect(h.jobs.jobTable.single.state, JobState.error);
-        expect(h.calls, hasLength(1));
-        expect(h.refreshes, 0);
-        expect(h.controller.selectedItems.items, hasLength(2));
+        try {
+          final result = h.start(directory: directory);
+          await h.confirm(tester);
+          expect(h.calls, hasLength(1));
+          h.fail(directory: directory);
+          await tester.pumpAndSettle();
+          expect(await result, isFalse);
+          expect(find.textContaining('delete denied', findRichText: true), findsWidgets);
+          expect(h.jobs.jobTable.single.state, JobState.error);
+          expect(h.calls, hasLength(1));
+          expect(h.refreshes, 0);
+          expect(h.controller.selectedItems.items, hasLength(2));
+        } finally {
+          await h.drain(tester);
+        }
       });
     }
   }
@@ -308,57 +311,66 @@ void main() {
       (tester) async {
     final h = _DeleteHarness()..failListing = true;
     await h.mount(tester);
-    addTearDown(() => h.drain(tester));
-    final result = h.start(directory: true);
-    await tester.pumpAndSettle();
-    expect(find.text('This is irreversible!'), findsNothing);
-    expect(await result, isFalse);
-    expect(find.textContaining('listing denied', findRichText: true), findsWidgets);
-    expect(h.calls, isEmpty);
-    expect(h.refreshes, 0);
+    try {
+      final result = h.start(directory: true);
+      await tester.pumpAndSettle();
+      expect(find.text('This is irreversible!'), findsNothing);
+      expect(await result, isFalse);
+      expect(find.textContaining('listing denied', findRichText: true), findsWidgets);
+      expect(h.calls, isEmpty);
+      expect(h.refreshes, 0);
+    } finally {
+      await h.drain(tester);
+    }
   });
 
   testWidgets('delete allocation failure is visible and permits a fresh retry',
       (tester) async {
     final h = _DeleteHarness()..failAllocation = true;
     await h.mount(tester);
-    addTearDown(() => h.drain(tester));
-    final failed = h.start();
-    await tester.pumpAndSettle();
-    expect(await failed, isFalse);
-    expect(find.textContaining('allocation failed', findRichText: true), findsWidgets);
-    expect(h.calls, isEmpty);
-    h.manager.dismissAll();
-    h.failAllocation = false;
-    final retry = h.start();
-    await h.confirm(tester);
-    await h.jobs.jobDone({'id': '1', 'file_num': '0'}, h.session);
-    h.dispatches.single.complete();
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
-    expect(await retry, isTrue);
-    expect(h.jobs.jobTable.first.state, JobState.done);
-    expect(h.calls, hasLength(1));
-    expect(h.refreshes, 1);
+    try {
+      final failed = h.start();
+      await tester.pumpAndSettle();
+      expect(await failed, isFalse);
+      expect(find.textContaining('allocation failed', findRichText: true), findsWidgets);
+      expect(h.calls, isEmpty);
+      h.manager.dismissAll();
+      h.failAllocation = false;
+      final retry = h.start();
+      await h.confirm(tester);
+      await h.jobs.jobDone({'id': '1', 'file_num': '0'}, h.session);
+      h.dispatches.single.complete();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(await retry, isTrue);
+      expect(h.jobs.jobTable.first.state, JobState.done);
+      expect(h.calls, hasLength(1));
+      expect(h.refreshes, 1);
+    } finally {
+      await h.drain(tester);
+    }
   });
 
   testWidgets('delete retired failure cannot replace the current dialog',
       (tester) async {
     final h = _DeleteHarness();
     await h.mount(tester);
-    addTearDown(() => h.drain(tester));
-    final result = h.start(directory: true);
-    await h.confirm(tester);
-    h.currentSession = const Uuid().v4obj();
-    h.jobs.clear();
-    msgBox(h.currentSession, 'custom-error', 'Error', 'Current dialog', '', h.manager);
-    h.dispatches.single.completeError(StateError('retired failure'));
-    await tester.pumpAndSettle();
-    expect(await result, isFalse);
-    expect(find.textContaining('Current dialog', findRichText: true), findsWidgets);
-    expect(find.textContaining('retired failure', findRichText: true), findsNothing);
-    expect(h.calls, hasLength(1));
+    try {
+      final result = h.start(directory: true);
+      await h.confirm(tester);
+      h.currentSession = const Uuid().v4obj();
+      h.jobs.clear();
+      msgBox(h.currentSession, 'custom-error', 'Error', 'Current dialog', '', h.manager);
+      h.dispatches.single.completeError(StateError('retired failure'));
+      await tester.pumpAndSettle();
+      expect(await result, isFalse);
+      expect(find.textContaining('Current dialog', findRichText: true), findsWidgets);
+      expect(find.textContaining('retired failure', findRichText: true), findsNothing);
+      expect(h.calls, hasLength(1));
+    } finally {
+      await h.drain(tester);
+    }
   });
 
   test('native file-job allocation failures cannot dispatch fallback IDs',

@@ -1,16 +1,61 @@
 use std::{cell::Cell, io, panic::catch_unwind, ptr, thread};
+use std::{ffi::c_void, sync::{Arc, atomic::{AtomicUsize, Ordering}}};
 use zstd::zstd_safe::{self, zstd_sys::{ZSTD_CCtx, ZSTD_DCtx}};
 
 thread_local! {
     static CREATION: Cell<(usize, usize)> = const { Cell::new((0, 0)) };
     static DECODER_CREATION: Cell<(usize, usize)> = const { Cell::new((0, 0)) };
     static DECODER_FREES: Cell<usize> = const { Cell::new(0) };
+    static COMPRESSOR_MEMORY: Cell<*const NativeMemory> = const { Cell::new(ptr::null()) };
+}
+
+// Test-only ABI from the pinned zstd 1.5.6 zstd.h. The normal product constructor
+// is unchanged; the wrapper selects these native callbacks only in this worker.
+#[repr(C)]
+struct CustomMemory {
+    allocate: unsafe extern "C" fn(*mut c_void, usize) -> *mut c_void,
+    free: unsafe extern "C" fn(*mut c_void, *mut c_void),
+    opaque: *mut c_void,
+}
+
+#[derive(Default)]
+struct NativeMemory {
+    fail_at: AtomicUsize,
+    attempts: AtomicUsize,
+    refused: AtomicUsize,
+    allocated: AtomicUsize,
+    freed: AtomicUsize,
 }
 
 extern "C" {
     fn __real_ZSTD_createCCtx() -> *mut ZSTD_CCtx;
     fn __real_ZSTD_createDCtx() -> *mut ZSTD_DCtx;
     fn __real_ZSTD_freeDCtx(context: *mut ZSTD_DCtx) -> usize;
+    fn ZSTD_createCCtx_advanced(memory: CustomMemory) -> *mut ZSTD_CCtx;
+    fn malloc(size: usize) -> *mut c_void;
+    fn free(pointer: *mut c_void);
+}
+
+unsafe extern "C" fn native_allocate(opaque: *mut c_void, size: usize) -> *mut c_void {
+    let state = &*(opaque as *const NativeMemory);
+    let attempt = state.attempts.fetch_add(1, Ordering::SeqCst) + 1;
+    if attempt == state.fail_at.load(Ordering::SeqCst) {
+        state.refused.fetch_add(1, Ordering::SeqCst);
+        return ptr::null_mut();
+    }
+    let pointer = malloc(size);
+    if !pointer.is_null() {
+        state.allocated.fetch_add(1, Ordering::SeqCst);
+    }
+    pointer
+}
+
+unsafe extern "C" fn native_free(opaque: *mut c_void, pointer: *mut c_void) {
+    if !pointer.is_null() {
+        let state = &*(opaque as *const NativeMemory);
+        state.freed.fetch_add(1, Ordering::SeqCst);
+        free(pointer);
+    }
 }
 
 #[no_mangle]
@@ -41,7 +86,69 @@ unsafe extern "C" fn __wrap_ZSTD_createCCtx() -> *mut ZSTD_CCtx {
         state.set((remaining.saturating_sub(1), calls + 1));
         remaining > 0
     });
-    if refuse { ptr::null_mut() } else { __real_ZSTD_createCCtx() }
+    if refuse {
+        return ptr::null_mut();
+    }
+    let state = COMPRESSOR_MEMORY.with(Cell::get);
+    if state.is_null() {
+        __real_ZSTD_createCCtx()
+    } else {
+        ZSTD_createCCtx_advanced(CustomMemory {
+            allocate: native_allocate,
+            free: native_free,
+            opaque: state as *mut c_void,
+        })
+    }
+}
+
+#[test]
+fn native_workspace_refusal_preserves_compressor_and_retires_allocations() {
+    let mut refusals = 0;
+    for size in [1, 128 * 1024, 4 * 1024 * 1024] {
+        let input = vec![0x5a; size];
+        let reference = zstd::bulk::compress(&input, crate::config::COMPRESS_LEVEL).unwrap();
+        let exercise = |fail_at| {
+            let state = Arc::new(NativeMemory::default());
+            state.fail_at.store(fail_at, Ordering::SeqCst);
+            let retained = Arc::clone(&state);
+            let input = input.clone();
+            let reference = reference.clone();
+            let result = thread::spawn(move || {
+                // The parent Arc outlives join, including the cached CCtx's TLS destructor.
+                COMPRESSOR_MEMORY.with(|slot| slot.set(Arc::as_ptr(&retained)));
+                if fail_at != 0 {
+                    let failed = catch_unwind(|| crate::compress::compress(&input));
+                    assert!(matches!(failed, Ok(Err(_))), "native refusal must return an error: {failed:?}");
+                    assert_eq!(retained.refused.load(Ordering::SeqCst), 1);
+                    retained.fail_at.store(0, Ordering::SeqCst);
+                }
+                for _ in 0..2 {
+                    let encoded = crate::compress::compress(&input).unwrap();
+                    assert_eq!(encoded, reference);
+                    assert_eq!(crate::compress::try_decompress(&encoded).unwrap(), input);
+                }
+                assert_eq!(CREATION.with(Cell::get).1, 1, "retry must reuse the same CCtx");
+                assert!(retained.allocated.load(Ordering::SeqCst)
+                    > retained.freed.load(Ordering::SeqCst), "cached native context must remain live");
+            }).join();
+            let allocations = state.allocated.load(Ordering::SeqCst);
+            let frees = state.freed.load(Ordering::SeqCst);
+            assert_eq!(allocations, frees, "worker exit must retire all native allocations");
+            result.unwrap();
+            println!("COMPRESS_WORKSPACE_CASE=pass bytes={size} fail_at={fail_at} allocations={allocations} frees={frees} retry=exact context=same worker=joined");
+            state.attempts.load(Ordering::SeqCst)
+        };
+        let attempts = exercise(0);
+        assert!((2..=16).contains(&attempts), "native workspace allocation must be observed");
+        // Allocation 1 is the already-covered constructor; exercise every later
+        // allocation observed on this exact native library and input size.
+        for fail_at in 2..=attempts {
+            exercise(fail_at);
+            refusals += 1;
+        }
+    }
+    assert!(refusals >= 3);
+    println!("COMPRESS_WORKSPACE=pass sizes=3 refusals={refusals} native=zstd-1.5.6 retry=exact context=same allocations=retired workers=joined");
 }
 
 #[test]

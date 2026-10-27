@@ -109709,3 +109709,37 @@ durable evidence 151,552 bytes. QEMU 3883259 joins with exit 0; its PID,
 RAM `run.sgonwyfj` and active run roots are absent. All three endpoint deltas
 are zero. This count executes no product or corrected source gate. This audit-only
 receipt changes neither the counted ledger nor the specification.
+
+## 2026-10-28 — native compressor workspace allocation
+
+Previous turn made progress: IPC verifier correction `e18acca7` and retained
+count/cleanup `5d220a14` are pushed. All fifteen credential actions still need
+native allowed/refused effects, persistence/restart, identity races and cleanup.
+The initial resolution review found the explicit 2026-10-15 native-query park;
+no resolution edit or execution follows. The observed geometry/mode distinction
+remains unvalidated source research. Existing stashes and all parks are preserved.
+
+The selected slice covers the shared compressor's native workspace allocation,
+an explicit evidence gap in the current compression ledger. Existing constructor
+faults exercise `ZSTD_createCCtx` returning null and Rust output-reservation faults;
+neither reaches an allocation refusal inside `ZSTD_compress2` after a context exists.
+`libs/hbb_common/src/compress.rs::compress` retains a configured thread-local CCtx
+and maps native operation errors to an IO error. Its next call reuses that context.
+The pinned Zstd 1.5.6 source (`zstd_compress.c:6435`, `common/allocations.h` and
+`zstd.h`) and the primary [Zstd manual](https://facebook.github.io/zstd/zstd_manual.html)
+confirm that compress2 resets its session before each frame and that paired custom
+allocation/free callbacks cover the context's allocations. No product change is
+justified before the real failure/retry path is observed.
+
+Extend the existing isolated component test's constructor wrapper to select
+those native callbacks only for the new worker. The test-only repr(C) declaration
+matches the pinned custom-memory ABI; no product feature/dependency changes.
+Healthy callbacks use libc malloc/free. A parent-held Arc outlives worker join,
+including the cached compressor's TLS destructor. Healthy probes for one byte,
+128 KiB and 4 MiB discover actual allocation positions; every observed allocation
+after construction is then individually refused in a fresh worker. Require an
+error without unwind, an observed refusal, two exact retries using one CCtx,
+upstream-equivalent wire bytes, exact decode and matching native allocation/free
+counts after join. The existing fifteen regressions remain selected. The new
+sixteen-test inventory uses the existing bounded RAM VM profile and unchanged
+network/identity/source/artifact/cleanup admission. Execution is pending.

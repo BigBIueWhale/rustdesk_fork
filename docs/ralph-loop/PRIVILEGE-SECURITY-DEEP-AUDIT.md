@@ -107986,3 +107986,12 @@ each. Both exact QEMU children join with exit 0, RAM workspaces disappear, and a
 endpoint deltas are zero. The existing 6-GiB guest/7-GiB scratch/6-GiB file ceiling
 profile is unchanged. No active run remains. All controlling files and user parks
 are unchanged. The following ledger count does not repeat the product tests.
+
+Fresh --ledger-token-count at 1be56dc9e5d7329eb971eab48aa02558d3c9179c
+passes as UKYSJ0A7Ro in 28 outer seconds: 350,024 tokens / 1,589,890 bytes,
+ledger SHA-256 09e7c3e8192e2eac978386eb53e3998c44cdedf671ad82b93e6d53188a890d5f.
+The established tiktoken 0.12.0/cl100k_base/encode_ordinary method passes seven
+controls and the whole-file round trip. The serial is 97,070 bytes, SHA-256
+4c9bab2f3b1a4224b2c8e1a4baeac01a6200cbfc88d03a336f5aaad70417b87b.
+Exact QEMU is joined; RAM scratch and active markers are absent; endpoint deltas
+are zero. No passed product test was repeated for documentation finalization.

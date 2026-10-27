@@ -159,6 +159,14 @@ LIST_SEARCH_TESTS = {
     "list search preserves a prefix across a parent rebuild",
     "list search resets repeated character cycling after focus leaves",
 }
+PEER_SEARCH_TESTS = {
+    "peer search opens focused and publishes typed text",
+    "peer search keeps focus and caret through parent rebuilds",
+    "peer search does not change selection when focus leaves",
+    "peer search selects the query when focus returns",
+    "peer search close clears the query and reopening accepts input",
+    "peer search disposes its focus node when removed",
+}
 STATUS_REFRESH_TESTS = {
     "close waits for readiness without admitting a refresh",
     "reentrant close drains the accepted readiness turn",
@@ -1085,7 +1093,7 @@ FILE_METADATA_TESTS = {
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "status-refresh", "peer-data", "file-progress", "custom-scale", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "status-refresh", "peer-data", "file-progress", "custom-scale", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     expected_by_suite = None
     if profile == "frame-queue":
@@ -1112,6 +1120,10 @@ def parse_result(path, profile="models"):
         expected_suites = {"list_search_action_listener_test.dart"}
         expected_tests = len(LIST_SEARCH_TESTS)
         expected_names = LIST_SEARCH_TESTS
+    elif profile == "peer-search":
+        expected_suites = {"peer_search_probe_test.dart"}
+        expected_tests = len(PEER_SEARCH_TESTS)
+        expected_names = PEER_SEARCH_TESTS
     elif profile == "status-refresh":
         expected_suites = {"server_status_refresh_loop_test.dart"}
         expected_tests = len(STATUS_REFRESH_TESTS)
@@ -1290,7 +1302,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "status-refresh", "peer-data", "file-progress", "custom-scale", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "window-dispatch", "menu-button", "draggable-divider", "list-search", "peer-search", "status-refresh", "peer-data", "file-progress", "custom-scale", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -1307,6 +1319,7 @@ def main():
         "menu-button": "FLUTTER_MENU_BUTTON_TEST_JSON",
         "draggable-divider": "FLUTTER_DRAGGABLE_DIVIDER_TEST_JSON",
         "list-search": "FLUTTER_LIST_SEARCH_TEST_JSON",
+        "peer-search": "FLUTTER_PEER_SEARCH_TEST_JSON",
         "status-refresh": "FLUTTER_STATUS_REFRESH_TEST_JSON",
         "share-rdp": "FLUTTER_SHARE_RDP_TEST_JSON",
         "window-dispatch": "FLUTTER_WINDOW_DISPATCH_TEST_JSON",

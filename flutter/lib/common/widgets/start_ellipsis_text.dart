@@ -20,9 +20,12 @@ class StartEllipsisText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final defaultStyle = DefaultTextStyle.of(context).style;
-    final effectiveStyle = style == null || style!.inherit
+    var effectiveStyle = style == null || style!.inherit
         ? defaultStyle.merge(style)
         : style!;
+    if (MediaQuery.boldTextOf(context)) {
+      effectiveStyle = effectiveStyle.merge(const TextStyle(fontWeight: FontWeight.bold));
+    }
     final textDirection = Directionality.of(context);
     final textScaler = MediaQuery.textScalerOf(context);
     final locale = Localizations.maybeLocaleOf(context);

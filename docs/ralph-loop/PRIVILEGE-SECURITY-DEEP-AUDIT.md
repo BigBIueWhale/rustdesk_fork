@@ -108321,3 +108321,22 @@ or dependency download is introduced. The `--flutter-model-tests --path-labels`
 shard uses the existing bounded RAM profile, source/artifact binding, strict
 eight-case result inventory and three parser controls. The aggregate model count
 increases by four. Product source is unchanged for the baseline; execution follows.
+
+Baseline `33ef9aff`, run `fTtmL7284q`, reproduces all four bold-text failures
+with the four original controls passing. On the actual rendered paragraph the
+fitting label's extension ends at 250.0078125 with width 243.48046875; the
+truncated label ends at 104.0625 with width 100.30078125. Both inherited and
+explicit styles fail identically after toggling bold. The real-font metric
+precondition and ordinary-text observations pass. Serial: 80,431 bytes, SHA-256
+`b83a222a75cc9e52947f1d16a928f0f11a7e633bf4c522abaa6ebb00ba0eba47`.
+QEMU 3168702 joined with exit 0, RAM `run.q6abpq7r` retired and all four
+listener deltas are zero. Supervisor time 85.130 seconds, peak RAM scratch
+4,050,919,424 bytes and durable evidence 3,317,760 bytes. Exact failed diagnostics
+were retained by identity-checked no-clobber rename to
+`path-label-baseline.fTtmL7284q`; the shared run marker is now absent.
+
+The candidate adds the same `MediaQuery.boldTextOf` font-weight merge used by
+Flutter's Text. This also registers the preference dependency, so changing bold
+with the same label widget recomputes its suffix. The Text child, grapheme fitter,
+semantics and transfer operations are unchanged. The identical eight-case test
+file and same isolated profile will distinguish the correction.

@@ -4799,6 +4799,7 @@ run_focused_rust_tests() {
                 Cargo.lock Cargo.toml src/lib.rs src/main.rs src/cli.rs src/cli_command.rs
                 src/common.rs src/port_forward.rs src/client/io_loop.rs
                 src/client/io_loop/file_resume_tests.rs src/client.rs src/ui_session_interface.rs
+                src/viewer_pipeline_smoke_tests.rs
                 libs/hbb_common/src/fs.rs libs/hbb_common/src/tcp.rs
                 libs/hbb_common/protos/message.proto
                 scripts/run-viewer-resume-tests.sh scripts/linux-parent-test-build.sh
@@ -4807,6 +4808,7 @@ run_focused_rust_tests() {
                 client::io_loop::file_resume_tests::upload_refuses_unrepresentable_resume_before_wire_confirmation
                 client::io_loop::file_resume_tests::download_refuses_large_partial_without_adopting_or_removing_it
                 client::io_loop::file_resume_tests::valid_resume_offsets_reach_the_wire_and_exact_file_tail
+                client::io_loop::file_resume_tests::viewer_job_limit_precedes_scan_dispatch_and_recovers
                 port_forward::tests::rdp_launch_only_passes_endpoint_and_prompt
                 port_forward::tests::cancellation_covers_connect_keying_login_and_relay
                 port_forward::tests::control_eof_and_close_are_terminal_and_rdp_launch_coalesces
@@ -7025,7 +7027,7 @@ PY
         tests_passed=3
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-resume ]; then
         [ "${#result_lines[@]}" -eq 5 ] || fail 'viewer connection summary count differs'
-        [ "$(grep -Ec '^VIEWER_RESUME_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=22 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^VIEWER_RESUME_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=23 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'VIEWER_RESUME_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'viewer resume artifact receipt differs'
         [ "$(grep -Fxc 'VIEWER_RESUME_CLI_CHECK=pass target=rustdesk features=linux-pkg-config,cli runtime=unexecuted' "$output")" -eq 1 ] \
@@ -7772,8 +7774,8 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = viewer-resume ]; then
             grep -E '^test (client::io_loop::file_resume_tests::.*|port_forward::tests::.*|ui_session_interface::port_forward_mapping_tests::.*|cli_command::tests::.*|common::tests::retired_server_key_option_remains_pinned_empty) \.\.\. ok$|^VIEWER_RESUME_(ARTIFACT|BUILD|CLI_CHECK)=' "$output"
-            [ "$tests_passed" -eq 22 ] || fail 'viewer connection total differs'
-            printf 'VIEWER_RESUME_VM=pass commit=%s tree=%s tests=22 target=linux-x86_64 scope=production-viewer-connection-callers-and-cli-parser rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            [ "$tests_passed" -eq 23 ] || fail 'viewer connection total differs'
+            printf 'VIEWER_RESUME_VM=pass commit=%s tree=%s tests=23 target=linux-x86_64 scope=production-viewer-connection-callers-and-cli-parser rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
             grep -E '^test (client::tests::r_(s11hj_viewer_|p14).*|flutter::viewer_credential_bridge_tests::.*) \.\.\. ok$|^VIEWER_CREDENTIAL_(ARTIFACT|BUILD)=' "$output"

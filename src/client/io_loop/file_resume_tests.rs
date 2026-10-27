@@ -240,3 +240,149 @@ async fn valid_resume_offsets_reach_the_wire_and_exact_file_tail() {
         }
     }
 }
+
+struct DirectoryOpenWatch(std::fs::File);
+
+impl DirectoryOpenWatch {
+    fn new(path: &std::path::Path) -> Self {
+        use std::os::{fd::FromRawFd, unix::ffi::OsStrExt};
+        let path = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
+        let fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
+        assert!(fd >= 0, "{}", std::io::Error::last_os_error());
+        let file = unsafe { std::fs::File::from_raw_fd(fd) };
+        assert!(unsafe { libc::inotify_add_watch(fd, path.as_ptr(), libc::IN_OPEN) } >= 0,
+            "{}", std::io::Error::last_os_error());
+        Self(file)
+    }
+
+    fn take_opened(&self) -> bool {
+        let mut buffer = [0u8; 4096];
+        match (&self.0).read(&mut buffer) {
+            Ok(count) => { assert!(count > 0); true }
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => false,
+            Err(error) => panic!("inotify observation failed: {error}"),
+        }
+    }
+}
+
+async fn actions_before_barrier(viewer: &mut Stream, peer: &mut Stream) -> Vec<FileAction> {
+    let mut barrier = Message::new();
+    barrier.set_test_delay(TestDelay { time: 90421, ..Default::default() });
+    viewer.send(&barrier).await.unwrap();
+    viewer.flush_writer().await.unwrap();
+    let mut actions = Vec::new();
+    loop {
+        let bytes = peer.next_timeout(2000).await.unwrap().unwrap();
+        let message = Message::parse_from_bytes(&bytes).unwrap();
+        if message == barrier { return actions; }
+        let Some(message::Union::FileAction(action)) = message.union else {
+            panic!("unexpected message before viewer admission barrier");
+        };
+        actions.push(action);
+        assert!(actions.len() <= 4, "unbounded admission fixture output");
+    }
+}
+
+#[tokio::test]
+async fn viewer_job_limit_precedes_scan_dispatch_and_recovers() {
+    let mut refused = Vec::new();
+    for is_remote in [false, true] {
+        for paused in [false, true] {
+            for restore in [false, true] {
+                let fixture = Fixture::new();
+                std::fs::write(fixture.0.join("source"), b"retained payload").unwrap();
+                let handler = Session::<crate::viewer_pipeline_smoke_tests::ViewerPipelineUi>::default();
+                {
+                    let mut config = handler.lc.write().unwrap();
+                    config.conn_type = ConnType::FILE_TRANSFER;
+                    config.version = hbb_common::get_version_number("1.4.7");
+                }
+                let (sender, receiver) = client::viewer_command_channel();
+                let (_, refresh) = viewer_video_refresh_channel();
+                let mut remote = Remote::new(handler, receiver, sender, refresh);
+                let limit = if is_remote {
+                    fs::MAX_ACTIVE_FILE_TRANSFER_WRITE_JOBS_PER_CONN
+                } else {
+                    fs::MAX_ACTIVE_FILE_TRANSFER_READ_JOBS_PER_CONN
+                };
+                assert_eq!(limit, 32);
+                for id in 1..=31 {
+                    let mut job = if is_remote {
+                        fs::TransferJob::new_write(id, fs::JobType::Generic,
+                            "peer-source".to_owned(), fixture.0.clone(), 0, false, true, true)
+                    } else {
+                        fs::TransferJob::new_read(id, fs::JobType::Generic,
+                            "peer-destination".to_owned(), fixture.0.clone(),
+                            0, false, false, true).unwrap()
+                    };
+                    job.is_last_job = paused;
+                    if is_remote { remote.write_jobs.push(job); }
+                    else { remote.read_jobs.push(job); }
+                }
+                let request = |id, incoming, waiting| {
+                    let args = (id, fs::JobType::Generic,
+                        fixture.0.to_str().unwrap().to_owned(),
+                        fixture.0.join("destination").to_str().unwrap().to_owned(),
+                        0, false, incoming);
+                    if waiting { Data::AddJob(args) } else { Data::SendFiles(args) }
+                };
+                let watch = DirectoryOpenWatch::new(&fixture.0);
+                let (mut viewer, mut peer) = keyed_pair().await;
+                assert!(remote.handle_msg_from_ui(request(32, is_remote, restore), &mut viewer).await);
+                let accepted = actions_before_barrier(&mut viewer, &mut peer).await;
+                assert_eq!(accepted.len(), usize::from(!restore));
+                assert_eq!(watch.take_opened(), !is_remote);
+                assert!(remote.handler.take_errors().is_empty());
+                let snapshot = |remote: &Remote<crate::viewer_pipeline_smoke_tests::ViewerPipelineUi>| {
+                    remote.read_jobs.iter().chain(remote.write_jobs.iter())
+                        .map(|job| (job.id(), job.is_last_job, job.files().len(),
+                            job.total_size(), job.transferred(), job.finished_size()))
+                        .collect::<Vec<_>>()
+                };
+                let before = snapshot(&remote);
+                assert_eq!(before.len(), limit);
+                assert!(remote.handle_msg_from_ui(request(33, is_remote, restore), &mut viewer).await);
+                let denied_actions = actions_before_barrier(&mut viewer, &mut peer).await;
+                let scanned = watch.take_opened();
+                let errors = remote.handler.take_errors();
+                let direction = if is_remote { "write" } else { "read" };
+                let expected = format!(
+                    "unexpected file job error 33/-1: too many retained {direction} jobs (limit 32)");
+                let bounded = snapshot(&remote) == before;
+                let reported = errors == vec![expected];
+                let no_peer_action = denied_actions.is_empty();
+                println!("VIEWER_JOB_ADMISSION_CASE=observed remote={is_remote} paused={paused} restore={restore} bounded={bounded} reported={reported} scanned={scanned} peer_actions={}", denied_actions.len());
+                if !(bounded && reported && !scanned && no_peer_action) {
+                    refused.push((is_remote, paused, restore));
+                    remote.audio_thread.close_and_join().await;
+                    continue;
+                }
+                // Saturating one direction must not close admission in the other direction.
+                assert!(remote.handle_msg_from_ui(request(40, !is_remote, true), &mut viewer).await);
+                assert!(actions_before_barrier(&mut viewer, &mut peer).await.is_empty());
+                assert_eq!((remote.read_jobs.len(), remote.write_jobs.len()),
+                    if is_remote { (1, 32) } else { (32, 1) });
+                assert_eq!(watch.take_opened(), is_remote);
+                assert!(remote.handler.take_errors().is_empty());
+                assert!(remote.handle_msg_from_ui(Data::CancelJob(1), &mut viewer).await);
+                let cancelled = actions_before_barrier(&mut viewer, &mut peer).await;
+                assert_eq!(cancelled.len(), 1);
+                assert!(matches!(&cancelled[0].union,
+                    Some(file_action::Union::Cancel(value)) if value.id == 1));
+                assert!(remote.handle_msg_from_ui(request(33, is_remote, restore), &mut viewer).await);
+                let retried = actions_before_barrier(&mut viewer, &mut peer).await;
+                assert_eq!(retried.len(), usize::from(!restore));
+                assert_eq!(watch.take_opened(), !is_remote);
+                let jobs = if is_remote { &remote.write_jobs } else { &remote.read_jobs };
+                assert_eq!(jobs.len(), 32);
+                assert_eq!(jobs.last().unwrap().id(), 33);
+                assert_eq!(jobs.last().unwrap().is_last_job, restore);
+                assert!(remote.handler.take_errors().is_empty());
+                assert!(remote.file_flow_failure.is_none());
+                assert_eq!(std::fs::read(fixture.0.join("source")).unwrap(), b"retained payload");
+                remote.audio_thread.close_and_join().await;
+            }
+        }
+    }
+    assert!(refused.is_empty(), "unbounded or incorrectly refused admission: {refused:?}");
+}

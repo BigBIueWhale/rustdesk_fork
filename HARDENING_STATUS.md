@@ -16547,6 +16547,21 @@ and paused jobs in both directions. This is source inspection, not a demonstrate
 memory-exhaustion or privilege-escalation result. No product change was made here;
 full-parent and file-metadata execution parks remain in force, as do all other parks.
 
+**Viewer admission regression — prepared; NOT COMPILED OR EXECUTED.**
+`src/client/io_loop/file_resume_tests.rs::viewer_job_limit_precedes_scan_dispatch_and_recovers`
+adds eight native-handler scenarios: read/write direction, active/paused retained jobs,
+and `SendFiles`/`AddJob`. The fixture seeds 31 real jobs, admits the 32nd through the
+production handler, then requires refusal of the 33rd before a directory-open observation
+or keyed TCP action. It also checks exact retained-job snapshots, UI error delivery,
+independent opposite-direction admission, real cancellation and retry after capacity is freed.
+Linux inotify has a successful-enumeration control; an ordered encrypted message barrier
+observes preceding peer actions without treating a timeout as absence. The existing native
+viewer lane now requires this case (23 total), but no pass, reproduction or product correction
+is claimed. The full-parent build remains user-PARKED; a specific request to unpark
+`--viewer-resume-tests` is pending. Do not launch that lane without the user's answer.
+Source preparation and a fresh ledger count are bound in `viewer-job-fixture-b6494444.json`.
+The admission defect and all broader native/installed/release obligations remain OPEN.
+
 **Named A/B evidence.** Each accepted correction ran
 `/bin/bash scripts/smoke-verifier-vm-authority.sh --hbb-common-fs`; its filesystem count below
 is accompanied by four configuration, five address/IPv6-formatting and one socket-helper test.

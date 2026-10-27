@@ -6897,13 +6897,13 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = loca
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-resume ]; then
     mapfile -t viewer_resume_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'VIEWER_RESUME_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=22 unchanged=before-after execution_seconds=[0-9]+$'
+            'VIEWER_RESUME_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=23 unchanged=before-after execution_seconds=[0-9]+$'
     )
     [ "${#viewer_resume_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'VIEWER_RESUME_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'viewer resume artifact receipt differs'
     require_exact_fixed_receipt \
-        "VIEWER_RESUME_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=22 target=linux-x86_64 scope=production-viewer-connection-callers-and-cli-parser rust=1.75.0 features=linux-pkg-config,flutter vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "VIEWER_RESUME_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=23 target=linux-x86_64 scope=production-viewer-connection-callers-and-cli-parser rust=1.75.0 features=linux-pkg-config,flutter vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'viewer resume parent compilation and native component result'
     require_exact_fixed_receipt \
         'VIEWER_RESUME_CLI_CHECK=pass target=rustdesk features=linux-pkg-config,cli runtime=unexecuted' \
@@ -8673,7 +8673,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'LOCAL_FILE_LISTING_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=3 scope=generated-dart-api-to-complete-rust-cdylib network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = viewer-resume ]; then
-        printf 'VIEWER_RESUME_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=22 scope=production-viewer-connection-callers-and-cli-parser network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'VIEWER_RESUME_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=23 scope=production-viewer-connection-callers-and-cli-parser network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
         printf 'VIEWER_CREDENTIAL_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=10 scope=production-peer-credentials-and-exported-session-factory network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

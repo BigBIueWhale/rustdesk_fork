@@ -114,6 +114,10 @@ pub(crate) struct ViewerPipelineUi {
 }
 
 impl ViewerPipelineUi {
+    pub(crate) fn take_errors(&self) -> Vec<String> {
+        std::mem::take(&mut self.state.0.lock().unwrap().errors)
+    }
+
     fn update(&self, update: impl FnOnce(&mut ViewerPipelineState)) {
         let (state, ready) = &*self.state;
         let mut state = state.lock().unwrap();

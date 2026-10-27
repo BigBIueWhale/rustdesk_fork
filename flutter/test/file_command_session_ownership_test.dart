@@ -311,11 +311,11 @@ void main() {
     addTearDown(() => h.drain(tester));
     final result = h.start(directory: true);
     await tester.pumpAndSettle();
+    expect(find.text('This is irreversible!'), findsNothing);
     expect(await result, isFalse);
     expect(find.textContaining('listing denied', findRichText: true), findsWidgets);
     expect(h.calls, isEmpty);
     expect(h.refreshes, 0);
-    expect(find.text('This is irreversible!'), findsNothing);
   });
 
   testWidgets('delete allocation failure is visible and permits a fresh retry',

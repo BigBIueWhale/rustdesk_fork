@@ -108340,3 +108340,32 @@ Flutter's Text. This also registers the preference dependency, so changing bold
 with the same label widget recomputes its suffix. The Text child, grapheme fitter,
 semantics and transfer operations are unchanged. The identical eight-case test
 file and same isolated profile will distinguish the correction.
+
+Accepted candidate `9dcf2600651ef44c2553fd2caa39dca939400572`, tree
+`0215a00edc5ac4d2846c1dc12766343ef53f0910`, run `Ww9LFHsefO`: all eight
+rendered cases and three parser controls pass, including normal → bold → normal
+with the same widget instance. The complete test file is identical to baseline,
+SHA-256 `3dcaaa24346b91a44fbdb3dc05982fcda886bef89b645a425029348e5d039db6`;
+product SHA-256 is
+`6e2971bbcc8cd55a7a8c80cc96ffd1f2c50c81af4a0bb3e7dadee21bbfe8c043`.
+The source copies compare exactly after execution. Pinned Flutter 3.24.5, its
+bundled regular/bold Roboto, Pub closure and builder identities are bound in the
+serial receipt. The eight cases execute in 4.187 seconds; the full isolated
+outer run takes 118 seconds. This is production-widget/native text-layout
+evidence, not an installed app or physical device test.
+
+Serial `flutter-model-tests-run.Ww9LFHsefO.serial.log`: 73,362 bytes, SHA-256
+`8201548945b61377978973fe8c9fed9df2974d9bc675896fc7daff3f0e7803c6`.
+Supervisor time 122.871 seconds; peak RAM scratch 4,050,919,424 bytes and durable
+evidence 3,305,472 bytes. QEMU 3178354 joined with exit 0; RAM `run.o_mmqid7`,
+owned endpoints and active run roots are absent. Before/during listener deltas
+are zero. The final inventory has one unattributed endpoint removal (18 bytes),
+whose owner was not inspected or touched; host IP sockets were kernel-denied.
+
+The product diff is confined to effective typography in one shared label.
+No requirements, live instructions, parked source or stash contents changed.
+Whitespace and edited-shell parsing checks pass. Full file-manager interaction,
+native OS preference propagation and other-device/platform execution remain
+open, as do installed credential acceptance, R-S0/R-F5, release/independent
+review and every user park. The following ledger update is documentation only;
+its fresh exact-input token count is recorded separately.

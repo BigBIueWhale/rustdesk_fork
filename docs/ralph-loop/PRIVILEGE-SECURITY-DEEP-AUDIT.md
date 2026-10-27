@@ -107922,7 +107922,7 @@ The intended change bounds the retained output allocation request as well as len
 while keeping fallible amortized growth and preserving bytes on allocation refusal.
 It does not claim to bound codec workspaces, allocator bookkeeping or whole-process RSS.
 The existing exact-production-writer test gains ten capacity observations, including
-the actual 64-MiB ceiling, empty/tiny limits and growth across a non-power-of-two
+a supplied 64-MiB ceiling, empty/tiny limits and growth across a non-power-of-two
 boundary. Each also checks exact bytes, empty writes and refusal beyond the limit.
 Its driver requires the new result; existing allocation, PNG decoding and native
 X11 controls remain. No product change precedes the bounded-RAM --video-vpx-tests
@@ -107937,3 +107937,20 @@ the first path. The Linux wrapper also discards dark-read/write errors. No deskt
 execution, privilege-escalation claim or wallpaper correction is made here. Exact
 per-property snapshot/restore and explicit failure ownership need a separate slice.
 Primary source: https://github.com/rustdesk-org/wallpaper.rs/tree/ce4a0cd3f58327c7cc44d15a63706fb0c022bacf/src/linux.
+
+Baseline 9fP1HCJbA2 at 3d899c27dad435f55ce267998a9ef6707963db76 fails
+the new capacity assertion: eight of ten supplied limits are exceeded, including
+4,097 -> 8,192 bytes and 64 -> 66 MiB. Existing byte-content and refusal checks
+complete before that assertion. The native-X11 driver stops at this failure;
+this is not complete workload acceptance. The exact artifact is
+2f0a5f1980943db277ae4db044f294b820ffa8554cb726319b84e9b19d4c196c.
+The completed QEMU joins, RAM scratch retires and all endpoint deltas are zero;
+diagnostics remain without deletion as png-capacity-baseline.9fP1HCJbA2.
+
+The product change grows capacity geometrically only when needed, clips the target
+to max_bytes and uses try_reserve_exact. Length checks still precede allocation;
+failure remains fallible and preserves the original buffer. Review confirms that
+the production constructor uses 32 MiB, correcting the initial audit wording about
+the supplied 64-MiB case. The original ten scenarios remain unchanged; an eleventh
+positive control now exercises the actual default constructor and its constant.
+No claim is made that this additional control ran on the baseline.

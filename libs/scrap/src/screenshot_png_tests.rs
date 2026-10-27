@@ -103,6 +103,16 @@ fn allocation_refusal_preserves_png_bytes_and_reaches_encoder() {
         capacities_bounded &= capacity <= limit;
     }
     assert!(capacities_bounded, "PNG storage capacity exceeded the output budget");
-    println!("SCREENSHOT_PNG_CAPACITY_NATIVE=pass cases=10 bytes=preserved limits=preserved");
+    let limit = crate::peer_text::MAX_PEER_SCREENSHOT_RESPONSE_BYTES;
+    let first = limit / 2 + 1;
+    let mut writer = BoundedScreenshotPng::new();
+    writer.write_all(&input[..first]).unwrap();
+    writer.write_all(&input[..limit - first]).unwrap();
+    let bytes = writer.into_bytes();
+    println!("SCREENSHOT_PNG_DEFAULT_CAPACITY=observed limit={limit} capacity={} bytes={}", bytes.capacity(), bytes.len());
+    assert_eq!(bytes.len(), limit);
+    assert!(bytes.iter().all(|byte| *byte == 0x5a));
+    assert!(bytes.capacity() <= limit);
+    println!("SCREENSHOT_PNG_CAPACITY_NATIVE=pass cases=11 bytes=preserved limits=preserved");
     println!("SCREENSHOT_PNG_ALLOC_NATIVE=pass refusals=2 direct=OutOfMemory encoder=OutOfMemory prefix=preserved retry=pass byte_limit=preserved fresh_png_bytes={}", png.len());
 }

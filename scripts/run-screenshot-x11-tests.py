@@ -172,7 +172,7 @@ def allocation_probe(executable, artifact_sha):
         return False
     assert result.returncode == 0 and not result.stderr and refusals == 2
     assert result.stdout.count('test result: ok. 1 passed; 0 failed;') == 1
-    assert result.stdout.count('SCREENSHOT_PNG_CAPACITY_NATIVE=pass cases=10 bytes=preserved limits=preserved\n') == 1
+    assert result.stdout.count('SCREENSHOT_PNG_CAPACITY_NATIVE=pass cases=11 bytes=preserved limits=preserved\n') == 1
     assert result.stdout.count('SCREENSHOT_PNG_ALLOC_NATIVE=pass refusals=2 direct=OutOfMemory encoder=OutOfMemory '
                                'prefix=preserved retry=pass byte_limit=preserved fresh_png_bytes=150\n') == 1
     outputs = re.findall(r'^SCREENSHOT_PNG_BOUNDED_HEX=([0-9a-f]+)$', result.stdout, re.MULTILINE)

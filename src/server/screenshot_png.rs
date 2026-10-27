@@ -30,9 +30,14 @@ impl std::io::Write for BoundedScreenshotPng {
         if next_len > self.max_bytes {
             return Err(std::io::ErrorKind::InvalidData.into());
         }
-        self.data
-            .try_reserve(buf.len())
-            .map_err(|_| std::io::Error::from(std::io::ErrorKind::OutOfMemory))?;
+        if next_len > self.data.capacity() {
+            let capacity = next_len
+                .max(self.data.capacity().saturating_mul(2))
+                .min(self.max_bytes);
+            self.data
+                .try_reserve_exact(capacity - self.data.len())
+                .map_err(|_| std::io::Error::from(std::io::ErrorKind::OutOfMemory))?;
+        }
         self.data.extend_from_slice(buf);
         Ok(buf.len())
     }

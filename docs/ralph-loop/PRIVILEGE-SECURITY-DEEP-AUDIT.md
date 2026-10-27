@@ -107669,3 +107669,49 @@ The existing VM-only native double now controls delayed writes, errors and fixed
 policy. Nine rendered menu/save cases extend the ten existing constructor/search
 cases. Product remains unchanged for the before comparison. Cross-control/process
 save ordering and complete native settings persistence remain broader open work.
+
+Preparation 85b710135d61c98d1b37c0435148ef6fffbc0de7 ran unchanged product as
+jXUHqqNnuE with /bin/bash scripts/smoke-verifier-vm-authority.sh
+--flutter-model-tests --peer-search. Fourteen checks pass; five fail: menu closure
+during a pending save, retired-menu write admission, late retired-save feedback,
+missing mismatch feedback, and newly fixed policy admission. The earlier
+later-dialog case passes but checks tree presence before full transition finality;
+it is not accepted as evidence that the old navigation concern was reproduced.
+
+Product bab736bb01109d109d99ab58282bbf6933cbeaf7 replaces the custom radio/menu
+callbacks with typed PopupMenuButton/CheckedPopupMenuItem selection and a single
+mounted save owner. The menu dismisses before saving; duplicate/policy/retirement
+checks precede dispatch. Pending saves show a disabled progress indicator. Accepted
+writes finish, while late feedback/publication is suppressed after removal. Valid
+readback selects the effective layout; mismatch reports Failed and permits retry.
+The unconditional post-save Navigator.pop and duplicated enum list are deleted.
+No sorting, native persistence, dependency or privileged operation is changed.
+
+The fixture now finishes the trailing transition frame (fcedaaff) and observes the
+later dialog after pumpAndSettle with hit-testing and Navigator.canPop. These are
+explicit fixture changes, not an identical A/B claim for the whole suite. Candidate
+fcedaaffcdbaa9ab9cb8ea29f7655f4c4de2df31, tree
+524477e9836bd9a88397550b33f6563e31e42ad4, passes all nineteen checks and three
+parser controls as eazCTVE3Xl, including full outer acceptance in 284 seconds.
+The existing four constructor and six rendered search controls remain. This is
+Flutter 3.24.5/Linux production-widget execution with controlled native preferences,
+translation, errors and delayed writes, not actual filesystem/settings persistence.
+Baseline test SHA-256 e41e7c04c4aa5e4b241cacdaedb85942bb84847ac9fbfd3b9f14d93dffa3dff1;
+candidate fb8726b465ce0f325522907618038f382d417952ed706a73dd238f0938d204ba.
+Executed widget SHA-256 4bc4770d48a50cab5023f811c7bf2b5cc4cb74cdd24dabb9493f38e6c4714dff.
+
+Retained serials under .harness-state/verifier-vm, alongside storage/listener records:
+flutter-model-tests-run.jXUHqqNnuE.serial.log, 88,026 bytes, SHA-256
+36262e8df309afd5a0b53dfefa421fb85a394c62f9f76e65e071a91bd9fc6c66;
+flutter-model-tests-run.eazCTVE3Xl.serial.log, 78,311 bytes, SHA-256
+5b1df518ea1eab8cdf243eaba508eaf48cf579903dadba33ec7f2e01ed38e07d.
+Both use the unchanged 4-GiB guest/7-GiB RAM scratch/6-GiB file ceiling profile.
+Supervisor durations: 268.851/293.773 seconds; RAM peaks:
+6,363,721,728/6,364,508,160 bytes; durable peaks: 3,325,952/3,313,664 bytes.
+Exact QEMU processes join with exit 0, RAM workspaces disappear and no active
+marker remains. Baseline diagnostics are retained in peer-menu-baseline.jXUHqqNnuE.
+Before/during listener deltas are zero; final baseline/candidate snapshots retain
+an unattributed addition/removal respectively, without inspecting or changing its
+owner. Cross-control/process ordering, full-page/native persistence, mobile/device,
+all fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN.
+No passed behavioral check is repeated after this acceptance; ledger counting follows.

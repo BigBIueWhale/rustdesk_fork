@@ -107898,3 +107898,13 @@ is added. Read-only exact-deletion comparison, Bash syntax and git diff --check
 validate the narrow edit; full catalogs and application tests are not rerun.
 This fixes verifier correctness only. Installed/native acceptance for all fifteen
 credential actions, R-S0/R-F5, release and every user-parked item remain OPEN.
+
+Correction 670cf005fdfb879f04d33927b4dfae9876dc74b2 is pushed to master.
+Fresh --ledger-token-count passes as GGiMkaXA8e in 28 outer seconds: 349,599
+tokens / 1,587,874 bytes, ledger SHA-256
+44d30ec4d3131cc840f1da7d6d081830d6134090d115a3f9ce5a632c7da0087e.
+tiktoken 0.12.0/cl100k_base/encode_ordinary passes seven controls and the full
+round trip. The 97,178-byte serial has SHA-256
+5313772f3a6605f0f21086bf50cee27dd2cfdc2bbcb2c25eb38954bc9e412aeb.
+Exact QEMU is joined; RAM scratch and active markers are absent. All endpoint
+deltas are zero. No application or behavioral test was executed for this count.

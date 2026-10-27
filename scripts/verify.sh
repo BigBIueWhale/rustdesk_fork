@@ -14062,51 +14062,6 @@ if [ -n "$r_s11a_missing" ]; then
 else
   echo "  ok  R-S11a(a) fresh _service active-uid auth + R-S11a(b)/R-S8 parent-dir hardening (O_NOFOLLOW+0o0711+scrub) present & wired"
 fi
-# R-S8 / R-A5 (file-transfer write-path no-follow — DISTINCT from the IPC parent-dir O_NOFOLLOW above):
-# the receive-WRITE opens in hbb_common/src/fs.rs MUST no-follow the parent path and the target
-# (mkdirat/openat parent walk + openat(O_NOFOLLOW)), and finalization must use renameat under the
-# same no-follow parent boundary. This closes both the original final-component symlink TOCTOU and
-# the later defense-in-depth intermediate-directory race tracked in HARDENING_STATUS.md.
-# The spec mandates "openat + O_NOFOLLOW / Windows equivalent", so BOTH branches are asserted:
-# the Unix openat walk AND the Windows reparse-safe, handle-relative NT walk. (The Unix tokens sit
-# behind #[cfg(unix)] and are present in the source on every host, so grepping only them would
-# FALSE-GREEN on a Windows build while the cfg(not(unix)) receive-write branch went entirely
-# unasserted — the Windows tokens below close that blind spot.)
-r_s8ft_missing=
-grep -q 'fn open_parent_dir_no_follow' libs/hbb_common/src/fs.rs                         || r_s8ft_missing="$r_s8ft_missing parent-openat-walk"
-grep -q 'mkdirat' libs/hbb_common/src/fs.rs                                               || r_s8ft_missing="$r_s8ft_missing mkdirat"
-grep -q 'openat' libs/hbb_common/src/fs.rs                                                || r_s8ft_missing="$r_s8ft_missing openat"
-grep -q 'O_DIRECTORY' libs/hbb_common/src/fs.rs                                           || r_s8ft_missing="$r_s8ft_missing O_DIRECTORY"
-grep -q 'O_NOFOLLOW' libs/hbb_common/src/fs.rs                                           || r_s8ft_missing="$r_s8ft_missing O_NOFOLLOW"
-grep -q 'fn open_recv_write_no_follow' libs/hbb_common/src/fs.rs                         || r_s8ft_missing="$r_s8ft_missing helper"
-grep -q 'open_recv_write_no_follow(Path::new(&path), true)' libs/hbb_common/src/fs.rs    || r_s8ft_missing="$r_s8ft_missing data-write-wired"
-grep -q 'fn finish_recv_write_no_follow' libs/hbb_common/src/fs.rs                       || r_s8ft_missing="$r_s8ft_missing finish-helper"
-grep -q 'renameat' libs/hbb_common/src/fs.rs                                             || r_s8ft_missing="$r_s8ft_missing renameat"
-grep -q 'set_file_handle_times' libs/hbb_common/src/fs.rs                                || r_s8ft_missing="$r_s8ft_missing handle-mtime"
-grep -q 'lease.read_sidecar(&digest_path, 4096)' libs/hbb_common/src/fs.rs                || r_s8ft_missing="$r_s8ft_missing lease-sidecar-read"
-if grep -qE 'File::create\(&path\)' libs/hbb_common/src/fs.rs; then r_s8ft_missing="$r_s8ft_missing raw-File::create-remains"; fi
-# --- Windows equivalent: the reparse-safe, handle-relative NT walk (mirrors the Unix openat walk) ---
-grep -q 'mod nt_nofollow' libs/hbb_common/src/fs.rs                                      || r_s8ft_missing="$r_s8ft_missing win-nt-module"
-grep -q 'NtCreateFile' libs/hbb_common/src/fs.rs                                         || r_s8ft_missing="$r_s8ft_missing win-NtCreateFile(openat)"
-grep -q 'OBJECT_ATTRIBUTES' libs/hbb_common/src/fs.rs                                    || r_s8ft_missing="$r_s8ft_missing win-OBJECT_ATTRIBUTES"
-grep -q 'oa.RootDirectory = parent' libs/hbb_common/src/fs.rs                            || r_s8ft_missing="$r_s8ft_missing win-RootDirectory-relative"
-grep -q 'FILE_OPEN_REPARSE_POINT' libs/hbb_common/src/fs.rs                              || r_s8ft_missing="$r_s8ft_missing win-open-reparse(nofollow)"
-grep -q 'FILE_DIRECTORY_FILE' libs/hbb_common/src/fs.rs                                  || r_s8ft_missing="$r_s8ft_missing win-dir-file"
-grep -q 'FILE_ATTRIBUTE_REPARSE_POINT' libs/hbb_common/src/fs.rs                         || r_s8ft_missing="$r_s8ft_missing win-reject-reparse(junction+symlink)"
-grep -q 'FileRenameInformation' libs/hbb_common/src/fs.rs                                || r_s8ft_missing="$r_s8ft_missing win-renameat(FileRenameInformation)"
-grep -q 'nt_nofollow::open_recv_write' libs/hbb_common/src/fs.rs                         || r_s8ft_missing="$r_s8ft_missing win-write-wired"
-grep -q 'nt_nofollow::finish_recv_write' libs/hbb_common/src/fs.rs                       || r_s8ft_missing="$r_s8ft_missing win-finish-wired"
-grep -q 'nt_nofollow::read_recv_sidecar' libs/hbb_common/src/fs.rs                       || r_s8ft_missing="$r_s8ft_missing win-sidecar-wired"
-grep -q 'nt_nofollow::remove_recv_artifacts' libs/hbb_common/src/fs.rs                   || r_s8ft_missing="$r_s8ft_missing win-remove-wired"
-grep -q 'fn is_symlink_or_reparse_point' libs/hbb_common/src/fs.rs                       || r_s8ft_missing="$r_s8ft_missing win-junction-inclusive-validate"
-grep -q 'fn recv_write_no_follow_refuses_junction_parent_component' libs/hbb_common/src/fs.rs || r_s8ft_missing="$r_s8ft_missing win-junction-parent-test"
-grep -q 'fn recv_write_no_follow_refuses_junction_final_component' libs/hbb_common/src/fs.rs  || r_s8ft_missing="$r_s8ft_missing win-junction-final-test"
-grep -qE '^ntapi = ' libs/hbb_common/Cargo.toml                                          || r_s8ft_missing="$r_s8ft_missing win-ntapi-dep"
-if [ -n "$r_s8ft_missing" ]; then
-  echo "  FAIL R-S8/R-A5: file-transfer receive-write parent/target no-follow is incomplete:$r_s8ft_missing"; rc=1
-else
-  echo "  ok  R-S8/R-A5 file-transfer receive-write uses no-follow parent walk + no-follow target open + renameat finalize on BOTH Unix (openat/O_NOFOLLOW, behavior-tested at (3c)) AND Windows (NtCreateFile RootDirectory-relative reparse-safe walk, junction-tested in the §12.2 VM)"
-fi
 # R-S8/R-S11: file responses carry a connection token plus monotonic generation. The worker and
 # connection both validate exact session/job/phase authority; finalization retains the reservation
 # until the typed worker acknowledgement arrives.

@@ -16472,6 +16472,25 @@ source-reviewed for these corrections. The direct common producer has the separa
 fixture below. Source-object continuity and length checks do not establish an immutable content
 snapshot or descriptor-relative initial-open/traversal safety.
 
+**Receive no-follow source catalogue — removed; native obligations remain OPEN.**
+The 45-line `r_s8ft_missing` block in `scripts/verify.sh` is deleted: 27 positive
+source checks and one whole-file exclusion could not establish either platform's
+receive-path authority. It required the retired
+`open_recv_write_no_follow(Path::new(&path), true)` call, while the live producer
+uses `ReceiveWriteClaim::start_new`; its helper-name check also matched the
+`#[cfg(test)]` wrapper. Its `File::create(&path)` exclusion flags the legitimate
+sparse-source fixture in `resume_confirmation_preserves_the_largest_wire_offset`,
+not a product receive write. Windows API/test names present in Linux source do not
+execute Windows code. The removed success message claimed both platform walks and
+behavioral/junction testing without binding those observations to this check.
+Exact-byte comparison preserves all remaining verifier text, including the actual
+Cargo filesystem commands, and Bash syntax parsing passes. Product, genuine Rust
+tests, native harnesses and R-S8/R-A5 requirements are unchanged. No new product run
+or source-wording replacement is claimed. `nofollow-wording-dcfad2a8.json` retains
+the classification, unchanged-source bindings and fresh ledger count. The three
+reproduced receive namespace syscall failures, their private-staging implementation
+park, native Windows/installed acceptance, R-S0/R-F5 and every other park remain OPEN.
+
 **File metadata/job source catalogue — removed; behavioral obligations remain OPEN.**
 The `r_fsbudget_missing` block in `scripts/verify.sh` is deleted: 94 lines,
 including 34 presence checks, four function-name exclusions and a comment-wording

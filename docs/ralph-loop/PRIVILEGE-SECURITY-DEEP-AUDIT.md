@@ -107138,3 +107138,50 @@ The bounded test-source-catalogues-911ad100.json capsule retains exact deletion
 classification, source/file identities, the completed clipboard runs and fresh
 whole-ledger token count. All fifteen installed credential actions, R-S0/R-F5,
 independent/native/release acceptance and the broad goal remain OPEN.
+
+## 2026-10-27 — Bound automatic reconnect scheduling after extended failure
+
+The preceding verification cleanup is progress. On continuation, all fifteen
+installed credential actions remain open; every explicit user park remains in
+force, including clipboard and native file-summary work. Reviewed the current
+ledger, shared FfiModel error/retry/reset paths, native retry classification,
+ReconnectScheduleAuthority, overlay countdown and existing test orchestration.
+The generation checks already refuse replaced callbacks. A separate availability
+defect is live: showMsgBox doubles _reconnects without a ceiling before each later
+Timer/countdown. Repeated failures can therefore schedule minutes or longer of
+additional waiting after connectivity returns. No LPE finding is claimed here.
+
+The decision is one fixed 30-second maximum requested retry delay, preserving the
+first five backoff intervals and manual retry. It bounds polling delay during a
+long outage without changing credential authority, resetting a surviving transport
+or introducing a runtime policy. Dart Timer construction supplies that delay to
+the current Zone; WidgetTester.pump advances its fake clock. Primary references:
+https://api.dart.dev/dart-async/Timer/Timer.html
+https://api.dart.dev/dart-async/ZoneSpecification/createTimer.html
+https://api.flutter.dev/flutter/flutter_test/WidgetTester/pump.html
+
+Preparation 7f59f13d adds seven production-model/widget cases and a focused shard
+that also executes the four unchanged retry-authority cases. Test-only Zone timer
+observation delegates actual creation to the Flutter clock; current session/event
+inputs are controlled doubles. The shard reuses existing storage admission,
+limits, isolated toolchains, fresh bridge generation and joined cleanup. 5ba09718
+includes its storage-selector control in the required 48-control count.
+Baseline iZgw3qbU1E at 5ba09718 passes nine and fails two at schedule six: actual
+delay 32 versus expected 30, and the corresponding rendered countdown. Later
+vectors in those failing cases are not baseline execution claims. Exact failed
+diagnostics retire to reconnect-baseline.iZgw3qbU1E after QEMU join and RAM removal.
+
+Product 8fe1fe12 changes only the next-delay calculation in model.dart to bounded
+multiplication. Candidate mHpxICfhP8 passes all eleven identical cases and three
+parser controls. The timer test observes 128 replacement schedules; only one
+retained timer remains active. Nonretry/reset/keyed-event cancellation and queued
+or retired-owner refusal pass. Flutter reports 9.35 seconds; the complete VM takes
+271 seconds. Both transactions have zero endpoint deltas and exact QEMU/RAM
+retirement. Full per-case JSON and generated-bridge receipts are retained.
+
+The reconnect-backoff-5bd1d577.json capsule binds source comparisons, raw logs,
+source/toolchain/bridge receipts, result inventories, storage/listeners and the
+fresh complete-ledger count. The tests exercise the real Dart model and widgets,
+not a native reconnect or authenticated peer. Connection-attempt duration, actual
+post-outage presentation, platform/installed behavior, R-S0/R-F5, long-session
+resources, independent/release acceptance and the full goal remain OPEN.

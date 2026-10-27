@@ -4379,6 +4379,23 @@ and installed/platform acceptance remain OPEN. Command/task ownership is covered
 Credential provisioning and Android CM work
 remain parked under the user's pivot.
 
+**Automatic reconnect delay — Linux Flutter model/widget accepted; peer recovery OPEN.**
+`8fe1fe12` caps the shared model's exponential retry delay at 30 seconds, preserving
+the initial 1/2/4/8/16-second waits. Timer and displayed countdown consume the same
+value; manual action, retry classification, credential suppression and owner/reset
+checks retain their existing behavior. At unchanged-product `5ba09718`, the sixth
+schedule requests 32 seconds and both new bound/countdown cases fail; nine controls
+pass. The identical `--flutter-model-tests --reconnect` fixture passes all eleven
+cases after correction, including 128 replacement schedules with one active timer,
+rendered countdowns, stale/retired callbacks and nonretry/model/keyed-event resets.
+Three result-parser controls also pass. The 9.35-second Flutter run uses controlled
+session/event inputs; the bounded zero-NIC VM takes 271 seconds and retires QEMU/RAM
+with unchanged endpoint inventories. `reconnect-backoff-5bd1d577.json` binds A/B
+sources, full per-case results, fresh generated bridge and cleanup. This bounds the
+requested retry wait, not connection-attempt duration or actual presentation age.
+Full native peer, desktop/mobile, impairment/soak, R-S0/R-F5 and installed/release
+acceptance remain OPEN; all user parks remain parked.
+
 **Dialog close authority — LINUX FLUTTER WIDGET PASS; DEVICE/FFI/INSTALLED ACCEPTANCE OPEN.**
 The overlay receiver binds each `DialogClose` to one exact entry. Replacement or dismissal
 revokes it before unmount; loading, password, message, image-wait and screenshot actions

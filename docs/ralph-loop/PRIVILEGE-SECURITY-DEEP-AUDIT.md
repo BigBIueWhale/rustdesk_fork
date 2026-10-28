@@ -112121,3 +112121,13 @@ runtime test is added. Parent compilation remains parked, and the broad componen
 runner would exercise unrelated parked work, so neither is resumed. Current
 compiled protocol refusal, complete application input functionality and installed/
 other-platform acceptance remain OPEN; source absence is the evidence here.
+
+Deletion `b55608f6` is pushed. Fresh ledger count `jtFaBWWCSj` passes in 29 outer
+seconds: 360,368 tokens / 1,639,971 bytes, SHA-256
+`5b0a88fa94ec2c3e8d01687b09cdc881e983811aa606f48e262a7dfa5f35a199`,
+with the pinned recipe, seven controls and whole-file round trip. QEMU 1452953
+joins exit 0; RAM `run.r9yysos6` and active owned roots are absent, with zero
+endpoint deltas. Peak RAM/durable storage is 402,382,848/249,856 bytes. Workload
+serial: 31,772 bytes, SHA-256
+`cc5e503fc6f44823e8999139c4d7e84b03c57d851f3a1e018d9dcf2df17a6abc`.
+The count is documentation verification only.

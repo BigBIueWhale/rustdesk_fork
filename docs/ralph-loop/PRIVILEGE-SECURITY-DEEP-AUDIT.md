@@ -113004,3 +113004,31 @@ endpoint deltas. Scratch/durable peaks are 402,186,240/258,048 bytes. The
 `c8d2ec30d3c1b7fda5693242b3ec84ee39fc8ba41fc3e0d1bf755ba29c2e4fa4`.
 The bounded capsule now includes this count/cleanup receipt. Only the audit
 receipt and capsule follow counting; the live ledger remains identical.
+
+### 2026-10-28 — user pivot to remote-toolbar keyboard focus
+
+The user requests another aspect. The read-only full-peer evidence-hashing
+follow-up stays OPEN/PARKED; no new checker patch or execution follows it.
+The installed-service hash correction and its limits remain as recorded above.
+All fifteen installed/native credential actions are still OPEN.
+
+The selected app defect is in `_IconMenuButtonState` and `_IconSubmenuButtonState`
+in `flutter/lib/desktop/widgets/remote_toolbar.dart`: their button overlays are
+transparent and their painted icon background follows only pointer hover.
+The intended presentation owner is each existing Flutter button's own focus
+node; keyboard focus must remain visible until that button loses focus, without
+changing activation or session authority. Flutter 3.24.5's `menu_anchor.dart`
+uses a real TextButton focus node for both controls; `Focus.of(context)` within
+its child can observe that node without retaining a parallel boolean.
+Primary references: Flutter's pinned 3.24.5 `packages/flutter/lib/src/material/menu_anchor.dart`
+and https://api.flutter.dev/flutter/widgets/Focus-class.html.
+
+Preparation extends the existing isolated `--flutter-model-tests --menu-button`
+workload with eight rendered cases covering both toolbar controls: keyboard
+focus/blur, pointer hover/exit, activation and disabled/re-enabled lifetime.
+The probe copies the exact private widget bodies and theme declarations into
+one Dart test library; translation, surrounding palette and the absent FFI
+session are explicit doubles. It does not import or execute the complete remote
+screen. Existing 26 cases remain; the exact result inventory becomes four
+suites/34 cases. Product code is unchanged for the baseline. Python AST and
+whitespace review pass; no behavioral result is claimed before execution.

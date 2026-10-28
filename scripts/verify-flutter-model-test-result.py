@@ -177,6 +177,16 @@ MENU_BUTTON_TESTS = {
     "menu button disabled rebuild refuses activation and can recover",
 }
 MENU_BUTTON_SUITES = {
+    "toolbar_button_probe_test.dart": {
+        f"toolbar {variant} {case}"
+        for variant in ("action", "submenu")
+        for case in (
+            "paints and retires keyboard focus",
+            "retains pointer hover and exit",
+            "activates by keyboard and pointer",
+            "disabling clears focus and permits reuse",
+        )
+    },
     "menu_button_test.dart": MENU_BUTTON_TESTS,
     "popup_menu_position_test.dart": {
         f"popup position {variant} {direction} {layout}"

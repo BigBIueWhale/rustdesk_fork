@@ -12,6 +12,7 @@ class PasswordTextField extends StatelessWidget {
     this.obscureText = true,
     this.enabled,
     this.onChanged,
+    this.onSubmitted,
     this.inputFormatters,
     this.maxLength,
   });
@@ -23,6 +24,7 @@ class PasswordTextField extends StatelessWidget {
   final bool obscureText;
   final bool? enabled;
   final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
   final List<TextInputFormatter>? inputFormatters;
   final int? maxLength;
 
@@ -38,6 +40,7 @@ class PasswordTextField extends StatelessWidget {
         obscureText: obscureText,
         enabled: enabled,
         onChanged: onChanged,
+        onSubmitted: onSubmitted,
         inputFormatters: inputFormatters,
         maxLength: maxLength,
         keyboardType: TextInputType.visiblePassword,

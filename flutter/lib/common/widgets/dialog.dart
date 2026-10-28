@@ -79,6 +79,7 @@ class DialogTextField extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode? focusNode;
   final TextInputType? keyboardType;
+  final ValueChanged<String>? onSubmitted;
   final List<TextInputFormatter>? inputFormatters;
   final int? maxLength;
 
@@ -99,6 +100,7 @@ class DialogTextField extends StatelessWidget {
       this.suffixIcon,
       this.hintText,
       this.keyboardType,
+      this.onSubmitted,
       this.inputFormatters,
       this.maxLength,
       required this.title,
@@ -130,6 +132,7 @@ class DialogTextField extends StatelessWidget {
                         autofocus: true,
                         obscureText: !passwordVisible,
                         enabled: enabled,
+                        onSubmitted: onSubmitted,
                         inputFormatters: inputFormatters,
                         maxLength: maxLength,
                       )
@@ -140,6 +143,7 @@ class DialogTextField extends StatelessWidget {
                         autofocus: true,
                         keyboardType: keyboardType,
                         enabled: enabled,
+                        onSubmitted: onSubmitted,
                         inputFormatters: inputFormatters,
                         maxLength: maxLength,
                       ),
@@ -173,6 +177,7 @@ class PasswordWidget extends StatefulWidget {
     this.title,
     this.maxLength,
     this.translateText,
+    this.onSubmitted,
   }) : super(key: key);
 
   final TextEditingController controller;
@@ -181,6 +186,7 @@ class PasswordWidget extends StatefulWidget {
   final String? title;
   final int? maxLength;
   final String Function(String text)? translateText;
+  final ValueChanged<String>? onSubmitted;
 
   @override
   State<PasswordWidget> createState() => _PasswordWidgetState();
@@ -222,6 +228,7 @@ class _PasswordWidgetState extends State<PasswordWidget> {
       errorText: widget.errorText,
       focusNode: _focusNode,
       maxLength: widget.maxLength,
+      onSubmitted: widget.onSubmitted,
     );
   }
 }

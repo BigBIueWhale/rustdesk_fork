@@ -135,6 +135,7 @@ class _ConnectPasswordDialogState extends State<ConnectPasswordDialog> {
           PasswordWidget(
             controller: _password,
             translateText: widget.translateText,
+            onSubmitted: _canSubmit ? (_) => _submit() : null,
           ),
           CheckboxListTile(
             contentPadding: EdgeInsets.zero,

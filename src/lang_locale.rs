@@ -13,7 +13,13 @@ pub(super) fn select_language(configured: &str, locale: &str) -> String {
     let mut subtags = base.split(['-', '_']);
     let language = subtags.next().unwrap_or_default();
     if language != "zh" {
-        return language.to_owned();
+        // Map locale subtags to the catalogue's saved language keys.
+        return match language {
+            "ka" => "ge",
+            "kk" => "kz",
+            _ => language,
+        }
+        .to_owned();
     }
     let first = subtags.next().unwrap_or_default();
     let (script, region) = if first.len() == 4 && first.bytes().all(|c| c.is_ascii_alphabetic()) {

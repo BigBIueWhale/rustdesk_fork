@@ -27,36 +27,42 @@ String _displayedSpeed(WidgetTester tester) =>
 void main() {
   testWidgets('trackpad announces speed across its enabled and disabled range', (tester) async {
     final semantics = tester.ensureSemantics();
-    addTearDown(semantics.dispose);
-    for (final enabled in [true, false]) {
-      for (final speed in [10, 20, 100, 250, 500, 990, 1000]) {
-        await _show(tester, speed: speed, enabled: enabled);
-        final data = tester.getSemantics(find.byType(Slider)).getSemanticsData();
-        expect(data.value, '$speed%', reason: 'speed=$speed enabled=$enabled');
-        expect(_displayedSpeed(tester), '$speed');
+    try {
+      for (final enabled in [true, false]) {
+        for (final speed in [10, 20, 100, 250, 500, 990, 1000]) {
+          await _show(tester, speed: speed, enabled: enabled);
+          final data = tester.getSemantics(find.byType(Slider)).getSemanticsData();
+          expect(data.value, '$speed%', reason: 'speed=$speed enabled=$enabled');
+          expect(_displayedSpeed(tester), '$speed');
+        }
       }
+    } finally {
+      semantics.dispose();
     }
   });
 
   testWidgets('trackpad accessibility predictions match adjusted and saved speed', (tester) async {
     final semantics = tester.ensureSemantics();
-    addTearDown(semantics.dispose);
-    for (final increase in [true, false]) {
-      final calls = <int>[];
-      await _show(tester, save: (value) async { calls.add(value); return value; });
-      final node = tester.getSemantics(find.byType(Slider));
-      final before = node.getSemanticsData();
-      final predicted = increase ? before.increasedValue : before.decreasedValue;
-      tester.binding.pipelineOwner.semanticsOwner!.performAction(node.id,
-          increase ? ui.SemanticsAction.increase : ui.SemanticsAction.decrease);
-      await tester.pump();
-      await tester.pump(const Duration(seconds: 1));
-      final expected = increase ? 110 : 90;
-      expect(calls, [expected]);
-      expect(_displayedSpeed(tester), '$expected');
-      expect(predicted, '$expected%');
-      expect(tester.getSemantics(find.byType(Slider)).getSemanticsData().value, '$expected%');
-      await tester.pumpWidget(const SizedBox.shrink());
+    try {
+      for (final increase in [true, false]) {
+        final calls = <int>[];
+        await _show(tester, save: (value) async { calls.add(value); return value; });
+        final node = tester.getSemantics(find.byType(Slider));
+        final before = node.getSemanticsData();
+        final predicted = increase ? before.increasedValue : before.decreasedValue;
+        tester.binding.pipelineOwner.semanticsOwner!.performAction(node.id,
+            increase ? ui.SemanticsAction.increase : ui.SemanticsAction.decrease);
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+        final expected = increase ? 110 : 90;
+        expect(calls, [expected]);
+        expect(_displayedSpeed(tester), '$expected');
+        expect(predicted, '$expected%');
+        expect(tester.getSemantics(find.byType(Slider)).getSemanticsData().value, '$expected%');
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    } finally {
+      semantics.dispose();
     }
   });
 
@@ -78,19 +84,22 @@ void main() {
 
   testWidgets('trackpad disabled accessibility cannot adjust or save speed', (tester) async {
     final semantics = tester.ensureSemantics();
-    addTearDown(semantics.dispose);
-    final calls = <int>[];
-    await _show(tester, enabled: false,
-        save: (value) async { calls.add(value); return value; });
-    final node = tester.getSemantics(find.byType(Slider));
-    final data = node.getSemanticsData();
-    expect(data.hasAction(ui.SemanticsAction.increase), isFalse);
-    expect(data.hasAction(ui.SemanticsAction.decrease), isFalse);
-    for (final action in [ui.SemanticsAction.increase, ui.SemanticsAction.decrease]) {
-      tester.binding.pipelineOwner.semanticsOwner!.performAction(node.id, action);
+    try {
+      final calls = <int>[];
+      await _show(tester, enabled: false,
+          save: (value) async { calls.add(value); return value; });
+      final node = tester.getSemantics(find.byType(Slider));
+      final data = node.getSemanticsData();
+      expect(data.hasAction(ui.SemanticsAction.increase), isFalse);
+      expect(data.hasAction(ui.SemanticsAction.decrease), isFalse);
+      for (final action in [ui.SemanticsAction.increase, ui.SemanticsAction.decrease]) {
+        tester.binding.pipelineOwner.semanticsOwner!.performAction(node.id, action);
+      }
+      await tester.pump(const Duration(seconds: 2));
+      expect(calls, isEmpty);
+      expect(_displayedSpeed(tester), '100');
+    } finally {
+      semantics.dispose();
     }
-    await tester.pump(const Duration(seconds: 2));
-    expect(calls, isEmpty);
-    expect(_displayedSpeed(tester), '100');
   });
 }

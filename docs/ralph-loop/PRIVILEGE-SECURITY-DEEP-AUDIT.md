@@ -112711,3 +112711,25 @@ Extract only the required Rust components and retire the guest installer before
 Flutter execution, as that existing profile does. No storage constraint is
 relaxed and no disk fallback is introduced. The admission inventory includes
 this new selector; the focused command and fourteen behavioral cases are unchanged.
+
+Baseline `Y6XIP0kju5` at `c2e9f564` loads both suites and executes all fourteen
+cases: eleven pass, two reproduce actual announcement defects (10% speed reads
+0%; the action saves 110 while announcing 10%), and one passes its disabled
+behavior assertions but fails test cleanup because the semantics handle is
+disposed in teardown after Flutter's end-of-test verification. Move the three
+handle disposals to `finally` inside their tests; all inputs and behavioral
+assertions remain unchanged. This fixture correction means the next run is not
+an identical-test-file A/B comparison. Later loop iterations in the two failing
+cases were not reached by the baseline.
+
+QEMU 2050840 joins exit 0 and RAM `run.41fo839l` is absent. Retain the failed
+owned directory as `trackpad-baseline.Y6XIP0kju5`, device/inode
+66306/103992787. Workload serial: 15,518 bytes, SHA-256
+`4f8a0789fd6be1520cc3dd93ff85bdb2e33dc952bffb9664eb63f87d4e0b79ba`;
+console: 65,305 bytes, SHA-256
+`cf6aab65ddbbf9d9e6b3e97def98a1f33d1c743e01611dabdc2eb292a6f97c51`.
+The final aggregate host snapshot contains one unattributed addition and one
+removal; no owner was inspected or changed. The storage interval is 260 seconds,
+with 5,096,812,544 bytes peak scratch allocation and 3,403,776 bytes durable
+diagnostics. The product correction adds only the speed-percent formatter to
+the shared slider; the next isolated run checks this candidate and fixture cleanup.

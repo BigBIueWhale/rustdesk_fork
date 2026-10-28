@@ -112754,3 +112754,29 @@ console is 65,047 bytes, SHA-256
 The 258-second storage interval peaks at 5,137,575,936 bytes scratch and
 3,375,104 bytes durable diagnostics. The final aggregate snapshot has no
 addition and one unattributed removal; no owner inspection or mutation occurs.
+
+Accepted run `yOTKpIyjvT` at `a688603a4e9f1eacb6e8557ecde8957a611002d4`
+passes both suites / all fourteen named cases and all three focused parser
+controls in 277 outer seconds. The four new cases cover seven slider positions
+enabled/disabled, actual accessibility increase/decrease with predicted values
+matching saved values, keyboard input with effective backend readback, and
+disabled refusal. The ten existing dialog/model tests also pass. The unchanged
+behavioral assertions now complete; semantics-handle disposal is the only Dart
+fixture change after baseline. Product differs from the baseline by one formatter
+callback. Source/fixture hashes and outcomes are retained in
+`.harness-state/verifier-vm/trackpad-accessibility-70be9d9a.json`.
+
+The 9,280-byte workload serial SHA-256 is
+`438a19f86b2e1e18413240a0a9c7a99be5f5efe6f2e9919d31febc66b3d0c512`;
+the 64,514-byte console SHA-256 is
+`be68248f60b5bb470825a2875ede80595ee811cb903a36d22736cf13e94ac84d`.
+QEMU 2086175 joins exit 0; RAM `run.fowzjqbf` and owned active roots are absent.
+Peak scratch/durable allocation is 5,119,246,336/3,395,584 bytes. The aggregate
+final snapshot adds one unattributed endpoint, without owner inspection or
+intervention; the harness retains its kernel-enforced IP-socket prohibition.
+All three executed VMs have joined and retired their bulk RAM workspaces.
+Existing ten-point quantization and raw numeric entry are unchanged; the
+rendered component evidence does not establish physical devices, native screen
+readers, full UI/FFI/storage or other-platform behavior. All parks and all
+fifteen installed credential actions remain OPEN. Only the pivot note and this
+specific status item change in the ledger; a fresh count follows.

@@ -112653,3 +112653,22 @@ historical stock/SDK comparison identities, classification and limits. Git
 source `1c07eea4` retains the removed intermediate hashes, timing and repair
 narration. Exact outside-section/reference checks and fresh isolated counting
 follow; the previous complete ledger count is 357,084 tokens / 1,627,903 bytes.
+
+Exact outside-section comparison passes: all other ledger bytes, including the
+fifteen-action table, later theme/dialog findings and user parks, are unchanged.
+All fifteen serial references and the original CLI source link remain. Only the
+ledger and append-only audit changed; whitespace/reference checks pass.
+The selected block shrinks from 322 lines / 27,732 bytes to 115 lines /
+11,790 bytes, removing 15,942 bytes of live-ledger repetition.
+
+Fresh count `0tG2ZsGvAJ` at `3059d77162eb0ddad24b35599c217915126432c6`
+passes in 31 outer seconds: **352,763 tokens / 1,611,961 bytes**, SHA-256
+`43331b19e338b4739150e1ea22b326142be93a01b3ae08283b69ce915ff99842`.
+This is 4,321 fewer tokens. The pinned recipe passes seven controls and the full
+byte round trip; resource admission passes 63 controls/five refusals.
+QEMU 1984199 joins exit 0; RAM `run.2oeq2067` and active owned roots are absent.
+Peak RAM/durable allocation is 402,108,416/258,048 bytes. All endpoint deltas
+are zero. The 32,671-byte workload serial SHA-256 is
+`84d051615673aa7d129a1138cd9e44d10e6b455a5160e9c88bb444731d16a8bb`.
+The capsule retains comparison/count/cleanup details. Only this audit receipt
+and inert evidence follow counting; the counted ledger is unchanged.

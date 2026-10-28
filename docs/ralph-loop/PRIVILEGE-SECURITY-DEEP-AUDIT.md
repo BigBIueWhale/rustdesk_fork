@@ -110964,3 +110964,12 @@ one unattributed removal and the corrected run one addition; both are retained
 without owner inspection or mutation. The network confinement guard passes.
 This proves selector behavior in the Linux component; actual OS locale
 acquisition, full app/rendering, other platforms and R-S0/R-F5 remain OPEN.
+
+Ledger/evidence update committed/pushed as `6496569d`. Fresh count `vlnnwWG1hN`
+passes: **357,543 tokens**, 1,625,886 bytes, input SHA-256
+`d4cadb1b894e522ced475af1931a32ced15f2d60ec035461fc586c729575b4c9`.
+Seven controls and whole-file round trip pass. Outer/supervisor times are
+28/31.554 seconds, RAM peak 402,276,352 bytes, durable peak 249,856 bytes.
+QEMU 434289 joins exit 0; its PID, RAM `run.pd7mcpxo` and active owned roots
+are absent. All endpoint deltas are zero. This audit-only receipt preserves
+the counted ledger and adds no product/runtime acceptance claim.

@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+[ "$#" -eq 0 ] && [ "$PWD" = /source ] && [ "$(id -u):$(id -g)" = 1000:1000 ] \
+    || { echo 'main config-key test entry differs' >&2; exit 1; }
+readonly WORK=/tmp/main-config-key
+mkdir -m 700 -- "$WORK"
+cat >"$WORK/Cargo.toml" <<'TOML'
+[package]
+name = "main-config-key"
+version = "0.0.0"
+edition = "2021"
+[lib]
+path = "/source/scripts/test-main-config-key.rs"
+[workspace]
+[dependencies]
+serde = "=1.0.228"
+serde_derive = "=1.0.228"
+serde_json = "=1.0.118"
+TOML
+export CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
+cargo generate-lockfile --manifest-path "$WORK/Cargo.toml" --offline
+printf 'MAIN_CONFIG_KEY_LOCK=sha256=%s\n' "$(sha256sum "$WORK/Cargo.lock" | cut -d ' ' -f 1)"
+cargo test --manifest-path "$WORK/Cargo.toml" --offline --locked --lib --no-run --color never
+test_executable=
+for candidate in /cargo-target/debug/deps/main_config_key-*; do
+    [[ "$candidate" =~ ^/cargo-target/debug/deps/main_config_key-[0-9a-f]{16}$ ]] || continue
+    [ -f "$candidate" ] && [ ! -L "$candidate" ] && [ -x "$candidate" ] \
+        && [ "$(stat -c '%u:%g:%h' -- "$candidate")" = 1000:1000:1 ] || exit 1
+    [ -z "$test_executable" ] || exit 1
+    test_executable=$candidate
+done
+[ -n "$test_executable" ]
+artifact_sha="$(sha256sum "$test_executable" | cut -d ' ' -f 1)"
+printf 'MAIN_CONFIG_KEY_ARTIFACT_BEFORE=sha256=%s\n' "$artifact_sha"
+timeout --signal=TERM --kill-after=5s 10s "$test_executable" --test-threads=1 --color never
+[ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
+printf 'MAIN_CONFIG_KEY_ARTIFACT=pass sha256=%s tests=4 unchanged=before-after\n' "$artifact_sha"

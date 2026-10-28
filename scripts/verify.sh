@@ -4515,7 +4515,7 @@ echo "== R-S11b-4 config/PRS secrecy boundary =="
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_hard_settings_password_does_not_create_credential --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::main_config_keys_expose_typed_password_status_but_not_credential_storage --color never
 r_s11b4=""
-r_s11b4_config_enum=$(awk '/pub enum MainConfigKey/,/^}/' src/ipc.rs)
+r_s11b4_config_enum=$(awk '/pub enum MainConfigKey/,/^}/' src/ipc/main_config.rs)
 r_s11b4_main_config_handler=$(awk '/MainIpcRequest::Config\(key\) => \{/,/MainIpcRequest::SetOption\(value\) => \{/' src/ipc.rs)
 echo "$r_s11b4_config_enum" | grep -q 'PermanentPasswordStorageAndSalt' && r_s11b4="$r_s11b4 credential-storage-main-config-key-present"
 if echo "$r_s11b4_config_enum" | grep -Eq '^[[:space:]]*Salt([[:space:]]|,)'; then

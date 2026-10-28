@@ -14,6 +14,11 @@ mod ipc_fs;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[path = "ipc/password.rs"]
 pub(crate) mod password;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[path = "ipc/main_config.rs"]
+mod main_config;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub use main_config::MainConfigKey;
 
 use crate::common::is_service_owned_server_process;
 #[cfg(target_os = "windows")]
@@ -201,8 +206,6 @@ const MAIN_IPC_TRANSACTION_TIMEOUT_MS: u64 = 2_000;
 const MAIN_IPC_MAX_OPTION_COUNT: usize = 64;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 const MAIN_IPC_MAX_OPTION_VALUE_BYTES: usize = 4 * 1024;
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-const MAIN_IPC_MAX_ID_BYTES: usize = 256;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 const MAIN_IPC_MAX_CONFIG_VALUE_BYTES: usize = 64 * 1024;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -2688,22 +2691,9 @@ pub enum CmVoiceCallCommand {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
-#[serde(tag = "t")]
-pub enum MainConfigKey {
-    Id,
-    PermanentPasswordSet,
-    UserOwnedPermanentPasswordWritable,
-    HideConnectionManager,
-    VoiceCallInput,
-    DirectListenerBound,
-}
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub struct MainStatusSnapshot {
     pub options: MainStatusOptions,
-    pub id: String,
     pub file_transfer_enabled: Option<bool>,
 }
 
@@ -4662,11 +4652,6 @@ async fn handle_main_ipc_request(request: MainIpcRequest, stream: &Connection) -
             };
             #[cfg(not(target_os = "windows"))]
             let file_transfer_enabled = None;
-            let id = Config::get_id();
-            if id.len() > MAIN_IPC_MAX_ID_BYTES {
-                log::error!("main IPC status ID exceeds its protocol limit");
-                return MainIpcResponse::RequestFailed(IpcMutationResult::InternalFailure);
-            }
             let options = match MainStatusOptions::from_config() {
                 Ok(options) => options,
                 Err(err) => {
@@ -4676,7 +4661,6 @@ async fn handle_main_ipc_request(request: MainIpcRequest, stream: &Connection) -
             };
             MainIpcResponse::StatusSnapshot(MainStatusSnapshot {
                 options,
-                id,
                 file_transfer_enabled,
             })
         }
@@ -4691,7 +4675,6 @@ async fn handle_main_ipc_request(request: MainIpcRequest, stream: &Connection) -
         }
         MainIpcRequest::Config(key) => {
             let value = match key {
-                MainConfigKey::Id => Some(Config::get_id()),
                 MainConfigKey::PermanentPasswordSet => Some(
                     if permanent_password_is_set_for_current_process().await {
                         "Y"
@@ -8227,7 +8210,6 @@ async fn get_config_async(name: &str, ms_timeout: u64) -> ResultType<Option<Stri
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn main_config_key(name: &str) -> Option<MainConfigKey> {
     match name {
-        "id" => Some(MainConfigKey::Id),
         "permanent-password-set" => Some(MainConfigKey::PermanentPasswordSet),
         "permanent-password-user-owned-writable" => {
             Some(MainConfigKey::UserOwnedPermanentPasswordWritable)
@@ -8998,15 +8980,6 @@ pub(crate) async fn request_windows_service_owned_sas() -> ResultType<()> {
             bail!("Windows service rejected the service-owned SAS dispatch request")
         }
         None => bail!("Windows service returned a malformed service-owned SAS response"),
-    }
-}
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn get_id() -> String {
-    if let Ok(Some(v)) = get_config("id") {
-        v
-    } else {
-        Config::get_id()
     }
 }
 
@@ -10875,6 +10848,7 @@ mod test {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     #[test]
     fn main_config_keys_expose_typed_password_status_but_not_credential_storage() {
+        assert!(main_config_key("id").is_none());
         assert_eq!(
             main_config_key("permanent-password-set"),
             Some(MainConfigKey::PermanentPasswordSet)

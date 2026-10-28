@@ -2786,7 +2786,7 @@ for token in \
   grep -Fq "$token" "$REPO/libs/hbb_common/src/config.rs" &&
     r_s11b2="$r_s11b2 retired-salt-reader-surface-present:$token"
 done
-main_config_enum=$(awk '/pub enum MainConfigKey/,/^}/' "$REPO/src/ipc.rs")
+main_config_enum=$(awk '/pub enum MainConfigKey/,/^}/' "$REPO/src/ipc/main_config.rs")
 main_config_handler=$(awk '/MainIpcRequest::Config\(key\) => \{/,/MainIpcRequest::SetOption\(value\) => \{/' "$REPO/src/ipc.rs")
 echo "$main_config_enum" | grep -q 'PermanentPasswordStorageAndSalt' && r_s11b2="$r_s11b2 credential-storage-main-config-key-present"
 echo "$main_config_enum" | grep -Eq '^[[:space:]]*Salt([[:space:]]|,)' && r_s11b2="$r_s11b2 standalone-salt-main-config-key-present"

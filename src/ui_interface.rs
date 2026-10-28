@@ -26,24 +26,11 @@ use crate::ipc;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub type Children = Arc<Mutex<(bool, HashMap<(String, String), Child>)>>;
 
-#[derive(Clone, Debug, Serialize)]
-pub struct UiStatus {
-    #[cfg(not(feature = "flutter"))]
-    pub id: String,
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub struct LoginDeviceInfo {
     pub os: String,
     pub r#type: String,
     pub name: String,
-}
-
-lazy_static::lazy_static! {
-    static ref UI_STATUS : Arc<Mutex<UiStatus>> = Arc::new(Mutex::new(UiStatus{
-        #[cfg(not(feature = "flutter"))]
-        id: "".to_owned(),
-    }));
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -59,15 +46,6 @@ static OPTION_STATUS_SYNC: std::sync::Once = std::sync::Once::new();
 #[cfg(target_os = "windows")]
 lazy_static::lazy_static! {
     pub static ref IS_FILE_TRANSFER_ENABLED: Arc<Mutex<Option<bool>>> = Arc::new(Mutex::new(None));
-}
-
-#[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
-#[inline]
-pub fn get_id() -> String {
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    return Config::get_id();
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    return ipc::get_id();
 }
 
 // R-X1 / R-SV2 (§18): ui_interface::update_me (the cross-platform self-updater dispatch) is excised —
@@ -845,10 +823,6 @@ async fn sync_main_status() {
                 };
                 *OPTIONS.lock().unwrap() = options;
                 *OPTION_SYNCED.lock().unwrap() = true;
-                *UI_STATUS.lock().unwrap() = UiStatus {
-                    #[cfg(not(feature = "flutter"))]
-                    id: snapshot.id,
-                };
                 #[cfg(target_os = "windows")]
                 if let Some(enabled) = snapshot.file_transfer_enabled {
                     let mut current = IS_FILE_TRANSFER_ENABLED.lock().unwrap();

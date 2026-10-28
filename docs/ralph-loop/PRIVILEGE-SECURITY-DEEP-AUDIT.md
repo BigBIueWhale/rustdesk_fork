@@ -110288,3 +110288,92 @@ durable run peak 147,456 bytes. QEMU 10672 joins exit 0; its PID, RAM workspace
 the final snapshot's one 18-byte removal remains unattributed and untouched.
 No host product/test payload or foreign RustDesk service is used. This audit-only
 receipt leaves both counted documents and the comment correction unchanged.
+
+## 2026-10-28 — CLI address decoding; evidence retained at user pivot
+
+The user requests another aspect before this slice's journal update. Product
+correction `8963aa8222ad5f5b6b43306cc35aeeae9dc5b1e2` is already pushed, with
+tree `7ebf7657672fbc1ad476e7f6a26dd318d1ec9a18`. Further CLI/native-handoff
+work is OPEN/PARKED and must not resume automatically. This entry preserves
+existing execution evidence; no new CLI workload is launched after the pivot.
+
+`core_main_invoke_new_connection` previously removed every `.rustdesk` occurrence
+from an extension-ending target for all seven commands. Six explicit-address
+commands now preserve the target. Only `--play` removes one final extension;
+interior occurrences remain intact for the independent receiver's validation.
+Windows recent-document creation and the MSI association still consume `--play`,
+so deleting its marker support would have broken a live path. The distinction is
+consistent with the primary Rust API contracts for
+[replace](https://doc.rust-lang.org/std/primitive.str.html#method.replace) and
+[strip_suffix](https://doc.rust-lang.org/std/primitive.str.html#method.strip_suffix).
+The separate Dart missing-target concern was not established as a reachable
+startup failure: native entry rejects a missing target. No Dart patch was made.
+
+Preparation `9b7ee7d1` adds the focused case to the existing control-egress workload.
+It extracts the actual Rust parsing/URI body and real address/URL validators;
+the final OS handoff is replaced by a URI collector and app-name metadata is a
+fixture. Run `3kkumI01dj` passes 102 cases and fails the new case, but loses its
+late assertion details. Diagnostic-only `2c631f45` caps ordinary output while
+continuing to the separately bounded failure report. Baseline `rIRrLvwqd7`
+then retains 21 target rewrites: eighteen across the six explicit commands,
+two interior-extension errors for `--play`, and one incorrect fixture expectation
+for the supported simple `--play` marker. The final fixture corrects that
+expectation and adds repeated-final-extension coverage. Baseline and final
+fixtures are therefore not identical; the simple marker is not a product defect.
+
+Candidate `V9fZzt3ccP` passes all 103 cases but fails the outer gate because its
+serial log lacks an unrelated voice-allocation receipt. Shutdown output is
+interleaved; serial loss is a possible explanation, not an established cause.
+Its serial is 165,819 bytes, SHA-256
+`a08d4e7c66a256af847674c9f0c7f3fc2e357e545567c910edee7f1299285590`.
+The three failed private roots are retained as `direct-cli-observer.3kkumI01dj`,
+`direct-cli-baseline.rIRrLvwqd7` and `direct-cli-serial.V9fZzt3ccP` after joined
+QEMU and RAM retirement; no failed gate is waived.
+
+The already-launched unchanged repeat `PncuBpaUza` finishes before the pivot's
+documentation work. Retained raw evidence has 103/103 passing cases, 28 valid
+address controls, 24 explicit-command marker refusals, four `--play` cases,
+credential discard, missing-target refusal and relay refusal. Tests take 22.28
+seconds; build 47.111 seconds. Artifact SHA-256
+`f7ac0f83fac76323981fd1bf5730117df819e3e3a8468319f4575fcfc9523fea`
+is stable before/after execution. Serial 168,225 bytes, SHA-256
+`935c762346456c9175a88b285b88c662b70f29fbf571e3824c8ffa5e25111d92`;
+raw serial/storage/listener receipts use the prefix
+`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.PncuBpaUza`.
+The original shell session's final outer output was not recovered after
+compaction, so this entry claims the retained component results and cleanup.
+
+Repeat storage supervision completes in 136.768 seconds: 2-GiB guest, 6-GiB RAM
+scratch, 4-GiB file ceiling and 6-GiB headroom. RAM peak is 3,594,395,648 bytes;
+durable peak is 3,403,776 bytes. QEMU 64111 is supervisor-joined with exit 0;
+its PID, RAM workspace `run.cfyt9c8a` and active owned run roots are absent.
+All repeat endpoint deltas are zero. Earlier unattributed endpoint changes
+remain untouched. Full application startup, native IPC handoff, actual Windows
+Shell/full-path marker behavior, installed authority and release acceptance
+remain OPEN; no LPE closure follows from these component tests.
+
+## 2026-10-28 — user pivot; verification-status accuracy
+
+Work moves from CLI behavior to the separate documentation/evidence task.
+Two current-ledger statements incorrectly said the parked parser fails before
+Flutter execution, including that `7OUTibJl5O` executes no Flutter cases.
+Both current `scripts/smoke-verifier-vm-authority-guest.sh` and its `df111c4b`
+version run Flutter, check its exit status, then invoke parser self-tests,
+validate results and publish the peer-search case JSON. The parser step is
+therefore after the successful Flutter command, before accepted case evidence.
+
+Read-only inspection of the exact retained `7OUTibJl5O` serial confirms three
+`test_inventory_is_exact` failures and no detailed Flutter case inventory.
+Serial 69,740 bytes, SHA-256
+`d5557ae489528301392e5d66a35d045d88dd270614bf580c6079ad24b117fa33`.
+The existing supervision receipt proves QEMU 3992788 joined exit 0; its PID,
+RAM workspace `run.g0ilm7_l` and active run roots are absent. This corrects
+the earlier popup-menu audit's execution-order description as well as the live
+ledger. It does not turn the failed gate into accepted Flutter evidence.
+
+The ledger now distinguishes execution from result validation and retained
+evidence. The parser repair, full model checkpoint and previous user parks
+remain OPEN/PARKED. Product code, test bodies, runner behavior and normative
+requirements are unchanged in this documentation slice. Review compares the
+historical/current runner order, retained failure log and exact documentation
+diff; no product test is repeated. A fresh bounded ledger count follows.

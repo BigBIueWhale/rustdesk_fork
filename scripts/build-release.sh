@@ -1286,6 +1286,75 @@ run_publication_reconciliation_self_test() {
     prove_published_dist "$destination" \
         || die "first-publication fixture did not install the exact set"
 
+    /usr/bin/python3 -I -S - "$FINALIZE_RELEASE_SET_PROBE" "$source" "$parent" \
+        "$destination" "$PINNED_HEAD" "$FORK_VER" "$SOURCE_DATE_EPOCH_PIN" <<'PY'
+from pathlib import Path
+import os
+import subprocess
+import sys
+
+helper, source, parent, published, commit, version, epoch = sys.argv[1:]
+source, parent, published = map(Path, (source, parent, published))
+canonical = (source / "SHA256SUMS").read_bytes()
+lines = canonical.split(b"\n")
+assert len(lines) == 10 and lines[-1] == b""
+variants = [("crlf", canonical.replace(b"\n", b"\r\n"))]
+for separator in (b"\r", b"\v", b"\f", b"\x1c", b"\x1d", b"\x1e"):
+    for boundary in (0, 5):
+        prefix = b"\n".join(lines[:boundary + 1])
+        suffix = b"\n".join(lines[boundary + 1:])
+        variants.append((f"{separator.hex()}-{boundary}", prefix + separator + suffix))
+invalid_source = parent / "noncanonical-manifest-source"
+invalid_source.mkdir(mode=0o700)
+for entry in source.iterdir():
+    (invalid_source / entry.name).write_bytes(entry.read_bytes())
+
+def command(*arguments):
+    return subprocess.run(
+        ["/usr/bin/python3", "-I", "-S", helper, *map(str, arguments),
+         "--commit", commit, "--version", version, "--epoch", epoch],
+        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        timeout=10, check=False,
+    )
+
+def proof(path):
+    info = path.stat()
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns,
+            path.read_bytes())
+
+accepted = []
+manifest = published / "SHA256SUMS"
+try:
+    for label, content in variants:
+        (invalid_source / "SHA256SUMS").write_bytes(content)
+        inventory = sorted(os.listdir(parent))
+        result = command("--publish", "--parent", parent, "--destination",
+                         "noncanonical-" + label, "--source", invalid_source)
+        if result.returncode == 0:
+            accepted.append(label + ":publish")
+        else:
+            assert result.returncode == 1 and b"release manifest" in result.stderr, result
+            assert sorted(os.listdir(parent)) == inventory, label
+        manifest.chmod(0o644)
+        manifest.write_bytes(content)
+        manifest.chmod(0o444)
+        before = {entry.name: proof(entry) for entry in published.iterdir()}
+        result = command("--verify", "--path", published)
+        if result.returncode == 0:
+            accepted.append(label + ":verify")
+        else:
+            assert result.returncode == 1 and b"release manifest" in result.stderr, result
+        assert {entry.name: proof(entry) for entry in published.iterdir()} == before, label
+finally:
+    manifest.chmod(0o644)
+    manifest.write_bytes(canonical)
+    manifest.chmod(0o444)
+assert command("--verify", "--path", published).returncode == 0
+assert not accepted, "noncanonical manifest accepted: " + ", ".join(accepted)
+print(f"RELEASE_MANIFEST_BOUNDARIES=pass variants={len(variants)} publish=refused verify=refused canonical=accepted state=preserved", file=sys.stderr)
+PY
+
     destination="$parent/unbound-initial-payload"
     atomic_install_dist "$source" "$destination"
     prior_id="$(stat -c '%d:%i' "$destination")"

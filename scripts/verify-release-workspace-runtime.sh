@@ -105,6 +105,12 @@ run_stage() {
         printf '%s\n' "$output" | /usr/bin/tail -n 80 >&2
         fail "$label success marker is absent"
     fi
+    if [ "$label" = 'release transaction fixture' ]; then
+        local receipt='RELEASE_MANIFEST_BOUNDARIES=pass variants=13 publish=refused verify=refused canonical=accepted state=preserved'
+        [ "$(/usr/bin/grep -Fxc -- "$receipt" <<<"$output")" -eq 1 ] \
+            || fail 'release manifest boundary results are missing or duplicated'
+        printf '%s\n' "$receipt" >&2
+    fi
 }
 
 if /usr/bin/timeout --foreground --signal=TERM --kill-after=5s 120s \

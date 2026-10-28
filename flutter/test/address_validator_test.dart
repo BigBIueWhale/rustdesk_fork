@@ -77,7 +77,6 @@ void main() {
         '-1',
         '+1',
         '01',
-        '3390\n',
         '٣٣٩٠'
       ]) {
         controller.value = previous;
@@ -107,6 +106,14 @@ void main() {
         expect(controller.value, value);
         expect(edits.last, text);
       }
+      tester.testTextInput.updateEditingValue(const TextEditingValue(
+        text: '3390\n',
+        selection: TextSelection.collapsed(offset: 5),
+      ));
+      await tester.pump();
+      expect(controller.text, '3390');
+      expect(controller.selection, const TextSelection.collapsed(offset: 4));
+      expect(edits.last, '3390');
       await tester.pumpWidget(const SizedBox.shrink());
     });
 

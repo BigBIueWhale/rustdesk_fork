@@ -440,7 +440,7 @@ def parse_manifest(content, commit=None, version=None, epoch=None):
         raise PublicationError("release manifest is not ASCII") from error
     if not text.endswith("\n"):
         raise PublicationError("release manifest is not newline-terminated")
-    lines = text.splitlines()
+    lines = text[:-1].split("\n")
     if len(lines) != 9:
         raise PublicationError("release manifest must have exactly nine lines")
     if lines[0] != "# rustdesk-fork release manifest v1":

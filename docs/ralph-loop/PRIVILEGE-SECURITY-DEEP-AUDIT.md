@@ -113625,3 +113625,26 @@ Nine focused native-filesystem cases are wired into the existing no-NIC count VM
 empty through four generations, read-only full-cache refusal, admission after
 retirement, wrong identity, symlink and wrong mode. Execution and fresh ledger
 count follow; no full build or extra product replay is needed for this change.
+
+Accepted source `a02c59d4`, run `iPPiWUiAg1`, completes in 29 outer seconds.
+All nine cache-admission cases pass in the no-NIC VM as UID/GID 4000 with
+capabilities removed and no-new-privileges. Existing 43 storage profiles/80
+refusals, 39 modes/69 controls/five refusals and monitor/supervisor checks pass.
+Fresh ledger count is **355,648 tokens / 1,625,448 bytes**, SHA-256
+`cb2d1382dc85e433874d17cf5a396f15a7ff2220ca3ae2c05280e382de6a45d9`.
+The tokenizer's seven controls and complete byte round trip pass.
+QEMU 2729186 joins exit 0; RAM `run.5jmq6orl` and all active run roots are absent.
+Scratch peak is 402,272,256 bytes, overlay peak 305,729,536 bytes and durable
+run peak 253,952 bytes; endpoint inventories have no additions or removals.
+Raw result serial is 34,060 bytes, SHA-256
+`b09db569af2d77d43c329f806ad4adfd0f2fef1ebce6caf429ced10bd7daa56a`;
+console is 64,011 bytes, SHA-256
+`e1ac8b3cb2bd57a2ef642df0f82c327d8a4d68dd7ba2eef167fcf70a4dc92efc`.
+The final read-only check confirms all 47 retired roots absent and all retained
+Android APK checksums valid. Harness storage is now about 3.3 GiB; canonical
+offline inputs remain about 31 GiB. Cleanup inventory SHA-256 is
+`169d3c662d92a0d70d58c77d8d7d9ab6003c685831eb0856a8a4d77af4986055`
+(150,677 bytes); completion SHA-256 is
+`dbacccc59b90610234c12487571173775288c35314a59677ef11cab4e8917edb`
+(300 bytes). Shell syntax and git diff --check pass. Only this audit receipt
+follows the count; no additional VM or product execution is needed.

@@ -112672,3 +112672,31 @@ are zero. The 32,671-byte workload serial SHA-256 is
 `84d051615673aa7d129a1138cd9e44d10e6b455a5160e9c88bb444731d16a8bb`.
 The capsule retains comparison/count/cleanup details. Only this audit receipt
 and inert evidence follow counting; the counted ledger is unchanged.
+
+### 2026-10-28 — user pivot to trackpad speed accessibility
+
+The user explicitly requests another aspect. Acquisition cleanup/process
+retirement remains OPEN/PARKED: its unrun fixture and launcher preparation are
+preserved in stash `433a06a5f427121133348d09ca837f4c0bb747bd`.
+No correction or native reproduction preceded the pivot. Do not resume it
+automatically. All earlier parks remain; all fifteen installed credential
+actions remain OPEN in the current service-authority table.
+
+Choose the shared trackpad speed control's accessibility value. The real widget
+uses a 10–1000 speed range but supplies no semantic formatter, so Flutter's
+default announcement describes the slider's relative position. The visible
+100% speed consequently has a roughly 9% announcement. The intended change
+is only to report the selected speed in percent, including predicted accessible
+adjustments; storage authority, bounds, debounce and dialog ownership remain.
+Flutter's primary API documents the formatter and percentage default:
+https://api.flutter.dev/flutter/material/Slider/semanticFormatterCallback.html
+
+Add four rendered accessibility/keyboard/disabled controls and a focused
+`--flutter-model-tests --trackpad-speed` shard with the existing ten dialog/model
+tests. It uses the established 4 GiB guest / 3 GiB unprivileged container,
+7 GiB bounded RAM scratch, shared admission/monitor and joined cleanup, a
+300-second VM budget, fresh bindings and exact source comparison. No Rust
+product build or host product execution is needed. Shell syntax and whitespace
+checks pass; the initial native run must establish the unchanged-widget failure
+before the product correction. Controlled backend callbacks do not establish
+native persistence, physical trackpads or screen-reader/device acceptance.

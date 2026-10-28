@@ -196,6 +196,9 @@ class ResultTests(unittest.TestCase):
             return result.parse_result(path, profile)
 
     def test_complete_profiles(self):
+        if SINGLE_PROFILE == "menu-button":
+            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (4, 32))
+            return
         if SINGLE_PROFILE == "trackpad-speed":
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 16))
             return

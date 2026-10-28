@@ -362,7 +362,7 @@ class _SettingsState extends State<SettingsPage> {
           tiles: [
             // R-G8 / §19 (de-brand): the version row no longer links to / shows rustdesk.com.
             SettingsTile(
-                title: Text(translate("Version: ") + version),
+                title: Text('${translate('Version')}: $version'),
                 leading: Icon(Icons.info)),
             SettingsTile(
                 title: Text(translate("Build Date")),
@@ -463,19 +463,6 @@ void showThemeSettings(OverlayDialogManager dialogManager) async {
       ]),
     );
   }, backDismiss: true, clickMaskDismiss: true);
-}
-
-void showAbout(OverlayDialogManager dialogManager) {
-  dialogManager.show((setState, close, context) {
-    return CustomAlertDialog(
-      title: Text(translate('About RustDesk')),
-      content: Wrap(direction: Axis.vertical, spacing: 12, children: [
-        Text('Version: $version'),
-        // R-G8 / §19 (de-brand): no rustdesk.com website link in the About dialog.
-      ]),
-      actions: [],
-    );
-  }, clickMaskDismiss: true, backDismiss: true);
 }
 
 class _DisplayPage extends StatefulWidget {

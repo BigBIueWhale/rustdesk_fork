@@ -112831,3 +112831,46 @@ same-state rebuild, external refresh, reopen and end-boundary cases. The same
 bounded VM shard now executes sixteen cases across two suites; update only its
 exact inventory/counts. Source review, Python AST parsing, shell syntax and
 whitespace checks pass. An unchanged-product VM run follows before correction.
+
+### 2026-10-28 — user pivot; mobile About version label
+
+The user explicitly requests another aspect. Park the trackpad integer-range
+follow-up at test preparation `a04fa78b`; no product correction or rerun follows.
+Its already-finished baseline `GeYBMST6e7` executes all sixteen cases: eleven
+pass and five fail. Failures include 11 announced as 10, adjustments from 100
+reaching 110 instead of 101, typed 235 announced as 240, and the lower-bound
+adjustment reaching 20 instead of 11. This does not supersede the earlier
+fourteen-case formatter result or claim the integer-range defect corrected.
+
+QEMU 2117490 joined exit 0, RAM workspace `run.713wvxxr` is absent, and the exact
+owned diagnostics directory (device/inode 66306/103992872) was renamed without
+replacement to `trackpad-integer-baseline.GeYBMST6e7` under the shared lock.
+Active owned run roots are absent. The 20,139-byte workload serial SHA-256 is
+`e74abd0c21cc5d1a99a483653fe86336918654fe4ec694450f8c5a96aa232516`;
+the 64,898-byte console SHA-256 is
+`a002a738a7b6774d0284cd3f02ccd6d6c00d3706a0071a3b35d4bc26d8d70f6d`.
+Scratch/durable peaks were 5,136,437,248/3,407,872 bytes. The final aggregate
+endpoint inventory has no addition and one unattributed removal, left untouched.
+All previous parks and all fifteen installed credential actions remain OPEN.
+
+New slice: mobile settings About text. `SettingsPage`'s live version row passes
+`Version: ` to `common.translate`, which forwards the exact key to the Rust
+catalogue lookup in `src/lang.rs`. That key is absent from every active table;
+the nonempty `Version` key exists in all 48 non-English tables. The resulting
+fallback keeps the label English even with another application language selected.
+The desktop About page already uses the correct key followed by punctuation.
+Use that same expression in the mobile row; version data and settings authority
+stay with their existing owners. No language table, key, dependency, permission
+or settings mutation changes. Reference review also finds no callers of the
+duplicate `showAbout` function, so delete its unreachable dialog outright.
+
+Primary design reference: https://docs.flutter.dev/ui/internationalization
+distinguishes application-localized text from framework localization. This fork
+already owns its application messages in the Rust catalogue; no new localization
+mechanism is needed. Target behavior is the mobile About row showing the selected
+language's Version label (for example Hebrew `גרסה`) while preserving the exact
+version value. Confirm that on a disposable target-device settings screen at the
+next native UI checkpoint. For this one-line lookup correction and unused-code
+deletion, read-only catalogue/reference and exact-diff checks plus whitespace
+validation are the evidence; no new ceremonial test or native runtime claim is
+added. A fresh isolated ledger count follows the status update.

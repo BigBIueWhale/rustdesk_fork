@@ -110389,3 +110389,92 @@ durable peak 151,552 bytes. QEMU 105003 joins exit 0; its PID, RAM workspace
 `run.1g0mesac` and active owned run roots are absent. Final endpoint observation
 adds two unattributed records (38 bytes), left untouched; harness IP sockets
 are kernel-denied. This audit-only receipt preserves the counted ledger bytes.
+
+## 2026-10-28 — acknowledged VM output finality
+
+The preceding turn was progress: it corrected two false current-ledger claims and
+recorded the user's pivot. This continuation leaves CLI/native handoff, credential
+persistence, the Flutter result-parser repair and all other parked work parked.
+The fifteen credential actions still require their installed/native observations.
+The selected slice fixes the shared verifier's output/shutdown ownership.
+
+The retained `V9fZzt3ccP` log shows systemd shutdown during delivery of late test
+receipts, with a required voice-allocation receipt absent despite the guest's
+successful test and receipt checks. The host collector already drains its Unix
+socket to EOF. The generated guest script instead prints through inherited
+cloud-init output and requests poweroff immediately; filesystem `sync` does not
+establish that this asynchronous output path drained. Pinned
+[cloud-init 22.4.2's unit](https://raw.githubusercontent.com/canonical/cloud-init/22.4.2/systemd/cloud-final.service.tmpl)
+selects journal-plus-console output, and its
+[logging documentation](https://docs.cloud-init.io/en/latest/development/logging.html)
+describes subprocess output redirection. This establishes the missing ownership
+barrier; it does not uniquely reconstruct which intermediate writer dropped each
+historical byte. QEMU's
+[character-device documentation](https://www.qemu.org/docs/master/system/qemu-manpage.html)
+supports a separate two-way Unix backend; the Linux virtio-port device supplies
+the guest side without a network listener or writable host mount.
+
+`364fd1d8` separates workload output from the boot console. One existing bounded
+collector now also receives the result protocol: fixed identity, at most 64-KiB
+data frames, 8-MiB total output, final byte count/SHA-256 and an exact acknowledgement.
+It writes both evidence files and fsyncs those descriptors plus the archive
+directory before acknowledging; final metadata/readback and trailing-data checks
+remain necessary for collector success. The guest relay checks the matching
+acknowledgement under a 30-second monotonic deadline. The shell pipeline joins
+the workload and relay before requesting poweroff, and preserves workload failure.
+The dedicated port is VM-local; both host channels are private Unix sockets under
+the existing owner-checked run. Cleanup owns and joins both collectors and QEMU
+before retiring sockets/RAM and releasing the shared run marker. Host IP sockets
+remain kernel-denied. Boot-console and workload archives each retain the 8-MiB
+cap; gates inspect their bounded concatenation. This is byte-transfer/finality
+evidence, not authentication or application correctness evidence.
+
+`43380a5e` adds a deterministic 265,600-byte burst across 128 records immediately
+before the actual guest exits; the host requires exact retained records after
+QEMU shutdown. Fifteen focused native Unix-stream cases cover binary/multiframe
+and empty output, fragmentation, identity/length/digest errors, oversized frames
+and aggregate output, partial header/payload/footer EOF, trailing bytes and
+wrong/closed/stalled acknowledgements. Existing exact/occupied/symlink/overflow
+archive cases, Docker log lifecycle, failure export, UI and stage fixtures remain.
+
+The first `--android-runtime-log-tests` attempt at `43380a5e` is refused before
+allocation: its standard 16-GiB scratch reservation requires 25,600 MiB including
+the 2-GiB guest and headroom; 20,942 MiB is available. No VM or active run root is
+created. Source review confirms this profile imports only the small shell/libc
+fixture image, executes log tests and publishes bounded evidence. `2b5d4eea`
+maps it to the existing authority profile: 2-GiB guest, 4-GiB RAM scratch,
+1-GiB file ceiling, 6-GiB headroom and 1-GiB overhead. The closed workload
+admission expectation changes with it; monitoring, file ceilings, joined cleanup
+and refusal remain mandatory. There is no disk fallback or memory-wait retry.
+
+Exact source `2b5d4eea7c8360fa2ea45936d746464e224834d8`, tree
+`1a06980647432a523a5aaa6b2ffc0d6f94464c17`, passes both transactions:
+
+- `vKe5AoUyzJ`, `--android-runtime-log-tests`: all fifteen protocol cases and
+  existing log fixtures pass; actual virtio burst is exactly 265,600 bytes,
+  SHA-256 `cb012a5fc73072561c5d0a7e25b0030fb2e0962c67ae2265b0446c65ca832a97`.
+  Workload archive is 267,345 bytes,
+  SHA-256 `afae08286b50a5e4d46691ee12a69bbab555bea0c91b3392c32db028c4fecb75`;
+  console is 64,629 bytes,
+  SHA-256 `5a784a35621de042090d89c72fafcc19d5bc822e5803618f386573df4c7c426c`.
+  Outer/supervisor 36/39.580 seconds; RAM peak 413,818,880 bytes, durable-run peak
+  3,911,680 bytes. QEMU 169354 joins exit 0; its PID, RAM `run.ly2yeofg` and
+  active run roots are absent. All endpoint deltas are zero.
+- `iGokdjltWG`, ordinary shared authority smoke: the complete selected authority
+  workload passes, including existing entry refusals, publication, workspace,
+  run-lock/concurrent-admission and cleanup checks. Workload is 20,300 bytes,
+  SHA-256 `81d2d822da974a1993164f6ba9ca0bb84bbe9fa6c1bf8880f5947ec17abe8e3f`;
+  console is 64,527 bytes,
+  SHA-256 `fdb8e23c7456af121cf0288a35cbf7ef29cb903d1b5e3a4862f45131b39e0481`.
+  Outer/supervisor 95/96.861 seconds; RAM peak 469,409,792 bytes, durable-run peak
+  225,280 bytes. QEMU 172879 joins exit 0; its PID, RAM `run.lafx1yca` and active
+  run roots are absent. One 18-byte endpoint removal is unattributed and untouched.
+
+Raw files use the corresponding mode/run prefixes under
+`.harness-state/verifier-vm/`; console names add `-console` before `-run`.
+Shell syntax, Python AST inspection and whitespace review pass. No host product,
+helper/test payload, foreign service or application workload is used. Native
+device/installed LPE, settings, R-F5 recovery/soak and release obligations remain
+OPEN. The ledger's old console-only retention paragraph is replaced with this
+current contract; original historical evidence stays in Git and retained files.
+A fresh ledger count follows.

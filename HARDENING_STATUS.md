@@ -7929,19 +7929,27 @@ and Git `01113d0e`. The complete open-evidence matrix below remains authoritativ
 | Build/test execution authority (R-S11dh) | **STOP-SHIP: focused no-NIC authority smokes and substantial product/build evidence exist, but current release workloads remain incomplete.** R-S11dh admits only authenticated ordinary-user QEMU/direct-boot/guest-Docker authority and has no host-Docker fallback; R-S11cj separately confines acquisition to an ordinary-user VM with outbound-only guest/container networking, no host forwarding, and joined finality. Product source `ca569086` passed the fresh model and Android APK build/install/render transactions; exact pushed harness `89a85f4b` passed the retained-APK production-peer lifecycle/presentation transaction. Focused source `e1015ed3` passed the verifier-plus-141-test gate in 296 seconds; exact `a6f1c9c6` passed the three-target Apple source-conformance/SDK-boundary gate. Each preserved the strict host-listener audit and joined cleanup. Stable Android signing, physical devices, sustained resource/performance soak, native Apple work, Debian/Windows product workloads, cold release artifacts, complete prepared inputs, independently administered reproduction, and external review remain open. Source checks, cross-compiles, builder fingerprints, and historical lifecycle evidence are not release or native evidence. |
 | Product-level behavior | **OPEN / RELEASE-BLOCKING:** a passing Android schedule is contradicted by a later same-APK display-only relaunch failure; neither earlier timing/resource receipts nor source/model bounds close the intermittent defect. The separate Linux palette/first-sighting oracle is replaced by full-counter publication-bound age. Exact `481e11ca` passed shared C native geometry/age cases; exact `bc2d94f9` passed six real-peer lifecycles under that observer, with complete raw serial retained. Earlier palette ages still cannot establish freshness, and this short 640x480/4-Hz Linux schedule is not Android/Windows causation or sustained behavior. Preserve complete sampled event/mailbox/conversion/model/widget diagnostics, reuse a source-bound production-peer artifact without rebuilding each replay, and observe actual pixels across repeated replacement/background cycles. Full capture-to-compositor/actual-present monotonic instrumentation, sustained freshness/performance/resource soak, network transitions, broad reconnect finality, cross-version interoperability, physical Android, current Windows focus/minimize, and Apple behavior remain required. Correctness applies to the whole connection flow, not only the reported complaints; no compile, model, source-string, frame-receipt, or protocol-only result substitutes for these native obligations. |
 
-Verifier evidence retention (2026-10-04): pushed `6fba9164`–`d33d8aff` add a bounded,
-owner-private raw serial archive independent of the disposable VM overlay. The focused
-Android runtime-log fixture passed four real Unix-stream archive cases (exact bytes,
-occupied/symlink refusal, overflow bound) in 37 seconds; ordinary authority smoke passed
-in 79 seconds, including single-run admission. Both reported no new host listener or
-pre-existing process drift and self-retired their `run.*` roots. The successful serials are
-`android-runtime-log-tests-run.01Ts674ALA.serial.log` (66,914 bytes, SHA-256
-`7414d9309946573712f16ed8d11383992cb064eba5934f00c375f7fad2ca76ec`) and
-`authority-smoke-run.dgThwowXVC.serial.log` (82,535 bytes, SHA-256
-`634b76b6860d60d49e2d207f080b7814c0b9feede6f8ab695d9270f71b82e716`)
-under `.harness-state/verifier-vm/`. This makes future raw traces inspectable without
-retaining a VM disk; it does not recover the missing `e2e18319` raw trace, run the APK,
-reproduce the intermittent defect, or satisfy current-release native/soak obligations.
+**Verifier output retention (`364fd1d8`, `43380a5e`, `2b5d4eea`).** Workload stdout/stderr
+uses one private virtio port, separate from the boot console. The bounded receiver validates
+framing, byte count and SHA-256, then fsyncs the output, archive and archive directory before
+acknowledging completion. The shutdown owner waits for the relay; a successful relay requires
+that exact acknowledgement. An absent/wrong reply or its 30-second deadline fails the run.
+Trailing data fails capture.
+Both streams retain an independent 8-MiB ceiling. Under `.harness-state/verifier-vm/`,
+`MODE-run.ID.serial.log` now contains exact workload bytes and `MODE-console-run.ID.serial.log`
+contains boot/shutdown diagnostics; receipt checks see their bounded concatenation.
+Historical console-only archives and the original `6fba9164`–`d33d8aff` evidence remain retained.
+
+At `2b5d4eea`, `--android-runtime-log-tests` passes fifteen actual Unix-stream protocol cases,
+the existing archive/log-lifecycle tests, and a 128-block, 265,600-byte burst through the real
+virtio channel immediately before shutdown. Shared VM authority smoke also passes. The log-only
+profile now uses the existing 2-GiB guest/4-GiB RAM scratch/1-GiB file-ceiling envelope, preserving
+6-GiB headroom and monitoring; the initial 16-GiB scratch reservation was refused before allocation.
+Observed RAM scratch peaks are below 470 MB. Both VMs join and retire their workspaces; the shared
+run's one unattributed endpoint removal is untouched. Exact hashes and limits are in the audit
+entry “2026-10-28 — acknowledged VM output finality”; runs `vKe5AoUyzJ` and `iGokdjltWG`.
+These are harness results. Missing historical traces, application/device behavior, installed
+authority, sustained resources/latency and current-release acceptance remain OPEN.
 
 **R-S11ap–R-S11as/R-S11e-56–59 desktop lifecycle ownership — SOURCE IMPLEMENTED; CURRENT INSTALLED
 NATIVE EVIDENCE OPEN.** `src/server.rs`, `src/direct_service.rs`, and `src/ipc.rs` perform startup

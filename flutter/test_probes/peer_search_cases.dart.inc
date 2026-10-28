@@ -92,22 +92,24 @@ final _searchPeers = [
   Peer.fromJson({'id': '192.0.2.30', 'alias': 'Travel'}),
 ];
 
-Future<_PeerOwner> _showPeers(WidgetTester tester, PeerTabIndex tab,
-    List<String> activated) async {
+Future<void> _withPeers(WidgetTester tester, PeerTabIndex tab,
+    Future<void> Function(_PeerOwner owner, List<String> activated) body) async {
   final owner = _PeerOwner();
+  final activated = <String>[];
   installPeerSearchProbeOwner(owner);
   owner.peerTabModel.setCurrentTab(tab.index);
   owner.peers(tab).peers = _searchPeers.toList();
   peerCardUiType.value = PeerUiType.list;
-  addTearDown(() async {
+  try {
+    await tester.pumpWidget(MaterialApp(
+      theme: MyTheme.lightTheme,
+      home: Scaffold(body: _PeerView(tab, activated)),
+    ));
+    await body(owner, activated);
+  } finally {
     await tester.pumpWidget(const SizedBox.shrink());
     owner.dispose();
-  });
-  await tester.pumpWidget(MaterialApp(
-    theme: MyTheme.lightTheme,
-    home: Scaffold(body: _PeerView(tab, activated)),
-  ));
-  return owner;
+  }
 }
 
 class _Harness {
@@ -215,66 +217,68 @@ void main() {
     testWidgets('peer ${tab.name} initial filtering renders without a waiting frame',
         (tester) async {
       peerSearchText.value = '  OFFICE  ';
-      await _showPeers(tester, tab, []);
-      expect(find.text('192.0.2.10'), findsOneWidget);
-      expect(find.text('192.0.2.20'), findsNothing);
-      expect(find.byType(CircularProgressIndicator), findsNothing);
+      await _withPeers(tester, tab, (owner, activated) async {
+        expect(find.text('192.0.2.10'), findsOneWidget);
+        expect(find.text('192.0.2.20'), findsNothing);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+      });
     });
 
     testWidgets('peer ${tab.name} query changes retire old row actions in one frame',
         (tester) async {
-      final activated = <String>[];
-      await _showPeers(tester, tab, activated);
-      await tester.pumpAndSettle();
-      peerSearchText.value = 'travel';
-      await tester.pump();
-      expect(find.text('192.0.2.10'), findsNothing);
-      expect(find.text('192.0.2.20'), findsNothing);
-      await tester.tap(find.text('192.0.2.30'));
-      expect(activated, ['192.0.2.30']);
-      peerSearchText.value = 'missing';
-      await tester.pump();
-      expect(find.byType(TextButton), findsNothing);
-      peerSearchText.value = '';
-      await tester.pump();
-      expect(find.byType(TextButton), findsNWidgets(3));
+      await _withPeers(tester, tab, (owner, activated) async {
+        await tester.pumpAndSettle();
+        peerSearchText.value = 'travel';
+        await tester.pump();
+        expect(find.text('192.0.2.10'), findsNothing);
+        expect(find.text('192.0.2.20'), findsNothing);
+        await tester.tap(find.text('192.0.2.30'));
+        expect(activated, ['192.0.2.30']);
+        peerSearchText.value = 'missing';
+        await tester.pump();
+        expect(find.byType(TextButton), findsNothing);
+        peerSearchText.value = '';
+        await tester.pump();
+        expect(find.byType(TextButton), findsNWidgets(3));
+      });
     });
 
     testWidgets('peer ${tab.name} list updates retire replaced row actions in one frame',
         (tester) async {
       peerSearchText.value = 'office';
-      final activated = <String>[];
-      final owner = await _showPeers(tester, tab, activated);
-      await tester.pumpAndSettle();
-      owner.peers(tab).updatePeers({
-        'peers': '[{"id":"192.0.2.99","hostname":"Office"}]',
+      await _withPeers(tester, tab, (owner, activated) async {
+        await tester.pumpAndSettle();
+        owner.peers(tab).updatePeers({
+          'peers': '[{"id":"192.0.2.99","hostname":"Office"}]',
+        });
+        await tester.pump();
+        expect(find.text('192.0.2.10'), findsNothing);
+        await tester.tap(find.text('192.0.2.99'));
+        expect(activated, ['192.0.2.99']);
       });
-      await tester.pump();
-      expect(find.text('192.0.2.10'), findsNothing);
-      await tester.tap(find.text('192.0.2.99'));
-      expect(activated, ['192.0.2.99']);
     });
 
     testWidgets('peer ${tab.name} search matches all local fields and clears',
         (tester) async {
-      final owner = await _showPeers(tester, tab, []);
-      await tester.pumpAndSettle();
-      for (final query in ['2.10', ' office ', 'ALICE', 'TrAvEl', '[.*]', ' ']) {
-        peerSearchText.value = query;
+      await _withPeers(tester, tab, (owner, activated) async {
         await tester.pumpAndSettle();
-        final expected = query == '2.10' || query == ' office '
-            ? ['192.0.2.10']
-            : query == 'ALICE' ? ['192.0.2.20']
-            : query == 'TrAvEl' ? ['192.0.2.30']
-            : query == '[.*]' ? <String>[]
-            : _searchPeers.map((peer) => peer.id).toList();
-        expect(tester.widgetList<Text>(find.descendant(
-          of: find.byType(TextButton), matching: find.byType(Text)))
-            .map((text) => text.data).toList(), expected);
-        await tester.pump(const Duration(milliseconds: 1));
-        expect(owner.peerTabModel.currentTabCachedPeers.map((peer) => peer.id),
-            expected);
-      }
+        for (final query in ['2.10', ' office ', 'ALICE', 'TrAvEl', '[.*]', ' ']) {
+          peerSearchText.value = query;
+          await tester.pumpAndSettle();
+          final expected = query == '2.10' || query == ' office '
+              ? ['192.0.2.10']
+              : query == 'ALICE' ? ['192.0.2.20']
+              : query == 'TrAvEl' ? ['192.0.2.30']
+              : query == '[.*]' ? <String>[]
+              : _searchPeers.map((peer) => peer.id).toList();
+          expect(tester.widgetList<Text>(find.descendant(
+            of: find.byType(TextButton), matching: find.byType(Text)))
+              .map((text) => text.data).toList(), expected);
+          await tester.pump(const Duration(milliseconds: 1));
+          expect(owner.peerTabModel.currentTabCachedPeers.map((peer) => peer.id),
+              expected);
+        }
+      });
     });
   }
 

@@ -110149,7 +110149,18 @@ The existing profile admits 2-GiB guest RAM, 6-GiB RAM scratch, 4-GiB file ceili
 and 6-GiB headroom. Scratch peak is 3,593,543,680 bytes; durable run peak is
 3,403,776 bytes. QEMU 4103931 joins with exit 0; its PID, RAM workspace
 `run.5pegqtms` and active owned run roots are absent. All endpoint deltas are zero.
-No host product/helper/test or foreign RustDesk instance is used. The guest
+No host product or test payload, or foreign RustDesk instance, is used. The guest
 component fixture does not compile/execute Windows or macOS backends; native
 clipboard, installed behavior, R-S0/R-F5 and release acceptance remain OPEN.
 A fresh ledger count follows the exact status update; the broad goal is active.
+
+Fresh count `hKUdywaif0` at `01d656a72e7eb736dc43491b5cd1e677e028865a`
+passes: 355,376 tokens (+283), 1,615,429 bytes (+1,371), input SHA-256
+`4b5a206ad1342f6ae867379de6daf7d225f60827179f1b7eccfb0360ec0c1763`.
+The pinned tiktoken-0.12.0/cl100k_base/encode_ordinary method, seven controls and
+whole-file round trip pass. Serial 97,966 bytes, SHA-256
+`5facea9b7b7988493d15b3cd27fb22d5dc6e94820bdd33b770b8af5aa40354a4`;
+outer/supervisor lifetime 28/31.346 seconds, RAM peak 402,300,928 bytes, durable
+run peak 147,456 bytes. QEMU 4117705 joins exit 0; its PID, RAM `run.sxyrpgix`
+and active run roots are absent. All endpoint deltas are zero. This audit-only
+receipt leaves the counted ledger and tested implementation unchanged.

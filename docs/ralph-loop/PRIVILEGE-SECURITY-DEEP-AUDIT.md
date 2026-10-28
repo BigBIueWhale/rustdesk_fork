@@ -113499,3 +113499,57 @@ is 85,389 bytes, SHA-256
 It binds source identities, baseline/fixture classifications, exact test outcomes,
 resource admission/refusal, joined retirement, endpoint evidence and ledger count.
 Only this audit receipt follows counting; the ledger and product are unchanged.
+
+### 2026-10-28 — audio-input failure feedback after the Favorites pivot
+
+The user explicitly pivots away from bulk Favorites selection ownership.
+Preparation `c1732910` remains unrun and OPEN/PARKED; no Favorites product
+change follows. The adjacent tab/selection review remains unverified. This
+slice concerns audio-control failure presentation, not native audio cancellation.
+All fifteen installed/native credential actions remain OPEN.
+
+At `39819611`, `AudioInput.setDevice` catches voice-device errors and reports
+them through a global toast; its ordinary audio-option branch uses another
+global-feedback wrapper. Neither owns the initiating control. The widget's
+injected-writer path has only `finally`, so failures escape its callback.
+`c66b7503` returns native errors from both device-writing branches. The widget
+handles them, refreshes authoritative state, and keeps failure feedback with
+the captured current owner. Rebuilds preserve the message; identical retry
+clears it, owner replacement clears it, and retired completions drain without
+publishing feedback. The CM popup handles the returned error using its existing
+page/client/active-call check. No Rust receiver, authorization or device identity
+changes. Flutter's [mounted contract](https://api.flutter.dev/flutter/widgets/State/mounted.html)
+and [widget replacement contract](https://api.flutter.dev/flutter/widgets/State/didUpdateWidget.html)
+distinguish view lifetime from retained operation identity; Dart's
+[async error handling](https://dart.dev/libraries/async/async-await#handling-errors)
+supports handling the awaited result at that owner.
+
+The bounded `--flutter-model-tests --audio-input` baseline `Bsol3gphCX`
+reproduces four write-error failures and passes thirteen controls. Three older
+dropdown tests fail because their fixture lacks `MyTheme.lightTheme`; those
+failures are not product evidence. Candidate `WjqLtEQTCk` at `c66b7503`, with
+that one fixture correction and identical failure cases, passes **20 tests in
+two suites + three parser checks**, 279 outer seconds / 10.573-second Flutter
+stream. Tests execute production widgets with controlled device callbacks;
+full production-library comparison and fresh bridge generation pass. Coverage
+includes synchronous/asynchronous error, readback, rebuild, identical retry,
+page disposal, role/backend replacement, duplicate selection, stable device
+identifiers, unavailable selection and the empty system-sound identifier.
+Default native bridge failure delivery, real microphones, full settings/CM
+popup interaction, concurrent controls/call-generation ordering, target-device
+capture and R-S0/R-F5/installed/release acceptance remain OPEN.
+
+The audio shard now uses the existing bounded native-widget resource recipe:
+2,560 MiB guest, 1,792 MiB container, sequential suites, 4.75 GiB RAM scratch,
+4.5 GiB hard file limit, 6 GiB host reserve and 1 GiB overhead. Unused Android/web
+SDK caches are omitted and the selected Rust installer is retired after use.
+Both runs have zero OOM/OOM-kill events; container peak is 1,879,052,288 bytes
+(one page above the 1,879,048,192-byte limit). Candidate scratch/overlay/durable
+peaks are 4,433,248,256 / 4,237,496,320 / 3,391,488 bytes, with minimum host
+available memory 7,928,590,336 bytes. QEMU children 2625178 and 2636373 join exit
+0; RAM workspaces `run.l3mhsvqe` and `run.lifrpeia` are absent. The bounded
+baseline diagnostics are identity-checked and retired to
+`audio-failure-baseline.Bsol3gphCX`. Baseline endpoint inventory has one
+unattributed addition; candidate has two removals and no additions. These are
+retained without inspecting or changing foreign processes; host IP socket
+creation remains kernel-denied. Capsule and fresh ledger count follow.

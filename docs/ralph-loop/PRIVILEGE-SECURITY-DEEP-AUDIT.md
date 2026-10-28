@@ -110973,3 +110973,41 @@ Seven controls and whole-file round trip pass. Outer/supervisor times are
 QEMU 434289 joins exit 0; its PID, RAM `run.pd7mcpxo` and active owned roots
 are absent. All endpoint deltas are zero. This audit-only receipt preserves
 the counted ledger and adds no product/runtime acceptance claim.
+
+## 2026-10-28 — user pivot; unused peer-menu tab/window options
+
+The user explicitly requests another aspect. Unix clipboard FILETIME follow-up
+is OPEN/PARKED; no more implementation, shared-verifier integration or clipboard
+execution is performed. Already-completed baseline `DrEkRpwDES` at `5fce7466`
+passes four cases and fails nine; corrected `vQpPSzdjDr` at `1a4f9c36` passes all
+thirteen actual Linux clipboard-library cases. The preparation already included
+fallible serialization and transactional publication; only timestamp arithmetic
+was unchanged for that baseline. The corrected artifact SHA-256 is
+`55183815ff4ce7f51860dff287a236284d6ada0270d7b9644077a7382c92239c`.
+Both exact QEMU processes joined and bounded RAM workspaces retired; failed
+diagnostics remain in `clipboard-filetime-baseline.DrEkRpwDES`. Full application,
+native Windows/macOS, real paste/mtime effects and broader acceptance remain open.
+
+Current R-S11b/R-S11c checklist: all fifteen R-S11ia–R-S11io installed credential
+action rows remain OPEN, including requester/role proof, OS authorization,
+replica disclosure/commit, shutdown finality, races and authorized functionality.
+This deletion changes none of those authorities or their evidence status.
+
+Independent slice: `flutter/lib/common/widgets/peer_card.dart` has four private
+tab/window option helpers whose only entry calls are commented out in both
+Recent and Favorite menus, already so in upstream import `c2abd3b3`.
+[Dart library privacy](https://dart.dev/language/libraries) confines their
+underscore names to this library; it has no parts. Full-file and tracked-tree
+reference review finds only the internal chain and commented calls. The two
+constants in `flutter/lib/consts.dart` have no other consumer. Actual session
+dispatch uses the separate global `kOptionOpenNewConnInTabs` preference, exposed
+by the desktop settings page; both callers and that constant remain unchanged.
+
+Delete the four helpers, two commented calls and two constants outright: 31
+lines, no replacement API, dependency, setting or authority path. Read-only exact
+deletion comparison confirms every retained byte and the complete global settings,
+window-manager and common files are unchanged. Tracked product/test/build searches
+find no references to the removed symbols or option strings; `git diff --check`
+passes. No compiler, application, UI test or product VM executes for this
+unreachable-code deletion. Full application/native/installed and R-S0/R-F5
+acceptance remain OPEN, and all other recorded parks remain in place.

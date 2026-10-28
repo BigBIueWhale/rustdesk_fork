@@ -52,6 +52,13 @@ case inventories, intermediate failures, source/artifact hashes and timings rema
 receipts under `.harness-state/verifier-vm/` and in Git history. Shared current-artifact,
 installed/other-platform, R-S0/R-F5, resource/soak and release obligations below remain OPEN.
 
+**User pivot (2026-10-28):** Unix clipboard FILETIME follow-up remains OPEN/PARKED.
+Correction `1a4f9c36` is pushed; Linux clipboard-library run `vQpPSzdjDr` passes
+all thirteen cases after baseline `DrEkRpwDES` passes four and fails nine.
+Both QEMU processes joined and bounded RAM workspaces retired. Shared-verifier
+integration, full application/paste and other-platform acceptance remain open;
+do not resume automatically. Work moved to unused peer-menu option removal.
+
 **User pivot (2026-10-28):** Recording-status repair, software-only recorder
 cleanup and the proposed library-only VM profile remain OPEN/PARKED. Regression
 preparation `ac236b65` remains uncompiled/unexecuted. The subsequent five-file
@@ -240,6 +247,7 @@ Do not resume automatically. Work moved to the R-S11hj current-state ledger clea
 
 | Surface | Current state and evidence boundary | Receipt |
 | --- | --- | --- |
+| Unused peer-menu tab/window options | Deletes four private uncalled helpers, two commented menu entries and their two unused constants (31 lines). The dead entries already existed in upstream import `c2abd3b3`; complete library and tracked-reference review establishes no live caller. Exact deletion comparison and whitespace checks pass; retained code, the global tab preference and actual window dispatch are byte-identical. No compilation or runtime acceptance is claimed. | Audit entry “2026-10-28 — user pivot; unused peer-menu tab/window options” |
 | Chat-history limit translations | Fills the existing empty notice in Hebrew, Arabic, French, German, Spanish and Brazilian Portuguese, using the English display text. Only six translation values change; keys, existing translations and runtime code are unchanged. UTF-8, literal/placeholder preservation and exact-diff review pass. Application rendering and bidirectional layout are not newly executed; other untranslated locales and chat lifecycle acceptance remain OPEN. | Audit entry “2026-10-28 — user pivot; chat-history notice translations” |
 | Unused desktop title bar | Deletes the unreferenced `DesktopTitleBar` library and its three color constants. Tracked reference/build review and exact deletion checks pass; active tab/window controls and tests are unchanged. No compilation or runtime acceptance is claimed. | Audit entry “2026-10-28 — user pivot; unused desktop title bar” |
 | Unused Sciter session launcher (`562a2501`) | Removes 71 lines: the uncalled launcher, recent-session flag, UI-only child reaper, registry/type and unused imports. Their Sciter callers disappeared in `0d2c8825`. Repository reference review and exact deletion comparison pass; all retained source bytes, the distinct active server reaper and its direct-service/tray callers are unchanged. No compiler or product runtime pass is claimed for this deletion. Full application, installed/native and release acceptance remain OPEN. | Audit entry “2026-10-28 — user pivot; retire unused Sciter session launcher” |

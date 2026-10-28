@@ -594,33 +594,6 @@ abstract class BasePeerCard extends StatelessWidget {
     );
   }
 
-  Future<MenuEntryBase<String>> _openNewConnInAction(
-      String id, String label, String key) async {
-    return MenuEntrySwitch<String>(
-      switchType: SwitchType.scheckbox,
-      text: translate(label),
-      getter: () async => mainGetPeerBoolOptionSync(id, key),
-      setter: (bool v) async {
-        if (!await mainSetPeerOption(id, key, bool2option(key, v))) return;
-        showToast(translate('Successful'));
-      },
-      padding: menuPadding,
-      dismissOnClicked: true,
-    );
-  }
-
-  _openInTabsAction(String id) async =>
-      await _openNewConnInAction(id, 'Open in New Tab', kOptionOpenInTabs);
-
-  _openInWindowsAction(String id) async => await _openNewConnInAction(
-      id, 'Open in new window', kOptionOpenInWindows);
-
-  // ignore: unused_element
-  _openNewConnInOptAction(String id) async =>
-      mainGetLocalBoolOptionSync(kOptionOpenNewConnInTabs)
-          ? await _openInWindowsAction(id)
-          : await _openInTabsAction(id);
-
   @protected
   MenuEntryBase<String> _renameAction(String id) {
     return MenuEntryButton<String>(
@@ -797,7 +770,6 @@ class RecentPeerCard extends BasePeerCard {
     if (isDesktop && peer.platform != kPeerPlatformAndroid) {
       menuItems.add(_tcpTunnelingAction(context));
     }
-    // menuItems.add(await _openNewConnInOptAction(peer.id));
     if (isWindows && peer.platform == kPeerPlatformWindows) {
       menuItems.add(_rdpAction(context, peer.id));
     }
@@ -849,7 +821,6 @@ class FavoritePeerCard extends BasePeerCard {
     if (isDesktop && peer.platform != kPeerPlatformAndroid) {
       menuItems.add(_tcpTunnelingAction(context));
     }
-    // menuItems.add(await _openNewConnInOptAction(peer.id));
     if (isWindows && peer.platform == kPeerPlatformWindows) {
       menuItems.add(_rdpAction(context, peer.id));
     }

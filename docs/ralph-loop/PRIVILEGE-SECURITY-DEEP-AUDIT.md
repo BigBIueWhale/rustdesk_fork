@@ -110712,3 +110712,54 @@ QEMU 293702 joins exit 0; its PID, RAM `run.rop3ap1z` and active owned roots are
 absent. Before/during endpoint deltas are zero; one final unattributed 18-byte
 addition remains untouched. This audit-only receipt leaves the counted ledger
 unchanged and within its approximate budget. No product ran.
+
+## 2026-10-28 — overlapping Windows password source catalogue
+
+The preceding turn completed the retired Sciter launcher deletion. Current
+source is clean and pushed at `1f86763b` on entry. All fifteen credential-action
+installed/native obligations remain OPEN; parent-build/option-ack validation,
+audio, Windows storage and other user parks are not resumed.
+
+Read-only file-listing review establishes no new defect. Unsupported visible
+special files and pre-epoch modification times deliberately refuse the complete
+scan instead of reporting a false regular file, partial result or epoch-zero
+timestamp. `directory_enumeration_refuses_special_files`,
+`recursive_enumeration_refuses_special_files_before_job_admission` and
+`file_enumeration_refuses_unrepresentable_modification_times` already cover
+those contracts. These tests were inspected, not rerun. No product change or
+new behavioral result follows from this review.
+
+The completed slice instead removes 245 overlapping lines from
+`scripts/verify-linux-service-password-ipc.py` at
+`30591f79302f3a72296114ee81c368eac96f5997`, tree
+`17282bf8f467a299852590023aa82ecfeb493f97`. Its Windows catalogue repeated the
+shared `scripts/verify.sh` checks for non-cloneable requester capabilities,
+endpoint-derived admission, typed user/service queues and listeners,
+proof-before-body/operation-bound response, consuming ledger admission and
+live/shutdown request handling. Those shared checks remain. This removes
+implementation spelling/order constraints, not an executed Windows scenario.
+
+Classification preserves the separate `WindowsSensitivePipeClientProof`
+revalidation check: live PID/process generation, identity, process and pipe
+tokens, endpoint security and final deadline. It also preserves all four main/
+Linux shutdown, drain and clearing regions. The function name and invocation,
+parser, other checker functions and messages remain byte-identical. The retained
+`password_mutation`, `windows_credential_`, closed directional-protocol and
+finite-role test bodies and gate commands are unchanged. They still do not
+establish installed Windows authority or handle-handoff exclusivity.
+
+[Microsoft's named-pipe impersonation contract](https://learn.microsoft.com/en-us/windows/win32/api/namedpipeapi/nf-namedpipeapi-impersonatenamedpipeclient)
+describes the last message's security context and requires refusal after failed
+impersonation. The design implication is that actual pipe/token/restore/action
+observations remain necessary; duplicate source tokens cannot supply them.
+This cleanup does not change the receiver's required authority model.
+
+Read-only Python AST parsing and exact deletion comparison pass. The old/new
+checker SHA-256 values are respectively
+`c69fe3096a4c0b061f0afe4c6e3047f83982c4aae43950b8a9b8178912dd08a1` and
+`795589bf719dec1cc692bccd9b5d0de4350f87ed94552abd19f5724892e93116`.
+The comparison also confirms unchanged product files, Rust test bodies, shared
+gate and normative specification. `git diff --check` passes. No product or
+remaining full catalogue is executed, and no native acceptance is promoted.
+The ledger retains every installed/platform, R-S0/R-F5 and release obligation;
+a fresh bounded count follows.

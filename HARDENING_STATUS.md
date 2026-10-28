@@ -3488,6 +3488,17 @@ Product code, runtime tests and gate commands are unchanged; no receiver or
 remaining-checker runtime pass is claimed. Classification and count are in the
 audit entry “2026-10-27 — duplicate Linux credential-receiver catalogues”.
 
+The overlapping Windows password-admission catalogue also loses 245 lines
+(`30591f79`): duplicate capability/request shapes, endpoint selection, queue
+handoff and service-ledger call patterns. The shared gate retains those authority
+checks. The desktop checker retains its distinct fresh process/token/endpoint
+revalidation and main/Linux shutdown checks, byte-for-byte, with the same caller.
+Exact deletion comparison and Python AST parsing pass. Product code, executable
+tests, gate commands and requirements are unchanged; no Windows or remaining
+catalogue execution is claimed. All fifteen installed/native actions remain
+OPEN. The audit entry “2026-10-28 — overlapping Windows password source catalogue”
+records classification and the fresh ledger count.
+
 **Shared acceptance still required.** Each action needs current target-OS compilation and focused
 tests, the exact installed artifact and authorized/refused principals; its authorized effect,
 persistence or runtime-only behavior,

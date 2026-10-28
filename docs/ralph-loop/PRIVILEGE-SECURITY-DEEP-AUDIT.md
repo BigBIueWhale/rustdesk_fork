@@ -110164,3 +110164,70 @@ outer/supervisor lifetime 28/31.346 seconds, RAM peak 402,300,928 bytes, durable
 run peak 147,456 bytes. QEMU 4117705 joins exit 0; its PID, RAM `run.sxyrpgix`
 and active run roots are absent. All endpoint deltas are zero. This audit-only
 receipt leaves the counted ledger and tested implementation unchanged.
+
+## 2026-10-28 — Windows clipboard format announcements
+
+Previous turn is PROGRESS: unused clipboard query removal and 101 component
+passes are pushed through `43540c1f`. This continuation addresses a separate
+live callback compile failure. Release recovery, the clipboard stream-reader/CVE
+review and all other explicit parks remain untouched; all fifteen service-owned
+credential actions still need installed/native acceptance.
+
+`platform/windows.rs::client_format_list` and its import referenced the removed
+`VEC_MSG_CHANNEL`. `wf_cliprdr.c::cliprdr_send_format_list` forwards the supplied
+connection ID; WM_CLIPBOARDUPDATE and WM_DRAWCLIPBOARD call it with zero for local
+format announcements. The maintained common registry owns bounded senders and
+generation leases. Intended routing is therefore the existing bounded broadcast
+for zero and exact-route delivery for nonzero IDs, without reviving the old bus.
+Viewer `handle_local_clipboard_msg` and CM receive-side connection/settings checks
+remain the forwarding policy owners. No receiver, privileged action, thread,
+runtime, listener or dependency is added. Rust's primary unresolved-import and
+same-width signed/unsigned cast contracts informed the source/identity review:
+https://doc.rust-lang.org/error_codes/E0432.html and
+https://doc.rust-lang.org/reference/expressions/operator-expr.html#numeric-cast.
+
+Preparation `5f52abd1` adds one component case to the existing control-egress
+lane, its exact input/extraction and inventory/receipt registration. It compiles
+the actual callback, format structs/integer aliases and broadcaster, with the
+existing production mailbox/registry. The unused context is an opaque fixture
+pointer; Windows send_data's direct callee is aliased in the fixture. No Win32,
+OLE, native Windows process or full application runs. Tests use owned C strings
+and actual queues, consuming copied names after the source storage is dropped.
+
+Initial `mk04u8TfSe` finds the missing registry plus a fixture-only absolute
+macro import error. `bfc3fdc65cb06b6748c2af2e68c73fc652a11734` removes that
+import and uses the already lexical macro. Clean baseline `H1d6rWlzUE` then
+fails only with E0425 at the actual callback's missing VEC_MSG_CHANNEL reference;
+no test binary executes. Its 583,979-byte serial SHA-256 is
+`5da2607ef158d9a38ee9e13387f12243c19b2a9bf755ccb8646cc1c087baf268`.
+Initial serial is 589,764 bytes, SHA-256
+`13701d79f88e1268dd1ca60aebfe67b690d3be08163204bf686de7a434afaa0c`.
+Both QEMUs join exit 0 (4139128/4144883), RAM retires, and exact bounded diagnostic
+roots are renamed without replacement to `windows-format-fixture.mk04u8TfSe`
+and `windows-format-baseline.H1d6rWlzUE`. Neither run is recorded as accepted.
+
+`1fed46a5467b47bab7a1ade5e52f1c8464686299`, tree
+`ad5bb2c4687e32069a69f51fd9cfbd6fdaaa50bb`, changes only the Windows Rust
+import and broadcast branch: two added/seven removed lines. The identical
+fixture passes 102/102 cases in `MCewbSZhnM` using
+`/bin/bash scripts/smoke-verifier-vm-authority.sh --control-egress-tests`.
+The new case checks all-live broadcast, exact negative viewer and positive
+controlled identities, missing/retired refusal, saturation's exact terminal
+cause and released queue bytes, healthy-route preservation, dead receivers,
+fresh replacement and empty-registry behavior. Artifact SHA-256
+`90acfee342c0aa2b675368ff1ca457c7343347f211bd69fa3f794b3dfca989f4` is stable
+before/after execution. Build 46.273 seconds, tests 21.77 seconds, outer/supervisor
+130/133.703 seconds. Serial 166,914 bytes, SHA-256
+`7db49be028e974f5ede117b49159e1a64676ec52d95c4e57d5c8a9b3b3a921b5`.
+Raw serial/storage/listener receipts use the prefix
+`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.MCewbSZhnM`.
+
+The existing 2-GiB guest/6-GiB RAM scratch/4-GiB file ceiling/6-GiB headroom
+profile is unchanged. Candidate RAM peak is 3,594,289,152 bytes and durable
+run peak 3,407,872 bytes. QEMU 4149560 joins exit 0; its PID, RAM workspace
+`run.qo5fi6n1` and active run roots are absent. Each baseline final endpoint
+snapshot adds one 18-byte record; candidate adds/removes one each. These deltas
+are unattributed and untouched; harness IP sockets remain kernel-denied.
+No host product/test payload or foreign service is used. Syntax/AST/diff checks
+pass. Native Windows build/ABI/OLE/peer/CM/installed behavior, broader authority,
+R-S0/R-F5 and release acceptance remain OPEN. Fresh ledger count follows.

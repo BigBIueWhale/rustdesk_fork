@@ -13769,6 +13769,25 @@ shared checklist and the global matrices.
 
 ### R-S11gz/R-S11e-238 — exact bounded file-clipboard route ownership (2026-08-17)
 
+**Windows format announcements (`1fed46a5`) — portable callback verified;
+native Windows acceptance OPEN.** The Windows C producer emits local format
+announcements with connection ID zero. Its Rust callback still referenced the
+deleted `VEC_MSG_CHANNEL`, preventing compilation. That import/direct registry
+branch is removed; zero uses the existing bounded `send_data_exclude(0, data)`
+broadcaster, while nonzero IDs retain exact-route delivery. Existing viewer/CM
+connection, settings and policy checks continue to govern peer forwarding.
+The corrected fixture's unchanged-product baseline `H1d6rWlzUE` fails compilation
+only on the missing registry. With the identical fixture, `MCewbSZhnM` passes
+102/102 Linux component cases, including actual callback/broadcaster execution
+for copied format names, positive/negative route IDs, broadcast, missing/retired
+routes, saturation with healthy-route preservation and fresh replacement.
+The run takes 130 outer seconds and joins VM/RAM cleanup. Source, artifact and
+raw evidence identities are in the audit; bounded diagnostics and serial/storage
+receipts remain under `.harness-state/verifier-vm/`. The context is opaque and
+Win32/OLE is absent from this portable fixture. Full Windows compilation/ABI,
+native copy/paste, CM/peer/installed acceptance and all R-S0/R-F5/release evidence
+remain OPEN. The separate clipboard stream-reader/CVE review stays PARKED.
+
 **Unused progress query removed (`c8348465`).** Repository-wide caller inspection
 found no application consumer of `get_progress_percent`; Windows returned `None`,
 and the macOS chain only served that unused trait method. The result type, method,

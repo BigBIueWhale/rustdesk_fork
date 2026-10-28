@@ -112513,3 +112513,15 @@ technology, platform and R-S0/R-F5/release acceptance remain OPEN.
 case outcomes, receipts, storage and listener evidence. Whitespace, shell syntax
 and Python AST checks pass. The current ledger records the pivot and bounded
 result; its required fresh isolated token count follows.
+
+Fresh count `jK2CYemc44` at `aad47073` passes in 31 outer seconds:
+359,224 tokens / 1,635,979 bytes, input SHA-256
+`ae774743459a30c6046d50dd6b05cff722f9262db6fbfb2cb80bfdb53e9d9679`.
+The pinned tokenizer passes seven controls and the complete byte round trip;
+resource-profile admission passes 62 controls/five refusals, including the
+divider profile. QEMU 1850137 joins exit 0; RAM `run.9pnzq2_v` and active owned
+roots are absent. One unattributed endpoint removal is retained without owner
+inspection or mutation. Workload serial: 32,438 bytes, SHA-256
+`6fdcc181cde0fb9307c93c80bd84a7480cbd45016a3e29ad26007d1307cd6346`.
+Final diff and source hashes preserve the executed product/test bytes; only
+ledger/evidence documentation follows acceptance. Live instructions are unchanged.

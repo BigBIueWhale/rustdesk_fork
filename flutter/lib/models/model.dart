@@ -785,7 +785,7 @@ class FfiModel with ChangeNotifier {
     } else {
       saveAs() {
         if (!_isCurrentSession(sessionId)) return;
-        Future.delayed(Duration.zero, () async {
+        Future<void>.delayed(Duration.zero, () async {
           if (!_isCurrentSession(sessionId)) return;
           final ts = DateTime.now().millisecondsSinceEpoch ~/ 1000;
           String? outputFile = await FilePicker.platform.saveFile(
@@ -809,6 +809,10 @@ class FfiModel with ChangeNotifier {
                   'Take screenshot', res, '', dialogManager);
             }
           }
+        }).catchError((Object error, StackTrace stackTrace) {
+          if (!_isCurrentSession(sessionId)) return;
+          msgBox(sessionId, 'custom-nook-nocancel-hasclose-error',
+              'Take screenshot', error.toString(), '', dialogManager);
         });
       }
 

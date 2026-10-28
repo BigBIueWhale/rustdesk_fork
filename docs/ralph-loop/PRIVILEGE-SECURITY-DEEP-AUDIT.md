@@ -112131,3 +112131,43 @@ endpoint deltas. Peak RAM/durable storage is 402,382,848/249,856 bytes. Workload
 serial: 31,772 bytes, SHA-256
 `cc5e503fc6f44823e8999139c4d7e84b03c57d851f3a1e018d9dcf2df17a6abc`.
 The count is documentation verification only.
+
+## 2026-10-28 — user pivot; screenshot Save As exceptions
+
+The user explicitly pivots away from the retired-uinput IPC decoder follow-up.
+That work is OPEN/PARKED; no decoder fixture, compilation or execution was started.
+The current fifteen installed/native credential-action obligations remain OPEN.
+This slice instead reviews the screenshot Save As UI failure path.
+
+At `44d2d612`, `FfiModel._handleScreenshot` in
+`flutter/lib/models/model.dart:773` closes its action dialog through
+`OverlayDialogManager.showScreenshotActions`, then starts an unobserved
+`Future.delayed` for the native picker and save. Returned Rust error strings are
+already shown, but a rejected picker/save future escapes without that feedback.
+The pinned `file_picker` 5.5.0 Linux implementation awaits
+`_getPathToExecutable`; its final missing `zenity` lookup throws in
+`lib/src/utils.dart:isExecutableOnPath`. This is a concrete source failure path,
+not an observed native run. The pinned package sources were read from
+`online/inputs/pub-cache/hosted/pub.dev/file_picker-5.5.0/`, with the version and
+package identity in `flutter/pubspec.lock`. Dart's primary reference confirms
+that a delayed computation adopts the returned future's error:
+https://api.dart.dev/dart-async/Future/Future.delayed.html .
+
+The operation retains its existing session, request and dialog owner. Its new
+`Future<void>` error handler displays the exception using the existing screenshot
+error UI only after the current-session check. It does not retry a save whose
+outcome may be uncertain, select a new destination or dispatch into a replacement
+session. Successful selection/save, cancellation, returned-error handling and
+the Copy action are unchanged. A picker failure still leaves at most the existing
+single cached screenshot until the next request or session-handler retirement;
+`src/flutter.rs:begin_screenshot_request` clears that slot. This change does not
+claim earlier cache retirement or correction of separate Copy/discard exceptions.
+
+The product diff changes one future type and adds its four-line error handler.
+Read-only source review and `git diff --check` pass. No compilation, widget,
+picker, filesystem or privileged-service execution ran. The existing broad dialog
+shard includes user-parked work; it was not resumed. A new source-spelling test
+would not establish the missing rendered behavior, so none was added. Focused
+runtime acceptance remains OPEN: missing/unlaunchable Linux picker, rejected
+save, late rejection after session retirement, cancellation and ordinary success.
+No LPE, installed-service, cross-platform or release acceptance is claimed.

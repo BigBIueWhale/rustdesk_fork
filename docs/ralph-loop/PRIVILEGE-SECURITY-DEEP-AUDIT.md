@@ -111385,3 +111385,15 @@ from 1,682,738 to 1,684,972 bytes, SHA-256
 `85008e83534b8af4af9343b3605cd7bc2f2c3d938a910605d69ba1c57f3f82b9`.
 Shell syntax and `git diff --check` pass. No product, compiler, handshake,
 capture, relay or native authorization execution is claimed for this slice.
+
+Two-document count `fVhK8moFLo` at `a2791a33` passes 58 admission controls/five
+refusals, seven token controls and both whole-input round trips. Ledger:
+358,778 tokens / 1,631,717 bytes, SHA-256
+`ae1bc59801e646b8e2fb8e160372288a200dc84e8ca01ea7b393f29d53d72005`.
+Requirements: 368,978 tokens / 1,684,972 bytes, with the exact SHA-256 above.
+Outer/supervisor times are 28/31.251 seconds; RAM/durable peaks are
+402,292,736/249,856 bytes. QEMU 738984 joins exit 0, RAM `run.wxscqklx` is absent,
+all endpoint sets are unchanged and no active owned run root remains. Workload
+serial is 32,286 bytes, SHA-256
+`d3fc2df5bb25496f93c7c8b9bcf26c581973ef0ddd28327a778c3e8a28b271a7`.
+This audit-only receipt leaves both counted documents byte-identical.

@@ -22,8 +22,7 @@ void _expectLocale(WidgetTester tester, String language, String label,
     {TextDirection direction = TextDirection.ltr}) {
   final context = tester.element(find.byKey(const ValueKey('cancel-label')));
   expect(Localizations.localeOf(context).languageCode, language);
-  expect((MaterialLocalizations.of(context) as GlobalMaterialLocalizations)
-      .localeName.split('_').first, language);
+  expect(MaterialLocalizations.of(context), isA<GlobalMaterialLocalizations>());
   expect(CupertinoLocalizations.of(context), isNot(isA<DefaultCupertinoLocalizations>()));
   expect(Directionality.of(context), direction);
   expect(find.text(label), findsOneWidget);

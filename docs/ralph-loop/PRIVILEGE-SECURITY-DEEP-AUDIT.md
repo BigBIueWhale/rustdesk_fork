@@ -112390,3 +112390,11 @@ This Flutter-only shard now admits a 2 GiB guest, 1,280 MiB container,
 plus 1 GiB overhead. No Rust/LLVM toolchain or bridge generation is required.
 The shared live resource monitor, hard ceilings and exact joined retirement
 remain enabled; exhaustion fails the run rather than spilling onto host disk.
+
+The first admitted run `n5O9lD6iLW` at `97a9eacd` stops on a test-fixture compile
+error: Flutter 3.24.5 has no public GlobalMaterialLocalizations.localeName getter.
+No behavioral case ran. The test instead checks the real global delegate type,
+resolved widget locale and rendered localized label. The failed VM joined and
+retired RAM scratch; bounded diagnostics are retained as `locale-fixture.n5O9lD6iLW`
+(device/inode 66306/103992420). Console SHA-256:
+`6d9268c3459d8ebc9e6a393c773c06d869a756844642fbc93b583bd072fda966`.

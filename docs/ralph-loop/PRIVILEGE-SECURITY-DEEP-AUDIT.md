@@ -112801,3 +112801,33 @@ workload serial SHA-256 is
 The capsule retains this count and the preceding registration refusal/cleanup.
 Only this audit receipt and inert capsule follow counting; the ledger remains
 identical to the counted input. No broad parser or parked work is resumed.
+
+### 2026-10-28 — trackpad integer range consistency
+
+Previous turn is verified progress: the formatter correction and fourteen
+rendered cases are accepted, and `b4fc2722` is clean/pushed. Current authority
+inspection still leaves all fifteen installed credential actions OPEN. Every
+user park, including acquisition process cleanup, stays parked.
+
+Follow the remaining trackpad mismatch identified during that review. Native
+`Client::save_trackpad_speed` and `InputModel::applyTrackpadSpeed` admit every
+integer 10–1000, and the numeric editor preserves those integers. The slider
+instead declares only 99 intervals, so Flutter rounds a legitimate 235 to 240
+before rendering and accessibility reporting. Flutter 3.24.5's `_convert`
+calls `_discretize` when divisions are present; the formatter cannot recover
+the original selected value after that rounding. Primary references:
+https://api.flutter.dev/flutter/material/Slider/divisions.html and
+https://raw.githubusercontent.com/flutter/flutter/3.24.5/packages/flutter/lib/src/material/slider.dart
+
+Use the same complete integer domain in the slider: 990 intervals, one per
+percentage point. Keyboard and accessibility adjustment should move one point,
+and typed/reloaded values and predicted adjustments must match the actual value.
+No new mode, storage mutation API or authorization change is needed. Bounds,
+debounce, exact confirmed readback and dialog lifetime remain existing owners.
+
+Before changing product code, extend the existing range/keyboard/accessibility
+cases with non-ten-point values and one-point expectations. Add typed submission,
+same-state rebuild, external refresh, reopen and end-boundary cases. The same
+bounded VM shard now executes sixteen cases across two suites; update only its
+exact inventory/counts. Source review, Python AST parsing, shell syntax and
+whitespace checks pass. An unchanged-product VM run follows before correction.

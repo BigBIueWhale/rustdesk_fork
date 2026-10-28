@@ -1311,6 +1311,8 @@ TRACKPAD_SPEED_SUITES = {
         "trackpad accessibility predictions match adjusted and saved speed",
         "trackpad keyboard changes retain confirmed backend values",
         "trackpad disabled accessibility cannot adjust or save speed",
+        "trackpad submitted integer speed survives rebuild and reload",
+        "trackpad accessibility clamps one point adjustments at both bounds",
     },
 }
 

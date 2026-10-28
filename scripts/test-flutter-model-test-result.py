@@ -197,7 +197,7 @@ class ResultTests(unittest.TestCase):
 
     def test_complete_profiles(self):
         if SINGLE_PROFILE == "trackpad-speed":
-            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 14))
+            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 16))
             return
         if SINGLE_PROFILE is not None:
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE),
@@ -232,7 +232,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("audio-input"), "audio-input"), (2, 17))
         self.assertEqual(self.parse(self.events("reconnect"), "reconnect"), (2, 11))
         self.assertEqual(self.parse(self.events("custom-scale"), "custom-scale"), (1, 39))
-        self.assertEqual(self.parse(self.events("trackpad-speed"), "trackpad-speed"), (2, 14))
+        self.assertEqual(self.parse(self.events("trackpad-speed"), "trackpad-speed"), (2, 16))
         self.assertEqual(self.parse(self.events("virtual-mouse-buttons"), "virtual-mouse-buttons"), (1, 17))
         self.assertEqual(self.parse(self.events("virtual-joystick"), "virtual-joystick"), (1, 8))
         self.assertEqual(self.parse(self.events("floating-position"), "floating-position"), (1, 16))

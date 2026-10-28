@@ -571,10 +571,7 @@ pub fn core_main() -> Option<Vec<String>> {
     return Some(args);
 }
 
-/// invoke a new connection
-///
-/// [Note]
-/// this is for invoke new connection from dbus.
+/// Dispatch a connection command through the platform's instance handoff.
 /// If it returns [`None`], then the process will terminate, and flutter gui will not be started.
 /// If it returns [`Some`], then the process will continue, and flutter gui will be started.
 #[cfg(feature = "flutter")]
@@ -584,10 +581,20 @@ fn core_main_invoke_new_connection(mut args: std::env::Args) -> Option<Vec<Strin
     let mut relay_requested = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
-            "--connect" | "--play" | "--file-transfer" | "--view-camera" | "--port-forward"
+            "--connect" | "--file-transfer" | "--view-camera" | "--port-forward"
             | "--terminal" | "--rdp" => {
                 authority = Some((&arg.to_string()[2..]).to_owned());
                 id = args.next();
+            }
+            "--play" => {
+                authority = Some("play".to_owned());
+                id = args.next().map(|value| {
+                    let extension = format!(".{}", crate::get_app_name().to_lowercase());
+                    match value.strip_suffix(&extension) {
+                        Some(address) => address.to_owned(),
+                        None => value,
+                    }
+                });
             }
             "--password" => {
                 // R-X6 (stricter): NEVER fold an embedded credential into the connect URI. A
@@ -611,12 +618,7 @@ fn core_main_invoke_new_connection(mut args: std::env::Args) -> Option<Vec<Strin
     }
     let mut uni_links = Default::default();
     if let Some(authority) = authority {
-        if let Some(mut id) = id {
-            let app_name = crate::get_app_name();
-            let ext = format!(".{}", app_name.to_lowercase());
-            if id.ends_with(&ext) {
-                id = id.replace(&ext, "");
-            }
+        if let Some(id) = id {
             // R-X6 (stricter): the connect URI carries the ADDRESS ONLY — no embedded
             // password/key/relay query params (they are consumed-and-dropped / rejected
             // above), so a link or CLI arg can never convey a credential or trust anchor

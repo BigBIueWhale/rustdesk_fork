@@ -111846,3 +111846,16 @@ headroom and 1-GiB overhead. The nonroot networkless container has a 3-GiB memor
 ceiling; one compiler job and reclaimable toolchain pages keep the workload bounded.
 Admission, live monitoring, source/artifact identity and joined cleanup remain
 mandatory. The new closed artifact identity has positive and wrong-target controls.
+
+Initial run `n7PPdquMHl` at `c0f90d68` passes all six tests in 0.11 seconds and the
+outer harness in 220 seconds. Artifact SHA-256:
+`71de141935dbb173ddb1aca9fdc53189d49281c5a79455e23bed6df0aad0e7ea`.
+QEMU 1217481 joins exit 0; RAM `run.ogvj0b68` and active owned run roots are absent.
+Peak RAM/durable storage is 3,576,045,568/3,379,200 bytes. The final snapshot has one
+unattributed endpoint addition, left untouched. Workload serial: 1,582 bytes,
+SHA-256 `0890b5052c42f02f77506d43b8f6ecb95c88c3a9a9491f4cc6df3301a075141f`.
+Review identifies one evidence gap: the fragment case observes timeout and exact
+recovery without directly counting a pending native socket read. The fixture now
+requires zero pending socket reads before keying and a positive pending count
+before cancellation returns. This is the sole reason for the next focused rerun;
+product behavior and scenario inventory remain unchanged.

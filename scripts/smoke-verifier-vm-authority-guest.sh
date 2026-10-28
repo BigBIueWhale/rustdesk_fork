@@ -42,6 +42,9 @@ case "$#:${8:-}" in
     8:--fixed-archive-tests)
         MODE=fixed-archive-tests
         ;;
+    8:--windows-service-result-tests)
+        MODE=windows-service-result-tests
+        ;;
     8:--debian-polkit-tests)
         MODE=debian-polkit-tests
         ;;
@@ -1076,12 +1079,13 @@ for caller in ('smoke-verifier-vm-authority.sh', 'online-fetch-vm.sh'):
     modes.update(re.findall(r'\bMODE=([a-z][a-z0-9-]*)', shell.with_name(caller).read_text()))
 # This closed CLI arm derives MODE from its argument instead of a literal assignment.
 modes.add('android-frame-tests')
-if len(modes) != 38:
+if len(modes) != 39:
     raise SystemExit('VM workload control inventory differs')
 special = {mode: mode for mode in ('ledger-token-count', 'cpace-recovery-tests',
                                   'linux-service-uid-tests', 'hbb-common-fs', 'media-kernel-tests',
                                   'fixed-archive-tests', 'debian-package-tests')}
 special.update({'authority-smoke': 'authority-smoke', 'dependency-inventory': 'authority-smoke',
+                'windows-service-result-tests': 'fixed-archive-tests',
                 'debian-maintainer-tests': 'authority-smoke',
                 'android-runtime-log-tests': 'authority-smoke',
                 'linux-pa-authority-tests': 'linux-parent-libtest',
@@ -1144,9 +1148,9 @@ printf '%s\\n' "$VM_STORAGE_PROFILE"
         'pass': passed}, sort_keys=True), flush=True)
 print('VM_TRANSIENT_WORKLOAD_OBSERVED=' + json.dumps({
     'modes': len(modes), 'controls': controls, 'refusals': refusals}, sort_keys=True), flush=True)
-if (controls, refusals) != (64, 5):
+if (controls, refusals) != (65, 5):
     raise SystemExit('VM workload resource admission cases failed')
-print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=38 controls=64 refusals=5 allocation=not-entered')
+print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=39 controls=65 refusals=5 allocation=not-entered')
 PY
     for operation in preflight reserve check watch run; do
         root_status=0
@@ -1231,6 +1235,44 @@ os.execl("/usr/bin/python3", "python3", "-B", "-I", "-S", sys.argv[1],
     fi
     printf 'LEDGER_TOKEN_COUNT_VM=pass uid=4000 gid=4000 caps=none nnp=yes input_sha256=%s recipe_sha256=%s source=readonly network=none docker=retired scratch=retired cleanup=joined\n' \
         "$LEDGER_INPUT_SHA256" "$LEDGER_RECIPE_SHA256"
+}
+
+run_windows_service_result_tests() {
+    local checker=$VERIFY_REPO/scripts/verify-windows-installed-service-result.py
+    local fixture=$VERIFY_REPO/scripts/test-windows-installed-service-hash.py
+    local output=$ROOT/windows-service-result-tests.out
+    local work work_id source_before status=0
+    source_before="$(sha256sum "$checker" "$fixture")"
+    setpriv --reuid=4000 --regid=4000 --clear-groups /bin/bash "$ENTRY_PREFLIGHT" >/dev/null
+    work="$(setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/mktemp -d /tmp/windows-service-results.XXXXXXXXXX)"
+    [ "$(stat -c '%u:%g:%a' "$work")" = 4000:4000:700 ] \
+        || fail 'Windows service-result scratch authority differs'
+    work_id="$(stat -c '%d:%i' "$work")"
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs \
+        /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent TMPDIR="$work" \
+        /usr/bin/prlimit --as=268435456 --cpu=45 --fsize=83886080 --nofile=64 \
+        /usr/bin/python3 -B -I -S "$fixture" >"$output" 2>&1 || status=$?
+    [ "$(stat -c '%s' "$output")" -le 65536 ] \
+        || fail 'Windows service-result diagnostics exceed their bound'
+    cat "$output"
+    [ "$status" -eq 0 ] || fail "Windows service-result tests failed with status $status"
+    [ "$(grep -Fxc 'WINDOWS_SERVICE_HASH=pass tests=4 bytes=67108864 address_space=50331648 filesystem=actual children=joined windows=unexecuted' "$output")" -eq 1 ] \
+        && [ "$(grep -Fxc 'verify-windows-installed-service-result self-test: ok' "$output")" -eq 1 ] \
+        || fail 'Windows service-result test inventory differs'
+    [ "$(sha256sum "$checker" "$fixture")" = "$source_before" ] \
+        || fail 'Windows service-result source changed'
+    [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
+        && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
+        || fail 'Windows service-result tests left a container or image'
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/python3 -B -I -S "$VERIFY_REPO/scripts/verify-private-tree-closure.py" \
+        --remove-empty-private-root "$work" --expected-identity "$work_id" \
+        || fail 'Windows service-result scratch did not retire'
+    stop_docker_authority
+    printf 'WINDOWS_SERVICE_RESULT_VM=pass uid=4000 gid=4000 checker_sha256=%s tests_sha256=%s source=readonly network=none docker=retired scratch=retired cleanup=joined\n' \
+        "$(sha256sum "$checker" | awk '{print $1}')" "$(sha256sum "$fixture" | awk '{print $1}')"
 }
 
 run_debian_package_tests() {
@@ -13547,6 +13589,11 @@ fi
 
 if [ "$MODE" = fixed-archive-tests ]; then
     run_fixed_archive_tests
+    exit 0
+fi
+
+if [ "$MODE" = windows-service-result-tests ]; then
+    run_windows_service_result_tests
     exit 0
 fi
 

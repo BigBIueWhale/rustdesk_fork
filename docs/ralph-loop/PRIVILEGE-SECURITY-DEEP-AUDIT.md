@@ -112886,3 +112886,42 @@ peaks are 402,178,048/253,952 bytes. The 32,900-byte workload serial SHA-256 is
 `2c90adfd6824527ad448ff9f3ddc0f7dc64877e19fc61bba9310e1a729192681`.
 Only this audit receipt follows counting; the counted ledger stays identical.
 This tokenizer VM does not execute or validate the mobile product.
+
+### 2026-10-28 — bounded Windows installed-service evidence hashing
+
+Previous turn made progress: mobile About correction `0f88e73b` and cleanup/count
+receipt `82bd83d6` are pushed with a clean tree. The current service-authority
+table still leaves all fifteen installed credential actions OPEN. Trackpad and
+every earlier parked topic remain parked.
+
+Review of the separate Windows installed-service receipt validator finds that
+`sha256` calls `read_regular(..., 2 GiB, ...)`, which materializes the entire
+installer through `Path.read_bytes`. `build-windows-vm.sh` actually invokes this
+validator through `windows_helper_small_run`, whose container limit is 1 GiB.
+An admissible artifact can therefore exhaust the checking process. This is an
+evidence-processing resource defect, not a demonstrated local escalation or
+Windows product defect. The full-peer receipt reader has a similar separate
+whole-file hash path, retained as a follow-up rather than claimed corrected.
+
+Intended ownership: retain one ordinary file descriptor for the complete read,
+admit its positive bounded size before reading, feed fixed-size blocks to SHA-256,
+reject size/metadata/path-identity changes before returning a digest, and close
+on every outcome. Small JSON/XML reads retain their existing bounded byte-return
+API; only artifact hashing needs constant memory. The enclosing immutable/private
+evidence tree remains required; metadata comparisons are not an adversarial
+filesystem snapshot or Windows service proof. Primary references are Python's
+https://docs.python.org/3/library/hashlib.html and
+https://docs.python.org/3/library/os.html#os.open plus
+https://man7.org/linux/man-pages/man2/open.2.html : incremental digest updates
+preserve the byte-stream hash and an owned descriptor pins the opened file.
+
+Before checker edits, add four regression groups using actual files: exact digests
+at five read-boundary sizes, empty/nonregular/linked/missing/relative refusal with
+descriptor counts, a 64-MiB file hashed by a joined child under a 48-MiB address-
+space limit, and the existing receipt acceptance/refusal suite. The dedicated
+`--windows-service-result-tests` command uses the admitted 2-GiB guest/4-GiB RAM
+scratch/1-GiB overlay profile, UID 4000 without capabilities, network-none and
+read-only sources. The test parent has a 256-MiB address-space cap, 80-MiB file
+ceiling and 45-second CPU limit. No Windows launcher, product or host test runs.
+The resource selector inventory becomes 39 modes/65 controls/five refusals.
+Shell syntax, Python AST and exact diff review precede unchanged-checker execution.

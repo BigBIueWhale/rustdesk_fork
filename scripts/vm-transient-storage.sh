@@ -6,7 +6,7 @@ VM_STORAGE_MONITOR_PID=
 readonly VM_STORAGE_SOURCE="$SCRIPT_DIR/vm-transient-storage.py"
 if [ "${MODE:-}" = ledger-token-count ]; then
     readonly VM_STORAGE_PROFILE=ledger-token-count
-elif [ "${MODE:-}" = fixed-archive-tests ]; then
+elif [ "${MODE:-}" = fixed-archive-tests ] || [ "${MODE:-}" = windows-service-result-tests ]; then
     readonly VM_STORAGE_PROFILE=fixed-archive-tests
 elif [ "${MODE:-}" = debian-package-tests ]; then
     readonly VM_STORAGE_PROFILE=debian-package-tests

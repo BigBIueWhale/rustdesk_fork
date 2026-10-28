@@ -957,6 +957,49 @@ run_ledger_token_count() {
         "$VERIFY_REPO/scripts/smoke-verifier-vm-authority.sh" "$VERIFY_REPO/scripts/online-fetch-vm.sh")"
     setpriv --reuid=4000 --regid=4000 --clear-groups \
         --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs \
+        /usr/bin/python3 -B -I -S - "$storage_shell" <<'PY'
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+shell = sys.argv[1]
+def admit(path, identity):
+    return subprocess.run(
+        ['/bin/bash', '--noprofile', '--norc', '-c',
+         'set -euo pipefail; SCRIPT_DIR=/unused; MODE=ledger-token-count; '
+         'source "$1"; vm_artifact_cache_admit "$2" "$3"',
+         'artifact-cache-test', shell, str(path), identity],
+        capture_output=True, text=True, timeout=5)
+
+with tempfile.TemporaryDirectory(prefix='artifact-cache-') as temporary:
+    cache = Path(temporary) / 'cache'
+    cache.mkdir(mode=0o700)
+    metadata = cache.stat()
+    identity = f'{metadata.st_dev}:{metadata.st_ino}'
+    for count in range(5):
+        before = sorted(cache.iterdir())
+        result = admit(cache, identity)
+        assert (result.returncode == 0) == (count < 4), result.stderr
+        assert sorted(cache.iterdir()) == before
+        if count < 4:
+            (cache / f'{count:040x}').mkdir(mode=0o700)
+    # Freeing one classified generation admits a replacement; no automatic deletion.
+    (cache / f'{3:040x}').rmdir()
+    assert admit(cache, identity).returncode == 0
+    assert admit(cache, f'{metadata.st_dev}:{metadata.st_ino + 1}').returncode != 0
+    alias = Path(temporary) / 'alias'
+    alias.symlink_to(cache, target_is_directory=True)
+    assert admit(alias, identity).returncode != 0
+    cache.chmod(0o750)
+    assert admit(cache, identity).returncode != 0
+    cache.chmod(0o700)
+    assert len(list(cache.iterdir())) == 3
+print('VM_ARTIFACT_CACHE=pass capacity=4 cases=9 filesystem=native writes=none')
+PY
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs \
         /usr/bin/python3 -B -I -S - "$storage_helper" "$storage_shell" <<'PY'
 import json
 from pathlib import Path

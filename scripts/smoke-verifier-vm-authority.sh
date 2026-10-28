@@ -4042,6 +4042,8 @@ if [ "$MODE" = android-emulator-app ] || [ "$MODE" = android-peer-build ] \
     ARTIFACT_STATE_ROOT_ID="$(/usr/bin/stat -c '%d:%i' -- "$ARTIFACT_PUBLICATION_STATE_ROOT")"
     [ -z "$(/usr/bin/findmnt -rn -o TARGET --submounts "$ARTIFACT_PUBLICATION_STATE_ROOT")" ] \
         || fail 'artifact state root contains a descendant mount'
+    vm_artifact_cache_admit "$ARTIFACT_PUBLICATION_STATE_ROOT" "$ARTIFACT_STATE_ROOT_ID" \
+        || fail 'retained build cache admission failed before artifact creation'
     output_commit=${ANDROID_EMULATOR_SOURCE_COMMIT:-}
     [ "$MODE" != linux-flutter-engine-build ] || output_commit=$FOCUSED_TEST_COMMIT
     [ "$FLUTTER_APP_BUILD_ONLY" -eq 0 ] || output_commit=$FLUTTER_PEER_SOURCE_COMMIT
@@ -5607,6 +5609,8 @@ elif [ "$MODE" = dependency-inventory ]; then
         'actual dependency inventory and index binding'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'dependency inventory guest completion'
 elif [ "$MODE" = ledger-token-count ]; then
+    require_exact_fixed_receipt 'VM_ARTIFACT_CACHE=pass capacity=4 cases=9 filesystem=native writes=none' \
+        'retained artifact generation admission and read-only refusal'
     require_exact_fixed_receipt 'VM_TRANSIENT_PROFILE_LIMITS=pass ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1' \
         'VM storage profile limits and guest binding'
     require_exact_fixed_receipt 'VM_TRANSIENT_SUSPEND_CLI=pass profile=linux-flutter-suspend guest_mib=10240 required_mib=23552 insufficient_ram=refused allocation=not-entered' \

@@ -158,6 +158,38 @@ else
     esac
 fi
 
+# The caller holds the shared run lock through publication and retirement.
+# Keep room for two comparison pairs; retire classified obsolete artifacts before
+# admitting a fifth generation. Never silently archive or discard a replay input.
+vm_artifact_cache_admit() {
+    /usr/bin/python3 -B -I -S - "$1" "$2" <<'PY'
+import os
+import stat
+import sys
+
+path, expected = sys.argv[1:]
+if os.geteuid() == 0 or os.path.realpath(path) != path:
+    raise SystemExit('artifact cache requires an ordinary user and canonical path')
+fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+try:
+    metadata = os.fstat(fd)
+    if (f'{metadata.st_dev}:{metadata.st_ino}' != expected
+            or (metadata.st_uid, metadata.st_gid, stat.S_IMODE(metadata.st_mode))
+            != (os.geteuid(), os.getegid(), 0o700)):
+        raise SystemExit('artifact cache identity or ownership differs')
+    with os.scandir(fd) as entries:
+        for count, _ in enumerate(entries, 1):
+            if count >= 4:
+                raise SystemExit('artifact cache is full (4 generations); retire obsolete '
+                                 'artifacts before building another generation')
+    current = os.stat(path, follow_symlinks=False)
+    if (current.st_dev, current.st_ino) != (metadata.st_dev, metadata.st_ino):
+        raise SystemExit('artifact cache changed during admission')
+finally:
+    os.close(fd)
+PY
+}
+
 vm_storage_preflight() {
     /usr/bin/python3 -I -S "$VM_STORAGE_SOURCE" preflight --memory-mib "$VM_MEMORY" \
         --storage-profile "$VM_STORAGE_PROFILE" \

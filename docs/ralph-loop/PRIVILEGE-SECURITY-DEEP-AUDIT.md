@@ -113566,3 +113566,62 @@ SHA-256 `8d1500dbfa1d1bc90258dad5b080f1acf72e46dd61ec753f19d73d0e699094ec`.
 It retains exact sources, failure/fixture classifications, runtime results,
 resource and cleanup receipts, endpoint inventories, research and count.
 Only this audit receipt follows the count; product and ledger are unchanged.
+
+## 2026-10-28 — CM audio popup ownership; subsequent storage request
+
+Product `1ce07d5e` binds the CM audio popup to its captured positive client,
+registry generation and call ID, exact current ServerModel member, mounted panel,
+connected active call and non-incoming state. ServerModel reuses a Client when
+changing calls and may retire registry members before the panel rebuilds; mounted
+and inVoiceCall alone therefore admitted stale reads, selections and feedback.
+The shared current-owner check now covers all those phases. Admitted writes drain.
+No native receiver or privilege-policy change is claimed.
+
+Preparations `5dff6e59`/`1e8de58b` execute the real panel, Material popup and
+AudioInput facade using native-binding and registry doubles. The first 320px
+fixture overflow (`MESg88iguM`) is excluded. Clean baseline `nZh82wva3g` fails
+eight cases with 22 passing. Candidate `kniBi0zUfb` passes 30 cases/three suites
+and three parser controls in 277 outer seconds. Initial capacity admission refused
+before allocation; unchanged limits admitted the retry when memory recovered.
+Candidate QEMU 2692411 joined exit 0; RAM `run.b2_mnaly` retired. Scratch/overlay
+peaks were 4,487,880,704 / 4,292,087,808 bytes; no OOM/kill. One unattributed
+endpoint removal was left untouched. Full native IPC/call delivery and microphone
+behavior remain open. `cm-audio-owner-1ce07d5e.json` (32,467 bytes, SHA-256
+`da4e6c32a34f3fc7505be1512d4cee16233bf70daf8b5d536b5314bc0803d091`)
+retains exact sources, raw-log identities, baseline/candidate outcomes and closure.
+
+## 2026-10-28 — user-requested obsolete development artifact cleanup
+
+Measured checkout storage was about 42 GiB, including 31 GiB of authenticated
+offline inputs and 10 GiB of harness artifacts. The selected obsolete outputs were
+five archived debug peer generations, two superseded retained debug peers, and
+40 Android generation directories (39 old APKs and one empty failed publication).
+Current peer b30f4811, the 1ee23828 app/instrumentation pair and 73d2703c replay
+baseline remain. Other intentional replay artifacts and all canonical inputs remain.
+No source, live instruction, host service or unrelated data was removed.
+
+Under the exact idle verifier-root lock, the cleanup inventoried/hash-checked all
+134 files, rejected symlinks/special files/mounts/foreign ownership, retained parent
+directory descriptors and revalidated identities before unlink/rmdir. All 47 roots
+are absent. Allocation unlinked totals 7,220,224,000 bytes (6.72 GiB); retained
+provenance costs about 0.2 MiB. Inventory and completion are
+`storage-retirement-20261028.inventory.json` and `.result.json`. Historical raw
+test evidence remains, but these retired binaries require a rebuild for replay.
+
+The cause was commit-keyed publication with no retained-generation limit in
+smoke-verifier-vm-authority.sh. The shared storage shell now refuses a fifth
+generation before output creation, covering all four artifact-cache families.
+The caller holds the existing run lock; admission opens the exact owned 0700
+cache without following links, counts at most four entries and rechecks identity.
+It grants no deletion authority and creates no archive. Two comparison pairs fit;
+a full cache requires classification/retirement before another build. Existing
+per-artifact validation and bounded RAM scratch remain. The design uses Python's
+documented descriptor-based scandir/stat/open operations and Linux flock's
+open-description lifetime; the lock coordinates harnesses, not arbitrary writers.
+Sources: https://docs.python.org/3/library/os.html and
+https://man7.org/linux/man-pages/man2/flock.2.html.
+
+Nine focused native-filesystem cases are wired into the existing no-NIC count VM:
+empty through four generations, read-only full-cache refusal, admission after
+retirement, wrong identity, symlink and wrong mode. Execution and fresh ledger
+count follow; no full build or extra product replay is needed for this change.

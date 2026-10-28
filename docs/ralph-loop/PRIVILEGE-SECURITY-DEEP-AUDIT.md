@@ -111265,3 +111265,15 @@ SHA-256 `1fbcb050ea5fd48d2950cbebfdbaf4a76e7bd4458586068793339e28a52cdb0c` /
 Shell syntax, exact-diff/test-body review and `git diff --check` pass.
 Actual Android locale acquisition, JNI integration, notification/UI rendering,
 settings persistence, full application and installed/native acceptance remain OPEN.
+
+Ledger count `UrMEJl1NBj` at documentation source `0a0f5b1f` passes all 58
+admission controls/five refusals, seven token controls and whole-input round trip:
+358,446 tokens / 1,630,000 bytes, input SHA-256
+`1e78dbf13d20c70b61cefecfb014067de868d957cbf8013ed80ff85ca7465a1d`.
+Outer/supervisor times are 28/31.445 seconds; RAM/durable peaks are
+402,161,664/253,952 bytes. QEMU 667160 joins exit 0, RAM `run.8i541k3f` is absent,
+and no active owned run root remains. The final endpoint set loses one
+unattributed endpoint; no owner is inspected or changed. Raw workload evidence
+`ledger-token-count-run.UrMEJl1NBj.serial.log` is 31,515 bytes, SHA-256
+`738b8f95a596cb3c42429b0f4584e10babd7c429a29a104e9c1eacd8653def52`.
+This audit-only receipt leaves the counted ledger byte-identical.

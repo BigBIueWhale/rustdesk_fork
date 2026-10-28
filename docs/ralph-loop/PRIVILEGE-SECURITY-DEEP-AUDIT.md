@@ -109965,3 +109965,15 @@ This is completed dead-code removal with source evidence and OPEN runtime
 acceptance. Full current Flutter/menu/device behavior, installed authority,
 R-S0/R-F5, release/cold-build evidence and independent/external review remain
 open. The broad goal is active and incomplete. No release operation was performed.
+
+Fresh ledger count `r56PHqwd4s` at `c563e6a6920add20e57a33ac1f4cb2b8425400d8`
+passes: 355,072 tokens (+247), 1,613,546 bytes (+1,174), input SHA-256
+`463b14843483a0cc6ec85fea5176069d8fe1fd55ee17c4d54f961b1f8c5e8128`.
+The pinned tiktoken-0.12.0/cl100k_base/encode_ordinary method, seven controls,
+whole-file UTF-8 round trip and existing storage admission controls pass.
+Serial: 98,122 bytes, SHA-256
+`7937775d8aeb8b43443c658c299fa894303bb18152f195fa4ecd7d1b8e4be74a`.
+Outer/supervisor lifetime is 29/31.844 seconds, RAM-scratch peak 402,296,832 bytes
+and durable run peak 147,456 bytes. QEMU 4009755 joins with exit 0; its PID,
+RAM `run.t_ajdw_l` and active run roots are absent. All endpoint deltas are zero.
+This audit-only receipt leaves the counted ledger and product unchanged.

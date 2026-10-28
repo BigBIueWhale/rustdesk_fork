@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import '../formatter/port_number.dart';
 
-class RdpPortField extends StatefulWidget {
+class RdpPortField extends StatelessWidget {
   const RdpPortField({
     super.key,
     required this.initialPort,
@@ -16,23 +16,12 @@ class RdpPortField extends StatefulWidget {
   final String? labelText;
 
   @override
-  State<RdpPortField> createState() => _RdpPortFieldState();
-}
-
-class _RdpPortFieldState extends State<RdpPortField> {
-  late final _controller = TextEditingController(text: widget.initialPort);
-
-  @override
-  Widget build(BuildContext context) => TextField(
-        enabled: widget.enabled,
-        inputFormatters: [
-          FilteringTextInputFormatter.allow(RegExp(
-              r'^([0-9]|[1-9]\d|[1-9]\d{2}|[1-9]\d{3}|[1-5]\d{4}|6[0-4]\d{3}|65[0-4]\d{2}|655[0-2]\d|6553[0-5])$'))
-        ],
-        decoration:
-            InputDecoration(labelText: widget.labelText, hintText: '3389'),
-        controller: _controller,
-        onChanged: widget.onChanged,
+  Widget build(BuildContext context) => TextFormField(
+        initialValue: initialPort,
+        enabled: enabled,
+        inputFormatters: [portNumberInputFormatter],
+        decoration: InputDecoration(labelText: labelText, hintText: '3389'),
+        onChanged: onChanged,
         autofocus: true,
       );
 }

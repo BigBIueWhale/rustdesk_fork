@@ -7369,327 +7369,120 @@ and process drift were zero, every owner joined and scratch self-retired. This i
 ATK/GTK behavior at one recording-engine boundary, not nested-edit coherence, actual
 FlView/AT-SPI, SDK/app integration, LPE or Android/Windows causation, which remain OPEN.
 
-**Source-bound core engine — FULL BUILD/INERT PUBLICATION PASS; SDK/APP INTEGRATION OPEN.**
-Exact pushed `e5e5736aaa45c093e1885519c76bdd71d6ada9ae`, tree
-`81bbd3f89c9d2e7032c58ba60ab3a0e02dcfe37b`, passed the complete
-`--linux-flutter-engine-build` transaction in 726,870 host BOOTTIME ms (outer/capture 0/0).
-The unchanged preparation, ten extraction cases, all named real GTK/node/root/generation/
-text/geometry/announcement assertions at scales 1 and 2, eight patched production objects,
-four upstream test-object compiles, and four-contract real-filesystem publisher self-test
-passed before the original 4,436-step release GN/Ninja build. The matching GTK shared library
-and `gen_snapshot` linked, all 26 declared public headers were produced, and a subsequent
-dry plan required no work.
-The original ATK C-linkage include block is preserved, with live and retired announcement
-dispatch covered by the actual native fixture. Upstream test suites and actual FlView execution
-did not run.
+**Linux engine publication and app consumption — named historical builds and Linux peer/GTK replay accepted; current-artifact and full-platform acceptance OPEN.**
+The complete shader toolkit `63493887`, app `a3755044` and six-lifecycle replay
+`7f6649f0` have accepted results. Earlier prerequisite failures remain diagnostic
+history; they do not negate those named passes or establish present-tree behavior.
+The following artifacts retain distinct source and consumer roles.
 
-The collector admits each generated header only as the exact two-link inode of its declared
-private source header, retaining and rechecking both descriptors. Compiled ELFs remain
-single-link. The complete production collector/sealer runs in the mandatory fast ten-case
-fixture before expensive preparation; it tests real archive bytes, per-file/manifest hashes,
-canonical regular members, alias/mutation refusal and no-clobber preservation. Synthetic
-ELF-header fixtures prove that sealing boundary, not compiled product execution. Tar close
-precedes flush/fsync; no original input is relabelled, unlinked or substituted.
+| Artifact | Retained disposition |
+| --- | --- |
+| Core engine `e5e5736a` | Immutable 28-file core baseline, archived under `.harness-state/flutter-linux-engine-artifact-archive/`. It predates the insertion/UTF-16 corrections and lacks the complete app toolkit. |
+| Toolkit `15cf93dd` | Immutable 325-file corrected-core/toolkit baseline in the same archive namespace. It lacks all sixteen shader includes; its successful build cannot supply shader-complete app input. |
+| Shader-complete toolkit `63493887` | 341 payload files under `.harness-state/flutter-linux-engine-artifacts/63493887d7bf51c9ea7be8b03e7a4641dd40208f/linux-x86_64-engine/`: matching core, 26 public headers, platform dills, ICU, generated sky_engine, host tools/frontend and sixteen original-GN shader includes. |
+| App `a3755044` | Schema-2 capsule under `.harness-state/linux-flutter-app-artifacts/a375504416e96b209f507436d8cf65f6f3047c7e/linux-x86_64-flutter-app/`, with 74 payload files and sixteen directories. Independent historical inspection binds its actual core/ICU to `63493887`; the named native replay uses this capsule without rebuilding it. |
+| Stock-engine app `eeaaa0ec` | Comparison baseline only. At `3d548adb`, inert byte comparison matches its core to the authenticated stock 3.47.5 SDK. Its schema-1 manifest carries no separate engine producer/archive/manifest/patch authority; replay cannot count as corrected-engine evidence. |
 
-After guest/VM/exporter joining and input/source/listener revalidation, the fixed no-clobber
-publisher committed one inert 24,207,360-byte archive under
-`.harness-state/flutter-linux-engine-artifacts/e5e5736aaa45c093e1885519c76bdd71d6ada9ae/linux-x86_64-engine/`.
-That exact core baseline is now preserved under the corresponding commit in
-`.harness-state/flutter-linux-engine-artifact-archive/`. A locked no-clobber directory rename
-preserved both file identities, metadata and hashes; no bytes were copied, replaced or deleted.
-Archive SHA256 is `7d25e3b8df299289a028a232b844366da90e7d90bde8a75a84b31dfaaf479dbb`;
-manifest SHA256 is `9ffed84371780efb59c814614e82b7d141be1fca9d9f3ccb1099f72cbdff0345`.
-Independent inert GNU-tar inspection confirmed the exact 29 ordinary mode-0400, UID/GID-0,
-epoch-zero members, original GN's 26-header inventory, context against committed pins/source,
-and all 28 file sizes/digests with archive metadata unchanged. The GN-argument digest is
-producer-recorded; original argument bytes were not separately retained for independent replay.
-The actual duplicate producer refused status 1 before run allocation and preserved complete
-artifact metadata/bytes. No cached output is executable on the host.
+Exact archive/manifest identities, the stock/core comparison hashes, fifteen raw
+serial identities and the consolidation checks are retained in
+`engine-consumer-ledger-1c07eea4.json` under `.harness-state/verifier-vm/`.
+Git source `1c07eea4` retains the detailed intermediate chronology and receipts.
+The original baseline archives were preserved by locked no-clobber renames with
+identities, metadata and bytes unchanged; none was relabelled as a later toolkit.
 
-Full 129,526-byte raw serial is `evidence/engine-link-e5e5736a.serial.log`, SHA256
-`3ff753ad0918ef6a4e3fa6fa0c4a712d2c4465bfc0dc847f91d6007af6ff680c`.
-Complete-FD capture, outer, duplicate and independent-inspection records share that prefix.
-Exact-source shared authority integration also passed in 82,290 ms (outer/capture 0/0),
-including retained-artifact/run refusal, 16 callers/one winner and the existing guest-only
-authority/runtime checks. Its full 81,563-byte serial is `evidence/engine-shared-e5e5736a.serial.log`,
-SHA256 `a9617d348f89bb07d7be56360d52a291f8a71a58e08b9c369d0bae22821900a8`.
-Both strict aggregate host audits reported no harness-added listener or pre-existing-process
-drift; all owned work joined and both exact scratch roots self-retired. Detailed host snapshots
-retired with scratch; retained outer acceptance is not an independently retained snapshot.
-Earlier GN-target, ATK-linkage and collector failures remain in bounded
-`evidence/engine-link-{0d25f0f1,8b84b4a0,62dd0ce3,27f2a4f7,7eb3fb4a}.*`,
-Git history and the external audit; their inactive VM disks were explicitly reconciled.
+**Publication and consumer authority.** Original GN selects the complete role
+inventory and copy aliases. A generated header is admitted only as the exact
+two-link inode of its declared private source header, with both descriptors
+retained/rechecked; compiled ELFs remain single-link. The collector/sealer covers
+canonical ordinary archive members, file/manifest hashes, alias/mutation refusal
+and no-clobber publication, closing tar before flush/fsync. Synthetic ELF fixtures
+exercise publication boundaries without establishing compiled-product behavior.
+The core-only producer's original GN argument bytes were not separately retained;
+its argument digest is producer-recorded.
 
-**Matching local-engine tool/SDK contract.** That earlier archive is only the core engine,
-not a complete Flutter app toolkit.
-Original GN must additionally supply the generated `flutter_patched_sdk`, `sky_engine`, ICU
-and used host tools. Flutter bootstrap/Pub use `bin/cache/dart-sdk`, and Pub locates `sky_engine`
-under `bin/cache/pkg`; local-engine flags do not automatically bind those roles to the generated
-outputs. Independent inert archive reads now establish that the source-selected CIPD Dart SDK
-and shipped bootstrap SDK have identical complete normalized path inventories and all 1,047
-regular files' sizes/bytes (113 directories, no other member types). The sorted regular-file
-manifest SHA256 is `2392ae9f43abccf94978452b16fcc427053b958eb06774055d075f56676a41b7`;
-archive identities and exact comparison command are retained in the external audit. This
-supports retaining the authenticated shipped bootstrap/Pub Dart SDK unchanged, not generated
-platform/sky/ICU/host-tool closure. No duplicate SDK or fabricated cache stamp is needed.
-The retained `e5e5736a` core predates both insertion and UTF-16 selection corrections above;
-it remains an immutable named baseline, not current-provider evidence. The matching toolkit below builds
-the corrected core and required original-GN tool/SDK outputs together after explicitly
-archiving the old artifact state, without overwriting or relabelling it. Do not repeat a full
-core build for a focused native-unit check or mix stock engine caches and old AOT code.
-The producer now queries original GN descriptions for release platform kernels, ICU,
-`sky_engine`, font/constant/shader tools and the frontend snapshot before selecting the complete
-Linux toolkit build. Sealing preserves their separate paths, source-binds declared copy aliases,
-refuses directory links and duplicate inventory, and records original GN arguments plus selected
-SDK input identities. The mandatory focused profile includes real filesystem cases and the GN
-role inventory. Exact pushed `932a639dbc21807f4b202cd26fdc5a47b132b111`, tree
-`19161195d2424cebfe7cc1653b96e80c02a5d2d1`, passed that complete focused transaction in
-111,320 host BOOTTIME ms (outer/capture 0/0). The original GN role/copy inventory, new real
-filesystem cases, unchanged GTK/Unicode/lifetime assertions at both scales, eight production
-objects and four upstream test-object compiles passed. Full 91,751-byte serial is
-`evidence/engine-toolkit-prepare-932a639d.serial.log`, SHA256
-`ea0de3a4480c76e716c0c9ce55f8318fa186f22727e5a529b07b2eb6e2c39ec9`; outer/capture records
-are retained. Inputs were unchanged, listener addition/process drift zero, owners joined and
-scratch self-retired. This proves the recipe/filesystem boundary, not full-toolkit publication
-or actual engine/view/app execution. The separate integration at exact pushed `41efad56`, tree
-`75dcbb7b9f31ea9b37f2081642927beae9e12c11`, failed after 367,110 host BOOTTIME ms
-(outer/capture 1/0). The original bootstrap compiler action stopped at step 2,912/4,794:
-the selected Dart 3.13.0-103.1.beta CLI attempted implicit Pub resolution for `ffigen` and
-the networkless topology refused it. No complete toolkit or artifact was published.
-Complete 196,846-byte raw serial is `evidence/engine-toolkit-build-41efad56.serial.log`,
-SHA256 `16db89c2969021e7673da337afded1503e56cafcb6e5d0f65404c409675a4f1f`.
-Actual listener/exporter/capture and stopped-owner records are retained separately; all three
-host listener inventories were byte-identical, additions/drift empty, and owned processes joined.
-Exact locked stopped-run retirement reclaimed 13,232,631,808 allocated bytes; no run/overlay remains.
-The [selected bootstrap CLI](https://raw.githubusercontent.com/dart-lang/sdk/9576691c37d84d3b66a9722e4fadacc764f04b21/pkg/dartdev/lib/src/commands/compile.dart)
-discovers native-asset package metadata from `Directory.current`,
-not the explicit compilation package-config argument. Its original GN action runs outside the
-Dart workspace. The integration preparation now executes that exact bootstrap target before
-production-object tests and the expensive engine link, retaining bounded workspace-metadata
-diagnostics. Exact `9c1a1b86` reproduced that failure with both engine and Dart workspace
-configurations/graphs present, disproving the missing-graph hypothesis. Its full serial and
-exact stopped-run retirement are retained in `evidence/engine-bootstrap-preflight-9c1a1b86.*`
-and the external audit; no failed VM disk is retained.
-The producer now applies a helper-bound, three-file source correction to the original GN/Python
-AOT action: its working directory is the owning Dart workspace, while compiler input/output,
-package-config and depfile paths are rebased for that directory. The selected SDK, AOT flags,
-source inputs and output roles remain unchanged; the manifest binds the correction digest.
-The selected CLI stages kernel/snapshot data in system temporary storage. Compiler scratch
-now belongs to a fresh UID/GID-1000 mode-0700 directory in the existing disposable `/work`
-build volume; the 16-MiB housekeeping `/tmp`, per-file/disk/memory/deadline bounds are unchanged.
-The preflight requires exact scratch identity and emptiness after the real compilation.
-The compiler receives its supported extra-kernel `--depfile-target` naming the original
-Ninja-relative output, separately from its workspace-relative output path. Dependency tracking
-and mandatory second dry-plan freshness remain. Earlier snapshot-write and depfile-target
-failures, full raw serials, actual host snapshots and exact stopped-run retirement records
-remain in `evidence/engine-bootstrap-workspace-c5d562c4.*`,
-`evidence/engine-compiler-scratch-18feaa87.*` and the external audit, not as retained VM disks.
+Bootstrap/Pub use the admitted SDK's Dart/frontend and cached sky_engine roles.
+Historical inert comparison matches all 1,047 Dart SDK files and 113 directories;
+separate comparison matches the 17,153,376-byte frontend and all 289 sky_engine
+files (7,648,729 bytes). These comparisons support reuse of the authenticated SDK;
+platform kernels, ICU, tools and shaders still require the matching GN outputs.
+`verify_engine_sdk_roles` checks exact manifest/context/content/inventory,
+retained directory/file identities, mount boundaries, links/ACLs and the
+higher-priority `packages/sky_engine` shadow. Its public inherited-descriptor
+limit stays 64; the materializer's private recheck uses its reserved bounded
+descriptor budget.
 
-**Matching toolkit — FULL PRODUCER PASS; SDK/VIEW/APP CONSUMER OPEN.** Exact pushed
-`15cf93dd3c2f51fefb2b1337c04d92d397b6c900`, tree `808cc448159d97a85713a7165eece62be854e9f1`,
-passed the complete integration in 769,270 host BOOTTIME ms (outer/capture 0/0).
-Original bootstrap compilation and its second dry plan, every existing real GTK/Unicode/
-lifetime assertion at scales 1 and 2, eight patched production objects, four upstream
-test-object compiles, and the original 4,793-action toolkit build plus final no-work plan passed.
-The sole inert 89,077,760-byte archive holds 325 files: matching corrected core, 26 public
-headers, platform dills, ICU, generated sky_engine, font/constant/shader tools and frontend AOT.
-It is preserved under `.harness-state/flutter-linux-engine-artifact-archive/15cf93dd3c2f51fefb2b1337c04d92d397b6c900/linux-x86_64-engine/`;
-archive SHA256 is `8505f215ede32dd547074d3667f899c10f50bc9603dcfa888835edc272d16e40`,
-manifest SHA256 `16cbd9dd1f0c10503536b0261eadbb36a2b621e140996da01fd9a93e9a1231e1`.
-After the shader-closure preparation passed, a locked no-clobber rename preserved both file
-identities, metadata and hashes there; the primary producer namespace is empty. No bytes were
-copied, modified, deleted or relabelled as a complete shader toolkit.
-Independent inert inspection matched the complete 326-member canonical regular inventory,
-archive/manifest hashes, source/helper context and the embedded original GN-argument digest.
-Complete 134,198-byte raw serial is `evidence/engine-bootstrap-depfile-15cf93dd.serial.log`,
-SHA256 `1af47cd5ff92bc8dfbbaf1fd510f59cea20fb4f46a9825536da81c4a6e33d0d4`;
-outer and whole-FD capture receipts are sealed 0400. Inputs remained unchanged, the aggregate
-host audit reported no added listener or process drift, all owners joined and exact scratch
-self-retired. Detailed host snapshots retired with scratch, not independently retained proof.
-Upstream suites, actual FlView/AT-SPI and app execution did not run in that collector transaction.
-Its manifest correctly records bootstrap SDK projection and app execution as unexecuted;
-the subsequent complete projection and named app-consumer results are below.
-No empty package graph, SDK substitution, network allowance or version-check bypass is used.
-The shipped bootstrap SDK is not duplicated.
-Pinned-source consumer review confirms that local-engine frontend lookup uses the selected Dart
-SDK's snapshot and host sky_engine lookup still uses the bootstrap cache. Independent inert
-archive reads matched that 17,153,376-byte frontend and all 289 generated sky_engine files
-(7,648,729 bytes) to the retained SDK, with no missing, extra or differing regular-file record.
-`linux-flutter-artifact.py::verify_engine_sdk_roles` now supplies a VM-gated, read-only exact
-manifest/context/content/inventory proof for those reusable SDK roles, including retained
-directory/file identities, mount closure, link/ACL refusal and Pub's higher-priority
-`packages/sky_engine` shadow refusal. Exact pushed `8b66e69fe7cc4912939a59ca7e09ce6c99b84b43`,
-tree `b1bba2be6372e80ec09605875c70d3ac64e57552`, passed all six real-filesystem regression
-groups (15.120 seconds) plus the existing 20 capsule cases and one-run admission tests in the
-43,930-ms zero-NIC VM transaction. The SDK groups use a manifest/filesystem fixture, not the
-actual Flutter SDK; the archive byte comparison above is separate inert evidence. Complete
-73,074-byte raw serial is `evidence/engine-sdk-shadow-8b66e69f.serial.log`, SHA256
-`ee0bc5fc36dd08c14769b00f0fa67cb61d3b1619f7010ef63786c3dc1ff92a38`; outer and complete-FD
-capture receipts are retained. Inputs were unchanged, aggregate listener addition/process drift
-zero, all owners joined and scratch self-retired. Detailed host snapshots retired with scratch.
-This is a consumer prerequisite, not actual toolkit projection, Flutter invocation, FlView or
-app evidence. `linux-flutter-artifact.py::materialize_engine` now implements the fixed
-`src/out/host_release` projection behind the same VM-entry authority. Independently supplied
-archive/manifest digests and source/tree/framework/patch/SDK context bind the complete toolkit;
-canonical bounded regular members, all 26 headers, kernels, ICU and five matching ELF tools
-are required before output allocation. The sole deliberate `dart-sdk` link binds the existing
-separately admitted SDK, whose sky/frontend roles and retained Dart-directory identity are
-re-proved; no SDK bytes or retained archive are overwritten. Execution copies are descriptor-
-bound, inventory-closed and owner-only; retained output or a held parent lock refuses another
-projection. Eight additional real-filesystem/CLI/ELF fixture groups cover these boundaries,
-including missing tools with stock copies present and late Dart-directory replacement.
-Exact pushed `c0ced01e41fe6db0072b5a6c1f0fa6f08886201b`, tree
-`ed46dce84fdbc21d5b9f027f6c0cadb734b1dcb6`, passed all eight groups in 23.325 seconds,
-plus the existing 20 app and six SDK groups, in the complete 65,270-ms zero-NIC transaction
-(outer/capture 0/0). Tests executed at guest UID/GID 4000 with system-ELF/minimal-toolkit
-fixtures, not the retained engine archive or actual SDK. Complete 76,618-byte raw serial is
-`evidence/engine-toolkit-projection-c0ced01e.serial.log`, SHA256
-`6db009ab50c2071212f3a7c1aa36b3f1501309866a88a051e1825a92585b6d20`; outer and whole-FD
-capture records are sealed 0400. Inputs were unchanged, aggregate host listener additions
-and pre-existing-process drift were zero, all owned processes joined and scratch self-retired.
-Detailed host snapshots retired with scratch, not independently retained proof. The real
-retained toolkit/SDK projection, explicit local-engine app invocation, read-only execution
-mounts and capsule-role provenance remain OPEN.
-The app producer/replay now require independent engine commit/archive/manifest authority.
-The outer entry derives the engine tree and patch from pushed Git history and binds the
-authenticated manifest's core/ICU records separately from app source. The guest exports the
-inert toolkit read-only; one joined preparation container extracts the SDK, the existing
-materializer admits the actual toolkit/SDK, and compilation mounts the engine and selected
-Dart/sky roles read-only with explicit target/host local-engine flags. The finished bundle
-must contain the selected core/ICU bytes. Schema-2 publication and replay enforce those
-records; schema-1 artifacts cannot count as patched-engine consumers. Three new filesystem
-groups cover mismatched roles before allocation, self-consistent substituted payloads and
-schema-1 refusal. Exact pushed `6ddb6da37d00b79af26b9c9290d9fc0030817812`, tree
-`3f2bb821b678053bac1852cf8618c70b4b492995`, passed all 23 app, six SDK and eight
-toolkit groups in the focused zero-NIC VM transaction (70 seconds, outer exit 0).
-Raw serial `evidence/app-local-engine-6ddb6da3.serial.log` has SHA256
-`1a44916ced74ae65f164d1c2f689901e62211de32e767e5fddb366de46c4825d`;
-the bounded serial and outer log are retained 0400. Input/listener revalidation and joined
-scratch retirement passed with zero harness listener addition or pre-existing-process drift.
-The actual `6eb68870` integration authenticated the retained engine/SDK, checked the full
-input closures, and extracted the SDK once in its joined preparation container, but refused
-before app compilation: the final nested SDK proof misclassified the materializer's own
-retained output descriptors as inherited descriptors. The small fixture did not expose this.
-The SDK public entry now keeps the original 64-inherited-descriptor limit while the private
-recheck uses the materializer's already reserved bounded budget; it does not relax the limit.
-A nine-group toolkit suite adds a 289-sky-file real-filesystem A/B case for old reentry refusal,
-corrected projection and descriptor finality. Exact pushed `577e5ccde71b948cbde78112758564543e55db04`,
-tree `d6e1bf4545ae73b8465d5470ae6fe3f58e3670ac`, passed all 23 app, six SDK and nine
-toolkit groups in the 78-second zero-NIC transaction, with joined self-retirement and
-zero host listener addition/pre-existing-process drift. The real 289-sky-file case
-observed old reentry refusal and corrected projection with descriptor finality while
-keeping the 64-entry limit. Raw serial `evidence/engine-owned-fds-577e5ccd.serial.log`
-has SHA256 `16eb2cb41f32f75cdf9a39fcd97cd8bbf18fa5fdd07f2d2017adf75b3c5f50dd`.
-**The full app consumer remains unverified.** Failure raw serial
-`evidence/app-local-engine-6eb68870-build.serial.log` has SHA256
-`8ad9da820db783955f997d6b877b2be7fb4a667c98631c4cf86cc07408d9d9d1`.
-That failed run did not reach app compilation; no fixture or partial projection establishes
-RustDesk pixels or engine behavior.
-The subsequent exact `32bff424d16b0aa0f40cc3dfe44fd91c35ab1e2e` integration passed real
-retained-toolkit/SDK materialization, explicit-local-engine Pub/plugin preparation, Rust release
-compilation and the selected local frontend/gen_snapshot kernel/AOT generation. It then failed
-real asset compilation: `impellerc` was invoked with `--include=/local-engine/src/out/host_release/shader_lib`,
-but the toolkit collector/projection omitted that directory. Both framework shaders refused
-`flutter/runtime_effect.glsl`; no complete app bundle was published or replayed.
-The independently authenticated original GN source declares one Flutter and fifteen Impeller
-shader includes in two copy targets beneath `//flutter/impeller/compiler/shader_lib`.
-The `impellerc` executable depends on that group, but collecting its executable alone did not
-collect these required consumer outputs. The producer now selects both exact original-GN copy
-inventories and binds all sixteen source aliases; the materializer requires those roles before
-allocation. Existing filesystem regressions cover complete byte projection and representative
-missing Flutter/Impeller roles even with stock copies present. The producer requires an actual
-compiler A/B for both failing framework shaders before sealing: empty includes must refuse,
-complete original includes must produce runtime/SPIR-V outputs, and inputs must remain unchanged.
-Exact pushed `6f0f082e` emitted the focused capsule pass in 74 seconds and self-retired; all
-23 app, six SDK-role and nine toolkit groups were mandatory. The outer receipt is retained as
-`evidence/shader-toolkit-artifact-6f0f082e.outer.log`; the additional raw-retention wrapper failed
-on an invalid dd flag after retirement, so no full serial or green capture-wrapper is claimed.
-Its host audit reported no harness addition and one pre-existing-process drift. The distinct
-engine-preparation transaction passed with outer/capture 0/0 in 101 seconds: original GN
-inventories, collector filesystem cases, existing GTK assertions at scales 1/2 and upstream
-test-object compiles passed, with unchanged inputs/listeners, zero drift and joined self-retirement.
-Full 89,971-byte `evidence/shader-toolkit-prepare-6f0f082e.serial.log` has SHA256
-`3304bc21de0360c3f5f77c7c2f2abfbbdd3a8739f8453c3fd50290d89efd00e4`.
-The full-build shader comparison requires Flutter's complete initial Linux target set,
-including SkSL, rather than its later retry's subset. Exact pushed
-`63493887d7bf51c9ea7be8b03e7a4641dd40208f`, tree `7ddb33950edabcd6bb7f051e1f57aa9ebce4f691`,
-passed the complete 765-second integration with outer/capture 0/0. The original 4,793-action
-build and final no-work plan passed. Both real framework shaders refused with empty includes
-and produced positive runtime/SPIR-V outputs with all four original targets and complete
-includes; compiler/source/include bytes stayed unchanged and every command joined.
-The sole inert 89,128,960-byte archive has 341 payload files including all sixteen shader
-includes, archive SHA256 `e054196739ae571afafe532268dfffef958c1c69b708a25e09352770744a82d0`,
-manifest SHA256 `b78c72f5533657e6bce49ac89d289172aafcc925098651dc00e35537c0d30695`.
-It is under `.harness-state/flutter-linux-engine-artifacts/63493887d7bf51c9ea7be8b03e7a4641dd40208f/linux-x86_64-engine/`.
-Independent inert inspection proved all 342 canonical regular members, complete context and
-every payload digest; every include matched the independently authenticated original GN source.
-Full 136,208-byte `evidence/shader-toolkit-build-63493887.serial.log` has SHA256
-`e0c175c175586f3c789462886234105b137aec93880bf97f55a0cdb4c149cea3`.
-Inputs were unchanged, the audit recorded no harness-added listener and one pre-existing-process
-drift (not zero), all owned work joined and the scratch self-retired. Detailed host snapshots
-retired with scratch; the outer retains aggregate audit acceptance. **The full FlView
-restart/dispose/subtree/Wayland and sustained consumer matrix remains OPEN.** No shaders
-are skipped and no stock-cache fallback is introduced.
-The actual app producer at pushed `a375504416e96b209f507436d8cf65f6f3047c7e`, tree
-`0b9c796eeacd45ba52ef2f316d4ed181aab32c07`, passed in 912 harness seconds with outer/capture 0/0.
-Actual SDK/toolkit projection, explicit local-engine Pub/plugin preparation, fresh bridges,
-Rust release, frontend/AOT, both framework shaders and complete bundle publication passed.
-The schema-2 capsule contains 74 payload files (69,144,134 bytes) and sixteen directories;
-manifest SHA256 is `8f267fe2f5a3d695896a54db307547e0b715a422bd38bb2aae49c30d3722acb9`.
-Independent inert inspection matched the entire context to pushed source/pins and every payload
-size/digest; the core and ICU equal the independently selected `63493887` toolkit, not stock SDK
-copies. Full 303,969-byte raw serial `evidence/shader-app-local-engine-a3755044-build.serial.log`
-has SHA256 `d8e5e59fe8305781a143ba0167d62de0bec113f5a8fcb93b34be37b60a4f4b06`.
-Inputs remained unchanged; no harness listener was added and one pre-existing-process drift
-was recorded. All owned work joined and scratch self-retired; detailed host snapshots retired
-with scratch. This closes that named producer's build-input defect, not pixels, FlView lifetime,
-AT-SPI self-wait/geometry, installed/LPE, Android/Windows causation, soak or release evidence.
-That exact capsule subsequently passed the unchanged full six-lifecycle peer/GTK consumer at
-harness `7f6649f0829ac880f39f34510a189e4febd73185`, tree `8d677f5dc6478948fac0295fc9e585bcde300f50`.
-Outer/capture were 0/0 in 458 seconds; no app rebuild or viewer instrumentation. All eighteen
-focus cycles, eighteen reconnects and eighteen native same-accessible dialog resizes passed,
-including actual AT-SPI geometry and explicit dialog retirement. Resource bounds and every
-viewer/server join were mandatory. Maximum pixel age was 444 ms, focus recovery 8 ms and
-first fresh reconnect pixels 367 ms. Full 511,118-byte raw serial
-`evidence/shader-app-local-engine-a3755044-replay-7f6649f0.serial.log` has SHA256
-`1a4fd8eed2827f158e3a89c9251c7793fef63f1ce6492936110a8b980c19c9c3`.
-All retained app/input bytes remained unchanged; no harness listener addition or pre-existing
-process drift, joined VM/container/exporter/capture cleanup and automatic scratch retirement.
-Detailed host snapshots retired with scratch; the outer retains aggregate audit acceptance.
-This is the named app's actual Linux peer/GTK behavior, not a strict stock/patched app A/B,
-the full FlView lifetime/Wayland matrix, Android/Windows causation, sustained/native installed
-service/LPE, release-artifact, cold-equality or independently administered reproduction proof.
-Full 365,180-byte failure raw serial is
-`evidence/app-local-engine-32bff424-build.serial.log`, SHA256
-`4f80aa87e8ce895ba0abcca23700e9f492553887f242094dba2ac805be688c29`.
-Outer exit was 1 and bounded capture completed. Owned QEMU/capture/exporters joined; the
-outer accepted one pre-existing external-process listener-change record, not zero drift.
-Complete bounded capture/listener/exporter records are retained 0400. After owner, socket,
-mount and image-use absence checks, locked identity-bound retirement removed only
-`run.XJ5U5iOB4k` (`66306:106335248`) and reclaimed 18,228,764,672 allocated bytes.
-This is an actual toolkit-closure failure, not presentation, installed-service, LPE or
-Android/Windows causation evidence. That failed producer published no app capsule.
-Read-only artifact comparison at clean `3d548adb` confirms that the retained `eeaaa0ec`
-app is a stock-engine baseline, not a consumer of the corrected toolkit. Its actual
-`bundle/lib/libflutter_linux_gtk.so` has SHA256
-`d57449a5c2ee39e77b9e3488f0703b165c67e0b3c554089f388db96484ae62f1`, exactly equal
-to `flutter/bin/cache/artifacts/engine/linux-x64-release/libflutter_linux_gtk.so` read
-from the authenticated 3.47.5 SDK archive. The toolkit's actual core instead has SHA256
-`d7a2bb5ac4d0c2177846be830bc64b4c1bedf5b05d19e04d8309fc991c846c6f`.
-The baseline app manifest remains `83cd4134b3103ec2122cbbc33724168695dc47b9c38fc3caf9e169cbeae1ab30`;
-its schema-1 context has no engine producer/archive/manifest/patch authority. Its recipe
-matched the stage script at that `3d548adb` comparison, not the later local-engine recipe.
-Preserve this capsule for comparison;
-do not count another replay as patched-engine evidence. The new producer must bind the
-engine separately from app source and prove the selected core in its actual output bundle.
-This comparison executed no app, compiler, VM or test and supplies no presentation verdict.
-Actual FlView restart/disposal, removed-subtree/type-change authority, nested live edits,
-AT-SPI self-wait/geometry, Wayland, shipped SDK integration and the full uninstrumented consumer
-remain OPEN. Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept
-invalid extents. Observe an actual production image-ready rebuild trigger before changing desktop
-dialog ownership; resizing alone is not that proof. Original Android/Windows causation, sustained
-resources, current installed-service/LPE, native platforms, cold equality, independent reproduction,
-external review, release and documentation obligations remain OPEN.
+`materialize_engine` authenticates complete bounded canonical inventory,
+source/tree/framework/patch/SDK context, all headers, kernels, ICU, tools and
+shader roles before allocation. It projects `src/out/host_release` with
+descriptor-bound owner-only copies. The sole intentional `dart-sdk` link
+names the separately admitted SDK, whose roles and directory identity are
+rechecked. Existing output or a held parent lock refuses another projection.
+The app producer/replay requires independent engine commit/archive/manifest
+authority, explicit target/host local-engine flags and read-only engine/SDK
+roles; schema-2 publication checks the selected core/ICU in the actual bundle.
+Stock caches, old AOT, empty package graphs, fabricated stamps, SDK substitution
+or network/version-check bypasses cannot supply a missing role.
+
+The bootstrap AOT action runs in its owning Dart workspace with input/output,
+package-config and depfile paths rebased there. The selected SDK, source, AOT
+flags and output roles stay fixed; the manifest binds the three-file correction.
+The [selected Dart CLI](https://raw.githubusercontent.com/dart-lang/sdk/9576691c37d84d3b66a9722e4fadacc764f04b21/pkg/dartdev/lib/src/commands/compile.dart)
+discovers native-asset metadata from the working directory. Compiler scratch is
+a fresh private UID/GID-1000 directory in the disposable work volume, with
+identity/emptiness checks and existing limits; housekeeping `/tmp` is not bulk
+scratch. Supported `--depfile-target` preserves the original Ninja output,
+and the real bootstrap compile plus second dry plan precede the expensive build.
+Any future execution also requires the current shared bounded-RAM admission,
+monitoring, ceilings and joined retirement; old disk-based receipts grant no exception.
+
+**Accepted observations.** Serial filenames below are relative to
+`.harness-state/verifier-vm/evidence/`. Results belong to their named sources.
+
+| Source / surface | Observation and material limit | Retained serial |
+| --- | --- | --- |
+| `e5e5736a` core build / shared authority | Original 4,436-step release build links GTK and gen_snapshot, produces all 26 headers and reaches a no-work plan after preparation, extraction/GTK assertions, eight production objects and four upstream test-object compiles. Shared integration covers retained-run/artifact refusal and sixteen callers/one winner. Actual FlView and upstream suites did not run. | `engine-link-e5e5736a.serial.log`; `engine-shared-e5e5736a.serial.log` |
+| `932a639d` toolkit preparation | Original GN roles/copy inventories, collector filesystem cases, real GTK/Unicode/lifetime assertions at scales 1/2 and production/test-object compilation pass. This is recipe/component evidence before toolkit publication. | `engine-toolkit-prepare-932a639d.serial.log` |
+| `15cf93dd` toolkit build | Bootstrap compile/dry plan, GTK assertions and the original 4,793-action build/final no-work plan pass. Independent inspection matches the 326-member archive and context. This transaction does not execute the app or complete shader closure. | `engine-bootstrap-depfile-15cf93dd.serial.log` |
+| `8b66e69f`, `c0ced01e` SDK/projection | Six SDK groups plus twenty app cases pass; the later projection adds eight groups covering complete projection, missing tools despite stock copies and late Dart-directory replacement. System-ELF/minimal-toolkit/manifest fixtures supply filesystem evidence; real archive comparisons are separate. | `engine-sdk-shadow-8b66e69f.serial.log`; `engine-toolkit-projection-c0ced01e.serial.log` |
+| `6ddb6da3`, `577e5ccd` app binding/descriptors | Twenty-three app, six SDK and eight toolkit groups pass for mismatched roles, substituted payloads and schema-1 refusal. The later ninth toolkit group reproduces old reentry refusal with 289 sky files and verifies corrected projection/descriptor finality while retaining the 64-entry limit. | `app-local-engine-6ddb6da3.serial.log`; `engine-owned-fds-577e5ccd.serial.log` |
+| `6f0f082e` shader preparation | Original GN inventories, collector filesystem cases, GTK assertions and test-object compiles pass. The separate capsule profile emits its mandatory 23/6/9-group pass, but its additional capture wrapper fails: only that profile's outer receipt is retained, not a full serial or successful capture claim. | `shader-toolkit-prepare-6f0f082e.serial.log`; `shader-toolkit-artifact-6f0f082e.outer.log` |
+| `63493887` shader-complete build | Original 4,793-action build and no-work plan pass. Both actual framework shaders refuse empty includes and produce runtime/SPIR-V outputs with all four initial Linux targets, including SkSL, and the complete includes. Compiler/source/include bytes remain unchanged and commands join. Independent inspection matches all 342 members and source-selected include bytes. | `shader-toolkit-build-63493887.serial.log` |
+| `a3755044` app build | Real SDK/toolkit projection, explicit local-engine Pub/plugins, fresh bridges, Rust release, frontend/AOT, both shaders and complete bundle publication pass. Context and every payload match; core/ICU equal the independently selected toolkit. This is the named producer's input/build result. | `shader-app-local-engine-a3755044-build.serial.log` |
+| `7f6649f0` replay of `a3755044` | Six Linux peer/GTK lifecycles pass: eighteen focus cycles, eighteen reconnects and eighteen same-accessible native dialog resizes, actual AT-SPI geometry, dialog retirement, resource bounds and all viewer/server joins. Maximum recorded pixel age is 444 ms, focus recovery 8 ms and first fresh reconnect pixels 367 ms. No app rebuild or viewer instrumentation occurs. | `shader-app-local-engine-a3755044-replay-7f6649f0.serial.log` |
+
+**Rejected attempts and evidence limits.** `41efad56` fails implicit Pub
+resolution in the original bootstrap action; `9c1a1b86` reproduces it despite
+both workspace graphs, excluding the missing-graph explanation. Workspace/scratch/
+depfile repairs lead to the accepted toolkit build. `6eb68870` stops before app
+compilation on the materializer-owned descriptor recheck. `32bff424` reaches
+real Rust/AOT generation but fails both shaders because includes are missing;
+it publishes no capsule. Their full serials remain
+`engine-toolkit-build-41efad56.serial.log`,
+`app-local-engine-6eb68870-build.serial.log` and
+`app-local-engine-32bff424-build.serial.log`. Earlier GN/link/collector,
+workspace/scratch and capture failures remain in Git/audit and bounded evidence;
+failed scratch was retired by exact ownership, never reused as accepted output.
+
+Historical successful transactions retain aggregate unchanged-input, host-audit
+and joined-retirement receipts. Detailed host snapshots retired with scratch;
+aggregate acceptance is not independently retained snapshot proof. The shader
+toolkit/app producers and shader capsule profile record one pre-existing-process
+drift; the named final replay records zero. No whole-series zero-drift claim is
+made. The exact app result is Linux peer/GTK evidence, without a strict
+stock/patched app A/B or independent administration.
+
+**Remaining acceptance — OPEN.** Actual FlView restart/disposal, removed-subtree/
+type-change authority, nested live edits, broader AT-SPI self-wait/geometry,
+Wayland, sustained consumer/resource behavior and current shipped SDK/app
+integration remain required. The six-lifecycle pass does not cover this full
+matrix. Do not ship a preload, pump callbacks, raise timeouts, guess coordinates
+or accept invalid extents. A production image-ready rebuild must be observed
+before attributing dialog retirement to that trigger; resize alone does not
+establish it. Original Android/Windows defect causation, supported native
+platforms, installed-service/LPE and settings behavior, R-S0/R-F5, exact release
+artifacts/cold equality, independent reproduction and external review stay open.
+The separately recorded later theme/dialog findings and all user parks remain
+unchanged. This consolidation starts no build, app replay or parked investigation.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was

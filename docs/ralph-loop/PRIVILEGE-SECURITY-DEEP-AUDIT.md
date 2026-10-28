@@ -112605,3 +112605,51 @@ one unattributed endpoint removal is retained without owner inspection or mutati
 The 32,671-byte workload serial has SHA-256
 `71987c0d2cc574c0aca3dd5d4567ff1b808c5619c4ae43bfded8a0d3b076f22b`.
 Only this audit receipt follows the count; the counted ledger is unchanged.
+
+### 2026-10-28 — engine publication and consumer ledger consolidation
+
+Previous turn is progress: `88387423`/`1c07eea4` are pushed and the exact
+ledger count passed. Current inspection starts from clean synchronized
+`1c07eea47c4480e3f1feec0a29ee451c7e55ffb9`, with owned VM roots idle.
+The current R-S11ia–io table still leaves all fifteen installed/native actions
+OPEN. File-column geometry and every other user park remain parked.
+
+Continue the binding document-role cleanup over the next coherent engine block:
+322 lines / 27,732 bytes, from core publication through app consumption before
+`start_runtime_log`. Old section SHA-256:
+`ab67a60988d80a43dea788a6fccf8e5e5ed87c6a2cd082ebd37194dced9fb444`.
+Read the complete block, neighboring acceptance context, the historical native
+replay audit and the current SDK-role/materializer authority paths. The blanket
+unverified-consumer and unexecuted-projection claims were earlier-stage status;
+the same block later accepts shader-complete `63493887`, app `a3755044` and
+six-lifecycle Linux peer/GTK replay `7f6649f0`. Preserve those named passes
+without converting them into present-tree or full-platform acceptance.
+
+All fifteen explicit raw serials match the old ledger's recorded SHA-256 values.
+Read-only inspection rehashes the complete three retained engine archives and
+their embedded manifests: `e5e5736a` has 28 payload files, `15cf93dd` has 325
+and no shader includes, and `63493887` has 341 including all sixteen includes.
+Files remain owned, single-link, mode 0400 and metadata-stable. The retained
+`a3755044` app manifest matches its recorded digest and binds the selected
+`63493887` engine/core/ICU. This turn does not rehash every app payload or
+rerun historical behavior. The old serials contain the actual shader negative/
+positive compiler controls, source-bound app publication and final replay
+acceptance. Separate stock/SDK comparisons remain attributed to their historical
+inspection, not claimed as freshly repeated.
+
+Replace chronological repetition with artifact-role and accepted-evidence tables,
+publication/consumer authority constraints, failed-attempt limits and one open
+acceptance list. Preserve the source/SDK distinction, immutable originals, exact
+GN/SDK roles, header/ELF authority, anti-shadow proof, descriptor budget, schema-2
+engine binding, shader controls and six-cycle metrics. Retain the missing raw
+capture, aggregate-only host snapshots, nonzero producer drift and all FlView,
+Wayland, causation, current/installed/LPE, R-S0/R-F5, cold-release, independent and
+external-review gaps. No product, test, requirement, instruction or parked task
+is changed. No new build or app execution is performed.
+
+`.harness-state/verifier-vm/engine-consumer-ledger-1c07eea4.json` retains all
+fifteen serial identities, three archive/manifest checks, exact app context,
+historical stock/SDK comparison identities, classification and limits. Git
+source `1c07eea4` retains the removed intermediate hashes, timing and repair
+narration. Exact outside-section/reference checks and fresh isolated counting
+follow; the previous complete ledger count is 357,084 tokens / 1,627,903 bytes.

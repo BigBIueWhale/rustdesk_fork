@@ -111519,3 +111519,14 @@ and mobile remote/camera pages remain OPEN, respecting their existing parks.
 Keyboard-only anchors, asynchronous menu ownership beyond mounting, complete
 page/device integration and shared installed/native/R-S0/R-F5/release acceptance
 remain OPEN. Requirements and live instructions are unchanged.
+
+Fresh count `FymLBbOOJ3` at `96d26eea` passes: ledger 359,178 tokens /
+1,633,799 bytes, SHA-256
+`3fdb050428791ddd05da54983eb8951bc3286f1738927eddba9845eeaf73ec30`.
+All 58 admission controls/five refusals, seven token controls and the byte round
+trip pass in 28 outer / 31.492 supervisor seconds. Peak RAM/durable storage is
+402,231,296/249,856 bytes. QEMU 822849 joins exit 0; RAM `run.5qq0dn7w` and active
+owned run roots are absent. The final endpoint set has one unattributed removal,
+left untouched. Workload serial: 31,515 bytes, SHA-256
+`da85445b1b5573abc938a50361e6cb0c8d300f541c6d647f82eed11d1182d140`.
+This audit-only receipt preserves the counted ledger and all product/test bytes.

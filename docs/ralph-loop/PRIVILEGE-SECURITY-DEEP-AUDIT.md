@@ -112048,3 +112048,15 @@ The existing ten-group component run compiles the complete production selector
 directly. Its general locale group now includes Norwegian forms, explicit Nynorsk,
 private-extension and unrelated-language controls; saved-preference controls are
 extended separately. The unchanged selector is run first to establish the failure.
+
+Baseline `06198997` / `JUSipfolrx` passes nine groups and fails the general locale
+group on `no` (actual `no`, required `nb`). The compiled selector artifact is
+`ce0359537c7bd96ab57d6828892cbef42d92f018a10dc993472d33aab7a27da2`;
+workload serial is 1,862 bytes, SHA-256
+`0032f407cf58622445a51402fa045ab68258c8610c4ad6276164ef62a1d25d72`.
+QEMU 1418358 joins exit 0, RAM `run.8hhicuh2` is absent and exact diagnostics are
+retired as `norwegian-baseline.JUSipfolrx`. One unattributed endpoint addition is
+retained without inspecting or changing its owner. The correction routes generic
+`no` to `nb`, recognizes explicit Nynorsk forms before that mapping and preserves
+the existing saved-preference branch. The same ten groups / 130 examples remain;
+no harness, translation table or dependency changes are needed.

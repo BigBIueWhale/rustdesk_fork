@@ -4,7 +4,8 @@ pub(super) fn select_language(configured: &str, locale: &str) -> String {
     }
 
     let locale = locale.to_lowercase();
-    let locale = locale.split(['.', '@']).next().unwrap_or_default();
+    let (locale, modifier) = locale.split_once('@').unwrap_or((locale.as_str(), ""));
+    let locale = locale.split('.').next().unwrap_or_default();
     // Java Locale.toString places the script after the country and variant.
     let (base, java_script) = match locale.split_once("_#") {
         Some((base, suffix)) => (base, suffix.split('_').next()),
@@ -12,6 +13,25 @@ pub(super) fn select_language(configured: &str, locale: &str) -> String {
     };
     let mut subtags = base.split(['-', '_']);
     let language = subtags.next().unwrap_or_default();
+    if language == "no" {
+        let first = subtags.next().unwrap_or_default();
+        let region = if first.len() == 4 && first.bytes().all(|c| c.is_ascii_alphabetic()) {
+            subtags.next().unwrap_or_default()
+        } else {
+            first
+        };
+        let variant = subtags.next().unwrap_or_default();
+        // Default Norwegian uses Bokmål; explicit Nynorsk keeps its own language.
+        let nynorsk = modifier == "nynorsk"
+            || first == "nyn"
+            || (region == "no"
+                && (variant == "ny"
+                    || (variant == "x"
+                        && subtags.next() == Some("lvariant")
+                        && subtags.next() == Some("ny")))
+                && subtags.next().is_none());
+        return if nynorsk { "nn" } else { "nb" }.to_owned();
+    }
     if language != "zh" {
         // Map locale subtags to the catalogue's saved language keys.
         return match language {

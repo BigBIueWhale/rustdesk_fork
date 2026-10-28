@@ -110269,3 +110269,22 @@ code and test bodies are unchanged, so no product workload is rerun. This is no
 new runtime or LPE closure. All fifteen credential actions, complete UI/URL/native
 and installed behavior, R-S0/R-F5 and release acceptance remain OPEN. A fresh
 bounded isolated count follows the ledger and specification update.
+
+Correction `5ab3b51fa2ba4268c5e577fe330c3fec0c65fb36`, tree
+`2ce8a75f77814840a4e4599eb1de0932260b8936`, is pushed. Fresh count
+`LoZKHrmz6O` passes with `--ledger-token-count --requirements`: ledger 355,851
+tokens (+176), 1,617,713 bytes, SHA-256
+`cd7cb3505f66d4520e9eb7b31a997a2a296222a6fc9b09b694c6a6819cbf23e1`;
+specification 368,541 tokens, 1,682,738 bytes, SHA-256
+`7374f9c5d3ccf41ec4a6a46e59e38fa43d628910a541d24b9c9c02910988b262`.
+Pinned tiktoken-0.12.0/cl100k_base/encode_ordinary, seven controls and both byte
+round trips pass. Serial 98,232 bytes, SHA-256
+`06089117ec0cdfa1a6a190acd25caab9178f3b9bf907b2a40d0c03b04c468f48`;
+raw serial/storage/listener receipts use the prefix
+`.harness-state/verifier-vm/ledger-token-count-run.LoZKHrmz6O`.
+Outer/supervisor time is 28/31.321 seconds, RAM scratch peak 402,305,024 bytes,
+durable run peak 147,456 bytes. QEMU 10672 joins exit 0; its PID, RAM workspace
+`run.2wan0to0` and active owned run roots are absent. No endpoint is added;
+the final snapshot's one 18-byte removal remains unattributed and untouched.
+No host product/test payload or foreign RustDesk service is used. This audit-only
+receipt leaves both counted documents and the comment correction unchanged.

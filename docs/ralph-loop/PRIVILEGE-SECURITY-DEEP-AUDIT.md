@@ -112005,3 +112005,46 @@ profile now extracts only its four already-installed components plus installer
 metadata, then retires the exact guest installer tree after installation. It keeps
 the same compiler/cargo/std/rustfmt bytes and the canonical archive remains read-only.
 This reduces actual transient work within the existing storage ceilings.
+
+### 2026-10-28 — user pivot; Norwegian system-language selection
+
+The user explicitly requests another aspect. Windows chooser follow-up is
+OPEN/PARKED without another edit or run. Its already-finished VM `GgcjL3jsDg`
+at `e6c8d28313f831da557e489475d63727c14f4726` compiled fresh bridge bindings,
+passed all nine chooser widget cases and four peer cases, then failed
+`disposed duplicate peers cannot retire the incumbent` (expected false, got true).
+The remaining eight suites loaded, but fail-fast prevented their cases from
+running. The raw stream is printed twice; these are fourteen distinct executed
+cases, not twenty-eight. No full-suite or native Windows acceptance is claimed.
+Shared parser failures remain a separate parked item.
+
+The 2-GiB container reported memory peak 2,147,487,744 bytes and zero OOM/kill
+events. RAM scratch peaked at 5,070,770,176 bytes, durable diagnostics at 3,428,352;
+minimum available host memory was 10,293,428,224 bytes. QEMU 1385127 joined exit 0;
+RAM `run.qbyomtej` is absent and all four endpoint snapshots have zero deltas.
+After terminal exit 1, exact owned diagnostics were retired as
+`dialog-user-pivot.GgcjL3jsDg` (device/inode 66306/103992209). Workload serial:
+26,651 bytes, SHA-256 `5e08c31123d736c21a40dd09be03df0ab11cce7f8b5376dea6276a2805ccaf66`.
+No product test is relaunched for that parked item.
+
+The new slice is automatic Norwegian UI language selection. Read-only review
+finds no empty active translation entries. `src/lang.rs` offers and routes `nb`
+to the existing Bokmål table, while `src/lang_locale.rs` returns `no` unchanged;
+the translation dispatcher therefore chooses English for `no_NO`. Android obtains
+`Locale.getDefault().toString()` in `common.kt`, so Java locale forms are relevant.
+The selector must choose the existing Bokmål catalogue for generic Norwegian,
+preserve an explicit Nynorsk request as `nn`, and retain saved-preference priority.
+This changes language routing only; no authority, credential or transport action
+is involved. All fifteen installed credential actions remain OPEN.
+
+Primary references: Unicode's Norwegian locale explanation
+(https://icu.unicode.org/design/norwegian-locales-changes-in-v39) documents the
+shared Bokmål/default Norwegian content while keeping Nynorsk distinct. Oracle's
+locale inventory (https://www.oracle.com/java/technologies/javase/java8locales.html)
+identifies ordinary `no` with Bokmål and the `no_NO_NY` compatibility form with
+Nynorsk; Unicode's supplemental metadata retains `no-bok`/`no-nyn` mappings
+(https://github.com/unicode-org/cldr/blob/main/common/supplemental/supplementalMetadata.xml).
+The existing ten-group component run compiles the complete production selector
+directly. Its general locale group now includes Norwegian forms, explicit Nynorsk,
+private-extension and unrelated-language controls; saved-preference controls are
+extended separately. The unchanged selector is run first to establish the failure.

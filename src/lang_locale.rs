@@ -59,6 +59,10 @@ mod tests {
             ("en", "in_ID", "en"),
             ("he", "in_ID", "he"),
             ("id", "iw_IL", "id"),
+            ("en", "no_NO", "en"),
+            ("nb", "no_NO_NY", "nb"),
+            ("nn", "no_NO", "nn"),
+            ("NB", "en_US", "nb"),
         ] {
             assert_eq!(select_language(configured, locale), expected);
         }
@@ -140,6 +144,18 @@ mod tests {
             ("en-GE", "en"), ("de-KZ", "de"), ("kaa", "kaa"), ("kkj", "kkj"),
             ("en-IW", "en"), ("en-IN", "en"), ("iwk", "iwk"), ("inh", "inh"),
             ("yi", "yi"), ("ji", "ji"),
+            ("no", "nb"), ("no_NO", "nb"), ("no-NO", "nb"),
+            ("NO_no.UTF-8", "nb"), ("no_NO@bokmal", "nb"),
+            ("no_Latn_NO", "nb"), ("no_NO_#Latn", "nb"),
+            ("no-u-nu-latn", "nb"), ("no-bok", "nb"),
+            ("no_NO_BOKMAL", "nb"),
+            ("nn", "nn"), ("nn_NO", "nn"), ("nn-Latn-NO", "nn"),
+            ("no_NO_NY", "nn"), ("NO_no_NY.UTF-8", "nn"),
+            ("no_NO_NY_#Latn", "nn"), ("no-NO-x-lvariant-NY", "nn"),
+            ("no-nyn", "nn"), ("no_NO@nynorsk", "nn"),
+            ("no_NO.UTF-8@nynorsk", "nn"), ("no-Latn-NO-x-lvariant-NY", "nn"),
+            ("en_NO", "en"), ("nob", "nob"), ("non", "non"),
+            ("no-x-nyn", "nb"), ("no-NO-x-example-NY", "nb"),
         ] {
             assert_eq!(select_language("", locale), expected, "{locale}");
         }

@@ -982,7 +982,7 @@ for profile, memory, scratch, overlay in (
         ('flutter-divider', 2048, 6, 5),
         ('flutter-password-fields', 2048, 5, 4),
         ('flutter-file-columns', 2560, 6, 5),
-        ('flutter-file-progress', 2560, 5.25, 5),
+        ('flutter-file-progress', 2560, 4.75, 4.5),
         ('flutter-dialog-tests', 3072, 7, 6),
         ('flutter-keyboard-layout', 3072, 7, 6),
         ('linux-service-build', 8192, 7, 6),
@@ -11472,7 +11472,23 @@ run_flutter_model_tests() {
                     fi
                 }
                 file_navigation_stage extract-toolchains
-                tar -C /work/toolchain -xf /inputs/flutter.tar.xz
+                flutter_excludes=()
+                if [ "$FLUTTER_TEST_PROFILE" = file-progress ]; then
+                    flutter_excludes=(
+                        --exclude=flutter/.pub-preload-cache
+                        --exclude=flutter/bin/cache/flutter_web_sdk
+                        "--exclude=flutter/bin/cache/artifacts/engine/android-*"
+                    )
+                fi
+                tar -C /work/toolchain "${flutter_excludes[@]}" -xf /inputs/flutter.tar.xz
+                if [ "$FLUTTER_TEST_PROFILE" = file-progress ]; then
+                    for omitted in /work/toolchain/flutter/.pub-preload-cache \
+                        /work/toolchain/flutter/bin/cache/flutter_web_sdk \
+                        /work/toolchain/flutter/bin/cache/artifacts/engine/android-*; do
+                        [ ! -e "$omitted" ] && [ ! -L "$omitted" ]
+                    done
+                    printf "FLUTTER_FILE_PROGRESS_SDK=pass android=omitted web=omitted pub_preload=omitted\n"
+                fi
                 if [ "$FLUTTER_BRIDGE_REQUIRED" -eq 1 ]; then
                     mkdir /work/cargo-home
                     if [[ "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = file-progress ]]; then
@@ -12458,6 +12474,7 @@ run_flutter_model_tests() {
             || fail 'file-progress memory observation differs'
         grep -E '^FLUTTER_FILE_PROGRESS_MEMORY=' "$output"
         grep -Fx 'FLUTTER_DIALOG_TOOLCHAIN=pass components=rustc,cargo,rust-std,rustfmt installer=retired' "$output"
+        grep -Fx 'FLUTTER_FILE_PROGRESS_SDK=pass android=omitted web=omitted pub_preload=omitted' "$output"
     fi
     if [[ "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme ]]; then
         [ "$(grep -Ec '^SETTINGS_NAVIGATION_SOURCE=(prepare|verify) page=[0-9a-f]{64} tests=[0-9a-f]{64} page_copy=exact native_binding=double parent=double platform=double$' "$output")" -eq 2 ] \

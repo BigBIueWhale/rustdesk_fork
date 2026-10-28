@@ -58,8 +58,8 @@ def storage_limits(profile, memory_mib):
         return 6 * GIB, 5 * GIB
     if profile == 'flutter-file-progress':
         require(memory_mib == 2560, 'file-progress tests require their 2.5 GiB guest')
-        # Selected Rust components, retired installer copy, and one sequential Dart suite.
-        return 21 * GIB // 4, 5 * GIB
+        # Native Flutter artifacts, selected Rust components, and one sequential Dart suite.
+        return 19 * GIB // 4, 9 * GIB // 2
     if profile == 'flutter-credential-dialog':
         require(memory_mib == 4096, 'dialog storage profile requires its 4 GiB guest')
         return 7 * GIB, 6 * GIB

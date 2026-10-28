@@ -32,17 +32,15 @@ class _Binding implements RustdeskImpl {
 }
 
 class _Picker extends FilePicker {
-  int calls = 0;
+  final requests = <Map<String, Object?>>[];
+  int get calls => requests.length;
   Future<String?> Function() choose = () async => '/selected/screen:one.png';
   @override
   Future<String?> saveFile({String? dialogTitle, String? fileName,
       String? initialDirectory, FileType type = FileType.any,
       List<String>? allowedExtensions, bool lockParentWindow = false}) {
-    calls++;
-    expect(dialogTitle, 'Save as...');
-    expect(fileName, matches(r'^screenshot_\d+\.png$'));
-    expect(type, FileType.custom);
-    expect(allowedExtensions, ['png']);
+    requests.add({'title': dialogTitle, 'name': fileName,
+        'type': type, 'extensions': allowedExtensions});
     return choose();
   }
 }
@@ -100,6 +98,12 @@ class _Fixture {
     save();
     expect(session.dialogManager.existing('screenshot-actions'), isFalse);
     await tester.pumpAndSettle();
+    expect(picker.requests, hasLength(1));
+    final request = picker.requests.single;
+    expect(request['title'], 'Save as...');
+    expect(request['name'], matches(r'^screenshot_\d+\.png$'));
+    expect(request['type'], FileType.custom);
+    expect(request['extensions'], ['png']);
   }
 
   void expectCall(String action) => expect(binding.calls,

@@ -112085,3 +112085,39 @@ exit 0; RAM `run.i5l5yy5x` and active roots are absent, all endpoint deltas zero
 Peak RAM/durable storage is 402,317,312/249,856 bytes. Workload serial is 31,774
 bytes, SHA-256 `7663fc97ef578259d333e73066f555e481ad494a00190444578f98dab124400b`.
 The count adds no product or installed-service acceptance.
+
+### 2026-10-28 — retire orphaned uinput IPC payloads
+
+The previous turn made verified progress: the Norwegian selector correction and
+ten-group/130-example isolated acceptance are pushed through `89db1a4c`. The
+current worktree was clean. All fifteen installed credential actions remain OPEN;
+the user's Windows chooser, parent-build, audio and other parks are preserved.
+
+Review found four unused payload enums in `src/ipc.rs:2371`–`2410`, with four
+references in the shared `Data` union. A whole tracked-tree reference search finds
+no current producer, handler, import or type consumer outside those declarations.
+Git history locates their actual keyboard, mouse, state-query and resolution
+operations in `src/server/uinput.rs`, deleted by `fb40e9d2528ddf4f86eaf094e24a68144d350690`.
+`Data::Empty` has remaining example/test consumers and is retained. Current
+`client::Data::KeyboardInput` is a different enum and remains unchanged.
+
+R-X13 requires the obsolete cross-UID uinput service absent and the active XTEST
+backend retained. The shared helper protocol should expose only operations with a
+current owner/receiver, so the correction deletes the orphan payload enums and
+their `Keyboard`, `KeyboardResponse`, `Mouse` and `Control` variants rather than
+adding another filter. This is dormant surface removal: the reviewed current
+source has no actuator for these messages, and no new reachable LPE is claimed.
+The remaining adjacently tagged `Data` declaration has no catch-all variant.
+Serde's primary references describe that representation and the explicit
+`serde(other)` opt-in for unknown tags:
+https://serde.rs/enum-representations.html and https://serde.rs/variant-attrs.html .
+
+The diff deletes exactly 49 product lines; every retained `src/ipc.rs` byte is
+unchanged. The existing R-X13 forbidden-surface pattern adds the four type names.
+Read-only old/new comparison finds eight old declaration/reference matches and
+none after removal, using the gate's existing comment exclusions. Tracked-reference
+search, `bash -n scripts/verify.sh` and `git diff --check` pass. No new surrogate
+runtime test is added. Parent compilation remains parked, and the broad component
+runner would exercise unrelated parked work, so neither is resumed. Current
+compiled protocol refusal, complete application input functionality and installed/
+other-platform acceptance remain OPEN; source absence is the evidence here.

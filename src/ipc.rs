@@ -2368,48 +2368,6 @@ pub enum FS {
     },
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "t", content = "c")]
-pub enum DataKeyboard {
-    Sequence(String),
-    KeyDown(enigo::Key),
-    KeyUp(enigo::Key),
-    KeyClick(enigo::Key),
-    GetKeyState(enigo::Key),
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "t", content = "c")]
-pub enum DataKeyboardResponse {
-    GetKeyState(bool),
-}
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "t", content = "c")]
-pub enum DataMouse {
-    MoveTo(i32, i32),
-    MoveRelative(i32, i32),
-    Down(enigo::MouseButton),
-    Up(enigo::MouseButton),
-    Click(enigo::MouseButton),
-    ScrollX(i32),
-    ScrollY(i32),
-    Refresh,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "t", content = "c")]
-pub enum DataControl {
-    Resolution {
-        minx: i32,
-        maxx: i32,
-        miny: i32,
-        maxy: i32,
-    },
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
 #[serde(tag = "t")]
 pub enum CmAuthConnType {
@@ -2660,13 +2618,6 @@ pub enum Data {
     },
     #[cfg(target_os = "windows")]
     PrivacyModeState((PrivacyModeState, String)),
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    Keyboard(DataKeyboard),
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    KeyboardResponse(DataKeyboardResponse),
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    Mouse(DataMouse),
-    Control(DataControl),
     Empty,
     Disconnected,
     VoiceCallEvent(CmVoiceCallEvent),

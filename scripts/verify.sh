@@ -10815,7 +10815,7 @@ if [ -e src/server/uinput.rs ]; then
 else
   echo "  ok  R-X13 uinput module file absent"
 fi
-ra6_clean 'mod uinput|UInputKeyboard|UInputMouse|fn setup_uinput|update_mouse_resolution|set_uinput_resolution|log_rejected_uinput_connection|ensure_peer_executable_matches_current_by_fd' 'R-X13 uinput injection module/client + cross-uid IPC auth helpers' || rc=1
+ra6_clean 'mod uinput|UInputKeyboard|UInputMouse|fn setup_uinput|update_mouse_resolution|set_uinput_resolution|log_rejected_uinput_connection|ensure_peer_executable_matches_current_by_fd|DataKeyboard(Response)?|DataMouse|DataControl' 'R-X13 uinput injection module/client, IPC payloads and auth helpers' || rc=1
 # R-X13 (§8): the uinput DISPATCH guards (the wayland_use_uinput() selector + its dead `if false`
 # branches in the input hot-path) AND the coupled Wayland clipboard-input echo-suppression subsystem
 # (the WRITER chain set_clipboard_for_paste_sync/input_text_via_clipboard_server/record_..._for_sync_filter

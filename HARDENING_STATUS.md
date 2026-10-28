@@ -3634,6 +3634,19 @@ by consolidating the ledger. All separately parked work remains OPEN/PARKED.
 
 ### Current authority and source closure
 
+**Retired uinput IPC payloads.** The four orphaned keyboard, keyboard-response,
+mouse and resolution-control payload enums and their `Data` variants are removed
+from `src/ipc.rs` (49 lines). Their sole producer/consumer was the uinput module
+removed by `fb40e9d2`; tracked-source review finds no current caller or handler.
+The existing R-X13 absence gate now includes those type names. Exact deletion
+comparison preserves every other IPC source byte, including the remaining tagged
+protocol and its live helper messages; the active input backend is unchanged.
+Reference, shell-syntax and whitespace checks pass, and the extended source pattern
+distinguishes the old declarations from their absence. This removes dormant
+deserialization vocabulary; no reachable input actuator or new LPE was demonstrated.
+No parent build, protocol runtime or installed/native test ran for this deletion.
+Those acceptance obligations and all separately parked work remain OPEN.
+
 **Retired main-IPC legacy ID (`9c8dc194`).** The unused ID query, IPC-to-local
 read fallback, snapshot ID field/length failure and unread UI cache are removed.
 Status synchronization now depends only on the retained option and file-transfer

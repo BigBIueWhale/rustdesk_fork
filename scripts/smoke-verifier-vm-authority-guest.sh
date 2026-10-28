@@ -11190,7 +11190,7 @@ run_flutter_model_tests() {
             memory=1792m
             memory_bytes=1879048192
             result_prefix=FLUTTER_AUDIO_INPUT_TEST_JSON
-            expected_result='suites=3 tests=30'
+            expected_result='suites=3 tests=34'
         elif [ "$FLUTTER_TEST_PROFILE" = reconnect ]; then
             memory=3g
             memory_bytes=3221225472

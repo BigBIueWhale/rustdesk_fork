@@ -113142,3 +113142,65 @@ The 91,419-byte mode-0600 capsule includes both count attempts and their cleanup
 Only this audit receipt follows counting; the ledger and accepted product remain
 unchanged. The broad goal, all fifteen installed credential actions, the named
 submenu integration limits and every user-parked item remain OPEN.
+
+## 2026-10-28 — user pivot to connection-password focus ownership
+
+The user explicitly pivots away from the read-only toolbar keyboard-entry
+follow-up. That work and its submenu lifecycle limitations remain OPEN/PARKED;
+the accepted focus-painting fix is retained. The service-authority table still
+has all fifteen installed/native actions OPEN. Instruction/specification hashes
+match the preceding audit. No privileged receiver or credential mutation changes.
+
+Source trace: `ConnectPasswordDialog` is the sole production `PasswordWidget`
+caller. `DialogTextField` already gives its password field framework autofocus,
+but `PasswordWidget.initState` schedules an unconditional second request after
+50 ms. A user-selected control can therefore lose focus after navigation.
+The separate Android repeat-focus option has no caller. The intended model is
+one framework-owned initial focus request, followed by user-directed focus;
+the widget retains and disposes its own node. Flutter 3.24.5's
+[EditableText implementation](https://raw.githubusercontent.com/flutter/flutter/3.24.5/packages/flutter/lib/src/widgets/editable_text.dart)
+uses one mounted post-frame autofocus request, and the
+[Focus contract](https://raw.githubusercontent.com/flutter/flutter/3.24.5/packages/flutter/lib/src/widgets/focus_scope.dart)
+selects initial focus only when its scope lacks one. No timer override is required.
+
+Preparation `4549e385` adds seven rendered cases beside the four existing
+password-input cases. The initial launch refuses before QEMU: 15,360 MiB
+required, 15,172 available. `12a5c0a4` gives this two-suite, sequential Flutter-only
+workload a 5 GiB scratch / 4 GiB hard-file profile, supported by the previous
+component's 4,054,990,848-byte peak. Guest RAM stays 2 GiB, container RAM 1280 MiB,
+host reserve 6 GiB and overhead 1 GiB; admission, live monitoring, locks and exact
+retirement remain mandatory. There is no disk fallback, Rust/LLVM extraction
+or bridge generation. The focused parser selection does not resume the parked
+global model parser. The fresh ledger run also exercises the new profile's
+limits, wrong-memory refusals and workload mapping.
+
+Baseline `zwvXF8PVbE` at `12a5c0a4` reproduces three failures after 100 ms:
+real Tab navigation, pointer selection and a pre-existing focused editor each
+lose their selected focus. Eight controls pass. Workload serial is 12,605 bytes,
+SHA-256 `e75c5073e97c9d279d727a028a3640af802893899d3ce62bf20053c637689584`.
+QEMU 2386428 joins exit 0; RAM `run.6_3sovdr` is absent. Exact failed diagnostics
+are retained as `password-focus-baseline.zwvXF8PVbE` after identity-checked retirement.
+
+Product `8ab13728` deletes 30 lines across `dialog.dart` and
+`connect_password_dialog.dart`: both delayed-focus paths, their unused options,
+the redundant caller argument and unused import. Default autofocus, the retained
+focus node, text controller, reveal state, keyboard policy and submission ownership
+remain. The identical cases in `OkKNesIzKY` pass all eleven tests, plus all three
+focused inventory/finality parser checks; Flutter execution takes 5.516 seconds,
+and the outer transaction 106 seconds. Exact copied widget bodies are checked
+before/after execution; the final fixture digest is
+`ee51820dbf3c26e89e3f57e75b6f250b5a7f54246260000af5e6e4893d29418e`.
+The 9,070-byte workload serial digest is
+`915454a94a367aea2927f54b03bdbdc83eebfa9193d98a63922555615509c964`.
+QEMU 2395477 joins exit 0; RAM `run.2f1mbi76` and active owned roots are absent.
+Candidate scratch/durable peaks are 4,052,344,832/3,387,392 bytes. Both final
+endpoint inventories have one unattributed removal; no foreign process or
+service is inspected or changed. The host harness cannot create IP sockets.
+
+The bounded capsule `password-focus-8ab13728.json` retains both runs, source
+identities, refusal and exact cleanup. `git diff --check`, Python AST parsing
+and shell syntax pass. These are exact extracted Linux Flutter widget/channel
+tests with fixture translation/palette, not complete-dialog/native-bridge,
+native Android/iOS keyboard, full application or installed-service acceptance.
+Those integration boundaries, all fifteen credential actions and every separately
+parked item remain OPEN. Ledger counting follows the final status edit.

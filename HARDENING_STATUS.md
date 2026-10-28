@@ -5087,6 +5087,24 @@ transaction. Permanent-password settings still trim text and remain a separate
 OPEN issue within parked provisioning work. Native devices, full authentication,
 all fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN.
 
+**Connection-password focus (`8ab13728`).** The prompt uses Flutter's existing
+autofocus once. The competing 50 ms focus request, unused Android repeat-focus
+workaround and their unused options are deleted. A user's Tab or pointer choice,
+or an already-focused editor, therefore keeps focus. The exact extracted production
+widgets at unchanged source `12a5c0a4` reproduce three focus failures with eight
+passing controls; `8ab13728` passes the same eleven rendered cases and three
+focused result-parser checks in 106 outer seconds. Controls cover initial focus,
+rebuilds, reveal/hide text and selection, disposal, password keyboard policy and
+semantics. `--flutter-model-tests --password-fields` uses the shared 2 GiB guest,
+5 GiB RAM scratch, 4 GiB hard file ceiling and unchanged 6 GiB host reserve;
+both actual runs join QEMU and retire scratch. Each final endpoint inventory
+has one unattributed removal, left untouched. Exact source, logs and cleanup
+are retained in `password-focus-8ab13728.json`. This is Linux Flutter 3.24.5
+component execution with identity translation and a palette fixture, without
+the complete dialog/native bridge, real peer or device keyboard. Those integration
+checks and all fifteen installed credential actions remain OPEN. The separately
+parked toolbar, provisioning and global parser work is not resumed.
+
 **Password input policy: source corrected; focused component/channel tests accepted.** The
 connection-password reveal control and both permanent-password fields use
 `PasswordTextField`. Credential input always requests a password keyboard with

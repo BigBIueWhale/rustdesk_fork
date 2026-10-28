@@ -1001,7 +1001,11 @@ elif [ "$MODE" = linux-pa-authority-tests ]; then
     readonly OVERLAY_SIZE=16G
     readonly VM_MEMORY=6144
 elif [ "$MODE" = flutter-model-tests ]; then
-    if [[ "$FLUTTER_TEST_PROFILE" = auto-disconnect || "$FLUTTER_TEST_PROFILE" = modifier-release ]]; then
+    if [ "$FLUTTER_TEST_PROFILE" = keyboard-layout ]; then
+        readonly VM_TIMEOUT_SECONDS=300
+        readonly OVERLAY_SIZE=12G
+        readonly VM_MEMORY=3072
+    elif [[ "$FLUTTER_TEST_PROFILE" = auto-disconnect || "$FLUTTER_TEST_PROFILE" = modifier-release ]]; then
         # Integration: sealed inputs, fresh bridge generation, then production Dart tests.
         readonly VM_TIMEOUT_SECONDS=600
         readonly OVERLAY_SIZE=12G

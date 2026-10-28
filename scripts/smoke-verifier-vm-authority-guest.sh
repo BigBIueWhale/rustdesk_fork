@@ -973,6 +973,7 @@ for profile, memory, scratch, overlay in (
         ('cpace-recovery-tests', 8192, 6, 4),
         ('installer-package', 4096, 6, 4),
         ('flutter-credential-dialog', 4096, 7, 6),
+        ('flutter-keyboard-layout', 3072, 7, 6),
         ('linux-service-build', 8192, 7, 6),
         ('linux-service-receiver', 4096, 6, 5),
         ('x11-focus', 4096, 9, 8),
@@ -1003,6 +1004,7 @@ for profile, memory, scratch, overlay in (
         raise SystemExit('VM storage profile limits differ')
     profile_cases += 1
 for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 4096),
+                        ('flutter-keyboard-layout', 2048), ('flutter-keyboard-layout', 4096),
                         ('ledger-token-count', 8192), ('unknown', 2048),
                         ('linux-logind', 4096), ('linux-logind', 8193),
                         ('cpace-recovery-tests', 6144), ('cpace-recovery-tests', 8193),

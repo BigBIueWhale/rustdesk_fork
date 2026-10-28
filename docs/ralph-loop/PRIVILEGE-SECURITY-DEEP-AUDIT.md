@@ -111749,3 +111749,12 @@ before the separately parked models-parser self-tests. Only a new profile and
 its seven-case inventory are added to that parser; its existing algorithms and
 parked model expectations are unchanged. Syntax/whitespace review passes.
 The following run is the unchanged-product baseline, not a correction claim.
+
+Initial `b4ee674e` admission refuses before VM/bulk-file creation: the general
+4-GiB widget profile needs 18,432 MiB, while 18,163 MiB is available. This shard
+has no Rust/bridge compiler and retains its existing 2-GiB container ceiling.
+The dedicated profile therefore admits a 3-GiB guest (one GiB above that ceiling),
+with unchanged 7-GiB RAM scratch, 6-GiB hard file limit, 6-GiB host headroom and
+one-GiB overhead: 17,408 MiB total. Positive and wrong-guest profile controls are
+added. The live monitors and exact joined retirement remain mandatory; insufficient
+resources still refuse, and no disk fallback or foreign-process cleanup is used.

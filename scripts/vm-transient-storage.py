@@ -44,6 +44,9 @@ def storage_limits(profile, memory_mib):
     if profile == 'flutter-credential-dialog':
         require(memory_mib == 4096, 'dialog storage profile requires its 4 GiB guest')
         return 7 * GIB, 6 * GIB
+    if profile == 'flutter-keyboard-layout':
+        require(memory_mib == 3072, 'keyboard chooser requires its 3 GiB guest')
+        return 7 * GIB, 6 * GIB
     if profile == 'linux-service-build':
         require(memory_mib == 8192, 'service build storage profile requires its 8 GiB guest')
         # Prepared media share one GiB beside the bounded build overlay.

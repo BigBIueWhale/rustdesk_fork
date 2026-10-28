@@ -111449,3 +111449,73 @@ exit 0; RAM `run.ggsa9p68` and active owned run roots are absent. All endpoint
 sets are unchanged. Workload serial: 31,515 bytes, SHA-256
 `c51a4a803e93563d4fb41ff686577a5a663b313178e47ea1362a8395d5e885b1`.
 This audit-only receipt leaves the counted ledger and product source unchanged.
+
+## 2026-10-28 — popup anchors in navigator coordinates
+
+The preceding turn made authoritative progress by deleting the unused copied
+popup controls. This slice exercises the remaining menu implementation. The
+R-S11b/c installed-native matrix and all fifteen credential actions remain OPEN;
+the current user-directed UI work does not resume parked credential, parent-build,
+shared-parser or other feature work.
+
+The live peer-card, connection-page and desktop file-manager callers construct
+`RelativeRect.fromLTRB(x, y, x, y)` from global pointer coordinates. Its right
+and bottom arguments are distances from the container edges, not another copy
+of the pointer. The copied menu's RTL layout therefore mirrors the anchor; it
+also receives the wrong coordinate system under offset/scaled navigators.
+Flutter's primary contracts distinguish these spaces:
+https://api.flutter.dev/flutter/rendering/RelativeRect-class.html ,
+https://api.flutter.dev/flutter/rendering/RelativeRect/RelativeRect.fromSize.html ,
+https://api.flutter.dev/flutter/rendering/RenderBox/globalToLocal.html .
+
+The shared helper derives the selected navigator's overlay, converts the global
+point with `globalToLocal`, then forms a zero-size anchor with `fromSize` and
+that overlay's actual size. Pointer callbacks retain `Offset` values; conversion
+occurs when opening the menu. The peer caller retains its invocation's point,
+awaits its menu items and requires mounting before deriving the overlay. The
+breadcrumb converts its local bottom edge as a point, including its transform.
+All five custom-popup calls and the file-manager standard upload popup adopt
+the helper. The connection-page call is split across lines and was included by
+whitespace-aware reference review; its final adoption follows the component run
+without changing any executed helper/menu/test byte.
+
+Preparation `02414505` adds twelve real rendered cases to the existing bounded
+`--flutter-model-tests --menu-button` profile: custom/Material popup, LTR/RTL,
+root/offset/scaled navigator. Baseline helper code copies the existing caller
+expression unchanged and is not yet adopted by the application. The tests drive
+pointer input and inspect rendered entry edges, vertical position and width,
+then select the item and require its result and dismissal. Baseline `CJpIu1poWK`
+passes the two root/LTR cases and fourteen existing button controls, failing all
+ten remaining positioning cases. In the custom root/RTL case, an X=200 pointer
+produces a menu right edge at X=600 rather than X=200.
+
+Candidate `89984256` / `11OM2BKtdq` passes all 26 named cases, with terminal
+Flutter success after 5.129 test seconds. The exact twelve-case test file is
+unchanged (SHA-256 `b5985989b4af64e22fabd7798236faa7f4e3c8e0c9fd2be5e24818cb529f65ba`).
+The complete copied popup library also stays unchanged at
+`15099429b6cb228e5b5aa75a6685b081c1cfd9382f399cc469fbc762d5e4cbcf`.
+The helper changes from `8fbf86f8e0bdefebbe425fdc1025af35fb1a0415ea851953b495a339e6cecd61`
+to `bd66f842fa149ec1184f9943c026cb985fc97e5b9972676b66658d515a7793c5`.
+Both runs compare the test/helper/menu copies before execution. The runner now
+retains menu JSON before parser checks; the unchanged three parked models-parser
+inventory failures still prevent full harness acceptance and later source
+postconditions. Read-only evidence analysis reconciles every exact named result,
+the test's source URL and terminal status; it is not a repaired parser claim.
+
+Baseline/candidate QEMU PIDs 804152/810459 join exit 0; RAM workspaces
+`run.5bprj5f0` / `run.tkjgtks1` are absent. Supervisor times are 85.682/85.276
+seconds; RAM peaks 4,052,836,352/4,054,585,344 bytes and durable run peaks
+3,448,832/3,416,064 bytes. Each final endpoint set has one unattributed addition,
+left untouched without owner inspection. Bounded diagnostics are retained as
+`popup-position-baseline.CJpIu1poWK` (device/inode 66306/103990613) and
+`popup-position-parser-open.11OM2BKtdq` (66306/103990693), with no active run root.
+Workload serials are 31,690 bytes / `f0c1ddcfd897253245682edf19b4dded16012f86a0610ec2623aec2fad686103`
+and 16,681 bytes / `0b0d6c8cc35c9901260f2952fa7780a96b3187f09cee7363ef583069e418a86a`.
+
+Shell syntax, Python AST parsing, whitespace and caller-reference checks pass.
+No Rust parent/application build or full peer/file page runs. Remaining stock
+menu conversions in server audio, tab-bar overflow, peer sorting/tab visibility
+and mobile remote/camera pages remain OPEN, respecting their existing parks.
+Keyboard-only anchors, asynchronous menu ownership beyond mounting, complete
+page/device integration and shared installed/native/R-S0/R-F5/release acceptance
+remain OPEN. Requirements and live instructions are unchanged.

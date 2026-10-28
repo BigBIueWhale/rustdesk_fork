@@ -5,6 +5,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common/widgets/connection_page_title.dart';
+import 'package:flutter_hbb/common/widgets/popup_menu_position.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/desktop/widgets/popup_menu.dart';
 import 'package:flutter_hbb/models/state_model.dart';
@@ -447,12 +448,10 @@ class _ConnectionPageState extends State<ConnectionPage>
                               },
                               onTap: () async {
                                 _menuOpen.value = true;
-                                final x = offset.dx;
-                                final y = offset.dy;
                                 await mod_menu
                                     .showMenu(
                                   context: context,
-                                  position: RelativeRect.fromLTRB(x, y, x, y),
+                                  position: popupMenuPosition(context, offset),
                                   items: [
                                     (
                                       'Transfer file',

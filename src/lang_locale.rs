@@ -53,6 +53,10 @@ mod tests {
             ("kz", "ka-GE", "kz"),
             ("GE", "en-US", "ge"),
             ("KZ", "en-US", "kz"),
+            ("en", "iw_IL", "en"),
+            ("en", "in_ID", "en"),
+            ("he", "in_ID", "he"),
+            ("id", "iw_IL", "id"),
         ] {
             assert_eq!(select_language(configured, locale), expected);
         }
@@ -132,8 +136,30 @@ mod tests {
             ("de.UTF-8", "de"), ("pt_BR", "pt"), ("", ""),
             ("C", "c"), ("zhtw", "zhtw"), ("zhx-TW", "zhx"),
             ("en-GE", "en"), ("de-KZ", "de"), ("kaa", "kaa"), ("kkj", "kkj"),
+            ("en-IW", "en"), ("en-IN", "en"), ("iwk", "iwk"), ("inh", "inh"),
+            ("yi", "yi"), ("ji", "ji"),
         ] {
             assert_eq!(select_language("", locale), expected, "{locale}");
+        }
+    }
+
+    #[test]
+    fn hebrew_platform_codes_select_the_catalogue_language() {
+        for locale in [
+            "iw_IL", "iw", "iw-IL", "IW_il.UTF-8", "iw_IL@calendar=hebrew",
+            "iw_IL_#Hebr", "iw_Hebr_IL", "iw-u-ca-hebrew", "he", "he-IL",
+        ] {
+            assert_eq!(select_language("", locale), "he", "{locale}");
+        }
+    }
+
+    #[test]
+    fn indonesian_platform_codes_select_the_catalogue_language() {
+        for locale in [
+            "in_ID", "in", "in-ID", "IN_id.UTF-8", "in_ID@calendar=gregorian",
+            "in_ID_#Latn", "in_Latn_ID", "in-u-nu-latn", "id", "id-ID",
+        ] {
+            assert_eq!(select_language("", locale), "id", "{locale}");
         }
     }
 }

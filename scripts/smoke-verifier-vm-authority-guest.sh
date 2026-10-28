@@ -5249,6 +5249,8 @@ run_focused_rust_tests() {
                 locale::tests::georgian_locales_select_the_catalogue_language
                 locale::tests::kazakh_locales_select_the_catalogue_language
                 locale::tests::other_locales_keep_their_language
+                locale::tests::hebrew_platform_codes_select_the_catalogue_language
+                locale::tests::indonesian_platform_codes_select_the_catalogue_language
             )
         elif [ "$RUST_TEST_PROFILE" = windows-pointer ]; then
             container_name=rustdesk-windows-pointer-tests
@@ -6289,7 +6291,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                             printf "LANGUAGE_SELECTION_ARTIFACT_BEFORE=sha256=%s\n" "$artifact_sha"
                             "$test_executable" --test-threads=1 --color never
                             [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
-                            printf "LANGUAGE_SELECTION_ARTIFACT=pass sha256=%s tests=8 unchanged=before-after\n" "$artifact_sha"
+                            printf "LANGUAGE_SELECTION_ARTIFACT=pass sha256=%s tests=10 unchanged=before-after\n" "$artifact_sha"
                             exit 0
                         fi
                         if [ "$RUST_TEST_PROFILE" = windows-pointer ]; then
@@ -6703,7 +6705,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main-config-key ]; then
         printf 'MAIN_CONFIG_KEY_PROFILE=main-config-key stage=container-start tests=4 app=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = language-selection ]; then
-        printf 'LANGUAGE_SELECTION_PROFILE=language-selection stage=container-start tests=8 app=unexecuted\n'
+        printf 'LANGUAGE_SELECTION_PROFILE=language-selection stage=container-start tests=10 app=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = windows-pointer ]; then
         printf 'WINDOWS_POINTER_PROFILE=windows-pointer stage=container-start tests=5 windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-resource-limits ]; then
@@ -7459,7 +7461,7 @@ PY
             || fail 'main config-key artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = language-selection ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'language-selection summary count differs'
-        [ "$(grep -Ec '^LANGUAGE_SELECTION_ARTIFACT=pass sha256=[0-9a-f]{64} tests=8 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^LANGUAGE_SELECTION_ARTIFACT=pass sha256=[0-9a-f]{64} tests=10 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'LANGUAGE_SELECTION_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'language-selection artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = windows-pointer ]; then

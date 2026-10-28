@@ -22,7 +22,7 @@ spec.loader.exec_module(result)
 
 
 SINGLE_PROFILE = None
-if len(sys.argv) > 1 and sys.argv[1] in ("--screenshot-save", "--locales", "--draggable-divider", "--file-columns", "--trackpad-speed", "--menu-button", "--password-fields"):
+if len(sys.argv) > 1 and sys.argv[1] in ("--screenshot-save", "--locales", "--draggable-divider", "--file-columns", "--trackpad-speed", "--menu-button", "--password-fields", "--file-progress"):
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
 
 
@@ -209,7 +209,8 @@ class ResultTests(unittest.TestCase):
         if SINGLE_PROFILE is not None:
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE),
                              (1, {"locales": 10, "screenshot-save": 12,
-                                  "draggable-divider": 22, "file-columns": 13}[SINGLE_PROFILE]))
+                                  "draggable-divider": 22, "file-columns": 13,
+                                  "file-progress": 43}[SINGLE_PROFILE]))
             return
         self.assertEqual(
             self.parse(self.events("models"), "models"),

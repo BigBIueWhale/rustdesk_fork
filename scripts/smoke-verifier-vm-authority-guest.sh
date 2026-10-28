@@ -982,6 +982,7 @@ for profile, memory, scratch, overlay in (
         ('flutter-divider', 2048, 6, 5),
         ('flutter-password-fields', 2048, 5, 4),
         ('flutter-file-columns', 2560, 6, 5),
+        ('flutter-file-progress', 2560, 5.25, 5),
         ('flutter-dialog-tests', 3072, 7, 6),
         ('flutter-keyboard-layout', 3072, 7, 6),
         ('linux-service-build', 8192, 7, 6),
@@ -1037,6 +1038,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
                         ('flutter-divider', 2047), ('flutter-divider', 4096),
                         ('flutter-password-fields', 2047), ('flutter-password-fields', 4096),
                         ('flutter-file-columns', 2048), ('flutter-file-columns', 3072),
+                        ('flutter-file-progress', 2048), ('flutter-file-progress', 3072),
                         ('tcp-key-transition', 4095), ('tcp-key-transition', 6144),
                         ('fusermount-process', 2047), ('fusermount-process', 4096),
                         ('linux-service-uid-tests', 2047), ('linux-service-uid-tests', 4096),
@@ -1113,6 +1115,7 @@ cases.extend([('hbb-common-fs', {'HBB_LOGIND_NATIVE': '1'}, 'linux-logind'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'menu-button'}, 'flutter-divider'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'password-fields'}, 'flutter-password-fields'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'file-columns'}, 'flutter-file-columns'),
+              ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'file-progress'}, 'flutter-file-progress'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'clipboard-keystrokes'}, 'flutter-credential-dialog'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'file-search'}, 'flutter-credential-dialog'),
               ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'video-vpx'}, 'linux-parent-libtest'),
@@ -1152,9 +1155,9 @@ printf '%s\\n' "$VM_STORAGE_PROFILE"
         'pass': passed}, sort_keys=True), flush=True)
 print('VM_TRANSIENT_WORKLOAD_OBSERVED=' + json.dumps({
     'modes': len(modes), 'controls': controls, 'refusals': refusals}, sort_keys=True), flush=True)
-if (controls, refusals) != (67, 5):
+if (controls, refusals) != (68, 5):
     raise SystemExit('VM workload resource admission cases failed')
-print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=39 controls=67 refusals=5 allocation=not-entered')
+print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=39 controls=68 refusals=5 allocation=not-entered')
 PY
     for operation in preflight reserve check watch run; do
         root_status=0
@@ -11146,8 +11149,8 @@ run_flutter_model_tests() {
             result_prefix=FLUTTER_RECONNECT_TEST_JSON
             expected_result='suites=2 tests=11'
         elif [ "$FLUTTER_TEST_PROFILE" = file-progress ]; then
-            memory=3g
-            memory_bytes=3221225472
+            memory=1792m
+            memory_bytes=1879048192
             result_prefix=FLUTTER_FILE_PROGRESS_TEST_JSON
             expected_result='suites=1 tests=43'
         elif [ "$FLUTTER_TEST_PROFILE" = connect-password ]; then
@@ -11472,7 +11475,7 @@ run_flutter_model_tests() {
                 tar -C /work/toolchain -xf /inputs/flutter.tar.xz
                 if [ "$FLUTTER_BRIDGE_REQUIRED" -eq 1 ]; then
                     mkdir /work/cargo-home
-                    if [[ "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed ]]; then
+                    if [[ "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = file-progress ]]; then
                         rust_archive_root=rust-1.75.0-x86_64-unknown-linux-gnu
                         tar -C /work/toolchain -xf /inputs/rust.tar.xz \
                             "$rust_archive_root/install.sh" "$rust_archive_root/components" \
@@ -11499,7 +11502,7 @@ run_flutter_model_tests() {
                         --disable-ldconfig \
                         --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview \
                         >/dev/null
-                    if [[ "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed ]]; then
+                    if [[ "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = file-progress ]]; then
                         rm -rf -- "/work/toolchain/$rust_archive_root"
                         [ ! -e "/work/toolchain/$rust_archive_root" ] \
                             && [ ! -L "/work/toolchain/$rust_archive_root" ]
@@ -12010,10 +12013,16 @@ run_flutter_model_tests() {
                     python3 -B -I -S /source/scripts/prepare-keyboard-layout-probe.py /source /work/project verify
                     cat /work/test.json
                 fi
-                if [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = file-progress ]]; then
                     IFS= read -r memory_limit </sys/fs/cgroup/memory.max
                     IFS= read -r memory_peak </sys/fs/cgroup/memory.peak
-                    [ "$memory_limit" = 2147483648 ]
+                    if [ "$FLUTTER_TEST_PROFILE" = file-progress ]; then
+                        [ "$memory_limit" = 1879048192 ]
+                        memory_receipt=FLUTTER_FILE_PROGRESS_MEMORY
+                    else
+                        [ "$memory_limit" = 2147483648 ]
+                        memory_receipt=FLUTTER_DIALOG_MEMORY
+                    fi
                     [[ "$memory_peak" =~ ^[0-9]+$ ]]
                     memory_oom= memory_oom_kill=
                     while read -r event value; do
@@ -12022,9 +12031,11 @@ run_flutter_model_tests() {
                             oom_kill) memory_oom_kill=$value ;;
                         esac
                     done </sys/fs/cgroup/memory.events
-                    printf "FLUTTER_DIALOG_MEMORY=observed limit=%s peak=%s oom=%s oom_kill=%s\n" \
-                        "$memory_limit" "$memory_peak" "$memory_oom" "$memory_oom_kill"
+                    printf "%s=observed limit=%s peak=%s oom=%s oom_kill=%s\n" \
+                        "$memory_receipt" "$memory_limit" "$memory_peak" "$memory_oom" "$memory_oom_kill"
                     [ "$memory_oom:$memory_oom_kill" = 0:0 ]
+                fi
+                if [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
                     for relative in lib/common.dart lib/common/widgets/dialog.dart lib/common/widgets/overlay.dart lib/models/model.dart test/windows_session_dialog_test.dart; do
                         cmp "/source/flutter/$relative" "$relative"
                     done
@@ -12049,7 +12060,7 @@ run_flutter_model_tests() {
                     cat /work/test.json
                 fi
                 parser_args=()
-                if [[ "$FLUTTER_TEST_PROFILE" = screenshot-save || "$FLUTTER_TEST_PROFILE" = locales || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = menu-button || "$FLUTTER_TEST_PROFILE" = password-fields ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = screenshot-save || "$FLUTTER_TEST_PROFILE" = locales || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = menu-button || "$FLUTTER_TEST_PROFILE" = password-fields || "$FLUTTER_TEST_PROFILE" = file-progress ]]; then
                     parser_args=("--$FLUTTER_TEST_PROFILE")
                 fi
                 /usr/bin/python3 -I -S /source/scripts/test-flutter-model-test-result.py "${parser_args[@]}"
@@ -12442,6 +12453,12 @@ run_flutter_model_tests() {
     printf '%s\n' "$tools_freshness_line"
     printf 'FLUTTER_TEST_RESULT_PARSER=pass tests=3\n'
     printf '%s\n' "$result_line"
+    if [ "$FLUTTER_TEST_PROFILE" = file-progress ]; then
+        [ "$(grep -Ec '^FLUTTER_FILE_PROGRESS_MEMORY=observed limit=1879048192 peak=[0-9]+ oom=0 oom_kill=0$' "$output")" -eq 1 ] \
+            || fail 'file-progress memory observation differs'
+        grep -E '^FLUTTER_FILE_PROGRESS_MEMORY=' "$output"
+        grep -Fx 'FLUTTER_DIALOG_TOOLCHAIN=pass components=rustc,cargo,rust-std,rustfmt installer=retired' "$output"
+    fi
     if [[ "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme ]]; then
         [ "$(grep -Ec '^SETTINGS_NAVIGATION_SOURCE=(prepare|verify) page=[0-9a-f]{64} tests=[0-9a-f]{64} page_copy=exact native_binding=double parent=double platform=double$' "$output")" -eq 2 ] \
             || fail 'settings navigation source receipts differ'

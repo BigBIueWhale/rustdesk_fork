@@ -113787,3 +113787,27 @@ Next: execute the unchanged baseline when admitted, reconcile its exact run,
 then apply/commit/push the correction and execute the same cases. This item is
 runtime-pending, not user-parked or complete. Resource limits and host isolation
 remain unchanged; no full build or additional VM was launched after the guard.
+
+## 2026-10-28 — CM audio completed-click correction; acceptance pending
+
+The previous turn made progress by committing the rendered keyboard cases and
+reconciling the interrupted VM. Revalidation confirms the same clean pushed source,
+test/capsule hashes and insufficient launch capacity. Rather than retain an
+unapplied correction solely for baseline ordering, `4012c905` applies the reviewed
+patch: the audio control uses its required onClick callback; the CM button factory
+directly supplies that callback to InkWell; the optional onTapDown actuator and
+empty click wrapper are removed. The menu rectangle comes from the current
+rendered button converted into its Navigator overlay after device enumeration.
+Pending-operation and exact client/registry/call checks are unchanged. All six
+button construction sites supply onClick. Product SHA-256 is
+`dc55238a9c03386d479efe5ccd2af7c0f51403ee590365d32a4cda14dfa7d391`.
+
+This is source implementation, not behavioral acceptance. The candidate launch
+refused before allocation at 13,852 MiB available against 14,592 MiB required;
+no test or compiler ran. The earlier interrupted baseline likewise never reached
+the tests, so no before/after runtime comparison exists. The unchanged 37-case
+inventory and three parser checks remain to run on the candidate when resources
+admit. The ledger now states that distinction. No resource threshold, isolation
+rule or native receiver changed. The unapplied patch in the preparation capsule
+remains historical provenance; its next-action text is superseded by this entry.
+Source diff checks pass; a fresh ledger count follows when admitted.

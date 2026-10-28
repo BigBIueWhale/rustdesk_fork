@@ -110026,3 +110026,71 @@ bytes and durable run peak 147,456 bytes. QEMU 4045434 joins with exit 0; its PI
 RAM workspace `run.x_206xr_` and active run roots are absent. All three endpoint
 comparisons have zero additions and removals. This audit-only receipt leaves the
 counted ledger unchanged; product and native acceptance remain open.
+
+## 2026-10-28 — canonical release manifest boundaries
+
+Previous turn was PROGRESS: the codec documentation correction and its count are
+pushed at `65d82723`/`80ee424c`. Current inspection recovered the explicit libyuv
+park recorded on 2026-10-16; its backport and advisory remain parked and unchanged.
+This slice instead corrects release-manifest admission. All other parks, including
+terminal history and the shared Flutter/parser and parent-build blockers, remain.
+All fifteen R-S11ia–R-S11io installed credential actions still require native
+acceptance; this finding is a format-consistency defect, not a demonstrated LPE.
+
+The release producer writes exactly nine LF-terminated ASCII lines, and the
+publisher's strict header/entry proof preserves that format. The finalizer's
+`parse_manifest` used `str.splitlines`, which also recognizes CR, CRLF, VT, FF and
+ASCII file/group/record separators. Python's primary contract documents that
+broader behavior: https://docs.python.org/3.11/library/stdtypes.html#str.splitlines.
+Design implication: the finalizer must preserve the producer's exact delimiter,
+with existing field/order/hash/EOF validation, rather than normalize alternate
+separators into admissible metadata. Its source and retained-set paths both use
+the same parser. `acfe249c3012417b6891b8314d0df3bfdc1b565e` changes only that split.
+
+Preparation `21f177a9097a3b338623137a2792d73c14af8a9a` adds thirteen actual
+publication/verification cases to the existing release transaction fixture,
+without a new VM mode or storage profile. Baseline `FMwvobydzA` accepts all 26
+operations: complete CRLF, plus six other separator forms at header and checksum
+boundaries. Canonical publication/verification succeeds too. The explicit final
+assertion lists every unexpected acceptance. Serial 78,535 bytes, SHA-256
+`c29c07d5c5ccf72fa9bf652b05d47d3e9cc48fc9dbedaef7cd469ef756e27932`.
+The next run, `CkkypTK8bg` at the corrected parser, refuses CRLF then fails the
+fixture's incorrect expectation that no staging journal remains. Production
+intentionally journals staging before source admission; `a4b9cc4c` adds explicit
+recovery, requires no destination and the restored parent inventory, and retains
+all original malformed inputs and refusal oracles. That rejected run is not a
+pass. Its serial is 76,415 bytes, SHA-256
+`773a6aa0315ae9175b20bbc481cbfe2249d158f70c3725cc7843388fe155d5f9`.
+
+Accepted `tIUb5Xh7yo` runs `/bin/bash scripts/smoke-verifier-vm-authority.sh` at
+`a4b9cc4cb1dbd61d030f381f8e584654d2ba7a6a`, tree
+`7ad4ac4cf03a23f329f398f9d038f173dc8cdbed`. All thirteen malformed inputs are
+refused for publication and verification; recovery joins and removes its exact
+staging state, verification preserves all entry bytes/metadata, and canonical
+verification remains successful. The existing release/restart/reset/publisher
+transactions pass with root/foreign entry refusal. Fixture artifacts contain
+small controlled bytes; no application build, package installation, GitHub
+publication or native installed-service acceptance is performed.
+
+Executed source SHA-256: finalizer
+`10d9b3044e14a25a25fde1147e6a303933d6a678c7417e637bf6f1399ce48250`,
+release fixture/parent
+`be4ce5ad97ab16627553a518776fc9f047096251f00b23cb99980bdd00c9510d`,
+workspace runner `9c863808e76d5d0eb7eb76e679720ea781cb56a6ad29aae257d9daa93cc0b1ce`.
+Accepted serial 89,324 bytes, SHA-256
+`1fa6d63cb2660740ecf24b2ba17f5bc6b9c6e6809138af97e82dff4ab8e454ee`.
+Outer/supervisor lifetime is 94/96.794 seconds; RAM peak 469,843,968 bytes and
+durable run peak 143,360 bytes. The existing profile admits 2-GiB guest RAM,
+4-GiB scratch, 1-GiB file ceiling, 6-GiB headroom and 1-GiB overhead. Exact QEMU
+4067104 joins exit 0; its PID and RAM `run.pvhiplir` are absent. Host IP sockets
+are kernel-denied. Baseline final endpoint observation loses one 18-byte entry;
+candidate final observation adds one. Both are unattributed and untouched; the
+fixture-failure observations have no deltas.
+
+The two rejected QEMUs (4059709/4062929) also join exit 0 and their RAM workspaces
+retire. Their small diagnostic roots are identity-checked and renamed without
+replacement to `release-manifest-baseline.FMwvobydzA` and
+`release-manifest-fixture.CkkypTK8bg`; no active run root remains. Syntax/AST and
+diff checks pass. Full cold release artifacts, installed authority, R-S0/R-F5,
+independent reproduction and external review remain OPEN. The broad goal remains
+active and incomplete. A fresh ledger count follows this exact status update.

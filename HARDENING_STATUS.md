@@ -13283,6 +13283,25 @@ full Windows storage acceptance.
 
 ### R-B9/R-S11gm/R-S11e-225 — release-parent workspace principal and retained authority
 
+**Canonical manifest boundaries (`acfe249c`).** The finalizer splits the exact
+newline-terminated ASCII manifest only at LF, matching the producer and publisher.
+Preparation `21f177a9` reproduces acceptance of all thirteen noncanonical variants
+by both actual publication and verification: CRLF throughout, plus CR, VT, FF and
+ASCII file/group/record separators at header and checksum boundaries. At
+`a4b9cc4c`, all thirteen are refused by both paths; no destination is published,
+explicit journal recovery restores the parent inventory, verification preserves
+entry bytes/metadata, and the canonical manifest remains accepted. The first
+candidate run exposed a fixture assumption that refusal leaves no staging journal;
+the fixture now exercises the existing explicit recovery contract. Its malformed
+inputs and refusal oracles are unchanged. Existing release/restart/reset/publisher
+fixtures also pass in the zero-NIC VM as UID/GID 4000, with root/foreign entry
+refusal. The 94-second authority transaction uses tiny controlled artifact bytes,
+not release builds or installation. QEMU joins and bounded RAM scratch retires;
+the final endpoint observation records one unattributed addition, left untouched.
+Evidence: audit entry “2026-10-28 — canonical release manifest boundaries” and
+`authority-smoke-run.tIUb5Xh7yo.serial.log`. Complete cold artifacts, installed
+authority, R-S0/R-F5 and release acceptance remain OPEN.
+
 **Principal and complete-tree retention corrected; isolated native helper/reset/
 terminal-cleanup fixtures pass; cold release remains OPEN.** The release parent has
 no container launches, Docker socket, image

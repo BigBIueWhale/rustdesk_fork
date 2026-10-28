@@ -111093,3 +111093,32 @@ joins exit 0; its PID, RAM `run.lks9ehwj` and active owned roots are absent.
 The final snapshot retains one unattributed endpoint removal, left untouched.
 This audit-only receipt preserves the counted ledger and the open product and
 shared-harness acceptance boundaries above.
+
+## 2026-10-28 — public security overview and user pivot
+
+The user explicitly requested another aspect. RDP settings-dialog loading,
+saving, error feedback and lifetime review remains OPEN/PARKED after read-only
+inspection; no new dialog change, component run or full application build was
+made. The completed RDP field correction and its recorded evidence stand.
+
+The public README overstated the current evidence: it called CVE-2026-58056
+fixed, claimed universal startup verification of single-port/zero-egress posture,
+and described CI absence checks despite the repository's disabled hosted CI.
+`src/direct_service.rs::assert_startup_invariants` checks selected policy values;
+`assert_socket_surface` runs after bind, permits unavailable platform coverage,
+uses different mobile failure handling, and explicitly does not observe TCP
+egress. `src/server.rs` orders desktop checks before admission, while
+`src/server/connection.rs` contains the session-type dispatcher. R-S19 and the
+current CVE/installed-credential ledger retain native/artifact acceptance.
+
+README now identifies source design, states those verification limits and links
+the current ledger. The unsupported SSH comparison and blanket closure claims
+are removed. External R-V3 review, release verification, signing identity and
+license/attribution guidance remain. Deployment, Android, release, versioning,
+MSI and build guides were reviewed and required no edit for this slice.
+Product, verifier and normative requirements are unchanged. Read-only source,
+local-link and full-diff review plus `git diff --check` are the appropriate
+documentation checks; no product runtime result or new defect closure is claimed.
+The fifteen installed credential actions, R-S0/R-F5, all parked work and release
+acceptance remain open. A fresh isolated ledger count follows the documentation
+commit and is recorded separately below.

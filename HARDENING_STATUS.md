@@ -52,6 +52,12 @@ case inventories, intermediate failures, source/artifact hashes and timings rema
 receipts under `.harness-state/verifier-vm/` and in Git history. Shared current-artifact,
 installed/other-platform, R-S0/R-F5, resource/soak and release obligations below remain OPEN.
 
+**User pivot (2026-10-28):** RDP settings-dialog load/save/lifetime follow-up
+remains OPEN/PARKED after read-only review. The completed port-field correction
+and its 33 passing component cases remain recorded below; the shared parser,
+full dialog and native persistence acceptance remain open. No further dialog
+change or test was made. Work moved to public deployment/security documentation.
+
 **User pivot (2026-10-28):** Unix clipboard FILETIME follow-up remains OPEN/PARKED.
 Correction `1a4f9c36` is pushed; Linux clipboard-library run `vQpPSzdjDr` passes
 all thirteen cases after baseline `DrEkRpwDES` passes four and fails nine.
@@ -501,6 +507,7 @@ and fresh ledger count. Current native/installed and release acceptance remain O
 | Direct-only configuration | R-X3/R-X4, R-A4/R-A6 and Appendix C #6; an inert baked constant grants no channel authority | `direct-only-authority-document-role-3a0306a4.json` |
 | Release metadata and codec provenance | Native-codec source/advisory-ledger synchronization; the versioning guide separates release provenance from the specification hash | `codec-specification-provenance-390120c4.json` |
 | Product overview and assurance contract | The opening and §1 state sole direct TCP, key confirmation before application traffic, all five session types, both shipped roles and retained Apple/iOS scope. The duplicate thesis, six-transport statement, operator opinion and unsupported SSH superiority/parity table are deleted. R-V3 retains vectors/KATs, adversarial checks, complete expert-review scope, publication before exposed operation and pre-audit disclosure, using the pinned Internet-Draft without claiming standardization or achieved assurance. Product/verifier sources are unchanged; all fifteen credential actions, R-S0/R-F5, native/installed, independent and release acceptance remain OPEN. | `scope-assurance-62c492a1.json` |
+| Public security overview | `README.md` describes source design without the unsupported all-platform startup/zero-egress guarantee, blanket CVE-fixed label, CI assertion or SSH comparison. It states the post-bind check's platform and TCP-egress limits and links current acceptance to this ledger. Source, requirement and local-link review support this documentation correction; no new product execution or security closure is claimed. All fifteen credential actions, R-S0/R-F5, native/installed and release acceptance remain OPEN. | Audit entry “2026-10-28 — public security overview and user pivot” |
 | Windows MSI packaging guide | `res/msi/README.md` points to the current guest build recipe, authenticated inputs, release preparation and independent artifact verification. Standalone Visual Studio/preprocessor/install steps, the generic property table and stale custom-client TODOs are deleted; MediaPortal attribution remains. Packaging sources and verification code are unchanged. Native Windows, installed-artifact, R-S0/R-F5 and release acceptance remain OPEN. | `msi-guide-e4a9066e.json` |
 | Acquisition authority | Complete pinned-input contract and isolated acquisition authority | `acquisition-document-roles-951a4a8e.json` |
 | Cargo tool installation contract | R-S11cm retains both exact producer identities, all pins, read-only inputs/private outputs, explicit digest selection, sealed modes, no-clobber publication, recovery/rollback, executable filesystem cases and the focused source contract. Three historical incident sentences and output-completion claims are removed; separate provenance, producer, cold-artifact, native/device and external-review acceptance remains explicit. Appendix C #232, R-S11cp and executable sources are unchanged. Cold acquisition and release acceptance remain OPEN. | `cargo-tool-contract-bbcef4f6.json` |

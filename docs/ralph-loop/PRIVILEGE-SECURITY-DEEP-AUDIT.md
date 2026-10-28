@@ -111083,3 +111083,13 @@ addition/removal/removal, left untouched; the intermediate candidate has zero
 deltas. Bounded diagnostics are preserved as `rdp-port-format.oGufrxftam`,
 `rdp-port-baseline.aOHwxxZdeR`, `rdp-port-newline-fixture.gc9jVsKesQ` and
 `rdp-port-parser-open.Il6mgqc1jH`. Shell syntax and `git diff --check` pass.
+
+Ledger update committed/pushed as `9642a018`. Fresh count `DrtSnvU27m` passes:
+357,981 tokens, 1,627,949 bytes, input SHA-256
+`8058a50ccf70f4d39d71f91727eb540cdbf377b5b4c9ea199244f61552b7094d`.
+Seven controls and whole-file round trip pass. Outer/supervisor times are
+28/31.644 seconds; RAM/durable peaks are 402,350,080/253,952 bytes. QEMU 573635
+joins exit 0; its PID, RAM `run.lks9ehwj` and active owned roots are absent.
+The final snapshot retains one unattributed endpoint removal, left untouched.
+This audit-only receipt preserves the counted ledger and the open product and
+shared-harness acceptance boundaries above.

@@ -110698,3 +110698,17 @@ pivot without changing the normative specification or live instructions.
 Parent/platform compilation, active-launch lifecycle integration, installed
 authority, R-S0/R-F5 and release acceptance remain OPEN. A fresh bounded ledger
 count follows; it is documentation validation only.
+
+Fresh ledger count at `4a3a66c3222de8c0e8b8ad2482570bf97130e24e`, run
+`MlwfyGtlIT`: **356,838 tokens**, 1,622,518 bytes, input SHA-256
+`f282247afa5fda7989f188f06defe8670954af450bab504655a20d9ae6b4f191`.
+The pinned whole-file method passes seven controls and the byte round trip.
+Workload archive: 31,042 bytes, SHA-256
+`0af4168b6159a2e5f6026eb836da2fadc49675d6df12d4d707a53fb5fe473ffd`.
+Outer/supervisor times are 32/34.390 seconds; RAM scratch peaks at 402,206,720
+bytes and durable-run evidence at 258,048 bytes. The bounded 2-GiB guest,
+4-GiB RAM scratch, 1-GiB file ceiling, headroom admission and live monitor apply.
+QEMU 293702 joins exit 0; its PID, RAM `run.rop3ap1z` and active owned roots are
+absent. Before/during endpoint deltas are zero; one final unattributed 18-byte
+addition remains untouched. This audit-only receipt leaves the counted ledger
+unchanged and within its approximate budget. No product ran.

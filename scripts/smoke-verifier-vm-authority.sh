@@ -354,7 +354,7 @@ case "$#:${1:-}" in
         MODE=flutter-model-tests
         ;;
     2:--flutter-model-tests)
-        [[ "$2" = --frame-queue || "$2" = --direct-address || "$2" = --file-metadata || "$2" = --password-fields || "$2" = --share-rdp || "$2" = --connect-password || "$2" = --credential-dialog || "$2" = --terminal-output || "$2" = --settings-navigation || "$2" = --desktop-theme || "$2" = --window-dispatch || "$2" = --menu-button || "$2" = --path-labels || "$2" = --setting-checkbox || "$2" = --draggable-divider || "$2" = --list-search || "$2" = --credential-badge || "$2" = --peer-search || "$2" = --tab-selection || "$2" = --status-refresh || "$2" = --peer-data || "$2" = --file-progress || "$2" = --file-search || "$2" = --clipboard-keystrokes || "$2" = --floating-position || "$2" = --virtual-joystick || "$2" = --virtual-mouse-buttons || "$2" = --custom-scale || "$2" = --audio-input || "$2" = --reconnect || "$2" = --file-navigation || "$2" = --directory-ordering || "$2" = --modifier-release || "$2" = --auto-disconnect ]] \
+        [[ "$2" = --frame-queue || "$2" = --direct-address || "$2" = --file-metadata || "$2" = --password-fields || "$2" = --share-rdp || "$2" = --connect-password || "$2" = --credential-dialog || "$2" = --terminal-output || "$2" = --settings-navigation || "$2" = --desktop-theme || "$2" = --window-dispatch || "$2" = --menu-button || "$2" = --hold-drag || "$2" = --path-labels || "$2" = --setting-checkbox || "$2" = --draggable-divider || "$2" = --list-search || "$2" = --credential-badge || "$2" = --peer-search || "$2" = --tab-selection || "$2" = --status-refresh || "$2" = --peer-data || "$2" = --file-progress || "$2" = --file-search || "$2" = --clipboard-keystrokes || "$2" = --floating-position || "$2" = --virtual-joystick || "$2" = --virtual-mouse-buttons || "$2" = --custom-scale || "$2" = --audio-input || "$2" = --reconnect || "$2" = --file-navigation || "$2" = --directory-ordering || "$2" = --modifier-release || "$2" = --auto-disconnect ]] \
             && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'focused Flutter shard or input/run authority differs' >&2; exit 2; }
@@ -648,6 +648,7 @@ case "$#:${1:-}" in
         printf 'Focused status refresh retirement: %s --flutter-model-tests --status-refresh\n' "${0##*/}" >&2
         printf 'Rendered menu button accessibility: %s --flutter-model-tests --menu-button\n' "${0##*/}" >&2
         printf 'Saved-credential badge accessibility: %s --flutter-model-tests --credential-badge\n' "${0##*/}" >&2
+        printf 'Rendered tap-and-hold drag: %s --flutter-model-tests --hold-drag\n' "${0##*/}" >&2
         printf 'Rendered filename accessibility: %s --flutter-model-tests --path-labels\n' "${0##*/}" >&2
         printf 'Rendered settings checkbox accessibility: %s --flutter-model-tests --setting-checkbox\n' "${0##*/}" >&2
         printf 'Rendered file-column divider dragging: %s --flutter-model-tests --draggable-divider\n' "${0##*/}" >&2
@@ -8188,6 +8189,12 @@ else
         require_exact_fixed_receipt \
             "FLUTTER_DRAGGABLE_DIVIDER_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=14 flutter=$FLUTTER_VERSION widget=$widget_sha256 tests_source=$widget_tests_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-draggable-divider-tests cleanup=joined" \
             'focused Flutter draggable-divider receipt'
+    elif [ "$FLUTTER_TEST_PROFILE" = hold-drag ]; then
+        widget_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/common/widgets/gestures.dart" | /usr/bin/awk '{print $1}')"
+        widget_tests_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test/hold_tap_move_test.dart" | /usr/bin/awk '{print $1}')"
+        require_exact_fixed_receipt \
+            "FLUTTER_HOLD_DRAG_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=17 flutter=$FLUTTER_VERSION widget=$widget_sha256 tests_source=$widget_tests_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-hold-drag-tests cleanup=joined" \
+            'focused Flutter hold-drag receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = path-labels ]; then
         widget_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/common/widgets/start_ellipsis_text.dart" | /usr/bin/awk '{print $1}')"
         widget_tests_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test/start_ellipsis_text_test.dart" | /usr/bin/awk '{print $1}')"
@@ -8264,7 +8271,7 @@ else
             'focused Flutter modifier release receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = auto-disconnect ]; then
         require_exact_fixed_receipt \
-            "FLUTTER_AUTO_DISCONNECT_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=13 tests=338 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-auto-disconnect-tests cleanup=joined" \
+            "FLUTTER_AUTO_DISCONNECT_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=13 tests=341 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-auto-disconnect-tests cleanup=joined" \
             'focused Flutter auto-disconnect timeout receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = directory-ordering ]; then
         require_exact_fixed_receipt \
@@ -9112,6 +9119,9 @@ else
             "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$FLUTTER_TEST_PROFILE" = list-search ]; then
         printf 'FLUTTER_LIST_SEARCH_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=rendered-list-search-tests cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
+    elif [ "$FLUTTER_TEST_PROFILE" = hold-drag ]; then
+        printf 'FLUTTER_HOLD_DRAG_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=rendered-hold-drag-tests cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$FLUTTER_TEST_PROFILE" = path-labels ]; then
         printf 'FLUTTER_PATH_LABEL_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=rendered-path-label-tests cleanup=joined elapsed_seconds=%s\n' \

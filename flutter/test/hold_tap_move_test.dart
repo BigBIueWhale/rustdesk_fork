@@ -30,11 +30,12 @@ class _Fixture {
   int get fallbackAccepts => competitors.fold(0, (n, r) => n + r.accepted);
   int get fallbackRejects => competitors.fold(0, (n, r) => n + r.rejected);
 
-  Future<void> mount(WidgetTester tester, Offset offset) =>
+  Future<void> mount(WidgetTester tester, Offset offset, Matrix4? transform) =>
       tester.pumpWidget(Directionality(
     textDirection: TextDirection.ltr,
-    child: Transform.translate(
-      offset: offset,
+    child: Transform(
+      transform: (Matrix4.identity()..translate(offset.dx, offset.dy)) *
+          (transform ?? Matrix4.identity()),
       child: Listener(
         onPointerDown: (event) {
           entries[event.pointer] = List.generate(2, (_) {
@@ -126,14 +127,56 @@ Future<void> _run(WidgetTester tester,
     Future<void> Function(_Fixture) body, {
       bool withDoubleTap = false, bool withEnd = true,
       Offset offset = Offset.zero,
+      Matrix4? transform,
     }) async {
   final fixture = _Fixture(withDoubleTap: withDoubleTap, withEnd: withEnd);
-  await fixture.mount(tester, offset);
+  await fixture.mount(tester, offset, transform);
   try { await body(fixture); }
   finally { await fixture.close(tester); }
 }
 
 void main() {
+  Future<void> expectLocalMovement(WidgetTester tester, _Fixture f,
+      Offset expected) async {
+    final gesture = await f.second(tester, 1);
+    await gesture.moveBy(const Offset(40, 30));
+    expect(f.starts, hasLength(1));
+    expect(f.updates, hasLength(1));
+    expect(f.updates.single.delta, offsetMoreOrLessEquals(expected));
+    expect(f.updates.single.globalPosition, const Offset(120, 110));
+    expect(f.updates.single.localPosition - f.starts.single.localPosition,
+        offsetMoreOrLessEquals(expected));
+    await gesture.moveBy(const Offset(-40, -30));
+    expect(f.updates, hasLength(2));
+    expect(f.updates.last.delta, offsetMoreOrLessEquals(-expected));
+    expect(f.updates.last.localPosition,
+        offsetMoreOrLessEquals(f.starts.single.localPosition));
+    await f.up(gesture);
+    expect(f.ends, hasLength(1));
+    expect(f.fallbackRejects, 4);
+  }
+
+  testWidgets('hold drag movement uses scaled receiver coordinates',
+      (tester) => _run(tester,
+          (f) => expectLocalMovement(tester, f, const Offset(20, 10)),
+          transform: Matrix4.diagonal3Values(2, 3, 1)));
+
+  testWidgets('hold drag movement uses rotated receiver coordinates',
+      (tester) => _run(tester,
+          (f) => expectLocalMovement(tester, f, const Offset(30, -40)),
+          offset: const Offset(300, 0),
+          transform: Matrix4.identity()
+            ..setEntry(0, 0, 0)
+            ..setEntry(0, 1, -1)
+            ..setEntry(1, 0, 1)
+            ..setEntry(1, 1, 0)));
+
+  testWidgets('hold drag movement uses reflected receiver coordinates',
+      (tester) => _run(tester,
+          (f) => expectLocalMovement(tester, f, const Offset(-40, 30)),
+          offset: const Offset(300, 0),
+          transform: Matrix4.diagonal3Values(-1, 1, 1)));
+
   testWidgets('hold drag accepts tap hold movement and release',
       (tester) => _run(tester, (f) async {
     final gesture = await f.activate(tester, 1);

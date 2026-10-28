@@ -175,7 +175,7 @@ case "$#:${8:-}" in
         MODE=flutter-model-tests
         ;;
     13:--flutter-model-tests)
-        [[ "${13}" = --frame-queue || "${13}" = --direct-address || "${13}" = --file-metadata || "${13}" = --password-fields || "${13}" = --share-rdp || "${13}" = --connect-password || "${13}" = --credential-dialog || "${13}" = --terminal-output || "${13}" = --settings-navigation || "${13}" = --desktop-theme || "${13}" = --window-dispatch || "${13}" = --menu-button || "${13}" = --path-labels || "${13}" = --setting-checkbox || "${13}" = --draggable-divider || "${13}" = --list-search || "${13}" = --credential-badge || "${13}" = --peer-search || "${13}" = --tab-selection || "${13}" = --status-refresh || "${13}" = --peer-data || "${13}" = --file-progress || "${13}" = --file-search || "${13}" = --clipboard-keystrokes || "${13}" = --floating-position || "${13}" = --virtual-joystick || "${13}" = --virtual-mouse-buttons || "${13}" = --custom-scale || "${13}" = --audio-input || "${13}" = --reconnect || "${13}" = --file-navigation || "${13}" = --directory-ordering || "${13}" = --modifier-release || "${13}" = --auto-disconnect ]] || exit 2
+        [[ "${13}" = --frame-queue || "${13}" = --direct-address || "${13}" = --file-metadata || "${13}" = --password-fields || "${13}" = --share-rdp || "${13}" = --connect-password || "${13}" = --credential-dialog || "${13}" = --terminal-output || "${13}" = --settings-navigation || "${13}" = --desktop-theme || "${13}" = --window-dispatch || "${13}" = --menu-button || "${13}" = --hold-drag || "${13}" = --path-labels || "${13}" = --setting-checkbox || "${13}" = --draggable-divider || "${13}" = --list-search || "${13}" = --credential-badge || "${13}" = --peer-search || "${13}" = --tab-selection || "${13}" = --status-refresh || "${13}" = --peer-data || "${13}" = --file-progress || "${13}" = --file-search || "${13}" = --clipboard-keystrokes || "${13}" = --floating-position || "${13}" = --virtual-joystick || "${13}" = --virtual-mouse-buttons || "${13}" = --custom-scale || "${13}" = --audio-input || "${13}" = --reconnect || "${13}" = --file-navigation || "${13}" = --directory-ordering || "${13}" = --modifier-release || "${13}" = --auto-disconnect ]] || exit 2
         MODE=flutter-model-tests
         FLUTTER_TEST_PROFILE=${13#--}
         ;;
@@ -10806,6 +10806,9 @@ run_flutter_model_tests() {
         elif [ "$FLUTTER_TEST_PROFILE" = file-metadata ]; then
             result_prefix=FLUTTER_FILE_METADATA_TEST_JSON
             expected_result='suites=1 tests=16'
+        elif [ "$FLUTTER_TEST_PROFILE" = hold-drag ]; then
+            result_prefix=FLUTTER_HOLD_DRAG_TEST_JSON
+            expected_result='suites=1 tests=17'
         elif [ "$FLUTTER_TEST_PROFILE" = path-labels ]; then
             result_prefix=FLUTTER_PATH_LABEL_TEST_JSON
             expected_result='suites=1 tests=16'
@@ -10869,7 +10872,7 @@ run_flutter_model_tests() {
             memory=3g
             memory_bytes=3221225472
             result_prefix=FLUTTER_AUTO_DISCONNECT_TEST_JSON
-            expected_result='suites=13 tests=338'
+            expected_result='suites=13 tests=341'
         elif [ "$FLUTTER_TEST_PROFILE" = directory-ordering ]; then
             memory=3g
             memory_bytes=3221225472
@@ -10952,6 +10955,8 @@ run_flutter_model_tests() {
             printf 'FLUTTER_FILE_METADATA_STAGE=verify-source-and-inputs\n'
         elif [ "$FLUTTER_TEST_PROFILE" = menu-button ]; then
             printf 'FLUTTER_MENU_BUTTON_STAGE=verify-source-and-inputs\n'
+        elif [ "$FLUTTER_TEST_PROFILE" = hold-drag ]; then
+            printf 'FLUTTER_HOLD_DRAG_STAGE=verify-source-and-inputs\n'
         elif [ "$FLUTTER_TEST_PROFILE" = path-labels ]; then
             printf 'FLUTTER_PATH_LABEL_STAGE=verify-source-and-inputs\n'
         elif [ "$FLUTTER_TEST_PROFILE" = setting-checkbox ]; then
@@ -11339,6 +11344,8 @@ run_flutter_model_tests() {
                     format_paths=(lib/models/file_timestamp.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = menu-button ]; then
                     format_paths=()
+                elif [ "$FLUTTER_TEST_PROFILE" = hold-drag ]; then
+                    format_paths=()
                 elif [ "$FLUTTER_TEST_PROFILE" = path-labels ]; then
                     format_paths=()
                 elif [ "$FLUTTER_TEST_PROFILE" = setting-checkbox ]; then
@@ -11541,6 +11548,8 @@ run_flutter_model_tests() {
                 elif [ "$FLUTTER_TEST_PROFILE" = menu-button ]; then
                     python3 -B -I -S /source/scripts/prepare-help-button-probe.py /source /work/project
                     tests=(test/menu_button_test.dart test_probes/fixed_width_button_probe_test.dart)
+                elif [ "$FLUTTER_TEST_PROFILE" = hold-drag ]; then
+                    tests=(test/hold_tap_move_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = path-labels ]; then
                     tests=(test/start_ellipsis_text_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = setting-checkbox ]; then
@@ -11717,6 +11726,13 @@ run_flutter_model_tests() {
                         "$(sha256sum lib/common/widgets/peer_card.dart | cut -d " " -f 1)" \
                         "$(sha256sum test/address_validator_test.dart | cut -d " " -f 1)"
                 fi
+                if [ "$FLUTTER_TEST_PROFILE" = hold-drag ]; then
+                    cmp /source/flutter/lib/common/widgets/gestures.dart lib/common/widgets/gestures.dart
+                    cmp /source/flutter/test/hold_tap_move_test.dart test/hold_tap_move_test.dart
+                    printf "HOLD_DRAG_SOURCE=pass recognizer=%s tests=%s copies=exact\n" \
+                        "$(sha256sum lib/common/widgets/gestures.dart | cut -d " " -f 1)" \
+                        "$(sha256sum test/hold_tap_move_test.dart | cut -d " " -f 1)"
+                fi
                 if [ "$test_status" -ne 0 ]; then
                     [[ "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme || "$FLUTTER_TEST_PROFILE" = file-navigation ]] || tail -c 4194304 /work/test.json >&2
                     tail -c 1048576 /work/test.err >&2
@@ -11725,7 +11741,7 @@ run_flutter_model_tests() {
                 [ "$(stat -c %s /work/test.err)" -le 1048576 ]
                 [ ! -s /work/test.err ] || tail -n 120 /work/test.err >&2
                 file_navigation_stage validate-results
-                if [[ "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = direct-address ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = direct-address || "$FLUTTER_TEST_PROFILE" = hold-drag ]]; then
                     cat /work/test.json
                 fi
                 /usr/bin/python3 -I -S /source/scripts/test-flutter-model-test-result.py
@@ -11736,7 +11752,7 @@ run_flutter_model_tests() {
                     exit 1
                 fi
                 file_navigation_stage source-postconditions
-                if [[ "$FLUTTER_TEST_PROFILE" = menu-button || "$FLUTTER_TEST_PROFILE" = path-labels || "$FLUTTER_TEST_PROFILE" = setting-checkbox || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = list-search || "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = credential-badge || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = auto-disconnect || "$FLUTTER_TEST_PROFILE" = share-rdp || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = modifier-release ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = menu-button || "$FLUTTER_TEST_PROFILE" = hold-drag || "$FLUTTER_TEST_PROFILE" = path-labels || "$FLUTTER_TEST_PROFILE" = setting-checkbox || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = list-search || "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = credential-badge || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = auto-disconnect || "$FLUTTER_TEST_PROFILE" = share-rdp || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = modifier-release ]]; then
                     cat /work/test.json
                 fi
                 if [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
@@ -11779,6 +11795,9 @@ run_flutter_model_tests() {
                     elif [ "$FLUTTER_TEST_PROFILE" = draggable-divider ]; then
                         cmp /source/flutter/lib/desktop/widgets/dragable_divider.dart lib/desktop/widgets/dragable_divider.dart
                         cmp /source/flutter/test/draggable_divider_test.dart test/draggable_divider_test.dart
+                    elif [ "$FLUTTER_TEST_PROFILE" = hold-drag ]; then
+                        cmp /source/flutter/lib/common/widgets/gestures.dart lib/common/widgets/gestures.dart
+                        cmp /source/flutter/test/hold_tap_move_test.dart test/hold_tap_move_test.dart
                     elif [ "$FLUTTER_TEST_PROFILE" = path-labels ]; then
                         cmp /source/flutter/lib/common/widgets/start_ellipsis_text.dart lib/common/widgets/start_ellipsis_text.dart
                         cmp /source/flutter/test/start_ellipsis_text_test.dart test/start_ellipsis_text_test.dart
@@ -11946,6 +11965,8 @@ run_flutter_model_tests() {
         printf 'FLUTTER_FILE_METADATA_STAGE=run-production-metadata-tests\n'
     elif [ "$FLUTTER_TEST_PROFILE" = menu-button ]; then
         printf 'FLUTTER_MENU_BUTTON_STAGE=run-production-widget-tests\n'
+    elif [ "$FLUTTER_TEST_PROFILE" = hold-drag ]; then
+        printf 'FLUTTER_HOLD_DRAG_STAGE=run-production-widget-tests\n'
     elif [ "$FLUTTER_TEST_PROFILE" = path-labels ]; then
         printf 'FLUTTER_PATH_LABEL_STAGE=run-production-widget-tests\n'
     elif [ "$FLUTTER_TEST_PROFILE" = setting-checkbox ]; then
@@ -12112,7 +12133,7 @@ run_flutter_model_tests() {
             || fail 'native window-channel artifact binding differs'
         grep -E '^LINUX_WINDOW_CHANNEL_ARTIFACTS=|^WINDOW_CHANNEL_CASE=|^WINDOW_VALUE_' "$output"
     fi
-    if [[ "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = credential-badge || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = path-labels || "$FLUTTER_TEST_PROFILE" = setting-checkbox || "$FLUTTER_TEST_PROFILE" = list-search ]]; then
+    if [[ "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = credential-badge || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = hold-drag || "$FLUTTER_TEST_PROFILE" = path-labels || "$FLUTTER_TEST_PROFILE" = setting-checkbox || "$FLUTTER_TEST_PROFILE" = list-search ]]; then
         grep -E '^\{.*"type":"(start|suite|testStart|testDone|done)"' "$output"
     fi
     if [ "$FLUTTER_TEST_PROFILE" = connect-password ]; then
@@ -12164,6 +12185,14 @@ run_flutter_model_tests() {
         widget_sha256="$(sha256sum "$source_root/flutter/lib/desktop/widgets/dragable_divider.dart" | awk '{print $1}')"
         tests_sha256="$(sha256sum "$source_root/flutter/test/draggable_divider_test.dart" | awk '{print $1}')"
         printf 'FLUTTER_DRAGGABLE_DIVIDER_TESTS_VM=pass commit=%s tree=%s suites=1 tests=14 flutter=3.24.5 widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-draggable-divider-tests cleanup=joined\n' \
+            "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
+            "$widget_sha256" "$tests_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
+            "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+    elif [ "$FLUTTER_TEST_PROFILE" = hold-drag ]; then
+        local widget_sha256
+        widget_sha256="$(sha256sum "$source_root/flutter/lib/common/widgets/gestures.dart" | awk '{print $1}')"
+        tests_sha256="$(sha256sum "$source_root/flutter/test/hold_tap_move_test.dart" | awk '{print $1}')"
+        printf 'FLUTTER_HOLD_DRAG_TESTS_VM=pass commit=%s tree=%s suites=1 tests=17 flutter=3.24.5 widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-hold-drag-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$widget_sha256" "$tests_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
@@ -12265,7 +12294,7 @@ run_flutter_model_tests() {
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = auto-disconnect ]; then
-        printf 'FLUTTER_AUTO_DISCONNECT_TESTS_VM=pass commit=%s tree=%s suites=13 tests=338 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-auto-disconnect-tests cleanup=joined\n' \
+        printf 'FLUTTER_AUTO_DISCONNECT_TESTS_VM=pass commit=%s tree=%s suites=13 tests=341 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-auto-disconnect-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

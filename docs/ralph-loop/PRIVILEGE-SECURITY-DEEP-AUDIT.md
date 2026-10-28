@@ -112261,3 +112261,31 @@ bytes. Workload serial is 32,004 bytes, SHA-256
 `48d4f814b5653f113041942b080d131a9d616a374e1a3dbaaf44c792a6abb29f`.
 The count does not rerun product behavior; the accepted twelve-case result remains
 bound to `c3033e75`, with unchanged product and fixture thereafter.
+
+## 2026-10-28 — user pivot; shared Flutter evidence consolidation
+
+The user explicitly requests another aspect. Screenshot Copy/Cancel and
+picker-cancellation discard follow-up remain OPEN/PARKED after read-only
+inspection; no product patch, fixture or run follows that inspection. The twelve
+accepted Save As cases keep their existing scope. All other user parks and all
+fifteen installed/native credential actions remain open.
+
+This slice performs the required documentation-architecture cleanup. At
+`679e7e8f`, seven adjacent canvas/software-image checkpoints repeat fixture,
+cleanup, timing and evidence-limit prose across 195 lines / 15,771 UTF-8 bytes.
+Their replacement is a 58-line / 7,321-byte historical result and log index.
+It retains each source and A/B outcome, corrected-test caveats, meaningful
+ownership behavior, unique native/installed/performance gaps and symptom-causation
+limits. Full hashes, tree identities, intermediate attempts and cleanup receipts
+remain in that Git revision and this journal. No claim becomes current-master
+execution; the broader Android section and emulator evidence are unchanged.
+Git provenance traces the first selected block to `a4b4e800` and the final block
+to `67eeb8a3`, rather than an independent normative specification.
+
+Read-only comparison proves that the ledger has only this replacement and the
+new user-pivot entry. All sixteen selected baseline/correction/provenance IDs
+remain. All fourteen referenced raw serials exist as owned single-link regular
+files and match their previous full SHA-256 values. Whitespace checks pass.
+Product, tests, gates, requirements, live instructions and the fifteen-action
+acceptance table are unchanged; no product execution is needed or claimed for
+this documentation change. Fresh isolated ledger token counting follows.

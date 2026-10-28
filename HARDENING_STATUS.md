@@ -60,6 +60,12 @@ case inventories, intermediate failures, source/artifact hashes and timings rema
 receipts under `.harness-state/verifier-vm/` and in Git history. Shared current-artifact,
 installed/other-platform, R-S0/R-F5, resource/soak and release obligations below remain OPEN.
 
+**User pivot (2026-10-28):** Screenshot Copy/Cancel and picker-cancellation
+discard handling remain OPEN/PARKED after read-only inspection. No follow-up
+product patch or test was added or run. The twelve accepted Save As component
+cases remain recorded below. Work moved to consolidating historical Flutter
+canvas/image evidence in this ledger. Do not resume automatically.
+
 **User pivot (2026-10-28):** Retired uinput IPC decoder follow-up remains
 OPEN/PARKED. The prior deletion has source evidence only; no decoder test was
 added or run before this pivot. Work moved to screenshot Save As exception
@@ -5546,200 +5552,63 @@ snapshot, whole-app behavior or native privilege acceptance.
 
 ### Android runtime — intermittent presentation remains OPEN
 
-**Desktop canvas scrolling lifetime — component A/B passed; installed behavior OPEN.**
-At tests-first `a4b4e800`, all twelve new cases fail and the prior 235 tests pass.
-Replacement retains two real provider tickers; disposal leaves a ticker and both
-controllers live. Retired replies mutate actual scroll positions, disposed callbacks
-report use-after-dispose, and three held motions start three requests. Retained raw
-`flutter-model-tests-run.mxIhryZ1gS.serial.log`, SHA256
-`daaf4c6b59a13d8ffbf29053b2e1fbfab036dd5e7237034bc4c6726bf642a97e`.
-Canvas now owns one accepted request with only the latest waiting motion. New motion
-does not revoke that accepted bump's matching canvas adjustment: the native bump can
-generate a pointer event before returning. Explicit cancellation/retirement still revokes
-effects. Waiting motion recomputes scroll bounds when admitted. Exact motion, canvas,
-session/client, topology/presentation, registration and viewport authorize continuation
-and ticker effects. Cancellation revokes those effects; clear/replacement dispose the
-old ticker and final disposal releases both controllers. Remote and camera page cleanup
-retire/join window work before removal, then dispose the canvas at State disposal;
-remote blur also cancels scrolling. The fallback implementation is private to the model.
-Seven additional tests observe joined retirement,
-stale/current transport failures, continuous fallback progress during new motion and
-synchronous listener retirement between the two scroll-controller effects, bump-generated
-motion before reply and waiting work reaching a scroll boundary. Original refusal,
-resource and one-request assertions remain; the queue's post-reply expectation preserves
-the accepted bump's required paired scroll. Intermediate fixture failures and correction
-details are retained in the audit journal, not upgraded into a native OS diagnosis.
-At final `74d766aa` (tree `7bb91135`), all23 suites/254 tests and three parser methods
-passed in the source-bound zero-NIC VM, including all19 new cases and useful fresh controls.
-Full67,220-byte raw `flutter-model-tests-run.wUXXWYdHP9.serial.log`, SHA256
-`ec0803c4d91794607e9e34a35ded351a1f980f35a06192cdcb96979e28f1456a`.
-Source/input, guest nonroot/network-none/read-only-root/caps-none, listener and joined
-cleanup checks passed in299 VM seconds, excluding host preparation. All three private
-roots/disks are retired; no owned job remains. This observes actual Flutter tickers,
-controllers, scroll positions and frames with controlled metadata/layout/platform reply,
-not a target OS window or installed app. Prepared fast narrow verification remains OPEN.
-No native request is detached or treated as cancelled merely because its effects are
-refused. Already-issued native mouse movement, native reply/cancellation/engine finality,
-installed desktop teardown, viewport integration and
-sustained resource/performance evidence remain OPEN. This is not installed
-Windows evidence or a diagnosis of the original display-delay symptom.
+**Shared Flutter canvas and software-image behavior — historical component A/B
+evidence; current installed/native acceptance OPEN.** These seven checkpoints
+exercise production Flutter models, widgets and engine images with controlled
+session/layout/input/preference/window responses and clocks. They are shared
+Flutter paths, not Android-only results. Each accepted source passed 23 suites
+and three result-parser methods; total case counts below include the surrounding
+suite, not that many new regressions. No current-tree execution is claimed.
 
-**Fallback idle at scroll bounds — component A/B passed; wider performance OPEN.**
-At tests-first `0c53463b`, the three real boundary cases fail: clamped positions are
-correct, but one ticker stays active and emits two extra notifications. The other 255
-tests pass. Full raw `flutter-model-tests-run.PLMPD12FQV.serial.log`, SHA256
-`5990396c8d3a4ce99ac27dbac104664e06500f8d4c0dae56f13983e261e4bed1`.
-The owned scroll mutation now stops its exact fallback when neither axis has useful
-directional motion and returns before writes/notification when the computed position is
-unchanged. An axis with room still progresses; a zero-time frame remains active without
-no-op publication. The three original boundary assertions stay unchanged and require
-useful restart with the same registration. The fourth zero-time guard is strengthened to
-exercise another actual callback at the same timestamp; its earlier pass is not evidence
-for that amended guard. At corrected `8aeb79c8` (tree `6430d8cd`), all 23 suites / 258
-tests and three parser methods pass, including unchanged boundary assertions, split-axis
-continuation, same-registration restarts and the strengthened zero-time guard. Full
-67,750-byte raw `flutter-model-tests-run.0lPoVasksX.serial.log`, SHA256
-`02f6ebd86c4a2e957d5e4f4636bfcc35416bfd363ba7887c3983565ea34934de`.
-The source/input-bound zero-NIC VM passes guest nonroot/network-none/read-only-root/caps-none,
-host listener and joined cleanup checks in 321 VM seconds, excluding host preparation.
-Both private roots/disks are retired; no owned job remains. Evidence is real Flutter
-component behavior with controlled metadata/layout/platform reply, not a target OS window,
-CPU measurement or display-latency diagnosis. Wider installed-window, sustained
-resource/CPU/latency and prepared-fast verification remain OPEN.
+| Surface | Historical correction and observed behavior | Baseline → accepted source and cases |
+| --- | --- | --- |
+| Desktop scrolling lifetime | One accepted native bump retains its paired canvas adjustment; only the latest motion waits and recomputes bounds on admission. Exact canvas/session/client/topology/presentation/registration/viewport ownership gates effects. Clear/replacement retires the ticker; disposal releases both controllers. Page cleanup joins window work before removal, and remote blur cancels scrolling. Nineteen new cases observe real ticker/controller/scroll state, joined retirement, transport failures, reentrant retirement, bump-generated motion and waiting bounds. | `a4b4e800`: 12 new failures, 235 passes. `74d766aa`: 254 passes. Original refusal/resource/one-request assertions remain; the accepted bump's paired-scroll expectation was corrected. |
+| Idle at scroll bounds | The owned fallback stops when neither axis can move and avoids unchanged-position writes/notifications. Other-axis progress and useful opposite-edge restart retain the registration. A zero-time callback stays active without no-op publication. | `0c53463b`: three boundary failures, 255 passes. `8aeb79c8`: 258 passes. The strengthened repeated-timestamp control passes afterward; its earlier weaker pass is not A/B evidence for that amended control. |
+| Mobile keyboard geometry | An immutable snapshot captures exact canvas/session/client/topology/presentation ownership at save/focus scheduling and is consumed on restore/refusal. Clear/dispose cancels both timers. Twelve original cases plus two controlled-clock timer censuses cover stale/disposed callbacks, useful cycles, replacement and duplicate restore; pending timer counts fall 2→0. | `88e69b72`: eight failures, 225 passes. `55c02ca1`: 235 passes. Existing `fake_async` 1.3.1 became an explicit test dependency without a new package version/acquisition. |
+| Preference continuations | Captured canvas/session/client/topology/presentation ownership replaces optional topology-only authority; image setup also retains its live admission/publication check. Next-turn work is joined. One replaceable, cancellable layout timer owns completion/errors; clear/dispose cancels and joins it without blocking the event queue for 300 ms. Tests retain six original refusal assertions, fresh/higher-commit controls, disposal and useful simultaneous initializers; three timer cases advance past the retired deadline. | `871e24dc`: six failures, 207 passes. `6c89bd09`: 221 passes. Preference I/O and metadata are controlled through the read-only adapter, not a replacement global binding or alternate product mode. |
+| Cursor initialization | The initializer requires the image owner's synchronous session/topology/presentation/publication check before lookup/effects. Both stale cases preserve pointer, cursor and canvas state; fresh presentation/publication controls still initialize geometry. The fixture replaces only session metadata and the input sink. | `844e9c15`: two failures, 205 passes. `a1c5bd6b`: 207 passes. Mutation body traces to upstream import `c2abd3b3`, with topology guards added at `0852116c`. |
+| First software-image publication | Conversion/setup remains provisional until synchronous image replacement; each await retains exact generation and published-order checks. An earlier ready image remains usable while a higher image awaits geometry; higher-first/lower-late refusal, retirement and zero remaining image handles pass. The obsolete early-commit API is removed without changing capacity, service lifetime or freshness bounds. | `b0e0d47d`: one failure, 198 passes. Product `e6ee1c32`, accepted `67a5a9f9`: 199 passes after correcting the guest summary count. The real-image fixture is unchanged. |
+| First-image setup failure | One `finally` owner retains decoded input through validation/setup and disposes an unadopted candidate on refusal/exception without re-disposing current/adopted images. Four unchanged view/scroll/edge/cursor fault cases, current-image preservation and added notification-triggered retirement observe useful successor adoption, exactly one disposal and zero native image handles before emergency cleanup. | `67eeb8a3`: four failures, 200 passes. `762af726`: 205 passes. The unprotected awaits existed in upstream 1.4.7. |
 
-**Mobile keyboard geometry lifetime — component A/B passed; app-level symptoms OPEN.**
-At tests-first `88e69b72`, eight new cases fail and the other 225 tests pass. Retired
-focus changes successor offsets and size; retired restore reapplies the old offset/scale,
-including a snapshot retired before restore is scheduled. Disposed callbacks notify a
-disposed model. Raw `flutter-model-tests-run.tag8LAJj1n.serial.log`, SHA256
-`d035e10c80dfe7aa268f5f7eee731e4d437cd879bdd2fbfc3a0c41f0d07e107d`.
-`CanvasModel` captures exact canvas/session/client/topology/presentation ownership at
-save or focus scheduling, uses one immutable snapshot, consumes it at restore/refusal,
-and cancels/releases both timers on clear/dispose. Original twelve tests remain;
-two additional clock-zone censuses require pending timer counts 2→0, not merely guarded
-callbacks. Already-locked `fake_async` 1.3.1 is now an explicit test dependency; no new
-package version or input acquisition. Useful repeated keyboard cycles, replacement and
-duplicate restore remain tested. Only existing mobile-layout selection, session metadata
-and the test clock are controlled. At corrected `55c02ca1` (tree `bf193f21`), all 23
-suites/235 tests and three parser methods passed. The original refusal assertions, useful
-fresh controls and both timer-count censuses pass. Full 66,644-byte raw
-`flutter-model-tests-run.X3qmOuZXmf.serial.log`, SHA256
-`c593b894b128c0d9ab5f6fada243afe6ead58ae354adeb4f6d69a465a737272c`.
-The source-bound no-NIC VM transaction passed nonroot-container, source/input, listener
-and joined-cleanup checks in 308 VM seconds, excluding host preparation. Both private
-roots/disks are retired; no owned job remains. This is actual Flutter component execution,
-not Android/iOS OS/device, native timer-handle, installed-app or original-symptom evidence.
-UI metrics/viewport ordering, desktop ticker/controller lifetime, the faster prepared-native
-inner loop and the wider installed/performance matrices remain OPEN.
+Full raw logs remain under `.harness-state/verifier-vm/` with the filename
+`flutter-model-tests-run.<ID>.serial.log`:
 
-**Canvas preference continuations — native component A/B passed; app-level symptoms OPEN.**
-At tests-first `871e24dc` (tree `8ca15c28`), all six real CanvasModel tests failed across
-presentation retirement or clear; the other 207 tests passed. Held view reads changed
-offset/scale/size/scroll state and emitted notification plus mouse refresh, scroll reads
-changed mode/percentages and notified, and edge reads changed thickness. Full raw
-`flutter-model-tests-run.SCD5Pm9sva.serial.log`, SHA256
-`52887a48cc073f2ce493558d9c83eb00ef609b9a93b00043f9116f697b6e55b3`.
-The optional topology-only mutator API is replaced by a required captured owner for the
-exact canvas lifetime, session/client, topology and presentation. Image setup adds its
-existing live image/admission/publication predicate. Callers retain the owner across
-awaits; next-turn scrolling is joined and checked. The longer layout adjustment is one
-canvas-owned cancellable timer, with explicit completion/error observation rather than
-holding the session event queue for 300 ms. Clear/dispose invalidate captured owners and
-cancel/join that timer; replacing the deferred adjustment cancels its predecessor. The
-read-only preference adapter retains production queries, without a global binding
-replacement or alternate runtime mode. The original six refusal assertions are unchanged;
-added cases cover committed-higher refusal, useful fresh controls, delayed scroll and
-disposed models. Three clock-controlled tests exercise the production deferred timer,
-observe immediate cancellation/refusal and advance past its old deadline to expose a
-still-armed callback. A real next-turn control accepts two useful Canvas initializers
-without cancellation merely by higher admission. At `6c89bd09` (tree `0bdef8da`), all 23
-suites/221 tests and three parser methods passed in the zero-NIC VM. Full 66,976-byte raw
-`flutter-model-tests-run.yJD6jomd5d.serial.log`, SHA256
-`f30e8f296d3b813d9eec6cbe4dcd228f5596ca4c46c299900a7003bf4785619d`.
-The transaction passed source/input, nonroot-container, listener/finality and joined-cleanup
-checks in 296 VM seconds, excluding host preparation. All four private roots/disks from
-this slice are retired; no owned job remains. Intermediate formatter and 218-test receipts
-remain in the audit journal. This is actual Flutter component behavior with controlled
-preference IO/session metadata, not an installed client, peer/window or OS timer census.
-This shared Flutter path is not Android-only; original Android/Windows causation, UI
-same-generation preference ordering, viewport-resize races, remaining UI/ticker/controller lifetimes,
-default texture/window/device behavior and sustained resource/performance evidence remain OPEN.
+| Surface | Baseline log ID | Accepted log ID |
+| --- | --- | --- |
+| Desktop scrolling lifetime | `mxIhryZ1gS` | `wUXXWYdHP9` |
+| Idle at scroll bounds | `PLMPD12FQV` | `0lPoVasksX` |
+| Mobile keyboard geometry | `tag8LAJj1n` | `X3qmOuZXmf` |
+| Preference continuations | `SCD5Pm9sva` | `yJD6jomd5d` |
+| Cursor initialization | `MdhbjuoPua` | `cQ2VRMlesl` |
+| First software-image publication | `MCPOUyqsbs` | `yOgVyEk0wt` |
+| First-image setup failure | `g8Ss8Pycra` | `sSADm56I2x` |
 
-**Cursor initialization — native continuation A/B passed; app-level symptoms OPEN.**
-At tests-first `844e9c15` (tree `6d41f6db`), two tests exercised the actual initializer,
-CursorModel and CanvasModel across presentation retirement and higher-publication commit.
-Only session metadata and the input sink were replaced. Both failed: the stale continuation
-issued a pointer move, reset the cursor from `(12,24)` to `(1,1)` and canvas offset from
-`(17,23)` to `(-1.5,-1.5)`; the other 205 tests passed. Full raw serial is
-`flutter-model-tests-run.MdhbjuoPua.serial.log`, SHA256
-`3744252c9d7f5dc41c03751a401e3d6a996e1e8889a8984ca1b6d0fbe5ed17e1`.
-The initializer now requires the image owner's synchronous live check, including session,
-topology, presentation and publication order, before lookup and effects. The narrower
-optional topology-only API is removed. Test calls are adapted to that required API;
-assertions are unchanged, with an additional fresh-publication control. At `a1c5bd6b`
-(tree `11cc23b9`), all 23 suites/207 tests and three parser methods passed. Both stale
-cases preserve pointer/cursor/canvas state; fresh presentation and publication controls
-still initialize useful geometry. The complete zero-NIC transaction passed source/input,
-listener/finality and joined-cleanup checks in 299 VM seconds, excluding host preparation.
-Full 69,157-byte raw `flutter-model-tests-run.cQ2VRMlesl.serial.log`, SHA256
-`09a0f3a771a0acc5148a57535e30a9cefec37b9c4065e7e5a7b236a039323800`.
-Both private runs/disks are retired; no owned job remains. The mutation body traces to
-the upstream 1.4.7 import `c2abd3b3`, with topology guards added at `0852116c`.
-This is shared native Flutter component evidence, not an installed client or peer/window
-reproduction. Original Android/Windows causation, default desktop texture paths, web
-saved-canvas behavior and other CanvasModel preference continuations remain OPEN.
+Complete hashes, sizes, tree identities, intermediate fixture/format/count failures
+and individual cleanup receipts remain in
+`git show 679e7e8f:HARDENING_STATUS.md` under this heading and the audit journal.
+The accepted zero-NIC VM transactions used numeric-nonroot, network-none,
+read-only-root, capability-free containers; source/input, endpoint and joined
+cleanup checks passed, and their owned run roots/disks retired. Accepted VM times
+were 296–321 seconds, excluding host preparation. These historical receipts are
+not a present host inventory or an instant/prepared-check claim.
 
-**Software first-image publication — native component A/B passed; app-level symptoms OPEN.**
-At tests-first `b0e0d47d`, the real ImageModel/native raw-image regression returned false for
-an earlier ready image solely because a higher converted image still awaited geometry.
-Exactly that test failed; the other 198 passed. Full 209,656-byte raw serial is
-`flutter-model-tests-run.MCPOUyqsbs.serial.log`, SHA256
-`d5b1c07c3c84dd057c6ae8d0d52344ca9bb512c8cf1f2a9c42d6e5fdf69e31e1`.
-Product correction `e6ee1c32` keeps conversion/setup provisional and commits only immediately before
-synchronous image replacement. Every asynchronous continuation still checks exact session,
-topology, presentation and admission generation plus already-published order. The obsolete
-early-commit revision token/API is removed; capacities, service lifetime and freshness limits
-are unchanged. The identical real-image fixture also covers higher-first/lower-late refusal,
-retirement and zero remaining image handles. After the guest summary expectation was aligned,
-exact `67a5a9f9` (tree `af9002a6`) passed all 23 suites/199 tests and three parser regressions
-inside the zero-NIC VM. Its 298-second VM execution completed all input/listener/finality
-postconditions, joined owners and retired the private run/overlay. The full 66,750-byte raw is
-`flutter-model-tests-run.yOgVyEk0wt.serial.log`, SHA256
-`c4fec8cae6e671fe4814eb695a1e3d640e6b11c9e2cb0fa38775b412b677db17`.
-Only session/topology and geometry completion are controlled; this is native Flutter
-component evidence, not a real window/APK/peer result.
-The early commit was introduced by `485487666` on September 29, so this cannot explain an
-older artifact without that code; default Windows textures use a different path. Original
-Android/Windows causation and installed/release/soak evidence remain OPEN. Initialization
-exception ownership is tracked separately below; stale geometry/cursor side effects and
-broader resource lifecycles remain OPEN. Earlier fixture-compilation and stale-summary failures, with
-their independent raw logs and exact cleanup receipts, remain in the audit journal.
+**Still OPEN:** installed client/peer/window/device integration; already-issued
+native mouse effects, reply/cancellation/engine finality and desktop teardown;
+UI metrics, viewport-resize and same-generation preference ordering; broader
+geometry/cursor side effects and model/controller lifetimes; default desktop
+textures, web saved-canvas behavior, and Android/iOS/Windows/macOS execution.
+Controlled clocks/timer calls do not count native OS handles. Idle-ticker removal
+is not a CPU measurement; forced setup errors do not establish natural error
+frequency or sustained resource growth. Prepared fast verification, measured
+CPU/resource/latency bounds and soak, current installed/release artifacts,
+R-S0/R-F5, all fifteen credential actions, independent reproduction and external
+review remain required. Every user-parked task stays parked.
 
-**First-image setup failure — native leak reproduced and owning-update correction passed.**
-Tests-first `67eeb8a3` (tree `99726a44`) reproduced undisposed native images after view,
-scroll, edge and cursor initialization errors: all four fault tests failed cleanup;
-the other 200 passed, including current-image refusal/no-op preservation. Full raw serial
-`flutter-model-tests-run.g8Ss8Pycra.serial.log` is 235,505 bytes, SHA256
-`dc87afdd30fa6d2ba51adb68642b657d5b36302416392ef065e14a4898e72cb8`.
-The corrected update owns its input in one `finally` scope until synchronous adoption,
-disposing any unadopted candidate on refusal or exception without re-disposing current or
-adopted handles. Post-decode validation now belongs to that owner rather than an unowned
-gap between decoding and update. Exact session/topology/presentation/order checks remain
-before initialization and after every await. At `762af726` (tree `2257f617`), all 23 suites/
-205 tests and three parser regressions passed. The four fault cases and current-image
-case are unchanged; the additional notification-triggered retirement test also passed.
-The native fixture observed useful successor adoption, exactly one disposal per image,
-and zero remaining native image handles before emergency test cleanup. The complete
-zero-NIC VM transaction passed input/listener/finality checks and retired its joined run.
-Full 68,557-byte raw serial `flutter-model-tests-run.sSADm56I2x.serial.log`, SHA256
-`2fa0d6eafec42be96d662e3913af9ad0fe2d1c0819d4215b91a887900fea3e1d`.
-VM execution was 302 seconds, with host preparation additional; a reusable prepared
-inner-loop fixture remains needed rather than treating this model checkpoint as instant.
-This shared software-image finding is not Android-only, but Linux native Flutter component
-evidence does not establish original symptoms, natural error frequency, Android/iOS or
-desktop window/device behavior, default desktop texture paths, or sustained resources.
-The unprotected awaits already existed in the upstream 1.4.7 import. Those broader
-platform/lifecycle/performance claims and stale geometry/cursor side effects remain OPEN.
+None of these component results establishes the cause of the original intermittent
+Android presentation or Windows focus/display-delay symptoms. The early-publication
+defect was introduced at `485487666` on September 29 and cannot explain earlier
+artifacts without it; default Windows textures follow another path. The native-image
+conversion exception finding below remains separate.
 
 The disposable runtime uses the pinned Emulator 37.1.11 and Android 14/API-34 x86_64 image in a
 networkless numeric-nonroot container inside the ordinary-user zero-NIC verifier VM. Source and APK

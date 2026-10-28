@@ -113713,3 +113713,38 @@ accepted candidate has one removal; all remain untouched. The mode-0600 capsule
 `81372306deacb6627dd769562f2408cd72344197a1b8d3b58c0456f601c3b901`.
 It binds exact source/test hashes, failed and accepted outcomes, raw evidence
 identities, source-copy checks, limits and cleanup. Fresh ledger count follows.
+
+The completed count at source `a09d0b7f`, run `ns5bjCwbQH`, passes in 28
+outer seconds: **355,719 tokens / 1,625,766 bytes**, ledger SHA-256
+`205a493b5e046b2fd01c51c62642c0de3402535b6fc8ce474a354b30d94f80d1`.
+All seven tokenizer controls, byte round trip and nine native cache-admission
+cases pass. QEMU 2790858 joins exit 0; RAM `run.tg4i83ms` and active run roots
+are absent. Scratch/overlay/durable peaks are 402,337,792 / 305,795,072 /
+262,144 bytes. All three endpoint snapshots have zero additions or removals.
+Result serial is 34,063 bytes, SHA-256
+`161b2ecbf4218e82506ae12c4ff11970790c43b6a9b1595186593151c5f548e5`;
+console is 65,541 bytes, SHA-256
+`f75015e03eab5114b170e96306abbe00111d43e9115274327e96016df4cb318e`.
+Only this audit receipt follows the counted ledger.
+
+## 2026-10-28 — development storage recheck
+
+The user's storage request remains the scope of this recheck. All 47 roots in
+the completed retirement inventory remain absent; the previously reclaimed
+7,220,224,000 allocated bytes are not counted as a second deletion. The Android
+APK, peer, Flutter app and engine caches contain 2 / 1 / 3 / 1 generations,
+respectively, below the four-generation admission limit. The latest completed
+isolated count above also exercises all nine native cache-admission cases.
+No new VM or build was launched for this recheck.
+
+Read-only disk accounting reports 37,347,053,568 bytes for the checkout,
+3,466,354,688 for `.harness-state` and 33,034,252,288 for `online`.
+The largest input directory, `online/candidates/flutter-linux-engine-graph`,
+contains exactly its 93 manifest-listed archives plus the manifest, with all
+recorded file sizes matching and no extra files. This is inventory/size evidence,
+not a fresh content-digest verification. These pinned inputs are consumed by the
+current engine harness and remain intact. The only individual harness-state file
+above 100 MiB allocated is the reusable authenticated Debian base image
+(346,886,144 allocated bytes). Active owned VM roots and RAM scratch are absent;
+the scan identifies no additional bulk VM scratch to retire. Source, offline
+inputs, retained replay artifacts and bounded evidence remain available.

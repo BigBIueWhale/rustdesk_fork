@@ -1368,6 +1368,9 @@ TRACKPAD_SPEED_SUITES = {
 
 AUDIO_INPUT_SUITES = {
     "cm_audio_probe_test.dart": {
+        'audio CM picker supports keyboard open select and dismissal',
+        'audio CM picker keyboard entry retains pending and call ownership',
+        'audio CM picker ignores cancelled pointer presses',
         'audio CM picker serializes device reads across rebuilds',
         'audio CM picker serializes writes across rebuild and call replacement',
         'audio CM picker releases dismissal and selects system sound',

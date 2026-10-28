@@ -100,9 +100,24 @@ class _Harness {
     await tester.pumpAndSettle();
   }
 
-  GestureTapDownCallback opener(WidgetTester tester) =>
-      tester.widget<InkWell>(find.ancestor(
-          of: find.text('Audio input'), matching: find.byType(InkWell))).onTapDown!;
+  VoidCallback opener(WidgetTester tester) {
+    final button = tester.widget<InkWell>(find.ancestor(
+        of: find.text('Audio input'), matching: find.byType(InkWell)));
+    return () {
+      button.onTapDown?.call(
+          TapDownDetails(globalPosition: const Offset(100, 100)));
+      button.onTap?.call();
+    };
+  }
+
+  Future<void> tabTo(WidgetTester tester, String label) async {
+    for (var step = 0; step < 12; step++) {
+      if (Focus.of(tester.element(find.text(label))).hasFocus) return;
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+    }
+    fail('Keyboard traversal did not reach $label');
+  }
 
   Future<void> open(WidgetTester tester) async {
     await tester.tap(find.text('Audio input'));
@@ -155,6 +170,110 @@ class _Harness {
 const _retirements = ['call', 'registry', 'client-id', 'client', 'page', 'ended'];
 
 void main() {
+  testWidgets('audio CM picker supports keyboard open select and dismissal',
+      (tester) async {
+    for (final key in [LogicalKeyboardKey.enter, LogicalKeyboardKey.space]) {
+      final h = _Harness();
+      try {
+        await h.mount(tester);
+        await h.tabTo(tester, 'Audio input');
+        await tester.sendKeyEvent(key);
+        await tester.pump();
+        expect(h.binding.reads, hasLength(1), reason: key.keyLabel);
+        h.binding.reads.single.complete(_inputs);
+        await tester.pumpAndSettle();
+        await h.tabTo(tester, 'Microphone B');
+        await tester.sendKeyEvent(key);
+        await tester.pumpAndSettle();
+        expect(h.binding.writes.map((w) => w.device), ['mic-b']);
+        h.binding.writes.single.result.complete();
+        await tester.pumpAndSettle();
+        expect(h.binding.current, 'mic-b');
+        await h.tabTo(tester, 'Audio input');
+        await tester.sendKeyEvent(key);
+        await tester.pump();
+        expect(h.binding.reads, hasLength(2));
+        h.binding.reads.last.complete(_inputs);
+        await tester.pumpAndSettle();
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+        expect(find.text('Microphone B'), findsNothing);
+        expect(h.binding.writes, hasLength(1));
+        expect(tester.takeException(), isNull);
+      } finally { await h.finish(tester); }
+    }
+  });
+
+  testWidgets('audio CM picker keyboard entry retains pending and call ownership',
+      (tester) async {
+    final h = _Harness();
+    try {
+      await h.mount(tester);
+      await h.tabTo(tester, 'Audio input');
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+      expect(h.binding.reads, hasLength(1));
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pump();
+      expect(h.binding.reads, hasLength(1));
+      await h.retire(tester, 'call');
+      h.binding.reads.single.complete(_inputs);
+      await tester.pumpAndSettle();
+      expect(find.text('Microphone B'), findsNothing);
+      expect(h.binding.writes, isEmpty);
+      await h.tabTo(tester, 'Audio input');
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pump();
+      expect(h.binding.reads, hasLength(2));
+      h.binding.reads.last.complete(_inputs);
+      await tester.pumpAndSettle();
+      await h.tabTo(tester, 'Microphone B');
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(h.binding.writes, hasLength(1));
+      await h.tabTo(tester, 'Audio input');
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+      expect(h.binding.reads, hasLength(2), reason: 'write remains pending');
+      h.binding.writes.single.result.completeError(StateError('device write failed'));
+      await tester.pumpAndSettle();
+      expect(find.text('Failed'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 4));
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+      expect(h.binding.reads, hasLength(3), reason: 'retry after failure');
+      h.binding.reads.last.complete(_inputs);
+      await tester.pumpAndSettle();
+      await h.tabTo(tester, 'Microphone B');
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pump();
+      expect(h.binding.writes.map((w) => w.device), ['mic-b', 'mic-b']);
+      h.binding.writes.last.result.complete();
+      await tester.pumpAndSettle();
+      expect(h.binding.current, 'mic-b');
+      expect(tester.takeException(), isNull);
+    } finally { await h.finish(tester); }
+  });
+
+  testWidgets('audio CM picker ignores cancelled pointer presses', (tester) async {
+    final h = _Harness();
+    try {
+      await h.mount(tester);
+      final gesture = await tester.startGesture(tester.getCenter(find.text('Audio input')));
+      await tester.pump(const Duration(milliseconds: 200));
+      await gesture.cancel();
+      await tester.pumpAndSettle();
+      expect(h.binding.reads, isEmpty);
+      expect(h.binding.writes, isEmpty);
+      await h.menu(tester);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(h.binding.reads, hasLength(1));
+      expect(h.binding.writes, isEmpty);
+      expect(tester.takeException(), isNull);
+    } finally { await h.finish(tester); }
+  });
+
   testWidgets('audio CM picker serializes device reads across rebuilds',
       (tester) async {
     final h = _Harness();
@@ -164,15 +283,15 @@ void main() {
       await h.open(tester);
       h.rebuild(() {});
       await tester.pump();
-      original(TapDownDetails(globalPosition: const Offset(100, 100)));
-      h.opener(tester)(TapDownDetails(globalPosition: const Offset(100, 100)));
+      original();
+      h.opener(tester)();
       await tester.pump();
       expect(h.binding.reads, hasLength(1));
       h.binding.reads.single.complete(_inputs);
       await tester.pumpAndSettle();
       expect(find.text('Microphone B'), findsOneWidget);
-      original(TapDownDetails(globalPosition: const Offset(100, 100)));
-      h.opener(tester)(TapDownDetails(globalPosition: const Offset(100, 100)));
+      original();
+      h.opener(tester)();
       await tester.pump();
       expect(h.binding.reads, hasLength(1), reason: 'menu remains open');
       await tester.tap(find.text('Microphone B'));
@@ -201,7 +320,7 @@ void main() {
           h.rebuild(() {});
           await tester.pump();
         }
-        h.opener(tester)(TapDownDetails(globalPosition: const Offset(100, 100)));
+        h.opener(tester)();
         await tester.pump();
         expect(h.binding.reads, hasLength(1), reason: 'replace=$replace');
         expect(h.binding.writes, hasLength(1));
@@ -285,7 +404,7 @@ void main() {
         await h.mount(tester);
         final open = h.opener(tester);
         await h.retire(tester, kind);
-        open(TapDownDetails(globalPosition: const Offset(100, 100)));
+        open();
         await tester.pump();
         expect(h.binding.reads, isEmpty, reason: kind);
         expect(h.binding.writes, isEmpty);
@@ -439,7 +558,7 @@ void main() {
         }
         h.registry.clients..clear()..add(_client()..registryGeneration = 99);
         if (stage == 'opener') {
-          open(TapDownDetails(globalPosition: const Offset(100, 100)));
+          open();
           expect(h.binding.reads, isEmpty);
         } else if (stage == 'read') {
           h.binding.reads.single.complete(_inputs);

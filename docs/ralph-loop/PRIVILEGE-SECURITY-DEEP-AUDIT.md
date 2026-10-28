@@ -113100,3 +113100,22 @@ QEMU joins and RAM retires; one unattributed endpoint addition and two removals
 remain untouched. Diagnostics are retained as `toolbar-focus-candidate.zWByiFB2Lm`;
 the 20,769-byte workload hash is
 `3e09290235ae5ebf3dc56ee452e2dcc2410ffae347a177f4d578b33b92a0e591`.
+
+Final run `pQLhGmAzhq` at `2d477622` passes four suites/32 rendered cases plus
+all three focused parser checks, including exact inventory and rejection of
+incomplete/failed/skipped results. The outer receipt passes in 109 seconds.
+The source-bound fixture hash is
+`9cda5d5902948da92866167b25bce49ac97a8babe683aa30190de137cb234bea`,
+unchanged across prepare/verify. Production toolbar SHA-256 is
+`ca388a130ce67684d7678af4b9376d07d3bf8915f33d38e41d4c11c6b87a8da4`;
+the 38,441-byte workload serial is
+`7d5c8fef6d820bf41e80f4af9bcd92f035ede520692da5d5bfa3c1e331333d41`.
+QEMU 2331697 joins exit 0, RAM `run.acz9mgrp` and all active roots are absent,
+and Docker/input cleanup passes. Scratch/durable peaks are
+4,054,990,848/3,452,928 bytes. One final unattributed endpoint addition is retained
+without process inspection or mutation; the owned harness cannot create IP sockets.
+The mode-0600 capsule `toolbar-focus-fd4145a5.json` retains all five runs,
+source/fixture hashes, excluded preparations, failed-diagnostic retirement and
+the explicit open submenu/full-toolbar boundaries. Duplicate JSON records in
+the success serial are copied evidence, not additional executions. The live
+ledger records only the focused result and the user pivot; its fresh count follows.

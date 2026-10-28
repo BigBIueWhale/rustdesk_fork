@@ -22,7 +22,7 @@ spec.loader.exec_module(result)
 
 
 SINGLE_PROFILE = None
-if len(sys.argv) > 1 and sys.argv[1] in ("--screenshot-save", "--locales", "--draggable-divider"):
+if len(sys.argv) > 1 and sys.argv[1] in ("--screenshot-save", "--locales", "--draggable-divider", "--file-columns"):
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
 
 
@@ -105,6 +105,9 @@ class ResultTests(unittest.TestCase):
         elif profile == "clipboard-keystrokes":
             suites = ["clipboard_keystrokes_probe_test.dart"]
             names = sorted(result.CLIPBOARD_KEYSTROKES_TESTS)
+        elif profile == "file-columns":
+            suites = ["file_columns_probe_test.dart"]
+            names = sorted(result.FILE_COLUMNS_TESTS)
         elif profile == "file-search":
             suites = ["file_search_probe_test.dart"]
             names = sorted(result.FILE_SEARCH_TESTS)
@@ -192,7 +195,7 @@ class ResultTests(unittest.TestCase):
         if SINGLE_PROFILE is not None:
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE),
                              (1, {"locales": 10, "screenshot-save": 12,
-                                  "draggable-divider": 22}[SINGLE_PROFILE]))
+                                  "draggable-divider": 22, "file-columns": 13}[SINGLE_PROFILE]))
             return
         self.assertEqual(
             self.parse(self.events("models"), "models"),

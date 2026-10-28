@@ -1386,6 +1386,20 @@ FLOATING_POSITION_TESTS = {
 }
 
 
+FILE_COLUMNS_TESTS = {
+    f'file columns {direction} {side} uses visible Size width'
+    for direction in ('ltr', 'rtl') for side in ('local', 'remote')
+} | {
+    f'file columns {direction} {behavior}'
+    for direction in ('ltr', 'rtl') for behavior in (
+        'first divider clamps both adjacent widths',
+        'last divider clamps rendered Size width',
+        'keyboard reaches the visible width limit',
+        'header and row boundaries agree',
+    )
+} | {'file columns resizing the window uses the current rendered capacity'}
+
+
 FILE_SEARCH_TESTS = {
     'file search selects only visible entries in both panes',
     'file search uses the filtered row index for scrolling',
@@ -1604,7 +1618,7 @@ MODEL_TESTS = {
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
     expected_suites = set(MODEL_TESTS)
     expected_by_suite = None
     if profile == "frame-queue":
@@ -1756,6 +1770,10 @@ def parse_result(path, profile="models"):
         expected_suites = {"clipboard_keystrokes_probe_test.dart"}
         expected_tests = len(CLIPBOARD_KEYSTROKES_TESTS)
         expected_names = CLIPBOARD_KEYSTROKES_TESTS
+    elif profile == "file-columns":
+        expected_suites = {"file_columns_probe_test.dart"}
+        expected_tests = len(FILE_COLUMNS_TESTS)
+        expected_names = FILE_COLUMNS_TESTS
     elif profile == "file-search":
         expected_suites = {"file_search_probe_test.dart"}
         expected_tests = len(FILE_SEARCH_TESTS)
@@ -1895,7 +1913,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -1934,6 +1952,7 @@ def main():
         "screenshot-save": "FLUTTER_SCREENSHOT_SAVE_TEST_JSON",
         "clipboard-keystrokes": "FLUTTER_CLIPBOARD_KEYSTROKES_TEST_JSON",
         "file-search": "FLUTTER_FILE_SEARCH_TEST_JSON",
+        "file-columns": "FLUTTER_FILE_COLUMNS_TEST_JSON",
         "audio-input": "FLUTTER_AUDIO_INPUT_TEST_JSON",
         "reconnect": "FLUTTER_RECONNECT_TEST_JSON",
         "file-progress": "FLUTTER_FILE_PROGRESS_TEST_JSON",

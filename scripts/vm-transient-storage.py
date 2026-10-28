@@ -48,6 +48,10 @@ def storage_limits(profile, memory_mib):
         require(memory_mib == 2048, 'Flutter component tests require their 2 GiB guest')
         # Flutter-only component: no Rust/LLVM extraction or bridge generation.
         return 6 * GIB, 5 * GIB
+    if profile == 'flutter-file-columns':
+        require(memory_mib == 2048, 'file-column tests require their 2 GiB guest')
+        # Generate the bridge with selected toolchain components; no Rust compilation.
+        return 6 * GIB, 5 * GIB
     if profile == 'flutter-credential-dialog':
         require(memory_mib == 4096, 'dialog storage profile requires its 4 GiB guest')
         return 7 * GIB, 6 * GIB
@@ -458,7 +462,7 @@ def main():
     parser.add_argument('--memory-mib', type=int, required=True)
     parser.add_argument('--storage-profile',
                         choices=('standard', 'hbb-common-fs', 'linux-logind', 'cpace-recovery-tests',
-                                 'flutter-credential-dialog', 'flutter-dialog-tests', 'flutter-keyboard-layout', 'flutter-locales', 'flutter-divider', 'linux-service-build',
+                                 'flutter-credential-dialog', 'flutter-dialog-tests', 'flutter-keyboard-layout', 'flutter-locales', 'flutter-divider', 'flutter-file-columns', 'linux-service-build',
                                  'ledger-token-count', 'authority-smoke', 'fixed-archive-tests', 'x11-focus', 'x11-key-input', 'linux-parent-libtest',
                                  'main-config-key', 'language-selection', 'windows-pointer', 'linux-resource-limits', 'linux-resolution-lifetime', 'fusermount-process', 'xrandr-acquisition',
                                  'linux-service-uid-tests', 'audio-buffer', 'audio-mailbox', 'file-block', 'control-egress', 'clipboard-response',

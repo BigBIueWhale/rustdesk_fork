@@ -61,7 +61,7 @@ class FileJobStatus extends StatelessWidget {
           return BottomSheetBody(
             leading: Icon(Icons.error),
             title: "${_translate("Error")}!",
-            text: "",
+            text: _translate(activeJob.err),
             onCanceled: dismiss,
           );
         case JobState.none:

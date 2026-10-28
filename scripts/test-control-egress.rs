@@ -120,7 +120,7 @@ mod file_clipboard {
         #![allow(non_camel_case_types, non_snake_case)]
         use super::*;
         use super::send_data_to_channel as send_data;
-        use hbb_common::{allow_err, log};
+        use hbb_common::log;
         use std::ffi::{CStr, CString};
 
         // The callback never dereferences its context. Only the native format structures,

@@ -674,8 +674,7 @@ class _CmAudioInputButton extends StatefulWidget {
 class _CmAudioInputButtonState extends State<_CmAudioInputButton> {
   bool _pending = false;
 
-  Future<void> _selectDevice(TapDownDetails details, Client client,
-      CmVoiceCallOwner voiceOwner) async {
+  Future<void> _selectDevice(Client client, CmVoiceCallOwner voiceOwner) async {
     bool isCurrent() =>
         mounted &&
         identical(widget.client, client) &&
@@ -708,11 +707,19 @@ class _CmAudioInputButtonState extends State<_CmAudioInputButton> {
         return;
       }
 
-      final x = details.globalPosition.dx;
-      final y = details.globalPosition.dy;
+      final button = context.findRenderObject()! as RenderBox;
+      final overlay =
+          Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
       final device = await showMenu<String>(
         context: context,
-        position: RelativeRect.fromLTRB(x, y, x, y),
+        position: RelativeRect.fromRect(
+          Rect.fromPoints(
+            button.localToGlobal(Offset.zero, ancestor: overlay),
+            button.localToGlobal(button.size.bottomRight(Offset.zero),
+                ancestor: overlay),
+          ),
+          Offset.zero & overlay.size,
+        ),
         items: devices.entries
             .map((d) => PopupMenuItem<String>(
                   value: d.key,
@@ -762,7 +769,7 @@ class _CmAudioInputButtonState extends State<_CmAudioInputButton> {
         absorbing: _pending,
         child: _CmControlPanel.buildButton(context,
             color: MyTheme.accent,
-            onTapDown: (details) => _selectDevice(details, client, voiceOwner),
+            onClick: () => _selectDevice(client, voiceOwner),
             icon: Icon(Icons.call_rounded, color: Colors.white, size: 14),
             text: 'Audio input',
             textColor: Colors.white),
@@ -883,14 +890,12 @@ class _CmControlPanel extends StatelessWidget {
 
   static Widget buildButton(BuildContext context,
       {required Color? color,
-      GestureTapCallback? onClick,
+      required GestureTapCallback onClick,
       Widget? icon,
       BoxBorder? border,
       required String text,
       required Color? textColor,
-      String? tooltip,
-      GestureTapDownCallback? onTapDown}) {
-    assert(!(onClick == null && onTapDown == null));
+      String? tooltip}) {
     Widget textWidget;
     if (icon != null) {
       textWidget = Text(
@@ -914,14 +919,7 @@ class _CmControlPanel extends StatelessWidget {
           color: color, borderRadius: borderRadius, border: border),
       child: InkWell(
         borderRadius: borderRadius,
-        onTap: () {
-          if (onClick == null) return;
-          onClick();
-        },
-        onTapDown: (details) {
-          if (onTapDown == null) return;
-          onTapDown.call(details);
-        },
+        onTap: onClick,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [

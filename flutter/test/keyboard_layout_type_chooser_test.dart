@@ -24,12 +24,14 @@ Future<void> _show(WidgetTester tester, KBChosenCallback save) async {
   await tester.pumpAndSettle();
 }
 
-VoidCallback _press(WidgetTester tester, String type) => tester
-    .widget<TextButton>(find.ancestor(
-      of: find.text(type),
-      matching: find.byType(TextButton),
-    ))
-    .onPressed!;
+VoidCallback _press(WidgetTester tester, String type) {
+  final changed = tester
+      .widget<Radio<String>>(find.byWidgetPredicate(
+        (widget) => widget is Radio<String> && widget.value == type,
+      ))
+      .onChanged!;
+  return () => changed(type);
+}
 
 void main() {
   late String original;

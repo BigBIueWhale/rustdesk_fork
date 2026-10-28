@@ -87,34 +87,34 @@ class _KBChooser extends StatelessWidget {
       }
     }
 
-    return Column(
-      children: [
-        Expanded(
-          child: TextButton(
-            onPressed: enabled ? () => onChanged(kbLayoutType) : null,
-            child: _KBImage(
-              kbLayoutType: kbLayoutType,
-              imageWidth: imageWidth,
-              chosenType: chosenType,
+    return SizedBox(
+      width: imageWidth,
+      child: Column(
+        children: [
+          Expanded(
+            child: ExcludeFocus(
+              child: ExcludeSemantics(
+                child: TextButton(
+                  onPressed: enabled ? () => onChanged(kbLayoutType) : null,
+                  child: _KBImage(
+                    kbLayoutType: kbLayoutType,
+                    imageWidth: imageWidth,
+                    chosenType: chosenType,
+                  ),
+                  style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                ),
+              ),
             ),
-            style: TextButton.styleFrom(padding: EdgeInsets.zero),
           ),
-        ),
-        TextButton(
-          child: Row(
-            children: [
-              Obx(() => Radio(
-                    splashRadius: 0,
-                    value: kbLayoutType,
-                    groupValue: chosenType.value,
-                    onChanged: enabled ? onChanged : null,
-                  )),
-              Text(kbLayoutType),
-            ],
-          ),
-          onPressed: enabled ? () => onChanged(kbLayoutType) : null,
-        ),
-      ],
+          Obx(() => RadioListTile<String>(
+                contentPadding: EdgeInsets.zero,
+                title: Text(kbLayoutType),
+                value: kbLayoutType,
+                groupValue: chosenType.value,
+                onChanged: enabled ? onChanged : null,
+              )),
+        ],
+      ),
     );
   }
 }

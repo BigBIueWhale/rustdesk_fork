@@ -1,5 +1,6 @@
 use dashmap::DashMap;
 use lazy_static::lazy_static;
+use std::time::{Duration, SystemTime};
 
 mod filetype;
 pub use filetype::{FileDescription, FileType};
@@ -34,9 +35,25 @@ pub const FILECONTENTS_FORMAT_NAME: &str = "FileContents";
 /// block size for fuse, align to our asynchronic request size over FileContentsRequest.
 pub(crate) const BLOCK_SIZE: u32 = 4 * 1024 * 1024;
 
-// begin of epoch used by microsoft
-// 1601-01-01 00:00:00 + LDAP_EPOCH_DELTA*(100 ns) = 1970-01-01 00:00:00
-const LDAP_EPOCH_DELTA: u64 = 116444772610000000;
+const FILETIME_TICKS_PER_SECOND: u64 = 10_000_000;
+// FILETIME counts 100 ns intervals from 1601-01-01 00:00:00 UTC.
+const FILETIME_EPOCH_OFFSET: Duration = Duration::from_secs(11_644_473_600);
+
+fn filetime_to_system_time(ticks: u64) -> Option<SystemTime> {
+    let epoch = SystemTime::UNIX_EPOCH.checked_sub(FILETIME_EPOCH_OFFSET)?;
+    let elapsed = Duration::new(
+        ticks / FILETIME_TICKS_PER_SECOND,
+        ((ticks % FILETIME_TICKS_PER_SECOND) * 100) as u32,
+    );
+    epoch.checked_add(elapsed)
+}
+
+fn system_time_to_filetime(time: SystemTime) -> Option<u64> {
+    let epoch = SystemTime::UNIX_EPOCH.checked_sub(FILETIME_EPOCH_OFFSET)?;
+    let elapsed = time.duration_since(epoch).ok()?;
+    elapsed.as_secs().checked_mul(FILETIME_TICKS_PER_SECOND)?
+        .checked_add(u64::from(elapsed.subsec_nanos() / 100))
+}
 
 lazy_static! {
     static ref REMOTE_FORMAT_MAP: DashMap<i32, String> = DashMap::from_iter(

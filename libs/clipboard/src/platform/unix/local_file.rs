@@ -1,4 +1,4 @@
-use super::{BLOCK_SIZE, LDAP_EPOCH_DELTA};
+use super::{system_time_to_filetime, BLOCK_SIZE};
 use crate::{
     platform::unix::{
         FLAGS_FD_ATTRIBUTES, FLAGS_FD_LAST_WRITE, FLAGS_FD_PROGRESSUI, FLAGS_FD_SIZE,
@@ -54,7 +54,10 @@ impl LocalFile {
         let hidden = path.to_string_lossy().starts_with('.');
         let archive = false;
         let normal = !(is_dir || read_only || system || hidden || archive);
-        let last_write_time = mt.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+        let last_write_time = mt.modified().map_err(|e| CliprdrError::FileError {
+            path: path.to_string_lossy().to_string(),
+            err: e,
+        })?;
 
         let perm = mt.permissions().mode();
 
@@ -102,13 +105,11 @@ impl LocalFile {
             | archive_flag
             | normal_flag;
 
-        let win32_time = self
-            .last_write_time
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos() as u64
-            / 100
-            + LDAP_EPOCH_DELTA;
+        let win32_time = system_time_to_filetime(self.last_write_time).ok_or_else(|| {
+            CliprdrError::InvalidRequest {
+                description: "file modification time is outside the FILETIME range".to_string(),
+            }
+        })?;
 
         let size_high = (self.size >> 32) as u32;
         let size_low = (self.size & (u32::MAX as u64)) as u32;

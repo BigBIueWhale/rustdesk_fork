@@ -109825,3 +109825,16 @@ confirms both run namespaces idle afterwards. Resource admission is preserved;
 no disk fallback, reduced budget, alternate launcher or repeated attempt is used.
 This is a validation limitation, not a product-test failure or pass. The ledger
 records native compilation/execution as OPEN; its fresh token count follows.
+
+Fresh count `kWO5Jlq5fV` at `b156c72dbab60ac67bd910e42ce4121e82a9523c`
+passes: 354,604 tokens (+236), 1,611,430 bytes (+1,056), ledger SHA-256
+`7caf23227a4602833a7db3778d9832de5cbe6906a6993958645d0f3efad550dd`.
+Pinned tokenizer, seven controls, byte round trip and storage admission checks
+pass. Serial 99,497 bytes, SHA-256
+`4527159d6df795233c8933071115b342e1041da6dbcf34ad4c614068a58c8a31`.
+Outer/supervisor 29/31.416 seconds; RAM scratch peaks at 402,292,736 bytes,
+durable evidence at 151,552. QEMU 3931807 joins with exit 0; its PID,
+RAM `run.qlckoabj` and active roots are absent. Before/during endpoint deltas
+are zero; after records one unattributed 18-byte removal, without owner
+inspection. This separate admitted count executes no product. The native input
+check remains unexecuted. This audit receipt leaves the counted ledger unchanged.

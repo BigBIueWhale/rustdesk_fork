@@ -111214,3 +111214,54 @@ endpoint sets are unchanged and no active owned run root remains. Raw serial
 `ledger-token-count-run.PEYAYiJLcY.serial.log` is 31,514 bytes, SHA-256
 `7f2e3c61e8f375fa85c0ae59566f662555b2e43ec32ec7153d81d4e2add11dab`.
 This receipt changes only the audit; the counted ledger remains identical.
+
+## 2026-10-28 — user pivot; Hebrew and Indonesian platform locale codes
+
+The user directs work to another aspect. Touch/remote-input callback consumption
+is OPEN/PARKED after read-only review; no new input implementation or test ran.
+The prior transformed hold-drag correction and its bounded evidence remain.
+All fifteen installed credential actions and the separately parked work remain open.
+
+Android `common.kt:52,129` passes `Locale.getDefault().toString()` through
+`FFI.translateLocale`; `src/flutter_ffi.rs::Java_ffi_FFI_translateLocale` forwards
+it to the shared language selector. Android's supported locale behavior includes
+`iw` for Hebrew and `in` for Indonesian, while `src/lang.rs` selects the existing
+catalogs using `he` and `id`. The unrecognized codes select English instead.
+[Android Locale documentation](https://developer.android.com/reference/java/util/Locale#legacy_language_codes)
+confirms that the newer forms depend on both running and targeting Android V or
+later; the application currently targets API 33 with minimum API 24.
+
+The shared selector owns automatic catalog selection; an explicit saved language
+continues to win. Correction `dfe653503625ba0631616ac451f9d3dc77962d4d` adds only
+the two exact language-subtag mappings. It adds no language catalog, generic
+alias facility, storage mutation or new authority path. Unsupported Yiddish
+codes and longer/unrelated subtags are preserved. Existing translations are
+unchanged. The directly compiled component is independent of parked application
+compilation and shared Flutter result-parser work.
+
+Preparation `8e22630e35063b80ef79b194c84bdb2e394cf785` adds two regression groups
+and precedence/nonalias controls to the existing focused profile; its receipts
+and exact inventory change from eight to ten groups. Command:
+`/bin/bash scripts/smoke-verifier-vm-authority.sh --language-selection-tests`.
+Unchanged-selector baseline `Ox9AqmsJU0` passes eight groups and fails the two
+new groups at `iw_IL` and `in_ID`. The identical corrected suite in `VX3x0WCY82`
+passes all ten groups with 100 examples and full outer-harness acceptance.
+The test body is byte-identical between sources, SHA-256
+`b26c2db8a073b7b495f34178ead2e4772376777719eb691bcface2a577296236`.
+Both actual test runs report 0.00 seconds. Corrected outer time is 61 seconds.
+The corrected component artifact is unchanged before/after execution, SHA-256
+`d6c6020b7a9300705a6ff5370f163e0043c06d3d18d9424a119e90400d6bde19`.
+
+Both use authenticated offline Rust 1.75.0 inputs, zero-NIC Linux VMs and
+UID/GID 1000 networkless containers, with the existing 2 GiB guest/6 GiB RAM
+scratch/4 GiB file ceiling profile. Supervisor times are 70.198/64.762 seconds;
+peak RAM scratch is 3,462,877,184/3,395,899,392 bytes. QEMU 656264/660393 join
+exit 0 and RAM `run.a5xqtbz1`/`run.01ozfpdb` is absent. Failed baseline diagnostics
+are reconciled as `locale-alias-baseline.Ox9AqmsJU0`; no active run root remains.
+Final endpoint snapshots respectively gain/lose one unattributed endpoint;
+no owner was inspected or modified. Raw workload logs are 2,291/1,890 bytes,
+SHA-256 `1fbcb050ea5fd48d2950cbebfdbaf4a76e7bd4458586068793339e28a52cdb0c` /
+`27472285af0072480c2130d9ad1f6df74e7456139168a351114a2f96e121a0ce`.
+Shell syntax, exact-diff/test-body review and `git diff --check` pass.
+Actual Android locale acquisition, JNI integration, notification/UI rendering,
+settings persistence, full application and installed/native acceptance remain OPEN.

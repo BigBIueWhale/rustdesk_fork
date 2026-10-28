@@ -112788,3 +112788,16 @@ guest/host expected count to 64; all 38 modes and five refusals are unchanged.
 No product or Flutter test changes follow the accepted run. Exact cleanup and
 bounded diagnostics are retained in `trackpad-ledger-registration.kuxV9NjUQP`;
 the unchanged ledger requires another count attempt.
+
+Fresh count `g0X36aLOMh` at `f75ff621` passes in 28 outer seconds:
+**353,067 tokens / 1,613,310 bytes**, input SHA-256
+`3d883aff089042f38e96be7741c7513f3b1da7d4268a1536c4293772d06610d9`.
+Seven tokenizer controls and the full byte round trip pass; workload admission
+passes all 64 controls/five refusals across 38 modes. QEMU 2103748 joins exit 0;
+RAM `run.8c8x_fgc` and owned active roots are absent, with zero endpoint deltas.
+Peak scratch/durable allocation is 402,309,120/253,952 bytes. The 32,899-byte
+workload serial SHA-256 is
+`f8e8fae801bcc2ccffe6630653d82a356c141c59c53bc689a259e449ba55b5bd`.
+The capsule retains this count and the preceding registration refusal/cleanup.
+Only this audit receipt and inert capsule follow counting; the ledger remains
+identical to the counted input. No broad parser or parked work is resumed.

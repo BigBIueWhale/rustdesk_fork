@@ -112171,3 +112171,14 @@ would not establish the missing rendered behavior, so none was added. Focused
 runtime acceptance remains OPEN: missing/unlaunchable Linux picker, rejected
 save, late rejection after session retirement, cancellation and ordinary success.
 No LPE, installed-service, cross-platform or release acceptance is claimed.
+
+Correction `f0798948` is pushed. Fresh isolated ledger count `fnpNe5ef9M`
+passes in 28 outer seconds: 360,560 tokens / 1,640,953 bytes, SHA-256
+`2e5092a36893b581defdc559205dff93011ee54bcea2a2489b9c5be4cc8575a3`,
+with seven controls and a whole-file round trip. QEMU 1489258 joins exit 0;
+RAM `run.ikk5_i1a` and active owned roots are absent. Peak RAM/durable storage
+is 402,317,312/249,856 bytes. No endpoint is added; one unattributed endpoint
+removal is retained without owner inspection or mutation. Workload serial is
+31,774 bytes, SHA-256
+`8cd7907745627ab04fbd749e310d9eab5c72fd59c95e9e60b58e82f91cc2863c`.
+This count and cleanup check do not execute the screenshot product change.

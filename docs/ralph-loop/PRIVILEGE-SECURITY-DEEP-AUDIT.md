@@ -109838,3 +109838,32 @@ RAM `run.qlckoabj` and active roots are absent. Before/during endpoint deltas
 are zero; after records one unattributed 18-byte removal, without owner
 inspection. This separate admitted count executes no product. The native input
 check remains unexecuted. This audit receipt leaves the counted ledger unchanged.
+
+## 2026-10-28 — bounded input-verification storage profile
+
+Previous turn made progress: obsolete input API deletion `d372c3ce` is pushed,
+but the current native input check was refused before startup. The service-owned
+authority checklist still requires all fifteen native action acceptances; all
+user parks remain parked. No new product defect was established by the initial
+read-only config/UID/notification review.
+
+The X11 input shard currently selects generic 16-GiB scratch despite its fixed
+4-GiB guest and 8-GiB QEMU hard file ceiling, making admission require 27 GiB.
+The existing pre-launch check requires all prepared workspace allocations to
+fit below scratch minus that complete ceiling, before only QEMU may write.
+Add a closed `x11-key-input` profile with 9-GiB scratch and the unchanged 8-GiB
+ceiling, requiring prepared media to fit within 1 GiB. Guest memory, 6-GiB host
+headroom, 1-GiB overhead, monitor, process ownership, RAM-only storage, joined
+cleanup and the actual native workload remain unchanged. Total admission becomes
+20 GiB. Other workloads retain their existing profiles. Historical key-input
+logs have no paired retained storage receipt; no measured key-input peak is
+claimed in advance. The full-capacity pre-launch bound is the design basis.
+
+Primary [Linux getrlimit documentation](https://man7.org/linux/man-pages/man2/getrlimit.2.html)
+confirms that RLIMIT_FSIZE limits individual file growth; it does not replace
+workspace admission or the aggregate live monitor. Those remain mandatory.
+The existing guest-only storage check adds the exact profile/guest bounds,
+wrong-size refusals, a real low-memory CLI refusal before allocation, and shell
+selection controls for the input shard, existing focus shard and unrelated mode.
+Run these controls through the unchanged isolated count workload before running
+the full existing native input shard. No native result is claimed yet.

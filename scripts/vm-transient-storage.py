@@ -55,6 +55,10 @@ def storage_limits(profile, memory_mib):
         require(memory_mib == 4096, 'focus storage profile requires its 4 GiB guest')
         # The unchanged 8 GiB QEMU ceiling leaves at most 1 GiB for prepared media.
         return 9 * GIB, 8 * GIB
+    if profile == 'x11-key-input':
+        require(memory_mib == 4096, 'input storage profile requires its 4 GiB guest')
+        # Admission leaves the full existing QEMU ceiling free after preparation.
+        return 9 * GIB, 8 * GIB
     if profile == 'linux-parent-libtest':
         require(memory_mib == 6144, 'parent library storage profile requires its 6 GiB guest')
         return 7 * GIB, 6 * GIB
@@ -442,7 +446,7 @@ def main():
     parser.add_argument('--storage-profile',
                         choices=('standard', 'hbb-common-fs', 'linux-logind', 'cpace-recovery-tests',
                                  'flutter-credential-dialog', 'linux-service-build',
-                                 'ledger-token-count', 'authority-smoke', 'fixed-archive-tests', 'x11-focus', 'linux-parent-libtest',
+                                 'ledger-token-count', 'authority-smoke', 'fixed-archive-tests', 'x11-focus', 'x11-key-input', 'linux-parent-libtest',
                                  'windows-pointer', 'linux-resource-limits', 'linux-resolution-lifetime', 'fusermount-process', 'xrandr-acquisition',
                                  'linux-service-uid-tests', 'audio-buffer', 'audio-mailbox', 'file-block', 'control-egress', 'clipboard-response',
                                  'linux-service-receiver', 'linux-flutter-replay', 'installer-package',

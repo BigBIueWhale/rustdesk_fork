@@ -112463,3 +112463,53 @@ The 32,216-byte workload serial has SHA-256
 Final exact-byte comparison confirms that the product change is only the shared
 list move/export and the two locale entries. The executed production/test SHA-256
 values still match the tree; no later product or test changes require a rerun.
+
+### 2026-10-28 — user pivot; keyboard access to file-column dividers
+
+The user requests another aspect. The preceding read-only whiteboard/helper
+review remains OPEN/PARKED; it established no new escalation and produced no
+product correction or runtime evidence. All previously parked work and all fifteen
+installed/native credential-action obligations remain open.
+
+The shared divider has only pointer drag callbacks and no keyboard focus or
+resizing path. Both file-header callers use that widget. Following Flutter's
+[CallbackShortcuts](https://api.flutter.dev/flutter/widgets/CallbackShortcuts-class.html)
+and [FocusableActionDetector](https://api.flutter.dev/flutter/widgets/FocusableActionDetector-class.html)
+contracts, checked against the pinned 3.24.5 implementation, the focused enabled
+control now routes unmodified axis arrows through its existing resize callback.
+Eight-pixel presses/repeats follow current axis and direction; disabling removes
+bindings/focus eligibility. The theme focus color is painted, and the two real
+callers provide their translated column labels. Existing width-limit logic and
+pointer recognizer ownership remain intact. This is UI functionality, not an LPE
+closure claim.
+
+Preparation `98ed1bdf` and run `OFRn4izo2B` reproduce eight failures: seven cases
+cannot acquire keyboard focus, and the rasterized divider fails to change color.
+All fourteen existing pointer controls pass. QEMU 1820974 joins exit 0, RAM
+`run.ax0a1z3g` is absent, and bounded diagnostics are retained as
+`divider-baseline.OFRn4izo2B` (device/inode 66306/103992452).
+Workload serial SHA-256 is
+`915f8d8f0c227ebc32af198b7ed8c40ee3657ad6b651582afbbd54510aba8f26`.
+
+Correction `4e14a74b829ea066061105d2236573040a5af205`, run `N9LAAww0lR`,
+passes the identical 22-case suite and three parser controls in 112 outer seconds.
+The test SHA-256 remains
+`a681c4b878b7afb1c7df09b112e615bd95b609c25cfefbfcfada892c311a6247`;
+the executed divider SHA-256 is
+`d4f7b2e0b85b38572aed5c744e7cfde26af7aed41129679c4724918f965c7621`.
+The 11,769-byte workload serial SHA-256 is
+`cc370166e6e7a689967c40baa4b67f15f85a2f18b8032a596606b446e411bfc2`.
+QEMU 1829899 joins exit 0; RAM `run.ftfq7g2q` and active owned roots are absent.
+Peak RAM scratch/overlay allocation is 4,050,636,800/3,855,224,832 bytes against
+6/5 GiB ceilings. Minimum available host memory is 10,621,931,520 bytes.
+The focused profile uses a 2 GiB guest and 1,280 MiB container, with no Rust/LLVM
+extraction or bridge generation; live admission, limits and monitoring remain.
+Each run retains one unattributed endpoint addition; owners are neither inspected
+nor changed. The harness denies host IP sockets, and guest/container networking
+is absent. Full file-manager/width-limit integration, native devices, assistive
+technology, platform and R-S0/R-F5/release acceptance remain OPEN.
+
+`.harness-state/verifier-vm/divider-keyboard-4e14a74b.json` retains exact sources,
+case outcomes, receipts, storage and listener evidence. Whitespace, shell syntax
+and Python AST checks pass. The current ledger records the pivot and bounded
+result; its required fresh isolated token count follows.

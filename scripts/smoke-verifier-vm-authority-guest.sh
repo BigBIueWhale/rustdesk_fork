@@ -975,6 +975,7 @@ for profile, memory, scratch, overlay in (
         ('cpace-recovery-tests', 8192, 6, 4),
         ('installer-package', 4096, 6, 4),
         ('flutter-credential-dialog', 4096, 7, 6),
+        ('flutter-dialog-tests', 3072, 7, 6),
         ('flutter-keyboard-layout', 3072, 7, 6),
         ('linux-service-build', 8192, 7, 6),
         ('linux-service-receiver', 4096, 6, 5),
@@ -1006,6 +1007,7 @@ for profile, memory, scratch, overlay in (
         raise SystemExit('VM storage profile limits differ')
     profile_cases += 1
 for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 4096),
+                        ('flutter-dialog-tests', 2048), ('flutter-dialog-tests', 4096),
                         ('flutter-keyboard-layout', 2048), ('flutter-keyboard-layout', 4096),
                         ('ledger-token-count', 8192), ('unknown', 2048),
                         ('linux-logind', 4096), ('linux-logind', 8193),
@@ -1080,6 +1082,7 @@ special.update({'authority-smoke': 'authority-smoke', 'dependency-inventory': 'a
                 'android-frame-tests': 'x11-focus'})
 cases = [(mode, {}, special.get(mode, 'standard')) for mode in sorted(modes)]
 cases.extend([('hbb-common-fs', {'HBB_LOGIND_NATIVE': '1'}, 'linux-logind'),
+              ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'credential-dialog'}, 'flutter-dialog-tests'),
               ('x11-display-tests', {'X11_KEY_INPUT_ONLY': '1'}, 'x11-key-input'),
               ('x11-display-tests', {'X11_FOCUS_ONLY': '1'}, 'x11-focus'),
               ('host-network-tests', {'X11_KEY_INPUT_ONLY': '1'}, 'standard'),
@@ -1130,9 +1133,9 @@ printf '%s\\n' "$VM_STORAGE_PROFILE"
         'pass': passed}, sort_keys=True), flush=True)
 print('VM_TRANSIENT_WORKLOAD_OBSERVED=' + json.dumps({
     'modes': len(modes), 'controls': controls, 'refusals': refusals}, sort_keys=True), flush=True)
-if (controls, refusals) != (58, 5):
+if (controls, refusals) != (59, 5):
     raise SystemExit('VM workload resource admission cases failed')
-print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=38 controls=58 refusals=5 allocation=not-entered')
+print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=38 controls=59 refusals=5 allocation=not-entered')
 PY
     for operation in preflight reserve check watch run; do
         root_status=0
@@ -11070,8 +11073,8 @@ run_flutter_model_tests() {
             result_prefix=FLUTTER_CONNECT_PASSWORD_TEST_JSON
             expected_result='suites=1 tests=7'
         elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
-            memory=3g
-            memory_bytes=3221225472
+            memory=2g
+            memory_bytes=2147483648
             result_prefix=FLUTTER_CREDENTIAL_DIALOG_TEST_JSON
             expected_result='suites=10 tests=107'
         else
@@ -11883,6 +11886,20 @@ run_flutter_model_tests() {
                     cat /work/test.json
                 fi
                 if [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
+                    IFS= read -r memory_limit </sys/fs/cgroup/memory.max
+                    IFS= read -r memory_peak </sys/fs/cgroup/memory.peak
+                    [ "$memory_limit" = 2147483648 ]
+                    [[ "$memory_peak" =~ ^[0-9]+$ ]]
+                    memory_oom= memory_oom_kill=
+                    while read -r event value; do
+                        case "$event" in
+                            oom) memory_oom=$value ;;
+                            oom_kill) memory_oom_kill=$value ;;
+                        esac
+                    done </sys/fs/cgroup/memory.events
+                    printf "FLUTTER_DIALOG_MEMORY=observed limit=%s peak=%s oom=%s oom_kill=%s\n" \
+                        "$memory_limit" "$memory_peak" "$memory_oom" "$memory_oom_kill"
+                    [ "$memory_oom:$memory_oom_kill" = 0:0 ]
                     for relative in lib/common.dart lib/common/widgets/dialog.dart lib/common/widgets/overlay.dart lib/models/model.dart test/windows_session_dialog_test.dart; do
                         cmp "/source/flutter/$relative" "$relative"
                     done

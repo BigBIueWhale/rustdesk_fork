@@ -111962,3 +111962,26 @@ Peak RAM/durable storage is 402,247,680/249,856 bytes; all endpoint deltas are z
 Workload serial: 31,542 bytes, SHA-256
 `619fbb2961b9646398f37938f19003abdf4eff8b5b864c038e2415eec2b532db`.
 This count executes no product code and supplies no chooser runtime acceptance.
+
+### 2026-10-28 — bounded dialog verification memory
+
+The previous turn made source progress but established no widget runtime result.
+Current head `6af87131` is clean; owned VM roots are absent, and all fifteen
+installed credential actions remain OPEN. Available host RAM remains below the
+existing 18-GiB dialog transaction requirement.
+
+The credential-dialog job now has its own closed resource profile: a 3-GiB guest
+and a 2-GiB container, down from 4/3 GiB. Its complete ten-suite/107-case workload,
+fresh bridge generation, seven-GiB RAM scratch, six-GiB hard writable-file ceiling,
+six-GiB host headroom and one-GiB overhead are unchanged. Admission requires 17 GiB
+and the live monitor and exact joined cleanup remain mandatory. Other Flutter
+profiles keep their existing guest/container limits. The new profile includes
+wrong-memory refusal and exact shell-routing controls.
+
+After the workload, the container reads its kernel memory limit, peak and OOM
+counters; a missing/unexpected limit or any OOM event refuses acceptance. This is
+a smaller enforced workload allocation, with no disk or swap fallback. The kernel
+defines memory.max as the cgroup hard limit and memory.peak as the cgroup/descendant
+peak; the reviewed primary reference is
+https://docs.kernel.org/admin-guide/cgroup-v2.html . Source syntax/review precede
+the run; whether fresh generation and the full tests fit remains to be measured.

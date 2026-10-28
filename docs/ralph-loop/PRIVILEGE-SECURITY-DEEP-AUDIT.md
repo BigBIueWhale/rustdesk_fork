@@ -113419,3 +113419,69 @@ SHA-256 `602c9ce01f01c699b06db97479e6e8a12184ce557b69c40f0d117595d91b67f9`.
 It retains both pre-boot refusals, intermediate controls, archive inventory,
 executed source/test identities, all case results, resources, endpoints and count.
 Only this audit receipt follows counting; the ledger and tested source are unchanged.
+
+## 2026-10-28 — user pivot; current saved-peer search rows
+
+The user explicitly pivots away from cancellation handling. That shared-controller,
+mobile/desktop/dialog follow-up remains OPEN/PARKED after read-only review; no
+cancellation change or new runtime check follows. The previous bounded file-progress
+work remains accepted. Peer sorting, shared-dialog keyboard ownership and every
+other user park remain parked. All fifteen installed credential actions remain OPEN.
+
+At `98b948b4`, `_PeersViewState._buildPeersView` creates a FutureBuilder during
+build and `matchPeers` awaits one Future per peer, although `matchPeer` only
+compares already-loaded strings. Flutter documents retained prior snapshot data
+and a waiting frame for a newly supplied completed future:
+https://api.flutter.dev/flutter/widgets/FutureBuilder-class.html.
+Dart's synchronous `Iterable.where` preserves matching iteration order:
+https://api.dart.dev/dart-core/Iterable/where.html.
+The local view should derive rows from the current query/data in the same build,
+without asynchronous result ownership for work containing no asynchronous operation.
+
+Product `223e76cb` removes that FutureBuilder and Future.wait, makes matching
+synchronous, and removes the unused tab argument/private field. The original
+sorting block is byte-identical; its parked defects are not resumed. The existing
+1,000-row limit, local field semantics, normalization and cache owner remain.
+Post-run cleanup removes only the now-unused peer-tab-model import from common.dart;
+both executed matching bodies and the complete peers_view.dart remain unchanged.
+No widget rerun is needed for that import-only cleanup.
+
+Focused command: `/bin/bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --peer-search`.
+Preparation `07711636` adds eight rendered cases to nineteen existing controls;
+`98b948b4` admits the bounded profile at the CLI after an allocation-free refusal.
+The runner reuses the selective Rust/native Flutter recipe: 2.5-GiB guest,
+1,792-MiB container with equal swap limit, 4.75-GiB RAM scratch, 4.5-GiB hard file
+ceiling and unchanged 6-GiB host reserve. Broad parser defects remain parked;
+only this profile's existing inventory/finality controls run.
+
+Baseline `ybDJbtwYjW` reproduces six rendered failures: both tabs wait initially
+and retain obsolete rows after query or data replacement. Nineteen controls pass.
+Two field controls stop at premature deferred-cache observations; those are fixture
+errors, not additional product failures. The candidate adds a 1-ms pump only before
+that cache assertion. Candidate `mZtiNe8xW3` then passes all rendering assertions
+and 21 complete cases, but six cases fail Flutter's pending-timer finality because
+test-owned model disposal runs after the framework invariant check. `c76d6cb3`
+moves fixture retirement into a try/finally inside the test; rendering assertions
+and product code are unchanged. Both failed roots are identity-checked, reconciled
+after exact QEMU exit/RAM absence, and retained as bounded diagnostics.
+
+The final source first refuses admission at 14,516 available versus 14,592 required
+MiB; it allocates no VM scratch. After memory recovers, unchanged source passes run
+`OYqPhNyjEs`: **27 widget tests + three parser checks**, 277 outer seconds,
+9.818-second Flutter stream. The production list/model and fresh bindings execute
+with controlled native preferences/translation, global owner and row callbacks.
+Both Recent and Favorites show current rows/actions in one frame; field matching,
+case/outer whitespace, literal punctuation, no matches and clearing pass. Full
+production-copy verification completes. The final test SHA-256 is
+`1b126aa44e5ab8bde263b7744cdb8d530b91b4c3c9cd3832831bc3090ae72284`.
+
+All three QEMU children join exit 0 and bounded RAM workspaces retire. Accepted
+QEMU 2573633 / RAM `run.5hat6cf3` are absent. Final scratch/overlay/durable peaks
+are 4,461,252,608 / 4,265,545,728 / 3,403,776 bytes; container limit/peak are
+1,879,048,192 / 1,879,052,288 bytes (one-page overshoot), OOM and OOM-kill zero.
+Host minimum available memory is 7,661,535,232 bytes. The first two runs have zero
+endpoint deltas; the accepted run has one unattributed addition,
+retained without ownership inspection or intervention. Host IP socket creation
+remains kernel-denied. Capsule/count follow; full cards/pages, native persistence
+and connection routing, devices, large-list performance, shared-controller lifetime,
+R-S0/R-F5, installed-service and release acceptance remain OPEN.

@@ -110560,3 +110560,80 @@ Outer/supervisor time is 29/31.347 seconds; RAM peak is 402,264,064 bytes and
 durable-run peak 249,856 bytes. QEMU 222169 joins exit 0; its PID, RAM
 `run.zv39mfrc` and active owned roots are absent. All endpoint deltas are zero.
 This audit-only receipt leaves the counted ledger unchanged.
+
+## 2026-10-28 — retire unused legacy-ID main IPC
+
+The previous locale-selection turn made verified progress. This continuation
+reviewed ordinary main-IPC reads and writes. Current service-owned receivers
+already refuse ordinary option and voice-input writes; no new escalation was
+established in those paths. All fifteen installed/native credential-action
+obligations remain OPEN. No user-parked work was resumed.
+
+At parent `431a3e77`, `MainConfigKey::Id`, its `main_config_key("id")` mapping and
+receiver branch remain although the live UI has no consumer. `ipc::get_id` falls
+back to the local Config read on any IPC failure; its sole `ui_interface::get_id`
+facade likewise has no caller. `MainStatusSnapshot` still reads and transmits
+the legacy ID; length above 256 bytes rejects the entire snapshot before options
+are returned. `UiStatus`/`UI_STATUS` are assigned by the polling thread but never
+read. Whole-source reference review establishes these dead consumers. The old
+snapshot failure is a source finding, not an executed whole-application result.
+
+Correction `9c8dc194ac68b5f5ce24c531cee549faabdcba4b`, tree
+`693afa33d2d905995f9094ee0634ddbcf5a52cf2`, removes those surfaces completely.
+The receiver returns only the options and file-transfer status consumed by the
+current synchronization loop. The five legitimate readonly config keys retain
+their variants and handler bodies. Their enum now lives in `src/ipc/main_config.rs`,
+exported through the original `ipc::MainConfigKey` path, so the exact production
+wire type can execute independently of the parked parent build. No compatibility
+ID variant, local-read fallback, migration or new application dependency is added.
+Other existing Config::get_id uses outside these two facades remain outside scope.
+
+Research: [Serde's enum representations](https://serde.rs/enum-representations.html)
+defines the internally tagged key and adjacently tagged enclosing request forms.
+The receiver's existing bounded decoder propagates failed key deserialization as
+an invalid request; removal is at the wire type and handler, not merely the UI.
+The existing parent key-mapping regression gains the `id` refusal assertion but
+was not executed. Two shared/Apple gate paths now read the moved enum; their checks
+and runtime commands are otherwise unchanged, and no full-catalog pass is claimed.
+
+The retained before enum is exact text from the named parent's `src/ipc.rs`,
+including attributes, with SHA-256
+`e21e088884467cbbaf10e1794b5463c9ae5ca11a831f4f7f88ed1c48a2fcd2ce`.
+`scripts/test-main-config-key.rs` includes that fixture and the actual production
+module. In the same native test artifact, the historical schema accepts `Id` and
+all five legitimate tags; the current type round-trips those five tags and refuses
+seven retired/unknown tags plus four malformed representations. Four tests pass,
+zero failed/ignored/filtered, without mocked serialization or configuration.
+This establishes schema behavior only: no socket peer, privileged principal,
+status polling, configuration loader, parent application or rendered UI ran.
+
+Command: `/bin/bash scripts/smoke-verifier-vm-authority.sh --main-config-key-tests`.
+Run `vTvK0nAk5E` uses Rust 1.75.0 and the authenticated vendor closure; Serde
+1.0.228 and serde_json 1.0.118 match the application's locked versions. Generated
+private component-lock SHA-256 is
+`4cb87ae301519693341a785225d56c27f8cd344ec165bcb5421c7c9cae63eed3`;
+artifact SHA-256 is
+`df9f9990452fc7e001643670771c3f2bc5bf02c28d84abd431e9756cb1edd03b`,
+unchanged before/after. The nonroot container and VM have no network; the build
+canary refuses with ENETUNREACH. Source fingerprints match before/after.
+
+Workload archive is 1,577 bytes, SHA-256
+`59e2559947c4282731d0e4f77d1c7b2d4bc79207a27192461a8a6428437365c3`;
+console is 66,211 bytes, SHA-256
+`1d12d344d32299a86824143d4846593256ad8777a87e8830768236e888ac74dc`.
+All four exact test names, hashes and completion are retained under
+`.harness-state/verifier-vm/android-rust-lifecycle-tests[-console]-run.vTvK0nAk5E`,
+with storage/listener receipts. Outer command exits 0 in 63 seconds; the storage
+supervisor observes 67.518 seconds. The existing 2-GiB guest/6-GiB RAM scratch/
+4-GiB file-ceiling envelope, 6-GiB headroom, monitor and exact-run lock apply.
+RAM scratch peaks at 3,455,352,832 bytes; durable-run peak is 3,383,296 bytes.
+QEMU 243685 joins exit 0; its PID, RAM `run.v_all7np` and active owned roots are
+absent. One 18-byte endpoint addition is unattributed and untouched. Host IP sockets
+remain denied. Syntax, AST, exact historical-fixture and whitespace reviews pass.
+
+This retires obsolete IPC reads; it is not a demonstrated local escalation fix.
+Full current-parent compilation, native receiver/status/settings operation,
+installed/other-platform and mixed-artifact acceptance, R-S0/R-F5, release and
+independent review remain OPEN. The parent audio-formatting repair remains parked;
+no known-failing parent build was repeated. The ledger records the exact scope;
+a fresh count follows.

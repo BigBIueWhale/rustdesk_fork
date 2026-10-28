@@ -3504,6 +3504,20 @@ by consolidating the ledger. All separately parked work remains OPEN/PARKED.
 
 ### Current authority and source closure
 
+**Retired main-IPC legacy ID (`9c8dc194`).** The unused ID query, IPC-to-local
+read fallback, snapshot ID field/length failure and unread UI cache are removed.
+Status synchronization now depends only on the retained option and file-transfer
+fields. The five remaining config-query keys keep their encodings in the directly
+included production schema. Four isolated Linux tests pass: the exact historical
+schema accepts `Id`, the current schema rejects retired/unknown keys and malformed
+tags, and all five retained encodings round-trip. This is decoder-component
+evidence and obsolete-surface removal; full receiver/status/configuration flows,
+parent compilation, installed and other-platform acceptance remain OPEN. The
+parked parent-build repair was not resumed. Shared/Apple source gates follow the
+schema's new file; their full catalogs did not run. Run `vTvK0nAk5E` and audit entry
+“2026-10-28 — retire unused legacy-ID main IPC” retain source, artifact and joined
+bounded-RAM cleanup evidence. One unattributed endpoint addition is untouched.
+
 **Retired desktop lock-state queries (`50f9b5e9`).** The last connection-authentication
 caller was removed by `d5aec5bc`; current source has no consumer. The Linux/macOS/Windows
 `is_locked` APIs, Linux `LockedHint` query variant, macOS `ioreg` launcher and constant,

@@ -111021,3 +111021,65 @@ at 253,952 bytes. QEMU 535173 joins exit 0; its PID, RAM `run.l__eum2w` and owne
 active roots are absent. All endpoint deltas are zero. The bounded admission
 and live monitor remain enabled; this audit-only receipt leaves the ledger
 unchanged and establishes no additional product acceptance.
+
+## 2026-10-28 — RDP port drafts and editor ownership
+
+Previous goal turn: PROGRESS, unused peer-menu code removed and pushed with a
+fresh ledger count. All fifteen installed credential-action acceptance rows
+remain OPEN. Clipboard, parent compilation, shared-parser repairs and the other
+user parks remain in place. This slice addresses the active RDP port editor.
+
+`peer_card.dart::_rdpDialog` used a whole-value regex in a character filter and
+allocated a text controller without disposal. A malformed draft could become
+empty, which the existing native RDP option reader interprets as default 3389
+(`src/ui_session_interface.rs`); the requested nondefault port could be lost.
+Flutter recommends a whole-string predicate for this kind of
+[input validation](https://api.flutter.dev/flutter/services/FilteringTextInputFormatter-class.html).
+The pinned [3.24.5 TextFormField implementation](https://github.com/flutter/flutter/blob/3.24.5/packages/flutter/lib/src/material/text_form_field.dart#L305)
+creates and disposes its own controller when no external controller is supplied.
+The correct owner is the mounted field; the dialog retains only its draft and
+existing one-pending-save/exact-close guard. Native writes remain per-peer
+preferences through the existing `mainSetPeerOption` path, with no new IPC or
+privileged operation. Zero remains an editable draft, not new backend authority.
+
+Preparation `3e23eff4` extracts the actual field into `RdpPortField`, preserving
+the original regex and missing disposal; the complete original product is not
+byte-identical. Eight rendered cases join the existing 25 address/port cases.
+Run `oGufrxftam` stops on three new formatting differences before test execution;
+`bbb6eb3c` applies only those emitted layout corrections. Baseline `aOHwxxZdeR`
+then passes 30 cases and fails three: `65536` erases `3390` and its selection,
+and removal/replacement leave their controllers undisposed. The source-copy
+receipt binds field, caller and tests; the caller is reviewed, not compiled by
+this component workload.
+
+Correction `5e56d319` replaces the private State/controller/regex with a
+TextFormField and the existing `portNumberInputFormatter`. Run `gc9jVsKesQ`
+passes 32 cases; the remaining fixture incorrectly expects pasted `3390\n`
+to be rejected before Flutter's [single-line normalization](https://api.flutter.dev/flutter/services/FilteringTextInputFormatter/singleLineFormatter.html).
+The fixture now checks that normalization as accepted input and preserves the
+original failing `65536` assertion. At `05e02ee1`, `Il6mgqc1jH` executes all 33
+exact named cases once, unskipped, with no Flutter errors and terminal success.
+This is eight real rendered RDP-field cases plus the 25 retained address/port
+controls. The product is unchanged after `5e56d319`; fixture changes are not
+represented as a byte-identical A/B test suite. Final field SHA-256 is
+`346a8719267d919ee9cb20f957a19c19dc2d8d10b6c13abad6bc3dbe0f126d87`;
+raw workload output is 18,279 bytes, SHA-256
+`adf431e725bec7dbc9310b94df9ae09d3d1f4f5ee1ae2b84e02e8b140085ac0f`.
+
+Full harness acceptance remains OPEN: after Flutter succeeds, its shared
+parser self-tests fail the parked models-profile rename, duplicate and wrong-suite
+checks. No parser repair or full-workload pass is claimed. The exact raw Flutter
+inventory, success events and source copies establish the narrower component
+result. Complete dialog save/cancel/reopen, generated/native FFI, Windows RDP
+launch, storage persistence and R-S0/R-F5/installed acceptance remain OPEN.
+
+All four executions use the existing zero-NIC, nonroot/container profile with a
+4 GiB guest, 7 GiB RAM scratch, 6 GiB file ceiling and 6 GiB host headroom.
+Baseline/final supervisor times are 85.635/85.972 seconds; final RAM/durable
+peaks are 4,050,862,080/3,416,064 bytes. QEMU 549411/553540/558521/565884 join
+exit 0 and their RAM workspaces retire; no active owned run root remains.
+Formatting/baseline/final snapshots respectively retain one unattributed endpoint
+addition/removal/removal, left untouched; the intermediate candidate has zero
+deltas. Bounded diagnostics are preserved as `rdp-port-format.oGufrxftam`,
+`rdp-port-baseline.aOHwxxZdeR`, `rdp-port-newline-fixture.gc9jVsKesQ` and
+`rdp-port-parser-open.Il6mgqc1jH`. Shell syntax and `git diff --check` pass.

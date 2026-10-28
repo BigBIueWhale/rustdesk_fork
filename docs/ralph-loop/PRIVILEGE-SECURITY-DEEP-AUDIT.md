@@ -110548,3 +110548,15 @@ configuration/FFI integration, OS locale acquisition, rendered translations and
 other platforms did not run. R-S0/R-F5, native installed authority, release and
 independent review remain OPEN. The ledger records this exact component result;
 a fresh count follows.
+
+Fresh count at `59db054ca3191f50588417b4b52023ab40f25849` in `t80i4mjrfb`:
+**356,378 tokens**, 1,620,370 bytes, input SHA-256
+`1baa5c55b2cb5066523bc89509fcb6459991237c7a76a1a90e496b1b724cc074`,
+using pinned `tiktoken-0.12.0/cl100k_base/encode_ordinary`, all seven controls and
+the complete byte round trip. It remains below the approximate 400,000-token
+budget. Workload archive: 31,041 bytes, SHA-256
+`6f55a53118159b4daa943a86fe5c6dc811134567b7282b10b16140b7570b4420`.
+Outer/supervisor time is 29/31.347 seconds; RAM peak is 402,264,064 bytes and
+durable-run peak 249,856 bytes. QEMU 222169 joins exit 0; its PID, RAM
+`run.zv39mfrc` and active owned roots are absent. All endpoint deltas are zero.
+This audit-only receipt leaves the counted ledger unchanged.

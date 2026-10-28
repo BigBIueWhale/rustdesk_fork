@@ -113853,3 +113853,16 @@ all broader security, functional and native acceptance obligations. Resume with
 the 37-case audio profile and its three parser checks when resource admission
 succeeds; retain the 6 GiB live headroom reserve and bounded RAM scratch. This
 audit-only receipt does not change the already-counted ledger.
+
+## 2026-10-29 — resumed CM keyboard capacity audit
+
+Resumption starts a fresh blocker audit. Three consecutive resumed goal turns
+refuse the unchanged audio profile before allocation at 13,893 / 13,924 /
+13,810 MiB available, respectively, against 14,592 MiB required. Source remains
+clean and pushed at `50d4ea3f`; product `4012c905` and the 37-case inventory are
+unchanged. No VM, compiler or test starts. The shared run roots are idle and
+the project's RAM-storage root is empty. Read-only review confirms existing
+SDK exclusions and installer retirement; no smaller equivalent profile was
+established. All resource and isolation limits remain intact. The resumed run
+is blocked again pending sufficient RAM for exact candidate execution; the
+three parser checks and broader native/security acceptance remain open.

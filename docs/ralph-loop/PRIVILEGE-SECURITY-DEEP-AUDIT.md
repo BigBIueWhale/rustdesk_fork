@@ -110906,3 +110906,16 @@ needed for six literal values; rendering and bidirectional layout are not newly
 executed. Chat lifecycle and remaining locale completion are not claimed fixed.
 The ledger records this scope and the explicit park; its fresh bounded count
 follows the clean committed source.
+
+Committed/pushed as `7efda8c610df73c8a66aa0719ef99cbaaa6f3c72`.
+The first documentation-counter launch refused the owned launcher mode `0775`
+before entering VM orchestration. After exact HEAD-byte, owner, regular-file and
+single-link checks, its group-write bit was removed (`0755`); no source or guard
+changed. Fresh count `ojxaLGDyop` then passes: **357,509 tokens**, 1,625,797 bytes,
+input SHA-256 `be9d2a850f06a9df494e89b4efa97f032f9c1a3fe172f3a611802f174ec944b7`.
+Seven controls and exact byte round trip pass. Outer/supervisor times are
+28/31.648 seconds; RAM scratch peaks at 402,079,744 bytes and durable evidence at
+249,856 bytes. QEMU 418251 joins exit 0; its PID, RAM `run.xm_au8xe` and active
+owned roots are absent. All endpoint deltas are zero. Bounded admission and the
+live monitor remain enabled. This audit-only receipt leaves the counted ledger
+unchanged and establishes no product execution or rendering acceptance.

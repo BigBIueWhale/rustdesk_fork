@@ -110804,3 +110804,13 @@ cover the change; no new test, compiler or product execution is needed for this
 unreferenced-file deletion. Current application, installed/native, R-S0/R-F5 and
 release acceptance remain OPEN. The ledger records this scope and receives a fresh
 bounded count after the clean candidate is committed and pushed.
+
+Committed and pushed as `9965b3fafdf1bd4ab3d6acef75e2db1a5dcf17db`.
+Fresh count `qsFLiBcI7v` passes: **357,110 tokens**, 1,623,873 bytes,
+ledger SHA-256 `ca546a4410af742dcfb4fa824b3ab268a96273b8eaf635d9866ed751baf234fd`.
+Seven controls and the whole-file round trip pass. Outer/supervisor times are
+29/32.151 seconds; RAM scratch peaks at 402,075,648 bytes and durable evidence
+at 253,952 bytes. QEMU 358235 joins exit 0; its PID, RAM workspace
+`run.ca_8obzq` and active owned roots are absent. No endpoint is added; one
+unattributed final removal remains untouched. The bounded RAM profile and monitor
+remain enabled. This audit-only receipt leaves the counted ledger unchanged.

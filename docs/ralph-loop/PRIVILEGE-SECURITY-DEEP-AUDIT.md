@@ -109813,3 +109813,15 @@ verification will compile the changed complete Linux Enigo crate and exercise
 its X11 event/state/cleanup paths through the unchanged focused
 `--x11-display-tests --key-input` VM shard. Windows/macOS native acceptance and
 full application acceptance remain open. No runtime result is claimed yet.
+
+Deletion `d372c3ce111ca1cc14d4602a7610437500fbe3fc`, tree
+`9c41f8a6bc3c2f5dbd9932158edd51242ecb3b07`, is pushed. Read-only exact comparison
+confirms that each of the five files differs from `764f5582` solely by the two
+declaration/implementation blocks. The unchanged VM command returns 1 during
+storage preflight: required 27,648 MiB including scratch/headroom, available
+21,381 MiB. The host network restriction installs successfully, but no VM,
+scratch workspace or active run root is created. The shared-lock/root inspection
+confirms both run namespaces idle afterwards. Resource admission is preserved;
+no disk fallback, reduced budget, alternate launcher or repeated attempt is used.
+This is a validation limitation, not a product-test failure or pass. The ledger
+records native compilation/execution as OPEN; its fresh token count follows.

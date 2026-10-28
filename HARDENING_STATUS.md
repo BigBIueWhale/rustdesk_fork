@@ -52,6 +52,11 @@ case inventories, intermediate failures, source/artifact hashes and timings rema
 receipts under `.harness-state/verifier-vm/` and in Git history. Shared current-artifact,
 installed/other-platform, R-S0/R-F5, resource/soak and release obligations below remain OPEN.
 
+**User pivot (2026-10-28):** Shared-decompressor native workspace allocation
+failure coverage remains OPEN/PARKED after research only. No decoder change or
+execution was made. Do not resume automatically. Work moved to removing unused
+input-backend downcast interfaces below.
+
 **User pivot (2026-10-28):** The macOS mouse-button coordinate investigation
 remains OPEN/PARKED after source research only. No product or test change was
 made. Do not resume automatically. Work moved to the IPC verification correction
@@ -773,6 +778,17 @@ rebinding; other Cargo/Dart forks, cold equality, independent reproduction and e
 No new reachable LPE or closed security boundary is claimed by this source-only snapshot review.
 
 ### R-B5b/R-R1 — redundant Linux input backend retired; whole-app acceptance OPEN
+
+**Unused downcast interface (`d372c3ce`).** The mouse and keyboard traits no
+longer expose `as_any`/`as_mut_any`; sixteen unused implementations are removed
+from the Linux, Windows and macOS backends. Their last application consumer was
+the uinput path removed by `fb40e9d2`. Reference inspection and exact comparison
+confirm that the five source files differ only by these 78 deleted lines;
+event/state/cleanup bodies, tests and dependencies are unchanged. The existing
+`--x11-display-tests --key-input` check was refused before VM startup: its
+27,648-MiB admission requirement exceeded 21,381 MiB available. No VM or scratch
+was created; native compilation/execution remain OPEN. This is obsolete API
+removal, not a demonstrated input/LPE fix. All parked work remains parked.
 
 **Current source:** TFC is no longer a dependency or workspace member. Its eager X11
 context, generic-key fallback chain, key conversion and final-worker remap hook are

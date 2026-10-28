@@ -110007,3 +110007,22 @@ codec execution, Apple compilation or installed-service test is claimed. Watcher
 runtime replay, current artifacts, native/installed acceptance, R-S0/R-F5 and
 independent/external review remain open. The ledger decreases from 1,613,546 to
 1,612,627 bytes; its fresh pinned token-count transaction is recorded separately.
+
+Committed and pushed as `65d82723ccf47a46d47bf3a49c46c72d72df39f4`, tree
+`9cefdd4165ea6092a2e2d85cfdf8144a700cc5bf`. The first count attempt refused before
+VM allocation because the launcher was mode 0775. After no-follow descriptor,
+owner/single-link and exact committed-byte checks, its mode was restored to 0755;
+the guard and launcher content were unchanged. Owned run roots were idle.
+
+The retry `/bin/bash scripts/smoke-verifier-vm-authority.sh --ledger-token-count`
+passes as `ISsPW1fm7x`: 354,795 tokens (-277), 1,612,627 bytes (-919), input SHA-256
+`c193b6c4a00be4cee55823f67cbe39177e4021250a57ceb6a7577f63a2168363`.
+The pinned tiktoken-0.12.0/cl100k_base/encode_ordinary method, seven controls,
+whole-file round trip and existing storage admission controls pass. Serial is
+97,883 bytes, SHA-256
+`8e3a22796f7ffb9e8138247e6de43e4164363ecaa44d9e88be99bb895e93ce3b`.
+Outer/supervisor lifetime is 28/31.418 seconds; RAM-scratch peak is 402,100,224
+bytes and durable run peak 147,456 bytes. QEMU 4045434 joins with exit 0; its PID,
+RAM workspace `run.x_206xr_` and active run roots are absent. All three endpoint
+comparisons have zero additions and removals. This audit-only receipt leaves the
+counted ledger unchanged; product and native acceptance remain open.

@@ -111564,3 +111564,13 @@ before/after comparison pass; the latter proves the complete verifier differs
 only in comments and the three literal protobuf report strings. No application
 compile or behavioral test is needed for this reporting-only change. All fifteen
 installed credential actions, R-S0/R-F5 and release acceptance remain OPEN.
+
+Fresh count `nCNVy1iVzV` at `efeaf8e899a8` passes: ledger 358,967 tokens /
+1,633,353 bytes, SHA-256
+`f2a54d30c1863b386251792479aa24cdf9be79dc3136878f5ec2e870cfbdfa12`.
+Seven token controls and the byte round trip pass in 28 outer / 31.488 supervisor
+seconds. Peak RAM/durable run storage is 402,231,296/249,856 bytes. QEMU 874921
+joins exit 0; RAM `run.znx048fs` and active owned run roots are absent. Every
+recorded endpoint delta is zero. Workload serial: 31,515 bytes, SHA-256
+`ade38922c3c38e76cdf596636d18b6ba97f4cb61d55332d625057c814e4957b7`.
+This audit-only receipt leaves the counted ledger and verifier bytes unchanged.

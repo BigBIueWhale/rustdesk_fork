@@ -52,6 +52,11 @@ case inventories, intermediate failures, source/artifact hashes and timings rema
 receipts under `.harness-state/verifier-vm/` and in Git history. Shared current-artifact,
 installed/other-platform, R-S0/R-F5, resource/soak and release obligations below remain OPEN.
 
+**User pivot (2026-10-28):** Raw credential decoder format/length review remains
+OPEN/PARKED after initial read-only inspection. No new defect, patch or native
+test was established. Do not resume automatically. Work moved to unused copied
+desktop popup-menu controls; credential persistence and deadline work stay parked.
+
 **User pivot (2026-10-28):** Touch/remote-input callback consumption follow-up
 remains OPEN/PARKED after read-only review. The completed transformed hold-drag
 correction and its seventeen component passes remain recorded below; no further
@@ -258,6 +263,7 @@ Do not resume automatically. Work moved to the R-S11hj current-state ledger clea
 
 | Surface | Current state and evidence boundary | Receipt |
 | --- | --- | --- |
+| Unused copied popup-menu controls | Removes the uncalled custom menu-button and checked-item families, position enum, three callback typedefs, private cursor helper, unused icon constant/imports and obsolete examples (555 net lines). All eight tracked importers use a namespace prefix and reference only retained types/functions. The visible peer-layout selector uses Flutter's standard controls. The thirteen retained declarations have identical executable lines; reference and whitespace checks pass. No compiler or UI runtime ran for this deletion. Full application/menu and release acceptance remain OPEN. | Audit entry “2026-10-28 — user pivot; unused copied popup-menu controls” |
 | RDP port editing and editor retirement (`5e56d319`) | The actual field uses the shared whole-port validator and a Flutter-owned TextFormField controller. Invalid edits preserve the draft and selection; clear/replacement, pending-save disabling and controller retirement remain covered. The extracted old formatter/ownership baseline passes 30 cases and fails invalid-input preservation plus two retirement cases. Final Linux Flutter execution at `05e02ee1` passes all 33 exact address/port cases after correcting a test's newline-normalization expectation; product code is unchanged after `5e56d319`. The outer harness still fails the three parked shared-parser inventory checks, so full harness acceptance remains OPEN. Source-copy checks and raw per-case/terminal success are retained. All VMs join and RAM scratch retires. Full dialog, native persistence/Windows RDP launch and installed acceptance remain OPEN. | Audit entry “2026-10-28 — RDP port drafts and editor ownership”; runs `aOHwxxZdeR` / `Il6mgqc1jH` |
 | Unused peer-menu tab/window options | Deletes four private uncalled helpers, two commented menu entries and their two unused constants (31 lines). The dead entries already existed in upstream import `c2abd3b3`; complete library and tracked-reference review establishes no live caller. Exact deletion comparison and whitespace checks pass; retained code, the global tab preference and actual window dispatch are byte-identical. No compilation or runtime acceptance is claimed. | Audit entry “2026-10-28 — user pivot; unused peer-menu tab/window options” |
 | Chat-history limit translations | Fills the existing empty notice in Hebrew, Arabic, French, German, Spanish and Brazilian Portuguese, using the English display text. Only six translation values change; keys, existing translations and runtime code are unchanged. UTF-8, literal/placeholder preservation and exact-diff review pass. Application rendering and bidirectional layout are not newly executed; other untranslated locales and chat lifecycle acceptance remain OPEN. | Audit entry “2026-10-28 — user pivot; chat-history notice translations” |

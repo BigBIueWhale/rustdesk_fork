@@ -111397,3 +111397,43 @@ all endpoint sets are unchanged and no active owned run root remains. Workload
 serial is 32,286 bytes, SHA-256
 `d3fc2df5bb25496f93c7c8b9bcf26c581973ef0ddd28327a778c3e8a28b271a7`.
 This audit-only receipt leaves both counted documents byte-identical.
+
+## 2026-10-28 — user pivot; unused copied popup-menu controls
+
+The user directs another aspect. Raw credential decoder format/length review
+remains OPEN/PARKED after initial read-only inspection, without a new defect,
+patch or runtime result. Credential persistence/deadlines, parent compilation,
+shared Flutter parser and previously parked UI follow-ups remain parked.
+
+At `f22a06da`, the copied `material_mod_popup_menu.dart` still contains unused
+`PopupMenuButton`/state and `CheckedPopupMenuItem`/state families, their position
+enum and three callback typedefs, an unused private cursor helper and icon-size
+constant. All eight tracked Dart importers use `as mod_menu`; their references
+are exclusively `PopupMenu`, `PopupMenuEntry`, `PopupMenuItem`,
+`PopupMenuDivider` and `showMenu`. There is no export or part directive extending
+this library. The peer-layout control's unqualified button and checked items
+come from `package:flutter/material.dart`, not this copied library. The dead
+definitions are retained unchanged since upstream import `c2abd3b3`.
+
+The design is deletion of the unused local API, preserving every currently
+consumed declaration. Dart's library privacy and prefixed-import rules support
+the distinction between these definitions and the active Flutter controls:
+https://dart.dev/language/libraries . Flutter's standard button API is documented
+at https://api.flutter.dev/flutter/material/PopupMenuButton-class.html . These
+sources establish language/API semantics; caller reachability comes from the
+repository review, not from the external documentation.
+
+Deletes the two unused control families and their supporting declarations,
+application imports, disconnected cursor example and stale documentation.
+The file changes from 1,434 lines / 48,978 bytes to 879 lines / 29,192 bytes
+(555 net lines removed). Thirteen retained declarations compare identically
+after excluding standalone comment and blank lines; their combined executable
+SHA-256 is `91da21189bcd3417320242e02874b0f3b40b3bf7f5ad414eb8ff5dbc7c073285`.
+Source SHA-256 changes from
+`b6f9d99567272fcb5a7642d8930e522be3ae6876322228ab3e46370ab710a354` to
+`15099429b6cb228e5b5aa75a6685b081c1cfd9382f399cc469fbc762d5e4cbcf`.
+Tracked-import/member review and `git diff --check` pass. Test sources,
+requirements, consumers and active menu actions are unchanged. No compilation,
+rendered UI result, runtime leak fix or privilege-boundary closure is claimed.
+Full application/menu integration and installed/native release obligations,
+including all fifteen credential actions, remain OPEN.

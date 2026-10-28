@@ -5,16 +5,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_hbb/common.dart';
-import 'package:flutter_hbb/desktop/widgets/menu_button.dart';
-
-// Examples can assume:
-// enum Commands { heroAndScholar, hurricaneCame }
-// late bool _heroAndScholar;
-// late dynamic _selection;
-// late BuildContext context;
-// void setState(VoidCallback fn) { }
-// enum Menu { itemOne, itemTwo, itemThree, itemFour }
 
 // const Duration _kMenuDuration = Duration(milliseconds: 300);
 const Duration _kMenuDuration = Duration(milliseconds: 0);
@@ -29,30 +19,11 @@ const double _kMenuVerticalPadding = 8.0;
 const double _kMenuWidthStep = 0.0;
 //const double _kMenuScreenPadding = 8.0;
 const double _kMenuScreenPadding = 0.0;
-const double _kDefaultIconSize = 24.0;
-
-/// Used to configure how the [PopupMenuButton] positions its popup menu.
-enum PopupMenuPosition {
-  /// Menu is positioned over the anchor.
-  over,
-
-  /// Menu is positioned under the anchor.
-  under,
-
-  // Only support right side (TextDirection.ltr) for now
-  /// Menu is positioned over side the anchor
-  overSide,
-
-  // Only support right side (TextDirection.ltr) for now
-  /// Menu is positioned under side the anchor
-  underSide,
-}
 
 /// A base class for entries in a material design popup menu.
 ///
 /// The popup menu widget uses this interface to interact with the menu items.
-/// To show a popup menu, use the [showMenu] function. To create a button that
-/// shows a popup menu, consider using [PopupMenuButton].
+/// To show a popup menu, use the [showMenu] function.
 ///
 /// The type `T` is the type of the value(s) the entry represents. All the
 /// entries in a given menu must represent values with consistent types.
@@ -65,10 +36,7 @@ enum PopupMenuPosition {
 ///
 ///  * [PopupMenuItem], a popup menu entry for a single value.
 ///  * [PopupMenuDivider], a popup menu entry that is just a horizontal line.
-///  * [CheckedPopupMenuItem], a popup menu item with a checkmark.
 ///  * [showMenu], a method to dynamically show a popup menu at a given location.
-///  * [PopupMenuButton], an [IconButton] that automatically shows a menu when
-///    it is tapped.
 abstract class PopupMenuEntry<T> extends StatefulWidget {
   /// Abstract const constructor. This constructor enables subclasses to provide
   /// const constructors so that they can be used in const expressions.
@@ -105,8 +73,6 @@ abstract class PopupMenuEntry<T> extends StatefulWidget {
 ///
 ///  * [PopupMenuItem], for the kinds of items that this widget divides.
 ///  * [showMenu], a method to dynamically show a popup menu at a given location.
-///  * [PopupMenuButton], an [IconButton] that automatically shows a menu when
-///    it is tapped.
 class PopupMenuDivider extends PopupMenuEntry<Never> {
   /// Creates a horizontal divider for a popup menu.
   ///
@@ -135,7 +101,7 @@ class _PopupMenuDividerState extends State<PopupMenuDivider> {
 // This widget only exists to enable _PopupMenuRoute to save the sizes of
 // each menu item. The sizes are used by _PopupMenuRouteLayout to compute the
 // y coordinate of the menu's origin so that the center of selected menu
-// item lines up with the center of its PopupMenuButton.
+// item lines up with the center of its anchor.
 class _MenuItem extends SingleChildRenderObjectWidget {
   const _MenuItem({
     Key? key,
@@ -186,11 +152,7 @@ class _RenderMenuItem extends RenderShiftedBox {
 
 /// An item in a material design popup menu.
 ///
-/// To show a popup menu, use the [showMenu] function. To create a button that
-/// shows a popup menu, consider using [PopupMenuButton].
-///
-/// To show a checkmark next to a popup menu item, consider using
-/// [CheckedPopupMenuItem].
+/// To show a popup menu, use the [showMenu] function.
 ///
 /// Typically the [child] of a [PopupMenuItem] is a [Text] widget. More
 /// elaborate menus with icons can use a [ListTile]. By default, a
@@ -210,19 +172,10 @@ class _RenderMenuItem extends RenderShiftedBox {
 /// ```
 /// {@end-tool}
 ///
-/// See the example at [PopupMenuButton] for how this example could be used in a
-/// complete menu, and see the example at [CheckedPopupMenuItem] for one way to
-/// keep the text of [PopupMenuItem]s that use [Text] widgets in their [child]
-/// slot aligned with the text of [CheckedPopupMenuItem]s or of [PopupMenuItem]
-/// that use a [ListTile] in their [child] slot.
-///
 /// See also:
 ///
 ///  * [PopupMenuDivider], which can be used to divide items from each other.
-///  * [CheckedPopupMenuItem], a variant of [PopupMenuItem] with a checkmark.
 ///  * [showMenu], a method to dynamically show a popup menu at a given location.
-///  * [PopupMenuButton], an [IconButton] that automatically shows a menu when
-///    it is tapped.
 class PopupMenuItem<T> extends PopupMenuEntry<T> {
   /// Creates an item for a popup menu.
   ///
@@ -380,168 +333,11 @@ class PopupMenuItemState<T, W extends PopupMenuItem<T>> extends State<W> {
       child: Semantics(
         enabled: widget.enabled,
         button: true,
-        // child: InkWell(
-        //   onTap: widget.enabled ? handleTap : null,
-        //   canRequestFocus: widget.enabled,
-        //   mouseCursor: _EffectiveMouseCursor(
-        //       widget.mouseCursor, popupMenuTheme.mouseCursor),
-        //   child: item,
-        // ),
         child: TextButton(
           onPressed: widget.enabled ? handleTap : null,
           child: item,
         ),
       ),
-    );
-  }
-}
-
-/// An item with a checkmark in a material design popup menu.
-///
-/// To show a popup menu, use the [showMenu] function. To create a button that
-/// shows a popup menu, consider using [PopupMenuButton].
-///
-/// A [CheckedPopupMenuItem] is kMinInteractiveDimension pixels high, which
-/// matches the default minimum height of a [PopupMenuItem]. The horizontal
-/// layout uses [ListTile]; the checkmark is an [Icons.done] icon, shown in the
-/// [ListTile.leading] position.
-///
-/// {@tool snippet}
-///
-/// Suppose a `Commands` enum exists that lists the possible commands from a
-/// particular popup menu, including `Commands.heroAndScholar` and
-/// `Commands.hurricaneCame`, and further suppose that there is a
-/// `_heroAndScholar` member field which is a boolean. The example below shows a
-/// menu with one menu item with a checkmark that can toggle the boolean, and
-/// one menu item without a checkmark for selecting the second option. (It also
-/// shows a divider placed between the two menu items.)
-///
-/// ```dart
-/// PopupMenuButton<Commands>(
-///   onSelected: (Commands result) {
-///     switch (result) {
-///       case Commands.heroAndScholar:
-///         setState(() { _heroAndScholar = !_heroAndScholar; });
-///         break;
-///       case Commands.hurricaneCame:
-///         // ...handle hurricane option
-///         break;
-///       // ...other items handled here
-///     }
-///   },
-///   itemBuilder: (BuildContext context) => <PopupMenuEntry<Commands>>[
-///     CheckedPopupMenuItem<Commands>(
-///       checked: _heroAndScholar,
-///       value: Commands.heroAndScholar,
-///       child: const Text('Hero and scholar'),
-///     ),
-///     const PopupMenuDivider(),
-///     const PopupMenuItem<Commands>(
-///       value: Commands.hurricaneCame,
-///       child: ListTile(leading: Icon(null), title: Text('Bring hurricane')),
-///     ),
-///     // ...other items listed here
-///   ],
-/// )
-/// ```
-/// {@end-tool}
-///
-/// In particular, observe how the second menu item uses a [ListTile] with a
-/// blank [Icon] in the [ListTile.leading] position to get the same alignment as
-/// the item with the checkmark.
-///
-/// See also:
-///
-///  * [PopupMenuItem], a popup menu entry for picking a command (as opposed to
-///    toggling a value).
-///  * [PopupMenuDivider], a popup menu entry that is just a horizontal line.
-///  * [showMenu], a method to dynamically show a popup menu at a given location.
-///  * [PopupMenuButton], an [IconButton] that automatically shows a menu when
-///    it is tapped.
-class CheckedPopupMenuItem<T> extends PopupMenuItem<T> {
-  /// Creates a popup menu item with a checkmark.
-  ///
-  /// By default, the menu item is [enabled] but unchecked. To mark the item as
-  /// checked, set [checked] to true.
-  ///
-  /// The `checked` and `enabled` arguments must not be null.
-  const CheckedPopupMenuItem({
-    Key? key,
-    T? value,
-    this.checked = false,
-    bool enabled = true,
-    EdgeInsets? padding,
-    double height = kMinInteractiveDimension,
-    Widget? child,
-  }) : super(
-          key: key,
-          value: value,
-          enabled: enabled,
-          padding: padding,
-          height: height,
-          child: child,
-        );
-
-  /// Whether to display a checkmark next to the menu item.
-  ///
-  /// Defaults to false.
-  ///
-  /// When true, an [Icons.done] checkmark is displayed.
-  ///
-  /// When this popup menu item is selected, the checkmark will fade in or out
-  /// as appropriate to represent the implied new state.
-  final bool checked;
-
-  /// The widget below this widget in the tree.
-  ///
-  /// Typically a [Text]. An appropriate [DefaultTextStyle] is put in scope for
-  /// the child. The text should be short enough that it won't wrap.
-  ///
-  /// This widget is placed in the [ListTile.title] slot of a [ListTile] whose
-  /// [ListTile.leading] slot is an [Icons.done] icon.
-  @override
-  Widget? get child => super.child;
-
-  @override
-  PopupMenuItemState<T, CheckedPopupMenuItem<T>> createState() =>
-      _CheckedPopupMenuItemState<T>();
-}
-
-class _CheckedPopupMenuItemState<T>
-    extends PopupMenuItemState<T, CheckedPopupMenuItem<T>>
-    with SingleTickerProviderStateMixin {
-  static const Duration _fadeDuration = Duration(milliseconds: 150);
-  late AnimationController _controller;
-  Animation<double> get _opacity => _controller.view;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(duration: _fadeDuration, vsync: this)
-      ..value = widget.checked ? 1.0 : 0.0
-      ..addListener(() => setState(() {/* animation changed */}));
-  }
-
-  @override
-  void handleTap() {
-    // This fades the checkmark in or out when tapped.
-    if (widget.checked) {
-      _controller.reverse();
-    } else {
-      _controller.forward();
-    }
-    super.handleTap();
-  }
-
-  @override
-  Widget buildChild() {
-    return ListTile(
-      enabled: widget.enabled,
-      leading: FadeTransition(
-        opacity: _opacity,
-        child: Icon(_controller.isDismissed ? null : Icons.done),
-      ),
-      title: widget.child,
     );
   }
 }
@@ -666,8 +462,7 @@ class _PopupMenuRouteLayout extends SingleChildLayoutDelegate {
   // the route is laid out.
   List<Size?> itemSizes;
 
-  // The index of the selected item, or null if PopupMenuButton.initialValue
-  // was not specified.
+  // The index of the selected item, or null if no initial value was specified.
   final int? selectedItemIndex;
 
   // Whether to prefer going to the left or to the right.
@@ -1034,9 +829,6 @@ class PopupMenu<T> extends StatelessWidget {
 ///
 ///  * [PopupMenuItem], a popup menu entry for a single value.
 ///  * [PopupMenuDivider], a popup menu entry that is just a horizontal line.
-///  * [CheckedPopupMenuItem], a popup menu item with a checkmark.
-///  * [PopupMenuButton], which provides an [IconButton] that shows a menu by
-///    calling this method automatically.
 ///  * [SemanticsConfiguration.namesRoute], for a description of edge triggered
 ///    semantics.
 Future<T?> showMenu<T>({
@@ -1084,351 +876,4 @@ Future<T?> showMenu<T>({
   ));
 }
 
-/// Signature for the callback invoked when a menu item is selected. The
-/// argument is the value of the [PopupMenuItem] that caused its menu to be
-/// dismissed.
-///
-/// Used by [PopupMenuButton.onSelected].
-typedef PopupMenuItemSelected<T> = void Function(T value);
-
-/// Signature for the callback invoked when a [PopupMenuButton] is dismissed
-/// without selecting an item.
-///
-/// Used by [PopupMenuButton.onCanceled].
-typedef PopupMenuCanceled = void Function();
-
-/// Signature used by [PopupMenuButton] to lazily construct the items shown when
-/// the button is pressed.
-///
-/// Used by [PopupMenuButton.itemBuilder].
-typedef PopupMenuItemBuilder<T> = List<PopupMenuEntry<T>> Function(
-    BuildContext context);
-
 typedef MenuWrapper = Widget Function(Widget child);
-
-/// Displays a menu when pressed and calls [onSelected] when the menu is dismissed
-/// because an item was selected. The value passed to [onSelected] is the value of
-/// the selected menu item.
-///
-/// One of [child] or [icon] may be provided, but not both. If [icon] is provided,
-/// then [PopupMenuButton] behaves like an [IconButton].
-///
-/// If both are null, then a standard overflow icon is created (depending on the
-/// platform).
-///
-/// {@tool dartpad}
-/// This example shows a menu with four items, selecting between an enum's
-/// values and setting a `_selectedMenu` field based on the selection
-///
-/// ** See code in examples/api/lib/material/popupmenu/popupmenu.0.dart **
-/// {@end-tool}
-///
-/// See also:
-///
-///  * [PopupMenuItem], a popup menu entry for a single value.
-///  * [PopupMenuDivider], a popup menu entry that is just a horizontal line.
-///  * [CheckedPopupMenuItem], a popup menu item with a checkmark.
-///  * [showMenu], a method to dynamically show a popup menu at a given location.
-class PopupMenuButton<T> extends StatefulWidget {
-  /// Creates a button that shows a popup menu.
-  ///
-  /// The [itemBuilder] argument must not be null.
-  const PopupMenuButton({
-    Key? key,
-    required this.itemBuilder,
-    this.menuWrapper,
-    this.initialValue,
-    this.onHover,
-    this.onSelected,
-    this.onCanceled,
-    this.tooltip,
-    this.elevation,
-    this.padding = const EdgeInsets.all(8.0),
-    this.child,
-    this.splashRadius,
-    this.icon,
-    this.iconSize,
-    this.offset = Offset.zero,
-    this.enabled = true,
-    this.shape,
-    this.color,
-    this.enableFeedback,
-    this.constraints,
-    this.position = PopupMenuPosition.over,
-  })  : assert(
-          !(child != null && icon != null),
-          'You can only pass [child] or [icon], not both.',
-        ),
-        super(key: key);
-
-  /// Called when the button is pressed to create the items to show in the menu.
-  final PopupMenuItemBuilder<T> itemBuilder;
-
-  /// Menu wrapper.
-  final MenuWrapper? menuWrapper;
-
-  /// The value of the menu item, if any, that should be highlighted when the menu opens.
-  final T? initialValue;
-
-  /// Called when the user hovers this button.
-  final ValueChanged<bool>? onHover;
-
-  /// Called when the user selects a value from the popup menu created by this button.
-  ///
-  /// If the popup menu is dismissed without selecting a value, [onCanceled] is
-  /// called instead.
-  final PopupMenuItemSelected<T>? onSelected;
-
-  /// Called when the user dismisses the popup menu without selecting an item.
-  ///
-  /// If the user selects a value, [onSelected] is called instead.
-  final PopupMenuCanceled? onCanceled;
-
-  /// Text that describes the action that will occur when the button is pressed.
-  ///
-  /// This text is displayed when the user long-presses on the button and is
-  /// used for accessibility.
-  final String? tooltip;
-
-  /// The z-coordinate at which to place the menu when open. This controls the
-  /// size of the shadow below the menu.
-  ///
-  /// Defaults to 8, the appropriate elevation for popup menus.
-  final double? elevation;
-
-  /// Matches IconButton's 8 dps padding by default. In some cases, notably where
-  /// this button appears as the trailing element of a list item, it's useful to be able
-  /// to set the padding to zero.
-  final EdgeInsetsGeometry padding;
-
-  /// The splash radius.
-  ///
-  /// If null, default splash radius of [InkWell] or [IconButton] is used.
-  final double? splashRadius;
-
-  /// If provided, [child] is the widget used for this button
-  /// and the button will utilize an [InkWell] for taps.
-  final Widget? child;
-
-  /// If provided, the [icon] is used for this button
-  /// and the button will behave like an [IconButton].
-  final Widget? icon;
-
-  /// The offset is applied relative to the initial position
-  /// set by the [position].
-  ///
-  /// When not set, the offset defaults to [Offset.zero].
-  final Offset offset;
-
-  /// Whether this popup menu button is interactive.
-  ///
-  /// Must be non-null, defaults to `true`
-  ///
-  /// If `true` the button will respond to presses by displaying the menu.
-  ///
-  /// If `false`, the button is styled with the disabled color from the
-  /// current [Theme] and will not respond to presses or show the popup
-  /// menu and [onSelected], [onCanceled] and [itemBuilder] will not be called.
-  ///
-  /// This can be useful in situations where the app needs to show the button,
-  /// but doesn't currently have anything to show in the menu.
-  final bool enabled;
-
-  /// If provided, the shape used for the menu.
-  ///
-  /// If this property is null, then [PopupMenuThemeData.shape] is used.
-  /// If [PopupMenuThemeData.shape] is also null, then the default shape for
-  /// [MaterialType.card] is used. This default shape is a rectangle with
-  /// rounded edges of BorderRadius.circular(2.0).
-  final ShapeBorder? shape;
-
-  /// If provided, the background color used for the menu.
-  ///
-  /// If this property is null, then [PopupMenuThemeData.color] is used.
-  /// If [PopupMenuThemeData.color] is also null, then
-  /// Theme.of(context).cardColor is used.
-  final Color? color;
-
-  /// Whether detected gestures should provide acoustic and/or haptic feedback.
-  ///
-  /// For example, on Android a tap will produce a clicking sound and a
-  /// long-press will produce a short vibration, when feedback is enabled.
-  ///
-  /// See also:
-  ///
-  ///  * [Feedback] for providing platform-specific feedback to certain actions.
-  final bool? enableFeedback;
-
-  /// If provided, the size of the [Icon].
-  ///
-  /// If this property is null, then [IconThemeData.size] is used.
-  /// If [IconThemeData.size] is also null, then
-  /// default size is 24.0 pixels.
-  final double? iconSize;
-
-  /// Optional size constraints for the menu.
-  ///
-  /// When unspecified, defaults to:
-  /// ```dart
-  /// const BoxConstraints(
-  ///   minWidth: 2.0 * 56.0,
-  ///   maxWidth: 5.0 * 56.0,
-  /// )
-  /// ```
-  ///
-  /// The default constraints ensure that the menu width matches maximum width
-  /// recommended by the material design guidelines.
-  /// Specifying this parameter enables creation of menu wider than
-  /// the default maximum width.
-  final BoxConstraints? constraints;
-
-  /// Whether the popup menu is positioned over or under the popup menu button.
-  ///
-  /// [offset] is used to change the position of the popup menu relative to the
-  /// position set by this parameter.
-  ///
-  /// When not set, the position defaults to [PopupMenuPosition.over] which makes the
-  /// popup menu appear directly over the button that was used to create it.
-  final PopupMenuPosition position;
-
-  @override
-  PopupMenuButtonState<T> createState() => PopupMenuButtonState<T>();
-}
-
-/// The [State] for a [PopupMenuButton].
-///
-/// See [showButtonMenu] for a way to programmatically open the popup menu
-/// of your button state.
-class PopupMenuButtonState<T> extends State<PopupMenuButton<T>> {
-  /// A method to show a popup menu with the items supplied to
-  /// [PopupMenuButton.itemBuilder] at the position of your [PopupMenuButton].
-  ///
-  /// By default, it is called when the user taps the button and [PopupMenuButton.enabled]
-  /// is set to `true`. Moreover, you can open the button by calling the method manually.
-  ///
-  /// You would access your [PopupMenuButtonState] using a [GlobalKey] and
-  /// show the menu of the button with `globalKey.currentState.showButtonMenu`.
-  void showButtonMenu() {
-    final PopupMenuThemeData popupMenuTheme = PopupMenuTheme.of(context);
-    final RenderBox button = context.findRenderObject()! as RenderBox;
-    final RenderBox overlay =
-        Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
-    final Offset offset;
-    switch (widget.position) {
-      case PopupMenuPosition.over:
-        offset = widget.offset;
-        break;
-      case PopupMenuPosition.under:
-        offset =
-            Offset(0.0, button.size.height - (widget.padding.vertical / 2)) +
-                widget.offset;
-        break;
-      case PopupMenuPosition.overSide:
-        offset =
-            Offset(button.size.width - (widget.padding.horizontal / 2), 0.0) +
-                widget.offset;
-        break;
-      case PopupMenuPosition.underSide:
-        offset = Offset(button.size.width - (widget.padding.horizontal / 2),
-                button.size.height - (widget.padding.vertical / 2)) +
-            widget.offset;
-        break;
-    }
-    final RelativeRect position = RelativeRect.fromRect(
-      Rect.fromPoints(
-        button.localToGlobal(offset, ancestor: overlay),
-        button.localToGlobal(button.size.bottomRight(Offset.zero) + offset,
-            ancestor: overlay),
-      ),
-      Offset.zero & overlay.size,
-    );
-    final List<PopupMenuEntry<T>> items = widget.itemBuilder(context);
-    // Only show the menu if there is something to show
-    if (items.isNotEmpty) {
-      showMenu<T?>(
-        context: context,
-        elevation: widget.elevation ?? popupMenuTheme.elevation,
-        items: items,
-        menuWrapper: widget.menuWrapper,
-        initialValue: widget.initialValue,
-        position: position,
-        shape: widget.shape ?? popupMenuTheme.shape,
-        color: widget.color ?? popupMenuTheme.color,
-        constraints: widget.constraints,
-      ).then<void>((T? newValue) {
-        if (!mounted) return null;
-        if (newValue == null) {
-          widget.onCanceled?.call();
-          return null;
-        }
-        widget.onSelected?.call(newValue);
-      });
-    }
-  }
-
-  bool get _canRequestFocus {
-    final NavigationMode mode = MediaQuery.maybeOf(context)?.navigationMode ??
-        NavigationMode.traditional;
-    switch (mode) {
-      case NavigationMode.traditional:
-        return widget.enabled;
-      case NavigationMode.directional:
-        return true;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bool enableFeedback = widget.enableFeedback ??
-        PopupMenuTheme.of(context).enableFeedback ??
-        true;
-
-    assert(debugCheckHasMaterialLocalizations(context));
-
-    if (widget.child != null) {
-      return Tooltip(
-        message:
-            widget.tooltip ?? MaterialLocalizations.of(context).showMenuTooltip,
-        child: InkWell(
-          onTap: widget.enabled ? showButtonMenu : null,
-          onHover: widget.onHover,
-          canRequestFocus: _canRequestFocus,
-          enableFeedback: enableFeedback,
-          child: widget.child,
-        ),
-      );
-    }
-
-    return MenuButton(
-      child: widget.icon ?? Icon(Icons.adaptive.more),
-      tooltip:
-          widget.tooltip ?? MaterialLocalizations.of(context).showMenuTooltip,
-      onPressed: widget.enabled ? showButtonMenu : null,
-      enableFeedback: enableFeedback,
-      color: MyTheme.button,
-      hoverColor: MyTheme.accent,
-    );
-  }
-}
-
-// This MaterialStateProperty is passed along to the menu item's InkWell which
-// resolves the property against MaterialState.disabled, MaterialState.hovered,
-// MaterialState.focused.
-// ignore: unused_element
-class _EffectiveMouseCursor extends MaterialStateMouseCursor {
-  const _EffectiveMouseCursor(this.widgetCursor, this.themeCursor);
-
-  final MouseCursor? widgetCursor;
-  final MaterialStateProperty<MouseCursor?>? themeCursor;
-
-  @override
-  MouseCursor resolve(Set<MaterialState> states) {
-    return MaterialStateProperty.resolveAs<MouseCursor?>(
-            widgetCursor, states) ??
-        themeCursor?.resolve(states) ??
-        MaterialStateMouseCursor.clickable.resolve(states);
-  }
-
-  @override
-  String get debugDescription => 'MaterialStateMouseCursor(PopupMenuItemState)';
-}

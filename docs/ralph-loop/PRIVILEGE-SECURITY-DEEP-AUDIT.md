@@ -112587,3 +112587,21 @@ All fifteen installed credential actions, R-S0/R-F5, native/current-artifact,
 independent-reproduction and external-review requirements remain OPEN.
 Product, tests, normative requirements and live instructions are unchanged.
 No acquisition, engine build, product runtime or parked task runs for this cleanup.
+
+Exact comparison confirms all ledger bytes outside the selected section and
+new pivot note are unchanged; all seven primary links remain and the audit is
+append-only. The section shrinks from 181 lines / 15,284 bytes to 66 lines /
+6,776 bytes. `git diff --check` passes. Only the ledger and audit changed.
+
+Fresh count `6f1hU3LRiz` at `88387423aeb2e5c6b65bf878db50cf9d5359a94f`
+passes in 28 outer seconds: **357,084 tokens / 1,627,903 bytes**, SHA-256
+`219cd321c38d182f26bf901a1dbae747908316574f400d49bdc419c62d8bc085`.
+This is 2,140 fewer tokens and 8,076 fewer bytes including the added pivot note.
+The pinned tiktoken recipe passes all seven controls and the full byte round trip;
+workload admission passes 63 controls/five refusals across 38 modes.
+QEMU 1958271 joins exit 0; RAM `run.bslz3z5x` and active owned roots are absent.
+Peak RAM/durable allocation is 402,386,944/249,856 bytes. No endpoint is added;
+one unattributed endpoint removal is retained without owner inspection or mutation.
+The 32,671-byte workload serial has SHA-256
+`71987c0d2cc574c0aca3dd5d4567ff1b808c5619c4ae43bfded8a0d3b076f22b`.
+Only this audit receipt follows the count; the counted ledger is unchanged.

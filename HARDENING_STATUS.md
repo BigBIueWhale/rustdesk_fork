@@ -52,6 +52,13 @@ case inventories, intermediate failures, source/artifact hashes and timings rema
 receipts under `.harness-state/verifier-vm/` and in Git history. Shared current-artifact,
 installed/other-platform, R-S0/R-F5, resource/soak and release obligations below remain OPEN.
 
+**User pivot (2026-10-28):** Generated protobuf parser tests and the observed
+truncated-submessage acceptance remain OPEN/PARKED. The isolated run at
+`bf8918b6` builds successfully and passes four tests, failing three; two failures
+also need recursion-depth test expectations corrected. No parser fix or further
+run follows this pivot. QEMU joined and RAM scratch retired; diagnostics remain.
+Work moved to missing chat-history notice translations. Do not resume automatically.
+
 **User pivot (2026-10-28):** Tab-overflow menu coordinates, dismissal and owner
 lifetime remain OPEN/PARKED after read-only inspection. No menu patch or new
 test ran. Do not resume automatically. Work moved to correcting the historical
@@ -272,7 +279,7 @@ Do not resume automatically. Work moved to the R-S11hj current-state ledger clea
 | Unused copied popup-menu controls | Removes the uncalled custom menu-button and checked-item families, position enum, three callback typedefs, private cursor helper, unused icon constant/imports and obsolete examples (555 net lines). All eight tracked importers use a namespace prefix and reference only retained types/functions. The visible peer-layout selector uses Flutter's standard controls. The thirteen retained declarations have identical executable lines; reference and whitespace checks pass. No compiler or UI runtime ran for this deletion. Full application/menu and release acceptance remain OPEN. | Audit entry “2026-10-28 — user pivot; unused copied popup-menu controls” |
 | RDP port editing and editor retirement (`5e56d319`) | The actual field uses the shared whole-port validator and a Flutter-owned TextFormField controller. Invalid edits preserve the draft and selection; clear/replacement, pending-save disabling and controller retirement remain covered. The extracted old formatter/ownership baseline passes 30 cases and fails invalid-input preservation plus two retirement cases. Final Linux Flutter execution at `05e02ee1` passes all 33 exact address/port cases after correcting a test's newline-normalization expectation; product code is unchanged after `5e56d319`. The outer harness still fails the three parked shared-parser inventory checks, so full harness acceptance remains OPEN. Source-copy checks and raw per-case/terminal success are retained. All VMs join and RAM scratch retires. Full dialog, native persistence/Windows RDP launch and installed acceptance remain OPEN. | Audit entry “2026-10-28 — RDP port drafts and editor ownership”; runs `aOHwxxZdeR` / `Il6mgqc1jH` |
 | Unused peer-menu tab/window options | Deletes four private uncalled helpers, two commented menu entries and their two unused constants (31 lines). The dead entries already existed in upstream import `c2abd3b3`; complete library and tracked-reference review establishes no live caller. Exact deletion comparison and whitespace checks pass; retained code, the global tab preference and actual window dispatch are byte-identical. No compilation or runtime acceptance is claimed. | Audit entry “2026-10-28 — user pivot; unused peer-menu tab/window options” |
-| Chat-history limit translations | Fills the existing empty notice in Hebrew, Arabic, French, German, Spanish and Brazilian Portuguese, using the English display text. Only six translation values change; keys, existing translations and runtime code are unchanged. UTF-8, literal/placeholder preservation and exact-diff review pass. Application rendering and bidirectional layout are not newly executed; other untranslated locales and chat lifecycle acceptance remain OPEN. | Audit entry “2026-10-28 — user pivot; chat-history notice translations” |
+| Chat-history limit translations | Fills the existing empty notice in Hebrew, Arabic, French, German, Spanish and Brazilian Portuguese, then Simplified/Traditional Chinese, Japanese, Korean, Italian, Dutch, Polish, Russian, Ukrainian, Turkish and Indonesian. Each uses the English display text; only previously empty values change. UTF-8, literal/placeholder preservation, active locale routing and exact-diff review pass. Application rendering and bidirectional layout are not newly executed; other untranslated locales and chat lifecycle acceptance remain OPEN. | Audit entries “2026-10-28 — user pivot; chat-history notice translations” and “2026-10-28 — user pivot; eleven additional notice translations” |
 | Unused desktop title bar | Deletes the unreferenced `DesktopTitleBar` library and its three color constants. Tracked reference/build review and exact deletion checks pass; active tab/window controls and tests are unchanged. No compilation or runtime acceptance is claimed. | Audit entry “2026-10-28 — user pivot; unused desktop title bar” |
 | Unused Sciter session launcher (`562a2501`) | Removes 71 lines: the uncalled launcher, recent-session flag, UI-only child reaper, registry/type and unused imports. Their Sciter callers disappeared in `0d2c8825`. Repository reference review and exact deletion comparison pass; all retained source bytes, the distinct active server reaper and its direct-service/tray callers are unchanged. No compiler or product runtime pass is claimed for this deletion. Full application, installed/native and release acceptance remain OPEN. | Audit entry “2026-10-28 — user pivot; retire unused Sciter session launcher” |
 | Automatic UI language selection (`21a3f154`, `dfe65350`) | Maps Georgian `ka` and Kazakh `kk` to `ge`/`kz`, and Android Hebrew `iw` and Indonesian `in` to `he`/`id`. Saved preferences retain precedence; Chinese script/region handling, Java suffix parsing and unrelated language codes retain their behavior. The first correction passed eight groups/70 examples. The later unchanged-selector baseline passes eight groups and fails both new Android-code groups; the identical corrected Linux component passes all ten groups/100 examples, with full harness acceptance in 61 outer seconds. It compiles the actual selector directly, without config/translation doubles. QEMU processes join and bounded RAM scratch retires; unattributed endpoint changes remain untouched. Full app, OS locale acquisition, Android rendering and other-platform acceptance remain OPEN. | Audit entries “2026-10-28 — Georgian and Kazakh system-language selection” and “2026-10-28 — user pivot; Hebrew and Indonesian platform locale codes”; runs `yy3wsSXNDa` / `iDO52oHJco` and `Ox9AqmsJU0` / `VX3x0WCY82` |
@@ -13001,7 +13008,7 @@ sandbox implementation and checker-repair history remain in Git.
   `Cpace`; `src/server/connection.rs` and `src/client/io_loop.rs` use the static
   `Message::parse_from_bytes` entry for post-key messages. Framing precedes those
   calls. R-S7's 4 KiB pre-key and 32 MiB post-key frame limits remain mandatory.
-  The historical source review identified the default 100-level recursion limit
+  The historical source review identified the configured recursion budget of 100
   on static nested messages and unknown groups, varints of at most ten bytes,
   and length checks before raw-byte allocation. The 10,000,000-byte reserve threshold is not
   a bound on total decoded allocations or process memory. Dynamic/reflection
@@ -13015,7 +13022,13 @@ sandbox implementation and checker-repair history remain in Git.
   separate fresh advisory checks remain required. The former blanket soundness
   and complete DoS-defense claims are withdrawn. Complete exact-artifact evidence
   for malformed input, recursion, allocation/CPU and concurrent-peer resources remains OPEN;
-  source inspection and the version floor do not supply it.
+  source inspection and the version floor do not supply it. Generated-parser run
+  `Sk2hxtwRat` at `bf8918b6` compiles the actual schemas and passes four of seven
+  tests. The malformed-length test observes acceptance of a missing declared
+  submessage body; two unknown-group tests require corrected depth expectations
+  because their first unknown group does not consume the recursion budget.
+  These failures, their follow-up and full acceptance remain OPEN/PARKED at the
+  user's pivot. No product parser change or authentication-bypass claim follows.
 - **Apple artifacts** — macOS/iOS are source-conformed (R-R2 retain-and-check),
   not built; full artifacts need the Apple SDK/toolchain path.
 - **Apple R-R2 release gate integration — ✅ CLOSED 2026-07-11.** `scripts/apple-conform-check.sh`

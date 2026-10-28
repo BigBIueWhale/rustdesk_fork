@@ -111610,3 +111610,50 @@ selection checks exact package/source/executable identity and terminal build
 success; the seven-case inventory and before/after digest bind execution.
 Shell/Python/TOML syntax, exact inventory, lockfile preservation and whitespace
 review pass. Compilation and runtime results are pending the following run.
+
+### 2026-10-28 — user pivot; eleven additional notice translations
+
+The user explicitly redirects work to another aspect. Generated protobuf parser
+work is now OPEN/PARKED; do not resume automatically. Preparation `074ccdda`
+first hits the unchanged 1536-MiB compiler limit (`XtfpVGRX4A`, exit 137).
+Runner correction `bf8918b6` uses one compile job and reclaimable toolchain pages
+within the same admitted RAM/file/container ceilings. Its `Sk2hxtwRat` build
+finishes in 37.68 seconds; all twelve artifact-selection controls pass. The
+seven parser tests finish with four passes and three failures. One malformed
+submessage with a declared but absent body is accepted. The two group-depth
+expectations also need correction: the first unknown group is uncharged. No
+product parser correction or further experiment follows the pivot, and this
+observation does not establish an authentication bypass or privilege escalation.
+
+The second artifact digest before/after execution is
+`217b2db2741f8c7af62ce0f98d7d36982ee636aaa643c4af34859ebfc8f0d30b`.
+Its 6,229-byte workload serial is
+`fa3f80c94d913f857d788f40de01086440293111521c170e8f60361144eed577`.
+QEMU 974081 joins exit 0; RAM `run.kh83zo46` is absent. Supervisor time is
+114.864 seconds, peak RAM scratch 2,980,536,320 bytes and durable run storage
+3,391,488 bytes. One final unattributed endpoint addition is left untouched.
+Exact failed-root retirement retains bounded diagnostics as
+`protobuf-parser-baseline.Sk2hxtwRat` (device/inode 66306/103990825), after
+verifying identity, QEMU absence, storage completion, socket absence and console
+digest `30414be552c9098e6838d2d91bb944927c30e6d1e4cc1e846da255cbc6d0016c`.
+The first run was already retired as `protobuf-parser-build-limit.XtfpVGRX4A`.
+This is evidence reconciliation and cleanup, not resumed parser development.
+
+The new slice fills `chat-history-limited-tip` in eleven active locale maps:
+Simplified/Traditional Chinese, Japanese, Korean, Italian, Dutch, Polish,
+Russian, Ukrainian, Turkish and Indonesian. `src/lang/en.rs` supplies the actual
+source, “Some chat history is no longer shown.” The production chat widget uses
+this key when `historyLimited` is true. `src/lang.rs` selects each edited map and
+currently falls back to English for its empty value. The translations preserve
+the source's display-only meaning without promising deletion or recoverability.
+Only those empty values change; the template, English source, existing nonempty
+translations, locale selection and chat state/lifetime code remain unchanged.
+
+Read-only complete-file comparison verifies each source differs by exactly its
+one empty-to-translated entry, valid UTF-8 and Rust string spelling, and unchanged
+placeholder/escape sequences. Source routing confirms all eleven maps are live.
+Whitespace review passes. No new test harness, compiler or product runtime is
+needed for this text-only slice; application rendering, remaining untranslated
+locales, chat lifecycle and installed/native/R-S0/R-F5 acceptance remain OPEN.
+The fifteen service-owned credential actions remain OPEN. Existing parks and
+live instruction files are unchanged. A fresh ledger count follows this edit.

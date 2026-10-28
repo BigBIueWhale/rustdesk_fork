@@ -110919,3 +110919,48 @@ Seven controls and exact byte round trip pass. Outer/supervisor times are
 owned roots are absent. All endpoint deltas are zero. Bounded admission and the
 live monitor remain enabled. This audit-only receipt leaves the counted ledger
 unchanged and establishes no product execution or rendering acceptance.
+
+## 2026-10-28 — Georgian and Kazakh system-language selection
+
+Previous turn: PROGRESS, six translation values committed/pushed with a fresh
+ledger count. The current fifteen installed credential-action acceptance rows
+remain OPEN. Recording, parent compilation, mobile language-dialog saves and
+the other recorded parks are not resumed.
+
+Source finding: `src/lang.rs` stores/selects the Georgian and Kazakh catalogs
+under `ge` and `kz`, but `src/lang_locale.rs` returned system language subtags
+unchanged. Automatic `ka`/`kk` thus reached the English fallback despite available
+translations. Unicode CLDR identifies [Georgian as ka](https://www.unicode.org/cldr/charts/49/summary/ka.html)
+and [Kazakh as kk](https://www.unicode.org/cldr/charts/49/summary/kk.html).
+The correction translates those two OS identifiers to the existing catalog keys
+after explicit saved-preference selection. It needs no config migration, new
+state, dependency or authority path; preference persistence and translation
+tables are unchanged.
+
+Regression preparation `7ab29d9d` preserves the production function byte for
+byte. Baseline `yy3wsSXNDa` executes its actual Rust component: six test groups
+pass, while the two new groups fail on `ka` versus `ge` and `kk` versus `kz`.
+Its pre-execution artifact SHA-256 is
+`ff4ba57b76cc8b0ecf2b39bcee85dce252f257b3238bc5d68b17b41d49b85f8a`.
+Failure diagnostics are preserved as `language-selection-baseline.yy3wsSXNDa`
+only after exact QEMU join/PID absence and RAM retirement were verified.
+
+Correction `21a3f154c9f9d39d29d50db20c3f2971fade8d9b` changes only the
+production mapping. The same eight test groups pass in `iDO52oHJco`: 70 examples
+cover saved preferences, Chinese script/region rules, extensions, Java/POSIX
+formats, both corrected languages, unrelated regions and distinct longer tags.
+The source-bound native artifact SHA-256
+`1f5dbcb3e579ce3dd5e75030d5ec294ac4a239067e429b0aff6ccb82a6a108f1`
+is unchanged before/after execution. Both test sets and the runner are identical
+between baseline and correction. Shell syntax and `git diff --check` pass.
+
+The existing zero-NIC VM/unprivileged container profile remains bounded at a
+2 GiB guest, 6 GiB RAM scratch, 4 GiB file ceiling and 1 GiB container memory.
+Baseline/corrected supervisor times are 63.755/64.522 seconds; RAM peaks are
+3,463,524,352/3,482,791,936 bytes, durable peaks 3,375,104/3,379,200 bytes.
+QEMU 424817/428863 join exit 0; those PIDs, RAM `run.900d6atu`/`run.c4bjfgy6`
+and active owned roots are absent. The baseline's final endpoint snapshot has
+one unattributed removal and the corrected run one addition; both are retained
+without owner inspection or mutation. The network confinement guard passes.
+This proves selector behavior in the Linux component; actual OS locale
+acquisition, full app/rendering, other platforms and R-S0/R-F5 remain OPEN.

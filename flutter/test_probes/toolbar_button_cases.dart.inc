@@ -27,6 +27,7 @@ Widget _subject(bool submenu, VoidCallback? pressed) => MaterialApp(
             ])
         : _IconMenuButton(
             tooltip: 'Tools', color: _normal, hoverColor: _highlight,
+            topLevel: false,
             icon: const SizedBox(key: _icon, width: 32, height: 32),
             onPressed: pressed)),
       TextButton(onPressed: () {}, child: const Text('Outside')),
@@ -66,12 +67,21 @@ Future<void> _focusOutside(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _openSubmenu(WidgetTester tester, bool submenu) async {
+  if (submenu) {
+    await tester.tap(_button());
+    await tester.pumpAndSettle();
+    expect(find.text('Run action'), findsOneWidget);
+  }
+}
+
 void main() {
   for (final submenu in [false, true]) {
     final variant = submenu ? 'submenu' : 'action';
     testWidgets('toolbar $variant paints and retires keyboard focus', (tester) async {
       await tester.pumpWidget(_subject(submenu, () {}));
       expect(await _background(tester), _normal);
+      await _openSubmenu(tester, submenu);
       await _focusButton(tester);
       expect(tester.getSemantics(find.byKey(_icon)), containsSemantics(isFocused: true));
       expect(await _background(tester), _highlight);
@@ -98,11 +108,13 @@ void main() {
       var calls = 0;
       await tester.pumpWidget(_subject(submenu, () => calls++));
       for (final key in [LogicalKeyboardKey.enter, LogicalKeyboardKey.space]) {
+        await _openSubmenu(tester, submenu);
         await _focusButton(tester);
         await tester.sendKeyEvent(key);
         await tester.pumpAndSettle();
         if (submenu) {
-          expect(find.text('Run action'), findsOneWidget);
+          expect(find.text('Run action'), findsNothing);
+          await _openSubmenu(tester, submenu);
           await tester.tap(find.text('Run action'));
           await tester.pumpAndSettle();
         }
@@ -120,6 +132,7 @@ void main() {
     testWidgets('toolbar $variant disabling clears focus and permits reuse', (tester) async {
       var calls = 0;
       await tester.pumpWidget(_subject(submenu, () => calls++));
+      await _openSubmenu(tester, submenu);
       await _focusButton(tester);
       await tester.pumpWidget(_subject(submenu, null));
       await tester.pumpAndSettle();
@@ -132,6 +145,7 @@ void main() {
       await tester.pumpWidget(_subject(submenu, () => calls++));
       await tester.pumpAndSettle();
       expect(await _background(tester), _normal);
+      await _openSubmenu(tester, submenu);
       await _focusButton(tester);
       expect(tester.getSemantics(find.byKey(_icon)), containsSemantics(isFocused: true));
       expect(await _background(tester), _highlight);

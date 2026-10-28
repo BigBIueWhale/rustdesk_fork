@@ -113054,3 +113054,14 @@ not proof of complete toolbar keyboard entry. QEMU 2285878 joins exit 0; RAM
 `7af28560719a53b7743ad156adfe5a44f60c776df9906f000c2a88823fa7d12f`.
 One unattributed endpoint removal is retained without inspection/intervention.
 Exact failed diagnostics are retired to `toolbar-focus-baseline.AguAYtnfXj`.
+
+The second preparation `uo8vTgW7XZ` at `e701960d` also stops before establishing
+focus (28 passes/six failures). Pinned-SDK review shows a closed MenuBar excludes
+focus entirely, including explicit requests. The test now uses the supported
+non-top-level action button and opens the real submenu before requesting its
+button focus. Keyboard Enter/Space then close that submenu, with pointer reopening
+and action selection checked separately. Closed top-level keyboard entry remains
+an explicit untested/unfixed integration item. No focus-paint product claim is
+made from either preparation. Exact QEMU/overlay retirement is retained under
+`toolbar-focus-entry.uo8vTgW7XZ`; its final endpoint inventory has one unattributed
+addition, left untouched. Product code remains unchanged for the corrected baseline.

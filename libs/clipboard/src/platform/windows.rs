@@ -7,7 +7,7 @@
 
 use crate::{
     send_data, send_data_exclude, ClipboardFile, CliprdrError, CliprdrServiceContext,
-    ProgressPercent, ResultType, ERR_CODE_INVALID_PARAMETER, ERR_CODE_SEND_MSG,
+    ResultType, ERR_CODE_INVALID_PARAMETER, ERR_CODE_SEND_MSG,
     ERR_CODE_SERVER_FUNCTION_NONE, VEC_MSG_CHANNEL,
 };
 use hbb_common::{allow_err, log};
@@ -608,10 +608,6 @@ impl CliprdrServiceContext for CliprdrClientContext {
     fn server_clip_file(&mut self, conn_id: i32, msg: ClipboardFile) -> Result<(), CliprdrError> {
         let ret = server_clip_file(self, conn_id, msg);
         ret_to_result(ret)
-    }
-
-    fn get_progress_percent(&self) -> Option<ProgressPercent> {
-        None
     }
 
     fn cancel(&mut self) {}

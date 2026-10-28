@@ -104,7 +104,7 @@ def main():
     viewer_cancellation = between(viewer_tunnel, "async fn cancellable_phase<T, F>(",
                                   "type ConnectionTaskResult =")
     file_clipboard = inputs["libs/clipboard/src/lib.rs"].decode("utf-8")
-    file_clipboard_start = "pub struct ProgressPercent {"
+    file_clipboard_start = "pub trait CliprdrServiceContext: Send + Sync {"
     if file_clipboard.count(file_clipboard_start) != 1:
         raise ValueError("file-clipboard common implementation boundary is ambiguous")
     snippets = {

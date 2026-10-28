@@ -7,7 +7,7 @@ use crate::{
     platform::unix::{
         filetype::FileDescription, FILECONTENTS_FORMAT_NAME, FILEDESCRIPTORW_FORMAT_NAME,
     },
-    send_data, ClipboardFile, CliprdrError, CliprdrServiceContext, ProgressPercent,
+    send_data, ClipboardFile, CliprdrError, CliprdrServiceContext,
 };
 use hbb_common::{allow_err, bail, log, ResultType};
 use objc2::{msg_send_id, rc::autoreleasepool, rc::Id, runtime::ProtocolObject, ClassType};
@@ -370,10 +370,6 @@ impl CliprdrServiceContext for PasteboardContext {
 
     fn server_clip_file(&mut self, conn_id: i32, msg: ClipboardFile) -> Result<(), CliprdrError> {
         self.server_clip_file_(conn_id, msg)
-    }
-
-    fn get_progress_percent(&self) -> Option<ProgressPercent> {
-        self.paste_task.lock().unwrap().progress_percent()
     }
 
     fn cancel(&mut self) {

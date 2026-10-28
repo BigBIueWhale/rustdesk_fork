@@ -1,6 +1,6 @@
 use crate::{
     platform::unix::{FileDescription, FileType, BLOCK_SIZE},
-    send_data, ClipboardFile, CliprdrError, ProgressPercent,
+    send_data, ClipboardFile, CliprdrError,
 };
 use hbb_common::{allow_err, log, tokio::time::Instant};
 use std::{
@@ -557,14 +557,6 @@ impl PasteTask {
             .map(|handle| handle.is_finished())
             .unwrap_or(true)
     }
-
-    pub fn progress_percent(&self) -> Option<ProgressPercent> {
-        self.handle
-            .lock()
-            .unwrap()
-            .as_ref()
-            .map(|handle| handle.progress_percent())
-    }
 }
 
 impl PasteTaskHandle {
@@ -728,15 +720,6 @@ impl PasteTaskHandle {
             "failed to reserve unique macOS paste target path under {}",
             self.target_dir.display()
         )))
-    }
-
-    fn progress_percent(&self) -> ProgressPercent {
-        let percent = self.progress.current_size as f64 / self.progress.total_size as f64;
-        ProgressPercent {
-            percent,
-            is_canceled: self.progress.is_canceled,
-            is_failed: self.progress.error.is_some(),
-        }
     }
 
     fn is_finished(&self) -> bool {

@@ -109909,3 +109909,59 @@ Outer/supervisor 28/31.125 seconds; RAM peak 402,362,368 bytes, durable 151,552.
 QEMU 3965936 joins with exit 0; its PID, RAM `run.n3bzzsl2` and active roots
 are absent. All endpoint deltas are zero. This audit-only receipt leaves the
 counted ledger and accepted source unchanged.
+
+## 2026-10-28 — unused desktop popup-menu variants
+
+The user explicitly requests another aspect. Temporary modifier press bookkeeping
+and allocation investigation is OPEN/PARKED after read-only inspection, with no
+implementation or runtime test. The preceding bounded input-storage slice remains
+complete at its stated component scope. All earlier user parks remain in force.
+The current R-S11ia–R-S11io checklist still requires native acceptance for all
+fifteen credential actions; no new privilege-escalation finding is claimed here.
+
+At parent `ead568d38eb34e9135b2f10eef9f169937fff3d1`, repository-wide reference
+review finds no consumers of `MenuEntryRadios`, `MenuEntrySubRadios`,
+`MenuEntrySubMenu` or `MenuEntrySwitch2`. Their radio option/callback types and
+`PopupMenuChildrenItem`/`MyPopupMenuItemState` are referenced only inside those
+unused implementations. The empty radio utility, alternate-switch typedefs and
+three layout constants likewise have no live use. Git symbol history traces the
+families to upstream import `c2abd3b3`, with no subsequent call-site introduction.
+Live peer, file-manager and terminal callers use the retained button, divider,
+asynchronous switch and supplied-value switch. Their UI actions and native
+authority paths remain unchanged. No compatibility wrapper is needed.
+
+Pushed `df111c4bacb34c9b3712d666d07bf9c59ccded06`, tree
+`eb34b73ea65d5dce2a88f574b751e40bfef65df0`, deletes exactly 440 lines from
+`flutter/lib/desktop/widgets/popup_menu.dart` (755 to 315 lines). The remaining
+implementation bytes match the parent after the classified deletions. File
+SHA-256 changes from `4046637ef8efbdcf35de124d185786d3b84426218f0e4f0529037d34fd35e51e`
+to `c8e0a03f29204eaecae3e1086ab9b5657a722da2c9af35ffc3ab6349f79623db`.
+Repository-wide retired-symbol absence, exact deletion comparison and
+`git diff --check` pass. Product behavior, tests, harnesses, dependencies,
+requirements and live instructions otherwise remain unchanged.
+
+Attempted validation:
+`/bin/bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --peer-search`.
+Run `7OUTibJl5O` prepares the exact production Dart copy and fresh bindings, then
+the shared result-parser self-test reproduces the already-parked model inventory
+failures for rename, duplicate and wrong-suite mutations. It exits before the
+Flutter test invocation: neither Dart compilation nor any of the intended 19
+widget cases is accepted. The existing blocker should have been accounted for
+before this run; it is not bypassed or repaired as part of this pivot.
+
+Retained serial: 69,740 bytes, SHA-256
+`d5557ae489528301392e5d66a35d045d88dd270614bf580c6079ad24b117fa33`.
+The VM has no NIC; its container is nonroot/networkless with read-only source/root,
+dropped capabilities and no-new-privileges. The unchanged storage profile admits
+4-GiB guest RAM, 7-GiB scratch and a 6-GiB file ceiling. Supervisor lifetime is
+250.792 seconds, RAM-scratch peak 6,366,216,192 bytes and durable run peak
+3,309,568 bytes. QEMU 3992788 joins with exit 0; its PID and RAM
+`run.g0ilm7_l` are absent. The final listener snapshot has no additions and one
+18-byte removal, left unattributed without inspecting or changing its owner.
+The bounded diagnostic root is retained by checked no-replace rename as
+`retired-popup-validation.7OUTibJl5O`; all active run roots are absent.
+
+This is completed dead-code removal with source evidence and OPEN runtime
+acceptance. Full current Flutter/menu/device behavior, installed authority,
+R-S0/R-F5, release/cold-build evidence and independent/external review remain
+open. The broad goal is active and incomplete. No release operation was performed.

@@ -52,6 +52,10 @@ case inventories, intermediate failures, source/artifact hashes and timings rema
 receipts under `.harness-state/verifier-vm/` and in Git history. Shared current-artifact,
 installed/other-platform, R-S0/R-F5, resource/soak and release obligations below remain OPEN.
 
+**User pivot (2026-10-28):** Temporary modifier press bookkeeping/allocation
+investigation remains OPEN/PARKED after read-only inspection. No implementation
+or runtime test was made. Work moved to unused desktop popup-menu variants below.
+
 **User pivot (2026-10-28):** Shared-decompressor native workspace allocation
 failure coverage remains OPEN/PARKED after research only. No decoder change or
 execution was made. Do not resume automatically. Work moved to removing unused
@@ -65,7 +69,9 @@ recorded under documentation and verification architecture.
 **User pivot (2026-10-28):** Exact model-result inventory enforcement remains
 OPEN/PARKED at preparation `fa342297`. Baseline `oqK3uathmq` reproduces three
 parser failures; no parser correction or full model checkpoint ran. The shared
-parser-test step currently fails before Flutter cases execute. Diagnostics are
+parser-test step currently fails before Flutter cases execute, including focused
+profiles: `--peer-search` run `7OUTibJl5O` confirms the same three failures and
+executes no Flutter cases. Diagnostics are
 retained in `model-case-inventory-parked.oqK3uathmq`, with QEMU joined and RAM
 retired. Do not resume automatically. Work moved to Windows pointer coordinates.
 
@@ -187,6 +193,7 @@ Do not resume automatically. Work moved to the R-S11hj current-state ledger clea
 
 | Surface | Current state and evidence boundary | Receipt |
 | --- | --- | --- |
+| Unused desktop popup-menu variants (`df111c4b`) | Removes 440 lines: unreferenced radio/nested-menu families, their child-menu widget, alternate reactive switch and unused constants. Repository-wide reference review finds no callers; remaining button, divider and switch bodies are byte-identical. Whitespace and exact deletion checks pass. The existing isolated `--peer-search` check stops at the parked shared result-parser failures before Dart compilation/tests; no runtime acceptance is claimed. QEMU joins and bounded RAM scratch retires; one unattributed endpoint removal is untouched. Current Flutter compilation, complete menu behavior and shared release acceptance remain OPEN. | Audit entry “2026-10-28 — unused desktop popup-menu variants”; retained `retired-popup-validation.7OUTibJl5O` |
 | File-transfer filename endings after line breaks (`4888d3f7`) | `StartEllipsisText` rejects omitted lines as well as excessive width and fits unbounded layouts too. Truncation retains a complete-grapheme suffix and the original accessibility label. Baseline `2e21a4f0` fails all eight LF/CRLF/Unicode line/paragraph-separator cases while eight controls pass. At `fe2a1029`, all sixteen rendered Linux Flutter cases and three parser controls pass in 100 outer seconds; extension selection boxes are present and inside the label. The new fixture explicitly clears inherited letter spacing after four geometry assertions failed, and the parser's stale eight-case self-test count is corrected. The product is unchanged after `4888d3f7`. All runs join QEMU and retire bounded RAM scratch; unattributed endpoint changes remain untouched. Full file-manager/device and installed acceptance remain OPEN. | Audit entry “2026-10-27 user pivot — filename endings after line breaks”; baseline `IFrUm1uvVT`, final `WCiLcArqXR` |
 | Settings checkbox accessibility (`3175a035`) | The shared settings row merges its label and Checkbox into one accessible node carrying checked/enabled state and one action. Existing write admission, acknowledged state, progress and failure feedback remain. The unchanged widget fails six semantics cases and passes two input controls; the identical eight-case Linux Flutter run passes after correction, plus three parser controls, in 100 outer seconds. Actual semantics dispatch covers pending-write refusal and failure/retry; pointer and keyboard actions each write once. Both VMs join and retire bounded RAM scratch; the baseline final snapshot has one unattributed endpoint removal, left untouched, and the candidate has zero deltas. Full settings-page, native persistence, assistive-technology/device and other-platform acceptance remain OPEN. | Audit entry “2026-10-27 user pivot — settings checkbox accessibility”; VM runs `acYXmKsZRW` / `PHNeKKYmCv` |
 | File-transfer filename bold accessibility (`9dcf2600`) | `StartEllipsisText` measures with the same system bold-text font weight as its rendered Text and recomputes the suffix when that preference changes. At unchanged-product preparation `33ef9aff`, all four fitting/truncated and inherited/explicit-style cases clip the `.txt` ending, while four existing controls pass. The identical eight-case rendered Linux Flutter check passes after correction, plus three parser controls, in 118 outer seconds. Real pinned-SDK Roboto metrics and actual paragraph selection boxes establish layout bounds; complete graphemes and accessibility labels remain. Both VMs join and retire bounded RAM scratch; the candidate final inventory records one unattributed endpoint removal, left untouched. Full file-manager, OS-setting propagation, other-device/platform and R-S0/R-F5/release acceptance remain OPEN. | Audit entry “2026-10-27 user pivot — filename accessibility layout”; VM runs `fTtmL7284q` / `Ww9LFHsefO` |

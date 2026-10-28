@@ -112335,3 +112335,13 @@ new synthetic product mode or spelling-test catalogue is introduced to exercise
 it. No compiler, rendered page, native browser or installed application ran here.
 Required native permissions, daemon installation, application functionality and
 R-S0/R-F5/release acceptance remain OPEN. Fresh ledger counting follows.
+
+Deletion `dd6a3983` is pushed. Fresh isolated count `Obv4aQ54m8` passes in 28
+outer seconds: 358,793 tokens / 1,634,032 bytes, SHA-256
+`4cfaf3278299cd2b45158fc7125b95f57d92dbe966ef5916d6322b473a35e8b9`,
+with the pinned recipe, seven controls and whole-file round trip. QEMU 1622122
+joins exit 0; RAM `run.o_myyg86` and active owned roots are absent, and all
+endpoint deltas are zero. Peak RAM/durable storage is 402,247,680/249,856 bytes.
+Workload serial: 32,005 bytes, SHA-256
+`26ad98ed766ea311f39ce54c4b34093fd31e80e6af0b7f0c99333a7846c8289d`.
+The count does not compile or execute the home-page change.

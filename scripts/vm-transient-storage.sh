@@ -61,6 +61,7 @@ elif [[ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:connect-pass
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:share-rdp \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:menu-button \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:hold-drag \
+    || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:locales \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:path-labels \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:setting-checkbox \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:draggable-divider \

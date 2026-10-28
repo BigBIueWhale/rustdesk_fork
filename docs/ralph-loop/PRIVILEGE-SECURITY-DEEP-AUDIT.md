@@ -112345,3 +112345,38 @@ endpoint deltas are zero. Peak RAM/durable storage is 402,247,680/249,856 bytes.
 Workload serial: 32,005 bytes, SHA-256
 `26ad98ed766ea311f39ce54c4b34093fd31e80e6af0b7f0c99333a7846c8289d`.
 The count does not compile or execute the home-page change.
+
+## 2026-10-28 — user pivot; Flutter framework locale codes
+
+The user explicitly requests a different aspect. Terminal child teardown is
+OPEN/PARKED. Its unexecuted six-case test preparation and portable-pty VM profile
+are preserved in Git stash `7cde58ff26696698de69fa3c0805b15c82b7c2e2`;
+the production termination method was not changed and no VM was launched for it.
+Do not resume automatically. Earlier parks and all fifteen installed/native
+credential actions remain open.
+
+The new slice concerns framework localization. At `c90ee8b2`,
+`flutter/lib/common.dart:677,685` supplies `kz` and `vn` in `supportedLocales`.
+Both application constructors in `flutter/lib/main.dart` pass this list to
+GetMaterialApp with the Material, Widgets and Cupertino global delegates.
+The actual language codes are `kk` and `vi`; the current list cannot match those
+system languages and selects its English default. The Rust catalogue key `kz`
+is a separate saved preference namespace and remains unchanged.
+
+Primary references: Flutter's [supportedLocales resolution contract](https://api.flutter.dev/flutter/widgets/WidgetsApp/supportedLocales.html)
+and the [pinned 3.24.5 localization implementation](https://github.com/flutter/flutter/blob/3.24.5/packages/flutter_localizations/lib/src/l10n/generated_material_localizations.dart).
+The design implication is to supply platform language codes to Flutter, without
+introducing aliases or changing translation/configuration authority. The list
+moves unchanged to `common/locales.dart`, exported through the existing common
+library, so the focused test imports the actual production list independently
+of the native bridge. The behavioral correction will change only two entries.
+
+Ten rendered tests use GetMaterialApp and the real three localization delegates:
+Kazakh/Vietnamese language and regional forms, English/French controls, unknown
+language fallback, Hebrew direction, ordered preferences and live platform
+locale changes. The baseline retains the old list exactly. The focused
+`--flutter-model-tests --locales` workload uses existing bounded Flutter RAM
+storage, no NIC, readonly inputs and dropped container capabilities. Its exact
+test inventory and three parser controls are independent of parked full-parser
+work. Full application roots, OS locale acquisition, native settings changes,
+device/platform execution and R-S0/R-F5/release acceptance remain OPEN.

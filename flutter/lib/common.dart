@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+export 'common/locales.dart';
+
 import 'package:back_button_interceptor/back_button_interceptor.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/foundation.dart';
@@ -653,52 +655,6 @@ final ButtonStyle flatButtonStyle = TextButton.styleFrom(
     borderRadius: BorderRadius.all(Radius.circular(2.0)),
   ),
 );
-
-List<Locale> supportedLocales = const [
-  Locale('en', 'US'),
-  Locale('zh', 'CN'),
-  Locale('zh', 'TW'),
-  Locale('zh', 'SG'),
-  Locale('fr'),
-  Locale('de'),
-  Locale('it'),
-  Locale('ja'),
-  Locale('cs'),
-  Locale('pl'),
-  Locale('ko'),
-  Locale('hu'),
-  Locale('pt'),
-  Locale('ru'),
-  Locale('sk'),
-  Locale('id'),
-  Locale('da'),
-  Locale('eo'),
-  Locale('tr'),
-  Locale('kz'),
-  Locale('es'),
-  Locale('nl'),
-  Locale('nb'),
-  Locale('et'),
-  Locale('eu'),
-  Locale('bg'),
-  Locale('be'),
-  Locale('vn'),
-  Locale('uk'),
-  Locale('fa'),
-  Locale('ca'),
-  Locale('el'),
-  Locale('sv'),
-  Locale('sq'),
-  Locale('sr'),
-  Locale('th'),
-  Locale('sl'),
-  Locale('ro'),
-  Locale('lt'),
-  Locale('lv'),
-  Locale('ar'),
-  Locale('he'),
-  Locale('hr'),
-];
 
 String formatDurationToTime(Duration duration) {
   var totalTime = duration.inSeconds;

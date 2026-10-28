@@ -44,6 +44,19 @@ REVERSE_WHEEL_TESTS = {
     "reverse wheel mobile control uses the same confirmed state",
 }
 
+LOCALE_TESTS = {
+    "framework locale resolves Kazakh language",
+    "framework locale resolves Kazakh region",
+    "framework locale resolves Vietnamese language",
+    "framework locale resolves Vietnamese region",
+    "framework locale resolves English",
+    "framework locale resolves French",
+    "framework locale resolves unsupported language",
+    "framework locale preserves Hebrew direction",
+    "framework locale selects a supported later preference",
+    "framework locale follows live system changes",
+}
+
 PATH_LABEL_TESTS = {
     "leaves fitting text unchanged",
     "retains the longest fitting suffix",
@@ -1583,7 +1596,7 @@ MODEL_TESTS = {
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "keyboard-layout", "hold-drag", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
     expected_suites = set(MODEL_TESTS)
     expected_by_suite = None
     if profile == "frame-queue":
@@ -1602,6 +1615,10 @@ def parse_result(path, profile="models"):
         expected_suites = {"hold_tap_move_test.dart"}
         expected_tests = len(HOLD_DRAG_TESTS)
         expected_names = HOLD_DRAG_TESTS
+    elif profile == "locales":
+        expected_suites = {"locales_test.dart"}
+        expected_tests = len(LOCALE_TESTS)
+        expected_names = LOCALE_TESTS
     elif profile == "path-labels":
         expected_suites = {"start_ellipsis_text_test.dart"}
         expected_tests = len(PATH_LABEL_TESTS)
@@ -1870,7 +1887,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "keyboard-layout", "hold-drag", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -1886,6 +1903,7 @@ def main():
         "password-fields": "FLUTTER_PASSWORD_FIELD_TEST_JSON",
         "menu-button": "FLUTTER_MENU_BUTTON_TEST_JSON",
         "hold-drag": "FLUTTER_HOLD_DRAG_TEST_JSON",
+        "locales": "FLUTTER_LOCALE_TEST_JSON",
         "path-labels": "FLUTTER_PATH_LABEL_TEST_JSON",
         "setting-checkbox": "FLUTTER_SETTING_CHECKBOX_TEST_JSON",
         "draggable-divider": "FLUTTER_DRAGGABLE_DIVIDER_TEST_JSON",

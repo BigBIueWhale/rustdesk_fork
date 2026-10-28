@@ -110094,3 +110094,15 @@ replacement to `release-manifest-baseline.FMwvobydzA` and
 diff checks pass. Full cold release artifacts, installed authority, R-S0/R-F5,
 independent reproduction and external review remain OPEN. The broad goal remains
 active and incomplete. A fresh ledger count follows this exact status update.
+
+Fresh count `Bz4Xwua2wQ` at `8cb3496d856a6837832b9a4b78fdc5eb1f5233b0`
+passes: 355,093 tokens (+298), 1,614,058 bytes (+1,431), input SHA-256
+`8823b3ffa6ce5f0101847b5859702708918bc4f5578be066cf406b2fa0c8f193`.
+The pinned tiktoken-0.12.0/cl100k_base/encode_ordinary method, seven controls,
+whole-file round trip and storage admission controls pass. Serial is 99,198 bytes,
+SHA-256 `6bc3836965b709033f7e4b3c91551fce1a4751503c640bb8b47fa968d2bc2ffd`.
+Outer/supervisor lifetime is 28/31.243 seconds; RAM peak is 402,432,000 bytes and
+durable run peak 151,552 bytes. QEMU 4075273 joins exit 0; its PID, RAM
+`run.zv40r7h8` and active run roots are absent. All endpoint deltas are zero.
+All fifteen prior stashes remain. This audit-only receipt leaves the counted
+ledger and accepted source unchanged.

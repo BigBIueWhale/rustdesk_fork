@@ -32,6 +32,9 @@ def storage_limits(profile, memory_mib):
     if profile == 'hbb-common-fs':
         require(memory_mib == 6144, 'filesystem storage profile requires its 6 GiB guest')
         return 6 * GIB, 4 * GIB
+    if profile == 'tcp-key-transition':
+        require(memory_mib == 4096, 'TCP key-transition profile requires its 4 GiB guest')
+        return 6 * GIB, 4 * GIB
     if profile == 'linux-logind':
         require(memory_mib == 8192, 'logind storage profile requires its 8 GiB guest')
         return 7 * GIB, 6 * GIB
@@ -454,7 +457,7 @@ def main():
                                  'linux-service-uid-tests', 'audio-buffer', 'audio-mailbox', 'file-block', 'control-egress', 'clipboard-response',
                                  'linux-service-receiver', 'linux-flutter-replay', 'installer-package',
                                  'android-storage-key', 'linux-flutter-suspend', 'media-kernel-tests',
-                                 'debian-package-tests', 'protobuf-parser'),
+                                 'debian-package-tests', 'protobuf-parser', 'tcp-key-transition'),
                         default='standard')
     parser.add_argument('--workspace')
     parser.add_argument('--identity')

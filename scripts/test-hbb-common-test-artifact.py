@@ -27,6 +27,25 @@ def encode(*messages):
 
 
 class ArtifactSelectionTests(unittest.TestCase):
+    def test_key_transition_target_is_separate_from_handshake(self):
+        artifact = copy.deepcopy(ARTIFACT)
+        artifact["manifest_path"] = "/source/libs/cpace_it/Cargo.toml"
+        artifact["target"] = {"name": "key_transition", "kind": ["test"],
+                              "src_path": "/source/libs/cpace_it/tests/key_transition.rs"}
+        artifact["executable"] = "/cargo-target/debug/deps/key_transition-0123456789abcdef"
+        self.assertEqual(select_artifact(encode(artifact, FINISHED), "key_transition"),
+                         artifact["executable"])
+        for field, value in [
+                ("manifest_path", "/source/libs/hbb_common/Cargo.toml"),
+                ("target", dict(artifact["target"], name="handshake")),
+                ("target", dict(artifact["target"], src_path="/source/libs/cpace_it/tests/handshake.rs")),
+                ("target", dict(artifact["target"], kind=["lib"])),
+                ("profile", {"test": False}), ("executable", EXECUTABLE)]:
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                select_artifact(encode(dict(artifact, **{field: value}), FINISHED), "key_transition")
+        with self.assertRaises(ValueError):
+            select_artifact(encode(artifact, FINISHED), "cpace_it")
+
     def test_protobuf_parser_package_is_exact(self):
         artifact = copy.deepcopy(ARTIFACT)
         artifact["manifest_path"] = "/source/libs/protobuf_it/Cargo.toml"

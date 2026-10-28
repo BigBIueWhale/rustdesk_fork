@@ -111809,3 +111809,40 @@ Peak RAM/durable storage is 402,370,560/258,048 bytes. The final endpoint snapsh
 one unattributed addition remains untouched. Workload serial: 31,542 bytes,
 SHA-256 `0c38a9be3e09346ff1b2bfca359056c96ea44a574854712551635088e2b19e50`.
 This audit-only receipt leaves the counted ledger and all translation bytes unchanged.
+
+### 2026-10-28 — buffered transport key transition
+
+The previous turn is progress: `af80bd1f` / `7e529dee` complete the active notice
+translations and retain the exact count. All fifteen installed credential actions
+remain OPEN. Keyboard-layout, protobuf, full-parent and other user parks remain
+intact. Read-only terminal-launch and credential-log inspection establishes no new
+defect. This slice tests the separate transport transition in `set_session_keys`.
+
+The production transport consumes the last unkeyed frame and moves its retained
+codec and unread bytes into a keyed reader. Every remaining complete frame must
+authenticate with the receive-direction key before publication; partial headers or
+payloads must survive the transition and cancelled reads without advancing the
+nonce. Authentication failure must retire the writer and prevent later publication.
+The pinned Tokio Framed/FramedParts implementation preserves supplied read buffers:
+https://raw.githubusercontent.com/tokio-rs/tokio/tokio-util-0.7.15/tokio-util/src/codec/framed.rs .
+Existing EOF and writer tests do not explicitly establish this unkeyed-to-keyed
+buffer transition. Product code is unchanged; no new vulnerability is claimed.
+
+Six new integration tests compile against the actual hbb_common library. They
+prefetch an exact prefix from real guest-loopback TCP into a fixture adapter and
+assert that Framed has consumed that complete prefix before installing controlled
+keys. Nineteen scenarios cover ordered encrypted/empty messages, five fragment
+boundaries with cancelled reads, five plaintext lengths, wrong-direction reflection,
+tampering, replay followed by valid ciphertext, and five truncated-EOF boundaries.
+Every scenario checks writer/I/O retirement and native peer EOF. Complete failed
+authentication attempts consume one nonce; incomplete frames do not. The final
+unkeyed payload and keys are controlled, so this is not CPace-handshake or full
+application-dispatch evidence.
+
+The focused `--tcp-key-transition-tests` profile selects only that exact integration
+target, without compiling hbb_common's unit-test module or the parent application.
+It admits a 4-GiB guest, 6-GiB RAM scratch, 4-GiB hard file ceiling, 6-GiB host
+headroom and 1-GiB overhead. The nonroot networkless container has a 3-GiB memory
+ceiling; one compiler job and reclaimable toolchain pages keep the workload bounded.
+Admission, live monitoring, source/artifact identity and joined cleanup remain
+mandatory. The new closed artifact identity has positive and wrong-target controls.

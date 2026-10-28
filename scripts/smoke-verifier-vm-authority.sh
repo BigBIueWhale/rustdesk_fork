@@ -69,7 +69,7 @@ case "$#:${1:-}" in
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'verifier-VM input/run overrides are lifecycle-internal' >&2; exit 2; }
         ;;
-    1:--hbb-common-fs|1:--linux-logind-tests|1:--linux-fuse-read-tests|1:--file-send-digest-tests|1:--file-metadata-tests|1:--writer-retirement-tests|1:--config-options-tests|1:--compression-tests|1:--file-logging-tests|1:--protobuf-parser-tests)
+    1:--hbb-common-fs|1:--linux-logind-tests|1:--linux-fuse-read-tests|1:--file-send-digest-tests|1:--file-metadata-tests|1:--writer-retirement-tests|1:--config-options-tests|1:--compression-tests|1:--file-logging-tests|1:--protobuf-parser-tests|1:--tcp-key-transition-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'focused Rust-test input/run overrides are forbidden' >&2; exit 2; }
@@ -92,6 +92,8 @@ case "$#:${1:-}" in
             RUST_TEST_PROFILE=file-logging
         elif [ "$1" = --protobuf-parser-tests ]; then
             RUST_TEST_PROFILE=protobuf-parser
+        elif [ "$1" = --tcp-key-transition-tests ]; then
+            RUST_TEST_PROFILE=tcp-key-transition
         fi
         ;;
     2:--config-options-tests)
@@ -676,6 +678,7 @@ case "$#:${1:-}" in
         printf 'Send digest/read admission and terminal retirement: %s --file-send-digest-tests\n' "${0##*/}" >&2
         printf 'File metadata admission/finality: %s --file-metadata-tests\n' "${0##*/}" >&2
         printf 'TCP writer retirement: %s --writer-retirement-tests\n' "${0##*/}" >&2
+        printf 'Buffered TCP key transition: %s --tcp-key-transition-tests\n' "${0##*/}" >&2
         printf 'Shared and file-block decompression: %s --compression-tests\n' "${0##*/}" >&2
         printf 'Ordinary option persistence: %s --config-options-tests [--service-root]\n' "${0##*/}" >&2
         printf 'File log rotation and retention: %s --file-logging-tests\n' "${0##*/}" >&2
@@ -981,6 +984,9 @@ elif [ "$MODE" = hbb-common-fs ]; then
     if [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
         readonly VM_TIMEOUT_SECONDS=300
         readonly VM_MEMORY=2048
+    elif [ "$RUST_TEST_PROFILE" = tcp-key-transition ]; then
+        readonly VM_TIMEOUT_SECONDS=300
+        readonly VM_MEMORY=4096
     elif [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
         readonly VM_TIMEOUT_SECONDS=300
         readonly VM_MEMORY=8192
@@ -4839,6 +4845,8 @@ elif [ "$MODE" = hbb-common-fs ]; then
         guest_invocation+=' --file-logging'
     elif [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
         guest_invocation+=' --protobuf-parser'
+    elif [ "$RUST_TEST_PROFILE" = tcp-key-transition ]; then
+        guest_invocation+=' --tcp-key-transition'
     elif [ "$RUST_TEST_PROFILE" = config-options ]; then
         guest_invocation+=' --config-options'
         if [ "$HBB_CONFIG_NATIVE" -eq 1 ]; then
@@ -6257,6 +6265,8 @@ elif [ "$MODE" = hbb-common-fs ]; then
         hbb_receipt_kind=FILE_LOGGING_VM
     elif [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
         hbb_receipt_kind=PROTOBUF_PARSER_VM
+    elif [ "$RUST_TEST_PROFILE" = tcp-key-transition ]; then
+        hbb_receipt_kind=TCP_KEY_TRANSITION_VM
     fi
     if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
         hbb_image_index=$DEV_CHECK_IMAGE_ID
@@ -6290,7 +6300,7 @@ elif [ "$MODE" = hbb-common-fs ]; then
             'DECOMPRESSION_INPUT=pass paths=2 sizes=3 healthy=6 refused=6 probe=SIGABRT children=joined' \
             'slice decoder existing input storage'
     fi
-    if [ "$HBB_LOGIND_NATIVE" -eq 0 ] && [ "$HBB_FUSE_READ_TESTS" -eq 0 ] && [ "$HBB_SEND_DIGEST_TESTS" -eq 0 ] && [ "$RUST_TEST_PROFILE" != file-metadata ] && [ "$RUST_TEST_PROFILE" != writer-retirement ] && [ "$RUST_TEST_PROFILE" != config-options ] && [ "$RUST_TEST_PROFILE" != compression ] && [ "$RUST_TEST_PROFILE" != file-logging ] && [ "$RUST_TEST_PROFILE" != protobuf-parser ]; then
+    if [ "$HBB_LOGIND_NATIVE" -eq 0 ] && [ "$HBB_FUSE_READ_TESTS" -eq 0 ] && [ "$HBB_SEND_DIGEST_TESTS" -eq 0 ] && [ "$RUST_TEST_PROFILE" != file-metadata ] && [ "$RUST_TEST_PROFILE" != writer-retirement ] && [ "$RUST_TEST_PROFILE" != config-options ] && [ "$RUST_TEST_PROFILE" != compression ] && [ "$RUST_TEST_PROFILE" != file-logging ] && [ "$RUST_TEST_PROFILE" != protobuf-parser ] && [ "$RUST_TEST_PROFILE" != tcp-key-transition ]; then
         mapfile -t peer_probe_artifacts < <(
             /usr/bin/grep -Eo 'FILE_PEER_PROBE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/examples/probe_client-[0-9a-f]{16} tests=5 unchanged=before-after' "$SERIAL_LOG"
         )
@@ -8874,6 +8884,10 @@ elif [ "$MODE" = hbb-common-fs ]; then
             "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
         printf 'PROTOBUF_PARSER_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=7 artifact_sha256=%s scope=generated-parser network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
+            "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
+    elif [ "$RUST_TEST_PROFILE" = tcp-key-transition ]; then
+        printf 'TCP_KEY_TRANSITION_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=6 artifact_sha256=%s scope=production-transport-key-transition network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
             "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = compression ]; then

@@ -126,6 +126,7 @@ case "$#:${8:-}" in
             --compression) RUST_TEST_PROFILE=compression ;;
             --file-logging) RUST_TEST_PROFILE=file-logging ;;
             --protobuf-parser) RUST_TEST_PROFILE=protobuf-parser ;;
+            --tcp-key-transition) RUST_TEST_PROFILE=tcp-key-transition ;;
             *) exit 2 ;;
         esac
         ;;
@@ -969,6 +970,7 @@ for profile, memory, scratch, overlay in (
         ('standard', 2048, 16, 8),
         ('hbb-common-fs', 6144, 6, 4),
         ('protobuf-parser', 2048, 4, 3),
+        ('tcp-key-transition', 4096, 6, 4),
         ('linux-logind', 8192, 7, 6),
         ('cpace-recovery-tests', 8192, 6, 4),
         ('installer-package', 4096, 6, 4),
@@ -1022,6 +1024,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
                         ('fixed-archive-tests', 2047), ('fixed-archive-tests', 4096),
                         ('media-kernel-tests', 2047), ('media-kernel-tests', 4096),
                         ('protobuf-parser', 2047), ('protobuf-parser', 4096),
+                        ('tcp-key-transition', 4095), ('tcp-key-transition', 6144),
                         ('fusermount-process', 2047), ('fusermount-process', 4096),
                         ('linux-service-uid-tests', 2047), ('linux-service-uid-tests', 4096),
                         ('audio-buffer', 2047), ('audio-buffer', 4096),
@@ -3842,6 +3845,23 @@ run_focused_rust_tests() {
                 protobuf_tests::malformed_wire_values_return_errors
             )
         fi
+        if [ "$RUST_TEST_PROFILE" = tcp-key-transition ]; then
+            memory=3g
+            memory_bytes=3221225472
+            source_fingerprints+=(
+                libs/cpace_it/Cargo.toml libs/cpace_it/tests/key_transition.rs
+                libs/hbb_common/src/bytes_codec.rs libs/hbb_common/src/tcp.rs
+                libs/hbb_common/src/cpace.rs libs/pake/src/lib.rs
+            )
+            required_tests=(
+                buffered_ciphertext_survives_key_transition_in_order
+                partial_ciphertext_survives_key_transition_and_cancelled_read
+                buffered_plaintext_is_refused_after_key_transition
+                buffered_reflection_and_tampering_are_refused_after_key_transition
+                buffered_replay_cannot_release_a_later_valid_frame
+                buffered_truncation_at_key_transition_is_terminal
+            )
+        fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             required_tests=(
                 test::test_get_version_number
@@ -5815,11 +5835,11 @@ run_focused_rust_tests() {
                 case "$RUST_TOOLCHAIN_MODE" in
                     archive)
                         rust_install_prefix=/tmp/rust
-                        if [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
+                        if [[ "$RUST_TEST_PROFILE" = protobuf-parser || "$RUST_TEST_PROFILE" = tcp-key-transition ]]; then
                             rust_install_prefix=/cargo-target/toolchain
                         fi
                         mkdir /tmp/toolchain "$rust_install_prefix"
-                        if [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
+                        if [[ "$RUST_TEST_PROFILE" = protobuf-parser || "$RUST_TEST_PROFILE" = tcp-key-transition ]]; then
                             rust_archive_root=rust-1.75.0-x86_64-unknown-linux-gnu
                             tar -C /tmp/toolchain -xf /inputs/rust.tar.xz \
                                 "$rust_archive_root/install.sh" "$rust_archive_root/components" \
@@ -5865,17 +5885,26 @@ run_focused_rust_tests() {
                             python3 -I -S /source/scripts/run-linux-fuse-read-test.py
                         else
                         test_package=hbb_common
+                        test_identity=hbb_common
+                        test_target=(--lib)
                         if [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
                             test_package=protobuf_it
+                            test_identity=protobuf_it
+                        elif [ "$RUST_TEST_PROFILE" = tcp-key-transition ]; then
+                            test_package=cpace_it
+                            test_identity=key_transition
+                            test_target=(--test key_transition)
+                        fi
+                        if [[ "$RUST_TEST_PROFILE" = protobuf-parser || "$RUST_TEST_PROFILE" = tcp-key-transition ]]; then
                             export CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 \
                                 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
                         fi
-                        cargo test --offline --locked -p "$test_package" --lib --no-run \
+                        cargo test --offline --locked -p "$test_package" "${test_target[@]}" --no-run \
                             --message-format=json-render-diagnostics --color never \
                             >/cargo-target/hbb-common-build.json
                         test_executable="$(python3 -I -S \
                             /source/scripts/select-hbb-common-test-artifact.py \
-                            /cargo-target/hbb-common-build.json "$test_package")"
+                            /cargo-target/hbb-common-build.json "$test_identity")"
                         [ -f "$test_executable" ] && [ ! -L "$test_executable" ] \
                             && [ -x "$test_executable" ] \
                             && [ "$(stat -c "%u:%g:%h" -- "$test_executable")" = 1000:1000:1 ] \
@@ -6017,6 +6046,17 @@ run_focused_rust_tests() {
                             [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
                             if [ "$group_status" -ne 0 ]; then
                                 printf "PROTOBUF_PARSER_ARTIFACT_STOP=observed sha256=%s status=%s unchanged=before-after\n" \
+                                    "$artifact_sha" "$group_status"
+                                exit "$group_status"
+                            fi
+                        elif [ "$RUST_TEST_PROFILE" = tcp-key-transition ]; then
+                            group_status=0
+                            timeout --signal=TERM --kill-after=5s 20s \
+                                "$test_executable" --color never --test-threads=1 --show-output \
+                                || group_status=$?
+                            [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                            if [ "$group_status" -ne 0 ]; then
+                                printf "TCP_KEY_TRANSITION_ARTIFACT_STOP=observed sha256=%s status=%s unchanged=before-after\n" \
                                     "$artifact_sha" "$group_status"
                                 exit "$group_status"
                             fi
@@ -6810,7 +6850,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             >"$output" 2>&1 || container_status=$?
     fi
     if [ "$container_status" -ne 0 ]; then
-        if [ "$RUST_TEST_PROFILE" = file-metadata ] || [ "$RUST_TEST_PROFILE" = config-options ] || [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
+        if [ "$RUST_TEST_PROFILE" = file-metadata ] || [ "$RUST_TEST_PROFILE" = config-options ] || [ "$RUST_TEST_PROFILE" = protobuf-parser ] || [ "$RUST_TEST_PROFILE" = tcp-key-transition ]; then
             awk '/^HBB_COMMON_FS_ARTIFACT_START=observed / { runtime=1 }
                 runtime { if (++lines <= 2000) print; else exit 1 }' "$output" >&2 \
                 || fail 'focused shared-library failure diagnostics exceed their bound'
@@ -6902,6 +6942,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         if [ "$RUST_TEST_PROFILE" = compression ]; then expected_groups=2; fi
         if [ "$RUST_TEST_PROFILE" = file-logging ]; then expected_groups=1; fi
         if [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then expected_groups=1; fi
+        if [ "$RUST_TEST_PROFILE" = tcp-key-transition ]; then expected_groups=1; fi
         if [ "$RUST_TEST_PROFILE" = config-options ]; then expected_groups=7; fi
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then expected_groups=2; fi
@@ -6935,6 +6976,7 @@ PY
         else
         local hbb_artifact_name=hbb_common
         if [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then hbb_artifact_name=protobuf_it; fi
+        if [ "$RUST_TEST_PROFILE" = tcp-key-transition ]; then hbb_artifact_name=key_transition; fi
         mapfile -t hbb_artifact_receipts < <(
             grep -E "^HBB_COMMON_FS_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/$hbb_artifact_name-[0-9a-f]{16} unchanged=before-between-after$" "$output"
         )
@@ -7936,6 +7978,9 @@ PY
         elif [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'protobuf parser test total differs'
             grep -E '^test protobuf_tests::[[:alnum:]_]+ [.][.][.] ok$' "$output"
+        elif [ "$RUST_TEST_PROFILE" = tcp-key-transition ]; then
+            [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'TCP key-transition total differs'
+            grep -E '^test [[:alnum:]_]+ [.][.][.] ok$' "$output"
         elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'send admission test total differs'
             [ "$(grep -Fxc 'SEND_READ_ALLOCATION=pass cases=3 refusals=3 state=preserved retries=exact eof=exact' "$output")" -eq 1 ] \
@@ -7988,6 +8033,10 @@ PY
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
             printf 'PROTOBUF_PARSER_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$hbb_test_artifact_sha" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = tcp-key-transition ]; then
+            printf 'TCP_KEY_TRANSITION_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$hbb_test_artifact_sha" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = compression ]; then

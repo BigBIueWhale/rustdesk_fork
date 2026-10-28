@@ -16,6 +16,9 @@ def select_artifact(output, package="hbb_common", source_root="/source"):
         name, kind, source = package, ["test"], f"tests/{package}.rs"
     elif package == "cpace_it" and source_root == "/source":
         name, kind, source = "handshake", ["test"], "tests/handshake.rs"
+    elif package == "key_transition" and source_root == "/source":
+        manifest_package = "cpace_it"
+        name, kind, source = package, ["test"], "tests/key_transition.rs"
     elif package == "surface_it" and source_root == "/source":
         name, kind, source = "surface", ["test"], "tests/surface.rs"
     elif package == "probe_client" and source_root == "/source":

@@ -113127,3 +113127,18 @@ total and receipt are corrected to 66. The tokenizer did not run in this attempt
 QEMU 2340592 joins exit 0, RAM `run.2s09e38d` retires, all endpoint deltas are zero,
 and diagnostics move to `toolbar-focus-count-preparation.AxLy0d7Oqc`.
 Product and rendered-test code remain identical to the accepted run.
+
+Fresh count `yRZXMxBem5` at `73bf3f55` passes in 31 outer seconds:
+**353,854 tokens / 1,617,079 bytes**, complete ledger SHA-256
+`4c66089cf39dbfce657774d97e45df68252d0b317d25e50d9d82c273021056e0`.
+Pinned tiktoken 0.12.0/cl100k_base/encode_ordinary passes seven controls and the
+whole-byte round trip. Workload admission passes 39 modes/66 controls/five
+refusals. QEMU 2346986 joins exit 0; RAM `run.j5x4xa28` and active owned roots
+are absent. Scratch/durable peaks are 402,321,408/253,952 bytes. The final
+inventory records one unattributed endpoint removal, left untouched. Workload
+serial SHA-256 is
+`0e19cc161887a65ecb955446cc7ca96520ea8975a487457045116e7da8669fa5`.
+The 91,419-byte mode-0600 capsule includes both count attempts and their cleanup.
+Only this audit receipt follows counting; the ledger and accepted product remain
+unchanged. The broad goal, all fifteen installed credential actions, the named
+submenu integration limits and every user-parked item remain OPEN.

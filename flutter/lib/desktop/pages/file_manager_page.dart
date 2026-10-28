@@ -415,6 +415,10 @@ class FileManagerView extends StatefulWidget {
 }
 
 class _FileManagerViewState extends State<FileManagerView> {
+  static const _dividerThickness = 1.0;
+  static const _dividerPadding = EdgeInsets.all(1.0);
+  double get _dividerWidth => _dividerThickness + _dividerPadding.horizontal;
+
   final _locationStatus = LocationStatus.bread.obs;
   final _locationNode = FocusNode();
   final _locationBarKey = GlobalKey();
@@ -424,7 +428,6 @@ class _FileManagerViewState extends State<FileManagerView> {
   final _listSearchBuffer = TimeoutStringBuffer();
   final _nameColWidth = 0.0.obs;
   final _modifiedColWidth = 0.0.obs;
-  final _sizeColWidth = 0.0.obs;
   final _fileListScrollController = ScrollController();
   final _globalHeaderKey = GlobalKey();
   late final StreamSubscription<FileDirectory> _directorySubscription;
@@ -513,7 +516,6 @@ class _FileManagerViewState extends State<FileManagerView> {
       _fileTransferMinimumWidth = defaultColumnWidth / 3;
       _nameColWidth.value = defaultColumnWidth;
       _modifiedColWidth.value = defaultColumnWidth;
-      _sizeColWidth.value = defaultColumnWidth;
     }
 
     if (_windowWidthPrev != windowWidthNow) {
@@ -522,7 +524,6 @@ class _FileManagerViewState extends State<FileManagerView> {
       _fileTransferMinimumWidth *= difference;
       _nameColWidth.value *= difference;
       _modifiedColWidth.value *= difference;
-      _sizeColWidth.value *= difference;
     }
   }
 
@@ -1310,7 +1311,7 @@ class _FileManagerViewState extends State<FileManagerView> {
                               onSecondaryTapDown: onSecondaryTapDown,
                             ),
                             SizedBox(
-                              width: 2.0,
+                              width: _dividerWidth,
                             ),
                             GestureDetector(
                               child: Obx(
@@ -1338,7 +1339,7 @@ class _FileManagerViewState extends State<FileManagerView> {
                             ),
                             // Divider from header.
                             SizedBox(
-                              width: 2.0,
+                              width: _dividerWidth,
                             ),
                             Expanded(
                               // width: 100,
@@ -1476,19 +1477,24 @@ class _FileManagerViewState extends State<FileManagerView> {
     return false;
   }
 
-  void _onDrag(double dx, RxDouble column1, RxDouble column2) {
-    if (column1.value + dx <= _fileTransferMinimumWidth ||
-        column2.value - dx <= _fileTransferMinimumWidth) {
-      return;
-    }
-    column1.value += dx;
-    column2.value -= dx;
-    column1.value = max(_fileTransferMinimumWidth, column1.value);
-    column2.value = max(_fileTransferMinimumWidth, column2.value);
+  void _onDrag(double dx, {required bool resizeNameColumn}) {
+    if (!mounted) return;
+    final headerWidth = _globalHeaderKey.currentContext?.size?.width;
+    if (headerWidth == null) return;
+    final column = resizeNameColumn ? _nameColWidth : _modifiedColWidth;
+    final followingWidth = resizeNameColumn
+        ? _modifiedColWidth.value
+        : headerWidth - _nameColWidth.value - _modifiedColWidth.value -
+            2 * _dividerWidth;
+    final minimumDelta = _fileTransferMinimumWidth - column.value;
+    final maximumDelta = followingWidth - _fileTransferMinimumWidth;
+    if (minimumDelta > maximumDelta) return;
+    final delta = dx.clamp(minimumDelta, maximumDelta).toDouble();
+    column.value += delta;
+    if (resizeNameColumn) _modifiedColWidth.value -= delta;
   }
 
   Widget _buildFileBrowserHeader(BuildContext context) {
-    final padding = EdgeInsets.all(1.0);
     return SizedBox(
       key: _globalHeaderKey,
       height: kDesktopFileTransferHeaderHeight,
@@ -1502,9 +1508,9 @@ class _FileManagerViewState extends State<FileManagerView> {
             label: translate("Name"),
             child: DraggableDivider(
               axis: Axis.vertical,
-              onPointerMove: (dx) =>
-                  _onDrag(dx, _nameColWidth, _modifiedColWidth),
-              padding: padding,
+              thickness: _dividerThickness,
+              onPointerMove: (dx) => _onDrag(dx, resizeNameColumn: true),
+              padding: _dividerPadding,
             ),
           ),
           Obx(
@@ -1515,14 +1521,14 @@ class _FileManagerViewState extends State<FileManagerView> {
             label: translate("Modified"),
             child: DraggableDivider(
               axis: Axis.vertical,
-              onPointerMove: (dx) =>
-                  _onDrag(dx, _modifiedColWidth, _sizeColWidth),
-              padding: padding,
+              thickness: _dividerThickness,
+              onPointerMove: (dx) => _onDrag(dx, resizeNameColumn: false),
+              padding: _dividerPadding,
             ),
           ),
           Expanded(
               child: headerItemFunc(
-                  _sizeColWidth.value, SortBy.size, translate("Size")))
+                  null, SortBy.size, translate("Size")))
         ],
       ),
     );

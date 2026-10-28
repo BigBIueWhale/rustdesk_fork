@@ -111134,3 +111134,67 @@ durable evidence allocation are 402,219,008 / 249,856 bytes. QEMU 601254 joins
 exit 0; its PID, RAM workspace `run.b1a3mnle` and active owned run roots are
 absent. Endpoint sets match before/during/after. This audit-only receipt leaves
 the counted ledger unchanged. No application or compiler executed.
+
+## 2026-10-28 — tap-and-hold receiver coordinates
+
+The previous documentation turn changed authoritative state and is classified as
+progress. This slice corrects functional input behavior independently of the
+parked RDP, parent application, clipboard and shared-parser work. All fifteen
+installed credential actions and R-S0/R-F5 acceptance remain open.
+
+`HoldTapMoveGestureRecognizer::_handleEvent` supplied `event.delta` together
+with `event.localPosition`; `remote_input.dart::onHoldDragUpdate` passes both to
+the cursor model. Screen movement and receiver-local position disagree under
+nontranslation transforms. Flutter defines DragUpdateDetails.delta in receiver
+coordinates and supplies that conversion as PointerEvent.localDelta:
+[drag contract](https://api.flutter.dev/flutter/gestures/DragUpdateDetails/delta.html),
+[local movement](https://api.flutter.dev/flutter/gestures/PointerEvent/localDelta.html),
+[pinned recognizer source](https://github.com/flutter/flutter/blob/3.24.5/packages/flutter/lib/src/gestures/monodrag.dart).
+The existing sequence retains its exact routed pointer transform; the callback
+must report movement and position in that same coordinate system. The correction
+uses `event.localDelta`, preserving screen-space hit slop, global position,
+timestamps, gesture admission and terminal ownership.
+
+Preparation `f1ece4f4dc0ad619bdcebbdf3a54526b53bc1f7f` adds three rendered cases
+to the existing fourteen-case suite and a focused `--flutter-model-tests
+--hold-drag` selection. It reuses the existing Flutter RAM profile and parser
+inventory machinery without a Rust parent build or bridge generation. The
+broader settings inventory becomes 341 because it also selects these tests;
+that broader cohort was not executed. Baseline `J0PGkVGgt9` passes fourteen and
+fails scaled/rotated/reflected movement: each receives (40,30) instead of
+(20,10), (30,-40), or (-40,30). Later assertions are unreached in those cases.
+The Flutter terminal result is false at 3.860 seconds.
+
+Correction `2b261b23d3430404378a10868f428c675c3beff8`, tree
+`6413b939428772985622f41055279309e1ae2bce`, passes all seventeen identical,
+unique, unskipped cases in `X2lJHvbtdu`, terminal success true at 3.810 seconds.
+They exercise real framework hit testing, transforms, recognizer/arena callbacks,
+reverse movement and cleanup with controlled touch events and time. The test
+source is unchanged between runs, SHA-256
+`7769a3f477c4b62398ca3b8a6b48f4406759412c38325a6ffe3985b200d421d9`.
+Recognizer SHA-256 changes from
+`3ef5c4b139305ac1846276a03fefee08cb1e5647032f903ffe49cb90c573c01a` to
+`28eee9f764de6917c57ec36ce0751bef3f7552cf186710939110a0784f89a677`.
+Executed source copies compare exactly after each test command. Read-only raw
+JSON analysis independently matches the seventeen expected names and outcomes.
+
+The corrected outer harness exits 1 after the actual Flutter success: the three
+known `test_inventory_is_exact` models-profile rename/duplicate/wrong-suite
+controls still fail. Its repair remains PARKED; no accepted full harness result
+is claimed. Actual test JSON is retained before those checks. The new profile's
+parser fixture coverage is added without changing models parsing. The candidate
+also adds its storage-selection control and avoids duplicating its raw JSON.
+
+Both executions use pinned Flutter 3.24.5, authenticated offline inputs, zero-NIC
+VMs and nonroot networkless containers. Supervisor times are 82.476/82.217
+seconds; peak RAM scratch is 4,051,496,960/4,052,156,416 bytes. QEMU 621267/625767
+join exit 0 and RAM `run.umnct56w`/`run.26obwsdc` retires. Bounded diagnostics
+remain as `hold-drag-baseline.J0PGkVGgt9` and `hold-drag-parser-open.X2lJHvbtdu`.
+Final endpoint snapshots respectively lose/gain one unattributed endpoint;
+no owner was inspected or modified. No active owned run root remains.
+Raw workload logs are 14,506/10,531 bytes, SHA-256
+`2c962a7d70bc734611884b6763069ae6b8864f7f988d79dff4fc17802c9d68c6` /
+`3b3b6e731425de41f4f70759c5b97cb337760110f9996c249c3a9cd627a39cfe`.
+Shell syntax, source-inventory analysis and `git diff --check` pass. Full remote
+input composition, native mouse delivery, physical devices, session races,
+installed privilege boundaries and release acceptance remain OPEN.

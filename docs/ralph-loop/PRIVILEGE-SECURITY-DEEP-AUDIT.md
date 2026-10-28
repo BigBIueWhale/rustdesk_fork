@@ -111317,3 +111317,14 @@ Checker SHA-256 changes from
 `git diff --check` passes. No product, test body, test inventory, gate command,
 normative requirement or live instruction is changed. No remaining-checker,
 compiler, IPC or native authorization execution is claimed for this deletion.
+
+Fresh count `WtBXiFRifa` at `bce393e0` passes 58 admission controls/five refusals,
+seven token controls and the complete byte round trip: 358,595 tokens /
+1,630,787 bytes, input SHA-256
+`c3574cdfd47f5e0959ea2ae1bd6e0539fed2161ad0496f2cf7295cb18365a6a1`.
+Outer/supervisor times are 29/31.812 seconds; RAM/durable peaks are
+402,292,736/258,048 bytes. QEMU 690462 joins exit 0 and RAM `run.tjoapyjb` is
+absent, with no active owned run root. One final unattributed endpoint addition
+is retained without owner inspection or mutation. Workload serial is 31,515
+bytes, SHA-256 `7bb81d3084d8e0c849fac05f10098a296d6e9655e2507fb5c0a43addc3ea9fbe`.
+This audit-only addition leaves the counted ledger byte-identical.

@@ -22,7 +22,7 @@ spec.loader.exec_module(result)
 
 
 SINGLE_PROFILE = None
-if len(sys.argv) > 1 and sys.argv[1] in ("--screenshot-save", "--locales"):
+if len(sys.argv) > 1 and sys.argv[1] in ("--screenshot-save", "--locales", "--draggable-divider"):
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
 
 
@@ -191,7 +191,8 @@ class ResultTests(unittest.TestCase):
     def test_complete_profiles(self):
         if SINGLE_PROFILE is not None:
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE),
-                             (1, 10 if SINGLE_PROFILE == "locales" else 12))
+                             (1, {"locales": 10, "screenshot-save": 12,
+                                  "draggable-divider": 22}[SINGLE_PROFILE]))
             return
         self.assertEqual(
             self.parse(self.events("models"), "models"),
@@ -208,7 +209,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("locales"), "locales"), (1, 10))
         self.assertEqual(self.parse(self.events("path-labels"), "path-labels"), (1, 16))
         self.assertEqual(self.parse(self.events("setting-checkbox"), "setting-checkbox"), (1, 8))
-        self.assertEqual(self.parse(self.events("draggable-divider"), "draggable-divider"), (1, 14))
+        self.assertEqual(self.parse(self.events("draggable-divider"), "draggable-divider"), (1, 22))
         self.assertEqual(self.parse(self.events("list-search"), "list-search"), (1, 11))
         self.assertEqual(self.parse(self.events("credential-badge"), "credential-badge"), (2, 14))
         self.assertEqual(self.parse(self.events("peer-search"), "peer-search"), (1, 19))

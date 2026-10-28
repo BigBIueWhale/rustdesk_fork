@@ -196,6 +196,14 @@ MENU_BUTTON_SUITES = {
     },
 }
 DRAGGABLE_DIVIDER_TESTS = {
+    "divider keyboard horizontal rtl resizes by distance",
+    "divider keyboard horizontal ltr resizes by distance",
+    "divider keyboard vertical rtl resizes by distance",
+    "divider keyboard vertical ltr resizes by distance",
+    "divider keyboard ignores modified unrelated and unfocused keys",
+    "divider keyboard disabling retires focus and supports fresh traversal",
+    "divider keyboard uses the current axis and direction after rebuilding",
+    "divider paints keyboard focus and restores its original color",
     "divider RTL mouse drag follows the pointer",
     "divider RTL touch drag follows the pointer",
     "divider horizontal RTL drag keeps vertical distance",

@@ -34,6 +34,8 @@ elif [ "${MODE:-}" = hbb-common-fs ] && [ "${HBB_LOGIND_NATIVE:-}" = 0 ] \
     readonly VM_STORAGE_PROFILE=hbb-common-fs
 elif [ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:locales ]; then
     readonly VM_STORAGE_PROFILE=flutter-locales
+elif [ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:draggable-divider ]; then
+    readonly VM_STORAGE_PROFILE=flutter-divider
 elif [ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:keyboard-layout ]; then
     readonly VM_STORAGE_PROFILE=flutter-keyboard-layout
 elif [[ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:credential-dialog \
@@ -65,7 +67,6 @@ elif [[ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:connect-pass
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:hold-drag \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:path-labels \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:setting-checkbox \
-    || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:draggable-divider \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:list-search \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:credential-badge \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:peer-search \

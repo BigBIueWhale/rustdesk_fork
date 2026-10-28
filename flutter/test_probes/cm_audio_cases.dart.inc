@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart' show MyTheme, globalKey;
 import 'package:flutter_hbb/desktop/pages/server_page.dart';
 import 'package:flutter_hbb/generated_bridge.dart';
@@ -154,6 +155,108 @@ class _Harness {
 const _retirements = ['call', 'registry', 'client-id', 'client', 'page', 'ended'];
 
 void main() {
+  testWidgets('audio CM picker serializes device reads across rebuilds',
+      (tester) async {
+    final h = _Harness();
+    try {
+      await h.mount(tester);
+      final original = h.opener(tester);
+      await h.open(tester);
+      h.rebuild(() {});
+      await tester.pump();
+      original(TapDownDetails(globalPosition: const Offset(100, 100)));
+      h.opener(tester)(TapDownDetails(globalPosition: const Offset(100, 100)));
+      await tester.pump();
+      expect(h.binding.reads, hasLength(1));
+      h.binding.reads.single.complete(_inputs);
+      await tester.pumpAndSettle();
+      expect(find.text('Microphone B'), findsOneWidget);
+      await tester.tap(find.text('Microphone B'));
+      await tester.pump();
+      expect(h.binding.writes, hasLength(1));
+      h.binding.writes.single.result.complete();
+      await tester.pumpAndSettle();
+      expect(h.binding.current, 'mic-b');
+      expect(tester.takeException(), isNull);
+    } finally { await h.finish(tester); }
+  });
+
+  testWidgets('audio CM picker serializes writes across rebuild and call replacement',
+      (tester) async {
+    for (final replace in [false, true]) {
+      final h = _Harness();
+      try {
+        await h.mount(tester);
+        await h.menu(tester);
+        await tester.tap(find.text('Microphone B'));
+        await tester.pumpAndSettle();
+        expect(h.binding.writes, hasLength(1));
+        if (replace) {
+          await h.retire(tester, 'call');
+        } else {
+          h.rebuild(() {});
+          await tester.pump();
+        }
+        h.opener(tester)(TapDownDetails(globalPosition: const Offset(100, 100)));
+        await tester.pump();
+        expect(h.binding.reads, hasLength(1), reason: 'replace=$replace');
+        expect(h.binding.writes, hasLength(1));
+        h.binding.writes.single.result.complete();
+        await tester.pumpAndSettle();
+        await h.menu(tester);
+        await tester.tap(find.text('Microphone A'));
+        await tester.pump();
+        expect(h.binding.writes.map((w) => w.device), ['mic-b', 'mic-a']);
+        h.binding.writes.last.result.complete();
+        await tester.pumpAndSettle();
+        expect(h.binding.current, 'mic-a');
+        expect(tester.takeException(), isNull);
+      } finally { await h.finish(tester); }
+    }
+  });
+
+  testWidgets('audio CM picker releases dismissal and selects system sound',
+      (tester) async {
+    final h = _Harness();
+    try {
+      await h.mount(tester);
+      await h.menu(tester);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(h.binding.writes, isEmpty);
+      expect(find.text('Microphone B'), findsNothing);
+      await h.menu(tester);
+      await tester.tap(find.text('System Sound'));
+      await tester.pump();
+      expect(h.binding.writes.map((w) => w.device), ['']);
+      h.binding.writes.single.result.complete();
+      await tester.pumpAndSettle();
+      expect(h.binding.current, '');
+      expect(tester.takeException(), isNull);
+    } finally { await h.finish(tester); }
+  });
+
+  testWidgets('audio CM picker retries after device enumeration fails',
+      (tester) async {
+    final h = _Harness();
+    try {
+      await h.mount(tester);
+      await h.open(tester);
+      h.binding.reads.single.completeError(StateError('device read failed'));
+      await tester.pumpAndSettle();
+      expect(find.text('Failed'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 4));
+      await h.menu(tester);
+      await tester.tap(find.text('Microphone B'));
+      await tester.pump();
+      expect(h.binding.writes, hasLength(1));
+      h.binding.writes.single.result.complete();
+      await tester.pumpAndSettle();
+      expect(h.binding.current, 'mic-b');
+      expect(tester.takeException(), isNull);
+    } finally { await h.finish(tester); }
+  });
+
   testWidgets('audio CM picker writes the selected device for its current call',
       (tester) async {
     final h = _Harness();

@@ -1368,6 +1368,10 @@ TRACKPAD_SPEED_SUITES = {
 
 AUDIO_INPUT_SUITES = {
     "cm_audio_probe_test.dart": {
+        'audio CM picker serializes device reads across rebuilds',
+        'audio CM picker serializes writes across rebuild and call replacement',
+        'audio CM picker releases dismissal and selects system sound',
+        'audio CM picker retries after device enumeration fails',
         'audio CM picker writes the selected device for its current call',
         'audio CM picker refuses retired opener callbacks',
         'audio CM picker drops device results for a replaced call',

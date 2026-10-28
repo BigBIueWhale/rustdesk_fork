@@ -112398,3 +112398,14 @@ resolved widget locale and rendered localized label. The failed VM joined and
 retired RAM scratch; bounded diagnostics are retained as `locale-fixture.n5O9lD6iLW`
 (device/inode 66306/103992420). Console SHA-256:
 `6d9268c3459d8ebc9e6a393c773c06d869a756844642fbc93b583bd072fda966`.
+
+The next preparation `pSJSSrS153` at `86768320` reaches the old-list English
+fallback, but the GetMaterialApp fixture leaks locale observers across cases:
+clearing test locales schedules Get's reassemble after the test ends. Its
+results are excluded from accepted A/B evidence. The focused fixture now uses
+Flutter's actual MaterialApp and the production list/delegates, without Get
+global lifecycle state. This tests framework resolution and rendered labels;
+complete GetMaterialApp/root integration remains explicitly unexecuted. No
+product locale code changes yet. Exact joined cleanup and RAM retirement precede
+retaining `locale-fixture.pSJSSrS153` (66306/103992496), console SHA-256
+`7d3aa9e00730bdcc309ac4901eb2b4be0291db39f643e524849cebf8a6fb1cfe`.

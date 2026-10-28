@@ -3,9 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common/locales.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
 
-Widget _app() => GetMaterialApp(
+Widget _app() => MaterialApp(
       supportedLocales: supportedLocales,
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
@@ -30,8 +29,6 @@ void _expectLocale(WidgetTester tester, String language, String label,
 }
 
 void main() {
-  tearDown(() => Get.reset());
-
   for (final sample in <(String, Locale, String, String)>[
     ('Kazakh language', const Locale('kk'), 'kk', 'Бас тарту'),
     ('Kazakh region', const Locale('kk', 'KZ'), 'kk', 'Бас тарту'),

@@ -111799,3 +111799,13 @@ module is in the actual translation dispatch. Whitespace review passes.
 No compiler, product runtime, renderer or native-speaker review ran; this is
 translation-data validation only. Chat lifecycle, application/device presentation
 and bidirectional layout remain OPEN. The fresh ledger count follows below.
+
+Commit `af80bd1f` is pushed. Count run `V7Rmuxey2G` passes the full outer harness
+in 29 seconds (32.287 supervisor seconds), including seven tokenizer controls and
+the complete byte round trip. The unchanged ledger is 359,434 tokens / 1,635,490
+bytes, SHA-256 `de2e014baabd9aefce03c1acd681e802de2cda1597c7484373b8023a7421e511`.
+QEMU 1173145 joins exit 0; RAM `run.7ns2lpbz` and active owned run roots are absent.
+Peak RAM/durable storage is 402,370,560/258,048 bytes. The final endpoint snapshot's
+one unattributed addition remains untouched. Workload serial: 31,542 bytes,
+SHA-256 `0c38a9be3e09346ff1b2bfca359056c96ea44a574854712551635088e2b19e50`.
+This audit-only receipt leaves the counted ledger and all translation bytes unchanged.

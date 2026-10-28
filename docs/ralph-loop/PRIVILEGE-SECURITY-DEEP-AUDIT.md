@@ -111437,3 +111437,15 @@ requirements, consumers and active menu actions are unchanged. No compilation,
 rendered UI result, runtime leak fix or privilege-boundary closure is claimed.
 Full application/menu integration and installed/native release obligations,
 including all fifteen credential actions, remain OPEN.
+
+Fresh ledger count `FU8IlsXUfc` passes at pushed source `46768f2e`: 358,971 tokens
+/ 1,632,735 bytes, SHA-256
+`4599b695a647be96ce6612962b1de460061bfe8245393fc8b117b8b9125f9b90`.
+The first pre-push invocation refused before VM allocation; the admitted run
+passes 58 workload controls/five refusals, seven token controls and the byte
+round trip in 28 outer / 31.288 supervisor seconds. Peak RAM scratch is
+402,296,832 bytes and durable run storage 249,856 bytes. QEMU 775114 joins with
+exit 0; RAM `run.ggsa9p68` and active owned run roots are absent. All endpoint
+sets are unchanged. Workload serial: 31,515 bytes, SHA-256
+`c51a4a803e93563d4fb41ff686577a5a663b313178e47ea1362a8395d5e885b1`.
+This audit-only receipt leaves the counted ledger and product source unchanged.

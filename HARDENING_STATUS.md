@@ -52,6 +52,13 @@ case inventories, intermediate failures, source/artifact hashes and timings rema
 receipts under `.harness-state/verifier-vm/` and in Git history. Shared current-artifact,
 installed/other-platform, R-S0/R-F5, resource/soak and release obligations below remain OPEN.
 
+**User pivot (2026-10-28):** Recording-status repair, software-only recorder
+cleanup and the proposed library-only VM profile remain OPEN/PARKED. Regression
+preparation `ac236b65` remains uncompiled/unexecuted. The subsequent five-file
+cleanup/profile draft is retained in stash `000d0b21d4a3d77909197fde7629ef1f70486db1`;
+it has no accepted compilation or native result. Do not resume automatically.
+Work moved to translation-only UI text completion; chat lifecycle work stays parked.
+
 **User pivot (2026-10-28):** The new October RustSec advisory/reachability review
 remains OPEN/PARKED after read-only research. No dependency update, decoder
 regression or fresh advisory scan ran. Work moved to unused desktop UI removal.
@@ -233,6 +240,7 @@ Do not resume automatically. Work moved to the R-S11hj current-state ledger clea
 
 | Surface | Current state and evidence boundary | Receipt |
 | --- | --- | --- |
+| Chat-history limit translations | Fills the existing empty notice in Hebrew, Arabic, French, German, Spanish and Brazilian Portuguese, using the English display text. Only six translation values change; keys, existing translations and runtime code are unchanged. UTF-8, literal/placeholder preservation and exact-diff review pass. Application rendering and bidirectional layout are not newly executed; other untranslated locales and chat lifecycle acceptance remain OPEN. | Audit entry “2026-10-28 — user pivot; chat-history notice translations” |
 | Unused desktop title bar | Deletes the unreferenced `DesktopTitleBar` library and its three color constants. Tracked reference/build review and exact deletion checks pass; active tab/window controls and tests are unchanged. No compilation or runtime acceptance is claimed. | Audit entry “2026-10-28 — user pivot; unused desktop title bar” |
 | Unused Sciter session launcher (`562a2501`) | Removes 71 lines: the uncalled launcher, recent-session flag, UI-only child reaper, registry/type and unused imports. Their Sciter callers disappeared in `0d2c8825`. Repository reference review and exact deletion comparison pass; all retained source bytes, the distinct active server reaper and its direct-service/tray callers are unchanged. No compiler or product runtime pass is claimed for this deletion. Full application, installed/native and release acceptance remain OPEN. | Audit entry “2026-10-28 — user pivot; retire unused Sciter session launcher” |
 | Automatic UI language selection (`5334ae62`) | The production selector honors explicit Hans/Hant scripts before Chinese region defaults, selects Traditional Chinese for TW/HK/MO, handles Java script suffixes and ignores unrelated extension contents. Saved app-language choices retain precedence. The isolated Linux Rust component passes six tests with 46 locale/preference examples; the actual selector is compiled directly, without translation/config doubles. Caller wiring is source-reviewed; full app, OS locale acquisition, rendered text and other-platform acceptance remain OPEN. QEMU joins and bounded RAM scratch retires. One unattributed endpoint addition is retained and untouched. | Audit entry “2026-10-28 — user pivot; automatic language selection”; run `K1DkIVObf0` |

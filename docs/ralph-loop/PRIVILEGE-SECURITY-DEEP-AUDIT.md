@@ -110880,3 +110880,29 @@ Seven controls and exact byte round trip pass. Outer/supervisor times are
 owned roots are absent. All endpoint deltas are zero. The bounded RAM profile
 and live monitor remain enabled. This is documentation-only execution; no
 application compiled or ran. The counted ledger is unchanged by this receipt.
+
+## 2026-10-28 — user pivot; chat-history notice translations
+
+The user explicitly requests another aspect. Recording-status repair and the
+unvalidated software-only recorder/library VM draft are OPEN/PARKED; the latter
+five-file diff is preserved in stash `000d0b21d4a3d77909197fde7629ef1f70486db1`.
+No compilation, library run or application run is performed for that draft.
+The parent-build and other recorded parks remain in force. The current fifteen
+installed credential-action acceptance rows were reread and remain OPEN.
+
+This independent data-only slice fills `chat-history-limited-tip` in `he`, `ar`,
+`fr`, `de`, `es` and `ptbr`. The source is the nonempty `en.rs` display text,
+“Some chat history is no longer shown.” The existing ChatPage translates this
+key when `historyLimited` is true; empty locale values currently select the
+English fallback in `translate_locale`. The translations preserve display
+omission without claiming deletion. Portuguese uses the active `ptbr` table;
+the unselected `pt_PT` table is outside this slice.
+
+Read-only UTF-8/literal inspection, placeholder and exact-byte comparison prove
+that exactly those six empty values were filled. All keys, existing nonempty
+translations, the English/template tables, selector and ChatPage are unchanged.
+`git diff --check` passes. No new test harness or application compilation is
+needed for six literal values; rendering and bidirectional layout are not newly
+executed. Chat lifecycle and remaining locale completion are not claimed fixed.
+The ledger records this scope and the explicit park; its fresh bounded count
+follows the clean committed source.

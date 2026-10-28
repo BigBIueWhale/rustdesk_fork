@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common.dart' show CustomAlertDialog, DialogClose;
 import 'package:flutter_hbb/common/widgets/connect_password_dialog.dart';
@@ -13,6 +14,7 @@ Future<void> _show(
   VoidCallback? close,
   VoidCallback? onCancel,
   VoidCallback? onAccepted,
+  bool Function()? isCurrent,
 }) async {
   await tester.pumpWidget(MaterialApp(
     home: Scaffold(
@@ -21,7 +23,7 @@ Future<void> _show(
         readRemember: readRemember,
         submitPassword: submitPassword ?? (_, __) => false,
         close: DialogClose(
-          isCurrent: () => true,
+          isCurrent: isCurrent ?? () => true,
           complete: (_) => close?.call(),
         ),
         onCancel: onCancel ?? () {},
@@ -39,6 +41,92 @@ Finder _button(String label) => find.ancestor(
     );
 
 void main() {
+  for (final platform in [
+    TargetPlatform.android,
+    TargetPlatform.iOS,
+    TargetPlatform.linux,
+    TargetPlatform.windows,
+    TargetPlatform.macOS,
+  ]) {
+    testWidgets('connect keyboard action submits once on ${platform.name}',
+        (tester) async {
+      debugDefaultTargetPlatformOverride = platform;
+      try {
+        final submitted = <String>[];
+        var accepted = 0;
+        await _show(tester,
+            readRemember: () async => false,
+            submitPassword: (password, remember) {
+              expect(remember, isFalse);
+              submitted.add(password);
+              return true;
+            },
+            onAccepted: () => accepted++);
+        await tester.enterText(find.byType(TextField), ' Runtime1x\u00a0');
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pump();
+        expect(submitted, [' Runtime1x\u00a0']);
+        expect(accepted, 1);
+        await tester.showKeyboard(find.byType(TextField));
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pump();
+        expect(submitted, [' Runtime1x\u00a0']);
+        expect(accepted, 1);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+  }
+
+  testWidgets('connect keyboard action waits for preference and permits retry',
+      (tester) async {
+    final preference = Completer<bool?>();
+    var attempts = 0;
+    var accepted = 0;
+    await _show(tester,
+        readRemember: () => preference.future,
+        submitPassword: (password, remember) {
+          expect(password, ' Exact1x ');
+          expect(remember, isFalse);
+          return ++attempts == 2;
+        },
+        onAccepted: () => accepted++);
+    await tester.enterText(find.byType(TextField), ' Exact1x ');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(attempts, 0);
+    preference.complete(false);
+    await tester.pump();
+    await tester.showKeyboard(find.byType(TextField));
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(attempts, 1);
+    expect(accepted, 0);
+    expect(find.text('Prompt: Failed'), findsOneWidget);
+    await tester.showKeyboard(find.byType(TextField));
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(attempts, 2);
+    expect(accepted, 1);
+  });
+
+  testWidgets('connect keyboard action refuses a stale owner', (tester) async {
+    var current = true;
+    var submitted = 0;
+    await _show(tester,
+        readRemember: () async => false,
+        isCurrent: () => current,
+        submitPassword: (_, __) {
+          submitted++;
+          return true;
+        });
+    await tester.enterText(find.byType(TextField), 'Runtime1x');
+    current = false;
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(submitted, 0);
+  });
+
   testWidgets('connect prompt is present before its saved preference resolves',
       (tester) async {
     final preference = Completer<bool?>();

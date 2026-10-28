@@ -198,7 +198,7 @@ class ResultTests(unittest.TestCase):
 
     def test_complete_profiles(self):
         if SINGLE_PROFILE == "password-fields":
-            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 11))
+            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (3, 25))
             return
         if SINGLE_PROFILE == "menu-button":
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (4, 32))
@@ -220,7 +220,7 @@ class ResultTests(unittest.TestCase):
             (1, len(result.FRAME_QUEUE_TESTS)),
         )
         self.assertEqual(self.parse(self.events("direct-address"), "direct-address"), (1, 33))
-        self.assertEqual(self.parse(self.events("password-fields"), "password-fields"), (2, 11))
+        self.assertEqual(self.parse(self.events("password-fields"), "password-fields"), (3, 25))
         self.assertEqual(self.parse(self.events("menu-button"), "menu-button"), (4, 32))
         self.assertEqual(self.parse(self.events("hold-drag"), "hold-drag"), (1, 17))
         self.assertEqual(self.parse(self.events("locales"), "locales"), (1, 10))
@@ -250,8 +250,8 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("settings-navigation"), "settings-navigation"), (1, 46))
         self.assertEqual(self.parse(self.events("desktop-theme"), "desktop-theme"), (1, 16))
         self.assertEqual(self.parse(self.events("modifier-release"), "modifier-release"), (5, 112))
-        self.assertEqual(self.parse(self.events("connect-password"), "connect-password"), (1, 7))
-        self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (10, 107))
+        self.assertEqual(self.parse(self.events("connect-password"), "connect-password"), (1, 14))
+        self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (10, 114))
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "count"
             path.write_bytes(b"7\n")

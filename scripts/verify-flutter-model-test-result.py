@@ -1235,6 +1235,10 @@ CREDENTIAL_DIALOG_TESTS = {
         "disposed duplicate peers cannot retire the incumbent",
     },
     "connect_password_dialog_lifecycle_test.dart": {
+        *(f"connect keyboard action submits once on {platform}" for platform in
+          ("android", "iOS", "linux", "windows", "macOS")),
+        "connect keyboard action waits for preference and permits retry",
+        "connect keyboard action refuses a stale owner",
         "connect prompt is present before its saved preference resolves",
         "retired connect preference cannot change its replacement",
         "explicit remember choice wins over delayed saved preference",
@@ -1287,6 +1291,9 @@ CREDENTIAL_DIALOG_TESTS = {
     },
     "file_command_session_ownership_test.dart": FILE_COMMAND_TESTS,
 }
+PASSWORD_FIELD_SUITES["connect_password_dialog_lifecycle_test.dart"] = (
+    CREDENTIAL_DIALOG_TESTS["connect_password_dialog_lifecycle_test.dart"]
+)
 MAXIMUM_EVENTS = 16_384
 MAXIMUM_LINE_BYTES = 1024 * 1024
 

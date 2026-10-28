@@ -11051,7 +11051,7 @@ run_flutter_model_tests() {
             memory=1280m
             memory_bytes=1342177280
             result_prefix=FLUTTER_PASSWORD_FIELD_TEST_JSON
-            expected_result='suites=2 tests=11'
+            expected_result='suites=3 tests=25'
         elif [ "$FLUTTER_TEST_PROFILE" = window-dispatch ]; then
             result_prefix=FLUTTER_WINDOW_DISPATCH_TEST_JSON
             expected_result='suites=1 tests=8'
@@ -11154,12 +11154,12 @@ run_flutter_model_tests() {
             memory=3g
             memory_bytes=3221225472
             result_prefix=FLUTTER_CONNECT_PASSWORD_TEST_JSON
-            expected_result='suites=1 tests=7'
+            expected_result='suites=1 tests=14'
         elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
             memory=2g
             memory_bytes=2147483648
             result_prefix=FLUTTER_CREDENTIAL_DIALOG_TEST_JSON
-            expected_result='suites=10 tests=107'
+            expected_result='suites=10 tests=114'
         else
             result_prefix=FLUTTER_DIRECT_ADDRESS_TEST_JSON
             expected_result='suites=1 tests=33'
@@ -11840,7 +11840,7 @@ run_flutter_model_tests() {
                     tests=(test/share_rdp_change_lifecycle_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
                     python3 -B -I -S /source/scripts/prepare-password-focus-probe.py prepare
-                    tests=(test/password_text_field_test.dart test_probes/password_focus_probe_test.dart)
+                    tests=(test/password_text_field_test.dart test_probes/password_focus_probe_test.dart test_probes/connect_password_dialog_lifecycle_test.dart)
                     test_concurrency=1
                 elif [ "$FLUTTER_TEST_PROFILE" = window-dispatch ]; then
                     tests=(test/desktop_window_dispatch_test.dart)
@@ -12613,7 +12613,7 @@ run_flutter_model_tests() {
         local password_sha256
         password_sha256="$(sha256sum "$source_root/flutter/lib/common/widgets/password_text_field.dart" | awk '{print $1}')"
         tests_sha256="$(sha256sum "$source_root/flutter/test/password_text_field_test.dart" | awk '{print $1}')"
-        printf 'FLUTTER_PASSWORD_FIELD_TESTS_VM=pass commit=%s tree=%s suites=2 tests=11 flutter=3.24.5 widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-password-field-tests cleanup=joined\n' \
+        printf 'FLUTTER_PASSWORD_FIELD_TESTS_VM=pass commit=%s tree=%s suites=3 tests=25 flutter=3.24.5 widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-password-field-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$password_sha256" "$tests_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
@@ -12727,12 +12727,12 @@ run_flutter_model_tests() {
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = connect-password ]; then
-        printf 'FLUTTER_CONNECT_PASSWORD_TESTS_VM=pass commit=%s tree=%s suites=1 tests=7 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-connect-password-tests cleanup=joined\n' \
+        printf 'FLUTTER_CONNECT_PASSWORD_TESTS_VM=pass commit=%s tree=%s suites=1 tests=14 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-connect-password-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
-        printf 'FLUTTER_CREDENTIAL_DIALOG_TESTS_VM=pass commit=%s tree=%s suites=10 tests=107 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-credential-dialog-tests cleanup=joined\n' \
+        printf 'FLUTTER_CREDENTIAL_DIALOG_TESTS_VM=pass commit=%s tree=%s suites=10 tests=114 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-credential-dialog-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

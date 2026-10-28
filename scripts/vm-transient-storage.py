@@ -50,7 +50,7 @@ def storage_limits(profile, memory_mib):
         return 6 * GIB, 5 * GIB
     if profile == 'flutter-password-fields':
         require(memory_mib == 2048, 'password component tests require their 2 GiB guest')
-        # Two sequential Flutter-only suites; no native bridge or compiler inputs.
+        # Sequential Flutter-only suites; no native bridge or compiler inputs.
         return 5 * GIB, 4 * GIB
     if profile == 'flutter-file-columns':
         require(memory_mib == 2560, 'file-column tests require their 2.5 GiB guest')

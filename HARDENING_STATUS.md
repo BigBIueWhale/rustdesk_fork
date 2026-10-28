@@ -5105,6 +5105,28 @@ the complete dialog/native bridge, real peer or device keyboard. Those integrati
 checks and all fifteen installed credential actions remain OPEN. The separately
 parked toolbar, provisioning and global parser work is not resumed.
 
+**Connection-password keyboard submission (`50d511fc`).** `onSubmitted` now
+passes through `PasswordTextField`, `DialogTextField` and `PasswordWidget` to
+the prompt's existing `_submit` admission. The keyboard's completion action
+therefore submits exact editor text with the same preference-readiness,
+current-owner, empty-input and duplicate guards as OK. The prior field dropped
+that action; a raw dialog key handler does not replace the text-input channel.
+Unchanged source `9d1c57b3` reproduces six failures with nineteen passing
+controls. The identical tests at `50d511fc` pass all 25 cases in three suites,
+plus three focused parser checks, in 109 outer seconds. The existing bounded
+`--password-fields` profile now includes exact extracted production prompt,
+dialog, close-owner and button bodies, and the actual connection lifecycle tests
+with only imports redirected. Coverage includes Android/iOS/Linux/Windows/macOS
+framework configurations, duplicate refusal, stale ownership, delayed preference,
+retry, cancellation, text preservation and the prior focus/keyboard controls.
+These configurations run on Linux Flutter 3.24.5 with fixture palette/insets,
+translation and native keyboard command; they are not native-device evidence.
+Both QEMU processes join and RAM scratch retires. Each final inventory has one
+unattributed endpoint removal, left untouched. `password-submit-50d511fc.json`
+retains exact source and execution/cleanup evidence. Full bridge/app, device
+keyboards, real peer authentication and installed-service acceptance remain OPEN;
+all fifteen credential actions and separately parked work retain their status.
+
 **Password input policy: source corrected; focused component/channel tests accepted.** The
 connection-password reveal control and both permanent-password fields use
 `PasswordTextField`. Credential input always requests a password keyboard with

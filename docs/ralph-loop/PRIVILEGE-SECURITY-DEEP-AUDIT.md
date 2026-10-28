@@ -113218,3 +113218,73 @@ The complete mode-0600 capsule is 92,444 bytes, SHA-256
 `2e304b0b90eaba2b7182400eb6018c16176216e97810280cd85371b0df029cf8`.
 Only this audit receipt follows the count; the ledger and accepted product are
 unchanged. The broad goal remains active and incomplete.
+
+## 2026-10-28 — connection-password text-input completion
+
+The previous goal turn made verified product progress. Revalidation finds a
+clean, pushed `da01d4f2` tree and unchanged AGENTS/prompt/specification hashes;
+all fifteen installed/native credential actions remain OPEN. The next coherent
+slice follows the active connection-password work. The toolbar and all other
+user-parked areas are not resumed.
+
+Source trace: `ConnectPasswordDialog` supplies a raw-key `CustomAlertDialog`
+submit callback and an OK action, but its `PasswordWidget`/`DialogTextField`/
+`PasswordTextField` chain exposes no text-input `onSubmitted` callback. Existing
+connection tests call the dialog callback directly. The
+[Flutter submission contract](https://api.flutter.dev/flutter/widgets/EditableText/onSubmitted.html)
+distinguishes engine text-input completion from framework-only Enter events and
+specifies `testTextInput.receiveAction(TextInputAction.done)` for this test.
+The [pinned 3.24.5 implementation](https://raw.githubusercontent.com/flutter/flutter/3.24.5/packages/flutter/lib/src/widgets/editable_text.dart)
+finalizes composition and invokes `onSubmitted` after its normal editing-complete
+handling. The intended ownership is unchanged: `_submit` rechecks exact current
+dialog ownership, remember-choice readiness, empty input and its synchronous
+submission latch. Keyboard completion must call that same method with no second
+credential path, text trimming or caller-side authorization shortcut.
+
+Preparation `9d1c57b3` extends the existing lifecycle tests with five framework
+platform configurations, preference wait/retry, and stale-owner refusal. The
+bounded password profile also executes the existing seven connection cases.
+Its generated library contains exact production prompt, field, dialog,
+`DialogClose` and button bodies; only imports, platform/native-command doubles
+and palette/insets/translation support differ. Publication is exclusive and
+read-only, with exact source and generated-byte checks before/after execution.
+The broad bridge-generating profiles retain these tests with updated inventories;
+they are not executed or claimed accepted in this slice.
+
+Baseline `hezLzaoojm` at `9d1c57b3` has nineteen passes and six failures:
+each framework platform fails to invoke the submission callback on Done, and
+the ready/retry case also receives no submission. The stale-owner control and
+all existing lifecycle/focus/keyboard controls pass. Workload serial is 28,501
+bytes, SHA-256
+`71f4a0554c796cb1af27f4bd623f2c6957d9e247ffab7c7d5cdf92993a687143`.
+QEMU 2419207 joins exit 0; RAM `run.ve226dhp` is absent. Identity-checked failed
+diagnostics are retained as `password-submit-baseline.hezLzaoojm`.
+
+Product `50d511fc` adds eleven lines across the three widget files. The optional
+Flutter-style callback is passed through both generic field branches; only the
+connection prompt selects its existing `_submit` method when ready. That method
+also validates freshness at invocation, so a callback retained across an owner
+change cannot submit. Existing permanent-password and nonpassword callers keep
+their prior behavior. No credential storage, receiver or native bridge changes.
+
+Candidate `I2OIoIj4fk` passes all 25 tests and three focused inventory/finality
+parser checks. Flutter execution is 7.523 seconds; outer completion 109 seconds.
+The exact generated dialog digest is
+`374133f877348ecca2c0ba720f7e17b794cfe15ac86563a7cbe24da4a13ea0e4`;
+test-body digest (with only import redirection) is
+`583d960a6a591065abb10035d9a92a1e59c94e718c63ab7739e0b85c20e0573b`.
+The 20,800-byte workload serial is
+`5858c1e0983c7457dd4e0957f02c06bcf51bd6d423f123bc2426a6f8577149ff`.
+QEMU 2424708 joins exit 0; RAM `run.i9qj9fu6` and active roots are absent.
+Scratch/durable peaks are 4,095,160,320/3,420,160 bytes, within the unchanged
+5 GiB scratch / 4 GiB hard-file profile with 2 GiB guest and 6 GiB host reserve.
+Each final endpoint inventory has one unattributed removal, left untouched;
+the owned harness cannot create IP sockets. Both runs and exact retirement are
+retained in `password-submit-50d511fc.json`.
+
+`git diff --check`, shell syntax and Python AST checks pass. This is interacting
+Linux Flutter component/text-input-channel evidence with controlled callbacks,
+not native Android/iOS/Windows/macOS keyboard, complete app/bridge, real peer or
+installed-service acceptance. Those obligations, all fifteen credential actions,
+the broad goal and all separately parked items remain OPEN. A fresh ledger count
+follows this status update.

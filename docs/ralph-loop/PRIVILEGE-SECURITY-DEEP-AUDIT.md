@@ -109867,3 +109867,35 @@ wrong-size refusals, a real low-memory CLI refusal before allocation, and shell
 selection controls for the input shard, existing focus shard and unrelated mode.
 Run these controls through the unchanged isolated count workload before running
 the full existing native input shard. No native result is claimed yet.
+
+Candidate `6979d96357e2f2b65d37b585a3c4e36c3bcefe34`, tree
+`60cfbc19b13fb85e1785b827c50b35cd9b49515e`, passes the shell/Python parse checks
+and `git diff --check`. Isolated `GdyWbmVSfm` passes 30 profile limits, 54 wrong
+profile/size refusals, the real input CLI's insufficient-RAM refusal, and 38
+workload modes/56 selection controls/5 refusals. The unchanged ledger remains
+354,604 tokens. Serial 98,592 bytes, SHA-256
+`15569245bcd3099dbcee4157744aa945864ea91bcd9f999458a07b557b68391d`.
+Outer/supervisor 29/31.414 seconds, RAM peak 402,358,272 bytes. QEMU 3950854
+joins with exit 0; its PID, RAM `run.isghn_oa` and active roots are absent.
+
+The same source passes the unchanged native input shard as `vcwoLaYGnn` in
+110 outer/115.453 supervisor seconds. Complete Linux Enigo artifact SHA-256
+`0b102ad34a3e08396fe73976ffde4998d01cd19bdd59e1f1004e51f1727211ad`;
+the complete-backend/production-declarations native fixture is
+`26dc1e976a0620b579efca2c59253dbfddcf2fcd67d9b3be3db38db28349f34e`.
+Real text, pointer and eight-modifier/two-lock state controls pass in normal and
+staged provider execution. Missing/wrong/writable providers refuse; text error,
+23 native-state faults repeated four times, 144 text-submission cases and owned
+pending-input/retirement scenarios pass. Full receipt inventory remains in serial
+138,813 bytes, SHA-256
+`b7caa1b2b55b8163e3ce2239dab3a866a5bc7b8ef1fd9954b783cb33b550074f`.
+
+The new storage profile admits 4-GiB guest/9-GiB scratch/8-GiB file ceiling;
+the ceiling is installed before execution. Actual RAM-scratch peak is
+3,961,888,768 bytes, overlay peak 3,174,195,200, minimum host available memory
+14,860,754,944 and durable run peak 192,512. QEMU 3955176 joins with exit 0;
+its PID, RAM `run.oeszl1fm` and active roots are absent. All endpoint deltas for
+both runs are zero. No test/helper/product or Docker execution occurred on the
+host. This accepts the focused storage profile and Linux input component,
+including `d372c3ce`; it does not establish the full application, installed
+credential actions, Windows/macOS input or R-S0/R-F5/release acceptance.

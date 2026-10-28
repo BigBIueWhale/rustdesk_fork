@@ -785,10 +785,23 @@ from the Linux, Windows and macOS backends. Their last application consumer was
 the uinput path removed by `fb40e9d2`. Reference inspection and exact comparison
 confirm that the five source files differ only by these 78 deleted lines;
 event/state/cleanup bodies, tests and dependencies are unchanged. The existing
-`--x11-display-tests --key-input` check was refused before VM startup: its
-27,648-MiB admission requirement exceeded 21,381 MiB available. No VM or scratch
-was created; native compilation/execution remain OPEN. This is obsolete API
-removal, not a demonstrated input/LPE fix. All parked work remains parked.
+`--x11-display-tests --key-input` check initially refused its generic RAM budget.
+At `6979d963`, the unchanged native shard passes in 110 outer seconds: complete
+Linux Enigo compilation, real text/pointer/state effects, provider refusal,
+pending-cleanup admission and retirement all pass. Full application and native
+Windows/macOS acceptance remain OPEN. This is obsolete API removal, not a new
+input/LPE fix. All parked work remains parked.
+
+**Input VM storage (`6979d963`).** The dedicated `x11-key-input` profile reduces
+scratch reservation from 16 to 9 GiB while preserving the 4-GiB guest, 8-GiB
+QEMU file ceiling, 6-GiB host headroom and 1-GiB overhead. Before guest execution,
+prepared inputs must fit within 1 GiB, leaving the full file ceiling available.
+Aggregate monitoring, exact ownership/join and RAM-only storage remain mandatory.
+The isolated profile, wrong-size/low-memory refusal and workload-selection checks
+pass. Native run `vcwoLaYGnn` peaks at 3,961,888,768 RAM-scratch bytes and retains
+192,512 bytes of durable run evidence; QEMU joins and RAM/active roots retire,
+with zero endpoint deltas. Exact source, artifact and storage receipts are in
+the audit entry “2026-10-28 — bounded input-verification storage profile”.
 
 **Current source:** TFC is no longer a dependency or workspace member. Its eager X11
 context, generic-key fallback chain, key conversion and final-worker remap hook are

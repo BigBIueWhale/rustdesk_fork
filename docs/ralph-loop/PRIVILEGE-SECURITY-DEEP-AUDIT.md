@@ -109899,3 +109899,13 @@ both runs are zero. No test/helper/product or Docker execution occurred on the
 host. This accepts the focused storage profile and Linux input component,
 including `d372c3ce`; it does not establish the full application, installed
 credential actions, Windows/macOS input or R-S0/R-F5/release acceptance.
+
+Final ledger count `KLDCLhQaaB` at `e53b614d365e38aaafcceea7553de426d9713b5e`
+passes: 354,825 tokens (+221), 1,612,372 bytes (+942), input SHA-256
+`acb7354c9c6f41ddef1c2d01f128ee0c5803dbe3e02e99064fe5c6e2f8f38b0a`.
+Seven tokenizer controls/round trip and all updated storage checks pass. Serial
+98,324 bytes, SHA-256 `c1868d224e282cc946faf667af6f986fbdebae4a344c5a7dfbe7f2732e7f9bb1`.
+Outer/supervisor 28/31.125 seconds; RAM peak 402,362,368 bytes, durable 151,552.
+QEMU 3965936 joins with exit 0; its PID, RAM `run.n3bzzsl2` and active roots
+are absent. All endpoint deltas are zero. This audit-only receipt leaves the
+counted ledger and accepted source unchanged.

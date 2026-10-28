@@ -70,6 +70,7 @@ struct ViewerPipelineState {
     file_done_count: usize,
     file_refusal_errors: usize,
     file_refusal_job_errors: usize,
+    recording_status: Option<bool>,
 }
 
 impl ViewerPipelineState {
@@ -114,6 +115,11 @@ pub(crate) struct ViewerPipelineUi {
 }
 
 impl ViewerPipelineUi {
+    pub(crate) fn recording_observation(&self) -> (Option<bool>, usize, bool) {
+        let state = self.state.0.lock().unwrap();
+        (state.recording_status, state.published_frames, state.stall_released.is_some())
+    }
+
     pub(crate) fn take_errors(&self) -> Vec<String> {
         std::mem::take(&mut self.state.0.lock().unwrap().errors)
     }
@@ -413,7 +419,9 @@ impl InvokeUiSession for ViewerPipelineUi {
         false
     }
 
-    fn update_record_status(&self, _start: bool) {}
+    fn update_record_status(&self, start: bool) {
+        self.update(|state| state.recording_status = Some(start));
+    }
 
     fn handle_screenshot_resp(
         &self,

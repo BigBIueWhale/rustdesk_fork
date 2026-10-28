@@ -20,7 +20,7 @@ fn packet(data: Vec<u8>) -> VideoFrame {
     )
 }
 
-fn visible_and_hidden_frames() -> (VideoFrame, VideoFrame) {
+pub(super) fn visible_and_hidden_frames() -> (VideoFrame, VideoFrame) {
     visible_and_hidden_frames_at(WIDTH, HEIGHT, 128)
 }
 

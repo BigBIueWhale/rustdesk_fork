@@ -110814,3 +110814,59 @@ at 253,952 bytes. QEMU 358235 joins exit 0; its PID, RAM workspace
 `run.ca_8obzq` and active owned roots are absent. No endpoint is added; one
 unattributed final removal remains untouched. The bounded RAM profile and monitor
 remain enabled. This audit-only receipt leaves the counted ledger unchanged.
+
+## 2026-10-28 — viewer recording error/status regression preparation
+
+Previous goal turn: PROGRESS, unused desktop title-bar deletion and exact ledger
+count committed/pushed. Source is clean at `8cc2e041` on entry. All fifteen
+installed credential-action acceptance items remain OPEN. The dependency review,
+parent-build/option-ack investigation and other user parks are not resumed.
+
+Source finding: `VideoHandler::handle_frame` (`src/client.rs:1337`) discards
+`Recorder::write_frame` errors. The recorder logs and latches failure, but
+`Remote::update_record_state` publishes `record_status=true` when it queues the
+start control, and has no worker-output failure input. `RecordingModel` consumes
+that event directly. The viewer can therefore retain active recording state
+after a known output failure. The controlled-side `Recorder::write_message`
+wrapper (`libs/scrap/src/common/record.rs:144`) also discards the result; it is
+outside this first viewer regression. This is a source-established propagation
+gap, not a newly executed reproduction or demonstrated local escalation.
+
+The intended owner is the exact recording attempt within the live viewer
+connection and its decoder workers. A known output failure must retire that
+attempt, report its outcome and preserve ordinary video decoding. A late result
+must not stop a later attempt or a replacement connection. Start/stop/error and
+checked finalization need one coherent state transition; blindly enqueueing
+`RecordScreen(false)` from a worker would not establish that ownership.
+[Rust's File contract](https://doc.rust-lang.org/std/fs/struct.File.html) explicitly
+distinguishes drop from checked I/O completion;
+[Write](https://doc.rust-lang.org/std/io/trait.Write.html#method.write_all) preserves
+write/flush errors for callers. The lower native mux checks remain necessary,
+but cannot report their outcome after a caller discards it.
+
+Preparation adds two Linux caller tests under
+`src/client/io_loop/recording_status_tests.rs`. They use the actual Remote/session
+command path, CPace-keyed guest-loopback streams, native VP8 encoder/decoder,
+decoder worker and filesystem. A fixed ordinary file makes the selected output
+directory invalid; the other case supplies a writable directory. The selected
+path/auto-record preferences are controlled test inputs and restored afterward.
+The existing test UI observer records status and errors; its first-publication
+gate drains before a second frame, so the oracle requires two decoded callbacks.
+Workers are explicitly shut down/joined before outcome assertions, including
+caught fixture panics. The writable control checks the native WebM header and
+both exact encoded payloads after worker retirement; full container/playback,
+checked finalization and Flutter presentation remain outside that observation.
+
+The existing viewer-video runner retains its eight decoder controls and adds
+the two caller tests as a second bounded invocation against the same artifact.
+Guest/host inventories, source fingerprints and receipts agree on ten cases/two
+groups. Shared RAM admission, limits, monitoring, network isolation and joined
+cleanup are unchanged. Shell syntax inspection and `git diff --check` pass.
+Production behavior is unchanged; these tests have not compiled or executed.
+
+A clarification is pending: whether application compilation may resume for this
+recording fix despite the recorded parent-build park. No answer is inferred from
+elapsed time. Once authorized, execute the unchanged-product baseline through
+`scripts/smoke-verifier-vm-authority.sh --viewer-video-tests`, preserve its exact
+result, then implement and test the owned error path plus stale-attempt cases.
+No baseline failure, correction, native acceptance or overall closure is claimed.

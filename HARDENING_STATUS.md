@@ -4433,6 +4433,18 @@ hardware and installed-root recording, creator/wrong-principal and authorized UI
 transactions, native Apple ACLs and Windows/macOS acceptance remain OPEN.
 These named Linux component results establish no overall recording or LPE closure.
 
+**Viewer recording failure status — OPEN, regression preparation only.**
+`VideoHandler::handle_frame` discards the recording write result; the I/O owner
+publishes active status when it queues the start control. A later output failure
+has no path back to the session flag or UI status. The controlled-side message
+wrapper also discards its write result. Two unexecuted caller regressions now
+cover a non-directory output failure and a writable-output control, with native
+VP8 frames, real session commands, status callbacks and joined workers. The
+`--viewer-video-tests` inventory is ten cases/two groups. Application compilation
+is awaiting the user's answer about the existing parent-build park; no baseline,
+correction or new runtime acceptance is claimed. Exact recording-attempt ownership,
+late failure after stop/restart, finalization feedback and full UI remain required.
+
 **Transport verification classification — source-wording checks removed.**
 The two R-T7/R-A1 blocks in `scripts/verify.sh` checked an old short-frame expression,
 two log strings and one spelling of `if let` parsing, then reported authentication

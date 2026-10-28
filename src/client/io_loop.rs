@@ -79,6 +79,9 @@ const VIEWER_FILE_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
 #[cfg(all(test, target_os = "linux", feature = "flutter"))]
 mod file_resume_tests;
 
+#[cfg(all(test, target_os = "linux"))]
+mod recording_status_tests;
+
 #[derive(Default)]
 struct VideoFrameReceiptTracker {
     last_generation: HashMap<usize, u64>,

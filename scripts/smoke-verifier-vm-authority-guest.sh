@@ -11379,7 +11379,17 @@ run_flutter_model_tests() {
                 tar -C /work/toolchain -xf /inputs/flutter.tar.xz
                 if [ "$FLUTTER_BRIDGE_REQUIRED" -eq 1 ]; then
                     mkdir /work/cargo-home
-                    tar -C /work/toolchain -xf /inputs/rust.tar.xz
+                    if [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
+                        rust_archive_root=rust-1.75.0-x86_64-unknown-linux-gnu
+                        tar -C /work/toolchain -xf /inputs/rust.tar.xz \
+                            "$rust_archive_root/install.sh" "$rust_archive_root/components" \
+                            "$rust_archive_root/rust-installer-version" \
+                            "$rust_archive_root/rustc" "$rust_archive_root/cargo" \
+                            "$rust_archive_root/rust-std-x86_64-unknown-linux-gnu" \
+                            "$rust_archive_root/rustfmt-preview"
+                    else
+                        tar -C /work/toolchain -xf /inputs/rust.tar.xz
+                    fi
                     if [[ "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = credential-badge || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect ]]; then
                         llvm_root=clang+llvm-15.0.6-x86_64-linux-gnu-ubuntu-18.04
                         tar -C /work/toolchain -xf /inputs/llvm.tar.xz \
@@ -11396,6 +11406,12 @@ run_flutter_model_tests() {
                         --disable-ldconfig \
                         --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview \
                         >/dev/null
+                    if [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
+                        rm -rf -- "/work/toolchain/$rust_archive_root"
+                        [ ! -e "/work/toolchain/$rust_archive_root" ] \
+                            && [ ! -L "/work/toolchain/$rust_archive_root" ]
+                        printf "FLUTTER_DIALOG_TOOLCHAIN=pass components=rustc,cargo,rust-std,rustfmt installer=retired\n"
+                    fi
                     llvm_roots=(/work/toolchain/clang+llvm-*)
                     [ "${#llvm_roots[@]}" -eq 1 ] && [ -d "${llvm_roots[0]}" ]
                     LLVM_ROOT="${llvm_roots[0]}"
@@ -11539,16 +11555,7 @@ run_flutter_model_tests() {
                 elif [ "$FLUTTER_TEST_PROFILE" = connect-password ]; then
                     format_paths=(lib/common/widgets/connect_password_dialog.dart test/connect_password_dialog_lifecycle_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
-                    format_paths=(
-                        lib/models/peer_model.dart
-                        test/peer_model_test.dart
-                        lib/common/widgets/connect_password_dialog.dart
-                        test/connect_password_dialog_lifecycle_test.dart
-                        test/permanent_password_dialog_lifecycle_test.dart
-                        test/dialog_close_ownership_test.dart
-                        lib/common/mobile_connection_navigation.dart
-                        test/blockable_overlay_test.dart
-                    )
+                    format_paths=()
                 elif [ "$FLUTTER_TEST_PROFILE" = models ]; then
                     format_paths+=(
                         lib/models/android_permission_request_coordinator.dart

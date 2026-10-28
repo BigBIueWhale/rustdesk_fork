@@ -10,6 +10,7 @@ Future<OverlayDialogManager> _manager(WidgetTester tester) async {
   final manager = OverlayDialogManager(translateText: (text) => text);
   manager.setOverlayState(state);
   await tester.pumpWidget(MaterialApp(
+    theme: MyTheme.lightTheme,
     home: BlockableOverlay(
       state: state,
       underlying: const SizedBox.expand(),

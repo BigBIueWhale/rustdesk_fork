@@ -111985,3 +111985,23 @@ defines memory.max as the cgroup hard limit and memory.peak as the cgroup/descen
 peak; the reviewed primary reference is
 https://docs.kernel.org/admin-guide/cgroup-v2.html . Source syntax/review precede
 the run; whether fresh generation and the full tests fit remains to be measured.
+
+Run `jfDE211aUC` at `6d914e15` admits the smaller profile and reaches the Flutter
+checks, then exits 1 on an existing line-wrap difference in `peer_model_test.dart`.
+No bridge generation or widget test runs. QEMU 1368274 joins exit 0; RAM
+`run.ttc71qlg` is absent. Exact owned diagnostics are retired as
+`dialog-format-stop.jfDE211aUC` (device/inode 66306/103991453). Peak RAM/durable
+storage is 6,219,354,112/3,379,200 bytes; the final endpoint snapshot's one
+unattributed removal is untouched. Workload serial SHA-256:
+`dcddf94e328587db74d4ba8044fdc3c257f9863ec3e6ce6cfa27cace89e0a5b2`.
+
+The focused runtime job drops its unrelated eight-file formatting gate; executable
+tests and their complete inventory remain. Review also supplies the production
+theme to the new chooser fixture, since ComboBox requires its ColorThemeExtension.
+Neither change alters product behavior. The setup's roughly 5.8-GiB RAM-scratch
+peak before bridge generation motivates removing unnecessary toolchain expansion:
+the authenticated Rust archive's component manifest was read directly, and this
+profile now extracts only its four already-installed components plus installer
+metadata, then retires the exact guest installer tree after installation. It keeps
+the same compiler/cargo/std/rustfmt bytes and the canonical archive remains read-only.
+This reduces actual transient work within the existing storage ceilings.

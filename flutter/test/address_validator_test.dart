@@ -42,7 +42,8 @@ void main() {
       final controller = await showField(tester, onChanged: edits.add);
       expect(controller.text, '3390');
       expect(find.text('Port'), findsOneWidget);
-      expect(tester.widget<TextField>(find.byType(TextField)).decoration!.hintText,
+      expect(
+          tester.widget<TextField>(find.byType(TextField)).decoration!.hintText,
           '3389');
       expect(edits, isEmpty);
       await tester.pumpWidget(const SizedBox.shrink());
@@ -70,7 +71,15 @@ void main() {
         text: '3390',
         selection: TextSelection(baseOffset: 1, extentOffset: 3),
       );
-      for (final text in ['65536', '3x90', '-1', '+1', '01', '3390\n', '٣٣٩٠']) {
+      for (final text in [
+        '65536',
+        '3x90',
+        '-1',
+        '+1',
+        '01',
+        '3390\n',
+        '٣٣٩٠'
+      ]) {
         controller.value = previous;
         tester.testTextInput.updateEditingValue(TextEditingValue(
           text: text,
@@ -105,7 +114,8 @@ void main() {
         (tester) async {
       final controller = await showField(tester);
       await tester.enterText(find.byType(TextField), '443');
-      controller.selection = const TextSelection(baseOffset: 0, extentOffset: 2);
+      controller.selection =
+          const TextSelection(baseOffset: 0, extentOffset: 2);
       final before = controller.value;
       final rebuilt = await showField(tester);
       expect(rebuilt, same(controller));

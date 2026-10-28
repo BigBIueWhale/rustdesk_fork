@@ -32,6 +32,8 @@ elif [ "${MODE:-}:${HBB_LOGIND_NATIVE:-}" = hbb-common-fs:1 ]; then
 elif [ "${MODE:-}" = hbb-common-fs ] && [ "${HBB_LOGIND_NATIVE:-}" = 0 ] \
     && [ "${HBB_FUSE_READ_TESTS:-}" = 0 ]; then
     readonly VM_STORAGE_PROFILE=hbb-common-fs
+elif [ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:locales ]; then
+    readonly VM_STORAGE_PROFILE=flutter-locales
 elif [ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:keyboard-layout ]; then
     readonly VM_STORAGE_PROFILE=flutter-keyboard-layout
 elif [[ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:credential-dialog \
@@ -61,7 +63,6 @@ elif [[ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:connect-pass
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:share-rdp \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:menu-button \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:hold-drag \
-    || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:locales \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:path-labels \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:setting-checkbox \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:draggable-divider \

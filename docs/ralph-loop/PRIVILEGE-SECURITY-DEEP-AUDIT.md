@@ -112380,3 +112380,13 @@ storage, no NIC, readonly inputs and dropped container capabilities. Its exact
 test inventory and three parser controls are independent of parked full-parser
 work. Full application roots, OS locale acquisition, native settings changes,
 device/platform execution and R-S0/R-F5/release acceptance remain OPEN.
+
+Baseline preparation `01b4fb1d` is pushed. The first entry refuses its local
+group-writable shell metadata; the owned entry's group/other write bits are
+removed. The next invocation refuses RAM admission before creating a VM:
+18,432 MiB required, 16,035 MiB available. Neither is product evidence.
+This Flutter-only shard now admits a 2 GiB guest, 1,280 MiB container,
+6 GiB RAM workspace and 5 GiB overlay ceiling, retaining 6 GiB host headroom
+plus 1 GiB overhead. No Rust/LLVM toolchain or bridge generation is required.
+The shared live resource monitor, hard ceilings and exact joined retirement
+remain enabled; exhaustion fails the run rather than spilling onto host disk.

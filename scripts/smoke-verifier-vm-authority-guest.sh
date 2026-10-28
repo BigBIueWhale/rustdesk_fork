@@ -975,6 +975,7 @@ for profile, memory, scratch, overlay in (
         ('cpace-recovery-tests', 8192, 6, 4),
         ('installer-package', 4096, 6, 4),
         ('flutter-credential-dialog', 4096, 7, 6),
+        ('flutter-locales', 2048, 6, 5),
         ('flutter-dialog-tests', 3072, 7, 6),
         ('flutter-keyboard-layout', 3072, 7, 6),
         ('linux-service-build', 8192, 7, 6),
@@ -1026,6 +1027,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
                         ('fixed-archive-tests', 2047), ('fixed-archive-tests', 4096),
                         ('media-kernel-tests', 2047), ('media-kernel-tests', 4096),
                         ('protobuf-parser', 2047), ('protobuf-parser', 4096),
+                        ('flutter-locales', 2047), ('flutter-locales', 4096),
                         ('tcp-key-transition', 4095), ('tcp-key-transition', 6144),
                         ('fusermount-process', 2047), ('fusermount-process', 4096),
                         ('linux-service-uid-tests', 2047), ('linux-service-uid-tests', 4096),
@@ -1095,7 +1097,7 @@ cases.extend([('hbb-common-fs', {'HBB_LOGIND_NATIVE': '1'}, 'linux-logind'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'virtual-joystick'}, 'flutter-credential-dialog'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'floating-position'}, 'flutter-credential-dialog'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'screenshot-save'}, 'flutter-dialog-tests'),
-              ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'locales'}, 'flutter-credential-dialog'),
+              ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'locales'}, 'flutter-locales'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'clipboard-keystrokes'}, 'flutter-credential-dialog'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'file-search'}, 'flutter-credential-dialog'),
               ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'video-vpx'}, 'linux-parent-libtest'),
@@ -10943,6 +10945,8 @@ run_flutter_model_tests() {
             result_prefix=FLUTTER_HOLD_DRAG_TEST_JSON
             expected_result='suites=1 tests=17'
         elif [ "$FLUTTER_TEST_PROFILE" = locales ]; then
+            memory=1280m
+            memory_bytes=1342177280
             result_prefix=FLUTTER_LOCALE_TEST_JSON
             expected_result='suites=1 tests=10'
         elif [ "$FLUTTER_TEST_PROFILE" = path-labels ]; then

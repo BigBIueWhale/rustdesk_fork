@@ -110231,3 +110231,14 @@ are unattributed and untouched; harness IP sockets remain kernel-denied.
 No host product/test payload or foreign service is used. Syntax/AST/diff checks
 pass. Native Windows build/ABI/OLE/peer/CM/installed behavior, broader authority,
 R-S0/R-F5 and release acceptance remain OPEN. Fresh ledger count follows.
+
+Fresh count `EFZn4YnZuE` at `24ed399a2228b483b3b986c6f23b44fb9bb355bf`
+passes: 355,675 tokens (+299), 1,616,841 bytes (+1,412), input SHA-256
+`3914db4eeffda355c1e4b46f0a4c08043be9318001931dbb0b99ac6030221f0f`.
+Pinned tiktoken-0.12.0/cl100k_base/encode_ordinary, seven controls and the full
+byte round trip pass. Serial 97,863 bytes, SHA-256
+`20ac1784497211a6c0d94f3f454198e17e762f68ace4918d9e2bad8bd7574826`.
+Outer/supervisor 28/31.146 seconds, RAM peak 402,370,560 bytes, durable peak
+147,456 bytes. QEMU 4158794 joins exit 0; its PID, RAM `run.eqijhri4` and active
+run roots are absent; endpoint deltas are zero. The counted ledger and tested
+implementation remain unchanged by this audit-only receipt.

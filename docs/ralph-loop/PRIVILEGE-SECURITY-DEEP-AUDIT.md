@@ -112242,3 +112242,11 @@ installed application, real OS picker, native save/clipboard/filesystem operatio
 actual FFI owner replacement, historical pre-fix A/B or other platform ran here.
 Those boundaries, independent reproduction and shared R-S0/R-F5/release evidence
 remain OPEN. This result establishes the named Dart handler/dialog behavior only.
+
+The first fresh ledger-count attempt, `tMK3la7aCQ`, passes all sixty workload
+controls and five refusals but stops at the previous 59-control total before
+tokenization. The additional screenshot routing case requires 60; the guest
+assertion/receipt and exact host receipt are updated together. QEMU 1558073 joins
+exit 0, RAM `run.49v14dxz` is absent and endpoint deltas are zero. After validating
+finality and directory identity 66306/103992324, bounded diagnostics are retained
+as `screenshot-ledger-control.tMK3la7aCQ`. No token count is claimed from this run.

@@ -34,7 +34,8 @@ elif [ "${MODE:-}" = hbb-common-fs ] && [ "${HBB_LOGIND_NATIVE:-}" = 0 ] \
     readonly VM_STORAGE_PROFILE=hbb-common-fs
 elif [ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:keyboard-layout ]; then
     readonly VM_STORAGE_PROFILE=flutter-keyboard-layout
-elif [ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:credential-dialog ]; then
+elif [[ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:credential-dialog \
+    || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:screenshot-save ]]; then
     readonly VM_STORAGE_PROFILE=flutter-dialog-tests
 elif [[ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:connect-password \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:terminal-output \
@@ -45,7 +46,6 @@ elif [[ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:connect-pass
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:virtual-mouse-buttons \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:virtual-joystick \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:floating-position \
-    || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:screenshot-save \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:clipboard-keystrokes \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:file-search \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:audio-input \

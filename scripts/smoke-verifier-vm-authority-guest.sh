@@ -1094,7 +1094,7 @@ cases.extend([('hbb-common-fs', {'HBB_LOGIND_NATIVE': '1'}, 'linux-logind'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'virtual-mouse-buttons'}, 'flutter-credential-dialog'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'virtual-joystick'}, 'flutter-credential-dialog'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'floating-position'}, 'flutter-credential-dialog'),
-              ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'screenshot-save'}, 'flutter-credential-dialog'),
+              ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'screenshot-save'}, 'flutter-dialog-tests'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'clipboard-keystrokes'}, 'flutter-credential-dialog'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'file-search'}, 'flutter-credential-dialog'),
               ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'video-vpx'}, 'linux-parent-libtest'),
@@ -11029,8 +11029,8 @@ run_flutter_model_tests() {
             result_prefix=FLUTTER_FILE_SEARCH_TEST_JSON
             expected_result='suites=1 tests=12'
         elif [ "$FLUTTER_TEST_PROFILE" = screenshot-save ]; then
-            memory=3g
-            memory_bytes=3221225472
+            memory=2g
+            memory_bytes=2147483648
             result_prefix=FLUTTER_SCREENSHOT_SAVE_TEST_JSON
             expected_result='suites=1 tests=12'
         elif [ "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes ]; then

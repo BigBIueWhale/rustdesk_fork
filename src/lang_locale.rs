@@ -43,6 +43,10 @@ mod tests {
             ("ZH-TW", "zh-Hans-CN", "zh-tw"),
             ("he", "en_US", "he"),
             ("unknown", "zh-HK", "unknown"),
+            ("ge", "kk-KZ", "ge"),
+            ("kz", "ka-GE", "kz"),
+            ("GE", "en-US", "ge"),
+            ("KZ", "en-US", "kz"),
         ] {
             assert_eq!(select_language(configured, locale), expected);
         }
@@ -96,11 +100,32 @@ mod tests {
     }
 
     #[test]
+    fn georgian_locales_select_the_catalogue_language() {
+        for locale in [
+            "ka", "ka_GE", "ka-GE", "ka_Geor_GE", "KA-ge.UTF-8",
+            "ka_GE@calendar=gregorian", "ka_GE_#Geor", "ka-u-ca-gregory",
+        ] {
+            assert_eq!(select_language("", locale), "ge", "{locale}");
+        }
+    }
+
+    #[test]
+    fn kazakh_locales_select_the_catalogue_language() {
+        for locale in [
+            "kk", "kk_KZ", "kk-KZ", "kk_Cyrl_KZ", "KK-kz.UTF-8",
+            "kk_KZ@numbers=latn", "kk_KZ_#Cyrl", "kk-u-nu-latn",
+        ] {
+            assert_eq!(select_language("", locale), "kz", "{locale}");
+        }
+    }
+
+    #[test]
     fn other_locales_keep_their_language() {
         for (locale, expected) in [
             ("en_US", "en"), ("he-IL", "he"), ("fr_FR.UTF-8", "fr"),
             ("de.UTF-8", "de"), ("pt_BR", "pt"), ("", ""),
             ("C", "c"), ("zhtw", "zhtw"), ("zhx-TW", "zhx"),
+            ("en-GE", "en"), ("de-KZ", "de"), ("kaa", "kaa"), ("kkj", "kkj"),
         ] {
             assert_eq!(select_language("", locale), expected, "{locale}");
         }

@@ -7507,11 +7507,11 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main
         'main config-key result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'main config-key completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = language-selection ]; then
-    [ "$(/usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -Ec 'LANGUAGE_SELECTION_ARTIFACT=pass sha256=[0-9a-f]{64} tests=6 unchanged=before-after$')" -eq 1 ] \
+    [ "$(/usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -Ec 'LANGUAGE_SELECTION_ARTIFACT=pass sha256=[0-9a-f]{64} tests=8 unchanged=before-after$')" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'LANGUAGE_SELECTION_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'language-selection artifact receipt differs'
     require_exact_fixed_receipt \
-        "LANGUAGE_SELECTION_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=6 target=linux-x86_64 scope=production-locale-selection rust=1.75.0 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined" \
+        "LANGUAGE_SELECTION_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=8 target=linux-x86_64 scope=production-locale-selection rust=1.75.0 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined" \
         'language-selection result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'language-selection completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = windows-pointer ]; then
@@ -8949,7 +8949,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'MAIN_CONFIG_KEY_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=4 scope=production-key-schema network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = language-selection ]; then
-        printf 'LANGUAGE_SELECTION_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=6 scope=production-locale-selection network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'LANGUAGE_SELECTION_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=8 scope=production-locale-selection network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = windows-pointer ]; then
         printf 'WINDOWS_POINTER_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=5 scope=production-normalization windows=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

@@ -113748,3 +113748,42 @@ above 100 MiB allocated is the reusable authenticated Debian base image
 (346,886,144 allocated bytes). Active owned VM roots and RAM scratch are absent;
 the scan identifies no additional bulk VM scratch to retire. Source, offline
 inputs, retained replay artifacts and bounded evidence remain available.
+
+## 2026-10-28 — CM audio keyboard activation preparation; runtime pending
+
+The preceding turn completed the storage recheck and count receipt. All fifteen
+installed credential actions remain OPEN. The next coherent slice is the CM
+audio selector's keyboard entry, already recorded open in the ledger. Source
+review shows its only actuator is onTapDown; the common CM button's onTap
+wrapper returns without action when onClick is absent. The pinned Flutter 3.24.5
+InkWell activateOnIntent calls onTap, not onTapDown. A pointer-down also precedes
+successful gesture completion. No native microphone/privilege conclusion follows.
+
+Preparation `34255099` adds three rendered tests: Enter/Space opening, selection
+and Escape dismissal; pending read/write admission, call replacement and failure
+retry through real keyboard events; and a cancelled pointer press followed by a
+successful click. Existing retained-callback probes capture both pointer-down
+and click callbacks so the identical tests can exercise either source version.
+The exact expected inventory is now 37 widget cases over three suites. Shell
+syntax and diff checks pass; no widget or parser runtime result is claimed yet.
+
+The first launch refused before allocation: 14,568 MiB available against the
+unchanged 14,592 MiB requirement. A later admitted baseline `7VotFKniN1` was
+terminated by the live memory-headroom guard after 13.074 seconds, before the
+tests. Minimum available host memory was 6,246,719,488 bytes against the 6 GiB
+reserve. The outer handle exited 143. The supervisor's separate final receipt
+proves QEMU 2816849 joined exit 0 after termination; the monitor report predates
+that join and correctly has null QEMU accounting. RAM `run.20iezt5v` is absent.
+Exact diagnostics were reconciled under the shared lock and renamed to
+`cm-audio-keyboard-headroom.7VotFKniN1`; no active run root remains.
+
+The unapplied correction uses one required onClick callback, retains pending and
+call-owner checks, and anchors the menu to the rendered button in Navigator
+overlay coordinates, following the pinned framework's PopupMenuButton. The
+14,877-byte capsule `cm-audio-keyboard-preparation-34255099.json` contains that
+patch, source/test hashes, primary references and interruption/cleanup evidence;
+SHA-256 `d6a29b247b91e24f67f87318b85d5c34c89c7a6552048b5f36018e4f62a78582`.
+Next: execute the unchanged baseline when admitted, reconcile its exact run,
+then apply/commit/push the correction and execute the same cases. This item is
+runtime-pending, not user-parked or complete. Resource limits and host isolation
+remain unchanged; no full build or additional VM was launched after the guard.

@@ -5811,7 +5811,11 @@ run_focused_rust_tests() {
                 fi
                 case "$RUST_TOOLCHAIN_MODE" in
                     archive)
-                        mkdir /tmp/toolchain /tmp/rust
+                        rust_install_prefix=/tmp/rust
+                        if [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
+                            rust_install_prefix=/cargo-target/toolchain
+                        fi
+                        mkdir /tmp/toolchain "$rust_install_prefix"
                         if [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
                             rust_archive_root=rust-1.75.0-x86_64-unknown-linux-gnu
                             tar -C /tmp/toolchain -xf /inputs/rust.tar.xz \
@@ -5820,7 +5824,7 @@ run_focused_rust_tests() {
                                 "$rust_archive_root/rustc" "$rust_archive_root/cargo" \
                                 "$rust_archive_root/rust-std-x86_64-unknown-linux-gnu"
                             "/tmp/toolchain/$rust_archive_root/install.sh" \
-                                --prefix=/tmp/rust --disable-ldconfig \
+                                --prefix="$rust_install_prefix" --disable-ldconfig \
                                 --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu >/dev/null
                             rm -rf -- /tmp/toolchain
                             [ ! -e /tmp/toolchain ] && [ ! -L /tmp/toolchain ]
@@ -5835,7 +5839,7 @@ run_focused_rust_tests() {
                             printf "CLIPBOARD_TOOLCHAIN_SCRATCH=retired installer=/tmp/toolchain compiler=/tmp/rust\n"
                         fi
                         unset RUSTUP_TOOLCHAIN
-                        export RUSTUP_HOME=/nonexistent PATH=/tmp/rust/bin:/usr/bin:/bin
+                        export RUSTUP_HOME=/nonexistent PATH="$rust_install_prefix/bin:/usr/bin:/bin"
                         ;;
                     devcheck-image)
                         toolchain_bin=/usr/local/rustup/toolchains/1.75.0-x86_64-unknown-linux-gnu/bin
@@ -5860,7 +5864,7 @@ run_focused_rust_tests() {
                         test_package=hbb_common
                         if [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
                             test_package=protobuf_it
-                            export CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 \
+                            export CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 \
                                 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
                         fi
                         cargo test --offline --locked -p "$test_package" --lib --no-run \

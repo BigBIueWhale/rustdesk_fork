@@ -77,7 +77,7 @@ void main() {
         '-1',
         '+1',
         '01',
-        '٣٣٩٠'
+        '٣٣٩٠',
       ]) {
         controller.value = previous;
         tester.testTextInput.updateEditingValue(TextEditingValue(

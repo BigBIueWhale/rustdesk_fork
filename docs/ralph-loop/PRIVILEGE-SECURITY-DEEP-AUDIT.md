@@ -112431,3 +112431,22 @@ fallbacks remain valid evidence; no identical-test-file A/B claim is made.
 The partial candidate is not a full pass. Joined diagnostics are retained as
 `locale-fixture.LrruBKNsYX` (66306/103992583), console SHA-256
 `d682d7914d12ca7c5bfb4c3baa0abc0d15adfe6e480f7938e449fdc8e6620117`.
+
+Final `IpKfBjmMlk` at `4281d7f0ddab098c10d276df35dd3a0c0988b8a7`
+passes all ten rendered cases and three exact-inventory/finality parser controls
+in 113 outer seconds. The actual production locale list and three Flutter
+delegates run without translation/config/native doubles. Kazakh, Vietnamese,
+regional and ordered-preference resolution, rendered cancellation labels, live
+system-locale changes, English/French/unknown controls and Hebrew direction pass.
+This is framework-component evidence; the complete Get/application roots and
+native OS/settings/device behavior remain OPEN. The translation catalogues,
+Rust locale selection and credential authority are unchanged.
+
+Exact QEMU 1755998 joins exit 0; RAM `run.ldwzph5o` and active owned run roots
+are absent. All endpoint deltas are zero. Peak RAM workspace allocation is
+4,057,227,264 bytes against 6 GiB; the overlay peaks at 3,861,843,968 bytes
+against 5 GiB. Minimum available host memory is 10,823,118,848 bytes.
+The retained workload serial is 6,068 bytes, SHA-256
+`709aa1c41678c5102ce035898905e24558b7eda7a58f611dbb2f183393124ca8`.
+Reviewed whitespace/shell syntax/Python AST checks pass. The ledger now records
+the exact acceptance scope and explicit terminal park; fresh token counting follows.

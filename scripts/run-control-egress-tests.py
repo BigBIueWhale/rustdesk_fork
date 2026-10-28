@@ -26,6 +26,7 @@ INPUTS = (
     "libs/hbb_common/src/fs.rs",
     "libs/hbb_common/src/config.rs", "libs/hbb_common/src/lib.rs", "src/common.rs",
     "libs/clipboard/src/lib.rs", "libs/clipboard/Cargo.toml",
+    "libs/clipboard/src/platform/windows.rs",
     "src/ui_session_interface.rs",
     "src/server/input_service.rs", "scripts/test-cursor-echo.rs",
     "src/flutter_ffi.rs", "scripts/test-cm-chat.rs", "scripts/test-cm-disconnect.rs",
@@ -121,6 +122,27 @@ def main():
         "tests.rs": between(connection, "#[cfg(test)]\nmod control_egress_tests {",
                             "#[cfg(test)]\nmod audio_egress_tests {"),
     }
+    windows_clipboard = inputs["libs/clipboard/src/platform/windows.rs"].decode("utf-8")
+    windows_types = []
+    for name in ("UINT", "UINT16", "UINT32"):
+        declarations = re.findall(r"^pub type " + name + r" = [^;]+;\n",
+                                  windows_clipboard, re.MULTILINE)
+        if len(declarations) != 1:
+            raise ValueError("Windows clipboard integer type is absent or ambiguous")
+        windows_types.append(declarations[0])
+    send_error = re.findall(r"^const ERR_CODE_SEND_MSG: u32 = [^;]+;\n",
+                            file_clipboard, re.MULTILINE)
+    if len(send_error) != 1:
+        raise ValueError("Windows clipboard send error is absent or ambiguous")
+    snippets["windows-format-list.rs"] = (
+        "".join(windows_types) + send_error[0]
+        + between(windows_clipboard,
+                  "#[repr(C)]\n#[derive(Debug, Copy, Clone)]\npub struct _CLIPRDR_FORMAT {",
+                  "#[repr(C)]\n#[derive(Debug, Copy, Clone)]\npub struct _CLIPRDR_FORMAT_LIST_RESPONSE {")
+        + between(file_clipboard, "pub fn send_data_exclude(",
+                  '#[inline]\n#[cfg(feature = "unix-file-copy-paste")]\nfn send_data_to_all(')
+        + between(windows_clipboard, 'extern "C" fn client_format_list(',
+                  'extern "C" fn client_format_list_response('))
     limits = re.findall(r"^pub const MAX_SESSION_PACKET: usize = [0-9 *]+;\n",
                         inputs["libs/hbb_common/src/cpace.rs"].decode("utf-8"), re.MULTILINE)
     if len(limits) != 1:
@@ -460,6 +482,7 @@ def main():
         os.environ["CONTROL_EGRESS_TESTS"] = str(fixture / "tests.rs")
         os.environ["CONTROL_EGRESS_LIMIT"] = str(fixture / "packet-limit.rs")
         os.environ["FILE_CLIPBOARD_SOURCE"] = str(fixture / "file-clipboard.rs")
+        os.environ["WINDOWS_FORMAT_LIST_SOURCE"] = str(fixture / "windows-format-list.rs")
         os.environ["RECENT_DOCUMENT_MARKER_SOURCE"] = str(fixture / "recent-document-marker.rs")
         for variable, name in (("CM_EGRESS_SOURCE", "cm-queue.rs"), ("CM_EGRESS_TESTS", "cm-tests.rs"),
                                ("CM_IPC_TYPES", "cm-ipc.rs"), ("CM_ENIGO_TYPES", "enigo-types.rs"),
@@ -585,13 +608,13 @@ def main():
             print(f"CONTROL_EGRESS_INPUT=pass path={name} bytes={len(body)} sha256={digest(body)}")
         print(f"CONTROL_EGRESS_BUILD=pass seconds={time.monotonic() - started:.3f} "
               f"sha256={artifact_sha}", flush=True)
-        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=101", flush=True)
+        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=102", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("controlled-egress artifact changed during execution")
-            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=101 unchanged=before-after", flush=True)
+            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=102 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("controlled-egress artifact or dependencies changed")
         for name, body in snippets.items():
@@ -600,7 +623,7 @@ def main():
         for name, body in inputs.items():
             if (repo / name).read_bytes() != body:
                 raise ValueError(f"controlled-egress source changed: {name}")
-        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=101 unchanged=before-after",
+        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=102 unchanged=before-after",
               flush=True)
 
 

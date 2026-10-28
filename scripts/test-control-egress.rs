@@ -116,6 +116,96 @@ mod file_clipboard {
     include!(env!("FILE_CLIPBOARD_SOURCE"));
 
     #[cfg(test)]
+    mod windows_format_tests {
+        #![allow(non_camel_case_types, non_snake_case)]
+        use super::*;
+        use super::send_data_to_channel as send_data;
+        use hbb_common::{allow_err, log};
+        use std::ffi::{CStr, CString};
+
+        // The callback never dereferences its context. Only the native format structures,
+        // callback and production route broadcaster execute here; Win32/OLE does not.
+        type CliprdrClientContext = std::ffi::c_void;
+        include!(env!("WINDOWS_FORMAT_LIST_SOURCE"));
+
+        fn announce(conn_id: i32) -> u32 {
+            let name = CString::new("FileGroupDescriptorW").unwrap();
+            let mut formats = [
+                CLIPRDR_FORMAT { formatId: 0xc001, formatName: name.as_ptr() as *mut _ },
+                CLIPRDR_FORMAT { formatId: 13, formatName: std::ptr::null_mut() },
+            ];
+            let list = CLIPRDR_FORMAT_LIST {
+                connID: conn_id as u32, msgType: 2, msgFlags: 0, dataLen: 0,
+                numFormats: formats.len() as u32, formats: formats.as_mut_ptr(),
+            };
+            client_format_list(std::ptr::null_mut(), &list)
+        }
+
+        fn received(receiver: &mut ClipboardFileEgressReceiver) {
+            match receiver.take_next().unwrap() {
+                Some(ClipboardFileEgressItem::Message(ClipboardFile::FormatList { format_list })) => {
+                    assert_eq!(format_list, vec![(0xc001, "FileGroupDescriptorW".to_owned()), (13, String::new())]);
+                }
+                _ => panic!("format announcement did not reach its exact route"),
+            }
+            assert!(matches!(receiver.take_next(), Ok(None)));
+        }
+
+        #[test]
+        fn native_format_callback_preserves_broadcast_and_exact_routes() {
+            assert!(CLIPBOARD_FILE_ROUTES.read().unwrap().is_empty());
+            let (first_id, mut first, first_lease) = register_cliprdr_viewer("format-first");
+            let (second_id, mut second, second_lease) = register_cliprdr_viewer("format-second");
+            let controlled_id = 2_000_300_001;
+            let (mut controlled, controlled_lease) = register_cliprdr_controlled(controlled_id).unwrap();
+
+            assert_eq!(announce(0), 0);
+            received(&mut first);
+            received(&mut second);
+            received(&mut controlled);
+
+            assert!(first_id < 0);
+            assert_eq!(announce(first_id), 0);
+            received(&mut first);
+            assert!(matches!(second.take_next(), Ok(None)));
+            assert!(matches!(controlled.take_next(), Ok(None)));
+            assert_eq!(announce(controlled_id), 0);
+            received(&mut controlled);
+            assert!(matches!(first.take_next(), Ok(None)));
+            assert_eq!(announce(controlled_id + 1), ERR_CODE_SEND_MSG);
+            assert!(matches!(first.take_next(), Ok(None)));
+            assert!(matches!(second.take_next(), Ok(None)));
+            assert!(matches!(controlled.take_next(), Ok(None)));
+
+            drop(first_lease);
+            assert_eq!(announce(first_id), ERR_CODE_SEND_MSG);
+            for _ in 0..CLIPBOARD_FILE_EGRESS_MAX_MESSAGES {
+                assert_eq!(announce(second_id), 0);
+            }
+            assert_eq!(announce(0), 0);
+            assert!(matches!(first.take_next(), Ok(None)));
+            received(&mut controlled);
+            assert!(matches!(second.take_next(), Ok(Some(ClipboardFileEgressItem::Failed(
+                ClipboardFileEgressFailure::MessageCapacity
+            )))));
+            assert!(matches!(second.take_next(), Err(())));
+            assert_eq!(announce(second_id), ERR_CODE_SEND_MSG);
+            assert_eq!(lock_clipboard_file_egress(&second.state).queued_bytes, 0);
+
+            drop(controlled);
+            assert_eq!(announce(controlled_id), ERR_CODE_SEND_MSG);
+            let (fresh_id, mut fresh, fresh_lease) = register_cliprdr_viewer("format-fresh");
+            assert!(fresh_id < second_id);
+            assert_eq!(announce(0), 0);
+            received(&mut fresh);
+            drop((second_lease, controlled_lease, fresh_lease));
+            assert!(CLIPBOARD_FILE_ROUTES.read().unwrap().is_empty());
+            assert_eq!(announce(0), 0);
+            println!("WINDOWS_FORMAT_LIST=pass broadcast=all-live exact=signed-route unknown=refused saturated=terminal healthy=preserved retired=refused fresh=usable scope=portable-Rust-callback windows=unexecuted");
+        }
+    }
+
+    #[cfg(test)]
     mod allocation_tests {
         use super::*;
 

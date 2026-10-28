@@ -52,6 +52,11 @@ case inventories, intermediate failures, source/artifact hashes and timings rema
 receipts under `.harness-state/verifier-vm/` and in Git history. Shared current-artifact,
 installed/other-platform, R-S0/R-F5, resource/soak and release obligations below remain OPEN.
 
+**User pivot (2026-10-28):** Service-owned credential persistence/failure review
+remains OPEN/PARKED after read-only inspection; no new defect, patch or native
+test was established. Do not resume automatically. Work moved to direct-address
+contract consistency below.
+
 **User pivot (2026-10-28):** Release-recovery journal-transition review remains
 OPEN/PARKED after read-only inspection; no new defect, patch or test was established.
 Do not resume automatically. Work moved to unused clipboard progress API removal.
@@ -396,6 +401,7 @@ and fresh ledger count. Current native/installed and release acceptance remain O
 
 | Documentation scope | Current contract or disposition | Retained classification |
 | --- | --- | --- |
+| Direct-peer address contract | R-S11ea now refers to R-G2/R-SV5 for the connection grammar; its obsolete IPv6 accept-set claim and the matching Dart comment are removed. The existing explicit IPv4/qualified-hostname grammar, receiver authority, bounds, refusal and native acceptance duties remain. Source/history review and exact comparison establish this documentation correction; executable code, tests and other specification bytes are unchanged. Full UI/URL/native/installed and release acceptance remain OPEN. | Audit entry “2026-10-28 — user pivot; direct-address contract consistency”. |
 | Linux whiteboard parent lifetime | R-S11cd and Appendix C #223 now refer to R-S11hn's existing process-lifetime contract. The stale creating-thread-death mandate contradicted that contract and the `ddd1010a` implementation; its repair-history introduction is also removed. Exact parent/socket generation, role-bound mutual proof, nondumpability, forbidden fallbacks and all native acceptance obligations remain. R-S11hn, product sources and tests are unchanged. Current installed/native and release acceptance remain OPEN. | Git history and the 2026-10-27 audit-journal entry; fresh document counts are recorded there. |
 | Authentication-settings selectors | R-X7a states the permanent-only policy, absence of approval/verification/OTP selectors on every Flutter front-end, and required authorized permanent-password setup. Its claims that the removed selectors still ship and that the policy pin is future work are deleted. Current desktop/mobile source and removal commits `c1d53644`/`e1e980ed` support that classification. Other specification bytes, requirement/finding IDs, anchors, links, product and verification code are unchanged. Native provisioning/settings, all fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN. | Git history and the 2026-10-27 audit-journal entry; fresh document counts are recorded there. |
 | Android signing-authority specification | R-S11di's historical repair narrative is deleted; its complete VM admission, guest Docker, identity/secret/publication and acceptance contract remains byte-identical. Appendix C #226/#262, other requirements, IDs, anchors and links are unchanged. The R-S11di status entry retains the historical authority-only evidence and all open identity/APK/device/cold-release/native/review boundaries. Product and verification code are unchanged. | `signing-contract-3ae6f9bd.json` |

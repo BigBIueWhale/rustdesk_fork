@@ -110242,3 +110242,30 @@ Outer/supervisor 28/31.146 seconds, RAM peak 402,370,560 bytes, durable peak
 147,456 bytes. QEMU 4158794 joins exit 0; its PID, RAM `run.eqijhri4` and active
 run roots are absent; endpoint deltas are zero. The counted ledger and tested
 implementation remain unchanged by this audit-only receipt.
+
+## 2026-10-28 — user pivot; direct-address contract consistency
+
+The user explicitly requests another aspect. Service-owned credential persistence
+and actual write-failure/restart coverage remain OPEN/PARKED after read-only
+inspection: no new defect, product patch or native case was established. Do not
+resume automatically. All earlier parks remain in force; the broad goal is active.
+
+The separate direct-address review found consistent Rust/Dart predicates, but
+R-S11ea and the shared Dart connect comment still described IPv6 peer admission.
+R-G2/R-SV5 require IPv4, IPv4:port or qualified ASCII hostname:port; R-G2 explicitly
+excludes IPv6 literals. Commit `85922e2e08dbea9edc244e9486a86664c6d67cf9`
+established the bounded shared grammar and its caller changes. Current
+`hbb_common::is_direct_address`, `Client::_start`, desktop URL validation and
+login-name admission use that grammar; Dart's `isDirectAddress` agrees after
+surrounding-whitespace normalization. Generic IPv6 socket formatting and
+authenticated port-forward target syntax have separate purposes.
+
+R-S11ea now references the existing R-G2/R-SV5 grammar instead of restating the
+obsolete accept set. The six-line Dart comment becomes two lines naming validation
+and the independent Rust check. Receiver authority, protocol/size/deadline limits,
+refusal behavior and required native acceptance are retained. Exact source/document
+comparison and whitespace checks cover this documentation-only slice; executable
+code and test bodies are unchanged, so no product workload is rerun. This is no
+new runtime or LPE closure. All fifteen credential actions, complete UI/URL/native
+and installed behavior, R-S0/R-F5 and release acceptance remain OPEN. A fresh
+bounded isolated count follows the ledger and specification update.

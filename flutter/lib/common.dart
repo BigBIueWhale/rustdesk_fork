@@ -2797,12 +2797,8 @@ connect(BuildContext context, String address,
       addressController.address = address;
     }
   }
-  // R-G2/R-SV10: the fork is direct-IP-only — the connect target MUST be a direct address
-  // (<ipv4>[:port] / <ipv6> / [<ipv6>]:port / <domain>:port), never a bare numeric RustDesk ID (the
-  // relay/rendezvous addressing the fork deleted). Reject anything else HERE, at the single choke
-  // every connect path funnels through (the connect box, peer cards, home, toolbar), with no
-  // relay-id strip — so a "<addr>/r" form is rejected too and no rendezvous lookup is ever attempted.
-  // The Rust core (client.rs:353) independently bails; this is the UI half R-G2/R-SV10 mandate.
+  // R-G2/R-SV5: validate the normalized direct address before dispatch.
+  // Client::_start independently enforces the same peer grammar in Rust.
   if (!isDirectAddress(address)) {
     showToast(translate('Direct address required (IP or host:port)'));
     return;

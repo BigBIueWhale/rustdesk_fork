@@ -60,6 +60,13 @@ case inventories, intermediate failures, source/artifact hashes and timings rema
 receipts under `.harness-state/verifier-vm/` and in Git history. Shared current-artifact,
 installed/other-platform, R-S0/R-F5, resource/soak and release obligations below remain OPEN.
 
+**User pivot (2026-10-28):** File-manager column geometry remains OPEN/PARKED.
+Patch `a7c362a4` is preserved; its candidate test run has not executed. The valid
+unchanged-product baseline at `a49df0be` reproduces thirteen rendered failures;
+the preceding resource-limited run is excluded. Both VMs joined and retired
+RAM scratch. Work moved to engine-prerequisite ledger consolidation.
+Do not resume the column work automatically.
+
 **User pivot (2026-10-28):** The current read-only whiteboard/helper review
 remains OPEN/PARKED. No new escalation was established and no product correction
 or runtime check was performed in that review. Work moved to file-column divider
@@ -7010,186 +7017,71 @@ quoting error returned 125, not a green capture claim; outer status was 1, elaps
 BOOTTIME ms. Listener inventories were equal and addition files empty. No run/disk remains.
 Full engine closure and the production correction remain OPEN.
 
-**Engine acquisition — GRAPH/PACKAGE TRANSACTION PASS; COMPLETE BUILD CLOSURE OPEN.** The exact retained
-depot-tools source requires `target_os=['unix']` when `target_os_only=True`: `SetConfig` does
-not normalize `linux`, while `get_builtin_vars` derives `checkout_linux` from `unix`.
-Host-based root-DEPS conditions still enable Android/Fuchsia downloads on Linux x64 unless
-explicitly overridden. `download_jdk=False` does not disable the root JDK entry, and the
-Java formatter is unconditional; do not claim their exclusion without a reviewed explicit
-dependency decision. Retain the Linux compiler even though its CIPD package is named under
-`fuchsia/`. The sole recursive DEPS, Vulkan at `a9e2ca3b57aba86a22a2df1b84bf12f8cc98806e`,
-adds ten commit-pinned Git entries relative to its own directory; those are part of the closure.
-Use the pinned Python entry directly, not the auto-updating gclient/vpython wrapper, and
-disable metrics before import. Suppress both ordinary and pre-DEPS hooks during acquisition.
-Resolve CIPD selectors once before fetching and consume those immutable instance IDs:
-upstream `revinfo` resolves configured selectors, not installed package identity.
-`flatten` processes every platform by default, and its `--pin-all-deps` URL mutation does
-not rewrite the CIPD package versions serialized by `ToLines`; neither supplies that closure.
-The upstream host check is a separate first-level `verify` operation, not recursive network
-enforcement. Validate every selected root/recursive URL, destination and full commit before
-fetching; preserve GN variables and separately close sysroot/Pub hook inputs before offline
-build execution. These are source-derived implementation constraints, not native graph,
-acquisition, engine-build, accessibility, Android/Windows-causation or release evidence.
-Primary sources: [pinned gclient](https://chromium.googlesource.com/chromium/tools/depot_tools/+/580b4ff3f5cd0dcaa2eacda28cefe0f45320e8f7/gclient.py),
+**Linux engine prerequisites — historical acquisition, materialization and object-compilation evidence.**
+These five stages establish the named input and build prerequisites. Later entries
+record the linked core engine (`e5e5736a`), matching toolkit (`15cf93dd`) and
+subsequent consumer results. Current application, platform, installed and release
+acceptance still depends on those later entries and the open matrix.
+
+| Stage / accepted source | Observed result and scope | Retained serial under `.harness-state/verifier-vm/evidence/` |
+| --- | --- | --- |
+| Graph/packages — `07c08021` | The closed `--maintenance-stage-flutter-linux-engine-graph` transaction acquires 82 Git and 11 immutable CIPD archives, including ten recursive Vulkan sources. All 93 archives and the complete 94-file inventory were independently rehashed. The manifest retains selectors, instance/object/commit/tree identities, GN variables and six deferred hooks; `complete_engine_closure=false`. No hook or engine build ran. | `engine-graph-07c08021.serial.log` |
+| Original Git metadata — `2786f460` | `--maintenance-stage-flutter-linux-engine-git-metadata` restores the three original Flutter/Dart/Skia object sets, reproduces HEAD/tree/timestamps and strict fsck, and executes the original version scripts. Independent rehash checks all three canonical archives and their graph/source/tool context. This closes version-metadata acquisition only. | `engine-git-metadata-2786f460.serial.log` |
+| Sysroots — `8be82d53` | `--maintenance-stage-flutter-linux-engine-sysroots` authenticates the original source-selected x64/arm64/riscv64 entries, fetches three independently pinned HTTPS objects, and rehashes their exact four-file publication. No installer, extraction or downloaded code runs. This closes acquisition only. | `engine-sysroots-8be82d53.serial.log` |
+| Offline preparation — `0213a901` | `--linux-flutter-engine-prepare` passes actual root/foreign-entry refusals, ten extraction cases, all 286,969 entries/8,600,939,366 regular bytes/4,222 links, three original Git/index identities and both version identities. All six unchanged hooks run using local DEPS path packages and a fresh Pub cache, with no hosted/Git cache or network fallback. This closes materialization/hooks only. | `engine-prepare-0213a901.serial.log` |
+| GN/production objects — `464f5c89` | The original Linux x64 release/unit-test/no-RBE graph, revision arguments and declared GTK/native-test output inventories pass. Pinned Ninja/Clang compile the original `fl_view`, `fl_view_accessible` and `fl_accessible_node` objects. This stage neither links an engine nor runs upstream tests or the product. | `engine-gn-compile-464f5c89.serial.log` |
+
+**Input and execution constraints.** The selected depot-tools profile uses
+`target_os=['unix']`; `linux` is not its normalized equivalent. Root host
+conditions require explicit Android/Fuchsia selection. `download_jdk=False`
+does not disable the root JDK, the Java formatter is unconditional, and the
+Linux compiler remains required despite its `fuchsia/` package namespace.
+The authenticated Python parser runs directly with metrics disabled; auto-updating
+wrappers, ordinary hooks and pre-DEPS hooks are excluded from acquisition.
+Every selected root/recursive URL, destination and full commit is validated.
+Upstream `verify` is only a first-level host check; `revinfo` and
+`flatten --pin-all-deps` do not establish installed immutable CIPD identity.
+
+CIPD selectors resolve once through the pinned client's narrow pin receipt,
+then acquisition uses the immutable instances, including supported SHA1 and
+SHA256-plus-algorithm forms. Git retains the selected object pin/type and checks
+its peeled commit against FETCH_HEAD and strict object verification; annotated
+tags are not replaced with a different revision. Original objects/indexes,
+GN variables and local package path overrides remain necessary offline inputs.
+The source content hash `ab598368592da0064197e2bc15c7f5b0a2c6bb1f` and shipped
+SDK selection `af7e796e161ae0bb1ff0758c71a7105418bd9ded` are distinct, separately
+proved identities. The earlier equality assertion was a failed attempt, not
+accepted evidence. GN uses its supported `--script-executable=/usr/bin/python3`;
+no interpreter alias, synthetic Git or version-check bypass supplies closure.
+
+Acquisition receipts use bounded no-follow, single-link, current-principal reads.
+Publication rehashes the complete inert mode-0400 inventory, refuses replacement
+and preserves completed candidates on duplicate admission. Package archives bind
+canonical bytes with normalized ownership/modes/epoch, excluding CIPD installation
+metadata; their hashes are not publisher-ZIP hashes. Offline preparation uses
+read-only Landlocked inputs in a zero-NIC VM and networkless UID/GID-1000 container.
+Extraction never writes through archive links and strips set-ID/ownership authority;
+index refresh cannot stage changed content or ignore missing files.
+
+**Evidence and storage limits.** The five original serials, outer/capture receipts
+and Git history retain exact hashes, manifests, sizes, timings, failed preparations
+and retirement records. Historical successful runs reported unchanged inputs and
+host-listener inventories and joined scratch/process retirement; this is evidence
+for those runs only. Graph, Git-metadata and sysroot duplicate producers refused
+before allocation without changing the completed candidates. The historical
+32-GiB graph and 8-GiB sysroot disposable-disk profiles do not authorize current
+execution: the shared bounded-RAM admission, ceilings, monitoring and joined-cleanup
+rules govern any future run. This consolidation runs no acquisition or engine build.
+
+Primary contracts remain the [pinned gclient](https://chromium.googlesource.com/chromium/tools/depot_tools/+/580b4ff3f5cd0dcaa2eacda28cefe0f45320e8f7/gclient.py),
 [pinned CIPD integration](https://chromium.googlesource.com/chromium/tools/depot_tools/+/580b4ff3f5cd0dcaa2eacda28cefe0f45320e8f7/gclient_scm.py),
-[root DEPS](https://github.com/flutter/flutter/blob/6a19cca56475dbfba1478ee68d7bd0c2ef891da1/DEPS), and
-[recursive Vulkan DEPS](https://chromium.googlesource.com/vulkan-deps/+/a9e2ca3b57aba86a22a2df1b84bf12f8cc98806e/DEPS).
-
-The closed `--maintenance-stage-flutter-linux-engine-graph` acquisition now selects this
-fixed profile with the authenticated depot-tools parser, verifies each full Git commit/tree
-and root DEPS, includes the ten recursive Vulkan sources, and resolves every CIPD selector
-before acquiring packages by immutable instance. It executes only the authenticated parser,
-fixed Git and publisher-digest client in the existing numeric-nonroot confined acquisition
-VM/container; no wrappers, updates or hooks run. The candidate is no-clobber and refuses a
-second producer before VM allocation. Private guest scratch uses a 32-GiB disposable disk;
-archives are bounded at four GiB each and 24 GiB including reserved manifest capacity.
-The final guest publisher rehashes every inert mode-0400 archive and checks the complete
-inventory/context. Package archives normalize ownership, modes and epoch and omit CIPD's
-installation metadata; their recorded SHA256 binds those canonical bytes, not a publisher ZIP.
-The [CIPD instance contract](https://chromium.googlesource.com/infra/luci/luci-go/+/main/cipd/common/iid.go)
-admits both legacy full SHA1 IDs and SHA256-plus-algorithm IDs; aliases are not installation
-authority. Git acquisition retains the exact source-selected object pin/type, requires its
-peeled commit to equal FETCH_HEAD's commit, strictly verifies the fetched objects, and records
-both identities; it never substitutes a branch or new revision.
-[Publisher tag metadata](https://flutter.googlesource.com/third_party/harfbuzz/+refs/tags/13.2.1?format=JSON)
-binds `49844c32a7a3f6be371355a1213c952a3f4a44e7` to commit
-`6f4c5cec306d31e6822303f5ba248a14293d588e`.
-The client's pinned infra revision selects LUCI `7bb5d7de170f73cf8a22b78c14503502ca5222a7`;
-its [exact command contract](https://chromium.googlesource.com/infra/luci/luci-go/+/7bb5d7de170f73cf8a22b78c14503502ca5222a7/cipd/client/cli/main.go)
-distinguishes full instance descriptions from `resolve`'s one-package nested pin receipt.
-Acquisition now uses that narrow operation before source-archive allocation, requires its exact
-inventory/package/immutable-ID shape, and reads both resolution and install receipts through
-bounded no-follow, single-link, current-principal descriptors with unchanged metadata. No size
-limit, pin, authentication or installation check is relaxed.
-
-Exact pushed `07c08021be2414acdb4f03f30d96f973c47688e2`, tree
-`a0e6a61ebb32e10078e487dcbcaaff0378504d21`, passed the complete acquisition/guest/outer
-transaction in 314 harness seconds (320,610 host BOOTTIME ms, outer/capture 0/0).
-Its 94-file candidate contains 82 Git and 11 CIPD archives, 8,038,420,480 payload bytes;
-the 49,753-byte manifest SHA256 is
-`c57a93ded5af7e19085540fda1409ac711eaa8bc5eae6d75ec4f62c259562a41`.
-Independent read-only verification rehashed all 93 archives and proved the complete mode-0400,
-single-link, current-principal inventory and unchanged metadata. Original selectors/patterns,
-immutable instances, object/commit/tree identities, GN variables and six deferred hooks are retained.
-Full 67,117-byte raw serial is `evidence/engine-graph-07c08021.serial.log`, SHA256
-`f5eaef668956a040de9422c2b43eafca40064ff0f2c0c714f1e2fb0478939472`, matching the VM receipt.
-Inputs/listeners were unchanged, listener-drift bytes zero, all owners joined and the run
-self-retired. No run/overlay remains. An actual duplicate refused before allocation and left
-the completed candidate unchanged. Earlier failed partials were identity-bound removed after
-evidence retention, not reused; their bounded records remain in the audit/evidence, not this ledger.
-The sole completed candidate occupies 8,038,645,760 allocated bytes (~7.49 GiB).
-
-Acquisition ran no hooks and its manifest says
-`complete_engine_closure=false`. Source review of the acquired root confirms three SHA256-bound
-sysroot downloads and offline package/version/Pub hooks. `tools/gn::setup_git_versions` also
-requires original engine/Skia/Dart Git identities and the root content-aware hash; plain source
-archives do not provide those Git objects. The completed metadata/input contract, offline toolkit
-build and named geometry/consumer evidence are recorded below.
-
-The closed `--maintenance-stage-flutter-linux-engine-git-metadata` operation separately
-packages the three original graph-selected Flutter/Dart/Skia commits. It authenticates the
-independent graph manifest, fetches exact shallow objects, checks original trees and fsck,
-and retains only fixed HEAD/config/shallow plus one original object pack/index per repository.
-No remote, hook, alternate, replacement, synthetic commit or version-check bypass is admitted.
-Each canonical archive is restored into a fresh private guest workspace and must reproduce
-the original HEAD/tree/timestamps and strict fsck. The first native transaction at `c3bd73b0`
-restored the root objects but failed its incorrect source-hash-equals-SDK-version assertion
-in 65,300 host BOOTTIME ms (outer 1/capture 0); no complete publication is claimed. Full raw
-serial is `evidence/engine-git-metadata-c3bd73b0.serial.log` (68,540 bytes, SHA256
-`019ad5e948d1b9e795c5b3c8834a3757fa3e7dc5bb3085c2b19ceb4a5bd2ac0a`).
-The original `update_engine_version.sh` gives the tracked `engine.version` precedence for a
-shipped SDK, whereas `tools/gn` invokes `content_aware_hash.sh` on original tree entries.
-The corrected contract separately pins source content hash
-`ab598368592da0064197e2bc15c7f5b0a2c6bb1f` and unchanged SDK selection
-`af7e796e161ae0bb1ff0758c71a7105418bd9ded`, requiring restored original Git/script evidence
-for both. The source hash is independently derived from the publisher's exact root/bin/internal
-tree objects, not accepted from the failed command. No original source, SDK pin or check is bypassed.
-The completed graph is unchanged; output stays bounded at one GiB/archive and three GiB total.
-Retained candidate/run state refuses another producer. Failure evidence was retained before
-identity-bound stopped-root/partial reconciliation. Exact corrected `2786f46095480bf2c5991eb056772805405950e9`,
-tree `b03510f009d3076d6b4deb9c230a57c683a62cd3`, passed the complete native acquisition,
-three restorations, original-script/version checks and final publisher rehash in 88 harness
-seconds (94,530 host BOOTTIME ms, outer/capture 0/0). The 5,345-byte manifest SHA256
-`5c27fb0744950fd25513f3a98bafc0d17d2b9bed1f7e446c4d50cc2cf0bd6da4` binds three archives
-totalling 154,347,520 bytes; independent read-only verification rehashed each and matched
-all source/graph/tool/discovery identities and the exact mode-0400/single-link inventory.
-Full 67,249-byte raw serial is `evidence/engine-git-metadata-2786f460.serial.log`, SHA256
-`aee70bdf2d485dda606cc9588a35665002ee3ce85e32ddcaf8c2bc31c0820248`, matching the VM receipt.
-Inputs/listeners were unchanged, external listener-drift bytes zero, all owned processes joined
-and successful scratch self-retired. An actual duplicate producer refused status 1 before
-allocation; candidate identity/manifest stayed unchanged. Its auxiliary checker first failed
-on an incorrect expected diagnostic; reinspection of saved output and state passed, without
-repeating the producer. No run/overlay remains; the completed inert candidate occupies
-154,370,048 allocated bytes (~0.144 GiB). This closes the original version-metadata prerequisite,
-not complete build closure. Original tracked indexes are required by hooks that query
-`git ls-files`; pinned engine and Dart workspace specifications use path overrides for
-DEPS-managed packages. Their actual offline materialization/build evidence is below.
-
-**Source-selected sysroots — acquisition evidence.**
-The closed `--maintenance-stage-flutter-linux-engine-sysroots` operation authenticates
-the independent graph manifest and its original root-source archive, reads only the
-original `sysroots.json` as data, and checks all three selected x64/arm64/riscv64 hooks
-against separately pinned publisher SHA256/byte counts. It streams only fixed HTTPS
-digest-addressed objects, refuses redirects/proxies and size/digest drift, and publishes
-three inert mode-0400 archives plus one manifest without replacing an earlier candidate.
-The existing acquisition VM/entry/image authority remains mandatory; the confined
-numeric-nonroot container has four exact binds (graph/source/helper read-only, output
-writable), no devices or ports, a 512-MiB memory limit and a 64-MiB aggregate output
-budget. The focused VM has an eight-GiB disposable disk and a 300-second transaction
-deadline. No upstream installer, extraction or downloaded code runs. Exact pushed
-`8be82d536b5fff90b6851469bb57a17f657db270`, tree `4e03163f548fe4db40648bc2abd6b3671063f552`,
-passed the actual acquisition/final publisher/guest/outer transaction in 54 harness seconds
-(60,210 host BOOTTIME ms, outer/capture 0/0). The independently rehashed 2,617-byte manifest
-SHA256 `1d01e4c42df21288346eebb8b07697cfb3d30e74c422f7b6e132c884515d7eb3` binds three archives
-totalling 60,164,652 bytes. Read-only verification checked the complete four-file mode-0400,
-single-link inventory, original-source JSON digest and exact graph/tool/discovery context;
-metadata remained unchanged. Full 66,599-byte raw serial is
-`evidence/engine-sysroots-8be82d53.serial.log`, SHA256
-`0e292cadf686d61bb8fb230ed2b6c393f9e0643477019c972664ce441298cab2`, matching the VM receipt.
-Inputs/listeners were unchanged, external listener-drift bytes zero, all owned processes joined
-and successful scratch self-retired. An actual duplicate producer refused status 1 before
-allocation and preserved the candidate. No run/overlay remains; this sole inert candidate
-occupies 60,178,432 allocated bytes (~0.056 GiB). This closes acquisition only.
-Offline materialization, hooks, toolkit build and the named app consumer are recorded below.
-
-**Offline materialization and original hooks — NATIVE PASS.** Exact pushed
-`0213a9017eeb6a1a4879ac52682c41060e972c32`, tree `12482c38746dc6b3bd046ac934496272dfb4a850`,
-passed `--linux-flutter-engine-prepare` in 117,450 host BOOTTIME ms (outer/capture 0/0).
-Three independently pinned candidates were read-only Landlocked exports into a zero-NIC
-VM and networkless UID/GID-1000 devcheck container. Actual root/foreign entry refusals,
-six exact mounts, ten filesystem extraction cases, all 286,969 entries/8,600,939,366 regular
-bytes/4,222 links, three original Git HEAD/tree/index/timestamp identities, content hash and
-distinct shipped SDK selection passed. All six unchanged hooks completed with only local
-DEPS path packages and a fresh Pub cache; no hosted/Git cache or network fallback was used.
-Writes never traverse archive links, modes strip set-ID/ownership authority, and original
-index stat refresh neither stages changed content nor ignores missing files. Inputs and
-before/during/after host listeners stayed unchanged, process drift was zero, all owned
-processes joined and the successful scratch self-retired. Full 76,340-byte serial is
-`evidence/engine-prepare-0213a901.serial.log`, SHA256
-`907d336196f45e2f445d16f0e5ce34db844c0b067b28d85ae55619dc39867b81`; outer/capture
-records share that prefix. Earlier actual input/metadata failures remain in the audit and
-bounded evidence, not this current-state entry. This closes materialization/hooks only.
-
-**Original GN graph and three production translation units — NATIVE PASS; LINK/BEHAVIOR OPEN.**
-Exact pushed `464f5c89189777acb0d100ea39fc8a527d34d238`, tree
-`7e52e571175b1e6441d2fea0bb1496204e09cedf`, passed the same isolated transaction in
-99,400 host BOOTTIME ms (outer/capture 0/0; outer 89 seconds), without raising resource
-or deadline limits. Unchanged upstream GN argument/version functions and the pinned GN
-binary use its supported `--script-executable=/usr/bin/python3` option, with no interpreter
-alias, download wrapper, synthetic Git or version-check bypass. Linux x64 release/unit-test/
-no-RBE graph generation, original revision/content arguments, and complete declared GTK
-library/native-test output inventories passed. Pinned Ninja/Clang compiled the original
-`fl_view`, `fl_view_accessible` and `fl_accessible_node` production objects; their actual
-sizes and SHA256 digests are retained in full 77,545-byte serial
-`evidence/engine-gn-compile-464f5c89.serial.log`, SHA256
-`7fc03a2dadfe86c849a680bb3d0c1a37e28ddfa3a5564bdbe2f73b40e70ee1e7`.
-Matching outer/capture records are retained. Preparation/hooks passed again, inputs stayed
-read-only, the complete host-listener audit reported no additions or pre-existing-process
-drift, every owned process joined, and scratch self-retired. Earlier interpreter/inventory
-failures and their exact stopped-run retirements remain in the audit and bounded evidence.
-These are unmodified production object compilations, not a linked engine, executed native
-unit tests, a geometry correction, or product behavior.
-The full engine build, production geometry correction and complete app replay remain OPEN.
+[root DEPS](https://github.com/flutter/flutter/blob/6a19cca56475dbfba1478ee68d7bd0c2ef891da1/DEPS),
+[recursive Vulkan DEPS](https://chromium.googlesource.com/vulkan-deps/+/a9e2ca3b57aba86a22a2df1b84bf12f8cc98806e/DEPS),
+[CIPD instance contract](https://chromium.googlesource.com/infra/luci/luci-go/+/main/cipd/common/iid.go),
+[publisher tag metadata](https://flutter.googlesource.com/third_party/harfbuzz/+refs/tags/13.2.1?format=JSON)
+and the [pinned client command contract](https://chromium.googlesource.com/infra/luci/luci-go/+/7bb5d7de170f73cf8a22b78c14503502ca5222a7/cipd/client/cli/main.go).
+Classification and unchanged-evidence checks are retained in the audit entry
+“2026-10-28 — user pivot; engine prerequisite ledger consolidation”.
 
 **Retained-node lifetime correction — EXPANDED NATIVE NODE UNIT PASS; ROOT/VIEW INTEGRATION OPEN.**
 `res/flutter/linux-accessibility-retirement.patch` adds permanent node retirement to the

@@ -112525,3 +112525,65 @@ inspection or mutation. Workload serial: 32,438 bytes, SHA-256
 `6fdcc181cde0fb9307c93c80bd84a7480cbd45016a3e29ad26007d1307cd6346`.
 Final diff and source hashes preserve the executed product/test bytes; only
 ledger/evidence documentation follows acceptance. Live instructions are unchanged.
+
+### 2026-10-28 — user pivot; engine prerequisite ledger consolidation
+
+The user explicitly requests a different aspect. File-manager column geometry is
+OPEN/PARKED at pushed `a7c362a43aa40cf413d78fb05ad52b88bf9eeabf`; its candidate
+VM test has not run. Preserve the implementation and test preparation without
+promoting the patch to accepted behavior or resuming it automatically.
+
+Preparation `eb77bf97` adds the thirteen rendered pane cases and a focused
+bounded-RAM profile. First run `r0L3x77por` reaches the cases but records a
+container compiler OOM at 1,280 MiB; it is excluded as a clean baseline.
+`a49df0be101f71fcbfe3807a6d62ecc7b3d1b55a` admits the measured 2,560-MiB guest /
+1,792-MiB container. Its run `QpTzWMwXmY` loads successfully, records no kernel
+OOM marker and fails all thirteen intended column-width/alignment cases.
+The tests retain SHA-256
+`e31d56a06da1673b5973aa275d84bbcc9639b7eafde1a4c7318f05c4b0b2cab7`.
+The valid baseline serial is 30,629 bytes, SHA-256
+`47039a19e6142f6e86b45e81553bfb7414ab24bb27d81742390a67f087a33cec`;
+the excluded first serial is 31,700 bytes, SHA-256
+`04e5c1b27ed6b9756bb100b02e1071535d2d1af56d7a6008f7213aa2fc2ef554`.
+Both exact QEMU processes join exit 0 and both RAM workspaces retire.
+Bounded diagnostics remain in `file-columns-resource.r0L3x77por` and
+`file-columns-baseline.QpTzWMwXmY`. Each retains one unattributed endpoint
+addition; no owner was inspected or changed. Valid-baseline QEMU 1924300 and
+RAM `run.huzmvlmj` are absent. Its peak RAM/overlay allocation is
+5,152,296,960/4,956,819,456 bytes against 6/5 GiB ceilings, with
+9,672,445,952 bytes minimum available host memory. No follow-up column run
+or change occurs after this pivot.
+
+The separate selected task is the binding documentation-architecture backlog.
+Read all 181 lines of the engine acquisition/metadata/sysroot/preparation/GN
+prerequisite diary and the later linked-core/toolkit acceptance. The old final
+sentence still called the full engine build open, despite the accepted
+`e5e5736a` core and `15cf93dd` toolkit producers. Replace the diary with one
+five-stage table, input/execution constraints, historical evidence limits and
+references to the later build/consumer entries. Source content hash and shipped
+SDK identity remain distinct; original object/index, immutable CIPD, recursive
+DEPS, offline hooks, publisher and extraction constraints remain explicit.
+Historical disk-profile receipts confer no permission to run those paths under
+the current bounded-RAM policy.
+
+The five retained raw serials were read through no-follow, single-link,
+current-principal descriptors and exactly match the old ledger's SHA-256 values:
+
+| Serial prefix under `.harness-state/verifier-vm/evidence/` | Bytes | SHA-256 |
+| --- | --- | --- |
+| `engine-graph-07c08021` | 67,117 | `f5eaef668956a040de9422c2b43eafca40064ff0f2c0c714f1e2fb0478939472` |
+| `engine-git-metadata-2786f460` | 67,249 | `aee70bdf2d485dda606cc9588a35665002ee3ce85e32ddcaf8c2bc31c0820248` |
+| `engine-sysroots-8be82d53` | 66,599 | `0e292cadf686d61bb8fb230ed2b6c393f9e0643477019c972664ce441298cab2` |
+| `engine-prepare-0213a901` | 76,340 | `907d336196f45e2f445d16f0e5ce34db844c0b067b28d85ae55619dc39867b81` |
+| `engine-gn-compile-464f5c89` | 77,545 | `7fc03a2dadfe86c849a680bb3d0c1a37e28ddfa3a5564bdbe2f73b40e70ee1e7` |
+
+Git source `a7c362a4` retains removed manifest/digest/size/timing and failed-attempt
+narration; section SHA-256 was
+`28dd7db223efefcbf12a59d1b79929521230f1500bf8d47bdce06e9086bdf1b9`.
+The previous complete ledger is 359,224 tokens / 1,635,979 bytes, SHA-256
+`ae774743459a30c6046d50dd6b05cff722f9262db6fbfb2cb80bfdb53e9d9679`,
+as measured in `jK2CYemc44`. A fresh isolated count follows this edit.
+All fifteen installed credential actions, R-S0/R-F5, native/current-artifact,
+independent-reproduction and external-review requirements remain OPEN.
+Product, tests, normative requirements and live instructions are unchanged.
+No acquisition, engine build, product runtime or parked task runs for this cleanup.

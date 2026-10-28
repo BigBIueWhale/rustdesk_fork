@@ -1039,8 +1039,9 @@ class FfiModel with ChangeNotifier {
     final text = translate('Please select the session you want to connect to');
     final type = "";
 
-    showWindowsSessionsDialog(
-        type, title, text, dialogManager, sessionId, peerId, sessions);
+    showWindowsSessionsDialog(type, title, text, dialogManager, sessions,
+        onSelected: (sid) => bind.sessionSendSelectedSessionId(
+            sessionId: sessionId, sid: sid));
   }
 
   /// Handle the message box event based on [evt] and [id].

@@ -1170,6 +1170,17 @@ GLOBAL_EVENT_TESTS = {
     "handler and malformed-input failures remain visible and drainable",
 }
 CREDENTIAL_DIALOG_TESTS = {
+    "windows_session_dialog_test.dart": {
+        "Windows chooser connects the first advertised session",
+        "Windows chooser connects the changed selection",
+        "Windows chooser submits only once before unmount",
+        "Windows chooser dismissed callbacks have no selection authority",
+        "Windows chooser replacement retires the prior submit",
+        "Windows chooser retires before reentrant selection dispatch",
+        "Windows chooser Enter submits its current selection",
+        "Windows chooser numpad Enter submits its current selection",
+        "Windows chooser retired dropdown cannot update disposed state",
+    },
     "global_event_dispatcher_test.dart": GLOBAL_EVENT_TESTS,
     "peer_model_test.dart": {
         "direct peers retain their address and local display metadata",

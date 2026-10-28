@@ -566,9 +566,9 @@ void showWindowsSessionsDialog(
     String title,
     String text,
     OverlayDialogManager dialogManager,
-    SessionID sessionId,
-    String peerId,
-    String sessions) {
+    String sessions,
+    {required ValueChanged<String> onSelected,
+    String Function(String text)? translateText}) {
   List<dynamic> sessionsList = [];
   try {
     sessionsList = json.decode(sessions);
@@ -583,8 +583,7 @@ void showWindowsSessionsDialog(
   dialogManager.dismissAll();
   dialogManager.show((setState, close, context) {
     submit() {
-      bind.sessionSendSelectedSessionId(
-          sessionId: sessionId, sid: selectedUserValue);
+      onSelected(selectedUserValue);
       close();
     }
 
@@ -593,7 +592,8 @@ void showWindowsSessionsDialog(
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          msgboxContent(type, title, text).marginOnly(bottom: 12),
+          msgboxContent(type, title, text, translateText: translateText)
+              .marginOnly(bottom: 12),
           ComboBox(
               options: options,
               selectedKey: selectedUserValue,
@@ -603,7 +603,10 @@ void showWindowsSessionsDialog(
         ],
       ),
       actions: [
-        dialogButton('Connect', onPressed: submit, isOutline: false),
+        dialogButton('Connect',
+            onPressed: submit,
+            isOutline: false,
+            translateText: translateText),
       ],
     );
   });

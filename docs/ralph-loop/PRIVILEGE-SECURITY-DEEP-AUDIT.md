@@ -111898,3 +111898,37 @@ absent. Peak RAM/durable storage is 402,247,680/249,856 bytes; all endpoint delt
 are zero. Workload serial: 31,539 bytes, SHA-256
 `eb69e3d31de002c2ce3dd3031f09d140ade55ceef1c9fe8c615d932cf9f6eb5b`.
 This audit-only receipt leaves the counted ledger and product sources unchanged.
+
+### 2026-10-28 — Windows session chooser submission ownership
+
+The preceding turn is progress: `b28e1e8c` / `e39ea0b1` remove unused UI validators
+and retain the fresh count. All fifteen installed credential actions remain OPEN;
+transport, keyboard, parent compilation and other explicit parks remain intact.
+
+Read-only tracing rejects the initial empty-list hypothesis for the live chooser:
+`handle_peer_info` only publishes a nonempty session vector, and `flutter.rs`
+serializes typed numeric IDs and names. The relevant defect is callback lifetime.
+`showWindowsSessionsDialog` dispatches before closing and has no current-owner
+check, so captured repeated or retired callbacks can dispatch; its dropdown can
+also call a disposed StatefulBuilder. The dialog does not set `onSubmit`, leaving
+the shared dialog's initial Enter/numpad-Enter path disconnected.
+
+The intended UI owner is the existing exact `DialogClose` entry. It must retire
+synchronously before dispatching the selected ID once; retired submit/dropdown
+callbacks cannot act. Keyboard and pointer use that same submission. The model
+continues to supply the native action bound to the same session ID. This confers
+no Windows service authority. The current server still refuses cross-session
+switching without its required service capability; native switching and installed
+functionality remain OPEN, outside this component correction.
+
+Preparation moves the unchanged native call to the model-provided callback and
+adds an optional translation function, preserving old dispatch-before-close behavior
+for the baseline. Nine rendered tests exercise first/changed selection, duplicate,
+dismissed and superseded actions, reentrancy, both Enter keys and disposed-dropdown
+updates. The existing credential-dialog profile adds this exact suite and reconciles
+its inventory; parser algorithms and the parked MODEL_TESTS failures are untouched.
+Actual source copies and raw results are exported before the shared parser gate.
+Tests run the complete production Dart helpers and overlay, with a controlled native
+selection callback; no Rust application, Windows service or session switch runs.
+Pinned Flutter focus propagation was reviewed at
+https://raw.githubusercontent.com/flutter/flutter/3.24.5/packages/flutter/lib/src/widgets/focus_manager.dart .

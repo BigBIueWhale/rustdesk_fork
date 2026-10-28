@@ -216,7 +216,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("desktop-theme"), "desktop-theme"), (1, 16))
         self.assertEqual(self.parse(self.events("modifier-release"), "modifier-release"), (5, 112))
         self.assertEqual(self.parse(self.events("connect-password"), "connect-password"), (1, 7))
-        self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (9, 98))
+        self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (10, 107))
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "count"
             path.write_bytes(b"7\n")

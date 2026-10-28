@@ -134,7 +134,6 @@ class _ConnectPasswordDialogState extends State<ConnectPasswordDialog> {
         children: [
           PasswordWidget(
             controller: _password,
-            autoFocus: true,
             translateText: widget.translateText,
           ),
           CheckboxListTile(

@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:bot_toast/bot_toast.dart';
@@ -169,8 +168,6 @@ class PasswordWidget extends StatefulWidget {
   PasswordWidget({
     Key? key,
     required this.controller,
-    this.autoFocus = true,
-    this.reRequestFocus = false,
     this.hintText,
     this.errorText,
     this.title,
@@ -179,8 +176,6 @@ class PasswordWidget extends StatefulWidget {
   }) : super(key: key);
 
   final TextEditingController controller;
-  final bool autoFocus;
-  final bool reRequestFocus;
   final String? hintText;
   final String? errorText;
   final String? title;
@@ -194,33 +189,9 @@ class PasswordWidget extends StatefulWidget {
 class _PasswordWidgetState extends State<PasswordWidget> {
   bool _passwordVisible = false;
   final _focusNode = FocusNode();
-  Timer? _timer;
-  Timer? _timerReRequestFocus;
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.autoFocus) {
-      _timer =
-          Timer(Duration(milliseconds: 50), () => _focusNode.requestFocus());
-    }
-    // software secure keyboard will take the focus since flutter 3.13
-    // request focus again when android account password obtain focus
-    if (isAndroid && widget.reRequestFocus) {
-      _focusNode.addListener(() {
-        if (_focusNode.hasFocus) {
-          _timerReRequestFocus?.cancel();
-          _timerReRequestFocus = Timer(
-              Duration(milliseconds: 100), () => _focusNode.requestFocus());
-        }
-      });
-    }
-  }
 
   @override
   void dispose() {
-    _timer?.cancel();
-    _timerReRequestFocus?.cancel();
     _focusNode.unfocus();
     _focusNode.dispose();
     super.dispose();

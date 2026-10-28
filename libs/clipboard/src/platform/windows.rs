@@ -8,7 +8,7 @@
 use crate::{
     send_data, send_data_exclude, ClipboardFile, CliprdrError, CliprdrServiceContext,
     ResultType, ERR_CODE_INVALID_PARAMETER, ERR_CODE_SEND_MSG,
-    ERR_CODE_SERVER_FUNCTION_NONE, VEC_MSG_CHANNEL,
+    ERR_CODE_SERVER_FUNCTION_NONE,
 };
 use hbb_common::{allow_err, log};
 use std::{
@@ -1116,13 +1116,8 @@ extern "C" fn client_format_list(
         &format_list
     );
     let data = ClipboardFile::FormatList { format_list };
-    // no need to handle result here
     if conn_id == 0 {
-        // msg_channel is used for debug, VEC_MSG_CHANNEL cannot be inspected by the debugger.
-        let msg_channel = VEC_MSG_CHANNEL.read().unwrap();
-        msg_channel
-            .iter()
-            .for_each(|msg_channel| allow_err!(msg_channel.sender.send(data.clone())));
+        send_data_exclude(0, data);
     } else {
         match send_data(conn_id, data) {
             Ok(_) => {}

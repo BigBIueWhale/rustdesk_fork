@@ -5331,7 +5331,7 @@ elif [ "$MODE" = android-runtime-log-tests ]; then
     runtime_log_ui_receipt='ANDROID_PEER_UI_FINALITY_TEST=pass cases=5 empty=refused foreign=refused disabled=refused residual=refused observed=required'
     runtime_failure_test_receipt='ANDROID_RUNTIME_FAILURE_LOG_TEST=pass cases=7 bytes=1048576 equality=exact oversized=refused symlink=refused hardlink=refused mode=refused occupied=preserved'
     runtime_serial_test_receipt='VERIFIER_SERIAL_ARCHIVE_TEST=pass cases=4 exact=retained occupied=preserved symlink=refused overflow=bounded'
-    runtime_output_test_receipt='VERIFIER_OUTPUT_TRANSPORT_TEST=pass cases=15 bytes=exact chunks=fragmented invalid=refused overflow=bounded ack=required deadline=refused cleanup=joined'
+    runtime_output_test_receipt='VERIFIER_OUTPUT_TRANSPORT_TEST=pass cases=17 bytes=exact chunks=fragmented invalid=refused overflow=bounded ack=confirmed deadline=refused cleanup=joined'
     runtime_failure_fixture=$'ANDROID_PEER_WINDOW_DIAGNOSTIC_BEGIN phase=fixture\nfocus=fixture\nANDROID_PEER_WINDOW_DIAGNOSTIC_END phase=fixture\n'
     runtime_failure_bytes=$(printf '%s' "$runtime_failure_fixture" | /usr/bin/wc -c)
     runtime_failure_sha=$(printf '%s' "$runtime_failure_fixture" | /usr/bin/sha256sum | /usr/bin/cut -d ' ' -f 1)

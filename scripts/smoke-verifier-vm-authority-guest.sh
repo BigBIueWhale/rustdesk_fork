@@ -1620,7 +1620,7 @@ run_android_runtime_log_tests() {
     local ui_receipt='ANDROID_PEER_UI_FINALITY_TEST=pass cases=5 empty=refused foreign=refused disabled=refused residual=refused observed=required'
     local failure_test_receipt='ANDROID_RUNTIME_FAILURE_LOG_TEST=pass cases=7 bytes=1048576 equality=exact oversized=refused symlink=refused hardlink=refused mode=refused occupied=preserved'
     local serial_receipt='VERIFIER_SERIAL_ARCHIVE_TEST=pass cases=4 exact=retained occupied=preserved symlink=refused overflow=bounded'
-    local output_receipt='VERIFIER_OUTPUT_TRANSPORT_TEST=pass cases=15 bytes=exact chunks=fragmented invalid=refused overflow=bounded ack=required deadline=refused cleanup=joined'
+    local output_receipt='VERIFIER_OUTPUT_TRANSPORT_TEST=pass cases=17 bytes=exact chunks=fragmented invalid=refused overflow=bounded ack=confirmed deadline=refused cleanup=joined'
     local export_work export_work_id export_receipt export_bytes export_sha
 
     test_sha="$(sha256sum "$test" | awk '{ print $1 }')"

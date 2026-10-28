@@ -22,6 +22,7 @@ def fail(message: str) -> None:
 
 OUTPUT_MAGIC = b"RDVMOUT1"
 OUTPUT_ACK = b"RDVMACK1"
+OUTPUT_DONE = b"RDVMDONE"
 OUTPUT_LIMIT = 8 * 1024 * 1024
 OUTPUT_CHUNK = 65536
 
@@ -65,6 +66,7 @@ def forward_guest_output(source: int, channel: int, ack_timeout: float = 30) -> 
     if read_exact(channel, len(OUTPUT_ACK) + len(footer),
                   time.monotonic() + ack_timeout) != OUTPUT_ACK + footer:
         fail("output acknowledgement differs")
+    write_all(channel, OUTPUT_DONE)
 
 
 def output_frames(channel: int, limit: int):
@@ -213,6 +215,8 @@ def main() -> None:
             finally:
                 os.close(parent_fd)
             stream.sendall(OUTPUT_ACK + struct.pack("!Q", total) + digest.digest())
+            if read_exact(stream.fileno(), len(OUTPUT_DONE), time.monotonic() + 30) != OUTPUT_DONE:
+                fail("guest did not confirm the output acknowledgement")
             if stream.recv(1):
                 fail("output channel has trailing data")
     finally:

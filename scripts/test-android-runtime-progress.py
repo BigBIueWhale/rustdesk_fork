@@ -75,6 +75,7 @@ print("VERIFIER_SERIAL_ARCHIVE_TEST=pass cases=4 exact=retained occupied=preserv
 
 capture = runpy.run_path(str(capture_source))
 magic, ack = capture["OUTPUT_MAGIC"], capture["OUTPUT_ACK"]
+done = capture["OUTPUT_DONE"]
 payload = bytes(range(256)) * 1024 + b"\nVERIFIER_VM_CLOUD_INIT=pass\n"
 footer = struct.pack("!Q", len(payload)) + hashlib.sha256(payload).digest()
 frames = b"".join(struct.pack("!I", len(part)) + part
@@ -92,7 +93,9 @@ output_cases = {
     "header-eof": magic + b"\x00\x00",
     "payload-eof": magic + struct.pack("!I", 5) + b"x",
     "footer-eof": valid_wire[:-1],
-    "trailing": valid_wire + b"x",
+    "confirmation-eof": valid_wire,
+    "confirmation-wrong": valid_wire + b"invalid!",
+    "trailing": valid_wire + done + b"x",
 }
 for case, wire in output_cases.items():
     with tempfile.TemporaryDirectory(prefix="verifier-output.") as directory:
@@ -131,17 +134,24 @@ for case, wire in output_cases.items():
                                     client.sendall(wire[i:i + 17])
                             else:
                                 client.sendall(wire)
-                            client.shutdown(socket.SHUT_WR)
                             response = b""
+                            if case == "fragmented":
+                                while len(response) < len(ack + footer):
+                                    block = client.recv(len(ack + footer) - len(response))
+                                    if not block:
+                                        raise RuntimeError("fragmented output was not acknowledged")
+                                    response += block
+                                client.sendall(done)
+                            client.shutdown(socket.SHUT_WR)
                             while block := client.recv(64):
                                 response += block
-                            if case in ("fragmented", "trailing"):
+                            if case in ("fragmented", "trailing", "confirmation-eof", "confirmation-wrong"):
                                 if response != ack + footer:
                                     raise RuntimeError("complete output acknowledgement differs")
                             elif response:
                                 raise RuntimeError("invalid output was acknowledged")
                         except (BrokenPipeError, ConnectionResetError):
-                            if case in ("fragmented", "trailing"):
+                            if case in ("fragmented", "trailing", "confirmation-eof", "confirmation-wrong"):
                                 raise
                 stdout, stderr = process.communicate(timeout=5)
                 if case in ("valid", "empty", "fragmented"):
@@ -200,8 +210,8 @@ for case in ("wrong", "eof", "deadline"):
         worker.join(timeout=5)
     if worker.is_alive() or errors:
         raise RuntimeError(f"acknowledgement fixture did not join cleanly: {case}: {errors}")
-print("VERIFIER_OUTPUT_TRANSPORT_TEST=pass cases=15 bytes=exact chunks=fragmented "
-      "invalid=refused overflow=bounded ack=required deadline=refused cleanup=joined", file=sys.stderr)
+print("VERIFIER_OUTPUT_TRANSPORT_TEST=pass cases=17 bytes=exact chunks=fragmented "
+      "invalid=refused overflow=bounded ack=confirmed deadline=refused cleanup=joined", file=sys.stderr)
 native_image = None
 if len(sys.argv) != 1:
     if (len(sys.argv) != 3 or sys.argv[1] != "--native-docker"

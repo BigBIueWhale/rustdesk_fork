@@ -52,6 +52,12 @@ case inventories, intermediate failures, source/artifact hashes and timings rema
 receipts under `.harness-state/verifier-vm/` and in Git history. Shared current-artifact,
 installed/other-platform, R-S0/R-F5, resource/soak and release obligations below remain OPEN.
 
+**User pivot (2026-10-28):** Terminal replay-history byte bounds and the separate
+output-channel drop investigation remain OPEN/PARKED. The unexecuted five-file
+test preparation is saved in stash `c850422b0c540aeaf5fcf63aaec3558b09919956`;
+no product change or runtime test was made. Do not resume automatically. Work
+moved to native-codec documentation consistency below.
+
 **User pivot (2026-10-28):** Temporary modifier press bookkeeping/allocation
 investigation remains OPEN/PARKED after read-only inspection. No implementation
 or runtime test was made. Work moved to unused desktop popup-menu variants below.
@@ -8784,37 +8790,18 @@ those decoders are vulnerability-free. The controlled/`--server` role encodes
 its own screen; its inbound native decode remains Opus behind an
 operator-accepted voice call (R-S19), plus 64 MiB-bounded zstd.
 
-A prior session (2026-06-26→28) built a large worker-subprocess sandbox for #2b —
-hidden same-artifact `--native-*-worker` roles, a `native_worker_sandbox` helper
-(seccomp-BPF / Seatbelt / Windows Job-Object / token confinement), and Android
-`isolatedProcess` services for video/Opus/zstd/clipboard. On **2026-06-28** that
-subsystem was **reverted** in full, by maintainer decision and per the spec's
-`ACCEPT` disposition: it was the project's single largest net addition for a
-SHOULD-level residual, it fought the spec's defend-by-deletion philosophy, it
-re-introduced the hidden-argv multi-tool pattern §8 excises, and its fail-closed
-no-fallback design risked the MUST content channels (R-S4/R-F1) when a worker was
-unavailable. Video, Opus, zstd, clipboard, CLIPRDR, Unix file-copy, and the
-Windows printer path are restored to **in-process** decode/decompress/handoff
-(upstream behaviour), and the worker modules/sandbox/Android services are deleted.
-**#2b therefore stands as the documented accepted residual the spec prescribes**,
-to be closed later — if at all — by sandboxing the decode path, bounded
-operationally in the meantime.
-
-A follow-on fix (2026-07-01) closed the **one stale expectation the revert missed**:
-`scripts/apple-conform-check.sh` still listed the deleted
-`libs/hbb_common/src/native_worker_sandbox.rs` in its R-R2 retain-and-check set and
-ran a macOS-worker Seatbelt assertion over that absent file, so the Apple R-R2
-source-conformance gate had been **failing on a deliberately-absent file** since the
-revert. The gate now reflects the accepted residual (`apple-conform-check` **PASS** at
-HEAD); re-closing #2b later restores the worker subsystem on *all* platforms, so the
-removal is deliberately not a presence-of-absence pin.
-
-The genuinely-good companion work from that session is **kept**: the post-key
-DoS bounds above (R-T0/R-S7/R-S10), the `sanitize_relative_names` path-traversal
-defense, the bounded in-process clipboard-SET dispatcher (anti thread-amplification),
-the FUSE mount/queue hardening, the insecure-TLS-fallback excision, the native
-codec advisory-watch (`docs/NATIVE-CODEC-WATCH.md`), the `rustdesk-org` Dart
-git-fork SHA pins (R-B12), and the upstream-doc-link removal.
+The worker sandbox was removed by `0c549126`; current decode/decompress/handoff
+remains in process. Appendix C #2b's accepted residual and SHOULD-sandbox
+recommendation remain binding. The native-codec guide now reflects that disposition
+and distinguishes offline pin/inventory checks from advisory freshness. The Apple
+checker drops only its obsolete sandbox-history comment and status echo; every
+actual check remains unchanged. Its historical pass is no longer described as
+current-HEAD validation. No codec, sandbox, advisory-scanner or native Apple test
+ran for this documentation correction. The libyuv OPEN ADVISORY above, watcher
+replay, target artifacts, R-S0/R-F5 and release acceptance remain OPEN. Existing
+post-key bounds, path validation, clipboard/FUSE controls, TLS exclusions and
+dependency-pin requirements retain their own entries and evidence. Superseded
+sandbox implementation and checker-repair history remain in Git.
 
 ## Open residuals (tracked, not regressions)
 

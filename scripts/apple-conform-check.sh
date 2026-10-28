@@ -4069,16 +4069,6 @@ else
   note "ok  R-S11e-13 macOS clipboard-file paste placeholders use a private per-context temp dir with fd-relative exclusive create/unlink"
 fi
 
-# (2c) Appendix C #2b is an ACCEPTED, documented residual: the fork SHOULD (not MUST) sandbox the decode
-# path. Commit 0c54912 deliberately reverted the ENTIRE native-worker decode-sandbox subsystem (the
-# per-codec worker processes + the macOS Seatbelt sandbox file + the Android isolatedProcess services
-# + ~1800 lines of verify.sh worker gates) as "a documented residual, not a MUST". That revert updated
-# verify.sh but missed THIS macOS Seatbelt assertion, leaving apple-conform-check failing on a
-# deliberately-absent file. Removed to match: the macOS worker sandbox is intentionally gone (the
-# universal #2b residual), so the Apple source carries no worker hardening to retain. (Re-closing #2b
-# later restores the subsystem on ALL platforms, not Apple alone — this is not a presence-of-absence pin.)
-echo "== (2c) Appendix C #2b native-worker decode sandbox: accepted residual (reverted 0c54912) — no macOS worker hardening to assert =="
-
 echo "== (2d) Apple metadata allow-lists: plist/entitlements/pods/Xcode shell phases =="
 "${APPLE_READ_RUN[@]}" python3 - <<'PY' || rc=1
 from pathlib import Path

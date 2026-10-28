@@ -109977,3 +109977,33 @@ Outer/supervisor lifetime is 29/31.844 seconds, RAM-scratch peak 402,296,832 byt
 and durable run peak 147,456 bytes. QEMU 4009755 joins with exit 0; its PID,
 RAM `run.t_ajdw_l` and active run roots are absent. All endpoint deltas are zero.
 This audit-only receipt leaves the counted ledger and product unchanged.
+
+## 2026-10-28 — native-codec residual documentation consistency
+
+The user's new pivot parks terminal replay-history byte bounds and the separate
+output-channel drop investigation. Five files of unexecuted test preparation are
+preserved in stash `c850422b0c540aeaf5fcf63aaec3558b09919956`; production terminal
+code was never changed. All earlier parks remain in force. The native and installed
+R-S11ia–R-S11io credential-action checklist remains open.
+
+At parent `9e197587ed4d01fc83cf05b34e525152bb2ff7a7`, the native-codec guide says
+Appendix C #2b remains open until a worker sandbox exists. The actual normative
+row accepts the general decoder residual and recommends sandboxing; Git records
+the worker removal at `0c549126`. The ledger also promotes a historical Apple
+checker pass into a current-HEAD claim. Neither statement matches current evidence.
+
+The guide now records the existing disposition and the offline watcher's actual
+scope. The ledger replaces the obsolete implementation/revert/checker narrative
+with current state and open acceptance. The Apple checker loses only ten lines
+containing a historical comment, a status echo and whitespace. Read-only exact-byte
+comparison confirms every real check is retained, the complete advisory inventory
+after `## Source Set` is unchanged, and the native watcher and requirements remain
+byte-identical. The libyuv OPEN ADVISORY remains release-blocking. The new ledger
+link resolves to the existing heading. `bash -n` and `git diff --check` pass.
+
+This is documentation and obsolete-output cleanup; no product behavior, codec
+version, advisory disposition or security requirement changes. No advisory refresh,
+codec execution, Apple compilation or installed-service test is claimed. Watcher
+runtime replay, current artifacts, native/installed acceptance, R-S0/R-F5 and
+independent/external review remain open. The ledger decreases from 1,613,546 to
+1,612,627 bytes; its fresh pinned token-count transaction is recorded separately.

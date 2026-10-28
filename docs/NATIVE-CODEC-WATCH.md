@@ -7,10 +7,12 @@ This ledger covers the native C/C++ codec and media-adjacent libraries pulled by
 libraries, so this watch is separate from `scripts/audit.sh` and
 `scripts/dart-audit.sh`.
 
-This gate is not the decoder sandbox. It only makes native-codec advisory review
-explicit and tied to the pinned source set. The viewer residual from
-Appendix C #2b remains open until the video, audio, clipboard, and compression
-decode paths cross an out-of-process, length-bounded, killable boundary.
+`scripts/native-codec-watch.sh` checks the package inventory, source pins and
+recorded advisory blockers offline. Advisory freshness requires a separate review.
+Appendix C #2b accepts the general in-process native-decoder residual and recommends
+sandboxing; the previous worker sandbox was removed. That disposition does not
+clear a specific advisory or establish decoder safety. Current evidence and missing
+acceptance are recorded in [the hardening ledger](../HARDENING_STATUS.md#appendix-c-2b-native-decode-rce-surface--accepted-residual).
 
 ## Source Set
 

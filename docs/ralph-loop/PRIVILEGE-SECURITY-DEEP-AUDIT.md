@@ -111011,3 +111011,13 @@ find no references to the removed symbols or option strings; `git diff --check`
 passes. No compiler, application, UI test or product VM executes for this
 unreachable-code deletion. Full application/native/installed and R-S0/R-F5
 acceptance remain OPEN, and all other recorded parks remain in place.
+
+Slice committed/pushed as `9dee5796`. Fresh ledger count `5CFHbDeB9J` passes:
+357,766 tokens, 1,626,924 bytes, input SHA-256
+`fa0aa30c0c16e1d2fedf7e3edbe8c3c4d6ad05a8b9ed738430e46efcca914a5f`.
+Seven tokenizer controls and exact byte round trip pass. Outer/supervisor times
+are 29/31.612 seconds; RAM scratch peaks at 402,219,008 bytes and durable evidence
+at 253,952 bytes. QEMU 535173 joins exit 0; its PID, RAM `run.l__eum2w` and owned
+active roots are absent. All endpoint deltas are zero. The bounded admission
+and live monitor remain enabled; this audit-only receipt leaves the ledger
+unchanged and establishes no additional product acceptance.

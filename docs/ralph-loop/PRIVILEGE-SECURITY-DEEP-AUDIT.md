@@ -112409,3 +112409,14 @@ complete GetMaterialApp/root integration remains explicitly unexecuted. No
 product locale code changes yet. Exact joined cleanup and RAM retirement precede
 retaining `locale-fixture.pSJSSrS153` (66306/103992496), console SHA-256
 `7d3aa9e00730bdcc309ac4901eb2b4be0291db39f643e524849cebf8a6fb1cfe`.
+
+Accepted baseline `oi4vtVN349` at `c5ca7095` executes all ten cases: six fail
+because the resolved locale is English instead of `kk`/`vi`; English, French,
+Hebrew direction and unsupported-language controls pass. No fixture lifecycle
+error occurs. The production correction changes exactly `kz` to `kk` and `vn`
+to `vi` in the shared framework list. The identical ten-case test follows.
+The baseline's QEMU joins, RAM scratch retires and bounded diagnostics are
+retained as `locale-baseline.oi4vtVN349` (66306/103992540). Its one unattributed
+added endpoint is retained without owner inspection or mutation; host IP sockets
+were kernel-denied. Workload serial: 16,151 bytes, SHA-256
+`f9e25c0bd067af4f84dc70f7a8bcda70fb645cbbee538be4aae28d84c7c9e5b0`.

@@ -11995,7 +11995,7 @@ run_flutter_model_tests() {
                     cat /work/test.json
                 fi
                 parser_args=()
-                if [[ "$FLUTTER_TEST_PROFILE" = screenshot-save || "$FLUTTER_TEST_PROFILE" = locales || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = file-columns ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = screenshot-save || "$FLUTTER_TEST_PROFILE" = locales || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed ]]; then
                     parser_args=("--$FLUTTER_TEST_PROFILE")
                 fi
                 /usr/bin/python3 -I -S /source/scripts/test-flutter-model-test-result.py "${parser_args[@]}"

@@ -112733,3 +112733,24 @@ removal; no owner was inspected or changed. The storage interval is 260 seconds,
 with 5,096,812,544 bytes peak scratch allocation and 3,403,776 bytes durable
 diagnostics. The product correction adds only the speed-percent formatter to
 the shared slider; the next isolated run checks this candidate and fixture cleanup.
+
+Candidate attempt `BKHkY2gPeN` at `70be9d9a` reaches the parser self-tests
+after Flutter exits successfully, but the new shard lacks parser registration
+and invokes the broad self-test path. Its three already-parked `models`
+inventory refusals fail before detailed Flutter output is retained. This is
+not an accepted fourteen-case receipt. Register only `trackpad-speed`'s two
+exact suites/names, reuse the existing ten-dialog inventory, and select the
+existing focused three-control parser path for this profile. The broad
+`models` behavior and its parked failures are unchanged. Product and Dart
+tests remain byte-identical to `70be9d9a` for the next run. Python AST parsing,
+shell syntax and whitespace checks pass; no parser executes on the host.
+
+This attempt's QEMU 2071698 joins exit 0; RAM `run.gk5qyy42` is absent.
+Retained diagnostics: `trackpad-parser-registration.BKHkY2gPeN`, device/inode
+66306/103992844. Workload serial is 2,415 bytes, SHA-256
+`1b1ed81cac77b7f26d654c6e8588e44882eb07b251ff82989a9df418f2884bc8`;
+console is 65,047 bytes, SHA-256
+`dcd7cfbaaa45401ce899e737de712895f48546ad7e31461e88b5059e71011f8d`.
+The 258-second storage interval peaks at 5,137,575,936 bytes scratch and
+3,375,104 bytes durable diagnostics. The final aggregate snapshot has no
+addition and one unattributed removal; no owner inspection or mutation occurs.

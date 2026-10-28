@@ -1304,6 +1304,17 @@ FILE_METADATA_TESTS = {
 }
 
 
+TRACKPAD_SPEED_SUITES = {
+    "trackpad_speed_dialog_test.dart": TRACKPAD_DIALOG_TESTS,
+    "trackpad_speed_accessibility_test.dart": {
+        "trackpad announces speed across its enabled and disabled range",
+        "trackpad accessibility predictions match adjusted and saved speed",
+        "trackpad keyboard changes retain confirmed backend values",
+        "trackpad disabled accessibility cannot adjust or save speed",
+    },
+}
+
+
 AUDIO_INPUT_SUITES = {
     "setting_option_mutation_test.dart": {
         name for name in SETTING_OPTION_TESTS if name.startswith("audio ")
@@ -1618,7 +1629,7 @@ MODEL_TESTS = {
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
     expected_suites = set(MODEL_TESTS)
     expected_by_suite = None
     if profile == "frame-queue":
@@ -1743,6 +1754,11 @@ def parse_result(path, profile="models"):
         expected_tests = len(expected_names)
     elif profile == "reconnect":
         expected_by_suite = RECONNECT_SUITES
+        expected_suites = set(expected_by_suite)
+        expected_names = set().union(*expected_by_suite.values())
+        expected_tests = len(expected_names)
+    elif profile == "trackpad-speed":
+        expected_by_suite = TRACKPAD_SPEED_SUITES
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())
         expected_tests = len(expected_names)
@@ -1913,7 +1929,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -1946,6 +1962,7 @@ def main():
         "directory-ordering": "FLUTTER_DIRECTORY_ORDERING_TEST_JSON",
         "file-navigation": "FLUTTER_FILE_NAVIGATION_TEST_JSON",
         "custom-scale": "FLUTTER_CUSTOM_SCALE_TEST_JSON",
+        "trackpad-speed": "FLUTTER_TRACKPAD_SPEED_TEST_JSON",
         "virtual-mouse-buttons": "FLUTTER_VIRTUAL_MOUSE_BUTTONS_TEST_JSON",
         "virtual-joystick": "FLUTTER_VIRTUAL_JOYSTICK_TEST_JSON",
         "floating-position": "FLUTTER_FLOATING_POSITION_TEST_JSON",

@@ -112780,3 +112780,11 @@ rendered component evidence does not establish physical devices, native screen
 readers, full UI/FFI/storage or other-platform behavior. All parks and all
 fifteen installed credential actions remain OPEN. Only the pivot note and this
 specific status item change in the ledger; a fresh count follows.
+
+Count attempt `kuxV9NjUQP` at `e5ecfe94` executes all 64 workload-selector
+controls successfully, including the added trackpad selector, then refuses the
+historical 63-control completion literal before tokenization. Update only the
+guest/host expected count to 64; all 38 modes and five refusals are unchanged.
+No product or Flutter test changes follow the accepted run. Exact cleanup and
+bounded diagnostics are retained in `trackpad-ledger-registration.kuxV9NjUQP`;
+the unchanged ledger requires another count attempt.

@@ -1,0 +1,12 @@
+[package]
+name = "protobuf_it"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+bytes = { version = "1.10", features = ["serde"] }
+protobuf = { version = "3.7", features = ["with-bytes"] }
+
+[build-dependencies]
+protobuf-codegen = { version = "3.7" }

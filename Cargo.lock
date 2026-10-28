@@ -5274,6 +5274,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "protobuf_it"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "protobuf",
+ "protobuf-codegen",
+]
+
+[[package]]
 name = "qoi"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -125,6 +125,7 @@ case "$#:${8:-}" in
             --config-options) RUST_TEST_PROFILE=config-options ;;
             --compression) RUST_TEST_PROFILE=compression ;;
             --file-logging) RUST_TEST_PROFILE=file-logging ;;
+            --protobuf-parser) RUST_TEST_PROFILE=protobuf-parser ;;
             *) exit 2 ;;
         esac
         ;;
@@ -963,9 +964,11 @@ import sys
 module = runpy.run_path(sys.argv[1])
 limits = module['storage_limits']
 gib = 1024 ** 3
+profile_cases = refusal_cases = 0
 for profile, memory, scratch, overlay in (
         ('standard', 2048, 16, 8),
         ('hbb-common-fs', 6144, 6, 4),
+        ('protobuf-parser', 2048, 4, 3),
         ('linux-logind', 8192, 7, 6),
         ('cpace-recovery-tests', 8192, 6, 4),
         ('installer-package', 4096, 6, 4),
@@ -998,6 +1001,7 @@ for profile, memory, scratch, overlay in (
         ('ledger-token-count', 2048, 4, 1)):
     if limits(profile, memory) != (scratch * gib, overlay * gib):
         raise SystemExit('VM storage profile limits differ')
+    profile_cases += 1
 for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 4096),
                         ('ledger-token-count', 8192), ('unknown', 2048),
                         ('linux-logind', 4096), ('linux-logind', 8193),
@@ -1015,6 +1019,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
                         ('authority-smoke', 2047), ('authority-smoke', 4096),
                         ('fixed-archive-tests', 2047), ('fixed-archive-tests', 4096),
                         ('media-kernel-tests', 2047), ('media-kernel-tests', 4096),
+                        ('protobuf-parser', 2047), ('protobuf-parser', 4096),
                         ('fusermount-process', 2047), ('fusermount-process', 4096),
                         ('linux-service-uid-tests', 2047), ('linux-service-uid-tests', 4096),
                         ('audio-buffer', 2047), ('audio-buffer', 4096),
@@ -1030,12 +1035,12 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
     try:
         limits(profile, memory)
     except ValueError:
-        pass
+        refusal_cases += 1
     else:
         raise SystemExit('VM storage profile accepted an invalid guest/profile')
 if module['HEADROOM'] != 6 * gib or module['OVERHEAD'] != gib:
     raise SystemExit('VM storage headroom or overhead differs')
-print('VM_TRANSIENT_PROFILE_LIMITS=pass profiles=30 refusals=54 ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
+print(f'VM_TRANSIENT_PROFILE_LIMITS=pass profiles={profile_cases} refusals={refusal_cases} ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
 cli = subprocess.run([sys.executable, '-B', '-I', '-S', sys.argv[1], 'preflight',
                       '--memory-mib', '10240', '--storage-profile', 'linux-flutter-suspend'],
                      capture_output=True, text=True, timeout=5, check=False)
@@ -3811,6 +3816,29 @@ run_focused_rust_tests() {
                 test::file_logging_retains_only_the_configured_archives
             )
         fi
+        if [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
+            memory=1536m
+            memory_bytes=1610612736
+            source_fingerprints+=(
+                libs/protobuf_it/Cargo.toml
+                libs/protobuf_it/build.rs
+                libs/protobuf_it/src/lib.rs
+                libs/protobuf_it/src/protobuf_tests.rs
+                libs/hbb_common/protos/message.proto
+                libs/hbb_common/protos/rendezvous.proto
+                libs/hbb_common/src/protos/mod.rs
+                libs/hbb_common/build.rs
+            )
+            required_tests=(
+                protobuf_tests::allocation_observer_counts_allocation_and_growth
+                protobuf_tests::valid_cpace_steps_preserve_exact_fields
+                protobuf_tests::valid_post_key_messages_preserve_exact_fields
+                protobuf_tests::unknown_groups_enforce_recursion_limit
+                protobuf_tests::nested_messages_share_the_recursion_budget
+                protobuf_tests::declared_lengths_cannot_exceed_available_bytes
+                protobuf_tests::malformed_wire_values_return_errors
+            )
+        fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             required_tests=(
                 test::test_get_version_number
@@ -5784,9 +5812,23 @@ run_focused_rust_tests() {
                 case "$RUST_TOOLCHAIN_MODE" in
                     archive)
                         mkdir /tmp/toolchain /tmp/rust
-                        tar -C /tmp/toolchain -xf /inputs/rust.tar.xz
-                        /tmp/toolchain/rust-1.75.0-x86_64-unknown-linux-gnu/install.sh \
-                            --prefix=/tmp/rust --disable-ldconfig >/dev/null
+                        if [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
+                            rust_archive_root=rust-1.75.0-x86_64-unknown-linux-gnu
+                            tar -C /tmp/toolchain -xf /inputs/rust.tar.xz \
+                                "$rust_archive_root/install.sh" "$rust_archive_root/components" \
+                                "$rust_archive_root/rust-installer-version" \
+                                "$rust_archive_root/rustc" "$rust_archive_root/cargo" \
+                                "$rust_archive_root/rust-std-x86_64-unknown-linux-gnu"
+                            "/tmp/toolchain/$rust_archive_root/install.sh" \
+                                --prefix=/tmp/rust --disable-ldconfig \
+                                --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu >/dev/null
+                            rm -rf -- /tmp/toolchain
+                            [ ! -e /tmp/toolchain ] && [ ! -L /tmp/toolchain ]
+                        else
+                            tar -C /tmp/toolchain -xf /inputs/rust.tar.xz
+                            /tmp/toolchain/rust-1.75.0-x86_64-unknown-linux-gnu/install.sh \
+                                --prefix=/tmp/rust --disable-ldconfig >/dev/null
+                        fi
                         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
                             rm -rf -- /tmp/toolchain
                             [ ! -e /tmp/toolchain ] && [ ! -L /tmp/toolchain ]
@@ -5815,12 +5857,18 @@ run_focused_rust_tests() {
                         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
                             python3 -I -S /source/scripts/run-linux-fuse-read-test.py
                         else
-                        cargo test --offline --locked -p hbb_common --lib --no-run \
+                        test_package=hbb_common
+                        if [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
+                            test_package=protobuf_it
+                            export CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 \
+                                CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
+                        fi
+                        cargo test --offline --locked -p "$test_package" --lib --no-run \
                             --message-format=json-render-diagnostics --color never \
                             >/cargo-target/hbb-common-build.json
                         test_executable="$(python3 -I -S \
                             /source/scripts/select-hbb-common-test-artifact.py \
-                            /cargo-target/hbb-common-build.json)"
+                            /cargo-target/hbb-common-build.json "$test_package")"
                         [ -f "$test_executable" ] && [ ! -L "$test_executable" ] \
                             && [ -x "$test_executable" ] \
                             && [ "$(stat -c "%u:%g:%h" -- "$test_executable")" = 1000:1000:1 ] \
@@ -5951,6 +5999,17 @@ run_focused_rust_tests() {
                             [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
                             if [ "$group_status" -ne 0 ]; then
                                 printf "FILE_LOGGING_ARTIFACT_STOP=observed sha256=%s status=%s unchanged=before-after\n" \
+                                    "$artifact_sha" "$group_status"
+                                exit "$group_status"
+                            fi
+                        elif [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
+                            group_status=0
+                            timeout --signal=TERM --kill-after=5s 20s \
+                                "$test_executable" protobuf_tests:: --color never --test-threads=1 --show-output \
+                                || group_status=$?
+                            [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                            if [ "$group_status" -ne 0 ]; then
+                                printf "PROTOBUF_PARSER_ARTIFACT_STOP=observed sha256=%s status=%s unchanged=before-after\n" \
                                     "$artifact_sha" "$group_status"
                                 exit "$group_status"
                             fi
@@ -6744,10 +6803,10 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             >"$output" 2>&1 || container_status=$?
     fi
     if [ "$container_status" -ne 0 ]; then
-        if [ "$RUST_TEST_PROFILE" = file-metadata ] || [ "$RUST_TEST_PROFILE" = config-options ]; then
+        if [ "$RUST_TEST_PROFILE" = file-metadata ] || [ "$RUST_TEST_PROFILE" = config-options ] || [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
             awk '/^HBB_COMMON_FS_ARTIFACT_START=observed / { runtime=1 }
                 runtime { if (++lines <= 2000) print; else exit 1 }' "$output" >&2 \
-                || fail 'file metadata failure diagnostics exceed their bound'
+                || fail 'focused shared-library failure diagnostics exceed their bound'
         fi
         if [ "$MODE" = hbb-common-fs ]; then
             awk '/^HBB_COMMON_FS_ARTIFACT_START=observed / { print; exit }' "$output" >&2 \
@@ -6835,6 +6894,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=12; fi
         if [ "$RUST_TEST_PROFILE" = compression ]; then expected_groups=2; fi
         if [ "$RUST_TEST_PROFILE" = file-logging ]; then expected_groups=1; fi
+        if [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then expected_groups=1; fi
         if [ "$RUST_TEST_PROFILE" = config-options ]; then expected_groups=7; fi
         if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then expected_groups=2; fi
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then expected_groups=2; fi
@@ -6866,8 +6926,10 @@ print(record["new_artifact_sha256"])
 PY
             )" || fail 'FUSE production read artifact receipt differs'
         else
+        local hbb_artifact_name=hbb_common
+        if [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then hbb_artifact_name=protobuf_it; fi
         mapfile -t hbb_artifact_receipts < <(
-            grep -E '^HBB_COMMON_FS_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/hbb_common-[0-9a-f]{16} unchanged=before-between-after$' "$output"
+            grep -E "^HBB_COMMON_FS_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/$hbb_artifact_name-[0-9a-f]{16} unchanged=before-between-after$" "$output"
         )
         [ "${#hbb_artifact_receipts[@]}" -eq 1 ] \
             && [ "$(grep -Fc 'HBB_COMMON_FS_ARTIFACT=' "$output")" -eq 1 ] \
@@ -7864,6 +7926,9 @@ PY
         elif [ "$RUST_TEST_PROFILE" = file-logging ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'file logging test total differs'
             grep -E '^test test::file_logging_[[:alnum:]_]+ [.][.][.] ok$|^FILE_LOG_(ROTATION|RETENTION)' "$output"
+        elif [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
+            [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'protobuf parser test total differs'
+            grep -E '^test protobuf_tests::[[:alnum:]_]+ [.][.][.] ok$' "$output"
         elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'send admission test total differs'
             [ "$(grep -Fxc 'SEND_READ_ALLOCATION=pass cases=3 refusals=3 state=preserved retries=exact eof=exact' "$output")" -eq 1 ] \
@@ -7912,6 +7977,10 @@ PY
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = file-logging ]; then
             printf 'FILE_LOGGING_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$hbb_test_artifact_sha" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
+            printf 'PROTOBUF_PARSER_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$hbb_test_artifact_sha" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = compression ]; then

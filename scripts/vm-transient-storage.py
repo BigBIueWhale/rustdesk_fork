@@ -22,8 +22,8 @@ OVERHEAD = GIB
 
 
 def storage_limits(profile, memory_mib):
-    if profile == 'media-kernel-tests':
-        require(memory_mib == 2048, 'media kernel fixture requires its 2 GiB guest')
+    if profile in ('media-kernel-tests', 'protobuf-parser'):
+        require(memory_mib == 2048, f'{profile} requires its 2 GiB guest')
         return 4 * GIB, 3 * GIB
     if profile in ('ledger-token-count', 'authority-smoke', 'fixed-archive-tests'):
         require(memory_mib == 2048, f'{profile} storage profile requires its 2 GiB guest')
@@ -451,7 +451,7 @@ def main():
                                  'linux-service-uid-tests', 'audio-buffer', 'audio-mailbox', 'file-block', 'control-egress', 'clipboard-response',
                                  'linux-service-receiver', 'linux-flutter-replay', 'installer-package',
                                  'android-storage-key', 'linux-flutter-suspend', 'media-kernel-tests',
-                                 'debian-package-tests'),
+                                 'debian-package-tests', 'protobuf-parser'),
                         default='standard')
     parser.add_argument('--workspace')
     parser.add_argument('--identity')

@@ -22,6 +22,8 @@ def select_artifact(output, package="hbb_common", source_root="/source"):
         manifest_package = "hbb_common"
         name, kind, source = "probe_client", ["example"], "../../examples/probe_client.rs"
         executable_dir = "/cargo-target/debug/examples"
+    elif package == "protobuf_it" and source_root == "/source":
+        name, kind, source = package, ["lib"], "src/lib.rs"
     elif package in ("hbb_common", "clipboard") and source_root in (
             "/source", "/cargo-target/fuse-test-source"):
         name, kind, source = package, ["lib"], "src/lib.rs"

@@ -69,7 +69,7 @@ case "$#:${1:-}" in
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'verifier-VM input/run overrides are lifecycle-internal' >&2; exit 2; }
         ;;
-    1:--hbb-common-fs|1:--linux-logind-tests|1:--linux-fuse-read-tests|1:--file-send-digest-tests|1:--file-metadata-tests|1:--writer-retirement-tests|1:--config-options-tests|1:--compression-tests|1:--file-logging-tests)
+    1:--hbb-common-fs|1:--linux-logind-tests|1:--linux-fuse-read-tests|1:--file-send-digest-tests|1:--file-metadata-tests|1:--writer-retirement-tests|1:--config-options-tests|1:--compression-tests|1:--file-logging-tests|1:--protobuf-parser-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'focused Rust-test input/run overrides are forbidden' >&2; exit 2; }
@@ -90,6 +90,8 @@ case "$#:${1:-}" in
             RUST_TEST_PROFILE=compression
         elif [ "$1" = --file-logging-tests ]; then
             RUST_TEST_PROFILE=file-logging
+        elif [ "$1" = --protobuf-parser-tests ]; then
+            RUST_TEST_PROFILE=protobuf-parser
         fi
         ;;
     2:--config-options-tests)
@@ -676,6 +678,7 @@ case "$#:${1:-}" in
         printf 'Shared and file-block decompression: %s --compression-tests\n' "${0##*/}" >&2
         printf 'Ordinary option persistence: %s --config-options-tests [--service-root]\n' "${0##*/}" >&2
         printf 'File log rotation and retention: %s --file-logging-tests\n' "${0##*/}" >&2
+        printf 'Generated protobuf parser limits: %s --protobuf-parser-tests\n' "${0##*/}" >&2
         printf 'Focused production clipboard tests: %s --android-rust-lifecycle-tests --clipboard\n' "${0##*/}" >&2
         printf 'Focused installer encoder/decoder tests: %s --installer-package-tests\n' "${0##*/}" >&2
         printf 'Closed main-IPC config query keys: %s --main-config-key-tests\n' "${0##*/}" >&2
@@ -974,7 +977,10 @@ elif [ "$MODE" = android-rust-target-check ]; then
     readonly OVERLAY_SIZE=40G
     readonly VM_MEMORY=16384
 elif [ "$MODE" = hbb-common-fs ]; then
-    if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
+    if [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
+        readonly VM_TIMEOUT_SECONDS=300
+        readonly VM_MEMORY=2048
+    elif [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
         readonly VM_TIMEOUT_SECONDS=300
         readonly VM_MEMORY=8192
     elif [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
@@ -4826,6 +4832,8 @@ elif [ "$MODE" = hbb-common-fs ]; then
         guest_invocation+=' --compression'
     elif [ "$RUST_TEST_PROFILE" = file-logging ]; then
         guest_invocation+=' --file-logging'
+    elif [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
+        guest_invocation+=' --protobuf-parser'
     elif [ "$RUST_TEST_PROFILE" = config-options ]; then
         guest_invocation+=' --config-options'
         if [ "$HBB_CONFIG_NATIVE" -eq 1 ]; then
@@ -6242,6 +6250,8 @@ elif [ "$MODE" = hbb-common-fs ]; then
         hbb_receipt_kind=COMPRESSION_VM
     elif [ "$RUST_TEST_PROFILE" = file-logging ]; then
         hbb_receipt_kind=FILE_LOGGING_VM
+    elif [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
+        hbb_receipt_kind=PROTOBUF_PARSER_VM
     fi
     if [ "$HBB_LOGIND_NATIVE" -eq 1 ]; then
         hbb_image_index=$DEV_CHECK_IMAGE_ID
@@ -6275,7 +6285,7 @@ elif [ "$MODE" = hbb-common-fs ]; then
             'DECOMPRESSION_INPUT=pass paths=2 sizes=3 healthy=6 refused=6 probe=SIGABRT children=joined' \
             'slice decoder existing input storage'
     fi
-    if [ "$HBB_LOGIND_NATIVE" -eq 0 ] && [ "$HBB_FUSE_READ_TESTS" -eq 0 ] && [ "$HBB_SEND_DIGEST_TESTS" -eq 0 ] && [ "$RUST_TEST_PROFILE" != file-metadata ] && [ "$RUST_TEST_PROFILE" != writer-retirement ] && [ "$RUST_TEST_PROFILE" != config-options ] && [ "$RUST_TEST_PROFILE" != compression ] && [ "$RUST_TEST_PROFILE" != file-logging ]; then
+    if [ "$HBB_LOGIND_NATIVE" -eq 0 ] && [ "$HBB_FUSE_READ_TESTS" -eq 0 ] && [ "$HBB_SEND_DIGEST_TESTS" -eq 0 ] && [ "$RUST_TEST_PROFILE" != file-metadata ] && [ "$RUST_TEST_PROFILE" != writer-retirement ] && [ "$RUST_TEST_PROFILE" != config-options ] && [ "$RUST_TEST_PROFILE" != compression ] && [ "$RUST_TEST_PROFILE" != file-logging ] && [ "$RUST_TEST_PROFILE" != protobuf-parser ]; then
         mapfile -t peer_probe_artifacts < <(
             /usr/bin/grep -Eo 'FILE_PEER_PROBE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/examples/probe_client-[0-9a-f]{16} tests=5 unchanged=before-after' "$SERIAL_LOG"
         )
@@ -8851,6 +8861,10 @@ elif [ "$MODE" = hbb-common-fs ]; then
             "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = file-logging ]; then
         printf 'FILE_LOGGING_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=2 artifact_sha256=%s scope=production-file-logger network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
+            "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
+    elif [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
+        printf 'PROTOBUF_PARSER_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=7 artifact_sha256=%s scope=generated-parser network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
             "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = compression ]; then

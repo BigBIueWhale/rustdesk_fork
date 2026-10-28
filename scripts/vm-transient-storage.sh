@@ -23,6 +23,8 @@ elif [ "${MODE:-}" = linux-service-uid-tests ]; then
     readonly VM_STORAGE_PROFILE=linux-service-uid-tests
 elif [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:installer-package ]; then
     readonly VM_STORAGE_PROFILE=installer-package
+elif [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = hbb-common-fs:protobuf-parser ]; then
+    readonly VM_STORAGE_PROFILE=protobuf-parser
 elif [ "${MODE:-}:${HBB_LOGIND_NATIVE:-}" = hbb-common-fs:1 ]; then
     readonly VM_STORAGE_PROFILE=linux-logind
 elif [ "${MODE:-}" = hbb-common-fs ] && [ "${HBB_LOGIND_NATIVE:-}" = 0 ] \

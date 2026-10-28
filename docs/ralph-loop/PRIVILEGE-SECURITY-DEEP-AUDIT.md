@@ -111574,3 +111574,39 @@ joins exit 0; RAM `run.znx048fs` and active owned run roots are absent. Every
 recorded endpoint delta is zero. Workload serial: 31,515 bytes, SHA-256
 `ade38922c3c38e76cdf596636d18b6ba97f4cb61d55332d625057c814e4957b7`.
 This audit-only receipt leaves the counted ledger and verifier bytes unchanged.
+
+### 2026-10-28 — generated protobuf parser runtime acceptance
+
+Previous turn is progress: `efeaf8e8` / `12ba0f84` correct and retain the exact
+scope of the protobuf version check. Tab overflow and the other explicit parks
+remain parked. The fifteen installed credential actions remain OPEN.
+
+This slice supplies direct generated-parser evidence missing from that review.
+`libs/protobuf_it` includes the actual hbb_common build script and generated-module
+loader, against the unchanged production schemas and locked protobuf/bytes
+dependencies. Its seven tests exercise four CPace steps, post-key byte and full
+u64 values, root and nested unknown groups around the default recursion limit,
+declared-length refusals, incomplete fixed-width/varint encodings, and invalid
+wire tags. A test-only thread-local allocator observes requests during malformed
+length parsing; every such refusal must request at most 4 KiB. A real allocation
+and growth control validates the observer. These parser tests do not confer
+handshake authority or establish transport, whole-process or concurrent-peer bounds.
+
+Design references: the primary wire-format description at
+https://protobuf.dev/programming-guides/encoding/ and the pinned runtime API at
+https://docs.rs/protobuf/3.7.2/protobuf/trait.Message.html#method.parse_from_bytes,
+checked against the actual vendored source. No dependency is added or updated;
+the lockfile adds only the local test package. Production behavior is unchanged.
+
+The focused `--protobuf-parser-tests` runner uses the shared VM admission,
+monitoring, locking and joined retirement. Its envelope is 2 GiB guest / 4 GiB
+RAM scratch / 3 GiB file ceiling, preserving 6 GiB headroom and 1 GiB overhead.
+The 1536-MiB nonroot networkless compiler container builds only the parser crate
+with two jobs; it extracts only the authenticated compiler, Cargo and host std
+components and retires installer scratch before compiling. The shared-library
+6-GiB guest was unnecessary for these parser-only tests and its 19-GiB total
+admission exceeded observed available RAM; it was not launched. Artifact
+selection checks exact package/source/executable identity and terminal build
+success; the seven-case inventory and before/after digest bind execution.
+Shell/Python/TOML syntax, exact inventory, lockfile preservation and whitespace
+review pass. Compilation and runtime results are pending the following run.

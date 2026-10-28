@@ -662,6 +662,115 @@ class _PrivilegeBoardState extends State<_PrivilegeBoard> {
 
 const double buttonBottomMargin = 8;
 
+class _CmAudioInputButton extends StatefulWidget {
+  final Client client;
+
+  const _CmAudioInputButton({Key? key, required this.client}) : super(key: key);
+
+  @override
+  State<_CmAudioInputButton> createState() => _CmAudioInputButtonState();
+}
+
+class _CmAudioInputButtonState extends State<_CmAudioInputButton> {
+  bool _pending = false;
+
+  Future<void> _selectDevice(TapDownDetails details, Client client,
+      CmVoiceCallOwner voiceOwner) async {
+    bool isCurrent() =>
+        mounted &&
+        identical(widget.client, client) &&
+        voiceOwner.id > 0 &&
+        voiceOwner.registryGeneration > 0 &&
+        voiceOwner.callId > 0 &&
+        client.id == voiceOwner.id &&
+        client.registryGeneration == voiceOwner.registryGeneration &&
+        client.voiceCallId == voiceOwner.callId &&
+        Provider.of<ServerModel>(context, listen: false)
+            .clients.any((current) => identical(current, client)) &&
+        !client.disconnected &&
+        !client.incomingVoiceCall &&
+        client.inVoiceCall;
+    if (_pending || !isCurrent()) return;
+    setState(() => _pending = true);
+    try {
+      final devicesInfo = await AudioInput.getDevicesInfo(true, true);
+      if (!isCurrent()) return;
+      final devices = devicesInfo.devices;
+      if (devices.isEmpty) {
+        msgBox(
+          gFFI.sessionId,
+          'custom-nocancel-info',
+          'Prompt',
+          'no_audio_input_device_tip',
+          '',
+          gFFI.dialogManager,
+        );
+        return;
+      }
+
+      final x = details.globalPosition.dx;
+      final y = details.globalPosition.dy;
+      final device = await showMenu<String>(
+        context: context,
+        position: RelativeRect.fromLTRB(x, y, x, y),
+        items: devices.entries
+            .map((d) => PopupMenuItem<String>(
+                  value: d.key,
+                  height: 18,
+                  padding: EdgeInsets.zero,
+                  child: Builder(
+                    builder: (menuContext) => IgnorePointer(
+                      child: RadioMenuButton(
+                        value: d.key,
+                        groupValue: devicesInfo.current,
+                        onChanged: (value) {
+                          if (value != null) Navigator.of(menuContext).pop(value);
+                        },
+                        child: Container(
+                          constraints: BoxConstraints(
+                              maxWidth:
+                                  kConnectionManagerWindowSizeClosedChat.width - 80),
+                          child: Text(
+                            d.value,
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ))
+            .toList(),
+      );
+      if (device == null || !isCurrent()) return;
+      await AudioInput.setDevice(device, true, true);
+    } catch (error) {
+      debugPrint('Failed to select CM audio input: $error');
+      if (isCurrent()) showToast(translate('Failed'));
+    } finally {
+      if (mounted) setState(() => _pending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final client = widget.client;
+    final voiceOwner = CmVoiceCallOwner(client);
+    return Opacity(
+      opacity: _pending ? 0.6 : 1,
+      child: AbsorbPointer(
+        absorbing: _pending,
+        child: _CmControlPanel.buildButton(context,
+            color: MyTheme.accent,
+            onTapDown: (details) => _selectDevice(details, client, voiceOwner),
+            icon: Icon(Icons.call_rounded, color: Colors.white, size: 14),
+            text: 'Audio input',
+            textColor: Colors.white),
+      ),
+    );
+  }
+}
+
 class _CmControlPanel extends StatelessWidget {
   final Client client;
 
@@ -686,102 +795,7 @@ class _CmControlPanel extends StatelessWidget {
           child: Row(
             children: [
               Expanded(
-                child: buildButton(context,
-                    color: MyTheme.accent,
-                    onClick: null, onTapDown: (details) async {
-                  bool isCurrent() =>
-                      context.mounted &&
-                      context.widget is _CmControlPanel &&
-                      identical(
-                          (context.widget as _CmControlPanel).client, client) &&
-                      voiceOwner.id > 0 &&
-                      voiceOwner.registryGeneration > 0 &&
-                      voiceOwner.callId > 0 &&
-                      client.id == voiceOwner.id &&
-                      client.registryGeneration == voiceOwner.registryGeneration &&
-                      client.voiceCallId == voiceOwner.callId &&
-                      Provider.of<ServerModel>(context, listen: false)
-                          .clients.any((current) => identical(current, client)) &&
-                      !client.disconnected &&
-                      !client.incomingVoiceCall &&
-                      client.inVoiceCall;
-                  if (!isCurrent()) return;
-                  AudioInputDevices devicesInfo;
-                  try {
-                    devicesInfo = await AudioInput.getDevicesInfo(true, true);
-                  } catch (error) {
-                    debugPrint('Failed to load CM audio inputs: $error');
-                    if (isCurrent()) showToast(translate('Failed'));
-                    return;
-                  }
-                  if (!isCurrent()) return;
-                  final devices = devicesInfo.devices;
-                  if (devices.isEmpty) {
-                    msgBox(
-                      gFFI.sessionId,
-                      'custom-nocancel-info',
-                      'Prompt',
-                      'no_audio_input_device_tip',
-                      '',
-                      gFFI.dialogManager,
-                    );
-                    return;
-                  }
-
-                  final currentDevice = devicesInfo.current;
-                  final x = details.globalPosition.dx;
-                  final y = details.globalPosition.dy;
-                  final position = RelativeRect.fromLTRB(x, y, x, y);
-                  Future<void> selectDevice(String device) async {
-                    if (!isCurrent()) return;
-                    try {
-                      await AudioInput.setDevice(device, true, true);
-                    } catch (error) {
-                      debugPrint('Failed to set CM audio input: $error');
-                      if (isCurrent()) showToast(translate('Failed'));
-                    }
-                  }
-                  showMenu(
-                    context: context,
-                    position: position,
-                    items: devices.entries
-                        .map((d) => PopupMenuItem<String>(
-                              value: d.key,
-                              height: 18,
-                              padding: EdgeInsets.zero,
-                              onTap: () => selectDevice(d.key),
-                              child: IgnorePointer(
-                                  child: RadioMenuButton(
-                                value: d.key,
-                                groupValue: currentDevice,
-                                onChanged: (v) {
-                                  if (v != null)
-                                    selectDevice(v);
-                                },
-                                child: Container(
-                                  child: Text(
-                                    d.value,
-                                    overflow: TextOverflow.ellipsis,
-                                    maxLines: 1,
-                                  ),
-                                  constraints: BoxConstraints(
-                                      maxWidth:
-                                          kConnectionManagerWindowSizeClosedChat
-                                                  .width -
-                                              80),
-                                ),
-                              )),
-                            ))
-                        .toList(),
-                  );
-                },
-                    icon: Icon(
-                      Icons.call_rounded,
-                      color: Colors.white,
-                      size: 14,
-                    ),
-                    text: "Audio input",
-                    textColor: Colors.white),
+                child: _CmAudioInputButton(client: client),
               ),
               Expanded(
                 child: buildButton(
@@ -867,7 +881,7 @@ class _CmControlPanel extends StatelessWidget {
     ).marginOnly(bottom: buttonBottomMargin);
   }
 
-  Widget buildButton(BuildContext context,
+  static Widget buildButton(BuildContext context,
       {required Color? color,
       GestureTapCallback? onClick,
       Widget? icon,

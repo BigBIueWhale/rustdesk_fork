@@ -283,6 +283,15 @@ TAB_SELECTION_SUITES = {
 }
 
 PEER_SEARCH_TESTS = {
+    "bulk favorite pending save admits once and retires its selection",
+    *{f"bulk favorite {replacement} completion preserves replacement"
+      for replacement in ("new-selection", "tab-round-trip")},
+    *{f"bulk favorite {failure} failure preserves selection and retries"
+      for failure in ("sync", "async")},
+    *{f"bulk favorite {retirement}-retired callback refuses dispatch"
+      for retirement in ("page", "selection")},
+    *{f"bulk favorite {outcome} after page retirement has no feedback"
+      for outcome in ("success", "failure")},
     *{f"peer {tab} {case}"
       for tab in ("recent", "fav")
       for case in ("initial filtering renders without a waiting frame",

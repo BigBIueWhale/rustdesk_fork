@@ -15,6 +15,14 @@ import 'package:flutter_hbb/models/peer_model.dart';
 import 'package:flutter_hbb/models/peer_tab_model.dart';
 import 'package:flutter_hbb/models/state_model.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+
+class _FavoriteCall {
+  _FavoriteCall(List<String> ids, this.favorite) : ids = List.of(ids);
+  final List<String> ids;
+  final bool favorite;
+  final result = Completer<void>();
+}
 
 class _Binding implements RustdeskImpl {
   String layout = '';
@@ -23,6 +31,23 @@ class _Binding implements RustdeskImpl {
   final writes = <String>[];
   Future<String> Function(String)? save;
   bool fixed = false;
+  final favoriteCalls = <_FavoriteCall>[];
+  bool failFavoriteSynchronously = false;
+
+  @override
+  Future<void> mainSetFavorites(
+      {required List<String> ids, required bool favorite, dynamic hint}) {
+    if (failFavoriteSynchronously) throw StateError('favorite request refused');
+    final call = _FavoriteCall(ids, favorite);
+    favoriteCalls.add(call);
+    return call.result.future;
+  }
+
+  @override
+  Future<void> mainLoadRecentPeers({dynamic hint}) async {}
+
+  @override
+  Future<void> mainLoadFavPeers({dynamic hint}) async {}
 
   @override
   bool mainIsOptionFixed({required String key, dynamic hint}) => fixed;
@@ -107,6 +132,58 @@ Future<void> _withPeers(WidgetTester tester, PeerTabIndex tab,
     ));
     await body(owner, activated);
   } finally {
+    await tester.pumpWidget(const SizedBox.shrink());
+    owner.dispose();
+  }
+}
+
+class _BulkFavoriteHarness {
+  _BulkFavoriteHarness(this.binding);
+  final _Binding binding;
+  final owner = _PeerOwner();
+  final submissions = <Future<void>>[];
+  late StateSetter rebuild;
+  bool visible = true;
+
+  void select(String id) {
+    owner.peerTabModel.setMultiSelectionMode(false);
+    owner.peerTabModel.setMultiSelectionMode(true);
+    owner.peerTabModel.select(Peer.fromJson({'id': id}));
+  }
+
+  Future<void> mount(WidgetTester tester) async {
+    installPeerSearchProbeOwner(owner);
+    select('192.0.2.10');
+    await tester.pumpWidget(MaterialApp(
+      navigatorKey: globalKey,
+      theme: MyTheme.lightTheme,
+      home: Scaffold(body: StatefulBuilder(builder: (context, setState) {
+        rebuild = setState;
+        return visible
+            ? ChangeNotifierProvider<PeerTabModel>.value(
+                value: owner.peerTabModel, child: const PeerTabPage())
+            : const Text('Replacement page');
+      })),
+    ));
+    await tester.pumpAndSettle();
+  }
+
+  VoidCallback action(WidgetTester tester) => tester.widget<InkWell>(
+      find.descendant(of: find.byTooltip('Add to Favorites'),
+          matching: find.byType(InkWell))).onTap!;
+
+  Future<void> submit(VoidCallback callback) {
+    final result = Future<void>.sync(() => (callback as dynamic)());
+    submissions.add(result);
+    return result;
+  }
+
+  Future<void> drain(WidgetTester tester) async {
+    for (final call in binding.favoriteCalls) {
+      if (!call.result.isCompleted) call.result.complete();
+    }
+    await Future.wait(submissions);
+    await tester.pump(const Duration(seconds: 4));
     await tester.pumpWidget(const SizedBox.shrink());
     owner.dispose();
   }
@@ -212,6 +289,158 @@ void main() {
     peerSearchText.value = '';
     stateGlobal.isPortrait.value = false;
   });
+
+
+  testWidgets('bulk favorite pending save admits once and retires its selection',
+      (tester) async {
+    final harness = _BulkFavoriteHarness(binding);
+    try {
+      await harness.mount(tester);
+      final original = harness.owner.peerTabModel.captureSelection();
+      final callback = harness.action(tester);
+      final pending = harness.submit(callback);
+      await tester.pump();
+      harness.rebuild(() {});
+      await tester.pump();
+      final duplicate = harness.submit(callback);
+      await tester.pump();
+      expect(binding.favoriteCalls, hasLength(1));
+      expect(binding.favoriteCalls.single.ids, ['192.0.2.10']);
+      expect(binding.favoriteCalls.single.favorite, isTrue);
+      expect(original.isCurrent, isTrue);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(tester.widget<InkWell>(find.descendant(
+          of: find.byTooltip('Add to Favorites'),
+          matching: find.byType(InkWell))).onTap, isNull);
+      binding.favoriteCalls.single.result.complete();
+      await Future.wait([pending, duplicate]);
+      await tester.pump();
+      expect(harness.owner.peerTabModel.multiSelectionMode, isFalse);
+      expect(harness.owner.peerTabModel.selectedPeers, isEmpty);
+      expect(find.text('Successful'), findsOneWidget);
+    } finally {
+      await harness.drain(tester);
+    }
+  });
+
+  for (final replacement in ['new-selection', 'tab-round-trip']) {
+    testWidgets('bulk favorite $replacement completion preserves replacement',
+        (tester) async {
+      final harness = _BulkFavoriteHarness(binding);
+      try {
+        await harness.mount(tester);
+        final pending = harness.submit(harness.action(tester));
+        if (replacement == 'tab-round-trip') {
+          harness.owner.peerTabModel.setCurrentTab(PeerTabIndex.fav.index);
+          harness.owner.peerTabModel.setCurrentTab(PeerTabIndex.recent.index);
+        }
+        harness.select('192.0.2.20');
+        await tester.pump();
+        binding.favoriteCalls.single.result.complete();
+        await pending;
+        await tester.pump();
+        expect(binding.favoriteCalls.single.ids, ['192.0.2.10']);
+        expect(harness.owner.peerTabModel.selectedPeers.map((peer) => peer.id),
+            ['192.0.2.20']);
+        expect(harness.owner.peerTabModel.multiSelectionMode, isTrue);
+        expect(find.text('Successful'), findsNothing);
+        final next = harness.submit(harness.action(tester));
+        expect(binding.favoriteCalls, hasLength(2));
+        expect(binding.favoriteCalls.last.ids, ['192.0.2.20']);
+        binding.favoriteCalls.last.result.complete();
+        await next;
+        await tester.pump();
+        expect(harness.owner.peerTabModel.selectedPeers, isEmpty);
+      } finally {
+        await harness.drain(tester);
+      }
+    });
+  }
+
+  for (final failure in ['sync', 'async']) {
+    testWidgets('bulk favorite $failure failure preserves selection and retries',
+        (tester) async {
+      final harness = _BulkFavoriteHarness(binding);
+      try {
+        await harness.mount(tester);
+        binding.failFavoriteSynchronously = failure == 'sync';
+        final failed = harness.submit(harness.action(tester));
+        if (failure == 'async') {
+          binding.favoriteCalls.single.result.completeError(StateError('save refused'));
+        }
+        await failed;
+        await tester.pump();
+        expect(harness.owner.peerTabModel.selectedPeers.single.id, '192.0.2.10');
+        expect(harness.owner.peerTabModel.multiSelectionMode, isTrue);
+        expect(find.text('Failed'), findsOneWidget);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        await tester.pump(const Duration(seconds: 4));
+        binding.failFavoriteSynchronously = false;
+        final retried = harness.submit(harness.action(tester));
+        expect(binding.favoriteCalls.last.ids, ['192.0.2.10']);
+        binding.favoriteCalls.last.result.complete();
+        await retried;
+        await tester.pump();
+        expect(harness.owner.peerTabModel.selectedPeers, isEmpty);
+        expect(find.text('Successful'), findsOneWidget);
+      } finally {
+        await harness.drain(tester);
+      }
+    });
+  }
+
+  for (final retirement in ['page', 'selection']) {
+    testWidgets('bulk favorite $retirement-retired callback refuses dispatch',
+        (tester) async {
+      final harness = _BulkFavoriteHarness(binding);
+      try {
+        await harness.mount(tester);
+        final callback = harness.action(tester);
+        if (retirement == 'page') {
+          harness.rebuild(() => harness.visible = false);
+        } else {
+          harness.select('192.0.2.20');
+        }
+        await tester.pump();
+        final late = harness.submit(callback);
+        await tester.pump();
+        expect(binding.favoriteCalls, isEmpty);
+        await late;
+      } finally {
+        await harness.drain(tester);
+      }
+    });
+  }
+
+  for (final outcome in ['success', 'failure']) {
+    testWidgets('bulk favorite $outcome after page retirement has no feedback',
+        (tester) async {
+      final harness = _BulkFavoriteHarness(binding);
+      try {
+        await harness.mount(tester);
+        final pending = harness.submit(harness.action(tester));
+        harness.rebuild(() => harness.visible = false);
+        await tester.pump();
+        harness.select('192.0.2.20');
+        final call = binding.favoriteCalls.single;
+        if (outcome == 'success') {
+          call.result.complete();
+        } else {
+          call.result.completeError(StateError('late save refusal'));
+        }
+        await pending;
+        await tester.pump();
+        expect(call.ids, ['192.0.2.10']);
+        expect(harness.owner.peerTabModel.selectedPeers.single.id, '192.0.2.20');
+        expect(find.text('Replacement page'), findsOneWidget);
+        expect(find.text('Successful'), findsNothing);
+        expect(find.text('Failed'), findsNothing);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await harness.drain(tester);
+      }
+    });
+  }
 
   for (final tab in PeerTabIndex.values) {
     testWidgets('peer ${tab.name} initial filtering renders without a waiting frame',

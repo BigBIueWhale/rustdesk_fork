@@ -110478,3 +110478,73 @@ device/installed LPE, settings, R-F5 recovery/soak and release obligations remai
 OPEN. The ledger's old console-only retention paragraph is replaced with this
 current contract; original historical evidence stays in Git and retained files.
 A fresh ledger count follows.
+
+## 2026-10-28 — user pivot; automatic language selection
+
+The user explicitly requested another aspect. VM output-finality follow-up is
+OPEN/PARKED; no further protocol changes or replays were made. The already-owned
+`lEfIQRShqV` run has a retained guest pass, seventeen transport cases, supervisor
+exit 0 and joined cleanup. Its QEMU 193635, RAM `run.q58xw4zi` and active run
+roots are absent. Workload archive: 20,301 bytes, SHA-256
+`3e6ba5d856abdb6c75ebdc43c26fb7bb29baa050f8022decceb15c3fad1e5e77`.
+The original host command's terminal result was not recovered after compaction;
+the retained guest/cleanup receipts are the evidence stated here. The prior
+ledger's older-source output paragraph remains historical; final reconciliation
+is parked. CLI/native handoff and every other prior user park remain parked.
+
+The current service-authority checklist still requires installed/native evidence
+for all fifteen R-S11ia–io actions, including allowed/refused principals, exact
+identity, settings effects, restart and finality. This language fix changes no
+privileged operation or configuration writer and closes none of those obligations.
+
+At parent `65b98230`, `src/lang.rs::translate_locale` selects Traditional Chinese
+only when the entire lowercased locale contains `tw`. Source therefore selects
+Simplified Chinese for `zh-Hant`, `zh-HK` and `zh-MO`, Traditional Chinese for
+`zh-Hans-TW`, and lets private-extension `tw` text affect the choice. The live
+Flutter path passes `Platform.localeName` through `platformFFI.translate`.
+The standalone Rust wrapper uses `sys_locale` on desktop. Neither OS acquisition
+path was executed in this slice; the old behavior is established by source review,
+not a claimed before-artifact runtime result.
+
+Primary research: [Unicode CLDR locale matching and likely subtags](https://www.unicode.org/reports/tr35/tr35.html)
+distinguishes Hans/Hant and maps unspecified-script HK/MO/TW to Hant; explicit
+fields are preserved. [Android Locale.toString](https://developer.android.com/reference/java/util/Locale#toString())
+documents the country/variant followed by `_#` script format. The design implication
+is to parse the actual script and region fields, with an explicit script taking
+precedence, while retaining the user's configured app language as the first choice.
+
+Correction `5334ae6244048400163fa56e432a9896be75ca41`, tree
+`a01dfaa3435a6586324b4da997967661f647dd2a`, replaces the substring selector with
+`src/lang_locale.rs::select_language`. The pure helper handles BCP47/underscore
+forms, Java script suffixes and POSIX codeset/modifier suffixes. Only script and
+region positions affect Chinese selection; extensions do not. Translation tables,
+keys, placeholders, English fallback and configured-language persistence are
+unchanged. The helper is outside `src/lang/*.rs` because `res/lang.py` rewrites
+that glob as translation tables. No dependency is added.
+
+`/bin/bash scripts/smoke-verifier-vm-authority.sh --language-selection-tests`
+passes at that source in run `K1DkIVObf0`: six exact named tests, 46 examples,
+zero failures/ignored/filtered tests. `scripts/test-language-selection.rs` includes
+the actual production helper; Rust 1.75.0 compiles and executes it in the existing
+authenticated, zero-NIC VM/nonroot networkless container. Source fingerprints and
+artifact bytes are checked before/after. Artifact SHA-256:
+`d4f0783061cf4ee285adbea55f97b38ba25805dc85c2e0ed754cc63c6c52e374`.
+All six names appear in the 1,578-byte workload archive, SHA-256
+`f48385d5dda51073339265990fccd0271ff7cea5d69f59586562ef6ed7f2acd9`.
+The 65,614-byte console archive has SHA-256
+`522b3665e2ae7363e08b8e3dc649e991e3f8ebacd38cd8725c8d736b621a56bb`.
+Files use `android-rust-lifecycle-tests[-console]-run.K1DkIVObf0` prefixes under
+`.harness-state/verifier-vm/` alongside exact storage and listener receipts.
+
+Outer command exits 0 in 61 seconds; storage supervisor observes 64.663 seconds.
+Admission uses 2 GiB guest, 6 GiB RAM scratch, 4 GiB file ceiling, 6 GiB host
+headroom and 1 GiB overhead with the shared monitor and exact-run lock. RAM scratch
+peaks at 3,337,535,488 bytes and durable-run storage at 3,383,296 bytes. QEMU 215701
+joins exit 0; its PID, RAM `run.ldlf3df7` and active owned roots are absent. The
+final listener snapshot has one 18-byte unattributed endpoint addition; no owner
+was inspected or changed. Host IP sockets remain denied by the harness boundary.
+Shell syntax, Python AST inspection and whitespace review pass. The full app,
+configuration/FFI integration, OS locale acquisition, rendered translations and
+other platforms did not run. R-S0/R-F5, native installed authority, release and
+independent review remain OPEN. The ledger records this exact component result;
+a fresh count follows.

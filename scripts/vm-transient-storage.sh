@@ -45,6 +45,7 @@ elif [[ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:connect-pass
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:virtual-mouse-buttons \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:virtual-joystick \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:floating-position \
+    || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:screenshot-save \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:clipboard-keystrokes \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:file-search \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:audio-input \

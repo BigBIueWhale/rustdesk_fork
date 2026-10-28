@@ -7,6 +7,7 @@ import 'package:flutter_hbb/generated_bridge.dart';
 import 'package:flutter_hbb/models/native_model.dart';
 import 'package:flutter_hbb/models/server_model.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 
 final _inputs = [
   SoundInput(id: 'mic-a', label: 'Microphone A'),
@@ -64,23 +65,35 @@ Client _client() =>
       ..voiceCallId = 3
       ..inVoiceCall = true;
 
+class _Registry extends ChangeNotifier implements ServerModel {
+  @override
+  final clients = <Client>[];
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 class _Harness {
   final binding = _Binding();
+  final registry = _Registry();
   Client client = _client();
   bool visible = true;
   late StateSetter rebuild;
 
   Future<void> mount(WidgetTester tester) async {
     installCmAudioProbeBinding(binding);
+    registry.clients.add(client);
     await tester.pumpWidget(MaterialApp(
       navigatorKey: globalKey,
       theme: MyTheme.lightTheme,
-      home: Scaffold(body: Center(child: SizedBox(width: 320,
-        child: StatefulBuilder(builder: (context, setState) {
-          rebuild = setState;
-          return visible ? buildCmAudioProbePanel(client)
-              : const Text('Replacement panel');
-        }),
+      home: Scaffold(body: Center(child: SizedBox(width: 600,
+        child: ChangeNotifierProvider<ServerModel>.value(value: registry,
+          child: StatefulBuilder(builder: (context, setState) {
+            rebuild = setState;
+            return visible ? buildCmAudioProbePanel(client)
+                : const Text('Replacement panel');
+          }),
+        ),
       ))),
     ));
     await tester.pumpAndSettle();
@@ -112,7 +125,10 @@ class _Harness {
           break;
         case 'registry': client.registryGeneration++; break;
         case 'client-id': client.id++; break;
-        case 'client': client = _client(); break;
+        case 'client':
+          client = _client();
+          registry.clients..clear()..add(client);
+          break;
         case 'page': visible = false; break;
         case 'ended': client.inVoiceCall = false; client.voiceCallId = 0; break;
       }
@@ -131,6 +147,7 @@ class _Harness {
     await tester.pump(const Duration(seconds: 4));
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();
+    registry.dispose();
   }
 }
 
@@ -284,17 +301,52 @@ void main() {
   });
 
   testWidgets('audio CM picker refuses missing call authority', (tester) async {
-    for (final field in ['id', 'registry', 'call', 'negative-call']) {
+    for (final field in ['id', 'registry', 'call', 'negative-call', 'incoming']) {
       final h = _Harness();
       if (field == 'id') h.client.id = 0;
       if (field == 'registry') h.client.registryGeneration = 0;
       if (field == 'call') h.client.voiceCallId = 0;
       if (field == 'negative-call') h.client.voiceCallId = -1;
+      if (field == 'incoming') h.client.incomingVoiceCall = true;
       try {
         await h.mount(tester);
         await h.open(tester);
         expect(h.binding.reads, isEmpty, reason: field);
         expect(h.binding.writes, isEmpty);
+      } finally { await h.finish(tester); }
+    }
+  });
+
+  testWidgets('audio CM picker checks registry replacement before the next frame',
+      (tester) async {
+    for (final stage in ['opener', 'read', 'selection', 'failure']) {
+      final h = _Harness();
+      try {
+        await h.mount(tester);
+        final open = h.opener(tester);
+        if (stage == 'read') await h.open(tester);
+        if (stage == 'selection' || stage == 'failure') await h.menu(tester);
+        if (stage == 'failure') {
+          await tester.tap(find.text('Microphone B'));
+          await tester.pump();
+        }
+        h.registry.clients..clear()..add(_client()..registryGeneration = 99);
+        if (stage == 'opener') {
+          open(TapDownDetails(globalPosition: const Offset(100, 100)));
+          expect(h.binding.reads, isEmpty);
+        } else if (stage == 'read') {
+          h.binding.reads.single.complete(_inputs);
+          await tester.pumpAndSettle();
+          expect(find.text('Microphone B'), findsNothing);
+        } else if (stage == 'selection') {
+          await tester.tap(find.text('Microphone B'));
+        } else {
+          h.binding.writes.single.result.completeError(StateError('retired owner'));
+        }
+        await tester.pumpAndSettle();
+        expect(h.binding.writes, hasLength(stage == 'failure' ? 1 : 0));
+        expect(find.text('Failed'), findsNothing);
+        expect(tester.takeException(), isNull);
       } finally { await h.finish(tester); }
     }
   });

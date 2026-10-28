@@ -1377,6 +1377,7 @@ AUDIO_INPUT_SUITES = {
         'audio CM picker reports current write failure and allows retry',
         'audio CM picker drains old write failures without replacement feedback',
         'audio CM picker refuses missing call authority',
+        'audio CM picker checks registry replacement before the next frame',
     },
     "setting_option_mutation_test.dart": {
         name for name in SETTING_OPTION_TESTS if name.startswith("audio ")

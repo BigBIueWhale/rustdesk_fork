@@ -725,7 +725,12 @@ class _CmControlPanel extends StatelessWidget {
                   final position = RelativeRect.fromLTRB(x, y, x, y);
                   Future<void> selectDevice(String device) async {
                     if (!isCurrent()) return;
-                    await AudioInput.setDevice(device, true, true);
+                    try {
+                      await AudioInput.setDevice(device, true, true);
+                    } catch (error) {
+                      debugPrint('Failed to set CM audio input: $error');
+                      if (isCurrent()) showToast(translate('Failed'));
+                    }
                   }
                   showMenu(
                     context: context,

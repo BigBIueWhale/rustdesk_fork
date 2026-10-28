@@ -10,7 +10,7 @@ final _duplicates = [
 ];
 
 Widget _picker(AudioInputDeviceLoader load, AudioInputDeviceWriter write) =>
-    MaterialApp(home: Scaffold(body: SizedBox(
+    MaterialApp(theme: MyTheme.lightTheme, home: Scaffold(body: SizedBox(
       width: 360,
       child: AudioInput(
         isCm: false,
@@ -128,4 +128,3 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 }
-

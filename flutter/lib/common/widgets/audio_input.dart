@@ -71,15 +71,10 @@ class AudioInput extends StatefulWidget {
 
   static Future<void> setDevice(
       String device, bool isCm, bool isVoiceCall) async {
-    try {
-      if (isVoiceCall) {
-        await bind.setVoiceCallInputDevice(isCm: isCm, device: device);
-      } else {
-        await mainSetOption('audio-input', device);
-      }
-    } catch (error) {
-      debugPrint('Failed to set audio input: $error');
-      showToast(translate('Failed'));
+    if (isVoiceCall) {
+      await bind.setVoiceCallInputDevice(isCm: isCm, device: device);
+    } else {
+      await bind.mainSetOption(key: 'audio-input', value: device);
     }
   }
 
@@ -102,6 +97,7 @@ class _AudioInputState extends State<AudioInput> {
   Object? _readToken;
   bool _readPending = false;
   bool _writePending = false;
+  bool _writeFailed = false;
 
   Future<AudioInputDevices> _readDevices() {
     final token = Object();
@@ -129,7 +125,10 @@ class _AudioInputState extends State<AudioInput> {
         oldWidget.isVoiceCall != widget.isVoiceCall ||
         oldWidget.loadDevicesInfo != widget.loadDevicesInfo ||
         oldWidget.writeDevice != widget.writeDevice;
-    if (ownerChanged) _owner = Object();
+    if (ownerChanged) {
+      _owner = Object();
+      _writeFailed = false;
+    }
     if (ownerChanged || (!_readPending && !_writePending)) {
       _devices = _readDevices();
     }
@@ -161,7 +160,8 @@ class _AudioInputState extends State<AudioInput> {
             crossAxisAlignment: WrapCrossAlignment.center,
             spacing: 8,
             children: [
-              Text(widget.failureText ?? translate('Failed')),
+              if (!_writeFailed)
+                Text(widget.failureText ?? translate('Failed')),
               TextButton(
                 onPressed: () {
                   if (!mounted ||
@@ -186,14 +186,24 @@ class _AudioInputState extends State<AudioInput> {
               _writePending ||
               !identical(owner, _owner) ||
               !identical(read, _devices)) return;
-          setState(() { _writePending = true; });
+          setState(() {
+            _writePending = true;
+            _writeFailed = false;
+          });
+          var failed = false;
           try {
             await write(device, isCm, isVoiceCall);
+          } catch (error) {
+            debugPrint('Failed to set audio input: $error');
+            failed = true;
           } finally {
             if (mounted) {
               setState(() {
                 _writePending = false;
-                if (identical(owner, _owner)) _devices = _readDevices();
+                if (identical(owner, _owner)) {
+                  _writeFailed = failed;
+                  _devices = _readDevices();
+                }
               });
             }
           }
@@ -201,6 +211,8 @@ class _AudioInputState extends State<AudioInput> {
       },
     );
     return Column(mainAxisSize: MainAxisSize.min, children: [
+      if (_writeFailed)
+        Text(widget.failureText ?? translate('Failed')),
       if (_writePending)
         const SizedBox(height: 2, child: LinearProgressIndicator()),
       AbsorbPointer(absorbing: _writePending, child: controls),

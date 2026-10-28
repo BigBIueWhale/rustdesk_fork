@@ -17,6 +17,8 @@ pub(super) fn select_language(configured: &str, locale: &str) -> String {
         return match language {
             "ka" => "ge",
             "kk" => "kz",
+            "iw" => "he",
+            "in" => "id",
             _ => language,
         }
         .to_owned();

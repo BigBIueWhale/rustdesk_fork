@@ -113811,3 +113811,19 @@ admit. The ledger now states that distinction. No resource threshold, isolation
 rule or native receiver changed. The unapplied patch in the preparation capsule
 remains historical provenance; its next-action text is superseded by this entry.
 Source diff checks pass; a fresh ledger count follows when admitted.
+
+The smaller count profile admits source `c78ef306` and completes run
+`EN51On6VXz` in 28 outer seconds: **355,802 tokens / 1,626,216 bytes**,
+ledger SHA-256 `ab9dbdb2ff7e1d38afe18de62068d54a208711ab7a1c4c14c47d1a93f20c354a`.
+Seven tokenizer controls, complete byte round trip and nine native cache-admission
+cases pass. This executes no product or Flutter test. QEMU 2832802 joins exit 0;
+RAM `run.xcn9qm1a` and active owned run roots are absent. Scratch/overlay/durable
+peaks are 402,337,792 / 305,795,072 / 262,144 bytes. The final endpoint inventory
+contains one unattributed addition, which remains untouched. Result serial is
+34,062 bytes, SHA-256
+`f2346b702d0252499c2929eec18b38751c26965abf2e9cb3d500e361b12cf444`;
+console is 65,535 bytes, SHA-256
+`7482475ecfbcf35ec449c444a9ded6c2039f8abdba01ecddbabd9fd2ae5fa45b`.
+The subsequent available-memory read is 14,264,112 KiB, still below the audio
+profile's 14,592 MiB admission. No new audio launch follows. Only this audit
+receipt changes after the count; keyboard behavioral acceptance remains OPEN.

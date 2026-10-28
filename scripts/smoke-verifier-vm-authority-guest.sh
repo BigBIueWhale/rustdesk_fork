@@ -1060,6 +1060,7 @@ special = {mode: mode for mode in ('ledger-token-count', 'cpace-recovery-tests',
                                   'fixed-archive-tests', 'debian-package-tests')}
 special.update({'authority-smoke': 'authority-smoke', 'dependency-inventory': 'authority-smoke',
                 'debian-maintainer-tests': 'authority-smoke',
+                'android-runtime-log-tests': 'authority-smoke',
                 'linux-pa-authority-tests': 'linux-parent-libtest',
                 'android-frame-tests': 'x11-focus'})
 cases = [(mode, {}, special.get(mode, 'standard')) for mode in sorted(modes)]

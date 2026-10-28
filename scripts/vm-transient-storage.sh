@@ -13,7 +13,7 @@ elif [ "${MODE:-}" = debian-package-tests ]; then
 elif [ "${MODE:-}" = media-kernel-tests ]; then
     readonly VM_STORAGE_PROFILE=media-kernel-tests
 elif [ "${MODE:-}" = authority-smoke ] || [ "${MODE:-}" = dependency-inventory ] \
-    || [ "${MODE:-}" = debian-maintainer-tests ]; then
+    || [ "${MODE:-}" = debian-maintainer-tests ] || [ "${MODE:-}" = android-runtime-log-tests ]; then
     readonly VM_STORAGE_PROFILE=authority-smoke
 elif [ "${MODE:-}:${REQUEST:-}" = transaction:--maintenance-stage-xrandr-runtime-candidate ]; then
     readonly VM_STORAGE_PROFILE=xrandr-acquisition
@@ -119,7 +119,7 @@ else
     case "${MODE:-}" in
         android-emulator-app|android-emulator-boot|android-emulator-runtime|\
         android-execution-probe|android-owner-tests|android-peer-build|\
-        android-runtime-log-tests|android-rust-lifecycle-tests|android-rust-target-check|\
+        android-rust-lifecycle-tests|android-rust-target-check|\
         apple-conform|cm-file-replay|dart-audit|debian-elf-role-tests|\
         debian-polkit-tests|debian-systemd-lifecycle|\
         flutter-model-tests|flutter-peer-presentation|\

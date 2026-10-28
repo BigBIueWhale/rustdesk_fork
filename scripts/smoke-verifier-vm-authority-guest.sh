@@ -977,7 +977,7 @@ for profile, memory, scratch, overlay in (
         ('flutter-credential-dialog', 4096, 7, 6),
         ('flutter-locales', 2048, 6, 5),
         ('flutter-divider', 2048, 6, 5),
-        ('flutter-file-columns', 2048, 6, 5),
+        ('flutter-file-columns', 2560, 6, 5),
         ('flutter-dialog-tests', 3072, 7, 6),
         ('flutter-keyboard-layout', 3072, 7, 6),
         ('linux-service-build', 8192, 7, 6),
@@ -1031,7 +1031,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
                         ('protobuf-parser', 2047), ('protobuf-parser', 4096),
                         ('flutter-locales', 2047), ('flutter-locales', 4096),
                         ('flutter-divider', 2047), ('flutter-divider', 4096),
-                        ('flutter-file-columns', 2047), ('flutter-file-columns', 4096),
+                        ('flutter-file-columns', 2048), ('flutter-file-columns', 3072),
                         ('tcp-key-transition', 4095), ('tcp-key-transition', 6144),
                         ('fusermount-process', 2047), ('fusermount-process', 4096),
                         ('linux-service-uid-tests', 2047), ('linux-service-uid-tests', 4096),
@@ -11040,8 +11040,8 @@ run_flutter_model_tests() {
             result_prefix=FLUTTER_PEER_DATA_TEST_JSON
             expected_result='suites=5 tests=94'
         elif [ "$FLUTTER_TEST_PROFILE" = file-columns ]; then
-            memory=1280m
-            memory_bytes=1342177280
+            memory=1792m
+            memory_bytes=1879048192
             result_prefix=FLUTTER_FILE_COLUMNS_TEST_JSON
             expected_result='suites=1 tests=13'
         elif [ "$FLUTTER_TEST_PROFILE" = file-search ]; then
@@ -11406,6 +11406,8 @@ run_flutter_model_tests() {
                         printf "FLUTTER_AUTO_DISCONNECT_STAGE=%s seconds=%s\n" "$1" "$SECONDS"
                     elif [ "$FLUTTER_TEST_PROFILE" = file-progress ]; then
                         printf "FLUTTER_FILE_PROGRESS_STAGE=%s seconds=%s\n" "$1" "$SECONDS"
+                    elif [ "$FLUTTER_TEST_PROFILE" = file-columns ]; then
+                        printf "FLUTTER_FILE_COLUMNS_STAGE=%s seconds=%s\n" "$1" "$SECONDS"
                     fi
                 }
                 file_navigation_stage extract-toolchains

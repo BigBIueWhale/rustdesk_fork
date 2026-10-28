@@ -49,7 +49,7 @@ def storage_limits(profile, memory_mib):
         # Flutter-only component: no Rust/LLVM extraction or bridge generation.
         return 6 * GIB, 5 * GIB
     if profile == 'flutter-file-columns':
-        require(memory_mib == 2048, 'file-column tests require their 2 GiB guest')
+        require(memory_mib == 2560, 'file-column tests require their 2.5 GiB guest')
         # Generate the bridge with selected toolchain components; no Rust compilation.
         return 6 * GIB, 5 * GIB
     if profile == 'flutter-credential-dialog':

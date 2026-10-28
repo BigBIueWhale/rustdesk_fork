@@ -112700,3 +112700,14 @@ product build or host product execution is needed. Shell syntax and whitespace
 checks pass; the initial native run must establish the unchanged-widget failure
 before the product correction. Controlled backend callbacks do not establish
 native persistence, physical trackpads or screen-reader/device acceptance.
+
+The initial launch is refused before VM creation: the owned entry's mode 0775
+fails bootstrap admission. Remove only its group-write bit (0755). The next
+launch correctly refuses the 18,432 MiB reservation with 16,584 MiB available.
+Neither attempt executes a product test. Select the already-used file-column
+resource profile instead: 2,560 MiB guest, 1,792 MiB container, 6 GiB RAM scratch
+and 5 GiB hard file ceiling, with unchanged 6 GiB headroom and 1 GiB overhead.
+Extract only the required Rust components and retire the guest installer before
+Flutter execution, as that existing profile does. No storage constraint is
+relaxed and no disk fallback is introduced. The admission inventory includes
+this new selector; the focused command and fourteen behavioral cases are unchanged.

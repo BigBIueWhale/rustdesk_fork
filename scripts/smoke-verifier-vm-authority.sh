@@ -1010,7 +1010,7 @@ elif [ "$MODE" = linux-pa-authority-tests ]; then
     readonly OVERLAY_SIZE=16G
     readonly VM_MEMORY=6144
 elif [ "$MODE" = flutter-model-tests ]; then
-    if [ "$FLUTTER_TEST_PROFILE" = file-columns ]; then
+    if [[ "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed ]]; then
         readonly VM_TIMEOUT_SECONDS=300
         readonly OVERLAY_SIZE=12G
         readonly VM_MEMORY=2560

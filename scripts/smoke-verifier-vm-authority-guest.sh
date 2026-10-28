@@ -1096,7 +1096,7 @@ cases.extend([('hbb-common-fs', {'HBB_LOGIND_NATIVE': '1'}, 'linux-logind'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'file-metadata'}, 'flutter-credential-dialog'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'frame-queue'}, 'flutter-credential-dialog'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'audio-input'}, 'flutter-credential-dialog'),
-              ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'trackpad-speed'}, 'flutter-credential-dialog'),
+              ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'trackpad-speed'}, 'flutter-file-columns'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'reconnect'}, 'flutter-credential-dialog'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'virtual-mouse-buttons'}, 'flutter-credential-dialog'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'virtual-joystick'}, 'flutter-credential-dialog'),
@@ -11081,8 +11081,8 @@ run_flutter_model_tests() {
             result_prefix=FLUTTER_CUSTOM_SCALE_TEST_JSON
             expected_result='suites=1 tests=39'
         elif [ "$FLUTTER_TEST_PROFILE" = trackpad-speed ]; then
-            memory=3g
-            memory_bytes=3221225472
+            memory=1792m
+            memory_bytes=1879048192
             result_prefix=FLUTTER_TRACKPAD_SPEED_TEST_JSON
             expected_result='suites=2 tests=14'
         elif [ "$FLUTTER_TEST_PROFILE" = audio-input ]; then
@@ -11422,7 +11422,7 @@ run_flutter_model_tests() {
                 tar -C /work/toolchain -xf /inputs/flutter.tar.xz
                 if [ "$FLUTTER_BRIDGE_REQUIRED" -eq 1 ]; then
                     mkdir /work/cargo-home
-                    if [[ "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = file-columns ]]; then
+                    if [[ "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed ]]; then
                         rust_archive_root=rust-1.75.0-x86_64-unknown-linux-gnu
                         tar -C /work/toolchain -xf /inputs/rust.tar.xz \
                             "$rust_archive_root/install.sh" "$rust_archive_root/components" \
@@ -11449,7 +11449,7 @@ run_flutter_model_tests() {
                         --disable-ldconfig \
                         --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview \
                         >/dev/null
-                    if [[ "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = file-columns ]]; then
+                    if [[ "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed ]]; then
                         rm -rf -- "/work/toolchain/$rust_archive_root"
                         [ ! -e "/work/toolchain/$rust_archive_root" ] \
                             && [ ! -L "/work/toolchain/$rust_archive_root" ]

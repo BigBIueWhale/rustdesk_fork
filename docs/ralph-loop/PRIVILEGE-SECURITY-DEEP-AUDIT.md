@@ -111198,3 +111198,19 @@ Raw workload logs are 14,506/10,531 bytes, SHA-256
 Shell syntax, source-inventory analysis and `git diff --check` pass. Full remote
 input composition, native mouse delivery, physical devices, session races,
 installed privilege boundaries and release acceptance remain OPEN.
+
+Ledger/count follow-up: documentation `dcb08d9d` is pushed. Initial count
+`RlxV8qc9wx` completes in the guest but the host rejects the newly added admission
+control because its receipt still expects 57 instead of 58. Correction `2daa7092`
+updates that exact count; the product and its passing tests are unchanged.
+QEMU 633276 joins and RAM `run.8rfiyzui` retires; bounded diagnostics remain as
+`hold-drag-count-receipt.RlxV8qc9wx`, with zero endpoint deltas.
+Fresh complete count `PEYAYiJLcY` passes all 58 admission controls/five refusals,
+seven token controls and whole-input round trip: 358,306 tokens / 1,629,470 bytes,
+input SHA-256 `1ebc76d29774edbbdc80e821b76af45721f938574923cd3d3c1953c0861f853d`.
+Outer/supervisor times are 28/31.114 seconds; RAM/durable peaks are
+402,292,736/253,952 bytes. QEMU 637427 joins exit 0, RAM `run.2bxicyns` retires,
+endpoint sets are unchanged and no active owned run root remains. Raw serial
+`ledger-token-count-run.PEYAYiJLcY.serial.log` is 31,514 bytes, SHA-256
+`7f2e3c61e8f375fa85c0ae59566f662555b2e43ec32ec7153d81d4e2add11dab`.
+This receipt changes only the audit; the counted ledger remains identical.

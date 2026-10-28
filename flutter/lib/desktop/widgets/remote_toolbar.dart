@@ -2687,15 +2687,17 @@ class _IconMenuButtonState extends State<_IconMenuButton> {
             child: Semantics(
               label: label,
               excludeSemantics: label.isNotEmpty,
-              child: Material(
+              child: Builder(builder: (context) => Material(
                   type: MaterialType.transparency,
                   child: Ink(
                       decoration: BoxDecoration(
                         borderRadius:
                             BorderRadius.circular(_ToolbarTheme.iconRadius),
-                        color: hover ? widget.hoverColor : widget.color,
+                        color: hover || Focus.of(context).hasFocus
+                            ? widget.hoverColor
+                            : widget.color,
                       ),
-                      child: icon))),
+                      child: icon)))),
           )),
     ).marginSymmetric(
         horizontal: widget.hMargin ?? _ToolbarTheme.buttonHMargin,
@@ -2771,15 +2773,17 @@ class _IconSubmenuButtonState extends State<_IconSubmenuButton> {
                 child: Semantics(
                     label: label,
                     excludeSemantics: label.isNotEmpty,
-                    child: Material(
+                    child: Builder(builder: (context) => Material(
                         type: MaterialType.transparency,
                         child: Ink(
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(
                                   _ToolbarTheme.iconRadius),
-                              color: hover ? widget.hoverColor : widget.color,
+                              color: hover || Focus.of(context).hasFocus
+                                  ? widget.hoverColor
+                                  : widget.color,
                             ),
-                            child: icon)))),
+                            child: icon))))),
             menuChildren: widget
                 .menuChildrenGetter(this)
                 .map((e) => _buildPointerTrackWidget(e, widget.ffi))

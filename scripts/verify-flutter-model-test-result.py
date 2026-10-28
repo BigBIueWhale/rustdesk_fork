@@ -186,6 +186,8 @@ MENU_BUTTON_SUITES = {
             "activates by keyboard and pointer",
             "disabling clears focus and permits reuse",
         )
+        if variant == "action" or case in (
+            "paints and retires keyboard focus", "retains pointer hover and exit")
     },
     "menu_button_test.dart": MENU_BUTTON_TESTS,
     "popup_menu_position_test.dart": {

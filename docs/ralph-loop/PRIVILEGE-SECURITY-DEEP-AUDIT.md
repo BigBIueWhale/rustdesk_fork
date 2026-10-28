@@ -113065,3 +113065,26 @@ an explicit untested/unfixed integration item. No focus-paint product claim is
 made from either preparation. Exact QEMU/overlay retirement is retained under
 `toolbar-focus-entry.uo8vTgW7XZ`; its final endpoint inventory has one unattributed
 addition, left untouched. Product code remains unchanged for the corrected baseline.
+
+The next launch initially refuses (15,360 MiB required / 15,358 available).
+After ordinary memory availability recovers, unchanged admission accepts run
+`lxWyj0zAjJ` at `aef72433`. It reproduces three exact paint failures: action and
+open-submenu focus, plus action re-enable/focus. Each proves the production node
+has primary focus and then measures the unchanged background pixels. Twenty-nine
+controls pass. Two additional submenu activation/dynamic-disabling cases fail
+at repeated focus entry and a pinned-SDK `_Submenu` layout assertion; they do not
+establish the focus-paint defect. Those broader lifecycle cases are removed from
+this focused workload, retained in Git/diagnostics, and remain OPEN for separate
+investigation. The remaining six toolbar cases preserve the demonstrated pixel
+failures and controls; the inventory is four suites/32 cases. Closed top-level
+keyboard entry also remains OPEN. These scope limits are not product acceptance.
+QEMU joins exit 0 and RAM retires; final inventory records two unattributed
+additions and one removal, left untouched. Exact diagnostics are retained under
+`toolbar-focus-reproduction.lxWyj0zAjJ`; workload serial SHA-256 is
+`c01e03b0b1755b034f679fbd74c8afb2577e66bc8b854deaf8cc5825453c0d6e`.
+
+The candidate adds a Builder inside each button's child so its painted background
+depends on `Focus.of(context).hasFocus` as well as hover. It retains Flutter's
+actual focus owner, existing colors, geometry, menu/session callbacks and
+disabled behavior; no mirrored focus flag or new input actuator is introduced.
+Candidate execution follows; full toolbar/device/session acceptance remains OPEN.

@@ -112992,3 +112992,15 @@ The Windows source checker references only unchanged validator/domain/self-test
 bodies, so no wording gate is revised. The status entry records this component
 result and all remaining limits; a fresh isolated count follows. The broad goal,
 all fifteen installed credential actions and every user park remain unchanged.
+
+Fresh count `AmrZHMbax4` at `4cc9cd05` passes in 28 outer seconds:
+**353,580 tokens / 1,615,687 bytes**, SHA-256
+`ba5b46e5f8d0a525fb0f121ad48f5d5fe6444189cb1fd74324c0221cce0af8d7`.
+The pinned tokenizer passes all seven controls and full byte round trip; workload
+admission passes the updated 39 modes/65 controls/five refusals. QEMU 2239789
+joins exit 0; RAM `run.8ucdhic2` and owned active roots are absent, with zero
+endpoint deltas. Scratch/durable peaks are 402,186,240/258,048 bytes. The
+33,094-byte workload serial SHA-256 is
+`c8d2ec30d3c1b7fda5693242b3ec84ee39fc8ba41fc3e0d1bf755ba29c2e4fa4`.
+The bounded capsule now includes this count/cleanup receipt. Only the audit
+receipt and capsule follow counting; the live ledger remains identical.

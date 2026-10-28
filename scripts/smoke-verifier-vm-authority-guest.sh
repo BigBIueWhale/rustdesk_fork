@@ -1619,6 +1619,7 @@ run_android_runtime_log_tests() {
     local ui_receipt='ANDROID_PEER_UI_FINALITY_TEST=pass cases=5 empty=refused foreign=refused disabled=refused residual=refused observed=required'
     local failure_test_receipt='ANDROID_RUNTIME_FAILURE_LOG_TEST=pass cases=7 bytes=1048576 equality=exact oversized=refused symlink=refused hardlink=refused mode=refused occupied=preserved'
     local serial_receipt='VERIFIER_SERIAL_ARCHIVE_TEST=pass cases=4 exact=retained occupied=preserved symlink=refused overflow=bounded'
+    local output_receipt='VERIFIER_OUTPUT_TRANSPORT_TEST=pass cases=15 bytes=exact chunks=fragmented invalid=refused overflow=bounded ack=required deadline=refused cleanup=joined'
     local export_work export_work_id export_receipt export_bytes export_sha
 
     test_sha="$(sha256sum "$test" | awk '{ print $1 }')"
@@ -1677,6 +1678,8 @@ run_android_runtime_log_tests() {
         && [ "$(grep -Fc 'ANDROID_RUNTIME_FAILURE_LOG_TEST=' "$output")" -eq 1 ] \
         && grep -Fxq "$serial_receipt" "$output" \
         && [ "$(grep -Fc 'VERIFIER_SERIAL_ARCHIVE_TEST=' "$output")" -eq 1 ] \
+        && grep -Fxq "$output_receipt" "$output" \
+        && [ "$(grep -Fc 'VERIFIER_OUTPUT_TRANSPORT_TEST=' "$output")" -eq 1 ] \
         || fail 'runtime-log test results are absent, malformed or duplicated'
     [ "$(sha256sum "$test" | awk '{ print $1 }')" = "$test_sha" ] \
         && [ "$(sha256sum "$wrapper" | awk '{ print $1 }')" = "$wrapper_sha" ] \
@@ -1726,7 +1729,7 @@ run_android_runtime_log_tests() {
         --remove-private-root "$export_work" --expected-identity "$export_work_id" \
         || fail 'cannot retire the failure-export fixture scratch'
     stop_docker_authority
-    printf '%s\n' "$unit_receipt" "$native_receipt" "$stage_receipt" "$ui_receipt" "$failure_test_receipt" "$serial_receipt"
+    printf '%s\n' "$unit_receipt" "$native_receipt" "$stage_receipt" "$ui_receipt" "$failure_test_receipt" "$serial_receipt" "$output_receipt"
     printf 'ANDROID_RUNTIME_FAILURE_EXPORT_VM=pass bytes=%s sha256=%s fsync=acknowledged mount=retired uid=1000 gid=1000\n' "$export_bytes" "$export_sha"
     printf 'ANDROID_RUNTIME_LOG_TESTS_VM=pass cases=3 stage_cases=9 uid=4000 gid=4000 root=refused foreign=refused test_sha256=%s wrapper_sha256=%s stage_sha256=%s image=retired docker=retired network=none cleanup=joined\n' \
         "$test_sha" "$wrapper_sha" "$stage_sha"

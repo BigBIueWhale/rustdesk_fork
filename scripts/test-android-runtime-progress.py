@@ -6,12 +6,15 @@ import hashlib
 import os
 from pathlib import Path
 import select
+import runpy
 import shlex
 import signal
 import socket
+import struct
 import subprocess
 import sys
 import tempfile
+import threading
 
 
 sys.dont_write_bytecode = True
@@ -70,6 +73,135 @@ for case in ("valid", "occupied", "symlink", "overflow"):
 print("VERIFIER_SERIAL_ARCHIVE_TEST=pass cases=4 exact=retained occupied=preserved "
       "symlink=refused overflow=bounded", file=sys.stderr)
 
+capture = runpy.run_path(str(capture_source))
+magic, ack = capture["OUTPUT_MAGIC"], capture["OUTPUT_ACK"]
+payload = bytes(range(256)) * 1024 + b"\nVERIFIER_VM_CLOUD_INIT=pass\n"
+footer = struct.pack("!Q", len(payload)) + hashlib.sha256(payload).digest()
+frames = b"".join(struct.pack("!I", len(part)) + part
+                  for part in (payload[i:i + 65536] for i in range(0, len(payload), 65536)))
+valid_wire = magic + frames + bytes(4) + footer
+output_cases = {
+    "valid": None,
+    "empty": None,
+    "fragmented": valid_wire,
+    "magic": b"invalid!",
+    "chunk": magic + struct.pack("!I", 65537),
+    "bound": magic + (struct.pack("!I", 65536) + bytes(65536)) * 129,
+    "digest": valid_wire[:-1] + bytes([valid_wire[-1] ^ 1]),
+    "length": magic + frames + bytes(4) + struct.pack("!Q", len(payload) + 1) + footer[8:],
+    "header-eof": magic + b"\x00\x00",
+    "payload-eof": magic + struct.pack("!I", 5) + b"x",
+    "footer-eof": valid_wire[:-1],
+    "trailing": valid_wire + b"x",
+}
+for case, wire in output_cases.items():
+    with tempfile.TemporaryDirectory(prefix="verifier-output.") as directory:
+        root = Path(directory)
+        run = root / "run.abcdefghij"
+        run.mkdir(mode=0o700)
+        endpoint, output = run / "output.sock", run / "output.log"
+        archive = root / "authority-smoke-run.abcdefghij.serial.log"
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+            server.bind(str(endpoint))
+            endpoint.chmod(0o600)
+            server.listen(1)
+            command = [sys.executable, "-I", "-S", str(capture_source),
+                       "--socket", str(endpoint), "--output", str(output),
+                       "--max-bytes", str(8 * 1024 * 1024),
+                       "--archive-output", str(archive), "--framed-output"]
+            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            try:
+                server.settimeout(5)
+                with server.accept()[0] as client:
+                    client.settimeout(5)
+                    if case in ("valid", "empty"):
+                        client.setblocking(True)
+                        expected_payload = payload if case == "valid" else b""
+                        with tempfile.TemporaryFile() as source:
+                            source.write(expected_payload)
+                            source.seek(0)
+                            capture["forward_guest_output"](source.fileno(), client.fileno(), 5)
+                        # The encoder cannot return until the archive is durable.
+                        if archive.read_bytes() != expected_payload:
+                            raise RuntimeError("output acknowledgement preceded the exact archive")
+                    else:
+                        try:
+                            if case == "fragmented":
+                                for i in range(0, len(wire), 17):
+                                    client.sendall(wire[i:i + 17])
+                            else:
+                                client.sendall(wire)
+                            client.shutdown(socket.SHUT_WR)
+                            response = b""
+                            while block := client.recv(64):
+                                response += block
+                            if case in ("fragmented", "trailing"):
+                                if response != ack + footer:
+                                    raise RuntimeError("complete output acknowledgement differs")
+                            elif response:
+                                raise RuntimeError("invalid output was acknowledged")
+                        except (BrokenPipeError, ConnectionResetError):
+                            if case in ("fragmented", "trailing"):
+                                raise
+                stdout, stderr = process.communicate(timeout=5)
+                if case in ("valid", "empty", "fragmented"):
+                    expected_payload = b"" if case == "empty" else payload
+                    expected_receipt = (f"bounded-unix-stream-capture: PASS bytes={len(expected_payload)} "
+                                        f"archive_sha256={hashlib.sha256(expected_payload).hexdigest()}\n").encode()
+                    if (process.returncode or stderr or stdout != expected_receipt
+                            or output.read_bytes() != expected_payload
+                            or archive.read_bytes() != expected_payload):
+                        raise RuntimeError(f"framed output failed: {case}: {stderr!r}")
+                elif process.returncode == 0 or stdout:
+                    raise RuntimeError(f"invalid framed output accepted: {case}")
+                if output.stat().st_size > 8 * 1024 * 1024 or archive.stat().st_size > 8 * 1024 * 1024:
+                    raise RuntimeError("output exceeded its storage ceiling")
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                process.wait(timeout=5)
+
+for case in ("wrong", "eof", "deadline"):
+    errors = []
+    finished = threading.Event()
+    guest, host = socket.socketpair()
+
+    def acknowledge():
+        try:
+            with host:
+                received = b"".join(capture["output_frames"](host.fileno(), 8 * 1024 * 1024))
+                if received != payload:
+                    raise RuntimeError("encoder payload differs")
+                if case == "wrong":
+                    host.sendall(ack + bytes(40))
+                elif case == "deadline":
+                    finished.wait(5)
+        except BaseException as error:
+            errors.append(error)
+
+    worker = threading.Thread(target=acknowledge)
+    worker.start()
+    try:
+        with tempfile.TemporaryFile() as source:
+            source.write(payload)
+            source.seek(0)
+            try:
+                capture["forward_guest_output"](source.fileno(), guest.fileno(), 0.1)
+            except RuntimeError as error:
+                expected = {"wrong": "acknowledgement differs", "eof": "ended before completion",
+                            "deadline": "deadline expired"}[case]
+                if expected not in str(error):
+                    raise
+            else:
+                raise RuntimeError(f"guest output accepted invalid acknowledgement: {case}")
+    finally:
+        finished.set()
+        guest.close()
+        worker.join(timeout=5)
+    if worker.is_alive() or errors:
+        raise RuntimeError(f"acknowledgement fixture did not join cleanly: {case}: {errors}")
+print("VERIFIER_OUTPUT_TRANSPORT_TEST=pass cases=15 bytes=exact chunks=fragmented "
+      "invalid=refused overflow=bounded ack=required deadline=refused cleanup=joined", file=sys.stderr)
 native_image = None
 if len(sys.argv) != 1:
     if (len(sys.argv) != 3 or sys.argv[1] != "--native-docker"

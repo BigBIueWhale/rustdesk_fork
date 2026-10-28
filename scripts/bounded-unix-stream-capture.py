@@ -7,14 +7,101 @@ import argparse
 import hashlib
 import os
 import re
+import select
 import socket
 import stat
+import struct
 import sys
+import time
 from pathlib import Path
 
 
 def fail(message: str) -> None:
     raise RuntimeError(message)
+
+
+OUTPUT_MAGIC = b"RDVMOUT1"
+OUTPUT_ACK = b"RDVMACK1"
+OUTPUT_LIMIT = 8 * 1024 * 1024
+OUTPUT_CHUNK = 65536
+
+
+def write_all(fd: int, data: bytes) -> None:
+    view = memoryview(data)
+    while view:
+        written = os.write(fd, view)
+        if written <= 0:
+            fail("output channel made no write progress")
+        view = view[written:]
+
+
+def read_exact(fd: int, size: int, deadline: float | None = None) -> bytes:
+    result = bytearray()
+    while len(result) < size:
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not select.select([fd], [], [], remaining)[0]:
+                fail("output acknowledgement deadline expired")
+        data = os.read(fd, size - len(result))
+        if not data:
+            fail("output channel ended before completion")
+        result.extend(data)
+    return bytes(result)
+
+
+def forward_guest_output(source: int, channel: int, ack_timeout: float = 30) -> None:
+    """Finish only after the host acknowledges the exact durable output."""
+    write_all(channel, OUTPUT_MAGIC)
+    digest = hashlib.sha256()
+    total = 0
+    while data := os.read(source, OUTPUT_CHUNK):
+        total += len(data)
+        if total > OUTPUT_LIMIT:
+            fail("guest output exceeds its byte bound")
+        digest.update(data)
+        write_all(channel, struct.pack("!I", len(data)) + data)
+    footer = struct.pack("!Q", total) + digest.digest()
+    write_all(channel, bytes(4) + footer)
+    if read_exact(channel, len(OUTPUT_ACK) + len(footer),
+                  time.monotonic() + ack_timeout) != OUTPUT_ACK + footer:
+        fail("output acknowledgement differs")
+
+
+def output_frames(channel: int, limit: int):
+    if read_exact(channel, len(OUTPUT_MAGIC)) != OUTPUT_MAGIC:
+        fail("output protocol identity differs")
+    total = 0
+    digest = hashlib.sha256()
+    while True:
+        length, = struct.unpack("!I", read_exact(channel, 4))
+        if length == 0:
+            expected = struct.pack("!Q", total) + digest.digest()
+            if read_exact(channel, len(expected)) != expected:
+                fail("output length or digest differs")
+            return
+        if length > OUTPUT_CHUNK or total + length > limit:
+            fail("output frame exceeds its byte bound")
+        data = read_exact(channel, length)
+        total += length
+        digest.update(data)
+        yield data
+
+
+def guest_output() -> None:
+    if (os.geteuid() != 0 or os.getegid() != 0
+            or "rustdesk.verifier_vm=1" not in Path("/proc/cmdline").read_text().split()):
+        fail("guest output requires the disposable verifier VM")
+    device = Path("/dev/virtio-ports/org.rustdesk.verifier-output").resolve(strict=True)
+    if device.parent != Path("/dev") or re.fullmatch(r"vport[0-9]+p[0-9]+", device.name) is None:
+        fail("guest output device identity differs")
+    fd = os.open(device, os.O_RDWR | os.O_CLOEXEC | os.O_NOFOLLOW)
+    try:
+        metadata = os.fstat(fd)
+        if not stat.S_ISCHR(metadata.st_mode) or metadata.st_uid != 0:
+            fail("guest output is not a root-owned character device")
+        forward_guest_output(0, fd)
+    finally:
+        os.close(fd)
 
 
 def parse_args() -> argparse.Namespace:
@@ -23,11 +110,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--max-bytes", type=int, required=True)
     parser.add_argument("--archive-output", type=Path)
+    parser.add_argument("--framed-output", action="store_true")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    if args.framed_output and (args.archive_output is None or args.max_bytes != OUTPUT_LIMIT):
+        fail("framed output requires the fixed byte bound and a durable archive")
     if args.max_bytes <= 0 or args.max_bytes > 64 * 1024 * 1024:
         fail("capture bound must be within 1..67108864 bytes")
     if not args.socket.is_absolute() or not args.output.is_absolute():
@@ -82,10 +172,9 @@ def main() -> None:
         stream.settimeout(10)
         stream.connect(os.fspath(args.socket))
         stream.settimeout(None)
-        while True:
-            data = stream.recv(65536)
-            if not data:
-                break
+        incoming = (output_frames(stream.fileno(), args.max_bytes) if args.framed_output
+                    else iter(lambda: stream.recv(65536), b""))
+        for data in incoming:
             total += len(data)
             if stored < args.max_bytes:
                 admitted = data[: args.max_bytes - stored]
@@ -109,6 +198,23 @@ def main() -> None:
         os.fsync(output_fd)
         if archive_fd is not None:
             os.fsync(archive_fd)
+        if args.framed_output:
+            # The acknowledgement grants shutdown only after the exact archive and
+            # its directory entry are durable. The normal final readback below is
+            # still required before the collector reports acceptance.
+            parent_fd = os.open(args.archive_output.parent,
+                                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+            try:
+                current_parent = os.fstat(parent_fd)
+                if (current_parent.st_dev, current_parent.st_ino) != (
+                        archive_parent.st_dev, archive_parent.st_ino):
+                    fail("output archive parent identity changed")
+                os.fsync(parent_fd)
+            finally:
+                os.close(parent_fd)
+            stream.sendall(OUTPUT_ACK + struct.pack("!Q", total) + digest.digest())
+            if stream.recv(1):
+                fail("output channel has trailing data")
     finally:
         if stream is not None:
             stream.close()
@@ -172,7 +278,10 @@ def main() -> None:
 
 if __name__ == "__main__":
     try:
-        main()
+        if sys.argv[1:] == ["--guest-output"]:
+            guest_output()
+        else:
+            main()
     except (OSError, RuntimeError, ValueError) as error:
         print(f"bounded-unix-stream-capture: FAIL: {error}", file=sys.stderr)
         raise SystemExit(1)

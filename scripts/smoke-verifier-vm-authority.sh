@@ -1102,6 +1102,8 @@ VM_PID=
 VM_START=
 CAPTURE_PID=
 CAPTURE_START=
+OUTPUT_CAPTURE_PID=
+OUTPUT_CAPTURE_START=
 LISTENER_BASELINE_RECORDED=0
 LISTENER_AFTER_RECORDED=0
 KERNEL_FD=
@@ -1454,10 +1456,11 @@ is_exact_vm_owner_process() {
 }
 
 is_exact_capture_process() {
-    [ -n "$CAPTURE_PID" ] && [ -n "$CAPTURE_START" ] \
-        && [ -r "/proc/$CAPTURE_PID/stat" ] \
-        && [ "$(process_start_time "$CAPTURE_PID" 2>/dev/null)" = "$CAPTURE_START" ] \
-        && [ "$(/usr/bin/readlink -f "/proc/$CAPTURE_PID/exe" 2>/dev/null)" = \
+    local pid=${1:-$CAPTURE_PID} start=${2:-$CAPTURE_START}
+    [ -n "$pid" ] && [ -n "$start" ] \
+        && [ -r "/proc/$pid/stat" ] \
+        && [ "$(process_start_time "$pid" 2>/dev/null)" = "$start" ] \
+        && [ "$(/usr/bin/readlink -f "/proc/$pid/exe" 2>/dev/null)" = \
              "$(/usr/bin/readlink -f /usr/bin/python3)" ]
 }
 
@@ -2331,6 +2334,14 @@ cleanup() {
         CAPTURE_PID=
         CAPTURE_START=
     fi
+    if [ -n "$OUTPUT_CAPTURE_PID" ]; then
+        if is_exact_capture_process "$OUTPUT_CAPTURE_PID" "$OUTPUT_CAPTURE_START"; then
+            kill -TERM "$OUTPUT_CAPTURE_PID" 2>/dev/null || cleanup_failed=1
+        fi
+        wait "$OUTPUT_CAPTURE_PID" 2>/dev/null || true
+        OUTPUT_CAPTURE_PID=
+        OUTPUT_CAPTURE_START=
+    fi
     if [ -n "$KERNEL_FD" ]; then
         exec {KERNEL_FD}<&- || cleanup_failed=1
         KERNEL_FD=
@@ -2369,6 +2380,7 @@ cleanup() {
             fi
         fi
         reconcile_socket "$RUN/serial.sock" || cleanup_failed=1
+        reconcile_socket "$RUN/output.sock" || cleanup_failed=1
         reconcile_socket "$RUN/qmp.sock" || cleanup_failed=1
         for socket in "${VIRTIOFS_SOCKETS[@]}"; do
             reconcile_socket "$socket" || cleanup_failed=1
@@ -3895,9 +3907,13 @@ readonly OVERLAY=$VM_TRANSIENT/overlay.qcow2
 readonly PAYLOAD=$VM_TRANSIENT/payload.iso
 readonly SEED=$VM_TRANSIENT/seed.iso
 readonly SERIAL_SOCKET=$RUN/serial.sock
-readonly SERIAL_LOG=$RUN/serial.log
-readonly SERIAL_ARCHIVE=$RUN_ROOT/$MODE-${RUN##*/}.serial.log
+SERIAL_LOG=$RUN/serial.log
+readonly SERIAL_ARCHIVE=$RUN_ROOT/$MODE-console-${RUN##*/}.serial.log
 readonly CAPTURE_RECEIPT=$RUN/capture.receipt
+readonly OUTPUT_SOCKET=$RUN/output.sock
+readonly OUTPUT_LOG=$RUN/output.log
+readonly OUTPUT_ARCHIVE=$RUN_ROOT/$MODE-${RUN##*/}.serial.log
+readonly OUTPUT_CAPTURE_RECEIPT=$RUN/output-capture.receipt
 readonly QMP_SOCKET=$RUN/qmp.sock
 readonly QEMU_PIDFILE=$RUN/qemu.pid
 readonly LISTENERS_BEFORE=$RUN/listeners.before
@@ -4869,19 +4885,27 @@ printf '%s\n' \
     'finish() {' \
     '    status=$?' \
     '    trap - EXIT' \
+    '    sync' \
+    "    $guest_finish" \
+    '    exit "$status"' \
+    '}' \
+    'report_status() {' \
+    '    status=$?' \
+    '    trap - EXIT' \
     '    if [ "$status" -eq 0 ]; then' \
     '        echo VERIFIER_VM_CLOUD_INIT=pass' \
     '    else' \
     '        echo VERIFIER_VM_CLOUD_INIT=fail status=$status' \
     '    fi' \
-    '    sync' \
-    "    $guest_finish" \
     '    exit "$status"' \
     '}' \
     'trap finish EXIT' \
     'mkdir -p /mnt/rustdesk-verifier-inputs' \
     'mount -L RD_VERIFIER_INPUTS -o ro,nodev,nosuid,noexec /mnt/rustdesk-verifier-inputs' \
+    '(' \
+    '    trap report_status EXIT' \
     "$guest_invocation" \
+    ') 2>&1 | /usr/bin/python3 -I -S /mnt/rustdesk-verifier-inputs/repo/scripts/bounded-unix-stream-capture.py --guest-output' \
     >"$RUN/seed/user-data"
 printf '%s\n' \
     'instance-id: rustdesk-verifier-authority-v1' \
@@ -5066,6 +5090,9 @@ vm_storage_check
         -pidfile "$QEMU_PIDFILE" \
         -chardev "socket,id=serial0,path=$SERIAL_SOCKET,server=on,wait=on" \
         -device isa-serial,chardev=serial0 \
+        -device virtio-serial-pci \
+        -chardev "socket,id=output,path=$OUTPUT_SOCKET,server=on,wait=off" \
+        -device virtserialport,chardev=output,name=org.rustdesk.verifier-output \
         -qmp "unix:$QMP_SOCKET,server=on,wait=off" \
         "${focused_qemu_args[@]}" \
         -drive "file=$OVERLAY,if=virtio,format=qcow2,cache=none,discard=unmap" \
@@ -5121,6 +5148,20 @@ CAPTURE_PID=$!
 CAPTURE_START="$(process_start_time "$CAPTURE_PID")" \
     || fail 'cannot record bounded serial-capture process identity'
 for _ in $(/usr/bin/seq 1 200); do
+    [ -S "$OUTPUT_SOCKET" ] && break
+    is_exact_vm_owner_process || fail 'QEMU owner exited before its output channel'
+    /usr/bin/sleep 0.05
+done
+verify_private_socket "$OUTPUT_SOCKET" \
+    || fail 'QEMU output channel is not one current-user-private Unix socket'
+/usr/bin/python3 -I -S "$CAPTURE_HELPER" \
+    --socket "$OUTPUT_SOCKET" --output "$OUTPUT_LOG" --max-bytes "$SERIAL_LIMIT" \
+    --archive-output "$OUTPUT_ARCHIVE" --framed-output \
+    >"$OUTPUT_CAPTURE_RECEIPT" &
+OUTPUT_CAPTURE_PID=$!
+OUTPUT_CAPTURE_START="$(process_start_time "$OUTPUT_CAPTURE_PID")" \
+    || fail 'cannot record bounded output-capture process identity'
+for _ in $(/usr/bin/seq 1 200); do
     [ -S "$QMP_SOCKET" ] && break
     kill -0 "$VM_OWNER_PID" 2>/dev/null || fail 'QEMU owner exited before creating its QMP channel'
     kill -0 "$CAPTURE_PID" 2>/dev/null || fail 'bounded serial capture exited during QEMU startup'
@@ -5142,8 +5183,14 @@ capture_status=0
 wait "$CAPTURE_PID" || capture_status=$?
 CAPTURE_PID=
 CAPTURE_START=
+output_capture_status=0
+wait "$OUTPUT_CAPTURE_PID" || output_capture_status=$?
+OUTPUT_CAPTURE_PID=
+OUTPUT_CAPTURE_START=
 [ "$vm_status" -eq 0 ] || { tail -n 240 "$SERIAL_LOG" >&2; fail "networkless verifier VM exited with status $vm_status"; }
 [ "$capture_status" -eq 0 ] || fail "bounded serial capture exited with status $capture_status"
+[ "$output_capture_status" -eq 0 ] \
+    || { tail -n 120 "$SERIAL_LOG" >&2; fail "bounded output capture exited with status $output_capture_status"; }
 for index in "${!VIRTIOFSD_PIDS[@]}"; do
     virtiofsd_pid=${VIRTIOFSD_PIDS[index]}
     virtiofsd_start=${VIRTIOFSD_STARTS[index]}
@@ -5184,6 +5231,23 @@ serial_sha=$(/usr/bin/sha256sum -- "$SERIAL_ARCHIVE" | /usr/bin/awk '{ print $1 
     || fail 'bounded serial-capture receipt differs'
 /usr/bin/printf 'VERIFIER_VM_SERIAL_EVIDENCE=retained path=%s bytes=%s sha256=%s\n' \
     "$SERIAL_ARCHIVE" "$serial_bytes" "$serial_sha"
+output_bytes=$(/usr/bin/stat -c '%s' -- "$OUTPUT_LOG")
+[ "$output_bytes" -gt 0 ] && [ "$output_bytes" -le "$SERIAL_LIMIT" ] \
+    && [ -f "$OUTPUT_ARCHIVE" ] && [ ! -L "$OUTPUT_ARCHIVE" ] \
+    && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$OUTPUT_ARCHIVE")" = \
+         "$HOST_UID:$HOST_GID:600:1:$output_bytes" ] \
+    && /usr/bin/cmp -s -- "$OUTPUT_LOG" "$OUTPUT_ARCHIVE" \
+    || fail 'retained guest output differs'
+output_sha=$(/usr/bin/sha256sum -- "$OUTPUT_ARCHIVE" | /usr/bin/awk '{ print $1 }')
+/usr/bin/grep -Fxq \
+    "bounded-unix-stream-capture: PASS bytes=$output_bytes archive_sha256=$output_sha" \
+    "$OUTPUT_CAPTURE_RECEIPT" || fail 'bounded output-capture receipt differs'
+/usr/bin/printf 'VERIFIER_VM_OUTPUT_EVIDENCE=retained path=%s bytes=%s sha256=%s acknowledgement=durable\n' \
+    "$OUTPUT_ARCHIVE" "$output_bytes" "$output_sha"
+# Keep boot and second-kernel diagnostics available to their existing gates.
+# Workload receipts come from the separately acknowledged output channel.
+/usr/bin/cat -- "$SERIAL_LOG" "$OUTPUT_LOG" >"$RUN/results.log"
+SERIAL_LOG=$RUN/results.log
 if [ -r "/proc/$VM_PID/stat" ] && [ "$(process_start_time "$VM_PID" 2>/dev/null)" = "$VM_START" ]; then
     fail 'exact QEMU process remains after joined VM completion'
 fi
@@ -5191,6 +5255,7 @@ capture_final_listeners || fail 'final listener observation failed'
 [ "$(/usr/bin/grep -Ec 'VERIFIER_VM_CLOUD_INIT=fail status=[1-9][0-9]*' "$SERIAL_LOG")" -eq 0 ] \
     || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'guest workload reported failure'; }
 reconcile_socket "$SERIAL_SOCKET" || fail 'serial channel cleanup is ambiguous'
+reconcile_socket "$OUTPUT_SOCKET" || fail 'output channel cleanup is ambiguous'
 reconcile_socket "$QMP_SOCKET" || fail 'QMP channel cleanup is ambiguous'
 for socket in "${VIRTIOFS_SOCKETS[@]}"; do
     reconcile_socket "$socket" \
@@ -5266,6 +5331,7 @@ elif [ "$MODE" = android-runtime-log-tests ]; then
     runtime_log_ui_receipt='ANDROID_PEER_UI_FINALITY_TEST=pass cases=5 empty=refused foreign=refused disabled=refused residual=refused observed=required'
     runtime_failure_test_receipt='ANDROID_RUNTIME_FAILURE_LOG_TEST=pass cases=7 bytes=1048576 equality=exact oversized=refused symlink=refused hardlink=refused mode=refused occupied=preserved'
     runtime_serial_test_receipt='VERIFIER_SERIAL_ARCHIVE_TEST=pass cases=4 exact=retained occupied=preserved symlink=refused overflow=bounded'
+    runtime_output_test_receipt='VERIFIER_OUTPUT_TRANSPORT_TEST=pass cases=15 bytes=exact chunks=fragmented invalid=refused overflow=bounded ack=required deadline=refused cleanup=joined'
     runtime_failure_fixture=$'ANDROID_PEER_WINDOW_DIAGNOSTIC_BEGIN phase=fixture\nfocus=fixture\nANDROID_PEER_WINDOW_DIAGNOSTIC_END phase=fixture\n'
     runtime_failure_bytes=$(printf '%s' "$runtime_failure_fixture" | /usr/bin/wc -c)
     runtime_failure_sha=$(printf '%s' "$runtime_failure_fixture" | /usr/bin/sha256sum | /usr/bin/cut -d ' ' -f 1)
@@ -5277,6 +5343,7 @@ elif [ "$MODE" = android-runtime-log-tests ]; then
     require_exact_fixed_receipt "$runtime_log_ui_receipt" 'observable app UI finality result'
     require_exact_fixed_receipt "$runtime_failure_test_receipt" 'bounded failure-log publisher result'
     require_exact_fixed_receipt "$runtime_serial_test_receipt" 'bounded serial archive result'
+    require_exact_fixed_receipt "$runtime_output_test_receipt" 'acknowledged guest output result'
     require_exact_fixed_receipt "$runtime_failure_receipt" 'native acknowledged failure-log export result'
     [ "$(/usr/bin/find "$ANDROID_FAILURE_ROOT" -mindepth 1 -maxdepth 1 -printf '%f\n')" = android-runtime-failure.log ] \
         && [ -f "$ANDROID_FAILURE_ROOT/android-runtime-failure.log" ] \
@@ -5290,7 +5357,7 @@ elif [ "$MODE" = android-runtime-log-tests ]; then
       "$runtime_failure_package_before" ] || fail 'runtime-log output exporter package changed'
     require_exact_fixed_receipt "$runtime_log_vm_receipt" 'runtime-log source/finality result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'runtime-log cloud-init completion'
-    printf '%s\n' "$runtime_log_unit_receipt" "$runtime_log_native_receipt" "$runtime_log_stage_receipt" "$runtime_log_ui_receipt" "$runtime_failure_test_receipt" "$runtime_serial_test_receipt" "$runtime_failure_receipt" "$runtime_log_vm_receipt"
+    printf '%s\n' "$runtime_log_unit_receipt" "$runtime_log_native_receipt" "$runtime_log_stage_receipt" "$runtime_log_ui_receipt" "$runtime_failure_test_receipt" "$runtime_serial_test_receipt" "$runtime_output_test_receipt" "$runtime_failure_receipt" "$runtime_log_vm_receipt"
 elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
     engine_prepare_receipt='FLUTTER_ENGINE_PREPARE=pass git=82 cipd=11 metadata=3 sysroots=3 hooks=6 indexes=original pub=path-only network=none engine_build=unexecuted'
     engine_prepare_vm_receipt="FLUTTER_ENGINE_PREPARE_VM=pass commit=$FOCUSED_TEST_COMMIT tree=$FOCUSED_TEST_TREE helper_sha256=$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE" | /usr/bin/awk '{print $1}') runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 inputs=readonly-landlocked vm_network=none container_network=none cleanup=joined"

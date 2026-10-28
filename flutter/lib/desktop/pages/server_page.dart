@@ -694,7 +694,16 @@ class _CmControlPanel extends StatelessWidget {
                       context.widget is _CmControlPanel &&
                       identical(
                           (context.widget as _CmControlPanel).client, client) &&
+                      voiceOwner.id > 0 &&
+                      voiceOwner.registryGeneration > 0 &&
+                      voiceOwner.callId > 0 &&
+                      client.id == voiceOwner.id &&
+                      client.registryGeneration == voiceOwner.registryGeneration &&
+                      client.voiceCallId == voiceOwner.callId &&
+                      Provider.of<ServerModel>(context, listen: false)
+                          .clients.any((current) => identical(current, client)) &&
                       !client.disconnected &&
+                      !client.incomingVoiceCall &&
                       client.inVoiceCall;
                   if (!isCurrent()) return;
                   AudioInputDevices devicesInfo;

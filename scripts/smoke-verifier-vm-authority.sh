@@ -5613,7 +5613,7 @@ elif [ "$MODE" = ledger-token-count ]; then
         'actual suspension profile CLI and RAM refusal'
     require_exact_fixed_receipt 'VM_TRANSIENT_X11_INPUT_CLI=pass profile=x11-key-input guest_mib=4096 required_mib=20480 insufficient_ram=refused allocation=not-entered' \
         'actual input profile CLI and RAM refusal'
-    require_exact_fixed_receipt 'VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=39 controls=65 refusals=5 allocation=not-entered' \
+    require_exact_fixed_receipt 'VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=39 controls=66 refusals=5 allocation=not-entered' \
         'VM workload class selection and unconfigured workload refusal'
     require_exact_fixed_receipt 'VM_TRANSIENT_ROOT_REFUSAL=pass operations=5 principal=root qemu=not-started' \
         'VM storage root refusal'

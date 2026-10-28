@@ -110106,3 +110106,50 @@ durable run peak 151,552 bytes. QEMU 4075273 joins exit 0; its PID, RAM
 `run.zv40r7h8` and active run roots are absent. All endpoint deltas are zero.
 All fifteen prior stashes remain. This audit-only receipt leaves the counted
 ledger and accepted source unchanged.
+
+## 2026-10-28 — user pivot to clipboard API cleanup
+
+The user explicitly requested another aspect. Release-recovery journal-transition
+review is OPEN/PARKED after read-only inspection, without a new defect, edit or
+execution. All earlier parks remain, including the unanswered shared Flutter
+parser and Rust parent-build repair question. The service authority checklist
+still requires installed/native acceptance for all fifteen credential actions.
+
+Caller inspection at `1848db07` found only declarations, implementations and the
+component extraction marker for `ProgressPercent`, `get_progress_percent` and
+`progress_percent`. Windows returned None; the two macOS query helpers were
+reachable only through the unused trait method. ContextSend dispatch has no
+consumer, and the trait is a Rust interface, not a native C vtable. Primary
+references: https://doc.rust-lang.org/reference/items/traits.html and
+https://doc.rust-lang.org/reference/types/trait-object.html. Design implication:
+remove the unused operation from the trait and both implementations together;
+preserve the live transfer owner, cancellation, accounting and separate Finder
+progress-attribute path. No fallback or replacement interface is needed.
+
+`c83484653fee3d9b493b8b430f793b0618e28267`, tree
+`78b5f704a6ca984b703875ac4f8a3e41cec4edee`, removes that type/query chain from
+four clipboard files. The existing component runner's extraction marker moves
+to the retained trait. Five files total: four added lines, 37 removed. All
+remaining behavior and test cases are unchanged; no new test or profile is added.
+Diff/AST checks and the absence of remaining code references pass. This removes
+dead code; it does not establish a visible progress defect or a new LPE closure.
+
+`/bin/bash scripts/smoke-verifier-vm-authority.sh --control-egress-tests`, run
+`RDVotb0b9l`, passes 101/101 existing component cases, including all six common
+clipboard tests and the allocation fixture (three growth refusals/four healthy
+controls, exact payload release, terminal-once and joined child processes).
+The source-bound artifact SHA-256 is
+`57e483a4aed1d57601818b644832eb7714989b6ccb3d971644d54b8a1e482ebd`, unchanged
+before/after execution. Build 45.949 seconds, test execution 21.91 seconds,
+outer/supervisor 136/139.898 seconds. Raw serial is 166,268 bytes, SHA-256
+`5e2a09b548df05b30942d074ef94d0e729c1f7c4b438491c59410460b6d69497`, under
+`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.RDVotb0b9l.serial.log`.
+The adjacent storage and four listener JSON receipts retain the run's boundaries.
+The existing profile admits 2-GiB guest RAM, 6-GiB RAM scratch, 4-GiB file ceiling
+and 6-GiB headroom. Scratch peak is 3,593,543,680 bytes; durable run peak is
+3,403,776 bytes. QEMU 4103931 joins with exit 0; its PID, RAM workspace
+`run.5pegqtms` and active owned run roots are absent. All endpoint deltas are zero.
+No host product/helper/test or foreign RustDesk instance is used. The guest
+component fixture does not compile/execute Windows or macOS backends; native
+clipboard, installed behavior, R-S0/R-F5 and release acceptance remain OPEN.
+A fresh ledger count follows the exact status update; the broad goal is active.

@@ -52,6 +52,10 @@ case inventories, intermediate failures, source/artifact hashes and timings rema
 receipts under `.harness-state/verifier-vm/` and in Git history. Shared current-artifact,
 installed/other-platform, R-S0/R-F5, resource/soak and release obligations below remain OPEN.
 
+**User pivot (2026-10-28):** Release-recovery journal-transition review remains
+OPEN/PARKED after read-only inspection; no new defect, patch or test was established.
+Do not resume automatically. Work moved to unused clipboard progress API removal.
+
 **User pivot (2026-10-28):** Terminal replay-history byte bounds and the separate
 output-channel drop investigation remain OPEN/PARKED. The unexecuted five-file
 test preparation is saved in stash `c850422b0c540aeaf5fcf63aaec3558b09919956`;
@@ -13764,6 +13768,21 @@ loss, reconnect, ordering, latency/resources and cleanup remain OPEN under R-S11
 shared checklist and the global matrices.
 
 ### R-S11gz/R-S11e-238 — exact bounded file-clipboard route ownership (2026-08-17)
+
+**Unused progress query removed (`c8348465`).** Repository-wide caller inspection
+found no application consumer of `get_progress_percent`; Windows returned `None`,
+and the macOS chain only served that unused trait method. The result type, method,
+implementations and private query chain are deleted. Actual transfer accounting,
+cancellation, Finder progress attributes and native C structures are unchanged.
+The existing component runner starts extraction at the retained trait; no tests
+or VM profiles were added. At that exact source, `--control-egress-tests` passes
+all 101 existing Linux component cases, including six clipboard route/mailbox
+cases and the allocation-refusal fixture. Run `RDVotb0b9l` finishes in 136 outer
+seconds with joined QEMU/RAM cleanup and zero endpoint deltas. Its serial/storage
+receipts are retained under `android-rust-lifecycle-tests-run.RDVotb0b9l.*`;
+the audit records source/artifact identities. This is removal of unused code:
+no visible progress defect or privilege escalation was demonstrated, and Windows/
+macOS compilation, native clipboard and installed acceptance remain OPEN.
 
 **Named common Linux mailbox/registry components accepted; native route lifecycle
 and installed/platform acceptance OPEN.** `libs/clipboard/src/lib.rs` retains senders

@@ -113302,3 +113302,34 @@ The complete mode-0600 capsule is 68,058 bytes, SHA-256
 `37c7ca3919771875105b53fe528570c739799b144515d32d8da0cc3f74df8ec2`.
 Only this audit receipt follows counting; the ledger and accepted product remain
 unchanged. The broad goal remains active and incomplete.
+
+## 2026-10-28 — user pivot to mobile transfer failure details
+
+The user explicitly requested another aspect. Shared-dialog keyboard ownership
+(Shift+Tab and focused-button activation) is OPEN/PARKED after read-only review;
+no new dialog patch or check follows. Prior connection-password fixes remain.
+
+The native `src/flutter.rs::job_error` publishes the reason as `err`;
+`JobController.jobError` in `flutter/lib/models/file_model.dart` retains it on
+the current session's matching job. The mobile `FileJobStatus` error branch
+instead passed an unconditional empty detail string. Commit
+`48a8819c8f6d8a16e434ce20eec1feafa6322553` replaces that string with
+`_translate(activeJob.err)`. The selected job remains the owner of both displayed
+outcome and dismissal. No request, model mutation, native authority or layout
+changes. Flutter's [Text documentation](https://api.flutter.dev/flutter/widgets/Text-class.html)
+confirms the existing string display and bounded-line ellipsis behavior; the
+existing application translator handles known error keys and composed failures.
+
+The one-line product diff and `git diff --check` pass review. The existing
+focused command `/bin/bash scripts/smoke-verifier-vm-authority.sh
+--flutter-model-tests --file-progress` exits 1 at storage admission: 18,432 MiB
+required, including the unchanged guest/scratch/host reserve, versus 15,497 MiB
+available. The network-restricted wrapper starts, but no VM or bulk workspace
+does. Identity-checked locked inspection confirms no active owned run roots
+before or after. Resource limits and the prohibition on disk scratch are retained.
+This is a source correction, not a rendered or device pass. Existing regression
+execution and actual Android/iOS localized failure presentation remain OPEN,
+alongside all fifteen installed credential actions, R-S0/R-F5 and the broad goal.
+The status ledger records the pivot and exact evidence limit; a fresh token count
+follows. No new test inventory or verification infrastructure is added for this
+display binding.

@@ -60,6 +60,11 @@ case inventories, intermediate failures, source/artifact hashes and timings rema
 receipts under `.harness-state/verifier-vm/` and in Git history. Shared current-artifact,
 installed/other-platform, R-S0/R-F5, resource/soak and release obligations below remain OPEN.
 
+**User pivot (2026-10-28):** Shared-dialog keyboard ownership remains OPEN/PARKED
+after read-only review. No Shift+Tab or focused-button activation correction or
+runtime check follows. The accepted connection-password submission fix remains;
+work moved to mobile file-transfer failure reporting. Do not resume automatically.
+
 **User pivot (2026-10-28):** Remote-toolbar keyboard entry and submenu lifecycle
 remain OPEN/PARKED after read-only follow-up. The accepted focus-painting fix is
 retained; no further toolbar patch or runtime check follows. Work moved to
@@ -14420,6 +14425,17 @@ bounded-RAM cleanup in `mobile-file-status-43f0327e.json`.
 Android/iOS device, installed/peer integration, full R-S0/R-F5 and release acceptance
 remain OPEN. All fifteen credential-native actions and every existing user park remain
 unchanged.
+
+**Mobile transfer failure detail (`48a8819c`) — source corrected; runtime OPEN.**
+The error sheet now passes the selected job's retained error through its existing
+translator into the detail text. Previously it always supplied an empty string.
+The native event and current-session model already retain that error; job selection,
+dismissal ownership and the single-line ellipsis layout are unchanged. Source review
+and `git diff --check` pass. The existing `--flutter-model-tests --file-progress`
+run was refused before boot: 18,432 MiB required including scratch/headroom, only
+15,497 MiB available. No VM or bulk workspace was created; no runtime pass is claimed.
+Rendered/localized failure details, existing regression execution and Android/iOS
+transfer acceptance remain OPEN. The audit records the exact source and refusal.
 
 **SOURCE CORRECTED; CURRENT DART COMPONENT A/B AND FRESH BRIDGE GENERATION ACCEPTED;
 NATIVE FILESYSTEM, INSTALLED, AND OTHER TARGET-PLATFORM EVIDENCE OPEN.**

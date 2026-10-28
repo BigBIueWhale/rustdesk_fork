@@ -19,7 +19,6 @@ import 'package:flutter_hbb/utils/multi_window_manager.dart';
 import 'package:flutter_hbb/utils/platform_channel.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:window_size/window_size.dart' as window_size;
 import '../widgets/button.dart';
@@ -318,7 +317,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     if (isMacOS) {
       final isOutgoingOnly = bind.isOutgoingOnly();
       if (!(isOutgoingOnly || bind.mainIsCanScreenRecording(prompt: false))) {
-        // R-G8 / §19 (de-brand): no rustdesk.com docs "Help" link on the macOS permission cards.
         return buildInstallCard("Permissions", "config_screen", "Configure",
             () async {
           bind.mainIsCanScreenRecording(prompt: true);
@@ -359,7 +357,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
             "",
             () async {},
             marginTop: LinuxCards.isEmpty ? 20.0 : 5.0,
-            // R-G8 / §19 (de-brand): no rustdesk.com docs "Help" link.
             closeButton: true,
             closeOption: keyShowSelinuxHelpTip,
           ));
@@ -368,12 +365,10 @@ class _DesktopHomePageState extends State<DesktopHomePage>
       if (bind.mainCurrentIsWayland()) {
         LinuxCards.add(buildInstallCard(
             "Warning", "wayland_experiment_tip", "", () async {},
-            // R-G8 / §19 (de-brand): no rustdesk.com docs "Help" link.
             marginTop: LinuxCards.isEmpty ? 20.0 : 5.0));
       } else if (bind.mainIsLoginWayland()) {
         LinuxCards.add(buildInstallCard("Warning",
             "Login screen using Wayland is not supported", "", () async {},
-            // R-G8 / §19 (de-brand): no rustdesk.com docs "Help" link.
             marginTop: LinuxCards.isEmpty ? 20.0 : 5.0));
       }
       if (LinuxCards.isNotEmpty) {
@@ -403,8 +398,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   Widget buildInstallCard(String title, String content, String btnText,
       GestureTapCallback onPressed,
       {double marginTop = 20.0,
-      String? help,
-      String? link,
       bool? closeButton,
       String? closeOption}) {
     if (bind.mainGetBuildinOption(key: kOptionHideHelpCards) == 'Y' &&
@@ -485,22 +478,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                                       onTap: onPressed,
                                     )
                                   ])
-                            ]
-                          : <Widget>[]) +
-                      (help != null
-                          ? <Widget>[
-                              Center(
-                                  child: InkWell(
-                                      onTap: () async =>
-                                          await launchUrl(Uri.parse(link!)),
-                                      child: Text(
-                                        translate(help),
-                                        style: TextStyle(
-                                            decoration:
-                                                TextDecoration.underline,
-                                            color: Colors.white,
-                                            fontSize: 12),
-                                      )).marginOnly(top: 6)),
                             ]
                           : <Widget>[]))),
         ),

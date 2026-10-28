@@ -112303,3 +112303,35 @@ or mutation; owned host IP sockets were kernel-denied. Workload serial is
 32,003 bytes, SHA-256
 `e5d55452de3899e66aeee8b6a81ea331e00f5ca5215be9bc30df8fb70d6628f9`.
 This validates the document metric and isolated cleanup, not product behavior.
+
+## 2026-10-28 — unused home-card browser launcher
+
+Previous-turn classification: progress, through pushed ledger consolidation and
+fresh count. Current `027408c9` is clean. All fifteen installed/native credential
+actions and every user park remain open; screenshot follow-up is not resumed.
+
+Local-file/link launch review finds a dormant home-card actuator, not a newly
+demonstrated live egress or privilege escalation. At `027408c9`, the private
+`_DesktopHomePageState` in `flutter/lib/desktop/pages/desktop_home_page.dart`
+defines `buildInstallCard` at line 403 with optional `help`/`link` parameters.
+Its line-489 branch can create an InkWell calling `launchUrl(Uri.parse(link!))`,
+but all eight callers omit both parameters. Complete tracked Dart reference
+review finds no other definition, call or tear-off. The file has no library parts.
+Git shows Linux callers removed in `2978284a` and the final macOS callers removed
+in `bf0878d8`. R-G8/R-SV9 specify the link policy; neither requires an unused
+generic browser-launch API or an operator link that this application does not have.
+
+The retained card contract is its title, explanation, explicit Configure/Install
+callback, layout and optional dismissal. Delete the two unused parameters and
+unreachable widget rather than retaining an inactive actuator; also delete its
+sole import and four obsolete caller comments. Exact comparison proves that
+these 23 deleted lines are the entire product change and every retained byte is
+unchanged. Before/after file SHA-256 values are
+`b66408ffb5540243514a46302f147650378fe9d6fb9f975d11a8306bb848abf0` /
+`cd6c822bd03ce38ef6c4b9c7facaf53e818ec8f26808b0814b5e2ad4d31ac59e`.
+All eight existing callers still address the retained API; whitespace checks pass.
+No behavioral baseline can reach the deleted branch through a live caller, so no
+new synthetic product mode or spelling-test catalogue is introduced to exercise
+it. No compiler, rendered page, native browser or installed application ran here.
+Required native permissions, daemon installation, application functionality and
+R-S0/R-F5/release acceptance remain OPEN. Fresh ledger counting follows.

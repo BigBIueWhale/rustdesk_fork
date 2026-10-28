@@ -112450,3 +112450,16 @@ The retained workload serial is 6,068 bytes, SHA-256
 `709aa1c41678c5102ce035898905e24558b7eda7a58f611dbb2f183393124ca8`.
 Reviewed whitespace/shell syntax/Python AST checks pass. The ledger now records
 the exact acceptance scope and explicit terminal park; fresh token counting follows.
+
+Ledger count `b6R3H1ANoC` at `6def5de2` passes in 28 outer seconds:
+359,127 tokens / 1,635,519 bytes, SHA-256
+`ec68d70a1850f498b1e1b939a24dda8642d17c89cb2207d18578ffab3bb9ebbb`.
+The pinned recipe passes seven controls and the whole-file round trip; workload
+admission passes 61 controls and five refusals, including the new locale profile.
+QEMU 1770042 joins exit 0; RAM `run.r932j24t` and active owned roots are absent,
+with zero endpoint deltas. Peak RAM/durable storage is 402,321,408/258,048 bytes.
+The 32,216-byte workload serial has SHA-256
+`a81181786ff48ab3b6239da3412e8b8240811750530234bf51ce73bd0beb9a6d`.
+Final exact-byte comparison confirms that the product change is only the shared
+list move/export and the two locale entries. The executed production/test SHA-256
+values still match the tree; no later product or test changes require a rerun.

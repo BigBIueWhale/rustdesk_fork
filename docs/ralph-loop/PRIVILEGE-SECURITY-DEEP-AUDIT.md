@@ -113333,3 +113333,14 @@ alongside all fifteen installed credential actions, R-S0/R-F5 and the broad goal
 The status ledger records the pivot and exact evidence limit; a fresh token count
 follows. No new test inventory or verification infrastructure is added for this
 display binding.
+
+Fresh count `QPWouos7Tq` at `66b09a18` passes: **354,779 tokens /
+1,621,540 bytes**, ledger SHA-256
+`ab0a19389536fad49877a5df5099d20954a2d22c834342433a496b4d6ebc4773`.
+The pinned tokenizer passes seven controls and the whole-byte round trip;
+QEMU 2454598 joins exit 0, RAM `run.67eq4b5e` is absent, and all endpoint
+deltas are zero. The count's smaller admitted VM runs no product tests.
+`mobile-file-error-48a8819c.json` retains the test-admission refusal, source
+binding and count evidence: 15,626 bytes, SHA-256
+`9c5da4260d781043fd93286026658f50bab60d5e5b11361b00a8d67f9e65dd59`.
+Only this audit receipt follows counting; the ledger is unchanged.

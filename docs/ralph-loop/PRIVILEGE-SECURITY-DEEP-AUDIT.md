@@ -113406,3 +113406,16 @@ request admission; `JobController.cancelJob` and the mobile button propagate tha
 failure without visible feedback. The existing failure test catches the escaped
 exception explicitly. No cancellation behavior is changed or claimed fixed here.
 The ledger is updated; a fresh count and retained evidence capsule follow.
+
+Fresh count `M5HVUaumBN` at `5b69a750` passes in 29 outer seconds:
+**355,076 tokens / 1,622,833 bytes**, ledger SHA-256
+`e7b9e0f5006a6cddd949dc3b1a2505255c710ab46e7d157b4703f93f450b9167`.
+The final 4.75/4.5-GiB profile passes all 41 profile/76 refusal controls,
+39-mode/68-control/five-refusal workload selection and six monitor cases.
+The pinned tokenizer passes seven controls and the byte round trip. QEMU 2504976
+joins exit 0; RAM `run.5aex0wgx` retires and endpoint deltas are zero.
+The mode-0600 capsule `file-progress-resources-8ff6898c.json` is 50,824 bytes,
+SHA-256 `602c9ce01f01c699b06db97479e6e8a12184ce557b69c40f0d117595d91b67f9`.
+It retains both pre-boot refusals, intermediate controls, archive inventory,
+executed source/test identities, all case results, resources, endpoints and count.
+Only this audit receipt follows counting; the ledger and tested source are unchanged.

@@ -159,7 +159,7 @@ case "$#:${8:-}" in
             || "${13}" = --whiteboard-display-lifetime || "${13}" = --whiteboard-client \
             || "${13}" = --whiteboard-helper-lifetime || "${13}" = --input-revocation || "${13}" = --input-release || "${13}" = --input-lifetime \
             || "${13}" = --installer-package || "${13}" = --linux-password-admission \
-            || "${13}" = --windows-pointer || "${13}" = --linux-resource-limits || "${13}" = --linux-xrandr-query || "${13}" = --resolution-restoration \
+            || "${13}" = --language-selection || "${13}" = --windows-pointer || "${13}" = --linux-resource-limits || "${13}" = --linux-xrandr-query || "${13}" = --resolution-restoration \
             || "${13}" = --linux-resolution-lifetime || "${13}" = --audio-mailbox \
             || "${13}" = --recording-output || "${13}" = --viewer-video || "${13}" = --video-qos || "${13}" = --video-vpx || "${13}" = --video-qos-controller || "${13}" = --option-ack || "${13}" = --resolution-parent || "${13}" = --file-receive-caller || "${13}" = --viewer-credentials || "${13}" = --viewer-resume || "${13}" = --local-file-listing \
             || "${13}" = --audio-buffer || "${13}" = --fusermount-fd \
@@ -984,6 +984,7 @@ for profile, memory, scratch, overlay in (
         ('audio-buffer', 2048, 6, 4),
         ('audio-mailbox', 2048, 6, 4),
         ('linux-resource-limits', 2048, 6, 4),
+        ('language-selection', 2048, 6, 4),
         ('windows-pointer', 2048, 6, 4),
         ('file-block', 2048, 6, 4),
         ('control-egress', 2048, 6, 4),
@@ -1018,6 +1019,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
                         ('audio-buffer', 2047), ('audio-buffer', 4096),
                         ('audio-mailbox', 2047), ('audio-mailbox', 4096),
                         ('linux-resource-limits', 2047), ('linux-resource-limits', 4096),
+                        ('language-selection', 2047), ('language-selection', 4096),
                         ('windows-pointer', 2047), ('windows-pointer', 4096),
                         ('file-block', 2047), ('file-block', 4096),
                         ('control-egress', 2047), ('control-egress', 4096),
@@ -5181,6 +5183,20 @@ run_focused_rust_tests() {
                 query_regressions::tests::output_names_are_literal_regex_text
                 query_regressions::tests::output_identity_cannot_continue_on_another_line
             )
+        elif [ "$RUST_TEST_PROFILE" = language-selection ]; then
+            container_name=rustdesk-language-selection-tests
+            memory=1g
+            memory_bytes=1073741824
+            tmpfs_size=64m
+            source_fingerprints=(src/lang.rs src/lang_locale.rs scripts/test-language-selection.rs)
+            required_tests=(
+                locale::tests::configured_language_takes_precedence
+                locale::tests::chinese_regions_select_the_supported_script
+                locale::tests::explicit_script_wins_over_region
+                locale::tests::java_locale_scripts_win_over_country_and_variant
+                locale::tests::extensions_do_not_override_script_or_region
+                locale::tests::other_locales_keep_their_language
+            )
         elif [ "$RUST_TEST_PROFILE" = windows-pointer ]; then
             container_name=rustdesk-windows-pointer-tests
             memory=1g
@@ -6196,6 +6212,25 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                             printf "RESOLUTION_RESTORATION_ARTIFACT=pass sha256=%s tests=6 unchanged=before-after\n" "$artifact_sha"
                             exit 0
                         fi
+                        if [ "$RUST_TEST_PROFILE" = language-selection ]; then
+                            python3 -I -S -c '\''import errno, socket
+with socket.socket() as canary:
+    try:
+        canary.connect(("192.0.2.1", 9))
+    except OSError as error:
+        assert error.errno == errno.ENETUNREACH, error
+    else:
+        raise SystemExit("language-selection canary connected")
+print("R-B10 canary: build confirmed network-isolated (offline compile stage).")'\''
+                            test_executable=/cargo-target/language-selection-tests
+                            rustc --edition=2021 --test /source/scripts/test-language-selection.rs -o "$test_executable"
+                            artifact_sha="$(sha256sum "$test_executable" | cut -d " " -f 1)"
+                            printf "LANGUAGE_SELECTION_ARTIFACT_BEFORE=sha256=%s\n" "$artifact_sha"
+                            "$test_executable" --test-threads=1 --color never
+                            [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                            printf "LANGUAGE_SELECTION_ARTIFACT=pass sha256=%s tests=6 unchanged=before-after\n" "$artifact_sha"
+                            exit 0
+                        fi
                         if [ "$RUST_TEST_PROFILE" = windows-pointer ]; then
                             python3 -I -S -c '\''import errno, socket
 with socket.socket() as canary:
@@ -6604,6 +6639,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         printf 'WHITEBOARD_PRESENTATION_STATE_PROFILE=whiteboard-presentation stage=container-start tests=2 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
         printf 'WHITEBOARD_DISPLAY_PROFILE=whiteboard-display-lifetime stage=container-start tests=6 bridge=absent backend=x11\n'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = language-selection ]; then
+        printf 'LANGUAGE_SELECTION_PROFILE=language-selection stage=container-start tests=6 app=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = windows-pointer ]; then
         printf 'WINDOWS_POINTER_PROFILE=windows-pointer stage=container-start tests=5 windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-resource-limits ]; then
@@ -7346,6 +7383,11 @@ PY
         [ "$(grep -Ec '^LINUX_RESOLUTION_LIFETIME_ARTIFACT=pass sha256=[0-9a-f]{64} tests=24 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'LINUX_RESOLUTION_LIFETIME_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'resolution-lifetime artifact receipt differs'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = language-selection ]; then
+        [ "${#result_lines[@]}" -eq 1 ] || fail 'language-selection summary count differs'
+        [ "$(grep -Ec '^LANGUAGE_SELECTION_ARTIFACT=pass sha256=[0-9a-f]{64} tests=6 unchanged=before-after$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'LANGUAGE_SELECTION_ARTIFACT=' "$output")" -eq 1 ] \
+            || fail 'language-selection artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = windows-pointer ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'Windows pointer summary count differs'
         [ "$(grep -Ec '^WINDOWS_POINTER_ARTIFACT=pass sha256=[0-9a-f]{64} tests=5 optimized=true overflow_checks=false unchanged=before-after$' "$output")" -eq 1 ] \
@@ -8005,6 +8047,10 @@ PY
             printf 'LINUX_RESOLUTION_LIFETIME_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-command-and-owned-work-components rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = language-selection ]; then
+            grep -E '^test locale::tests::.* \.\.\. ok$|^LANGUAGE_SELECTION_ARTIFACT(_BEFORE)?=' "$output"
+            printf 'LANGUAGE_SELECTION_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-locale-selection rust=1.75.0 devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = windows-pointer ]; then
             grep -E '^test absolute_pointer::tests::.* \.\.\. ok$|^WINDOWS_POINTER_ARTIFACT(_BEFORE)?=' "$output"
             printf 'WINDOWS_POINTER_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-normalization windows=unexecuted rust=1.75.0 devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \

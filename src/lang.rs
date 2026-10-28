@@ -29,6 +29,8 @@ mod it;
 mod ja;
 mod ko;
 mod kz;
+#[path = "lang_locale.rs"]
+mod locale;
 mod lt;
 mod lv;
 mod ml;
@@ -110,28 +112,8 @@ pub fn translate(name: String) -> String {
 }
 
 pub fn translate_locale(name: String, locale: &str) -> String {
-    let locale = locale.to_lowercase();
-    let mut lang = hbb_common::config::LocalConfig::get_option("lang").to_lowercase();
-    if lang.is_empty() {
-        // zh_CN on Linux, zh-Hans-CN on mac, zh_CN_#Hans on Android
-        if locale.starts_with("zh") {
-            lang = (if locale.contains("tw") {
-                "zh-tw"
-            } else {
-                "zh-cn"
-            })
-            .to_owned();
-        }
-    }
-    if lang.is_empty() {
-        lang = locale
-            .split("-")
-            .next()
-            .map(|x| x.split("_").next().unwrap_or_default())
-            .unwrap_or_default()
-            .to_owned();
-    }
-    let lang = lang.to_lowercase();
+    let configured = hbb_common::config::LocalConfig::get_option("lang");
+    let lang = locale::select_language(&configured, locale);
     let m = match lang.as_str() {
         "fr" => fr::T.deref(),
         "zh-cn" => cn::T.deref(),

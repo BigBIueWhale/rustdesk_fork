@@ -69,7 +69,7 @@ def storage_limits(profile, memory_mib):
         require(memory_mib == 10240, 'viewer suspension requires its 10 GiB guest')
         # Retained-app, single-lifecycle replay: one GiB beside the bounded overlay.
         return 6 * GIB, 5 * GIB
-    if profile in ('windows-pointer', 'linux-resource-limits', 'linux-resolution-lifetime', 'fusermount-process', 'linux-service-uid-tests',
+    if profile in ('language-selection', 'windows-pointer', 'linux-resource-limits', 'linux-resolution-lifetime', 'fusermount-process', 'linux-service-uid-tests',
                    'audio-buffer', 'audio-mailbox', 'file-block', 'control-egress', 'clipboard-response',
                    'debian-package-tests'):
         require(memory_mib == 2048, f'{profile} storage profile requires its 2 GiB guest')
@@ -447,7 +447,7 @@ def main():
                         choices=('standard', 'hbb-common-fs', 'linux-logind', 'cpace-recovery-tests',
                                  'flutter-credential-dialog', 'linux-service-build',
                                  'ledger-token-count', 'authority-smoke', 'fixed-archive-tests', 'x11-focus', 'x11-key-input', 'linux-parent-libtest',
-                                 'windows-pointer', 'linux-resource-limits', 'linux-resolution-lifetime', 'fusermount-process', 'xrandr-acquisition',
+                                 'language-selection', 'windows-pointer', 'linux-resource-limits', 'linux-resolution-lifetime', 'fusermount-process', 'xrandr-acquisition',
                                  'linux-service-uid-tests', 'audio-buffer', 'audio-mailbox', 'file-block', 'control-egress', 'clipboard-response',
                                  'linux-service-receiver', 'linux-flutter-replay', 'installer-package',
                                  'android-storage-key', 'linux-flutter-suspend', 'media-kernel-tests',

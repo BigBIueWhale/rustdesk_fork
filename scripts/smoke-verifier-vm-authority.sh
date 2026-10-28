@@ -275,6 +275,12 @@ case "$#:${1:-}" in
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=file-receive-caller
         ;;
+    1:--language-selection-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'language-selection input/run overrides are forbidden' >&2; exit 2; }
+        MODE=android-rust-lifecycle-tests
+        RUST_TEST_PROFILE=language-selection
+        ;;
     1:--windows-pointer-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'Windows pointer-test input/run overrides are forbidden' >&2; exit 2; }
@@ -659,6 +665,7 @@ case "$#:${1:-}" in
         printf 'File log rotation and retention: %s --file-logging-tests\n' "${0##*/}" >&2
         printf 'Focused production clipboard tests: %s --android-rust-lifecycle-tests --clipboard\n' "${0##*/}" >&2
         printf 'Focused installer encoder/decoder tests: %s --installer-package-tests\n' "${0##*/}" >&2
+        printf 'Production locale selection: %s --language-selection-tests\n' "${0##*/}" >&2
         printf 'Windows pointer arithmetic (Linux component): %s --windows-pointer-tests\n' "${0##*/}" >&2
         printf 'Focused whiteboard presentation state tests: %s --android-rust-lifecycle-tests --whiteboard-presentation\n' "${0##*/}" >&2
         printf 'Focused whiteboard client state tests: %s --android-rust-lifecycle-tests --whiteboard-client\n' "${0##*/}" >&2
@@ -934,7 +941,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         readonly VM_MEMORY=6144
     elif [ "$RUST_TEST_PROFILE" = installer-package ]; then
         readonly VM_MEMORY=4096
-    elif [[ "$RUST_TEST_PROFILE" = windows-pointer || "$RUST_TEST_PROFILE" = linux-resource-limits || "$RUST_TEST_PROFILE" = linux-xrandr-query || "$RUST_TEST_PROFILE" = resolution-restoration \
+    elif [[ "$RUST_TEST_PROFILE" = language-selection || "$RUST_TEST_PROFILE" = windows-pointer || "$RUST_TEST_PROFILE" = linux-resource-limits || "$RUST_TEST_PROFILE" = linux-xrandr-query || "$RUST_TEST_PROFILE" = resolution-restoration \
         || "$RUST_TEST_PROFILE" = linux-resolution-lifetime || "$RUST_TEST_PROFILE" = audio-mailbox \
         || "$RUST_TEST_PROFILE" = audio-buffer || "$RUST_TEST_PROFILE" = fusermount-fd \
         || "$RUST_TEST_PROFILE" = fusermount-process || "$RUST_TEST_PROFILE" = file-block \
@@ -7484,6 +7491,14 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linu
         "LINUX_RESOLUTION_LIFETIME_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=24 target=linux-x86_64 scope=production-command-and-owned-work-components rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused Linux resolution-lifetime receipt'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'resolution-lifetime cloud-init completion'
+elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = language-selection ]; then
+    [ "$(/usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -Ec 'LANGUAGE_SELECTION_ARTIFACT=pass sha256=[0-9a-f]{64} tests=6 unchanged=before-after$')" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fc 'LANGUAGE_SELECTION_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
+        || fail 'language-selection artifact receipt differs'
+    require_exact_fixed_receipt \
+        "LANGUAGE_SELECTION_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=6 target=linux-x86_64 scope=production-locale-selection rust=1.75.0 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined" \
+        'language-selection result'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'language-selection completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = windows-pointer ]; then
     [ "$(/usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -Ec 'WINDOWS_POINTER_ARTIFACT=pass sha256=[0-9a-f]{64} tests=5 optimized=true overflow_checks=false unchanged=before-after$')" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'WINDOWS_POINTER_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
@@ -8914,6 +8929,9 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = linux-resolution-lifetime ]; then
         printf 'LINUX_RESOLUTION_LIFETIME_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=24 scope=production-command-and-owned-work-components network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
+    elif [ "$RUST_TEST_PROFILE" = language-selection ]; then
+        printf 'LANGUAGE_SELECTION_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=6 scope=production-locale-selection network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = windows-pointer ]; then
         printf 'WINDOWS_POINTER_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=5 scope=production-normalization windows=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

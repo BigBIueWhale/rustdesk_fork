@@ -198,7 +198,7 @@ class ResultTests(unittest.TestCase):
 
     def test_complete_profiles(self):
         if SINGLE_PROFILE == "audio-input":
-            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 20))
+            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (3, 29))
             return
         if SINGLE_PROFILE == "password-fields":
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (3, 25))
@@ -240,7 +240,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("window-dispatch"), "window-dispatch"), (1, 8))
         self.assertEqual(self.parse(self.events("peer-data"), "peer-data"), (5, 94))
         self.assertEqual(self.parse(self.events("file-progress"), "file-progress"), (1, 43))
-        self.assertEqual(self.parse(self.events("audio-input"), "audio-input"), (2, 20))
+        self.assertEqual(self.parse(self.events("audio-input"), "audio-input"), (3, 29))
         self.assertEqual(self.parse(self.events("reconnect"), "reconnect"), (2, 11))
         self.assertEqual(self.parse(self.events("custom-scale"), "custom-scale"), (1, 39))
         self.assertEqual(self.parse(self.events("trackpad-speed"), "trackpad-speed"), (2, 16))

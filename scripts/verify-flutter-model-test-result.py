@@ -1367,6 +1367,17 @@ TRACKPAD_SPEED_SUITES = {
 
 
 AUDIO_INPUT_SUITES = {
+    "cm_audio_probe_test.dart": {
+        'audio CM picker writes the selected device for its current call',
+        'audio CM picker refuses retired opener callbacks',
+        'audio CM picker drops device results for a replaced call',
+        'audio CM picker refuses menu selections for a replaced call',
+        'audio CM picker allows a fresh menu after call replacement',
+        'audio CM picker reports current read errors and suppresses retired errors',
+        'audio CM picker reports current write failure and allows retry',
+        'audio CM picker drains old write failures without replacement feedback',
+        'audio CM picker refuses missing call authority',
+    },
     "setting_option_mutation_test.dart": {
         name for name in SETTING_OPTION_TESTS if name.startswith("audio ")
     },

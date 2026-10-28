@@ -113553,3 +113553,16 @@ baseline diagnostics are identity-checked and retired to
 unattributed addition; candidate has two removals and no additions. These are
 retained without inspecting or changing foreign processes; host IP socket
 creation remains kernel-denied. Capsule and fresh ledger count follow.
+
+Fresh count `lYzEPNCxxC` at `d268d72b` passes in 28 outer seconds:
+**355,413 tokens / 1,624,434 bytes**, ledger SHA-256
+`1caa41a86b2c5e33b781d95c20d8dd83c30e0a8ca01cf1a91c76b8c0595b2341`.
+The pinned tokenizer passes seven controls and the whole-input round trip.
+Resource checks pass 43 profiles/80 refusals, 39 modes/69 workload controls/five
+refusals and six monitor cases. QEMU 2649058 joins exit 0; RAM `run.86yaq_5l`
+retires and all endpoint deltas are zero. The mode-0600, single-link capsule
+`.harness-state/verifier-vm/audio-failure-c66b7503.json` is 95,951 bytes,
+SHA-256 `8d1500dbfa1d1bc90258dad5b080f1acf72e46dd61ec753f19d73d0e699094ec`.
+It retains exact sources, failure/fixture classifications, runtime results,
+resource and cleanup receipts, endpoint inventories, research and count.
+Only this audit receipt follows the count; product and ledger are unchanged.

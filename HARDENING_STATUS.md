@@ -3533,6 +3533,17 @@ catalogue execution is claimed. All fifteen installed/native actions remain
 OPEN. The audit entry “2026-10-28 — overlapping Windows password source catalogue”
 records classification and the fresh ledger count.
 
+The desktop checker also drops 103 lines of overlapping Linux credential-response
+catalogue and its unused local source binding. The shared gate retains requester
+and admission shapes, exact child/endpoint replay, consuming operation-bound
+response, private authenticator, sole construction and handler-bypass checks.
+The desktop handler deadline, raw-wire, writer, coordinator, bootstrap and shutdown
+checks remain byte-identical. Exact deletion comparison and Python AST parsing
+pass; product, executable tests, shared gate, commands and requirements are unchanged.
+No checker or native transaction ran for this deletion. R-S11ig and all fifteen
+installed actions remain OPEN; classification is in the audit entry
+“2026-10-28 — overlapping Linux credential-response catalogue”.
+
 **Shared acceptance still required.** Each action needs current target-OS compilation and focused
 tests, the exact installed artifact and authorized/refused principals; its authorized effect,
 persistence or runtime-only behavior,

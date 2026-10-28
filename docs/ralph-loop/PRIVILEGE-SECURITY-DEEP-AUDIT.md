@@ -111277,3 +111277,43 @@ unattributed endpoint; no owner is inspected or changed. Raw workload evidence
 `ledger-token-count-run.UrMEJl1NBj.serial.log` is 31,515 bytes, SHA-256
 `738b8f95a596cb3c42429b0f4584e10babd7c429a29a104e9c1eacd8653def52`.
 This audit-only receipt leaves the counted ledger byte-identical.
+
+## 2026-10-28 — overlapping Linux credential-response catalogue
+
+The previous turn is progress: the Hebrew/Indonesian selector correction is
+pushed with a failing unchanged baseline and ten passing corrected test groups.
+This slice continues the required verification classification. All user parks
+and all fifteen installed credential actions remain OPEN.
+
+R-S11ig and Appendix C #392 require the exact current supervised child to own a
+typed requester, freshly revalidated consuming admission and UUID-bound PRS
+response. Those requirements and `src/ipc.rs:1341-1403,4372-4400` plus
+`src/ipc/auth.rs:3446` are unchanged. The duplicate catalogue in
+`verify_flow_finality_and_shutdown` only inspected source tokens, formatting,
+derive spelling and occurrence counts; it never exercised a socket, kernel peer,
+requester replacement, protected read, wire response or cleanup.
+
+Classification maps its requester/admission fields, fixed credential endpoint,
+fresh identity equality, consuming signatures, retained UUID, root PRS read,
+response writer, authenticator visibility and sole admission construction to
+the existing `linux-credential-authority-not-typed-through-operation-bound-response`
+block in `scripts/verify.sh`. That shared block also retains accept-loop capacity
+and handoff, handler bypass prohibitions and production caller counts. Its Clone
+spelling check remains; neither that spelling nor the removed Copy spelling
+probe proves ownership. Exact compiler and installed/native acceptance stays open.
+The separate desktop handler deadline, raw transport, root-to-child writer,
+coordinator, bootstrap and shutdown checks retain their complete original bytes.
+
+Delete the 102-line catalogue and the now-unused local `auth` binding, with no
+replacement wrapper or extra source verifier. Exact comparison against source
+`0afd5afa` proves those 103 deletions are the only checker changes. Python AST
+parsing passes; all other top-level nodes are identical and no removed local is
+referenced by the surviving function. The shared verifier and its executable
+test commands are byte-identical, SHA-256
+`be6e5eadc006ee67d8bf10e18b93d0cbbf473f8f6feb650cc60dbe8e293d3253`.
+Checker SHA-256 changes from
+`795589bf719dec1cc692bccd9b5d0de4350f87ed94552abd19f5724892e93116` to
+`63fd46c00ccf919692b3ad3c5702eba1d34a0ec0f256e90dca19dd24ae2cb54e`.
+`git diff --check` passes. No product, test body, test inventory, gate command,
+normative requirement or live instruction is changed. No remaining-checker,
+compiler, IPC or native authorization execution is claimed for this deletion.

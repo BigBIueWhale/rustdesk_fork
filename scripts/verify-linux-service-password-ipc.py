@@ -1924,7 +1924,6 @@ def verify_windows_password_admission_authority(rust: Mapping[str, RustSource]) 
 
 def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
     ipc = rust["src/ipc.rs"]
-    auth = rust["src/ipc/auth.rs"]
     main_handler = ipc.function("handle_sensitive_main_ipc_transaction")
     ipc.all().require(
         (
@@ -2130,108 +2129,6 @@ def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
     )
     writer_begin.forbid(("SensitivePassword",), "generic password parameter")
     writer_begin.forbid(("USER_PASSWORD_IPC_POSTFIX",), "transaction-time endpoint selection")
-
-    credential_requester = ipc.item(
-        "struct", "LinuxServiceOwnedCredentialReplicaRequester"
-    )
-    credential_requester.require(
-        ("identity", ":", "PeerProcessIdentity"),
-        "complete Linux credential requester identity",
-        unique=True,
-    )
-    credential_admission = ipc.item(
-        "struct", "LinuxServiceOwnedCredentialReplicaAdmission"
-    )
-    credential_admission.require_order(
-        (
-            (("_requester", ":", "LinuxServiceOwnedCredentialReplicaRequester"), "retained exact requester"),
-            (("operation_id", ":", "hbb_common", "::", "uuid", "::", "Uuid"), "operation-bound response authority"),
-        ),
-        unique=True,
-    )
-    for capability in (
-        "LinuxServiceOwnedCredentialReplicaRequester",
-        "LinuxServiceOwnedCredentialReplicaAdmission",
-    ):
-        for trait in ("Clone", "Copy"):
-            if f"#[derive({trait})]\nstruct {capability}" in ipc.text:
-                raise VerificationError(
-                    f"src/ipc.rs: {capability} must not derive {trait}"
-                )
-
-    credential_authenticate = ipc.method(
-        ("impl", "LinuxServiceOwnedCredentialReplicaRequester"),
-        "authenticate",
-        "Linux credential requester authentication",
-    )
-    credential_authenticate.require_order(
-        (
-            (("authenticate_linux_service_owned_password_replica_server", "(", "stream", ",", "password", "::", "SERVICE_CREDENTIAL_IPC_POSTFIX", OPTIONAL_COMMA, ")"), "fixed credential-endpoint child proof"),
-            (("Self", "{", "identity", "}"), "typed requester construction"),
-        ),
-        unique=True,
-    )
-    credential_admit = ipc.method(
-        ("impl", "LinuxServiceOwnedCredentialReplicaRequester"),
-        "admit",
-        "Linux credential response admission",
-    )
-    credential_admit.require_order(
-        (
-            (("Self", "::", "authenticate", "(", "stream", ")"), "fresh exact-child replay"),
-            (("refreshed", ".", "identity", "!=", "self", ".", "identity"), "accepted-generation continuity"),
-            (("LinuxServiceOwnedCredentialReplicaAdmission", "{"), "typed admission construction"),
-            (("_requester", ":", "self"), "retained requester transfer"),
-            (("operation_id", OPTIONAL_COMMA), "operation binding transfer"),
-        ),
-        unique=True,
-    )
-    credential_respond = ipc.method(
-        ("impl", "LinuxServiceOwnedCredentialReplicaAdmission"),
-        "respond",
-        "Linux credential capability response",
-    )
-    credential_respond.require_order(
-        (
-            (("service_owned_runtime_prs_replica", "(", '"Linux"', ")"), "root-owned PRS snapshot"),
-            (("send_credential_replica_unix", "(", "stream", ",", "self", ".", "operation_id", ",", "replica", ".", "as_sensitive_password", "(", ")", ",", "deadline"), "operation-bound typed PRS response"),
-        ),
-        unique=True,
-    )
-    for text, label in (
-        (
-            "    fn admit<T>(\n        self,\n        stream: &T,\n        operation_id: hbb_common::uuid::Uuid,",
-            "consuming requester and operation-bound admission signature",
-        ),
-        (
-            "impl LinuxServiceOwnedCredentialReplicaAdmission {\n"
-            "    async fn respond(\n        self,\n        stream: &mut Conn,\n        deadline: tokio::time::Instant,",
-            "consuming capability-owned response signature",
-        ),
-    ):
-        if text not in ipc.text:
-            raise VerificationError(f"src/ipc.rs: missing {label}")
-    auth.all().require(
-        ("pub", "(", "super", ")", "fn", "authenticate_linux_service_owned_password_replica_server"),
-        "module-private generic Linux replica proof",
-        unique=True,
-    )
-    auth.all().forbid(
-        ("pub", "(", "crate", ")", "fn", "authenticate_linux_service_owned_password_replica_server"),
-        "crate-visible generic Linux replica proof",
-    )
-    admission_construction = credential_admit.require(
-        ("LinuxServiceOwnedCredentialReplicaAdmission", "{"),
-        "sole admission construction",
-        unique=True,
-    )
-    admission_mentions = ipc.all().positions(
-        ("LinuxServiceOwnedCredentialReplicaAdmission", "{")
-    )
-    if len(admission_mentions) != 3 or admission_construction not in admission_mentions:
-        raise VerificationError(
-            "src/ipc.rs: Linux credential replica admission must have one construction in its consuming requester method"
-        )
 
     operation = ipc.function("execute_linux_service_owned_password_operation")
     operation.require_order(

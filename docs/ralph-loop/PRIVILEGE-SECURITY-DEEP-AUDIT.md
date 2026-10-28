@@ -112874,3 +112874,15 @@ next native UI checkpoint. For this one-line lookup correction and unused-code
 deletion, read-only catalogue/reference and exact-diff checks plus whitespace
 validation are the evidence; no new ceremonial test or native runtime claim is
 added. A fresh isolated ledger count follows the status update.
+
+Correction `0f88e73b` is pushed. Fresh count `nOi5JQsZXm` at that exact source
+passes in 28 outer seconds: **353,287 tokens / 1,614,336 bytes**, input SHA-256
+`195720266f50fb246b059f8002be408a5a333e36fbd7e7f9f4a5ecb2882e8d4c`.
+The pinned `tiktoken-0.12.0/cl100k_base/encode_ordinary` method passes seven
+known controls and a full byte round trip; storage admission passes 38 modes,
+64 controls and five refusals. QEMU 2145503 joins exit 0; RAM `run.uldge53w`
+and owned active roots are absent, with zero endpoint deltas. Scratch/durable
+peaks are 402,178,048/253,952 bytes. The 32,900-byte workload serial SHA-256 is
+`2c90adfd6824527ad448ff9f3ddc0f7dc64877e19fc61bba9310e1a729192681`.
+Only this audit receipt follows counting; the counted ledger stays identical.
+This tokenizer VM does not execute or validate the mobile product.

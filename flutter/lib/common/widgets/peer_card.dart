@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common/widgets/dialog.dart';
 import 'package:flutter_hbb/common/widgets/peer_credential_badge.dart';
+import 'package:flutter_hbb/common/widgets/rdp_port_field.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/peer_tab_model.dart';
 import 'package:flutter_hbb/models/state_model.dart';
@@ -849,17 +849,16 @@ class FavoritePeerCard extends BasePeerCard {
 }
 
 void _rdpDialog(String id) async {
-  final port = await bind.mainGetPeerOption(id: id, key: 'rdp_port');
-  final portController = TextEditingController(text: port);
+  var port = await bind.mainGetPeerOption(id: id, key: 'rdp_port');
   var submitting = false;
 
   gFFI.dialogManager.show((setState, close, context) {
     submit() async {
       if (!close.isCurrent || submitting) return;
-      String port = portController.text.trim();
+      final requestedPort = port.trim();
       setState(() => submitting = true);
       try {
-        if (!await mainSetPeerOption(id, 'rdp_port', port)) return;
+        if (!await mainSetPeerOption(id, 'rdp_port', requestedPort)) return;
         if (close.isCurrent) showToast(translate('Successful'));
         close();
       } finally {
@@ -885,17 +884,11 @@ void _rdpDialog(String id) async {
                         ).marginOnly(right: 10))
                     : SizedBox.shrink(),
                 Expanded(
-                  child: TextField(
+                  child: RdpPortField(
+                    initialPort: port,
                     enabled: !submitting,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(
-                          r'^([0-9]|[1-9]\d|[1-9]\d{2}|[1-9]\d{3}|[1-5]\d{4}|6[0-4]\d{3}|65[0-4]\d{2}|655[0-2]\d|6553[0-5])$'))
-                    ],
-                    decoration: InputDecoration(
-                        labelText: isDesktop ? null : translate('Port'),
-                        hintText: '3389'),
-                    controller: portController,
-                    autofocus: true,
+                    onChanged: (value) => port = value,
+                    labelText: isDesktop ? null : translate('Port'),
                   ),
                 ),
               ],

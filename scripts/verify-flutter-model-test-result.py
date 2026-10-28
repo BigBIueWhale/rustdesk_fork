@@ -100,6 +100,14 @@ FRAME_QUEUE_TESTS = {
     "detached displays remain inside the queue-wide key bound",
 }
 DIRECT_ADDRESS_TESTS = {
+    "RDP port editing shows the saved port without publishing an edit",
+    "RDP port editing can clear the saved port and enter a replacement",
+    "RDP port editing invalid edits retain the selected port and do not publish",
+    "RDP port editing accepts canonical ports with their editing selection",
+    "RDP port editing rebuild retains the current draft and controller",
+    "RDP port editing pending save disables editing without losing the draft",
+    "RDP port editing removal disposes its text controller",
+    "RDP port editing replacement owns a fresh editor and retires the old one",
     "tunnel port editing accepts empty and canonical 16-bit numeric drafts",
     "tunnel port editing rejects the whole invalid edit without changing the draft",
     "tunnel port editing preserves selection and composition of accepted text",

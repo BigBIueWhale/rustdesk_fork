@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_hbb/common/formatter/direct_address.dart';
 import 'package:flutter_hbb/common/formatter/port_number.dart';
+import 'package:flutter_hbb/common/widgets/rdp_port_field.dart';
 
 Widget _addressField(DirectAddressTextEditingController controller) =>
     MaterialApp(
@@ -13,6 +14,148 @@ Widget _addressField(DirectAddressTextEditingController controller) =>
     );
 
 void main() {
+  group('RDP port editing', () {
+    Future<TextEditingController> showField(
+      WidgetTester tester, {
+      String initialPort = '3390',
+      bool enabled = true,
+      Key? key,
+      ValueChanged<String>? onChanged,
+    }) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: RdpPortField(
+            key: key,
+            initialPort: initialPort,
+            enabled: enabled,
+            onChanged: onChanged ?? (_) {},
+            labelText: 'Port',
+          ),
+        ),
+      ));
+      return tester.widget<EditableText>(find.byType(EditableText)).controller;
+    }
+
+    testWidgets('shows the saved port without publishing an edit',
+        (tester) async {
+      final edits = <String>[];
+      final controller = await showField(tester, onChanged: edits.add);
+      expect(controller.text, '3390');
+      expect(find.text('Port'), findsOneWidget);
+      expect(tester.widget<TextField>(find.byType(TextField)).decoration!.hintText,
+          '3389');
+      expect(edits, isEmpty);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('can clear the saved port and enter a replacement',
+        (tester) async {
+      final edits = <String>[];
+      final controller = await showField(tester, onChanged: edits.add);
+      await tester.enterText(find.byType(TextField), '');
+      expect(controller.text, isEmpty);
+      expect(edits, ['']);
+      await tester.enterText(find.byType(TextField), '443');
+      expect(controller.text, '443');
+      expect(edits, ['', '443']);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('invalid edits retain the selected port and do not publish',
+        (tester) async {
+      final edits = <String>[];
+      final controller = await showField(tester, onChanged: edits.add);
+      await tester.showKeyboard(find.byType(TextField));
+      const previous = TextEditingValue(
+        text: '3390',
+        selection: TextSelection(baseOffset: 1, extentOffset: 3),
+      );
+      for (final text in ['65536', '3x90', '-1', '+1', '01', '3390\n', '٣٣٩٠']) {
+        controller.value = previous;
+        tester.testTextInput.updateEditingValue(TextEditingValue(
+          text: text,
+          selection: TextSelection.collapsed(offset: text.length),
+        ));
+        await tester.pump();
+        expect(controller.value, previous, reason: text);
+        expect(edits, isEmpty, reason: text);
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('accepts canonical ports with their editing selection',
+        (tester) async {
+      final edits = <String>[];
+      final controller = await showField(tester, onChanged: edits.add);
+      await tester.showKeyboard(find.byType(TextField));
+      for (final text in ['0', '1', '9', '10', '443', '3389', '65535']) {
+        final value = TextEditingValue(
+          text: text,
+          selection: TextSelection.collapsed(offset: text.length),
+        );
+        tester.testTextInput.updateEditingValue(value);
+        await tester.pump();
+        expect(controller.value, value);
+        expect(edits.last, text);
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('rebuild retains the current draft and controller',
+        (tester) async {
+      final controller = await showField(tester);
+      await tester.enterText(find.byType(TextField), '443');
+      controller.selection = const TextSelection(baseOffset: 0, extentOffset: 2);
+      final before = controller.value;
+      final rebuilt = await showField(tester);
+      expect(rebuilt, same(controller));
+      expect(rebuilt.value, before);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('pending save disables editing without losing the draft',
+        (tester) async {
+      final edits = <String>[];
+      final controller = await showField(tester, onChanged: edits.add);
+      await tester.enterText(find.byType(TextField), '443');
+      final disabled = await showField(tester,
+          initialPort: '443', enabled: false, onChanged: edits.add);
+      expect(disabled, same(controller));
+      expect(tester.widget<TextField>(find.byType(TextField)).enabled, isFalse);
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      expect(tester.widget<EditableText>(find.byType(EditableText)).readOnly,
+          isTrue);
+      expect(controller.text, '443');
+      expect(edits, ['443']);
+      await showField(tester, initialPort: '443', onChanged: edits.add);
+      await tester.enterText(find.byType(TextField), '3391');
+      expect(edits, ['443', '3391']);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('removal disposes its text controller', (tester) async {
+      final controller = await showField(tester);
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(() => controller.addListener(() {}), throwsFlutterError);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('replacement owns a fresh editor and retires the old one',
+        (tester) async {
+      final old = await showField(tester, key: const ValueKey('old'));
+      await tester.enterText(find.byType(TextField), '443');
+      final next = await showField(tester,
+          key: const ValueKey('next'), initialPort: '3392');
+      expect(next, isNot(same(old)));
+      expect(next.text, '3392');
+      expect(() => old.addListener(() {}), throwsFlutterError);
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(() => next.addListener(() {}), throwsFlutterError);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   group('tunnel port editing', () {
     const previous = TextEditingValue(
       text: '21118',

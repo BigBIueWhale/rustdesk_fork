@@ -34,7 +34,8 @@ elif [ "${MODE:-}" = hbb-common-fs ] && [ "${HBB_LOGIND_NATIVE:-}" = 0 ] \
     readonly VM_STORAGE_PROFILE=hbb-common-fs
 elif [ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:locales ]; then
     readonly VM_STORAGE_PROFILE=flutter-locales
-elif [ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:draggable-divider ]; then
+elif [[ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:draggable-divider \
+    || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:menu-button ]]; then
     readonly VM_STORAGE_PROFILE=flutter-divider
 elif [[ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:file-columns \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:trackpad-speed ]]; then
@@ -66,7 +67,6 @@ elif [[ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:connect-pass
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:file-metadata \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:frame-queue \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:share-rdp \
-    || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:menu-button \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:hold-drag \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:path-labels \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:setting-checkbox \

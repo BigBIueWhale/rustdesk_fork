@@ -1108,6 +1108,7 @@ cases.extend([('hbb-common-fs', {'HBB_LOGIND_NATIVE': '1'}, 'linux-logind'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'screenshot-save'}, 'flutter-dialog-tests'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'locales'}, 'flutter-locales'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'draggable-divider'}, 'flutter-divider'),
+              ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'menu-button'}, 'flutter-divider'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'file-columns'}, 'flutter-file-columns'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'clipboard-keystrokes'}, 'flutter-credential-dialog'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'file-search'}, 'flutter-credential-dialog'),
@@ -11005,6 +11006,8 @@ run_flutter_model_tests() {
             result_prefix=FLUTTER_SETTING_CHECKBOX_TEST_JSON
             expected_result='suites=1 tests=8'
         elif [ "$FLUTTER_TEST_PROFILE" = menu-button ]; then
+            memory=1280m
+            memory_bytes=1342177280
             result_prefix=FLUTTER_MENU_BUTTON_TEST_JSON
             expected_result='suites=4 tests=34'
         elif [ "$FLUTTER_TEST_PROFILE" = keyboard-layout ]; then
@@ -11792,6 +11795,7 @@ run_flutter_model_tests() {
                         "$(sha256sum lib/desktop/widgets/material_mod_popup_menu.dart | cut -d " " -f 1)" \
                         "$(sha256sum test/popup_menu_position_test.dart | cut -d " " -f 1)"
                     tests=(test_probes/toolbar_button_probe_test.dart test/menu_button_test.dart test_probes/fixed_width_button_probe_test.dart test/popup_menu_position_test.dart)
+                    test_concurrency=1
                 elif [ "$FLUTTER_TEST_PROFILE" = keyboard-layout ]; then
                     python3 -B -I -S /source/scripts/prepare-keyboard-layout-probe.py /source /work/project
                     tests=(test_probes/keyboard_layout_probe_test.dart)

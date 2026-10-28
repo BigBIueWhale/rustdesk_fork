@@ -113032,3 +113032,12 @@ session are explicit doubles. It does not import or execute the complete remote
 screen. Existing 26 cases remain; the exact result inventory becomes four
 suites/34 cases. Product code is unchanged for the baseline. Python AST and
 whitespace review pass; no behavioral result is claimed before execution.
+
+The first launch at `b42bbc35` refuses at RAM admission before any VM starts:
+18,432 MiB required, 15,601 MiB available. This component-only workload uses no
+Rust/LLVM extraction or bridge generation. It now shares the existing
+`flutter-divider` profile (2 GiB guest, 6 GiB RAM scratch, 5 GiB hard file ceiling),
+with the same 6 GiB headroom and 1 GiB overhead. Container memory is bounded at
+1,280 MiB and cases run with concurrency one. This reduces the workload and its
+reservation; no budget, refusal, monitor or cleanup check is bypassed. The
+existing workload-selection regression gains the exact menu-button mapping.

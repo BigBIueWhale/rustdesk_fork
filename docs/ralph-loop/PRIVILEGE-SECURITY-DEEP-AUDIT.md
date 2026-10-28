@@ -111700,3 +111700,18 @@ checks, matrices, source binding, other receipts, storage limits and orchestrati
 are unchanged. Both shell syntax checks and whitespace review pass. The retained
 baseline already demonstrates the failure; the focused ledger run below verifies
 the changed host/guest exchange without another baseline or product build.
+
+Candidate `93405964` / run `fdz3p3aX1F` passes the complete outer harness in
+27 seconds (30.974 supervisor seconds). Actual diagnostics retain 33 profiles,
+60 invalid-profile/memory refusals, 58 workload-selection controls/five refusals,
+and all native supervisor/watch checks. The seven tokenizer controls and byte
+round trip pass: ledger 359,331 tokens / 1,635,081 bytes, SHA-256
+`1839623722fc42bd3867f8af346c7f2695d6f0c2238bd9398ba262bb054c719b`.
+Read-only comparison confirms the current ledger matches that exact input.
+QEMU 1060224 joins exit 0; RAM `run.ohs5370v` and active owned run roots are
+absent. Every endpoint delta is zero. Peak RAM/durable run storage is
+402,305,024/249,856 bytes. Workload serial: 31,542 bytes, SHA-256
+`3a8d76adffb3576e2985d835a44828ad8cbb47aa65d16a900af97994eb97cb84`.
+This closes the stale profile-count wrapper rejection only. No product,
+installed-service or parser acceptance is added; existing parks remain intact.
+The audit-only receipt preserves the counted ledger and executed source bytes.

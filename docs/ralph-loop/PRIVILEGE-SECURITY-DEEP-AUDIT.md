@@ -111952,3 +111952,13 @@ Whitespace, shell syntax and Python AST checks pass; the declared inventory is t
 suites / 107 cases, including the nine new chooser cases. No product compiler or
 runtime acceptance is claimed. Next work is the same isolated command when its
 full RAM admission succeeds; baseline A/B and native Windows switching remain OPEN.
+
+Candidate `4d0ccc36` is pushed. The smaller count profile fits its separate RAM
+admission: `0HrwraRGHG` passes in 28 outer seconds with seven controls and the
+whole-file byte round trip. The ledger is 359,792 tokens / 1,637,283 bytes,
+SHA-256 `cbca6bdd4d33a577ee0734b6098a3bb4f644bf9ea351b3206349f3779f3b9032`.
+QEMU 1331995 joins exit 0; RAM `run.y34qfi87` and active owned roots are absent.
+Peak RAM/durable storage is 402,247,680/249,856 bytes; all endpoint deltas are zero.
+Workload serial: 31,542 bytes, SHA-256
+`619fbb2961b9646398f37938f19003abdf4eff8b5b864c038e2415eec2b532db`.
+This count executes no product code and supplies no chooser runtime acceptance.

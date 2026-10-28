@@ -110377,3 +110377,15 @@ remain OPEN/PARKED. Product code, test bodies, runner behavior and normative
 requirements are unchanged in this documentation slice. Review compares the
 historical/current runner order, retained failure log and exact documentation
 diff; no product test is repeated. A fresh bounded ledger count follows.
+
+Fresh count `4p3HY2uF4Z` at `b07ea91d7a64dc34ea035723cc48b3c43b344af5`
+passes: 356,008 tokens (+157), 1,618,469 bytes, input SHA-256
+`80629b5bac75a9bb71cc6ba64a491ffb8a2b0320d9b8d8e86f326520f6262e62`.
+Pinned tiktoken-0.12.0/cl100k_base/encode_ordinary, seven controls and the
+whole-input byte round trip pass. Serial 97,405 bytes, SHA-256
+`6ebe04671e741b993af30b2b4fa63c58876f6f1d3e5e45899efe4c5e9a8b0664`.
+Outer/supervisor time is 28/31.007 seconds; RAM peak 402,305,024 bytes,
+durable peak 151,552 bytes. QEMU 105003 joins exit 0; its PID, RAM workspace
+`run.1g0mesac` and active owned run roots are absent. Final endpoint observation
+adds two unattributed records (38 bytes), left untouched; harness IP sockets
+are kernel-denied. This audit-only receipt preserves the counted ledger bytes.

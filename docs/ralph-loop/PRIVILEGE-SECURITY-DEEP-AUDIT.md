@@ -112420,3 +112420,14 @@ retained as `locale-baseline.oi4vtVN349` (66306/103992540). Its one unattributed
 added endpoint is retained without owner inspection or mutation; host IP sockets
 were kernel-denied. Workload serial: 16,151 bytes, SHA-256
 `f9e25c0bd067af4f84dc70f7a8bcda70fb645cbbee538be4aae28d84c7c9e5b0`.
+
+Candidate `LrruBKNsYX` at `6295989e` resolves both languages correctly and
+passes six cases, but four Vietnamese label assertions use the wrong spelling.
+The pinned SDK's [Vietnamese catalogue](https://github.com/flutter/flutter/blob/3.24.5/packages/flutter_localizations/lib/src/l10n/material_vi.arb)
+has `Huỷ`, while the fixture expected `Hủy`. Only those four fixture literals
+are corrected; locale assertions and the product remain unchanged. The baseline
+failed before reaching these label assertions, so its six observed English
+fallbacks remain valid evidence; no identical-test-file A/B claim is made.
+The partial candidate is not a full pass. Joined diagnostics are retained as
+`locale-fixture.LrruBKNsYX` (66306/103992583), console SHA-256
+`d682d7914d12ca7c5bfb4c3baa0abc0d15adfe6e480f7938e449fdc8e6620117`.

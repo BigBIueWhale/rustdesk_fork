@@ -32,8 +32,8 @@ void main() {
   for (final sample in <(String, Locale, String, String)>[
     ('Kazakh language', const Locale('kk'), 'kk', 'Бас тарту'),
     ('Kazakh region', const Locale('kk', 'KZ'), 'kk', 'Бас тарту'),
-    ('Vietnamese language', const Locale('vi'), 'vi', 'Hủy'),
-    ('Vietnamese region', const Locale('vi', 'VN'), 'vi', 'Hủy'),
+    ('Vietnamese language', const Locale('vi'), 'vi', 'Huỷ'),
+    ('Vietnamese region', const Locale('vi', 'VN'), 'vi', 'Huỷ'),
     ('English', const Locale('en', 'US'), 'en', 'Cancel'),
     ('French', const Locale('fr', 'FR'), 'fr', 'Annuler'),
     ('unsupported language', const Locale('zz', 'ZZ'), 'en', 'Cancel'),
@@ -62,7 +62,7 @@ void main() {
     addTearDown(tester.binding.platformDispatcher.clearLocalesTestValue);
     await tester.pumpWidget(_app());
     await tester.pumpAndSettle();
-    _expectLocale(tester, 'vi', 'Hủy');
+    _expectLocale(tester, 'vi', 'Huỷ');
   });
 
   testWidgets('framework locale follows live system changes', (tester) async {
@@ -73,7 +73,7 @@ void main() {
     _expectLocale(tester, 'en', 'Cancel');
     for (final sample in <(Locale, String, String)>[
       (const Locale('kk', 'KZ'), 'kk', 'Бас тарту'),
-      (const Locale('vi', 'VN'), 'vi', 'Hủy'),
+      (const Locale('vi', 'VN'), 'vi', 'Huỷ'),
       (const Locale('en', 'US'), 'en', 'Cancel'),
     ]) {
       tester.binding.platformDispatcher.localesTestValue = [sample.$1];

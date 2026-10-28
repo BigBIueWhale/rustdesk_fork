@@ -110763,3 +110763,16 @@ gate and normative specification. `git diff --check` passes. No product or
 remaining full catalogue is executed, and no native acceptance is promoted.
 The ledger retains every installed/platform, R-S0/R-F5 and release obligation;
 a fresh bounded count follows.
+
+Fresh count at `0a266f0f53254b26fa368e0f979697aeea11dbce`, run `Sc33oN4N9F`:
+**356,983 tokens**, 1,623,285 bytes, input SHA-256
+`46efbe6fadde8bb4d2e157423f27a97db06eab7dbca2dea911e38cbd7c10297b`.
+The pinned method passes seven controls and the complete byte round trip.
+Workload archive: 31,042 bytes, SHA-256
+`a9df5279efec9e7616065292f442cf28f169bb4bc9aaef57e46981ce4fac94d3`.
+Outer/supervisor times are 31/34.219 seconds; RAM scratch peaks at 402,206,720
+bytes and durable-run evidence at 253,952 bytes. The admitted bounded RAM
+profile, file ceiling and live monitor remain enabled. QEMU 329760 joins exit 0;
+its PID, RAM `run.0tbo12y6` and active owned roots are absent. All endpoint
+deltas are zero. This audit-only receipt preserves the counted ledger unchanged
+and below its approximate budget; no product ran.

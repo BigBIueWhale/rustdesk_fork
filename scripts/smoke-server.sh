@@ -628,21 +628,19 @@ if ! grep -q 'REMOTE-LOGIN-ADMITTED' <<<"$out6"; then
 fi
 [ "$s6_ok" = 1 ] && echo "  ok  R-S6/R-S18 credential-free LoginRequest reached the authorized remote session + R-D8/R-X8 full access denied no capability"
 
-echo "== (6b) PORT-FORWARD/RDP TUNNEL (R-F1/R-D6/R-S5/R-A9): a real tunnel RELAYS bytes END-TO-END inside the sealed session =="
+echo "== (6b) PORT-FORWARD/RDP TUNNEL (R-F1/R-D6/R-S5): real relay round trip =="
 # R-F1 makes port-forward (incl. RDP) a MUST; R-D6 pins enable-tunnel ON and requires the forward to
-# ride the sealed encrypted channel; R-A9 requires the bytes indistinguishable from random. The
-# cpace_it wire-ciphertext test covers the seal; VM packet-capture acceptance remains required. This stage
-# proves the RELAY is FUNCTIONAL end-to-end — a seal-only test cannot. A port-forward viewer keys,
+# ride the sealed encrypted channel. This stage observes functional end-to-end delivery.
+# R-A9's complete, artifact-bound peer-wire capture remains separate acceptance.
+# A port-forward viewer keys,
 # sends a PortForward login naming a LOCAL target, and sends a canary THROUGH the tunnel; the box dials
 # the target, switches to try_port_forward_loop (the sealed relay), and shuttles the canary both ways.
 run_stage out6b "${RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh port-forward
 echo "$out6b"
 record_stage_status R-F1/R-D6
-# R-F1/R-D6/R-S5/R-A9: the canary made a full round trip THROUGH the box (viewer -> sealed -> box ->
-# local target -> echo -> box -> sealed -> viewer), proving the relay is restored AND functional AND
-# inside the secretbox through the framing-only transport API (R-A3).
+# R-F1/R-D6: the canary made a full round trip through the production relay and local target.
 if grep -q 'PF-RELAY-ECHO-OK' <<<"$out6b"; then
-  echo "  ok  R-F1/R-D6/R-S5/R-A9 port-forward/RDP tunnel RELAYS end-to-end inside the sealed session (canary round-tripped through the box's dial + sealed relay)"
+  echo "  ok  R-F1/R-D6 port-forward relay canary round trip; R-A9 wire-capture acceptance remains separate"
 else
   echo "  FAIL R-F1/R-D6/R-S5: the port-forward tunnel did NOT relay the canary end-to-end (the sealed relay is broken)"; rc=1
 fi

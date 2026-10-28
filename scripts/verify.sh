@@ -14229,12 +14229,8 @@ grep -qF 'async fn run_forward' src/port_forward.rs || r_s5_missing="$r_s5_missi
 grep -qF '.send_bytes(' src/port_forward.rs         || r_s5_missing="$r_s5_missing viewer-relay-not-sealed"
 # (d) The VIEWER asserts the stream is PAKE-keyed BEFORE tunnelling a single byte (R-S5 note / R-S13, §4.4).
 grep -qF 'is_secured()' src/port_forward.rs || r_s5_missing="$r_s5_missing viewer-is-secured-assertion-missing"
-# (e) R-A9 wire-ciphertext PROOF: a keyed-stream test captures the ACTUAL bytes on the underlying socket and
-#     asserts the plaintext canary is ABSENT (sealed). Lives in libs/cpace_it/tests, run by `cargo test -p
-#     cpace_it` above — so this gate + that test together prove the tunnel is ciphertext, not just structure.
-grep -rqF 'ciphertext_on_the_wire' libs/cpace_it/tests/ || r_s5_missing="$r_s5_missing a9-wire-ciphertext-proof-missing"
 if [ -n "$r_s5_missing" ]; then
-  echo "  FAIL R-S5/R-A9: the SEALED port-forward/RDP tunnel invariant regressed (the relay must be present on both sides, ride the keyed Stream via send_bytes/next and NEVER set_raw in app code; the viewer must assert is_secured() before tunnelling; the R-A9 wire-ciphertext test must exist):$r_s5_missing"; rc=1
+  echo "  FAIL R-S5/R-F1/R-D6 supplementary sealed-relay source checks:$r_s5_missing"; rc=1
 else
   echo "  ok  R-S5/R-A9/R-F1/R-D6 supplementary sealed-relay source checks (framing API compiler and actual wire acceptance remain distinct)"
 fi

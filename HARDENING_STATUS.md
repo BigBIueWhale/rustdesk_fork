@@ -420,6 +420,18 @@ scanner acceptance; complete inputs and signing; upstream baseline reproduction,
 fork-delta accounting and per-target surface/egress; cold equality, release acceptance,
 independent reproduction and external review. All separately parked work stays parked.
 
+**R-A9 wire acceptance — OPEN.** The contract now requires complete actual-relay
+capture, protected-record authentication and payload recovery, recipient delivery,
+a plaintext detection control and refusal of incomplete/wrong capture. It no longer
+attributes indistinguishability or offline-guessing resistance to packet appearance;
+R-S6, R-A10 and independent R-V3 review remain mandatory. The unused 24-line login
+capture stage and the shared gate's test-name grep are removed. The retained stream
+test's executable code, its inventory and all test commands are unchanged; comments
+and smoke output state their actual scope. Exact source comparisons, balanced HTML,
+identifier/link preservation, shell syntax and diff checks pass. No new capture,
+relay, handshake or native result is claimed. Classification and primary research
+are in the audit entry “2026-10-28 — wire-capture acceptance and obsolete capture stage”.
+
 The retained transport limits remain explicit: a writer abort requests cancellation,
 and does not itself prove exact task/socket retirement or blanket pre-key parser safety.
 R-T3/R-T18 own writer reservation, nonce, FIFO, failure and finality semantics;

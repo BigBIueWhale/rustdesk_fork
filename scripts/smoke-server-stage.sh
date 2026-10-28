@@ -1287,30 +1287,6 @@ EOS
     $READY --terminate-server "$SRV" "$SRV_START" /tmp/srv.log
     wait "$SRV"
     ;;
-  capture)
-    if ! command -v tcpdump >/dev/null; then
-      apt-get update -q >/dev/null 2>&1
-      apt-get install -y -q tcpdump >/dev/null 2>&1
-    fi
-    command -v tcpdump >/dev/null
-    export HOME=/tmp/rd9
-    mkdir -p "$HOME"
-    /smoke-target/debug/examples/seed_password "Str0ng-Test-Pw-123" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
-    start_server /smoke-target/debug/rustdesk /tmp/srv.log
-    $READY --wait-server "$SRV" "$SRV_START" /tmp/srv.log /smoke-target/debug/examples/smoke_readiness "$(id -u)"
-    tcpdump -U -i lo -w /tmp/cap.pcap "tcp port 21118" >/tmp/tcpdump.log 2>&1 & TCPD=$!
-    TCPD_START=$($READY --identity "$TCPD")
-    $READY --wait-log "$TCPD" "$TCPD_START" /tmp/tcpdump.log "listening on lo" "tcpdump capture readiness"
-    LOGIN_OUT=$(/smoke-target/debug/examples/probe_client "127.0.0.1:21118" "Str0ng-Test-Pw-123" ok login 2>&1)
-    printf '%s\n' "$LOGIN_OUT"
-    $READY --interrupt "$TCPD" "$TCPD_START"
-    wait "$TCPD"
-    echo "PCAP_SIZE: $(wc -c < /tmp/cap.pcap 2>/dev/null || echo 0)"
-    echo "CANARY_IN_BINARY: $(grep -a -c PLAINTEXT-CANARY-DEADBEEF /smoke-target/debug/examples/probe_client)"
-    grep -a -q "PLAINTEXT-CANARY-DEADBEEF" /tmp/cap.pcap 2>/dev/null && echo "CANARY_ON_WIRE: YES" || echo "CANARY_ON_WIRE: NO"
-    $READY --terminate-server "$SRV" "$SRV_START" /tmp/srv.log
-    wait "$SRV"
-    ;;
   decay)
     export HOME=/tmp/rd10
     mkdir -p "$HOME"

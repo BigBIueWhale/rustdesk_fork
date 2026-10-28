@@ -844,29 +844,16 @@ async fn responder_rejects_malformed_length_field() {
     drop(si);
 }
 
-/// R-A9 / R-S5 / R-F1 / R-D6 — WIRE-CIPHERTEXT PROOF for the RESTORED port-forward/RDP tunnel. The
-/// relay (viewer `src/port_forward.rs::run_forward`, box `connection.rs::try_port_forward_loop`) hands
-/// every tunnelled byte to `send_raw`/`send_bytes` on the KEYED session stream, which SEALS it under the
-/// session secretbox BEFORE it reaches the socket. So a distinctive plaintext pattern fed to the relay
-/// leaves the machine as ciphertext INDISTINGUISHABLE FROM RANDOM — never the cleartext an on-path
-/// eavesdropper (a `tcpdump` of the tunnel, the literal R-A9 test) could read. R-S5 permits "keep the
-/// bytes inside the secretbox" OR "refuse"; R-F1/R-D6/R-A9 select the former, and this is its proof.
-///
-/// The round-trip tests above prove the peer DECRYPTS a keyed frame; NONE makes the raw-wire assertion.
-/// Here we capture the ACTUAL bytes a keyed `FramedStream` writes to its underlying socket — read RAW
-/// from the peer socket, never keyed or decoded — and assert the plaintext canary is ABSENT (sealed),
-/// with the framed ciphertext longer than the plaintext (length prefix + AEAD tag). This exercises the
-/// exact seal (`send_raw`) the relay rides; the relay NEVER calls `set_raw` (the plaintext-passthrough
-/// escape — verify.sh R-S5 gate + the tcp.rs R-A3 keyed-stream panic), so this proves what the seal does
-/// to the bytes it DOES send. A regression that reinstated a raw tunnel (set_raw) would surface the
-/// canary verbatim on the wire and fail here.
+/// Component regression for a manually keyed FramedStream write: one underlying TCP read
+/// contains more bytes than the payload and excludes the complete canary and its 16-byte runs.
+/// Actual relay execution, complete record authentication, capture controls and R-A9 acceptance
+/// require separate evidence; these observations do not establish cryptographic indistinguishability.
 #[tokio::test]
 async fn r_a9_port_forward_relay_bytes_are_ciphertext_on_the_wire() {
     use tokio::io::AsyncReadExt;
     // A keyed sender over loopback TCP; its PEER socket is read RAW (never keyed/decoded) so we observe
     // exactly what crossed the wire. Distinct per-direction keys (R-A5 forbids identical send/recv) — the
-    // same DirectionalKeys shape the keying choke installs post-handshake, constructed directly here to
-    // keep the proof on the SEAL (the handshake keying itself is proven by the tests above).
+    // same DirectionalKeys shape the keying choke installs post-handshake, constructed directly here.
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let (client, accepted) = tokio::join!(TcpStream::connect(addr), listener.accept());
@@ -882,8 +869,7 @@ async fn r_a9_port_forward_relay_bytes_are_ciphertext_on_the_wire() {
     });
     assert!(si.is_secured(), "the port-forward relay only ever runs on a keyed stream");
 
-    // A distinctive canary — the "port-forwarded RDP payload" the relay would carry. It must NEVER
-    // appear verbatim on the wire.
+    // A distinctive component-test payload to detect accidental cleartext output.
     const CANARY: &[u8] =
         b"PORTFWD-PLAINTEXT-CANARY-must-never-cross-the-wire-in-the-clear-0123456789";
     // The exact call try_port_forward_loop / run_forward make on the keyed stream — this SEALS.
@@ -899,22 +885,18 @@ async fn r_a9_port_forward_relay_bytes_are_ciphertext_on_the_wire() {
         .expect("wire read ok");
     let on_wire = &on_wire[..n];
 
-    // R-A9 (i): the framed ciphertext is LONGER than the plaintext (length prefix + Poly1305 tag) — so a
-    // non-empty, genuinely-sealed frame did cross, not a dropped/empty one.
+    // Require nonempty output larger than the canary; this alone does not authenticate a frame.
     assert!(
         n > CANARY.len(),
         "the wire frame ({n} B) must exceed the plaintext ({} B) — framing + AEAD tag overhead",
         CANARY.len()
     );
-    // R-A9 (ii): the plaintext canary is ABSENT from the wire bytes — sealed, never a raw passthrough
-    // (the set_raw plaintext-tunnel escape R-S5/R-A3 forbids). This is the core indistinguishable-from-
-    // random assertion.
+    // Refuse an exact cleartext canary in the observed bytes.
     assert!(
         !on_wire.windows(CANARY.len()).any(|w| w == CANARY),
         "R-A9 VIOLATION: the port-forward plaintext canary crossed the wire IN THE CLEAR — the tunnel is NOT sealed (a set_raw raw-tunnel regression)"
     );
-    // R-A9 (iii): no non-trivial contiguous run of the plaintext leaked either (belt-and-suspenders: even
-    // a partial cleartext substring would be a seal break). 16 bytes is well below the frame size.
+    // Also refuse a matching 16-byte portion of the canary.
     let window = 16usize.min(CANARY.len());
     assert!(
         !on_wire

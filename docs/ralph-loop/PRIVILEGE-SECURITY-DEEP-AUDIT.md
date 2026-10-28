@@ -111328,3 +111328,60 @@ absent, with no active owned run root. One final unattributed endpoint addition
 is retained without owner inspection or mutation. Workload serial is 31,515
 bytes, SHA-256 `7bb81d3084d8e0c849fac05f10098a296d6e9655e2507fb5c0a43addc3ea9fbe`.
 This audit-only addition leaves the counted ledger byte-identical.
+
+## 2026-10-28 — wire-capture acceptance and obsolete capture stage
+
+Previous turn: progress, with the overlapping credential-response catalogue
+deleted and its exact comparison/count retained. This slice corrects R-A9's
+assurance contract and removes obsolete capture verification. The parked
+handshake/transport and parent-build work remains parked; all fifteen installed
+credential actions, R-S0/R-F5 and release acceptance remain open.
+
+R-A9 at the initial retained source `28a6ce56` claimed that capture could establish
+random indistinguishability and absence of offline guessing. Its required property
+remains binding, but that observation cannot establish it. Primary research:
+[NIST SP 800-22](https://csrc.nist.gov/pubs/sp/800/22/r1/upd1/final) distinguishes
+statistical observations from cryptanalysis; the design implication here is that
+random-looking packets do not prove cryptographic security.
+[Pinned CPace draft 21, security considerations](https://www.ietf.org/archive/id/draft-irtf-cfrg-cpace-21.html#section-10)
+separates the protocol proof and application responsibilities; the fork's R-S6,
+R-A10 and R-V3 conformance/independent-review obligations remain unchanged.
+[libsodium secretbox](https://doc.libsodium.org/secret-key_cryptography/secretbox)
+defines authenticated recovery under matching key/nonce, providing a concrete
+record-level observation rather than an appearance-based claim.
+
+The R-A9 observer must own the complete correct peer flow, capture readiness and
+completion, ordered records, test-session authentication and expected payload
+recovery, recipient delivery and terminal cleanup. A separate confined plaintext
+control must falsify the observer; missing/truncated/stale/wrong/undecodable
+capture or missing transmission/delivery cannot pass. Specified public framing
+and pre-key CPace fields are distinguished from protected application records.
+Only synthetic credentials are used; operational secrets are excluded. R-A5's
+engaged key separation and R-P10 nonce obligations remain distinct. R-A5's
+capture wording and acceptance item 3 now agree with this contract. No progress
+history, run receipt or implementation status is added to the specification.
+
+Repository call-site review finds no caller for `smoke-server-stage.sh capture`.
+Its 24-line branch performs a login, optionally installs tcpdump through apt,
+then searches the packet file for a canary. It neither drives the RDP relay nor
+reassembles/authenticates protected records; the grep's failure arm prints NO
+even for a missing/unreadable file, and exposure only prints YES. Delete that
+branch entirely. Required target-native R-A9 acceptance remains open.
+Delete the shared verifier's test-name grep and its misleading proof comment.
+The actual `cpace_it` invocation and exact inventory remain unchanged. The
+existing test directly keys FramedStream, sends one canary and checks a single
+TCP read; comments now describe that component scope. Its executable bytes
+are unchanged after removing standalone comments, SHA-256
+`f09a4d74c40dfe398850c3ce7a521a68224844201a53c571815da9fdd131c5d4`.
+Portable smoke comments and two display lines describe actual relay delivery
+without claiming complete capture acceptance; its actions and controls remain.
+
+Exact comparisons against `26853d74` confirm only the 24-line stage deletion,
+one source-name grep deletion/diagnostic, the documented comments/display lines,
+and three specification locations. All other stage/gate statements and test
+commands are byte-identical. Requirement IDs, HTML IDs and links retain their
+exact order; the rewritten fragment is balanced. Specification size changes
+from 1,682,738 to 1,684,972 bytes, SHA-256
+`85008e83534b8af4af9343b3605cd7bc2f2c3d938a910605d69ba1c57f3f82b9`.
+Shell syntax and `git diff --check` pass. No product, compiler, handshake,
+capture, relay or native authorization execution is claimed for this slice.

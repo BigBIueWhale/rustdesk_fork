@@ -52,6 +52,12 @@ case inventories, intermediate failures, source/artifact hashes and timings rema
 receipts under `.harness-state/verifier-vm/` and in Git history. Shared current-artifact,
 installed/other-platform, R-S0/R-F5, resource/soak and release obligations below remain OPEN.
 
+**User pivot (2026-10-28):** Parent-build and option-ack integration validation
+remain OPEN/PARKED. Diagnostic correction `b33e9f58` is committed; no current
+parent compilation or native option-ack run followed it. Audio device-selection
+behavior and shared Flutter result-parser work remain parked. Work moved to
+removing the unused Sciter session launcher below.
+
 **User pivot (2026-10-28):** VM output-finality follow-up remains OPEN/PARKED.
 The committed `65b98230` confirmation change and retained `icSVzwbo9j` /
 `lEfIQRShqV` results remain; the last owned VM and RAM workspace are gone.
@@ -216,12 +222,14 @@ OPEN/PARKED. Preparation `2edea60c` and candidate `f5df7a96` are pushed. Native
 baseline `GlxpzGBmud` passes 14 tests and fails the new source-name case; candidate
 `Xpx8oOCvqz` stops at compile error E0277 in `src/platform/linux.rs:2787`, before
 behavior runs. The error formats a ControllerError with Display, which it does not
-implement. No candidate or Flutter acceptance is claimed. Both QEMU processes join,
+implement. Later `b33e9f58` changes that diagnostic to Debug formatting; it has
+no subsequent compiler/runtime acceptance. No candidate or Flutter acceptance is claimed. Both QEMU processes join,
 RAM workspaces retire and all listener deltas are zero. Diagnostics are preserved.
 Do not resume automatically. Work moved to the R-S11hj current-state ledger cleanup.
 
 | Surface | Current state and evidence boundary | Receipt |
 | --- | --- | --- |
+| Unused Sciter session launcher (`562a2501`) | Removes 71 lines: the uncalled launcher, recent-session flag, UI-only child reaper, registry/type and unused imports. Their Sciter callers disappeared in `0d2c8825`. Repository reference review and exact deletion comparison pass; all retained source bytes, the distinct active server reaper and its direct-service/tray callers are unchanged. No compiler or product runtime pass is claimed for this deletion. Full application, installed/native and release acceptance remain OPEN. | Audit entry “2026-10-28 — user pivot; retire unused Sciter session launcher” |
 | Automatic UI language selection (`5334ae62`) | The production selector honors explicit Hans/Hant scripts before Chinese region defaults, selects Traditional Chinese for TW/HK/MO, handles Java script suffixes and ignores unrelated extension contents. Saved app-language choices retain precedence. The isolated Linux Rust component passes six tests with 46 locale/preference examples; the actual selector is compiled directly, without translation/config doubles. Caller wiring is source-reviewed; full app, OS locale acquisition, rendered text and other-platform acceptance remain OPEN. QEMU joins and bounded RAM scratch retires. One unattributed endpoint addition is retained and untouched. | Audit entry “2026-10-28 — user pivot; automatic language selection”; run `K1DkIVObf0` |
 | Unused desktop popup-menu variants (`df111c4b`) | Removes 440 lines: unreferenced radio/nested-menu families, their child-menu widget, alternate reactive switch and unused constants. Repository-wide reference review finds no callers; remaining button, divider and switch bodies are byte-identical. Whitespace and exact deletion checks pass. The isolated `--peer-search` runner reaches the parked parser failures after the Flutter command succeeds, before case-result validation, detailed case output and source postconditions. No accepted Flutter case inventory or runtime acceptance is retained. QEMU joins and bounded RAM scratch retires; one unattributed endpoint removal is untouched. Complete menu behavior, current application compilation and shared release acceptance remain OPEN. | Audit entries “2026-10-28 — unused desktop popup-menu variants” and “2026-10-28 — user pivot; verification-status accuracy”; retained `retired-popup-validation.7OUTibJl5O` |
 | File-transfer filename endings after line breaks (`4888d3f7`) | `StartEllipsisText` rejects omitted lines as well as excessive width and fits unbounded layouts too. Truncation retains a complete-grapheme suffix and the original accessibility label. Baseline `2e21a4f0` fails all eight LF/CRLF/Unicode line/paragraph-separator cases while eight controls pass. At `fe2a1029`, all sixteen rendered Linux Flutter cases and three parser controls pass in 100 outer seconds; extension selection boxes are present and inside the label. The new fixture explicitly clears inherited letter spacing after four geometry assertions failed, and the parser's stale eight-case self-test count is corrected. The product is unchanged after `4888d3f7`. All runs join QEMU and retire bounded RAM scratch; unattributed endpoint changes remain untouched. Full file-manager/device and installed acceptance remain OPEN. | Audit entry “2026-10-27 user pivot — filename endings after line breaks”; baseline `IFrUm1uvVT`, final `WCiLcArqXR` |

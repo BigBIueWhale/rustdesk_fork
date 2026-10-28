@@ -110648,3 +110648,53 @@ Outer/supervisor time: 31/34.174 seconds. RAM peak: 402,137,088 bytes; durable-r
 peak: 249,856 bytes. QEMU 253112 joins exit 0; its PID, RAM `run.2f4x5pzd` and
 active owned roots are absent. All endpoint deltas are zero. This audit-only
 receipt leaves the counted ledger unchanged and below its approximate budget.
+
+## 2026-10-28 — user pivot; retire unused Sciter session launcher
+
+The user explicitly requests another aspect. Parent-build and option-ack
+integration validation stop here and remain OPEN/PARKED. The preceding
+`b33e9f5816a92d9ed08c3eff6d6a71990c1c9761` committed the one-line PulseAudio
+diagnostic formatting change and added `src/ipc/main_config.rs` and
+`src/platform/linux.rs` to the option-ack source fingerprints. No compiler or
+native validation followed; no audio-selection or Flutter acceptance is claimed.
+Read-only, locked inspection finds no active owned VM/acquisition roots.
+All fifteen credential-action native/installed observations remain OPEN.
+
+Connection-history inspection identifies a separate obsolete lifecycle in
+`src/ui_interface.rs`: `new_remote`, `recent_sessions_updated`, its own
+`check_zombie`, `Children` and `CHILDREN`. Complete tracked source/script
+reference review finds only their definitions and internal uses. The private
+module exposes no external library API. `0d2c8825^:src/ui.rs` shows the former
+Sciter calls and bindings; `0d2c8825` deleted that frontend. The three functions
+were gated out of Flutter/mobile, while the unused registry remained desktop
+source. Flutter session launch and the actual `server::check_zombie` lifecycle
+do not use this registry. R-D4's required reaper is the latter: direct service
+imports it from `server`, and the tray calls its fully qualified path.
+
+The intended ownership stays with the supported launch paths and their existing
+owners. An uncalled alternate launcher needs deletion, not a second lifecycle
+repair. [Rust's Child contract](https://doc.rust-lang.org/std/process/struct.Child.html)
+requires explicit process waiting; dropping a handle does not supply that duty.
+The deleted RDP branch killed, delayed, tried one nonblocking wait and removed
+the handle; this is dormant code, not a demonstrated live resource leak or LPE.
+[Rust conditional compilation](https://doc.rust-lang.org/reference/conditional-compilation.html)
+also distinguishes feature-excluded bodies from the unconditional desktop cache.
+
+Product `562a250188af00ed4433298f710202bed835e5ad`, tree
+`9a805b47281b8360dfff8ebbaa80cfc5fe5df1f9`, deletes exactly 71 lines in
+`src/ui_interface.rs`, including the now-unused unqualified `allow_err` import.
+The remaining qualified macro call stays. A read-only exact-byte comparison
+checks the four small deletions and contiguous three-function deletion against
+the parent; every remaining byte matches. `server.rs`, `direct_service.rs`,
+`tray.rs`, `flutter_ffi.rs`, `core_main.rs`, `lib.rs` and Cargo.toml are unchanged.
+The resulting ui_interface SHA-256 is
+`7007891386f68e8e74afa3eb40703d7d2a047cb6906c67ddf17accd85f3f6eeb`.
+Tracked source/script searches find no remaining retired identifiers;
+`git diff --check` passes. No artificial runtime test is added for unreachable
+code, and no compiler, child process or product behavior is claimed tested.
+
+The code is pushed to master. The ledger records the deletion and the current
+pivot without changing the normative specification or live instructions.
+Parent/platform compilation, active-launch lifecycle integration, installed
+authority, R-S0/R-F5 and release acceptance remain OPEN. A fresh bounded ledger
+count follows; it is documentation validation only.

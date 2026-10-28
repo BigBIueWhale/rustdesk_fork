@@ -113827,3 +113827,29 @@ console is 65,535 bytes, SHA-256
 The subsequent available-memory read is 14,264,112 KiB, still below the audio
 profile's 14,592 MiB admission. No new audio launch follows. Only this audit
 receipt changes after the count; keyboard behavioral acceptance remains OPEN.
+
+## 2026-10-28 — CM keyboard runtime resource blocker revalidated
+
+The preceding turn made progress by implementing `4012c905` and completing the
+ledger count. Clean pushed source `e774bd6c` still has the exact reviewed product,
+test and counted-ledger hashes. The audio profile again refuses before allocation:
+13,686 MiB available versus the unchanged 14,592 MiB requirement. This is the
+third consecutive goal turn encountering the same capacity condition. The one
+previously admitted audio run was terminated by the live headroom monitor before
+tests; no audio behavior result exists. The shared run root is idle, and the prior
+interrupted/count RAM workspaces remain absent. No product, compiler or test ran
+in this turn, and there is no live harness to poll.
+
+Read-only documentation classification considered another binding work item.
+Appendix C #386–#400 already refer concisely to their canonical contracts.
+Appendix C #118 contains detailed terminal lifetime requirements absent from the
+shorter R-S11c summary; its historical R-S11c-25 label is not a separate full
+normative block. Replacing that row with only a short cross-reference would lose
+requirements, so no speculative deletion was made.
+
+The implemented correction now needs its exact rendered execution before further
+product changes. Mark the goal blocked on external RAM availability, retaining
+all broader security, functional and native acceptance obligations. Resume with
+the 37-case audio profile and its three parser checks when resource admission
+succeeds; retain the 6 GiB live headroom reserve and bounded RAM scratch. This
+audit-only receipt does not change the already-counted ledger.

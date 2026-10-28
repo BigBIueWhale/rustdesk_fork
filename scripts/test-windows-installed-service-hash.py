@@ -79,13 +79,13 @@ class ArtifactHashTests(unittest.TestCase):
         with self.assertRaises(checker.VerificationError):
             checker.read_regular(artifact, len(data) - 1, "small")
 
-    def test_changed_files_are_refused_and_descriptors_retire(self):
+    def test_observable_changes_are_refused_and_descriptors_retire(self):
         from unittest.mock import patch
 
         original_read = os.read
         for reader in (lambda p: checker.sha256(p, "changing"),
                        lambda p: checker.read_regular(p, 1024 * 1024, "changing")):
-            for mutation in ("grow", "truncate", "overwrite", "replace", "link", "symlink"):
+            for mutation in ("grow", "truncate", "mtime", "replace", "link", "symlink"):
                 with self.subTest(reader=reader, mutation=mutation):
                     with tempfile.TemporaryDirectory(dir=self.root) as directory:
                         root = Path(directory)
@@ -105,8 +105,11 @@ class ArtifactHashTests(unittest.TestCase):
                                 elif mutation == "truncate":
                                     with artifact.open("r+b") as stream:
                                         stream.truncate(1)
-                                elif mutation == "overwrite":
+                                elif mutation == "mtime":
+                                    before_write = artifact.stat()
                                     artifact.write_bytes(b"b" * 131073)
+                                    os.utime(artifact, ns=(before_write.st_atime_ns,
+                                                         before_write.st_mtime_ns + 1_000_000_000))
                                 elif mutation == "link":
                                     (root / "alias").hardlink_to(artifact)
                                 else:

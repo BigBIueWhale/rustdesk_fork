@@ -112948,3 +112948,29 @@ read boundaries (growth, truncation, overwrite, replacement, hard link and
 symlink for each consumer), and injected I/O errors with actual descriptor counts.
 Only those added schedule/error tests intercept the read call; all bytes and
 filesystem mutations are real. Candidate execution follows with seven groups.
+
+Candidate `sUMvoaa1OY` at `0228d544` passes the original four groups, including
+the unchanged memory-limited hash assertion, and both new small-read/error groups.
+Ten scheduled mutation subcases pass; the two rapid same-size overwrite subcases
+do not raise. Preserve that counterexample: final metadata equality cannot prove
+an immutable content snapshot. The original test did not explicitly change mtime;
+timestamp resolution is a plausible explanation, not separately measured proof.
+The existing caller extracts into its private transaction tree and mounts that
+tree read-only into the verifier. Those lifecycle/authority conditions remain
+prerequisites and need complete Windows harness acceptance; no concurrent-writer
+security closure follows from this checker. The native `stat(2)` contract also
+does not promise coherent snapshots:
+https://man7.org/linux/man-pages/man2/stat.2.html
+
+Name the new case accurately as observable-change refusal and deliberately advance
+mtime after the same-size rewrite. This verifies the declared metadata-change
+check, not arbitrary writer exclusion. Keep the first four test bodies unchanged;
+the memory correction is not weakened and no new checker behavior is selected.
+Add the immutable-input precondition to the reader docstring. The counterexample
+and full-peer whole-file hashing remain open; neither becomes a passing claim.
+QEMU 2184778 joins exit 0; RAM `run.kko8xj4y` is absent. Exact failed diagnostics
+(66306/103992923) are retained as `windows-service-hash-metadata.sUMvoaa1OY`;
+endpoint deltas are zero. Workload/console are 3,391/63,986 bytes, SHA-256
+`ca47e00a21ff2eec0cc2eed8456ed92334cd7ea033d6a1c55db6ead8500006fe` and
+`22fd8ac79bdfc0195dff90bb87d8ef919e37550891877e9d24393e79d0c6057d`.
+Scratch/durable peaks are 400,863,232/192,512 bytes. No active owned root remains.

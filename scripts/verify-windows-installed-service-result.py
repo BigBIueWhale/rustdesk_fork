@@ -173,6 +173,7 @@ def fail(message: str) -> None:
 
 @contextmanager
 def open_regular(path: Path, maximum: int, label: str) -> Iterator[tuple[int, int]]:
+    """Read caller-owned immutable evidence; metadata cannot exclude same-size writes."""
     if not path.is_absolute() or path.resolve() != path:
         fail(f"{label} path is not absolute and canonical")
     descriptor = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)

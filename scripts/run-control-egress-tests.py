@@ -39,6 +39,7 @@ INPUTS = (
     "scripts/test-viewer-fps.rs",
     "scripts/test-controlled-tunnel.rs",
     "scripts/test-tunnel-reaper.rs",
+    "src/core_main.rs", "scripts/test-direct-cli.rs",
 )
 
 
@@ -123,6 +124,27 @@ def main():
                             "#[cfg(test)]\nmod audio_egress_tests {"),
     }
     windows_clipboard = inputs["libs/clipboard/src/platform/windows.rs"].decode("utf-8")
+    cli_prefix = between(inputs["src/core_main.rs"].decode("utf-8"),
+                         "fn core_main_invoke_new_connection(mut args: std::env::Args) -> Option<Vec<String>> {\n",
+                         "    // R-X6: D-Bus deep-link transport excised")
+    # Retain the production parsing/assembly body. Only its iterator input and
+    # final platform handoff are adapted to observe the exact constructed URI.
+    snippets["direct-cli.rs"] = (
+        "fn assemble_connection_uri(mut args: impl Iterator<Item = String>) -> Option<String> {\n"
+        + cli_prefix.split("\n", 1)[1] + "    Some(uni_links)\n}\n"
+        + between(inputs["libs/hbb_common/src/lib.rs"].decode("utf-8"),
+                  "#[inline]\npub fn is_ipv4_str(", "#[cfg(any(test, not(debug_assertions)))]")
+        + between(inputs["src/common.rs"].decode("utf-8"),
+                  "#[inline]\npub fn get_uri_prefix()", '#[cfg(target_os = "macos")]\npub fn get_full_name()')
+        + between(inputs["src/ipc.rs"].decode("utf-8"),
+                  "fn validate_desktop_url_ipc_open_url(",
+                  '#[cfg(not(any(target_os = "android", target_os = "ios")))]\n#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]\n#[serde(tag = "t", deny_unknown_fields)]\npub(crate) enum WhiteboardOwnerHandshake'))
+    for name in ("DESKTOP_URL_IPC_MAX_LINK_BYTES", "DESKTOP_URL_IPC_MAX_ADDRESS_BYTES"):
+        declarations = re.findall(r"^const " + name + r": usize = [0-9]+;\n",
+                                  inputs["src/ipc.rs"].decode("utf-8"), re.MULTILINE)
+        if len(declarations) != 1:
+            raise ValueError("desktop URL semantic limit is missing or ambiguous")
+        snippets["direct-cli.rs"] += declarations[0]
     windows_types = []
     for name in ("UINT", "UINT16", "UINT32"):
         declarations = re.findall(r"^pub type " + name + r" = [^;]+;\n",
@@ -483,6 +505,7 @@ def main():
         os.environ["CONTROL_EGRESS_LIMIT"] = str(fixture / "packet-limit.rs")
         os.environ["FILE_CLIPBOARD_SOURCE"] = str(fixture / "file-clipboard.rs")
         os.environ["WINDOWS_FORMAT_LIST_SOURCE"] = str(fixture / "windows-format-list.rs")
+        os.environ["DIRECT_CLI_SOURCE"] = str(fixture / "direct-cli.rs")
         os.environ["RECENT_DOCUMENT_MARKER_SOURCE"] = str(fixture / "recent-document-marker.rs")
         for variable, name in (("CM_EGRESS_SOURCE", "cm-queue.rs"), ("CM_EGRESS_TESTS", "cm-tests.rs"),
                                ("CM_IPC_TYPES", "cm-ipc.rs"), ("CM_ENIGO_TYPES", "enigo-types.rs"),
@@ -608,13 +631,13 @@ def main():
             print(f"CONTROL_EGRESS_INPUT=pass path={name} bytes={len(body)} sha256={digest(body)}")
         print(f"CONTROL_EGRESS_BUILD=pass seconds={time.monotonic() - started:.3f} "
               f"sha256={artifact_sha}", flush=True)
-        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=102", flush=True)
+        print(f"CONTROL_EGRESS_ARTIFACT_BEFORE=observed sha256={artifact_sha} tests=103", flush=True)
         try:
             run([str(artifact), "--test-threads=1", "--color", "never", "--show-output"], fixture)
         finally:
             if digest(artifact.read_bytes()) != artifact_sha:
                 raise ValueError("controlled-egress artifact changed during execution")
-            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=102 unchanged=before-after", flush=True)
+            print(f"CONTROL_EGRESS_ARTIFACT_AFTER=observed sha256={artifact_sha} tests=103 unchanged=before-after", flush=True)
         if digest(artifact.read_bytes()) != artifact_sha or (fixture / "Cargo.lock").read_bytes() != lock_bytes:
             raise ValueError("controlled-egress artifact or dependencies changed")
         for name, body in snippets.items():
@@ -623,7 +646,7 @@ def main():
         for name, body in inputs.items():
             if (repo / name).read_bytes() != body:
                 raise ValueError(f"controlled-egress source changed: {name}")
-        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=102 unchanged=before-after",
+        print(f"CONTROL_EGRESS_ARTIFACT=pass sha256={artifact_sha} tests=103 unchanged=before-after",
               flush=True)
 
 

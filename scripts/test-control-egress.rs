@@ -8,6 +8,10 @@ pub use anyhow::{self, bail};
 pub use libc;
 pub use tokio_util;
 
+#[path = "test-direct-cli.rs"]
+mod direct_cli;
+pub use direct_cli::{get_app_name, get_uri_prefix, is_direct_address};
+
 #[path = "test-controlled-tunnel.rs"]
 mod controlled_tunnel;
 pub use controlled_tunnel::rustdesk_interval;

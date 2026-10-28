@@ -4415,6 +4415,7 @@ run_focused_rust_tests() {
                 scripts/test-controlled-tunnel.rs
                 scripts/test-port-forward-settings.rs src/port_forward.rs
                 scripts/test-tunnel-reaper.rs
+                src/core_main.rs scripts/test-direct-cli.rs
                 scripts/test-rdp-launch.rs scripts/test-tunnel-port-kind.rs src/cli.rs
                 libs/hbb_common/src/tcp.rs
             )
@@ -4508,6 +4509,7 @@ run_focused_rust_tests() {
                 file_clipboard::tests::r_s11it_controlled_route_collision_mints_no_generation_or_channel
                 file_clipboard::allocation_tests::queue_growth_refusal_retires_exact_mailbox_and_payloads
                 file_clipboard::windows_format_tests::native_format_callback_preserves_broadcast_and_exact_routes
+                direct_cli::cli_preserves_exact_address_before_receiver_validation
                 bytes_codec::tests::test_codec1
                 bytes_codec::tests::test_codec2
                 bytes_codec::tests::test_codec3
@@ -6574,7 +6576,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-response ]; then
         printf 'CM_CLIPBOARD_RESPONSE_PROFILE=clipboard-response stage=container-start tests=43 bridge=absent windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = control-egress ]; then
-        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=102 bridge=absent\n'
+        printf 'CONTROL_EGRESS_PROFILE=control-egress stage=container-start tests=103 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = android-key-modifiers ]; then
         printf 'ANDROID_KEY_MODIFIERS_PROFILE=android-key-modifiers stage=container-start tests=8 bridge=absent android=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-block ]; then
@@ -6687,7 +6689,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                 }
                 /^(VIEWER_VOICE_MISMATCH_CASE|CM_VOICE_OWNER_CASE|CM_CHAT_OWNER_CASE)=/ { next }
                 /^(CM_DISCONNECT_OWNER_CASE|CM_CLOSE_RESULT_CASE)=.* correct=true$/ { next }
-                /^(CONTROL_EGRESS_|WINDOWS_FORMAT_LIST=|RECENT_DOCUMENT_|CURSOR_ECHO_|VIEWER_VOICE_|VIEWER_FPS_|CONTROLLED_VOICE_|CONTROLLED_TUNNEL_|PF_REAPER_|PF_SETTINGS_|RDP_LAUNCH_|test |CM_|CONTROL_QUEUE_|FILE_CLIP_QUEUE_|BYTES_CODEC_|memory allocation of )/ {
+                /^(CONTROL_EGRESS_|DIRECT_CLI_|WINDOWS_FORMAT_LIST=|RECENT_DOCUMENT_|CURSOR_ECHO_|VIEWER_VOICE_|VIEWER_FPS_|CONTROLLED_VOICE_|CONTROLLED_TUNNEL_|PF_REAPER_|PF_SETTINGS_|RDP_LAUNCH_|test |CM_|CONTROL_QUEUE_|FILE_CLIP_QUEUE_|BYTES_CODEC_|memory allocation of )/ {
                     if (++records > 576) exit 1
                     print
                 }
@@ -6944,7 +6946,7 @@ PY
         [ "$(grep -Fxc 'PF_SETTINGS_ONE_OFF=pass cases=4 invalid=before-bind-and-launch valid=native-listener owner-thread=joined ports=rebindable' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^PF_SETTINGS_ONE_OFF_CASE=observed .* correct=true$' "$output")" -eq 4 ] \
             || fail 'one-off local-port refusal or owned thread/listener finality differs'
-        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=102 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^CONTROL_EGRESS_ARTIFACT=pass sha256=[0-9a-f]{64} tests=103 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CONTROL_EGRESS_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'control-egress artifact receipt differs'
         [ "$(grep -Fxc 'CM_VOICE_CALL_ACTION=pass cases=108 identity=exact phase=exact invalid=refused queues=real' "$output")" -eq 1 ] \
@@ -7858,7 +7860,7 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = control-egress ]; then
-            grep -E '^test ((control_egress_tests|cm_egress_tests)::.*|cursor_echo::sender::.*|viewer_voice::tests::.*|viewer_fps::.*|controlled_voice::tests::.*|controlled_tunnel::.*|port_forward_settings::.*|ui_cm_interface::(chat_tests|disconnect_tests|voice_tests)::.*|file_clipboard::(tests|allocation_tests|windows_format_tests)::.*|bytes_codec::tests::.*|queue_growth_failure_is_terminal_and_releases_retained_messages|cm_queue_growth_failure_is_terminal_and_releases_payloads|cm_queue_admission_owns_only_raw_payload_bytes|cm_queue_concurrent_[a-z_]+|cm_directory_[a-z_]+|cm_read_block_[a-z_]+|recent_document_markers_preserve_existing_objects_and_refuse_creation_failure) \.\.\. ok$|^CONTROL_EGRESS_(ARTIFACT(_BEFORE|_AFTER)?|BUILD|DEPENDENCIES|INPUT|SOURCE|DEFAULT|CONCURRENCY)=|^WINDOWS_FORMAT_LIST=|^RECENT_DOCUMENT_|^CURSOR_ECHO_|^VIEWER_VOICE_|VIEWER_FPS_|^CONTROLLED_TUNNEL_|^CONTROLLED_VOICE_|^PF_REAPER_|^PF_SETTINGS_|^RDP_LAUNCH_|^CM_(CHAT|DISCONNECT|HISTORY|CLOSE|VOICE)_|^(CONTROL|CM)_QUEUE_ALLOC|^CM_QUEUE_CONCURRENT|^CM_DIRECTORY_|^CM_BATCH_|^CM_SIZE_|^CM_PROTO_|^CM_READ_BLOCK_|^FILE_CLIP_QUEUE_|^CM_RAW_BACKING|^BYTES_CODEC_' "$output"
+            grep -E '^test ((control_egress_tests|cm_egress_tests|direct_cli)::.*|cursor_echo::sender::.*|viewer_voice::tests::.*|viewer_fps::.*|controlled_voice::tests::.*|controlled_tunnel::.*|port_forward_settings::.*|ui_cm_interface::(chat_tests|disconnect_tests|voice_tests)::.*|file_clipboard::(tests|allocation_tests|windows_format_tests)::.*|bytes_codec::tests::.*|queue_growth_failure_is_terminal_and_releases_retained_messages|cm_queue_growth_failure_is_terminal_and_releases_payloads|cm_queue_admission_owns_only_raw_payload_bytes|cm_queue_concurrent_[a-z_]+|cm_directory_[a-z_]+|cm_read_block_[a-z_]+|recent_document_markers_preserve_existing_objects_and_refuse_creation_failure) \.\.\. ok$|^CONTROL_EGRESS_(ARTIFACT(_BEFORE|_AFTER)?|BUILD|DEPENDENCIES|INPUT|SOURCE|DEFAULT|CONCURRENCY)=|^DIRECT_CLI_|^WINDOWS_FORMAT_LIST=|^RECENT_DOCUMENT_|^CURSOR_ECHO_|^VIEWER_VOICE_|VIEWER_FPS_|^CONTROLLED_TUNNEL_|^CONTROLLED_VOICE_|^PF_REAPER_|^PF_SETTINGS_|^RDP_LAUNCH_|^CM_(CHAT|DISCONNECT|HISTORY|CLOSE|VOICE)_|^(CONTROL|CM)_QUEUE_ALLOC|^CM_QUEUE_CONCURRENT|^CM_DIRECTORY_|^CM_BATCH_|^CM_SIZE_|^CM_PROTO_|^CM_READ_BLOCK_|^FILE_CLIP_QUEUE_|^CM_RAW_BACKING|^BYTES_CODEC_' "$output"
             printf 'CONTROL_EGRESS_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-control-cm-egress-and-framing rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

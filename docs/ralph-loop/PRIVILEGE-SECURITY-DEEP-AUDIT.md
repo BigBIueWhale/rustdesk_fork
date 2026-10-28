@@ -111888,3 +111888,13 @@ occurred; every retained byte and the complete active password dialog are unchan
 Reference and whitespace checks pass. No compiler, product runtime or native
 credential transaction ran for this deletion. All fifteen installed credential
 actions and prior user parks remain OPEN. The required fresh ledger count follows.
+
+Cleanup `b28e1e8c` is pushed. Count run `aId6pYyTP1` passes the complete outer
+harness in 29 seconds, including seven tokenizer controls and the whole-file
+byte round trip. The ledger is 359,669 tokens / 1,636,624 bytes, SHA-256
+`cf9d6343ae9b4b81339d43f9ce205bd96b482e627fc876c4e9c2abdc270f8733`.
+QEMU 1262485 joins exit 0; RAM `run.wn19zuh7` and all active owned run roots are
+absent. Peak RAM/durable storage is 402,247,680/249,856 bytes; all endpoint deltas
+are zero. Workload serial: 31,539 bytes, SHA-256
+`eb69e3d31de002c2ce3dd3031f09d140ade55ceef1c9fe8c615d932cf9f6eb5b`.
+This audit-only receipt leaves the counted ledger and product sources unchanged.

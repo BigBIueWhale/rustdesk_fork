@@ -71,6 +71,74 @@ class ArtifactHashTests(unittest.TestCase):
     def test_existing_receipt_acceptance_and_refusals(self):
         checker.self_test()
 
+    def test_small_reads_keep_exact_bytes_and_size_limit(self):
+        artifact = self.root / "small"
+        data = bytes(range(256)) * 512 + b"end"
+        artifact.write_bytes(data)
+        self.assertEqual(checker.read_regular(artifact, len(data), "small"), data)
+        with self.assertRaises(checker.VerificationError):
+            checker.read_regular(artifact, len(data) - 1, "small")
+
+    def test_changed_files_are_refused_and_descriptors_retire(self):
+        from unittest.mock import patch
+
+        original_read = os.read
+        for reader in (lambda p: checker.sha256(p, "changing"),
+                       lambda p: checker.read_regular(p, 1024 * 1024, "changing")):
+            for mutation in ("grow", "truncate", "overwrite", "replace", "link", "symlink"):
+                with self.subTest(reader=reader, mutation=mutation):
+                    with tempfile.TemporaryDirectory(dir=self.root) as directory:
+                        root = Path(directory)
+                        artifact = root / "artifact"
+                        artifact.write_bytes(b"a" * 131073)
+                        before = len(list(Path("/proc/self/fd").iterdir()))
+                        changed = False
+
+                        def read_and_change(descriptor, count):
+                            nonlocal changed
+                            data = original_read(descriptor, count)
+                            if not changed:
+                                changed = True
+                                if mutation == "grow":
+                                    with artifact.open("ab") as stream:
+                                        stream.write(b"more")
+                                elif mutation == "truncate":
+                                    with artifact.open("r+b") as stream:
+                                        stream.truncate(1)
+                                elif mutation == "overwrite":
+                                    artifact.write_bytes(b"b" * 131073)
+                                elif mutation == "link":
+                                    (root / "alias").hardlink_to(artifact)
+                                else:
+                                    replacement = root / "replacement"
+                                    replacement.write_bytes(b"c" * 131073)
+                                    if mutation == "replace":
+                                        replacement.replace(artifact)
+                                    else:
+                                        artifact.unlink()
+                                        artifact.symlink_to(replacement)
+                            return data
+
+                        with patch.object(checker.os, "read", side_effect=read_and_change):
+                            with self.assertRaises(checker.VerificationError):
+                                reader(artifact)
+                        self.assertTrue(changed, "fixture did not mutate an opened file")
+                        self.assertEqual(len(list(Path("/proc/self/fd").iterdir())), before)
+
+    def test_read_errors_retire_the_owned_descriptor(self):
+        from unittest.mock import patch
+        import errno
+
+        artifact = self.root / "unreadable"
+        artifact.write_bytes(b"actual input")
+        before = len(list(Path("/proc/self/fd").iterdir()))
+        with patch.object(checker.os, "read", side_effect=OSError(errno.EIO, "injected read error")):
+            with self.assertRaises(OSError):
+                checker.sha256(artifact, "unreadable")
+            with self.assertRaises(OSError):
+                checker.read_regular(artifact, 1024, "unreadable")
+        self.assertEqual(len(list(Path("/proc/self/fd").iterdir())), before)
+
 
 if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "--bounded-child":
@@ -80,8 +148,8 @@ if __name__ == "__main__":
     elif len(sys.argv) == 1:
         suite = unittest.defaultTestLoader.loadTestsFromTestCase(ArtifactHashTests)
         result = unittest.TextTestRunner(verbosity=2).run(suite)
-        if not result.wasSuccessful() or result.testsRun != 4 or result.skipped:
+        if not result.wasSuccessful() or result.testsRun != 7 or result.skipped:
             raise SystemExit(1)
-        print("WINDOWS_SERVICE_HASH=pass tests=4 bytes=67108864 address_space=50331648 filesystem=actual children=joined windows=unexecuted")
+        print("WINDOWS_SERVICE_HASH=pass tests=7 bytes=67108864 address_space=50331648 filesystem=actual children=joined windows=unexecuted")
     else:
         raise SystemExit("unexpected test arguments")

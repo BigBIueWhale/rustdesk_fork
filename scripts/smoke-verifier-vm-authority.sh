@@ -5668,7 +5668,7 @@ for label, input_sha, input_bytes in documents:
 PY
     printf '%s\n' "$ledger_vm_receipt"
 elif [ "$MODE" = windows-service-result-tests ]; then
-    require_exact_fixed_receipt 'WINDOWS_SERVICE_HASH=pass tests=4 bytes=67108864 address_space=50331648 filesystem=actual children=joined windows=unexecuted' \
+    require_exact_fixed_receipt 'WINDOWS_SERVICE_HASH=pass tests=7 bytes=67108864 address_space=50331648 filesystem=actual children=joined windows=unexecuted' \
         'Windows service-result bounded artifact hashing'
     require_exact_fixed_receipt \
         "WINDOWS_SERVICE_RESULT_VM=pass uid=4000 gid=4000 checker_sha256=$(/usr/bin/sha256sum "$WINDOWS_SERVICE_RESULT_SOURCE" | /usr/bin/awk '{print $1}') tests_sha256=$(/usr/bin/sha256sum "$WINDOWS_SERVICE_HASH_TEST" | /usr/bin/awk '{print $1}') source=readonly network=none docker=retired scratch=retired cleanup=joined" \

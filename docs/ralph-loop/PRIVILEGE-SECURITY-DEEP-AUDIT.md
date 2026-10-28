@@ -112925,3 +112925,26 @@ read-only sources. The test parent has a 256-MiB address-space cap, 80-MiB file
 ceiling and 45-second CPU limit. No Windows launcher, product or host test runs.
 The resource selector inventory becomes 39 modes/65 controls/five refusals.
 Shell syntax, Python AST and exact diff review precede unchanged-checker execution.
+
+Baseline `l7KBIO1nPp` at `eadb45c0` passes three groups and fails only the
+64-MiB/48-MiB test with `MemoryError` at `Path.read_bytes`. All four groups
+execute in 0.338 seconds. QEMU 2175224 joins exit 0; RAM `run.z82k03do` is
+absent and exact diagnostics (66306/103992895) are retained as
+`windows-service-hash-baseline.l7KBIO1nPp`, with no active owned roots or endpoint
+deltas. Workload/console are 2,335/64,348 bytes with SHA-256
+`78862cb1f0b7ebda17e88c93e52ace786acae34b10d44356e568b9a99347210d` and
+`dc31556d5542d91789d3bc1b65dea4e129a6e40fabeda2aa3494a175f99f1025`.
+Scratch/durable peaks are 400,400,384/192,512 bytes.
+
+Implement one descriptor-owned reader for bounded JSON/XML bytes and incremental
+artifact hashing: no-follow/nonblocking open, regular-file/single-link/size
+admission, at-most-64-KiB reads up to the admitted length, one-byte EOF check,
+descriptor plus path metadata comparison including ctime, and unconditional
+descriptor closure. The context manager checks final identity before a digest
+or byte result escapes. It does not claim that mutable files form snapshots.
+The original four test bodies remain unchanged. Three additional groups exercise
+small-read bytes and size refusal, twelve actual file mutations at controlled
+read boundaries (growth, truncation, overwrite, replacement, hard link and
+symlink for each consumer), and injected I/O errors with actual descriptor counts.
+Only those added schedule/error tests intercept the read call; all bytes and
+filesystem mutations are real. Candidate execution follows with seven groups.

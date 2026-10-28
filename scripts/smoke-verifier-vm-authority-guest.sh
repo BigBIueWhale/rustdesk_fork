@@ -1258,7 +1258,7 @@ run_windows_service_result_tests() {
         || fail 'Windows service-result diagnostics exceed their bound'
     cat "$output"
     [ "$status" -eq 0 ] || fail "Windows service-result tests failed with status $status"
-    [ "$(grep -Fxc 'WINDOWS_SERVICE_HASH=pass tests=4 bytes=67108864 address_space=50331648 filesystem=actual children=joined windows=unexecuted' "$output")" -eq 1 ] \
+    [ "$(grep -Fxc 'WINDOWS_SERVICE_HASH=pass tests=7 bytes=67108864 address_space=50331648 filesystem=actual children=joined windows=unexecuted' "$output")" -eq 1 ] \
         && [ "$(grep -Fxc 'verify-windows-installed-service-result self-test: ok' "$output")" -eq 1 ] \
         || fail 'Windows service-result test inventory differs'
     [ "$(sha256sum "$checker" "$fixture")" = "$source_before" ] \

@@ -4,13 +4,16 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import copy
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import stat
 import tempfile
+from typing import Iterator
 import xml.etree.ElementTree as ET
 
 
@@ -168,20 +171,42 @@ def fail(message: str) -> None:
     raise VerificationError(message)
 
 
-def read_regular(path: Path, maximum: int, label: str) -> bytes:
+@contextmanager
+def open_regular(path: Path, maximum: int, label: str) -> Iterator[tuple[int, int]]:
     if not path.is_absolute() or path.resolve() != path:
         fail(f"{label} path is not absolute and canonical")
-    info = path.lstat()
-    if not path.is_file() or path.is_symlink() or info.st_nlink != 1:
-        fail(f"{label} is not one ordinary file")
-    if info.st_size <= 0 or info.st_size > maximum:
-        fail(f"{label} size is outside the bound")
-    data = path.read_bytes()
-    after = path.lstat()
-    fields = ("st_dev", "st_ino", "st_mode", "st_nlink", "st_size", "st_mtime_ns")
-    if any(getattr(info, field) != getattr(after, field) for field in fields):
-        fail(f"{label} changed while it was read")
-    return data
+    descriptor = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            fail(f"{label} is not one ordinary file")
+        if info.st_size <= 0 or info.st_size > maximum:
+            fail(f"{label} size is outside the bound")
+        yield descriptor, info.st_size
+        fields = ("st_dev", "st_ino", "st_mode", "st_nlink", "st_size",
+                  "st_mtime_ns", "st_ctime_ns")
+        for after in (os.fstat(descriptor), path.lstat()):
+            if any(getattr(info, field) != getattr(after, field) for field in fields):
+                fail(f"{label} changed while it was read")
+    finally:
+        os.close(descriptor)
+
+
+def read_chunks(descriptor: int, size: int, label: str) -> Iterator[bytes]:
+    remaining = size
+    while remaining:
+        chunk = os.read(descriptor, min(64 * 1024, remaining))
+        if not chunk:
+            fail(f"{label} ended before its admitted size")
+        remaining -= len(chunk)
+        yield chunk
+    if os.read(descriptor, 1):
+        fail(f"{label} grew beyond its admitted size")
+
+
+def read_regular(path: Path, maximum: int, label: str) -> bytes:
+    with open_regular(path, maximum, label) as (descriptor, size):
+        return b"".join(read_chunks(descriptor, size, label))
 
 
 def no_duplicate_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -209,7 +234,11 @@ def read_json(path: Path, label: str) -> dict[str, object]:
 
 
 def sha256(path: Path, label: str) -> str:
-    return hashlib.sha256(read_regular(path, 2 * 1024 * 1024 * 1024, label)).hexdigest()
+    with open_regular(path, 2 * 1024 * 1024 * 1024, label) as (descriptor, size):
+        digest = hashlib.sha256()
+        for chunk in read_chunks(descriptor, size, label):
+            digest.update(chunk)
+        return digest.hexdigest()
 
 
 def require_exact_bool(result: dict[str, object], field: str, expected: bool) -> None:

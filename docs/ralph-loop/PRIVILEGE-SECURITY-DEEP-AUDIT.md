@@ -111673,3 +111673,30 @@ addition is left untouched. Bounded diagnostics are retained at
 Workload serial: 31,514 bytes, SHA-256
 `a9246910632bce86fe503d3bd0858aff1425ebe4e9f7e3dc287a399bcb478d67`.
 This audit-only receipt leaves the counted ledger and translation bytes unchanged.
+
+### 2026-10-28 — storage-profile completion receipt
+
+The previous turn is progress: `d3be0a9c` fills eleven live locale entries and
+`fb4cc637` retains its exact count and cleanup evidence. The generated protobuf
+parser remains OPEN/PARKED. All fifteen installed credential actions remain OPEN.
+This slice addresses only the independent storage-profile reporting mismatch
+observed by ledger run `OweQFPJLHx`; it does not resume parser tests or the parked
+shared output-finality work.
+
+The guest's actual `storage_limits` checks complete 33 valid profile cases and
+60 invalid-memory/profile refusals, followed by explicit headroom/overhead checks.
+Its success marker then interpolates those totals. The host instead requires the
+literal historical 30/54 totals and rejects the otherwise completed run. The
+case totals belong to diagnostics, not a second manually maintained acceptance
+inventory. The source-bound guest owns execution of the complete explicit matrix;
+the host still requires its successful completion and fixed resource envelope,
+the remaining native lifecycle/admission receipts, tokenizer identity and guest
+completion. Any existing assertion failure still exits before its success marker.
+
+The change moves actual totals to `VM_TRANSIENT_PROFILE_CASES` and retains one
+stable `VM_TRANSIENT_PROFILE_LIMITS` completion/resource marker. The corresponding
+host expectation omits only the totals. Exact whole-file comparison confirms all
+checks, matrices, source binding, other receipts, storage limits and orchestration
+are unchanged. Both shell syntax checks and whitespace review pass. The retained
+baseline already demonstrates the failure; the focused ledger run below verifies
+the changed host/guest exchange without another baseline or product build.

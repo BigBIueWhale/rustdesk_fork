@@ -1040,7 +1040,8 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
         raise SystemExit('VM storage profile accepted an invalid guest/profile')
 if module['HEADROOM'] != 6 * gib or module['OVERHEAD'] != gib:
     raise SystemExit('VM storage headroom or overhead differs')
-print(f'VM_TRANSIENT_PROFILE_LIMITS=pass profiles={profile_cases} refusals={refusal_cases} ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
+print(f'VM_TRANSIENT_PROFILE_CASES=profiles={profile_cases} refusals={refusal_cases}')
+print('VM_TRANSIENT_PROFILE_LIMITS=pass ledger_guest_mib=2048 scratch_gib=4 overlay_gib=1 headroom_gib=6 overhead_gib=1')
 cli = subprocess.run([sys.executable, '-B', '-I', '-S', sys.argv[1], 'preflight',
                       '--memory-mib', '10240', '--storage-profile', 'linux-flutter-suspend'],
                      capture_output=True, text=True, timeout=5, check=False)

@@ -33,6 +33,14 @@ capabilities, with no-new-privileges, in the authenticated zero-NIC VM. The firs
 14-second transaction added no host listener and joined scratch/Docker/VM cleanup.
 Whole-document role classification and compression of redundant history remain **OPEN**.
 
+The storage-profile guest check reports its executed case totals separately from
+its completion/resource receipt. Host acceptance no longer duplicates a historical
+profile/refusal count; every existing profile, wrong-memory and headroom assertion
+still runs before the receipt. This corrects `OweQFPJLHx`'s wrapper rejection of
+33 passing profiles/60 refusals against obsolete 30/54 literals. Source comparison
+and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
+“2026-10-28 — storage-profile completion receipt”. Parser development remains parked.
+
 ## Current Verdict
 
 **STOP-SHIP: the source topology is substantially hardened, but native and release evidence is incomplete.**

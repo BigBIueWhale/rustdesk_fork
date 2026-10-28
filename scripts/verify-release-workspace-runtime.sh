@@ -106,7 +106,7 @@ run_stage() {
         fail "$label success marker is absent"
     fi
     if [ "$label" = 'release transaction fixture' ]; then
-        local receipt='RELEASE_MANIFEST_BOUNDARIES=pass variants=13 publish=refused verify=refused canonical=accepted state=preserved'
+        local receipt='RELEASE_MANIFEST_BOUNDARIES=pass variants=13 publish=refused verify=refused canonical=accepted recovery=joined state=preserved'
         [ "$(/usr/bin/grep -Fxc -- "$receipt" <<<"$output")" -eq 1 ] \
             || fail 'release manifest boundary results are missing or duplicated'
         printf '%s\n' "$receipt" >&2

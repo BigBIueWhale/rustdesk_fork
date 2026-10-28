@@ -1309,10 +1309,10 @@ invalid_source.mkdir(mode=0o700)
 for entry in source.iterdir():
     (invalid_source / entry.name).write_bytes(entry.read_bytes())
 
-def command(*arguments):
+def command(*arguments, metadata=True):
+    binding = ["--commit", commit, "--version", version, "--epoch", epoch] if metadata else []
     return subprocess.run(
-        ["/usr/bin/python3", "-I", "-S", helper, *map(str, arguments),
-         "--commit", commit, "--version", version, "--epoch", epoch],
+        ["/usr/bin/python3", "-I", "-S", helper, *map(str, arguments), *binding],
         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         timeout=10, check=False,
     )
@@ -1335,6 +1335,10 @@ try:
             accepted.append(label + ":publish")
         else:
             assert result.returncode == 1 and b"release manifest" in result.stderr, result
+            assert not os.path.lexists(parent / ("noncanonical-" + label)), label
+            recovery = command("--recover", "--parent", parent, "--destination",
+                               "noncanonical-" + label, metadata=False)
+            assert recovery.returncode == 0, recovery
             assert sorted(os.listdir(parent)) == inventory, label
         manifest.chmod(0o644)
         manifest.write_bytes(content)
@@ -1352,7 +1356,7 @@ finally:
     manifest.chmod(0o444)
 assert command("--verify", "--path", published).returncode == 0
 assert not accepted, "noncanonical manifest accepted: " + ", ".join(accepted)
-print(f"RELEASE_MANIFEST_BOUNDARIES=pass variants={len(variants)} publish=refused verify=refused canonical=accepted state=preserved", file=sys.stderr)
+print(f"RELEASE_MANIFEST_BOUNDARIES=pass variants={len(variants)} publish=refused verify=refused canonical=accepted recovery=joined state=preserved", file=sys.stderr)
 PY
 
     destination="$parent/unbound-initial-payload"

@@ -112060,3 +112060,18 @@ retained without inspecting or changing its owner. The correction routes generic
 `no` to `nb`, recognizes explicit Nynorsk forms before that mapping and preserves
 the existing saved-preference branch. The same ten groups / 130 examples remain;
 no harness, translation table or dependency changes are needed.
+
+Candidate `b1c9e01488f83b89e648bce6da1e26b7b1b4b0a2` / `vYkWpycaoc` passes
+the identical ten groups / 130 examples and full outer acceptance in 60 seconds.
+The complete production selector compiles with Rust 1.75.0 inside the existing
+non-root, networkless container/VM; there are no locale/config/translation doubles.
+Artifact SHA-256 is `77f7bdac29bbede28dc8917527a718a6cec050c7d4b410f19afd07321f9801a0`,
+unchanged before/after execution. Workload serial: 1,890 bytes, SHA-256
+`1e5d77c74caa7a81535c656ef5e7013a3e2d4023de247fa8d92c9fc97eef913a`.
+QEMU 1423513 joins exit 0; RAM `run.qh5_u6zx` and active owned run roots are absent.
+Peak RAM/durable storage is 3,386,052,608/3,379,200 bytes. The final snapshot has
+one unattributed endpoint addition, left untouched. Actual OS locale acquisition,
+rendered app/device behavior and other-platform acceptance remain OPEN. Nynorsk
+has no translation table and still follows the existing English fallback; this
+change does not label it as Bokmål. Whitespace checks and exact baseline/candidate
+test comparison pass. The Windows chooser and other user parks remain unchanged.

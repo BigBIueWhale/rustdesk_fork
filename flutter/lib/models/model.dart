@@ -624,7 +624,7 @@ class FfiModel with ChangeNotifier {
     } else if (name == 'toast') {
       handleToast(evt, sessionId, peerId);
     } else if (name == 'set_multiple_windows_session') {
-      handleMultipleWindowsSession(evt, sessionId, peerId);
+      handleMultipleWindowsSession(evt, sessionId);
     } else if (name == 'peer_info') {
       await handlePeerInfo(evt, peerId, false, sessionId);
     } else if (name == 'sync_peer_info') {
@@ -1030,8 +1030,7 @@ class FfiModel with ChangeNotifier {
     dialogManager.dismissByTag(tag);
   }
 
-  handleMultipleWindowsSession(
-      Map<String, dynamic> evt, SessionID sessionId, String peerId) {
+  handleMultipleWindowsSession(Map<String, dynamic> evt, SessionID sessionId) {
     if (parent.target == null) return;
     final dialogManager = parent.target!.dialogManager;
     final sessions = evt['windows_sessions'];

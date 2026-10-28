@@ -560,7 +560,6 @@ class _PeerRenameDialogState extends State<PeerRenameDialog> {
   }
 }
 
-// This dialog should not be dismissed, otherwise it will be black screen, have not reproduced this.
 void showWindowsSessionsDialog(
     String type,
     String title,
@@ -583,8 +582,9 @@ void showWindowsSessionsDialog(
   dialogManager.dismissAll();
   dialogManager.show((setState, close, context) {
     submit() {
-      onSelected(selectedUserValue);
-      close();
+      final selected = selectedUserValue;
+      if (!close()) return;
+      onSelected(selected);
     }
 
     return CustomAlertDialog(
@@ -598,6 +598,7 @@ void showWindowsSessionsDialog(
               options: options,
               selectedKey: selectedUserValue,
               onChanged: (value) {
+                if (!close.isCurrent) return;
                 setState(() => selectedUserValue = value);
               }),
         ],
@@ -608,6 +609,7 @@ void showWindowsSessionsDialog(
             isOutline: false,
             translateText: translateText),
       ],
+      onSubmit: submit,
     );
   });
 }

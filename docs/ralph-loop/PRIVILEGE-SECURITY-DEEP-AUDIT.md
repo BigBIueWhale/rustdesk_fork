@@ -111932,3 +111932,23 @@ Tests run the complete production Dart helpers and overlay, with a controlled na
 selection callback; no Rust application, Windows service or session switch runs.
 Pinned Flutter focus propagation was reviewed at
 https://raw.githubusercontent.com/flutter/flutter/3.24.5/packages/flutter/lib/src/widgets/focus_manager.dart .
+
+Baseline preparation `a4881f06` is pushed. Two attempts to run
+`/bin/bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --credential-dialog`
+are refused before VM creation: the profile requires 18,432 MiB including its
+existing scratch/headroom/overhead, versus 17,635 and 18,431 MiB available at the
+respective admission checks. No guest, compiler or widget test starts, and there
+is no runtime baseline result. The resource policy and shared parser failures are
+not changed to get past these refusals.
+
+The reviewed candidate consumes `DialogClose` before the model's selection callback,
+checks the same current entry before dropdown state updates, and wires `onSubmit`
+to that operation. It removes the obsolete unverified black-screen comment and the
+now-unused peer-ID argument from this handler. The same session ID still reaches
+the same native FFI method; raw JSON production/decoding, choice order, labels,
+modal dismissal policy and Windows receiver code remain unchanged. Exact retired
+entry ownership is checked at dispatch, without a detached timer or a second flag.
+Whitespace, shell syntax and Python AST checks pass; the declared inventory is ten
+suites / 107 cases, including the nine new chooser cases. No product compiler or
+runtime acceptance is claimed. Next work is the same isolated command when its
+full RAM admission succeeds; baseline A/B and native Windows switching remain OPEN.

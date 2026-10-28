@@ -87,13 +87,6 @@ pub enum MouseButton {
 /// Representing an interface and a set of mouse functions every
 /// operating system implementation _should_ implement.
 pub trait MouseControllable {
-    // https://stackoverflow.com/a/33687996
-    /// Offer the ability to confer concrete type.
-    fn as_any(&self) -> &dyn std::any::Any;
-
-    /// Offer the ability to confer concrete type.
-    fn as_mut_any(&mut self) -> &mut dyn std::any::Any;
-
     /// Lets the mouse cursor move to the specified x and y coordinates.
     ///
     /// The topleft corner of your monitor screen is x=0 y=0. Move
@@ -400,13 +393,6 @@ pub enum Key {
 
 /// Cross-platform keyboard-state access.
 pub trait KeyboardControllable {
-    // https://stackoverflow.com/a/33687996
-    /// Offer the ability to confer concrete type.
-    fn as_any(&self) -> &dyn std::any::Any;
-
-    /// Offer the ability to confer concrete type.
-    fn as_mut_any(&mut self) -> &mut dyn std::any::Any;
-
     /// Collect all supported keyboard state before an operation starts.
     /// Unavailable native state returns an error; no partial state is published.
     fn keyboard_state(&mut self) -> std::result::Result<KeyboardState, Box<dyn std::error::Error>>;

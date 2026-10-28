@@ -25,14 +25,6 @@ impl Enigo {
 }
 
 impl MouseControllable for Enigo {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    fn as_mut_any(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-
     fn mouse_move_to(&mut self, x: i32, y: i32) -> crate::ResultType {
         self.xdo.mouse_move_to(x, y)
     }
@@ -64,14 +56,6 @@ impl Enigo {
 }
 
 impl KeyboardControllable for Enigo {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    fn as_mut_any(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-
     fn keyboard_state(&mut self) -> Result<KeyboardState, Box<dyn std::error::Error>> {
         self.xdo.keyboard_state()
     }

@@ -127,14 +127,6 @@ impl Default for Enigo {
 }
 
 impl MouseControllable for Enigo {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    fn as_mut_any(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-
     fn mouse_move_to(&mut self, x: i32, y: i32) -> crate::ResultType {
         // For absolute movement, we don't set delta values
         // This maintains backward compatibility
@@ -331,14 +323,6 @@ impl MouseControllable for Enigo {
 // com/questions/1918841/how-to-convert-ascii-character-to-cgkeycode
 
 impl KeyboardControllable for Enigo {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    fn as_mut_any(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-
     fn keyboard_state(&mut self) -> Result<KeyboardState, Box<dyn std::error::Error>> {
         if self.event_source.is_none() {
             return Err("macOS event source is unavailable".into());

@@ -248,14 +248,6 @@ impl EnigoXdo {
 }
 
 impl MouseControllable for EnigoXdo {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    fn as_mut_any(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-
     fn mouse_move_to(&mut self, x: i32, y: i32) -> crate::ResultType {
         self.ensure_input_ready()?;
         let status = unsafe { libxdo_sys::xdo_move_mouse(self.xdo as *const _, x, y) };
@@ -333,14 +325,6 @@ impl MouseControllable for EnigoXdo {
 }
 
 impl KeyboardControllable for EnigoXdo {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    fn as_mut_any(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-
     fn keyboard_state(&mut self) -> Result<KeyboardState, Box<dyn std::error::Error>> {
         self.ensure_input_ready()?;
         let mut state = libxdo_sys::XdoInputState::default();

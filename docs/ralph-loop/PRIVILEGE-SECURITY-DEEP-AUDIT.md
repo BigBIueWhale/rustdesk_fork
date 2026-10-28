@@ -109782,3 +109782,34 @@ durable evidence 151,552 bytes. QEMU 3910982 joins with exit 0; its PID,
 RAM `run.8g3vpdd4` and active run roots are absent. Before/during endpoint deltas
 are zero; after contains one unattributed 18-byte addition, without owner inspection.
 This audit-only receipt changes neither the counted ledger nor tested sources.
+
+## 2026-10-28 — user pivot to obsolete input-backend downcasts
+
+The user explicitly requested a different aspect. Shared-decompressor native
+workspace failure coverage stays OPEN/PARKED after research only; no decoder
+edit or execution was made. Compressor coverage at `361f5682` remains accepted.
+All previous parks, including inactive mouse arbitration and macOS mouse
+coordinates, remain parked. The fifteen service-owned credential actions still
+require native acceptance, and the broad hardening goal remains incomplete.
+
+Selected deletion: `MouseControllable` and `KeyboardControllable` each expose
+unused `as_any`/`as_mut_any` methods, with sixteen implementations across the
+Linux wrapper/XDO, Windows and macOS backends. Repository reference inspection
+finds only these declarations and definitions. History `fb40e9d2` removed the
+last application downcast with the uinput custom backend; the current Linux
+wrapper owns its concrete XDO backend. The Rust primary
+[Any documentation](https://doc.rust-lang.org/std/any/trait.Any.html) identifies
+the removed return type as the runtime type-inspection/downcast interface.
+No native input operation needs it. R-X13 retains one supported injector, and
+R-S19 authority remains in the owning authenticated connection and action sinks.
+
+Remove only the four trait declarations, their comments and sixteen trivial
+implementations: 78 lines across five files. All event submission, keyboard
+state, error, cleanup, ownership and coordinate bodies remain byte-identical.
+This removes obsolete API residue; it is not a demonstrated input or escalation
+fix. No replacement API, dependency, source catalogue or test is needed.
+`git diff --check` and complete reference inspection pass. Existing native
+verification will compile the changed complete Linux Enigo crate and exercise
+its X11 event/state/cleanup paths through the unchanged focused
+`--x11-display-tests --key-input` VM shard. Windows/macOS native acceptance and
+full application acceptance remain open. No runtime result is claimed yet.

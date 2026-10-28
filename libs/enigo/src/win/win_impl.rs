@@ -102,14 +102,6 @@ fn mouse_button_event(button: MouseButton, down: bool) -> Result<(u32, u32), Str
 }
 
 impl MouseControllable for Enigo {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    fn as_mut_any(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-
     fn mouse_move_to(&mut self, x: i32, y: i32) -> crate::ResultType {
         let x = super::absolute_pointer::normalize_absolute(
             x,
@@ -176,14 +168,6 @@ impl MouseControllable for Enigo {
 }
 
 impl KeyboardControllable for Enigo {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    fn as_mut_any(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-
     fn keyboard_state(&mut self) -> Result<KeyboardState, Box<dyn std::error::Error>> {
         let mut state = [0u8; 256];
         if unsafe { GetKeyboardState(state.as_mut_ptr()) } == 0 {

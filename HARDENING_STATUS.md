@@ -14426,16 +14426,33 @@ Android/iOS device, installed/peer integration, full R-S0/R-F5 and release accep
 remain OPEN. All fifteen credential-native actions and every existing user park remain
 unchanged.
 
-**Mobile transfer failure detail (`48a8819c`) — source corrected; runtime OPEN.**
+**Mobile transfer failure detail (`48a8819c`) — source corrected; existing component regressions pass.**
 The error sheet now passes the selected job's retained error through its existing
 translator into the detail text. Previously it always supplied an empty string.
 The native event and current-session model already retain that error; job selection,
-dismissal ownership and the single-line ellipsis layout are unchanged. Source review
-and `git diff --check` pass. The existing `--flutter-model-tests --file-progress`
-run was refused before boot: 18,432 MiB required including scratch/headroom, only
-15,497 MiB available. No VM or bulk workspace was created; no runtime pass is claimed.
-Rendered/localized failure details, existing regression execution and Android/iOS
-transfer acceptance remain OPEN. The audit records the exact source and refusal.
+dismissal ownership and the single-line ellipsis layout are unchanged. At `8ff6898c`,
+the unchanged 43-case file-progress suite and three focused parser checks pass with
+fresh bridge/import generation. These tests render the status sheet and exercise
+production job models with controlled requests; they do not assert a nonempty
+localized error reason or execute native Android/iOS transfers. Those observations
+remain OPEN. Cancellation-request failures also still escape the mobile callback;
+the existing failure test explicitly catches that exception, so its pass does not
+establish visible cancellation-error handling.
+
+**File-progress verification resources (`a9985056`, `8ff6898c`) — isolated execution accepted.**
+The same suite now uses selected Rust components, retires the temporary installer
+copy, and omits 630,559,732 archive payload bytes of unused Android/web/preload
+artifacts. Pinned inputs, fresh bridge generation and all product/test bodies remain.
+The bounded profile admits a 2.5 GiB guest, 4.75 GiB RAM scratch, 4.5 GiB hard file
+ceiling, unchanged 6 GiB host reserve and 1 GiB overhead: 14.25 GiB total instead
+of 18 GiB. Run `0KxYtfIEgQ` passes in 274 outer seconds; scratch/overlay peaks are
+4,503,019,520/4,307,357,696 bytes, with zero container OOM events. QEMU joins and
+RAM scratch retires. One unattributed endpoint addition/removal is retained without
+owner inspection; the harness cannot create host IP sockets. Earlier admission
+refusals, exact source/test bindings and resource evidence are retained in
+`file-progress-resources-8ff6898c.json`. The broad parser remains user-PARKED;
+only this profile's existing inventory/finality checks run. Full app/device,
+native cancellation and all installed credential acceptance remain OPEN.
 
 **SOURCE CORRECTED; CURRENT DART COMPONENT A/B AND FRESH BRIDGE GENERATION ACCEPTED;
 NATIVE FILESYSTEM, INSTALLED, AND OTHER TARGET-PLATFORM EVIDENCE OPEN.**

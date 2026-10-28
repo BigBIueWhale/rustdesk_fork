@@ -113344,3 +113344,65 @@ deltas are zero. The count's smaller admitted VM runs no product tests.
 binding and count evidence: 15,626 bytes, SHA-256
 `9c5da4260d781043fd93286026658f50bab60d5e5b11361b00a8d67f9e65dd59`.
 Only this audit receipt follows counting; the ledger is unchanged.
+
+## 2026-10-28 — bounded file-progress verification resources
+
+Previous turn made source progress at `48a8819c`, but its 18-GiB Flutter profile
+could not be admitted. The same product and all 43 test cases are preserved in
+this slice. The current authority table still leaves all fifteen installed
+credential actions OPEN; every user park remains in force.
+
+The runner extracted the complete Rust archive although its installer selected
+only rustc/cargo/std/rustfmt. `a9985056` applies the already-used selective member
+extraction and exact private installer retirement to file-progress, with a
+2,560-MiB guest and 1,792-MiB container. Its first 5.25/5-GiB scratch/file profile
+requires 15,104 MiB; admission refuses at 14,967 MiB available before VM creation.
+The smaller control VM `q3Z8VB1m2T` then passes 41 profiles/76 wrong-profile
+refusals, 39 workload modes/68 controls/five refusals and six storage-monitor
+cases. QEMU 2472403 joins, RAM `run.0crgv2y7` retires and endpoint deltas are zero.
+This is profile/monitor evidence, not a Flutter workload pass at those limits.
+
+Read-only inventory of pinned `flutter-3.24.5.tar.xz` identifies 200,736,626 bytes
+in 167 Pub preload files, 157,467,378 bytes in 34 Android engine files, and
+272,355,728 bytes in 339 web-SDK files. The pinned Flutter source confirms
+[`PUB_CACHE` bypasses SDK preloading](https://raw.githubusercontent.com/flutter/flutter/3.24.5/packages/flutter_tools/lib/src/dart/pub.dart)
+and [native widget tests request no device or web artifacts](https://raw.githubusercontent.com/flutter/flutter/3.24.5/packages/flutter_tools/lib/src/commands/test.dart).
+[Cache definitions](https://raw.githubusercontent.com/flutter/flutter/3.24.5/packages/flutter_tools/lib/src/flutter_cache.dart)
+separate these from retained universal/native artifacts, fonts and Gradle tooling.
+[GNU tar member selection](https://www.gnu.org/software/tar/manual/html_node/extracting-files.html)
+permits omitting them during extraction without changing the authenticated archive.
+
+`8ff6898c` omits those three groups, verifies their absence, and lowers scratch/file
+ceilings to 4.75/4.5 GiB. Total admission is 14.25 GiB including unchanged 6-GiB
+host reserve and 1-GiB overhead. The fixed 300-second deadline, shared owner lock,
+no-network topology, live monitor, pre-execution hard file ceiling and exact joins
+remain. [Docker's memory controls](https://docs.docker.com/engine/containers/resource_constraints/)
+remain hard limits with equal memory/swap settings. The focused parser option
+executes only this profile's three existing inventory/finality checks; no broad
+parser repair, product test removal or replacement model is introduced.
+
+Run `0KxYtfIEgQ` at exact source `8ff6898c8dcefe9cc89c3eb85845b51d5e8e3e7c`
+passes all 43 cases and three parser checks in 274 outer seconds; Flutter reports
+8.845 seconds. Toolchain extraction/offline Pub/bridge/tests are observed at
+0/66/72/147 seconds. The entire production Dart library copy and test file are
+compared after execution, excluding only freshly generated bridge files.
+Test SHA-256 remains `5389d8478bbbe4d731a26d85ebf3fddd75d7f7a620bf75b5f9a4e85b28e2ab1d`;
+model SHA-256 remains `660d69dcc6e4b703c1be3e27cc546947e0f871d027e7c48e5966a8c6e25244f7`;
+mobile widget SHA-256 remains `02326b27fbee50c776e305e11c8e34757ee28f36eedf0557ea2d2a7a65f0327b`.
+Workload serial is 30,052 bytes, SHA-256
+`c0479ff752f7cd84d56bb78795b971c960f3509efdf5694348deb8d6f2472243`.
+
+Scratch/overlay peaks are 4,503,019,520/4,307,357,696 bytes; durable diagnostics
+peak at 3,436,544 bytes. Container memory limit/observed peak are
+1,879,048,192/1,879,052,288 bytes (one page above the configured limit), with
+zero OOM and OOM-kill events. Minimum host available memory is 8,747,524,096 bytes.
+QEMU 2490656 joins exit 0; RAM `run.1rjftcl2` and active owned roots are absent.
+One unattributed endpoint addition/removal remains untouched. This is Linux Flutter
+component evidence with controlled request futures, not native file transfer,
+installed-service acceptance or a nonempty localized failure-detail assertion.
+
+Follow-up remains OPEN: `session_cancel_job`/`FileManager::cancel_job` can refuse
+request admission; `JobController.cancelJob` and the mobile button propagate that
+failure without visible feedback. The existing failure test catches the escaped
+exception explicitly. No cancellation behavior is changed or claimed fixed here.
+The ledger is updated; a fresh count and retained evidence capsule follow.

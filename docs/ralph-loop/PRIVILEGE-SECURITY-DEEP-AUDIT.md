@@ -112075,3 +112075,13 @@ rendered app/device behavior and other-platform acceptance remain OPEN. Nynorsk
 has no translation table and still follows the existing English fallback; this
 change does not label it as Bokmål. Whitespace checks and exact baseline/candidate
 test comparison pass. The Windows chooser and other user parks remain unchanged.
+
+The updated ledger at `2fd0e59a` passes the fresh isolated count in
+`6snn1YdWus`: 360,179 tokens / 1,639,010 bytes, SHA-256
+`f55a67ffdf1318d9cf07f77eedf3d0d6c540c179d7a611641171273ab53e0654`,
+using the pinned tiktoken 0.12.0 / cl100k_base recipe, seven controls and exact
+whole-file round trip. Outer acceptance takes 28 seconds. QEMU 1429182 joins
+exit 0; RAM `run.i5l5yy5x` and active roots are absent, all endpoint deltas zero.
+Peak RAM/durable storage is 402,317,312/249,856 bytes. Workload serial is 31,774
+bytes, SHA-256 `7663fc97ef578259d333e73066f555e481ad494a00190444578f98dab124400b`.
+The count adds no product or installed-service acceptance.

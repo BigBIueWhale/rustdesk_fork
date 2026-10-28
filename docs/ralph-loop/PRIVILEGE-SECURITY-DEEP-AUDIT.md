@@ -110870,3 +110870,13 @@ elapsed time. Once authorized, execute the unchanged-product baseline through
 `scripts/smoke-verifier-vm-authority.sh --viewer-video-tests`, preserve its exact
 result, then implement and test the owned error path plus stale-attempt cases.
 No baseline failure, correction, native acceptance or overall closure is claimed.
+
+Preparation committed/pushed as `ac236b65dc4c87232cf47f3b3cb5ee8c296f7b45`.
+Fresh ledger count `6j8RR2k2md` passes: **357,287 tokens**, 1,624,754 bytes,
+SHA-256 `0459226f8470a180820a289f52c4e332f611f8505d098f5476192031158687d5`.
+Seven controls and exact byte round trip pass. Outer/supervisor times are
+28/31.757 seconds, RAM scratch peak 402,210,816 bytes, durable evidence peak
+249,856 bytes. QEMU 391263 joins exit 0; its PID, RAM `run.cyfjj08l` and active
+owned roots are absent. All endpoint deltas are zero. The bounded RAM profile
+and live monitor remain enabled. This is documentation-only execution; no
+application compiled or ran. The counted ledger is unchanged by this receipt.

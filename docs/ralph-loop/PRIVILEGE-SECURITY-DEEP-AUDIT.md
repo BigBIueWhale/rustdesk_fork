@@ -113088,3 +113088,15 @@ depends on `Focus.of(context).hasFocus` as well as hover. It retains Flutter's
 actual focus owner, existing colors, geometry, menu/session callbacks and
 disabled behavior; no mirrored focus flag or new input actuator is introduced.
 Candidate execution follows; full toolbar/device/session acceptance remains OPEN.
+
+Candidate `zWByiFB2Lm` at `fd4145a5` passes all 32 rendered cases (7.517 seconds
+inside Flutter), including the three reproduced focus failures. The wrapper
+then fails the three already-parked global `models` parser mutations. This is
+product-component evidence, not a complete workload receipt. The menu-button
+entry now uses the existing single-profile parser-test selection, as other
+focused workloads already do. No global parser behavior or parked test changes.
+The final rerun is needed to validate that narrowed inventory/finality gate.
+QEMU joins and RAM retires; one unattributed endpoint addition and two removals
+remain untouched. Diagnostics are retained as `toolbar-focus-candidate.zWByiFB2Lm`;
+the 20,769-byte workload hash is
+`3e09290235ae5ebf3dc56ee452e2dcc2410ffae347a177f4d578b33b92a0e591`.

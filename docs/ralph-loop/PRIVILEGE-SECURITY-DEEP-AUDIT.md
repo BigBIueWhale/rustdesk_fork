@@ -112289,3 +112289,17 @@ files and match their previous full SHA-256 values. Whitespace checks pass.
 Product, tests, gates, requirements, live instructions and the fifteen-action
 acceptance table are unchanged; no product execution is needed or claimed for
 this documentation change. Fresh isolated ledger token counting follows.
+
+Cleanup `ead043c6` is pushed. Fresh isolated count `2Qu0arX4pF` passes in 28
+outer seconds: **358,653 tokens / 1,633,310 bytes**, SHA-256
+`1e55dd72eca1bf81b3dbb9fe9d9942e1c876f65637d73857d9a9785eea6200b8`.
+The pinned tiktoken 0.12.0 / cl100k_base / encode_ordinary recipe passes seven
+controls and the whole-file byte round trip; workload admission passes sixty
+controls and five refusals. This is 2,009 fewer ledger tokens than the preceding
+accepted input. QEMU 1604145 joins exit 0, RAM `run.woyznvpp` and active owned
+roots are absent; peak RAM/durable storage is 402,378,752/253,952 bytes.
+One unattributed endpoint addition is retained without foreign-owner inspection
+or mutation; owned host IP sockets were kernel-denied. Workload serial is
+32,003 bytes, SHA-256
+`e5d55452de3899e66aeee8b6a81ea331e00f5ca5215be9bc30df8fb70d6628f9`.
+This validates the document metric and isolated cleanup, not product behavior.

@@ -111657,3 +111657,19 @@ needed for this text-only slice; application rendering, remaining untranslated
 locales, chat lifecycle and installed/native/R-S0/R-F5 acceptance remain OPEN.
 The fifteen service-owned credential actions remain OPEN. Existing parks and
 live instruction files are unchanged. A fresh ledger count follows this edit.
+
+Count run `OweQFPJLHx` at `d3be0a9c` returns 359,212 tokens / 1,634,497 bytes,
+input SHA-256 `1d0366d59ce87251aaee8d9dfa5b3c24920022c6d9eb46b1f28dcf7b41df8998`.
+All seven tokenizer controls and the complete byte round trip pass; read-only
+comparison binds that result to the unchanged current ledger. The outer wrapper
+exits 1 because its literal profile receipt expects 30 profiles/54 refusals while
+the guest reports 33/60. Full harness acceptance and that stale-count correction
+remain OPEN; the tokenizer result alone is not a full-run pass. No rerun or
+runner edit follows. QEMU 1041117 joins exit 0; RAM `run.juvluj_y` and all active
+owned run roots are absent. Supervisor time is 30.199 seconds, peak RAM/durable
+storage 402,305,024/253,952 bytes. The final snapshot's one unattributed endpoint
+addition is left untouched. Bounded diagnostics are retained at
+`notice-translations-count.OweQFPJLHx` (device/inode 66306/103989700).
+Workload serial: 31,514 bytes, SHA-256
+`a9246910632bce86fe503d3bd0858aff1425ebe4e9f7e3dc287a399bcb478d67`.
+This audit-only receipt leaves the counted ledger and translation bytes unchanged.

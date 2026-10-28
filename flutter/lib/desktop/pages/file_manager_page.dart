@@ -1498,21 +1498,28 @@ class _FileManagerViewState extends State<FileManagerView> {
             () => headerItemFunc(
                 _nameColWidth.value, SortBy.name, translate("Name")),
           ),
-          DraggableDivider(
-            axis: Axis.vertical,
-            onPointerMove: (dx) =>
-                _onDrag(dx, _nameColWidth, _modifiedColWidth),
-            padding: padding,
+          Semantics(
+            label: translate("Name"),
+            child: DraggableDivider(
+              axis: Axis.vertical,
+              onPointerMove: (dx) =>
+                  _onDrag(dx, _nameColWidth, _modifiedColWidth),
+              padding: padding,
+            ),
           ),
           Obx(
             () => headerItemFunc(_modifiedColWidth.value, SortBy.modified,
                 translate("Modified")),
           ),
-          DraggableDivider(
+          Semantics(
+            label: translate("Modified"),
+            child: DraggableDivider(
               axis: Axis.vertical,
               onPointerMove: (dx) =>
                   _onDrag(dx, _modifiedColWidth, _sizeColWidth),
-              padding: padding),
+              padding: padding,
+            ),
+          ),
           Expanded(
               child: headerItemFunc(
                   _sizeColWidth.value, SortBy.size, translate("Size")))

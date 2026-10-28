@@ -1140,7 +1140,7 @@ printf '%s\\n' "$VM_STORAGE_PROFILE"
         'pass': passed}, sort_keys=True), flush=True)
 print('VM_TRANSIENT_WORKLOAD_OBSERVED=' + json.dumps({
     'modes': len(modes), 'controls': controls, 'refusals': refusals}, sort_keys=True), flush=True)
-if (controls, refusals) != (61, 5):
+if (controls, refusals) != (62, 5):
     raise SystemExit('VM workload resource admission cases failed')
 print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=38 controls=62 refusals=5 allocation=not-entered')
 PY

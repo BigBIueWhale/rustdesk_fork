@@ -111122,3 +111122,15 @@ documentation checks; no product runtime result or new defect closure is claimed
 The fifteen installed credential actions, R-S0/R-F5, all parked work and release
 acceptance remain open. A fresh isolated ledger count follows the documentation
 commit and is recorded separately below.
+
+Documentation commit `1e2809e47cdb13b5b69c2cd270989293364c7d06` is pushed.
+Fresh count `gpKUxiItj7` passes with seven controls and whole-file round trip:
+358,183 tokens / 1,628,952 bytes, input SHA-256
+`d32500d9a152458b99cc6876cac948527f042d3f262d9a290592c48b1d72df51`.
+Raw `ledger-token-count-run.gpKUxiItj7.serial.log` is 31,281 bytes, SHA-256
+`3cbdfc28b73ff11399a1eb64d6075f047db93991816e4b587364de9946da762b`.
+Outer/supervisor elapsed time is 29/31.213 seconds; peak RAM workspace and
+durable evidence allocation are 402,219,008 / 249,856 bytes. QEMU 601254 joins
+exit 0; its PID, RAM workspace `run.b1a3mnle` and active owned run roots are
+absent. Endpoint sets match before/during/after. This audit-only receipt leaves
+the counted ledger unchanged. No application or compiler executed.

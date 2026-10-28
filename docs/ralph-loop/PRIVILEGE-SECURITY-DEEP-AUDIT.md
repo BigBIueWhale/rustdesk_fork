@@ -113648,3 +113648,68 @@ offline inputs remain about 31 GiB. Cleanup inventory SHA-256 is
 `dbacccc59b90610234c12487571173775288c35314a59677ef11cab4e8917edb`
 (300 bytes). Shell syntax and git diff --check pass. Only this audit receipt
 follows the count; no additional VM or product execution is needed.
+
+## 2026-10-28 — CM audio picker owns its complete operation
+
+The previous turn made progress: obsolete build artifacts were removed, the
+four-generation publication bound passed native filesystem checks, and both
+storage commits were pushed. Current instructions/requirements hashes and the
+clean pushed tree were rechecked. All fifteen installed credential actions remain
+OPEN; this slice changes UI operation ownership, not native privilege authority.
+
+The CM panel's async tap handler had no retained pending state. Every invocation
+started another device read; showMenu and the per-item async writer were both
+unawaited. An ordinary rebuild could therefore expose another opening while an
+earlier operation was still pending. Preparation `aaee384f` reproduces three
+overlapping reads and another read while a write is held: run `QzNfcZcBfB` has
+two failed cases and 32 passing controls. This demonstrates read/read and
+read/write overlap; it does not claim native write reordering was observed.
+
+Product `57d73c08` gives just the audio button a State owner. It admits one
+operation synchronously, awaits device enumeration, awaits showMenu's selected
+value and then awaits the device write. A null menu result is dismissal; an
+empty string remains the valid system-sound selection. The button displays its
+busy state and suppresses pointer/callback admission until finally releases it.
+Rebuild and call replacement retain that pending state; the existing positive
+client/registry/call and current-member checks still suppress stale dispatch and
+feedback. Accepted writes settle after retirement. The other CM handlers retain
+their original widget-bound callbacks; only their stateless button factory
+becomes static for the extracted child.
+
+Flutter's official showMenu/onTap contracts and the pinned 3.24.5
+popup_menu.dart were reviewed: the framework pops the item value and then calls
+the optional void onTap. The new flow consumes the returned menu Future instead
+of handing native writes to those independent callbacks. State's documented
+rebuild/disposal behavior supports retained admission and mounted-only rendering.
+References: https://api.flutter.dev/flutter/material/showMenu.html,
+https://api.flutter.dev/flutter/material/PopupMenuItem/onTap.html,
+https://api.flutter.dev/flutter/widgets/State-class.html and
+https://api.flutter.dev/flutter/widgets/State/setState.html.
+
+An initial candidate launch refused before allocation at 14,514 MiB available
+against the unchanged 14,592 MiB requirement. `90211da2` adds four assertions
+checking pending admission while the menu remains open; these are additional
+candidate controls, not baseline evidence. Candidate `45psq1n6yt` passes all
+34 widget cases and three parser cases, but the guest still expected a 30-test
+summary. That whole run remains unaccepted. `71fb1325` corrects that one stale
+expectation; unchanged product/tests then pass the complete `xnhC9uo5xx` run
+in 279 outer seconds. Scope is actual Flutter widgets, menus and Dart facade,
+with controlled native bindings and registry; no microphone or native receiver
+execution follows. Keyboard entry and cross-panel ordering remain open. In
+particular, Audio input still supplies onTapDown but no onClick; its keyboard
+activation needs its own rendered behavioral check.
+
+All three QEMU children join exit 0 and their RAM workspaces retire. Failed
+diagnostics are identity-checked and renamed to
+`cm-audio-serial-baseline.QzNfcZcBfB` and
+`cm-audio-serial-summary.45psq1n6yt`. Final QEMU 2775478 and RAM
+`run.r3dhpqxs` are absent. Final scratch/overlay/durable peaks are
+4,498,452,480 / 4,302,639,104 / 3,407,872 bytes; minimum host available memory
+is 7,563,468,800 bytes. The 1,792 MiB container has zero OOM/kill events;
+its recorded peak is one page above that configured limit. Baseline has one
+unattributed endpoint addition, summary-rejected candidate has no deltas and
+accepted candidate has one removal; all remain untouched. The mode-0600 capsule
+`cm-audio-serial-57d73c08.json` is 55,492 bytes, SHA-256
+`81372306deacb6627dd769562f2408cd72344197a1b8d3b58c0456f601c3b901`.
+It binds exact source/test hashes, failed and accepted outcomes, raw evidence
+identities, source-copy checks, limits and cleanup. Fresh ledger count follows.

@@ -356,7 +356,7 @@ case "$#:${1:-}" in
         MODE=flutter-model-tests
         ;;
     2:--flutter-model-tests)
-        [[ "$2" = --frame-queue || "$2" = --direct-address || "$2" = --file-metadata || "$2" = --password-fields || "$2" = --share-rdp || "$2" = --connect-password || "$2" = --credential-dialog || "$2" = --terminal-output || "$2" = --settings-navigation || "$2" = --desktop-theme || "$2" = --window-dispatch || "$2" = --menu-button || "$2" = --hold-drag || "$2" = --path-labels || "$2" = --setting-checkbox || "$2" = --draggable-divider || "$2" = --list-search || "$2" = --credential-badge || "$2" = --peer-search || "$2" = --tab-selection || "$2" = --status-refresh || "$2" = --peer-data || "$2" = --file-progress || "$2" = --file-search || "$2" = --clipboard-keystrokes || "$2" = --floating-position || "$2" = --virtual-joystick || "$2" = --virtual-mouse-buttons || "$2" = --custom-scale || "$2" = --audio-input || "$2" = --reconnect || "$2" = --file-navigation || "$2" = --directory-ordering || "$2" = --modifier-release || "$2" = --auto-disconnect ]] \
+        [[ "$2" = --frame-queue || "$2" = --direct-address || "$2" = --file-metadata || "$2" = --password-fields || "$2" = --share-rdp || "$2" = --connect-password || "$2" = --credential-dialog || "$2" = --terminal-output || "$2" = --settings-navigation || "$2" = --desktop-theme || "$2" = --window-dispatch || "$2" = --keyboard-layout || "$2" = --menu-button || "$2" = --hold-drag || "$2" = --path-labels || "$2" = --setting-checkbox || "$2" = --draggable-divider || "$2" = --list-search || "$2" = --credential-badge || "$2" = --peer-search || "$2" = --tab-selection || "$2" = --status-refresh || "$2" = --peer-data || "$2" = --file-progress || "$2" = --file-search || "$2" = --clipboard-keystrokes || "$2" = --floating-position || "$2" = --virtual-joystick || "$2" = --virtual-mouse-buttons || "$2" = --custom-scale || "$2" = --audio-input || "$2" = --reconnect || "$2" = --file-navigation || "$2" = --directory-ordering || "$2" = --modifier-release || "$2" = --auto-disconnect ]] \
             && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'focused Flutter shard or input/run authority differs' >&2; exit 2; }
@@ -649,6 +649,7 @@ case "$#:${1:-}" in
         printf 'Focused desktop window error replies: %s --flutter-model-tests --window-dispatch\n' "${0##*/}" >&2
         printf 'Focused status refresh retirement: %s --flutter-model-tests --status-refresh\n' "${0##*/}" >&2
         printf 'Rendered menu button accessibility: %s --flutter-model-tests --menu-button\n' "${0##*/}" >&2
+        printf 'Rendered keyboard layout choices: %s --flutter-model-tests --keyboard-layout\n' "${0##*/}" >&2
         printf 'Saved-credential badge accessibility: %s --flutter-model-tests --credential-badge\n' "${0##*/}" >&2
         printf 'Rendered tap-and-hold drag: %s --flutter-model-tests --hold-drag\n' "${0##*/}" >&2
         printf 'Rendered filename accessibility: %s --flutter-model-tests --path-labels\n' "${0##*/}" >&2
@@ -8187,6 +8188,10 @@ else
         require_exact_fixed_receipt \
             "FLUTTER_FILE_METADATA_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=16 flutter=$FLUTTER_VERSION bridge=absent source=readonly network=none cleanup=joined" \
             'file timestamp formatting and raw metadata ordering'
+    elif [ "$FLUTTER_TEST_PROFILE" = keyboard-layout ]; then
+        require_exact_fixed_receipt \
+            "FLUTTER_KEYBOARD_LAYOUT_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=7 flutter=$FLUTTER_VERSION bridge=absent source=readonly network=none cleanup=joined" \
+            'rendered keyboard layout choices'
     elif [ "$FLUTTER_TEST_PROFILE" = menu-button ]; then
         widget_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/desktop/widgets/menu_button.dart" | /usr/bin/awk '{print $1}')"
         widget_tests_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test/menu_button_test.dart" | /usr/bin/awk '{print $1}')"
@@ -9124,6 +9129,9 @@ else
             "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$FLUTTER_TEST_PROFILE" = file-metadata ]; then
         printf 'FLUTTER_FILE_METADATA_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=production-file-metadata-functions cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
+    elif [ "$FLUTTER_TEST_PROFILE" = keyboard-layout ]; then
+        printf 'FLUTTER_KEYBOARD_LAYOUT_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=rendered-keyboard-layout-choices cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$FLUTTER_TEST_PROFILE" = menu-button ]; then
         printf 'FLUTTER_MENU_BUTTON_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=rendered-menu-button-tests cleanup=joined elapsed_seconds=%s\n' \

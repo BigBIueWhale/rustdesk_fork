@@ -176,7 +176,7 @@ case "$#:${8:-}" in
         MODE=flutter-model-tests
         ;;
     13:--flutter-model-tests)
-        [[ "${13}" = --frame-queue || "${13}" = --direct-address || "${13}" = --file-metadata || "${13}" = --password-fields || "${13}" = --share-rdp || "${13}" = --connect-password || "${13}" = --credential-dialog || "${13}" = --terminal-output || "${13}" = --settings-navigation || "${13}" = --desktop-theme || "${13}" = --window-dispatch || "${13}" = --menu-button || "${13}" = --hold-drag || "${13}" = --path-labels || "${13}" = --setting-checkbox || "${13}" = --draggable-divider || "${13}" = --list-search || "${13}" = --credential-badge || "${13}" = --peer-search || "${13}" = --tab-selection || "${13}" = --status-refresh || "${13}" = --peer-data || "${13}" = --file-progress || "${13}" = --file-search || "${13}" = --clipboard-keystrokes || "${13}" = --floating-position || "${13}" = --virtual-joystick || "${13}" = --virtual-mouse-buttons || "${13}" = --custom-scale || "${13}" = --audio-input || "${13}" = --reconnect || "${13}" = --file-navigation || "${13}" = --directory-ordering || "${13}" = --modifier-release || "${13}" = --auto-disconnect ]] || exit 2
+        [[ "${13}" = --frame-queue || "${13}" = --direct-address || "${13}" = --file-metadata || "${13}" = --password-fields || "${13}" = --share-rdp || "${13}" = --connect-password || "${13}" = --credential-dialog || "${13}" = --terminal-output || "${13}" = --settings-navigation || "${13}" = --desktop-theme || "${13}" = --window-dispatch || "${13}" = --keyboard-layout || "${13}" = --menu-button || "${13}" = --hold-drag || "${13}" = --path-labels || "${13}" = --setting-checkbox || "${13}" = --draggable-divider || "${13}" = --list-search || "${13}" = --credential-badge || "${13}" = --peer-search || "${13}" = --tab-selection || "${13}" = --status-refresh || "${13}" = --peer-data || "${13}" = --file-progress || "${13}" = --file-search || "${13}" = --clipboard-keystrokes || "${13}" = --floating-position || "${13}" = --virtual-joystick || "${13}" = --virtual-mouse-buttons || "${13}" = --custom-scale || "${13}" = --audio-input || "${13}" = --reconnect || "${13}" = --file-navigation || "${13}" = --directory-ordering || "${13}" = --modifier-release || "${13}" = --auto-disconnect ]] || exit 2
         MODE=flutter-model-tests
         FLUTTER_TEST_PROFILE=${13#--}
         ;;
@@ -10895,6 +10895,9 @@ run_flutter_model_tests() {
         elif [ "$FLUTTER_TEST_PROFILE" = menu-button ]; then
             result_prefix=FLUTTER_MENU_BUTTON_TEST_JSON
             expected_result='suites=2 tests=14'
+        elif [ "$FLUTTER_TEST_PROFILE" = keyboard-layout ]; then
+            result_prefix=FLUTTER_KEYBOARD_LAYOUT_TEST_JSON
+            expected_result='suites=1 tests=7'
         elif [ "$FLUTTER_TEST_PROFILE" = draggable-divider ]; then
             result_prefix=FLUTTER_DRAGGABLE_DIVIDER_TEST_JSON
             expected_result='suites=1 tests=14'
@@ -11421,6 +11424,8 @@ run_flutter_model_tests() {
                     format_paths=(lib/models/file_timestamp.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = menu-button ]; then
                     format_paths=()
+                elif [ "$FLUTTER_TEST_PROFILE" = keyboard-layout ]; then
+                    format_paths=()
                 elif [ "$FLUTTER_TEST_PROFILE" = hold-drag ]; then
                     format_paths=()
                 elif [ "$FLUTTER_TEST_PROFILE" = path-labels ]; then
@@ -11632,6 +11637,10 @@ run_flutter_model_tests() {
                         "$(sha256sum lib/desktop/widgets/material_mod_popup_menu.dart | cut -d " " -f 1)" \
                         "$(sha256sum test/popup_menu_position_test.dart | cut -d " " -f 1)"
                     tests=(test/menu_button_test.dart test_probes/fixed_width_button_probe_test.dart test/popup_menu_position_test.dart)
+                elif [ "$FLUTTER_TEST_PROFILE" = keyboard-layout ]; then
+                    python3 -B -I -S /source/scripts/prepare-keyboard-layout-probe.py /source /work/project
+                    tests=(test_probes/keyboard_layout_probe_test.dart)
+                    test_concurrency=1
                 elif [ "$FLUTTER_TEST_PROFILE" = hold-drag ]; then
                     tests=(test/hold_tap_move_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = path-labels ]; then
@@ -11816,6 +11825,10 @@ run_flutter_model_tests() {
                     printf "HOLD_DRAG_SOURCE=pass recognizer=%s tests=%s copies=exact\n" \
                         "$(sha256sum lib/common/widgets/gestures.dart | cut -d " " -f 1)" \
                         "$(sha256sum test/hold_tap_move_test.dart | cut -d " " -f 1)"
+                fi
+                if [ "$FLUTTER_TEST_PROFILE" = keyboard-layout ]; then
+                    python3 -B -I -S /source/scripts/prepare-keyboard-layout-probe.py /source /work/project verify
+                    cat /work/test.json
                 fi
                 if [ "$test_status" -ne 0 ]; then
                     [[ "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme || "$FLUTTER_TEST_PROFILE" = file-navigation ]] || tail -c 4194304 /work/test.json >&2
@@ -12258,6 +12271,9 @@ run_flutter_model_tests() {
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = file-metadata ]; then
         printf 'FLUTTER_FILE_METADATA_TESTS_VM=pass commit=%s tree=%s suites=1 tests=16 flutter=3.24.5 bridge=absent source=readonly network=none cleanup=joined\n' \
+            "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE"
+    elif [ "$FLUTTER_TEST_PROFILE" = keyboard-layout ]; then
+        printf 'FLUTTER_KEYBOARD_LAYOUT_TESTS_VM=pass commit=%s tree=%s suites=1 tests=7 flutter=3.24.5 bridge=absent source=readonly network=none cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE"
     elif [ "$FLUTTER_TEST_PROFILE" = menu-button ]; then
         local widget_sha256

@@ -111715,3 +111715,37 @@ absent. Every endpoint delta is zero. Peak RAM/durable run storage is
 This closes the stale profile-count wrapper rejection only. No product,
 installed-service or parser acceptance is added; existing parks remain intact.
 The audit-only receipt preserves the counted ledger and executed source bytes.
+
+### 2026-10-28 — keyboard-layout choice accessibility
+
+Previous turn is progress: `93405964` / `66fb9b9d` fix and verify the storage
+completion receipt. The current fifteen credential actions remain OPEN, and all
+user parks stay intact. Read-only desktop refresh review finds synchronous
+rebuilding; it establishes no new asynchronous defect. Cross-window dispatch
+remains parked. The adjacent keyboard-layout chooser has two TextButtons plus
+a Radio per option: the image has no accessible label and the lower button and
+radio expose separate actions/focus stops.
+
+The intended interaction is one labelled, checked, enabled and keyboard-focusable
+choice per layout, with diagram pointer activation preserved. Saves continue to
+use the existing single-pending transaction and authoritative callback/model;
+pending, failure/retry and retirement remain observable. Flutter's Semantics,
+MergeSemantics and Radio documentation distinguish labelled state from separate
+action nodes; the pinned 3.24.5 RadioListTile supplies the standard merged choice.
+Primary sources: https://api.flutter.dev/flutter/widgets/Semantics-class.html ,
+https://api.flutter.dev/flutter/widgets/MergeSemantics-class.html and
+https://raw.githubusercontent.com/flutter/flutter/3.24.5/packages/flutter/lib/src/material/radio_list_tile.dart .
+
+The new `--flutter-model-tests --keyboard-layout` shard renders the unchanged
+production widget/state body and actual SVG assets with controlled save callbacks
+and identity translation. Extraction preserves that complete contiguous body;
+native platform helpers/dialog routing are outside this component. Seven tests
+observe real semantics actions and checked/enabled state, Tab/Space focus,
+pending saves, failure/retry, diagram/label/radio pointer input and removal.
+The existing bounded 4-GiB guest profile and 2-GiB nonroot networkless container
+run this shard without Rust compilation or bridge generation. Source/assets and
+fixture bytes are checked before and after execution; raw results are retained
+before the separately parked models-parser self-tests. Only a new profile and
+its seven-case inventory are added to that parser; its existing algorithms and
+parked model expectations are unchanged. Syntax/whitespace review passes.
+The following run is the unchanged-product baseline, not a correction claim.

@@ -1846,8 +1846,7 @@ bool mainGetPeerBoolOptionSync(String id, String key) {
 // Use `sessionGetToggleOption()` and `sessionToggleOption()` instead.
 // Because all session options use `Y` and `<Empty>` as values.
 
-Future<bool> matchPeer(
-    String searchText, Peer peer, PeerTabIndex peerTabIndex) async {
+bool matchPeer(String searchText, Peer peer) {
   if (searchText.isEmpty) {
     return true;
   }
@@ -1861,8 +1860,6 @@ Future<bool> matchPeer(
   if (peer.alias.toLowerCase().contains(searchText)) {
     return true;
   }
-  // R-G4: peer notes were an address-book feature (excised); the local Recent/Favorite peers carry
-  // none, so there is no note field to match.
   return false;
 }
 

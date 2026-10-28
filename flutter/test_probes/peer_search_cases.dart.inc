@@ -271,6 +271,7 @@ void main() {
         expect(tester.widgetList<Text>(find.descendant(
           of: find.byType(TextButton), matching: find.byType(Text)))
             .map((text) => text.data).toList(), expected);
+        await tester.pump(const Duration(milliseconds: 1));
         expect(owner.peerTabModel.currentTabCachedPeers.map((peer) => peer.id),
             expected);
       }

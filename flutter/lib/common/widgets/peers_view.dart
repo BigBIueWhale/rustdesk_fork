@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:collection';
 
 import 'package:dynamic_layouts/dynamic_layouts.dart';
@@ -59,12 +58,10 @@ class _PeersView extends StatefulWidget {
   final Peers peers;
   final PeerFilter? peerFilter;
   final PeerCardBuilder peerCardBuilder;
-  final PeerTabIndex peerTabIndex;
 
   const _PeersView(
       {required this.peers,
       required this.peerCardBuilder,
-      required this.peerTabIndex,
       this.peerFilter,
       Key? key})
       : super(key: key);
@@ -121,80 +118,69 @@ class _PeersViewState extends State<_PeersView> {
     );
   }
 
-  Widget _buildPeersView(Peers peers) {
+  Widget _buildPeersView(Peers model) {
     final body = ObxValue<RxList>((filters) {
-      return FutureBuilder<List<Peer>>(
-        builder: (context, snapshot) {
-          if (snapshot.hasData) {
-            var peers = snapshot.data!;
-            if (peers.length > 1000) peers = peers.sublist(0, 1000);
-            gFFI.peerTabModel.setCurrentTabCachedPeers(peers);
-            buildOnePeer(Peer peer, bool isPortrait) {
-              final visibilityChild = widget.peerCardBuilder(peer);
-              // `Provider.of<PeerTabModel>(context)` will causes infinete loop.
-              // Because `gFFI.peerTabModel.setCurrentTabCachedPeers(peers)` will trigger `notifyListeners()`.
-              //
-              // No need to listen the currentTab change event.
-              // Because the currentTab change event will trigger the peers change event,
-              // and the peers change event will trigger _buildPeersView().
-              return !isPortrait
-                  ? Obx(() => peerCardUiType.value == PeerUiType.list
-                      ? Container(height: 45, child: visibilityChild)
-                      : peerCardUiType.value == PeerUiType.grid
-                          ? SizedBox(
-                              width: 220, height: 140, child: visibilityChild)
-                          : SizedBox(
-                              width: 220, height: 42, child: visibilityChild))
-                  : Container(child: visibilityChild);
-            }
+      var peers = matchPeers(filters[0].value, filters[1].value, model.peers);
+      if (peers.length > 1000) peers = peers.sublist(0, 1000);
+      gFFI.peerTabModel.setCurrentTabCachedPeers(peers);
+      buildOnePeer(Peer peer, bool isPortrait) {
+        final visibilityChild = widget.peerCardBuilder(peer);
+        // `Provider.of<PeerTabModel>(context)` will causes infinete loop.
+        // Because `gFFI.peerTabModel.setCurrentTabCachedPeers(peers)` will trigger `notifyListeners()`.
+        //
+        // No need to listen the currentTab change event.
+        // Because the currentTab change event will trigger the peers change event,
+        // and the peers change event will trigger _buildPeersView().
+        return !isPortrait
+            ? Obx(() => peerCardUiType.value == PeerUiType.list
+                ? Container(height: 45, child: visibilityChild)
+                : peerCardUiType.value == PeerUiType.grid
+                    ? SizedBox(
+                        width: 220, height: 140, child: visibilityChild)
+                    : SizedBox(
+                        width: 220, height: 42, child: visibilityChild))
+            : Container(child: visibilityChild);
+      }
 
-            // We should avoid too many rebuilds. Win10(Some machines) on Flutter 3.19.6.
-            // Continious rebuilds of `ListView.builder` will cause memory leak.
-            // Simple demo can reproduce this issue.
-            final Widget child = Obx(() => stateGlobal.isPortrait.isTrue
-                ? ListView.builder(
-                    itemCount: peers.length,
-                    itemBuilder: (BuildContext context, int index) {
-                      return buildOnePeer(peers[index], true).marginOnly(
-                          top: index == 0 ? 0 : space / 2, bottom: space / 2);
-                    },
-                  )
-                : peerCardUiType.value == PeerUiType.list
-                    ? ListView.builder(
-                        controller: _scrollController,
-                        itemCount: peers.length,
-                        itemBuilder: (BuildContext context, int index) {
-                          return buildOnePeer(peers[index], false).marginOnly(
-                              right: space,
-                              top: index == 0 ? 0 : space / 2,
-                              bottom: space / 2);
-                        },
-                      )
-                    : DynamicGridView.builder(
-                        gridDelegate: SliverGridDelegateWithWrapping(
-                            mainAxisSpacing: space / 2,
-                            crossAxisSpacing: space),
-                        itemCount: peers.length,
-                        itemBuilder: (BuildContext context, int index) {
-                          return buildOnePeer(peers[index], false);
-                        }));
+      // We should avoid too many rebuilds. Win10(Some machines) on Flutter 3.19.6.
+      // Continious rebuilds of `ListView.builder` will cause memory leak.
+      // Simple demo can reproduce this issue.
+      final Widget child = Obx(() => stateGlobal.isPortrait.isTrue
+          ? ListView.builder(
+              itemCount: peers.length,
+              itemBuilder: (BuildContext context, int index) {
+                return buildOnePeer(peers[index], true).marginOnly(
+                    top: index == 0 ? 0 : space / 2, bottom: space / 2);
+              },
+            )
+          : peerCardUiType.value == PeerUiType.list
+              ? ListView.builder(
+                  controller: _scrollController,
+                  itemCount: peers.length,
+                  itemBuilder: (BuildContext context, int index) {
+                    return buildOnePeer(peers[index], false).marginOnly(
+                        right: space,
+                        top: index == 0 ? 0 : space / 2,
+                        bottom: space / 2);
+                  },
+                )
+              : DynamicGridView.builder(
+                  gridDelegate: SliverGridDelegateWithWrapping(
+                      mainAxisSpacing: space / 2,
+                      crossAxisSpacing: space),
+                  itemCount: peers.length,
+                  itemBuilder: (BuildContext context, int index) {
+                    return buildOnePeer(peers[index], false);
+                  }));
 
-            return child;
-          } else {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
-          }
-        },
-        future: matchPeers(filters[0].value, filters[1].value, peers.peers),
-      );
+      return child;
     }, obslist);
 
     return body;
   }
 
-  Future<List<Peer>>? matchPeers(
-      String searchText, String sortedBy, List<Peer> peers) async {
+  List<Peer> matchPeers(
+      String searchText, String sortedBy, List<Peer> peers) {
     if (widget.peerFilter != null) {
       peers = peers.where((peer) => widget.peerFilter!(peer)).toList();
     }
@@ -226,16 +212,7 @@ class _PeersViewState extends State<_PeersView> {
       return peers;
     }
     searchText = searchText.toLowerCase();
-    final matches = await Future.wait(
-        peers.map((peer) => matchPeer(searchText, peer, widget.peerTabIndex)));
-    final filteredList = List<Peer>.empty(growable: true);
-    for (var i = 0; i < peers.length; i++) {
-      if (matches[i]) {
-        filteredList.add(peers[i]);
-      }
-    }
-
-    return filteredList;
+    return peers.where((peer) => matchPeer(searchText, peer)).toList();
   }
 }
 
@@ -265,8 +242,7 @@ abstract class BasePeersView extends StatelessWidget {
     return _PeersView(
         peers: peers,
         peerFilter: peerFilter,
-        peerCardBuilder: peerCardBuilder,
-        peerTabIndex: peerTabIndex);
+        peerCardBuilder: peerCardBuilder);
   }
 }
 

@@ -448,7 +448,7 @@ def main():
     parser.add_argument('--memory-mib', type=int, required=True)
     parser.add_argument('--storage-profile',
                         choices=('standard', 'hbb-common-fs', 'linux-logind', 'cpace-recovery-tests',
-                                 'flutter-credential-dialog', 'linux-service-build',
+                                 'flutter-credential-dialog', 'flutter-keyboard-layout', 'linux-service-build',
                                  'ledger-token-count', 'authority-smoke', 'fixed-archive-tests', 'x11-focus', 'x11-key-input', 'linux-parent-libtest',
                                  'main-config-key', 'language-selection', 'windows-pointer', 'linux-resource-limits', 'linux-resolution-lifetime', 'fusermount-process', 'xrandr-acquisition',
                                  'linux-service-uid-tests', 'audio-buffer', 'audio-mailbox', 'file-block', 'control-egress', 'clipboard-response',

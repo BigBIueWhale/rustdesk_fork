@@ -113485,3 +113485,17 @@ retained without ownership inspection or intervention. Host IP socket creation
 remains kernel-denied. Capsule/count follow; full cards/pages, native persistence
 and connection routing, devices, large-list performance, shared-controller lifetime,
 R-S0/R-F5, installed-service and release acceptance remain OPEN.
+
+Fresh count `qnPvHaHF4D` at `cebd0331` passes in 29 outer seconds:
+**355,368 tokens / 1,624,313 bytes**, ledger SHA-256
+`64a9234e12049fefb75218a3348b3b02d792d8ffe489eeff148a2a93028b56a1`.
+The pinned tokenizer passes seven controls and the whole-input byte round trip.
+The shared resource checks pass 42 profiles/78 refusals, 39 modes/69 workload
+controls/five refusals, and all six monitor cases. QEMU 2586645 joins exit 0,
+RAM `run.soipy4ca` retires, and endpoint deltas are zero.
+The mode-0600 capsule `.harness-state/verifier-vm/peer-filter-223e76cb.json`
+is 85,389 bytes, SHA-256
+`a0cd6753756dcb483e45bdb2b9f97926ee95657b1430743f5ab92756365ce4b1`.
+It binds source identities, baseline/fixture classifications, exact test outcomes,
+resource admission/refusal, joined retirement, endpoint evidence and ledger count.
+Only this audit receipt follows counting; the ledger and product are unchanged.

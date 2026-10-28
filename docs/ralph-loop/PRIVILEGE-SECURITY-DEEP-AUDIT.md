@@ -112250,3 +112250,14 @@ assertion/receipt and exact host receipt are updated together. QEMU 1558073 join
 exit 0, RAM `run.49v14dxz` is absent and endpoint deltas are zero. After validating
 finality and directory identity 66306/103992324, bounded diagnostics are retained
 as `screenshot-ledger-control.tMK3la7aCQ`. No token count is claimed from this run.
+
+After `eb255d53`, fresh count `seDxEV7aEc` passes all sixty workload controls,
+five refusals, seven tokenizer controls and whole-file round trip in 28 outer
+seconds: 360,662 tokens / 1,641,385 bytes, SHA-256
+`aeb85bc1ec1d397792d3fcd3c268dae90be5d4ae27a4badf14625bcbfd8830d1`.
+QEMU 1563086 joins exit 0, RAM `run.kvbsvwkc` and active owned roots are absent,
+and endpoint deltas are zero. Peak RAM/durable storage is 402,321,408/249,856
+bytes. Workload serial is 32,004 bytes, SHA-256
+`48d4f814b5653f113041942b080d131a9d616a374e1a3dbaaf44c792a6abb29f`.
+The count does not rerun product behavior; the accepted twelve-case result remains
+bound to `c3033e75`, with unchanged product and fixture thereafter.

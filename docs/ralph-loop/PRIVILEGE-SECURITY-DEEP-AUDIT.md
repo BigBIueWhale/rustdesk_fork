@@ -112182,3 +112182,63 @@ removal is retained without owner inspection or mutation. Workload serial is
 31,774 bytes, SHA-256
 `8cd7907745627ab04fbd749e310d9eab5c72fd59c95e9e60b58e82f91cc2863c`.
 This count and cleanup check do not execute the screenshot product change.
+
+## 2026-10-28 — screenshot Save As rendered acceptance
+
+The preceding goal turn made progress through `f0798948` and explicitly left UI
+execution open. This continuation supplies focused rendered evidence for that
+unchanged correction. The retired-uinput decoder and every separate user park
+remain parked; all fifteen installed/native credential actions remain OPEN.
+
+Preparation `240607a7` adds one closed `--flutter-model-tests --screenshot-save`
+shard. Its twelve cases call the real `FfiModel.startEventListener`, screenshot
+handler, action dialog and error dialog with fresh generated bindings. A guest-only
+setter installs the native-operation/translation double; the preparation helper
+compares the complete library copy, allowing only that appended setter and the
+fresh generated bridge. The picker and native save return controlled successes,
+returned errors, synchronous throws and delayed failures; a session double controls
+currentness. Assertions observe actual dialog text, action retirement and exact
+session/request/path dispatch, including refusal of late publication/dispatch.
+The result parser requires precisely these twelve names and a successful terminal
+event. Its three existing controls have a closed option selecting this profile,
+including wrong/missing/duplicate cases, failed/skipped/incomplete results and
+input-file integrity. Default parser tests are unchanged; the unrelated parked
+model-profile failures are not repaired or executed by this shard.
+
+The initial 4-GiB guest profile was refused before allocation: 18,432 MiB required,
+17,956 MiB available. `bae32043` selects the existing dialog profile instead:
+3-GiB guest, 2-GiB test container, 7-GiB bounded RAM scratch, 6-GiB overlay ceiling,
+6-GiB host headroom and 1-GiB overhead. Its routing control is included in the
+shared workload admission check. No disk scratch fallback or headroom reduction
+is introduced; both VM executions use this smaller profile.
+
+Run `7DHko9ViH5` compiles and executes all twelve cases: one passes and eleven
+fail. Picker assertions were inside the application's error-handler boundary;
+their failure could become a screenshot error instead of an immediate fixture
+failure, concealing the reason the intended save was never reached. `c3033e75`
+records the arguments in the double and checks them after the UI pump, retaining
+the same argument expectations. The product remains byte-identical. This is a
+fixture correction, not an unchanged-product baseline demonstration.
+The failed VM joins QEMU 1516112 exit 0 and retires RAM `run.it2m498r`.
+Its exact owned diagnostic directory (device/inode 66306/103992264) is retained as
+`screenshot-save-fixture.7DHko9ViH5` under the shared lock after finality checks.
+Workload serial: 66,468 bytes, SHA-256
+`fc64783952b527800d8b12333f4ee10b95cc65c11edfda23f81fa9dcaa9e06cf`.
+
+Run `w00WRZHmDM` at `c3033e75f0380355590b3dce7048c035a6c6c035` passes all twelve
+cases, all three focused parser controls and complete outer acceptance in 274
+seconds. The raw stream repeats its twelve named cases; it does not represent
+twenty-four independent tests. Fresh Dart bridge SHA-256 is
+`c4b520baea188d3a16057362445069906334ee834dbab14a2e2a0fcd5f161a96`.
+The retained workload serial is 14,010 bytes, SHA-256
+`7aa9fc64ba13d26745821a61a8b3414e3dadb73f34d459d5653f6c397e59e3c3`.
+QEMU 1535296 joins exit 0; RAM `run.xrs1nxr_` and active owned roots are absent.
+Peak RAM scratch/durable run storage is 6,366,023,680/3,403,776 bytes. The first
+run records one unattributed endpoint addition and the second one removal;
+both inventories are retained without foreign-owner inspection or mutation.
+
+Shell syntax, Python AST parsing and `git diff --check` pass. No full Rust parent,
+installed application, real OS picker, native save/clipboard/filesystem operation,
+actual FFI owner replacement, historical pre-fix A/B or other platform ran here.
+Those boundaries, independent reproduction and shared R-S0/R-F5/release evidence
+remain OPEN. This result establishes the named Dart handler/dialog behavior only.

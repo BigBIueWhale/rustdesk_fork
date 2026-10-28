@@ -113204,3 +113204,17 @@ tests with fixture translation/palette, not complete-dialog/native-bridge,
 native Android/iOS keyboard, full application or installed-service acceptance.
 Those integration boundaries, all fifteen credential actions and every separately
 parked item remain OPEN. Ledger counting follows the final status edit.
+
+Fresh count `KxruvtrWkV` at `b305d6ee` passes in 28 outer seconds:
+**354,215 tokens / 1,618,743 bytes**, ledger SHA-256
+`b990e42e4828c72d0e602187ca1302d03fb4a6ac766a621810e51fc50f28d9d0`.
+Pinned tiktoken 0.12.0/cl100k_base/encode_ordinary passes seven controls and the
+byte round trip. All 40 profile cases / 74 wrong-profile-memory refusals and
+39 workload modes / 67 controls / five refusals pass, including the password
+mapping. QEMU 2403983 joins exit 0; RAM `run.vr8zne6a` and active roots are absent.
+Endpoint deltas are zero. Workload serial SHA-256 is
+`4a169c96183d7b0d42fa39ff2ab1a3f2f1938316ebd1217e242f2bb67689607d`.
+The complete mode-0600 capsule is 92,444 bytes, SHA-256
+`2e304b0b90eaba2b7182400eb6018c16176216e97810280cd85371b0df029cf8`.
+Only this audit receipt follows the count; the ledger and accepted product are
+unchanged. The broad goal remains active and incomplete.

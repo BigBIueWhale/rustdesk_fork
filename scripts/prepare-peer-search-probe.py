@@ -9,6 +9,8 @@ import sys
 
 SUPPORT = ('\nvoid installPeerSearchProbeBinding(RustdeskImpl binding) {\n'
            '  PlatformFFI.instance._ffiBind = binding;\n}\n').encode()
+OWNER_SUPPORT = ('\nvoid installPeerSearchProbeOwner(FFI owner) {\n'
+                 '  _globalFFI = owner;\n}\n').encode()
 
 
 def main():
@@ -26,7 +28,8 @@ def main():
             continue
         original = source.read_bytes()
         target = project / relative
-        suffix = SUPPORT if relative == 'lib/models/native_model.dart' else b''
+        suffix = (SUPPORT if relative == 'lib/models/native_model.dart'
+                  else OWNER_SUPPORT if relative == 'lib/common.dart' else b'')
         if prepare:
             if target.read_bytes() != original:
                 raise ValueError(f'peer search source differs: {relative}')

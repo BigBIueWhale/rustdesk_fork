@@ -2,13 +2,17 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_hbb/common.dart' show MyTheme, globalKey;
+import 'package:flutter_hbb/common.dart'
+    show MyTheme, globalKey, installPeerSearchProbeOwner;
 import 'package:flutter_hbb/common/widgets/peer_card.dart';
 import 'package:flutter_hbb/common/widgets/peer_tab_page.dart';
 import 'package:flutter_hbb/common/widgets/peers_view.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/generated_bridge.dart';
 import 'package:flutter_hbb/models/native_model.dart';
+import 'package:flutter_hbb/models/model.dart';
+import 'package:flutter_hbb/models/peer_model.dart';
+import 'package:flutter_hbb/models/peer_tab_model.dart';
 import 'package:flutter_hbb/models/state_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -33,6 +37,7 @@ class _Binding implements RustdeskImpl {
 
   @override
   String getLocalFlutterOption({required String k, dynamic hint}) {
+    if (k == kOptionPeerSorting) return PeerSortType.remoteId;
     expect(k, kOptionPeerCardUiType);
     reads.add(k);
     if (readError != null) throw readError!;
@@ -45,6 +50,64 @@ class _Binding implements RustdeskImpl {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _PeerOwner implements FFI {
+  @override
+  late final PeerTabModel peerTabModel =
+      PeerTabModel(WeakReference<FFI>(this), readLocalOption: (_) => '');
+  @override
+  final recentPeersModel = Peers(
+      name: 'search-test-recent', loadEvent: LoadEvent.recent, getInitPeers: null);
+  @override
+  final favoritePeersModel = Peers(
+      name: 'search-test-favorite', loadEvent: LoadEvent.favorite, getInitPeers: null);
+
+  Peers peers(PeerTabIndex tab) =>
+      tab == PeerTabIndex.recent ? recentPeersModel : favoritePeersModel;
+
+  void dispose() {
+    peerTabModel.dispose();
+    recentPeersModel.dispose();
+    favoritePeersModel.dispose();
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw StateError('peer search must not call its native owner');
+}
+
+class _PeerView extends BasePeersView {
+  _PeerView(PeerTabIndex tab, List<String> activated)
+      : super(
+          peerTabIndex: tab,
+          peerCardBuilder: (peer) => TextButton(
+            onPressed: () => activated.add(peer.id), child: Text(peer.id)),
+        );
+}
+
+final _searchPeers = [
+  Peer.fromJson({'id': '192.0.2.10', 'hostname': 'Office'}),
+  Peer.fromJson({'id': '192.0.2.20', 'username': 'Alice'}),
+  Peer.fromJson({'id': '192.0.2.30', 'alias': 'Travel'}),
+];
+
+Future<_PeerOwner> _showPeers(WidgetTester tester, PeerTabIndex tab,
+    List<String> activated) async {
+  final owner = _PeerOwner();
+  installPeerSearchProbeOwner(owner);
+  owner.peerTabModel.setCurrentTab(tab.index);
+  owner.peers(tab).peers = _searchPeers.toList();
+  peerCardUiType.value = PeerUiType.list;
+  addTearDown(() async {
+    await tester.pumpWidget(const SizedBox.shrink());
+    owner.dispose();
+  });
+  await tester.pumpWidget(MaterialApp(
+    theme: MyTheme.lightTheme,
+    home: Scaffold(body: _PeerView(tab, activated)),
+  ));
+  return owner;
 }
 
 class _Harness {
@@ -147,6 +210,72 @@ void main() {
     peerSearchText.value = '';
     stateGlobal.isPortrait.value = false;
   });
+
+  for (final tab in PeerTabIndex.values) {
+    testWidgets('peer ${tab.name} initial filtering renders without a waiting frame',
+        (tester) async {
+      peerSearchText.value = '  OFFICE  ';
+      await _showPeers(tester, tab, []);
+      expect(find.text('192.0.2.10'), findsOneWidget);
+      expect(find.text('192.0.2.20'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+
+    testWidgets('peer ${tab.name} query changes retire old row actions in one frame',
+        (tester) async {
+      final activated = <String>[];
+      await _showPeers(tester, tab, activated);
+      await tester.pumpAndSettle();
+      peerSearchText.value = 'travel';
+      await tester.pump();
+      expect(find.text('192.0.2.10'), findsNothing);
+      expect(find.text('192.0.2.20'), findsNothing);
+      await tester.tap(find.text('192.0.2.30'));
+      expect(activated, ['192.0.2.30']);
+      peerSearchText.value = 'missing';
+      await tester.pump();
+      expect(find.byType(TextButton), findsNothing);
+      peerSearchText.value = '';
+      await tester.pump();
+      expect(find.byType(TextButton), findsNWidgets(3));
+    });
+
+    testWidgets('peer ${tab.name} list updates retire replaced row actions in one frame',
+        (tester) async {
+      peerSearchText.value = 'office';
+      final activated = <String>[];
+      final owner = await _showPeers(tester, tab, activated);
+      await tester.pumpAndSettle();
+      owner.peers(tab).updatePeers({
+        'peers': '[{"id":"192.0.2.99","hostname":"Office"}]',
+      });
+      await tester.pump();
+      expect(find.text('192.0.2.10'), findsNothing);
+      await tester.tap(find.text('192.0.2.99'));
+      expect(activated, ['192.0.2.99']);
+    });
+
+    testWidgets('peer ${tab.name} search matches all local fields and clears',
+        (tester) async {
+      final owner = await _showPeers(tester, tab, []);
+      await tester.pumpAndSettle();
+      for (final query in ['2.10', ' office ', 'ALICE', 'TrAvEl', '[.*]', ' ']) {
+        peerSearchText.value = query;
+        await tester.pumpAndSettle();
+        final expected = query == '2.10' || query == ' office '
+            ? ['192.0.2.10']
+            : query == 'ALICE' ? ['192.0.2.20']
+            : query == 'TrAvEl' ? ['192.0.2.30']
+            : query == '[.*]' ? <String>[]
+            : _searchPeers.map((peer) => peer.id).toList();
+        expect(tester.widgetList<Text>(find.descendant(
+          of: find.byType(TextButton), matching: find.byType(Text)))
+            .map((text) => text.data).toList(), expected);
+        expect(owner.peerTabModel.currentTabCachedPeers.map((peer) => peer.id),
+            expected);
+      }
+    });
+  }
 
   testWidgets('peer layout selection owns one save through rebuild', (tester) async {
     final pending = Completer<String>();

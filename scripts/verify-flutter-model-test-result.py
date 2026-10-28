@@ -283,6 +283,12 @@ TAB_SELECTION_SUITES = {
 }
 
 PEER_SEARCH_TESTS = {
+    *{f"peer {tab} {case}"
+      for tab in ("recent", "fav")
+      for case in ("initial filtering renders without a waiting frame",
+                   "query changes retire old row actions in one frame",
+                   "list updates retire replaced row actions in one frame",
+                   "search matches all local fields and clears")},
     "peer layout selection owns one save through rebuild",
     "peer layout save cannot close a later dialog",
     "peer layout retired menu cannot start a save",

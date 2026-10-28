@@ -1018,7 +1018,7 @@ elif [ "$MODE" = linux-pa-authority-tests ]; then
     readonly OVERLAY_SIZE=16G
     readonly VM_MEMORY=6144
 elif [ "$MODE" = flutter-model-tests ]; then
-    if [[ "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = file-progress ]]; then
+    if [[ "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = peer-search ]]; then
         readonly VM_TIMEOUT_SECONDS=300
         readonly OVERLAY_SIZE=12G
         readonly VM_MEMORY=2560
@@ -5613,7 +5613,7 @@ elif [ "$MODE" = ledger-token-count ]; then
         'actual suspension profile CLI and RAM refusal'
     require_exact_fixed_receipt 'VM_TRANSIENT_X11_INPUT_CLI=pass profile=x11-key-input guest_mib=4096 required_mib=20480 insufficient_ram=refused allocation=not-entered' \
         'actual input profile CLI and RAM refusal'
-    require_exact_fixed_receipt 'VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=39 controls=68 refusals=5 allocation=not-entered' \
+    require_exact_fixed_receipt 'VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=39 controls=69 refusals=5 allocation=not-entered' \
         'VM workload class selection and unconfigured workload refusal'
     require_exact_fixed_receipt 'VM_TRANSIENT_ROOT_REFUSAL=pass operations=5 principal=root qemu=not-started' \
         'VM storage root refusal'
@@ -8300,7 +8300,7 @@ else
         widget_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/common/widgets/peer_tab_page.dart" | /usr/bin/awk '{print $1}')"
         widget_tests_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test_probes/peer_search_cases.dart.inc" | /usr/bin/awk '{print $1}')"
         require_exact_fixed_receipt \
-            "FLUTTER_PEER_SEARCH_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=19 flutter=$FLUTTER_VERSION widget=$widget_sha256 tests_source=$widget_tests_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=peer-page-construction-and-rendered-search-tests cleanup=joined" \
+            "FLUTTER_PEER_SEARCH_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=27 flutter=$FLUTTER_VERSION widget=$widget_sha256 tests_source=$widget_tests_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=peer-page-construction-and-rendered-search-tests cleanup=joined" \
             'focused Flutter peer-search receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = tab-selection ]; then
         widget_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/desktop/widgets/tabbar_widget.dart" | /usr/bin/awk '{print $1}')"

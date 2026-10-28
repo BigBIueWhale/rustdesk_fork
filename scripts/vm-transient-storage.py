@@ -56,8 +56,8 @@ def storage_limits(profile, memory_mib):
         require(memory_mib == 2560, 'file-column tests require their 2.5 GiB guest')
         # Generate the bridge with selected toolchain components; no Rust compilation.
         return 6 * GIB, 5 * GIB
-    if profile == 'flutter-file-progress':
-        require(memory_mib == 2560, 'file-progress tests require their 2.5 GiB guest')
+    if profile in ('flutter-file-progress', 'flutter-peer-search'):
+        require(memory_mib == 2560, 'native-widget tests require their 2.5 GiB guest')
         # Native Flutter artifacts, selected Rust components, and one sequential Dart suite.
         return 19 * GIB // 4, 9 * GIB // 2
     if profile == 'flutter-credential-dialog':

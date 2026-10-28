@@ -51,23 +51,29 @@ impl ClipFiles {
             .iter()
             .map(|s| PathBuf::from(s))
             .collect::<Vec<_>>();
-        self.file_list = construct_file_list(&clipboard_paths)?;
-        self.first_file_index = self
+        let mut next = Self {
+            file_list: construct_file_list(&clipboard_paths)?,
+            files: clipboard_files.to_vec(),
+            ..Self::default()
+        };
+        next.first_file_index = next
             .file_list
             .iter()
             .position(|f| !f.path.is_dir())
             .unwrap_or(usize::MAX);
-        self.files = clipboard_files.to_vec();
+        next.build_file_list_pdu()?;
+        *self = next;
         Ok(())
     }
 
-    fn build_file_list_pdu(&mut self) {
+    fn build_file_list_pdu(&mut self) -> Result<(), CliprdrError> {
         let mut data = BytesMut::with_capacity(4 + 592 * self.file_list.len());
         data.put_u32_le(self.file_list.len() as u32);
         for file in self.file_list.iter() {
-            data.put(file.as_bin().as_slice());
+            data.put(file.as_bin()?.as_slice());
         }
-        self.files_pdu = data.to_vec()
+        self.files_pdu = data.to_vec();
+        Ok(())
     }
 
     fn get_files_for_audit(&self, request: &FileContentsRequest) -> Option<ClipboardFile> {
@@ -263,8 +269,7 @@ pub fn sync_files(files: &[String]) -> Result<(), CliprdrError> {
     if files_lock.files == files {
         return Ok(());
     }
-    files_lock.sync_files(files)?;
-    Ok(files_lock.build_file_list_pdu())
+    files_lock.sync_files(files)
 }
 
 pub fn get_file_list_pdu() -> Vec<u8> {
@@ -282,6 +287,35 @@ fn clamp_file_read_size(offset: u64, length: u64, file_size: u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::clamp_file_read_size;
+
+    #[test]
+    fn filetime_failed_descriptor_keeps_previous_pdu() {
+        use std::{fs::OpenOptions, time::{Duration, SystemTime}};
+
+        struct Fixture(std::path::PathBuf);
+        impl Drop for Fixture {
+            fn drop(&mut self) {
+                std::fs::remove_file(&self.0).expect("remove timestamp fixture");
+            }
+        }
+        let root = std::env::temp_dir();
+        let path = root.join(format!("clipboard-filetime-{}-{:016x}",
+            std::process::id(), rand::random::<u64>()));
+        let handle = OpenOptions::new().write(true).create_new(true).open(&path)
+            .expect("create timestamp fixture");
+        let fixture = Fixture(path);
+        drop(handle);
+        let good = super::LocalFile::try_open(&root, &fixture.0).unwrap();
+        let mut bad = super::LocalFile::try_open(&root, &fixture.0).unwrap();
+        bad.last_write_time = SystemTime::UNIX_EPOCH - Duration::new(11_644_473_600, 1);
+        let mut files = super::ClipFiles {
+            file_list: vec![good, bad],
+            files_pdu: b"previous complete PDU".to_vec(),
+            ..Default::default()
+        };
+        assert!(files.build_file_list_pdu().is_err());
+        assert_eq!(files.files_pdu, b"previous complete PDU");
+    }
 
     #[test]
     fn file_contents_reads_unsigned_offset_words_from_sparse_file() {

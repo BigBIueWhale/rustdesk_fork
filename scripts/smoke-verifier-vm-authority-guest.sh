@@ -162,7 +162,7 @@ case "$#:${8:-}" in
             || "${13}" = --main-config-key || "${13}" = --language-selection || "${13}" = --windows-pointer || "${13}" = --linux-resource-limits || "${13}" = --linux-xrandr-query || "${13}" = --resolution-restoration \
             || "${13}" = --linux-resolution-lifetime || "${13}" = --audio-mailbox \
             || "${13}" = --recording-output || "${13}" = --viewer-video || "${13}" = --video-qos || "${13}" = --video-vpx || "${13}" = --video-qos-controller || "${13}" = --option-ack || "${13}" = --resolution-parent || "${13}" = --file-receive-caller || "${13}" = --viewer-credentials || "${13}" = --viewer-resume || "${13}" = --local-file-listing \
-            || "${13}" = --audio-buffer || "${13}" = --fusermount-fd \
+            || "${13}" = --clipboard-filetime || "${13}" = --audio-buffer || "${13}" = --fusermount-fd \
             || "${13}" = --fusermount-process || "${13}" = --file-block || "${13}" = --control-egress || "${13}" = --android-key-modifiers \
             || "${13}" = --clipboard-response || "${13}" = --cliprdr-read || "${13}" = --android-client-drain || "${13}" = --cm-read-tick ]] || exit 2
         MODE=android-rust-lifecycle-tests
@@ -1083,6 +1083,7 @@ cases.extend([('hbb-common-fs', {'HBB_LOGIND_NATIVE': '1'}, 'linux-logind'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'file-search'}, 'flutter-credential-dialog'),
               ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'video-vpx'}, 'linux-parent-libtest'),
               ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'clipboard-response'}, 'clipboard-response'),
+              ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'clipboard-filetime'}, 'linux-parent-libtest'),
               ('hbb-common-fs', {'HBB_FUSE_READ_TESTS': '1'}, 'standard'),
               ('flutter-peer-presentation', {'FLUTTER_APP_REPLAY': '1'}, 'linux-flutter-replay'),
               ('flutter-peer-presentation', {'FLUTTER_APP_REPLAY': '1',
@@ -1117,9 +1118,9 @@ printf '%s\\n' "$VM_STORAGE_PROFILE"
         'pass': passed}, sort_keys=True), flush=True)
 print('VM_TRANSIENT_WORKLOAD_OBSERVED=' + json.dumps({
     'modes': len(modes), 'controls': controls, 'refusals': refusals}, sort_keys=True), flush=True)
-if (controls, refusals) != (56, 5):
+if (controls, refusals) != (57, 5):
     raise SystemExit('VM workload resource admission cases failed')
-print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=38 controls=56 refusals=5 allocation=not-entered')
+print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=38 controls=57 refusals=5 allocation=not-entered')
 PY
     for operation in preflight reserve check watch run; do
         root_status=0
@@ -4933,6 +4934,34 @@ run_focused_rust_tests() {
                 client::tests::r_p14c_viewer_credential_prompt_requires_typed_credential_failure
                 flutter::viewer_credential_bridge_tests::explicit_password_survives_all_session_factories_and_exact_retirement
             )
+        elif [ "$RUST_TEST_PROFILE" = clipboard-filetime ]; then
+            container_name=rustdesk-clipboard-filetime-tests
+            memory=5g
+            memory_bytes=5368709120
+            source_fingerprints=(
+                Cargo.lock libs/clipboard/Cargo.toml libs/clipboard/build.rs
+                libs/clipboard/src/lib.rs libs/clipboard/src/platform/mod.rs
+                libs/clipboard/src/platform/unix/mod.rs
+                libs/clipboard/src/platform/unix/filetype.rs
+                libs/clipboard/src/platform/unix/local_file.rs
+                libs/clipboard/src/platform/unix/serv_files.rs
+                scripts/run-clipboard-filetime-tests.sh
+            )
+            required_tests=(
+                platform::unix::filetype::tests::relative_name_sanitizer_rejects_escape_paths
+                platform::unix::filetype::tests::filetime_unix_epoch_matches_known_wire_value
+                platform::unix::filetype::tests::filetime_before_unix_epoch_is_preserved
+                platform::unix::filetype::tests::filetime_large_wire_value_does_not_overflow
+                platform::unix::filetype::tests::filetime_unflagged_time_is_ignored
+                platform::unix::local_file::file_list_test::test_parse_file_descriptors
+                platform::unix::local_file::file_list_test::rejects_too_many_file_descriptors_before_allocation
+                platform::unix::local_file::file_list_test::filetime_unix_epoch_is_encoded_exactly
+                platform::unix::local_file::file_list_test::filetime_before_unix_epoch_is_encoded
+                platform::unix::local_file::file_list_test::filetime_sub_tick_precision_is_truncated
+                platform::unix::local_file::file_list_test::filetime_large_local_time_is_encoded
+                platform::unix::local_file::file_list_test::filetime_out_of_range_local_time_is_refused
+                platform::unix::serv_files::tests::filetime_failed_descriptor_keeps_previous_pdu
+            )
         elif [ "$RUST_TEST_PROFILE" = recording-output ]; then
             container_name=rustdesk-recording-output-tests
             memory=5g
@@ -6140,6 +6169,10 @@ run_focused_rust_tests() {
                             /bin/bash /source/scripts/run-viewer-credential-tests.sh
                             exit 0
                         fi
+                        if [ "$RUST_TEST_PROFILE" = clipboard-filetime ]; then
+                            /bin/bash /source/scripts/run-clipboard-filetime-tests.sh
+                            exit 0
+                        fi
                         if [ "$RUST_TEST_PROFILE" = recording-output ]; then
                             /bin/bash /source/scripts/run-recording-output-tests.sh
                             exit 0
@@ -6682,7 +6715,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         printf 'WHITEBOARD_HELPER_PROFILE=whiteboard-helper-lifetime stage=container-start cases=8 bridge=absent backend=x11\n'
     fi
     if [ "$MODE" = android-rust-lifecycle-tests ] \
-        && [[ "$RUST_TEST_PROFILE" = recording-output || "$RUST_TEST_PROFILE" = viewer-video || "$RUST_TEST_PROFILE" = video-qos || "$RUST_TEST_PROFILE" = video-qos-controller || "$RUST_TEST_PROFILE" = video-vpx || "$RUST_TEST_PROFILE" = option-ack || "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
+        && [[ "$RUST_TEST_PROFILE" = clipboard-filetime || "$RUST_TEST_PROFILE" = recording-output || "$RUST_TEST_PROFILE" = viewer-video || "$RUST_TEST_PROFILE" = video-qos || "$RUST_TEST_PROFILE" = video-qos-controller || "$RUST_TEST_PROFILE" = video-vpx || "$RUST_TEST_PROFILE" = option-ack || "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
         local -a parent_start_status
         if "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" 2>&1 \
             | tee "$output" \
@@ -7251,6 +7284,11 @@ PY
         [ "$(grep -Ec '^VIEWER_CREDENTIAL_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=10 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'VIEWER_CREDENTIAL_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'viewer credential artifact receipt differs'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard-filetime ]; then
+        [ "${#result_lines[@]}" -eq 3 ] || fail 'clipboard timestamp summary count differs'
+        [ "$(grep -Ec '^CLIPBOARD_FILETIME_ARTIFACT=complete sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/clipboard-[0-9a-f]{16} tests=13 exit_code=0 unchanged=before-between-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'CLIPBOARD_FILETIME_ARTIFACT=' "$output")" -eq 1 ] \
+            || fail 'clipboard timestamp artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = recording-output ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'recording output summary count differs'
         [ "$(grep -Ec '^RECORDING_OUTPUT_ARTIFACT=complete sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/scrap-[0-9a-f]{16} tests=35 exit_code=0 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
@@ -8017,6 +8055,12 @@ PY
             [ "$tests_passed" -eq 10 ] || fail 'viewer credential total differs'
             printf 'VIEWER_CREDENTIAL_VM=pass commit=%s tree=%s tests=10 target=linux-x86_64 scope=production-peer-credentials-and-exported-session-factory rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = clipboard-filetime ]; then
+            [ "$tests_passed" -eq 13 ] || fail 'clipboard timestamp total differs'
+            grep -E '^test platform::unix::.* \.\.\. ok$|^CLIPBOARD_FILETIME_(BUILD|ARTIFACT)=' "$output"
+            printf 'CLIPBOARD_FILETIME_VM=pass commit=%s tree=%s tests=13 target=linux-x86_64 scope=clipboard-library-file-descriptors rust=1.75.0 features=unix-file-copy-paste vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = recording-output ]; then
             [ "$tests_passed" -eq 35 ] || fail 'recording output total differs'
             grep -E '^test common::record::tests::.* \.\.\. ok$|^RECORDING_OUTPUT_(BUILD|ARTIFACT|PARENT_CHECK)=|^RECORDING_OUTPUT_PARENT_BUILD=pass |^R-B10 canary:' "$output"

@@ -85,7 +85,7 @@ impl LocalFile {
             normal,
         })
     }
-    pub fn as_bin(&self) -> Vec<u8> {
+    pub fn as_bin(&self) -> Result<Vec<u8>, CliprdrError> {
         let mut buf = BytesMut::with_capacity(592);
 
         let read_only_flag = if self.read_only { 0x1 } else { 0 };
@@ -165,7 +165,7 @@ impl LocalFile {
         buf.put(&name[..name_len]);
         buf.put(&vec![0u8; 520 - name_len][..]);
 
-        buf.to_vec()
+        Ok(buf.to_vec())
     }
 
     #[inline]
@@ -350,7 +350,7 @@ mod file_list_test {
         let mut pdu = BytesMut::with_capacity(4 + 592 * tree.len());
         pdu.put_u32_le(tree.len() as u32);
         for file in tree {
-            pdu.put(file.as_bin().as_slice());
+            pdu.put(file.as_bin()?.as_slice());
         }
 
         let parsed = FileDescription::parse_file_descriptors(pdu.to_vec(), 0)?;
@@ -391,6 +391,54 @@ mod file_list_test {
         as_bin_parse_test("test")?;
         as_bin_parse_test("/test")?;
         Ok(())
+    }
+
+    fn encoded_time(time: std::time::SystemTime) -> Result<u64, CliprdrError> {
+        let mut file = generate_tree("").remove(1);
+        file.last_write_time = time;
+        let bytes = file.as_bin()?;
+        assert_eq!(bytes.len(), 592);
+        assert_ne!(u32::from_le_bytes(bytes[..4].try_into().unwrap()) & 0x20, 0);
+        Ok(u64::from_le_bytes(bytes[56..64].try_into().unwrap()))
+    }
+
+    #[test]
+    fn filetime_unix_epoch_is_encoded_exactly() {
+        assert_eq!(encoded_time(std::time::SystemTime::UNIX_EPOCH).unwrap(),
+            116_444_736_000_000_000);
+    }
+
+    #[test]
+    fn filetime_before_unix_epoch_is_encoded() {
+        use std::time::{Duration, SystemTime};
+        assert_eq!(encoded_time(SystemTime::UNIX_EPOCH - Duration::from_secs(2_208_988_800)).unwrap(),
+            94_354_848_000_000_000);
+        assert_eq!(encoded_time(SystemTime::UNIX_EPOCH - Duration::from_secs(11_644_473_600)).unwrap(), 0);
+    }
+
+    #[test]
+    fn filetime_sub_tick_precision_is_truncated() {
+        use std::time::{Duration, SystemTime};
+        assert_eq!(encoded_time(SystemTime::UNIX_EPOCH + Duration::new(1, 123_456_789)).unwrap(),
+            116_444_736_011_234_567);
+        assert_eq!(encoded_time(SystemTime::UNIX_EPOCH - Duration::from_nanos(1)).unwrap(),
+            116_444_735_999_999_999);
+    }
+
+    #[test]
+    fn filetime_large_local_time_is_encoded() {
+        use std::time::{Duration, SystemTime};
+        assert_eq!(encoded_time(SystemTime::UNIX_EPOCH + Duration::from_secs(32_503_680_000)).unwrap(),
+            441_481_536_000_000_000);
+        assert_eq!(encoded_time(SystemTime::UNIX_EPOCH + Duration::new(1_833_029_933_770, 955_161_500)).unwrap(),
+            u64::MAX);
+    }
+
+    #[test]
+    fn filetime_out_of_range_local_time_is_refused() {
+        use std::time::{Duration, SystemTime};
+        assert!(encoded_time(SystemTime::UNIX_EPOCH - Duration::new(11_644_473_600, 1)).is_err());
+        assert!(encoded_time(SystemTime::UNIX_EPOCH + Duration::new(1_833_029_933_770, 955_161_600)).is_err());
     }
 
     #[test]

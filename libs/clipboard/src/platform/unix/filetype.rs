@@ -273,6 +273,50 @@ fn unsafe_name_error(name: &Path, reason: &str) -> CliprdrError {
 mod tests {
     use super::FileDescription;
     use std::path::{Path, PathBuf};
+    use std::time::{Duration, SystemTime};
+
+    fn descriptor_time(ticks: u64, valid: bool) -> SystemTime {
+        let mut pdu = vec![0; 4 + 592];
+        pdu[..4].copy_from_slice(&1u32.to_le_bytes());
+        let flags: u32 = if valid { 0x24 } else { 0x04 };
+        pdu[4..8].copy_from_slice(&flags.to_le_bytes());
+        pdu[40..44].copy_from_slice(&0x80u32.to_le_bytes());
+        pdu[60..68].copy_from_slice(&ticks.to_le_bytes());
+        pdu[76..78].copy_from_slice(&u16::from(b'a').to_le_bytes());
+        let files = FileDescription::parse_file_descriptors(pdu, 71).expect("valid descriptor");
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].conn_id, 71);
+        assert_eq!(files[0].name, PathBuf::from("a"));
+        files[0].last_modified
+    }
+
+    #[test]
+    fn filetime_unix_epoch_matches_known_wire_value() {
+        assert_eq!(descriptor_time(116_444_736_000_000_000, true), SystemTime::UNIX_EPOCH);
+        assert_eq!(descriptor_time(125_911_584_000_000_000, true),
+            SystemTime::UNIX_EPOCH + Duration::from_secs(946_684_800));
+    }
+
+    #[test]
+    fn filetime_before_unix_epoch_is_preserved() {
+        assert_eq!(descriptor_time(94_354_848_000_000_000, true),
+            SystemTime::UNIX_EPOCH - Duration::from_secs(2_208_988_800));
+        assert_eq!(descriptor_time(0, true),
+            SystemTime::UNIX_EPOCH - Duration::from_secs(11_644_473_600));
+    }
+
+    #[test]
+    fn filetime_large_wire_value_does_not_overflow() {
+        assert_eq!(descriptor_time(u64::MAX, true),
+            SystemTime::UNIX_EPOCH + Duration::new(1_833_029_933_770, 955_161_500));
+    }
+
+    #[test]
+    fn filetime_unflagged_time_is_ignored() {
+        for ticks in [0, 116_444_736_000_000_000, u64::MAX] {
+            assert_eq!(descriptor_time(ticks, false), SystemTime::UNIX_EPOCH);
+        }
+    }
 
     #[test]
     fn relative_name_sanitizer_rejects_escape_paths() {

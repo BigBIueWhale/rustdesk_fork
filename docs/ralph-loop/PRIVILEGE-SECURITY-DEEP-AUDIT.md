@@ -110637,3 +110637,14 @@ installed/other-platform and mixed-artifact acceptance, R-S0/R-F5, release and
 independent review remain OPEN. The parent audio-formatting repair remains parked;
 no known-failing parent build was repeated. The ledger records the exact scope;
 a fresh count follows.
+
+Fresh count at `6ad389ec848733b917c66ed0ad8f950f1713e921`, run `NBCtC5DcjG`:
+**356,603 tokens**, 1,621,426 bytes, input SHA-256
+`8af8ee7e01ef75a7504443b0f70d3ff7af542b762947c6175f60aeb770fd4bf4`,
+using the pinned whole-file method, seven controls and byte round trip. Workload
+archive is 31,040 bytes, SHA-256
+`a150994ca542b106be8d647495e28783110039614f3ae623ba05f64f54360592`.
+Outer/supervisor time: 31/34.174 seconds. RAM peak: 402,137,088 bytes; durable-run
+peak: 249,856 bytes. QEMU 253112 joins exit 0; its PID, RAM `run.2f4x5pzd` and
+active owned roots are absent. All endpoint deltas are zero. This audit-only
+receipt leaves the counted ledger unchanged and below its approximate budget.

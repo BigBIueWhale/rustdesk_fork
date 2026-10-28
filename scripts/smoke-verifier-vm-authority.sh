@@ -5344,6 +5344,19 @@ elif [ "$MODE" = android-runtime-log-tests ]; then
     require_exact_fixed_receipt "$runtime_failure_test_receipt" 'bounded failure-log publisher result'
     require_exact_fixed_receipt "$runtime_serial_test_receipt" 'bounded serial archive result'
     require_exact_fixed_receipt "$runtime_output_test_receipt" 'acknowledged guest output result'
+    /usr/bin/python3 -I -S - "$OUTPUT_ARCHIVE" <<'PY'
+import hashlib
+from pathlib import Path
+import sys
+actual = b''.join(line for line in Path(sys.argv[1]).read_bytes().splitlines(keepends=True)
+                  if line.startswith(b'VERIFIER_OUTPUT_BLOCK='))
+expected = b''.join((f'VERIFIER_OUTPUT_BLOCK={i:03d}:' + '0123456789abcdef' * 128 + '\n').encode()
+                    for i in range(128))
+if actual != expected:
+    raise SystemExit('actual virtio output blocks are incomplete, reordered or changed')
+print(f'VERIFIER_OUTPUT_NATIVE=pass blocks=128 bytes={len(actual)} '
+      f'sha256={hashlib.sha256(actual).hexdigest()} shutdown=after-ack archive=exact')
+PY
     require_exact_fixed_receipt "$runtime_failure_receipt" 'native acknowledged failure-log export result'
     [ "$(/usr/bin/find "$ANDROID_FAILURE_ROOT" -mindepth 1 -maxdepth 1 -printf '%f\n')" = android-runtime-failure.log ] \
         && [ -f "$ANDROID_FAILURE_ROOT/android-runtime-failure.log" ] \

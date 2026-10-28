@@ -1733,6 +1733,11 @@ run_android_runtime_log_tests() {
     printf 'ANDROID_RUNTIME_FAILURE_EXPORT_VM=pass bytes=%s sha256=%s fsync=acknowledged mount=retired uid=1000 gid=1000\n' "$export_bytes" "$export_sha"
     printf 'ANDROID_RUNTIME_LOG_TESTS_VM=pass cases=3 stage_cases=9 uid=4000 gid=4000 root=refused foreign=refused test_sha256=%s wrapper_sha256=%s stage_sha256=%s image=retired docker=retired network=none cleanup=joined\n' \
         "$test_sha" "$wrapper_sha" "$stage_sha"
+    # Exercise several real virtio output frames immediately before guest exit.
+    python3 -I -S - <<'PY'
+for sequence in range(128):
+    print(f"VERIFIER_OUTPUT_BLOCK={sequence:03d}:" + "0123456789abcdef" * 128)
+PY
 }
 
 run_android_frame_tests() {

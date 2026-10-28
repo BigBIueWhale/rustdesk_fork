@@ -171,6 +171,10 @@ void main() {
       h.binding.reads.single.complete(_inputs);
       await tester.pumpAndSettle();
       expect(find.text('Microphone B'), findsOneWidget);
+      original(TapDownDetails(globalPosition: const Offset(100, 100)));
+      h.opener(tester)(TapDownDetails(globalPosition: const Offset(100, 100)));
+      await tester.pump();
+      expect(h.binding.reads, hasLength(1), reason: 'menu remains open');
       await tester.tap(find.text('Microphone B'));
       await tester.pump();
       expect(h.binding.writes, hasLength(1));

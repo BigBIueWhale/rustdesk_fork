@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common/widgets/dialog.dart';
 import 'package:flutter_hbb/common/widgets/peer_credential_badge.dart';
+import 'package:flutter_hbb/common/widgets/popup_menu_position.dart';
 import 'package:flutter_hbb/common/widgets/rdp_port_field.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/peer_tab_model.dart';
@@ -44,7 +45,7 @@ class _PeerCard extends StatefulWidget {
 /// State for the connection page.
 class _PeerCardState extends State<_PeerCard>
     with AutomaticKeepAliveClientMixin {
-  var _menuPos = RelativeRect.fill;
+  var _menuPos = Offset.zero;
   final double _cardRadius = 16;
   final double _tileRadius = 5;
   final double _borderWidth = 2;
@@ -357,9 +358,7 @@ class _PeerCardState extends State<_PeerCard>
           child: const Padding(
               padding: EdgeInsets.all(12), child: Icon(Icons.more_vert)),
           onTapDown: (e) {
-            final x = e.globalPosition.dx;
-            final y = e.globalPosition.dy;
-            _menuPos = RelativeRect.fromLTRB(x, y, x, y);
+            _menuPos = e.globalPosition;
           },
           onTap: () {
             _showPeerMenu(peer.id);
@@ -395,9 +394,7 @@ class _PeerCardState extends State<_PeerCard>
 
   Widget _actionMore(Peer peer) => Listener(
       onPointerDown: (e) {
-        final x = e.position.dx;
-        final y = e.position.dy;
-        _menuPos = RelativeRect.fromLTRB(x, y, x, y);
+        _menuPos = e.position;
       },
       onPointerUp: (_) => _showPeerMenu(peer.id),
       child: build_more(context));
@@ -405,10 +402,13 @@ class _PeerCardState extends State<_PeerCard>
   /// Show the peer menu and handle user's choice.
   /// User might remove the peer or send a file to the peer.
   void _showPeerMenu(String id) async {
+    final position = _menuPos;
+    final items = await super.widget.popupMenuEntryBuilder(context);
+    if (!mounted) return;
     await mod_menu.showMenu(
       context: context,
-      position: _menuPos,
-      items: await super.widget.popupMenuEntryBuilder(context),
+      position: popupMenuPosition(context, position),
+      items: items,
       elevation: 8,
     );
   }

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter_hbb/common/widgets/dialog.dart';
+import 'package:flutter_hbb/common/widgets/popup_menu_position.dart';
 import 'package:flutter_hbb/common/widgets/start_ellipsis_text.dart';
 import 'package:flutter_hbb/desktop/widgets/dragable_divider.dart';
 import 'package:percent_indicator/percent_indicator.dart';
@@ -538,7 +539,7 @@ class _FileManagerViewState extends State<FileManagerView> {
   }
 
   Widget headTools() {
-    var uploadButtonTapPosition = RelativeRect.fill;
+    var uploadButtonTapPosition = Offset.zero;
     RxBool isUploadFolder =
         (bind.mainGetLocalOption(key: 'upload-folder-button') == 'Y').obs;
     return Container(
@@ -931,16 +932,14 @@ class _FileManagerViewState extends State<FileManagerView> {
                         focusColor: Colors.transparent,
                         onTapDown: (e) {
                           if (!isCurrentSession) return;
-                          final x = e.globalPosition.dx;
-                          final y = e.globalPosition.dy;
-                          uploadButtonTapPosition =
-                              RelativeRect.fromLTRB(x, y, x, y);
+                          uploadButtonTapPosition = e.globalPosition;
                         },
                         onTap: () async {
                           if (!isCurrentSession) return;
                           final value = await showMenu<bool>(
                               context: context,
-                              position: uploadButtonTapPosition,
+                              position: popupMenuPosition(
+                                  context, uploadButtonTapPosition),
                               items: [
                                 PopupMenuItem<bool>(
                                   value: false,
@@ -1061,7 +1060,7 @@ class _FileManagerViewState extends State<FileManagerView> {
   }
 
   Widget menu({bool isLocal = false}) {
-    var menuPos = RelativeRect.fill;
+    var menuPos = Offset.zero;
 
     final List<MenuEntryBase<String>> items = [
       MenuEntrySwitch<String>(
@@ -1098,15 +1097,13 @@ class _FileManagerViewState extends State<FileManagerView> {
 
     return Listener(
       onPointerDown: (e) {
-        final x = e.position.dx;
-        final y = e.position.dy;
-        menuPos = RelativeRect.fromLTRB(x, y, x, y);
+        menuPos = e.position;
       },
       child: MenuButton(
         tooltip: translate('More'),
         onPressed: () => mod_menu.showMenu(
           context: context,
-          position: menuPos,
+          position: popupMenuPosition(context, menuPos),
           items: items
               .map(
                 (e) => e.build(
@@ -1196,7 +1193,7 @@ class _FileManagerViewState extends State<FileManagerView> {
           final lastModifiedStr = entry.isDrive
               ? " "
               : "${entry.lastModifiedText()}   ";
-          var secondaryPosition = RelativeRect.fromLTRB(0, 0, 0, 0);
+          var secondaryPosition = Offset.zero;
           onTap() {
             if (!isCurrentSession) return;
             final items = selectedItems;
@@ -1227,7 +1224,7 @@ class _FileManagerViewState extends State<FileManagerView> {
               rightClickEntry.value = entry;
               final future = mod_menu.showMenu(
                 context: context,
-                position: secondaryPosition,
+                position: popupMenuPosition(context, secondaryPosition),
                 items: items,
               );
               future.then((value) {
@@ -1241,11 +1238,7 @@ class _FileManagerViewState extends State<FileManagerView> {
 
           onSecondaryTapDown(details) {
             if (!isCurrentSession) return;
-            secondaryPosition = RelativeRect.fromLTRB(
-                details.globalPosition.dx,
-                details.globalPosition.dy,
-                details.globalPosition.dx,
-                details.globalPosition.dy);
+            secondaryPosition = details.globalPosition;
           }
 
           return Padding(
@@ -1622,10 +1615,8 @@ class _FileManagerViewState extends State<FileManagerView> {
                     _locationBarKey.currentContext?.size;
 
                     final size = renderBox.size;
-                    final offset = renderBox.localToGlobal(Offset.zero);
-
-                    final x = offset.dx;
-                    final y = offset.dy + size.height + 1;
+                    final position =
+                        renderBox.localToGlobal(Offset(0, size.height + 1));
 
                     final isPeerWindows = controller.options.value.isWindows;
                     final List<MenuEntryBase> menuItems = [
@@ -1692,7 +1683,7 @@ class _FileManagerViewState extends State<FileManagerView> {
                     if (!mounted || !isCurrentSession) return;
                     mod_menu.showMenu(
                         context: context,
-                        position: RelativeRect.fromLTRB(x, y, x, y),
+                        position: popupMenuPosition(context, position),
                         elevation: 4,
                         items: menuItems
                             .map((e) => e.build(

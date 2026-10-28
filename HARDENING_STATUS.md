@@ -504,6 +504,24 @@ acceptance remain OPEN. Parked source, window/dispatcher and producer work remai
 
 ## Documentation and verification architecture
 
+**Windows installed-service evidence memory bounds (`0228d544`).** The Linux
+receipt checker hashes artifacts in 64-KiB chunks through one retained descriptor;
+its former whole-file read admitted 2-GiB files inside a 1-GiB helper container.
+The unchanged baseline raises `MemoryError` for a 64-MiB file under a 48-MiB
+address-space limit, with three control groups passing. At `a8e782b7`, all seven
+groups pass in 0.227 seconds / 13 outer seconds: the four original groups plus
+small-read bounds, twelve scheduled observable changes and I/O-error cleanup.
+Existing receipt acceptance/refusal runs; sources are read-only and files are real.
+An intermediate run accepts two rapid same-size rewrites: metadata equality is
+not immutable-content proof. The final metadata test explicitly changes mtime;
+concurrent-writer exclusion remains the caller's immutable-evidence obligation,
+with full harness acceptance OPEN. The separate full-peer whole-file hash remains
+OPEN. All three Linux VMs join and retire RAM scratch with zero endpoint deltas.
+No Windows product, installed service or complete LPE acceptance is claimed.
+Run the focused check with `scripts/smoke-verifier-vm-authority.sh
+--windows-service-result-tests`. Receipt: `windows-service-hash-0228d544.json`;
+audit entry “2026-10-28 — bounded Windows installed-service evidence hashing”.
+
 `requirements.html` owns the normative product, security and build contracts.
 This ledger owns current conformance, evidence limits and open work. Git history and
 `docs/ralph-loop/PRIVILEGE-SECURITY-DEEP-AUDIT.md` retain superseded analysis and execution history.

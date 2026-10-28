@@ -112974,3 +112974,21 @@ endpoint deltas are zero. Workload/console are 3,391/63,986 bytes, SHA-256
 `ca47e00a21ff2eec0cc2eed8456ed92334cd7ea033d6a1c55db6ead8500006fe` and
 `22fd8ac79bdfc0195dff90bb87d8ef919e37550891877e9d24393e79d0c6057d`.
 Scratch/durable peaks are 400,863,232/192,512 bytes. No active owned root remains.
+
+Accepted run `YPiMnUE3Ho` at `a8e782b789b0aefcbedcee94fb792e575306ab8d`
+passes all seven groups in 0.227 test seconds / 13 outer seconds. The unchanged
+four original method bodies are compared through AST; the three added groups
+cover the narrower stated metadata/bounds/error behavior. The checker SHA-256 is
+`6d4cb48f75761d92b508e99811809ee44b6838e343dd5705a33728e812cd0f68`, fixture
+`3519ff4147c432689184395d44dfc2f29f139103257718585f634b9a927b7792`.
+QEMU 2231665 joins exit 0; RAM `run.v_drl0nz` and owned active roots are absent,
+with zero endpoint deltas. Scratch/durable peaks are 400,470,016/192,512 bytes.
+Workload/console are 1,659/65,185 bytes, SHA-256
+`b832e72a082ac332bb190c65b279043fbca6ba446ad8b7a4cd18e3c4e7d3c0ea` and
+`7b51a610ea5bca781cd6ed33f6331c9d20f130485ff491a18e8c8963600d781b`.
+Bounded mode-0600 capsule `windows-service-hash-0228d544.json` retains all three
+source-bound runs, failed-run retirement and the same-size-write counterexample.
+The Windows source checker references only unchanged validator/domain/self-test
+bodies, so no wording gate is revised. The status entry records this component
+result and all remaining limits; a fresh isolated count follows. The broad goal,
+all fifteen installed credential actions and every user park remain unchanged.

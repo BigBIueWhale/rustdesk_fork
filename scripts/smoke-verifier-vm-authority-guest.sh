@@ -5007,7 +5007,8 @@ run_focused_rust_tests() {
             memory=5g
             memory_bytes=5368709120
             source_fingerprints=(
-                Cargo.lock Cargo.toml src/lib.rs src/ipc.rs src/ui_interface.rs
+                Cargo.lock Cargo.toml src/lib.rs src/ipc.rs src/ipc/main_config.rs
+                src/ui_interface.rs src/platform/linux.rs
                 src/flutter_ffi.rs src/ui_interface/option_tests.rs
                 src/client.rs src/ui_session_interface.rs
                 src/flutter.rs src/flutter_keyboard.rs src/flutter_keyboard_tests.rs

@@ -2784,7 +2784,7 @@ pub fn get_default_pa_source() -> Option<String> {
                     .default_source_name
                     .filter(|name| !name.is_empty() && name.len() <= 1024);
             }
-            Err(err) => log::error!("Failed to get default PulseAudio source: {err}"),
+            Err(err) => log::error!("Failed to get default PulseAudio source: {err:?}"),
         },
         Err(err) => {
             log::error!("Failed to get_pa_source: {:?}", err);

@@ -113119,3 +113119,11 @@ source/fixture hashes, excluded preparations, failed-diagnostic retirement and
 the explicit open submenu/full-toolbar boundaries. Duplicate JSON records in
 the success serial are copied evidence, not additional executions. The live
 ledger records only the focused result and the user pivot; its fresh count follows.
+
+Count preparation `AxLy0d7Oqc` at `6d35b963` passes all 66 workload-selection
+controls and five refusals, then rejects the stale 65-control summary. The new
+menu-button mapping accounts for the additional control; the exact expected
+total and receipt are corrected to 66. The tokenizer did not run in this attempt.
+QEMU 2340592 joins exit 0, RAM `run.2s09e38d` retires, all endpoint deltas are zero,
+and diagnostics move to `toolbar-focus-count-preparation.AxLy0d7Oqc`.
+Product and rendered-test code remain identical to the accepted run.

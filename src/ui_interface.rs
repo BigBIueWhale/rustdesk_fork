@@ -5,7 +5,6 @@ use hbb_common::config::PeerListInfo;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::sleep;
 use hbb_common::{
-    allow_err,
     bytes::Bytes,
     config::{self, keys::*, Config, LocalConfig, PeerConfig, CONNECT_TIMEOUT},
     directories_next,
@@ -13,8 +12,6 @@ use hbb_common::{
     log, tokio,
 };
 use serde_derive::Serialize;
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-use std::process::Child;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -22,9 +19,6 @@ use std::{
 
 #[cfg(not(any(target_os = "ios")))]
 use crate::ipc;
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub type Children = Arc<Mutex<(bool, HashMap<(String, String), Child>)>>;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LoginDeviceInfo {
@@ -37,7 +31,6 @@ pub struct LoginDeviceInfo {
 lazy_static::lazy_static! {
     static ref OPTION_SYNCED: Arc<Mutex<bool>> = Default::default();
     static ref OPTIONS : Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(Config::get_options()));
-    static ref CHILDREN : Children = Default::default();
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -698,70 +691,6 @@ pub fn video_save_directory(root: bool) -> String {
 // sole caller. The hardware-capability query wrappers are also absent. hwcodec/vram/mediacodec are
 // compiled out and AV1/libaom is absent. scrap::codec::Decoder::supported_decodings — the LIVE protocol decode-ability path —
 // is deliberately retained; only this UI-only wrapper is gone.
-
-#[cfg(not(any(target_os = "android", target_os = "ios", feature = "flutter")))]
-pub fn check_zombie() {
-    let mut deads = Vec::new();
-    loop {
-        let mut lock = CHILDREN.lock().unwrap();
-        let mut n = 0;
-        for (id, c) in lock.1.iter_mut() {
-            if let Ok(Some(_)) = c.try_wait() {
-                deads.push(id.clone());
-                n += 1;
-            }
-        }
-        for ref id in deads.drain(..) {
-            lock.1.remove(id);
-        }
-        if n > 0 {
-            lock.0 = true;
-        }
-        drop(lock);
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
-}
-
-#[inline]
-#[cfg(not(any(target_os = "android", target_os = "ios", feature = "flutter")))]
-pub fn recent_sessions_updated() -> bool {
-    let mut children = CHILDREN.lock().unwrap();
-    if children.0 {
-        children.0 = false;
-        true
-    } else {
-        false
-    }
-}
-
-#[cfg(not(any(target_os = "android", target_os = "ios", feature = "flutter")))]
-pub fn new_remote(id: String, remote_type: String) {
-    let mut lock = CHILDREN.lock().unwrap();
-    let args = vec![format!("--{}", remote_type), id.clone()];
-    let key = (id.clone(), remote_type.clone());
-    if let Some(c) = lock.1.get_mut(&key) {
-        if let Ok(Some(_)) = c.try_wait() {
-            lock.1.remove(&key);
-        } else {
-            if remote_type == "rdp" {
-                allow_err!(c.kill());
-                std::thread::sleep(std::time::Duration::from_millis(30));
-                c.try_wait().ok();
-                lock.1.remove(&key);
-            } else {
-                return;
-            }
-        }
-    }
-    match crate::run_me(args) {
-        Ok(child) => {
-            lock.1.insert(key, child);
-        }
-        Err(err) => {
-            log::error!("Failed to spawn remote: {}", err);
-        }
-    }
-}
 
 #[inline]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

@@ -34,9 +34,10 @@ elif [ "${MODE:-}" = hbb-common-fs ] && [ "${HBB_LOGIND_NATIVE:-}" = 0 ] \
     readonly VM_STORAGE_PROFILE=hbb-common-fs
 elif [ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:locales ]; then
     readonly VM_STORAGE_PROFILE=flutter-locales
+elif [ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:password-fields ]; then
+    readonly VM_STORAGE_PROFILE=flutter-password-fields
 elif [[ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:draggable-divider \
-    || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:menu-button \
-    || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:password-fields ]]; then
+    || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:menu-button ]]; then
     readonly VM_STORAGE_PROFILE=flutter-divider
 elif [[ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:file-columns \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:trackpad-speed ]]; then

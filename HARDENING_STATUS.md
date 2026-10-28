@@ -52,6 +52,10 @@ case inventories, intermediate failures, source/artifact hashes and timings rema
 receipts under `.harness-state/verifier-vm/` and in Git history. Shared current-artifact,
 installed/other-platform, R-S0/R-F5, resource/soak and release obligations below remain OPEN.
 
+**User pivot (2026-10-28):** The new October RustSec advisory/reachability review
+remains OPEN/PARKED after read-only research. No dependency update, decoder
+regression or fresh advisory scan ran. Work moved to unused desktop UI removal.
+
 **User pivot (2026-10-28):** Parent-build and option-ack integration validation
 remain OPEN/PARKED. Diagnostic correction `b33e9f58` is committed; no current
 parent compilation or native option-ack run followed it. Audio device-selection
@@ -229,6 +233,7 @@ Do not resume automatically. Work moved to the R-S11hj current-state ledger clea
 
 | Surface | Current state and evidence boundary | Receipt |
 | --- | --- | --- |
+| Unused desktop title bar | Deletes the unreferenced `DesktopTitleBar` library and its three color constants. Tracked reference/build review and exact deletion checks pass; active tab/window controls and tests are unchanged. No compilation or runtime acceptance is claimed. | Audit entry “2026-10-28 — user pivot; unused desktop title bar” |
 | Unused Sciter session launcher (`562a2501`) | Removes 71 lines: the uncalled launcher, recent-session flag, UI-only child reaper, registry/type and unused imports. Their Sciter callers disappeared in `0d2c8825`. Repository reference review and exact deletion comparison pass; all retained source bytes, the distinct active server reaper and its direct-service/tray callers are unchanged. No compiler or product runtime pass is claimed for this deletion. Full application, installed/native and release acceptance remain OPEN. | Audit entry “2026-10-28 — user pivot; retire unused Sciter session launcher” |
 | Automatic UI language selection (`5334ae62`) | The production selector honors explicit Hans/Hant scripts before Chinese region defaults, selects Traditional Chinese for TW/HK/MO, handles Java script suffixes and ignores unrelated extension contents. Saved app-language choices retain precedence. The isolated Linux Rust component passes six tests with 46 locale/preference examples; the actual selector is compiled directly, without translation/config doubles. Caller wiring is source-reviewed; full app, OS locale acquisition, rendered text and other-platform acceptance remain OPEN. QEMU joins and bounded RAM scratch retires. One unattributed endpoint addition is retained and untouched. | Audit entry “2026-10-28 — user pivot; automatic language selection”; run `K1DkIVObf0` |
 | Unused desktop popup-menu variants (`df111c4b`) | Removes 440 lines: unreferenced radio/nested-menu families, their child-menu widget, alternate reactive switch and unused constants. Repository-wide reference review finds no callers; remaining button, divider and switch bodies are byte-identical. Whitespace and exact deletion checks pass. The isolated `--peer-search` runner reaches the parked parser failures after the Flutter command succeeds, before case-result validation, detailed case output and source postconditions. No accepted Flutter case inventory or runtime acceptance is retained. QEMU joins and bounded RAM scratch retires; one unattributed endpoint removal is untouched. Complete menu behavior, current application compilation and shared release acceptance remain OPEN. | Audit entries “2026-10-28 — unused desktop popup-menu variants” and “2026-10-28 — user pivot; verification-status accuracy”; retained `retired-popup-validation.7OUTibJl5O` |

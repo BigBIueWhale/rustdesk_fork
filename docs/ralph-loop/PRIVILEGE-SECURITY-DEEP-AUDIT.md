@@ -110776,3 +110776,31 @@ profile, file ceiling and live monitor remain enabled. QEMU 329760 joins exit 0;
 its PID, RAM `run.0tbo12y6` and active owned roots are absent. All endpoint
 deltas are zero. This audit-only receipt preserves the counted ledger unchanged
 and below its approximate budget; no product ran.
+
+## 2026-10-28 — user pivot; unused desktop title bar
+
+The user explicitly requests another aspect. The October RustSec advisory and
+decoder reachability review remains OPEN/PARKED after read-only research; no
+dependency update, decoder regression or fresh scan ran. Parent-build/option-ack,
+audio and the other parked work are not resumed. All fifteen credential-action
+installed/native acceptance items remain OPEN.
+
+At source `807b60ae`, `flutter/lib/desktop/widgets/titlebar_widget.dart` contains
+only an unreferenced `DesktopTitleBar` gradient wrapper and three color constants.
+Tracked repository searches find these identifiers and the filename only in that
+file. There is no import, export, part, entrypoint, test, asset or build consumer;
+the file has been unchanged since upstream import `c2abd3b3`. Active desktop window
+controls live in `tabbar_widget.dart` and remain unchanged. The ownership model
+is unchanged: this library owns no live window, input, setting or privileged action.
+
+[Dart's library/import contract](https://dart.dev/language/libraries) makes each
+file a library whose namespace must be imported;
+[Flutter excludes runtime mirrors](https://docs.flutter.dev/resources/faq#does-flutter-come-with-a-reflection--mirrors-system).
+Together with the repository references and build/asset review, these support
+deleting the complete unused file without a compatibility wrapper or replacement.
+This is source cleanup, with no newly demonstrated user-visible failure or security
+fix claimed. Reference inspection, exact deletion review and `git diff --check`
+cover the change; no new test, compiler or product execution is needed for this
+unreferenced-file deletion. Current application, installed/native, R-S0/R-F5 and
+release acceptance remain OPEN. The ledger records this scope and receives a fresh
+bounded count after the clean candidate is committed and pushed.

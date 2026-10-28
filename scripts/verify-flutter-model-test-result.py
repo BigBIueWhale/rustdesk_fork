@@ -336,6 +336,18 @@ PASSWORD_FIELD_TESTS = {
     "ordinary obscured field is a keyboard learning control",
     "password field retains focused obscured semantics",
 }
+PASSWORD_FIELD_SUITES = {
+    "password_text_field_test.dart": PASSWORD_FIELD_TESTS,
+    "password_focus_probe_test.dart": {
+        "password prompt autofocus opens the editor",
+        "password prompt preserves immediate keyboard traversal",
+        "password prompt preserves immediate pointer focus",
+        "password prompt respects an already focused editor",
+        "password prompt rebuild preserves user focus",
+        "password prompt reveal preserves text and selection",
+        "password prompt removal retires its focus node",
+    },
+}
 KEYBOARD_LAYOUT_TESTS = {
     "keyboard chooser waits and blocks repeated choices",
     "keyboard chooser displays save errors and retries the same choice",
@@ -1715,9 +1727,10 @@ def parse_result(path, profile="models"):
         expected_tests = len(SHARE_RDP_TESTS)
         expected_names = SHARE_RDP_TESTS
     elif profile == "password-fields":
-        expected_suites = {"password_text_field_test.dart"}
-        expected_tests = len(PASSWORD_FIELD_TESTS)
-        expected_names = PASSWORD_FIELD_TESTS
+        expected_by_suite = PASSWORD_FIELD_SUITES
+        expected_suites = set(expected_by_suite)
+        expected_names = set().union(*expected_by_suite.values())
+        expected_tests = len(expected_names)
     elif profile == "window-dispatch":
         expected_suites = {"desktop_window_dispatch_test.dart"}
         expected_tests = len(WINDOW_DISPATCH_TESTS)

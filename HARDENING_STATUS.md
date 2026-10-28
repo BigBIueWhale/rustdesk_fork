@@ -60,6 +60,11 @@ case inventories, intermediate failures, source/artifact hashes and timings rema
 receipts under `.harness-state/verifier-vm/` and in Git history. Shared current-artifact,
 installed/other-platform, R-S0/R-F5, resource/soak and release obligations below remain OPEN.
 
+**User pivot (2026-10-28):** Remote-toolbar keyboard entry and submenu lifecycle
+remain OPEN/PARKED after read-only follow-up. The accepted focus-painting fix is
+retained; no further toolbar patch or runtime check follows. Work moved to
+connection-password input focus. Do not resume the toolbar follow-up automatically.
+
 **User pivot (2026-10-28):** Full-peer presentation evidence hashing remains
 OPEN/PARKED after read-only review. The preceding installed-service hashing fix
 is retained; no full-peer checker patch or execution follows. Work moved to

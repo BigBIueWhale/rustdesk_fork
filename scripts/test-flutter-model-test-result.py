@@ -22,7 +22,7 @@ spec.loader.exec_module(result)
 
 
 SINGLE_PROFILE = None
-if len(sys.argv) > 1 and sys.argv[1] in ("--screenshot-save", "--locales", "--draggable-divider", "--file-columns", "--trackpad-speed", "--menu-button"):
+if len(sys.argv) > 1 and sys.argv[1] in ("--screenshot-save", "--locales", "--draggable-divider", "--file-columns", "--trackpad-speed", "--menu-button", "--password-fields"):
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
 
 
@@ -76,8 +76,8 @@ class ResultTests(unittest.TestCase):
             suites = ["share_rdp_change_lifecycle_test.dart"]
             names = sorted(result.SHARE_RDP_TESTS)
         elif profile == "password-fields":
-            suites = ["password_text_field_test.dart"]
-            names = sorted(result.PASSWORD_FIELD_TESTS)
+            suites = sorted(result.PASSWORD_FIELD_SUITES)
+            names = sorted(set().union(*result.PASSWORD_FIELD_SUITES.values()))
         elif profile == "window-dispatch":
             suites = ["desktop_window_dispatch_test.dart"]
             names = sorted(result.WINDOW_DISPATCH_TESTS)
@@ -161,11 +161,12 @@ class ResultTests(unittest.TestCase):
             suite_id = test_id % len(suites)
             if profile == "models":
                 suite_id = suites.index(model_cases[test_id][0])
-            if profile in ("credential-dialog", "terminal-output", "file-navigation", "modifier-release", "peer-data", "tab-selection", "status-refresh", "audio-input", "trackpad-speed", "reconnect", "credential-badge", "menu-button"):
+            if profile in ("credential-dialog", "terminal-output", "file-navigation", "modifier-release", "peer-data", "tab-selection", "status-refresh", "audio-input", "trackpad-speed", "reconnect", "credential-badge", "menu-button", "password-fields"):
                 inventory = (result.AUDIO_INPUT_SUITES if profile == "audio-input"
                              else result.TRACKPAD_SPEED_SUITES if profile == "trackpad-speed"
                              else result.CREDENTIAL_BADGE_SUITES if profile == "credential-badge"
                              else result.MENU_BUTTON_SUITES if profile == "menu-button"
+                             else result.PASSWORD_FIELD_SUITES if profile == "password-fields"
                              else result.RECONNECT_SUITES if profile == "reconnect"
                              else result.CREDENTIAL_DIALOG_TESTS if profile == "credential-dialog"
                              else result.STATUS_REFRESH_SUITES if profile == "status-refresh"
@@ -196,6 +197,9 @@ class ResultTests(unittest.TestCase):
             return result.parse_result(path, profile)
 
     def test_complete_profiles(self):
+        if SINGLE_PROFILE == "password-fields":
+            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 11))
+            return
         if SINGLE_PROFILE == "menu-button":
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (4, 32))
             return
@@ -216,7 +220,7 @@ class ResultTests(unittest.TestCase):
             (1, len(result.FRAME_QUEUE_TESTS)),
         )
         self.assertEqual(self.parse(self.events("direct-address"), "direct-address"), (1, 33))
-        self.assertEqual(self.parse(self.events("password-fields"), "password-fields"), (1, 4))
+        self.assertEqual(self.parse(self.events("password-fields"), "password-fields"), (2, 11))
         self.assertEqual(self.parse(self.events("menu-button"), "menu-button"), (4, 32))
         self.assertEqual(self.parse(self.events("hold-drag"), "hold-drag"), (1, 17))
         self.assertEqual(self.parse(self.events("locales"), "locales"), (1, 10))

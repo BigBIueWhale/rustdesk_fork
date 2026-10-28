@@ -1109,6 +1109,7 @@ cases.extend([('hbb-common-fs', {'HBB_LOGIND_NATIVE': '1'}, 'linux-logind'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'locales'}, 'flutter-locales'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'draggable-divider'}, 'flutter-divider'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'menu-button'}, 'flutter-divider'),
+              ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'password-fields'}, 'flutter-divider'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'file-columns'}, 'flutter-file-columns'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'clipboard-keystrokes'}, 'flutter-credential-dialog'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'file-search'}, 'flutter-credential-dialog'),
@@ -1149,9 +1150,9 @@ printf '%s\\n' "$VM_STORAGE_PROFILE"
         'pass': passed}, sort_keys=True), flush=True)
 print('VM_TRANSIENT_WORKLOAD_OBSERVED=' + json.dumps({
     'modes': len(modes), 'controls': controls, 'refusals': refusals}, sort_keys=True), flush=True)
-if (controls, refusals) != (66, 5):
+if (controls, refusals) != (67, 5):
     raise SystemExit('VM workload resource admission cases failed')
-print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=39 controls=66 refusals=5 allocation=not-entered')
+print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=39 controls=67 refusals=5 allocation=not-entered')
 PY
     for operation in preflight reserve check watch run; do
         root_status=0
@@ -11045,8 +11046,10 @@ run_flutter_model_tests() {
             result_prefix=FLUTTER_SHARE_RDP_TEST_JSON
             expected_result='suites=1 tests=4'
         elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
+            memory=1280m
+            memory_bytes=1342177280
             result_prefix=FLUTTER_PASSWORD_FIELD_TEST_JSON
-            expected_result='suites=1 tests=4'
+            expected_result='suites=2 tests=11'
         elif [ "$FLUTTER_TEST_PROFILE" = window-dispatch ]; then
             result_prefix=FLUTTER_WINDOW_DISPATCH_TEST_JSON
             expected_result='suites=1 tests=8'
@@ -11834,7 +11837,9 @@ run_flutter_model_tests() {
                 elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
                     tests=(test/share_rdp_change_lifecycle_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
-                    tests=(test/password_text_field_test.dart)
+                    python3 -B -I -S /source/scripts/prepare-password-focus-probe.py prepare
+                    tests=(test/password_text_field_test.dart test_probes/password_focus_probe_test.dart)
+                    test_concurrency=1
                 elif [ "$FLUTTER_TEST_PROFILE" = window-dispatch ]; then
                     tests=(test/desktop_window_dispatch_test.dart)
                 elif [[ "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme ]]; then
@@ -12038,11 +12043,11 @@ run_flutter_model_tests() {
                 [ "$(stat -c %s /work/test.err)" -le 1048576 ]
                 [ ! -s /work/test.err ] || tail -n 120 /work/test.err >&2
                 file_navigation_stage validate-results
-                if [[ "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = direct-address || "$FLUTTER_TEST_PROFILE" = hold-drag || "$FLUTTER_TEST_PROFILE" = menu-button ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = direct-address || "$FLUTTER_TEST_PROFILE" = hold-drag || "$FLUTTER_TEST_PROFILE" = menu-button || "$FLUTTER_TEST_PROFILE" = password-fields ]]; then
                     cat /work/test.json
                 fi
                 parser_args=()
-                if [[ "$FLUTTER_TEST_PROFILE" = screenshot-save || "$FLUTTER_TEST_PROFILE" = locales || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = menu-button ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = screenshot-save || "$FLUTTER_TEST_PROFILE" = locales || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = menu-button || "$FLUTTER_TEST_PROFILE" = password-fields ]]; then
                     parser_args=("--$FLUTTER_TEST_PROFILE")
                 fi
                 /usr/bin/python3 -I -S /source/scripts/test-flutter-model-test-result.py "${parser_args[@]}"
@@ -12132,6 +12137,7 @@ run_flutter_model_tests() {
                         cmp /source/flutter/lib/models/share_rdp_change_lifecycle.dart lib/models/share_rdp_change_lifecycle.dart
                         cmp /source/flutter/test/share_rdp_change_lifecycle_test.dart test/share_rdp_change_lifecycle_test.dart
                     elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
+                        python3 -B -I -S /source/scripts/prepare-password-focus-probe.py verify
                         cmp /source/flutter/lib/common/widgets/password_text_field.dart lib/common/widgets/password_text_field.dart
                         cmp /source/flutter/test/password_text_field_test.dart test/password_text_field_test.dart
                     elif [ "$FLUTTER_TEST_PROFILE" = window-dispatch ]; then
@@ -12470,6 +12476,9 @@ run_flutter_model_tests() {
     if [ "$FLUTTER_TEST_PROFILE" = menu-button ]; then
         grep -E '^(HELP_BUTTON_|TOOLBAR_BUTTON_|\{)' "$output"
     fi
+    if [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
+        grep -E '^(PASSWORD_FOCUS_|\{)' "$output"
+    fi
     if [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
         grep -E 'FILE_NUMERIC_SORT |FILE_SORT_ENTRIES ' "$output"
     fi
@@ -12602,7 +12611,7 @@ run_flutter_model_tests() {
         local password_sha256
         password_sha256="$(sha256sum "$source_root/flutter/lib/common/widgets/password_text_field.dart" | awk '{print $1}')"
         tests_sha256="$(sha256sum "$source_root/flutter/test/password_text_field_test.dart" | awk '{print $1}')"
-        printf 'FLUTTER_PASSWORD_FIELD_TESTS_VM=pass commit=%s tree=%s suites=1 tests=4 flutter=3.24.5 widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-password-field-tests cleanup=joined\n' \
+        printf 'FLUTTER_PASSWORD_FIELD_TESTS_VM=pass commit=%s tree=%s suites=2 tests=11 flutter=3.24.5 widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-password-field-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$password_sha256" "$tests_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

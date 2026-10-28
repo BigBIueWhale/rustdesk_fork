@@ -308,7 +308,7 @@ class HoldTapMoveGestureRecognizer extends GestureRecognizer {
             sourceTimeStamp: event.timeStamp,
             globalPosition: event.position,
             localPosition: event.localPosition,
-            delta: event.delta)));
+            delta: event.localDelta)));
       }
     }
   }

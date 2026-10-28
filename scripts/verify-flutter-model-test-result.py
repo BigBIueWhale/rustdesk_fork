@@ -155,6 +155,12 @@ MENU_BUTTON_TESTS = {
 }
 MENU_BUTTON_SUITES = {
     "menu_button_test.dart": MENU_BUTTON_TESTS,
+    "popup_menu_position_test.dart": {
+        f"popup position {variant} {direction} {layout}"
+        for variant in ("custom", "material")
+        for direction in ("ltr", "rtl")
+        for layout in ("root", "offset", "scaled")
+    },
     "fixed_width_button_probe_test.dart": {
         f"help button {variant} {case}"
         for variant in ("filled", "outline")

@@ -11550,7 +11550,14 @@ run_flutter_model_tests() {
                     test_concurrency=1
                 elif [ "$FLUTTER_TEST_PROFILE" = menu-button ]; then
                     python3 -B -I -S /source/scripts/prepare-help-button-probe.py /source /work/project
-                    tests=(test/menu_button_test.dart test_probes/fixed_width_button_probe_test.dart)
+                    cmp /source/flutter/lib/common/widgets/popup_menu_position.dart lib/common/widgets/popup_menu_position.dart
+                    cmp /source/flutter/lib/desktop/widgets/material_mod_popup_menu.dart lib/desktop/widgets/material_mod_popup_menu.dart
+                    cmp /source/flutter/test/popup_menu_position_test.dart test/popup_menu_position_test.dart
+                    printf "POPUP_MENU_SOURCE=helper:%s menu:%s tests:%s\n" \
+                        "$(sha256sum lib/common/widgets/popup_menu_position.dart | cut -d " " -f 1)" \
+                        "$(sha256sum lib/desktop/widgets/material_mod_popup_menu.dart | cut -d " " -f 1)" \
+                        "$(sha256sum test/popup_menu_position_test.dart | cut -d " " -f 1)"
+                    tests=(test/menu_button_test.dart test_probes/fixed_width_button_probe_test.dart test/popup_menu_position_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = hold-drag ]; then
                     tests=(test/hold_tap_move_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = path-labels ]; then
@@ -11744,7 +11751,7 @@ run_flutter_model_tests() {
                 [ "$(stat -c %s /work/test.err)" -le 1048576 ]
                 [ ! -s /work/test.err ] || tail -n 120 /work/test.err >&2
                 file_navigation_stage validate-results
-                if [[ "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = direct-address || "$FLUTTER_TEST_PROFILE" = hold-drag ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = direct-address || "$FLUTTER_TEST_PROFILE" = hold-drag || "$FLUTTER_TEST_PROFILE" = menu-button ]]; then
                     cat /work/test.json
                 fi
                 /usr/bin/python3 -I -S /source/scripts/test-flutter-model-test-result.py
@@ -11792,6 +11799,9 @@ run_flutter_model_tests() {
                         python3 -B -I -S /source/scripts/prepare-help-button-probe.py /source /work/project verify
                         cmp /source/flutter/lib/desktop/widgets/menu_button.dart lib/desktop/widgets/menu_button.dart
                         cmp /source/flutter/test/menu_button_test.dart test/menu_button_test.dart
+                        cmp /source/flutter/lib/common/widgets/popup_menu_position.dart lib/common/widgets/popup_menu_position.dart
+                        cmp /source/flutter/lib/desktop/widgets/material_mod_popup_menu.dart lib/desktop/widgets/material_mod_popup_menu.dart
+                        cmp /source/flutter/test/popup_menu_position_test.dart test/popup_menu_position_test.dart
                         cmp /source/flutter/lib/desktop/widgets/button.dart lib/desktop/widgets/button.dart
                         cmp /source/flutter/lib/common.dart lib/common.dart
                         cmp /source/flutter/test_probes/fixed_width_button_cases.dart.inc test_probes/fixed_width_button_cases.dart.inc
@@ -12179,7 +12189,7 @@ run_flutter_model_tests() {
         local widget_sha256
         widget_sha256="$(sha256sum "$source_root/flutter/lib/desktop/widgets/menu_button.dart" | awk '{print $1}')"
         tests_sha256="$(sha256sum "$source_root/flutter/test/menu_button_test.dart" | awk '{print $1}')"
-        printf 'FLUTTER_MENU_BUTTON_TESTS_VM=pass commit=%s tree=%s suites=2 tests=14 flutter=3.24.5 widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-menu-button-tests cleanup=joined\n' \
+        printf 'FLUTTER_MENU_BUTTON_TESTS_VM=pass commit=%s tree=%s suites=3 tests=26 flutter=3.24.5 widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-menu-button-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$widget_sha256" "$tests_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

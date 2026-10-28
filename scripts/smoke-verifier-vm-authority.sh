@@ -1018,7 +1018,7 @@ elif [ "$MODE" = linux-pa-authority-tests ]; then
     readonly OVERLAY_SIZE=16G
     readonly VM_MEMORY=6144
 elif [ "$MODE" = flutter-model-tests ]; then
-    if [[ "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = peer-search ]]; then
+    if [[ "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = audio-input ]]; then
         readonly VM_TIMEOUT_SECONDS=300
         readonly OVERLAY_SIZE=12G
         readonly VM_MEMORY=2560
@@ -8405,7 +8405,7 @@ else
             'focused Flutter trackpad speed receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = audio-input ]; then
         require_exact_fixed_receipt \
-            "FLUTTER_AUDIO_INPUT_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=2 tests=17 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-audio-input-tests cleanup=joined" \
+            "FLUTTER_AUDIO_INPUT_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=2 tests=20 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-audio-input-tests cleanup=joined" \
             'focused Flutter audio input receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = reconnect ]; then
         require_exact_fixed_receipt \

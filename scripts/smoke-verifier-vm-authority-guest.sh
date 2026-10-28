@@ -984,6 +984,7 @@ for profile, memory, scratch, overlay in (
         ('flutter-file-columns', 2560, 6, 5),
         ('flutter-file-progress', 2560, 4.75, 4.5),
         ('flutter-peer-search', 2560, 4.75, 4.5),
+        ('flutter-audio-input', 2560, 4.75, 4.5),
         ('flutter-dialog-tests', 3072, 7, 6),
         ('flutter-keyboard-layout', 3072, 7, 6),
         ('linux-service-build', 8192, 7, 6),
@@ -1041,6 +1042,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
                         ('flutter-file-columns', 2048), ('flutter-file-columns', 3072),
                         ('flutter-file-progress', 2048), ('flutter-file-progress', 3072),
                         ('flutter-peer-search', 2048), ('flutter-peer-search', 3072),
+                        ('flutter-audio-input', 2048), ('flutter-audio-input', 3072),
                         ('tcp-key-transition', 4095), ('tcp-key-transition', 6144),
                         ('fusermount-process', 2047), ('fusermount-process', 4096),
                         ('linux-service-uid-tests', 2047), ('linux-service-uid-tests', 4096),
@@ -1105,7 +1107,7 @@ cases.extend([('hbb-common-fs', {'HBB_LOGIND_NATIVE': '1'}, 'linux-logind'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'hold-drag'}, 'flutter-credential-dialog'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'file-metadata'}, 'flutter-credential-dialog'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'frame-queue'}, 'flutter-credential-dialog'),
-              ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'audio-input'}, 'flutter-credential-dialog'),
+              ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'audio-input'}, 'flutter-audio-input'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'trackpad-speed'}, 'flutter-file-columns'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'reconnect'}, 'flutter-credential-dialog'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'virtual-mouse-buttons'}, 'flutter-credential-dialog'),
@@ -11142,10 +11144,10 @@ run_flutter_model_tests() {
             result_prefix=FLUTTER_TRACKPAD_SPEED_TEST_JSON
             expected_result='suites=2 tests=16'
         elif [ "$FLUTTER_TEST_PROFILE" = audio-input ]; then
-            memory=3g
-            memory_bytes=3221225472
+            memory=1792m
+            memory_bytes=1879048192
             result_prefix=FLUTTER_AUDIO_INPUT_TEST_JSON
-            expected_result='suites=2 tests=17'
+            expected_result='suites=2 tests=20'
         elif [ "$FLUTTER_TEST_PROFILE" = reconnect ]; then
             memory=3g
             memory_bytes=3221225472
@@ -11476,7 +11478,7 @@ run_flutter_model_tests() {
                 }
                 file_navigation_stage extract-toolchains
                 flutter_excludes=()
-                if [[ "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = peer-search ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = audio-input ]]; then
                     flutter_excludes=(
                         --exclude=flutter/.pub-preload-cache
                         --exclude=flutter/bin/cache/flutter_web_sdk
@@ -11484,7 +11486,7 @@ run_flutter_model_tests() {
                     )
                 fi
                 tar -C /work/toolchain "${flutter_excludes[@]}" -xf /inputs/flutter.tar.xz
-                if [[ "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = peer-search ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = audio-input ]]; then
                     for omitted in /work/toolchain/flutter/.pub-preload-cache \
                         /work/toolchain/flutter/bin/cache/flutter_web_sdk \
                         /work/toolchain/flutter/bin/cache/artifacts/engine/android-*; do
@@ -11492,11 +11494,12 @@ run_flutter_model_tests() {
                     done
                     sdk_receipt=FLUTTER_FILE_PROGRESS_SDK
                     [ "$FLUTTER_TEST_PROFILE" != peer-search ] || sdk_receipt=FLUTTER_PEER_SEARCH_SDK
+                    [ "$FLUTTER_TEST_PROFILE" != audio-input ] || sdk_receipt=FLUTTER_AUDIO_INPUT_SDK
                     printf "%s=pass android=omitted web=omitted pub_preload=omitted\n" "$sdk_receipt"
                 fi
                 if [ "$FLUTTER_BRIDGE_REQUIRED" -eq 1 ]; then
                     mkdir /work/cargo-home
-                    if [[ "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = peer-search ]]; then
+                    if [[ "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = audio-input ]]; then
                         rust_archive_root=rust-1.75.0-x86_64-unknown-linux-gnu
                         tar -C /work/toolchain -xf /inputs/rust.tar.xz \
                             "$rust_archive_root/install.sh" "$rust_archive_root/components" \
@@ -11523,7 +11526,7 @@ run_flutter_model_tests() {
                         --disable-ldconfig \
                         --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview \
                         >/dev/null
-                    if [[ "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = peer-search ]]; then
+                    if [[ "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = audio-input ]]; then
                         rm -rf -- "/work/toolchain/$rust_archive_root"
                         [ ! -e "/work/toolchain/$rust_archive_root" ] \
                             && [ ! -L "/work/toolchain/$rust_archive_root" ]
@@ -12034,13 +12037,14 @@ run_flutter_model_tests() {
                     python3 -B -I -S /source/scripts/prepare-keyboard-layout-probe.py /source /work/project verify
                     cat /work/test.json
                 fi
-                if [[ "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = peer-search ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = audio-input ]]; then
                     IFS= read -r memory_limit </sys/fs/cgroup/memory.max
                     IFS= read -r memory_peak </sys/fs/cgroup/memory.peak
-                    if [[ "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = peer-search ]]; then
+                    if [[ "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = audio-input ]]; then
                         [ "$memory_limit" = 1879048192 ]
                         memory_receipt=FLUTTER_FILE_PROGRESS_MEMORY
                         [ "$FLUTTER_TEST_PROFILE" != peer-search ] || memory_receipt=FLUTTER_PEER_SEARCH_MEMORY
+                        [ "$FLUTTER_TEST_PROFILE" != audio-input ] || memory_receipt=FLUTTER_AUDIO_INPUT_MEMORY
                     else
                         [ "$memory_limit" = 2147483648 ]
                         memory_receipt=FLUTTER_DIALOG_MEMORY
@@ -12082,7 +12086,7 @@ run_flutter_model_tests() {
                     cat /work/test.json
                 fi
                 parser_args=()
-                if [[ "$FLUTTER_TEST_PROFILE" = screenshot-save || "$FLUTTER_TEST_PROFILE" = locales || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = menu-button || "$FLUTTER_TEST_PROFILE" = password-fields || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = peer-search ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = screenshot-save || "$FLUTTER_TEST_PROFILE" = locales || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = menu-button || "$FLUTTER_TEST_PROFILE" = password-fields || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = audio-input ]]; then
                     parser_args=("--$FLUTTER_TEST_PROFILE")
                 fi
                 /usr/bin/python3 -I -S /source/scripts/test-flutter-model-test-result.py "${parser_args[@]}"
@@ -12475,9 +12479,10 @@ run_flutter_model_tests() {
     printf '%s\n' "$tools_freshness_line"
     printf 'FLUTTER_TEST_RESULT_PARSER=pass tests=3\n'
     printf '%s\n' "$result_line"
-    if [[ "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = peer-search ]]; then
+    if [[ "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = audio-input ]]; then
         local resource_prefix=FLUTTER_FILE_PROGRESS
         [ "$FLUTTER_TEST_PROFILE" != peer-search ] || resource_prefix=FLUTTER_PEER_SEARCH
+        [ "$FLUTTER_TEST_PROFILE" != audio-input ] || resource_prefix=FLUTTER_AUDIO_INPUT
         [ "$(grep -Ec "^${resource_prefix}_MEMORY=observed limit=1879048192 peak=[0-9]+ oom=0 oom_kill=0$" "$output")" -eq 1 ] \
             || fail 'native-widget memory observation differs'
         grep -E "^${resource_prefix}_MEMORY=" "$output"
@@ -12754,7 +12759,7 @@ run_flutter_model_tests() {
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = audio-input ]; then
-        printf 'FLUTTER_AUDIO_INPUT_TESTS_VM=pass commit=%s tree=%s suites=2 tests=17 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-audio-input-tests cleanup=joined\n' \
+        printf 'FLUTTER_AUDIO_INPUT_TESTS_VM=pass commit=%s tree=%s suites=2 tests=20 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-audio-input-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

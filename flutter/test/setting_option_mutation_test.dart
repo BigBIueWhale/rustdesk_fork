@@ -1986,18 +1986,129 @@ void main() {
       await tester.pumpWidget(_audioControls(load, write: write,
           capture: (value) => select = value));
       await tester.pumpAndSettle();
-      final failure = expectLater(select!('Mic B'), throwsStateError);
+      final failure = expectLater(select!('Mic B'), completes);
       if (!synchronous) completion.completeError(StateError('device write failed'));
       await failure;
       await tester.pumpAndSettle();
       expect(reads, 2);
       expect(find.text('device:Mic A'), findsOneWidget);
+      expect(find.text('Audio load failed'), findsOneWidget);
       await select!('Mic B');
       await tester.pumpAndSettle();
       expect(writes, 2);
       expect(reads, 3);
       expect(find.text('device:Mic B'), findsOneWidget);
+      expect(find.text('Audio load failed'), findsNothing);
       expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
+  testWidgets('audio write failure survives rebuild and clears when retry starts',
+      (tester) async {
+    final retry = Completer<void>();
+    var writes = 0;
+    var current = 'Mic A';
+    AudioINputSetDevice? select;
+    Future<AudioInputDevices> load(bool cm, bool voice) async =>
+        _audioDevices(current);
+    Future<void> write(String device, bool cm, bool voice) async {
+      if (++writes == 1) throw StateError('device unavailable');
+      await retry.future;
+      current = device;
+    }
+    Future<void>? pending;
+    try {
+      await tester.pumpWidget(_audioControls(load, write: write,
+          capture: (value) => select = value));
+      await tester.pumpAndSettle();
+      await expectLater(select!('Mic B'), completes);
+      await tester.pumpAndSettle();
+      expect(find.text('Audio load failed'), findsOneWidget);
+      expect(find.text('device:Mic A'), findsOneWidget);
+      await tester.pumpWidget(_audioControls(load, write: write, width: 380,
+          capture: (value) => select = value));
+      await tester.pumpAndSettle();
+      expect(find.text('Audio load failed'), findsOneWidget);
+      pending = select!('Mic B');
+      await tester.pump();
+      expect(find.text('Audio load failed'), findsNothing);
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+      retry.complete();
+      await pending;
+      await tester.pumpAndSettle();
+      expect(writes, 2);
+      expect(find.text('device:Mic B'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    } finally {
+      if (!retry.isCompleted) retry.complete();
+      if (pending != null) await pending;
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
+  testWidgets('audio retired write failure drains without replacement feedback',
+      (tester) async {
+    for (final retirement in ['page', 'role', 'backend']) {
+      final completion = Completer<void>();
+      final writes = <String>[];
+      AudioINputSetDevice? select;
+      Future<AudioInputDevices> load(bool cm, bool voice) async =>
+          _audioDevices(cm ? 'Mic C' : 'Mic A');
+      Future<void> write(String device, bool cm, bool voice) {
+        writes.add('$cm:$device');
+        return completion.future;
+      }
+      Future<AudioInputDevices> replacement(bool cm, bool voice) async =>
+          _audioDevices('Mic C');
+      Future<void>? observed;
+      try {
+        await tester.pumpWidget(_audioControls(load, write: write,
+            capture: (value) => select = value));
+        await tester.pumpAndSettle();
+        observed = expectLater(select!('Mic B'), completes);
+        await tester.pumpWidget(retirement == 'page'
+            ? const SizedBox.shrink()
+            : _audioControls(retirement == 'backend' ? replacement : load,
+                write: write, isCm: retirement == 'role'));
+        await tester.pump();
+        completion.completeError(StateError('retired device failed'));
+        await observed;
+        await tester.pumpAndSettle();
+        expect(writes, ['false:Mic B']);
+        expect(find.text('Audio load failed'), findsNothing);
+        if (retirement != 'page') {
+          expect(find.text('device:Mic C'), findsOneWidget);
+          expect(find.byType(LinearProgressIndicator), findsNothing);
+        }
+        expect(tester.takeException(), isNull);
+      } finally {
+        if (!completion.isCompleted) completion.complete();
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    }
+  });
+
+  testWidgets('audio replacement clears an already reported write failure',
+      (tester) async {
+    AudioINputSetDevice? select;
+    Future<AudioInputDevices> load(bool cm, bool voice) async =>
+        _audioDevices(cm ? 'Mic C' : 'Mic A');
+    Future<void> write(String device, bool cm, bool voice) async =>
+        throw StateError('device unavailable');
+    try {
+      await tester.pumpWidget(_audioControls(load, write: write,
+          capture: (value) => select = value));
+      await tester.pumpAndSettle();
+      await expectLater(select!('Mic B'), completes);
+      await tester.pumpAndSettle();
+      expect(find.text('Audio load failed'), findsOneWidget);
+      await tester.pumpWidget(_audioControls(load, write: write, isCm: true));
+      await tester.pumpAndSettle();
+      expect(find.text('Audio load failed'), findsNothing);
+      expect(find.text('device:Mic C'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    } finally {
       await tester.pumpWidget(const SizedBox.shrink());
     }
   });

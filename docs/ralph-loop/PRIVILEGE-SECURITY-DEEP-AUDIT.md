@@ -111758,3 +111758,44 @@ with unchanged 7-GiB RAM scratch, 6-GiB hard file limit, 6-GiB host headroom and
 one-GiB overhead: 17,408 MiB total. Positive and wrong-guest profile controls are
 added. The live monitors and exact joined retirement remain mandatory; insufficient
 resources still refuse, and no disk fallback or foreign-process cleanup is used.
+
+The profile CLI omission in `bf3c8cc7` refused before VM creation and was corrected
+in `6aefb7c4`. Baseline `S0lUwsfxLD` then compiled the actual widget body and passed
+three pointer/removal controls, failing all four accessibility cases. Candidate
+`c84b7171` replaces the duplicate choice buttons with a RadioListTile and retains
+diagram clicks outside focus/semantics. Its run `KY4MdFCyaw` still passes only
+the same three controls and fails the same four cases: the test's labelled-radio
+semantic lookup raises `StateError: No element`. This is not a verified correction;
+the cause remains unclassified. Both outer runs exit 1 before the shared parser
+self-tests. Each log contains two identical copies of one seven-case transcript,
+not fourteen independent cases. Test and SVG bytes are unchanged between runs.
+
+The user now explicitly pivots away. Keyboard-layout implementation, test diagnosis
+and native accessibility acceptance remain OPEN/PARKED; no fix or rerun follows.
+Baseline diagnostics were retired as `keyboard-layout-baseline.S0lUwsfxLD`.
+Candidate QEMU 1141516 joined exit 0, RAM `run.qrneoci8` is absent, and its exact
+owned diagnostic root is retired as `keyboard-layout-open.KY4MdFCyaw`
+(device/inode 66306/103991282). Supervisor time is 88.876 seconds, peak RAM/durable
+storage 4,056,223,744/3,424,256 bytes. The final endpoint snapshot's one unattributed
+removal is left untouched; all active owned run roots are absent. Candidate workload
+serial: 23,788 bytes, SHA-256
+`a7a85d459b07661487b8dbeb17047d5053381140bbb3180a25e992bc81ece18c`.
+
+### 2026-10-28 — user pivot; remaining active notice translations
+
+Work moves to localization. All fifteen installed credential actions and all
+existing parks remain OPEN. The chat widget already translates
+`chat-history-limited-tip` when history is limited, but 31 active tables still
+contain an empty value and therefore select the English fallback in `translate_locale`.
+The English source is “Some chat history is no longer shown.”
+
+Only those 31 empty values are filled: be, bg, ca, cs, da, el, eo, et, eu, fa, fi,
+ge, gu, hi, hr, hu, kz, lt, lv, ml, nb, ro, sc, sk, sl, sq, sr, sv, ta, th and vi.
+All 49 active tables, including English, now contain this notice. The unreferenced
+`pt_PT.rs` table is left alone. Read-only comparison against the parent proves
+exact single-value substitutions, preserved keys/order/existing translations and
+all other file bytes, valid UTF-8/literals and unchanged placeholders. Every changed
+module is in the actual translation dispatch. Whitespace review passes.
+No compiler, product runtime, renderer or native-speaker review ran; this is
+translation-data validation only. Chat lifecycle, application/device presentation
+and bidirectional layout remain OPEN. The fresh ledger count follows below.

@@ -51,8 +51,18 @@ Future<Color> _background(WidgetTester tester) async {
   return result!;
 }
 
-Future<void> _tab(WidgetTester tester) async {
-  await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+Finder _button() => find.ancestor(
+    of: find.byKey(_icon), matching: find.byType(TextButton)).first;
+
+Future<void> _focusButton(WidgetTester tester) async {
+  final node = tester.widget<TextButton>(_button()).focusNode!;
+  node.requestFocus();
+  await tester.pumpAndSettle();
+  expect(node.hasPrimaryFocus, isTrue);
+}
+
+Future<void> _focusOutside(WidgetTester tester) async {
+  Focus.of(tester.element(find.text('Outside'))).requestFocus();
   await tester.pumpAndSettle();
 }
 
@@ -62,10 +72,10 @@ void main() {
     testWidgets('toolbar $variant paints and retires keyboard focus', (tester) async {
       await tester.pumpWidget(_subject(submenu, () {}));
       expect(await _background(tester), _normal);
-      await _tab(tester);
+      await _focusButton(tester);
       expect(tester.getSemantics(find.byKey(_icon)), containsSemantics(isFocused: true));
       expect(await _background(tester), _highlight);
-      await _tab(tester);
+      await _focusOutside(tester);
       expect(tester.getSemantics(find.text('Outside')), containsSemantics(isFocused: true));
       expect(await _background(tester), _normal);
     }, semanticsEnabled: true);
@@ -78,7 +88,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(await _background(tester), _highlight);
       await pointer.moveTo(Offset.zero);
-      await tester.tap(find.text('Outside'));
+      await _focusOutside(tester);
       await tester.pumpAndSettle();
       expect(await _background(tester), _normal);
       await pointer.removePointer();
@@ -87,8 +97,8 @@ void main() {
     testWidgets('toolbar $variant activates by keyboard and pointer', (tester) async {
       var calls = 0;
       await tester.pumpWidget(_subject(submenu, () => calls++));
-      await _tab(tester);
       for (final key in [LogicalKeyboardKey.enter, LogicalKeyboardKey.space]) {
+        await _focusButton(tester);
         await tester.sendKeyEvent(key);
         await tester.pumpAndSettle();
         if (submenu) {
@@ -98,7 +108,7 @@ void main() {
         }
         expect(calls, key == LogicalKeyboardKey.enter ? 1 : 2);
       }
-      await tester.tap(find.byKey(_icon));
+      await tester.tap(_button());
       await tester.pumpAndSettle();
       if (submenu) {
         await tester.tap(find.text('Run action'));
@@ -110,20 +120,19 @@ void main() {
     testWidgets('toolbar $variant disabling clears focus and permits reuse', (tester) async {
       var calls = 0;
       await tester.pumpWidget(_subject(submenu, () => calls++));
-      await _tab(tester);
+      await _focusButton(tester);
       await tester.pumpWidget(_subject(submenu, null));
       await tester.pumpAndSettle();
       expect(await _background(tester), _normal);
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-      await tester.tap(find.byKey(_icon));
+      await tester.tap(_button());
       await tester.pumpAndSettle();
       expect(calls, 0);
       expect(find.text('Run action'), findsNothing);
       await tester.pumpWidget(_subject(submenu, () => calls++));
       await tester.pumpAndSettle();
       expect(await _background(tester), _normal);
-      FocusManager.instance.primaryFocus!.unfocus();
-      await _tab(tester);
+      await _focusButton(tester);
       expect(tester.getSemantics(find.byKey(_icon)), containsSemantics(isFocused: true));
       expect(await _background(tester), _highlight);
     }, semanticsEnabled: true);

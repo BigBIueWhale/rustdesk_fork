@@ -113041,3 +113041,16 @@ with the same 6 GiB headroom and 1 GiB overhead. Container memory is bounded at
 1,280 MiB and cases run with concurrency one. This reduces the workload and its
 reservation; no budget, refusal, monitor or cleanup check is bypassed. The
 existing workload-selection regression gains the exact menu-button mapping.
+
+Run `AguAYtnfXj` at `517da38f` completes 34 cases: 28 pass, six fail before
+establishing keyboard focus. The fixture incorrectly assumed that Tab enters a
+Flutter MenuBar; the pinned SDK deliberately uses `skipTraversal: true` for its
+menu scope. The fixture now requests the existing production TextButton node,
+asserts primary focus, then sends real keyboard events. It also targets the
+button for pointer taps and moves focus outside without clicking through a
+tooltip. Product code remains unchanged. This is component focus/paint evidence,
+not proof of complete toolbar keyboard entry. QEMU 2285878 joins exit 0; RAM
+`run.962kylp4` is absent. The 47,792-byte workload serial has SHA-256
+`7af28560719a53b7743ad156adfe5a44f60c776df9906f000c2a88823fa7d12f`.
+One unattributed endpoint removal is retained without inspection/intervention.
+Exact failed diagnostics are retired to `toolbar-focus-baseline.AguAYtnfXj`.

@@ -12468,7 +12468,7 @@ run_flutter_model_tests() {
         grep -E '^(RDP_PORT_SOURCE=|\{)' "$output"
     fi
     if [ "$FLUTTER_TEST_PROFILE" = menu-button ]; then
-        grep -E '^(HELP_BUTTON_|\{)' "$output"
+        grep -E '^(HELP_BUTTON_|TOOLBAR_BUTTON_|\{)' "$output"
     fi
     if [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
         grep -E 'FILE_NUMERIC_SORT |FILE_SORT_ENTRIES ' "$output"

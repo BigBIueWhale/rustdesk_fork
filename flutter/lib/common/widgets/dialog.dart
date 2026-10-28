@@ -29,49 +29,6 @@ void clientClose(SessionID sessionId, FFI ffi,
       onSubmit: ffi.viewCloseCallback(sessionId, mobileRoute: mobileRoute));
 }
 
-abstract class ValidationRule {
-  String get name;
-  bool validate(String value);
-}
-
-class LengthRangeValidationRule extends ValidationRule {
-  final int _min;
-  final int _max;
-
-  LengthRangeValidationRule(this._min, this._max);
-
-  @override
-  String get name => translate('length %min% to %max%')
-      .replaceAll('%min%', _min.toString())
-      .replaceAll('%max%', _max.toString());
-
-  @override
-  bool validate(String value) {
-    return value.length >= _min && value.length <= _max;
-  }
-}
-
-class RegexValidationRule extends ValidationRule {
-  final String _name;
-  final RegExp _regex;
-
-  RegexValidationRule(this._name, this._regex);
-
-  @override
-  String get name => translate(_name);
-
-  @override
-  bool validate(String value) {
-    return value.isNotEmpty ? value.contains(_regex) : false;
-  }
-}
-
-// R-G4 / R-SV5 (§19): the Change-ID dialog is REMOVED. The numeric RustDesk ID is an
-// artifact of the rendezvous-registration model the fork deleted (R-SV4/R-SV5) — a sovereign,
-// direct-IP box is reached by its <ip|domain>:port, not by a re-assignable ID — so changing it
-// is meaningless. The dialog's only FFI caller (`bind.mainChangeId`) is dropped with it
-// (the Rust `main_change_id` flutter export is removed; the Sciter `change_id` path is separate).
-
 Future<String> changeAutoDisconnectTimeout(String old,
     {OverlayDialogManager? dialogManager,
     Future<void> Function(String value)? writeTimeout,

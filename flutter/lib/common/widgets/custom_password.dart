@@ -46,16 +46,6 @@ class DigitValidationRule extends ValidationRule {
   }
 }
 
-class SpecialCharacterValidationRule extends ValidationRule {
-  @override
-  String get name => translate('special character');
-
-  @override
-  bool validate(String value) {
-    return value.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'));
-  }
-}
-
 class MinCharactersValidationRule extends ValidationRule {
   final int _numberOfCharacters;
   MinCharactersValidationRule(this._numberOfCharacters);

@@ -111859,3 +111859,32 @@ recovery without directly counting a pending native socket read. The fixture now
 requires zero pending socket reads before keying and a positive pending count
 before cancellation returns. This is the sole reason for the next focused rerun;
 product behavior and scenario inventory remain unchanged.
+
+### 2026-10-28 — user pivot; unused UI validation definitions
+
+The user explicitly pivots away from transport. Its already-finished second run
+`Dk15PfhffW` at `111eea6b` passes six tests / nineteen scenarios, including the
+native pending-read observation, in 0.11 test seconds / 217 outer seconds.
+Artifact SHA-256: `43f002e44dbaa8cc530fa095a9bafb5f05e54700d788dee66b8e24dcdb2d453e`.
+QEMU 1232528 joins exit 0; RAM `run.q2eru1v9` and active owned roots are absent.
+Peak RAM/durable storage is 3,576,242,176/3,379,200 bytes; every endpoint delta is
+zero. The 1,582-byte workload serial SHA-256 is
+`e51bb4fab21580de891830614e75406f6d30b35fd874f72cadb3c8e22a9de7a2`.
+Further transport work is OPEN/PARKED. No new transport change or rerun follows;
+controlled keys/prefetch are not full handshake or installed application evidence.
+
+The separate UI cleanup removes `LengthRangeValidationRule`, `RegexValidationRule`
+and their unused duplicate `ValidationRule` definition from
+`flutter/lib/common/widgets/dialog.dart`, plus the obsolete Change ID comment.
+Those concrete rules lost their sole caller when `bf0878d8` removed that dialog.
+It also removes the uncalled `SpecialCharacterValidationRule` from
+`custom_password.dart`. Full tracked-reference review finds no consumers or
+reflective lookup. The actual permanent-password dialog continues to use the
+unchanged digit, uppercase, lowercase and minimum-eight-character validators.
+No authority, validation policy, save operation or API is replaced.
+
+Exact byte comparison proves only the two intended deletions (43 and 10 lines)
+occurred; every retained byte and the complete active password dialog are unchanged.
+Reference and whitespace checks pass. No compiler, product runtime or native
+credential transaction ran for this deletion. All fifteen installed credential
+actions and prior user parks remain OPEN. The required fresh ledger count follows.

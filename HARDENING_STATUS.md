@@ -52,6 +52,11 @@ case inventories, intermediate failures, source/artifact hashes and timings rema
 receipts under `.harness-state/verifier-vm/` and in Git history. Shared current-artifact,
 installed/other-platform, R-S0/R-F5, resource/soak and release obligations below remain OPEN.
 
+**User pivot (2026-10-28):** Tab-overflow menu coordinates, dismissal and owner
+lifetime remain OPEN/PARKED after read-only inspection. No menu patch or new
+test ran. Do not resume automatically. Work moved to correcting the historical
+protobuf assurance claims in this ledger and the version-check output.
+
 **User pivot (2026-10-28):** Raw credential decoder format/length review remains
 OPEN/PARKED after initial read-only inspection. No new defect, patch or native
 test was established. Do not resume automatically. Work moved to unused copied
@@ -12989,38 +12994,28 @@ sandbox implementation and checker-repair history remain in Git.
   R-S11b/R-S11c above. Any future IPC audit must distinguish transport admission from
   message authority and must treat the process that enforces a credential/action as
   the owner of that credential/action.
-- **Protobuf parser attack-surface audit — ✅ PERFORMED 2026-06-29; parser
-  SOUND for our threat model.** The `protobuf` crate (rust-protobuf) **v3.7.2**
-  (crates.io, `Cargo.lock` checksum
-  `d65a1d4ddae7d8b5de68153b48f6aa3bba8cb002b243dbdbc55a5afbc98f99f4`) is the
-  **first code that touches attacker bytes** — the unauthenticated pre-key
-  `parse_from_bytes::<Cpace>` (sole pre-auth parser, R-S7/R-P14) and the post-key
-  full `Message`-union parse (connection.rs / io_loop.rs) — and with
-  `panic = 'abort'` any decoder panic/OOM/hang is a whole-process DoS, so this
-  assumption was load-bearing. Audited the exact pinned source (cloned
-  `rust-protobuf` tag `v3.7.2` → `/tmp`, runtime crate version confirmed 3.7.2).
-  Findings — every relevant DoS vector is **defended**: (a) **stack overflow** —
-  `CodedInputStream` enforces `DEFAULT_RECURSION_LIMIT = 100` via
-  `incr_recursion()?`/`decr_recursion()` around every nested-message and
-  group/unknown-field read on the **static** path; the incr/decr are balanced
-  (decr only after a successful incr, so no underflow panic). (b) **OOM** —
-  `read_exact_to_vec` validates the claimed length against `bytes_until_limit()`
-  **before any allocation** (so a length prefix can't exceed the actual bounded
-  input), and the speculative reserve is capped at `READ_RAW_BYTES_MAX_ALLOC =
-  10 MB` (growing incrementally past that). (c) **varint** non-termination /
-  overflow — capped at `MAX_VARINT_ENCODED_LEN = 10` bytes with a 10th-byte
-  overflow guard, error-not-panic. (d) Both relevant advisories are fixed in
-  **exactly this pin**: RUSTSEC-2024-0437 (uncontrolled-recursion crash via
-  unknown-field parsing, `patched >= 3.7.2`) and RUSTSEC-2019-0003
-  (`Vec::reserve` on user input, `patched >= 2.6.0`); no advisory requires
-  `> 3.7.2`. RustDesk parses **only via the static, recursion-checked path**
-  (`T::parse_from_bytes`; no `merge_message_dyn`/reflection of untrusted bytes).
-  Our own frame cap (4 KiB pre-key / 32 MiB post-key) is defense-in-depth on top.
-  A new `verify.sh` gate pins the parser-safety floor (`protobuf >= 3.7.2` in
-  `Cargo.lock`, the RUSTSEC-2024-0437 fix). **Forward-looking residual (not
-  currently reachable):** `merge_message_dyn` lacks the recursion incr/decr — if
-  reflection-based dynamic parsing of untrusted input is ever added, it would
-  bypass the depth limit; the gate + this note flag it.
+- **Protobuf parser — pinned source review; runtime/resource acceptance OPEN.**
+  `Cargo.lock` retains runtime `protobuf` 3.7.2, checksum
+  `d65a1d4ddae7d8b5de68153b48f6aa3bba8cb002b243dbdbc55a5afbc98f99f4`.
+  `recv_cpace` in `libs/hbb_common/src/cpace.rs` parses the bounded pre-key
+  `Cpace`; `src/server/connection.rs` and `src/client/io_loop.rs` use the static
+  `Message::parse_from_bytes` entry for post-key messages. Framing precedes those
+  calls. R-S7's 4 KiB pre-key and 32 MiB post-key frame limits remain mandatory.
+  The historical source review identified the default 100-level recursion limit
+  on static nested messages and unknown groups, varints of at most ten bytes,
+  and length checks before raw-byte allocation. The 10,000,000-byte reserve threshold is not
+  a bound on total decoded allocations or process memory. Dynamic/reflection
+  parsing is outside that review; `merge_message_dyn` lacks the static entry's
+  recursion guard and must not inherit its assurance.
+  The pin is in the patched ranges of
+  [RUSTSEC-2024-0437](https://rustsec.org/advisories/RUSTSEC-2024-0437.html) and
+  [RUSTSEC-2019-0003](https://rustsec.org/advisories/RUSTSEC-2019-0003.html).
+  `scripts/verify.sh` checks only the locked runtime version against 3.7.2;
+  it neither executes these parser paths nor scans current advisories. R-A7/R-R3's
+  separate fresh advisory checks remain required. The former blanket soundness
+  and complete DoS-defense claims are withdrawn. Complete exact-artifact evidence
+  for malformed input, recursion, allocation/CPU and concurrent-peer resources remains OPEN;
+  source inspection and the version floor do not supply it.
 - **Apple artifacts** — macOS/iOS are source-conformed (R-R2 retain-and-check),
   not built; full artifacts need the Apple SDK/toolchain path.
 - **Apple R-R2 release gate integration — ✅ CLOSED 2026-07-11.** `scripts/apple-conform-check.sh`

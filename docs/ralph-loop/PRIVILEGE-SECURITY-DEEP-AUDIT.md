@@ -111530,3 +111530,37 @@ owned run roots are absent. The final endpoint set has one unattributed removal,
 left untouched. Workload serial: 31,515 bytes, SHA-256
 `da85445b1b5573abc938a50361e6cb0c8d300f541c6d647f82eed11d1182d140`.
 This audit-only receipt preserves the counted ledger and all product/test bytes.
+
+### 2026-10-28 — user pivot; protobuf assurance reporting
+
+The user explicitly pivots away from the tab-overflow work. Its coordinate,
+route-dismissal and owner-lifetime inspection remains OPEN/PARKED; there is no
+menu edit or new runtime result. The worktree starts clean at `08fedf915b69`.
+
+This slice corrects the ledger's historical blanket protobuf soundness/DoS
+claims and the version gate's repeated 2026-06-29 audit assertion. The actual
+gate reads the locked runtime version and compares it with 3.7.2. It does not
+execute a parser, measure resources, inspect call reachability or scan advisories.
+All comparisons, status assignments, version interpolation and guard outcomes
+are preserved; only comments and report strings change. No product, dependency,
+test, normative requirement or live instruction changes.
+
+Read-only inspection confirms the current lockfile's 3.7.2 identity, static
+pre-key/post-key call sites, and the reviewed dependency files against their
+vendored checksum metadata. The code has the default 100-level static/group
+recursion guard, bounded varints and length checks before raw-byte allocation.
+Its 10,000,000-byte reserve threshold does not bound total decoded/process
+memory; dynamic `merge_message_dyn` lacks the static entry's recursion guard.
+These observations do not establish a new reachable product defect or runtime
+acceptance. The two named primary advisories still place this pin in their
+patched ranges: https://rustsec.org/advisories/RUSTSEC-2024-0437.html and
+https://rustsec.org/advisories/RUSTSEC-2019-0003.html. No fresh full advisory scan
+ran; the separate October advisory/reachability work remains parked.
+
+The ledger retains the exact dependency pin, frame limits, narrow source
+observations, dynamic-parser caveat, separate advisory obligation and complete
+native/resource acceptance as OPEN. Shell syntax, whitespace and read-only
+before/after comparison pass; the latter proves the complete verifier differs
+only in comments and the three literal protobuf report strings. No application
+compile or behavioral test is needed for this reporting-only change. All fifteen
+installed credential actions, R-S0/R-F5 and release acceptance remain OPEN.

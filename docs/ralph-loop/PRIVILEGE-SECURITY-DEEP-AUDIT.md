@@ -116721,3 +116721,12 @@ Windows/macOS, current release artifacts, R-S0/R-F5, independent reproduction
 and external review remain open. User-parked work stays parked. Python parsing,
 both edited shell syntax checks and `git diff --check` pass. Requirements and
 live instructions are unchanged.
+
+At `5f59aba4`, isolated count `L4QJasJUXR` reports **359,747 ledger tokens** /
+1,645,376 bytes, SHA-256
+`5e610ee9e322b881eaf5ddb4e341b249f69e7ff986e22ab45fa7e95905728f08`.
+Seven tokenizer controls and the complete byte round trip pass. QEMU 1750588
+joins after 30.408 seconds, RAM `run.urxz7mdl` retires and three host listener
+deltas are zero. Six count files add 103,026 bytes; all 21 retained evidence
+files total 351,730 bytes per host. This audit-only receipt leaves the measured
+ledger unchanged.

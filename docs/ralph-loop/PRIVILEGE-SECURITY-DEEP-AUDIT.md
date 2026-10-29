@@ -117422,8 +117422,9 @@ LEB128 and concatenated public fields have borrowed iterators; generator and ISK
 hashing stream their inputs. The secret-copying `prepend_len`/`generator_string`,
 materialized o_cat and handwritten comparison are removed. Lexicographic ordering
 compares only public element/AD encodings. ISK's digest copy is explicitly wiped
-after copying its result; existing caller/state secret ownership remains. No wire,
-public API, dependency, key derivation or authentication policy changes.
+after copying its result; existing caller/state secret ownership remains. The
+cryptographic construction, wire values, public API, dependencies and authentication
+policy remain the same.
 
 Corrected run `cu7Q4C196e` passes the same seventeen functional checks and the
 same allocation probe: generator and ISK each report zero allocations and zero

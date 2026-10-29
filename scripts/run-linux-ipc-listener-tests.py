@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import select
 import shutil
+import signal
 import socket
 import stat
 import subprocess
@@ -295,10 +296,13 @@ def native(expected_sha, barrier_sha):
                and (kind == 'fifo' or lock.read_bytes() == b'keep'), result)
         lock.unlink(); target.unlink(missing_ok=True)
 
-    # A is stopped immediately before its descriptor-relative stale unlink.
-    # B then runs the complete production startup while A's observation is stale.
-    for postfix, uid in (('_service_password', 0), ('_password', 4001)):
+    # Pause before stale unlink (reservation held), or before reservation acquisition
+    # (the asynchronous probe has finished). Each schedule uses real kernel operations.
+    schedules = [(schedule, postfix, uid) for schedule in ('unlink', 'flock', 'crash')
+                 for postfix, uid in (('_service_password', 0), ('_password', 4001))]
+    for schedule, postfix, uid in schedules:
         endpoint = path(postfix, uid)
+        label = postfix if schedule == 'unlink' else schedule + '-' + postfix
         other_postfix = '_service_credential' if uid == 0 else ''
         other_endpoint = path(other_postfix, uid)
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stale:
@@ -310,13 +314,25 @@ def native(expected_sha, barrier_sha):
         try:
             launch = command('start', postfix, uid)
             launch['env'] = dict(ENV, LD_PRELOAD=str(barrier), IPC_BARRIER_ENTER=str(entered_w),
-                                 IPC_BARRIER_RELEASE=str(release_r), IPC_BARRIER_ENTRY=endpoint.name)
+                                 IPC_BARRIER_RELEASE=str(release_r), IPC_BARRIER_ENTRY=endpoint.name,
+                                 IPC_BARRIER_CALL='flock' if schedule == 'flock' else 'unlink')
             first = subprocess.Popen(**launch, pass_fds=(entered_w, release_r), stdin=subprocess.PIPE,
                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             children.append(first)
             os.close(entered_w); entered_w = None
             os.close(release_r); release_r = None
-            require(select.select([entered_r], [], [], 5)[0] and os.read(entered_r, 1) == b'R', 'unlink barrier not reached')
+            require(select.select([entered_r], [], [], 5)[0] and os.read(entered_r, 1) == b'R', 'startup barrier not reached')
+            if schedule == 'crash':
+                lock = endpoint.with_name(endpoint.name + '.lock')
+                lock_before = lock.lstat()
+                first.kill(); first.communicate(timeout=5)
+                require(first.returncode == -signal.SIGKILL, 'owned crash child did not join')
+                children.remove(first)
+                result = check(postfix, uid)
+                record('crash-recovery-' + postfix, result.returncode == 0
+                       and result.stdout == 'OK started\n' and endpoint.is_socket()
+                       and lock.lstat().st_ino == lock_before.st_ino, result)
+                continue
             second = subprocess.Popen(**command('start', postfix, uid), stdin=subprocess.PIPE,
                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             children.append(second)
@@ -324,23 +340,30 @@ def native(expected_sha, barrier_sha):
             second_ready = second.stdout.readline() == 'READY\n'
             if not second_ready:
                 second.wait(timeout=5)
+            incumbent_inode = endpoint.lstat().st_ino if second_ready else None
             independent = subprocess.Popen(**command('start', other_postfix, uid), stdin=subprocess.PIPE,
                                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             children.append(independent)
             require(select.select([independent.stdout], [], [], 5)[0], 'independent startup did not finish')
             independent_ready = independent.stdout.readline() == 'READY\n'
-            record('independent-start-' + postfix, independent_ready and other_endpoint.is_socket(),
+            record('independent-start-' + label, independent_ready and other_endpoint.is_socket(),
                    subprocess.CompletedProcess([], 0 if independent_ready else 3, '', ''))
             os.write(release_w, b'G'); os.close(release_w); release_w = None
-            require(select.select([first.stdout], [], [], 5)[0] and first.stdout.readline() == 'READY\n', 'first startup did not finish')
+            require(select.select([first.stdout], [], [], 5)[0], 'first startup did not finish')
+            first_ready = first.stdout.readline() == 'READY\n'
+            if not first_ready:
+                first.wait(timeout=5)
+            owner, refused = (second, first) if schedule == 'flock' else (first, second)
+            owner_ready, refused_ready = (second_ready, first_ready) if schedule == 'flock' else (first_ready, second_ready)
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
                 peer.settimeout(2); peer.connect(str(endpoint))
                 import struct
                 connected_pid, connected_uid, _ = struct.unpack('3i', peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
-            result = subprocess.CompletedProcess([], second.returncode if not second_ready else 0,
-                                                 f'competitor_ready={second_ready} connected_pid={connected_pid}', '')
-            record('concurrent-start-' + postfix, not second_ready and second.returncode == 3
-                   and connected_pid == first.pid and connected_uid == uid, result)
+            result = subprocess.CompletedProcess([], refused.returncode if not refused_ready else 0,
+                                                 f'first_ready={first_ready} second_ready={second_ready} connected_pid={connected_pid}', '')
+            record('concurrent-start-' + label, owner_ready and not refused_ready and refused.returncode == 3
+                   and connected_pid == owner.pid and connected_uid == uid
+                   and (schedule != 'flock' or endpoint.lstat().st_ino == incumbent_inode), result)
         finally:
             if release_w is not None:
                 try:
@@ -362,9 +385,39 @@ def native(expected_sha, barrier_sha):
             other_endpoint.unlink(missing_ok=True)
             require(cleanup_ok, 'startup child did not join normally')
         result = check(postfix, uid)
-        record('restart-after-contention-' + postfix, result.returncode == 0
+        record('restart-after-contention-' + label, result.returncode == 0
                and result.stdout == 'OK started\n' and endpoint.is_socket(), result)
         endpoint.unlink(missing_ok=True)
+
+    for kind in ('deleted', 'unreadable'):
+        endpoint = path('_password', 4001)
+        executable = work / 'unlinked-probe'
+        launch = command('listen' if kind == 'deleted' else 'listen-unprovable', '_password', 4001)
+        if kind == 'deleted':
+            shutil.copyfile(probe, executable); executable.chmod(0o555)
+            require(sha(executable) == expected_sha, 'identity fixture binary differs')
+            launch['args'][0] = str(executable)
+        child = subprocess.Popen(**launch, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE, text=True)
+        try:
+            require(select.select([child.stdout], [], [], 5)[0] and child.stdout.readline() == 'READY\n',
+                    'identity fixture listener failed')
+            before = endpoint.lstat()
+            if kind == 'deleted':
+                executable.unlink()
+                require(os.readlink(f'/proc/{child.pid}/exe').endswith(' (deleted)'), 'executable was not unlinked')
+            passed = True
+            for action in ('probe', 'try-start'):
+                result = check('_password', 4001, action)
+                expected = ('Failed to canonicalize peer executable path' if kind == 'deleted'
+                            else 'Failed to read peer executable link')
+                passed = passed and result.returncode == 3 and expected in result.stderr
+                passed = passed and endpoint.exists() and endpoint.lstat().st_ino == before.st_ino
+            record('identity-unavailable-' + kind, passed, result)
+        finally:
+            child.communicate('stop\n', timeout=5)
+            require(child.returncode == 0, 'identity fixture child did not join')
+            endpoint.unlink(missing_ok=True); executable.unlink(missing_ok=True)
 
     for scenario in ('valid', 'unknown-field', 'unknown-type', 'malformed',
                      'oversized', 'truncated', 'silent', 'disconnect'):
@@ -421,8 +474,8 @@ def native(expected_sha, barrier_sha):
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
     require(sha(barrier) == barrier_sha, 'barrier changed')
     probe.unlink(); barrier.unlink(); work.rmdir()
-    require(len(cases) == 29, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=29 failures={len(failures)} '
+    require(len(cases) == 39, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=39 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 

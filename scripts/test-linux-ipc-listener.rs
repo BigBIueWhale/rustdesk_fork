@@ -134,9 +134,15 @@ fn main() {
         runtime.block_on(service_fixture(scenario));
         return;
     }
-    if args[1] == "listen" {
+    if args[1] == "listen" || args[1] == "listen-unprovable" {
         use std::io::{BufRead, Write};
         let _listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        if args[1] == "listen-unprovable" {
+            assert_eq!(unsafe { libc::geteuid() }, 4001);
+            assert_eq!(unsafe { libc::prctl(libc::PR_SET_DUMPABLE, 0 as libc::c_ulong,
+                                          0 as libc::c_ulong, 0 as libc::c_ulong,
+                                          0 as libc::c_ulong) }, 0);
+        }
         println!("READY");
         std::io::stdout().flush().unwrap();
         let mut line = String::new();

@@ -115955,3 +115955,29 @@ QEMU 1691765 joins after 30.714 seconds, `run.2ajri600` retires and all three
 listener deltas are zero. Six count records add 103,480 bytes; all 28 retained
 files total 407,790 bytes on both machines. This audit-only receipt leaves the
 measured ledger unchanged. Broader hardening and documentation cleanup remain OPEN.
+
+### 2026-10-29 — retired loader/helper appendix descriptions
+
+Read-only selection confirms Windows harness storage and parent-build/integration
+remain user-parked. A text approval request asks whether to reopen the latter;
+neither parked path is executed or changed. Independent documentation work
+classifies Appendix C #113/#114/#146: their first cells narrate removed IDD,
+generated-build and generic privileged-launch implementations. Deletion commits
+`c18b22d2`, `5ed5eae7` and `c3b41bbb` retain that history. Current product/build
+search finds no `dylib_virtual_display`, `generate_build_script_for_docker` or
+`run_as_user` implementation; existing absence gates are unchanged.
+
+Only the three risk-description cells change. Their complete required-disposition
+cells, including platform rules and native/installed acceptance, are byte-identical.
+The new descriptions retain reachability/privileged-effect evidence limits without
+presenting historical code as current behavior. No product fix or LPE closure is
+claimed. R-S11x and every other primary clause remain unchanged.
+
+Exact replacement review proves all unrelated specification bytes unchanged and
+preserves 411 requirement IDs, 371 finding IDs, 2,863 requirement references,
+211 links, 34 anchors and the complete table/cell structure. The specification
+shrinks 945 bytes, from 1,682,780 to 1,681,835. Its SHA-256 changes from
+`a37e132aaf7217b2b0a6d82877542811740fd10d180117bb7d13021538656d24` to
+`5b1a37cacabf59f8123de5b78a0e2a2d785f96243f40a15c81fffbc2495e3a38`.
+`helper-exclusion-spec-3bcc5293.json` retains the classified before/after cells and
+comparison. Product/tests/verifiers and live instruction files are unchanged.

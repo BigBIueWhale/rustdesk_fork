@@ -117276,3 +117276,12 @@ component receipt `Ct0zJbnB04` remains applicable to its unchanged product and
 fixtures; no product test or full catalogue was rerun for this deletion. Native
 Windows/macOS, installed functionality and all parked work remain OPEN. A fresh
 ledger count follows.
+
+Ledger count `Ue6nklr7XW` at `78b03e48` reports 359,688 tokens using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 1,644,668 bytes, SHA-256
+`1912045cebb9ac4e367a7c753951b0b059758074f3646f0264f6df1ca729d4da`.
+Seven controls and the complete text round trip pass. QEMU 1790841 joins after
+31.044 seconds; RAM `run.to1p3i0j` retires and all three listener deltas are zero.
+Six raw evidence files total 102,844 bytes per host with matching hashes. This
+audit-only receipt preserves the measured ledger bytes and its approximate
+400,000-token budget.

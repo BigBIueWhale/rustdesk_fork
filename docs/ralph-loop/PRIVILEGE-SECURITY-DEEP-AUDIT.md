@@ -114330,3 +114330,16 @@ Retained capsule: `ipc-parent-evidence-c71ff4b4.json`, 41,315 bytes, SHA-256
 It includes the classification/comparison inputs, commands, outputs, isolation,
 terminal states and listener inventories. Only the matching architecture ledger
 entry changes; its fresh isolated token count follows.
+
+Fresh isolated count at pushed `ddc2847c`, TUF run `iwUhPsj9YO`, exits zero:
+356,499 tokens / 1,629,739 bytes, up 137 tokens / 719 bytes. The pinned
+`tiktoken-0.12.0/cl100k_base/encode_ordinary` method passes seven controls and
+byte round-trip; ledger SHA-256 is
+`25c3808c8c2eee41eb712c3f700742ec493890351711d82df627c58a32cf71fa`.
+The 33.467-second run peaks at 402,395,136 RAM scratch bytes, 305,860,608 overlay
+bytes and 262,144 durable-run bytes. QEMU 1560726 joins exit zero; its PID and
+RAM workspace `run.tc8k3j0a` are absent. All three listener deltas are zero.
+Six copied evidence files total 104,374 bytes and match the TUF hashes; serial
+SHA-256 is `95ee768e199b6e2ee76caf72fd867211e33ee1978c9078ca89e445807871ecab`.
+The classification capsule also matches on both hosts. This audit-only receipt
+leaves the counted ledger unchanged.

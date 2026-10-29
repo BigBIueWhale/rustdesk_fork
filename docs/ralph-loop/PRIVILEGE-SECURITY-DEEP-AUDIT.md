@@ -114712,3 +114712,20 @@ Thirty-five copied evidence files total 385,452 bytes and match TUF hashes.
 Capsule `ipc-listener-preservation-641bb1b2.json`, 65,506 bytes, SHA-256
 `a17ed2ca0c29315183be37e6a39a0b4bd91443da798047c718e6e9ccb6140227`.
 The fresh ledger count follows.
+
+Fresh isolated count at `304c3979`, TUF `KDhVq7TDTk`, exits zero:
+356,805 tokens / 1,631,338 bytes, up 48 tokens / 172 bytes. The pinned
+tiktoken method passes seven controls and byte round-trip; ledger SHA-256 is
+`870aa9b9f2b98e99dca18cddf6e8af03a827d0f6d52a554227614a7b43d38d2e`.
+The 35.195-second run peaks at 402,345,984 RAM scratch bytes, 305,795,072 overlay
+bytes and 258,048 durable-run bytes. QEMU 1600814 joins exit zero; its PID,
+workspace `run.g8kr44xp` and active run roots are absent. All three listener
+deltas are zero. Six copied files total 103,023 bytes and match on both hosts;
+serial SHA-256 is
+`ef440cb09b44a3d6af1692a43a6e1a19835c7a8445caa45487a2a7ae17c95bd7`.
+The listener capsule also matches on both hosts. After retained evidence was
+verified, the four exact retired diagnostic trees, including duplicate unpacked
+virtiofsd copies, were removed under the shared lock with inode/owner/type and
+process-absence checks. This reclaims 13,729,792 allocated disk bytes; bounded
+receipts and canonical offline inputs remain. This audit-only receipt leaves
+the counted ledger unchanged.

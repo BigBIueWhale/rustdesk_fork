@@ -1105,12 +1105,6 @@ pub fn check_zombie() {
 }
 
 /// Start the host server that allows the remote peer to control the current machine.
-///
-/// # Arguments
-///
-/// * `is_server` - Whether the current client is definitely the server.
-/// If true, the server will be started.
-/// Otherwise, client will check if there's already a server and start one if not.
 #[cfg(any(target_os = "android", target_os = "ios"))]
 #[tokio::main]
 pub async fn start_server(
@@ -1134,15 +1128,9 @@ pub async fn start_server(
 }
 
 /// Start the host server that allows the remote peer to control the current machine.
-///
-/// # Arguments
-///
-/// * `is_server` - Whether the current client is definitely the server.
-/// If true, the server will be started.
-/// Otherwise, client will check if there's already a server and start one if not.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tokio::main]
-pub async fn start_server(is_server: bool) {
+pub async fn start_server() {
     use std::sync::Once;
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
@@ -1155,60 +1143,36 @@ pub async fn start_server(is_server: bool) {
         hbb_common::platform::windows::start_cpu_performance_monitor();
     });
 
-    if is_server {
-        #[cfg(target_os = "linux")]
-        if crate::common::is_service_owned_server_process() {
-            if let Err(err) =
-                crate::ipc::refresh_linux_service_owned_permanent_password_snapshot(10_000).await
-            {
-                log::error!(
-                    "Linux service-owned credential snapshot failed before admission: {err}"
-                );
-                std::process::exit(1);
-            }
-        }
-        // R-A4 is a pre-admission invariant on desktop: prove it before any authority-bearing
-        // local IPC listener or the public direct listener is created.
-        if let Err(err) = crate::direct_service::assert_startup_invariants() {
-            log::error!("Controlled-server startup invariants failed closed: {err}");
+    #[cfg(target_os = "linux")]
+    if crate::common::is_service_owned_server_process() {
+        if let Err(err) =
+            crate::ipc::refresh_linux_service_owned_permanent_password_snapshot(10_000).await
+        {
+            log::error!(
+                "Linux service-owned credential snapshot failed before admission: {err}"
+            );
             std::process::exit(1);
         }
-        // Signal registration is part of controlled-server admission. Install it before the main
-        // IPC, Windows service-control IPC, or public direct listener can accept work.
-        let shutdown_signals =
-            match crate::direct_service::install_controlled_server_shutdown_signals() {
-                Ok(signals) => signals,
-                Err(err) => {
-                    log::error!("Controlled-server shutdown setup failed closed: {err}");
-                    std::process::exit(1);
-                }
-            };
-        // R-D4 / §17: direct-only service entry — no rendezvous mediator (the inherited
-        // start_all and its register/STUN/KCP/LAN protocol are bypassed, removal pending).
-        // Desktop signal, local-IPC, and public-listener completion stay owned by this server
-        // runtime; Android uses its separate foreground-service generation entry above.
-        crate::direct_service::start_direct_only(shutdown_signals).await;
-    } else {
-        match crate::ipc::get_main_status_snapshot(1000).await {
-            Ok(_) => {}
-            Err(err) => {
-                // R-X10: the GUI/client (`is_server == false`) path NEVER auto-starts a controlled
-                // server — the controlled side starts ONLY via the installed `--service` (one mode,
-                // the installed-service privilege model). The inherited `else { start_server(true) }`
-                // was a SECOND, non-installed-service way to run the controlled side (the portable /
-                // quick-support / run-from-terminal twin R-X10 excises). The GUI path now just retries
-                // the same-user main IPC connection in case a controlled `--server` comes up later; the
-                // `--no-server` flag + its vestigial `no_server` param are removed too (R-X10). The
-                // standalone `--service`/`--server` entries (R-D8) are unaffected — `is_server == true`
-                // above.
-                log::info!(
-                    "no controlled --server main IPC to connect to yet (GUI viewer-only, R-X10): {err:?}"
-                );
-                hbb_common::sleep(1.0).await;
-                std::thread::spawn(|| start_server(false));
-            }
-        }
     }
+    // R-A4 is a pre-admission invariant on desktop: prove it before any authority-bearing
+    // local IPC listener or the public direct listener is created.
+    if let Err(err) = crate::direct_service::assert_startup_invariants() {
+        log::error!("Controlled-server startup invariants failed closed: {err}");
+        std::process::exit(1);
+    }
+    // Signal registration is part of controlled-server admission. Install it before the main
+    // IPC, Windows service-control IPC, or public direct listener can accept work.
+    let shutdown_signals =
+        match crate::direct_service::install_controlled_server_shutdown_signals() {
+            Ok(signals) => signals,
+            Err(err) => {
+                log::error!("Controlled-server shutdown setup failed closed: {err}");
+                std::process::exit(1);
+            }
+        };
+    // Desktop signal, local-IPC, and public-listener completion stay owned by this server
+    // runtime; Android uses its separate foreground-service generation entry above.
+    crate::direct_service::start_direct_only(shutdown_signals).await;
 }
 
 #[cfg(any(target_os = "windows", target_os = "macos"))]

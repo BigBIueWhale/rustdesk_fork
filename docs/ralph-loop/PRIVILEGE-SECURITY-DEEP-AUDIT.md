@@ -116833,3 +116833,30 @@ Seven tokenizer controls and byte round trip pass. QEMU 1759334 joins after
 30.417 seconds; RAM `run.g_b9zccd` retires and three host listener deltas are zero.
 Six count files add 102,696 bytes; all 28 retained files total 421,785 bytes per
 host. This audit-only receipt leaves the measured ledger unchanged.
+
+### 2026-10-29 — remove the redundant desktop GUI startup probe
+
+At `a241f299`, `core_main.rs:348` starts `start_server(false)` for the GUI.
+`server.rs:1191` discards a successful status snapshot; on failure it waits one
+second and starts another detached thread calling the same function. The
+[pinned Tokio 1.44.2 macro documentation](https://docs.rs/tokio/1.44.2/tokio/attr.main.html)
+confirms that each invocation constructs a runtime, multithreaded by default.
+This is redundant work: `ui_interface.rs:697,737` independently owns status-cache
+updates, started by Flutter initialization and the CM entries. No LPE is shown.
+
+Delete the GUI probe/retry and the desktop Boolean mode parameter; update all
+three controlled-server call sites. Preserve the Windows CPU-monitor start in
+the same GUI predicate: codec thread selection consumes that measurement, so
+removing its only main-window initializer would change required behavior. The
+monitor already owns its once-only thread creation. Controlled startup retains
+the same initialization, credential refresh, invariants, signal registration and
+direct listener order. Mobile code is unchanged; its misleading auto-start
+comment is deleted along with the desktop copy and stale mediator history.
+
+Delete the old R-X10 grep gate: searching only `start_server(true` in `server.rs`
+cannot establish GUI call-graph authority and no longer matches the desktop API.
+The `--no-server` absence check remains. Call-site inspection, exact scoped source
+comparison, shell syntax and `git diff --check` cover this retirement. No new
+surrogate fixture is added. Full application startup, actual thread/CPU savings,
+Windows CPU monitoring and installed/native acceptance remain unexecuted; the
+existing parked work remains parked.

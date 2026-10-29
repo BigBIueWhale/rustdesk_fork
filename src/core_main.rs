@@ -346,7 +346,8 @@ pub fn core_main() -> Option<Vec<String>> {
     // installed-service fork the controlled side is reached only via `--service`
     // (CreateProcessAsUserW -> `--server` -> `--tray`).
     if args.is_empty() || crate::common::is_empty_uni_link(&args[0]) {
-        std::thread::spawn(move || crate::start_server(false));
+        #[cfg(windows)]
+        hbb_common::platform::windows::start_cpu_performance_monitor();
     } else {
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         // Root CLI management commands that remain user-owned talk to the user `--server` main IPC.
@@ -443,11 +444,11 @@ pub fn core_main() -> Option<Vec<String>> {
             }
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             {
-                crate::start_server(true);
+                crate::start_server();
             }
             #[cfg(target_os = "macos")]
             {
-                let handler = std::thread::spawn(move || crate::start_server(true));
+                let handler = std::thread::spawn(move || crate::start_server());
                 crate::tray::start_tray();
                 // prevent server exit when encountering errors from tray
                 hbb_common::allow_err!(handler.join());

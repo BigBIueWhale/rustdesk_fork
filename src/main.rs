@@ -78,7 +78,7 @@ fn main() {
     } else if let Some(p) = matches.get_one::<String>("connect") {
         cli::connect_test(p);
     } else if matches.get_flag("server") {
-        crate::start_server(true);
+        crate::start_server();
     }
     common::global_clean();
 }

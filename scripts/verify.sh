@@ -11912,21 +11912,7 @@ fi
 # not merely dead-by-empty-config (a config-write to rendezvous-servers + serial could otherwise revive
 # its egress). Assert the symbol is gone (explanatory comments excepted by ra6_clean's `//` filter).
 ra6_clean 'test_rendezvous_server' 'R-SV4(d)/R-SV10 rendezvous-server latency-probe startup phone-home' || rc=1
-# R-X10 (§8 run-mode plurality): the GUI/client (`is_server == false`) startup path NEVER auto-starts
-# a controlled server — the controlled side starts ONLY via the installed `--service`/`--server` (one
-# mode, R-D8). The inherited `else { start_server(true) }` fallback in server.rs's `is_server == false`
-# branch (a SECOND, non-installed-service way to run the controlled side — the portable/quick-support/
-# run-from-terminal twin) is removed. Assert NO non-comment `start_server(true)` survives in server.rs
-# (the legitimate `start_server(true, false)` entries live in core_main.rs's `--server` arm, KEPT).
-r_x10_n=$(grep -E 'start_server\(true' src/server.rs 2>/dev/null | grep -vcE '//' || true)
-if [ "${r_x10_n:-1}" -eq 0 ]; then
-  echo "  ok  R-X10 GUI/client path never auto-starts a controlled server (server-fallback removed; controlled = installed --service only)"
-else
-  echo "  FAIL R-X10: a start_server(true) fallback survives in server.rs's is_server==false branch (found ${r_x10_n} non-comment)"; rc=1
-fi
-# R-X10 (cont.): the --no-server flag + its vestigial no_server param are compiled out (the GUI never
-# starts a controlled server, so the flag was redundant; ipc.rs's main-window restart no longer passes
-# it; start_server is now 1-arg). Assert the flag string is absent (R-A6).
+# R-X10: the GUI does not start a controlled server; the redundant --no-server flag is absent.
 ra6_clean '"--no-server"' 'R-X10 --no-server flag (the GUI never starts a controlled server -> compiled out)' || rc=1
 # R-D6 / §18 (sovereignty): the box never phones home with audit logs. The connection/alarm/file
 # audit POST helpers (post_conn_audit/post_alarm_audit/post_file_audit -> <api-server>/api/audit/*)

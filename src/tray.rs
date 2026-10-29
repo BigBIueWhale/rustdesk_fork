@@ -104,7 +104,7 @@ fn make_tray() -> hbb_common::ResultType<()> {
     //   * Linux/Windows — the tray is a SEPARATE `--tray` process (core_main.rs), so tao's
     //     ControlFlow::Exit → process::exit closes ONLY the tray; the installed service (SCM/systemd)
     //     keeps serving :21118, and the tray re-appears on the next service/session (re)launch.
-    //   * macOS — the tray runs IN the `--server` process (core_main.rs: start_server(true) on a
+    //   * macOS — the tray runs IN the `--server` process (core_main.rs: start_server() on a
     //     thread + start_tray() on the main thread), and tao's macOS run() exits via
     //     process::exit(0). That code-0 exit is read as "successful" by the `--server` LaunchAgent
     //     (KeepAlive{SuccessfulExit=false}; the fork's exit(-1) is what triggers a restart,

@@ -3645,6 +3645,14 @@ and `ConnectionTmpl::next_timeout2` had no repository callers. Their last caller
 were removed in `57bcb529` and `dc3c61fa`. Active typed password admission and
 `next_timeout` are unchanged; this retirement adds no native acceptance claim.
 
+The desktop GUI's redundant startup probe and recursive thread/runtime retry are
+removed. It discarded successful status replies; `sync_main_status` remains the
+UI cache updater. `start_server()` now has only controlled-server callers. The
+same GUI branch still starts the Windows CPU monitor, and controlled startup
+retains its credential, invariant and shutdown ordering. The obsolete Boolean-call
+grep gate is deleted. Full application startup, Windows CPU-monitor behavior and
+installed acceptance remain unexecuted for this retirement.
+
 Both components now compile the exact `Config::ipc_path` and `ipc_path_for_uid`
 methods; the handwritten listener path methods are deleted. The existing routing
 case checks complete service/user socket paths through both methods under root

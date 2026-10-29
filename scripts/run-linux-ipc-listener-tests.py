@@ -747,6 +747,9 @@ def native(expected_sha, barrier_sha):
                     replacement = target_parent if kind == 'symlink' else parent
                     replacement.mkdir(mode=0o711 if uid == 0 else 0o700)
                     os.chown(replacement, uid, uid)
+                    replacement.chmod(0o711 if uid == 0 else 0o700)
+                    require(stat.S_IMODE(replacement.stat().st_mode) == (0o711 if uid == 0 else 0o700),
+                            'replacement parent mode differs')
                     if kind == 'symlink':
                         parent.symlink_to(target_parent)
                     (replacement / 'keep').write_bytes(b'untouched replacement')

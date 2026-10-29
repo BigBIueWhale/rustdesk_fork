@@ -116200,3 +116200,14 @@ no behavioral execution is warranted or claimed for this documentation correctio
 The comparison capsule retains the classified before/after cells and disposition
 digests. Current conformance, native/installed acceptance and broader documentation
 classification remain in the ledger; no completion claim changes.
+
+At `b047cdfd`, run `h6WQV5lbWY` counts the ledger at **358,520 tokens** /
+1,639,389 bytes and the specification at **367,910 tokens** / 1,679,865 bytes,
+376 fewer specification tokens. Both pinned counts pass seven controls and complete
+byte round trips. Ledger SHA-256 is
+`5525b6b3e5dc1298ca8c6555aa5818eb2d7b3fdf227f22dd2b7e05418aee44b0`.
+QEMU 1715696 joins after 30.518 seconds, RAM `run.8cbuc6a1` retires and all three
+listener deltas are zero. Six raw files plus `appendix-risk-history-f8183c2a.json`
+total 118,935 bytes on CTE and TUF. The capsule is 14,341 bytes, SHA-256
+`fdc3ac5cbe30ac92e68f408960250a123c515b7e1d8fbf6c88964673463f1a6c`.
+This audit-only receipt leaves both measured inputs unchanged.

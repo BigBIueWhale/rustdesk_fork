@@ -116730,3 +116730,22 @@ joins after 30.408 seconds, RAM `run.urxz7mdl` retires and three host listener
 deltas are zero. Six count files add 103,026 bytes; all 21 retained evidence
 files total 351,730 bytes per host. This audit-only receipt leaves the measured
 ledger unchanged.
+
+### 2026-10-29 — unused IPC API retirement
+
+At `0982c143`, repository-wide reference inspection finds only the definitions of
+`current_process_allows_service_owned_unattended_password_commit` and
+`ConnectionTmpl::next_timeout2`. Git shows their last callers removed in
+`57bcb529` and `dc3c61fa`. The former checked service role/root UID; live password
+admission instead uses typed requester authentication and revalidation. The
+latter is a public Rust method with no repository consumer; its removal retires
+that source API. No protocol or FFI changes are made.
+
+Delete those functions and the stale mediator/deployment comments in `src/ipc.rs`.
+Exact comparison confirms four deleted blocks, 26 lines / 1,403 bytes, with every
+other source byte unchanged. The resulting SHA-256 is
+`e1e94f5bb078ac1e21d27398d854b3ec10a7ac75db2a8d0bc0cd6a474b16872f`.
+Reference inspection and `git diff --check` pass. No runtime test is rerun for
+this unused-code/comment deletion; the previous component receipt retains its
+original source identity. Installed authority, functional settings acceptance
+and the existing platform evidence obligations remain open.

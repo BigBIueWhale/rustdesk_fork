@@ -5409,14 +5409,6 @@ impl CheckIfRestart {
 }
 impl Drop for CheckIfRestart {
     fn drop(&mut self) {
-        // R-D4: the audio-device watches are the ONLY live restart triggers on the direct-only
-        // build. The former mediator-restart watch (stop-service / rendezvous-servers / disable-udp)
-        // is removed: RendezvousMediator::restart() is a no-op here (no rendezvous registration loop
-        // to break — the direct listener runs continuously, R-D4); stop-service and
-        // custom-rendezvous-server are lockdown-pinned (so constant); and disable-udp is vestigial
-        // (UDP is excised — no transport path reads it). The earlier allow-websocket /
-        // allow-insecure-tls-fallback / api-server watches (+ the tls-cache reset they gated) were
-        // already removed for the same dead-change-detection reason.
         if self.audio_input != Config::get_option("audio-input") {
             crate::audio_service::restart();
         }
@@ -5470,13 +5462,6 @@ fn current_process_allows_user_owned_permanent_password_write() -> bool {
 #[inline]
 fn current_process_allows_main_channel_options_write() -> bool {
     MainIpcAuthority::for_current_process().allows_main_channel_options_write()
-}
-
-#[cfg(target_os = "linux")]
-#[inline]
-fn current_process_allows_service_owned_unattended_password_commit(stream: &Connection) -> bool {
-    MainIpcAuthority::for_current_process() == MainIpcAuthority::ServiceOwned
-        && stream.peer_uid() == Some(0)
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
@@ -8281,14 +8266,6 @@ where
         Ok(timeout(ms_timeout, self.next()).await??)
     }
 
-    pub async fn next_timeout2(&mut self, ms_timeout: u64) -> Option<ResultType<Option<Data>>> {
-        if let Ok(x) = timeout(ms_timeout, self.next()).await {
-            Some(x)
-        } else {
-            None
-        }
-    }
-
     pub async fn next(&mut self) -> ResultType<Option<Data>> {
         self.next_json().await
     }
@@ -9317,9 +9294,6 @@ pub async fn set_option(key: &str, value: &str) -> ResultType<String> {
         Err(err) => bail!("Option write requires daemon ACK: {err}"),
     }
 }
-
-// R-SV6a/R-D4: `notify_deployed()` and `Data::Deployed` are removed with the account deployment
-// control plane. No deployment UI, bridge, or API actuator remains.
 
 #[tokio::main(flavor = "current_thread")]
 pub async fn send_url_scheme(url: String) -> ResultType<()> {

@@ -3637,6 +3637,11 @@ listener deltas are zero; QEMU joins, bounded RAM scratch retires and exact
 fixture socket/descriptor cleanup passes. Current receipt:
 `main-response-validation-e15ac8c2.json`.
 
+Unused IPC surfaces are removed: the old service-role/root-UID password predicate
+and `ConnectionTmpl::next_timeout2` had no repository callers. Their last callers
+were removed in `57bcb529` and `dc3c61fa`. Active typed password admission and
+`next_timeout` are unchanged; this retirement adds no native acceptance claim.
+
 Both components now compile the exact `Config::ipc_path` and `ipc_path_for_uid`
 methods; the handwritten listener path methods are deleted. The existing routing
 case checks complete service/user socket paths through both methods under root

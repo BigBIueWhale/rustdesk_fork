@@ -103,7 +103,11 @@ async fn service_fixture(scenario: &str) {
             "unknown-field" => stream.inner.send(bytes::Bytes::from_static(b"{\"t\":\"Liveness\",\"extra\":true}")).await.unwrap(),
             "unknown-type" => stream.inner.send(bytes::Bytes::from_static(b"{\"t\":\"Other\"}")).await.unwrap(),
             "malformed" => stream.inner.send(bytes::Bytes::from_static(b"{")).await.unwrap(),
-            "oversized" => stream.inner.get_mut().write_all(&((32769u32 << 2) | 2).to_le_bytes()[..3]).await.unwrap(),
+            "oversized" => {
+                stream.inner.get_mut().write_all(&((32769u32 << 2) | 2).to_le_bytes()[..3]).await.unwrap();
+                let mut byte = [0];
+                assert_eq!(timeout(2500, stream.inner.get_mut().read(&mut byte)).await.unwrap().unwrap(), 0);
+            }
             "truncated" => stream.inner.get_mut().write_all(&[16, b'x']).await.unwrap(),
             "silent" => {
                 let mut byte = [0];

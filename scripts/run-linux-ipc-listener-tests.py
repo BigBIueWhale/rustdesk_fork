@@ -391,6 +391,10 @@ def native(expected_sha, barrier_sha):
                                          else 'ipc listener is active' in result.stderr)
                 elif scenario in ('unknown-field', 'unknown-type', 'malformed'):
                     passed = passed and 'invalid liveness response' in result.stderr
+                elif scenario == 'oversized':
+                    passed = passed and 'Too big packet' in result.stderr
+                elif scenario == 'truncated':
+                    passed = passed and 'incomplete frame at end of stream' in result.stderr
                 else:
                     passed = passed and 'liveness read failed' in result.stderr
                 passed = passed and elapsed[-1] < 3.0

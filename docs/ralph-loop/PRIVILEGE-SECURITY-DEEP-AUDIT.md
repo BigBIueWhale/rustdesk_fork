@@ -114799,3 +114799,62 @@ The 34.551-second count joins QEMU 1608764 with exit zero and retires workspace
 Six copied count files total 103,349 bytes and match both hosts; serial SHA-256
 is `9f8cb9831ac61074ba8ec02014393d56ecde33527de8471dab285320eea76420`.
 This audit-only receipt leaves the counted ledger unchanged.
+
+## 2026-10-29 — Linux protected-service liveness
+
+The preceding turn made product progress: the concurrent startup failure was
+reproduced and corrected. This slice removes the listener fixture's connection
+framing substitutes and exercises the previously unexecuted protected-service
+liveness exchange. Product behavior remains unchanged.
+
+`86be0408` extracts production ConnectionTmpl fields and relevant methods,
+service request/response enums with their attributes, timeout/frame constants,
+kernel peer methods and the Linux liveness handler; it copies BytesCodec intact.
+The fixture now uses these with pinned serde, bytes, futures, Tokio and
+parity-tokio-ipc. Config name/path and service authorization remain adapters;
+CM/PA launch proofs still fail if accidentally reached. This does not execute
+the service accept-time authorization, full application, installed credential
+actions or macOS. Those obligations remain OPEN.
+
+Eight scenarios each run the real probe followed by production new_listener:
+valid reply, unknown field, unknown type, malformed JSON, oversized header,
+truncated payload, silent peer and disconnect. Each requires reception of the
+typed request, the expected outcome, preserved socket inode and exact child join.
+Valid replies produce a positive probe and duplicate-start refusal. Invalid
+responses cannot pass through an early connection failure. In-process descriptor
+counts return to baseline after each probe and receiver connection, before exit.
+`44c676d8` keeps the oversized-header peer open and requires the codec's cap error;
+closing first could have hidden a missing cap behind an EOF error. Truncation
+also requires its specific incomplete-frame error. Timeout acceptance is bounded
+between 0.75 and 3 seconds; other calls must complete within 3 seconds.
+
+[Tokio timeout documentation](https://docs.rs/tokio/1.44.2/tokio/time/fn.timeout.html)
+defines cancellation by dropping the pending future; the fixture additionally
+observes socket/descriptor closure. [Serde container attributes](https://serde.rs/container-attrs.html)
+define unknown-field rejection, which is exercised on a real framed response.
+Pinned tokio-util 0.7.15 Framed source was inspected for stream ownership and
+cancellation behavior.
+
+Initial run `Aqf1YLadin` stops on compiler SIGKILL under the 512-MiB container
+limit and supplies no behavioral result. `dc695cb3` uses one build job, disables
+debug symbols/incremental output and adds descriptor observations; the container
+and VM limits are unchanged. Parity's dependency still enables full Tokio.
+Run `iX8Rq0RA5x` passes; its close-before-cap case is superseded by `44c676d8`.
+Accepted run `xh5NdzaYhH` passes all twenty-nine listener and fourteen directory
+cases in 82.413 seconds. Silent probes take 1.003/1.006 seconds; oversized open
+peers are rejected in 1.03/1.40 ms. These are focused observations, not latency
+percentiles or soak evidence. Executed binary SHA-256:
+`06171c4e10b709c0cb12397111fbd097c887ab50ac95ce8e1e02aaee0213d290`.
+
+All three QEMU children join exit zero, their RAM workspaces retire and all
+twelve listener deltas are zero. The accepted run peaks at 3,443,965,952 RAM
+scratch bytes, 3,247,837,184 overlay bytes and 3,391,488 durable-run bytes.
+The non-root networkless static container exits zero and is removed with
+unchanged host listeners; syntax and diff checks pass. Twenty-one copied
+evidence files total 247,145 bytes and match both hosts. Capsule
+`ipc-service-liveness-44c676d8.json`, 56,441 bytes, SHA-256
+`ec0d14ad33e87be1b9b622ec4d7e572cb6702c75eb6fb94b1094200f511f9a55`.
+After hash verification, the exact failed-build diagnostic tree is removed
+under the shared lock with owner/inode/type and process-absence checks; bounded
+receipts and canonical inputs remain. This reclaims 3,444,736 allocated disk
+bytes. The fresh ledger count follows.

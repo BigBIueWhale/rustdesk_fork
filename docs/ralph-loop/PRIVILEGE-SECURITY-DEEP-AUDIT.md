@@ -114858,3 +114858,14 @@ After hash verification, the exact failed-build diagnostic tree is removed
 under the shared lock with owner/inode/type and process-absence checks; bounded
 receipts and canonical inputs remain. This reclaims 3,444,736 allocated disk
 bytes. The fresh ledger count follows.
+
+Fresh isolated count at `c781a1aa`, TUF `jf6ul7KUUt`: 356,954 tokens /
+1,632,054 bytes, up 114 tokens / 551 bytes. Pinned tiktoken 0.12.0/cl100k_base
+encode_ordinary passes seven controls and byte round-trip; ledger SHA-256 is
+`7d4771e379a5408c7b5494366b9a723e48488ae8f70bf3a9818d3d70b777828c`.
+The 34.132-second run joins QEMU 1614627 with exit zero and retires workspace
+`run.mux5380x`; all three listener deltas are zero. Peak RAM scratch is
+402,345,984 bytes, overlay 305,795,072 bytes and durable run 258,048 bytes.
+Six copied count files total 103,433 bytes and match both hosts; serial SHA-256
+is `02602fd2dd0da67d4be15dcf4c21ce970b4e7ad2c4c69bb6f5f5d5c891e438b3`.
+This audit-only receipt leaves the counted ledger unchanged.

@@ -117364,3 +117364,13 @@ artifacts, automatic CI integration, independent reproduction and R-V3 expert
 review remain OPEN. Installed privilege/settings acceptance and every user-parked
 lane remain unchanged. A fresh ledger count also exercises the new storage
 profile admission/refusal and workload-selection cases.
+
+Ledger run `RCyxgpJ378` at `213cb9ec` passes the profile controls and all 71
+workload-selection controls/five refusals. It counts 359,799 tokens with
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 1,645,068 bytes, SHA-256
+`d25ffe83bedaa6716842cff4acd0ac0abb006e98d05d817bfbfc285f131f0e9a`.
+Seven tokenizer controls and full text round trip pass. QEMU 1794991 joins after
+30.500 seconds; RAM `run.uvw8v2fm` retires and all three listener deltas are zero.
+Six count files total 104,559 bytes. All twenty files across the three runs total
+272,285 bytes per host with matching hashes. This audit-only receipt preserves
+the measured ledger bytes and its approximate 400,000-token budget.

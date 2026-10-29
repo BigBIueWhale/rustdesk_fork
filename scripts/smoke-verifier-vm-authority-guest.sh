@@ -4175,7 +4175,7 @@ run_focused_rust_tests() {
         toolchain_mode=devcheck-image
         toolchain_mount=()
         bridge_mounts=(--mount "type=bind,source=$vendor/libc-0.2.171,target=/ipc-libc,readonly,bind-recursive=disabled")
-        source_fingerprints=(Cargo.lock src/core_main.rs src/ipc/fs.rs src/ipc.rs src/ipc/auth.rs src/ipc/framed.rs libs/hbb_common/src/config.rs
+        source_fingerprints=(Cargo.lock src/core_main.rs src/ipc/fs.rs src/ipc.rs src/ipc/auth.rs src/ipc/framed.rs src/ipc/main_config.rs libs/hbb_common/src/config.rs
             libs/hbb_common/src/bytes_codec.rs
             scripts/verify-linux-service-password-ipc.py scripts/run-linux-ipc-parent-tests.py
             scripts/test-linux-ipc-parent.rs scripts/run-linux-ipc-listener-tests.py
@@ -7104,8 +7104,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             >"$native_output" 2>&1 \
             || { tail -c 65536 "$native_output" >&2; fail 'IPC listener native cases failed'; }
         [ "$(stat -c '%s' "$native_output")" -le 65536 ] \
-            && [ "$(grep -Fc 'LINUX_IPC_LISTENER_CASE=pass ' "$native_output")" -eq 214 ] \
-            && [ "$(grep -Fxc "LINUX_IPC_LISTENER_NATIVE=pass cases=214 failures=0 artifact_sha256=$ipc_listener_sha cleanup=joined" "$native_output")" -eq 1 ] \
+            && [ "$(grep -Fc 'LINUX_IPC_LISTENER_CASE=pass ' "$native_output")" -eq 218 ] \
+            && [ "$(grep -Fxc "LINUX_IPC_LISTENER_NATIVE=pass cases=218 failures=0 artifact_sha256=$ipc_listener_sha cleanup=joined" "$native_output")" -eq 1 ] \
             || fail 'IPC listener native inventory or cleanup differs'
         cat "$native_output"
         stop_docker_authority

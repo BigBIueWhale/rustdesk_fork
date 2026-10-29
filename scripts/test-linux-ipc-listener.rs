@@ -26,6 +26,7 @@ thread_local! { static USE_USER_MAIN_IPC: std::cell::Cell<bool> = const { std::c
 include!("identity.rs");
 include!("transport.rs");
 include!("connection.rs");
+include!("main_responses.rs");
 type Connection = ConnectionTmpl<Conn>;
 type ServiceIpcRequesterAuthorization = ();
 use ipc::ipc_fs::*;
@@ -432,6 +433,66 @@ async fn accept_failure_fixture(scenario: &str) {
     println!("OK accept-{scenario} uid={} cleanup=joined", unsafe { libc::geteuid() });
 }
 
+async fn main_response_fixture(scenario: &str) {
+    let before = fd_count();
+    {
+        let (sender, receiver) = tokio::net::UnixStream::pair().unwrap();
+        for fd in [sender.as_raw_fd(), receiver.as_raw_fd()] {
+            assert_eq!(peer_uid_from_fd(fd), Some(unsafe { libc::geteuid() }));
+            assert_eq!(peer_pid_from_fd(fd), Some(std::process::id()));
+        }
+        let mut sender = ConnectionTmpl::new_main(sender);
+        let mut receiver = ConnectionTmpl::new_main(receiver);
+        let response = match scenario {
+            "status" => {
+                use MainStatusOptionKey::*;
+                // These unpinned keys may coexist in the effective status map.
+                let keys = [AllowAutoDisconnect, AutoDisconnectTimeout, AllowAutoRecordIncoming,
+                            EnableAbr, AllowRemoveWallpaper, AllowAlwaysSoftwareRender, EnableHwcodec,
+                            EnableDirectxCapture, EnableAndroidSoftwareEncodingHalfScale,
+                            KeepAwakeDuringIncomingSessions, AudioInput, VoiceCallInput];
+                let entries = keys.into_iter().map(|key| MainStatusOption {
+                    key, value: "\0".repeat(MAIN_IPC_MAX_OPTION_VALUE_BYTES),
+                }.validate().unwrap()).collect();
+                MainIpcResponse::StatusSnapshot(MainStatusSnapshot {
+                    options: MainStatusOptions(entries).validate().unwrap(),
+                    file_transfer_enabled: Some(true),
+                })
+            }
+            "config" => MainIpcResponse::Config {
+                key: MainConfigKey::VoiceCallInput,
+                value: Some("\0".repeat(MAIN_IPC_MAX_CONFIG_VALUE_BYTES)),
+            },
+            _ => panic!("unknown main response scenario"),
+        };
+        let expected = serde_json::to_vec(&response).unwrap();
+        assert!(expected.len() > 256 * 1024, "fixture must cross the former frame cap");
+        let (sent, received) = tokio::join!(
+            sender.send_json_timeout(&response, 1000), receiver.next_main_response_timeout(1000),
+        );
+        assert!(sent.is_ok(), "valid {scenario} response cannot be sent: {sent:?}");
+        let received = received.unwrap().unwrap();
+        assert_eq!(serde_json::to_vec(&received).unwrap(), expected);
+
+        let too_large = Bytes::from(vec![0; MAIN_IPC_MAX_FRAME_BYTES + 1]);
+        assert!(sender.send_raw(too_large).await.is_err());
+        let mut byte = 0u8;
+        assert_eq!(unsafe { libc::recv(receiver.inner.get_ref().as_raw_fd(),
+                                     (&mut byte as *mut u8).cast(), 1,
+                                     libc::MSG_DONTWAIT | libc::MSG_PEEK) }, -1);
+        assert_eq!(std::io::Error::last_os_error().kind(), std::io::ErrorKind::WouldBlock);
+        let response = MainIpcResponse::RequestFailed(IpcMutationResult::Rejected);
+        let (sent, received) = tokio::join!(
+            sender.send_json_timeout(&response, 1000), receiver.next_main_response_timeout(1000),
+        );
+        sent.unwrap();
+        assert!(matches!(received.unwrap().unwrap(),
+                         MainIpcResponse::RequestFailed(IpcMutationResult::Rejected)));
+    }
+    assert_eq!(fd_count(), before);
+    println!("OK main-response-{scenario} uid={} cleanup=joined", unsafe { libc::geteuid() });
+}
+
 async fn json_serialization_fixture(scenario: &str) {
     use serde::ser::{Error, SerializeSeq};
     use std::cell::Cell;
@@ -814,6 +875,11 @@ fn main() {
     let postfix = &args[2];
     assert!(["", "_password", "_service_password", "_service_credential", "_service"].contains(&postfix.as_str()));
     let path = Config::ipc_path(postfix);
+    if let Some(scenario) = args[1].strip_prefix("main-response-") {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(main_response_fixture(scenario));
+        return;
+    }
     if let Some(scenario) = args[1].strip_prefix("read-") {
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         runtime.block_on(read_fixture(scenario));

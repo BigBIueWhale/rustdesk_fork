@@ -132,13 +132,39 @@ def build():
     for name in ('new', 'new_with_max_packet_length', 'new_protected_service', 'new_main',
                  'send_json', 'send_json_timeout', 'next_json', 'send_service_request_timeout',
                  'next_service_request_timeout', 'send_service_response_timeout',
-                 'next_service_response_timeout', 'set_max_packet_length', 'send_raw', 'next_raw'):
+                 'next_service_response_timeout', 'next_main_response_timeout',
+                 'set_max_packet_length', 'send_raw', 'next_raw'):
         connection += function(ipc, name, parent=methods.start - 1)
     connection += '}\nimpl<T: AsyncRead + AsyncWrite + Unpin + AsRawFd> ConnectionTmpl<T> {\n'
     peers = auth.impl(('impl', '<', 'T', '>', 'ConnectionTmpl', '<', 'T', '>'), 'peer methods')
     connection += ''.join(function(auth, name, parent=peers.start - 1) for name in ('peer_uid', 'peer_pid'))
     connection += '}\n' + function(ipc, 'handle_service_request')
     (work / 'connection.rs').write_text(connection)
+    responses = ''
+    for name in ('MAIN_IPC_MAX_OPTION_COUNT', 'MAIN_IPC_MAX_OPTION_VALUE_BYTES',
+                 'MAIN_IPC_MAX_CONFIG_VALUE_BYTES'):
+        start = ipc.all().require(('const', name), 'response constant', unique=True)
+        end = next(i for i in range(start, len(ipc.tokens)) if ipc.tokens[i].text == ';')
+        responses += ipc.text[ipc.tokens[start].offset:ipc.tokens[end].offset + 1] + '\n'
+    main_config = parsed(repo / 'src/ipc/main_config.rs')
+    for source, kind, name in (
+            (main_config, 'enum', 'MainConfigKey'),
+            *((ipc, 'enum', name) for name in ('MainStatusOptionKey', 'IpcMutationResult',
+                                             'PasswordMutationStatus', 'MainIpcResponse')),
+            *((ipc, 'struct', name) for name in ('MainStatusOption', 'MainStatusOptions',
+                                               'MainStatusSnapshot', 'MainReadinessSnapshot',
+                                               'CmConnectionAuthority'))):
+        start = source.all().require((kind, name), 'response type', unique=True)
+        if name == 'MainStatusOptions':
+            end = next(i for i in range(start, len(source.tokens)) if source.tokens[i].text == ';')
+        else:
+            end = source.item(kind, name).end
+        offset = source.text.rindex('#[derive(', 0, source.tokens[start].offset)
+        responses += source.text[offset:source.tokens[end].offset + 1] + '\n'
+    for name in ('MainStatusOption', 'MainStatusOptions'):
+        methods = ipc.impl(('impl', name), 'response validation')
+        responses += f'impl {name} {{\n' + function(ipc, 'validate', parent=methods.start - 1) + '}\n'
+    (work / 'main_responses.rs').write_text(responses)
     shutil.copyfile(repo / 'libs/hbb_common/src/bytes_codec.rs', work / 'bytes_codec.rs')
     shutil.copyfile(repo / 'src/ipc/framed.rs', work / 'framed.rs')
     config = parsed(repo / 'libs/hbb_common/src/config.rs')
@@ -200,6 +226,7 @@ incremental = false
           f'reader_sha256={sha(work / "framed.rs")} '
           f'option_reader_sha256={sha(work / "option_reader.rs")} '
           f'option_cli_sha256={sha(work / "option_cli.rs")} '
+          f'main_responses_sha256={sha(work / "main_responses.rs")} '
           'transport=parity-tokio-ipc-root-locked framing=production', flush=True)
 
 
@@ -253,6 +280,11 @@ def native(expected_sha, barrier_sha):
               f'exit={result.returncode} stdout={result.stdout.strip()!r} stderr={result.stderr.strip()!r}', flush=True)
 
     for uid in (0, 4001):
+        for scenario in ('status', 'config'):
+            action = 'main-response-' + scenario
+            result = check('', uid, action=action)
+            record(f'{action}-{uid}', result.returncode == 0
+                   and result.stdout == f'OK {action} uid={uid} cleanup=joined\n', result)
         for scenario in ('value', 'missing', 'refused', 'timeout', 'disconnected', 'invalid'):
             result = check('', uid, action='cli-option-' + scenario)
             success = scenario in ('value', 'missing')
@@ -1024,8 +1056,8 @@ def native(expected_sha, barrier_sha):
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
     require(sha(barrier) == barrier_sha, 'barrier changed')
     probe.unlink(); barrier.unlink(); work.rmdir()
-    require(len(cases) == 214, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=214 failures={len(failures)} '
+    require(len(cases) == 218, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=218 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 

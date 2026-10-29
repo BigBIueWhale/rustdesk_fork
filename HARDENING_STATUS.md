@@ -3620,9 +3620,9 @@ those obligations.
 <a id="linux-ipc-components"></a>
 
 **IPC / option CLI — component acceptance; installed acceptance OPEN.**
-At `dabb54fe`, TUF `pcUzvshuz6` passes all **172 listener/transport, 32 CLI,
+At `f81d7ad4`, TUF `4DTmapekGG` passes all **172 listener/transport, 32 CLI,
 10 Windows selector, 22 main-response, 8 main-transaction, 4 URL-loop and
-14 directory cases**, plus the focused desktop source check in 91.627 seconds.
+14 directory cases**, plus the focused desktop source check in 88.829 seconds.
 All execute in Linux;
 the Windows selector uses real
 Unix sockets and Tokio tasks, not Windows pipes or privileged receivers.
@@ -3638,12 +3638,22 @@ Real Unix sockets establish the named IPC outcomes, not complete application or
 privileged-receiver authorization. All four host
 listener deltas are zero; QEMU joins, bounded RAM scratch retires and exact
 fixture socket/descriptor cleanup passes. Current receipt:
-`linux-ipc-parent-tests-run.pcUzvshuz6.serial.log`.
+`linux-ipc-parent-tests-run.4DTmapekGG.serial.log`.
 
 Unused IPC surfaces are removed: the old service-role/root-UID password predicate
 and `ConnectionTmpl::next_timeout2` had no repository callers. Their last callers
 were removed in `57bcb529` and `dc3c61fa`. Active typed password admission and
 `next_timeout` are unchanged; this retirement adds no native acceptance claim.
+
+`f81d7ad4` removes the unused Linux terminal-count client, candidate-UID helper,
+request/response variants, handler and count getter (93 net production lines).
+Its last caller disappeared with periodic-restart removal in `fa94cac5`.
+The unchanged root/UID-4001 fixtures accept both obsolete message types before
+removal and reject both afterward, preserving the existing 38 malformed-reply
+refusals and ten valid controls on the same socket per UID. Descriptor restoration
+precedes the verdict. The audit retains both source-bound runs. Terminal lifecycle
+work, full application compilation, installed and cross-version acceptance remain
+OPEN; no new reachable privilege escalation was demonstrated.
 
 The desktop GUI's redundant startup probe and recursive thread/runtime retry are
 removed. It discarded successful status replies; `sync_main_status` remains the

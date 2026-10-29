@@ -117113,3 +117113,46 @@ and the complete text round trip. Input SHA-256:
 QEMU 1778545 joins after 30.807 seconds; RAM `run.xj29oq45` retires and all three
 host listener deltas are zero. Six evidence files total 102,633 bytes per host
 with matching hashes. This audit-only receipt leaves the counted ledger unchanged.
+
+### 2026-10-30 — retire the unused Linux terminal-count IPC query
+
+At `9962f9c5`, `src/ipc.rs:9473` still connects directly to candidate UID endpoints
+for a terminal count, bypassing the normal client peer checks. Repository-wide
+reference review finds no caller: `fa94cac584d801543593dee5aec43668a1d251d9`
+removed its sole periodic-restart caller. No reachable escalation is established.
+The closed main protocol needs no replacement operation for that deleted behavior.
+`f81d7ad4631e79db83d2cf99a7544c1f06747143` removes the client, its candidate-UID
+helper/import, request/response variants, receiver arm and otherwise-unused
+terminal-service count getter: 93 net production lines across three files.
+No terminal lifetime, cleanup or authorization algorithm changes. Existing
+lifecycle absence checks remain; no compatibility alias or fallback is added.
+
+The existing framed-response scenario now also submits the retired request and
+response through production readers on real Unix sockets, retaining kernel UID/PID
+checks, 38 malformed-reply refusals and ten valid controls per UID. Both socket
+owners drop and descriptor counts restore before the accumulated verdict.
+Fixtures and runner are identical between baseline and candidate. Command:
+`bash scripts/smoke-verifier-vm-authority.sh --linux-ipc-parent-tests` on TUF,
+using the zero-NIC VM and its confined non-root builder.
+
+Baseline `J4VKG0xuEJ` at `e530e6d3e991e0bb3b917d34dad932041b3a2b74`
+accepts both retired messages under root and UID 4001. Those two scenarios fail;
+the other 246 IPC cases, fourteen directory cases and focused source check pass.
+Listener artifact SHA-256:
+`e09866f0970db03812ff9362c3b066a7330e9dd848711979be8c58a389d85052`.
+QEMU 1779670 joins after 87.763 seconds; RAM `run.uc24ok57` retires and all four
+host listener deltas are zero. After copying seven raw evidence files (112,605
+bytes) with matching hashes, exact failed scratch inode 78294410 is removed,
+reclaiming 3,506,176 allocated bytes.
+
+Candidate `4DTmapekGG` at `f81d7ad4` passes all 248 IPC and fourteen directory
+cases plus the focused source check. Listener artifact SHA-256:
+`6c840053b153e99f50fc4e5ec65c1fd172c35bfe82476c29e36849fd9d0df6ce`;
+production response/request fragment SHA-256:
+`847bca75c2ce1ffff801e844e5acbdb93401a096ccc6c6805a1af2d2b89acb9f`.
+QEMU 1780404 joins after 88.829 seconds; RAM `run.9juqibfs` retires and all four
+host listener deltas are zero. Seven candidate files add 111,519 bytes; fourteen
+comparison files total 224,124 bytes per host with matching hashes. Exact scope,
+unchanged-fixture comparison and `git diff --check` pass. Full application,
+installed settings/authorization, cross-version and other-platform acceptance,
+and all separately parked work remain OPEN. A fresh ledger count follows.

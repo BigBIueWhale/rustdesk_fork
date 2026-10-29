@@ -115833,3 +115833,35 @@ listener deltas are zero. The six count records total 103,746 bytes on both
 machines; all twenty-one retained files for this slice total 327,743 bytes.
 This audit-only addition leaves the measured ledger unchanged and below its
 approximate 400,000-token budget; whole-document cleanup remains OPEN.
+
+### 2026-10-29 — frame writes through the pinned IPC transport
+
+`c22068e6` extends the existing wire fixture without changing product code. The
+pinned `parity-tokio-ipc` Unix wrapper forwards scalar writes and retains the
+default non-vectored behavior; Tokio's UnixStream supports vectored writes.
+The same transfer assertions now execute over both paths and explicitly assert
+their advertised write capability. The added path uses production `new_listener`
+and the pinned `Endpoint::connect`, checks peer UID/PID, then verifies the socket's
+device/inode before removing it after both peers and the listener have retired.
+
+TUF `6HvrVoDDda` at `c22068e6`, command
+`bash scripts/smoke-verifier-vm-authority.sh --linux-ipc-parent-tests`, passes all
+166 listener and fourteen directory cases plus the focused desktop source checker
+in 82.248 seconds. Root and UID 4001 each pass the existing wire-boundary and
+16 MiB address-space-pressure scenarios over both transports, including exact
+payload/header bytes, raw-cap refusal, codec round trips, limit restoration,
+subsequent sends and descriptor cleanup. Production connection/filesystem/codec
+fragment hashes match the preceding accepted run. Listener binary SHA-256:
+`dde25be03ba5c439167a62a0a59adfac7e259ab9f85ec92a6f025ecd641f134f`.
+
+QEMU 1682777 joins and RAM `run.kghqe9va` retires. All four host listener deltas
+are zero. Peak scratch is 3,478,228,992 allocated bytes; durable run peak is
+3,432,448 bytes. Seven raw files plus `ipc-scalar-writes-c22068e6.json` total
+111,849 bytes on CTE and TUF; capsule SHA-256:
+`8d14dea7f5560e4caaa5a97f9b8bc8a0e5b4c4748f4b93cde617a64ae5321ef8`.
+
+This adds native evidence for the actual IPC transport's write path, not a new
+product fix or privilege-boundary closure. Full applications, installed actions,
+other-platform behavior, other allocation sites and release/review acceptance
+remain OPEN. The helper handshake review remains parked. Requirements and live
+instruction contents are unchanged.

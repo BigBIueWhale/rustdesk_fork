@@ -3711,6 +3711,14 @@ all eight listener deltas are zero. Receipt: `ipc-wire-allocation-8e5979d9.json`
 This is Linux component acceptance; full applications, installed privileged
 actions, other-platform behavior and other allocation sites remain OPEN.
 
+`c22068e6` additionally runs the wire fixture through the pinned IPC endpoint
+transport, which uses scalar writes; the socket-pair cases exercise vectored
+writes. Root and UID-4001 pressure/boundary cases pass through both. Current
+`6HvrVoDDda` passes all 166 listener/14 directory cases in 82.248 seconds, with
+the production fragments unchanged, exact socket/descriptor cleanup, joined
+VM/RAM retirement and four zero listener deltas. Product code is unchanged.
+Receipt: `ipc-scalar-writes-c22068e6.json`; the broader obligations above remain OPEN.
+
 **R-X14 desktop resource removal.** `9c8ebb1c` deletes the unused `res/startwm.sh` and
 dummy `res/xorg.conf`, their Debian payload/conffile/executable entries and the empty
 `etc/rustdesk` directory. Their session-spawning consumers were already absent; this removes

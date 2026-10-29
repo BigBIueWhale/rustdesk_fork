@@ -117,7 +117,7 @@ def build():
     for name in ('new', 'new_with_max_packet_length', 'new_protected_service', 'new_main',
                  'send_json', 'send_json_timeout', 'next_json', 'send_service_request_timeout',
                  'next_service_request_timeout', 'send_service_response_timeout',
-                 'next_service_response_timeout', 'set_max_packet_length'):
+                 'next_service_response_timeout', 'set_max_packet_length', 'send_raw'):
         connection += function(ipc, name, parent=methods.start - 1)
     connection += '}\nimpl<T: AsyncRead + AsyncWrite + Unpin + AsRawFd> ConnectionTmpl<T> {\n'
     peers = auth.impl(('impl', '<', 'T', '>', 'ConnectionTmpl', '<', 'T', '>'), 'peer methods')
@@ -230,6 +230,11 @@ def native(expected_sha, barrier_sha):
               f'exit={result.returncode} stdout={result.stdout.strip()!r} stderr={result.stderr.strip()!r}', flush=True)
 
     for uid in (0, 4001):
+        for scenario in ('bounds', 'allocation'):
+            action = 'wire-' + scenario
+            result = check('', uid, action=action)
+            record(f'{action}-{uid}', result.returncode == 0
+                   and result.stdout == f'OK {action} uid={uid} cleanup=joined\n', result)
         for scenario in ('bounds', 'streaming', 'failure', 'allocation'):
             action = 'json-' + scenario
             result = check('', uid, action=action)
@@ -965,8 +970,8 @@ def native(expected_sha, barrier_sha):
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
     require(sha(barrier) == barrier_sha, 'barrier changed')
     probe.unlink(); barrier.unlink(); work.rmdir()
-    require(len(cases) == 158, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=158 failures={len(failures)} '
+    require(len(cases) == 162, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=162 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 

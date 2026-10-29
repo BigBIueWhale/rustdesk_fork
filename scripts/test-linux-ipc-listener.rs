@@ -11,6 +11,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::Framed;
 use futures_util::{StreamExt, SinkExt};
 use serde::{Serialize, Deserialize};
+use bytes::Bytes;
 mod bytes_codec;
 use bytes_codec::BytesCodec;
 type ResultType<T> = anyhow::Result<T>;
@@ -442,6 +443,83 @@ async fn json_serialization_fixture(scenario: &str) {
     println!("OK json-{scenario} uid={} observed={observed} cleanup=joined", unsafe { libc::geteuid() });
 }
 
+async fn wire_fixture(scenario: &str) {
+    use tokio::io::AsyncReadExt;
+
+    struct AddressLimit(libc::rlimit);
+    impl Drop for AddressLimit {
+        fn drop(&mut self) {
+            assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_AS, &self.0) }, 0);
+        }
+    }
+
+    async fn receive(stream: &mut tokio::net::UnixStream, length: usize, header: &[u8]) {
+        let mut actual = [0; 4];
+        stream.read_exact(&mut actual[..header.len()]).await.unwrap();
+        assert_eq!(&actual[..header.len()], header);
+        let mut chunk = [0; 8192];
+        let mut remaining = length;
+        while remaining > 0 {
+            let count = remaining.min(chunk.len());
+            stream.read_exact(&mut chunk[..count]).await.unwrap();
+            assert!(chunk[..count].iter().all(|byte| *byte == 0x5a));
+            remaining -= count;
+        }
+    }
+
+    let before = fd_count();
+    {
+        let (sender, mut receiver) = tokio::net::UnixStream::pair().unwrap();
+        for fd in [sender.as_raw_fd(), receiver.as_raw_fd()] {
+            assert_eq!(peer_uid_from_fd(fd), Some(unsafe { libc::geteuid() }));
+            assert_eq!(peer_pid_from_fd(fd), Some(std::process::id()));
+        }
+        let mut sender = ConnectionTmpl::new(sender);
+        sender.send_raw(Bytes::new()).await.unwrap();
+        receive(&mut receiver, 0, &[0]).await;
+        let cases: &[(usize, &[u8])] = match scenario {
+            "bounds" => &[(0, &[0]), (1, &[4]), (63, &[252]), (64, &[1, 1]),
+                (16_383, &[253, 255]), (16_384, &[2, 0, 1]),
+                (4_194_303, &[254, 255, 255]), (4_194_304, &[3, 0, 0, 1])],
+            "allocation" => &[(16 * 1024 * 1024, &[3, 0, 0, 4])],
+            _ => panic!("unknown wire scenario"),
+        };
+        for &(length, header) in cases {
+            let payload = Bytes::from(vec![0x5a; length]);
+            sender.set_max_packet_length(length);
+            let restore = if scenario == "allocation" {
+                let pages: u64 = fs::read_to_string("/proc/self/statm").unwrap()
+                    .split_whitespace().next().unwrap().parse().unwrap();
+                let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+                assert!(page_size > 0);
+                let ceiling = pages.checked_mul(page_size as u64).unwrap()
+                    .checked_add(1024 * 1024).unwrap();
+                let mut original = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+                assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_AS, &mut original) }, 0);
+                assert!(ceiling < original.rlim_cur);
+                let limited = libc::rlimit { rlim_cur: ceiling, rlim_max: original.rlim_max };
+                assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_AS, &limited) }, 0);
+                Some(AddressLimit(original))
+            } else { None };
+            let (sent, received) = tokio::join!(
+                timeout(1000, sender.send_raw(payload)),
+                timeout(1000, receive(&mut receiver, length, header)),
+            );
+            drop(restore);
+            sent.unwrap().unwrap();
+            received.unwrap();
+        }
+        sender.send_raw(Bytes::new()).await.unwrap();
+        receive(&mut receiver, 0, &[0]).await;
+        let mut byte = 0u8;
+        assert_eq!(unsafe { libc::recv(receiver.as_raw_fd(), (&mut byte as *mut u8).cast(), 1,
+                                     libc::MSG_DONTWAIT | libc::MSG_PEEK) }, -1);
+        assert_eq!(std::io::Error::last_os_error().kind(), std::io::ErrorKind::WouldBlock);
+    }
+    assert_eq!(fd_count(), before);
+    println!("OK wire-{scenario} uid={} cleanup=joined", unsafe { libc::geteuid() });
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     assert_eq!(args.len(), 3);
@@ -449,6 +527,11 @@ fn main() {
     let postfix = &args[2];
     assert!(["", "_password", "_service_password", "_service_credential", "_service"].contains(&postfix.as_str()));
     let path = Config::ipc_path(postfix);
+    if let Some(scenario) = args[1].strip_prefix("wire-") {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(wire_fixture(scenario));
+        return;
+    }
     if let Some(scenario) = args[1].strip_prefix("json-") {
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         runtime.block_on(json_serialization_fixture(scenario));

@@ -115119,3 +115119,61 @@ Full installed authorization, CM/PA, macOS, remaining metadata/namespace/crash
 races, coexisting versions, release artifacts and independent/external review
 remain OPEN. Config name/path and service authorization adapters remain limits
 of this component evidence. The tested crash-recovery defect is closed.
+
+## 2026-10-29 — Linux stale endpoint classification
+
+The previous turn completed inaccessible-socket crash recovery. This turn checks
+the cleanup reached after transport absence. `prepare_ipc_listener_bind` called
+the broad artifact remover, which selected unlink or rmdir from the observed
+entry type and also removed a `.pid` entry after parent-mode repair. Linux has
+no remaining PID-file reader/writer. Those operations are unnecessary for
+creating a Unix socket and can remove unrelated data or block valid startup.
+[unix(7)](https://man7.org/linux/man-pages/man7/unix.7.html) distinguishes pathname
+sockets from other filesystem types; [unlinkat(2)](https://man7.org/linux/man-pages/man2/unlinkat.2.html)
+deletes a name and supports directory removal only when explicitly requested.
+Neither missing nor refused transport establishes that a colliding file is a socket.
+
+`f4b36d78` adds fourteen actual startup scenarios for root and UID 4001. Baseline
+TUF `mG75yce2f7` passes the previous 78 listener cases but fails all fourteen:
+ten regular-file/FIFO/empty-directory/symlink/dangling-symlink endpoints are
+replaced, two legacy PID files are deleted, and two nonempty PID directories
+cause startup failure. Metadata, contents, symlink text and targets are observed.
+
+`99cbec37` removes the Linux parent-scrub parameter and PID cleanup. After the
+existing parent admission, reservation and fresh transport check, fstatat with
+AT_SYMLINK_NOFOLLOW must identify a socket before unlinkat with zero flags.
+Absence remains benign; wrong types and other syscall failures refuse startup.
+macOS retains its separate cleanup implementation. No new dependency or async
+locking is introduced. The stat/unlink pair is not an atomic conditional unlink;
+remaining namespace and same-UID mutation races are not claimed closed.
+
+The Linux parent fixture also stops extracting and invoking macOS-only
+`scrub_secure_ipc_parent_dir`. That artificial operation supplied no Linux startup
+cleanup proof. Its mode-repair case now checks preservation plus actual refusal
+of an unprivileged namespace mutation; the nine-function build closure and
+fourteen directory cases pass. The actual listener scenarios are unchanged
+between baseline and candidate.
+
+Accepted TUF `LdsAUYuaQS` passes all 92 listener and 14 directory cases in
+82.274 seconds. Non-socket collisions remain unchanged; PID files/directories
+remain unchanged while startup succeeds. Existing stale-socket, concurrency,
+crash, permission, identity and framed-liveness controls pass. Listener binary:
+`de18e1c16b3560e117a8ecaef7a331e916b57fc52c399a2888b0de23032ee5ae`;
+directory binary:
+`2c18066a2a0125e010bbab3e189707e990324fe4db2ff524bd99ddf15352dfb8`.
+Compilation and execution stay in the owned zero-NIC VM. Diff checks pass.
+
+Both QEMU children join exit zero, both RAM workspaces retire and all eight
+host listener deltas are zero. Accepted peak RAM scratch is 3,368,988,672 bytes,
+overlay 3,172,851,712 bytes and durable run 3,416,064 bytes. Fourteen run files
+total 184,806 bytes. Capsule `ipc-stale-kind-99cbec37.json`, 57,943 bytes,
+SHA-256 `b807db1eecbbdc62fad3dfdf5ce74c6afb0fb87cff2e66553d82e467f46fbd60`.
+All fifteen files match CTE/TUF. Exact inode/owner/process/storage checks and
+evidence verification precede removal of the failed-baseline diagnostic tree
+under the shared lock, freeing 3,465,216 allocated disk bytes.
+
+R-S11bs is consolidated into current behavior, evidence and open obligations;
+intermediate history remains here and in Git. No full application, installed
+authority, CM/PA launch proof, macOS, remaining metadata/namespace/crash race,
+coexisting-version, release-artifact or independent-review completion is claimed.
+Config name/path and service authorization remain component fixture adapters.

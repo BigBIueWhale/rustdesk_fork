@@ -3612,18 +3612,23 @@ paths have no Linux fallback or cleanup. Ordinary user-owned IPC remains separat
 The preceding directory-substitution run reproduced three preservation failures:
 two empty replacements were removed with success, and a nonempty replacement
 failed preservation despite an error. The Linux fix removes that replacement path.
-TUF run `NcMZACtQFx` passes routing, real Unix socket reachability/kernel peer UID,
+Current TUF run `LdsAUYuaQS` passes routing, real Unix socket reachability/kernel peer UID,
 unprivileged namespace mutation refusal, owner/ACL/symlink/mode/refusal cases,
-and exact cleanup in 34.554 seconds. All four host listener deltas are zero;
+and exact fixture cleanup. The combined directory/listener run takes 82.274 seconds.
+All four host listener deltas are zero;
 QEMU joins and RAM scratch retires. `--linux-ipc-parent-tests` compiles the
 production filesystem functions and the config classification/path functions
 with pinned Rust/libc, a boxed-error adapter and a fixed RustDesk name binding.
-Python owns the socket exercise; this is not `new_listener`, the complete
-application, installed service or privileged message authorization acceptance.
+The directory fixture no longer invokes macOS-only scrub code on Linux; its mode
+repair case checks preservation and unprivileged mutation refusal. Python owns
+this component's socket exercise; actual `new_listener` coverage is recorded in
+R-S11bs below. Neither component proves the complete application, installed
+service or privileged message authorization.
 macOS still uses the public namespace/replacement mechanism and requires its
 own correction and native evidence. Upgrade/coexisting-version behavior, full
 R-S11a/R-S0 and installed credential actions remain OPEN. Receipt:
-`ipc-runtime-namespace-c1a2402a.json`; audit entry “2026-10-29 — Linux protected IPC runtime namespace”.
+`ipc-stale-kind-99cbec37.json`; original namespace provenance remains in
+`ipc-runtime-namespace-c1a2402a.json` and its audit entry.
 
 **R-X14 desktop resource removal.** `9c8ebb1c` deletes the unused `res/startwm.sh` and
 dummy `res/xorg.conf`, their Debian payload/conffile/executable entries and the empty
@@ -9031,82 +9036,69 @@ sandbox implementation and checker-repair history remain in Git.
   task swipe/reopen with the persistent service retained, Force Stop, projection replacement/revocation, injected
   permission/buffer/start/read failures, peer reconnect/presentation, and exact thread/audio/projection cleanup.
 - **R-S11bs/R-S11e-85 — Unix incumbent-listener identity is explicit —
-  SOURCE IMPLEMENTED; current installed/native endpoint evidence OPEN.** Linux/macOS
-  incumbent probing is fallible and separate from message admission. Generic incumbents
-  must prove kernel peer UID/PID, current effective UID equality and current-executable
-  identity. A positive UID/executable mismatch is a foreign stale candidate; missing
-  credentials or unavailable executable proof propagates an error through startup,
-  preserving the ambiguous live pathname. Linux `_cm`/`_pa`
-  retain their stronger exact process/launch proofs. Protected `_service` also requires
-  its bounded typed liveness round trip; failed or malformed response is an error, not
-  cleanup authority. Stale removal stays descriptor-relative; probing grants no request authority.
+  SOURCE IMPLEMENTED; installed/native endpoint acceptance remains OPEN.** Linux/macOS
+  probing requires kernel peer UID/PID, the current effective UID and current-executable
+  identity. Missing or unavailable identity proof propagates an error and preserves the
+  live pathname. Linux CM/PA retain their exact process/launch proofs. Protected
+  `_service` also requires a bounded typed liveness response; malformed/failed responses
+  do not authorize cleanup. Probing grants no privileged request authority.
 
-  **Linux startup/liveness component: seventy-eight native cases pass.** `26b069fb`
-  reserves each endpoint through cleanup, bind and socket permissions using a
-  validated persistent lock inode. Reservation follows asynchronous probing;
-  no lock spans an await. A fresh nonblocking connection under the reservation
-  permits cleanup only for missing/refused transport, preserving live or
-  ambiguous endpoints. Separate endpoints start independently. This extends
-  `641bb1b2`'s transport-error and cleanup-error correction.
-  Baseline `qtOVFk9av1` reproduces two concurrent starts both reporting success
-  while one replaces the other's socket. `fc083c93`, TUF `LZMlWWsrcT`, passes
-  those races, independent starts, restart, eight unsafe-lock refusals,
-  unrelated-image preservation and the prior nine transport cases, plus eight
-  protected-service liveness scenarios. Valid replies prove liveness; unknown
-  fields/types, malformed JSON, oversized/truncated frames, disconnect and
-  timeout refuse startup while preserving the socket. The oversized header is
-  rejected while its peer stays connected; silent peers time out near one second.
-  Probe and receiver descriptor counts return to baseline before process exit.
-  Root and user startup also preserve a listener arriving between the initial
-  probe and reservation; kernel peer PID/UID and the socket inode identify the
-  winner. Killing the reservation holder permits restart using the same lock
-  inode. Deleted and unreadable executable identities refuse probe/startup
-  without removing the live socket. The 76.314-second run also passes fourteen
-  directory cases. Root and UID 4001
-  execute the same sealed component with production `new_listener`, connection
-  methods, codec, typed liveness handler and kernel identity checks. Dependencies
-  are pinned; config name/path and service authorization remain fixture adapters.
-  CM/PA proofs, service accept-time authorization, full application, installed
-  actions and macOS remain OPEN. Listener deltas are zero, QEMU joins and RAM
-  scratch retires. `c369d9e2` fixes lock creation/recovery under owner-restrictive
-  umasks: existing locks are retained with `O_PATH`, validated before read-open
-  or permission repair, restored through their verified procfs descriptor alias,
-  and rechecked before reservation. Foreign ownership, multiple links, nonregular
-  files and any permissions outside owner read/write are refused unchanged.
-  Baseline `4JEWjk1tZi` fails all twelve fresh/recovery cases for root/UID 4001
-  with masks 0200/0400/0600. The candidate passes those plus two nondumpable-user
-  cases, retaining the lock inode and preserving process umask/descriptor counts.
-  `3a37b232` also fixes unreadable directory creation/recovery. Linux parent handles
-  use `O_PATH`; ownership is checked before repair through the verified descriptor
-  alias, then exact mode/owner are rechecked. Baseline `6qyNTSepKJ` fails eight
-  ordinary-user cases. The same fourteen parent startup scenarios now pass for
-  masks 0400/0700/0777, including nondumpable users, exact inode preservation and
-  unrelated contents. No process-wide umask change or foreign-parent adoption occurs.
-  `fc083c93` fixes restart after a crash leaves an owned socket without owner write.
-  Baseline `rtAc5yZala` reproduces two ordinary-user failures after bind/listen.
-  On EACCES, a no-follow retained socket must have the current owner, one link,
-  no special bits and missing owner write beneath a validated parent. Its verified
-  procfs alias restores the intended mode; metadata/name are rechecked before one
-  connection retry within the original timeout. Permission denial never permits
-  unlinking. All six root/user crash points (after bind, listen and chmod) now
-  recover with a new socket and the same lock inode. Mode-000 live incumbents stay
-  active; foreign-owned, symlink and hardlinked sockets remain unchanged.
-  Capsules: `ipc-socket-crash-fc083c93.json`, `ipc-parent-umask-3a37b232.json` and
-  `ipc-listener-bind-26b069fb.json`; audit entries “2026-10-29 — Linux IPC socket
-  recovery after interrupted startup”, “2026-10-29 — Linux IPC startup parent
-  permissions” and “2026-10-29 — Linux concurrent IPC startup” retain provenance.
-  PID-file reads/writes and the process-table scan remain removed; historical
-  `.pid` entries remain only in stale-artifact cleanup. The finite UID/executable
-  regression remains supplementary to these native component observations.
+  **Linux startup and recovery.** A validated persistent per-endpoint lock spans the
+  fresh nonblocking transport check, descriptor-relative cleanup, bind and permission
+  establishment. No lock spans an await; separate endpoints start independently.
+  Live/ambiguous transport is preserved. `99cbec37` additionally requires a no-follow
+  socket-type observation before unlinking; regular files, FIFOs, directories and
+  symlinks at the endpoint name refuse startup unchanged. Linux no longer touches
+  legacy `.pid` entries or consumes the obsolete parent-scrub flag. PID-file reads,
+  writes and process-table scanning remain absent. macOS cleanup is unchanged.
 
-  **Still required:** exact-current installed Linux/macOS endpoint tests with genuine,
-  wrong-principal and unrelated-image incumbents, missing/unavailable proof, process
-  replacement, malformed/failed service liveness, remaining startup/crash and
-  cleanup/namespace races, coexisting versions, restart and bounded resources.
-  Older binaries do not participate in the new advisory reservation. Cold release
-  artifacts and independent/external review remain OPEN.
-  Code already running as the same UID can repeatedly mutate its own mode-0700 socket
-  directory; this source correction is not a stronger OS-principal denial-of-service boundary.
+  Parent permissions are repaired on retained, owned directory identities. Lock
+  admission requires a regular file, current owner, one link and no permissions
+  beyond owner read/write; recovery establishes exact mode 0600 before reservation.
+  Socket recovery after EACCES requires a validated parent and a retained, owned,
+  single-link socket with no special bits and missing owner write. Verified procfs
+  descriptor aliases bind permission changes to those inodes. Metadata and names
+  are rechecked; the socket then gets one connection retry within the original
+  timeout. Permission denial alone never authorizes unlinking. Process umask stays
+  unchanged. These corrections are `c369d9e2`, `3a37b232` and `fc083c93`.
+
+  **Current native evidence:** `99cbec37`, TUF `LdsAUYuaQS`, passes 92 listener
+  cases and 14 directory cases in 82.274 seconds. Baseline `mG75yce2f7` reproduces
+  ten non-socket replacements, two PID-file deletions and two startup failures
+  caused by nonempty PID directories. The same fourteen scenarios now preserve
+  inode/type/mode/owner/link metadata and contents, while PID artifacts do not
+  prevent legitimate startup. Stale sockets and missing endpoints still start.
+
+  Other passing scenarios cover root/UID 4001 competing starts, independent
+  endpoints, arrival between probe and reservation, persistent-lock restart,
+  reservation-holder death and crashes after bind/listen/chmod, restrictive masks
+  and nondumpable callers, eight unsafe-lock refusals, live foreign images, and
+  deleted/unreadable executable identity. Socket inode and kernel peer PID/UID
+  identify retained/replacement listeners. Mode-000 live incumbents remain active.
+  Eight service-liveness scenarios exercise valid, unknown-field/type, malformed,
+  oversized/truncated, disconnected and silent peers through production framing.
+  Oversized headers are rejected while the sender stays connected; silent peers
+  time out near one second. Descriptor counts return to baseline before exit.
+
+  The sealed component uses production `new_listener`, filesystem/peer checks,
+  connection methods, codec and typed liveness handler with pinned dependencies.
+  Config name/path and service authorization remain fixture adapters. The directory
+  fixture no longer invokes macOS-only scrub code on Linux; it checks parent
+  hardening and preservation. All host listener deltas are zero, QEMU joins and RAM
+  scratch retires. Provenance: `ipc-stale-kind-99cbec37.json`,
+  `ipc-socket-crash-fc083c93.json`, `ipc-listener-bind-26b069fb.json` and the audit
+  entries for Linux stale endpoint classification, socket recovery and concurrent
+  startup. Historical intermediate receipts remain in the audit and Git.
+
+  **Still required:** exact-current full-app/installed Linux/macOS endpoints and
+  privileged actions, CM/PA launch proofs and service accept-time authorization;
+  genuine/wrong-principal/unrelated-image incumbents, process replacement,
+  remaining namespace/metadata/crash races, coexisting versions and bounded
+  resources; cold release artifacts, independent reproduction and external review.
+  The type check and unlink are not one atomic conditional operation. Older binaries
+  do not participate in the advisory reservation. Code already running as the same
+  UID can mutate its own mode-0700 directory; this is not a stronger OS-principal
+  denial-of-service boundary.
 - **R-S11bt/R-S11e-86 — Windows Installer never launches the remote-control application — SOURCE
   IMPLEMENTED; CURRENT NATIVE MSI AND EXACT-ARTIFACT ACCEPTANCE OPEN.** The per-machine
   `res/msi/Package/Components/RustDesk.wxs` has no application/tray launch custom action,

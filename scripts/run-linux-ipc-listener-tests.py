@@ -702,6 +702,81 @@ def native(expected_sha, barrier_sha):
                 'startup did not recover after refused finalization')
         endpoint.unlink()
 
+    # Retaining the lock alone does not retain the parent used by bind/finalization.
+    for stage in ('bind-before', 'listen', 'socket-mode-before', 'chmod'):
+        for kind in ('directory', 'symlink'):
+            for postfix, uid in (('_service_password', 0), ('_password', 4001)):
+                endpoint = path(postfix, uid)
+                parent = endpoint.parent
+                retained_parent = parent.with_name(parent.name + '-retained')
+                target_parent = parent.with_name(parent.name + '-replacement')
+                require(not os.path.lexists(retained_parent) and not os.path.lexists(target_parent),
+                        'parent replacement fixture exists')
+                entered_r, entered_w = os.pipe()
+                release_r, release_w = os.pipe()
+                child, replaced = None, False
+                original = entry_state(parent)
+                try:
+                    launch = command('start', postfix, uid)
+                    launch['env'] = dict(ENV, LD_PRELOAD=str(barrier), IPC_BARRIER_ENTER=str(entered_w),
+                                         IPC_BARRIER_RELEASE=str(release_r), IPC_BARRIER_CALL=stage,
+                                         IPC_BARRIER_PATH=str(endpoint))
+                    child = subprocess.Popen(**launch, pass_fds=(entered_w, release_r),
+                                             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                             stderr=subprocess.PIPE, text=True)
+                    os.close(entered_w); entered_w = None
+                    os.close(release_r); release_r = None
+                    require(select.select([entered_r], [], [], 5)[0] and os.read(entered_r, 1) == b'R',
+                            'parent replacement barrier not reached')
+                    if stage == 'bind-before':
+                        require(not os.path.lexists(endpoint), 'bind already created socket')
+                    else:
+                        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+                            peer.settimeout(2); peer.connect(str(endpoint))
+                            import struct
+                            require(struct.unpack('3i', peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))[:2]
+                                    == (child.pid, uid), 'parent fixture listener identity differs')
+                    parent.rename(retained_parent); replaced = True
+                    replacement = target_parent if kind == 'symlink' else parent
+                    replacement.mkdir(mode=0o711 if uid == 0 else 0o700)
+                    os.chown(replacement, uid, uid)
+                    if kind == 'symlink':
+                        parent.symlink_to(target_parent)
+                    (replacement / 'keep').write_bytes(b'untouched replacement')
+                    if stage != 'bind-before':
+                        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stale:
+                            stale.bind(str(endpoint))
+                        os.chown(endpoint, uid, uid); endpoint.chmod(0o400)
+                    before = (entry_state(parent), entry_state(replacement), entry_state(endpoint),
+                              entry_state(replacement / 'keep'), sorted(p.name for p in replacement.iterdir()))
+                    os.write(release_w, b'G'); os.close(release_w); release_w = None
+                    output, errors = child.communicate('stop\n', timeout=5)
+                    after = (entry_state(parent), entry_state(replacement), entry_state(endpoint),
+                             entry_state(replacement / 'keep'), sorted(p.name for p in replacement.iterdir()))
+                    record(f'parent-swap-{stage}-{kind}-{postfix}', child.returncode == 3
+                           and not output and errors.startswith('ERR ') and before == after,
+                           subprocess.CompletedProcess([], child.returncode, output, errors))
+                finally:
+                    if child is not None:
+                        if child.poll() is None:
+                            child.kill()
+                        child.communicate(timeout=5)
+                    for fd in (entered_r, entered_w, release_r, release_w):
+                        if fd is not None:
+                            os.close(fd)
+                    if replaced:
+                        endpoint.unlink(missing_ok=True)
+                        (replacement / 'keep').unlink()
+                        if kind == 'symlink':
+                            parent.unlink()
+                        replacement.rmdir()
+                        retained_parent.rename(parent)
+                    require(entry_state(parent) == original, 'original parent metadata changed')
+                result = check(postfix, uid)
+                require(result.returncode == 0 and result.stdout == 'OK started\n' and endpoint.is_socket(),
+                        'startup did not recover after parent restoration')
+                endpoint.unlink()
+
     for kind in ('deleted', 'unreadable'):
         endpoint = path('_password', 4001)
         executable = work / 'unlinked-probe'
@@ -843,8 +918,8 @@ def native(expected_sha, barrier_sha):
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
     require(sha(barrier) == barrier_sha, 'barrier changed')
     probe.unlink(); barrier.unlink(); work.rmdir()
-    require(len(cases) == 116, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=116 failures={len(failures)} '
+    require(len(cases) == 132, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=132 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 

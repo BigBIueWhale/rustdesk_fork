@@ -2,6 +2,7 @@
 #include <dlfcn.h>
 #include <errno.h>
 #include <poll.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/file.h>
@@ -48,6 +49,20 @@ int flock(int fd, int operation) {
     return real_flock(fd, operation);
 }
 
+static int socket_name_matches(const char *actual, const char *expected) {
+    if (!strcmp(actual, expected)) return 1;
+    const char *a = strrchr(actual, '/'), *e = strrchr(expected, '/');
+    if (!a || !e || strcmp(a, e)) return 0;
+    char actual_parent[256] = {0}, expected_parent[256] = {0};
+    size_t alen = a - actual, elen = e - expected;
+    if (!alen || !elen || alen >= sizeof(actual_parent) || elen >= sizeof(expected_parent)) return 0;
+    memcpy(actual_parent, actual, alen); memcpy(expected_parent, expected, elen);
+    struct stat ast, est;
+    return stat(actual_parent, &ast) == 0 && stat(expected_parent, &est) == 0
+        && S_ISDIR(ast.st_mode) && S_ISDIR(est.st_mode)
+        && ast.st_dev == est.st_dev && ast.st_ino == est.st_ino;
+}
+
 static void socket_barrier(int fd, const char *operation) {
     const char *call = getenv("IPC_BARRIER_CALL");
     const char *path = getenv("IPC_BARRIER_PATH");
@@ -57,12 +72,20 @@ static void socket_barrier(int fd, const char *operation) {
     if (getsockname(fd, (struct sockaddr *)&address, &length) != 0
         || length > sizeof(address) || address.sun_family != AF_UNIX
         || !memchr(address.sun_path, 0, sizeof(address.sun_path))) _exit(94);
-    if (!strcmp(address.sun_path, path)) wait_at_barrier();
+    if (socket_name_matches(address.sun_path, path)) wait_at_barrier();
 }
 
 int bind(int fd, const struct sockaddr *address, socklen_t length) {
     int (*real_bind)(int, const struct sockaddr *, socklen_t) = dlsym(RTLD_NEXT, "bind");
     if (!real_bind) _exit(90);
+    const char *call = getenv("IPC_BARRIER_CALL"), *target = getenv("IPC_BARRIER_PATH");
+    if (call && !strcmp(call, "bind-before") && target && address
+        && length > offsetof(struct sockaddr_un, sun_path) && length <= sizeof(struct sockaddr_un)
+        && address->sa_family == AF_UNIX) {
+        const char *path = ((const struct sockaddr_un *)address)->sun_path;
+        if (memchr(path, 0, length - offsetof(struct sockaddr_un, sun_path))
+            && socket_name_matches(path, target)) wait_at_barrier();
+    }
     int result = real_bind(fd, address, length), saved_errno = errno;
     if (result == 0) socket_barrier(fd, "bind");
     errno = saved_errno;

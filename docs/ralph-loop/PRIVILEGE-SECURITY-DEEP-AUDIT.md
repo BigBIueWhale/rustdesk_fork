@@ -116613,3 +116613,53 @@ joins after 30.919 seconds, RAM `run.pfiss7u8` retires and three host listener
 deltas are zero. Six count files add 104,453 bytes; all 28 retained evidence
 files total 421,869 bytes per host. This audit-only receipt leaves the measured
 ledger unchanged.
+
+### 2026-10-29 — one ordinary main IPC transaction deadline
+
+At `fa957cc3`, `main_ipc_request` gives `connect` a complete caller timeout,
+then `main_ipc_request_on_stream` gives the send and receive another complete
+timeout each. A slow connection can therefore renew the response wait instead
+of consuming the caller's original budget. The protected credential helper
+already uses its separate absolute deadline; that path remains unchanged.
+
+[Pinned Tokio 1.44.2 timeout implementation](https://raw.githubusercontent.com/tokio-rs/tokio/tokio-1.44.2/tokio/src/time/timeout.rs)
+owns the inner future and drops it on cancellation. It polls that future before
+the timer and cannot preempt synchronous work. `a1f1647d` wraps the complete
+ordinary `main_ipc_request` future in the existing timeout helper. The same future
+owns connection establishment and the eventual stream, so expiry retires its
+local socket without starting a retry. Existing per-stage bounds remain inside
+that total budget. Receiver admission, authorization and mutation ownership are
+unchanged: client expiry neither cancels an admitted receiver operation nor
+establishes rollback. No hard CPU/scheduler bound or new LPE closure is claimed.
+
+Prep `836219c9` compiles the exact main request/response types, ordinary request
+function, on-stream function and production send/read methods. A fixture adds
+controlled delay before the real connector; the actual endpoint, parity transport,
+frame codec/reader, kernel UID/PID, response bytes and socket EOF are observed.
+At baseline `PHBTzvKyOJ`, 350 ms connection plus 350 ms response delays return
+success after 703.714014 ms under root and 703.507373 ms under UID 4001 despite
+a 500 ms budget. These are the only two failures among 226 cases; all fourteen
+directory cases pass. With unchanged fixtures, candidate `yeWPkBK8gr` passes
+all 226 cases, fourteen directories and the focused desktop source check.
+The corrected late-response cases require an error between 450 and 650 ms,
+failure of the peer's delayed response write and descriptor restoration. Other
+new cases require exact successful responses after 100+100 ms, a stalled connect
+that never reaches the listener, and silent-peer timeout with observed EOF.
+Every peer is joined; framing, request types, fixtures and dependencies are
+byte-identical between the two accepted runs. Only `main_ipc_request` changes
+in production. Shared direct on-stream and credential deadline callers remain.
+
+The zero-NIC VM runs take 90.608/88.232 seconds. QEMU 1744380/1745124 joins,
+RAM `run.qd3_emr9`/`run.jdqo1ldk` retires and both sets of four host listener
+deltas are zero. After evidence preservation, exact failed baseline scratch
+inode 78294410 is removed, reclaiming 3,493,888 allocated bytes. Fourteen raw
+files plus `main-transaction-deadline-a1f1647d.json` total 237,843 bytes per host;
+the capsule is 22,603 bytes, SHA-256
+`a7310aafb92f9646253fac76c1d5068dace9e2d900a5934c63bce9e33fecc812`.
+
+Full application/settings behavior, installed authorization, real Windows busy
+pipes and macOS transport, synchronous-work latency, release artifacts, R-S0/R-F5,
+independent reproduction and external review remain open. All user-parked work
+stays parked. Python parsing, both edited harness shell syntax checks and
+`git diff --check` pass. Requirements, dependencies and live instructions are
+unchanged.

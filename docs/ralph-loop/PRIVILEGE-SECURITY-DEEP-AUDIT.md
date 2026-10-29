@@ -116496,3 +116496,12 @@ compilation/installed behavior, current release artifacts, R-S0/R-F5, independen
 reproduction and external review remain open. Windows VM storage and every other
 user-parked item stay parked. Python parsing, both edited shell syntax checks and
 `git diff --check` pass; no live instruction or dependency changes.
+
+At `a2b3ddaf`, isolated count `S5m2sOUPQt` reports **359,166 ledger tokens** /
+1,642,560 bytes, SHA-256
+`64609cd9b0ccddc18da6732516c0e4c8e0d360c0ba374013d629e57ae09fc55b`.
+Seven tokenizer controls and the complete byte round trip pass. QEMU 1736418
+joins after 30.814 seconds, RAM `run.dnfbwl11` retires and three listener deltas
+are zero. Six count files add 103,615 bytes; all 21 retained evidence files total
+347,728 bytes on each host. This audit-only receipt leaves the measured ledger
+unchanged.

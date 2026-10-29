@@ -56,12 +56,9 @@ def build():
     fs_source = parsed(repo / 'src/ipc/fs.rs')
     guard = fs_source.impl(('impl', 'Drop', 'for', 'FdGuard'), 'fd guard')
     filesystem = fs_source.text[fs_source.text.index('struct FdGuard(i32);'):fs_source.tokens[guard.end].offset + 1] + '\n'
-    for name in ('open_ipc_parent_dir_fd', 'remove_parent_entry_via_fd', 'remove_ipc_socket_via_secure_parent_fd',
-                 'probe_existing_listener', 'current_euid', 'check_existing_listener',
-                 'expected_ipc_parent_mode', 'scrub_preexisting_ipc_parent_entries',
-                 'recreate_foreign_service_ipc_parent_dir', 'should_recreate_foreign_service_ipc_parent',
-                 'verify_linux_service_ipc_namespace', 'ensure_secure_ipc_parent_dir',
-                 'scrub_secure_ipc_parent_dir', 'should_scrub_parent_entries_after_listener_check'):
+    for name in ('open_ipc_parent_dir_fd', 'probe_existing_listener', 'current_euid',
+                 'expected_ipc_parent_mode', 'verify_linux_service_ipc_namespace',
+                 'ensure_secure_ipc_parent_dir'):
         filesystem += function(fs_source, name)
     if fs_source.functions('connect_existing_listener'):
         filesystem += function(fs_source, 'connect_existing_listener')

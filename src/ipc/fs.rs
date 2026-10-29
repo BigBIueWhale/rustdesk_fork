@@ -100,6 +100,7 @@ fn ipc_descriptor_directory() -> ResultType<FdGuard> {
 // Error policy:
 // - NotFound is treated as benign (already removed / raced away).
 // - Other errors are surfaced explicitly.
+#[cfg(target_os = "macos")]
 fn remove_parent_entry_via_fd(
     parent_fd: i32,
     parent_dir: &Path,
@@ -181,6 +182,7 @@ fn remove_parent_entry_via_fd(
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
 fn scrub_preexisting_ipc_parent_entries(
     parent_fd: i32,
     parent_dir: &Path,
@@ -222,11 +224,10 @@ fn remove_ipc_socket_via_secure_parent_fd(postfix: &str) -> ResultType<()> {
 }
 
 // R-S11a(b): replace the foreign-created inode rather than relabel its ownership.
-// This also discards its access/default ACLs and other inode metadata. Linux chmod(0711)
-// masks named-user write access, but does not remove the ACL entries or the default ACL.
+// This also discards its ACLs and other inode metadata.
 // Remove only known IPC artifacts and recreate relative to the opened grandparent;
 // leftover entries or failed recreation refuse startup. The caller verifies the returned fd.
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[cfg(target_os = "macos")]
 fn recreate_foreign_service_ipc_parent_dir(parent_dir: &Path, postfix: &str) -> ResultType<i32> {
     let grandparent = parent_dir.parent().ok_or_else(|| {
         Error::new(
@@ -355,19 +356,6 @@ fn recreate_foreign_service_ipc_parent_dir(parent_dir: &Path, postfix: &str) -> 
     Ok(new_fd)
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-#[inline]
-fn should_recreate_foreign_service_ipc_parent(
-    owner_uid: u32,
-    expected_uid: u32,
-    postfix: &str,
-) -> bool {
-    cfg!(target_os = "macos")
-        && owner_uid != expected_uid
-        && expected_uid == 0
-        && config::is_service_ipc_postfix(postfix)
-}
-
 #[cfg(target_os = "linux")]
 fn verify_linux_service_ipc_namespace(parent_dir: &Path) -> ResultType<()> {
     if unsafe { hbb_common::libc::geteuid() } != 0
@@ -435,7 +423,7 @@ pub(crate) fn ensure_secure_ipc_parent_dir(path: &str, postfix: &str) -> ResultT
     // we mutate the inode we opened, though it does not protect against symlinks in ancestor path
     // components.
     let parent_c = CString::new(parent_dir.as_os_str().as_bytes().to_vec())?;
-    let mut fd = match open_ipc_parent_dir_fd(&parent_c) {
+    let fd = match open_ipc_parent_dir_fd(&parent_c) {
         Ok(fd) => fd,
         Err(open_err) => {
             // IPC parents are single-level children of their selected runtime directory.
@@ -493,7 +481,7 @@ pub(crate) fn ensure_secure_ipc_parent_dir(path: &str, postfix: &str) -> ResultT
             }
         }
     };
-    let mut fd_guard = FdGuard(fd);
+    let fd_guard = FdGuard(fd);
 
     let mut st: hbb_common::libc::stat = unsafe { std::mem::zeroed() };
     if unsafe { hbb_common::libc::fstat(fd, &mut st as *mut _) } != 0 {
@@ -524,14 +512,15 @@ pub(crate) fn ensure_secure_ipc_parent_dir(path: &str, postfix: &str) -> ResultT
     }
 
     let expected_uid = unsafe { hbb_common::libc::geteuid() as u32 };
-    let mut owner_uid = st.st_uid as u32;
-    let mut recreated_foreign_service_parent = false;
-    // macOS may replace a foreign service parent. Linux rejects every foreign owner.
-    if should_recreate_foreign_service_ipc_parent(owner_uid, expected_uid, postfix) {
+    #[cfg(target_os = "macos")]
+    let (fd_guard, st, recreated_foreign_service_parent) = if st.st_uid as u32 != expected_uid
+        && expected_uid == 0
+        && config::is_service_ipc_postfix(postfix)
+    {
         // Close the foreign parent fd before its directory is removed, then re-open the fresh one.
         drop(fd_guard);
-        fd = recreate_foreign_service_ipc_parent_dir(parent_dir, postfix)?;
-        fd_guard = FdGuard(fd);
+        let fd = recreate_foreign_service_ipc_parent_dir(parent_dir, postfix)?;
+        let fd_guard = FdGuard(fd);
         let mut st2: hbb_common::libc::stat = unsafe { std::mem::zeroed() };
         if unsafe { hbb_common::libc::fstat(fd, &mut st2 as *mut _) } != 0 {
             let os_err = std::io::Error::last_os_error();
@@ -546,10 +535,12 @@ pub(crate) fn ensure_secure_ipc_parent_dir(path: &str, postfix: &str) -> ResultT
             )
             .into());
         }
-        owner_uid = st2.st_uid as u32;
-        st = st2;
-        recreated_foreign_service_parent = true;
-    }
+        (fd_guard, st2, true)
+    } else {
+        (fd_guard, st, false)
+    };
+    let fd = fd_guard.0;
+    let owner_uid = st.st_uid as u32;
     if owner_uid != expected_uid {
         return Err(Error::new(
             ErrorKind::PermissionDenied,
@@ -614,10 +605,11 @@ pub(crate) fn ensure_secure_ipc_parent_dir(path: &str, postfix: &str) -> ResultT
             return Err(Error::new(ErrorKind::PermissionDenied, "ipc parent mode or owner changed").into());
         }
     }
-    let should_scrub =
-        repaired_parent_mode || recreated_foreign_service_parent || had_untrusted_parent_mode;
+    let should_scrub = repaired_parent_mode || had_untrusted_parent_mode;
+    #[cfg(target_os = "macos")]
+    let should_scrub = should_scrub || recreated_foreign_service_parent;
     // Close the (possibly-recreated) parent-dir fd now that hardening is complete; the caller re-opens
-    // by path to bind. The explicit drop also marks fd_guard read after the recreate-branch rebind.
+    // by path to bind.
     drop(fd_guard);
     Ok(should_scrub)
 }
@@ -1169,22 +1161,7 @@ mod tests {
     }
 
     #[test]
-    fn test_foreign_service_parent_recreation_policy_is_macos_root_service_only() {
-        assert_eq!(super::should_recreate_foreign_service_ipc_parent(
-            1001, 0, "_service"
-        ), cfg!(target_os = "macos"));
-        assert!(!super::should_recreate_foreign_service_ipc_parent(
-            0, 0, "_service"
-        ));
-        assert!(!super::should_recreate_foreign_service_ipc_parent(
-            1001, 1000, "_service"
-        ));
-        assert!(!super::should_recreate_foreign_service_ipc_parent(
-            1001, 0, ""
-        ));
-    }
-
-    #[test]
+    #[cfg(target_os = "macos")]
     fn test_scrub_preexisting_ipc_parent_entries_only_removes_target_postfix_artifacts() {
         use std::os::unix::ffi::OsStrExt;
 
@@ -1229,6 +1206,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")]
     fn test_scrub_preexisting_ipc_parent_entries_should_bind_to_opened_inode_not_path() {
         use std::os::unix::ffi::OsStrExt;
 

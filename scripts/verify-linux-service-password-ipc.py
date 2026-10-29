@@ -755,10 +755,12 @@ def verify_endpoint_ownership(rust: Mapping[str, RustSource]) -> None:
             (("open_ipc_parent_dir_fd", "(", "&", "parent_c", ")"), "parent open after namespace admission"),
         )
     )
-    replacement_policy = fs.function("should_recreate_foreign_service_ipc_parent")
-    replacement_policy.require(
-        ("cfg", "!", "(", "target_os", "=", '"macos"', ")", "&&"),
-        "foreign-directory replacement is unavailable on Linux",
+    secure_parent.require(
+        ("#", "[", "cfg", "(", "target_os", "=", '"macos"', ")", "]",
+         "let", "(", "fd_guard", ",", "st", ",", "recreated_foreign_service_parent", ")", "=",
+         "if", "st", ".", "st_uid", "as", "u32", "!=", "expected_uid",
+         "&&", "expected_uid", "==", "0", "&&", "config", "::", "is_service_ipc_postfix", "(", "postfix", ")"),
+        "foreign-directory replacement compiles only for a macOS root service",
         unique=True,
     )
     secure_parent.require_order(

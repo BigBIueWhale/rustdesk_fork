@@ -16,8 +16,6 @@ import tomllib
 VM_ROOT = Path('/var/tmp/rustdesk-verifier-authority')
 WORK = VM_ROOT / 'ipc-parent-native'
 FUNCTIONS = ('expected_ipc_parent_mode', 'open_ipc_parent_dir_fd',
-             'remove_parent_entry_via_fd', 'scrub_preexisting_ipc_parent_entries',
-             'recreate_foreign_service_ipc_parent_dir', 'should_recreate_foreign_service_ipc_parent',
              'verify_linux_service_ipc_namespace', 'ensure_secure_ipc_parent_dir')
 RUSTC = '/usr/local/rustup/toolchains/1.75.0-x86_64-unknown-linux-gnu/bin/rustc'
 ENV = {'PATH': '/usr/bin:/bin', 'LC_ALL': 'C', 'HOME': '/tmp', 'RUSTC': RUSTC}

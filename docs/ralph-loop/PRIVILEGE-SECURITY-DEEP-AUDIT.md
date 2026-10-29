@@ -117238,3 +117238,12 @@ Scope review and `git diff --check` pass. Full parent/installed functionality,
 same-UID impersonation, exact process-role/generation proof, descriptor handoff,
 PID-unavailable injection, cross-version/other-platform acceptance and all
 separately parked work remain OPEN. A fresh ledger count follows.
+
+Ledger count `o0QBzPID6Y` at `37fae64c` reports 359,613 tokens using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 1,644,308 bytes, SHA-256
+`5aa4ed853ecd38e6ef243e6c1ad5a60e0e76af41b7a404e4deddf1cde5714536`.
+Seven controls and the complete text round trip pass. QEMU 1788362 joins after
+30.679 seconds; RAM `run.66uym7eh` retires and all three listener deltas are zero.
+Six count files add 102,899 bytes; all twenty-seven evidence files total 443,816
+bytes per host with matching hashes. This audit-only receipt preserves the
+measured ledger bytes and its approximate 400,000-token budget.

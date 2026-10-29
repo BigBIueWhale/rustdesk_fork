@@ -75,8 +75,11 @@ class _Registry extends ChangeNotifier implements ServerModel {
 }
 
 class _Harness {
+  _Harness({this.otherClient});
+
   final binding = _Binding();
   final registry = _Registry();
+  final Client? otherClient;
   Client client = _client();
   bool visible = true;
   late StateSetter rebuild;
@@ -84,6 +87,7 @@ class _Harness {
   Future<void> mount(WidgetTester tester) async {
     installCmAudioProbeBinding(binding);
     registry.clients.add(client);
+    if (otherClient != null) registry.clients.add(otherClient!);
     await tester.pumpWidget(MaterialApp(
       navigatorKey: globalKey,
       theme: MyTheme.lightTheme,
@@ -91,8 +95,12 @@ class _Harness {
         child: ChangeNotifierProvider<ServerModel>.value(value: registry,
           child: StatefulBuilder(builder: (context, setState) {
             rebuild = setState;
-            return visible ? buildCmAudioProbePanel(client)
-                : const Text('Replacement panel');
+            if (!visible) return const Text('Replacement panel');
+            final panel = buildCmAudioProbePanel(client);
+            return otherClient == null ? panel : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [panel, buildCmAudioProbePanel(otherClient!)],
+            );
           }),
         ),
       ))),
@@ -100,9 +108,9 @@ class _Harness {
     await tester.pumpAndSettle();
   }
 
-  VoidCallback opener(WidgetTester tester) {
+  VoidCallback opener(WidgetTester tester, [int index = 0]) {
     final button = tester.widget<InkWell>(find.ancestor(
-        of: find.text('Audio input'), matching: find.byType(InkWell)));
+        of: find.text('Audio input').at(index), matching: find.byType(InkWell)));
     return () {
       button.onTapDown?.call(
           TapDownDetails(globalPosition: const Offset(100, 100)));
@@ -160,6 +168,10 @@ class _Harness {
       if (!write.result.isCompleted) write.result.complete();
     }
     await tester.pumpAndSettle();
+    while (globalKey.currentState?.canPop() ?? false) {
+      globalKey.currentState!.pop();
+      await tester.pumpAndSettle();
+    }
     await tester.pump(const Duration(seconds: 4));
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();
@@ -170,6 +182,123 @@ class _Harness {
 const _retirements = ['call', 'registry', 'client-id', 'client', 'page', 'ended'];
 
 void main() {
+  testWidgets('audio CM picker retains pending reads after panel disposal',
+      (tester) async {
+    for (final failRead in [false, true]) {
+      final h = _Harness();
+      try {
+        await h.mount(tester);
+        await h.open(tester);
+        final retired = h.opener(tester);
+        await h.retire(tester, 'page');
+        h.rebuild(() => h.visible = true);
+        await tester.pumpAndSettle();
+        h.opener(tester)();
+        retired();
+        await tester.pump();
+        expect(h.binding.reads, hasLength(1));
+        if (failRead) {
+          h.binding.reads.single.completeError(StateError('retired read failed'));
+        } else {
+          h.binding.reads.single.complete(_inputs);
+        }
+        await tester.pumpAndSettle();
+        expect(find.text('Microphone B'), findsNothing);
+        expect(find.text('Failed'), findsNothing);
+        await h.menu(tester);
+        expect(h.binding.reads, hasLength(2));
+        await tester.tap(find.text('Microphone B'));
+        await tester.pumpAndSettle();
+        expect(h.binding.writes, hasLength(1));
+        h.binding.writes.single.result.complete();
+        await tester.pumpAndSettle();
+        expect(h.binding.current, 'mic-b');
+        expect(tester.takeException(), isNull);
+      } finally { await h.finish(tester); }
+    }
+  });
+
+  testWidgets('audio CM picker retains pending writes after panel disposal',
+      (tester) async {
+    for (final failWrite in [false, true]) {
+      final h = _Harness();
+      try {
+        await h.mount(tester);
+        await h.menu(tester);
+        await tester.tap(find.text('Microphone B'));
+        await tester.pumpAndSettle();
+        expect(h.binding.writes, hasLength(1));
+        await h.retire(tester, 'page');
+        h.rebuild(() => h.visible = true);
+        await tester.pumpAndSettle();
+        h.opener(tester)();
+        await tester.pump();
+        expect(h.binding.reads, hasLength(1), reason: 'old write still owns input');
+        if (failWrite) {
+          h.binding.writes.single.result.completeError(StateError('retired write failed'));
+        } else {
+          h.binding.writes.single.result.complete();
+        }
+        await tester.pumpAndSettle();
+        expect(find.text('Failed'), findsNothing);
+        await h.menu(tester);
+        expect(h.binding.reads, hasLength(2));
+        await tester.tap(find.text('Microphone A'));
+        await tester.pumpAndSettle();
+        expect(h.binding.writes.map((w) => w.device), ['mic-b', 'mic-a']);
+        h.binding.writes.last.result.complete();
+        await tester.pumpAndSettle();
+        expect(h.binding.current, 'mic-a');
+        expect(tester.takeException(), isNull);
+      } finally { await h.finish(tester); }
+    }
+  });
+
+  testWidgets('audio CM panels share input selection admission', (tester) async {
+    final h = _Harness(otherClient: _client()
+      ..id = 4
+      ..registryGeneration = 5
+      ..voiceCallId = 6);
+    try {
+      await h.mount(tester);
+      final first = h.opener(tester, 0);
+      final second = h.opener(tester, 1);
+      first();
+      second();
+      await tester.pump();
+      expect(h.binding.reads, hasLength(1));
+      h.binding.reads.single.complete(_inputs);
+      await tester.pumpAndSettle();
+      second();
+      await tester.pump();
+      expect(h.binding.reads, hasLength(1), reason: 'menu owns input');
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Audio input').at(1));
+      await tester.pump();
+      expect(h.binding.reads, hasLength(2));
+      h.binding.reads.last.complete(_inputs);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Microphone B'));
+      await tester.pumpAndSettle();
+      first();
+      await tester.pump();
+      expect(h.binding.reads, hasLength(2), reason: 'write owns input');
+      expect(h.binding.writes, hasLength(1));
+      h.binding.writes.single.result.complete();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Audio input').first);
+      await tester.pump();
+      expect(h.binding.reads, hasLength(3));
+      h.binding.reads.last.complete(_inputs);
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(h.binding.current, 'mic-b');
+      expect(tester.takeException(), isNull);
+    } finally { await h.finish(tester); }
+  });
+
   testWidgets('audio CM picker supports keyboard open select and dismissal',
       (tester) async {
     for (final key in [LogicalKeyboardKey.enter, LogicalKeyboardKey.space]) {

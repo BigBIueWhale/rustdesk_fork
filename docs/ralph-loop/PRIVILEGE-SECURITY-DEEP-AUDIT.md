@@ -116259,3 +116259,45 @@ joins after 30.618 seconds, RAM `run.rkkwedor` retires and all three listener de
 are zero. Six count files add 104,206 bytes; all fourteen retained files total
 189,549 bytes on both hosts. This audit-only receipt leaves the measured ledger
 unchanged; the overall hardening goal remains OPEN.
+
+### 2026-10-29 — dormant peer tags and notes
+
+At clean `475eb99b`, `Peer` still decodes `tags` and `note`; the only production
+reader is the autocomplete tag tooltip. Both Rust peer-list producers use
+`src/ui_interface.rs::peer_to_map`, which emits only address, username, hostname,
+platform and alias. Git `3309b49d^` traces tags/notes to the deleted address-book
+model. R-G4/R-SV6/R-S11hj require removal of that dormant presentation surface.
+This is unused-source retirement, not a newly demonstrated live failure or LPE.
+
+`5b9f8678` removes both fields, their decoder assignments, the tag tooltip and its
+uncalled list-prefix helper. Existing tests drop obsolete metadata assertions;
+the ignored-account-input case includes tags/notes, and the redaction fixture uses
+an invalid live alias instead of a retired tag field. No test cases are added.
+Exact comparison preserves the peer loader/publication tail and complete tile
+gesture/layout/selection subtree, Rust producers, connection pages, settings,
+verifiers and instructions. The pinned Flutter implementation already returns
+the child for an empty tooltip message, which current local peers always selected:
+[Flutter 3.24.5 Tooltip.build](https://github.com/flutter/flutter/blob/3.24.5/packages/flutter/lib/src/material/tooltip.dart#L757-L763).
+The separate same-query autocomplete refresh/selection work remains PARKED.
+
+Initial TUF run `QXZpaRFH2t` stops before tests on formatting of the edited alias
+fixture. `60d63db9` applies the reported format; the combined four-file diff removes
+24 net lines and passes `git diff --check`. The excluded run joins QEMU 1720292,
+retires RAM `run.b4z4mmio` and has four zero listener deltas. Its seven diagnostic
+files (72,639 bytes) are copied and hash-verified on both hosts before exact retired
+scratch removal frees 3,428,352 allocated bytes. No behavioral pass is claimed for
+that attempt.
+
+TUF `tDQMFe19jl` at `60d63db9` passes all **113 cases / seven peer-data suites**
+and three scoped result-parser controls in 260.931 seconds. Fresh bridge generation
+and exact library/test copies pass. The retained output reports validated aggregate
+results; this is production Dart/framework execution with controlled backend
+responses, not native FFI/storage, an installed app or browser/device execution.
+QEMU 1721138 joins, RAM `run.atd9q9t1` retires and all four listener deltas are zero.
+No broader parser, parked autocomplete follow-up or parent integration is resumed.
+
+`peer-tags-retirement-5b9f8678.json` retains classification, source hashes, both run
+identities and cleanup: 16,738 bytes, SHA-256
+`098b02796378b37f123b6f4854a459c8e078a0eaaf133981be369cb405e2c162`.
+Fourteen raw files plus the capsule total 165,277 bytes. Required full-app,
+installed/native, device and R-S0/R-F5 acceptance remain OPEN.

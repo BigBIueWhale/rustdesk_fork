@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import select
 import shutil
 import stat
 import struct
@@ -97,12 +98,16 @@ def build():
     source.write_text(generated)
     binary = target / 'ipc-parent'
     run([rustc, '--edition=2021', '--extern', f'libc={library}', str(source), '-o', str(binary)])
+    barrier = target / 'ipc-parent-barrier.so'
+    run(['/usr/bin/cc', '-Wall', '-Wextra', '-Werror', '-shared', '-fPIC',
+         str(repo / 'scripts/test-linux-ipc-parent-barrier.c'), '-ldl', '-o', str(barrier)])
+    print(f'LINUX_IPC_PARENT_BARRIER=pass artifact_sha256={sha(barrier)} scheduling=real-openat', flush=True)
     print(f'LINUX_IPC_PARENT_BUILD=pass artifact_sha256={sha(binary)} source_sha256={sha(fs_path)} '
           f'fragment_sha256={hashlib.sha256(fragment.encode()).hexdigest()} '
           f'config_sha256={sha(config_path)} libc=0.2.171 functions=8 error_adapter=std-boxed', flush=True)
 
 
-def native(expected_sha):
+def native(expected_sha, barrier_sha):
     require(os.geteuid() == 0 and Path('/run/rustdesk-verifier-vm').stat().st_uid == 0
             and Path('/proc/1/comm').read_text().strip() == 'systemd'
             and sorted(p.name for p in Path('/sys/class/net').iterdir()) == ['lo']
@@ -119,6 +124,14 @@ def native(expected_sha):
     shutil.copyfile(artifact, probe)
     probe.chmod(0o555)
     require(sha(probe) == expected_sha and probe.stat().st_uid == 0, 'sealed probe differs')
+    barrier_artifact = artifact.with_name('ipc-parent-barrier.so')
+    metadata = barrier_artifact.lstat()
+    require(stat.S_ISREG(metadata.st_mode) and metadata.st_uid == 1000 and metadata.st_nlink == 1
+            and metadata.st_size < 1048576 and sha(barrier_artifact) == barrier_sha, 'barrier artifact differs')
+    barrier = WORK / 'barrier.so'
+    shutil.copyfile(barrier_artifact, barrier)
+    barrier.chmod(0o555)
+    require(sha(barrier) == barrier_sha and barrier.stat().st_uid == 0, 'sealed barrier differs')
     data = WORK / 'data'
     data.mkdir(mode=0o1777)
     data.chmod(0o1777)
@@ -234,19 +247,89 @@ def native(expected_sha):
     (parent / 'keep').unlink(); parent.rmdir(); sentinel.unlink()
     record('mode-repair-and-exact-symlink-scrub')
 
+    failures = []
+    for phase in ('before-open', 'after-open'):
+        for replacement in ('file', 'symlink', 'missing'):
+            name = f'race-{phase}-{replacement}'
+            parent, moved = data / name, data / (name + '-moved')
+            sentinel = data / (name + '-target')
+            sentinel.mkdir(mode=0o700)
+            (sentinel / 'keep').write_bytes(b'untouched')
+            actor('import pathlib,sys\npathlib.Path(sys.argv[1]).mkdir(mode=0o700)', parent)
+            original = parent.stat()
+            ready_read, ready_write = os.pipe()
+            release_read, release_write = os.pipe()
+            process = None
+            try:
+                process = subprocess.Popen(
+                    [str(probe), 'ensure', str(parent / 'ipc_service'), '_service'],
+                    env={**ENV, 'LD_PRELOAD': str(barrier), 'IPC_PARENT_BARRIER_NAME': name,
+                         'IPC_PARENT_BARRIER_PHASE': phase, 'IPC_PARENT_READY_FD': str(ready_write),
+                         'IPC_PARENT_RELEASE_FD': str(release_read)},
+                    pass_fds=(ready_write, release_read), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    user=0, group=0, extra_groups=[], text=True)
+                os.close(ready_write); ready_write = -1
+                os.close(release_read); release_read = -1
+                require(select.select([ready_read], [], [], 10)[0] == [ready_read]
+                        and os.read(ready_read, 1) == b'R', 'production openat barrier not reached')
+                actor('import pathlib,sys\np=pathlib.Path(sys.argv[1]);p.rename(sys.argv[2])\n'
+                      'if sys.argv[3]=="file": p.write_bytes(b"replacement")\n'
+                      'elif sys.argv[3]=="symlink": p.symlink_to(sys.argv[4],target_is_directory=True)\n',
+                      parent, moved, replacement, sentinel)
+                replacement_stat = parent.lstat() if replacement != 'missing' else None
+                require(os.write(release_write, b'G') == 1, 'cannot release production openat')
+                stdout, stderr = process.communicate(timeout=10)
+            finally:
+                if process is not None:
+                    if process.poll() is None:
+                        process.kill()
+                    process.communicate()
+                for fd in (ready_read, ready_write, release_read, release_write):
+                    if fd >= 0:
+                        os.close(fd)
+            require(len(stdout) + len(stderr) < 65536, 'race output exceeded bound')
+            require(moved.stat().st_ino == original.st_ino and moved.stat().st_uid == 4001
+                    and not list(moved.iterdir()) and (sentinel / 'keep').read_bytes() == b'untouched',
+                    'race changed moved directory or symlink target')
+            current = parent.lstat() if os.path.lexists(parent) else None
+            preserved = current is None if replacement_stat is None else (
+                current is not None and (current.st_dev, current.st_ino, current.st_mode, current.st_uid)
+                == (replacement_stat.st_dev, replacement_stat.st_ino, replacement_stat.st_mode, replacement_stat.st_uid))
+            if preserved and replacement == 'file':
+                preserved = parent.read_bytes() == b'replacement'
+            if preserved and replacement == 'symlink':
+                preserved = os.readlink(parent) == str(sentinel)
+            passed = process.returncode == 3 and not stdout and stderr.startswith('ERR ') and preserved
+            print(f'LINUX_IPC_PARENT_RACE={"pass" if passed else "fail"} name={name} '
+                  f'exit={process.returncode} replacement_preserved={str(preserved).lower()} '
+                  'actor_uid=4001 schedule=controlled-openat cleanup=joined', flush=True)
+            if passed:
+                record(name)
+            else:
+                failures.append(name)
+            if current is not None:
+                if stat.S_ISDIR(current.st_mode):
+                    parent.rmdir()
+                else:
+                    parent.unlink()
+            moved.rmdir(); (sentinel / 'keep').unlink(); sentinel.rmdir()
+
     require(not list(data.iterdir()) and len(list(Path('/proc/self/fd').iterdir())) == fd_before,
             'native fixture or descriptor leaked')
-    require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed during execution')
-    data.rmdir(); probe.unlink(); WORK.rmdir()
-    require(len(cases) == 6, 'native case inventory differs')
-    print(f'LINUX_IPC_PARENT_NATIVE=pass cases=6 artifact_sha256={expected_sha} '
+    require(sha(probe) == expected_sha and sha(artifact) == expected_sha
+            and sha(barrier) == barrier_sha and sha(barrier_artifact) == barrier_sha,
+            'artifact changed during execution')
+    data.rmdir(); probe.unlink(); barrier.unlink(); WORK.rmdir()
+    require(not failures, f'parent replacement races failed after joined cleanup: {failures}')
+    require(len(cases) == 12, 'native case inventory differs')
+    print(f'LINUX_IPC_PARENT_NATIVE=pass cases=12 artifact_sha256={expected_sha} '
           'receiver_uid=0 actors=4001,4002 source=production-functions installed=unexecuted cleanup=joined', flush=True)
 
 
 if __name__ == '__main__':
     if sys.argv[1:] == ['build']:
         build()
-    elif len(sys.argv) == 3 and sys.argv[1] == 'native':
-        native(sys.argv[2])
+    elif len(sys.argv) == 4 and sys.argv[1] == 'native':
+        native(sys.argv[2], sys.argv[3])
     else:
-        raise SystemExit('expected build or native ARTIFACT_SHA256')
+        raise SystemExit('expected build or native ARTIFACT_SHA256 BARRIER_SHA256')

@@ -4177,7 +4177,7 @@ run_focused_rust_tests() {
         bridge_mounts=(--mount "type=bind,source=$vendor/libc-0.2.171,target=/ipc-libc,readonly,bind-recursive=disabled")
         source_fingerprints=(Cargo.lock src/ipc/fs.rs libs/hbb_common/src/config.rs
             scripts/verify-linux-service-password-ipc.py scripts/run-linux-ipc-parent-tests.py
-            scripts/test-linux-ipc-parent.rs)
+            scripts/test-linux-ipc-parent.rs scripts/test-linux-ipc-parent-barrier.c)
         required_tests=()
     elif [ "$MODE" = linux-systemd-notification-tests ]; then
         container_name=rustdesk-linux-systemd-notification-tests
@@ -7064,25 +7064,31 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             || { tail -n 200 "$output" >&2; fail 'focused Rust build did not execute its offline network canary'; }
     fi
     if [ "$MODE" = linux-ipc-parent-tests ]; then
-        local ipc_parent_sha native_output=$ROOT/ipc-parent-native.out
-        local -a ipc_parent_builds
+        local ipc_parent_sha ipc_parent_barrier_sha native_output=$ROOT/ipc-parent-native.out
+        local -a ipc_parent_builds ipc_parent_barriers
         mapfile -t ipc_parent_builds < <(grep -E '^LINUX_IPC_PARENT_BUILD=pass artifact_sha256=[0-9a-f]{64} source_sha256=[0-9a-f]{64} fragment_sha256=[0-9a-f]{64} config_sha256=[0-9a-f]{64} libc=0.2.171 functions=8 error_adapter=std-boxed$' "$output")
         [ "${#ipc_parent_builds[@]}" -eq 1 ] \
             && [ "$(grep -Fc 'LINUX_IPC_PARENT_BUILD=' "$output")" -eq 1 ] \
             || fail 'IPC parent build receipt differs'
         ipc_parent_sha=${ipc_parent_builds[0]#*artifact_sha256=}
         ipc_parent_sha=${ipc_parent_sha%% *}
+        mapfile -t ipc_parent_barriers < <(grep -E '^LINUX_IPC_PARENT_BARRIER=pass artifact_sha256=[0-9a-f]{64} scheduling=real-openat$' "$output")
+        [ "${#ipc_parent_barriers[@]}" -eq 1 ] \
+            && [ "$(grep -Fc 'LINUX_IPC_PARENT_BARRIER=' "$output")" -eq 1 ] \
+            || fail 'IPC parent barrier build receipt differs'
+        ipc_parent_barrier_sha=${ipc_parent_barriers[0]#*artifact_sha256=}
+        ipc_parent_barrier_sha=${ipc_parent_barrier_sha%% *}
         [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
             || fail 'IPC parent builder has not terminated'
         "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
         CONTAINER_ID=
         setpriv --no-new-privs /usr/bin/prlimit --as=536870912 --nofile=128:128 --core=0:0 --fsize=16777216 \
-            /usr/bin/python3 -B -I -S "$source_root/scripts/run-linux-ipc-parent-tests.py" native "$ipc_parent_sha" \
+            /usr/bin/python3 -B -I -S "$source_root/scripts/run-linux-ipc-parent-tests.py" native "$ipc_parent_sha" "$ipc_parent_barrier_sha" \
             >"$native_output" 2>&1 \
             || { tail -c 65536 "$native_output" >&2; fail 'IPC parent native cases failed'; }
         [ "$(stat -c '%s' "$native_output")" -le 65536 ] \
-            && [ "$(grep -Fc 'LINUX_IPC_PARENT_CASE=pass ' "$native_output")" -eq 6 ] \
-            && [ "$(grep -Fxc "LINUX_IPC_PARENT_NATIVE=pass cases=6 artifact_sha256=$ipc_parent_sha receiver_uid=0 actors=4001,4002 source=production-functions installed=unexecuted cleanup=joined" "$native_output")" -eq 1 ] \
+            && [ "$(grep -Fc 'LINUX_IPC_PARENT_CASE=pass ' "$native_output")" -eq 12 ] \
+            && [ "$(grep -Fxc "LINUX_IPC_PARENT_NATIVE=pass cases=12 artifact_sha256=$ipc_parent_sha receiver_uid=0 actors=4001,4002 source=production-functions installed=unexecuted cleanup=joined" "$native_output")" -eq 1 ] \
             || fail 'IPC parent native inventory or cleanup differs'
         [ "$source_before" = "$source_archive_sha:$(cd "$source_root" && sha256sum "${source_fingerprints[@]}")" ] \
             || fail 'IPC parent production or fixture source changed'
@@ -7090,7 +7096,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         stop_docker_authority
         umount "$inputs" || fail 'cannot retire IPC parent sealed inputs'
         SEALED_INPUTS_MOUNTED=0
-        printf 'LINUX_IPC_PARENT_VM=pass commit=%s tree=%s artifact_sha256=%s cases=6 vm_network=none source=readonly cleanup=joined\n' \
+        printf 'LINUX_IPC_PARENT_VM=pass commit=%s tree=%s artifact_sha256=%s cases=12 vm_network=none source=readonly cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$ipc_parent_sha"
         return
     fi

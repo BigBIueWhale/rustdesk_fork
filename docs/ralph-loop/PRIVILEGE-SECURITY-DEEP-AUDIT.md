@@ -116301,3 +116301,10 @@ identities and cleanup: 16,738 bytes, SHA-256
 `098b02796378b37f123b6f4854a459c8e078a0eaaf133981be369cb405e2c162`.
 Fourteen raw files plus the capsule total 165,277 bytes. Required full-app,
 installed/native, device and R-S0/R-F5 acceptance remain OPEN.
+
+At `7a361900`, fresh count `1hxlkY3HAv` reports **358,738 tokens** / 1,640,361 bytes,
+SHA-256 `8c073e46f49c0102495ad73ac6b9699eedc2c178bc484e1bd4d0cd15383dfe34`.
+Seven pinned tokenizer controls and the complete byte round trip pass. QEMU 1723176
+joins after 30.415 seconds, RAM `run.qf3jvemr` retires and three listener deltas are
+zero. Six count files add 102,760 bytes; all 21 retained files total 268,037 bytes
+on each host. This audit-only receipt leaves the measured ledger unchanged.

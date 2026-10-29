@@ -115823,3 +115823,13 @@ This establishes the named Linux component correction, not global allocation
 immunity or a new LPE closure. Full application/installed privileged actions,
 native Windows/macOS behavior, other allocation sites and existing release/review
 obligations remain OPEN. Requirements and live instruction contents are unchanged.
+
+Fresh ledger count at `e45a9afa`, TUF `I6r7ueIgw9`: **359,051 tokens** /
+1,641,256 bytes using pinned `tiktoken-0.12.0/cl100k_base/encode_ordinary`, seven
+controls and complete byte round trip. Input SHA-256:
+`2a3de108ebbc0626e70b7a0255ea5b185769ef8c0243e56ec2ef13f0a11966c2`.
+QEMU 1681651 joins after 31.114 seconds, `run.m25b0jw7` retires and all three
+listener deltas are zero. The six count records total 103,746 bytes on both
+machines; all twenty-one retained files for this slice total 327,743 bytes.
+This audit-only addition leaves the measured ledger unchanged and below its
+approximate 400,000-token budget; whole-document cleanup remains OPEN.

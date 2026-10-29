@@ -144,8 +144,8 @@ type ServiceIpcRequesterAuthorization = ();
 use ipc_fs::terminal_count_candidate_uids;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use ipc_fs::{
-    check_pid, ensure_secure_ipc_parent_dir, scrub_secure_ipc_parent_dir,
-    should_scrub_parent_entries_after_check_pid, write_pid,
+    check_existing_listener, ensure_secure_ipc_parent_dir, scrub_secure_ipc_parent_dir,
+    should_scrub_parent_entries_after_listener_check,
 };
 use parity_tokio_ipc::{
     Connection as Conn, ConnectionClient as ConnClient, Endpoint, Incoming, SecurityAttributes,
@@ -5110,9 +5110,9 @@ pub async fn new_listener(postfix: &str) -> ResultType<Incoming> {
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     let should_scrub_parent_entries = ensure_secure_ipc_parent_dir(&path, postfix)?;
     #[cfg(any(target_os = "linux", target_os = "macos"))]
-    let existing_listener_alive = check_pid(postfix).await?;
+    let existing_listener_alive = check_existing_listener(postfix).await?;
     #[cfg(any(target_os = "linux", target_os = "macos"))]
-    if should_scrub_parent_entries_after_check_pid(
+    if should_scrub_parent_entries_after_listener_check(
         should_scrub_parent_entries,
         existing_listener_alive,
     ) {
@@ -5160,7 +5160,6 @@ pub async fn new_listener(postfix: &str) -> ResultType<Incoming> {
                     std::fs::remove_file(&path).ok();
                     return Err(err.into());
                 }
-                write_pid(postfix);
             }
             Ok(incoming)
         }

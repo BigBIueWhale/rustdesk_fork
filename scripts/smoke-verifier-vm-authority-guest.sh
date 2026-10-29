@@ -2905,12 +2905,12 @@ run_apple_conform() {
     [ "$conform_status" -eq 0 ] \
         || { tail -n 240 "$output" >&2; fail "Apple conformance exited with status $conform_status"; }
     if [ "$APPLE_CURSOR_ONLY" -eq 0 ]; then
-        [ "$(grep -Fxc 'MACOS_FILE_MODE_COMPONENT_COMPILE=pass targets=2 cases=8 negatives=16 libc=root-locked parser=syn sdk_shim=none linking=not-run native=false cleanup=joined' "$output")" -eq 1 ] \
+        [ "$(grep -Fxc 'MACOS_FILE_MODE_COMPONENT_COMPILE=pass targets=2 cases=7 negatives=14 libc=root-locked parser=syn sdk_shim=none linking=not-run native=false cleanup=joined' "$output")" -eq 1 ] \
             || fail 'macOS file-mode component compiler receipt differs'
         for target in aarch64-apple-darwin x86_64-apple-darwin; do
-            [ "$(grep -Ec "^MACOS_FILE_MODE_COMPILE_TARGET=pass target=$target cases=8 negatives=8 metadata_bytes=[1-9][0-9]* metadata_sha256=[0-9a-f]{64} fixture_sha256=[0-9a-f]{64} lock_sha256=[0-9a-f]{64} dependencies_sha256=[0-9a-f]{64} native=false$" "$output")" -eq 1 ] \
+            [ "$(grep -Ec "^MACOS_FILE_MODE_COMPILE_TARGET=pass target=$target cases=7 negatives=7 metadata_bytes=[1-9][0-9]* metadata_sha256=[0-9a-f]{64} fixture_sha256=[0-9a-f]{64} lock_sha256=[0-9a-f]{64} dependencies_sha256=[0-9a-f]{64} native=false$" "$output")" -eq 1 ] \
                 || fail "macOS file-mode compiler metadata receipt differs: $target"
-            for case in config transfer pid paste placeholder config_fixed paste_fixed placeholder_fixed; do
+            for case in config transfer paste placeholder config_fixed paste_fixed placeholder_fixed; do
                 local code=E0617
                 [[ "$case" != *_fixed ]] || code=E0308
                 [ "$(grep -Ec "^MACOS_FILE_MODE_NEGATIVE=pass target=$target case=$case code=$code status=101 source_sha256=[0-9a-f]{64} compiler_log_sha256=[0-9a-f]{64}$" "$output")" -eq 1 ] \
@@ -2979,7 +2979,7 @@ run_apple_conform() {
             "$APPLE_SOURCE_COMMIT" "$APPLE_SOURCE_TREE" \
             "$APPLE_CHECK_IMAGE_ID" "$APPLE_CHECK_IMAGE_CONFIG_ID" "$SHA256_CARGO_VENDOR_CLOSURE_V1"
     elif [ "$APPLE_FILE_MODE_ONLY" -eq 1 ]; then
-        printf 'APPLE_FILE_MODE_COMPILE_VM=pass commit=%s tree=%s targets=2 cases=8 negatives=16 image=%s runtime=%s vendor=%s uid=4000 gid=4000 nofile=524544 vm_network=none container_network=none root=refused foreign=refused caller=refused source=exact-pushed-readonly inputs=readonly-landlocked evidence=component-compile-not-native cleanup=joined\n' \
+        printf 'APPLE_FILE_MODE_COMPILE_VM=pass commit=%s tree=%s targets=2 cases=7 negatives=14 image=%s runtime=%s vendor=%s uid=4000 gid=4000 nofile=524544 vm_network=none container_network=none root=refused foreign=refused caller=refused source=exact-pushed-readonly inputs=readonly-landlocked evidence=component-compile-not-native cleanup=joined\n' \
             "$APPLE_SOURCE_COMMIT" "$APPLE_SOURCE_TREE" \
             "$APPLE_CHECK_IMAGE_ID" "$APPLE_CHECK_IMAGE_CONFIG_ID" "$SHA256_CARGO_VENDOR_CLOSURE_V1"
     else

@@ -7763,10 +7763,10 @@ elif [ "$MODE" = apple-conform ]; then
         require_exact_fixed_receipt \
             '== apple-file-mode-compile PASS ==' 'macOS file-mode compile verdict'
         require_exact_fixed_receipt \
-            'MACOS_FILE_MODE_COMPONENT_COMPILE=pass targets=2 cases=8 negatives=16 libc=root-locked parser=syn sdk_shim=none linking=not-run native=false cleanup=joined' \
+            'MACOS_FILE_MODE_COMPONENT_COMPILE=pass targets=2 cases=7 negatives=14 libc=root-locked parser=syn sdk_shim=none linking=not-run native=false cleanup=joined' \
             'actual two-target file-mode compiler receipt'
         require_exact_fixed_receipt \
-            "APPLE_FILE_MODE_COMPILE_VM=pass commit=$APPLE_SOURCE_COMMIT tree=$APPLE_SOURCE_TREE targets=2 cases=8 negatives=16 image=$APPLE_CHECK_IMAGE_ID runtime=$APPLE_CHECK_IMAGE_CONFIG_ID vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 uid=4000 gid=4000 nofile=524544 vm_network=none container_network=none root=refused foreign=refused caller=refused source=exact-pushed-readonly inputs=readonly-landlocked evidence=component-compile-not-native cleanup=joined" \
+            "APPLE_FILE_MODE_COMPILE_VM=pass commit=$APPLE_SOURCE_COMMIT tree=$APPLE_SOURCE_TREE targets=2 cases=7 negatives=14 image=$APPLE_CHECK_IMAGE_ID runtime=$APPLE_CHECK_IMAGE_CONFIG_ID vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 uid=4000 gid=4000 nofile=524544 vm_network=none container_network=none root=refused foreign=refused caller=refused source=exact-pushed-readonly inputs=readonly-landlocked evidence=component-compile-not-native cleanup=joined" \
             'macOS file-mode compile VM receipt'
     else
         require_exact_fixed_receipt \
@@ -9172,7 +9172,7 @@ elif [ "$MODE" = apple-conform ]; then
             "$HOST_UID" "$APPLE_SOURCE_COMMIT" "$APPLE_SOURCE_TREE" \
             "$APPLE_CHECK_IMAGE_ID" "$APPLE_CHECK_IMAGE_CONFIG_ID" "$vm_elapsed_seconds"
     elif [ "$APPLE_FILE_MODE_ONLY" -eq 1 ]; then
-        printf 'APPLE_FILE_MODE_COMPILE_VM_OUTER=pass host_uid=%s commit=%s tree=%s targets=2 cases=8 negatives=16 image=%s runtime=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=component-compile-not-native cleanup=joined elapsed_seconds=%s\n' \
+        printf 'APPLE_FILE_MODE_COMPILE_VM_OUTER=pass host_uid=%s commit=%s tree=%s targets=2 cases=7 negatives=14 image=%s runtime=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=component-compile-not-native cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$APPLE_SOURCE_COMMIT" "$APPLE_SOURCE_TREE" \
             "$APPLE_CHECK_IMAGE_ID" "$APPLE_CHECK_IMAGE_CONFIG_ID" "$vm_elapsed_seconds"
     else

@@ -13,9 +13,9 @@ import tomllib
 REPO = Path("/work")
 TARGETS = ("aarch64-apple-darwin", "x86_64-apple-darwin")
 PACKAGE = "rustdesk-macos-file-mode-compile"
-CASES = ("config", "transfer", "pid", "paste", "placeholder",
+CASES = ("config", "transfer", "paste", "placeholder",
          "config_fixed", "paste_fixed", "placeholder_fixed")
-INPUTS = ("libs/hbb_common/src/config.rs", "libs/hbb_common/src/fs.rs", "src/ipc/fs.rs",
+INPUTS = ("libs/hbb_common/src/config.rs", "libs/hbb_common/src/fs.rs",
           "libs/clipboard/src/platform/unix/macos/paste_task.rs",
           "libs/clipboard/src/platform/unix/macos/pasteboard_context.rs",
           "libs/hbb_common/src/lib.rs", "Cargo.lock", "scripts/macos-file-mode-fixture-build.rs")
@@ -77,7 +77,7 @@ def main():
         for target in TARGETS:
             arguments = ["cargo", "check", "--locked", "--offline", "--lib", "--jobs", "2",
                          "--target", target, "--message-format=json", *config]
-            print(f"MACOS_FILE_MODE_COMPILE_STAGE target={target} cases=8", flush=True)
+            print(f"MACOS_FILE_MODE_COMPILE_STAGE target={target} cases=7", flush=True)
             status, output = command(arguments, fixture)
             print(output.decode("utf-8", errors="replace"), end="", flush=True)
             messages = compiler_messages(output)
@@ -123,7 +123,7 @@ def main():
                       f"compiler_log_sha256={digest(negative_output)}", flush=True)
             if (fixture / "Cargo.lock").read_bytes() != lock_bytes:
                 raise ValueError("locked compiler changed dependency records")
-            print(f"MACOS_FILE_MODE_COMPILE_TARGET=pass target={target} cases=8 negatives=8 "
+            print(f"MACOS_FILE_MODE_COMPILE_TARGET=pass target={target} cases=7 negatives=7 "
                   f"metadata_bytes={len(metadata)} metadata_sha256={digest(metadata)} "
                   f"fixture_sha256={digest(positive_source)} lock_sha256={digest(lock_bytes)} "
                   f"dependencies_sha256={dependency_sha} native=false", flush=True)
@@ -131,7 +131,7 @@ def main():
             if (REPO / name).read_bytes() != data:
                 raise ValueError(f"read-only production input changed: {name}")
             print(f"MACOS_FILE_MODE_COMPILE_INPUT path={name} bytes={len(data)} sha256={digest(data)}")
-    print("MACOS_FILE_MODE_COMPONENT_COMPILE=pass targets=2 cases=8 negatives=16 libc=root-locked "
+    print("MACOS_FILE_MODE_COMPONENT_COMPILE=pass targets=2 cases=7 negatives=14 libc=root-locked "
           "parser=syn sdk_shim=none linking=not-run native=false cleanup=joined", flush=True)
 
 

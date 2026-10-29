@@ -81,11 +81,29 @@ int listen(int fd, int backlog) {
 int chmod(const char *path, mode_t mode) {
     int (*real_chmod)(const char *, mode_t) = dlsym(RTLD_NEXT, "chmod");
     if (!real_chmod) _exit(90);
-    int result = real_chmod(path, mode), saved_errno = errno;
     const char *call = getenv("IPC_BARRIER_CALL");
     const char *target = getenv("IPC_BARRIER_PATH");
+    if (call && !strcmp(call, "socket-mode-before") && target && !strcmp(target, path))
+        wait_at_barrier();
+    int result = real_chmod(path, mode), saved_errno = errno;
     if (result == 0 && call && !strcmp(call, "chmod") && target && !strcmp(target, path))
         wait_at_barrier();
+    errno = saved_errno;
+    return result;
+}
+
+int fchmodat(int dirfd, const char *path, mode_t mode, int flags) {
+    int (*real_fchmodat)(int, const char *, mode_t, int) = dlsym(RTLD_NEXT, "fchmodat");
+    if (!real_fchmodat) _exit(90);
+    const char *call = getenv("IPC_BARRIER_CALL");
+    const char *target = getenv("IPC_BARRIER_PATH");
+    struct stat actual, named;
+    int matches = call && target && fstatat(dirfd, path, &actual, flags) == 0
+        && lstat(target, &named) == 0 && S_ISSOCK(actual.st_mode)
+        && actual.st_dev == named.st_dev && actual.st_ino == named.st_ino;
+    if (matches && !strcmp(call, "socket-mode-before")) wait_at_barrier();
+    int result = real_fchmodat(dirfd, path, mode, flags), saved_errno = errno;
+    if (result == 0 && matches && !strcmp(call, "chmod")) wait_at_barrier();
     errno = saved_errno;
     return result;
 }

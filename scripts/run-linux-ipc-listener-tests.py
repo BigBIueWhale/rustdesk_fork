@@ -614,6 +614,91 @@ def native(expected_sha, barrier_sha):
                         os.close(fd)
                 endpoint.unlink(missing_ok=True)
 
+    # Replace a name only after a real bind/listen, or while permission establishment
+    # is paused. The controller owns the namespace mutation; no syscall is mocked.
+    substitutions = [(stage, kind, postfix, uid)
+                     for postfix, uid in (('_service_password', 0), ('_password', 4001))
+                     for stage, kinds in (
+                         ('listen', ('file', 'fifo', 'directory', 'symlink', 'dangling-symlink',
+                                     'foreign-socket', 'hardlink-socket', 'special-socket')),
+                         ('socket-mode-before', ('file',)), ('chmod', ('file',)))
+                     for kind in kinds]
+    substitutions.append(('socket-mode-before', 'chmod-denied', '_password', 4001))
+    for stage, kind, postfix, uid in substitutions:
+        endpoint = path(postfix, uid)
+        bound = endpoint.with_name('retained-bound-socket')
+        target = endpoint.with_name('permission-target')
+        entered_r, entered_w = os.pipe()
+        release_r, release_w = os.pipe()
+        child = None
+        try:
+            launch = command('start', postfix, uid)
+            launch['env'] = dict(ENV, LD_PRELOAD=str(barrier), IPC_BARRIER_ENTER=str(entered_w),
+                                 IPC_BARRIER_RELEASE=str(release_r), IPC_BARRIER_CALL=stage,
+                                 IPC_BARRIER_PATH=str(endpoint))
+            child = subprocess.Popen(**launch, umask=0o077, pass_fds=(entered_w, release_r),
+                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE, text=True)
+            os.close(entered_w); entered_w = None
+            os.close(release_r); release_r = None
+            require(select.select([entered_r], [], [], 5)[0] and os.read(entered_r, 1) == b'R',
+                    'permission barrier not reached')
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+                peer.settimeout(2); peer.connect(str(endpoint))
+                import struct
+                require(struct.unpack('3i', peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))[:2]
+                        == (child.pid, uid), 'bound listener identity differs')
+            if kind == 'chmod-denied':
+                os.chown(endpoint, 0, 0)
+            else:
+                endpoint.rename(bound)
+                if kind == 'file':
+                    endpoint.write_bytes(b'unrelated data'); endpoint.chmod(0o400)
+                elif kind == 'fifo':
+                    os.mkfifo(endpoint, 0o400)
+                elif kind == 'directory':
+                    endpoint.mkdir(mode=0o700)
+                elif kind in ('symlink', 'dangling-symlink'):
+                    if kind == 'symlink':
+                        target.write_bytes(b'untouched target'); target.chmod(0o400)
+                        os.chown(target, uid, uid)
+                    endpoint.symlink_to(target)
+                else:
+                    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as replacement:
+                        replacement.bind(str(endpoint))
+                    endpoint.chmod(0o4600 if kind == 'special-socket' else 0o400)
+                    if kind == 'hardlink-socket':
+                        os.link(endpoint, target)
+                os.chown(endpoint, (4001 if uid == 0 else 0) if kind == 'foreign-socket' else uid,
+                         uid, follow_symlinks=False)
+            before = (entry_state(endpoint), entry_state(target))
+            os.write(release_w, b'G'); os.close(release_w); release_w = None
+            output, errors = child.communicate('stop\n', timeout=5)
+            passed = child.returncode == 3 and not output and errors.startswith('ERR ')
+            passed = passed and before == (entry_state(endpoint), entry_state(target))
+            if kind == 'chmod-denied':
+                passed = passed and 'Operation not permitted' in errors
+            record(f'finalize-{stage}-{kind}-{postfix}', passed,
+                   subprocess.CompletedProcess([], child.returncode, output, errors))
+        finally:
+            if child is not None:
+                if child.poll() is None:
+                    child.kill()
+                child.communicate(timeout=5)
+            for fd in (entered_r, entered_w, release_r, release_w):
+                if fd is not None:
+                    os.close(fd)
+            for entry in (endpoint, target, bound):
+                if entry.is_dir() and not entry.is_symlink():
+                    entry.rmdir()
+                else:
+                    entry.unlink(missing_ok=True)
+        # A refused finalization must release the persistent reservation and listener.
+        result = check(postfix, uid)
+        require(result.returncode == 0 and result.stdout == 'OK started\n' and endpoint.is_socket(),
+                'startup did not recover after refused finalization')
+        endpoint.unlink()
+
     for kind in ('deleted', 'unreadable'):
         endpoint = path('_password', 4001)
         executable = work / 'unlinked-probe'
@@ -755,8 +840,8 @@ def native(expected_sha, barrier_sha):
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
     require(sha(barrier) == barrier_sha, 'barrier changed')
     probe.unlink(); barrier.unlink(); work.rmdir()
-    require(len(cases) == 95, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=95 failures={len(failures)} '
+    require(len(cases) == 116, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=116 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 

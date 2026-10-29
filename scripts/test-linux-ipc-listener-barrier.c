@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/file.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/un.h>
 #include <unistd.h>
 
 // VM-only scheduling seam. No syscall result or filesystem contents are changed.
@@ -43,4 +46,46 @@ int flock(int fd, int operation) {
     if (call && !strcmp(call, "flock") && operation == (LOCK_EX | LOCK_NB))
         wait_at_barrier();
     return real_flock(fd, operation);
+}
+
+static void socket_barrier(int fd, const char *operation) {
+    const char *call = getenv("IPC_BARRIER_CALL");
+    const char *path = getenv("IPC_BARRIER_PATH");
+    if (!call || strcmp(call, operation) || !path) return;
+    struct sockaddr_un address = {0};
+    socklen_t length = sizeof(address);
+    if (getsockname(fd, (struct sockaddr *)&address, &length) != 0
+        || length > sizeof(address) || address.sun_family != AF_UNIX
+        || !memchr(address.sun_path, 0, sizeof(address.sun_path))) _exit(94);
+    if (!strcmp(address.sun_path, path)) wait_at_barrier();
+}
+
+int bind(int fd, const struct sockaddr *address, socklen_t length) {
+    int (*real_bind)(int, const struct sockaddr *, socklen_t) = dlsym(RTLD_NEXT, "bind");
+    if (!real_bind) _exit(90);
+    int result = real_bind(fd, address, length), saved_errno = errno;
+    if (result == 0) socket_barrier(fd, "bind");
+    errno = saved_errno;
+    return result;
+}
+
+int listen(int fd, int backlog) {
+    int (*real_listen)(int, int) = dlsym(RTLD_NEXT, "listen");
+    if (!real_listen) _exit(90);
+    int result = real_listen(fd, backlog), saved_errno = errno;
+    if (result == 0) socket_barrier(fd, "listen");
+    errno = saved_errno;
+    return result;
+}
+
+int chmod(const char *path, mode_t mode) {
+    int (*real_chmod)(const char *, mode_t) = dlsym(RTLD_NEXT, "chmod");
+    if (!real_chmod) _exit(90);
+    int result = real_chmod(path, mode), saved_errno = errno;
+    const char *call = getenv("IPC_BARRIER_CALL");
+    const char *target = getenv("IPC_BARRIER_PATH");
+    if (result == 0 && call && !strcmp(call, "chmod") && target && !strcmp(target, path))
+        wait_at_barrier();
+    errno = saved_errno;
+    return result;
 }

@@ -221,7 +221,15 @@ def native(expected_sha, barrier_sha):
             before = endpoint.lstat()
             result = check(postfix, uid)
             preserved = endpoint.exists() and endpoint.lstat().st_ino == before.st_ino
-            record('active-' + (postfix or 'main'), result.returncode == 3 and preserved, result)
+            passed = result.returncode == 3 and preserved
+            endpoint.chmod(0)
+            result = check(postfix, uid)
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+                peer.settimeout(2); peer.connect(str(endpoint))
+                import struct
+                identity = struct.unpack('3i', peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))[:2]
+            record('active-' + (postfix or 'main'), passed and result.returncode == 3
+                   and endpoint.lstat().st_ino == before.st_ino and identity == (child.pid, uid), result)
         finally:
             child.communicate('stop\n', timeout=5)
             require(child.returncode == 0, 'listener did not join')
@@ -395,6 +403,83 @@ def native(expected_sha, barrier_sha):
                and result.stdout == 'OK started\n' and endpoint.is_socket(), result)
         endpoint.unlink(missing_ok=True)
 
+    # Kill actual startup after bind, listen or final chmod with an owner-restrictive
+    # mask. Hold the old socket inode so replacement cannot pass through inode reuse.
+    for stage in ('bind', 'listen', 'chmod'):
+        for postfix, uid in (('_service_password', 0), ('_password', 4001)):
+            endpoint = path(postfix, uid)
+            lock = endpoint.with_name(endpoint.name + '.lock')
+            entered_r, entered_w = os.pipe()
+            release_r, release_w = os.pipe()
+            children, retained = [], None
+            try:
+                launch = command('start', postfix, uid)
+                launch['env'] = dict(ENV, LD_PRELOAD=str(barrier), IPC_BARRIER_ENTER=str(entered_w),
+                                     IPC_BARRIER_RELEASE=str(release_r), IPC_BARRIER_CALL=stage,
+                                     IPC_BARRIER_PATH=str(endpoint))
+                first = subprocess.Popen(**launch, umask=0o777, pass_fds=(entered_w, release_r),
+                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                         stderr=subprocess.PIPE, text=True)
+                children.append(first)
+                os.close(entered_w); entered_w = None
+                os.close(release_r); release_r = None
+                require(select.select([entered_r], [], [], 5)[0] and os.read(entered_r, 1) == b'R',
+                        'post-bind startup barrier not reached')
+                retained = os.open(endpoint, os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC)
+                before = os.fstat(retained)
+                lock_before = lock.lstat()
+                expected_mode = 0o666 if uid == 0 else 0o600
+                require(stat.S_ISSOCK(before.st_mode) and before.st_uid == uid
+                        and stat.S_IMODE(before.st_mode) == (expected_mode if stage == 'chmod' else 0),
+                        'crash stage socket metadata differs')
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+                    peer.settimeout(2)
+                    import errno
+                    connected = peer.connect_ex(str(endpoint))
+                    require(connected == (errno.ECONNREFUSED if stage == 'bind' else 0),
+                            'crash stage transport differs')
+                    if connected == 0:
+                        import struct
+                        require(struct.unpack('3i', peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))[:2]
+                                == (first.pid, uid), 'paused listener identity differs')
+                first.kill(); first.communicate(timeout=5)
+                require(first.returncode == -signal.SIGKILL, 'post-bind crash child did not join')
+                children.remove(first)
+                require(endpoint.lstat().st_ino == before.st_ino, 'crash socket disappeared')
+                recovered = subprocess.Popen(**command('start', postfix, uid), stdin=subprocess.PIPE,
+                                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                children.append(recovered)
+                require(select.select([recovered.stdout], [], [], 5)[0], 'recovery did not finish')
+                started = recovered.stdout.readline() == 'READY\n'
+                connected_pid = None
+                if started:
+                    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+                        peer.settimeout(2); peer.connect(str(endpoint))
+                        import struct
+                        connected_pid, connected_uid, _ = struct.unpack('3i', peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+                    after = endpoint.lstat()
+                    passed = (connected_pid, connected_uid) == (recovered.pid, uid) \
+                        and (after.st_dev, after.st_ino) != (before.st_dev, before.st_ino) \
+                        and stat.S_IMODE(after.st_mode) == expected_mode and after.st_uid == uid \
+                        and lock.lstat().st_ino == lock_before.st_ino
+                    output, errors = recovered.communicate('stop\n', timeout=5)
+                    passed = passed and recovered.returncode == 0 and not output and not errors
+                else:
+                    output, errors = recovered.communicate(timeout=5)
+                    passed = False
+                children.remove(recovered)
+                record(f'post-{stage}-crash-{postfix}', passed, subprocess.CompletedProcess(
+                    [], recovered.returncode, f'started={started} connected_pid={connected_pid}', errors))
+            finally:
+                for child in children:
+                    if child.poll() is None:
+                        child.kill()
+                    child.communicate(timeout=5)
+                for fd in (entered_r, entered_w, release_r, release_w, retained):
+                    if fd is not None:
+                        os.close(fd)
+                endpoint.unlink(missing_ok=True)
+
     for kind in ('deleted', 'unreadable'):
         endpoint = path('_password', 4001)
         executable = work / 'unlinked-probe'
@@ -536,8 +621,8 @@ def native(expected_sha, barrier_sha):
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
     require(sha(barrier) == barrier_sha, 'barrier changed')
     probe.unlink(); barrier.unlink(); work.rmdir()
-    require(len(cases) == 70, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=70 failures={len(failures)} '
+    require(len(cases) == 76, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=76 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 

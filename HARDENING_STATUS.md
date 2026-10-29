@@ -9041,7 +9041,7 @@ sandbox implementation and checker-repair history remain in Git.
   its bounded typed liveness round trip; failed or malformed response is an error, not
   cleanup authority. Stale removal stays descriptor-relative; probing grants no request authority.
 
-  **Linux startup/liveness component: thirty-nine native cases pass.** `26b069fb`
+  **Linux startup/liveness component: fifty-six native cases pass.** `26b069fb`
   reserves each endpoint through cleanup, bind and socket permissions using a
   validated persistent lock inode. Reservation follows asynchronous probing;
   no lock spans an await. A fresh nonblocking connection under the reservation
@@ -9049,8 +9049,8 @@ sandbox implementation and checker-repair history remain in Git.
   ambiguous endpoints. Separate endpoints start independently. This extends
   `641bb1b2`'s transport-error and cleanup-error correction.
   Baseline `qtOVFk9av1` reproduces two concurrent starts both reporting success
-  while one replaces the other's socket. `c3d8dbc9`, TUF `tqzTlamuGH`, passes
-  those races, independent starts, restart, five unsafe-lock refusals,
+  while one replaces the other's socket. `c369d9e2`, TUF `CTs8Use2ux`, passes
+  those races, independent starts, restart, eight unsafe-lock refusals,
   unrelated-image preservation and the prior nine transport cases, plus eight
   protected-service liveness scenarios. Valid replies prove liveness; unknown
   fields/types, malformed JSON, oversized/truncated frames, disconnect and
@@ -9061,18 +9061,29 @@ sandbox implementation and checker-repair history remain in Git.
   probe and reservation; kernel peer PID/UID and the socket inode identify the
   winner. Killing the reservation holder permits restart using the same lock
   inode. Deleted and unreadable executable identities refuse probe/startup
-  without removing the live socket. The 82.680-second run also passes fourteen
+  without removing the live socket. The 79.675-second run also passes fourteen
   directory cases. Root and UID 4001
   execute the same sealed component with production `new_listener`, connection
   methods, codec, typed liveness handler and kernel identity checks. Dependencies
   are pinned; config name/path and service authorization remain fixture adapters.
   CM/PA proofs, service accept-time authorization, full application, installed
-  actions and macOS remain OPEN. Product behavior is unchanged by this coverage
-  extension. Listener deltas are zero, QEMU joins and RAM scratch retires.
-  Capsules: `ipc-listener-recovery-c3d8dbc9.json` and
+  actions and macOS remain OPEN. Listener deltas are zero, QEMU joins and RAM
+  scratch retires. `c369d9e2` fixes lock creation/recovery under owner-restrictive
+  umasks: existing locks are retained with `O_PATH`, validated before read-open
+  or permission repair, restored through their verified procfs descriptor alias,
+  and rechecked before reservation. Foreign ownership, multiple links, nonregular
+  files and any permissions outside owner read/write are refused unchanged.
+  Baseline `4JEWjk1tZi` fails all twelve fresh/recovery cases for root/UID 4001
+  with masks 0200/0400/0600. The candidate passes those plus two nondumpable-user
+  cases, retaining the lock inode and preserving process umask/descriptor counts.
+  These cases start with valid parents. **Next:** reproduce/correct first creation
+  or recovery of an unreadable ordinary-user parent: `ensure_secure_ipc_parent_dir`
+  still attempts a readable directory open before mode repair. This remains OPEN.
+  Capsules: `ipc-lock-umask-c369d9e2.json`, `ipc-listener-recovery-c3d8dbc9.json` and
   `ipc-listener-bind-26b069fb.json`; audit entries “2026-10-29 — Linux IPC startup
-  arrival, crash recovery and unavailable identity” and “2026-10-29 — Linux
-  concurrent IPC startup” retain current and baseline provenance.
+  lock permissions”, “2026-10-29 — Linux IPC startup arrival, crash recovery and
+  unavailable identity” and “2026-10-29 — Linux concurrent IPC startup” retain
+  current and baseline provenance.
   PID-file reads/writes and the process-table scan remain removed; historical
   `.pid` entries remain only in stale-artifact cleanup. The finite UID/executable
   regression remains supplementary to these native component observations.

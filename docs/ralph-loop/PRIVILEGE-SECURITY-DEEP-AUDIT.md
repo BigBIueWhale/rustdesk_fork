@@ -114933,3 +114933,65 @@ The 30.609-second run joins QEMU 1617961 with exit zero and retires workspace
 Six copied count files total 107,696 bytes and match both hosts; serial SHA-256
 is `2c82d16679163beef30917d4676b90404503c00a5e080744d7a15189b22a95cc`.
 This audit-only receipt leaves the counted ledger unchanged.
+
+## 2026-10-29 — Linux IPC startup lock permissions
+
+The previous turn completed native arrival/crash/identity evidence and its
+audit receipts. This turn corrects a product startup regression: lock creation
+requested 0600 but inherited umask could remove owner bits, after which both
+the creating start and later recovery refused the persistent lock. Existing
+unreadable locks could fail before metadata validation.
+
+`045c4492` adds twelve root/UID 4001 fresh/recovery cases using masks
+0200/0400/0600, plus in-process mask and descriptor observations. Initial run
+`GSfTYITBF3` stops before these cases: the descriptor assertion also counted
+the scheduling fixture's two intentionally closed inherited pipes. `4e54580c`
+limits that balance check to non-barrier startup calls. Baseline `4JEWjk1tZi`
+then passes 39 listener controls and fails all twelve mask cases. Both runs
+pass the fourteen directory controls; the first is not mask evidence.
+
+Product `c369d9e2` introduces `open_ipc_startup_lock`. Existing files receive
+an O_PATH/no-follow reference before readable opening. Only a regular,
+single-link file owned by the effective UID, with no permissions outside
+owner read/write, may proceed. Missing files use exclusive creation. Missing
+owner bits are restored to 0600 on the retained inode; existing files use
+an identity-checked numeric alias in a procfs-verified `/proc/thread-self/fd`
+directory. Reopening, metadata, named-entry identity and nonblocking flock
+are checked before bind preparation. The same inode remains persistent;
+startup does not change the process umask or adopt foreign ownership.
+
+The [umask contract](https://man7.org/linux/man-pages/man2/umask.2.html)
+explains inherited permission removal and why changing the process mask is
+unsuitable here. [open](https://man7.org/linux/man-pages/man2/open.2.html),
+[chmod](https://man7.org/linux/man-pages/man2/chmod.2.html) and
+[/proc file descriptors](https://man7.org/linux/man-pages/man5/proc_pid_fd.5.html)
+support retained metadata access, owner-authorized repair and descriptor-based
+reopening. The existing config-directory implementation supplied a local
+reference for procfs validation; its code and behavior are unchanged.
+
+Accepted TUF `CTs8Use2ux` passes all 56 listener and 14 directory cases in
+79.675 seconds. It includes the twelve reproduced failures, nondumpable-user
+creation/recovery and refusal of public-read, executable and special-bit
+lock files. Recovery preserves the original inode; unsafe entries remain
+unchanged. Non-barrier startup success/failure restores descriptor counts
+before process exit and preserves the inherited mask. Executed listener
+SHA-256: `926b46f4a6fa593d719fd41570cd77c91b5bf064505d1664a8320ce5588304d3`.
+All three QEMU children join exit zero, RAM workspaces retire, and all twelve
+host listener deltas are zero. Accepted peak RAM scratch is 3,475,795,968 bytes,
+overlay 3,279,622,144 bytes and durable run 3,399,680 bytes. Diff checks pass.
+
+Twenty-one run files total 256,599 bytes. Capsule
+`ipc-lock-umask-c369d9e2.json`, 64,898 bytes, SHA-256
+`4e415acb7e57a090ab3f6a5e141c39cedf64107cc7e4fcf7e8f7c80aeb9fa647`.
+All 22 files match on CTE/TUF. After verification, both exact failed-run
+diagnostic trees are removed under the shared lock with identity/type/owner
+and process-absence checks, reclaiming 6,893,568 allocated disk bytes.
+
+The mask cases precreate valid IPC parents. Source review identifies the next
+related OPEN item: an ordinary user's new or existing unreadable parent is
+still opened O_RDONLY before mode repair in `ensure_secure_ipc_parent_dir`.
+That path needs its own native reproduction and correction. Full application,
+installed receiver/action authority, CM/PA, macOS, remaining namespace/crash
+and cross-version behavior, release artifacts and independent review remain
+OPEN. This turn establishes lock behavior inside the existing production-code
+component, with the previously documented config/authorization adapters.

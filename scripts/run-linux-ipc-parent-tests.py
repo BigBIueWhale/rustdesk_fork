@@ -249,7 +249,7 @@ def native(expected_sha, barrier_sha):
 
     failures = []
     for phase in ('before-open', 'after-open'):
-        for replacement in ('file', 'symlink', 'missing'):
+        for replacement in ('file', 'symlink', 'missing', 'empty-directory', 'nonempty-directory'):
             name = f'race-{phase}-{replacement}'
             parent, moved = data / name, data / (name + '-moved')
             sentinel = data / (name + '-target')
@@ -274,7 +274,11 @@ def native(expected_sha, barrier_sha):
                         and os.read(ready_read, 1) == b'R', 'production openat barrier not reached')
                 actor('import pathlib,sys\np=pathlib.Path(sys.argv[1]);p.rename(sys.argv[2])\n'
                       'if sys.argv[3]=="file": p.write_bytes(b"replacement")\n'
-                      'elif sys.argv[3]=="symlink": p.symlink_to(sys.argv[4],target_is_directory=True)\n',
+                      'elif sys.argv[3]=="symlink": p.symlink_to(sys.argv[4],target_is_directory=True)\n'
+                      'elif sys.argv[3].endswith("directory"):\n'
+                      ' p.mkdir(mode=0o700)\n'
+                      ' if sys.argv[3]=="nonempty-directory":\n'
+                      '  (p/"ipc_service").write_bytes(b"replacement content");(p/"keep").write_bytes(b"unrelated")\n',
                       parent, moved, replacement, sentinel)
                 replacement_stat = parent.lstat() if replacement != 'missing' else None
                 require(os.write(release_write, b'G') == 1, 'cannot release production openat')
@@ -299,6 +303,12 @@ def native(expected_sha, barrier_sha):
                 preserved = parent.read_bytes() == b'replacement'
             if preserved and replacement == 'symlink':
                 preserved = os.readlink(parent) == str(sentinel)
+            if preserved and replacement == 'empty-directory':
+                preserved = not list(parent.iterdir())
+            if preserved and replacement == 'nonempty-directory':
+                preserved = (sorted(p.name for p in parent.iterdir()) == ['ipc_service', 'keep']
+                             and (parent / 'ipc_service').read_bytes() == b'replacement content'
+                             and (parent / 'keep').read_bytes() == b'unrelated')
             passed = process.returncode == 3 and not stdout and stderr.startswith('ERR ') and preserved
             print(f'LINUX_IPC_PARENT_RACE={"pass" if passed else "fail"} name={name} '
                   f'exit={process.returncode} replacement_preserved={str(preserved).lower()} '
@@ -309,6 +319,9 @@ def native(expected_sha, barrier_sha):
                 failures.append(name)
             if current is not None:
                 if stat.S_ISDIR(current.st_mode):
+                    for child in ('ipc_service', 'keep'):
+                        if (parent / child).exists():
+                            (parent / child).unlink()
                     parent.rmdir()
                 else:
                     parent.unlink()
@@ -321,8 +334,8 @@ def native(expected_sha, barrier_sha):
             'artifact changed during execution')
     data.rmdir(); probe.unlink(); barrier.unlink(); WORK.rmdir()
     require(not failures, f'parent replacement races failed after joined cleanup: {failures}')
-    require(len(cases) == 12, 'native case inventory differs')
-    print(f'LINUX_IPC_PARENT_NATIVE=pass cases=12 artifact_sha256={expected_sha} '
+    require(len(cases) == 16, 'native case inventory differs')
+    print(f'LINUX_IPC_PARENT_NATIVE=pass cases=16 artifact_sha256={expected_sha} '
           'receiver_uid=0 actors=4001,4002 source=production-functions installed=unexecuted cleanup=joined', flush=True)
 
 

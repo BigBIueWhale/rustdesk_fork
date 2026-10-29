@@ -7088,8 +7088,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             >"$native_output" 2>&1 \
             || { tail -c 65536 "$native_output" >&2; fail 'IPC parent native cases failed'; }
         [ "$(stat -c '%s' "$native_output")" -le 65536 ] \
-            && [ "$(grep -Fc 'LINUX_IPC_PARENT_CASE=pass ' "$native_output")" -eq 12 ] \
-            && [ "$(grep -Fxc "LINUX_IPC_PARENT_NATIVE=pass cases=12 artifact_sha256=$ipc_parent_sha receiver_uid=0 actors=4001,4002 source=production-functions installed=unexecuted cleanup=joined" "$native_output")" -eq 1 ] \
+            && [ "$(grep -Fc 'LINUX_IPC_PARENT_CASE=pass ' "$native_output")" -eq 16 ] \
+            && [ "$(grep -Fxc "LINUX_IPC_PARENT_NATIVE=pass cases=16 artifact_sha256=$ipc_parent_sha receiver_uid=0 actors=4001,4002 source=production-functions installed=unexecuted cleanup=joined" "$native_output")" -eq 1 ] \
             || fail 'IPC parent native inventory or cleanup differs'
         [ "$source_before" = "$source_archive_sha:$(cd "$source_root" && sha256sum "${source_fingerprints[@]}")" ] \
             || fail 'IPC parent production or fixture source changed'
@@ -7097,7 +7097,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         stop_docker_authority
         umount "$inputs" || fail 'cannot retire IPC parent sealed inputs'
         SEALED_INPUTS_MOUNTED=0
-        printf 'LINUX_IPC_PARENT_VM=pass commit=%s tree=%s artifact_sha256=%s cases=12 vm_network=none source=readonly cleanup=joined\n' \
+        printf 'LINUX_IPC_PARENT_VM=pass commit=%s tree=%s artifact_sha256=%s cases=16 vm_network=none source=readonly cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$ipc_parent_sha"
         return
     fi

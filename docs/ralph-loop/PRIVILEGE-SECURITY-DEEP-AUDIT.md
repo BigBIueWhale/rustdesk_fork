@@ -117085,3 +117085,23 @@ Seven controls and the complete text round trip pass. QEMU 1776479 joins after
 Six count files add 104,106 bytes; all twenty evidence files total 330,374 bytes
 per host with matching copied hashes. This audit-only receipt preserves the
 measured ledger bytes.
+
+### 2026-10-30 — compress repeated document-classification history
+
+The preceding response-schema correction is complete at `df18005c`; the broader
+goal remains open. Read-only review finds the sampled specification clauses
+already normative. Eight ledger classification rows still repeat deletion/badge
+history, unchanged-source assertions and the section's shared open obligations.
+Those repetitions are removed. Each row keeps its contract/finding references,
+evidence filenames, distinctive limits and native acceptance gap. The shared
+OPEN paragraph retains all fifteen credential actions, R-S0/R-F5, installed/native,
+artifact/build, scanner/input/signing, cold equality, independent and external-review
+requirements. All user-pivot records and parked-section contents are untouched.
+
+Exact comparison limits the edit to eight middle table cells: 2,566 bytes removed,
+from 1,645,158 to 1,642,592 bytes. Their finding-number sets and evidence cells,
+the whole-ledger requirement-ID set and Markdown links are preserved. Every other
+ledger byte is unchanged. `requirements.html`, instructions, product, tests,
+dependencies and harness are unchanged. `git diff --check` passes. This is ledger
+compression; it supplies no new product acceptance and leaves whole-document
+classification open. A fresh isolated ledger count follows.

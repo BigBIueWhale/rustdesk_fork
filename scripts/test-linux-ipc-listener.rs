@@ -513,6 +513,65 @@ async fn main_transaction_fixture(scenario: &str) {
     println!("OK main-transaction-{scenario} uid={} cleanup=joined", unsafe { libc::geteuid() });
 }
 
+async fn main_validation_fixture(scenario: &str) {
+    let before = fd_count();
+    let (received, expected, error) = {
+        let (sender, receiver) = tokio::net::UnixStream::pair().unwrap();
+        for fd in [sender.as_raw_fd(), receiver.as_raw_fd()] {
+            assert_eq!(peer_uid_from_fd(fd), Some(unsafe { libc::geteuid() }));
+            assert_eq!(peer_pid_from_fd(fd), Some(std::process::id()));
+        }
+        let mut sender = ConnectionTmpl::new_main(sender);
+        let mut receiver = ConnectionTmpl::new_main(receiver);
+        let option = |length| MainStatusOption {
+            key: MainStatusOptionKey::AudioInput, value: "x".repeat(length),
+        };
+        let (response, error) = match scenario {
+            "config-oversized" => (MainIpcResponse::Config {
+                key: MainConfigKey::VoiceCallInput,
+                value: Some("x".repeat(MAIN_IPC_MAX_CONFIG_VALUE_BYTES + 1)),
+            }, Some("main IPC config value is oversized")),
+            "config-none" => (MainIpcResponse::Config {
+                key: MainConfigKey::VoiceCallInput, value: None,
+            }, None),
+            "status-oversized" | "status-duplicate" | "status-count" => {
+                let (entries, error) = match scenario {
+                    "status-oversized" => (vec![option(MAIN_IPC_MAX_OPTION_VALUE_BYTES + 1)],
+                                           "main IPC option value is oversized"),
+                    "status-duplicate" => (vec![option(1), option(2)], "duplicate main IPC option"),
+                    _ => (vec![option(1); MAIN_IPC_MAX_OPTION_COUNT + 1], "too many main IPC options"),
+                };
+                (MainIpcResponse::StatusSnapshot(MainStatusSnapshot {
+                    options: MainStatusOptions(entries), file_transfer_enabled: None,
+                }), Some(error))
+            }
+            "option-oversized" | "option-limit" => (MainIpcResponse::OptionSet {
+                result: IpcMutationResult::Applied,
+                effective: Some(option(MAIN_IPC_MAX_OPTION_VALUE_BYTES
+                    + usize::from(scenario == "option-oversized"))),
+            }, (scenario == "option-oversized").then_some("main IPC option value is oversized")),
+            "option-none" => (MainIpcResponse::OptionSet {
+                result: IpcMutationResult::Rejected, effective: None,
+            }, None),
+            _ => panic!("unknown main validation scenario"),
+        };
+        let expected = serde_json::to_vec(&response).unwrap();
+        let (sent, received) = tokio::join!(
+            sender.send_json_timeout(&response, 1000), receiver.next_main_response_timeout(1000),
+        );
+        sent.unwrap();
+        (received, expected, error)
+    };
+    assert_eq!(fd_count(), before);
+    match (error, received) {
+        (Some(expected), Err(error)) => assert_eq!(error.to_string(), expected),
+        (Some(_), Ok(_)) => panic!("accepted invalid {scenario} response"),
+        (None, Ok(Some(response))) => assert_eq!(serde_json::to_vec(&response).unwrap(), expected),
+        (None, result) => panic!("valid {scenario} response was not returned: {result:?}"),
+    }
+    println!("OK main-validation-{scenario} uid={} cleanup=joined", unsafe { libc::geteuid() });
+}
+
 async fn main_response_fixture(scenario: &str) {
     let before = fd_count();
     {
@@ -962,6 +1021,11 @@ fn main() {
     let postfix = &args[2];
     assert!(["", "_password", "_service_password", "_service_credential", "_service"].contains(&postfix.as_str()));
     let path = Config::ipc_path(postfix);
+    if let Some(scenario) = args[1].strip_prefix("main-validation-") {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(main_validation_fixture(scenario));
+        return;
+    }
     if let Some(scenario) = args[1].strip_prefix("main-transaction-") {
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         runtime.block_on(main_transaction_fixture(scenario));

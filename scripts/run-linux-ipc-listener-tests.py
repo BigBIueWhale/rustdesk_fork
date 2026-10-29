@@ -166,6 +166,9 @@ def build():
     for name in ('MainStatusOption', 'MainStatusOptions'):
         methods = ipc.impl(('impl', name), 'response validation')
         responses += f'impl {name} {{\n' + function(ipc, 'validate', parent=methods.start - 1) + '}\n'
+    if ipc.all().positions(('impl', 'MainIpcResponse')):
+        methods = ipc.impl(('impl', 'MainIpcResponse'), 'main response validation')
+        responses += 'impl MainIpcResponse {\n' + function(ipc, 'validate', parent=methods.start - 1) + '}\n'
     (work / 'main_responses.rs').write_text(responses)
     (work / 'main_transaction.rs').write_text(''.join(function(ipc, name) for name in (
         'main_ipc_request', 'main_ipc_request_on_stream')))
@@ -285,6 +288,12 @@ def native(expected_sha, barrier_sha):
               f'exit={result.returncode} stdout={result.stdout.strip()!r} stderr={result.stderr.strip()!r}', flush=True)
 
     for uid in (0, 4001):
+        for scenario in ('config-oversized', 'config-none', 'status-oversized', 'status-duplicate',
+                         'status-count', 'option-oversized', 'option-limit', 'option-none'):
+            action = 'main-validation-' + scenario
+            result = check('', uid, action=action)
+            record(f'{action}-{uid}', result.returncode == 0
+                   and result.stdout == f'OK {action} uid={uid} cleanup=joined\n', result)
         for scenario in ('success', 'deadline', 'connect-stall', 'peer-stall'):
             action = 'main-transaction-' + scenario
             result = check('', uid, action=action)
@@ -1066,8 +1075,8 @@ def native(expected_sha, barrier_sha):
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
     require(sha(barrier) == barrier_sha, 'barrier changed')
     probe.unlink(); barrier.unlink(); work.rmdir()
-    require(len(cases) == 226, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=226 failures={len(failures)} '
+    require(len(cases) == 242, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=242 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 

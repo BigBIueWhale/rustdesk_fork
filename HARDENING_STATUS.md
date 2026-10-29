@@ -3814,14 +3814,21 @@ Those acceptance obligations and all separately parked work remain OPEN.
 empty struct variants with unknown-field rejection. All five tag encodings and
 handler bodies are preserved. The unchanged negative test accepts twenty
 extra-field queries before correction; afterward all 34 malformed inputs are
-rejected. Four production-schema tests pass, including valid round trips,
-retired/unknown-key refusal and the historical ID control. The root/UID-4001
+rejected. Three production-schema tests pass, covering valid round trips,
+retired/unknown-key refusal and malformed inputs. The root/UID-4001
 framed cases additionally reject an extra nested key field in both requests and
 responses, then accept a valid reply on the same socket. This is schema and
 reader evidence; full receiver/status/configuration flows, parent compilation,
 installed and other-platform acceptance remain OPEN. Shared/Apple gate literals
 follow the new Rust constructors; their full catalogs did not run. Comparison:
 `main-config-key-shape-45944c71.json`.
+
+`4ddb02ea` removes the frozen pre-removal enum and its test wrapper. Their fourth
+test exercised only historical source. The focused runner now compiles
+`src/ipc/main_config.rs` directly; its three unchanged tests pass in TUF run
+`ossteXBIgn` (67.593 seconds). Artifact and cleanup receipts are retained under
+`android-rust-lifecycle-tests-run.ossteXBIgn.*`; the audit records the deletion.
+Production code, dependencies and other test profiles are unchanged.
 
 `9c8dc194` removed the unused ID query, IPC-to-local fallback, snapshot ID/length
 failure and unread UI cache. Status synchronization retains option/file-transfer

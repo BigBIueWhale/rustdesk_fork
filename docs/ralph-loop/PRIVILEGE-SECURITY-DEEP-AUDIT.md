@@ -116930,3 +116930,36 @@ listener deltas are zero. Its six files add 104,370 bytes, making the retained
 comparison and count evidence 389,450 bytes across 28 files per host. Both
 copies match their recorded hashes. This audit-only receipt leaves the measured
 ledger unchanged.
+
+### 2026-10-29 — retire the frozen config-query test fixture
+
+The preceding turn completed the parser correction. Follow-up source review of
+main listener admission, request handling and shutdown establishes no additional
+product defect in this slice; installed integration and separately parked work
+remain open. The focused schema suite's fourth test imports only the frozen enum
+in `scripts/fixtures/main-config-key-before-id-removal.rs`. It repeats historical
+ID acceptance and valid-tag serialization without exercising current code.
+That historical control has already served the retained comparison; Git retains
+its source. The three production tests independently cover all five valid tags,
+seven retired/unknown tags and 34 malformed inputs.
+
+`4ddb02ea` deletes that fixture and `scripts/test-main-config-key.rs` outright
+(30 lines / 1,112 bytes). The runner's `[lib].path` now names production source
+directly, using Cargo's [documented target configuration](https://doc.rust-lang.org/cargo/reference/cargo-targets.html#the-path-field).
+The existing inventory, output filter and count receipts follow the resulting
+`tests::` names and count of three. Exact comparison verifies no other profile
+bytes changed. Production sources and their test bodies, dependencies, normative
+requirements and live instructions are unchanged; the five-file patch removes
+32 net lines. This removes redundant historical verification, not a product path.
+
+TUF `ossteXBIgn` runs all three production tests successfully at `4ddb02ea` in
+67.593 seconds. Its component lock remains
+`4cb87ae301519693341a785225d56c27f8cd344ec165bcb5421c7c9cae63eed3`.
+The executed artifact is SHA-256
+`5be9819cfe7c2be44ec605730d2e705c04956899f9e15bd696f88e65b61c047d`,
+unchanged before/after execution. QEMU 1768134 joins, RAM `run._e8oh2mi`
+retires and all four host listener deltas are zero. Seven raw files under
+`android-rust-lifecycle-tests-run.ossteXBIgn.*` and its console log total
+72,047 bytes per host, with matching copied hashes. Edited shell syntax and
+`git diff --check` pass. No full application or installed/native platform
+acceptance is added by this verification cleanup.

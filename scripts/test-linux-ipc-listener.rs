@@ -692,6 +692,7 @@ async fn main_response_shape_fixture() {
     let before = fd_count();
     let mut failures = Vec::new();
     let (mut rejected, mut controls) = (0, 0);
+    let mut retired = 0;
     {
         let (sender, receiver) = tokio::net::UnixStream::pair().unwrap();
         for fd in [sender.as_raw_fd(), receiver.as_raw_fd()] {
@@ -700,6 +701,24 @@ async fn main_response_shape_fixture() {
         }
         let mut sender = ConnectionTmpl::new_main(sender);
         let mut receiver = ConnectionTmpl::new_main(receiver);
+        for (wire, response) in [
+            (br#"{"t":"TerminalSessionCount"}"#.as_slice(), false),
+            (br#"{"t":"TerminalSessionCount","c":0}"#.as_slice(), true),
+        ] {
+            let (sent, refused) = tokio::join!(
+                sender.send_raw(Bytes::from_static(wire)),
+                async {
+                    if response {
+                        receiver.next_main_response_timeout(1000).await.map(|value| value.is_none())
+                    } else {
+                        receiver.next_main_timeout(1000).await.map(|value| value.is_none())
+                    }
+                },
+            );
+            sent.unwrap();
+            if matches!(refused, Ok(true)) { retired += 1; }
+            else { failures.push(format!("retired terminal-count response={response}: {refused:?}")); }
+        }
         for (tag, payload) in [
             ("StatusSnapshot", r#"{"options":[{"key":"AudioInput","value":"device"}],"file_transfer_enabled":false}"#),
             ("ReadinessSnapshot", r#"{"permanent_password_set":true,"user_owned_permanent_password_writable":false,"direct_listener_bound":true}"#),
@@ -752,7 +771,8 @@ async fn main_response_shape_fixture() {
     assert_eq!(fd_count(), before);
     assert!(failures.is_empty(), "response shape failures: {failures:?}");
     assert_eq!((rejected, controls), (38, 10));
-    println!("OK main-response-shape uid={} rejected=38 controls=10 cleanup=joined", unsafe { libc::geteuid() });
+    assert_eq!(retired, 2);
+    println!("OK main-response-shape uid={} rejected=38 controls=10 retired=2 cleanup=joined", unsafe { libc::geteuid() });
 }
 
 async fn main_response_fixture(scenario: &str) {

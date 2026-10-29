@@ -5198,11 +5198,23 @@ async fn handle_windows_service_control_transaction(
 
 pub struct IpcListener {
     incoming: Incoming,
+    retry_after: Option<tokio::time::Instant>,
 }
 
 impl IpcListener {
     pub async fn next(&mut self) -> Option<std::io::Result<Conn>> {
-        self.incoming.next().await
+        if let Some(retry_after) = self.retry_after {
+            tokio::time::sleep_until(retry_after).await;
+        }
+        let result = self.incoming.next().await;
+        // Preserve the deadline across select cancellation. Persistent accept
+        // errors must not spin, and another listener must remain independently ready.
+        self.retry_after = if matches!(result, Some(Err(_))) {
+            Some(tokio::time::Instant::now() + std::time::Duration::from_millis(100))
+        } else {
+            None
+        };
+        result
     }
 }
 
@@ -5279,7 +5291,10 @@ pub async fn new_listener(postfix: &str) -> ResultType<IpcListener> {
             } else {
                 log::info!("Started ipc{} server at path: {}", postfix, &path);
             }
-            Ok(IpcListener { incoming })
+            Ok(IpcListener {
+                incoming,
+                retry_after: None,
+            })
         }
         Err(err) => {
             log::error!(

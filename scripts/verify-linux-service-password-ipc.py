@@ -702,6 +702,13 @@ def verify_raw_wire(rust: Mapping[str, RustSource]) -> None:
 
 def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
     ipc = rust["src/ipc.rs"]
+    windows_client = ipc.function("open_windows_named_pipe_client")
+    windows_client.require(
+        ("ConnClient", "::", "from_raw_handle", "("),
+        "consuming pipe handle transfer",
+        unique=True,
+    )
+    windows_client.forbid(("CloseHandle", "("), "second close of the consumed pipe handle")
     ordinary_request = ipc.item("enum", "MainIpcRequest")
     ordinary_request.require(
         ("PasswordMutationStatus", "{", "operation_id", ":", "String", ",", "}"),

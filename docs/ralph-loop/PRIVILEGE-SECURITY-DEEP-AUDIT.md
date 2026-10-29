@@ -116972,3 +116972,32 @@ Seven controls and the complete text round trip pass. QEMU 1769848 joins after
 The six count files add 102,552 bytes; all thirteen retained files total 174,599
 bytes per host with matching copied hashes. This audit-only addition preserves
 the measured ledger bytes.
+
+### 2026-10-29 — Windows pipe client handle ownership
+
+At `86199247`, `src/ipc.rs::open_windows_named_pipe_client` passes a successfully
+opened handle to `ConnClient::from_raw_handle`, then calls `CloseHandle` again
+when that constructor returns an error. The pinned
+[parity-tokio-ipc alias](https://raw.githubusercontent.com/rustdesk-org/parity-tokio-ipc/d0ae39bffe5d5a3e8d82a1b6bcb1ca5a9b2f1c01/src/win.rs)
+is Tokio's `NamedPipeClient`.
+[Tokio 1.44.2](https://raw.githubusercontent.com/tokio-rs/tokio/tokio-1.44.2/tokio/src/net/windows/named_pipe.rs)
+creates an owning Mio pipe before fallible `PollEvented` registration;
+[registration failure](https://raw.githubusercontent.com/tokio-rs/tokio/tokio-1.44.2/tokio/src/io/poll_evented.rs)
+drops that owner, whose [Mio 1.0.3 handle destructor](https://raw.githubusercontent.com/tokio-rs/mio/v1.0.3/src/sys/windows/handle.rs)
+already closes the handle. Tokio's own client opener returns this constructor's
+result directly. The extra close dates to `1774176a`; this is an ownership defect,
+not a demonstrated privilege escalation.
+
+The correction returns the consuming constructor directly and removes the unused
+`CloseHandle` import. Tokio is the sole owner after transfer, on success, error
+and unwind. Opening rights, security flags, busy retry and subsequent server
+authorization remain unchanged. The existing token-based source check now requires
+one transfer and forbids the second close in this function; it is supplementary.
+
+Target-native acceptance remains OPEN: in an isolated Windows process, successfully
+open a real pipe, force reactor registration failure and observe exactly one close,
+unchanged unrelated handles and the original error. A successful registered pipe
+must retain normal I/O and close once on drop. Windows VM storage work remains
+parked, so this slice does not launch that harness or substitute a Linux handle
+double for Windows behavior. The existing focused Linux IPC profile will check
+the source gate and its shared integration; it cannot establish Windows acceptance.

@@ -592,7 +592,7 @@ use std::{
 use windows::{
     core::PCWSTR,
     Win32::{
-        Foundation::{CloseHandle, ERROR_PIPE_BUSY},
+        Foundation::ERROR_PIPE_BUSY,
         Storage::FileSystem::{
             CreateFileW, FILE_FLAGS_AND_ATTRIBUTES, FILE_FLAG_OVERLAPPED, FILE_SHARE_MODE,
             OPEN_EXISTING, SECURITY_IDENTIFICATION, SECURITY_SQOS_PRESENT,
@@ -7530,16 +7530,8 @@ fn open_windows_named_pipe_client(path: &str) -> std::io::Result<ConnClient> {
         Ok(handle) => handle,
         Err(_) => return Err(std::io::Error::last_os_error()),
     };
-    let client = unsafe { ConnClient::from_raw_handle(handle.0 as RawHandle) };
-    match client {
-        Ok(client) => Ok(client),
-        Err(err) => {
-            unsafe {
-                let _ = CloseHandle(handle);
-            }
-            Err(err)
-        }
-    }
+    // Tokio owns the handle even if registration fails.
+    unsafe { ConnClient::from_raw_handle(handle.0 as RawHandle) }
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]

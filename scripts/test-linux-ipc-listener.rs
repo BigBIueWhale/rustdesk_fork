@@ -16,6 +16,8 @@ use futures_util::StreamExt;
 use serde::{Serialize, Deserialize};
 use bytes::Bytes;
 mod bytes_codec;
+mod cli_option_read;
+pub(crate) use cli_option_read::get_options;
 use bytes_codec::BytesCodec;
 type ResultType<T> = anyhow::Result<T>;
 const POSTFIX_SERVICE: &str = "_service";
@@ -702,6 +704,10 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     assert_eq!(args.len(), 3);
     assert!(Path::new("/run/rustdesk-verifier-vm").is_dir());
+    if args[1].starts_with("cli-option-") {
+        cli_option_read::run();
+        return;
+    }
     let postfix = &args[2];
     assert!(["", "_password", "_service_password", "_service_credential", "_service"].contains(&postfix.as_str()));
     let path = Config::ipc_path(postfix);

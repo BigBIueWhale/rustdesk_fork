@@ -85,6 +85,22 @@ def build():
     # Root-level helpers have crate visibility rather than a parent module.
     (work / 'identity.rs').write_text(identity.replace('pub(crate) ', ''))
     ipc = parsed(repo / 'src/ipc.rs')
+    option_reader = '#[tokio::main(flavor = "current_thread")]\n' + function(ipc, 'get_options')
+    for name in ('get_options_async', 'get_options_'):
+        if ipc.functions(name):
+            option_reader += function(ipc, name)
+    (work / 'option_reader.rs').write_text(option_reader)
+    core = parsed(repo / 'src/core_main.rs')
+    option = core.all().require(('else', 'if', 'args', '[', '0', ']', '==', '"--option"'),
+                                'option CLI dispatch', unique=True)
+    option = core._block_after(option, core.brace_parent[option], 'option CLI branch')
+    read = option.require(('if', 'args', '.', 'len', '(', ')', '==', '2'),
+                          'option CLI read', unique=True)
+    read = core._block_after(read, core.brace_parent[read], 'option CLI read body')
+    option_cli = 'fn read_option(args: &[String]) {\n' + core.text[
+        core.tokens[read.start].offset:core.tokens[read.end].offset] + '}\n'
+    (work / 'option_cli.rs').write_text(option_cli)
+    shutil.copyfile(repo / 'scripts/test-cli-option-read.rs', work / 'cli_option_read.rs')
     transport = ''.join(function(ipc, name) for name in ('connect', 'connect_with_path', 'new_listener'))
     listener = ipc.item('struct', 'IpcListener')
     start = ipc.all().require(('struct', 'IpcListener'), 'owned IPC listener', unique=True)
@@ -146,7 +162,7 @@ log = "=0.4.22"
 serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.118"
 socket2 = "=0.5.10"
-tokio = { version = "=1.44.2", features = ["rt", "net", "time", "io-util"] }
+tokio = { version = "=1.44.2", features = ["rt", "net", "time", "io-util", "macros"] }
 tokio-util = { version = "=0.7.15", features = ["codec"] }
 parity-tokio-ipc = { git = "https://github.com/rustdesk-org/parity-tokio-ipc" }
 [profile.dev]
@@ -179,6 +195,8 @@ incremental = false
           f'connection_fragment_sha256={hashlib.sha256(connection.encode()).hexdigest()} '
           f'codec_sha256={sha(work / "bytes_codec.rs")} '
           f'reader_sha256={sha(work / "framed.rs")} '
+          f'option_reader_sha256={sha(work / "option_reader.rs")} '
+          f'option_cli_sha256={sha(work / "option_cli.rs")} '
           'transport=parity-tokio-ipc-root-locked framing=production', flush=True)
 
 
@@ -232,6 +250,14 @@ def native(expected_sha, barrier_sha):
               f'exit={result.returncode} stdout={result.stdout.strip()!r} stderr={result.stderr.strip()!r}', flush=True)
 
     for uid in (0, 4001):
+        for scenario in ('value', 'missing', 'refused', 'timeout', 'disconnected', 'invalid'):
+            result = check('', uid, action='cli-option-' + scenario)
+            success = scenario in ('value', 'missing')
+            expected_stdout = 'receiver-value\n' if scenario == 'value' else '\n' if success else ''
+            expected_stderr = '' if success else f'fixture {scenario}\n'
+            record(f'cli-option-{scenario}-{uid}',
+                   result.returncode == (0 if success else 1)
+                   and result.stdout == expected_stdout and result.stderr == expected_stderr, result)
         for scenario in ('allocation', 'fragments', 'refusal'):
             action = 'read-' + scenario
             result = check('', uid, action=action)
@@ -977,8 +1003,8 @@ def native(expected_sha, barrier_sha):
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
     require(sha(barrier) == barrier_sha, 'barrier changed')
     probe.unlink(); barrier.unlink(); work.rmdir()
-    require(len(cases) == 172, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=172 failures={len(failures)} '
+    require(len(cases) == 184, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=184 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 

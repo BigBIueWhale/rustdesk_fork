@@ -134,9 +134,9 @@ fn main() {
         runtime.block_on(service_fixture(scenario));
         return;
     }
-    if args[1] == "listen" || args[1] == "listen-unprovable" {
+    if args[1] == "listen" || args[1] == "listen-unprovable" || args[1] == "listen-wrong-uid" {
         use std::io::{BufRead, Write};
-        let _listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
         if args[1] == "listen-unprovable" {
             assert_eq!(unsafe { libc::geteuid() }, 4001);
             assert_eq!(unsafe { libc::prctl(libc::PR_SET_DUMPABLE, 0 as libc::c_ulong,
@@ -145,6 +145,23 @@ fn main() {
         }
         println!("READY");
         std::io::stdout().flush().unwrap();
+        if args[1] == "listen-wrong-uid" {
+            use std::io::Read;
+            assert_eq!(unsafe { libc::geteuid() }, 4001);
+            let descriptors = fd_count();
+            for _ in 0..3 {
+                let mut ready = libc::pollfd { fd: listener.as_raw_fd(), events: libc::POLLIN, revents: 0 };
+                assert_eq!(unsafe { libc::poll(&mut ready, 1, 5000) }, 1);
+                let (mut peer, _) = listener.accept().unwrap();
+                assert_eq!(peer_uid_from_fd(peer.as_raw_fd()), Some(0));
+                peer.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
+                let mut byte = [0];
+                assert_eq!(peer.read(&mut byte).unwrap(), 0);
+                drop(peer);
+                assert_eq!(fd_count(), descriptors);
+            }
+            ready("NO_PAYLOAD");
+        }
         let mut line = String::new();
         std::io::stdin().lock().read_line(&mut line).unwrap();
         assert_eq!(line, "stop\n");

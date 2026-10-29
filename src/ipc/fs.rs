@@ -798,7 +798,7 @@ pub(crate) async fn probe_existing_listener(postfix: &str) -> ResultType<bool> {
         )
     })?;
     let executable_matches = peer_executable_is_current_by_pid(peer_pid)?;
-    if !existing_listener_identity_is_acceptable(peer_uid, current_uid, executable_matches) {
+    if !executable_matches {
         log::debug!(
             "Refusing foreign incumbent ipc listener: postfix={}, peer_uid={}, current_uid={}, peer_pid={}, executable_matches={}",
             postfix,
@@ -836,15 +836,6 @@ pub(crate) async fn probe_existing_listener(postfix: &str) -> ResultType<bool> {
         )
         .into()),
     }
-}
-
-#[inline]
-fn existing_listener_identity_is_acceptable(
-    peer_uid: u32,
-    current_uid: u32,
-    executable_matches: bool,
-) -> bool {
-    peer_uid == current_uid && executable_matches
 }
 
 #[cfg(target_os = "linux")]
@@ -1040,19 +1031,6 @@ pub(crate) fn should_scrub_parent_entries_after_listener_check(
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn r_s11e85_existing_listener_requires_current_principal_and_executable() {
-        assert!(super::existing_listener_identity_is_acceptable(
-            1000, 1000, true
-        ));
-        assert!(!super::existing_listener_identity_is_acceptable(
-            1001, 1000, true
-        ));
-        assert!(!super::existing_listener_identity_is_acceptable(
-            1000, 1000, false
-        ));
-    }
-
     #[test]
     fn test_ensure_secure_ipc_parent_dir_rejects_symlink_parent() {
         use std::os::unix::fs::symlink;

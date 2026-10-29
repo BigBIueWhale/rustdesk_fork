@@ -57,7 +57,7 @@ def build():
     guard = fs_source.impl(('impl', 'Drop', 'for', 'FdGuard'), 'fd guard')
     filesystem = fs_source.text[fs_source.text.index('struct FdGuard(i32);'):fs_source.tokens[guard.end].offset + 1] + '\n'
     for name in ('open_ipc_parent_dir_fd', 'remove_parent_entry_via_fd', 'remove_ipc_socket_via_secure_parent_fd',
-                 'probe_existing_listener', 'existing_listener_identity_is_acceptable', 'current_euid', 'check_existing_listener',
+                 'probe_existing_listener', 'current_euid', 'check_existing_listener',
                  'expected_ipc_parent_mode', 'scrub_preexisting_ipc_parent_entries',
                  'recreate_foreign_service_ipc_parent_dir', 'should_recreate_foreign_service_ipc_parent',
                  'verify_linux_service_ipc_namespace', 'ensure_secure_ipc_parent_dir',
@@ -221,9 +221,11 @@ def native(expected_sha, barrier_sha):
         try:
             require(select.select([child.stdout], [], [], 5)[0] and child.stdout.readline() == 'READY\n', 'listener failed')
             before = endpoint.lstat()
+            admitted = check(postfix, uid, action='probe')
             result = check(postfix, uid)
             preserved = endpoint.exists() and endpoint.lstat().st_ino == before.st_ino
-            passed = result.returncode == 3 and preserved
+            passed = admitted.returncode == 0 and admitted.stdout == 'OK alive\n' \
+                and result.returncode == 3 and preserved
             endpoint.chmod(0)
             result = check(postfix, uid)
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
@@ -236,6 +238,44 @@ def native(expected_sha, barrier_sha):
             child.communicate('stop\n', timeout=5)
             require(child.returncode == 0, 'listener did not join')
             endpoint.unlink(missing_ok=True)
+
+    # Same executable, different UID: observe real accepted connections and EOF,
+    # so refusal cannot pass merely because the foreign listener never started.
+    for postfix in ('_service', '_service_password', '_service_credential'):
+        endpoint = path(postfix)
+        parents[0].chmod(0o733)
+        child = subprocess.Popen(**command('listen-wrong-uid', postfix, 4001),
+                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE, text=True)
+        try:
+            require(select.select([child.stdout], [], [], 5)[0] and child.stdout.readline() == 'READY\n',
+                    'wrong-UID listener did not start')
+            before = endpoint.lstat()
+            require(before.st_uid == 4001 and stat.S_ISSOCK(before.st_mode), 'wrong listener owner')
+            parents[0].chmod(0o711)
+            probed = check(postfix, action='probe')
+            started = check(postfix)
+            require(select.select([child.stdout], [], [], 5)[0] and child.stdout.readline() == 'NO_PAYLOAD\n',
+                    'wrong-UID listener did not observe all empty connections')
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+                peer.settimeout(2); peer.connect(str(endpoint))
+                import struct
+                identity = struct.unpack('3i', peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))[:2]
+            after = endpoint.lstat()
+            output, errors = child.communicate('stop\n', timeout=5)
+            record('same-image-wrong-uid-' + postfix, probed.returncode == 4 and not probed.stdout
+                   and not probed.stderr and started.returncode == 3 and identity == (child.pid, 4001)
+                   and (before.st_dev, before.st_ino, before.st_mode, before.st_uid)
+                       == (after.st_dev, after.st_ino, after.st_mode, after.st_uid)
+                   and child.returncode == 0 and not output and not errors,
+                   subprocess.CompletedProcess([], started.returncode,
+                       f'probe_exit={probed.returncode} peer={identity} payload_bytes=0', errors))
+        finally:
+            if child.poll() is None:
+                child.kill(); child.communicate(timeout=5)
+                raise RuntimeError('wrong-UID listener did not finish normally')
+            endpoint.unlink(missing_ok=True)
+            parents[0].chmod(0o711)
 
     for name, uid in (('backlog-full', 0), ('permission-denied', 4001)):
         endpoint = path('', uid)
@@ -370,8 +410,10 @@ def native(expected_sha, barrier_sha):
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
         listener.bind(str(endpoint)); listener.listen(8)
         before = endpoint.lstat()
+        probed = check('', action='probe')
         result = check('')
-        record('foreign-image-live-preserved', result.returncode == 3 and endpoint.exists()
+        record('foreign-image-live-preserved', probed.returncode == 4 and not probed.stdout
+               and not probed.stderr and result.returncode == 3 and endpoint.exists()
                and endpoint.lstat().st_ino == before.st_ino, result)
     endpoint.unlink(missing_ok=True)
 
@@ -713,8 +755,8 @@ def native(expected_sha, barrier_sha):
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
     require(sha(barrier) == barrier_sha, 'barrier changed')
     probe.unlink(); barrier.unlink(); work.rmdir()
-    require(len(cases) == 92, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=92 failures={len(failures)} '
+    require(len(cases) == 95, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=95 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 

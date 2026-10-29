@@ -572,6 +572,14 @@ they do not establish compiler, scanner, installed, native or release acceptance
 Historical repair narratives and size/token comparisons are archived in Git, including
 the pre-consolidation source `a40b7ce7`.
 
+**Appendix C risk descriptions.** Rows #106/#127/#128/#141/#206/#353 now state
+timeless identity, storage, signal and task/buffer ownership risks. Six obsolete
+implementation histories are removed; every required-disposition cell, requirement
+ID/reference, link, anchor and all other specification bytes are unchanged. Product,
+tests and acceptance status are unchanged. Classification and size/count evidence:
+`appendix-risk-history-f8183c2a.json` and the audit entry
+“2026-10-29 — remaining appendix implementation histories”.
+
 **R-S11a duplicate gate removed.** The 24-line shared grep block accepted removal
 of the Linux fresh lookup, parent no-follow flag and owner rejection; the retained
 function-scoped desktop checker rejects all three. Its current source pass and

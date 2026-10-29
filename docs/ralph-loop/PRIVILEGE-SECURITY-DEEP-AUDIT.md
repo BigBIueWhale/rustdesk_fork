@@ -116168,3 +116168,35 @@ The pinned tokenizer's seven controls and full byte round trip pass. QEMU 171360
 joins after 30.411 seconds, RAM `run.jwh1ne99` retires and all three listener deltas
 are zero. Six count files add 102,682 bytes; 21 retained files total 344,347 bytes
 on both hosts. This audit-only receipt leaves the measured ledger unchanged.
+
+### 2026-10-29 — remaining appendix implementation histories
+
+The preceding CLI correction is complete at `f8183c2a`; the worktree is clean.
+Read-only IPC review finds no additional confirmed defect in the examined request,
+framing and listener paths. This is limited review, not security closure. Parent
+integration and every other user park remain unchanged. The next coherent slice
+addresses the binding specification/current-status separation.
+
+Six Appendix C risk-description cells recount old implementation behavior:
+#106 split polkit requester observations; #127 shared tunnel targets, reusable
+listeners and unowned tasks; #128 a replaceable Windows child as durable credential
+writer; #141 fatal-signal Rust work and success reporting; #206 discarded reconnect
+and stale readiness; and #353 deferred work borrowing callback-owned frame bytes.
+Their adjacent required dispositions already specify the complete current authority,
+lifetime, resource and native-acceptance contracts. The normative findings remain;
+only the historical implementation narratives are replaced with concise risks.
+No new vulnerability, current reachability or demonstrated LPE is asserted.
+
+All six disposition cells remain byte-identical. Exact replacement comparison proves
+every other specification byte unchanged, including all 411 requirement IDs,
+371 finding IDs, 2,863 requirement references, 211 links, 34 anchors and complete
+table/cell structure. Removed distinctive historical sentences have no references
+in `scripts/`. Product, tests, verifiers and live instruction files are unchanged;
+no behavioral execution is warranted or claimed for this documentation correction.
+`git diff --check` passes. The specification loses 1,970 bytes, from 1,681,835 to
+1,679,865; its SHA-256 changes from
+`5b1a37cacabf59f8123de5b78a0e2a2d785f96243f40a15c81fffbc2495e3a38` to
+`cccfc1fded9fbca4455c7ed009d356fb23ca26f81f6d33738db64fdcf7694933`.
+The comparison capsule retains the classified before/after cells and disposition
+digests. Current conformance, native/installed acceptance and broader documentation
+classification remain in the ledger; no completion claim changes.

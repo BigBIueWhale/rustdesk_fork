@@ -116875,3 +116875,48 @@ Seven tokenizer controls and byte round trip pass. QEMU 1762456 joins after
 30.720 seconds, RAM `run.9i8xorqo` retires and three listener deltas are zero.
 The thirteen retained files total 214,078 bytes per host. This audit-only receipt
 leaves the measured ledger unchanged.
+
+### 2026-10-29 — reject surplus main-IPC config-query fields
+
+Read-only review finds the option setter already checks the receiver's result and
+matching key; its parked installed integration is not resumed. The separate
+`MainConfigKey` decoder is an internally tagged unit enum. At `e1491e91`, its
+five keys accept additional map fields, including `c: null`, before the typed
+request or response reaches its consumer. This establishes a permissive query
+schema, not a demonstrated privileged effect or new LPE.
+
+The [pinned Serde derive implementation](https://raw.githubusercontent.com/serde-rs/serde/v1.0.228/serde_derive/src/de/enum_internally.rs)
+selects `InternallyTaggedUnitVisitor` for unit variants; its
+[map visitor](https://raw.githubusercontent.com/serde-rs/serde/v1.0.228/serde/src/private/de.rs)
+consumes arbitrary fields as `IgnoredAny`. A container attribute alone therefore
+does not fix this unit representation. `45944c71` uses empty struct variants
+with `deny_unknown_fields`, preserving all five serialized tags. Every constructor
+and match is updated; exact comparison confirms the IPC handler bodies, routing,
+authority, bounds and all unrelated IPC bytes are unchanged. Three source-gate
+literals follow the constructors. Requirements and live instructions are unchanged.
+
+Prep `4194fd31` extends the existing malformed-key regression to 34 inputs.
+TUF baseline `1g9SRBkGiz` fails that test with twenty accepted extra-field queries;
+the other three tests pass. Candidate `Jr8SMPHKaI` passes all four tests with the
+negative body byte-identical, all five valid encodings preserved and seven
+retired/unknown tags rejected. Both directly include the production schema and
+use Serde 1.0.228/serde_json 1.0.118 with an identical component lock. Artifact
+hashes, exact outcomes and source identities are in the retained comparison.
+
+Candidate IPC run `L7KfHexaKj` passes 246 component and fourteen directory cases,
+plus the focused desktop source check. The extended `config-none` cases send an
+extra nested key field through both real framed readers under root and UID 4001,
+observe refusal, then receive a valid reply on the same socket and restore the
+descriptor count. These added socket assertions execute on the candidate only;
+the schema regression supplies the A/B comparison. No full application, installed
+privileged receiver or Windows/macOS execution is claimed.
+
+The three runs take 63.871, 64.119 and 91.488 seconds. QEMU
+1763461/1764286/1765049 joins; RAM `run.1_plvw82`/`run.t0gzaz2e`/`run.7rjb9ld5`
+retires; all four host listener deltas per run are zero. After retaining evidence,
+the exact failed-baseline scratch tree is deleted, reclaiming 3,432,448 bytes.
+Twenty-one raw files plus `main-config-key-shape-45944c71.json` total 285,080
+bytes per host. The capsule is 26,027 bytes, SHA-256
+`f24391c047def45972c9a8fbbea776f633a73d3e397c62941573f0e747ae7469`.
+Edited shell syntax, scoped source comparison and `git diff --check` pass;
+shared/Apple full catalogs and all parked work remain unexecuted.

@@ -3620,9 +3620,9 @@ those obligations.
 <a id="linux-ipc-components"></a>
 
 **IPC / option CLI — component acceptance; installed acceptance OPEN.**
-At `a71edcd8`, TUF `usDjZ2CHNl` passes all **172 listener/transport, 32 CLI,
+At `45944c71`, TUF `L7KfHexaKj` passes all **172 listener/transport, 32 CLI,
 10 Windows selector, 20 main-response, 8 main-transaction, 4 URL-loop and
-14 directory cases**, plus the focused desktop source check in 91.922 seconds.
+14 directory cases**, plus the focused desktop source check in 91.488 seconds.
 All execute in Linux;
 the Windows selector uses real
 Unix sockets and Tokio tasks, not Windows pipes or privileged receivers.
@@ -3638,7 +3638,7 @@ Real Unix sockets establish the named IPC outcomes, not complete application or
 privileged-receiver authorization. All four host
 listener deltas are zero; QEMU joins, bounded RAM scratch retires and exact
 fixture socket/descriptor cleanup passes. Current receipt:
-`url-accept-recovery-a71edcd8.json`.
+`main-config-key-shape-45944c71.json`.
 
 Unused IPC surfaces are removed: the old service-role/root-UID password predicate
 and `ConnectionTmpl::next_timeout2` had no repository callers. Their last callers
@@ -3810,19 +3810,23 @@ deserialization vocabulary; no reachable input actuator or new LPE was demonstra
 No parent build, protocol runtime or installed/native test ran for this deletion.
 Those acceptance obligations and all separately parked work remain OPEN.
 
-**Retired main-IPC legacy ID (`9c8dc194`).** The unused ID query, IPC-to-local
-read fallback, snapshot ID field/length failure and unread UI cache are removed.
-Status synchronization now depends only on the retained option and file-transfer
-fields. The five remaining config-query keys keep their encodings in the directly
-included production schema. Four isolated Linux tests pass: the exact historical
-schema accepts `Id`, the current schema rejects retired/unknown keys and malformed
-tags, and all five retained encodings round-trip. This is decoder-component
-evidence and obsolete-surface removal; full receiver/status/configuration flows,
-parent compilation, installed and other-platform acceptance remain OPEN. The
-parked parent-build repair was not resumed. Shared/Apple source gates follow the
-schema's new file; their full catalogs did not run. Run `vTvK0nAk5E` and audit entry
-“2026-10-28 — retire unused legacy-ID main IPC” retain source, artifact and joined
-bounded-RAM cleanup evidence. One unattributed endpoint addition is untouched.
+**Main-IPC config-query schema.** `45944c71` gives the five nonsecret query keys
+empty struct variants with unknown-field rejection. All five tag encodings and
+handler bodies are preserved. The unchanged negative test accepts twenty
+extra-field queries before correction; afterward all 34 malformed inputs are
+rejected. Four production-schema tests pass, including valid round trips,
+retired/unknown-key refusal and the historical ID control. The root/UID-4001
+framed cases additionally reject an extra nested key field in both requests and
+responses, then accept a valid reply on the same socket. This is schema and
+reader evidence; full receiver/status/configuration flows, parent compilation,
+installed and other-platform acceptance remain OPEN. Shared/Apple gate literals
+follow the new Rust constructors; their full catalogs did not run. Comparison:
+`main-config-key-shape-45944c71.json`.
+
+`9c8dc194` removed the unused ID query, IPC-to-local fallback, snapshot ID/length
+failure and unread UI cache. Status synchronization retains option/file-transfer
+state. Earlier run `vTvK0nAk5E` and its legacy-ID audit entry retain that evidence;
+its unattributed endpoint addition remains untouched. Parked work is unchanged.
 
 **Retired desktop lock-state queries (`50f9b5e9`).** The last connection-authentication
 caller was removed by `d5aec5bc`; current source has no consumer. The Linux/macOS/Windows

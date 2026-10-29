@@ -116920,3 +116920,13 @@ bytes per host. The capsule is 26,027 bytes, SHA-256
 `f24391c047def45972c9a8fbbea776f633a73d3e397c62941573f0e747ae7469`.
 Edited shell syntax, scoped source comparison and `git diff --check` pass;
 shared/Apple full catalogs and all parked work remain unexecuted.
+
+Ledger count `ioFdqeeXrA` at documentation commit `9b57ad60` reports 359,361
+tokens using `tiktoken-0.12.0/cl100k_base/encode_ordinary`: 1,643,268 bytes,
+SHA-256 `3486b5b403370aa2ff57a6cef557106fa2335b906193406b1ae7f20fcc5ce975`.
+Seven tokenizer controls and the complete text round trip pass. QEMU 1767106
+joins after 30.413 seconds; RAM `run.c4903z6_` retires and all three host
+listener deltas are zero. Its six files add 104,370 bytes, making the retained
+comparison and count evidence 389,450 bytes across 28 files per host. Both
+copies match their recorded hashes. This audit-only receipt leaves the measured
+ledger unchanged.

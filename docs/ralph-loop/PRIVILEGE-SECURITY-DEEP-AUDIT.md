@@ -114483,3 +114483,16 @@ This remains extracted-function native evidence with actual libc and a boxed
 error adapter. No installed listener, real socket, current/stale session role,
 directory-to-directory replacement, all-schedule proof or native macOS execution
 is claimed. Full R-S11a/R-S0 acceptance remains OPEN. The ledger count follows.
+
+Fresh isolated count at `a9184b7f`, TUF run `VOQ2zpB5H4`, exits zero:
+356,790 tokens / 1,630,969 bytes, up 12 tokens / 16 bytes. The pinned tiktoken
+method passes seven controls and byte round-trip; ledger SHA-256 is
+`1d478cf1e26307105a27324a990f9475303c8972d692a090f396dc1871609afc`.
+The 30.865-second run peaks at 402,337,792 RAM scratch bytes, 305,795,072 overlay
+bytes and 258,048 durable-run bytes. QEMU 1580528 joins exit zero; its PID,
+workspace `run.fu_sqcz9` and active run roots are absent. All three listener
+deltas are zero. Six copied files total 103,028 bytes and match TUF hashes;
+serial SHA-256 is
+`8e4f2344dc772bfb001a32274322d66873d1e44d39fcff2f9235b0fe977e9151`.
+The regression capsule also matches on both hosts. This audit-only receipt
+leaves the counted ledger unchanged.

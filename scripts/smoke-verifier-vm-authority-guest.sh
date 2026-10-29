@@ -7076,7 +7076,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             || fail 'IPC parent build receipt differs'
         ipc_parent_sha=${ipc_parent_builds[0]#*artifact_sha256=}
         ipc_parent_sha=${ipc_parent_sha%% *}
-        mapfile -t ipc_parent_builds < <(grep -E '^LINUX_IPC_LISTENER_BUILD=pass artifact_sha256=[0-9a-f]{64} fs_fragment_sha256=[0-9a-f]{64} barrier_sha256=[0-9a-f]{64} connection_fragment_sha256=[0-9a-f]{64} codec_sha256=[0-9a-f]{64} transport=parity-tokio-ipc-root-locked framing=production$' "$output")
+        mapfile -t ipc_parent_builds < <(grep -E '^LINUX_IPC_LISTENER_BUILD=pass artifact_sha256=[0-9a-f]{64} fs_fragment_sha256=[0-9a-f]{64} barrier_sha256=[0-9a-f]{64} connection_fragment_sha256=[0-9a-f]{64} codec_sha256=[0-9a-f]{64} reader_sha256=[0-9a-f]{64} transport=parity-tokio-ipc-root-locked framing=production$' "$output")
         [ "${#ipc_parent_builds[@]}" -eq 1 ] && [ "$(grep -Fc 'LINUX_IPC_LISTENER_BUILD=' "$output")" -eq 1 ] \
             || fail 'IPC listener build receipt differs'
         ipc_listener_sha=${ipc_parent_builds[0]#*artifact_sha256=}

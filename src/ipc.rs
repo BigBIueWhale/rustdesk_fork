@@ -7629,16 +7629,16 @@ pub async fn connect(ms_timeout: u64, postfix: &str) -> ResultType<ConnectionTmp
     {
         let use_user_main_ipc = USE_USER_MAIN_IPC.with(|use_user_main| use_user_main.get());
         let is_user_main_endpoint = postfix.is_empty();
-        let is_root_main_ipc = unsafe { hbb_common::libc::geteuid() == 0 }
+        let current_uid = unsafe { hbb_common::libc::geteuid() as u32 };
+        let is_root_main_ipc = current_uid == 0
             && is_user_main_endpoint
             && use_user_main_ipc;
-        if is_root_main_ipc {
-            let uid = user_main_ipc_server_uid()?;
-            let path = Config::ipc_path_for_uid(uid, postfix);
-            return connect_with_path(ms_timeout, &path, postfix).await;
-        }
-        let path = Config::ipc_path(postfix);
-        return connect_with_path(ms_timeout, &path, postfix).await;
+        let uid = if is_root_main_ipc {
+            user_main_ipc_server_uid()?
+        } else {
+            current_uid
+        };
+        return connect_for_uid(ms_timeout, uid, postfix).await;
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
@@ -7840,14 +7840,22 @@ where
     Ok(peer)
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub async fn connect_for_uid(
     ms_timeout: u64,
     uid: u32,
     postfix: &str,
 ) -> ResultType<ConnectionTmpl<ConnClient>> {
     let path = Config::ipc_path_for_uid(uid, postfix);
-    connect_with_path(ms_timeout, &path, postfix).await
+    let connection = connect_with_path(ms_timeout, &path, postfix).await?;
+    #[cfg(target_os = "linux")]
+    if postfix.is_empty()
+        && (connection.peer_uid() != Some(uid)
+            || connection.peer_pid().map_or(true, |pid| pid == 0))
+    {
+        bail!("Linux main IPC server principal does not match endpoint uid {uid}");
+    }
+    Ok(connection)
 }
 
 #[cfg(target_os = "linux")]

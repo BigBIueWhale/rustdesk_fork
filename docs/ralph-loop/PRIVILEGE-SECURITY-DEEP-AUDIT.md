@@ -115621,3 +115621,51 @@ Full installed application/settings authority, macOS replacement races and nativ
 acceptance, CM/PA, remaining namespace/metadata races, release artifacts,
 independent reproduction and external review remain OPEN. Normative requirements
 and live instructions are unchanged.
+
+### 2026-10-29 — Bound IPC JSON construction before transport publication
+
+`ConnectionTmpl::send_json` used `serde_json::to_vec` before checking the codec
+limit. An oversized value therefore incurred complete output construction before
+refusal. `8307a2d6` supplies a private bounded writer to the same serializer:
+every write checks the remaining encoded-byte budget before fallible geometric
+buffer growth, whose requested capacity is capped by the engaged limit. Only
+successful complete serialization enters `Framed`. Encodings, configured limits,
+transport ownership and privileged request authorization are unchanged.
+
+Pinned [serde_json 1.0.118](https://raw.githubusercontent.com/serde-rs/json/v1.0.118/src/ser.rs)
+implements `to_vec` using an unrestricted Vec writer, while `to_writer` propagates
+writer errors through serialization. Rust's [Write contract](https://doc.rust-lang.org/std/io/trait.Write.html)
+permits refusing a write without consuming its bytes. This supports limiting
+construction directly without serializing twice or publishing a partial frame.
+
+Both runs use `bash scripts/smoke-verifier-vm-authority.sh --linux-ipc-parent-tests`
+on TUF with the same pinned offline builder and ordinary-user zero-NIC VM topology.
+
+| Source / run | Native result | Elapsed |
+| --- | --- | --- |
+| `2c566f4d` / `AFd90Yq4au` | Both root/user streaming cases serialize all 100,000 elements before rejecting; 154 other listener and 14 directory cases pass. | 84.735 s |
+| `8307a2d6` / `HaPrQjXlT0` | All 156 listener and 14 directory cases pass; the sequence stops at element 16,385 for its 32 KiB cap. | 82.262 s |
+
+The six new root/UID-4001 cases use production serialization/framing over real
+UnixStream pairs. Forty string/cap combinations cover empty/plain/escaped Unicode,
+exact 32 KiB service and 256 KiB main frames, zero and one-byte-short caps, and
+extra capacity. A serializer error after one element also refuses cleanly. Kernel
+peer UID/PID, exact wire bytes, nonblocking absence of rejected output, subsequent
+valid use of the same stream and restored descriptor counts are checked. The
+focused desktop source checker and diff checks pass; no full application ran.
+
+Listener SHA-256 before: `55bd6e310f1f4901bd21c2210768c4a27c95185344972d84f3d5990f5e130b00`;
+after: `e143d1c802ec7944438c133214270d8bfce2028e1bddec741151011792f437ea`.
+All eight host listener deltas are zero. QEMU 1671436 and 1672198 join and both
+RAM workspaces retire. Accepted peak scratch is 3,434,078,208 allocated bytes,
+overlay 3,237,810,176 and durable run storage 3,428,352. After evidence verification,
+baseline leftovers are removed, freeing 3,481,600 allocated bytes. Fourteen run
+files and `ipc-json-budget-8307a2d6.json` total 220,959 bytes on CTE and TUF.
+Capsule SHA-256: `1ae1e1d2dbd55b27f0d8bff4b6409ba2edd8828dba28403fba122e7e865c1a81`.
+
+This proves early output-budget refusal and socket recovery for the component.
+It does not bound arbitrary serializer CPU/heap activity, add caps to previously
+unbounded codecs, or exercise allocator failure, full endpoint/application flows,
+installed privileged actions or other platforms. Those obligations, remaining
+namespace/metadata races, release artifacts, independent reproduction and external
+review remain OPEN. Requirements and live instructions are unchanged.

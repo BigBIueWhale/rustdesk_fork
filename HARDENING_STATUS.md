@@ -3659,7 +3659,7 @@ ready endpoint gets a turn within three service or two main admissions. Pending
 cancellation preserves priority. Shutdown and completed work retain priority,
 with existing endpoint budgets, authorization, handlers and drain paths.
 Baselines `rQzwsSP60i` and `94ZSVIzQod` reproduce the respective starvation in
-root and user-owned socket fixtures. Current `eMd7q9vrIi` passes all 150 listener
+root and user-owned socket fixtures. Run `eMd7q9vrIi` passes all 150 listener
 and 14 directory cases in 85.133 seconds, including twelve main/service
 backlog/sparse/cancellation cases. Production accept helpers and real Linux
 sockets check kernel peer UID/PID, endpoint routing and descriptor cleanup.
@@ -3677,6 +3677,18 @@ retry, cancellation/recovery and independent-listener cases now pass alongside
 the existing suite. Scope is the shared listener transport, not complete helpers
 or privileged handlers; Windows/macOS and other error classes need native
 acceptance. Receipt: `ipc-accept-retry-7b1279bd.json`.
+
+**Outbound JSON serialization.** `8307a2d6` enforces the engaged frame limit during
+serialization, before buffer growth or transport publication. Growth is fallible
+and requested capacity stays within that limit; only a complete frame is sent.
+Baseline `AFd90Yq4au` serializes all 100,000 sequence elements before rejecting
+the 32 KiB frame; `HaPrQjXlT0` stops at element 16,385. Both root/UID-4001 cases
+pass, alongside forty string/size combinations and serializer-error recovery on
+real Unix sockets. Refusal sends no bytes and the same stream accepts a subsequent
+valid frame. All 156 listener and 14 directory cases pass in 82.262 seconds;
+the focused source check passes and VM/RAM cleanup joins with zero listener deltas.
+Receipt: `ipc-json-budget-8307a2d6.json`. Full endpoint/application flows,
+allocation-failure injection and other-platform acceptance remain OPEN.
 
 **R-X14 desktop resource removal.** `9c8ebb1c` deletes the unused `res/startwm.sh` and
 dummy `res/xorg.conf`, their Debian payload/conffile/executable entries and the empty
@@ -9126,9 +9138,10 @@ sandbox implementation and checker-repair history remain in Git.
   Baseline `DRZBPWPlFn` reproduces nineteen valid failures; two special-bit fixtures
   required correction before they could count. The audit records that distinction.
 
-  **Current native evidence:** `2a2f7f66`, TUF `kBqFhnCxYH`, passes 150 listener
-  cases and 14 directory cases in 85.383 seconds, including the twelve main/service
-  scheduling and six accept-error cases recorded above. Baseline `mG75yce2f7` reproduces
+  **Current native evidence:** `8307a2d6`, TUF `HaPrQjXlT0`, passes 156 listener
+  cases and 14 directory cases in 82.262 seconds, including the twelve main/service
+  scheduling, six accept-error and six JSON serialization cases recorded above.
+  Baseline `mG75yce2f7` reproduces
   ten non-socket replacements, two PID-file deletions and two startup failures
   caused by nonempty PID directories. The same fourteen scenarios now preserve
   inode/type/mode/owner/link metadata and contents, while PID artifacts do not
@@ -9155,7 +9168,8 @@ sandbox implementation and checker-repair history remain in Git.
   Config name/path and service authorization remain fixture adapters. The directory
   fixture no longer invokes macOS-only scrub code on Linux; it checks parent
   hardening and preservation. All host listener deltas are zero, QEMU joins and RAM
-  scratch retires. Provenance: `ipc-target-cfg-2a2f7f66.json`,
+  scratch retires. Provenance: `ipc-json-budget-8307a2d6.json`,
+  `ipc-target-cfg-2a2f7f66.json`,
   `ipc-accept-retry-7b1279bd.json`,
   `ipc-main-fairness-d4987511.json`,
   `ipc-service-fairness-1a5665b8.json`,

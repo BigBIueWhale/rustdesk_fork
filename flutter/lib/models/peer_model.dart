@@ -62,7 +62,8 @@ class Peers extends ChangeNotifier {
       required this.getInitPeers,
       required this.loadEvent}) {
     peers = getInitPeers?.call() ?? [];
-    _registration = platformFFI.registerEventHandler(loadEvent, name, (evt) async {
+    _registration =
+        platformFFI.registerEventHandler(loadEvent, name, (evt) async {
       updatePeers(evt);
     });
   }

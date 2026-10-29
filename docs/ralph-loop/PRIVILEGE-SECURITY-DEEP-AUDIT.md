@@ -117021,3 +117021,46 @@ Seven controls and the complete text round trip pass. QEMU 1772819 joins after
 Its six files add 102,661 bytes. All thirteen retained files total 214,337 bytes
 per host with matching copied hashes. This audit-only receipt preserves the
 measured ledger bytes.
+
+### 2026-10-30 — main response envelope and snapshot field admission
+
+The preceding Windows handle-ownership slice is complete at `a8800bb7` with its
+native acceptance still open. Current R-S11b/R-S11c state retains installed
+credential/settings authorization, platform-native execution, release artifacts,
+independent reproduction and review. This slice checks the closed main response
+contract in R-S11. `MainIpcRequest` already rejects unknown fields, but
+`MainIpcResponse`, `MainStatusSnapshot` and `MainReadinessSnapshot` lack that policy.
+`next_main_response_timeout` publishes their successfully decoded values after
+semantic validation; unknown fields have already been discarded by then.
+
+[Serde's documented default](https://serde.rs/container-attrs.html#deny_unknown_fields)
+ignores unknown JSON fields. The pinned 1.0.228
+[adjacent-enum decoder](https://raw.githubusercontent.com/serde-rs/serde/v1.0.228/serde_derive/src/de/enum_adjacently.rs)
+skips extra envelope keys before/between/after tag and content; its
+[struct decoder](https://raw.githubusercontent.com/serde-rs/serde/v1.0.228/serde_derive/src/de/struct_.rs)
+applies the container policy separately to nested objects. The correction adds
+`deny_unknown_fields` to these three declarations. Existing tags, values,
+serialization, field-order flexibility, size limits and authorization stay intact.
+This is protocol admission, not a demonstrated privilege escalation. The separately
+parked CM payload/handshake work remains unchanged and open.
+
+Preparation `ea7ba4ac` adds one real framed-socket scenario under root and UID 4001.
+For five response variants it sends six placements/orders of an extra envelope
+field; the four object payloads also get an extra nested field in both tag/content
+orders. Ten valid controls on the same socket check exact decoded/reserialized
+values after malformed frames. Socket identities and descriptor restoration are
+checked before the final verdict. The fixture compiles production types, readers,
+framing and pinned dependencies; no receiver handler, settings actuator or installed
+application is represented by these socket pairs.
+
+Baseline `hw1b2nd6Nl` observes all 38 malformed replies accepted under each UID;
+both new cases fail, while the prior 246 IPC and 14 directory cases pass. Valid
+controls report no failures. After scenario and descriptor/artifact cleanup, a
+missed runner inventory constant also rejects the new total. That constant and
+receipt now expect 248; fixture bodies/data are unchanged for the candidate.
+Baseline artifact: `cc39d9acf43c0d1c5941ab21eb3b9af289e044e486c93e27d5bfeda9eebc0451`.
+QEMU 1773902 joins after 90.499 seconds, RAM `run.xjt1_cuv` retires and all four
+host listener deltas are zero. Seven raw files total 114,416 bytes per host with
+matching copied hashes. After retaining evidence, exact failed-run scratch
+`response-shape-before.hw1b2nd6Nl` (inode 78294410, 3,506,176 allocated bytes)
+is removed. Native Windows/macOS, full application and installed acceptance remain open.

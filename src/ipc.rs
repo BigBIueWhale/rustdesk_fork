@@ -2648,6 +2648,7 @@ pub enum CmVoiceCallCommand {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct MainStatusSnapshot {
     pub options: MainStatusOptions,
     pub file_transfer_enabled: Option<bool>,
@@ -2655,6 +2656,7 @@ pub struct MainStatusSnapshot {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct MainReadinessSnapshot {
     pub permanent_password_set: bool,
     pub user_owned_permanent_password_writable: bool,
@@ -3332,7 +3334,7 @@ pub enum MainIpcRequest {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "t", content = "c")]
+#[serde(tag = "t", content = "c", deny_unknown_fields)]
 pub enum MainIpcResponse {
     StatusSnapshot(MainStatusSnapshot),
     ReadinessSnapshot(MainReadinessSnapshot),

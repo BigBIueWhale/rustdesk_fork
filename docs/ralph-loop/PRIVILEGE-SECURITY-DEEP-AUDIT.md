@@ -116860,3 +116860,18 @@ comparison, shell syntax and `git diff --check` cover this retirement. No new
 surrogate fixture is added. Full application startup, actual thread/CPU savings,
 Windows CPU monitoring and installed/native acceptance remain unexecuted; the
 existing parked work remains parked.
+
+At `2be0a4b1`, TUF `MQYl3kXdw7` passes the focused desktop source check, all
+246 IPC/CLI component cases and fourteen directory cases in 91.816 seconds.
+The two component artifact hashes match the preceding accepted run; these
+checks cover the retained source/parser integration and IPC components, not the
+removed GUI worker or native GUI startup. QEMU 1760712 joins, RAM
+`run.2cougqt3` retires and four host listener deltas are zero.
+
+Count `ShozZEJgTt` at the same commit reports **359,329 ledger tokens** /
+1,643,099 bytes, SHA-256
+`317a272c9157fdf1d24e5ee38f11203338e76d4132a3c5449646cbfec7ad2250`.
+Seven tokenizer controls and byte round trip pass. QEMU 1762456 joins after
+30.720 seconds, RAM `run.9i8xorqo` retires and three listener deltas are zero.
+The thirteen retained files total 214,078 bytes per host. This audit-only receipt
+leaves the measured ledger unchanged.

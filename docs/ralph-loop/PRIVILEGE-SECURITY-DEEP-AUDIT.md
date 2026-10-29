@@ -116049,3 +116049,11 @@ current failed-run scratch trees are deleted, freeing 6,860,800 allocated bytes.
 The parked historical chooser diagnostics and canonical offline inputs are
 preserved. Complete app/session, browser/mobile/device, privileged settings,
 installed/native and release acceptance remain OPEN.
+
+Fresh ledger count at `575321a8`, run `7PrcB6TcFv`: **358,169 tokens** /
+1,637,715 bytes; pinned method, seven controls and full byte round trip pass.
+Ledger SHA-256 is `21651dced69bd3638f60f2e36d84ceb9c6e7972a0c2c64f765d9bbb5d964b202`.
+QEMU 1705877 joins after 30.753 seconds, RAM `run.audi3ckq` retires and all three
+listener deltas are zero. Six count files add 102,814 bytes, bringing retained
+evidence to 35 files / 458,254 bytes on both hosts. This audit-only receipt leaves
+the measured ledger unchanged; the overall hardening goal remains OPEN.

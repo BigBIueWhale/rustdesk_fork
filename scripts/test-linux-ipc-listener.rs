@@ -470,7 +470,7 @@ async fn main_response_fixture(scenario: &str) {
         let (sent, received) = tokio::join!(
             sender.send_json_timeout(&response, 1000), receiver.next_main_response_timeout(1000),
         );
-        assert!(sent.is_ok(), "valid {scenario} response cannot be sent: {sent:?}");
+        assert!(sent.is_ok(), "valid {scenario} response ({} bytes) cannot be sent: {sent:?}", expected.len());
         let received = received.unwrap().unwrap();
         assert_eq!(serde_json::to_vec(&received).unwrap(), expected);
 
@@ -488,6 +488,13 @@ async fn main_response_fixture(scenario: &str) {
         sent.unwrap();
         assert!(matches!(received.unwrap().unwrap(),
                          MainIpcResponse::RequestFailed(IpcMutationResult::Rejected)));
+        use tokio::io::AsyncWriteExt;
+        let (header, width) = BytesCodec::encode_header(MAIN_IPC_MAX_FRAME_BYTES + 1).unwrap();
+        sender.inner.get_mut().write_all(&header[..width]).await.unwrap();
+        let error = timeout(1000, receiver.next_raw()).await.unwrap().unwrap_err();
+        assert_eq!(error.downcast_ref::<std::io::Error>().unwrap().kind(),
+                   std::io::ErrorKind::InvalidData);
+        assert_eq!(error.to_string(), "Too big packet");
     }
     assert_eq!(fd_count(), before);
     println!("OK main-response-{scenario} uid={} cleanup=joined", unsafe { libc::geteuid() });

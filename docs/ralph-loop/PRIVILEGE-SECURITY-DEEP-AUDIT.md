@@ -115413,3 +115413,64 @@ evidence verification, freeing 401,408 allocated bytes. Thirty run files plus
 Capsule SHA-256: `b05e2b7b8f84081820111b8b6b00a2d2f5988a9c5e70ad5f3960a03cb92bd580`.
 Installed/full-app Linux and macOS acceptance, remaining socket/metadata races,
 release artifacts, independent reproduction and external review remain OPEN.
+
+### 2026-10-29 — Rotate service listener admission
+
+The biased select in `run_service_ipc` previously polled credential, password,
+then service accepts in fixed order. A ready credential backlog could prevent
+the other queues from being admitted. `5cbe6a8d` extracts that same fixed ordering
+into the production accept helper and adds the native reproduction; `1a5665b8`
+replaces it with one retained cursor and three tagged accept results.
+
+The cursor advances only after a ready result, including an accept error. Pending
+cancellation leaves it unchanged. Polling visits at most three futures and gives
+each continuously ready endpoint a turn within three admissions. The outer loop
+still polls shutdown, authorization completions/requests and completed transactions
+before accepting. Existing branch bodies, endpoint permits, receiver authorization
+and joined shutdown are unchanged apart from routing/indentation. This is an
+admission-order correction, not a new privileged-action authority model.
+
+Pinned Tokio 1.44.2 documents top-to-bottom biased selection and the caller's
+fairness responsibility, and identifies UnixListener::accept as cancellation-safe:
+https://raw.githubusercontent.com/tokio-rs/tokio/tokio-1.44.2/tokio/src/macros/select.rs
+The pinned parity-tokio-ipc revision
+`d0ae39bffe5d5a3e8d82a1b6bcb1ca5a9b2f1c01` wraps that single accept operation
+in `Incoming::next`. It has no pathname-cleanup Drop. The helper uses the three
+real futures without another runtime, task, allocation or dependency.
+
+Both TUF runs use `bash scripts/smoke-verifier-vm-authority.sh --linux-ipc-parent-tests`,
+ordinary-user zero-NIC QEMU, the pinned offline guest builder and the same fixture.
+
+| Source / run | Result | Elapsed |
+| --- | --- | --- |
+| `5cbe6a8d` / `rQzwsSP60i` | Both backlog cases fail with only endpoint 0 served; other 136 listener and 14 directory cases pass. | 81.642 s |
+| `1a5665b8` / `FaoN9wUA0g` | All 138 listener and 14 directory cases pass. | 82.064 s |
+
+The six added cases use UID 0 at the real three protected endpoints and UID 4001
+at three user-owned endpoints. Each backlog queues nine clients per endpoint and
+requires all three endpoints in each of three successive admission rounds. Sparse
+and cancellation cases exercise six arrivals each. Returned streams must carry
+the expected endpoint byte and actual kernel peer UID/PID. Pending cancellation
+preserves priority and descriptor count; final descriptor counts return to baseline.
+The focused desktop source checker passes inside both guest builders and preserves
+the outer priority/wiring invariant. Shared verifier extraction anchors follow the
+new tagged branches; the repository-wide catalogue and full application did not run.
+
+Accepted listener binary:
+`15aedb3c624510e6de058e4ecdae79bc263ef71f54dcce9b9eb869ec47f5e16c`.
+Baseline: `59b0f668610823bd20576da27d151ed73bef98bb5cc075bb83797cda37a4c761`.
+Directory binary remains `2c18066a2a0125e010bbab3e189707e990324fe4db2ff524bd99ddf15352dfb8`.
+All eight host-listener deltas are zero. QEMU 1663172 and 1664145 join exit zero;
+RAM workspaces retire. Accepted scratch peaks at 3,434,958,848 allocated bytes,
+overlay at 3,238,776,832 and durable run storage at 3,428,352. The failed baseline
+tree is removed after evidence verification, freeing 3,477,504 allocated bytes.
+Fourteen run files plus `ipc-service-fairness-1a5665b8.json` total 218,626 bytes
+and match CTE/TUF. Capsule SHA-256:
+`3fd5c0da838e2ebf4a7798c49b3e75a5ddba982b682555bcfb5360469e62a979`.
+
+The component runs the actual accept helper and kernel sockets, not the complete
+service loop or privileged handlers. UID 4001 coverage proves scheduling, not
+protected service authority. Accept-error rotation is source-reviewed; no error
+injection or whole-service wall-clock availability bound is claimed. Installed
+Linux/macOS operation, CM/PA, privileged authorization, existing socket/metadata
+races, release artifacts, independent reproduction and external review remain OPEN.

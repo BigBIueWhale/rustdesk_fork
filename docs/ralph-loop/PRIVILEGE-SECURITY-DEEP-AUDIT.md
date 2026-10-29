@@ -114424,3 +114424,62 @@ match locked TUF hashes; serial SHA-256 is
 `756541fe3777cc12f1b0d854bcc124c381865820c430f09610a4b20b2b7f6f72`.
 The native capsule also matches on both hosts. This audit-only receipt leaves
 the counted ledger unchanged.
+
+## 2026-10-29 — IPC parent replacement failure handling
+
+The previous slice made progress through six native directory cases. The current
+R-S11b/R-S11c checklist still leaves all fifteen installed credential actions
+OPEN; parked work remains parked. This slice fixes an observed directory-cleanup
+correctness defect without claiming a demonstrated local privilege escalation.
+
+`recreate_foreign_service_ipc_parent_dir` ignored a failed foreign-directory
+open and scrub error, then called a generic entry-removal helper. That helper
+selected unlink versus rmdir from the current entry type and treated absence
+as success. Thus a file/symlink substituted for the previously observed foreign
+directory could be deleted, or a missing parent recreated, while startup
+reported success. The intended operation is removal of a foreign directory:
+an open/scrub/removal failure returns an error, and removal always uses
+AT_REMOVEDIR. The separate stale-artifact helper retains its file/symlink behavior.
+The Linux [unlinkat contract](https://man7.org/linux/man-pages/man2/unlinkat.2.html)
+distinguishes directory removal from ordinary unlink. The
+[open contract](https://man7.org/linux/man-pages/man2/open.2.html) explains why
+an opened old inode can remain available while its pathname changes.
+
+`f97134d3` adds six schedules to the existing native harness: UID 4001 renames
+its parent and substitutes a regular file, symlink or nothing, before versus
+after the actual relative open. A root-owned test-only preloaded shim uses
+[RTLD_NEXT](https://man7.org/linux/man-pages/man3/dlsym.3.html) to call the real
+openat and a two-pipe barrier to schedule the actor; it does not inject syscall
+results. Exact children are joined, including error cleanup. The fixture checks
+the replacement inode/type/owner/content, retained moved directory and untouched
+symlink target, then retires its files and verifies descriptor baseline.
+
+The first run `WyUAlB1YFv` reproduced all six failures but omitted the build
+identities from failed-run output. `47ace2b0` moves that receipt before native
+execution. The repeated baseline `dtigleNvmf` retains binary SHA-256
+`e85d09bc615fbb9d20f895a3298d8e94a7c0b8ece076f8215b9a8c01e971e830`:
+six normal cases pass; all six races return success and fail preservation.
+The product fix `0cb28efa`, with clarified comment in `d3bf50ba`, runs the
+unchanged regression in `qkxuCvDPBq`: all twelve cases pass. Every race returns
+the expected error and preserves the replacement state. The corrected binary
+SHA-256 is `04235c1a786a0e984dc1ceabceafebd072df427ef10c3eadfaea6ebf6a3bfb3a`;
+filesystem source SHA-256 is
+`fed565fa446e13505426d3dc47aaddb0a48adf6bc32ca9171c2d8f3552ec72bc`.
+Both runs use the same barrier binary SHA-256
+`aa55060dc9fd17b98a90934705678eaea70434db3b812ce854bea37a39bd7c14`.
+
+The existing function-scoped checker now requires directory-only removal. It
+and shell syntax pass in a non-root, networkless container, which exits zero,
+is removed and leaves equal listener inventories. Whitespace checks pass.
+All three VMs join QEMU, retire RAM scratch and have four zero listener deltas.
+The corrected 34.169-second run peaks at 3,421,818,880 RAM scratch bytes,
+3,225,817,088 overlay bytes and 3,375,104 durable-run bytes. QEMU 1578780
+joins exit zero; its PID and workspace `run.edak2i9x` are absent. Fourteen
+before/after evidence files copied to CTE total 148,773 bytes with matching hashes.
+Capsule `ipc-parent-race-d3bf50ba.json`: 43,512 bytes, SHA-256
+`9ed9e2fab925d60ccacd79efed39ee1630f90b1606c03007aeaee45dcf82f72c`.
+
+This remains extracted-function native evidence with actual libc and a boxed
+error adapter. No installed listener, real socket, current/stale session role,
+directory-to-directory replacement, all-schedule proof or native macOS execution
+is claimed. Full R-S11a/R-S0 acceptance remains OPEN. The ledger count follows.

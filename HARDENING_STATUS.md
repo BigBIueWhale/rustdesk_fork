@@ -3615,22 +3615,22 @@ those obligations.
 
 ## R-S11b/R-S11c/R-S11i — service-owned IPC authority
 
-**R-S11a Linux IPC directory component — six native cases pass.**
-`e5b0a0d5`/`7985000c` add `--linux-ipc-parent-tests` to the bounded RAM-backed
-verifier VM. Eight exact filesystem functions and the config postfix predicate
-compile with pinned Rust/libc; a standard boxed-error adapter replaces the
-shared result alias. Root and real UID 4001/4002 processes exercise fresh service
-parents, foreign access/default-ACL replacement, nonempty and symlink refusal,
-user-owned success/wrong-owner refusal, and mode repair with exact stale-entry
-scrub. The retained old directory FD proves replacement rather than adoption;
-kernel write denial, preserved unrelated files and final fixture/FD retirement
-are observed. TUF run `rz3fmZ3MP8` passes in 34.362 seconds, joins QEMU and removes
-RAM scratch; all four listener inventories have zero deltas. Product behavior
-is unchanged. Supplied fixture paths do not exercise `Config::ipc_path`, actual
-socket binding, `new_listener`, installed services, active-session/role selection
-or controlled replacement races. Those observations and full R-S0 remain OPEN.
-Receipt: `ipc-parent-native-7985000c.json`; audit entry
-“2026-10-29 — native Linux IPC directory authority”.
+**R-S11a Linux IPC directory component — twelve native cases pass.**
+`0cb28efa`/`d3bf50ba` make foreign-parent removal directory-only and propagate
+open/scrub/removal failures. Previously, a parent replaced by a file/symlink or
+removed during startup was deleted/recreated and reported success. The unchanged
+six controlled race cases reproduce that behavior on the old binary and pass
+on the correction, preserving replacement entries. A test-only shim pauses
+around the real openat; an actual UID 4001 process changes the name. The six
+existing owner/mode/ACL/nonempty/symlink/scrub cases also pass. TUF run
+`qkxuCvDPBq` takes 34.169 seconds, joins QEMU and removes RAM scratch; all four
+listener inventories have zero deltas. `--linux-ipc-parent-tests` compiles eight
+exact production functions and the config predicate with pinned Rust/libc and
+a boxed-error adapter. Supplied paths do not exercise `Config::ipc_path`, actual
+socket binding, `new_listener`, installed services or active-session/role selection.
+Directory-to-directory replacement and other schedules, macOS execution and
+full R-S0 remain OPEN. Receipt: `ipc-parent-race-d3bf50ba.json`; audit entry
+“2026-10-29 — IPC parent replacement failure handling”.
 
 **R-X14 desktop resource removal.** `9c8ebb1c` deletes the unused `res/startwm.sh` and
 dummy `res/xorg.conf`, their Debian payload/conffile/executable entries and the empty

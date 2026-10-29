@@ -288,6 +288,69 @@ def native(expected_sha, barrier_sha):
             finally:
                 endpoint.unlink(missing_ok=True); target.unlink(missing_ok=True)
 
+    def entry_state(entry):
+        if not os.path.lexists(entry):
+            return None
+        metadata = entry.lstat()
+        content = None
+        if stat.S_ISLNK(metadata.st_mode):
+            content = os.readlink(entry)
+        elif stat.S_ISREG(metadata.st_mode):
+            require(metadata.st_size <= 1024, 'fixture file exceeded bound')
+            content = entry.read_bytes()
+        return (metadata.st_dev, metadata.st_ino, metadata.st_mode,
+                metadata.st_uid, metadata.st_gid, metadata.st_nlink, content)
+
+    for postfix, uid in (('_service_password', 0), ('_password', 4001)):
+        endpoint = path(postfix, uid)
+        target = endpoint.with_name('unrelated-target')
+        for kind in ('file', 'fifo', 'directory', 'symlink', 'dangling-symlink'):
+            if kind == 'file':
+                endpoint.write_bytes(b'unrelated data')
+            elif kind == 'fifo':
+                os.mkfifo(endpoint, 0o600)
+            elif kind == 'directory':
+                endpoint.mkdir(mode=0o700)
+            else:
+                if kind == 'symlink':
+                    target.write_bytes(b'untouched target')
+                    os.chown(target, uid, uid)
+                endpoint.symlink_to(target)
+            os.chown(endpoint, uid, uid, follow_symlinks=False)
+            before = (entry_state(endpoint), entry_state(target))
+            try:
+                result = check(postfix, uid)
+                record(f'non-socket-{kind}-{postfix}', result.returncode == 3
+                       and before == (entry_state(endpoint), entry_state(target)), result)
+            finally:
+                if endpoint.is_dir() and not endpoint.is_symlink():
+                    endpoint.rmdir()
+                else:
+                    endpoint.unlink(missing_ok=True)
+                target.unlink(missing_ok=True)
+        for kind in ('file', 'directory'):
+            pid = endpoint.with_name(endpoint.name + '.pid')
+            if kind == 'file':
+                pid.write_bytes(b'unrelated marker')
+            else:
+                pid.mkdir(mode=0o700)
+                (pid / 'keep').write_bytes(b'unrelated contents')
+            os.chown(pid, uid, uid)
+            before = (entry_state(pid), entry_state(pid / 'keep') if kind == 'directory' else None)
+            endpoint.parent.chmod((0o711 if uid == 0 else 0o700) | 0o020)
+            try:
+                result = check(postfix, uid)
+                after = (entry_state(pid), entry_state(pid / 'keep') if kind == 'directory' else None)
+                record(f'legacy-pid-{kind}-{postfix}', result.returncode == 0
+                       and result.stdout == 'OK started\n' and endpoint.is_socket()
+                       and before == after, result)
+            finally:
+                endpoint.unlink(missing_ok=True)
+                if pid.is_dir():
+                    (pid / 'keep').unlink(); pid.rmdir()
+                else:
+                    pid.unlink(missing_ok=True)
+
     endpoint = path('_service_password')
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stale:
         stale.bind(str(endpoint))
@@ -650,8 +713,8 @@ def native(expected_sha, barrier_sha):
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
     require(sha(barrier) == barrier_sha, 'barrier changed')
     probe.unlink(); barrier.unlink(); work.rmdir()
-    require(len(cases) == 78, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=78 failures={len(failures)} '
+    require(len(cases) == 92, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=92 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 

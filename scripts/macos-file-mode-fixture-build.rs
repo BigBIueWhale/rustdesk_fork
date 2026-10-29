@@ -15,7 +15,7 @@ struct Case {
 
 const CASES: &[Case] = &[
     Case { name: "config", file: "libs/hbb_common/src/config.rs", function: "store_config_bytes_transaction_unix_at", call: "openat", arguments: 4, variadic: true },
-    Case { name: "transfer", file: "libs/hbb_common/src/fs.rs", function: "open_regular_child_no_follow", call: "openat", arguments: 4, variadic: true },
+    Case { name: "transfer", file: "libs/hbb_common/src/fs.rs", function: "open_regular_child_io", call: "openat", arguments: 4, variadic: true },
     Case { name: "paste", file: "libs/clipboard/src/platform/unix/macos/paste_task.rs", function: "open_relative_file_exclusive_no_follow", call: "openat", arguments: 4, variadic: true },
     Case { name: "placeholder", file: "libs/clipboard/src/platform/unix/macos/pasteboard_context.rs", function: "create_placeholder_file", call: "openat", arguments: 4, variadic: true },
     Case { name: "config_fixed", file: "libs/hbb_common/src/config.rs", function: "store_config_bytes_transaction_unix_at", call: "fchmod", arguments: 2, variadic: false },

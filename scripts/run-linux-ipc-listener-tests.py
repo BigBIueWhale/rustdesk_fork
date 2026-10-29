@@ -100,7 +100,9 @@ parity-tokio-ipc = { git = "https://github.com/rustdesk-org/parity-tokio-ipc" }
             continue
         require(any(all(package.get(k) == p.get(k) for k in ('name', 'version', 'source', 'checksum'))
                     for p in root_packages), f'dependency escaped root lock: {package["name"]}')
-    binary = work / 'target/debug/ipc-listener'
+    binary = Path('/cargo-target/ipc-listener')
+    shutil.copyfile(work / 'target/debug/ipc-listener', binary)
+    binary.chmod(0o555)
     require(binary.stat().st_size < 64 * 1024 * 1024, 'binary exceeds bound')
     print(f'LINUX_IPC_LISTENER_BUILD=pass artifact_sha256={sha(binary)} '
           f'fs_fragment_sha256={hashlib.sha256(filesystem.encode()).hexdigest()} '
@@ -113,10 +115,11 @@ def native(expected_sha):
             and sorted(p.name for p in Path('/sys/class/net').iterdir()) == ['lo']
             and Path(__file__).resolve().parent.parent == ROOT / 'focused-rust-test-source',
             'owned zero-NIC VM required')
-    artifact = ROOT / 'focused-rust-test-target/listener-component/target/debug/ipc-listener'
+    artifact = ROOT / 'focused-rust-test-target/ipc-listener'
     metadata = artifact.lstat()
     require(stat.S_ISREG(metadata.st_mode) and metadata.st_uid == 1000 and metadata.st_nlink == 1
-            and metadata.st_size < 64 * 1024 * 1024 and sha(artifact) == expected_sha, 'artifact differs')
+            and metadata.st_size < 64 * 1024 * 1024 and sha(artifact) == expected_sha,
+            f'artifact differs: uid={metadata.st_uid} links={metadata.st_nlink} size={metadata.st_size}')
     work = ROOT / 'ipc-listener-native'
     work.mkdir(mode=0o755)
     probe = work / 'probe'

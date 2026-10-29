@@ -444,6 +444,7 @@ async fn json_serialization_fixture(scenario: &str) {
 }
 
 async fn wire_fixture(scenario: &str) {
+    use std::os::unix::fs::MetadataExt;
     use tokio::io::AsyncReadExt;
 
     struct AddressLimit(libc::rlimit);
@@ -453,7 +454,7 @@ async fn wire_fixture(scenario: &str) {
         }
     }
 
-    async fn receive(stream: &mut tokio::net::UnixStream, length: usize, header: &[u8]) {
+    async fn receive<S: AsyncRead + Unpin>(stream: &mut S, length: usize, header: &[u8]) {
         let mut actual = [0; 4];
         stream.read_exact(&mut actual[..header.len()]).await.unwrap();
         assert_eq!(&actual[..header.len()], header);
@@ -467,9 +468,9 @@ async fn wire_fixture(scenario: &str) {
         }
     }
 
-    let before = fd_count();
-    {
-        let (sender, mut receiver) = tokio::net::UnixStream::pair().unwrap();
+    async fn transfer<S: AsyncRead + AsyncWrite + Unpin + AsRawFd>(
+        scenario: &str, sender: S, mut receiver: S,
+    ) {
         for fd in [sender.as_raw_fd(), receiver.as_raw_fd()] {
             assert_eq!(peer_uid_from_fd(fd), Some(unsafe { libc::geteuid() }));
             assert_eq!(peer_pid_from_fd(fd), Some(std::process::id()));
@@ -544,6 +545,24 @@ async fn wire_fixture(scenario: &str) {
         assert_eq!(unsafe { libc::recv(receiver.as_raw_fd(), (&mut byte as *mut u8).cast(), 1,
                                      libc::MSG_DONTWAIT | libc::MSG_PEEK) }, -1);
         assert_eq!(std::io::Error::last_os_error().kind(), std::io::ErrorKind::WouldBlock);
+    }
+    let before = fd_count();
+    if let Some(scenario) = scenario.strip_prefix("ipc-") {
+        let mut incoming = new_listener("").await.unwrap();
+        let path = Config::ipc_path("");
+        let identity = fs::symlink_metadata(&path).unwrap();
+        let sender = timeout(1000, Endpoint::connect(&path)).await.unwrap().unwrap();
+        let receiver = timeout(1000, incoming.next()).await.unwrap().unwrap().unwrap();
+        assert!(!sender.is_write_vectored(), "pinned IPC transport must exercise scalar writes");
+        transfer(scenario, sender, receiver).await;
+        drop(incoming);
+        let retained = fs::symlink_metadata(&path).unwrap();
+        assert_eq!((retained.dev(), retained.ino()), (identity.dev(), identity.ino()));
+        fs::remove_file(path).unwrap();
+    } else {
+        let (sender, receiver) = tokio::net::UnixStream::pair().unwrap();
+        assert!(sender.is_write_vectored(), "socket pair must exercise vectored writes");
+        transfer(scenario, sender, receiver).await;
     }
     assert_eq!(fd_count(), before);
     println!("OK wire-{scenario} uid={} cleanup=joined", unsafe { libc::geteuid() });

@@ -599,7 +599,7 @@ async fn read_fixture(scenario: &str) {
     }
     let mut receiver = ConnectionTmpl::new(receiver);
     sender.write_all(&[0]).await.unwrap();
-    assert!(receiver.inner.next().await.unwrap().unwrap().is_empty());
+    assert!(receiver.next_raw().await.unwrap().is_empty());
     match scenario {
         "allocation" => {
             struct AddressLimit(libc::rlimit);
@@ -624,8 +624,9 @@ async fn read_fixture(scenario: &str) {
             let restore = AddressLimit(original);
             sender.write_all(&[3, 0, 0, 4]).await.unwrap();
             let read = async move {
-                let result = timeout(1000, receiver.inner.next()).await.unwrap().unwrap();
-                assert!(timeout(1000, receiver.inner.next()).await.unwrap().is_none());
+                let result = timeout(1000, receiver.next_raw()).await.unwrap();
+                assert_eq!(timeout(1000, receiver.next_raw()).await.unwrap().unwrap_err().to_string(),
+                           "reset by the peer");
                 drop(receiver);
                 result
             };
@@ -646,37 +647,37 @@ async fn read_fixture(scenario: &str) {
                 for (index, byte) in header.iter().enumerate() {
                     sender.write_all(std::slice::from_ref(byte)).await.unwrap();
                     if index + 1 < header.len() || length > 0 {
-                        assert!(timeout(5, receiver.inner.next()).await.is_err());
+                        assert!(timeout(5, receiver.next_raw()).await.is_err());
                     }
                 }
                 let mut remaining = length;
                 if length > 1 {
                     sender.write_all(&[0x5a]).await.unwrap();
                     remaining -= 1;
-                    assert!(timeout(5, receiver.inner.next()).await.is_err());
+                    assert!(timeout(5, receiver.next_raw()).await.is_err());
                 }
                 let (sent, received) = tokio::join!(
                     timeout(1000, payload(&mut sender, remaining)),
-                    timeout(1000, receiver.inner.next()),
+                    timeout(1000, receiver.next_raw()),
                 );
                 sent.unwrap().unwrap();
-                let frame = received.unwrap().unwrap().unwrap();
+                let frame = received.unwrap().unwrap();
                 assert_eq!(frame.len(), length);
                 assert!(frame.iter().all(|byte| *byte == 0x5a));
             }
             sender.write_all(&[0, 4, 0x5a, 0]).await.unwrap();
             sender.shutdown().await.unwrap();
             for expected in [&[][..], &[0x5a][..], &[][..]] {
-                assert_eq!(receiver.inner.next().await.unwrap().unwrap().as_ref(), expected);
+                assert_eq!(receiver.next_raw().await.unwrap().as_ref(), expected);
             }
-            assert!(receiver.inner.next().await.is_none());
+            assert_eq!(receiver.next_raw().await.unwrap_err().to_string(), "reset by the peer");
             drop(receiver);
         }
         "refusal" => {
             receiver.set_max_packet_length(8);
             sender.write_all(&[36]).await.unwrap();
-            let error = timeout(1000, receiver.inner.next()).await.unwrap().unwrap().unwrap_err();
-            assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+            let error = timeout(1000, receiver.next_raw()).await.unwrap().unwrap_err();
+            assert_eq!(error.downcast_ref::<std::io::Error>().unwrap().kind(), std::io::ErrorKind::InvalidData);
             drop(receiver);
             for prefix in [&[1][..], &[2][..], &[2, 0][..], &[3][..], &[3, 0][..],
                 &[3, 0, 0][..], &[4][..], &[1, 1][..], &[1, 1, 0x5a][..],
@@ -685,8 +686,8 @@ async fn read_fixture(scenario: &str) {
                 let mut reader = ConnectionTmpl::new(reader);
                 writer.write_all(prefix).await.unwrap();
                 writer.shutdown().await.unwrap();
-                let error = timeout(1000, reader.inner.next()).await.unwrap().unwrap().unwrap_err();
-                assert_eq!(error.kind(), std::io::ErrorKind::UnexpectedEof);
+                let error = timeout(1000, reader.next_raw()).await.unwrap().unwrap_err();
+                assert_eq!(error.downcast_ref::<std::io::Error>().unwrap().kind(), std::io::ErrorKind::UnexpectedEof);
             }
         }
         _ => panic!("unknown read scenario"),

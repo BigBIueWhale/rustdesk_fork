@@ -130,7 +130,7 @@ def build():
     for name in ('new', 'new_with_max_packet_length', 'new_protected_service', 'new_main',
                  'send_json', 'send_json_timeout', 'next_json', 'send_service_request_timeout',
                  'next_service_request_timeout', 'send_service_response_timeout',
-                 'next_service_response_timeout', 'set_max_packet_length', 'send_raw'):
+                 'next_service_response_timeout', 'set_max_packet_length', 'send_raw', 'next_raw'):
         connection += function(ipc, name, parent=methods.start - 1)
     connection += '}\nimpl<T: AsyncRead + AsyncWrite + Unpin + AsRawFd> ConnectionTmpl<T> {\n'
     peers = auth.impl(('impl', '<', 'T', '>', 'ConnectionTmpl', '<', 'T', '>'), 'peer methods')

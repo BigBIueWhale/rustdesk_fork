@@ -377,11 +377,39 @@ fn lv_cat_encoding() {
     assert_eq!(hex(&channel_identifier(21118)), clean(ANCHOR_A.ci));
 }
 
-/// o_cat is order-independent (R-P6): swapping operands yields identical bytes.
+/// The actual ISK keeps draft o_cat ordering, including encoded-length ordering.
 #[test]
-fn o_cat_order_independent() {
-    let a = b"alpha";
-    let b = b"beta-longer";
-    assert_eq!(o_cat(a, b), o_cat(b, a));
-    assert!(o_cat(a, b).starts_with(b"oc"));
+fn isk_order_independent() {
+    for (alen, blen) in [(0, 1), (1, 0), (32, 32), (127, 128), (128, 127), (255, 256)] {
+        let a = vec![0xfe; alen];
+        let b = vec![0x01; blen];
+        let sid = [0x3au8; 32];
+        let k = [0x91u8; 32];
+        let ma = lv_cat(&[&a, AD_INITIATOR]);
+        let mb = lv_cat(&[&b, AD_RESPONDER]);
+        let mut input = lv_cat(&[ISK_DSI, &sid, &k]);
+        input.extend_from_slice(b"oc");
+        let (first, second) = if ma > mb { (&ma, &mb) } else { (&mb, &ma) };
+        input.extend_from_slice(first);
+        input.extend_from_slice(second);
+        let expected = Sha512::digest(input);
+        let actual = compute_isk(&a, AD_INITIATOR, &b, AD_RESPONDER, &sid, &k);
+        assert_eq!(&actual[..], expected.as_slice());
+        assert_eq!(actual, compute_isk(&b, AD_RESPONDER, &a, AD_INITIATOR, &sid, &k));
+    }
+}
+
+#[test]
+fn generator_padding_and_length_boundaries() {
+    for len in [0, 1, 8, 64, 109, 110, 111, 112, 127, 128, 129, 255, 256, 4096] {
+        let prs = vec![0xa7; len];
+        let ci = channel_identifier(CI_PORT);
+        let sid = [0x28u8; 32];
+        let prefix = lv_cat(&[SUITE_DSI, &prs]);
+        let pad = vec![0u8; 128usize.saturating_sub(1 + prefix.len())];
+        let encoded = lv_cat(&[SUITE_DSI, &prs, &pad, &ci, &sid]);
+        let digest: [u8; 64] = Sha512::digest(encoded).into();
+        let expected = RistrettoPoint::from_uniform_bytes(&digest);
+        assert_eq!(derive_generator(&prs, &ci, &sid), expected);
+    }
 }

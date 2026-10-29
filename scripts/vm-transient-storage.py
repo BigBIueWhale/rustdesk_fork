@@ -99,7 +99,7 @@ def storage_limits(profile, memory_mib):
                    'debian-package-tests'):
         require(memory_mib == 2048, f'{profile} storage profile requires its 2 GiB guest')
         return 6 * GIB, 4 * GIB
-    if profile in ('xrandr-acquisition', 'pake-timing'):
+    if profile in ('xrandr-acquisition', 'pake-timing', 'pake-allocation'):
         require(memory_mib == 4096, f'{profile} requires its 4 GiB guest')
         return 6 * GIB, 4 * GIB
     require(profile == 'standard', 'unknown VM storage profile')
@@ -472,7 +472,7 @@ def main():
                         choices=('standard', 'hbb-common-fs', 'linux-logind', 'cpace-recovery-tests',
                                  'flutter-credential-dialog', 'flutter-dialog-tests', 'flutter-keyboard-layout', 'flutter-locales', 'flutter-divider', 'flutter-password-fields', 'flutter-file-columns', 'flutter-file-progress', 'flutter-peer-search', 'flutter-audio-input', 'linux-service-build',
                                  'ledger-token-count', 'authority-smoke', 'fixed-archive-tests', 'x11-focus', 'x11-key-input', 'linux-parent-libtest',
-                                 'pake-timing', 'main-config-key', 'language-selection', 'windows-pointer', 'linux-resource-limits', 'linux-resolution-lifetime', 'fusermount-process', 'xrandr-acquisition',
+                                 'pake-timing', 'pake-allocation', 'main-config-key', 'language-selection', 'windows-pointer', 'linux-resource-limits', 'linux-resolution-lifetime', 'fusermount-process', 'xrandr-acquisition',
                                  'linux-service-uid-tests', 'audio-buffer', 'audio-mailbox', 'file-block', 'control-egress', 'clipboard-response',
                                  'linux-service-receiver', 'linux-flutter-replay', 'installer-package',
                                  'android-storage-key', 'linux-flutter-suspend', 'media-kernel-tests',

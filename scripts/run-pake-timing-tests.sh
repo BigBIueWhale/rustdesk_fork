@@ -1,12 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 umask 077
-[ "$#" -eq 0 ] && [ "$PWD" = /source ] && [ "$(id -u):$(id -g)" = 1000:1000 ] \
+[ "$PWD" = /source ] && [ "$(id -u):$(id -g)" = 1000:1000 ] \
     || { echo 'PAKE timing entry differs' >&2; exit 1; }
+case "$#:${1:-}" in
+    0:) allocation_probe=0 ;;
+    1:--allocation) allocation_probe=1 ;;
+    *) exit 2 ;;
+esac
 export CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 CARGO_PROFILE_RELEASE_DEBUG=0
 export CARGO_PROFILE_RELEASE_OPT_LEVEL=3 CARGO_PROFILE_RELEASE_LTO=true
 export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS='-C target-cpu=x86-64'
 unset CARGO_ENCODED_RUSTFLAGS
+if [ "$allocation_probe" -eq 1 ]; then
+    export RUSTFLAGS="$RUSTFLAGS --cfg pake_allocation_probe"
+    printf 'PAKE_ALLOCATION_BUILD=observer=thread-local counts=alloc-realloc source=production cfg=pake_allocation_probe\n'
+fi
 rustc -vV | sed 's/^/PAKE_TIMING_COMPILER=/'
 cargo tree --offline --locked -p pake -e features --prefix none | sed 's/^/PAKE_TIMING_DEPENDENCY=/'
 printf 'PAKE_TIMING_BUILD=release opt=3 lto=true codegen_units=1 debug=0 target_cpu=x86-64 test_panic=unwind lock_sha256=%s\n' \
@@ -53,6 +62,15 @@ print('PAKE_TIMING_MACHINE='+json.dumps({'kernel':platform.release(),'machine':p
 PY
 artifact_sha="$(sha256sum "$test_executable" | cut -d ' ' -f 1)"
 printf 'PAKE_TIMING_ARTIFACT_BEFORE=sha256=%s\n' "$artifact_sha"
+if [ "$allocation_probe" -eq 1 ]; then
+    timeout --signal=TERM --kill-after=5s 30s taskset -c "$cpu" "$test_executable" tests:: \
+        --skip nfc_normalization_tests:: --skip timing_tests:: --test-threads=1 --color never --show-output
+    timeout --signal=TERM --kill-after=5s 30s taskset -c "$cpu" "$test_executable" \
+        --exact allocation_probe::no_transient_secret_heap_copies --test-threads=1 --color never --show-output
+    [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
+    printf 'PAKE_ALLOCATION_ARTIFACT=pass sha256=%s tests=18 optimized=true unchanged=before-after\n' "$artifact_sha"
+    exit 0
+fi
 timeout --signal=TERM --kill-after=5s 90s taskset -c "$cpu" "$test_executable" \
     --exact timing_tests::optimized_timing_evidence --ignored --test-threads=1 --color never --show-output
 [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]

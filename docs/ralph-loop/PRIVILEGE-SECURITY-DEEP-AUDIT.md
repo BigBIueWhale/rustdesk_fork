@@ -115295,3 +115295,78 @@ the metadata open remains indistinguishable here; parent replacement and changes
 after final observations are not made atomic. Full installed acceptance, privileged
 actions, CM/PA, macOS, remaining races, coexisting versions, release artifacts,
 independent reproduction and external review remain OPEN.
+
+## 2026-10-29 — Linux listener retains its validated parent
+
+The previous turn completed socket-permission finalization. The next path review
+finds `prepare_ipc_listener_bind` at `68780551:src/ipc/fs.rs:963` returning only a
+lock guard and dropping the verified parent; `new_listener` then binds by public
+pathname and finalization reopens that pathname's parent. The intended lifetime
+is one retained parent and reservation through all synchronous startup operations.
+A replacement public directory must not receive a new socket or permission change.
+
+`e2ea2d8c` introduces `IpcListenerBind`, which owns both handles and the endpoint
+classification. The fresh nonblocking connection and bind use the verified
+procfs alias of its directory descriptor. Finalization no longer reopens the public
+parent: `set_ipc_socket_permissions_at` receives the retained descriptor, while
+the binding checks public-parent identity, owner and exact mode before and after
+permission establishment. Directory replacement, symlink substitution or metadata
+uncertainty refuses startup. Handles close on every return; no lock or alias crosses
+an await. EACCES recovery remains a distinct operation that opens its own checked
+parent. No dependency, working-directory change or global umask change is added.
+
+[open(2)](https://man7.org/linux/man-pages/man2/open.2.html) describes retained
+directory descriptors and relative lookup. [proc_pid_fd(5)](https://man7.org/linux/man-pages/man5/proc_pid_fd.5.html)
+and [proc_thread-self(5)](https://man7.org/linux/man-pages/man5/proc_thread-self.5.html)
+describe the descriptor aliases and current-thread lookup used here.
+[unix(7)](https://man7.org/linux/man-pages/man7/unix.7.html) distinguishes the
+filesystem endpoint from its reported bound address. The pinned
+[parity transport](https://raw.githubusercontent.com/rustdesk-org/parity-tokio-ipc/d0ae39bffe5d5a3e8d82a1b6bcb1ca5a9b2f1c01/src/unix.rs)
+binds synchronously, returns a retained Tokio listener and performs no pathname
+cleanup on drop. Repository source review finds no product getsockname/getpeername
+or /proc/net/unix consumer requiring the previous reported address. Normal clients
+continue to connect by Config's public pathname; the kernel-reported bound address
+now contains the procfs alias, which is not a client connection instruction.
+
+Sixteen native schedules replace the parent with a directory or symlink target,
+as root and UID 4001, immediately before bind, after listen, and before/after chmod.
+Before replacement, the fixture proves absence before bind or kernel peer PID/UID
+after listen. It checks startup refusal, unchanged replacement inode/mode/owner,
+contents and entry inventory, original-parent restoration and successful restart.
+The scheduling seam also matches descriptor aliases by parent inode and basename;
+it changes neither syscall results nor filesystem state itself.
+
+| Run / source | Native result | Elapsed |
+| --- | --- | --- |
+| `w2NuWVgSM8` / `68780551` | 119 listener cases pass, 13 parent-substitution cases fail; 14 directory cases pass. | 78.738 s |
+| `vFD8WcPTwO` / `e2ea2d8c` | 132 listener and 14 directory cases pass. | 79.719 s |
+| `vv8MCKUxKu` / `d32a9ccf` | 132 listener and 14 directory cases pass with exact replacement-parent modes asserted. | 79.629 s |
+
+The initial replacement mkdir was subject to the fixture's umask. `d32a9ccf`
+explicitly sets/asserts 0711 for service parents and 0700 for user parents, so the
+final run also rejects identity substitution when permissions are otherwise valid.
+Both candidate runs execute the same listener binary:
+`9a07b34b0b72efeff3c7cd91d2217a8be9c330af5df20a30dc78d8d810372f52`.
+Filesystem fragment SHA-256:
+`e2cd68679874a98ba891394a25b1bcbb6c87b17ca89c851c6f47bb5a6bfe4872`.
+The directory binary remains `2c18066a2a0125e010bbab3e189707e990324fe4db2ff524bd99ddf15352dfb8`.
+The focused desktop source checker passes in 2.304 seconds in the pinned non-root,
+read-only, networkless container; it is removed and host listener inventories match.
+Diff checks pass. The full application and repository-wide catalogue did not run.
+
+All twelve VM host-listener deltas are zero. QEMU 1650562, 1651291 and 1652079
+join exit zero and their RAM workspaces retire. The accepted run peaks at
+3,482,406,912 bytes RAM scratch, 3,286,110,208 bytes overlay and 3,424,256 bytes
+durable run storage. After evidence verification, the failed baseline tree is
+removed, freeing 3,477,504 allocated bytes. Twenty-one run files total 297,014 bytes.
+Capsule `ipc-bind-parent-e2ea2d8c.json`, 37,691 bytes, SHA-256
+`49faef31844b5433ec940432a6b1682c08a61629a6bd545bec89e9cdb37a17b4`;
+all 22 files match CTE/TUF.
+
+The executed layer remains the production component with Config name/path and
+service authorization adapters. Controller-owned directory substitutions do not
+establish unprivileged write access to the protected /run parent. Same-owner socket
+substitution before its metadata open, stale-entry classification/unlink races,
+changes after final observations and nonparticipating old binaries remain open.
+Full installed/CM/PA and deployed MAC-policy acceptance, macOS, privileged actions,
+release artifacts, independent reproduction and external review remain OPEN.

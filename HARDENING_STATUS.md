@@ -9045,9 +9045,14 @@ sandbox implementation and checker-repair history remain in Git.
   `99898ad8` removes the redundant second UID comparison and its Boolean-only
   model test; the early UID rejection and subsequent executable proof remain.
 
-  **Linux startup and recovery.** A validated persistent per-endpoint lock spans the
-  fresh nonblocking transport check, descriptor-relative cleanup, bind and permission
-  establishment. No lock spans an await; separate endpoints start independently.
+  **Linux startup and recovery.** `e2ea2d8c` retains the validated parent and persistent
+  per-endpoint lock together through the fresh transport check, cleanup, bind and
+  permission establishment. A verified procfs directory-descriptor alias anchors
+  connect/bind; finalization uses that same directory handle and rechecks the public
+  parent's identity, owner and mode. No lock or alias spans an await; separate
+  endpoints start independently. Sixteen native parent-replacement cases preserve
+  replacement directories/symlink targets and recover after restoration. Baseline
+  `w2NuWVgSM8` reproduces thirteen failures. Normal clients retain the configured path.
   Live/ambiguous transport is preserved. `99cbec37` additionally requires a no-follow
   socket-type observation before unlinking; regular files, FIFOs, directories and
   symlinks at the endpoint name refuse startup unchanged. Linux no longer touches
@@ -9073,8 +9078,8 @@ sandbox implementation and checker-repair history remain in Git.
   Baseline `DRZBPWPlFn` reproduces nineteen valid failures; two special-bit fixtures
   required correction before they could count. The audit records that distinction.
 
-  **Current native evidence:** `e1320ede`, TUF `dYNOXFor2f`, passes 116 listener
-  cases and 14 directory cases in 82.540 seconds. Baseline `mG75yce2f7` reproduces
+  **Current native evidence:** `d32a9ccf`, TUF `vv8MCKUxKu`, passes 132 listener
+  cases and 14 directory cases in 79.629 seconds. Baseline `mG75yce2f7` reproduces
   ten non-socket replacements, two PID-file deletions and two startup failures
   caused by nonempty PID directories. The same fourteen scenarios now preserve
   inode/type/mode/owner/link metadata and contents, while PID artifacts do not
@@ -9101,7 +9106,8 @@ sandbox implementation and checker-repair history remain in Git.
   Config name/path and service authorization remain fixture adapters. The directory
   fixture no longer invokes macOS-only scrub code on Linux; it checks parent
   hardening and preservation. All host listener deltas are zero, QEMU joins and RAM
-  scratch retires. Provenance: `ipc-socket-finalize-3dce8c79.json`,
+  scratch retires. Provenance: `ipc-bind-parent-e2ea2d8c.json`,
+  `ipc-socket-finalize-3dce8c79.json`,
   `ipc-peer-policy-99898ad8.json`,
   `ipc-stale-kind-99cbec37.json`, `ipc-socket-crash-fc083c93.json` and the audit
   entries for Linux incumbent peer policy, stale endpoint classification and

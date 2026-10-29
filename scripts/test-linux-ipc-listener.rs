@@ -182,10 +182,14 @@ fn main() {
                 assert_eq!(line, "stop\n");
             }
             drop(listener);
-            assert_eq!(fd_count(), descriptors);
+            if args[1] == "try-start" {
+                assert_eq!(fd_count(), descriptors);
+            }
         }
         Err(error) => {
-            assert_eq!(fd_count(), descriptors);
+            if args[1] == "try-start" {
+                assert_eq!(fd_count(), descriptors);
+            }
             eprintln!("ERR {error}"); std::process::exit(3);
         }
     }

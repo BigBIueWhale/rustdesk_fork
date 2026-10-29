@@ -153,6 +153,9 @@ case "$#:${8:-}" in
     12:--linux-service-uid-tests)
         MODE=linux-service-uid-tests
         ;;
+    12:--linux-ipc-parent-tests)
+        MODE=linux-ipc-parent-tests
+        ;;
     12:--linux-systemd-notification-tests)
         MODE=linux-systemd-notification-tests
         ;;
@@ -1130,12 +1133,13 @@ for caller in ('smoke-verifier-vm-authority.sh', 'online-fetch-vm.sh'):
     modes.update(re.findall(r'\bMODE=([a-z][a-z0-9-]*)', shell.with_name(caller).read_text()))
 # This closed CLI arm derives MODE from its argument instead of a literal assignment.
 modes.add('android-frame-tests')
-if len(modes) != 39:
+if len(modes) != 40:
     raise SystemExit('VM workload control inventory differs')
 special = {mode: mode for mode in ('ledger-token-count', 'cpace-recovery-tests',
                                   'linux-service-uid-tests', 'hbb-common-fs', 'media-kernel-tests',
                                   'fixed-archive-tests', 'debian-package-tests')}
 special.update({'authority-smoke': 'authority-smoke', 'dependency-inventory': 'authority-smoke',
+                'linux-ipc-parent-tests': 'linux-service-uid-tests',
                 'windows-service-result-tests': 'fixed-archive-tests',
                 'debian-maintainer-tests': 'authority-smoke',
                 'android-runtime-log-tests': 'authority-smoke',
@@ -1203,9 +1207,9 @@ printf '%s\\n' "$VM_STORAGE_PROFILE"
         'pass': passed}, sort_keys=True), flush=True)
 print('VM_TRANSIENT_WORKLOAD_OBSERVED=' + json.dumps({
     'modes': len(modes), 'controls': controls, 'refusals': refusals}, sort_keys=True), flush=True)
-if (controls, refusals) != (69, 5):
+if (controls, refusals) != (70, 5):
     raise SystemExit('VM workload resource admission cases failed')
-print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=39 controls=69 refusals=5 allocation=not-entered')
+print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=40 controls=70 refusals=5 allocation=not-entered')
 PY
     for operation in preflight reserve check watch run; do
         root_status=0
@@ -4160,6 +4164,21 @@ run_focused_rust_tests() {
                 client::audio_playback_tests::real_setup_failure_is_terminal_and_a_fresh_owner_recovers
             )
         fi
+    elif [ "$MODE" = linux-ipc-parent-tests ]; then
+        container_name=rustdesk-linux-ipc-parent-build
+        memory=512m
+        memory_bytes=536870912
+        tmpfs_size=64m
+        image_archive=$inputs/verifier-images/devcheck.docker.tar.gz
+        image_config=$DEV_CHECK_IMAGE_CONFIG_ID
+        image_index=$DEV_CHECK_IMAGE_ID
+        toolchain_mode=devcheck-image
+        toolchain_mount=()
+        bridge_mounts=(--mount "type=bind,source=$vendor/libc-0.2.171,target=/ipc-libc,readonly,bind-recursive=disabled")
+        source_fingerprints=(Cargo.lock src/ipc/fs.rs libs/hbb_common/src/config.rs
+            scripts/verify-linux-service-password-ipc.py scripts/run-linux-ipc-parent-tests.py
+            scripts/test-linux-ipc-parent.rs)
+        required_tests=()
     elif [ "$MODE" = linux-systemd-notification-tests ]; then
         container_name=rustdesk-linux-systemd-notification-tests
         memory=512m
@@ -5664,7 +5683,7 @@ run_focused_rust_tests() {
         )
     fi
 
-    if [[ "$MODE" != linux-service-uid-tests && "$MODE" != linux-systemd-notification-tests ]]; then
+    if [[ "$MODE" != linux-service-uid-tests && "$MODE" != linux-systemd-notification-tests && "$MODE" != linux-ipc-parent-tests ]]; then
         dependency_mounts=(
             --mount "type=bind,source=$vendor,target=/vendor,readonly"
             --mount "type=bind,source=$vendor_config,target=/inputs/config.toml,readonly"
@@ -5938,7 +5957,7 @@ run_focused_rust_tests() {
                 IFS= read -r apparmor </proc/self/attr/current
                 case "$apparmor" in docker-default\ *) ;; *) exit 92 ;; esac
                 mkdir /tmp/home /tmp/cargo-home
-                if [[ "$RUST_TEST_MODE" != linux-service-uid-tests && "$RUST_TEST_MODE" != linux-systemd-notification-tests ]]; then
+                if [[ "$RUST_TEST_MODE" != linux-service-uid-tests && "$RUST_TEST_MODE" != linux-systemd-notification-tests && "$RUST_TEST_MODE" != linux-ipc-parent-tests ]]; then
                     sed "s#^directory = \"/online/cargo-vendor\"#directory = \"/vendor\"#" \
                         /inputs/config.toml >/tmp/cargo-home/config.toml
                     [ "$(grep -Fc '\''directory = "/vendor"'\'' /tmp/cargo-home/config.toml)" -eq 1 ]
@@ -6351,6 +6370,9 @@ run_focused_rust_tests() {
                         else
                             /bin/bash /source/scripts/run-pa-runtime-tests.sh /inputs/pa-runtime.tar.gz
                         fi
+                        ;;
+                    linux-ipc-parent-tests)
+                        python3 -B -I -S /source/scripts/run-linux-ipc-parent-tests.py build
                         ;;
                     linux-systemd-notification-tests)
                         rustc --edition=2021 --test /source/scripts/test-linux-systemd-notifications.rs \
@@ -7040,6 +7062,37 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
        || [ "$MODE" = linux-pa-authority-tests ]; then
         grep -Fq 'R-B10 canary: build confirmed network-isolated (offline compile stage).' "$output" \
             || { tail -n 200 "$output" >&2; fail 'focused Rust build did not execute its offline network canary'; }
+    fi
+    if [ "$MODE" = linux-ipc-parent-tests ]; then
+        local ipc_parent_sha native_output=$ROOT/ipc-parent-native.out
+        local -a ipc_parent_builds
+        mapfile -t ipc_parent_builds < <(grep -E '^LINUX_IPC_PARENT_BUILD=pass artifact_sha256=[0-9a-f]{64} source_sha256=[0-9a-f]{64} fragment_sha256=[0-9a-f]{64} config_sha256=[0-9a-f]{64} libc=0.2.171 functions=8 error_adapter=std-boxed$' "$output")
+        [ "${#ipc_parent_builds[@]}" -eq 1 ] \
+            && [ "$(grep -Fc 'LINUX_IPC_PARENT_BUILD=' "$output")" -eq 1 ] \
+            || fail 'IPC parent build receipt differs'
+        ipc_parent_sha=${ipc_parent_builds[0]#*artifact_sha256=}
+        ipc_parent_sha=${ipc_parent_sha%% *}
+        [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
+            || fail 'IPC parent builder has not terminated'
+        "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
+        CONTAINER_ID=
+        setpriv --no-new-privs /usr/bin/prlimit --as=536870912 --nofile=128:128 --core=0:0 --fsize=16777216 \
+            /usr/bin/python3 -B -I -S "$source_root/scripts/run-linux-ipc-parent-tests.py" native "$ipc_parent_sha" \
+            >"$native_output" 2>&1 \
+            || { tail -c 65536 "$native_output" >&2; fail 'IPC parent native cases failed'; }
+        [ "$(stat -c '%s' "$native_output")" -le 65536 ] \
+            && [ "$(grep -Fc 'LINUX_IPC_PARENT_CASE=pass ' "$native_output")" -eq 6 ] \
+            && [ "$(grep -Fxc "LINUX_IPC_PARENT_NATIVE=pass cases=6 artifact_sha256=$ipc_parent_sha receiver_uid=0 actors=4001,4002 source=production-functions installed=unexecuted cleanup=joined" "$native_output")" -eq 1 ] \
+            || fail 'IPC parent native inventory or cleanup differs'
+        [ "$source_before" = "$source_archive_sha:$(cd "$source_root" && sha256sum "${source_fingerprints[@]}")" ] \
+            || fail 'IPC parent production or fixture source changed'
+        cat "$output" "$native_output"
+        stop_docker_authority
+        umount "$inputs" || fail 'cannot retire IPC parent sealed inputs'
+        SEALED_INPUTS_MOUNTED=0
+        printf 'LINUX_IPC_PARENT_VM=pass commit=%s tree=%s artifact_sha256=%s cases=6 vm_network=none source=readonly cleanup=joined\n' \
+            "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$ipc_parent_sha"
+        return
     fi
     mapfile -t result_lines < <(
         grep -E '^test result: ok\. [1-9][0-9]* passed; 0 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in .+s$' "$output"
@@ -13642,7 +13695,7 @@ docker_socket_gid=4000
 if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
    || [ "$MODE" = linux-pa-authority-tests ] \
    || [ "$MODE" = linux-service-uid-tests ] \
-   || [ "$MODE" = linux-systemd-notification-tests ] \
+   || [ "$MODE" = linux-systemd-notification-tests ] || [ "$MODE" = linux-ipc-parent-tests ] \
    || [ "$MODE" = android-rust-lifecycle-tests ] \
    || [ "$MODE" = android-rust-target-check ] \
    || [ "$MODE" = flutter-model-tests ] \
@@ -13848,7 +13901,7 @@ if [ "$MODE" = linux-pa-authority-tests ]; then
     exit 0
 fi
 
-if [[ "$MODE" = linux-service-uid-tests || "$MODE" = linux-systemd-notification-tests ]]; then
+if [[ "$MODE" = linux-service-uid-tests || "$MODE" = linux-systemd-notification-tests || "$MODE" = linux-ipc-parent-tests ]]; then
     run_focused_rust_tests
     exit 0
 fi

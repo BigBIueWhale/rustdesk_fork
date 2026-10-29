@@ -116116,3 +116116,48 @@ QEMU 1709849 joins after 30.531 seconds; RAM `run._j8w_j_r` retires and all thre
 listener deltas are zero. Six count files add 102,630 bytes; all 21 retained files
 total 332,986 bytes on both hosts. This audit-only receipt leaves the measured
 ledger unchanged. The overall hardening goal remains OPEN.
+
+### 2026-10-29 — option CLI argument and eligibility outcomes
+
+At `ce573d2f`, `src/core_main.rs:495` returned `None` after disabled-settings
+refusal; missing installation/admin eligibility only printed to stdout, and wrong
+arity silently fell through. Each reported process success. The existing getter
+and setter already propagated operation errors. R-S0 requires truthful settings
+outcomes; this correction preserves installation/admin admission and receiver-owned
+option authorization while making these rejected CLI operations fail explicitly.
+It does not establish a new privilege escalation or change the authority model.
+
+`09a41264` checks arity before option work, prints usage to stderr and exits 2.
+Disabled settings and missing installation/admin eligibility print their existing
+diagnostics to stderr and exit 1. Valid read/write handling remains unchanged.
+The existing password CLI uses the same exit convention. Rust's
+[`process::exit`](https://doc.rust-lang.org/std/process/fn.exit.html) makes the code
+observable to the parent and skips stack destructors; these are terminal CLI
+refusals before an option operation is admitted, not cancellation of admitted work.
+[`eprintln!`](https://doc.rust-lang.org/std/macro.eprintln.html) keeps diagnostics
+separate from option output. No dependency or runtime is added.
+
+Preparation `148ab487` expands the existing fixture from the read body to the
+complete production `--option` branch. Eligibility predicates, status exchange,
+mutation and local config remain doubles. The setter checks exact arguments and
+one call; any getter/setter reached by a rejected scenario panics. Separate child
+processes check exact stdout, stderr and exit status under UID 0/4001. Those UIDs
+do not turn mocked eligibility into an OS authorization test.
+
+Baseline `1XSIGZ0eJO` fails all sixteen admission/arity cases with exit 0, while
+sixteen read/write controls, 172 IPC cases and 14 directory cases pass. Corrected
+`1m3B2vov2G` passes all **32 CLI, 172 IPC and 14 directory cases**, plus the focused
+desktop source check, in 85.458 seconds. Baseline/candidate artifacts are
+`d4bbe9790d96205af83ce90ffaff883c057830e839dec05f3ed806ee56e98808` and
+`0190a475424f4d5795a6bf1b323fd186b81080b844ec3d1acd394b9c49783006`.
+The test sources are identical across both runs. `git diff --check` passes.
+
+QEMU 1711041/1711799 joins, both RAM workspaces retire and all eight listener
+deltas are zero. `option-cli-admission-09a41264.json` retains source identities,
+exact CLI results, storage closure and raw evidence: 25,303 bytes, SHA-256
+`78341d3a47ecf2fc20f5bee187e6046dd9850549b7c6bb0b48ce530e2e4f26f7`.
+Fifteen evidence files total 241,665 bytes on CTE and TUF. After both copies are
+verified, the baseline scratch tree is deleted, freeing 3,497,984 allocated bytes.
+Full application dispatch/startup, installed eligibility, real option exchange and
+persistence, other platforms and R-S0 acceptance remain OPEN. Parent build and
+option-ACK integration remain parked; this slice proves CLI reporting only.

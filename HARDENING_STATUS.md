@@ -3609,19 +3609,19 @@ those obligations.
 <a id="linux-ipc-components"></a>
 
 **Linux IPC / option CLI — component acceptance; installed acceptance OPEN.**
-At `629fdb26`, TUF `ZnVcwrBpND` passes all **172 listener/transport, 12 CLI-read
-and 14 directory cases** plus the focused desktop source check in 86.206 seconds.
+At `09a41264`, TUF `1m3B2vov2G` passes all **172 listener/transport, 32 CLI
+and 14 directory cases** plus the focused desktop source check in 85.458 seconds.
 The command is
 `bash scripts/smoke-verifier-vm-authority.sh --linux-ipc-parent-tests`.
 It compiles production filesystem, listener, peer, connection, reader, codec and
-CLI-read functions with pinned dependencies. Config name/path, boxed errors and
-service authorization have fixture adapters. CLI status retrieval/conversion and
-local configuration are doubles; its cases observe process output and exit status.
+CLI branch/getter with pinned dependencies. Config name/path, boxed errors and
+service authorization have fixture adapters. CLI eligibility, status retrieval/conversion,
+mutation and local configuration are doubles; cases observe process output and exit status.
 Real Unix sockets establish the named IPC outcomes, not complete application or
 privileged-receiver authorization. All four host
 listener deltas are zero; QEMU joins, bounded RAM scratch retires and exact
 fixture socket/descriptor cleanup passes. Current receipt:
-`cli-option-read-629fdb26.json`.
+`option-cli-admission-09a41264.json`.
 
 | Surface | Current implementation and component evidence | Retained comparison/provenance |
 | --- | --- | --- |
@@ -3633,13 +3633,18 @@ fixture socket/descriptor cleanup passes. Current receipt:
 | Frame writes | `8e5979d9` removes the second full-payload allocation: writes chain the existing payload with a stack header, then write and flush. The ordinary codec shares header construction. Both scalar IPC transport and vectored socket-pair paths pass root/user pressure and boundary cases, exact bytes, raw-cap refusal, codec round trips and limit restoration. Wire format, endpoint caps and caller timeout/retirement ownership are unchanged. | `ipc-wire-allocation-8e5979d9.json`, `ipc-scalar-writes-c22068e6.json` |
 | Frame reads | `aaf02b9a` replaces infallible bulk-buffer growth with `IpcFrameReader`: retained codec/input state, initialized 8 KiB read scratch, nonallocating reclamation and fallible growth only after bytes arrive. Errors release buffered input and end read admission. Root/user 16 MiB input under real address-space pressure now returns an error where the baseline aborts on a 1 MiB allocation. The same artifacts pass fragmented headers/payloads, cancelled reads, coalesced/empty frames, exact bytes, cap refusal, eleven truncated inputs, limit restoration and descriptor/socket cleanup. Small bookkeeping/parser allocations, complete handlers and other platforms remain open. | `ipc-receive-allocation-aaf02b9a.json` |
 
-**Option CLI reads.** `629fdb26` removes the local-options fallback and unused
+**Option CLI outcomes.** `629fdb26` removes the local-options fallback and unused
 getter layers. Query/conversion errors reach stderr and exit 1 without an option
 value; successful and missing-key output remains receiver-derived. All twelve
 unchanged component checks fail before the correction and pass afterward,
 covering eager local reads and four injected error classes under root/UID 4001.
-Installed/admin eligibility, real query transport and full application integration
-remain open. Comparison: `cli-option-read-629fdb26.json`.
+`09a41264` also reports malformed arity on stderr with exit 2 and disabled settings
+or missing installation/admin eligibility with exit 1. The complete production
+branch passes 32 cases: reads, successful/refused writes and sixteen admission/arity
+failures that previously exited 0. Rejected commands do not call the fixture getter
+or setter; valid writes retain exact arguments and one invocation. OS eligibility,
+real query/write transport and full application integration remain open. Comparisons:
+`cli-option-read-629fdb26.json`, `option-cli-admission-09a41264.json`.
 
 Incumbent identity, retained-parent startup and remaining namespace/metadata races
 are detailed in R-S11bs/R-S11e-85 below. **OPEN:** complete listener/application

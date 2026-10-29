@@ -1,5 +1,8 @@
 #[path = "ipc/auth.rs"]
 mod ipc_auth;
+#[path = "ipc/framed.rs"]
+mod framed;
+use framed::IpcFrameReader;
 #[cfg(any(target_os = "windows", test))]
 #[path = "ipc/clipboard_non_file.rs"]
 mod clipboard_non_file;
@@ -40,7 +43,6 @@ use hbb_common::{
         self,
         io::{AsyncRead, AsyncWrite},
     },
-    tokio_util::codec::FramedRead,
     ResultType,
 };
 #[cfg(target_os = "linux")]
@@ -7795,7 +7797,7 @@ mod pulse_audio;
 #[cfg(target_os = "linux")]
 pub use self::pulse_audio::start_pa;
 pub struct ConnectionTmpl<T> {
-    inner: FramedRead<T, BytesCodec>,
+    inner: IpcFrameReader<T>,
 }
 
 pub type Connection = ConnectionTmpl<Conn>;
@@ -7811,7 +7813,7 @@ where
 {
     pub fn new(conn: T) -> Self {
         Self {
-            inner: FramedRead::new(conn, BytesCodec::new()),
+            inner: IpcFrameReader::new(conn, BytesCodec::new()),
         }
     }
 
@@ -7819,7 +7821,7 @@ where
         let mut codec = BytesCodec::new();
         codec.set_max_packet_length(max_packet_length);
         Self {
-            inner: FramedRead::new(conn, codec),
+            inner: IpcFrameReader::new(conn, codec),
         }
     }
 

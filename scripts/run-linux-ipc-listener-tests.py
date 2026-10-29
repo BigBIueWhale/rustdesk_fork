@@ -125,6 +125,7 @@ def build():
     connection += '}\n' + function(ipc, 'handle_service_request')
     (work / 'connection.rs').write_text(connection)
     shutil.copyfile(repo / 'libs/hbb_common/src/bytes_codec.rs', work / 'bytes_codec.rs')
+    shutil.copyfile(repo / 'src/ipc/framed.rs', work / 'framed.rs')
     config = parsed(repo / 'libs/hbb_common/src/config.rs')
     (work / 'config.rs').write_text(''.join(function(config, name) for name in (
         'is_service_ipc_postfix', 'ipc_parent_dir_for_uid')))
@@ -177,6 +178,7 @@ incremental = false
           f'barrier_sha256={sha(barrier)} '
           f'connection_fragment_sha256={hashlib.sha256(connection.encode()).hexdigest()} '
           f'codec_sha256={sha(work / "bytes_codec.rs")} '
+          f'reader_sha256={sha(work / "framed.rs")} '
           'transport=parity-tokio-ipc-root-locked framing=production', flush=True)
 
 

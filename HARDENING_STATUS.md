@@ -3620,9 +3620,9 @@ those obligations.
 <a id="linux-ipc-components"></a>
 
 **IPC / option CLI — component acceptance; installed acceptance OPEN.**
-At `8401f39a`, TUF `v5FHye8JkJ` passes all **172 listener/transport, 32 CLI,
-10 Windows selector and 14 directory cases** plus the focused desktop source
-check in 88.646 seconds. All execute in Linux; the Windows selector uses real
+At `74b75d58`, TUF `RRpELL1c5e` passes all **172 listener/transport, 32 CLI,
+10 Windows selector, 4 main-response and 14 directory cases** plus the focused desktop source
+check in 85.231 seconds. All execute in Linux; the Windows selector uses real
 Unix sockets and Tokio tasks, not Windows pipes or privileged receivers.
 The command is
 `bash scripts/smoke-verifier-vm-authority.sh --linux-ipc-parent-tests`.
@@ -3634,7 +3634,7 @@ Real Unix sockets establish the named IPC outcomes, not complete application or
 privileged-receiver authorization. All four host
 listener deltas are zero; QEMU joins, bounded RAM scratch retires and exact
 fixture socket/descriptor cleanup passes. Current receipt:
-`windows-main-fairness-8401f39a.json`.
+`main-response-budget-74b75d58.json`.
 
 Both components now compile the exact `Config::ipc_path` and `ipc_path_for_uid`
 methods; the handwritten listener path methods are deleted. The existing routing
@@ -3653,6 +3653,7 @@ comparison: `ipc-endpoint-test-retirement-118a5f85.json`.
 | Windows service-main selection | `8401f39a` polls shutdown and completed transactions before alternating control/credential accepts. Previously a ready control endpoint preceded both task collection and credential admission. The unchanged selector fixtures reproduce backlog and completion-priority failures under root/UID 4001; all ten backlog, sparse, cancellation, completion and shutdown cases pass after correction. Handlers, authorization, capacity and shutdown drain are unchanged. This is extracted selector behavior on Linux; complete Windows compilation, named-pipe behavior and installed authorization remain OPEN. | `windows-main-fairness-8401f39a.json` |
 | Accept-error recovery | `7b1279bd` gives each `IpcListener` a 100 ms retry deadline after an error, preserves it across cancellation and clears it after success. Six root/UID-4001 descriptor-exhaustion cases cover repeated errors, cancellation/recovery and independent listeners. | `ipc-accept-retry-7b1279bd.json` |
 | JSON construction | `8307a2d6` enforces the encoded-byte cap before fallible buffer growth and publishes only complete serialization. Forty string/cap combinations, bounded sequence traversal, serializer failure and real allocation refusal check no rejected output and valid reuse of the same socket. The 16 MiB allocation fixture cap changes no product endpoint. | `ipc-json-budget-8307a2d6.json`, `ipc-json-allocation-ff8956ed.json` |
+| Main response frame budget | `74b75d58` sizes main frames at 2 MiB: the existing 64-entry/4 KiB status budget can require 1,572,864 bytes of escaped values before JSON structure. The old 256 KiB cap refuses valid 295,488-byte status and 393,276-byte config responses under both root and UID 4001; all four unchanged cases now round-trip exact production response types. They also prove cap+1 outbound refusal without bytes, valid reuse and inbound header refusal before payload. Per-value/count limits, concurrency budgets, authorization and the separate 32 KiB service cap remain. These are protocol-valid strings, not installed settings/persistence or real device-getter acceptance. | `main-response-budget-74b75d58.json` |
 | Frame writes | `8e5979d9` removes the second full-payload allocation: writes chain the existing payload with a stack header, then write and flush. The ordinary codec shares header construction. Both scalar IPC transport and vectored socket-pair paths pass root/user pressure and boundary cases, exact bytes, raw-cap refusal, codec round trips and limit restoration. Wire format, endpoint caps and caller timeout/retirement ownership are unchanged. | `ipc-wire-allocation-8e5979d9.json`, `ipc-scalar-writes-c22068e6.json` |
 | Frame reads | `aaf02b9a` adds retained codec/input state, initialized 8 KiB scratch, nonallocating reclamation and fallible growth after bytes arrive. Errors release input and end admission; real 16 MiB input under address-space pressure returns an error where its historical baseline aborts. `094d03a6` also preserves that error through public `next_raw`, retaining its reset result only for EOF. The unchanged-code comparison loses allocation messages and cap-error types under root/UID 4001; all four failures pass after correction. The same six read scenarios now use the public method and retain fragmented/cancelled/coalesced/empty reads, exact bytes, eleven truncated inputs, limit restoration and descriptor/socket cleanup. Reader/codec and caller logic are unchanged. Small bookkeeping/parser allocations, complete handlers, installed and other-platform acceptance remain open. | `ipc-receive-allocation-aaf02b9a.json`; `ipc-raw-read-errors-094d03a6.json` |
 

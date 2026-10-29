@@ -116546,3 +116546,61 @@ complete byte round trips. QEMU 1738373 joins after 30.504 seconds, RAM
 `run.cu1tkjol` retires and all three host listener deltas are zero. Six retained
 files total 103,365 bytes on each host. This audit-only receipt changes neither
 measured input.
+
+### 2026-10-29 — main response encoded-frame budget
+
+At `90f09e9b`, `MainStatusOption::validate` and `MainStatusOptions::validate`
+allow 4 KiB values and up to 64 entries, while `new_main` limits encoded frames
+to 256 KiB. The config response also permits a 64 KiB value. These raw-string
+bounds do not account for JSON escaping. [RFC 8259 §7](https://www.rfc-editor.org/rfc/rfc8259.html#section-7)
+and the pinned [serde_json 1.0.118 serializer](https://raw.githubusercontent.com/serde-rs/json/v1.0.118/src/ser.rs)
+show six-byte escapes for ASCII controls. The declared status value budget can
+therefore require 1,572,864 encoded bytes before keys and envelope. Current
+unique status keys number 32; the implementation keeps the declared 64-entry
+bound rather than depending on today's smaller enum.
+
+`74b75d58` changes only the main frame cap and its rationale to 2 MiB, plus the
+shared verifier's matching literal. The remaining 524,288 bytes cover structure
+and enum keys; the 64 KiB config response also fits. Per-value/count checks,
+16 ordinary/2 privileged main transactions, the one blocking mutation slot,
+receiver authorization, pinned policy and the separate 32 KiB service cap are
+unchanged. This raises finite main-transport capacity; it does not establish a
+measured total heap ceiling or a local privilege-escalation finding.
+
+Prep `e996be19` extracts the real response types, serde attributes, constants
+and status validators, adds production `next_main_response_timeout`, and tests
+real Linux socket pairs under root and UID 4001. The status fixture uses twelve
+unpinned keys with 4 KiB control strings; the config fixture uses its 64 KiB
+protocol limit. `Config::get_options` overlays pins, while the ordinary option
+write validates length and persists only the selected unpinned key. That source
+path supports the status mismatch; the component does not execute persistence,
+the full handler, or an actual voice-input device getter.
+
+The first run `vYYc1ar2Qj` is excluded: a build-receipt regex did not yet admit
+the new response-type digest, so no native response result was accepted. Prep
+`90f09e9b` fixes that parser and adds inbound oversize-header checks. Its baseline
+`X3JfIgRUvq` fails exactly four cases: 295,488-byte status and 393,276-byte config
+responses are refused by the sender under both UIDs. Other 214 cases and all
+14 directory cases pass. At `74b75d58`, unchanged fixtures in `RRpELL1c5e` pass
+all 218 listener/CLI/selector/response and 14 directory cases plus the focused
+desktop source check. The four new cases compare the complete decoded response,
+reject cap+1 outbound frames before publication, reuse the same connection for
+a valid response, reject an inbound cap+1 header without its payload, and restore
+descriptor counts. Production DTO digest is identical in both accepted runs;
+reader, codec, fixtures and dependencies are byte-identical.
+
+The accepted A/B zero-NIC VM runs take 90.718/85.231 seconds; QEMU
+1740463/1741422 joins and RAM `run.e9hmhpgu`/`run.55w54fey` retires.
+Both runs' four host listener deltas are zero. Evidence-preserved failed scratch
+is removed by exact identity: 3,420,160 bytes for the excluded run and 3,497,984
+bytes for the baseline. Twenty-one raw files plus
+`main-response-budget-74b75d58.json` total 317,416 bytes per host; the capsule
+is 26,262 bytes, SHA-256
+`4f7d7a3811dedb890da7f4c40c44558026db1d655d1a7923d25fcdd8c72aeb99`.
+The existing RAM admission, size ceilings and monitor remain enabled.
+
+Complete application/settings behavior, installed receiver authorization,
+native Windows/macOS, mixed versions, current release artifacts, R-S0/R-F5,
+independent reproduction and external review remain open. User-parked work stays
+parked. No dependency, requirement or live instruction changes; Python parsing,
+edited shell syntax checks and `git diff --check` pass.

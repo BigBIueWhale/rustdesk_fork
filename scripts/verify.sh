@@ -736,7 +736,7 @@ echo "== (3b-iii) bounded closed main IPC transactions (R-S11/R-S11g) =="
 r_s11=
 grep -q 'pub enum MainIpcRequest' src/ipc.rs                                          || r_s11="$r_s11 closed-request-enum-missing"
 grep -q 'pub enum MainIpcResponse' src/ipc.rs                                         || r_s11="$r_s11 closed-response-enum-missing"
-grep -q 'const MAIN_IPC_MAX_FRAME_BYTES: usize = 256 \* 1024;' src/ipc.rs             || r_s11="$r_s11 main-frame-cap-missing"
+grep -q 'const MAIN_IPC_MAX_FRAME_BYTES: usize = 2 \* 1024 \* 1024;' src/ipc.rs       || r_s11="$r_s11 main-frame-cap-missing"
 grep -q 'const MAIN_IPC_TRANSACTION_BUDGET: usize = 16;' src/ipc.rs                   || r_s11="$r_s11 transaction-budget-missing"
 grep -q 'const PRIVILEGED_MAIN_IPC_TRANSACTION_BUDGET: usize = 2;' src/ipc.rs          || r_s11="$r_s11 privileged-budget-missing"
 grep -q 'const MAIN_IPC_BLOCKING_MUTATION_BUDGET: usize = 1;' src/ipc.rs              || r_s11="$r_s11 mutation-budget-missing"

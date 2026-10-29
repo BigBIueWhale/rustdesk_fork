@@ -180,7 +180,9 @@ const MACOS_LAUNCHCTL_POLL_INTERVAL: std::time::Duration = std::time::Duration::
 const MACOS_LAUNCHCTL_REAP_RESERVE: std::time::Duration = std::time::Duration::from_millis(50);
 pub(crate) const SERVICE_IPC_MAX_FRAME_BYTES: usize = 32 * 1024;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub(crate) const MAIN_IPC_MAX_FRAME_BYTES: usize = 256 * 1024;
+// The status budget permits 64 values of 4 KiB; JSON can escape each byte
+// into six bytes. Include the response envelope within the bounded frame.
+pub(crate) const MAIN_IPC_MAX_FRAME_BYTES: usize = 2 * 1024 * 1024;
 #[cfg(target_os = "linux")]
 pub(crate) const PULSE_AUDIO_IPC_MAX_FRAME_BYTES: usize = 8 * 1024;
 #[cfg(target_os = "linux")]

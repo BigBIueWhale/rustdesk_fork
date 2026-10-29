@@ -117001,3 +117001,14 @@ must retain normal I/O and close once on drop. Windows VM storage work remains
 parked, so this slice does not launch that harness or substitute a Linux handle
 double for Windows behavior. The existing focused Linux IPC profile will check
 the source gate and its shared integration; it cannot establish Windows acceptance.
+
+Candidate `87aca7c8` passes TUF `HRUDLlAOB0`: the edited source check, 246 IPC
+cases and 14 directory cases. Both Linux artifact hashes equal the preceding
+accepted artifacts (`cfa1f468…13df0` and `4325b54d…904cd`); the Windows opener is
+not compiled by these components. QEMU 1771053 joins after 91.263 seconds, RAM
+`run.t85vyu_1` retires and all four host listener deltas are zero. Seven raw files
+under `linux-ipc-parent-tests-run.HRUDLlAOB0.*` and its console log total 111,676
+bytes per host with matching copied hashes. Exact source comparison limits the
+product diff to removal of the redundant match/close/import and its ownership
+comment. `git diff --check` passes. No Windows build or native handle test ran;
+installed platform acceptance and separately parked work remain open.

@@ -3797,6 +3797,16 @@ by consolidating the ledger. All separately parked work remains OPEN/PARKED.
 
 ### Current authority and source closure
 
+**Windows pipe client handle ownership (`87aca7c8`).** The opener now returns
+Tokio's consuming constructor directly. Its registration-error path previously
+closed a handle already owned and closed by Mio. The redundant close/import are
+removed; opening rights, flags, retries and peer authorization are unchanged.
+The focused source check excludes that second close. TUF `HRUDLlAOB0` passes it
+and the existing 246 IPC/14 directory cases in 91.263 seconds, with joined cleanup
+and unchanged host listeners. These execute on Linux; Windows registration-failure
+and successful-I/O/handle-cleanup acceptance remain OPEN. The audit records the
+pinned dependency ownership chain and required native failure/control scenario.
+
 **Retired uinput IPC payloads.** The four orphaned keyboard, keyboard-response,
 mouse and resolution-control payload enums and their `Data` variants are removed
 from `src/ipc.rs` (49 lines). Their sole producer/consumer was the uinput module

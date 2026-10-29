@@ -115067,3 +115067,55 @@ The 33.770-second run joins QEMU 1631061 with exit zero and retires workspace
 Six count files total 102,556 bytes and match both hosts; serial SHA-256
 `ae8b1abd18dc1d28821ae8f40c9ae3ea84865495c7a55705cde86cbcca8e8018`.
 This audit-only receipt leaves the counted ledger unchanged.
+
+## 2026-10-29 — Linux IPC socket recovery after interrupted startup
+
+The previous turn completed parent-permission recovery. This turn tests the
+remaining bind/listen/permission handoff. `c122ec59` adds real syscall scheduling
+barriers after successful bind, listen and chmod, then kills and joins the exact
+startup child. A retained O_PATH socket descriptor prevents inode reuse from
+passing the replacement check. Root and UID 4001 use umask 0777; recovery must
+establish the expected mode, a new socket inode and the same persistent lock,
+with the replacement PID/UID observed through SO_PEERCRED. Existing live cases
+also test mode-000 sockets and require preservation of their original peer.
+
+Baseline `rtAc5yZala` passes 74 listener cases and fails two ordinary-user
+post-bind/post-listen recoveries with EACCES; all fourteen directory cases pass.
+[connect(2)](https://man7.org/linux/man-pages/man2/connect.2.html) documents
+pathname-socket write/search permission denial. It does not prove absence of a
+listener. [unix(7)](https://man7.org/linux/man-pages/man7/unix.7.html) documents
+umask-derived creation permissions. Inspection of the pinned parity-tokio-ipc
+revision and production `new_listener` confirms a bind-to-chmod crash interval.
+
+`fc083c93` restores the intended mode only after EACCES and exact parent/socket
+admission: no-follow directory, expected owner/mode, retained O_PATH socket,
+current owner, one link, no special bits and missing owner write. Device/inode
+checks bind fchmodat to its procfs descriptor alias; final metadata and named
+identity checks precede a single transport retry within the original timeout.
+Guards close before await. Missing/refused transport remains necessary before
+the separately locked cleanup; live or ambiguous transport is preserved.
+No process-wide umask change, new dependency or privileged message grant occurs.
+
+Accepted TUF `LZMlWWsrcT` passes all 78 listener and 14 directory cases in
+76.314 seconds. The six crash scenarios are unchanged from baseline; two added
+symlink/hardlink controls and the strengthened foreign-owner check verify
+unchanged metadata and live transport. All four mode-000 incumbent cases pass.
+Listener binary SHA-256:
+`46a900b1d3ee1750bc353a1d1a85d6b90c01af85eef846365bcc885c5559f932`.
+Directory binary is unchanged from `3a37b232`. Rust component compilation,
+Python scenarios and C barriers with warnings as errors run in the owned
+zero-NIC VM; diff checks pass. No full-app or static-catalogue pass is claimed.
+
+Both QEMU children join exit zero, both RAM workspaces retire and all eight
+host listener deltas are zero. Accepted peak RAM scratch is 3,392,016,384 bytes,
+overlay 3,195,801,600 bytes and durable run 3,407,872 bytes. Fourteen run files
+total 181,902 bytes. Capsule `ipc-socket-crash-fc083c93.json`, 53,972 bytes,
+SHA-256 `d9d2add1798035b3f15e24ca7418b23d69e1c9a074d347d660a6003e671aee74`.
+All fifteen files match CTE/TUF. After evidence verification, exact inode/owner,
+process absence and joined-storage checks, the failed-baseline diagnostic tree
+is removed under the shared lock, freeing 3,465,216 allocated disk bytes.
+
+Full installed authorization, CM/PA, macOS, remaining metadata/namespace/crash
+races, coexisting versions, release artifacts and independent/external review
+remain OPEN. Config name/path and service authorization adapters remain limits
+of this component evidence. The tested crash-recovery defect is closed.

@@ -9041,7 +9041,7 @@ sandbox implementation and checker-repair history remain in Git.
   its bounded typed liveness round trip; failed or malformed response is an error, not
   cleanup authority. Stale removal stays descriptor-relative; probing grants no request authority.
 
-  **Linux startup/liveness component: seventy native cases pass.** `26b069fb`
+  **Linux startup/liveness component: seventy-eight native cases pass.** `26b069fb`
   reserves each endpoint through cleanup, bind and socket permissions using a
   validated persistent lock inode. Reservation follows asynchronous probing;
   no lock spans an await. A fresh nonblocking connection under the reservation
@@ -9049,7 +9049,7 @@ sandbox implementation and checker-repair history remain in Git.
   ambiguous endpoints. Separate endpoints start independently. This extends
   `641bb1b2`'s transport-error and cleanup-error correction.
   Baseline `qtOVFk9av1` reproduces two concurrent starts both reporting success
-  while one replaces the other's socket. `3a37b232`, TUF `ogoe9261yx`, passes
+  while one replaces the other's socket. `fc083c93`, TUF `LZMlWWsrcT`, passes
   those races, independent starts, restart, eight unsafe-lock refusals,
   unrelated-image preservation and the prior nine transport cases, plus eight
   protected-service liveness scenarios. Valid replies prove liveness; unknown
@@ -9061,7 +9061,7 @@ sandbox implementation and checker-repair history remain in Git.
   probe and reservation; kernel peer PID/UID and the socket inode identify the
   winner. Killing the reservation holder permits restart using the same lock
   inode. Deleted and unreadable executable identities refuse probe/startup
-  without removing the live socket. The 83.152-second run also passes fourteen
+  without removing the live socket. The 76.314-second run also passes fourteen
   directory cases. Root and UID 4001
   execute the same sealed component with production `new_listener`, connection
   methods, codec, typed liveness handler and kernel identity checks. Dependencies
@@ -9082,10 +9082,19 @@ sandbox implementation and checker-repair history remain in Git.
   ordinary-user cases. The same fourteen parent startup scenarios now pass for
   masks 0400/0700/0777, including nondumpable users, exact inode preservation and
   unrelated contents. No process-wide umask change or foreign-parent adoption occurs.
-  Capsules: `ipc-parent-umask-3a37b232.json`, `ipc-lock-umask-c369d9e2.json` and
-  `ipc-listener-bind-26b069fb.json`; audit entries “2026-10-29 — Linux IPC startup
-  parent permissions”, “2026-10-29 — Linux IPC startup lock permissions” and
-  “2026-10-29 — Linux concurrent IPC startup” retain current and baseline provenance.
+  `fc083c93` fixes restart after a crash leaves an owned socket without owner write.
+  Baseline `rtAc5yZala` reproduces two ordinary-user failures after bind/listen.
+  On EACCES, a no-follow retained socket must have the current owner, one link,
+  no special bits and missing owner write beneath a validated parent. Its verified
+  procfs alias restores the intended mode; metadata/name are rechecked before one
+  connection retry within the original timeout. Permission denial never permits
+  unlinking. All six root/user crash points (after bind, listen and chmod) now
+  recover with a new socket and the same lock inode. Mode-000 live incumbents stay
+  active; foreign-owned, symlink and hardlinked sockets remain unchanged.
+  Capsules: `ipc-socket-crash-fc083c93.json`, `ipc-parent-umask-3a37b232.json` and
+  `ipc-listener-bind-26b069fb.json`; audit entries “2026-10-29 — Linux IPC socket
+  recovery after interrupted startup”, “2026-10-29 — Linux IPC startup parent
+  permissions” and “2026-10-29 — Linux concurrent IPC startup” retain provenance.
   PID-file reads/writes and the process-table scan remain removed; historical
   `.pid` entries remain only in stale-artifact cleanup. The finite UID/executable
   regression remains supplementary to these native component observations.

@@ -7078,6 +7078,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             || fail 'IPC parent barrier build receipt differs'
         ipc_parent_barrier_sha=${ipc_parent_barriers[0]#*artifact_sha256=}
         ipc_parent_barrier_sha=${ipc_parent_barrier_sha%% *}
+        cat "$output"
         [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
             || fail 'IPC parent builder has not terminated'
         "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
@@ -7092,7 +7093,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             || fail 'IPC parent native inventory or cleanup differs'
         [ "$source_before" = "$source_archive_sha:$(cd "$source_root" && sha256sum "${source_fingerprints[@]}")" ] \
             || fail 'IPC parent production or fixture source changed'
-        cat "$output" "$native_output"
+        cat "$native_output"
         stop_docker_authority
         umount "$inputs" || fail 'cannot retire IPC parent sealed inputs'
         SEALED_INPUTS_MOUNTED=0

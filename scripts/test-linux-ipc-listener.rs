@@ -31,17 +31,10 @@ type ServiceIpcRequesterAuthorization = ();
 use ipc::ipc_fs::*;
 
 mod config {
+    use std::path::PathBuf;
+    use hbb_common::libc;
     static APP_NAME: std::sync::RwLock<&str> = std::sync::RwLock::new("RustDesk");
     include!("config.rs");
-    pub struct Config;
-    impl Config {
-        pub fn ipc_path(postfix: &str) -> String {
-            Self::ipc_path_for_uid(unsafe { libc::geteuid() }, postfix)
-        }
-        pub fn ipc_path_for_uid(uid: u32, postfix: &str) -> String {
-            format!("{}/ipc{}", ipc_parent_dir_for_uid(uid, postfix), postfix)
-        }
-    }
 }
 use config::Config;
 mod password {

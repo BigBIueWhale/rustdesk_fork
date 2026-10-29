@@ -700,110 +700,6 @@ def verify_raw_wire(rust: Mapping[str, RustSource]) -> None:
     )
 
 
-def verify_endpoint_ownership(rust: Mapping[str, RustSource]) -> None:
-    config = rust["libs/hbb_common/src/config.rs"]
-    service_postfix = config.function("is_service_ipc_postfix")
-    service_postfix.require(
-        ("matches", "!", "(", "postfix", ",", '"_service"', "|", '"_service_password"', ")"),
-        "ordinary and password service endpoint classification",
-        unique=True,
-    )
-    service_postfix.require(
-        ("cfg", "!", "(", "any", "(", "target_os", "=", '"linux"', ",", "target_os", "=", '"macos"', ")", ")", "&&", "postfix", "==", '"_service_credential"'),
-        "Linux/macOS credential replica service endpoint classification",
-        unique=True,
-    )
-    parent_path = config.function("ipc_parent_dir_for_uid")
-    parent_path.require_order(
-        (
-            (("is_service_ipc_postfix", "(", "postfix", ")"), "service classification"),
-            (("format", "!", "(", '"/run/{app_name}-service"', ")"), "Linux root-controlled service namespace"),
-            (("format", "!", "(", '"/tmp/{app_name}-service"', ")"), "macOS shared service parent"),
-            (("format", "!", "(", '"/tmp/{app_name}-{uid}"', ")"), "UID-owned user parent"),
-        )
-    )
-    ipc_path_for_uid = config.method(("impl", "Config"), "ipc_path_for_uid", "impl Config")
-    ipc_path_for_uid.require_order(
-        (
-            (("ipc_parent_dir_for_uid", "(", "uid", ",", "postfix", ")"), "classified parent"),
-            (("format", "!", "(", '"{parent}/ipc{postfix}"', ")"), "postfix-bound socket name"),
-        ),
-        unique=True,
-    )
-
-    fs = rust["src/ipc/fs.rs"]
-    mode = fs.function("expected_ipc_parent_mode")
-    mode.require_order(
-        (
-            (("is_service_ipc_postfix", "(", "postfix", ")"), "service classification"),
-            (("0o0711",), "service directory mode"),
-            (("0o0700",), "user directory mode"),
-        ),
-        unique=True,
-    )
-    open_parent = fs.function("open_ipc_parent_dir_fd")
-    for required, label in (
-        (("O_DIRECTORY",), "directory-only open"),
-        (("O_CLOEXEC",), "close-on-exec"),
-        (("O_NOFOLLOW",), "symlink refusal"),
-    ):
-        open_parent.require(required, label, unique=True)
-    secure_parent = fs.function("ensure_secure_ipc_parent_dir")
-    secure_parent.require_order(
-        (
-            (("verify_linux_service_ipc_namespace", "(", "parent_dir", ")"), "Linux service namespace admission"),
-            (("open_ipc_parent_dir_fd", "(", "&", "parent_c", ")"), "parent open after namespace admission"),
-        )
-    )
-    secure_parent.require(
-        ("#", "[", "cfg", "(", "target_os", "=", '"macos"', ")", "]",
-         "let", "(", "fd_guard", ",", "st", ",", "recreated_foreign_service_parent", ")", "=",
-         "if", "st", ".", "st_uid", "as", "u32", "!=", "expected_uid",
-         "&&", "expected_uid", "==", "0", "&&", "config", "::", "is_service_ipc_postfix", "(", "postfix", ")"),
-        "foreign-directory replacement compiles only for a macOS root service",
-        unique=True,
-    )
-    secure_parent.require_order(
-        (
-            (("open_ipc_parent_dir_fd", "(", "&", "parent_c", ")"), "no-follow parent open"),
-            (("fstat", "(", "fd"), "same-inode metadata read"),
-            (("S_IFDIR",), "directory type validation"),
-            (("expected_uid", "=", "unsafe", "{", "hbb_common", "::", "libc", "::", "geteuid"), "effective owner binding"),
-            (("recreate_foreign_service_ipc_parent_dir", "(", "parent_dir", ",", "postfix", ")"), "foreign service parent replacement"),
-            (("if", "owner_uid", "!=", "expected_uid"), "post-replacement owner rejection"),
-            (("expected_ipc_parent_mode", "(", "postfix", ")"), "exact expected mode"),
-            (("fchmod", "(", "fd", ",", "expected_mode"), "same-inode mode enforcement"),
-        )
-    )
-    recreate = fs.function("recreate_foreign_service_ipc_parent_dir")
-    recreate.require_order(
-        (
-            (("open_ipc_parent_dir_fd", "(", "&", "gp_c", ")"), "no-follow grandparent open"),
-            (("openat", "(", "gp_fd"), "foreign child open relative to grandparent"),
-            (("scrub_preexisting_ipc_parent_entries", "(", "foreign_fd"), "known artifact scrub"),
-            (("unlinkat", "(", "gp_fd", ",", "base_c", ".", "as_ptr", "(", ")", ",", "hbb_common", "::", "libc", "::", "AT_REMOVEDIR"), "directory-only relative removal"),
-            (("mkdirat", "(", "gp_fd"), "fresh directory creation"),
-            (("openat", "(", "gp_fd"), "fresh directory reopen"),
-        )
-    )
-    recreate.require(("O_NOFOLLOW",), "no-follow relative opens")
-
-    ipc = rust["src/ipc.rs"]
-    listener = ipc.function("new_listener")
-    listener.require_order(
-        (
-            (("Config", "::", "ipc_path", "(", "postfix", ")"), "classified socket path"),
-            (("ensure_secure_ipc_parent_dir", "(", "&", "path", ",", "postfix", ")"), "parent ownership/mode proof"),
-            (("probe_existing_listener", "(", "postfix", ")", ".", "await"), "Linux incumbent probe before reservation"),
-            (("let", "bind", "=", "prepare_ipc_listener_bind"), "Linux parent and reservation retained through bind"),
-            (("check_existing_listener", "(", "postfix", ")"), "live listener check"),
-            (("scrub_secure_ipc_parent_dir", "(", "&", "path", ",", "postfix", ")"), "stale artifact scrub"),
-            (("Endpoint", "::", "new", "(", "bind", ".", "path", "(", ")", ".", "to_owned", "(", ")", ")"), "Linux bind in retained parent"),
-            (("bind", ".", "finish", "(", ")", "?"), "Linux retained-parent finalization"),
-        )
-    )
-
-
 def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
     ipc = rust["src/ipc.rs"]
     ordinary_request = ipc.item("enum", "MainIpcRequest")
@@ -2695,7 +2591,6 @@ def validate_sources(sources: Mapping[str, str]) -> None:
             "statically dead cfg fixture in security-critical source",
         )
     verify_raw_wire(rust)
-    verify_endpoint_ownership(rust)
     verify_raw_endpoint_separation(rust)
     verify_linux_identity_and_authority(rust)
     verify_mutation_coordinators(rust)

@@ -5,7 +5,9 @@ fn main() {
     assert!(std::path::Path::new("/run/rustdesk-verifier-vm").is_dir());
     if args[1] == "path" {
         let uid = args[2].parse::<u32>().unwrap();
-        println!("{}", config::ipc_parent_dir_for_uid(uid, &args[3]));
+        let path = config::Config::ipc_path_for_uid(uid, &args[3]);
+        assert_eq!(config::Config::ipc_path(&args[3]), path);
+        println!("{path}");
         return;
     }
     let path = std::path::Path::new(&args[2]);

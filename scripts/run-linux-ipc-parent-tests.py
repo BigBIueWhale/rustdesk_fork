@@ -70,11 +70,11 @@ def build():
     sys.modules[spec.name] = parser
     spec.loader.exec_module(parser)
 
-    def function(parsed, name):
-        body = parsed.function(name)
+    def function(parsed, name, *, parent=None):
+        body = parsed.function(name, parent=parent)
         starts = [t.offset for i, t in enumerate(parsed.tokens[:-1])
                   if t.text == 'fn' and parsed.tokens[i + 1].text == name
-                  and parsed.brace_parent[i] is None]
+                  and parsed.brace_parent[i] == parent]
         require(len(starts) == 1, 'production function is ambiguous')
         return parsed.text[starts[0]:parsed.tokens[body.end].offset + 1] + '\n'
 
@@ -82,6 +82,9 @@ def build():
     fs = parser.RustSource.parse(str(fs_path), fs_path.read_text())
     config_path = repo / 'libs/hbb_common/src/config.rs'
     config = parser.RustSource.parse(str(config_path), config_path.read_text())
+    config_impl = config.impl(('impl', 'Config'), 'Config methods')
+    config_methods = ''.join('pub ' + function(config, name, parent=config_impl.start - 1)
+                             for name in ('ipc_path', 'ipc_path_for_uid'))
     guard = fs.impl(('impl', 'Drop', 'for', 'FdGuard'), 'FdGuard destructor')
     start = fs.text.index('struct FdGuard(i32);')
     fragment = fs.text[start:fs.tokens[guard.end].offset + 1] + '\n'
@@ -91,9 +94,11 @@ def build():
     generated = ('extern crate self as hbb_common;\npub extern crate libc;\n'
                  'type ResultType<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;\n'
                  'use std::{ffi::CString, io::{Error, ErrorKind}, os::unix::ffi::OsStrExt, path::Path};\n'
-                 'mod config { static APP_NAME: std::sync::RwLock<&str> = std::sync::RwLock::new("RustDesk");\n'
+                 'mod config { use std::path::PathBuf; use hbb_common::libc;\n'
+                 'static APP_NAME: std::sync::RwLock<&str> = std::sync::RwLock::new("RustDesk");\n'
                  'pub ' + function(config, 'is_service_ipc_postfix')
-                 + 'pub ' + function(config, 'ipc_parent_dir_for_uid') + '}\n' + fragment
+                 + function(config, 'ipc_parent_dir_for_uid')
+                 + 'pub struct Config; impl Config {\n' + config_methods + '} }\n' + fragment
                  + (repo / 'scripts/test-linux-ipc-parent.rs').read_text())
     source = target / 'ipc-parent.rs'
     source.write_text(generated)
@@ -158,11 +163,15 @@ def native(expected_sha):
     for postfix in ('_service', '_service_password', '_service_credential'):
         for uid in (0, 4001):
             result = run([str(probe), 'path', str(uid), postfix], uid=uid)
-            require(result.stdout == str(service) + '\n' and not result.stderr, 'service route differs')
+            require(result.stdout == str(service / ('ipc' + postfix)) + '\n'
+                    and not result.stderr, 'service route differs')
     for uid in (0, 4001):
         for postfix in ('', '_password'):
             result = run([str(probe), 'path', str(uid), postfix], uid=uid)
-            require(result.stdout == f'/tmp/RustDesk-{uid}\n', 'user route changed')
+            require(result.stdout == f'/tmp/RustDesk-{uid}/ipc{postfix}\n'
+                    and not result.stderr, 'user route changed')
+        require(not os.path.lexists(f'/tmp/RustDesk-{uid}'), 'path lookup created user parent')
+    require(not os.path.lexists(service), 'path lookup created service parent')
     record('service-routing')
 
     import socket

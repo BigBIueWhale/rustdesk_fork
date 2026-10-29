@@ -140,8 +140,12 @@ def build():
     shutil.copyfile(repo / 'libs/hbb_common/src/bytes_codec.rs', work / 'bytes_codec.rs')
     shutil.copyfile(repo / 'src/ipc/framed.rs', work / 'framed.rs')
     config = parsed(repo / 'libs/hbb_common/src/config.rs')
-    (work / 'config.rs').write_text(''.join(function(config, name) for name in (
-        'is_service_ipc_postfix', 'ipc_parent_dir_for_uid')))
+    config_impl = config.impl(('impl', 'Config'), 'Config methods')
+    (work / 'config.rs').write_text(
+        ''.join(function(config, name) for name in ('is_service_ipc_postfix', 'ipc_parent_dir_for_uid'))
+        + 'pub struct Config;\nimpl Config {\n'
+        + ''.join(function(config, name, parent=config_impl.start - 1)
+                  for name in ('ipc_path', 'ipc_path_for_uid')) + '}\n')
     shutil.copyfile(repo / 'scripts/test-linux-ipc-listener.rs', work / 'main.rs')
     (work / 'Cargo.toml').write_text('''[package]
 name = "ipc-listener-component"

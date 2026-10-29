@@ -27,6 +27,19 @@ include!("identity.rs");
 include!("transport.rs");
 include!("connection.rs");
 include!("main_responses.rs");
+mod main_transaction {
+    use super::*;
+    thread_local! { pub(super) static CONNECT_DELAY_MS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) }; }
+    // Inject only connection latency; the actual endpoint, peer and frame I/O remain real.
+    async fn connect(ms: u64, postfix: &str) -> ResultType<ConnectionTmpl<ConnClient>> {
+        let delay = CONNECT_DELAY_MS.with(|value| value.get());
+        timeout(ms, async {
+            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+            super::connect(ms, postfix).await
+        }).await?
+    }
+    include!("main_transaction.rs");
+}
 type Connection = ConnectionTmpl<Conn>;
 type ServiceIpcRequesterAuthorization = ();
 use ipc::ipc_fs::*;
@@ -431,6 +444,73 @@ async fn accept_failure_fixture(scenario: &str) {
     }
     assert_eq!(fd_count(), before);
     println!("OK accept-{scenario} uid={} cleanup=joined", unsafe { libc::geteuid() });
+}
+
+async fn main_transaction_fixture(scenario: &str) {
+    use std::time::{Duration, Instant};
+    use tokio::io::AsyncReadExt;
+    let before = fd_count();
+    let (result, elapsed, peer) = {
+        let mut incoming = new_listener("").await.unwrap();
+        let delay = match scenario {
+            "success" => 100,
+            "deadline" => 350,
+            "connect-stall" => 1000,
+            "peer-stall" => 0,
+            _ => panic!("unknown main transaction scenario"),
+        };
+        main_transaction::CONNECT_DELAY_MS.with(|value| value.set(delay));
+        let client = async {
+            let start = Instant::now();
+            let result = main_transaction::main_ipc_request(
+                MainIpcRequest::Config(MainConfigKey::VoiceCallInput), 500,
+            ).await;
+            (result, start.elapsed())
+        };
+        if scenario == "connect-stall" {
+            let (result, elapsed) = client.await;
+            assert!(timeout(50, incoming.next()).await.is_err(), "cancelled connect reached listener");
+            (result, elapsed, None)
+        } else {
+            let server = async {
+                let stream = timeout(1500, incoming.next()).await.unwrap().unwrap().unwrap();
+                assert_eq!(peer_uid_from_fd(stream.as_raw_fd()), Some(unsafe { libc::geteuid() }));
+                assert_eq!(peer_pid_from_fd(stream.as_raw_fd()), Some(std::process::id()));
+                let mut stream = Connection::new_main(stream);
+                assert!(matches!(stream.next_main_timeout(1000).await.unwrap(),
+                                 Some(MainIpcRequest::Config(MainConfigKey::VoiceCallInput))));
+                let sent = if scenario == "peer-stall" { None } else {
+                    tokio::time::sleep(Duration::from_millis(delay)).await;
+                    Some(stream.send_json_timeout(&MainIpcResponse::Config {
+                        key: MainConfigKey::VoiceCallInput, value: Some("receiver-device".to_owned()),
+                    }, 1000).await.is_ok())
+                };
+                let mut byte = [0];
+                assert_eq!(timeout(1000, stream.inner.get_mut().read(&mut byte)).await.unwrap().unwrap(),
+                           0, "transaction retained its client socket");
+                sent
+            };
+            let ((result, elapsed), peer) = tokio::join!(client, server);
+            (result, elapsed, peer)
+        }
+    };
+    assert_eq!(fd_count(), before);
+    match scenario {
+        "success" => {
+            assert!(matches!(result.unwrap(), MainIpcResponse::Config {
+                key: MainConfigKey::VoiceCallInput, value: Some(value),
+            } if value == "receiver-device"));
+            assert_eq!(peer, Some(true));
+            assert!(elapsed < Duration::from_millis(500));
+        }
+        _ => {
+            assert!(result.is_err(), "main transaction renewed its deadline: {result:?}, elapsed={elapsed:?}");
+            assert!(elapsed >= Duration::from_millis(450) && elapsed < Duration::from_millis(650),
+                    "transaction did not retire near its 500 ms budget: {elapsed:?}");
+            if scenario == "deadline" { assert_eq!(peer, Some(false)); }
+        }
+    }
+    println!("OK main-transaction-{scenario} uid={} cleanup=joined", unsafe { libc::geteuid() });
 }
 
 async fn main_response_fixture(scenario: &str) {
@@ -882,6 +962,11 @@ fn main() {
     let postfix = &args[2];
     assert!(["", "_password", "_service_password", "_service_credential", "_service"].contains(&postfix.as_str()));
     let path = Config::ipc_path(postfix);
+    if let Some(scenario) = args[1].strip_prefix("main-transaction-") {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(main_transaction_fixture(scenario));
+        return;
+    }
     if let Some(scenario) = args[1].strip_prefix("main-response-") {
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         runtime.block_on(main_response_fixture(scenario));

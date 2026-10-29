@@ -133,6 +133,7 @@ def build():
                  'send_json', 'send_json_timeout', 'next_json', 'send_service_request_timeout',
                  'next_service_request_timeout', 'send_service_response_timeout',
                  'next_service_response_timeout', 'next_main_response_timeout',
+                 'send_main_request_timeout', 'next_main_timeout',
                  'set_max_packet_length', 'send_raw', 'next_raw'):
         connection += function(ipc, name, parent=methods.start - 1)
     connection += '}\nimpl<T: AsyncRead + AsyncWrite + Unpin + AsRawFd> ConnectionTmpl<T> {\n'
@@ -150,7 +151,8 @@ def build():
     for source, kind, name in (
             (main_config, 'enum', 'MainConfigKey'),
             *((ipc, 'enum', name) for name in ('MainStatusOptionKey', 'IpcMutationResult',
-                                             'PasswordMutationStatus', 'MainIpcResponse')),
+                                             'PasswordMutationStatus', 'MainIpcResponse',
+                                             'MainIpcRequest', 'CmAuthConnType')),
             *((ipc, 'struct', name) for name in ('MainStatusOption', 'MainStatusOptions',
                                                'MainStatusSnapshot', 'MainReadinessSnapshot',
                                                'CmConnectionAuthority'))):
@@ -165,6 +167,8 @@ def build():
         methods = ipc.impl(('impl', name), 'response validation')
         responses += f'impl {name} {{\n' + function(ipc, 'validate', parent=methods.start - 1) + '}\n'
     (work / 'main_responses.rs').write_text(responses)
+    (work / 'main_transaction.rs').write_text(''.join(function(ipc, name) for name in (
+        'main_ipc_request', 'main_ipc_request_on_stream')))
     shutil.copyfile(repo / 'libs/hbb_common/src/bytes_codec.rs', work / 'bytes_codec.rs')
     shutil.copyfile(repo / 'src/ipc/framed.rs', work / 'framed.rs')
     config = parsed(repo / 'libs/hbb_common/src/config.rs')
@@ -227,6 +231,7 @@ incremental = false
           f'option_reader_sha256={sha(work / "option_reader.rs")} '
           f'option_cli_sha256={sha(work / "option_cli.rs")} '
           f'main_responses_sha256={sha(work / "main_responses.rs")} '
+          f'main_transaction_sha256={sha(work / "main_transaction.rs")} '
           'transport=parity-tokio-ipc-root-locked framing=production', flush=True)
 
 
@@ -280,6 +285,11 @@ def native(expected_sha, barrier_sha):
               f'exit={result.returncode} stdout={result.stdout.strip()!r} stderr={result.stderr.strip()!r}', flush=True)
 
     for uid in (0, 4001):
+        for scenario in ('success', 'deadline', 'connect-stall', 'peer-stall'):
+            action = 'main-transaction-' + scenario
+            result = check('', uid, action=action)
+            record(f'{action}-{uid}', result.returncode == 0
+                   and result.stdout == f'OK {action} uid={uid} cleanup=joined\n', result)
         for scenario in ('status', 'config'):
             action = 'main-response-' + scenario
             result = check('', uid, action=action)
@@ -1056,8 +1066,8 @@ def native(expected_sha, barrier_sha):
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
     require(sha(barrier) == barrier_sha, 'barrier changed')
     probe.unlink(); barrier.unlink(); work.rmdir()
-    require(len(cases) == 218, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=218 failures={len(failures)} '
+    require(len(cases) == 226, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=226 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 

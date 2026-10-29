@@ -49,10 +49,14 @@ fn expected_ipc_parent_mode(postfix: &str) -> u32 {
 }
 
 fn open_ipc_parent_dir_fd(parent_c: &CString) -> std::io::Result<i32> {
+    #[cfg(target_os = "linux")]
+    let access = hbb_common::libc::O_PATH;
+    #[cfg(not(target_os = "linux"))]
+    let access = hbb_common::libc::O_RDONLY;
     let fd = unsafe {
         hbb_common::libc::open(
             parent_c.as_ptr(),
-            hbb_common::libc::O_RDONLY
+            access
                 | hbb_common::libc::O_DIRECTORY
                 | hbb_common::libc::O_CLOEXEC
                 | hbb_common::libc::O_NOFOLLOW,
@@ -63,6 +67,23 @@ fn open_ipc_parent_dir_fd(parent_c: &CString) -> std::io::Result<i32> {
     } else {
         Ok(fd)
     }
+}
+
+#[cfg(target_os = "linux")]
+fn ipc_descriptor_directory() -> ResultType<FdGuard> {
+    use hbb_common::libc;
+
+    let directory = FdGuard(open_ipc_parent_dir_fd(&CString::new("/proc/thread-self/fd")?)?);
+    let mut filesystem: libc::statfs = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstatfs(directory.0, &mut filesystem) } != 0 {
+        return Err(Error::last_os_error().into());
+    }
+    if filesystem.f_type as u64 != libc::PROC_SUPER_MAGIC as u64 {
+        return Err(Error::new(
+            ErrorKind::PermissionDenied, "ipc descriptor directory is not procfs",
+        ).into());
+    }
+    Ok(directory)
 }
 
 // Remove one preexisting IPC artifact via an already-opened parent directory FD.
@@ -388,7 +409,7 @@ fn verify_linux_service_ipc_namespace(parent_dir: &Path) -> ResultType<()> {
 // Main steps:
 // 1) Resolve parent path and open/create directory securely.
 // 2) Verify directory inode type and owner uid.
-// 3) Enforce expected mode via fchmod on opened fd.
+// 3) Enforce expected mode on the retained inode.
 // 4) Scrub stale IPC artifacts when owner/mode was unsafe before hardening.
 //
 // References:
@@ -410,15 +431,15 @@ pub(crate) fn ensure_secure_ipc_parent_dir(path: &str, postfix: &str) -> ResultT
         verify_linux_service_ipc_namespace(parent_dir)?;
     }
     // Harden against common TOCTOU by opening the parent directory with O_NOFOLLOW (so the parent
-    // itself cannot be a symlink) and then operating on its FD (fstat/fchmod). This ensures
+    // itself cannot be a symlink) and then operating on its retained inode. This ensures
     // we mutate the inode we opened, though it does not protect against symlinks in ancestor path
     // components.
     let parent_c = CString::new(parent_dir.as_os_str().as_bytes().to_vec())?;
     let mut fd = match open_ipc_parent_dir_fd(&parent_c) {
         Ok(fd) => fd,
         Err(open_err) => {
-            // If the directory doesn't exist yet, create it with the expected mode. The parent
-            // dir is intended to be a single-level /tmp path, so mkdir is sufficient here.
+            // IPC parents are single-level children of their selected runtime directory.
+            // The opened inode is validated before repairing permissions removed by umask.
             if open_err.raw_os_error() == Some(hbb_common::libc::ENOENT) {
                 let expected_mode = expected_ipc_parent_mode(postfix);
                 let rc = unsafe {
@@ -548,9 +569,30 @@ pub(crate) fn ensure_secure_ipc_parent_dir(path: &str, postfix: &str) -> ResultT
     let repaired_parent_mode = current_mode != expected_mode;
     let had_untrusted_parent_mode = (current_mode & 0o022) != 0;
     if repaired_parent_mode {
-        // Use fchmod on the opened fd to avoid path-race between check and chmod.
-        if unsafe { hbb_common::libc::fchmod(fd, expected_mode as hbb_common::libc::mode_t) } != 0 {
-            let os_err = std::io::Error::last_os_error();
+        #[cfg(target_os = "linux")]
+        let chmod_result = {
+            // O_PATH permits ownership validation even when owner read/search is absent.
+            // Change only its verified procfs alias, never reopen the mutable parent path.
+            let descriptors = ipc_descriptor_directory()?;
+            let descriptor = CString::new(fd.to_string())?;
+            let mut target: hbb_common::libc::stat = unsafe { std::mem::zeroed() };
+            if unsafe { hbb_common::libc::fstatat(descriptors.0, descriptor.as_ptr(), &mut target, 0) } != 0 {
+                return Err(Error::last_os_error().into());
+            }
+            if (target.st_dev, target.st_ino) != (st.st_dev, st.st_ino) {
+                return Err(Error::new(ErrorKind::PermissionDenied, "ipc parent descriptor changed").into());
+            }
+            let rc = unsafe { hbb_common::libc::fchmodat(
+                descriptors.0, descriptor.as_ptr(), expected_mode as hbb_common::libc::mode_t, 0,
+            ) };
+            if rc != 0 { Err(Error::last_os_error()) } else { Ok(()) }
+        };
+        #[cfg(not(target_os = "linux"))]
+        let chmod_result = {
+            let rc = unsafe { hbb_common::libc::fchmod(fd, expected_mode as hbb_common::libc::mode_t) };
+            if rc != 0 { Err(Error::last_os_error()) } else { Ok(()) }
+        };
+        if let Err(os_err) = chmod_result {
             return Err(Error::new(
                 os_err.kind(),
                 format!(
@@ -561,6 +603,15 @@ pub(crate) fn ensure_secure_ipc_parent_dir(path: &str, postfix: &str) -> ResultT
                 ),
             )
             .into());
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        if unsafe { hbb_common::libc::fstat(fd, &mut st) } != 0 {
+            return Err(Error::last_os_error().into());
+        }
+        if st.st_uid as u32 != expected_uid || st.st_mode as u32 & 0o7777 != expected_mode {
+            return Err(Error::new(ErrorKind::PermissionDenied, "ipc parent mode or owner changed").into());
         }
     }
     let should_scrub =
@@ -806,16 +857,7 @@ fn open_ipc_startup_lock(parent_fd: i32, name: &std::ffi::CStr, uid: u32) -> Res
     } else {
         // O_PATH admits the inode before any read open or permission repair.
         // A creator may have exited before restoring owner bits removed by umask.
-        let descriptors = FdGuard(open_ipc_parent_dir_fd(&CString::new("/proc/thread-self/fd")?)?);
-        let mut filesystem: libc::statfs = unsafe { std::mem::zeroed() };
-        if unsafe { libc::fstatfs(descriptors.0, &mut filesystem) } != 0 {
-            return Err(Error::last_os_error().into());
-        }
-        if filesystem.f_type as u64 != libc::PROC_SUPER_MAGIC as u64 {
-            return Err(Error::new(
-                ErrorKind::PermissionDenied, "ipc descriptor directory is not procfs",
-            ).into());
-        }
+        let descriptors = ipc_descriptor_directory()?;
         let descriptor = CString::new(fd.to_string())?;
         require_identity(descriptors.0, &descriptor, 0)?;
         if original.st_mode & 0o7777 != 0o600

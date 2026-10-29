@@ -88,6 +88,8 @@ def build():
     start = fs.text.index('struct FdGuard(i32);')
     fragment = fs.text[start:fs.tokens[guard.end].offset + 1] + '\n'
     fragment += ''.join(function(fs, name) for name in FUNCTIONS)
+    if fs.functions('ipc_descriptor_directory'):
+        fragment += function(fs, 'ipc_descriptor_directory')
     generated = ('extern crate self as hbb_common;\npub extern crate libc;\n'
                  'type ResultType<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;\n'
                  'use std::{ffi::CString, io::{Error, ErrorKind}, os::unix::ffi::OsStrExt, path::Path};\n'
@@ -101,7 +103,8 @@ def build():
     run([rustc, '--edition=2021', '--extern', f'libc={library}', str(source), '-o', str(binary)])
     print(f'LINUX_IPC_PARENT_BUILD=pass artifact_sha256={sha(binary)} source_sha256={sha(fs_path)} '
           f'fragment_sha256={hashlib.sha256(fragment.encode()).hexdigest()} '
-          f'config_sha256={sha(config_path)} libc=0.2.171 functions=9 error_adapter=std-boxed name_adapter=RustDesk-rwlock', flush=True)
+          f'config_sha256={sha(config_path)} libc=0.2.171 functions={len(FUNCTIONS) + bool(fs.functions("ipc_descriptor_directory"))} '
+          'error_adapter=std-boxed name_adapter=RustDesk-rwlock', flush=True)
 
 
 def native(expected_sha):

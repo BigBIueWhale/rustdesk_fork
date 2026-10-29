@@ -69,6 +69,8 @@ def build():
         filesystem += function(fs_source, 'prepare_ipc_listener_bind')
     if fs_source.functions('open_ipc_startup_lock'):
         filesystem += function(fs_source, 'open_ipc_startup_lock')
+    if fs_source.functions('ipc_descriptor_directory'):
+        filesystem += function(fs_source, 'ipc_descriptor_directory')
     (work / 'filesystem.rs').write_text(filesystem)
     auth = parsed(repo / 'src/ipc/auth.rs')
     identity = ''.join(function(auth, name) for name in (

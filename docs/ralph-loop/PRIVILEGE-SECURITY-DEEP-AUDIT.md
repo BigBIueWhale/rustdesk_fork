@@ -115761,3 +115761,65 @@ audio and whiteboard lifecycles are outside this conclusion. This is source
 classification only: no native cancellation/backpressure test or installed
 privilege-boundary acceptance ran. Product, tests, requirements, live instructions
 and `HARDENING_STATUS.md` are unchanged; its last token count still applies.
+
+### 2026-10-29 — remove the second IPC payload allocation
+
+The preceding send-ownership review found no retained-stream retry defect. This
+slice instead corrects the remaining allocation after successful serialization:
+`ConnectionTmpl::send_json` and `send_raw` used `Framed::send`, whose encoder
+copied the complete payload into an infallibly growing `BytesMut`. The bounded,
+fallible JSON writer did not protect that second allocation. The shared decoder
+already refuses oversized headers and truncated EOF; no inbound correction was
+needed for those observations.
+
+`8e5979d9` keeps inbound ownership in `FramedRead`, then sends an existing payload
+chained with a four-byte stack header through `write_all_buf` and `flush`.
+`BytesCodec::encode_header` is the sole length-prefix calculation, also used by
+the existing ordinary encoder. JSON uses the same raw write after complete,
+bounded serialization. No endpoint cap, permission, protocol variant, transport
+deadline or requester authority changes. The previous caller-retirement model
+still applies after a partial write; cancellation does not roll back delivered
+bytes or completed operations.
+
+The pinned [Tokio write_all_buf implementation](https://raw.githubusercontent.com/tokio-rs/tokio/tokio-1.44.2/tokio/src/io/util/write_all_buf.rs)
+borrows the supplied buffer, advances it after successful writes and uses only a
+fixed stack array for vectored writes; its non-vectored branch likewise borrows
+the current chunk. [Flush](https://raw.githubusercontent.com/tokio-rs/tokio/tokio-1.44.2/tokio/src/io/util/flush.rs)
+delegates to the underlying writer. Source review of pinned bytes 1.11.1 confirms
+`Chain` retains the two input buffers without concatenating them. The removed
+[Framed writer](https://raw.githubusercontent.com/tokio-rs/tokio/tokio-util-0.7.15/tokio-util/src/codec/framed_impl.rs)
+instead encoded into its owned write buffer before flushing.
+
+Both TUF runs use `bash scripts/smoke-verifier-vm-authority.sh --linux-ipc-parent-tests`,
+the pinned offline builder and ordinary-user zero-NIC VM. At baseline `89e0ae0d`,
+`cMncO4XRsE` passes 160 listener and fourteen directory cases but both new pressure
+cases abort with SIGABRT: `memory allocation of 16777221 bytes failed`.
+At `8e5979d9`, `eG2mDDnIId` passes all 162 listener and fourteen directory cases,
+plus the focused desktop source checker, in 85.839 seconds (baseline 81.638).
+
+The pressure subprocesses run as root and UID 4001 inside the VM. After warming a
+real Unix socket pair and preparing a 16 MiB payload, each reduces its soft
+RLIMIT_AS to current virtual size plus 1 MiB. The corrected sender transfers exact
+header/payload bytes to an 8 KiB streaming receiver, restores and verifies both
+original limits, then sends another empty frame. The test-only frame cap changes
+no product endpoint. Eight boundary lengths per principal cover empty and all
+four header widths; candidate controls also compare the shared Encoder/Decoder,
+reject raw over-cap writes without publication and check maximum/overflow headers
+without allocating giant payloads. Kernel UID/PID, absence of surplus bytes and
+restored descriptor counts are observed. The allocation fixture remains the same
+apart from post-transfer controls and the required reader API adaptation.
+
+Listener binary SHA-256 before:
+`a7ea0f34b6dc8ac22de4e80684dc3bc2b685efb6657e54754cdced62fbec519e`;
+after: `b4c8c379b51956e201f1e0691df9bd43b389141ff57e49684b4f9482a974f0d8`.
+All eight host listener deltas are zero. QEMU 1678897 and 1679745 join; RAM
+workspaces `run.fse04ode` and `run.qu83vzzp` retire. Accepted peak scratch is
+3,381,559,296 allocated bytes; durable run peak is 3,432,448 bytes. Verified
+baseline leftovers are removed, freeing 3,481,600 allocated bytes. Fourteen raw
+records plus `ipc-wire-allocation-8e5979d9.json` total 223,997 bytes on CTE and TUF.
+Capsule SHA-256: `a56044602633370a803785ef5b14dbf1fe6f6d27320a92492dfa915c6709e20e`.
+
+This establishes the named Linux component correction, not global allocation
+immunity or a new LPE closure. Full application/installed privileged actions,
+native Windows/macOS behavior, other allocation sites and existing release/review
+obligations remain OPEN. Requirements and live instruction contents are unchanged.

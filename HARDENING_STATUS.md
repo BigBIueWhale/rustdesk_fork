@@ -3689,12 +3689,27 @@ valid frame. `ff8956ed` additionally tests real allocation refusal by reducing
 each test process's soft address-space limit. Both principals receive the explicit
 allocation error with no wire bytes, restore the original limits and transfer the
 same complete 16 MiB message on the same socket. Product code is unchanged; the
-16 MiB cap belongs only to this component test. Current `RyBrijiVOO` passes all
+16 MiB cap belongs only to this component test. Run `RyBrijiVOO` passes all
 158 listener and 14 directory cases in 85.468 seconds, plus the focused source
 check; VM/RAM cleanup joins with zero listener deltas. Receipts:
 `ipc-json-budget-8307a2d6.json`, `ipc-json-allocation-ff8956ed.json`.
 Full endpoint/application flows, other allocation sites and other-platform
 acceptance remain OPEN.
+
+**Outbound frame writes.** `8e5979d9` removes the second full-payload allocation
+after JSON serialization and from raw sends. IPC owns `FramedRead` for decoding;
+writes chain the existing payload with a stack header, then write and flush.
+The shared codec produces the same header for ordinary encoded frames. Frame
+limits, wire format and caller timeout/retirement ownership are unchanged.
+Baseline `cMncO4XRsE` aborts both root/UID-4001 processes when a prepared 16 MiB
+frame encounters a soft address-space limit with only 1 MiB spare. Corrected
+`eG2mDDnIId` transfers both frames and passes all 162 listener/14 directory cases
+in 85.839 seconds, plus the focused desktop source check. Native controls cover
+all header widths, exact bytes, codec round trips, raw-cap refusal before output,
+limit restoration and descriptor cleanup. Both VMs join, RAM scratch retires and
+all eight listener deltas are zero. Receipt: `ipc-wire-allocation-8e5979d9.json`.
+This is Linux component acceptance; full applications, installed privileged
+actions, other-platform behavior and other allocation sites remain OPEN.
 
 **R-X14 desktop resource removal.** `9c8ebb1c` deletes the unused `res/startwm.sh` and
 dummy `res/xorg.conf`, their Debian payload/conffile/executable entries and the empty

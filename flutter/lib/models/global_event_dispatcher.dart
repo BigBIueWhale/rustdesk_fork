@@ -7,6 +7,20 @@ typedef GlobalEventHandler = Future<void>? Function(
 typedef GlobalEventFailureHandler = void Function(
     Object error, StackTrace stackTrace);
 
+/// Cancels only the exact registration that created this handle.
+class GlobalEventRegistration {
+  GlobalEventRegistration._(this._cancel);
+
+  void Function()? _cancel;
+
+  /// Retires pending delivery; an already invoked handler may still settle.
+  void cancel() {
+    final cancel = _cancel;
+    _cancel = null;
+    cancel?.call();
+  }
+}
+
 /// Owns the process-global JSON event handoff from Rust/JavaScript to Dart.
 ///
 /// Admission captures an exact registered-handler or fallback generation before
@@ -63,43 +77,45 @@ class GlobalEventDispatcher {
   bool get hasRunning => _running != null;
   int get retainedBytes => _retainedBytes;
 
-  bool registerHandler(String eventName, String handlerName,
+  GlobalEventRegistration? registerHandler(String eventName, String handlerName,
       GlobalEventHandler handler,
       {bool replace = false}) {
     final eventHandlers = _handlers[eventName];
     final existing = eventHandlers?[handlerName];
     if (existing != null) {
       if (!replace) {
-        return false;
+        return null;
       }
       existing.retired = true;
       _retirePendingRegisteredHandler(existing);
-      eventHandlers![handlerName] = _RegisteredHandlerBinding(handler);
-      return true;
-    }
-    if (_registeredHandlerCount >= maxRegisteredHandlers) {
+    } else if (_registeredHandlerCount >= maxRegisteredHandlers) {
       _diagnose(StateError('global event handler capacity exhausted'),
           StackTrace.current);
-      return false;
+      return null;
     }
     final destination = eventHandlers ??
         _handlers.putIfAbsent(eventName,
             () => <String, _RegisteredHandlerBinding>{});
-    destination[handlerName] = _RegisteredHandlerBinding(handler);
-    _registeredHandlerCount += 1;
-    return true;
+    final binding = _RegisteredHandlerBinding(handler);
+    destination[handlerName] = binding;
+    if (existing == null) {
+      _registeredHandlerCount += 1;
+    }
+    return GlobalEventRegistration._(
+        () => _unregisterHandler(eventName, handlerName, binding));
   }
 
-  void unregisterHandler(String eventName, String handlerName) {
+  void _unregisterHandler(String eventName, String handlerName,
+      _RegisteredHandlerBinding binding) {
     final eventHandlers = _handlers[eventName];
-    final binding = eventHandlers?.remove(handlerName);
-    if (binding == null) {
+    if (!identical(eventHandlers?[handlerName], binding)) {
       return;
     }
+    eventHandlers!.remove(handlerName);
     binding.retired = true;
     _registeredHandlerCount -= 1;
     _retirePendingRegisteredHandler(binding);
-    if (eventHandlers!.isEmpty) {
+    if (eventHandlers.isEmpty) {
       _handlers.remove(eventName);
     }
   }

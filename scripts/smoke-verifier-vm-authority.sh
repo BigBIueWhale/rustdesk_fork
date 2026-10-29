@@ -8406,7 +8406,7 @@ else
             'focused Flutter file navigation receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = peer-data ]; then
         require_exact_fixed_receipt \
-            "FLUTTER_PEER_DATA_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=5 tests=94 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-peer-decode-tests cleanup=joined" \
+            "FLUTTER_PEER_DATA_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=7 tests=113 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-peer-decode-tests cleanup=joined" \
             'focused Flutter peer decode receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = file-columns ]; then
         require_exact_fixed_receipt \
@@ -8468,7 +8468,7 @@ else
             'DIRECT_PASSWORD_GENERATED=pass retired_flag=absent dart=fresh rust=fresh' \
             'fresh direct-password generated API absence'
         require_exact_fixed_receipt \
-            "FLUTTER_CREDENTIAL_DIALOG_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=10 tests=114 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-credential-dialog-tests cleanup=joined" \
+            "FLUTTER_CREDENTIAL_DIALOG_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=10 tests=117 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-credential-dialog-tests cleanup=joined" \
             'focused Flutter credential-dialog receipt'
     elif [[ "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme ]]; then
         require_exact_fixed_receipt \

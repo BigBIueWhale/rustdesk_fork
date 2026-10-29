@@ -69,11 +69,12 @@ void main() {
     const owner = 'control';
     final peers = Peers(name: owner, getInitPeers: null, loadEvent: event);
     peers.dispose();
+    final registration =
+        platformFFI.registerEventHandler(event, owner, (_) async {});
     try {
-      expect(platformFFI.registerEventHandler(event, owner, (_) async {}),
-          isTrue);
+      expect(registration, isNotNull);
     } finally {
-      platformFFI.unregisterEventHandler(event, owner);
+      registration?.cancel();
     }
   });
 
@@ -83,11 +84,49 @@ void main() {
     final incumbent = Peers(name: owner, getInitPeers: null, loadEvent: event);
     final duplicate = Peers(name: owner, getInitPeers: null, loadEvent: event);
     duplicate.dispose();
+    final registration =
+        platformFFI.registerEventHandler(event, owner, (_) async {});
     try {
-      expect(platformFFI.registerEventHandler(event, owner, (_) async {}),
-          isFalse);
+      expect(registration, isNull);
     } finally {
+      registration?.cancel();
       incumbent.dispose();
+    }
+  });
+
+  test('rejected peers cannot retire a later owner with the same name', () {
+    const event = 'test-peer-registration-later-owner';
+    const owner = 'owner';
+    final incumbent = Peers(name: owner, getInitPeers: null, loadEvent: event);
+    final duplicate = Peers(name: owner, getInitPeers: null, loadEvent: event);
+    incumbent.dispose();
+    final successor = Peers(name: owner, getInitPeers: null, loadEvent: event);
+    duplicate.dispose();
+    final registration =
+        platformFFI.registerEventHandler(event, owner, (_) async {});
+    try {
+      expect(registration, isNull);
+    } finally {
+      registration?.cancel();
+      successor.dispose();
+    }
+  });
+
+  test('replaced peers cannot cancel their replacement registration', () {
+    const event = 'test-peer-registration-replaced';
+    const owner = 'owner';
+    final peers = Peers(name: owner, getInitPeers: null, loadEvent: event);
+    final replacement = platformFFI.registerEventHandler(
+        event, owner, (_) async {}, replace: true);
+    peers.dispose();
+    final registration =
+        platformFFI.registerEventHandler(event, owner, (_) async {});
+    try {
+      expect(replacement, isNotNull);
+      expect(registration, isNull);
+    } finally {
+      registration?.cancel();
+      replacement?.cancel();
     }
   });
 }

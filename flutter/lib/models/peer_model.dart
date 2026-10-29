@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
+import 'global_event_dispatcher.dart';
 import 'platform_model.dart';
 
 class Peer {
@@ -55,19 +56,20 @@ class Peers extends ChangeNotifier {
   // And then load all peers later.
   List<String> restPeerIds = List.empty(growable: true);
   final GetInitPeers? getInitPeers;
+  late final GlobalEventRegistration? _registration;
   Peers(
       {required this.name,
       required this.getInitPeers,
       required this.loadEvent}) {
     peers = getInitPeers?.call() ?? [];
-    platformFFI.registerEventHandler(loadEvent, name, (evt) async {
+    _registration = platformFFI.registerEventHandler(loadEvent, name, (evt) async {
       updatePeers(evt);
     });
   }
 
   @override
   void dispose() {
-    platformFFI.unregisterEventHandler(loadEvent, name);
+    _registration?.cancel();
     super.dispose();
   }
 

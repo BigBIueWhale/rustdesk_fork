@@ -181,15 +181,15 @@ void main() {
       maxRegisteredHandlers: 1,
       onDiagnostic: (error, stackTrace) => diagnostics.add(error),
     );
-    expect(dispatcher.registerHandler('one', 'owner', (event) async {}),
-        isTrue);
+    final first = dispatcher.registerHandler('one', 'owner', (event) async {});
+    expect(first, isNotNull);
     expect(dispatcher.registerHandler('two', 'owner', (event) async {}),
-        isFalse);
+        isNull);
     expect(diagnostics, hasLength(1));
     expect(diagnostics.single, isA<StateError>());
-    dispatcher.unregisterHandler('one', 'owner');
+    first!.cancel();
     expect(dispatcher.registerHandler('two', 'owner', (event) async {}),
-        isTrue);
+        isNotNull);
   });
 
   test('registered handlers are captured and retired by exact registration',
@@ -205,24 +205,78 @@ void main() {
       blockerEntered.complete();
       await releaseBlocker.future;
     }, onFailure: (error, stackTrace) => fail('unexpected fallback failure'));
-    dispatcher.registerHandler('registered', 'owner', (event) async {
+    final old = dispatcher.registerHandler('registered', 'owner', (event) async {
       events.add('old');
     });
     dispatcher.dispatch('{"value":"blocker"}', allowRegistered: false);
     await blockerEntered.future;
     expect(dispatcher.dispatch('{"name":"registered"}'), isTrue);
-    dispatcher.unregisterHandler('registered', 'owner');
+    old!.cancel();
     expect(
         dispatcher.registerHandler('registered', 'owner', (event) async {
           events.add('new');
         }),
-        isTrue);
+        isNotNull);
     expect(dispatcher.dispatch('{"name":"registered"}'), isTrue);
 
     releaseBlocker.complete();
     await dispatcher.idle();
     expect(events, ['new']);
     expect(diagnostics, isEmpty);
+  });
+
+  test('stale cancellation preserves same-callback replacement and capacity',
+      () async {
+    final entered = Completer<void>();
+    final release = Completer<void>();
+    final events = <String>[];
+    final diagnostics = <Object>[];
+    final dispatcher = GlobalEventDispatcher(
+      maxRegisteredHandlers: 1,
+      onDiagnostic: (error, stackTrace) => diagnostics.add(error),
+    );
+    Future<void> handler(Map<String, dynamic> event) async {
+      final value = event['value'] as String;
+      events.add(value);
+      if (value == 'running') {
+        entered.complete();
+        await release.future;
+      }
+    }
+
+    final old = dispatcher.registerHandler('registered', 'owner', handler)!;
+    dispatcher.dispatch('{"name":"registered","value":"running"}');
+    await entered.future;
+    dispatcher.dispatch('{"name":"registered","value":"old-pending"}');
+    final current = dispatcher.registerHandler('registered', 'owner', handler,
+        replace: true)!;
+    expect(dispatcher.pendingCount, 0);
+    old.cancel();
+    old.cancel();
+    expect(dispatcher.registerHandler('registered', 'owner', handler), isNull);
+    expect(dispatcher.registerHandler('other', 'owner', handler), isNull);
+    expect(diagnostics, hasLength(1));
+    expect(diagnostics.single, isA<StateError>());
+    expect(dispatcher.dispatch('{"name":"registered","value":"current"}'),
+        isTrue);
+    release.complete();
+    await dispatcher.idle();
+    expect(events, ['running', 'current']);
+    expect(dispatcher.retainedBytes, 0);
+
+    current.cancel();
+    final successor = dispatcher.registerHandler('registered', 'owner', handler)!;
+    current.cancel();
+    expect(dispatcher.dispatch('{"name":"registered","value":"successor"}'),
+        isTrue);
+    await dispatcher.idle();
+    expect(events, ['running', 'current', 'successor']);
+    successor.cancel();
+    expect(dispatcher.dispatch('{"name":"registered","value":"retired"}'),
+        isFalse);
+    expect(dispatcher.pendingCount, 0);
+    expect(dispatcher.hasRunning, isFalse);
+    expect(dispatcher.retainedBytes, 0);
   });
 
   test('registered-only routing never falls through to session fallback',

@@ -55,17 +55,12 @@ class PlatformFFI {
     throw UnimplementedError();
   }
 
-  bool registerEventHandler(
+  GlobalEventRegistration? registerEventHandler(
       String eventName, String handlerName, GlobalEventHandler handler,
       {bool replace = false}) {
     debugPrint('registerEventHandler $eventName $handlerName');
     return _eventDispatcher.registerHandler(eventName, handlerName, handler,
         replace: replace);
-  }
-
-  void unregisterEventHandler(String eventName, String handlerName) {
-    debugPrint('unregisterEventHandler $eventName $handlerName');
-    _eventDispatcher.unregisterHandler(eventName, handlerName);
   }
 
   String translate(String name, String locale) =>

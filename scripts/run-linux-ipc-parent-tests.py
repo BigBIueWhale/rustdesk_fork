@@ -19,8 +19,8 @@ FUNCTIONS = ('expected_ipc_parent_mode', 'open_ipc_parent_dir_fd',
              'remove_parent_entry_via_fd', 'scrub_preexisting_ipc_parent_entries',
              'recreate_foreign_service_ipc_parent_dir', 'should_recreate_foreign_service_ipc_parent',
              'ensure_secure_ipc_parent_dir', 'scrub_secure_ipc_parent_dir')
-ENV = {'PATH': '/usr/local/cargo/bin:/usr/bin:/bin', 'LC_ALL': 'C', 'HOME': '/tmp',
-       'RUSTUP_HOME': '/usr/local/rustup', 'CARGO_HOME': '/usr/local/cargo'}
+RUSTC = '/usr/local/rustup/toolchains/1.75.0-x86_64-unknown-linux-gnu/bin/rustc'
+ENV = {'PATH': '/usr/bin:/bin', 'LC_ALL': 'C', 'HOME': '/tmp', 'RUSTC': RUSTC}
 
 
 def require(value, message):
@@ -56,7 +56,7 @@ def build():
     for name, digest in checks['files'].items():
         path = dependency / name
         require(not path.is_symlink() and sha(path) == digest, 'libc file identity differs')
-    rustc = '/usr/local/cargo/bin/rustc'
+    rustc = RUSTC
     require(run([rustc, '--version']).stdout.strip() == 'rustc 1.75.0 (82e1608df 2023-12-21)',
             'compiler differs')
     builder = target / 'libc-build'

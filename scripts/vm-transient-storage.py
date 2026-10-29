@@ -94,7 +94,7 @@ def storage_limits(profile, memory_mib):
         require(memory_mib == 10240, 'viewer suspension requires its 10 GiB guest')
         # Retained-app, single-lifecycle replay: one GiB beside the bounded overlay.
         return 6 * GIB, 5 * GIB
-    if profile in ('main-config-key', 'language-selection', 'windows-pointer', 'linux-resource-limits', 'linux-resolution-lifetime', 'fusermount-process', 'linux-service-uid-tests',
+    if profile in ('pake-timing', 'main-config-key', 'language-selection', 'windows-pointer', 'linux-resource-limits', 'linux-resolution-lifetime', 'fusermount-process', 'linux-service-uid-tests',
                    'audio-buffer', 'audio-mailbox', 'file-block', 'control-egress', 'clipboard-response',
                    'debian-package-tests'):
         require(memory_mib == 2048, f'{profile} storage profile requires its 2 GiB guest')
@@ -472,7 +472,7 @@ def main():
                         choices=('standard', 'hbb-common-fs', 'linux-logind', 'cpace-recovery-tests',
                                  'flutter-credential-dialog', 'flutter-dialog-tests', 'flutter-keyboard-layout', 'flutter-locales', 'flutter-divider', 'flutter-password-fields', 'flutter-file-columns', 'flutter-file-progress', 'flutter-peer-search', 'flutter-audio-input', 'linux-service-build',
                                  'ledger-token-count', 'authority-smoke', 'fixed-archive-tests', 'x11-focus', 'x11-key-input', 'linux-parent-libtest',
-                                 'main-config-key', 'language-selection', 'windows-pointer', 'linux-resource-limits', 'linux-resolution-lifetime', 'fusermount-process', 'xrandr-acquisition',
+                                 'pake-timing', 'main-config-key', 'language-selection', 'windows-pointer', 'linux-resource-limits', 'linux-resolution-lifetime', 'fusermount-process', 'xrandr-acquisition',
                                  'linux-service-uid-tests', 'audio-buffer', 'audio-mailbox', 'file-block', 'control-egress', 'clipboard-response',
                                  'linux-service-receiver', 'linux-flutter-replay', 'installer-package',
                                  'android-storage-key', 'linux-flutter-suspend', 'media-kernel-tests',

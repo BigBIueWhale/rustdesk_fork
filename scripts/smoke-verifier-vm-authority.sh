@@ -290,6 +290,12 @@ case "$#:${1:-}" in
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=file-receive-caller
         ;;
+    1:--pake-timing-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'PAKE timing input/run overrides are forbidden' >&2; exit 2; }
+        MODE=android-rust-lifecycle-tests
+        RUST_TEST_PROFILE=pake-timing
+        ;;
     1:--main-config-key-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'main config-key input/run overrides are forbidden' >&2; exit 2; }
@@ -700,6 +706,7 @@ case "$#:${1:-}" in
         printf 'Focused production clipboard tests: %s --android-rust-lifecycle-tests --clipboard\n' "${0##*/}" >&2
         printf 'Focused installer encoder/decoder tests: %s --installer-package-tests\n' "${0##*/}" >&2
         printf 'Closed main-IPC config query keys: %s --main-config-key-tests\n' "${0##*/}" >&2
+        printf 'Optimized PAKE primitive timing: %s --pake-timing-tests\n' "${0##*/}" >&2
         printf 'Production locale selection: %s --language-selection-tests\n' "${0##*/}" >&2
         printf 'Windows pointer arithmetic (Linux component): %s --windows-pointer-tests\n' "${0##*/}" >&2
         printf 'Focused whiteboard presentation state tests: %s --android-rust-lifecycle-tests --whiteboard-presentation\n' "${0##*/}" >&2
@@ -982,7 +989,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         readonly VM_MEMORY=6144
     elif [ "$RUST_TEST_PROFILE" = installer-package ]; then
         readonly VM_MEMORY=4096
-    elif [[ "$RUST_TEST_PROFILE" = main-config-key || "$RUST_TEST_PROFILE" = language-selection || "$RUST_TEST_PROFILE" = windows-pointer || "$RUST_TEST_PROFILE" = linux-resource-limits || "$RUST_TEST_PROFILE" = linux-xrandr-query || "$RUST_TEST_PROFILE" = resolution-restoration \
+    elif [[ "$RUST_TEST_PROFILE" = pake-timing || "$RUST_TEST_PROFILE" = main-config-key || "$RUST_TEST_PROFILE" = language-selection || "$RUST_TEST_PROFILE" = windows-pointer || "$RUST_TEST_PROFILE" = linux-resource-limits || "$RUST_TEST_PROFILE" = linux-xrandr-query || "$RUST_TEST_PROFILE" = resolution-restoration \
         || "$RUST_TEST_PROFILE" = linux-resolution-lifetime || "$RUST_TEST_PROFILE" = audio-mailbox \
         || "$RUST_TEST_PROFILE" = audio-buffer || "$RUST_TEST_PROFILE" = fusermount-fd \
         || "$RUST_TEST_PROFILE" = fusermount-process || "$RUST_TEST_PROFILE" = file-block \
@@ -5633,7 +5640,7 @@ elif [ "$MODE" = ledger-token-count ]; then
         'actual suspension profile CLI and RAM refusal'
     require_exact_fixed_receipt 'VM_TRANSIENT_X11_INPUT_CLI=pass profile=x11-key-input guest_mib=4096 required_mib=20480 insufficient_ram=refused allocation=not-entered' \
         'actual input profile CLI and RAM refusal'
-    require_exact_fixed_receipt 'VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=40 controls=70 refusals=5 allocation=not-entered' \
+    require_exact_fixed_receipt 'VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=40 controls=71 refusals=5 allocation=not-entered' \
         'VM workload class selection and unconfigured workload refusal'
     require_exact_fixed_receipt 'VM_TRANSIENT_ROOT_REFUSAL=pass operations=5 principal=root qemu=not-started' \
         'VM storage root refusal'
@@ -7621,6 +7628,14 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linu
         "LINUX_RESOLUTION_LIFETIME_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=24 target=linux-x86_64 scope=production-command-and-owned-work-components rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused Linux resolution-lifetime receipt'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'resolution-lifetime cloud-init completion'
+elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = pake-timing ]; then
+    [ "$(/usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -Ec 'PAKE_TIMING_ARTIFACT=pass sha256=[0-9a-f]{64} tests=1 optimized=true unchanged=before-after$')" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fc 'PAKE_TIMING_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
+        || fail 'PAKE timing artifact receipt differs'
+    require_exact_fixed_receipt \
+        "PAKE_TIMING_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=1 target=linux-x86_64 scope=optimized-primitive-timing rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined" \
+        'PAKE timing result'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'PAKE timing completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main-config-key ]; then
     [ "$(/usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -Ec 'MAIN_CONFIG_KEY_ARTIFACT=pass sha256=[0-9a-f]{64} tests=3 unchanged=before-after$')" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'MAIN_CONFIG_KEY_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
@@ -9121,6 +9136,9 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = linux-resolution-lifetime ]; then
         printf 'LINUX_RESOLUTION_LIFETIME_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=24 scope=production-command-and-owned-work-components network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
+    elif [ "$RUST_TEST_PROFILE" = pake-timing ]; then
+        printf 'PAKE_TIMING_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=1 scope=optimized-primitive-timing network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = main-config-key ]; then
         printf 'MAIN_CONFIG_KEY_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=3 scope=production-key-schema network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

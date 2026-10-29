@@ -167,7 +167,7 @@ case "$#:${8:-}" in
             || "${13}" = --whiteboard-display-lifetime || "${13}" = --whiteboard-client \
             || "${13}" = --whiteboard-helper-lifetime || "${13}" = --input-revocation || "${13}" = --input-release || "${13}" = --input-lifetime \
             || "${13}" = --installer-package || "${13}" = --linux-password-admission \
-            || "${13}" = --main-config-key || "${13}" = --language-selection || "${13}" = --windows-pointer || "${13}" = --linux-resource-limits || "${13}" = --linux-xrandr-query || "${13}" = --resolution-restoration \
+            || "${13}" = --pake-timing || "${13}" = --main-config-key || "${13}" = --language-selection || "${13}" = --windows-pointer || "${13}" = --linux-resource-limits || "${13}" = --linux-xrandr-query || "${13}" = --resolution-restoration \
             || "${13}" = --linux-resolution-lifetime || "${13}" = --audio-mailbox \
             || "${13}" = --recording-output || "${13}" = --viewer-video || "${13}" = --video-qos || "${13}" = --video-vpx || "${13}" = --video-qos-controller || "${13}" = --option-ack || "${13}" = --resolution-parent || "${13}" = --file-receive-caller || "${13}" = --viewer-credentials || "${13}" = --viewer-resume || "${13}" = --local-file-listing \
             || "${13}" = --clipboard-filetime || "${13}" = --audio-buffer || "${13}" = --fusermount-fd \
@@ -1047,6 +1047,7 @@ for profile, memory, scratch, overlay in (
         ('audio-buffer', 2048, 6, 4),
         ('audio-mailbox', 2048, 6, 4),
         ('linux-resource-limits', 2048, 6, 4),
+        ('pake-timing', 2048, 6, 4),
         ('main-config-key', 2048, 6, 4),
         ('language-selection', 2048, 6, 4),
         ('windows-pointer', 2048, 6, 4),
@@ -1095,6 +1096,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
                         ('audio-buffer', 2047), ('audio-buffer', 4096),
                         ('audio-mailbox', 2047), ('audio-mailbox', 4096),
                         ('linux-resource-limits', 2047), ('linux-resource-limits', 4096),
+                        ('pake-timing', 2047), ('pake-timing', 4096),
                         ('main-config-key', 2047), ('main-config-key', 4096),
                         ('language-selection', 2047), ('language-selection', 4096),
                         ('windows-pointer', 2047), ('windows-pointer', 4096),
@@ -1170,6 +1172,7 @@ cases.extend([('hbb-common-fs', {'HBB_LOGIND_NATIVE': '1'}, 'linux-logind'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'peer-search'}, 'flutter-peer-search'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'clipboard-keystrokes'}, 'flutter-credential-dialog'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'file-search'}, 'flutter-credential-dialog'),
+              ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'pake-timing'}, 'pake-timing'),
               ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'video-vpx'}, 'linux-parent-libtest'),
               ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'clipboard-response'}, 'clipboard-response'),
               ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'clipboard-filetime'}, 'linux-parent-libtest'),
@@ -1207,9 +1210,9 @@ printf '%s\\n' "$VM_STORAGE_PROFILE"
         'pass': passed}, sort_keys=True), flush=True)
 print('VM_TRANSIENT_WORKLOAD_OBSERVED=' + json.dumps({
     'modes': len(modes), 'controls': controls, 'refusals': refusals}, sort_keys=True), flush=True)
-if (controls, refusals) != (70, 5):
+if (controls, refusals) != (71, 5):
     raise SystemExit('VM workload resource admission cases failed')
-print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=40 controls=70 refusals=5 allocation=not-entered')
+print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=40 controls=71 refusals=5 allocation=not-entered')
 PY
     for operation in preflight reserve check watch run; do
         root_status=0
@@ -5403,6 +5406,15 @@ run_focused_rust_tests() {
                 query_regressions::tests::output_names_are_literal_regex_text
                 query_regressions::tests::output_identity_cannot_continue_on_another_line
             )
+        elif [ "$RUST_TEST_PROFILE" = pake-timing ]; then
+            container_name=rustdesk-pake-timing-tests
+            memory=1g
+            memory_bytes=1073741824
+            tmpfs_size=64m
+            source_fingerprints=(Cargo.toml Cargo.lock libs/pake/Cargo.toml
+                libs/pake/src/lib.rs libs/pake/src/tests.rs libs/pake/src/timing_tests.rs
+                scripts/run-pake-timing-tests.sh)
+            required_tests=(timing_tests::optimized_timing_evidence)
         elif [ "$RUST_TEST_PROFILE" = main-config-key ]; then
             container_name=rustdesk-main-config-key-tests
             memory=1g
@@ -6512,7 +6524,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                             printf "RESOLUTION_RESTORATION_ARTIFACT=pass sha256=%s tests=6 unchanged=before-after\n" "$artifact_sha"
                             exit 0
                         fi
-                        if [[ "$RUST_TEST_PROFILE" = language-selection || "$RUST_TEST_PROFILE" = main-config-key ]]; then
+                        if [[ "$RUST_TEST_PROFILE" = pake-timing || "$RUST_TEST_PROFILE" = language-selection || "$RUST_TEST_PROFILE" = main-config-key ]]; then
                             python3 -I -S -c '\''import errno, socket
 with socket.socket() as canary:
     try:
@@ -6522,6 +6534,10 @@ with socket.socket() as canary:
     else:
         raise SystemExit("language-selection canary connected")
 print("R-B10 canary: build confirmed network-isolated (offline compile stage).")'\''
+                            if [ "$RUST_TEST_PROFILE" = pake-timing ]; then
+                                /bin/bash /source/scripts/run-pake-timing-tests.sh
+                                exit 0
+                            fi
                             if [ "$RUST_TEST_PROFILE" = main-config-key ]; then
                                 /bin/bash /source/scripts/run-main-config-key-tests.sh
                                 exit 0
@@ -6943,6 +6959,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         printf 'WHITEBOARD_PRESENTATION_STATE_PROFILE=whiteboard-presentation stage=container-start tests=2 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
         printf 'WHITEBOARD_DISPLAY_PROFILE=whiteboard-display-lifetime stage=container-start tests=6 bridge=absent backend=x11\n'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = pake-timing ]; then
+        printf 'PAKE_TIMING_PROFILE=pake-timing stage=container-start tests=1 cohorts=4\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main-config-key ]; then
         printf 'MAIN_CONFIG_KEY_PROFILE=main-config-key stage=container-start tests=3 app=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = language-selection ]; then
@@ -7748,6 +7766,13 @@ PY
         [ "$(grep -Ec '^LINUX_RESOLUTION_LIFETIME_ARTIFACT=pass sha256=[0-9a-f]{64} tests=24 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'LINUX_RESOLUTION_LIFETIME_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'resolution-lifetime artifact receipt differs'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = pake-timing ]; then
+        [ "${#result_lines[@]}" -eq 1 ] || fail 'PAKE timing summary count differs'
+        [ "$(grep -Ec '^PAKE_TIMING_ARTIFACT=pass sha256=[0-9a-f]{64} tests=1 optimized=true unchanged=before-after$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'PAKE_TIMING_ARTIFACT=' "$output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'PAKE_TIMING_RESULT=no-difference-detected cohorts=3 positive_control=detected samples_per_cohort=1000000 repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^PAKE_TIMING_CASE=name:(early-exit-first-last|verify-tag-first-last|verify-tag-zero-random-key|scalar-reduce-zero-random) ' "$output")" -eq 4 ] \
+            || fail 'PAKE timing measurements or artifact differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main-config-key ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'main config-key summary count differs'
         [ "$(grep -Ec '^MAIN_CONFIG_KEY_ARTIFACT=pass sha256=[0-9a-f]{64} tests=3 unchanged=before-after$' "$output")" -eq 1 ] \
@@ -8437,6 +8462,10 @@ PY
             printf 'LINUX_RESOLUTION_LIFETIME_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-command-and-owned-work-components rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = pake-timing ]; then
+            grep -E '^test timing_tests::.* \.\.\. ok$|^PAKE_TIMING_' "$output"
+            printf 'PAKE_TIMING_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=optimized-primitive-timing rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = main-config-key ]; then
             grep -E '^test tests::.* \.\.\. ok$|^MAIN_CONFIG_KEY_(ARTIFACT(_BEFORE)?|LOCK)=' "$output"
             printf 'MAIN_CONFIG_KEY_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-key-schema rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \

@@ -1340,3 +1340,6 @@ mod nfc_normalization_tests {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(all(test, target_os = "linux", target_arch = "x86_64"))]
+mod timing_tests;

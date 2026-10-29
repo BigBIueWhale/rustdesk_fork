@@ -116161,3 +116161,10 @@ verified, the baseline scratch tree is deleted, freeing 3,497,984 allocated byte
 Full application dispatch/startup, installed eligibility, real option exchange and
 persistence, other platforms and R-S0 acceptance remain OPEN. Parent build and
 option-ACK integration remain parked; this slice proves CLI reporting only.
+
+Fresh count at `eeadeeed`, run `AkuBE9Uwdu`: **358,406 tokens** / 1,638,853 bytes,
+SHA-256 `ecbaecf1a2324384f72d7da9805531131999b2f65c782b81f91d27012e06dfa9`.
+The pinned tokenizer's seven controls and full byte round trip pass. QEMU 1713605
+joins after 30.411 seconds, RAM `run.jwh1ne99` retires and all three listener deltas
+are zero. Six count files add 102,682 bytes; 21 retained files total 344,347 bytes
+on both hosts. This audit-only receipt leaves the measured ledger unchanged.

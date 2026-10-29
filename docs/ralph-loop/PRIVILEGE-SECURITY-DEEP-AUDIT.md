@@ -116308,3 +116308,51 @@ Seven pinned tokenizer controls and the complete byte round trip pass. QEMU 1723
 joins after 30.415 seconds, RAM `run.qf3jvemr` retires and three listener deltas are
 zero. Six count files add 102,760 bytes; all 21 retained files total 268,037 bytes
 on each host. This audit-only receipt leaves the measured ledger unchanged.
+
+### 2026-10-29 — raw IPC receive error propagation
+
+At `d874500a`, `ConnectionTmpl::next_raw` maps both `Some(Err(_))` and clean EOF
+to "reset by the peer". This discards the frame reader's oversized-input,
+truncation and allocation-failure causes. CM incoming file blocks log this result;
+CM read-block replies and clipboard reads propagate it. Their existing error
+paths stop or return failure without publishing the rejected bytes or retaining
+the failed clipboard stream. No new privilege-escalation path is claimed.
+
+The local API should return the reader's original error and reserve its existing
+reset result for EOF. `094d03a6` implements that distinction with `Some(result) =>
+Ok(result?)`. The reader, codec, caps, cancellation, callers and authorization are
+byte-identical. Rust's [Result propagation](https://doc.rust-lang.org/book/ch09-02-recoverable-errors-with-result.html)
+and pinned [anyhow error conversion/downcasting](https://docs.rs/anyhow/1.0.103/anyhow/struct.Error.html)
+support retaining the underlying typed error rather than replacing it with text.
+
+Preparation `7e1cc54f` extends the existing extractor with the exact public method
+and routes all six root/UID-4001 read scenarios through it. No case inventory or
+result-parser change is needed. The same socket scenarios retain fragmented,
+coalesced and empty frames, cancelled reads, clean EOF, advertised-length refusal,
+eleven truncated inputs and real 16 MiB receive allocation refusal under RLIMIT_AS.
+They check original messages/ErrorKind, restored limits and descriptor/socket cleanup.
+
+Unchanged-product baseline `lDVcsNMcCP` reproduces four failures: allocation errors
+lose their message and cap errors lose their I/O type under both principals. Its
+other 200 listener/CLI cases and all 14 directory cases pass. Truncation assertions
+follow the failed cap assertion, so the baseline does not execute those later
+assertions. QEMU 1724338 joins after 84.581 seconds, RAM `run.ybdwcg78` retires and
+four listener deltas are zero. Seven diagnostic files (107,991 bytes) are retained
+on both hosts before exact scratch deletion frees 3,489,792 allocated bytes.
+
+Candidate `lzak6FB9Zm` at `094d03a6` passes **204 listener/CLI and 14 directory
+cases**, plus the focused desktop password source check, in 85.400 seconds.
+All six public-read scenarios pass, including the truncation assertions reached
+after cap refusal. Identical fixtures, pinned dependencies, source fragments and
+binary digests bind the comparison. QEMU 1725219 joins, RAM `run.qvvtwp6n` retires
+and four listener deltas are zero. Both runs use zero-NIC disposable Linux VMs;
+the 2-GiB guest/6-GiB scratch/4-GiB overlay bounds remain unchanged.
+
+Exact byte comparison establishes the sole product change, unchanged reader/codec
+and callers, unchanged test inventory/parser, and identical A/B fixtures. Python
+AST parsing and `git diff --check` pass. `ipc-raw-read-errors-094d03a6.json` is
+19,360 bytes, SHA-256
+`233e0fd14f2d4f10760002b3ba2b9e5ec0bf9565fe4928787f749ac6d72ee841`;
+fourteen raw files plus the capsule total 233,656 bytes. This establishes Linux
+transport-component error propagation. Full caller/application, installed service,
+other platforms and R-S0/R-F5 acceptance remain OPEN; all user parks remain.

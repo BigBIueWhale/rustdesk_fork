@@ -3618,8 +3618,8 @@ those obligations.
 <a id="linux-ipc-components"></a>
 
 **Linux IPC / option CLI — component acceptance; installed acceptance OPEN.**
-At `09a41264`, TUF `1m3B2vov2G` passes all **172 listener/transport, 32 CLI
-and 14 directory cases** plus the focused desktop source check in 85.458 seconds.
+At `094d03a6`, TUF `lzak6FB9Zm` passes all **172 listener/transport, 32 CLI
+and 14 directory cases** plus the focused desktop source check in 85.400 seconds.
 The command is
 `bash scripts/smoke-verifier-vm-authority.sh --linux-ipc-parent-tests`.
 It compiles production filesystem, listener, peer, connection, reader, codec and
@@ -3630,7 +3630,7 @@ Real Unix sockets establish the named IPC outcomes, not complete application or
 privileged-receiver authorization. All four host
 listener deltas are zero; QEMU joins, bounded RAM scratch retires and exact
 fixture socket/descriptor cleanup passes. Current receipt:
-`option-cli-admission-09a41264.json`.
+`ipc-raw-read-errors-094d03a6.json`.
 
 | Surface | Current implementation and component evidence | Retained comparison/provenance |
 | --- | --- | --- |
@@ -3640,7 +3640,7 @@ fixture socket/descriptor cleanup passes. Current receipt:
 | Accept-error recovery | `7b1279bd` gives each `IpcListener` a 100 ms retry deadline after an error, preserves it across cancellation and clears it after success. Six root/UID-4001 descriptor-exhaustion cases cover repeated errors, cancellation/recovery and independent listeners. | `ipc-accept-retry-7b1279bd.json` |
 | JSON construction | `8307a2d6` enforces the encoded-byte cap before fallible buffer growth and publishes only complete serialization. Forty string/cap combinations, bounded sequence traversal, serializer failure and real allocation refusal check no rejected output and valid reuse of the same socket. The 16 MiB allocation fixture cap changes no product endpoint. | `ipc-json-budget-8307a2d6.json`, `ipc-json-allocation-ff8956ed.json` |
 | Frame writes | `8e5979d9` removes the second full-payload allocation: writes chain the existing payload with a stack header, then write and flush. The ordinary codec shares header construction. Both scalar IPC transport and vectored socket-pair paths pass root/user pressure and boundary cases, exact bytes, raw-cap refusal, codec round trips and limit restoration. Wire format, endpoint caps and caller timeout/retirement ownership are unchanged. | `ipc-wire-allocation-8e5979d9.json`, `ipc-scalar-writes-c22068e6.json` |
-| Frame reads | `aaf02b9a` replaces infallible bulk-buffer growth with `IpcFrameReader`: retained codec/input state, initialized 8 KiB read scratch, nonallocating reclamation and fallible growth only after bytes arrive. Errors release buffered input and end read admission. Root/user 16 MiB input under real address-space pressure now returns an error where the baseline aborts on a 1 MiB allocation. The same artifacts pass fragmented headers/payloads, cancelled reads, coalesced/empty frames, exact bytes, cap refusal, eleven truncated inputs, limit restoration and descriptor/socket cleanup. Small bookkeeping/parser allocations, complete handlers and other platforms remain open. | `ipc-receive-allocation-aaf02b9a.json` |
+| Frame reads | `aaf02b9a` adds retained codec/input state, initialized 8 KiB scratch, nonallocating reclamation and fallible growth after bytes arrive. Errors release input and end admission; real 16 MiB input under address-space pressure returns an error where its historical baseline aborts. `094d03a6` also preserves that error through public `next_raw`, retaining its reset result only for EOF. The unchanged-code comparison loses allocation messages and cap-error types under root/UID 4001; all four failures pass after correction. The same six read scenarios now use the public method and retain fragmented/cancelled/coalesced/empty reads, exact bytes, eleven truncated inputs, limit restoration and descriptor/socket cleanup. Reader/codec and caller logic are unchanged. Small bookkeeping/parser allocations, complete handlers, installed and other-platform acceptance remain open. | `ipc-receive-allocation-aaf02b9a.json`; `ipc-raw-read-errors-094d03a6.json` |
 
 **Option CLI outcomes.** `629fdb26` removes the local-options fallback and unused
 getter layers. Query/conversion errors reach stderr and exit 1 without an option

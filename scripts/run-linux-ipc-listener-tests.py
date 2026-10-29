@@ -230,6 +230,13 @@ def native(expected_sha, barrier_sha):
               f'exit={result.returncode} stdout={result.stdout.strip()!r} stderr={result.stderr.strip()!r}', flush=True)
 
     for uid in (0, 4001):
+        for scenario in ('bounds', 'streaming', 'failure'):
+            action = 'json-' + scenario
+            result = check('', uid, action=action)
+            record(f'{action}-{uid}', result.returncode == 0
+                   and result.stdout.startswith(f'OK {action} uid={uid} observed=')
+                   and result.stdout.endswith(' cleanup=joined\n')
+                   and result.stdout.count('\n') == 1, result)
         for scenario in ('retry', 'cancel', 'independent'):
             action = 'accept-' + scenario
             result = check('', uid, action=action)
@@ -958,8 +965,8 @@ def native(expected_sha, barrier_sha):
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
     require(sha(barrier) == barrier_sha, 'barrier changed')
     probe.unlink(); barrier.unlink(); work.rmdir()
-    require(len(cases) == 150, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=150 failures={len(failures)} '
+    require(len(cases) == 156, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=156 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 

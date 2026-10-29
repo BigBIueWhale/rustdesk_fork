@@ -324,6 +324,90 @@ async fn accept_failure_fixture(scenario: &str) {
     println!("OK accept-{scenario} uid={} cleanup=joined", unsafe { libc::geteuid() });
 }
 
+async fn json_serialization_fixture(scenario: &str) {
+    use serde::ser::{Error, SerializeSeq};
+    use std::cell::Cell;
+
+    struct Sequence<'a> { visited: &'a Cell<usize>, fail: bool }
+    impl Serialize for Sequence<'_> {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            let mut sequence = serializer.serialize_seq(None)?;
+            for i in 0..100_000 {
+                self.visited.set(i + 1);
+                sequence.serialize_element(&0u8)?;
+                if self.fail { return Err(S::Error::custom("fixture serialization failure")); }
+            }
+            sequence.end()
+        }
+    }
+
+    fn no_wire_bytes(stream: &tokio::net::UnixStream) {
+        let mut byte = 0u8;
+        assert_eq!(unsafe { libc::recv(stream.as_raw_fd(), (&mut byte as *mut u8).cast(), 1,
+                                     libc::MSG_DONTWAIT | libc::MSG_PEEK) }, -1);
+        assert_eq!(std::io::Error::last_os_error().kind(), std::io::ErrorKind::WouldBlock);
+    }
+
+    async fn round_trip(sender: &mut ConnectionTmpl<tokio::net::UnixStream>,
+                        receiver: &mut ConnectionTmpl<tokio::net::UnixStream>, value: &str) {
+        let expected = serde_json::to_vec(value).unwrap();
+        let (sent, received) = tokio::join!(
+            sender.send_json_timeout(&value, 1000), timeout(1000, receiver.inner.next()),
+        );
+        sent.unwrap();
+        assert_eq!(received.unwrap().unwrap().unwrap().as_ref(), expected.as_slice());
+        no_wire_bytes(receiver.inner.get_ref());
+    }
+
+    let before = fd_count();
+    let observed;
+    let mut bounded = true;
+    {
+        let (sender, receiver) = tokio::net::UnixStream::pair().unwrap();
+        for fd in [sender.as_raw_fd(), receiver.as_raw_fd()] {
+            assert_eq!(peer_uid_from_fd(fd), Some(unsafe { libc::geteuid() }));
+            assert_eq!(peer_pid_from_fd(fd), Some(std::process::id()));
+        }
+        let mut sender = ConnectionTmpl::new_protected_service(sender);
+        let mut receiver = ConnectionTmpl::new(receiver);
+        match scenario {
+            "bounds" => {
+                let mut checks = 0;
+                for value in ["".to_owned(), "plain".to_owned(), "\0\n\"\\é雪🦀".to_owned(),
+                              "x".repeat(SERVICE_IPC_MAX_FRAME_BYTES - 2),
+                              "x".repeat(MAIN_IPC_MAX_FRAME_BYTES - 2)] {
+                    let length = serde_json::to_vec(&value).unwrap().len();
+                    for limit in [0, length - 1, length, length + 1] {
+                        sender.set_max_packet_length(limit);
+                        if limit < length {
+                            assert!(sender.send_json_timeout(&value, 1000).await.is_err());
+                            no_wire_bytes(receiver.inner.get_ref());
+                            sender.set_max_packet_length(length);
+                        }
+                        round_trip(&mut sender, &mut receiver, &value).await;
+                        checks += 1;
+                    }
+                }
+                observed = checks;
+            }
+            "streaming" | "failure" => {
+                let visited = Cell::new(0);
+                let value = Sequence { visited: &visited, fail: scenario == "failure" };
+                assert!(sender.send_json_timeout(&value, 1000).await.is_err());
+                no_wire_bytes(receiver.inner.get_ref());
+                round_trip(&mut sender, &mut receiver, "after rejection").await;
+                observed = visited.get();
+                bounded = if value.fail { observed == 1 }
+                    else { observed <= SERVICE_IPC_MAX_FRAME_BYTES / 2 + 1 };
+            }
+            _ => panic!("unknown JSON serialization scenario"),
+        }
+    }
+    assert_eq!(fd_count(), before);
+    assert!(bounded, "serialization exceeded the frame budget: visited={observed}");
+    println!("OK json-{scenario} uid={} observed={observed} cleanup=joined", unsafe { libc::geteuid() });
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     assert_eq!(args.len(), 3);
@@ -331,6 +415,11 @@ fn main() {
     let postfix = &args[2];
     assert!(["", "_password", "_service_password", "_service_credential", "_service"].contains(&postfix.as_str()));
     let path = Config::ipc_path(postfix);
+    if let Some(scenario) = args[1].strip_prefix("json-") {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(json_serialization_fixture(scenario));
+        return;
+    }
     if let Some(scenario) = args[1].strip_prefix("accept-") {
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         runtime.block_on(accept_failure_fixture(scenario));

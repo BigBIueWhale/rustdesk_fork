@@ -500,12 +500,42 @@ def native(expected_sha, barrier_sha):
                     and stat.S_IMODE(metadata.st_mode) == 0o600, 'startup lock changed')
             lock.unlink()
         parent.rmdir()
+    # Start from a missing or unreadable parent, including after an interrupted mkdir.
+    for postfix, uid, action in (('_service_password', 0, 'try-start'),
+                                  ('_password', 4001, 'try-start'),
+                                  ('_password', 4001, 'try-start-nondumpable')):
+        endpoint = path(postfix, uid)
+        parent = endpoint.parent
+        expected_mode = 0o711 if uid == 0 else 0o700
+        for mask in ((0o777,) if action.endswith('nondumpable') else (0o400, 0o700, 0o777)):
+            for state in ('fresh', 'recovery'):
+                require(not os.path.lexists(parent), 'parent fixture already exists')
+                before = None
+                if state == 'recovery':
+                    parent.mkdir(mode=0o700)
+                    os.chown(parent, uid, uid)
+                    (parent / 'keep').write_bytes(b'untouched')
+                    parent.chmod(expected_mode & ~mask)
+                    before = parent.lstat()
+                result = subprocess.run(**command(action, postfix, uid), umask=mask,
+                                        capture_output=True, text=True, timeout=5)
+                after = parent.lstat()
+                record(f'parent-mask-{mask:03o}-{state}-{postfix}-{action}',
+                       result.returncode == 0 and result.stdout == 'OK started\n'
+                       and endpoint.is_socket() and after.st_uid == uid
+                       and stat.S_IMODE(after.st_mode) == expected_mode
+                       and (before is None or ((after.st_dev, after.st_ino) == (before.st_dev, before.st_ino)
+                                              and (parent / 'keep').read_bytes() == b'untouched')), result)
+                endpoint.unlink(missing_ok=True)
+                endpoint.with_name(endpoint.name + '.lock').unlink(missing_ok=True)
+                (parent / 'keep').unlink(missing_ok=True)
+                parent.rmdir()
     require(len(list(Path('/proc/self/fd').iterdir())) == fd_before, 'descriptor leaked')
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
     require(sha(barrier) == barrier_sha, 'barrier changed')
     probe.unlink(); barrier.unlink(); work.rmdir()
-    require(len(cases) == 56, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=56 failures={len(failures)} '
+    require(len(cases) == 70, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=70 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 

@@ -116439,3 +116439,13 @@ Product, fixtures, test commands, source checkers and live instructions are
 unchanged. `git diff --check` passes. No product runtime run or new security
 closure is claimed; current native/installed, R-S0/R-F5 and release obligations
 remain open, with every existing user park retained.
+
+At `89cfe19e`, isolated count `NI7idLbFVQ` reports **358,996 ledger tokens** /
+1,641,680 bytes, SHA-256
+`4f5a2e5c04e3ddba7490639dfa3a1b4740930a074e4ad31f890616391c8878a3`.
+Requirements count **367,784 tokens**, 126 fewer than the prior count bound to
+the unchanged baseline digest. Both inputs pass seven tokenizer controls and
+complete byte round trips. QEMU 1732256 joins after 30.515 seconds, RAM
+`run.r5xby0fl` retires and all three listener deltas are zero. Six retained count
+files total 103,563 bytes on both hosts. This audit-only receipt changes neither
+measured input.

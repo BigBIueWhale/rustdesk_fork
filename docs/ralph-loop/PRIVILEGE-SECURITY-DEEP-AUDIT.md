@@ -117165,3 +117165,76 @@ Seven controls and the complete text round trip pass. QEMU 1782198 joins after
 Six count files add 102,945 bytes; all twenty evidence files total 327,069 bytes
 per host with matching hashes. This audit-only receipt preserves the measured
 ledger bytes; the approximate 400,000-token budget remains met.
+
+### 2026-10-30 — bind Linux main connections to the routed principal
+
+At `6da643a1`, `connect` and `connect_for_uid` reach the Unix ordinary main
+endpoint through `connect_with_path` without checking its peer principal. A
+foreign-owned pre-created `/tmp/RustDesk-<uid>/ipc` can therefore receive the
+request and supply a status reply. Raw credential, CM/PA owner and protected
+service paths have separate checks; no credential disclosure or local privilege
+escalation is demonstrated by this status-query reproduction.
+
+Linux [unix(7)](https://man7.org/linux/man-pages/man7/unix.7.html) specifies that
+`SO_PEERCRED` supplies connect/listen-time credentials, independent of the socket
+pathname's apparent owner. The client now carries its selected namespace UID
+through connection and compares that UID plus a positive PID before exposing the
+main stream. This is a principal prerequisite, not per-action or exclusive-message
+authority. A generic executable check would break the supported nondumpable child:
+[/proc/pid/exe](https://man7.org/linux/man-pages/man5/proc_pid_exe.5.html) is
+ptrace-gated. The existing native `nondumpable_peer_keeps_its_effective_uid` evidence
+also distinguishes the process-directory UID from root-owned procfs files; that
+review supplies no reason to change `linux_proc_uid` or rerun its passed component.
+
+Product `a6fabea5e9773edd3117f7d79df526f844e89296` makes ordinary Unix routing
+delegate to `connect_for_uid`; the Linux-only main check rejects wrong/missing UID
+or missing/zero PID before a request can be sent. Sensitive and helper operations
+retain their separate authority. macOS uses the same side-effect-free UID path
+constructor without the new Linux check. No fallback, dependency or protocol
+variant is added. `src/ipc.rs` is the sole changed production file.
+
+Eight scenarios exercise both ordinary main requests and explicit-UID connections.
+Four foreign-principal cases cover root/user namespaces, root-to-user routing and
+a root peer in a user namespace. Four positive controls include nondumpable user
+peers and root-to-user use. The peer runs as a real distinct guest UID; fixture
+directory ownership models pre-creation, and every accepted socket proves the
+client's kernel UID/PID. Root UID selection is a fixture value rather than process
+discovery. Client/server descriptors restore, exact children join, socket metadata
+is preserved, and fixture paths/parent permissions retire before case records.
+The isolated command is `bash scripts/smoke-verifier-vm-authority.sh --linux-ipc-parent-tests`.
+
+Baseline `uTadHjKOde` at `e35afb7e163af8c9eac12709989bf181229d9f4c`
+fails all four foreign-peer scenarios: each peer receives two valid status requests
+and responds. The remaining 252 IPC and fourteen directory cases pass, as does
+the focused source check. Listener artifact SHA-256:
+`b4d51b3e21355b8fe6505079e3809d7904739e807349771ac2254de097a7418b`.
+QEMU 1784001 joins after 94.050 seconds; RAM `run.hfbou90c` retires and all four
+listener deltas are zero. Seven evidence files total 113,579 bytes; after copying
+and hash verification, exact failed scratch inode 78294410 is removed (3,506,176 bytes).
+
+First candidate `eDvMJL6hmI` at `a6fabea5` returns the intended client refusals,
+but four server observers fail: the framed reader reports clean EOF as its existing
+`reset by the peer` error, while the fixture expected `Ok(None)`. This run is not
+final acceptance. `3a177586e72d3c89587cec6ebeaef98a49278764` corrects only the
+observer: a raw first-byte read must return zero for refusal; positive frames must
+exactly match the production header and serialized request before a response is sent.
+Client calls, assertions and product bytes are unchanged. Baseline request receipt
+remains valid evidence, but the final server observer differs; this is not claimed
+as a byte-identical-fixture A/B comparison. First-candidate artifact SHA-256:
+`06081d867bcfc61ac114dbc74fff417509b980f802dd60d075a64ef4a44e052a`.
+QEMU 1785162 joins after 90.706 seconds; RAM `run.d0vw1xq4` retires, four listener
+deltas are zero, and seven copied files retain 113,641 bytes. Exact failed scratch
+inode 78294410 is removed after evidence verification (3,510,272 bytes).
+
+Accepted run `Ct0zJbnB04` at `3a177586` passes all 256 IPC and fourteen directory
+cases plus the focused source check. Each foreign peer observes two empty
+connections; all four positive peers retain two successful status exchanges.
+Listener artifact SHA-256:
+`11c032dd84c7d1fab737623e4af671ccbc8c226cd2cb5cd418c50636b4dda229`.
+QEMU 1786500 joins after 94.989 seconds; RAM `run.23hjxz9p` retires and all four
+listener deltas are zero. Seven accepted-run files retain 113,697 bytes; the three
+runs total twenty-one files / 340,917 bytes per host with matching hashes.
+Scope review and `git diff --check` pass. Full parent/installed functionality,
+same-UID impersonation, exact process-role/generation proof, descriptor handoff,
+PID-unavailable injection, cross-version/other-platform acceptance and all
+separately parked work remain OPEN. A fresh ledger count follows.

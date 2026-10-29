@@ -3620,9 +3620,9 @@ those obligations.
 <a id="linux-ipc-components"></a>
 
 **IPC / option CLI — component acceptance; installed acceptance OPEN.**
-At `f81d7ad4`, TUF `4DTmapekGG` passes all **172 listener/transport, 32 CLI,
-10 Windows selector, 22 main-response, 8 main-transaction, 4 URL-loop and
-14 directory cases**, plus the focused desktop source check in 88.829 seconds.
+At `3a177586`, TUF `Ct0zJbnB04` passes all **172 listener/transport, 32 CLI,
+10 Windows selector, 22 main-response, 8 main-transaction, 8 main-peer, 4 URL-loop and
+14 directory cases**, plus the focused desktop source check in 94.989 seconds.
 All execute in Linux;
 the Windows selector uses real
 Unix sockets and Tokio tasks, not Windows pipes or privileged receivers.
@@ -3638,7 +3638,21 @@ Real Unix sockets establish the named IPC outcomes, not complete application or
 privileged-receiver authorization. All four host
 listener deltas are zero; QEMU joins, bounded RAM scratch retires and exact
 fixture socket/descriptor cleanup passes. Current receipt:
-`linux-ipc-parent-tests-run.4DTmapekGG.serial.log`.
+`linux-ipc-parent-tests-run.Ct0zJbnB04.serial.log`.
+
+**Linux main endpoint principal (`a6fabea5`).** Ordinary and explicit-UID main
+connections share routing and compare the connected kernel UID with the selected
+UID, requiring a positive peer PID before returning a stream. Four wrong-user
+endpoint cases previously received eight requests and supplied status replies;
+they now observe zero bytes and client refusal. Four controls retain root, user,
+nondumpable-user and root-to-user exchanges through both connection APIs.
+The actual routing/connection/transaction code and Unix credentials run; root
+target selection is a fixture value, and the peer is a component server. The audit
+records the corrected EOF observer and all three runs. The shared macOS routing
+delegates through the same path constructor; the new credential check is Linux-only.
+Same-UID impersonation, descriptor handoff, exact role/generation authority,
+installed functionality and macOS/native integration remain OPEN. This principal
+check grants no privileged action authority.
 
 Unused IPC surfaces are removed: the old service-role/root-UID password predicate
 and `ConnectionTmpl::next_timeout2` had no repository callers. Their last callers

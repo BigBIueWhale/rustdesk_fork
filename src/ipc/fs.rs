@@ -3,7 +3,11 @@ use super::ipc_auth::{
     active_uid, authenticate_cm_endpoint, current_linux_process_identity,
     ensure_linux_process_identity_matches, peer_executable_is_current_by_pid,
 };
-use crate::ipc::{connect, ServiceIpcRequest, ServiceIpcResponse};
+#[cfg(target_os = "macos")]
+use crate::ipc::connect;
+#[cfg(target_os = "linux")]
+use crate::ipc::{ConnClient, ConnectionTmpl, Endpoint, CM_IPC_MAX_FRAME_BYTES};
+use crate::ipc::{ServiceIpcRequest, ServiceIpcResponse};
 use hbb_common::{config, log, ResultType};
 use std::{
     ffi::CString,
@@ -586,8 +590,36 @@ pub(crate) fn scrub_secure_ipc_parent_dir(path: &str, postfix: &str) -> ResultTy
     scrub_preexisting_ipc_parent_entries(fd, parent_dir, postfix)
 }
 
+#[cfg(target_os = "linux")]
+async fn connect_existing_listener(postfix: &str) -> ResultType<Option<ConnectionTmpl<ConnClient>>> {
+    let path = config::Config::ipc_path(postfix);
+    let client = match hbb_common::timeout(1000, Endpoint::connect(path)).await? {
+        Ok(client) => client,
+        Err(err) if matches!(err.kind(), ErrorKind::NotFound | ErrorKind::ConnectionRefused) => {
+            return Ok(None);
+        }
+        Err(err) => return Err(err.into()),
+    };
+    // Startup probes transport presence before authenticating the incumbent. The
+    // application client API intentionally refuses raw credential endpoints.
+    let mut connection = if config::is_service_ipc_postfix(postfix) {
+        ConnectionTmpl::new_protected_service(client)
+    } else {
+        ConnectionTmpl::new(client)
+    };
+    if postfix == "_cm" {
+        connection.set_max_packet_length(CM_IPC_MAX_FRAME_BYTES);
+    }
+    Ok(Some(connection))
+}
+
 #[inline]
 async fn probe_existing_listener(postfix: &str) -> ResultType<bool> {
+    #[cfg(target_os = "linux")]
+    let Some(mut stream) = connect_existing_listener(postfix).await? else {
+        return Ok(false);
+    };
+    #[cfg(target_os = "macos")]
     let Ok(mut stream) = connect(1000, postfix).await else {
         return Ok(false);
     };
@@ -698,16 +730,8 @@ pub(crate) async fn check_existing_listener(postfix: &str) -> ResultType<bool> {
     if probe_existing_listener(postfix).await? {
         return Ok(true);
     }
-    // if not remove old ipc file, the new ipc creation will fail
-    // if we remove a ipc file, but the old ipc process is still running,
-    // new connection to the ipc will connect to new ipc, old connection to old ipc still keep alive
-    if let Err(err) = remove_ipc_socket_via_secure_parent_fd(postfix) {
-        log::debug!(
-            "Failed to remove stale ipc socket via secure parent fd: postfix={}, err={}",
-            postfix,
-            err
-        );
-    }
+    // A failed cleanup must reach the caller before it attempts to bind.
+    remove_ipc_socket_via_secure_parent_fd(postfix)?;
     Ok(false)
 }
 

@@ -1221,30 +1221,34 @@ async fn read_fixture(scenario: &str) {
 }
 
 async fn main_peer_server(route_uid: u32, client_uid: u32, dumpable: u32) {
+    use tokio::io::AsyncReadExt;
     assert_eq!(unsafe { libc::prctl(libc::PR_SET_DUMPABLE, dumpable as libc::c_ulong,
                                   0 as libc::c_ulong, 0 as libc::c_ulong, 0 as libc::c_ulong) }, 0);
     assert_eq!(unsafe { libc::prctl(libc::PR_GET_DUMPABLE) }, dumpable as i32);
     let before = fd_count();
     let mut payloads = 0;
+    let payload = serde_json::to_vec(&MainIpcRequest::StatusSnapshot).unwrap();
+    let (header, width) = BytesCodec::encode_header(payload.len()).unwrap();
+    let expected: Vec<u8> = header[..width].iter().chain(payload.iter()).copied().collect();
     {
         let path = Config::ipc_path_for_uid(route_uid, "");
         let listener = tokio::net::UnixListener::bind(&path).unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o666)).unwrap();
         ready("READY");
         for _ in 0..2 {
-            let (stream, _) = timeout(4000, listener.accept()).await.unwrap().unwrap();
+            let (mut stream, _) = timeout(4000, listener.accept()).await.unwrap().unwrap();
             assert_eq!(peer_uid_from_fd(stream.as_raw_fd()), Some(client_uid));
             assert!(peer_pid_from_fd(stream.as_raw_fd()).is_some_and(|pid| pid > 0));
-            let mut stream = ConnectionTmpl::new_main(stream);
-            match stream.next_main_timeout(2000).await.unwrap() {
-                Some(MainIpcRequest::StatusSnapshot) => {
-                    payloads += 1;
-                    stream.send_json_timeout(&MainIpcResponse::StatusSnapshot(MainStatusSnapshot {
-                        options: MainStatusOptions(Vec::new()), file_transfer_enabled: None,
-                    }), 1000).await.unwrap();
-                }
-                None => {}
-                other => panic!("unexpected main request: {other:?}"),
+            let mut first = [0];
+            if timeout(2000, stream.read(&mut first)).await.unwrap().unwrap() != 0 {
+                let mut received = vec![first[0]; expected.len()];
+                timeout(2000, stream.read_exact(&mut received[1..])).await.unwrap().unwrap();
+                assert_eq!(received, expected);
+                payloads += 1;
+                let mut stream = ConnectionTmpl::new_main(stream);
+                stream.send_json_timeout(&MainIpcResponse::StatusSnapshot(MainStatusSnapshot {
+                    options: MainStatusOptions(Vec::new()), file_transfer_enabled: None,
+                }), 1000).await.unwrap();
             }
         }
     }

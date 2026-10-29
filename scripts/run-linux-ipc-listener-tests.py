@@ -122,6 +122,7 @@ def native(expected_sha):
             f'artifact differs: uid={metadata.st_uid} links={metadata.st_nlink} size={metadata.st_size}')
     work = ROOT / 'ipc-listener-native'
     work.mkdir(mode=0o755)
+    work.chmod(0o755)
     probe = work / 'probe'
     shutil.copyfile(artifact, probe)
     probe.chmod(0o555)

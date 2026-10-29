@@ -115712,3 +115712,12 @@ This closes the named Linux serialization-buffer allocation-refusal observation.
 Other allocator sites, arbitrary system-wide OOM, full application/installed
 privileged actions, other-platform acceptance and the existing release/review
 obligations remain OPEN. No new LPE closure or product correction is claimed.
+
+Fresh ledger count at `d10bc8f5`, TUF `otVlJbSKNF`: **358,795 tokens** /
+1,640,154 bytes with the pinned `tiktoken-0.12.0/cl100k_base/encode_ordinary`
+method, seven controls and complete byte round trip. Input SHA-256:
+`8e0fbbd90ced0a82853d305282c51979179c0a62b3de8c17853a01c6c2f9d0aa`.
+QEMU 1677046 joins after 30.822 seconds, `run.279ls5aq` retires and all three
+listener deltas are zero. The six count records total 102,840 bytes on both
+machines. This audit-only receipt leaves the measured ledger unchanged and below
+its approximate 400,000-token budget; broader document cleanup remains open.

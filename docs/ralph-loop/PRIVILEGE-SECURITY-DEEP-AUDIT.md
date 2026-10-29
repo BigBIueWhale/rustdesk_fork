@@ -114136,3 +114136,79 @@ joins exit zero with 4,096 observed host-write bytes; its PID, RAM workspace
 `run.q_peq3yz` and active run roots are absent. All three listener deltas are
 zero. Six bounded count files copied to CTE total 103,919 bytes. This audit-only
 receipt leaves the counted ledger unchanged; no further test run is needed for it.
+
+## 2026-10-29 — CM audio admission across panel lifetimes
+
+The current R-S11b/R-S11c checklist still requires installed/native acceptance
+for all fifteen credential actions. This slice continues the audio-control
+correctness work; it does not reopen parked native audio cancellation or claim
+an IPC privilege boundary is closed.
+
+The CM button's former instance-local pending flag survived rebuilds but not
+panel disposal or a second panel. Both panels address the same voice-input
+selection: `AudioInput.getDevicesInfo/setDevice(true, true)` calls the typed
+bridge; `src/flutter_ffi.rs` selects CM IPC, and `src/ipc.rs` applies the accepted
+user-owned write to `src/server/audio_service.rs`'s shared voice-input state.
+The UI must retain one selection across enumeration, menu and bridge write,
+independent of the initiating panel's lifetime. Exact client/registry/call
+identity still decides whether that panel may dispatch or display feedback.
+
+`ec532b30` replaces the per-State flag with one private shared ValueNotifier.
+Every CM button observes it through ValueListenableBuilder; finally releases
+it after completion even when the original State was disposed. Existing
+positive-generation, exact-registry-member, mounted/connected/active-call checks
+are unchanged. There is no queued replacement write or new dependency. Primary
+research: Flutter [State.dispose](https://api.flutter.dev/flutter/widgets/State/dispose.html),
+[ValueNotifier](https://api.flutter.dev/flutter/foundation/ValueNotifier-class.html),
+and the [pinned 3.24.5 ValueListenableBuilder implementation](https://raw.githubusercontent.com/flutter/flutter/3.24.5/packages/flutter/lib/src/widgets/value_listenable_builder.dart)
+establish State retirement and listener registration/removal. Native IPC
+timeout/reordering and cross-process writers are separate open obligations.
+
+Preparation `3a006022` adds three rendered production-panel cases. TUF baseline
+`6ts32Dn5J1` fails all three with a second read admitted while the first read,
+write or panel selection is pending; 37 existing controls pass. The baseline
+assertions fail before the held reads are completed. The initial candidate
+`fW7x0iZ2ke` on `ec532b30` passes 39 cases, including both disposed-panel
+success/failure loops, but fails the two-panel menu case. Its native-binding
+double calls guarded expect from a future callback while pumpAndSettle is
+active; the product catches that test-framework exception as a failed read.
+`b713cfb5` uses expectSync in the two asynchronous binding callbacks and adds an
+explicit menu-presence assertion. This is the usage documented by the
+[pinned Flutter test implementation](https://raw.githubusercontent.com/flutter/flutter/3.24.5/packages/flutter_test/lib/src/widget_tester.dart).
+The baseline count assertions and all product bytes remain unchanged by that
+fixture correction; test bytes are not identical across the final comparison.
+
+The harness catalogue now requires exactly 40 cases in three suites. The
+preparation updated its full-catalogue parser control but missed the separate
+single-profile count; `ec532b30` corrects that assertion too. Baseline execution
+failed in the actual Flutter cases before parser controls, so this count
+oversight did not produce the observed duplicate reads. Both failed VM jobs
+are joined, their RAM workspaces are absent, all four listener deltas are zero,
+and their exact bounded diagnostic roots were retired under the shared lock.
+The production panel SHA-256 is
+`d5991ac2387d40543ed2c1180329d22b5752d1e58c94c9e4b66d4381d2916d03`;
+final fixture SHA-256 is
+`45cd268a0ffebff3112a6e36f2cff77af97c43b12b72bfccaedabbfd3b640d24`.
+
+Accepted TUF run `ahohFqPsnS` on pushed `b713cfb5` exits zero: all 40
+cases/three suites and three parser checks pass. The exact production-panel copy
+is verified before and after execution. Both disposed-panel scenarios cover
+successful and failed completion, stale callbacks and a subsequent working
+selection. The simultaneous-panel case retains admission through read, menu
+and write, then permits a new selection after dismissal/completion. All 37
+prior pointer, keyboard, failure/retry and owner controls also pass.
+
+The 275.872-second storage receipt records 4,518,842,368 peak RAM scratch bytes,
+4,322,955,264 peak overlay bytes and 3,416,064 peak durable-run bytes. QEMU
+1548929 joins exit zero with 4,096 observed host-write bytes; its PID, RAM
+workspace `run.2uwz2ub6` and active run roots are absent. All four listener
+deltas are zero. Serial evidence is 22,471 bytes, SHA-256
+`fa1ee406b72acc549682e421bd448e567f1cdec630dd10db182b568376d9741d`.
+The 21 bounded evidence files copied to CTE total 537,165 bytes; their hashes
+match the locked TUF reads. Capsule `cm-audio-crosspanel-ec532b30.json` is
+81,579 bytes, SHA-256
+`1b2cc401fc8c81748dfbec1c34c649e4a2ef6f6e8eeb365cbf4370c3508c826e`.
+This accepts rendered Dart control ordering with binding/registry doubles.
+Full-app routing, other isolates/processes, real microphone effects, native
+IPC finality and all installed privilege-boundary obligations remain OPEN.
+Only the audio-control ledger row changes; its fresh isolated count follows.

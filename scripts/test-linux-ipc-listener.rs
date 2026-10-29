@@ -121,19 +121,34 @@ async fn service_fixture(scenario: &str) {
     }
 }
 
-async fn admission_fixture(scenario: &str) {
+async fn admission_fixture(scenario: &str, main: bool) {
     use std::future::{poll_fn, Future};
     use std::io::Write;
     use std::task::Poll;
     use tokio::io::AsyncReadExt;
 
-    async fn label(accepted: ServiceIpcAccept) -> usize {
-        let (kind, stream) = match accepted {
-            ServiceIpcAccept::Credential(stream) => (0, stream),
-            ServiceIpcAccept::Password(stream) => (1, stream),
-            ServiceIpcAccept::Service(stream) => (2, stream),
-        };
-        let mut stream = stream.unwrap().unwrap();
+    async fn accept(listeners: &mut [Incoming], next: &mut usize, password_first: &mut bool) -> (usize, Conn) {
+        match listeners {
+            [password, main] => match next_main_ipc_event(
+                main.next(), next_sensitive_main_listener_event(password), password_first,
+            ).await {
+                MainIpcListenerEvent::Password(SensitiveMainListenerEvent::Accepted(stream)) => (0, stream),
+                MainIpcListenerEvent::Main(stream) => (1, stream.unwrap().unwrap()),
+                _ => panic!("unexpected password listener failure"),
+            },
+            [credential, password, service] => {
+                let (kind, stream) = match next_service_ipc_connection(credential, password, service, next).await {
+                    ServiceIpcAccept::Credential(stream) => (0, stream),
+                    ServiceIpcAccept::Password(stream) => (1, stream),
+                    ServiceIpcAccept::Service(stream) => (2, stream),
+                };
+                (kind, stream.unwrap().unwrap())
+            }
+            _ => panic!("unexpected listener count"),
+        }
+    }
+
+    async fn label((kind, mut stream): (usize, Conn)) -> usize {
         assert_eq!(peer_uid_from_fd(stream.as_raw_fd()), Some(unsafe { libc::geteuid() }));
         assert_eq!(peer_pid_from_fd(stream.as_raw_fd()), Some(std::process::id()));
         let mut byte = [0];
@@ -143,14 +158,18 @@ async fn admission_fixture(scenario: &str) {
     }
 
     let uid = unsafe { libc::geteuid() };
-    let postfixes = if uid == 0 { ["_service_credential", "_service_password", "_service"] }
-                   else { ["_password", "", "_url"] };
+    let postfixes: &[&str] = if main { &["_password", ""] }
+        else if uid == 0 { &["_service_credential", "_service_password", "_service"] }
+        else { &["_password", "", "_url"] };
+    let count = postfixes.len();
     let before = fd_count();
     {
-        let mut credential = new_listener(postfixes[0]).await.unwrap();
-        let mut password = new_listener(postfixes[1]).await.unwrap();
-        let mut service = new_listener(postfixes[2]).await.unwrap();
+        let mut listeners = Vec::new();
+        for postfix in postfixes {
+            listeners.push(new_listener(postfix).await.unwrap());
+        }
         let mut next = 0;
+        let mut password_first = true;
         let connect = |kind: usize| {
             let mut client = std::os::unix::net::UnixStream::connect(Config::ipc_path(postfixes[kind])).unwrap();
             client.write_all(&[kind as u8]).unwrap();
@@ -158,28 +177,29 @@ async fn admission_fixture(scenario: &str) {
         };
         match scenario {
             "backlog" => {
-                // Every queue stays populated throughout all nine admissions.
-                let clients: Vec<_> = (0..3).flat_map(|kind| (0..9).map(move |_| kind)).map(connect).collect();
+                // Every queue stays populated throughout all admission rounds.
+                let clients: Vec<_> = (0..count).flat_map(|kind| (0..9).map(move |_| kind)).map(connect).collect();
                 for _ in 0..3 {
                     let mut served = 0;
-                    for _ in 0..3 {
-                        let accepted = timeout(1000, next_service_ipc_connection(
-                            &mut credential, &mut password, &mut service, &mut next,
+                    for _ in 0..count {
+                        let accepted = timeout(1000, accept(
+                            &mut listeners, &mut next, &mut password_first,
                         )).await.unwrap();
                         served |= 1 << label(accepted).await;
                     }
-                    assert_eq!(served, 7, "a ready service endpoint was starved by another backlog");
+                    assert_eq!(served, (1 << count) - 1, "a ready IPC endpoint was starved by another backlog");
                 }
                 drop(clients);
             }
             "sparse" | "cancel" => {
                 for kind in [2, 1, 0, 2, 0, 1] {
+                    let kind = kind % count;
                     if scenario == "cancel" {
-                        let cursor = next;
+                        let cursor = (next, password_first);
                         let descriptors = fd_count();
                         {
-                            let pending = next_service_ipc_connection(
-                                &mut credential, &mut password, &mut service, &mut next,
+                            let pending = accept(
+                                &mut listeners, &mut next, &mut password_first,
                             );
                             tokio::pin!(pending);
                             poll_fn(|cx| {
@@ -187,12 +207,12 @@ async fn admission_fixture(scenario: &str) {
                                 Poll::Ready(())
                             }).await;
                         }
-                        assert_eq!(next, cursor, "cancelled pending accept changed priority");
+                        assert_eq!((next, password_first), cursor, "cancelled pending accept changed priority");
                         assert_eq!(fd_count(), descriptors);
                     }
                     let client = connect(kind);
-                    let accepted = timeout(1000, next_service_ipc_connection(
-                        &mut credential, &mut password, &mut service, &mut next,
+                    let accepted = timeout(1000, accept(
+                        &mut listeners, &mut next, &mut password_first,
                     )).await.unwrap();
                     assert_eq!(label(accepted).await, kind);
                     drop(client);
@@ -202,7 +222,8 @@ async fn admission_fixture(scenario: &str) {
         }
     }
     assert_eq!(fd_count(), before);
-    println!("OK admission-{scenario} uid={uid} cleanup=joined");
+    let prefix = if main { "main-" } else { "" };
+    println!("OK {prefix}admission-{scenario} uid={uid} cleanup=joined");
 }
 
 fn main() {
@@ -212,9 +233,10 @@ fn main() {
     let postfix = &args[2];
     assert!(["", "_password", "_service_password", "_service_credential", "_service"].contains(&postfix.as_str()));
     let path = Config::ipc_path(postfix);
-    if let Some(scenario) = args[1].strip_prefix("admission-") {
+    if let Some((scenario, main)) = args[1].strip_prefix("admission-").map(|s| (s, false))
+        .or_else(|| args[1].strip_prefix("main-admission-").map(|s| (s, true))) {
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
-        runtime.block_on(admission_fixture(scenario));
+        runtime.block_on(admission_fixture(scenario, main));
         return;
     }
     if let Some(scenario) = args[1].strip_prefix("service-") {

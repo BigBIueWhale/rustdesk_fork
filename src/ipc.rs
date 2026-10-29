@@ -3554,6 +3554,25 @@ async fn next_sensitive_main_listener_event(
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+enum MainIpcListenerEvent {
+    Password(SensitiveMainListenerEvent),
+    Main(Option<std::io::Result<Conn>>),
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn next_main_ipc_event(
+    main: impl std::future::Future<Output = Option<std::io::Result<Conn>>>,
+    password: impl std::future::Future<Output = SensitiveMainListenerEvent>,
+    _password_first: &mut bool,
+) -> MainIpcListenerEvent {
+    tokio::select! {
+        biased;
+        event = password => MainIpcListenerEvent::Password(event),
+        result = main => MainIpcListenerEvent::Main(result),
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 struct PreparedMainIpc {
     incoming: Incoming,
     #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -3602,6 +3621,7 @@ async fn run_main_ipc(listeners: PreparedMainIpc) -> ResultType<()> {
         password_listener,
         listener_guard,
     } = listeners;
+    let mut password_first = true;
     let mut transactions = JoinSet::new();
     let shutdown = crate::server::shutdown_token();
     let mut listener_error = None;
@@ -3614,76 +3634,82 @@ async fn run_main_ipc(listeners: PreparedMainIpc) -> ResultType<()> {
                     log::error!("main IPC transaction task failed: {err}");
                 }
             }
-            event = next_sensitive_main_listener_event(&mut password_events) => {
-                match event {
-                    #[cfg(any(target_os = "linux", target_os = "macos"))]
-                    SensitiveMainListenerEvent::Accepted(stream) => {
-                        let Some(authority) = sensitive_main_ipc_authority(&stream) else {
-                            continue;
-                        };
-                        let Some(permit) = try_acquire_sensitive_main_ipc_transaction_slot(
-                            authority.mutation_kind(),
-                        ) else {
-                            continue;
-                        };
-                        transactions.spawn(handle_sensitive_main_ipc_transaction(
-                            stream,
-                            authority,
-                            permit,
-                        ));
-                    }
-                    #[cfg(any(target_os = "linux", target_os = "macos"))]
-                    SensitiveMainListenerEvent::AcceptFailed(err) => {
-                        log::error!("Could not accept main password IPC client: {err}");
-                    }
-                    #[cfg(target_os = "windows")]
-                    SensitiveMainListenerEvent::Request(request) => {
-                        let (admission, operation_id, value, response) = request.into_parts();
-                        let authority_allowed = current_process_allows_user_owned_permanent_password_write()
-                            && !Config::is_disable_change_permanent_password();
-                        let (status, worker) = begin_windows_user_owned_password_mutation(
-                            admission,
-                            operation_id,
-                            value,
-                            authority_allowed,
-                        );
-                        let _ = response.send(status);
-                        if let Some(worker) = worker {
-                            transactions.spawn(async move {
-                                if let Err(err) = worker.await {
-                                    log::error!("password mutation worker failed: {err}");
-                                }
-                            });
+            event = next_main_ipc_event(
+                incoming.next(),
+                next_sensitive_main_listener_event(&mut password_events),
+                &mut password_first,
+            ) => match event {
+                MainIpcListenerEvent::Password(event) => {
+                    match event {
+                        #[cfg(any(target_os = "linux", target_os = "macos"))]
+                        SensitiveMainListenerEvent::Accepted(stream) => {
+                            let Some(authority) = sensitive_main_ipc_authority(&stream) else {
+                                continue;
+                            };
+                            let Some(permit) = try_acquire_sensitive_main_ipc_transaction_slot(
+                                authority.mutation_kind(),
+                            ) else {
+                                continue;
+                            };
+                            transactions.spawn(handle_sensitive_main_ipc_transaction(
+                                stream,
+                                authority,
+                                permit,
+                            ));
+                        }
+                        #[cfg(any(target_os = "linux", target_os = "macos"))]
+                        SensitiveMainListenerEvent::AcceptFailed(err) => {
+                            log::error!("Could not accept main password IPC client: {err}");
+                        }
+                        #[cfg(target_os = "windows")]
+                        SensitiveMainListenerEvent::Request(request) => {
+                            let (admission, operation_id, value, response) = request.into_parts();
+                            let authority_allowed = current_process_allows_user_owned_permanent_password_write()
+                                && !Config::is_disable_change_permanent_password();
+                            let (status, worker) = begin_windows_user_owned_password_mutation(
+                                admission,
+                                operation_id,
+                                value,
+                                authority_allowed,
+                            );
+                            let _ = response.send(status);
+                            if let Some(worker) = worker {
+                                transactions.spawn(async move {
+                                    if let Err(err) = worker.await {
+                                        log::error!("password mutation worker failed: {err}");
+                                    }
+                                });
+                            }
+                        }
+                        SensitiveMainListenerEvent::Ended => {
+                            listener_error = Some("main password IPC listener ended unexpectedly".to_owned());
+                            crate::server::request_graceful_shutdown_after_listener_failure();
+                            break;
                         }
                     }
-                    SensitiveMainListenerEvent::Ended => {
-                        listener_error = Some("main password IPC listener ended unexpectedly".to_owned());
+                }
+                MainIpcListenerEvent::Main(result) => {
+                    let Some(result) = result else {
+                        listener_error = Some("main IPC listener ended unexpectedly".to_owned());
                         crate::server::request_graceful_shutdown_after_listener_failure();
                         break;
-                    }
-                }
-            }
-            result = incoming.next() => {
-                let Some(result) = result else {
-                    listener_error = Some("main IPC listener ended unexpectedly".to_owned());
-                    crate::server::request_graceful_shutdown_after_listener_failure();
-                    break;
-                };
-                let stream = match result {
-                    Ok(stream) => stream,
-                    Err(err) => {
-                        log::error!("Could not accept main IPC client: {err}");
+                    };
+                    let stream = match result {
+                        Ok(stream) => stream,
+                        Err(err) => {
+                            log::error!("Could not accept main IPC client: {err}");
+                            continue;
+                        }
+                    };
+                    let stream = Connection::new_main(stream);
+                    #[cfg(windows)]
+                    if !authorize_windows_main_ipc_connection(&stream, "") {
                         continue;
                     }
-                };
-                let stream = Connection::new_main(stream);
-                #[cfg(windows)]
-                if !authorize_windows_main_ipc_connection(&stream, "") {
-                    continue;
+                    let Some(permit) = try_acquire_main_ipc_transaction_slot(&stream) else { continue; };
+                    transactions.spawn(handle_main_ipc_transaction(stream, permit));
                 }
-                let Some(permit) = try_acquire_main_ipc_transaction_slot(&stream) else { continue; };
-                transactions.spawn(handle_main_ipc_transaction(stream, permit));
-            }
+            },
         }
     }
     #[cfg(target_os = "windows")]

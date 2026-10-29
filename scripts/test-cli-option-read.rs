@@ -1,5 +1,5 @@
-// Execute the production option getter and CLI read body. Transport/status and
-// local configuration are doubles; installed/root eligibility is outside scope.
+// Execute the production option getter and complete CLI branch. Eligibility,
+// transport/status, mutation and local configuration are controlled doubles.
 use crate::ResultType;
 use std::collections::HashMap;
 
@@ -43,6 +43,46 @@ fn scenario() -> String {
     std::env::args().nth(1).unwrap().strip_prefix("cli-option-").unwrap().to_owned()
 }
 
+fn is_cli_setting_change_disabled() -> bool {
+    scenario().starts_with("disabled-")
+}
+
+fn is_root() -> bool {
+    !scenario().starts_with("nonadmin-")
+}
+
+pub(crate) mod platform {
+    pub(crate) fn is_installed() -> bool {
+        !super::scenario().starts_with("uninstalled-")
+    }
+}
+
+static WRITES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+pub(crate) fn set_option(key: &str, value: &str) -> ResultType<String> {
+    assert_eq!((key, value), ("audio-input", "requested-value"));
+    assert_eq!(WRITES.fetch_add(1, std::sync::atomic::Ordering::SeqCst), 0);
+    match scenario().as_str() {
+        "write" => Ok(value.to_owned()),
+        "write-refused" => anyhow::bail!("fixture write refused"),
+        other => panic!("unexpected option mutation: {other}"),
+    }
+}
+
 pub(crate) fn run() {
-    read_option(&["--option".to_owned(), "audio-input".to_owned()]);
+    let scenario = scenario();
+    let mut args = vec!["--option".to_owned()];
+    if scenario != "no-key" {
+        args.push("audio-input".to_owned());
+    }
+    if scenario == "write" || scenario == "write-refused"
+        || scenario.ends_with("-write") || scenario == "extra-argument"
+    {
+        args.push("requested-value".to_owned());
+    }
+    if scenario == "extra-argument" {
+        args.push("unexpected".to_owned());
+    }
+    assert_eq!(run_option(&args), None);
+    assert_eq!(WRITES.load(std::sync::atomic::Ordering::SeqCst), usize::from(scenario == "write"));
 }

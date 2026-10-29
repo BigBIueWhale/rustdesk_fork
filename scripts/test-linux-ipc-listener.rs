@@ -17,7 +17,7 @@ use serde::{Serialize, Deserialize};
 use bytes::Bytes;
 mod bytes_codec;
 mod cli_option_read;
-pub(crate) use cli_option_read::get_options;
+pub(crate) use cli_option_read::{get_options, platform, set_option};
 use bytes_codec::BytesCodec;
 type ResultType<T> = anyhow::Result<T>;
 const POSTFIX_SERVICE: &str = "_service";

@@ -94,11 +94,8 @@ def build():
     option = core.all().require(('else', 'if', 'args', '[', '0', ']', '==', '"--option"'),
                                 'option CLI dispatch', unique=True)
     option = core._block_after(option, core.brace_parent[option], 'option CLI branch')
-    read = option.require(('if', 'args', '.', 'len', '(', ')', '==', '2'),
-                          'option CLI read', unique=True)
-    read = core._block_after(read, core.brace_parent[read], 'option CLI read body')
-    option_cli = 'fn read_option(args: &[String]) {\n' + core.text[
-        core.tokens[read.start].offset:core.tokens[read.end].offset] + '}\n'
+    option_cli = 'fn run_option(args: &[String]) -> Option<Vec<String>> {\n' + core.text[
+        core.tokens[option.start].offset:core.tokens[option.end].offset] + '}\n'
     (work / 'option_cli.rs').write_text(option_cli)
     shutil.copyfile(repo / 'scripts/test-cli-option-read.rs', work / 'cli_option_read.rs')
     transport = ''.join(function(ipc, name) for name in ('connect', 'connect_with_path', 'new_listener'))
@@ -258,6 +255,17 @@ def native(expected_sha, barrier_sha):
             record(f'cli-option-{scenario}-{uid}',
                    result.returncode == (0 if success else 1)
                    and result.stdout == expected_stdout and result.stderr == expected_stderr, result)
+        for scenario, expected_exit, expected_stderr in (
+                ('write', 0, ''), ('write-refused', 1, 'fixture write refused\n'),
+                ('no-key', 2, 'usage: rustdesk --option <name> [<value>]\n'),
+                ('extra-argument', 2, 'usage: rustdesk --option <name> [<value>]\n'),
+                *((f'disabled-{mode}', 1, 'Settings are disabled!\n')
+                  for mode in ('read', 'write')),
+                *((f'{reason}-{mode}', 1, 'Installation and administrative privileges required!\n')
+                  for reason in ('uninstalled', 'nonadmin') for mode in ('read', 'write'))):
+            result = check('', uid, action='cli-option-' + scenario)
+            record(f'cli-option-{scenario}-{uid}', result.returncode == expected_exit
+                   and result.stdout == '' and result.stderr == expected_stderr, result)
         for scenario in ('allocation', 'fragments', 'refusal'):
             action = 'read-' + scenario
             result = check('', uid, action=action)
@@ -1003,8 +1011,8 @@ def native(expected_sha, barrier_sha):
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
     require(sha(barrier) == barrier_sha, 'barrier changed')
     probe.unlink(); barrier.unlink(); work.rmdir()
-    require(len(cases) == 184, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=184 failures={len(failures)} '
+    require(len(cases) == 204, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=204 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 

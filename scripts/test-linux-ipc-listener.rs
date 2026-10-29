@@ -688,7 +688,78 @@ async fn main_validation_fixture(scenario: &str) {
     println!("OK main-validation-{scenario} uid={} cleanup=joined", unsafe { libc::geteuid() });
 }
 
+async fn main_response_shape_fixture() {
+    let before = fd_count();
+    let mut failures = Vec::new();
+    let (mut rejected, mut controls) = (0, 0);
+    {
+        let (sender, receiver) = tokio::net::UnixStream::pair().unwrap();
+        for fd in [sender.as_raw_fd(), receiver.as_raw_fd()] {
+            assert_eq!(peer_uid_from_fd(fd), Some(unsafe { libc::geteuid() }));
+            assert_eq!(peer_pid_from_fd(fd), Some(std::process::id()));
+        }
+        let mut sender = ConnectionTmpl::new_main(sender);
+        let mut receiver = ConnectionTmpl::new_main(receiver);
+        for (tag, payload) in [
+            ("StatusSnapshot", r#"{"options":[{"key":"AudioInput","value":"device"}],"file_transfer_enabled":false}"#),
+            ("ReadinessSnapshot", r#"{"permanent_password_set":true,"user_owned_permanent_password_writable":false,"direct_listener_bound":true}"#),
+            ("Config", r#"{"key":{"t":"VoiceCallInput"},"value":"device"}"#),
+            ("OptionSet", r#"{"result":"Applied","effective":{"key":"AudioInput","value":"device"}}"#),
+            ("RequestFailed", r#""InternalFailure""#),
+        ] {
+            let tag = serde_json::to_string(tag).unwrap();
+            let expected = serde_json::from_str::<serde_json::Value>(
+                &format!(r#"{{"t":{tag},"c":{payload}}}"#),
+            ).unwrap();
+            let mut invalid = vec![
+                format!(r#"{{"future":true,"t":{tag},"c":{payload}}}"#),
+                format!(r#"{{"t":{tag},"future":true,"c":{payload}}}"#),
+                format!(r#"{{"t":{tag},"c":{payload},"future":true}}"#),
+                format!(r#"{{"future":true,"c":{payload},"t":{tag}}}"#),
+                format!(r#"{{"c":{payload},"future":true,"t":{tag}}}"#),
+                format!(r#"{{"c":{payload},"t":{tag},"future":true}}"#),
+            ];
+            if let Some(fields) = payload.strip_prefix('{') {
+                let extra = format!(r#"{{"future":{{"nested":[1,2]}},{fields}"#);
+                invalid.push(format!(r#"{{"t":{tag},"c":{extra}}}"#));
+                invalid.push(format!(r#"{{"c":{extra},"t":{tag}}}"#));
+            }
+            for (index, wire) in invalid.into_iter().enumerate() {
+                let (sent, received) = tokio::join!(
+                    sender.send_raw(Bytes::from(wire)),
+                    receiver.next_main_response_timeout(1000),
+                );
+                sent.unwrap();
+                if matches!(received, Ok(None)) { rejected += 1; }
+                else { failures.push(format!("{tag} malformed[{index}]: {}",
+                    if received.is_ok() { "accepted" } else { "transport error" })); }
+            }
+            // Both JSON field orders remain valid after malformed frames on the same socket.
+            for wire in [format!(r#"{{"t":{tag},"c":{payload}}}"#),
+                         format!(r#"{{"c":{payload},"t":{tag}}}"#)] {
+                let (sent, received) = tokio::join!(
+                    sender.send_raw(Bytes::from(wire)),
+                    receiver.next_main_response_timeout(1000),
+                );
+                sent.unwrap();
+                match received {
+                    Ok(Some(response)) if serde_json::to_value(&response).unwrap() == expected => controls += 1,
+                    result => failures.push(format!("valid {tag}: {result:?}")),
+                }
+            }
+        }
+    }
+    assert_eq!(fd_count(), before);
+    assert!(failures.is_empty(), "response shape failures: {failures:?}");
+    assert_eq!((rejected, controls), (38, 10));
+    println!("OK main-response-shape uid={} rejected=38 controls=10 cleanup=joined", unsafe { libc::geteuid() });
+}
+
 async fn main_response_fixture(scenario: &str) {
+    if scenario == "shape" {
+        main_response_shape_fixture().await;
+        return;
+    }
     let before = fd_count();
     {
         let (sender, receiver) = tokio::net::UnixStream::pair().unwrap();

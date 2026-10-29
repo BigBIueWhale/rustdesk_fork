@@ -312,11 +312,12 @@ def native(expected_sha, barrier_sha):
             result = check('', uid, action=action)
             record(f'{action}-{uid}', result.returncode == 0
                    and result.stdout == f'OK {action} uid={uid} cleanup=joined\n', result)
-        for scenario in ('status', 'config'):
+        for scenario in ('status', 'config', 'shape'):
             action = 'main-response-' + scenario
             result = check('', uid, action=action)
+            detail = ' rejected=38 controls=10' if scenario == 'shape' else ''
             record(f'{action}-{uid}', result.returncode == 0
-                   and result.stdout == f'OK {action} uid={uid} cleanup=joined\n', result)
+                   and result.stdout == f'OK {action} uid={uid}{detail} cleanup=joined\n', result)
         for scenario in ('value', 'missing', 'refused', 'timeout', 'disconnected', 'invalid'):
             result = check('', uid, action='cli-option-' + scenario)
             success = scenario in ('value', 'missing')

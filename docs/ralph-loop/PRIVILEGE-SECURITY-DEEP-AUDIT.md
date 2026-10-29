@@ -114636,3 +114636,16 @@ files total 148,067 bytes and match TUF hashes. Capsule
 `ipc-runtime-namespace-c1a2402a.json`, 41,119 bytes, SHA-256
 `71845b5fbd4d86ce2fde9e11f68d4bc5d288bc1cef63dabc05d5afdc2c662ba9`.
 The fresh ledger count follows.
+
+Fresh isolated count at `ab595b98`, TUF run `ZkMj8c5slI`, exits zero:
+356,757 tokens / 1,631,166 bytes, up 58 tokens / 457 bytes. The pinned
+tiktoken method passes seven controls and byte round-trip; ledger SHA-256 is
+`1ab26d425a21c92266c73137e99b04b9dcdb4163433d163f5127585771bbc07e`.
+The 31.21-second run peaks at 402,472,960 RAM scratch bytes, 305,926,144 overlay
+bytes and 258,048 durable-run bytes. QEMU 1594403 joins exit zero; its PID,
+workspace `run.o4z8pzvh` and active run roots are absent. All three listener
+deltas are zero. Six copied files total 103,494 bytes and match on both hosts;
+serial SHA-256 is
+`a44e0389c3e0e3c95830b8e5cb9f2e528ca80d7a09678f20d4474d70e130b555`.
+The runtime-namespace capsule also matches on both hosts. This audit-only
+receipt leaves the counted ledger unchanged.

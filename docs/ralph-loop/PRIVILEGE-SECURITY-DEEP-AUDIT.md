@@ -114869,3 +114869,56 @@ The 34.132-second run joins QEMU 1614627 with exit zero and retires workspace
 Six copied count files total 103,433 bytes and match both hosts; serial SHA-256
 is `02602fd2dd0da67d4be15dcf4c21ce970b4e7ad2c4c69bb6f5f5d5c891e438b3`.
 This audit-only receipt leaves the counted ledger unchanged.
+
+## 2026-10-29 — Linux IPC startup arrival, crash recovery and unavailable identity
+
+The preceding slice replaced framing adapters with production liveness code.
+This slice adds ten native cases in `c3d8dbc9`; product code is unchanged.
+The existing `prepare_ipc_listener_bind` reservation and fallible executable
+proofs satisfy these cases without a new product correction.
+
+For root `_service_password` and UID 4001 `_password`, a scheduling barrier
+pauses startup after its asynchronous probe but before `flock`. A second
+production `new_listener` binds first. Releasing the first start must produce
+refusal, preserve the incumbent socket inode and retain the winner's kernel
+peer PID/UID. Independent endpoints and subsequent restart also pass: six
+additional cases. Two more kill and join the exact reservation holder before
+stale unlink, then require successful restart with the same persistent lock
+inode. Two identity cases unlink a running executable or make a UID 4001 peer
+nondumpable. Both the probe and startup must return the specific identity error
+and preserve the live socket. The latter uses real kernel access denial.
+
+The [Linux flock contract](https://man7.org/linux/man-pages/man2/flock.2.html)
+releases the lock when its final open description closes. The
+[/proc/PID/exe contract](https://man7.org/linux/man-pages/man5/proc_pid_exe.5.html)
+documents the deleted suffix and access checks;
+[PR_SET_DUMPABLE](https://man7.org/linux/man-pages/man2/PR_SET_DUMPABLE.2const.html)
+provides the unreadable-identity fixture. The barriers delay actual syscalls;
+they do not substitute filesystem results or peer credentials.
+
+TUF `tqzTlamuGH` passes all thirty-nine listener and fourteen directory cases
+in 82.680 seconds. Listener binary SHA-256:
+`61b4a48eb62d5d0c8f55ae761c8a4c3ee0a2bc29152af7627ace66b235a70be2`.
+QEMU 1615927 joins exit zero and RAM workspace `run.vu73bjnm` retires; four
+listener deltas are zero. Peak RAM scratch is 3,408,138,240 bytes, overlay
+3,211,988,992 bytes and durable run 3,399,680 bytes. Seven retained run files
+total 84,151 bytes. Capsule `ipc-listener-recovery-c3d8dbc9.json` is 26,686
+bytes, SHA-256
+`898d744099d62b32aa17a749d577e1452b422c0c3fd66bb5793a26b6bb40da72`.
+All eight files match on CTE/TUF; both run roots are idle. No failed VM tree
+requires retirement in this slice.
+
+The CTE nonroot/networkless static container passed shell syntax and Python
+AST checks, then exited 127 because its image lacks `cc`; it was removed.
+The accepted VM compiled the C barrier with warnings treated as errors.
+CTE's after-snapshot contained an unattributed UDP `0.0.0.0:44898` endpoint;
+the exact-port follow-up found it absent and the later inventory matched the
+baseline. No external listener was mutated. This is not a clean static
+listener-delta result; the separately recorded TUF native deltas are zero.
+
+Config name/path and service authorization remain component adapters.
+CM/PA process proofs, installed receiver/action authorization, the complete
+application, macOS, remaining lifecycle/namespace races, coexisting versions
+and independent/external review remain OPEN. These focused observations do
+not establish full local privilege-escalation immunity. The fresh ledger count
+follows separately.

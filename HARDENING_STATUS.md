@@ -3630,6 +3630,19 @@ R-S11a/R-S0 and installed credential actions remain OPEN. Receipt:
 `ipc-stale-kind-99cbec37.json`; original namespace provenance remains in
 `ipc-runtime-namespace-c1a2402a.json` and its audit entry.
 
+`d41b6a36` removes the two ignored Linux foreign-parent replacement tests and
+their artifact-copy, two-principal container and ACL-fixture tooling. Those tests
+called the macOS replacement helper directly, bypassing Linux's production
+refusal, and supplied no native macOS acceptance. R-S11bg and Appendix C #184 now
+require each target's production decision while retaining verifier isolation and
+cleanup obligations. The ordinary unit-test stage and native Linux fixtures remain.
+`f4dcc9d2`, TUF `6qXWXpIaOp`, passes the remaining main-verifier contract checks
+and real verifier-entry/workspace-cleanup smoke in 92.897 seconds; QEMU joins,
+RAM scratch retires and all host listener deltas are zero. Production Rust is
+unchanged, so the existing 132-listener/14-directory evidence is reused rather
+than rerun. Receipt: `ipc-fixture-removal-d41b6a36.json`. Installed-service and
+macOS acceptance remain OPEN.
+
 **R-X14 desktop resource removal.** `9c8ebb1c` deletes the unused `res/startwm.sh` and
 dummy `res/xorg.conf`, their Debian payload/conffile/executable entries and the empty
 `etc/rustdesk` directory. Their session-spawning consumers were already absent; this removes

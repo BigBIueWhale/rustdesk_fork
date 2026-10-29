@@ -115370,3 +115370,46 @@ substitution before its metadata open, stale-entry classification/unlink races,
 changes after final observations and nonparticipating old binaries remain open.
 Full installed/CM/PA and deployed MAC-policy acceptance, macOS, privileged actions,
 release artifacts, independent reproduction and external review remain OPEN.
+
+### 2026-10-29 — Remove obsolete Linux foreign-parent replacement fixtures
+
+`d41b6a36` removes two ignored tests from `src/ipc/fs.rs`, their three private
+fixture helpers, the two preparation scripts and their dedicated `verify.sh`
+artifact-copy/container/cleanup stage. The tests directly called the foreign-parent
+replacement helper, bypassing `should_recreate_foreign_service_ipc_parent`, which
+permits that production path only on macOS. Linux production instead refuses the
+foreign owner. Linux POSIX ACL removal by this surrogate supplies neither current
+Linux service-path coverage nor native macOS acceptance. Ordinary module tests,
+the production predicate regression and the existing native Linux fixtures remain.
+R-S11bg/#184 drop the obsolete fixture recipe while preserving target-native
+ownership/ACL/refusal/startup acceptance and verifier isolation/cleanup obligations.
+The mount specification now includes the two existing read-only generated bridges.
+
+The 42,529-byte production prefix of `src/ipc/fs.rs` is unchanged from `916809b7`
+through accepted `f4dcc9d2`, SHA-256
+`781ffb6dee9aa063fca67d9392796eacc10bda22946f727cf9e220b144d7d174`.
+Existing `vv8MCKUxKu` 132-listener/14-directory evidence is reused, not rerun or
+reported as a new product pass. This slice removes verification work and the
+extra binary copy; it does not close another product privilege boundary.
+
+TUF `6qXWXpIaOp` passes the remaining main-verifier contract self-test (66 negative
+mutations), shell syntax and actual verifier-entry/workspace-cleanup smoke in
+92.897 seconds. UID 4000 succeeds; root and foreign callers refuse. The first
+attempt `5wIdw9iFNQ` stopped because the new checker was missing from the VM inputs;
+`7b0aee4f` adds its exact read-only dependencies. `N5qgd070Bl` then exposed an old
+five-call source-count assertion despite eight current image-preparation mentions.
+`f4dcc9d2` deletes that brittle count and its mutation, retaining verified-load and
+immutable-image checks. Both failures remain in the retained logs.
+
+Pinned `tiktoken 0.12.0/cl100k_base/encode_ordinary`, strict whole-file UTF-8 with
+round-trip verification, measures requirements at `XpnZiDHfwl`/`3VE7fuddC2`:
+369,103 -> 368,518 tokens; 1,685,509 -> 1,682,780 bytes. The ledger at measured
+`f4dcc9d2` is 357,608 tokens/1,635,161 bytes, before this slice's small status entry.
+All fifteen host listener deltas are zero; all five QEMU children join and their
+RAM workspaces retire. The accepted smoke peaks at 470,147,072 allocated scratch
+bytes and 225,280 durable run bytes. Both failed-run directories are deleted after
+evidence verification, freeing 401,408 allocated bytes. Thirty run files plus
+`ipc-fixture-removal-d41b6a36.json` total 469,368 bytes and match on CTE/TUF.
+Capsule SHA-256: `b05e2b7b8f84081820111b8b6b00a2d2f5988a9c5e70ad5f3960a03cb92bd580`.
+Installed/full-app Linux and macOS acceptance, remaining socket/metadata races,
+release artifacts, independent reproduction and external review remain OPEN.

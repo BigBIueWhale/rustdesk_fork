@@ -907,6 +907,14 @@ def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
         )
     )
     service_listener = ipc.function("run_service_ipc")
+    service_listener.require_order(
+        (
+            (("biased", ";"), "shutdown and completion priority"),
+            (("shutdown", ".", "cancelled", "(", ")"), "shutdown before new admissions"),
+            (("transactions", ".", "join_next", "(", ")"), "completed transactions before new admissions"),
+            (("next_service_ipc_connection", "(", "&", "mut", "credential_incoming", ",", "&", "mut", "password_incoming", ",", "&", "mut", "incoming", ",", "&", "mut", "next_service_listener", OPTIONAL_COMMA, ")"), "rotating service listener admission"),
+        )
+    )
     service_finish = ipc.method(
         ("impl", "LinuxServiceAuthorizationCompletion"),
         "finish",

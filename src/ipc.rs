@@ -3977,14 +3977,35 @@ async fn next_service_ipc_connection(
     credential: &mut Incoming,
     password: &mut Incoming,
     service: &mut Incoming,
-    _next: &mut usize,
+    next: &mut usize,
 ) -> ServiceIpcAccept {
-    tokio::select! {
-        biased;
-        result = credential.next() => ServiceIpcAccept::Credential(result),
-        result = password.next() => ServiceIpcAccept::Password(result),
-        result = service.next() => ServiceIpcAccept::Service(result),
-    }
+    use std::{
+        future::{poll_fn, Future},
+        task::Poll,
+    };
+
+    let credential = credential.next();
+    let password = password.next();
+    let service = service.next();
+    tokio::pin!(credential, password, service);
+    let mut accepts = [credential.as_mut(), password.as_mut(), service.as_mut()];
+    // Rotate after each completed accept, including errors. A ready endpoint
+    // gets a turn within three admissions even while another queue stays full.
+    poll_fn(|cx| {
+        for offset in 0..accepts.len() {
+            let index = (*next + offset) % accepts.len();
+            if let Poll::Ready(result) = accepts[index].as_mut().poll(cx) {
+                *next = (index + 1) % accepts.len();
+                return Poll::Ready(match index {
+                    0 => ServiceIpcAccept::Credential(result),
+                    1 => ServiceIpcAccept::Password(result),
+                    _ => ServiceIpcAccept::Service(result),
+                });
+            }
+        }
+        Poll::Pending
+    })
+    .await
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]

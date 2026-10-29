@@ -152,75 +152,43 @@ impl Drop for DirectionalKeys {
 // ── Encoding primitives (draft §"Notation and conventions") ───────────────────
 
 /// Unsigned LEB128 length encoding (draft `prepend_len`).
-fn leb128(mut n: usize) -> Vec<u8> {
-    let mut out = Vec::new();
-    loop {
+fn leb128_bytes(mut n: usize) -> impl Iterator<Item = u8> {
+    let mut pending = true;
+    std::iter::from_fn(move || {
+        if !pending {
+            return None;
+        }
         let byte = (n & 0x7f) as u8;
         n >>= 7;
-        if n != 0 {
-            out.push(byte | 0x80);
-        } else {
-            out.push(byte);
-            break;
-        }
-    }
-    out
+        pending = n != 0;
+        Some(if pending { byte | 0x80 } else { byte })
+    })
 }
 
-/// `prepend_len(data) = LEB128(len(data)) ‖ data`.
-fn prepend_len(data: &[u8]) -> Vec<u8> {
-    let mut out = leb128(data.len());
-    out.extend_from_slice(data);
-    out
+#[cfg(test)]
+fn leb128(n: usize) -> Vec<u8> {
+    leb128_bytes(n).collect()
 }
 
-/// Length-prefixed concatenation: `lv_cat(a, b, …) = prepend_len(a) ‖ prepend_len(b) ‖ …`.
+fn lv_cat_bytes<'a>(args: &'a [&'a [u8]]) -> impl Iterator<Item = u8> + 'a {
+    args.iter().flat_map(|bytes| {
+        leb128_bytes(bytes.len()).chain(bytes.iter().copied())
+    })
+}
+
+/// Materialized encoding for public channel identifiers and confirmation inputs.
 fn lv_cat(args: &[&[u8]]) -> Vec<u8> {
-    let mut out = Vec::new();
-    for a in args {
-        out.extend_from_slice(&prepend_len(a));
-    }
-    out
+    lv_cat_bytes(args).collect()
 }
 
-/// Draft `lexiographically_larger(b1, b2)` — bytewise, ties broken by length.
-fn lexicographically_larger(b1: &[u8], b2: &[u8]) -> bool {
-    let min_len = b1.len().min(b2.len());
-    for i in 0..min_len {
-        if b1[i] > b2[i] {
-            return true;
-        } else if b1[i] < b2[i] {
-            return false;
+/// Feed the same encoding without creating secret-bearing heap copies.
+fn hash_lv_cat(hash: &mut Sha512, args: &[&[u8]]) {
+    for bytes in args {
+        for byte in leb128_bytes(bytes.len()) {
+            hash.update([byte]);
         }
+        hash.update(bytes);
     }
-    b1.len() > b2.len()
-}
-
-/// Draft `o_cat` — order-independent concatenation with the `b"oc"` prefix
-/// (R-P6 symmetric mode). The larger operand is placed first.
-fn o_cat(b1: &[u8], b2: &[u8]) -> Vec<u8> {
-    let mut out = b"oc".to_vec();
-    if lexicographically_larger(b1, b2) {
-        out.extend_from_slice(b1);
-        out.extend_from_slice(b2);
-    } else {
-        out.extend_from_slice(b2);
-        out.extend_from_slice(b1);
-    }
-    out
-}
-
-/// Draft `generator_string(DSI, PRS, CI, sid, s_in_bytes)` — zero-pads the first
-/// hash block after DSI and PRS, and the pad field is itself length-prefixed
-/// (§10.4: "lv_cat … prefixes the zero-pad field too").
-fn generator_string(prs: &[u8], ci: &[u8], sid: &[u8]) -> Vec<u8> {
-    let len_zpad = (S_IN_BYTES as isize)
-        - 1
-        - prepend_len(prs).len() as isize
-        - prepend_len(SUITE_DSI).len() as isize;
-    let len_zpad = if len_zpad > 0 { len_zpad as usize } else { 0 };
-    let zpad = vec![0u8; len_zpad];
-    lv_cat(&[SUITE_DSI, prs, &zpad, ci, sid])
 }
 
 // ── Construction core (each function is KAT-pinned by the test module) ────────
@@ -233,14 +201,18 @@ pub fn channel_identifier(port: u16) -> Vec<u8> {
 
 /// `g = RistrettoPoint::from_uniform_bytes(SHA512(generator_string))`.
 ///
-/// R-T15(a)/R-P12: every PRS-laden intermediate of this substep — which §10.4 flags
-/// as the most side-channel-critical — is wiped before return. `gs` carries the raw
-/// PRS (`lv_cat(SUITE_DSI, prs, zpad, ci, sid)`) and the SHA-512 digest / `wide` copy
-/// are PRS-derived; all three are zeroized. The returned point `g` is itself PRS-laden,
-/// so callers wrap it in `Zeroizing` to wipe the expanded point on every exit path.
+/// Stream the length-prefixed fields, including the pad, into SHA-512. PRS bytes
+/// never enter a temporary heap encoding. The digest and wide copy are wiped;
+/// callers retain a wiping owner for the returned PRS-derived point.
 fn derive_generator(prs: &[u8], ci: &[u8], sid: &[u8]) -> RistrettoPoint {
-    let gs = Zeroizing::new(generator_string(prs, ci, sid));
-    let mut digest = Sha512::digest(&gs[..]); // 64 bytes, PRS-derived
+    let len_zpad = S_IN_BYTES
+        .saturating_sub(1 + leb128_bytes(prs.len()).count())
+        .saturating_sub(prs.len())
+        .saturating_sub(leb128_bytes(SUITE_DSI.len()).count() + SUITE_DSI.len());
+    let padding = [0u8; S_IN_BYTES];
+    let mut hash = Sha512::new();
+    hash_lv_cat(&mut hash, &[SUITE_DSI, prs, &padding[..len_zpad], ci, sid]);
+    let mut digest = hash.finalize();
     let mut wide = Zeroizing::new([0u8; 64]);
     wide.copy_from_slice(&digest);
     digest.as_mut_slice().zeroize();
@@ -252,15 +224,23 @@ fn derive_generator(prs: &[u8], ci: &[u8], sid: &[u8]) -> RistrettoPoint {
 /// Trap (§10.4 #2): the transcript is appended **raw**, never re-`lv_cat`-wrapped
 /// — re-wrapping silently yields a different ISK (`49ddbd…`) and fails the vector.
 fn compute_isk(ya: &[u8], ada: &[u8], yb: &[u8], adb: &[u8], sid: &[u8], k: &[u8]) -> [u8; 64] {
-    let m_a = lv_cat(&[ya, ada]);
-    let m_b = lv_cat(&[yb, adb]);
-    let transcript = o_cat(&m_a, &m_b);
-    let mut input = lv_cat(&[ISK_DSI, sid, k]);
-    input.extend_from_slice(&transcript);
-    let isk = Sha512::digest(&input);
-    input.zeroize();
+    let m_a = [ya, ada];
+    let m_b = [yb, adb];
+    let mut hash = Sha512::new();
+    hash_lv_cat(&mut hash, &[ISK_DSI, sid, k]);
+    hash.update(b"oc");
+    // Only public elements/AD determine the draft's lexicographic ordering.
+    let (first, second) = if lv_cat_bytes(&m_a).cmp(lv_cat_bytes(&m_b)).is_gt() {
+        (&m_a, &m_b)
+    } else {
+        (&m_b, &m_a)
+    };
+    hash_lv_cat(&mut hash, first);
+    hash_lv_cat(&mut hash, second);
+    let mut isk = hash.finalize();
     let mut out = [0u8; 64];
     out.copy_from_slice(&isk);
+    isk.as_mut_slice().zeroize();
     out
 }
 

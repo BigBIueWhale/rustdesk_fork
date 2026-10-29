@@ -8226,10 +8226,8 @@ where
 
     pub async fn next_raw(&mut self) -> ResultType<bytes::BytesMut> {
         match self.inner.next().await {
-            Some(Ok(res)) => Ok(res),
-            _ => {
-                bail!("reset by the peer");
-            }
+            Some(result) => Ok(result?),
+            None => bail!("reset by the peer"),
         }
     }
 

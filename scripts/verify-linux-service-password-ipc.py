@@ -792,6 +792,8 @@ def verify_endpoint_ownership(rust: Mapping[str, RustSource]) -> None:
         (
             (("Config", "::", "ipc_path", "(", "postfix", ")"), "classified socket path"),
             (("ensure_secure_ipc_parent_dir", "(", "&", "path", ",", "postfix", ")"), "parent ownership/mode proof"),
+            (("probe_existing_listener", "(", "postfix", ")", ".", "await"), "Linux incumbent probe before reservation"),
+            (("let", "_bind_guard", "=", "prepare_ipc_listener_bind"), "Linux reservation retained through bind"),
             (("check_existing_listener", "(", "postfix", ")"), "live listener check"),
             (("scrub_secure_ipc_parent_dir", "(", "&", "path", ",", "postfix", ")"), "stale artifact scrub"),
             (("Endpoint", "::", "new", "(", "path", ".", "clone", "(", ")", ")"), "endpoint construction after hardening"),

@@ -63,6 +63,8 @@ def build():
         filesystem += function(fs_source, name)
     if fs_source.functions('connect_existing_listener'):
         filesystem += function(fs_source, 'connect_existing_listener')
+    if fs_source.functions('prepare_ipc_listener_bind'):
+        filesystem += function(fs_source, 'prepare_ipc_listener_bind')
     (work / 'filesystem.rs').write_text(filesystem)
     auth = parsed(repo / 'src/ipc/auth.rs')
     identity = ''.join(function(auth, name) for name in (
@@ -89,6 +91,7 @@ path = "main.rs"
 anyhow = "=1.0.103"
 libc = "=0.2.171"
 log = "=0.4.22"
+socket2 = "=0.5.10"
 tokio = { version = "=1.44.2", features = ["full"] }
 parity-tokio-ipc = { git = "https://github.com/rustdesk-org/parity-tokio-ipc" }
 ''')
@@ -222,10 +225,46 @@ def native(expected_sha, barrier_sha):
     record('cleanup-failure', result.returncode == 3 and (endpoint / 'keep').read_bytes() == b'preserved', result)
     (endpoint / 'keep').unlink(); endpoint.rmdir()
 
+    endpoint = path('')
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+        listener.bind(str(endpoint)); listener.listen(8)
+        before = endpoint.lstat()
+        result = check('')
+        record('foreign-image-live-preserved', result.returncode == 3 and endpoint.exists()
+               and endpoint.lstat().st_ino == before.st_ino, result)
+    endpoint.unlink(missing_ok=True)
+
+    lock = path('_service_password').with_name('ipc_service_password.lock')
+    lock.unlink(missing_ok=True)
+    for kind in ('symlink', 'fifo', 'writable', 'foreign-owner', 'hardlink'):
+        target = parents[0] / 'lock-target'
+        if kind == 'symlink':
+            target.write_bytes(b'keep'); lock.symlink_to(target)
+        elif kind == 'fifo':
+            os.mkfifo(lock, 0o600)
+        else:
+            lock.write_bytes(b'keep'); lock.chmod(0o600)
+            if kind == 'writable':
+                lock.chmod(0o666)
+            elif kind == 'foreign-owner':
+                os.chown(lock, 4001, 4001)
+            else:
+                os.link(lock, target)
+        before = lock.lstat()
+        result = check('_service_password')
+        after = lock.lstat()
+        record('unsafe-lock-' + kind, result.returncode == 3 and not path('_service_password').exists()
+               and (before.st_ino, before.st_mode, before.st_uid, before.st_nlink)
+               == (after.st_ino, after.st_mode, after.st_uid, after.st_nlink)
+               and (kind == 'fifo' or lock.read_bytes() == b'keep'), result)
+        lock.unlink(); target.unlink(missing_ok=True)
+
     # A is stopped immediately before its descriptor-relative stale unlink.
     # B then runs the complete production startup while A's observation is stale.
     for postfix, uid in (('_service_password', 0), ('_password', 4001)):
         endpoint = path(postfix, uid)
+        other_postfix = '_service_credential' if uid == 0 else ''
+        other_endpoint = path(other_postfix, uid)
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stale:
             stale.bind(str(endpoint))
         endpoint.chmod(0o666)
@@ -249,6 +288,13 @@ def native(expected_sha, barrier_sha):
             second_ready = second.stdout.readline() == 'READY\n'
             if not second_ready:
                 second.wait(timeout=5)
+            independent = subprocess.Popen(**command('start', other_postfix, uid), stdin=subprocess.PIPE,
+                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            children.append(independent)
+            require(select.select([independent.stdout], [], [], 5)[0], 'independent startup did not finish')
+            independent_ready = independent.stdout.readline() == 'READY\n'
+            record('independent-start-' + postfix, independent_ready and other_endpoint.is_socket(),
+                   subprocess.CompletedProcess([], 0 if independent_ready else 3, '', ''))
             os.write(release_w, b'G'); os.close(release_w); release_w = None
             require(select.select([first.stdout], [], [], 5)[0] and first.stdout.readline() == 'READY\n', 'first startup did not finish')
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
@@ -277,15 +323,26 @@ def native(expected_sha, barrier_sha):
                     cleanup_ok = False
                 cleanup_ok = cleanup_ok and child.returncode in (0, 3)
             endpoint.unlink(missing_ok=True)
+            other_endpoint.unlink(missing_ok=True)
             require(cleanup_ok, 'startup child did not join normally')
+        result = check(postfix, uid)
+        record('restart-after-contention-' + postfix, result.returncode == 0
+               and result.stdout == 'OK started\n' and endpoint.is_socket(), result)
+        endpoint.unlink(missing_ok=True)
     for parent in parents:
+        for lock in parent.glob('ipc*.lock'):
+            metadata = lock.lstat()
+            require(stat.S_ISREG(metadata.st_mode) and metadata.st_nlink == 1
+                    and metadata.st_uid == parent.stat().st_uid and metadata.st_size == 0
+                    and stat.S_IMODE(metadata.st_mode) == 0o600, 'startup lock changed')
+            lock.unlink()
         parent.rmdir()
     require(len(list(Path('/proc/self/fd').iterdir())) == fd_before, 'descriptor leaked')
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
     require(sha(barrier) == barrier_sha, 'barrier changed')
     probe.unlink(); barrier.unlink(); work.rmdir()
-    require(len(cases) == 11, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=11 failures={len(failures)} '
+    require(len(cases) == 21, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=21 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 

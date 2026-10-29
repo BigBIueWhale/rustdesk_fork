@@ -171,6 +171,7 @@ fn scrub_preexisting_ipc_parent_entries(
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
 fn remove_ipc_socket_via_secure_parent_fd(postfix: &str) -> ResultType<()> {
     let path = config::Config::ipc_path(postfix);
     let parent_dir = Path::new(&path)
@@ -570,6 +571,7 @@ pub(crate) fn ensure_secure_ipc_parent_dir(path: &str, postfix: &str) -> ResultT
     Ok(should_scrub)
 }
 
+#[cfg(target_os = "macos")]
 pub(crate) fn scrub_secure_ipc_parent_dir(path: &str, postfix: &str) -> ResultType<()> {
     let parent_dir = Path::new(path)
         .parent()
@@ -614,7 +616,7 @@ async fn connect_existing_listener(postfix: &str) -> ResultType<Option<Connectio
 }
 
 #[inline]
-async fn probe_existing_listener(postfix: &str) -> ResultType<bool> {
+pub(crate) async fn probe_existing_listener(postfix: &str) -> ResultType<bool> {
     #[cfg(target_os = "linux")]
     let Some(mut stream) = connect_existing_listener(postfix).await? else {
         return Ok(false);
@@ -726,6 +728,7 @@ fn current_euid() -> u32 {
     unsafe { hbb_common::libc::geteuid() as u32 }
 }
 
+#[cfg(target_os = "macos")]
 pub(crate) async fn check_existing_listener(postfix: &str) -> ResultType<bool> {
     if probe_existing_listener(postfix).await? {
         return Ok(true);
@@ -735,6 +738,82 @@ pub(crate) async fn check_existing_listener(postfix: &str) -> ResultType<bool> {
     Ok(false)
 }
 
+#[cfg(target_os = "linux")]
+pub(crate) fn prepare_ipc_listener_bind(
+    path: &str,
+    postfix: &str,
+    should_scrub_parent_entries: bool,
+) -> ResultType<impl Drop> {
+    use hbb_common::libc;
+
+    let path = Path::new(path);
+    let basename = format!("ipc{postfix}");
+    if path.file_name() != Some(std::ffi::OsStr::new(&basename)) {
+        return Err(Error::new(ErrorKind::InvalidInput, "invalid ipc basename").into());
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "invalid ipc parent"))?;
+    let parent_c = CString::new(parent.as_os_str().as_bytes())?;
+    let parent_fd = open_ipc_parent_dir_fd(&parent_c)?;
+    let _parent_guard = FdGuard(parent_fd);
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstat(parent_fd, &mut st) } != 0 {
+        return Err(Error::last_os_error().into());
+    }
+    let uid = unsafe { libc::geteuid() };
+    if st.st_uid != uid || st.st_mode & 0o7777 != expected_ipc_parent_mode(postfix) {
+        return Err(Error::new(ErrorKind::PermissionDenied, "ipc parent changed before bind").into());
+    }
+
+    // Keep one stable lock inode per endpoint. Never unlink it: replacing a lock
+    // pathname would allow overlapping owners. Other endpoints start independently.
+    let lock_name = CString::new(format!("{basename}.lock"))?;
+    let lock_fd = unsafe {
+        libc::openat(
+            parent_fd,
+            lock_name.as_ptr(),
+            libc::O_RDONLY | libc::O_CREAT | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK,
+            0o600 as libc::mode_t,
+        )
+    };
+    if lock_fd < 0 {
+        return Err(Error::last_os_error().into());
+    }
+    let guard = FdGuard(lock_fd);
+    if unsafe { libc::fstat(lock_fd, &mut st) } != 0 {
+        return Err(Error::last_os_error().into());
+    }
+    if st.st_mode & libc::S_IFMT != libc::S_IFREG
+        || st.st_uid != uid
+        || st.st_nlink != 1
+        || st.st_mode & 0o7777 != 0o600
+    {
+        return Err(Error::new(ErrorKind::PermissionDenied, "unsafe ipc startup lock").into());
+    }
+    if unsafe { libc::flock(lock_fd, libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        return Err(Error::last_os_error().into());
+    }
+
+    // The asynchronous probe predates this reservation. Refuse any transport
+    // that appeared meanwhile; this check grants no peer or request authority.
+    let socket = socket2::Socket::new(socket2::Domain::UNIX, socket2::Type::STREAM, None)?;
+    socket.set_nonblocking(true)?;
+    match socket.connect(&socket2::SockAddr::unix(path)?) {
+        Ok(()) => return Err(Error::new(ErrorKind::AddrInUse, "ipc listener is active").into()),
+        Err(err) if matches!(err.kind(), ErrorKind::NotFound | ErrorKind::ConnectionRefused) => {}
+        Err(err) => return Err(err.into()),
+    }
+    remove_parent_entry_via_fd(parent_fd, parent, &basename)?;
+    if should_scrub_parent_entries {
+        remove_parent_entry_via_fd(parent_fd, parent, &format!("{basename}.pid"))?;
+    }
+    // The caller retains this guard through bind and socket-mode establishment,
+    // without another await. Every error releases it by closing the descriptor.
+    Ok(guard)
+}
+
+#[cfg(any(target_os = "macos", test))]
 #[inline]
 pub(crate) fn should_scrub_parent_entries_after_listener_check(
     should_scrub_parent_entries: bool,

@@ -141,10 +141,12 @@ type ServiceIpcRequesterAuthorization = ipc_auth::ServiceScopedIpcAuthorization;
 #[cfg(target_os = "linux")]
 type ServiceIpcRequesterAuthorization = ();
 #[cfg(target_os = "linux")]
-use ipc_fs::terminal_count_candidate_uids;
+use ipc_fs::{prepare_ipc_listener_bind, probe_existing_listener, terminal_count_candidate_uids};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
+use ipc_fs::ensure_secure_ipc_parent_dir;
+#[cfg(target_os = "macos")]
 use ipc_fs::{
-    check_existing_listener, ensure_secure_ipc_parent_dir, scrub_secure_ipc_parent_dir,
+    check_existing_listener, scrub_secure_ipc_parent_dir,
     should_scrub_parent_entries_after_listener_check,
 };
 use parity_tokio_ipc::{
@@ -5109,9 +5111,15 @@ pub async fn new_listener(postfix: &str) -> ResultType<Incoming> {
     let path = Config::ipc_path(postfix);
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     let should_scrub_parent_entries = ensure_secure_ipc_parent_dir(&path, postfix)?;
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    if probe_existing_listener(postfix).await? {
+        return Err(std::io::Error::new(std::io::ErrorKind::AddrInUse, "ipc listener is active").into());
+    }
+    #[cfg(target_os = "linux")]
+    let _bind_guard = prepare_ipc_listener_bind(&path, postfix, should_scrub_parent_entries)?;
+    #[cfg(target_os = "macos")]
     let existing_listener_alive = check_existing_listener(postfix).await?;
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[cfg(target_os = "macos")]
     if should_scrub_parent_entries_after_listener_check(
         should_scrub_parent_entries,
         existing_listener_alive,

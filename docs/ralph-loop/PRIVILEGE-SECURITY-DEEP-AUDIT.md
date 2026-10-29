@@ -115894,3 +115894,11 @@ removed: 1,641,808 to 1,635,346 bytes. Before/after SHA-256:
 The new internal reference resolves once and whitespace checks pass. Product,
 tests, normative requirements and live instructions are unchanged; prior native
 evidence is reused without another product run. No acceptance item is closed.
+
+Fresh isolated count at `25825532`, TUF `lRxDhfEYDr`, is **357,689 tokens**,
+down 1,491 from 359,180, with the same pinned method, seven controls and whole-file
+byte round trip. Its input hash matches the reviewed replacement above. QEMU
+1686815 joins after 30.807 seconds, `run.ghjq31on` retires and all three listener
+deltas are zero. Six count records total 102,667 bytes on CTE and TUF. This audit
+receipt does not change the measured ledger; broader documentation cleanup and
+all previously open acceptance obligations remain OPEN.

@@ -71,6 +71,8 @@ def build():
         filesystem += function(fs_source, 'open_ipc_startup_lock')
     if fs_source.functions('ipc_descriptor_directory'):
         filesystem += function(fs_source, 'ipc_descriptor_directory')
+    if fs_source.functions('restore_ipc_socket_owner_access'):
+        filesystem += function(fs_source, 'restore_ipc_socket_owner_access')
     (work / 'filesystem.rs').write_text(filesystem)
     auth = parsed(repo / 'src/ipc/auth.rs')
     identity = ''.join(function(auth, name) for name in (
@@ -253,11 +255,38 @@ def native(expected_sha, barrier_sha):
                         require(extra.connect_ex(str(endpoint)) == errno.EAGAIN, 'backlog is not full')
                 result = check('', uid)
                 record(name, result.returncode == 3 and endpoint.exists()
-                       and endpoint.lstat().st_ino == before.st_ino, result)
+                       and endpoint.lstat().st_ino == before.st_ino
+                       and (not uid or stat.S_IMODE(endpoint.lstat().st_mode) == 0), result)
             finally:
                 if filler is not None:
                     filler.close()
                 endpoint.unlink(missing_ok=True)
+
+    for kind in ('symlink', 'hardlink'):
+        endpoint = path('', 4001)
+        target = endpoint.with_name('denied-target')
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+            listener.bind(str(target)); listener.listen(8)
+            os.chown(target, 4001, 4001); target.chmod(0)
+            if kind == 'symlink':
+                endpoint.symlink_to(target)
+                os.chown(endpoint, 4001, 4001, follow_symlinks=False)
+            else:
+                os.link(target, endpoint)
+            metadata = lambda p: (p.lstat().st_dev, p.lstat().st_ino, p.lstat().st_mode,
+                                  p.lstat().st_uid, p.lstat().st_nlink)
+            before = (metadata(endpoint), metadata(target))
+            try:
+                result = check('', 4001)
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+                    peer.settimeout(2); peer.connect(str(endpoint))
+                    import struct
+                    connected_pid = struct.unpack('3i', peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))[0]
+                record('permission-denied-' + kind, result.returncode == 3
+                       and before == (metadata(endpoint), metadata(target))
+                       and connected_pid == os.getpid(), result)
+            finally:
+                endpoint.unlink(missing_ok=True); target.unlink(missing_ok=True)
 
     endpoint = path('_service_password')
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stale:
@@ -621,8 +650,8 @@ def native(expected_sha, barrier_sha):
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
     require(sha(barrier) == barrier_sha, 'barrier changed')
     probe.unlink(); barrier.unlink(); work.rmdir()
-    require(len(cases) == 76, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=76 failures={len(failures)} '
+    require(len(cases) == 78, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=78 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 

@@ -644,15 +644,88 @@ pub(crate) fn scrub_secure_ipc_parent_dir(path: &str, postfix: &str) -> ResultTy
 }
 
 #[cfg(target_os = "linux")]
+fn restore_ipc_socket_owner_access(path: &str, postfix: &str) -> ResultType<()> {
+    use hbb_common::libc;
+
+    let path = Path::new(path);
+    let parent = path.parent().ok_or_else(|| Error::new(ErrorKind::InvalidInput, "invalid ipc parent"))?;
+    let name = CString::new(format!("ipc{postfix}"))?;
+    if path.file_name() != Some(std::ffi::OsStr::new(name.to_str()?)) {
+        return Err(Error::new(ErrorKind::InvalidInput, "invalid ipc basename").into());
+    }
+    if config::is_service_ipc_postfix(postfix) {
+        verify_linux_service_ipc_namespace(parent)?;
+    }
+    let parent = FdGuard(open_ipc_parent_dir_fd(&CString::new(parent.as_os_str().as_bytes())?)?);
+    let metadata = |fd| -> std::io::Result<libc::stat> {
+        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        if unsafe { libc::fstat(fd, &mut st) } != 0 {
+            return Err(Error::last_os_error());
+        }
+        Ok(st)
+    };
+    let uid = unsafe { libc::geteuid() };
+    let directory = metadata(parent.0)?;
+    if directory.st_uid != uid || directory.st_mode & 0o7777 != expected_ipc_parent_mode(postfix) {
+        return Err(Error::new(ErrorKind::PermissionDenied, "unsafe ipc socket parent").into());
+    }
+    let fd = unsafe { libc::openat(parent.0, name.as_ptr(), libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
+    if fd < 0 {
+        return Err(Error::last_os_error().into());
+    }
+    let socket = FdGuard(fd);
+    let original = metadata(fd)?;
+    if original.st_mode & libc::S_IFMT != libc::S_IFSOCK || original.st_uid != uid
+        || original.st_nlink != 1 || original.st_mode & 0o7000 != 0
+        || original.st_mode & 0o200 != 0
+    {
+        return Err(Error::new(ErrorKind::PermissionDenied, "ipc socket is not an owned socket missing owner write").into());
+    }
+    let require_identity = |directory, entry: &std::ffi::CStr, flags| -> ResultType<()> {
+        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        if unsafe { libc::fstatat(directory, entry.as_ptr(), &mut st, flags) } != 0 {
+            return Err(Error::last_os_error().into());
+        }
+        if (st.st_dev, st.st_ino) != (original.st_dev, original.st_ino) {
+            return Err(Error::new(ErrorKind::PermissionDenied, "ipc socket identity changed").into());
+        }
+        Ok(())
+    };
+    require_identity(parent.0, &name, libc::AT_SYMLINK_NOFOLLOW)?;
+    let descriptors = ipc_descriptor_directory()?;
+    let descriptor = CString::new(fd.to_string())?;
+    require_identity(descriptors.0, &descriptor, 0)?;
+    let mode = if config::is_service_ipc_postfix(postfix) { 0o666 } else { 0o600 };
+    // A crash between bind and chmod can leave owner write masked off. Repair
+    // only this retained socket; permission denial never authorizes unlinking.
+    if unsafe { libc::fchmodat(descriptors.0, descriptor.as_ptr(), mode, 0) } != 0 {
+        return Err(Error::last_os_error().into());
+    }
+    let repaired = metadata(socket.0)?;
+    if repaired.st_uid != uid || repaired.st_nlink != 1 || repaired.st_mode & 0o7777 != mode {
+        return Err(Error::new(ErrorKind::PermissionDenied, "ipc socket metadata changed").into());
+    }
+    require_identity(parent.0, &name, libc::AT_SYMLINK_NOFOLLOW)
+}
+
+#[cfg(target_os = "linux")]
 async fn connect_existing_listener(postfix: &str) -> ResultType<Option<ConnectionTmpl<ConnClient>>> {
     let path = config::Config::ipc_path(postfix);
-    let client = match hbb_common::timeout(1000, Endpoint::connect(path)).await? {
-        Ok(client) => client,
-        Err(err) if matches!(err.kind(), ErrorKind::NotFound | ErrorKind::ConnectionRefused) => {
-            return Ok(None);
+    let client: ResultType<Option<ConnClient>> = hbb_common::timeout(1000, async {
+        let result = match Endpoint::connect(&path).await {
+            Err(err) if err.raw_os_error() == Some(hbb_common::libc::EACCES) => {
+                restore_ipc_socket_owner_access(&path, postfix)?;
+                Endpoint::connect(&path).await
+            }
+            result => result,
+        };
+        match result {
+            Ok(client) => Ok(Some(client)),
+            Err(err) if matches!(err.kind(), ErrorKind::NotFound | ErrorKind::ConnectionRefused) => Ok(None),
+            Err(err) => Err(err.into()),
         }
-        Err(err) => return Err(err.into()),
-    };
+    }).await?;
+    let Some(client) = client? else { return Ok(None); };
     // Startup probes transport presence before authenticating the incumbent. The
     // application client API intentionally refuses raw credential endpoints.
     let mut connection = if config::is_service_ipc_postfix(postfix) {

@@ -117247,3 +117247,32 @@ Seven controls and the complete text round trip pass. QEMU 1788362 joins after
 Six count files add 102,899 bytes; all twenty-seven evidence files total 443,816
 bytes per host with matching hashes. This audit-only receipt preserves the
 measured ledger bytes and its approximate 400,000-token budget.
+
+### 2026-10-30 — main-reply review and service-protocol test-wording retirement
+
+Read-only review at `af1b3704` finds no new privilege escalation in the examined
+main-reply callers. Password queries retain their separate peer proof; CM/PA
+validation retains owner checks. The readiness query is live in
+`examples/smoke_readiness.rs` and checks the expected PID/start identity before
+and after the reply. It is not an orphan. The URL receiver is compiled only for
+Windows/macOS; Linux core deep links self-handle. The possible generic Linux URL
+client-principal change therefore has no active Linux receiver to justify it.
+These findings close those audit leads, not the outstanding installed/action,
+same-UID, process-generation or descriptor-handoff obligations.
+
+`320f86f0a5ab07d83504e91d0207ae4f9d54e7ac` deletes 62 lines / 5,418 bytes from
+`scripts/verify.sh` and `scripts/apple-conform-check.sh`: test-name greps,
+inventories of assertion/wire spelling, and six mutations of that test text.
+They inspect test source without executing the claimed protocol behavior.
+The two executable service/SAS protocol tests, their Cargo invocations, target
+cfg branches and production receiver/endpoint checks remain byte-identical.
+No replacement catalogue is added.
+
+Read-only validation passes `bash -n` for both scripts and `git diff --check`.
+Parsing the changed Apple heredoc proves the remaining syntax tree is identical
+after removing exactly its inventory call and six corresponding mutation calls.
+The source/requirements/instructions comparison is unchanged. The current Linux
+component receipt `Ct0zJbnB04` remains applicable to its unchanged product and
+fixtures; no product test or full catalogue was rerun for this deletion. Native
+Windows/macOS, installed functionality and all parked work remain OPEN. A fresh
+ledger count follows.

@@ -3793,6 +3793,12 @@ predicate and `r_s11e262_` role/audit-token predicates. These are component
 checks; installed authorization and protected actions require the observations
 above and below.
 
+`320f86f0` removes service/SAS test-wording inventories, duplicate test-name
+greps and six Apple mutations of test text (62 lines). Executable protocol tests,
+their Cargo invocations and production checks are retained. Shell parsing and
+an exact comparison of the remaining Apple Python syntax tree pass; this deletion
+adds no native or installed acceptance.
+
 Deleted overlapping wording catalogues are archived in Git and the audit's
 2026-10-27–29 credential-catalogue and pkcheck entries; the macOS deletion receipt
 is `mac-password-catalogue-187c9d91.json`.

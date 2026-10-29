@@ -117064,3 +117064,15 @@ host listener deltas are zero. Seven raw files total 114,416 bytes per host with
 matching copied hashes. After retaining evidence, exact failed-run scratch
 `response-shape-before.hw1b2nd6Nl` (inode 78294410, 3,506,176 allocated bytes)
 is removed. Native Windows/macOS, full application and installed acceptance remain open.
+
+Candidate `dabb54fe`, TUF `pcUzvshuz6`, passes all 248 IPC and 14 directory cases
+plus the source check. Each new scenario rejects all 38 malformed frames and
+preserves ten valid controls. The test fixture bytes equal the baseline; the
+product diff is exactly the three Serde attributes. Candidate artifact SHA-256:
+`02599dc30f7ae378589ccf399486a3fbca9c295c38e0c9fdf0911202d3a6bea7`;
+production response fragment:
+`f3be4a29ff4403027276a03811753d1eb575d4dcd27df4bab0e2bedebcaf60fd`.
+QEMU 1774723 joins after 91.627 seconds; RAM `run.dy9_qx1v` retires and all four
+host listener deltas are zero. Seven candidate files add 111,852 bytes, making
+the retained comparison fourteen files / 226,268 bytes per host with matching
+copied hashes. `git diff --check` and exact scope/fixture comparisons pass.

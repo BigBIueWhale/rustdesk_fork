@@ -3620,9 +3620,9 @@ those obligations.
 <a id="linux-ipc-components"></a>
 
 **IPC / option CLI — component acceptance; installed acceptance OPEN.**
-At `45944c71`, TUF `L7KfHexaKj` passes all **172 listener/transport, 32 CLI,
-10 Windows selector, 20 main-response, 8 main-transaction, 4 URL-loop and
-14 directory cases**, plus the focused desktop source check in 91.488 seconds.
+At `dabb54fe`, TUF `pcUzvshuz6` passes all **172 listener/transport, 32 CLI,
+10 Windows selector, 22 main-response, 8 main-transaction, 4 URL-loop and
+14 directory cases**, plus the focused desktop source check in 91.627 seconds.
 All execute in Linux;
 the Windows selector uses real
 Unix sockets and Tokio tasks, not Windows pipes or privileged receivers.
@@ -3638,7 +3638,7 @@ Real Unix sockets establish the named IPC outcomes, not complete application or
 privileged-receiver authorization. All four host
 listener deltas are zero; QEMU joins, bounded RAM scratch retires and exact
 fixture socket/descriptor cleanup passes. Current receipt:
-`main-config-key-shape-45944c71.json`.
+`linux-ipc-parent-tests-run.pcUzvshuz6.serial.log`.
 
 Unused IPC surfaces are removed: the old service-role/root-UID password predicate
 and `ConnectionTmpl::next_timeout2` had no repository callers. Their last callers
@@ -3796,6 +3796,16 @@ lock against an independently privileged administrator. None of these open limit
 by consolidating the ledger. All separately parked work remains OPEN/PARKED.
 
 ### Current authority and source closure
+
+**Main response field admission (`dabb54fe`).** The response envelope and
+status/readiness snapshot structs reject unknown fields. Previously the framed
+reader accepted all 38 tested extra-field replies under root and UID 4001; both
+unchanged scenarios now reject them and preserve ten valid controls each,
+including both tag/content orders and valid reuse after malformed frames.
+Valid encodings, values, limits and authorization are unchanged. This is production
+schema/reader evidence on Unix sockets; full application, installed and other-OS
+acceptance remain OPEN. The separately parked CM payload/handshake work is unchanged.
+The audit retains the baseline, exact artifacts and cleanup evidence.
 
 **Windows pipe client handle ownership (`87aca7c8`).** The opener now returns
 Tokio's consuming constructor directly. Its registration-error path previously

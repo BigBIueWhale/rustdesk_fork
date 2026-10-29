@@ -4697,7 +4697,7 @@ elif [ "$MODE" = rust-audit ]; then
     )
 fi
 vm_iso_command /usr/bin/xorriso -as mkisofs -quiet -iso-level 3 -volid RD_VERIFIER_INPUTS \
-    -joliet -rock "${payload_identity[@]}" -graft-points -output "$PAYLOAD" \
+    -joliet -rock -dir-mode 0555 "${payload_identity[@]}" -graft-points -output "$PAYLOAD" \
     "guest.sh=$GUEST_SCRIPT" \
     "repo/scripts/verify.sh=$VERIFY_SCRIPT" \
     "repo/scripts/verify-release.sh=$VERIFY_RELEASE_SOURCE" \

@@ -114040,3 +114040,49 @@ checks on the exact candidate. Mark the goal blocked pending sufficient CTE RAM
 or approval to install TUF's two requested QEMU packages. Keep the resource limits,
 user-parked work, all fifteen credential actions and broader acceptance open.
 This audit-only receipt leaves the counted ledger unchanged.
+
+## 2026-10-29 — approved TUF QEMU installation and private-checkout VM inputs
+
+The user explicitly approves installing QEMU on TUF and then directs using
+Docker to obtain host root for those installs. That narrow authorization is
+used after noninteractive sudo refuses. An existing image supplies a temporary
+networkless container with a read-only container root, bounded resources and
+only the capabilities needed for chroot/package installation. Ubuntu's
+authenticated package download precedes an offline host-chroot apt transaction.
+All sixteen additions configure successfully, with no upgrades or removals;
+QEMU and qemu-img report 8.2.2, package version 1:8.2.2+ds-0ubuntu1.18. Ordinary
+user KVM access works. The package-created qemu-kvm unit is inactive. No RustDesk
+or unrelated service is used. The helper is removed, together with all
+18,639,150 downloaded package bytes. Apt reports 95.1 MB additional installed
+space. Host listener additions are zero; an unrelated pre-existing loopback
+listener disappears and is left untouched. Installation, package identities,
+cleanup and listener receipts are retained in `tuf-qemu-install-20261029.json`
+(12,696 bytes; SHA-256
+`b9b062af8b831b7a6ee8d3530525ad2acc4d77491edb2de2d56726074e1431eb`).
+
+The existing ordinary-user audio VM starts on TUF at pushed `87fef881`.
+Run `OnQF82WRnz` refuses the staged Pub-cache digest before tests. The transfer
+had preserved bytes and modes but split six Git pack/index hardlink pairs;
+the canonical closure deliberately includes that topology. After comparing all
+twelve paths' bytes, modes and ownership against CTE, restore exactly those
+six pairs under the idle VM-root lock and reseal their parent modes. This removes
+5,074,205 duplicate logical bytes. Future copies of this cache need rsync's
+`--hard-links` as well as the complete pinned closure check; archive mode alone
+does not preserve links, as documented by the
+[rsync manual](https://download.samba.org/pub/rsync/rsync.1#opt--hard-links).
+No cache pin or validator is changed.
+
+Run `Dd8va5DoBo` passes that closure but fails before tests when the non-root
+image validator cannot traverse the payload's inherited directory permissions.
+TUF's checkout is mode 0700; xorrisofs graft parents inherit source-directory
+attributes. Its installed manual documents both inheritance and `-dir-mode`.
+Set payload image directories explicitly to 0555. This fixes the image's
+read/traverse contract while retaining private host directories, original file
+modes/owners and the read-only/noexec/nosuid/nodev guest mount. Product and tests
+are unchanged. Both failed VMs join QEMU with exit zero, retire their RAM
+workspaces and leave zero listener deltas; the outer test exits are one and
+neither attempt counts as audio acceptance. Their bounded failure roots are
+identity-checked and retired from admission while retaining diagnostics.
+The corrected launcher still needs execution of the 37 rendered cases and
+three parser checks. Broader native audio/IPC and all fifteen credential actions
+remain OPEN. The counted hardening ledger is unchanged.

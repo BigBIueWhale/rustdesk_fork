@@ -115056,3 +115056,14 @@ component. Full application and installed authority, CM/PA process proofs,
 macOS, remaining namespace/crash/metadata races, coexisting versions, release
 artifacts and independent review remain OPEN. Config name/path and service
 authorization adapters remain explicit limits of the executed component.
+
+Post-update ledger count: source `42fd3878`, TUF `bcfkVkIpkI`,
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`, 357,298 tokens / 1,633,546 bytes
+(+57 tokens / +206 bytes). Input SHA-256
+`19745d052bf5559d0132b9cc59e48bae3da3217300c16e5af4480e89dea7ddff`.
+The 33.770-second run joins QEMU 1631061 with exit zero and retires workspace
+`run.y9fmxxe8`; all three host listener deltas are zero. Peak RAM scratch is
+402,280,448 bytes, overlay 305,729,536 bytes and durable run 253,952 bytes.
+Six count files total 102,556 bytes and match both hosts; serial SHA-256
+`ae8b1abd18dc1d28821ae8f40c9ae3ea84865495c7a55705cde86cbcca8e8018`.
+This audit-only receipt leaves the counted ledger unchanged.

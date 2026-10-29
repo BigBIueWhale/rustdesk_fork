@@ -117012,3 +117012,12 @@ bytes per host with matching copied hashes. Exact source comparison limits the
 product diff to removal of the redundant match/close/import and its ownership
 comment. `git diff --check` passes. No Windows build or native handle test ran;
 installed platform acceptance and separately parked work remain open.
+
+Ledger count `yeGM6rIxRj` at `a76ee55c` reports 359,618 tokens using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 1,644,442 bytes, SHA-256
+`c87114eb748c752faf4c6f68204f32d7c09fbda51d3ad0904dee9e1ba586c2bf`.
+Seven controls and the complete text round trip pass. QEMU 1772819 joins after
+30.968 seconds; RAM `run.1128ivr4` retires and all three listener deltas are zero.
+Its six files add 102,661 bytes. All thirteen retained files total 214,337 bytes
+per host with matching copied hashes. This audit-only receipt preserves the
+measured ledger bytes.

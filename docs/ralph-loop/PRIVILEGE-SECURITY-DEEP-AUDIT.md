@@ -114343,3 +114343,69 @@ Six copied evidence files total 104,374 bytes and match the TUF hashes; serial
 SHA-256 is `95ee768e199b6e2ee76caf72fd867211e33ee1978c9078ca89e445807871ecab`.
 The classification capsule also matches on both hosts. This audit-only receipt
 leaves the counted ledger unchanged.
+
+## 2026-10-29 — native Linux IPC directory authority
+
+The current R-S11b/R-S11c checklist still has all fifteen credential actions
+OPEN for installed/native acceptance; their parked work remains parked.
+This slice adds actual root/unprivileged Linux filesystem acceptance for the
+existing R-S11a parent-directory boundary, without changing product behavior.
+
+`src/ipc/fs.rs` opens the parent without following its final symlink, validates
+its owner, replaces a foreign service parent and repairs the expected mode.
+Only the two named IPC entries are scrubbed. The authority model remains:
+root may replace a foreign service directory with a fresh root-owned inode;
+other ownership mismatches refuse. No new escalation was demonstrated.
+The existing local API is adequate for this bounded component exercise.
+
+The Linux [open(2) contract](https://man7.org/linux/man-pages/man2/open.2.html)
+allows a retained FD to observe the old inode after its name is removed;
+[rmdir(2)](https://man7.org/linux/man-pages/man2/rmdir.2.html) supplies the
+nonempty refusal. The native fixture keeps that old FD open, preventing inode
+reuse from confusing the replacement assertion. ACL presence/removal and actual
+unprivileged write denial are checked separately. Python's
+[subprocess contract](https://docs.python.org/3/library/subprocess.html#popen-constructor)
+provides explicit UID/GID/empty supplementary groups; each bounded run waits for
+its child, and timeout kills and waits rather than detaching.
+
+Pushed `e5b0a0d5` adds the Python builder/native driver, small Rust command driver
+and shared VM mode. `7985000c` fixes the builder to invoke the existing pinned
+compiler directly and supplies RUSTC for libc's real build script. The first
+run `SMJdL9qHWg` failed before compilation/native cases because the cleared
+environment invoked rustup's default 1.75 channel in a read-only offline image.
+Its QEMU joined exit zero, RAM workspace disappeared and all four listener
+deltas were zero; exact terminal diagnostics were retained after locked marker
+retirement. That failed attempt is not acceptance.
+
+The accepted TUF run `rz3fmZ3MP8`, source `7985000c`, exits zero. Six cases pass:
+fresh parents for all three service postfixes and repeat; foreign directory
+with access/default ACLs replaced while the old FD remains open; foreign
+nonempty refusal preserving unknown data; symlink-parent refusal; UID 4001
+user-mode success with UID 4002/root wrong-owner refusal; and root-owned unsafe
+mode repair plus exact stale-entry scrub without following a stale symlink.
+Write denials come from real ordinary processes. Fixture entries and parent
+Python descriptors return to baseline; the copied artifact remains unchanged.
+
+The builder compiles eight exact production functions, FdGuard and the actual
+config postfix predicate using Rust 1.75 and authenticated root-locked
+libc 0.2.171. It substitutes a standard boxed-error result alias and supplies
+paths under a root-owned sticky fixture. Product filesystem SHA-256 is
+`a63a636ea032981476787b299faa90aff876605be949a21839671cc3eee657dd`;
+binary SHA-256 is
+`e85d09bc615fbb9d20f895a3298d8e94a7c0b8ece076f8215b9a8c01e971e830`.
+This is native component evidence, not a complete module/app build, actual
+socket/new_listener execution, installed service or controlled replacement
+race. Active-session and process-role acceptance, broader concurrency,
+other platforms and full R-S0 remain OPEN. No full-parent build was resumed.
+
+The 34.362-second run records 3,392,692,224 peak RAM scratch bytes,
+3,196,719,104 peak overlay bytes and 3,379,200 peak durable-run bytes. QEMU
+1562972 joins exit zero with 4,096 observed host-write bytes; its PID, RAM
+workspace `run.majbd_t1` and active run roots are absent. All four listener
+inventories have zero deltas. Fourteen bounded evidence files for both runs
+total 146,574 bytes and match locked TUF hashes on CTE. Capsule
+`ipc-parent-native-7985000c.json` is 29,022 bytes, SHA-256
+`47b3296650c0f53d873afa03b7bceace3f4659f8bd5b3a6ab0cad4d257255884`.
+The preliminary isolated shell-syntax container exited zero and was removed;
+it added no host endpoint, while one unrelated baseline UDP endpoint disappeared.
+`git diff --check` passes. The ledger's fresh isolated count follows.

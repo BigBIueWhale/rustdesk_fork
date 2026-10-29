@@ -577,8 +577,8 @@ function-scoped desktop checker rejects all three. Its current source pass and
 shell syntax pass in isolated non-root, networkless execution. Exact comparison
 confirms only that block was deleted and filesystem executable/test tokens are
 unchanged. Comments now distinguish ACL-entry retention from effective write
-permission after chmod. Directory replacement remains mandatory. No new native
-filesystem or installed-service acceptance is claimed; the audit entry
+permission after chmod. Directory replacement remains mandatory. The deletion
+itself adds no native or installed-service evidence; the audit entry
 “2026-10-29 — Unix IPC directory evidence correction” records the classification.
 
 **OPEN:** whole-document and test classification; all fifteen credential actions;
@@ -3614,6 +3614,23 @@ review are all still open. Source gates, compilation, callback receipt, and hist
 those obligations.
 
 ## R-S11b/R-S11c/R-S11i — service-owned IPC authority
+
+**R-S11a Linux IPC directory component — six native cases pass.**
+`e5b0a0d5`/`7985000c` add `--linux-ipc-parent-tests` to the bounded RAM-backed
+verifier VM. Eight exact filesystem functions and the config postfix predicate
+compile with pinned Rust/libc; a standard boxed-error adapter replaces the
+shared result alias. Root and real UID 4001/4002 processes exercise fresh service
+parents, foreign access/default-ACL replacement, nonempty and symlink refusal,
+user-owned success/wrong-owner refusal, and mode repair with exact stale-entry
+scrub. The retained old directory FD proves replacement rather than adoption;
+kernel write denial, preserved unrelated files and final fixture/FD retirement
+are observed. TUF run `rz3fmZ3MP8` passes in 34.362 seconds, joins QEMU and removes
+RAM scratch; all four listener inventories have zero deltas. Product behavior
+is unchanged. Supplied fixture paths do not exercise `Config::ipc_path`, actual
+socket binding, `new_listener`, installed services, active-session/role selection
+or controlled replacement races. Those observations and full R-S0 remain OPEN.
+Receipt: `ipc-parent-native-7985000c.json`; audit entry
+“2026-10-29 — native Linux IPC directory authority”.
 
 **R-X14 desktop resource removal.** `9c8ebb1c` deletes the unused `res/startwm.sh` and
 dummy `res/xorg.conf`, their Debian payload/conffile/executable entries and the empty

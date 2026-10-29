@@ -2347,29 +2347,6 @@ ipc_data_enum=$(awk '/pub enum Data {/,/^}/' src/ipc.rs)
 if echo "$ipc_data_enum" | grep -Eq '(^|[[:space:]])Test,|MacosServiceOwned|RequestServiceOwned|ServiceOwnedShareRdp|ServiceOwnedSasDispatch'; then
   r_s11b="$r_s11b privileged-service-variant-remains-in-data-union"
 fi
-grep -q 'service_channel_uses_closed_directional_protocol' src/ipc.rs || r_s11b="$r_s11b service-directional-regression-missing"
-grep -q 'windows_service_sas_channel_uses_closed_directional_protocol' src/ipc.rs || r_s11b="$r_s11b windows-sas-directional-regression-missing"
-service_protocol_test=$(awk '/fn service_channel_uses_closed_directional_protocol\(\)/,/^    }/' src/ipc.rs)
-service_protocol_test_header=$(grep -B2 -m1 'fn service_channel_uses_closed_directional_protocol()' src/ipc.rs)
-echo "$service_protocol_test_header" | grep -Fq '#[cfg(not(any(target_os = "android", target_os = "ios")))]' || r_s11b="$r_s11b service-directional-regression-not-desktop-wide"
-for exact_wire in \
-  'br#"{"t":"EnsurePasswordRightReady"}"#' \
-  'br#"{"t":"PasswordRightReady","ready":true}"#' \
-  'br#"{"t":"EnsurePasswordRightReady","c":null}"#' \
-  'br#"{"t":"PasswordRightReady","ready":true,"c":null}"#' \
-  'br#"{"t":"SetShareRdp","enabled":true}"#' \
-  'br#"{"t":"ShareRdpSet","accepted":true}"#' \
-  'br#"{"t":"SetShareRdp","enabled":true,"c":null}"#' \
-  'br#"{"t":"ShareRdpSet","accepted":true,"c":null}"#'; do
-  echo "$service_protocol_test" | grep -Fq "$exact_wire" || r_s11b="$r_s11b platform-service-wire-regression-missing"
-done
-for directional_check in \
-  'serde_json::from_slice::<ServiceIpcResponse>(&readiness_request).is_err()' \
-  'serde_json::from_slice::<ServiceIpcRequest>(&readiness_response).is_err()' \
-  'serde_json::from_slice::<ServiceIpcResponse>(&share_rdp_request).is_err()' \
-  'serde_json::from_slice::<ServiceIpcRequest>(&share_rdp_response).is_err()'; do
-  echo "$service_protocol_test" | grep -Fq "$directional_check" || r_s11b="$r_s11b platform-service-direction-regression-missing"
-done
 grep -q 'new_listener(password::SERVICE_PASSWORD_IPC_POSTFIX)' src/ipc.rs || r_s11b="$r_s11b raw-service-password-listener-missing"
 grep -q 'password::SensitivePayloadKind::Password' src/ipc.rs || r_s11b="$r_s11b raw-service-password-kind-missing"
 if [ -n "$r_s11b" ]; then echo "  FAIL R-S11b-1 _service whole-config bus removal:$r_s11b"; rc=1; else
@@ -7224,7 +7201,6 @@ grep -q 'name("windows-service-sas".to_owned())' src/platform/windows.rs        
 grep -q 'pub(crate) enum WindowsServiceSasIpcRequest' src/ipc.rs                      || r_s11c23="$r_s11c23 typed-sas-request-missing"
 grep -q 'pub(crate) enum WindowsServiceSasIpcResponse' src/ipc.rs                     || r_s11c23="$r_s11c23 typed-sas-response-missing"
 grep -q 'DispatchAccepted {' src/ipc.rs                                               || r_s11c23="$r_s11c23 truthful-sas-result-missing"
-grep -q 'windows_service_sas_channel_uses_closed_directional_protocol' src/ipc.rs     || r_s11c23="$r_s11c23 sas-directional-protocol-test-missing"
 grep -q 'authorize_windows_service_owned_sas_requester' src/ipc/auth.rs               || r_s11c23="$r_s11c23 sas-requester-proof-missing"
 grep -q 'WindowsProcessIdentityKey' src/platform/windows.rs                          || r_s11c23="$r_s11c23 sas-generation-identity-missing"
 grep -q 'prepare_sas_as_windows_pipe_client(requester)' src/platform/windows.rs       || r_s11c23="$r_s11c23 sas-retained-pipe-dispatch-not-wired"

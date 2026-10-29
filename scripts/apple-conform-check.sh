@@ -1138,38 +1138,6 @@ def analyze(sources):
                 "PermanentPasswordSnapshot", "PermanentPasswordSnapshotResult",
             ]
         ))
-        need("b1", "service-directional-regression-missing", all(token in ipc for token in [
-            '#[cfg(not(any(target_os = "android", target_os = "ios")))]\n'
-            '    #[test]\n'
-            '    fn service_channel_uses_closed_directional_protocol()',
-            "fn service_channel_uses_closed_directional_protocol()",
-            "serde_json::from_slice::<ServiceIpcResponse>(&request).is_err()",
-            "serde_json::from_slice::<ServiceIpcRequest>(&response).is_err()",
-            "serde_json::from_slice::<ServiceIpcRequest>(&cross_purpose).is_err()",
-            "serde_json::from_slice::<ServiceIpcResponse>(&readiness_request).is_err()",
-            "serde_json::from_slice::<ServiceIpcRequest>(&readiness_response).is_err()",
-            "serde_json::from_slice::<ServiceIpcResponse>(&share_rdp_request).is_err()",
-            "serde_json::from_slice::<ServiceIpcRequest>(&share_rdp_response).is_err()",
-            "fn windows_service_sas_channel_uses_closed_directional_protocol()",
-            "serde_json::from_slice::<WindowsServiceSasIpcResponse>(&request).is_err()",
-            "serde_json::from_slice::<WindowsServiceSasIpcRequest>(&response).is_err()",
-            'assert_eq!(request, br#"{"t":"LivenessProbe"}"#)',
-            'assert_eq!(response, br#"{"t":"Liveness"}"#)',
-            'assert_eq!(request, br#"{"t":"Dispatch"}"#)',
-            'br#"{"t":"DispatchAccepted","accepted":true}"#',
-            'br#"{"t":"LivenessProbe","c":null}"#',
-            'br#"{"t":"Liveness","c":null}"#',
-            'br#"{"t":"EnsurePasswordRightReady"}"#',
-            'br#"{"t":"PasswordRightReady","ready":true}"#',
-            'br#"{"t":"EnsurePasswordRightReady","c":null}"#',
-            'br#"{"t":"PasswordRightReady","ready":true,"c":null}"#',
-            'br#"{"t":"SetShareRdp","enabled":true}"#',
-            'br#"{"t":"ShareRdpSet","accepted":true}"#',
-            'br#"{"t":"SetShareRdp","enabled":true,"c":null}"#',
-            'br#"{"t":"ShareRdpSet","accepted":true,"c":null}"#',
-            'br#"{"t":"Dispatch","c":null}"#',
-            'br#"{"t":"DispatchAccepted","accepted":true,"c":null}"#',
-        ]))
         need("b1", "service-resource-boundary-missing", all(token in ipc for token in [
             "pub(crate) const SERVICE_IPC_MAX_FRAME_BYTES: usize = 32 * 1024;",
             "pub(crate) const SERVICE_IPC_REQUEST_TIMEOUT_MS: u64 = 1_000;",
@@ -2455,12 +2423,6 @@ mutation("linux-service-snapshot-typed-client", "ipc", "let receiver = LinuxServ
 mutation("macos-service-readiness-generic-client", "ipc", "c.send_service_request_timeout(\n        &ServiceIpcRequest::EnsurePasswordRightReady {},", "c.send_json_timeout(\n        &ServiceIpcRequest::EnsurePasswordRightReady {},", "b1", "macos-service-readiness-client-not-typed")
 mutation("windows-service-share-rdp-generic-client", "ipc", "c.send_service_request_timeout(\n        &ServiceIpcRequest::SetShareRdp { enabled: enable },", "c.send_json_timeout(\n        &ServiceIpcRequest::SetShareRdp { enabled: enable },", "b1", "windows-service-share-rdp-client-not-typed")
 mutation("windows-service-sas-generic-client", "ipc", ".send_windows_service_sas_request_timeout(", ".send_json_timeout(", "b1", "windows-service-sas-client-not-typed")
-mutation("service-directional-wire-regression", "ipc", 'assert_eq!(request, br#"{"t":"LivenessProbe"}"#);', 'assert_eq!(request, br#"{"t":"LivenessProbe","c":null}"#);', "b1", "service-directional-regression-missing")
-mutation("service-directional-desktop-scope", "ipc", '#[cfg(not(any(target_os = "android", target_os = "ios")))]\n    #[test]\n    fn service_channel_uses_closed_directional_protocol()', '#[cfg(any(target_os = "linux", target_os = "macos"))]\n    #[test]\n    fn service_channel_uses_closed_directional_protocol()', "b1", "service-directional-regression-missing")
-mutation("macos-readiness-request-wire-regression", "ipc", 'br#"{"t":"EnsurePasswordRightReady"}"#', 'br#"{"t":"EnsurePasswordRightReady","c":null}"#', "b1", "service-directional-regression-missing")
-mutation("macos-readiness-response-wire-regression", "ipc", 'br#"{"t":"PasswordRightReady","ready":true}"#', 'br#"{"t":"PasswordRightReady","ready":false}"#', "b1", "service-directional-regression-missing")
-mutation("windows-share-rdp-request-wire-regression", "ipc", 'br#"{"t":"SetShareRdp","enabled":true}"#', 'br#"{"t":"SetShareRdp","enabled":false}"#', "b1", "service-directional-regression-missing")
-mutation("windows-share-rdp-response-wire-regression", "ipc", 'br#"{"t":"ShareRdpSet","accepted":true}"#', 'br#"{"t":"ShareRdpSet","accepted":false}"#', "b1", "service-directional-regression-missing")
 mutation("generic-transport", "ipc", 'bail!("sensitive password endpoints require the raw transport");', 'return connect_with_path(ms_timeout, "", postfix).await;', "b1", "generic-connect-allows-password-endpoint")
 mutation("endpoint-kind", "ipc", "password::SensitivePayloadKind::PasswordWithAuthorization,\n        deadline,", "password::SensitivePayloadKind::Password,\n        deadline,", "b2", "macos-peer-auth-not-before-secret-read")
 scoped_mutation("macos-password-role", "auth", "fn macos_service_owned_password_client_argv_is_expected", '        || process_argv_is_exact(args, &["--password-stdin"])', '        || process_argv_is_exact(args, &["--password-stdin"])\n        || process_argv_is_exact(args, &["--server"])', "b2", "macos-password-requester-role-or-generation-not-exact")

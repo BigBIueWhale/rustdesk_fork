@@ -114788,3 +114788,14 @@ The capsule also matches on TUF. After evidence verification, the exact retired
 baseline diagnostic tree is removed under the shared lock after identity/type
 and process-absence checks, reclaiming 3,444,736 allocated disk bytes. Canonical
 inputs and bounded receipts remain. The fresh ledger count follows.
+
+Fresh isolated count at `0d95ade0`, TUF `9aLFbjYzhP`: 356,840 tokens /
+1,631,503 bytes, up 35 tokens / 165 bytes. Pinned tiktoken 0.12.0/cl100k_base
+encode_ordinary passes seven controls and the byte round-trip; input SHA-256 is
+`6ca6b1f5bc01e45b3ab0e0e8b3f5a04d14ea8a70c02e3eec7019b05a5f3aaab0`.
+The 34.551-second count joins QEMU 1608764 with exit zero and retires workspace
+`run.g2puw8uo`; all three listener deltas are zero. Peak RAM scratch is
+402,280,448 bytes, overlay 305,729,536 bytes and durable run 258,048 bytes.
+Six copied count files total 103,349 bytes and match both hosts; serial SHA-256
+is `9f8cb9831ac61074ba8ec02014393d56ecde33527de8471dab285320eea76420`.
+This audit-only receipt leaves the counted ledger unchanged.

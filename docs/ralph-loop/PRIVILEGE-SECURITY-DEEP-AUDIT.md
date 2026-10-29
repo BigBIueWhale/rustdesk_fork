@@ -113949,3 +113949,20 @@ requester lifetime, settings effects and all fifteen native credential actions
 remain OPEN. CTE is still below the audio profile's unchanged admission floor;
 TUF QEMU package approval remains pending. The 37 rendered audio cases and three
 parser checks remain unexecuted on the current correction.
+
+Fresh ledger count on pushed `f591893a`, run `hg6GbgMZT2`, exits zero after
+29 outer seconds: 355,927 tokens / 1,626,855 bytes, up 125 tokens / 639 bytes
+from the previous count and within the approximate 400,000-token budget.
+The pinned `tiktoken-0.12.0/cl100k_base/encode_ordinary` method passes seven
+controls and byte round-trip; nine native cache-admission cases also pass.
+Ledger SHA-256: `f13f70c01563be20aa87b7f5709fc2ed9ebcef244d038a2f080c839adef7abf3`.
+Serial evidence is 34,061 bytes, SHA-256
+`5307f12b171c4823e5ebdc83b2a0dd8e264717ff844c8426a8f99fb2452841f0`.
+The storage receipt records 402,399,232 peak scratch bytes, 305,860,608 peak
+overlay bytes and 258,048 peak durable run bytes. QEMU PID 3489544 is joined
+with exit zero and 4,096 host-write bytes; its process and RAM workspace
+`run.9qwmlbqh` are absent. Before/during/after listener deltas are zero.
+The first count invocation refused before allocation because the source commit
+had not yet been pushed; the successful run followed that push. No product,
+Flutter or installed-service test ran. This final audit-only receipt leaves the
+counted ledger unchanged.

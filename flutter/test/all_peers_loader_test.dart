@@ -6,8 +6,7 @@ import 'package:flutter_hbb/models/peer_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _LoaderHarness {
-  final source = Peers(
-      name: 'loader-test', getInitPeers: null, loadEvent: 'loader-test-event');
+  final source = Peers(name: 'loader-test', loadEvent: 'loader-test-event');
   final requests = <Completer<void>>[];
   late final loader = AllPeersLoader(recentPeers: source, requestLoad: () {
     final reply = Completer<void>();

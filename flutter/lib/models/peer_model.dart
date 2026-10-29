@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:get/get.dart';
 import 'global_event_dispatcher.dart';
 import 'platform_model.dart';
 
@@ -11,9 +10,6 @@ class Peer {
   String platform;
   String alias;
   List<dynamic> tags;
-  String rdpPort;
-  String rdpUsername;
-  String loginName; //login username
   String note;
 
   String getId() {
@@ -30,21 +26,8 @@ class Peer {
         platform = json['platform'] ?? '',
         alias = json['alias'] ?? '',
         tags = json['tags'] ?? [],
-        rdpPort = json['rdpPort'] ?? '',
-        rdpUsername = json['rdpUsername'] ?? '',
-        loginName = json['loginName'] ?? '',
         note = json['note'] is String ? json['note'] : '';
-
-  Peer.loading()
-      : this.fromJson({
-          'id': '...',
-          'username': '...',
-          'hostname': '...',
-          'platform': '...',
-        });
 }
-
-typedef GetInitPeers = RxList<Peer> Function();
 
 class Peers extends ChangeNotifier {
   final String name;
@@ -55,13 +38,8 @@ class Peers extends ChangeNotifier {
   // so we can see peers in UI quickly. `restPeerIds` is the rest peers' ids.
   // And then load all peers later.
   List<String> restPeerIds = List.empty(growable: true);
-  final GetInitPeers? getInitPeers;
   late final GlobalEventRegistration? _registration;
-  Peers(
-      {required this.name,
-      required this.getInitPeers,
-      required this.loadEvent}) {
-    peers = getInitPeers?.call() ?? [];
+  Peers({required this.name, required this.loadEvent}) {
     _registration =
         platformFFI.registerEventHandler(loadEvent, name, (evt) async {
       updatePeers(evt);
@@ -74,21 +52,9 @@ class Peers extends ChangeNotifier {
     super.dispose();
   }
 
-  Peer getByIndex(int index) {
-    if (index < peers.length) {
-      return peers[index];
-    } else {
-      return Peer.loading();
-    }
-  }
-
-  int getPeersCount() {
-    return peers.length;
-  }
-
   @visibleForTesting
   void updatePeers(Map<String, dynamic> evt) {
-    final nextPeers = getInitPeers?.call() ?? _decodePeers(evt['peers']);
+    final nextPeers = _decodePeers(evt['peers']);
     if (nextPeers == null) return;
     final ids = evt['ids'];
     if (ids != null && ids is! String) {

@@ -82,11 +82,11 @@ class _PeerOwner implements FFI {
   late final PeerTabModel peerTabModel =
       PeerTabModel(WeakReference<FFI>(this), readLocalOption: (_) => '');
   @override
-  final recentPeersModel = Peers(
-      name: 'search-test-recent', loadEvent: LoadEvent.recent, getInitPeers: null);
+  final recentPeersModel =
+      Peers(name: 'search-test-recent', loadEvent: LoadEvent.recent);
   @override
-  final favoritePeersModel = Peers(
-      name: 'search-test-favorite', loadEvent: LoadEvent.favorite, getInitPeers: null);
+  final favoritePeersModel =
+      Peers(name: 'search-test-favorite', loadEvent: LoadEvent.favorite);
 
   Peers peers(PeerTabIndex tab) =>
       tab == PeerTabIndex.recent ? recentPeersModel : favoritePeersModel;

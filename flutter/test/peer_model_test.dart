@@ -10,9 +10,6 @@ void main() {
     'platform': 'Linux',
     'alias': 'Local peer',
     'tags': <String>['local'],
-    'rdpPort': '3389',
-    'rdpUsername': 'rdp-user',
-    'loginName': 'login-user',
     'note': 'Local peer note',
   };
 
@@ -24,13 +21,9 @@ void main() {
     expect(peer.hostname, 'local-host');
     expect(peer.platform, 'Linux');
     expect(peer.tags, ['local']);
-    expect(peer.rdpPort, '3389');
-    expect(peer.rdpUsername, 'rdp-user');
-    expect(peer.loginName, 'login-user');
     expect(peer.note, 'Local peer note');
     peer.alias = '';
     expect(peer.getId(), peer.id);
-    expect(Peer.loading().id, '...');
   });
 
   test('retired account metadata cannot prevent a direct peer from loading',
@@ -67,7 +60,7 @@ void main() {
   test('disposing owned peers releases their registration', () {
     const event = 'test-peer-registration-control';
     const owner = 'control';
-    final peers = Peers(name: owner, getInitPeers: null, loadEvent: event);
+    final peers = Peers(name: owner, loadEvent: event);
     peers.dispose();
     final registration =
         platformFFI.registerEventHandler(event, owner, (_) async {});
@@ -81,8 +74,8 @@ void main() {
   test('disposed duplicate peers cannot retire the incumbent', () {
     const event = 'test-peer-registration-duplicate';
     const owner = 'incumbent';
-    final incumbent = Peers(name: owner, getInitPeers: null, loadEvent: event);
-    final duplicate = Peers(name: owner, getInitPeers: null, loadEvent: event);
+    final incumbent = Peers(name: owner, loadEvent: event);
+    final duplicate = Peers(name: owner, loadEvent: event);
     duplicate.dispose();
     final registration =
         platformFFI.registerEventHandler(event, owner, (_) async {});
@@ -97,10 +90,10 @@ void main() {
   test('rejected peers cannot retire a later owner with the same name', () {
     const event = 'test-peer-registration-later-owner';
     const owner = 'owner';
-    final incumbent = Peers(name: owner, getInitPeers: null, loadEvent: event);
-    final duplicate = Peers(name: owner, getInitPeers: null, loadEvent: event);
+    final incumbent = Peers(name: owner, loadEvent: event);
+    final duplicate = Peers(name: owner, loadEvent: event);
     incumbent.dispose();
-    final successor = Peers(name: owner, getInitPeers: null, loadEvent: event);
+    final successor = Peers(name: owner, loadEvent: event);
     duplicate.dispose();
     final registration =
         platformFFI.registerEventHandler(event, owner, (_) async {});
@@ -115,7 +108,7 @@ void main() {
   test('replaced peers cannot cancel their replacement registration', () {
     const event = 'test-peer-registration-replaced';
     const owner = 'owner';
-    final peers = Peers(name: owner, getInitPeers: null, loadEvent: event);
+    final peers = Peers(name: owner, loadEvent: event);
     final replacement = platformFFI.registerEventHandler(
         event, owner, (_) async {}, replace: true);
     peers.dispose();

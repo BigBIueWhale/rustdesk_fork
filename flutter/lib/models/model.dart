@@ -4930,14 +4930,10 @@ class FFI {
     inputModel = InputModel(WeakReference(this));
     cmFileModel = CmFileModel(WeakReference(this));
     textureModel = TextureModel(WeakReference(this));
-    recentPeersModel = Peers(
-        name: PeersModelName.recent,
-        loadEvent: LoadEvent.recent,
-        getInitPeers: null);
-    favoritePeersModel = Peers(
-        name: PeersModelName.favorite,
-        loadEvent: LoadEvent.favorite,
-        getInitPeers: null);
+    recentPeersModel =
+        Peers(name: PeersModelName.recent, loadEvent: LoadEvent.recent);
+    favoritePeersModel =
+        Peers(name: PeersModelName.favorite, loadEvent: LoadEvent.favorite);
     _mobileSessionStarts = MobileSessionStartQueue<_MobileSessionStartRequest>(
         _runMobileSessionStart);
   }

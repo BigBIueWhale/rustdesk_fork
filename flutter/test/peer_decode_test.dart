@@ -574,7 +574,6 @@ void main() {
   setUp(() {
     peers = Peers(
       name: 'peer-decode-test',
-      getInitPeers: null,
       loadEvent: 'test-peer-decode',
     );
     diagnostics.clear();
@@ -1291,9 +1290,6 @@ void main() {
       'platform': 'Linux',
       'alias': 'Local peer',
       'tags': ['local'],
-      'rdpPort': '3389',
-      'rdpUsername': 'rdp-user',
-      'loginName': 'login-user',
       'note': 'SyntheticPrivatePeerNote',
     };
     final valid = jsonEncode([metadata]);
@@ -1315,9 +1311,6 @@ void main() {
     expect(peer.platform, metadata['platform']);
     expect(peer.alias, metadata['alias']);
     expect(peer.tags, metadata['tags']);
-    expect(peer.rdpPort, metadata['rdpPort']);
-    expect(peer.rdpUsername, metadata['rdpUsername']);
-    expect(peer.loginName, metadata['loginName']);
     expect(peer.note, metadata['note']);
     expect(notifications, 2);
     expect(diagnostics, ['peers(): invalid peer data']);

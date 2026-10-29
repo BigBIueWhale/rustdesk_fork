@@ -236,10 +236,8 @@ fn recreate_foreign_service_ipc_parent_dir(parent_dir: &Path, postfix: &str) -> 
     })?;
     let _gp_guard = FdGuard(gp_fd);
 
-    // Empty the foreign dir (so the rmdir below can succeed) by removing the KNOWN ipc artifacts via
-    // an O_NOFOLLOW fd opened under our verified grandparent. Any leftover non-ipc entry then makes the
-    // rmdir fail ENOTEMPTY → fail-closed (never adopt). A failed openat (e.g. raced away) is benign:
-    // the rmdir surfaces NotFound as Ok and we recreate.
+    // Scrub only known IPC artifacts through the no-follow directory fd. A changed
+    // parent or failed scrub refuses replacement; unrelated entries keep it nonempty.
     let base_c = CString::new(basename.as_bytes().to_vec())?;
     let foreign_fd = unsafe {
         hbb_common::libc::openat(
@@ -251,13 +249,37 @@ fn recreate_foreign_service_ipc_parent_dir(parent_dir: &Path, postfix: &str) -> 
                 | hbb_common::libc::O_NOFOLLOW,
         )
     };
-    if foreign_fd >= 0 {
-        let _f_guard = FdGuard(foreign_fd);
-        let _ = scrub_preexisting_ipc_parent_entries(foreign_fd, parent_dir, postfix);
+    if foreign_fd < 0 {
+        let err = std::io::Error::last_os_error();
+        return Err(Error::new(
+            err.kind(),
+            format!(
+                "failed to open foreign ipc parent for replacement: parent={}, err={}",
+                parent_dir.display(),
+                err
+            ),
+        )
+        .into());
     }
+    let _f_guard = FdGuard(foreign_fd);
+    scrub_preexisting_ipc_parent_entries(foreign_fd, parent_dir, postfix)?;
 
-    // rmdir the foreign dir via the grandparent fd (AT_REMOVEDIR). ENOTEMPTY / any error ⇒ fail-closed.
-    remove_parent_entry_via_fd(gp_fd, grandparent, basename)?;
+    // The parent must still be a directory. Never select file/symlink unlink
+    // semantics from a replacement entry's type, or continue after disappearance.
+    if unsafe { hbb_common::libc::unlinkat(gp_fd, base_c.as_ptr(), hbb_common::libc::AT_REMOVEDIR) }
+        != 0
+    {
+        let err = std::io::Error::last_os_error();
+        return Err(Error::new(
+            err.kind(),
+            format!(
+                "failed to remove foreign ipc parent directory: parent={}, err={}",
+                parent_dir.display(),
+                err
+            ),
+        )
+        .into());
+    }
 
     // Recreate fresh, root-owned, at the expected mode. EEXIST ⇒ an attacker raced our rmdir ⇒
     // fail-closed (do NOT adopt the raced inode).

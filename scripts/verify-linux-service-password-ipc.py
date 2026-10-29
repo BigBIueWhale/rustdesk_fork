@@ -766,7 +766,7 @@ def verify_endpoint_ownership(rust: Mapping[str, RustSource]) -> None:
             (("open_ipc_parent_dir_fd", "(", "&", "gp_c", ")"), "no-follow grandparent open"),
             (("openat", "(", "gp_fd"), "foreign child open relative to grandparent"),
             (("scrub_preexisting_ipc_parent_entries", "(", "foreign_fd"), "known artifact scrub"),
-            (("remove_parent_entry_via_fd", "(", "gp_fd"), "relative directory removal"),
+            (("unlinkat", "(", "gp_fd", ",", "base_c", ".", "as_ptr", "(", ")", ",", "hbb_common", "::", "libc", "::", "AT_REMOVEDIR"), "directory-only relative removal"),
             (("mkdirat", "(", "gp_fd"), "fresh directory creation"),
             (("openat", "(", "gp_fd"), "fresh directory reopen"),
         )

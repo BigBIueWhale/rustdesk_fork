@@ -150,7 +150,14 @@ fn main() {
         assert_eq!(line, "stop\n");
         return;
     }
-    assert!(["start", "try-start", "probe"].contains(&args[1].as_str()));
+    assert!(["start", "try-start", "try-start-nondumpable", "probe"].contains(&args[1].as_str()));
+    if args[1] == "try-start-nondumpable" {
+        assert_eq!(unsafe { libc::geteuid() }, 4001);
+        assert_eq!(unsafe { libc::prctl(libc::PR_SET_DUMPABLE, 0 as libc::c_ulong,
+                                      0 as libc::c_ulong, 0 as libc::c_ulong,
+                                      0 as libc::c_ulong) }, 0);
+    }
+    let try_start = args[1].starts_with("try-start");
     let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
     if args[1] == "probe" {
         let descriptors = fd_count();
@@ -171,7 +178,7 @@ fn main() {
     assert_eq!(mask(), original_mask);
     match result {
         Ok(listener) => {
-            if args[1] == "try-start" {
+            if try_start {
                 println!("OK started");
             } else {
                 use std::io::{BufRead, Write};
@@ -182,12 +189,12 @@ fn main() {
                 assert_eq!(line, "stop\n");
             }
             drop(listener);
-            if args[1] == "try-start" {
+            if try_start {
                 assert_eq!(fd_count(), descriptors);
             }
         }
         Err(error) => {
-            if args[1] == "try-start" {
+            if try_start {
                 assert_eq!(fd_count(), descriptors);
             }
             eprintln!("ERR {error}"); std::process::exit(3);

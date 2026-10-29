@@ -67,6 +67,8 @@ def build():
         filesystem += function(fs_source, 'connect_existing_listener')
     if fs_source.functions('prepare_ipc_listener_bind'):
         filesystem += function(fs_source, 'prepare_ipc_listener_bind')
+    if fs_source.functions('open_ipc_startup_lock'):
+        filesystem += function(fs_source, 'open_ipc_startup_lock')
     (work / 'filesystem.rs').write_text(filesystem)
     auth = parsed(repo / 'src/ipc/auth.rs')
     identity = ''.join(function(auth, name) for name in (
@@ -273,7 +275,7 @@ def native(expected_sha, barrier_sha):
 
     lock = path('_service_password').with_name('ipc_service_password.lock')
     lock.unlink(missing_ok=True)
-    for kind in ('symlink', 'fifo', 'writable', 'foreign-owner', 'hardlink'):
+    for kind in ('symlink', 'fifo', 'writable', 'foreign-owner', 'hardlink', 'readable', 'executable', 'special'):
         target = parents[0] / 'lock-target'
         if kind == 'symlink':
             target.write_bytes(b'keep'); lock.symlink_to(target)
@@ -285,8 +287,10 @@ def native(expected_sha, barrier_sha):
                 lock.chmod(0o666)
             elif kind == 'foreign-owner':
                 os.chown(lock, 4001, 4001)
-            else:
+            elif kind == 'hardlink':
                 os.link(lock, target)
+            else:
+                lock.chmod({'readable': 0o604, 'executable': 0o700, 'special': 0o4600}[kind])
         before = lock.lstat()
         result = check('_service_password')
         after = lock.lstat()
@@ -464,10 +468,12 @@ def native(expected_sha, barrier_sha):
             endpoint.unlink(missing_ok=True)
     # Lock creation and recovery must not inherit missing owner access from umask.
     # Parents are already admitted; this tests the endpoint reservation itself.
-    for postfix, uid in (('_service_password', 0), ('_password', 4001)):
+    for postfix, uid, action in (('_service_password', 0, 'try-start'),
+                                  ('_password', 4001, 'try-start'),
+                                  ('_password', 4001, 'try-start-nondumpable')):
         endpoint = path(postfix, uid)
         lock = endpoint.with_name(endpoint.name + '.lock')
-        for mask in (0o200, 0o400, 0o600):
+        for mask in ((0o600,) if action.endswith('nondumpable') else (0o200, 0o400, 0o600)):
             for state in ('fresh', 'recovery'):
                 lock.unlink(missing_ok=True)
                 before = None
@@ -476,10 +482,10 @@ def native(expected_sha, barrier_sha):
                     os.chown(lock, uid, uid)
                     lock.chmod(0o600 & ~mask)
                     before = lock.lstat()
-                result = subprocess.run(**command('try-start', postfix, uid), umask=mask,
+                result = subprocess.run(**command(action, postfix, uid), umask=mask,
                                         capture_output=True, text=True, timeout=5)
                 after = lock.lstat()
-                record(f'lock-mask-{mask:03o}-{state}-{postfix}',
+                record(f'lock-mask-{mask:03o}-{state}-{postfix}-{action}',
                        result.returncode == 0 and result.stdout == 'OK started\n'
                        and endpoint.is_socket() and stat.S_IMODE(after.st_mode) == 0o600
                        and after.st_uid == uid and after.st_nlink == 1
@@ -498,8 +504,8 @@ def native(expected_sha, barrier_sha):
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
     require(sha(barrier) == barrier_sha, 'barrier changed')
     probe.unlink(); barrier.unlink(); work.rmdir()
-    require(len(cases) == 51, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=51 failures={len(failures)} '
+    require(len(cases) == 56, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=56 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 

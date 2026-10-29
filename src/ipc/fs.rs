@@ -739,6 +739,117 @@ pub(crate) async fn check_existing_listener(postfix: &str) -> ResultType<bool> {
 }
 
 #[cfg(target_os = "linux")]
+fn open_ipc_startup_lock(parent_fd: i32, name: &std::ffi::CStr, uid: u32) -> ResultType<FdGuard> {
+    use hbb_common::libc;
+
+    let metadata_flags = libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC;
+    let read_flags = libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NONBLOCK | libc::O_NOCTTY;
+    let mut fresh = false;
+    let mut fd = unsafe { libc::openat(parent_fd, name.as_ptr(), metadata_flags) };
+    if fd < 0 {
+        let err = Error::last_os_error();
+        if err.kind() != ErrorKind::NotFound {
+            return Err(err.into());
+        }
+        fd = unsafe {
+            libc::openat(
+                parent_fd,
+                name.as_ptr(),
+                read_flags | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW,
+                0o600 as libc::mode_t,
+            )
+        };
+        if fd < 0 {
+            let err = Error::last_os_error();
+            if err.kind() != ErrorKind::AlreadyExists {
+                return Err(err.into());
+            }
+            fd = unsafe { libc::openat(parent_fd, name.as_ptr(), metadata_flags) };
+            if fd < 0 {
+                return Err(Error::last_os_error().into());
+            }
+        } else {
+            fresh = true;
+        }
+    }
+    let mut guard = FdGuard(fd);
+    let metadata = |fd| -> std::io::Result<libc::stat> {
+        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        if unsafe { libc::fstat(fd, &mut st) } != 0 {
+            return Err(Error::last_os_error());
+        }
+        Ok(st)
+    };
+    let original = metadata(fd)?;
+    if original.st_mode & libc::S_IFMT != libc::S_IFREG
+        || original.st_uid != uid
+        || original.st_nlink != 1
+        || original.st_mode & 0o7777 & !0o600 != 0
+    {
+        return Err(Error::new(ErrorKind::PermissionDenied, "unsafe ipc startup lock").into());
+    }
+    let require_identity = |directory, entry: &std::ffi::CStr, flags| -> ResultType<()> {
+        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        if unsafe { libc::fstatat(directory, entry.as_ptr(), &mut st, flags) } != 0 {
+            return Err(Error::last_os_error().into());
+        }
+        if (st.st_dev, st.st_ino) != (original.st_dev, original.st_ino) {
+            return Err(Error::new(ErrorKind::PermissionDenied, "ipc startup lock changed").into());
+        }
+        Ok(())
+    };
+    require_identity(parent_fd, name, libc::AT_SYMLINK_NOFOLLOW)?;
+    if fresh {
+        if unsafe { libc::fchmod(fd, 0o600) } != 0 {
+            return Err(Error::last_os_error().into());
+        }
+    } else {
+        // O_PATH admits the inode before any read open or permission repair.
+        // A creator may have exited before restoring owner bits removed by umask.
+        let descriptors = FdGuard(open_ipc_parent_dir_fd(&CString::new("/proc/thread-self/fd")?)?);
+        let mut filesystem: libc::statfs = unsafe { std::mem::zeroed() };
+        if unsafe { libc::fstatfs(descriptors.0, &mut filesystem) } != 0 {
+            return Err(Error::last_os_error().into());
+        }
+        if filesystem.f_type as u64 != libc::PROC_SUPER_MAGIC as u64 {
+            return Err(Error::new(
+                ErrorKind::PermissionDenied, "ipc descriptor directory is not procfs",
+            ).into());
+        }
+        let descriptor = CString::new(fd.to_string())?;
+        require_identity(descriptors.0, &descriptor, 0)?;
+        if original.st_mode & 0o7777 != 0o600
+            && unsafe { libc::fchmodat(descriptors.0, descriptor.as_ptr(), 0o600, 0) } != 0
+        {
+            return Err(Error::last_os_error().into());
+        }
+        let readable = unsafe { libc::openat(descriptors.0, descriptor.as_ptr(), read_flags) };
+        if readable < 0 {
+            return Err(Error::last_os_error().into());
+        }
+        let readable = FdGuard(readable);
+        let reopened = metadata(readable.0)?;
+        if (reopened.st_dev, reopened.st_ino) != (original.st_dev, original.st_ino) {
+            return Err(Error::new(ErrorKind::PermissionDenied, "ipc lock descriptor changed").into());
+        }
+        guard = readable;
+    }
+    let st = metadata(guard.0)?;
+    if st.st_mode & libc::S_IFMT != libc::S_IFREG
+        || st.st_uid != uid
+        || st.st_nlink != 1
+        || st.st_mode & 0o7777 != 0o600
+    {
+        return Err(Error::new(ErrorKind::PermissionDenied, "unsafe ipc startup lock").into());
+    }
+    if unsafe { libc::flock(guard.0, libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        return Err(Error::last_os_error().into());
+    }
+    require_identity(parent_fd, name, libc::AT_SYMLINK_NOFOLLOW)?;
+    Ok(guard)
+}
+
+#[cfg(target_os = "linux")]
 pub(crate) fn prepare_ipc_listener_bind(
     path: &str,
     postfix: &str,
@@ -769,31 +880,7 @@ pub(crate) fn prepare_ipc_listener_bind(
     // Keep one stable lock inode per endpoint. Never unlink it: replacing a lock
     // pathname would allow overlapping owners. Other endpoints start independently.
     let lock_name = CString::new(format!("{basename}.lock"))?;
-    let lock_fd = unsafe {
-        libc::openat(
-            parent_fd,
-            lock_name.as_ptr(),
-            libc::O_RDONLY | libc::O_CREAT | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK,
-            0o600 as libc::mode_t,
-        )
-    };
-    if lock_fd < 0 {
-        return Err(Error::last_os_error().into());
-    }
-    let guard = FdGuard(lock_fd);
-    if unsafe { libc::fstat(lock_fd, &mut st) } != 0 {
-        return Err(Error::last_os_error().into());
-    }
-    if st.st_mode & libc::S_IFMT != libc::S_IFREG
-        || st.st_uid != uid
-        || st.st_nlink != 1
-        || st.st_mode & 0o7777 != 0o600
-    {
-        return Err(Error::new(ErrorKind::PermissionDenied, "unsafe ipc startup lock").into());
-    }
-    if unsafe { libc::flock(lock_fd, libc::LOCK_EX | libc::LOCK_NB) } != 0 {
-        return Err(Error::last_os_error().into());
-    }
+    let guard = open_ipc_startup_lock(parent_fd, &lock_name, uid)?;
 
     // The asynchronous probe predates this reservation. Refuse any transport
     // that appeared meanwhile; this check grants no peer or request authority.

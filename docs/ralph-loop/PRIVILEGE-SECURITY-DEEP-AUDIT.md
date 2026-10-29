@@ -116604,3 +116604,12 @@ native Windows/macOS, mixed versions, current release artifacts, R-S0/R-F5,
 independent reproduction and external review remain open. User-parked work stays
 parked. No dependency, requirement or live instruction changes; Python parsing,
 edited shell syntax checks and `git diff --check` pass.
+
+At `0c1fa693`, isolated count `0wPmE2K1If` reports **359,433 ledger tokens** /
+1,643,774 bytes, SHA-256
+`100f2f072f88a6ea993ce2a3454dcb3f7d5947d284a097c2ff12a7d2bd0c0be1`.
+Seven tokenizer controls and the complete byte round trip pass. QEMU 1743271
+joins after 30.919 seconds, RAM `run.pfiss7u8` retires and three host listener
+deltas are zero. Six count files add 104,453 bytes; all 28 retained evidence
+files total 421,869 bytes per host. This audit-only receipt leaves the measured
+ledger unchanged.

@@ -116963,3 +116963,12 @@ retires and all four host listener deltas are zero. Seven raw files under
 72,047 bytes per host, with matching copied hashes. Edited shell syntax and
 `git diff --check` pass. No full application or installed/native platform
 acceptance is added by this verification cleanup.
+
+Ledger count `NzLtcVhQ4T` at `500a7349` reports 359,467 tokens using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 1,643,720 bytes, SHA-256
+`24dac2b92d3ef2f0a8eb3166023e7b8f207b8b1d695fa3856eb099c1fc9ed14a`.
+Seven controls and the complete text round trip pass. QEMU 1769848 joins after
+31.128 seconds; RAM `run.rufnuaab` retires and all three listener deltas are zero.
+The six count files add 102,552 bytes; all thirteen retained files total 174,599
+bytes per host with matching copied hashes. This audit-only addition preserves
+the measured ledger bytes.

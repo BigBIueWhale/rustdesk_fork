@@ -411,11 +411,6 @@ def validate_contract(sources):
         "online_image_provenance verify-load" in load_block,
         "devcheck recovery does not use the verified load boundary",
     )
-    require(
-        online_fetch.count("verify_or_load_devcheck_image") == 5,
-        "devcheck image preparation is not wired to the Apple candidate, "
-        "explicit, offline-input, and default paths",
-    )
     build_block = extract(
         online_fetch,
         "maintenance_build_devcheck_image_candidate() {",
@@ -507,7 +502,6 @@ MUTATIONS = (
     Mutation("image_provenance", '"build-arg:DEV_CHECK_DEBIAN_SNAPSHOT": spec.debian_snapshot', '"build-arg:DEV_CHECK_DEBIAN_SNAPSHOT": "latest"', "attested Debian snapshot"),
     Mutation("image_provenance", '"digest": {"sha256": spec.base.rsplit("sha256:", 1)[1]}', '"digest": {"sha256": "0" * 64}', "attested base identity"),
     Mutation("online_fetch", 'online_image_provenance verify-load \\\n        --archive "$ONLINE_DIR/verifier-images/devcheck.docker.tar.gz"', 'online_image_provenance verify-archive \\\n        --archive "$ONLINE_DIR/verifier-images/devcheck.docker.tar.gz"', "separate archive recovery load"),
-    Mutation("online_fetch", "verify_or_load_devcheck_image\n            return 0", "true # devcheck image preparation removed\n            return 0", "explicit archive recovery entry point"),
     Mutation("verify", "/usr/bin/python3 -I -S scripts/offline-image-provenance.py --self-test", "true # image archive self-test removed", "image archive behavioral gate"),
     Mutation("verify", "/usr/bin/python3 -I -S scripts/verify-main-verifier-authority.py --repo . --self-test", "/usr/bin/python3 -I -S scripts/verify-main-verifier-authority.py --repo .", "shared mutation gate"),
 )

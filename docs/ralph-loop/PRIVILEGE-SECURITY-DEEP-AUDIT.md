@@ -114121,3 +114121,18 @@ ISO metadata and the installation receipt. Update only the audio-control row of
 the hardening ledger; its fresh isolated count follows. The shared payload
 permission change has actual Flutter-profile acceptance; broader profile/native
 security and all fifteen credential actions remain OPEN.
+
+Fresh isolated ledger count on pushed `9f6b81eb`, TUF run `fJtQbsNQkv`, exits
+zero: 356,048 tokens / 1,627,406 bytes, up 67 tokens / 302 bytes and within the
+approximate 400,000-token budget. The pinned tokenizer's seven controls and
+byte round-trip pass, as do nine native cache-admission cases and the existing
+storage/lifetime checks. Ledger SHA-256:
+`f16f6c9fcb93939b3fc942f0d255d06f8504fb3734aaaf89db30f9c8b717114a`.
+Serial evidence is 34,061 bytes, SHA-256
+`497df8d39fb5758ddc3b59b9b685a6c922457321409b6147175516c5b53d96dc`.
+The 33.570-second storage receipt records 402,329,600 peak scratch bytes,
+305,795,072 peak overlay bytes and 253,952 peak durable-run bytes. QEMU 1545782
+joins exit zero with 4,096 observed host-write bytes; its PID, RAM workspace
+`run.q_peq3yz` and active run roots are absent. All three listener deltas are
+zero. Six bounded count files copied to CTE total 103,919 bytes. This audit-only
+receipt leaves the counted ledger unchanged; no further test run is needed for it.

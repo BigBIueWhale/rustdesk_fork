@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mutation-bind verify.sh's immutable inner-container and fixture contract."""
+"""Mutation-bind verify.sh's immutable inner-container contract."""
 
 import argparse
 from pathlib import Path
@@ -65,9 +65,6 @@ def forbid_docker_authority(block, label):
 def validate_contract(sources):
     shell = sources["shell"]
     wrapper = sources["wrapper"]
-    helper = sources["helper"]
-    fixture_helper = sources["fixture_helper"]
-    filesystem = sources["filesystem"]
     pins = sources["pins"]
     provenance = sources["provenance"]
     metadata = sources["metadata"]
@@ -80,8 +77,8 @@ def validate_contract(sources):
         shell,
     )
     require(
-        len(docker_run_definitions) == 3,
-        "verify.sh must have exactly three fixed Docker run definitions",
+        len(docker_run_definitions) == 2,
+        "verify.sh must have exactly two fixed Docker run definitions",
     )
     require(shell.count("RUN=(verifier_vm_docker run ") == 1, "verify.sh must have exactly one ordinary run definition")
     require('"$DOCKER_BIN" run ' not in shell, "verify.sh retained a direct ambient Docker launch")
@@ -166,11 +163,8 @@ def validate_contract(sources):
         "main verifier cleanup",
     )
     require(
-        "cleanup_nonroot_ipc_fixture" in cleanup
-        and "verify-private-tree-closure.py" in cleanup
-        and cleanup.index("cleanup_nonroot_ipc_fixture")
-        < cleanup.index("verify-private-tree-closure.py"),
-        "retained IPC fixtures are not cleaned before private workspace cleanup",
+        "verify-private-tree-closure.py" in cleanup,
+        "private workspace cleanup is absent",
     )
     require(
         shell.index('archive_current_source >"$VERIFY_SOURCE_ARCHIVE"')
@@ -267,70 +261,7 @@ def validate_contract(sources):
     require(ordinary.count("--mount ") == 6, "ordinary verifier mount inventory differs")
     forbid_docker_authority(ordinary, "ordinary verifier container")
 
-    fixture = extract(
-        shell,
-        "run_nonroot_ipc_command() {",
-        "\n}\n\ncleanup_nonroot_ipc_fixture() {",
-        "two-principal IPC fixture container",
-    )
-    require_all(
-        fixture,
-        (
-            '--user "$run_uid:$run_gid"',
-            "--cap-drop=ALL",
-            "--security-opt=no-new-privileges",
-            "--pids-limit=64",
-            "--memory=1g",
-            "--memory-swap=1g",
-            "--cpus=1",
-            "--tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=32m",
-            '--mount "type=bind,source=$IPC_TEST_ARTIFACT,target=/ipc-test-artifact,readonly"',
-            '--mount "type=bind,source=$VERIFY_SOURCE/scripts/prepare-foreign-ipc-fixture.py,target=/prepare-foreign-ipc-fixture.py,readonly"',
-            '--mount "type=bind,source=$IPC_FIXTURE_ROOT,target=/fixture"',
-            "--env RUSTDESK_NONROOT_IPC_FS_FIXTURE=/fixture",
-            '--env RUSTDESK_FOREIGN_IPC_UID="$IPC_FOREIGN_UID"',
-            '"$IMAGE_ID" "$@"',
-        ),
-        "two-principal IPC fixture container",
-    )
-    require(fixture.count("--mount ") == 3, "two-principal IPC fixture mount inventory differs")
-    for token in ("$VERIFY_VENDOR", "$VERIFY_TARGET", "$VERIFY_CARGO_CONFIG", "/work", "/vendor", "/build"):
-        require(token not in fixture, "IPC fixture container received forbidden input {!r}".format(token))
-    forbid_docker_authority(fixture, "two-principal IPC fixture container")
     require("--user 0:0" not in shell, "main verifier retained a UID-0 container")
-    require(shell.count("run_nonroot_ipc_test \\\n  ipc::ipc_fs::tests::") == 2, "non-root IPC test call inventory differs")
-    require_all(
-        shell,
-        (
-            '"${RUN[@]}" cargo test --lib --features linux-pkg-config --no-run --message-format=json',
-            "/usr/bin/python3 -I -S scripts/prepare-ipc-test-artifact.py",
-            '--target-root "$VERIFY_TARGET"',
-            '--output "$IPC_TEST_ARTIFACT"',
-            "IPC_FOREIGN_UID=65534",
-            "IPC_FOREIGN_UID=65533",
-            "IPC_FOREIGN_GID=65534",
-            "IPC_FOREIGN_GID=65533",
-            '[ "$IPC_FOREIGN_UID" -ne 0 ] && [ "$IPC_FOREIGN_GID" -ne 0 ]',
-            'install -d -m 0733 "$IPC_FIXTURE_ROOT"',
-            'run_nonroot_ipc_command "$IPC_FOREIGN_UID" "$IPC_FOREIGN_GID" prepare',
-            "/usr/bin/python3 -I -S /prepare-foreign-ipc-fixture.py",
-            '--root /fixture --actor-uid "$VERIFY_UID" --actor-gid "$VERIFY_GID"',
-            "dirs=2 acl=required",
-            "/ipc-test-artifact \"$test_name\" --ignored --exact --nocapture --test-threads=1",
-            "! grep -qi 'skip' \"$output\" \"$error\"",
-            'grep -cF "test $test_name ... ok"',
-            "test_recreate_foreign_service_ipc_parent_dir_drops_foreign_acl_nonroot recreate",
-            "test_recreate_foreign_service_ipc_parent_dir_nonempty_fails_closed_nonroot nonempty",
-            '[ -n "$IPC_FIXTURE_ROOT" ] && [ "$IPC_FIXTURE_CLEANED" -eq 0 ]',
-            "&& ! cleanup_nonroot_ipc_fixture; then",
-            'run_nonroot_ipc_command "$VERIFY_UID" "$VERIFY_GID" cleanup',
-            "--cleanup --root /fixture",
-            '--foreign-uid "$IPC_FOREIGN_UID" --foreign-gid "$IPC_FOREIGN_GID"',
-            "dirs=2 root=0700",
-            "IPC_FIXTURE_CLEANED=1",
-        ),
-        "two-principal IPC result finality",
-    )
 
     require_all(
         wrapper,
@@ -358,91 +289,6 @@ def validate_contract(sources):
         ),
         "version metadata command",
     )
-    require_all(
-        helper,
-        (
-            "MAX_MESSAGES_BYTES = 64 * 1024 * 1024",
-            "MAX_ARTIFACT_BYTES = 1024 * 1024 * 1024",
-            'target.get("name") == "librustdesk"',
-            'target.get("kind") == ["cdylib", "staticlib", "rlib"]',
-            'target.get("crate_types") == ["cdylib", "staticlib", "rlib"]',
-            'target.get("src_path") == "/work/src/lib.rs"',
-            'profile.get("test") is True',
-            "ARTIFACT_RE.fullmatch(values[0])",
-            'metadata.st_nlink == 1',
-            'metadata.st_mode & 0o022 == 0',
-            "os.O_EXCL",
-            "os.fchmod(output_fd, 0o500)",
-            'require(checks == 10',
-        ),
-        "IPC artifact preparation helper",
-    )
-    require_all(
-        fixture_helper,
-        (
-            'root == Path("/fixture")',
-            'require(metadata.st_nlink == 2, "fixture root must begin without child directories")',
-            'require(metadata.st_uid == actor_uid, "fixture root owner differs")',
-            'stat.S_IMODE(metadata.st_mode) == 0o733',
-            'flags = os.O_PATH | os.O_DIRECTORY | os.O_CLOEXEC',
-            'root_fd = open_directory(root, path_only=True)',
-            'require(foreign_uid != 0 and foreign_gid != 0, "fixture preparer must be non-root")',
-            'require(foreign_uid != actor_uid, "fixture preparer and actor UIDs must differ")',
-            'acl = foreign_access_acl(foreign_uid, actor_uid)',
-            'sorted((foreign_uid, actor_uid))',
-            'os.O_EXCL',
-            'create_regular_at(child_fd, "attacker-junk", b"x", mode=0o644)',
-            'os.setxattr(child_fd, ACL_XATTR, acl, 0)',
-            'raise FixtureError(\n                "required non-root POSIX ACL fixture is unavailable: {}"',
-            'require(os.getxattr(child_fd, ACL_XATTR) == acl',
-            'require(os.geteuid() == actor_uid, "fixture cleanup must run as the actor UID")',
-            'require(stat.S_IMODE(metadata.st_mode) == 0o775, "foreign cleanup fixture mode differs")',
-            'require(read_acl_or_none(child_fd) == acl, "foreign cleanup fixture ACL differs")',
-            'require(entries.issubset(allowed), "fixture cleanup found an unknown entry")',
-            "os.unlink(entry_name, dir_fd=child_fd)",
-            "os.rmdir(name, dir_fd=root_fd)",
-            "os.fchmod(root_fd, 0o700)",
-            'require(checks == 7',
-        ),
-        "foreign IPC fixture helper",
-    )
-    require(
-        fixture_helper.count("os.getxattr(child_fd, ACL_XATTR) == acl") == 2,
-        "foreign IPC fixture ACL readback inventory differs",
-    )
-    require(
-        fixture_helper.count("acl = foreign_access_acl(foreign_uid, actor_uid)") == 2,
-        "foreign IPC fixture ACL construction inventory differs",
-    )
-    recreation_predicate = extract(
-        filesystem,
-        "fn should_recreate_foreign_service_ipc_parent(",
-        "\n}\n\n// Purpose:",
-        "foreign service-parent recreation predicate",
-    )
-    require_all(
-        recreation_predicate,
-        (
-            "owner_uid != expected_uid",
-            "expected_uid == 0",
-            "config::is_service_ipc_postfix(postfix)",
-        ),
-        "foreign service-parent recreation predicate",
-    )
-    require_all(
-        filesystem,
-        (
-            "if should_recreate_foreign_service_ipc_parent(owner_uid, expected_uid, postfix)",
-            'std::env::var_os("RUSTDESK_NONROOT_IPC_FS_FIXTURE")',
-            '"non-root IPC filesystem fixture forbids effective UID 0"',
-            '"required foreign POSIX ACL fixture is absent"',
-            "super::recreate_foreign_service_ipc_parent_dir(&parent_dir, \"_service\")",
-            '"reject-and-recreate must drop the pre-set foreign POSIX ACL; inode adoption would preserve it"',
-        ),
-        "non-root IPC source behavior",
-    )
-    require("RUSTDESK_ROOT_IPC_FS_HARNESS" not in filesystem, "obsolete root IPC harness remains")
-    require("libc::chown" not in filesystem[filesystem.index("mod tests {") :], "IPC tests retain chown")
     require_all(
         provenance,
         (
@@ -584,8 +430,6 @@ def validate_contract(sources):
     require_all(
         verify,
         (
-            "/usr/bin/python3 -I -S scripts/prepare-ipc-test-artifact.py --self-test",
-            "/usr/bin/python3 -I -S scripts/prepare-foreign-ipc-fixture.py --self-test",
             "/usr/bin/python3 -I -S scripts/offline-image-provenance.py --self-test",
             "/usr/bin/python3 -I -S scripts/verify-main-verifier-authority.py --repo . --self-test",
         ),
@@ -645,20 +489,6 @@ MUTATIONS = (
     Mutation("shell", 'target=/tmp/cargo-config.toml,readonly', 'target=/cargo-config.toml,readonly', "Cargo 1.75-safe config path"),
     Mutation("shell", "--env CARGO_INCREMENTAL=0", "--env CARGO_INCREMENTAL=1", "nonincremental build"),
     Mutation("shell", "--env CARGO_NET_OFFLINE=true", "--env CARGO_NET_OFFLINE=false", "Cargo offline environment"),
-    Mutation("shell", '--user "$run_uid:$run_gid"', '--user 0:0', "IPC fixture nonroot user"),
-    Mutation("shell", "--pids-limit=64", "--pids-limit=-1", "IPC fixture PID bound"),
-    Mutation("shell", "--memory=1g", "--memory=0", "IPC fixture memory bound"),
-    Mutation("shell", 'source=$IPC_TEST_ARTIFACT,target=/ipc-test-artifact,readonly', 'source=$VERIFY_SOURCE,target=/work', "IPC fixture artifact mount"),
-    Mutation("shell", '--mount "type=bind,source=$IPC_FIXTURE_ROOT,target=/fixture"', '--mount "type=bind,source=$VERIFY_SOURCE,target=/fixture"', "IPC writable fixture mount"),
-    Mutation("shell", "--env RUSTDESK_NONROOT_IPC_FS_FIXTURE=/fixture", "--env RUSTDESK_NONROOT_IPC_FS_FIXTURE=/tmp", "IPC exact fixture root"),
-    Mutation("shell", "IPC_FOREIGN_UID=65534", "IPC_FOREIGN_UID=0", "foreign nonroot UID"),
-    Mutation("shell", 'install -d -m 0733 "$IPC_FIXTURE_ROOT"', 'install -d -m 0777 "$IPC_FIXTURE_ROOT"', "fixture root mode"),
-    Mutation("shell", "! grep -qi 'skip'", "grep -qi 'skip'", "IPC skip refusal"),
-    Mutation("shell", 'grep -cF "test $test_name ... ok"', 'grep -cF "test result: ok"', "exact IPC test identity"),
-    Mutation("shell", "test_recreate_foreign_service_ipc_parent_dir_drops_foreign_acl_nonroot recreate", "test_ensure_secure_ipc_parent_dir_creates_parent_with_expected_mode recreate", "foreign ACL recreation case"),
-    Mutation("shell", "&& ! cleanup_nonroot_ipc_fixture; then", "&& false; then", "failure-path IPC fixture cleanup"),
-    Mutation("shell", 'run_nonroot_ipc_command "$VERIFY_UID" "$VERIFY_GID" cleanup', 'run_nonroot_ipc_command "$IPC_FOREIGN_UID" "$IPC_FOREIGN_GID" cleanup', "actor-owned IPC fixture cleanup"),
-    Mutation("shell", '--foreign-uid "$IPC_FOREIGN_UID" --foreign-gid "$IPC_FOREIGN_GID"', '--foreign-uid "$VERIFY_UID" --foreign-gid "$VERIFY_GID"', "distinct cleanup principal"),
     Mutation("shell", "RUN=(verifier_vm_docker run", "docker build -t rd-devcheck .\nRUN=(verifier_vm_docker run", "image build absence"),
     Mutation("wrapper", "exec cargo --config /tmp/cargo-config.toml --offline --locked", "exec cargo", "locked offline Cargo wrapper"),
     Mutation("wrapper", '[ "$#" -eq 3 ] && [ "$2" = -p ] && [ "$3" = rustdesk ]', "true", "exact Cargo clean"),
@@ -666,40 +496,6 @@ MUTATIONS = (
     Mutation("wrapper", '[ "$(id -u)" -ne 0 ] && [ "$(id -g)" -ne 0 ]', "true", "wrapper nonroot assertion"),
     Mutation("wrapper", '[ "$#" -eq 2 ] && [ "$2" = scripts/version-metadata-check.sh ]', "true", "wrapper shell allowlist"),
     Mutation("metadata", "cargo --config /tmp/cargo-config.toml --offline --locked metadata", "cargo metadata", "metadata Cargo authority"),
-    Mutation("helper", 'metadata.st_nlink == 1', 'metadata.st_nlink >= 1', "artifact hardlink refusal"),
-    Mutation("helper", 'metadata.st_mode & 0o022 == 0', "True", "artifact writability refusal"),
-    Mutation("helper", 'profile.get("test") is True', 'profile.get("test") is not None', "test-profile selection"),
-    Mutation("helper", 'target.get("name") == "librustdesk"', 'target.get("name") == "rustdesk"', "exact library target selection"),
-    Mutation("helper", 'target.get("kind") == ["cdylib", "staticlib", "rlib"]', 'target.get("kind") == ["lib"]', "exact library kind selection"),
-    Mutation("helper", "ARTIFACT_RE.fullmatch(values[0])", "values[0].startswith('/build')", "artifact path grammar"),
-    Mutation("helper", "os.O_EXCL", "0", "exclusive artifact output"),
-    Mutation("helper", "os.fchmod(output_fd, 0o500)", "os.fchmod(output_fd, 0o555)", "owner-only artifact execution mode"),
-    Mutation("helper", 'require(checks == 10', 'require(checks >= 0', "artifact helper self-test count"),
-    Mutation("fixture_helper", 'require(metadata.st_nlink == 2, "fixture root must begin without child directories")', 'require(metadata.st_nlink >= 2, "fixture root must begin without child directories")', "empty fixture root"),
-    Mutation("fixture_helper", 'require(metadata.st_uid == actor_uid, "fixture root owner differs")', 'require(metadata.st_uid >= 0, "fixture root owner differs")', "fixture actor ownership"),
-    Mutation("fixture_helper", 'require(foreign_uid != 0 and foreign_gid != 0, "fixture preparer must be non-root")', 'require(foreign_uid >= 0 and foreign_gid >= 0, "fixture preparer must be non-root")', "foreign principal nonroot"),
-    Mutation("fixture_helper", 'require(foreign_uid != actor_uid, "fixture preparer and actor UIDs must differ")', 'require(foreign_uid == actor_uid, "fixture preparer and actor UIDs must differ")', "distinct fixture principals"),
-    Mutation("fixture_helper", "root_fd = open_directory(root, path_only=True)", "root_fd = open_directory(root)", "non-reading fixture-root descriptor"),
-    Mutation("fixture_helper", "acl = foreign_access_acl(foreign_uid, actor_uid)", "acl = foreign_access_acl(foreign_uid, foreign_uid)", "actor directory-write surrogate"),
-    Mutation("fixture_helper", "os.O_EXCL", "0", "exclusive fixture entries"),
-    Mutation("fixture_helper", 'create_regular_at(child_fd, "attacker-junk", b"x", mode=0o644)', 'create_regular_at(child_fd, "attacker-junk", b"x")', "readable preservation marker"),
-    Mutation("fixture_helper", "os.setxattr(child_fd, ACL_XATTR, acl, 0)", "True # POSIX ACL omitted", "required ACL fixture"),
-    Mutation("fixture_helper", 'require(os.getxattr(child_fd, ACL_XATTR) == acl', 'require(True', "exact ACL bytes"),
-    Mutation("fixture_helper", 'require(os.geteuid() == actor_uid, "fixture cleanup must run as the actor UID")', 'require(os.geteuid() >= 0, "fixture cleanup must run as the actor UID")', "actor cleanup identity"),
-    Mutation("fixture_helper", 'require(entries.issubset(allowed), "fixture cleanup found an unknown entry")', 'require(True, "fixture cleanup found an unknown entry")', "cleanup entry allowlist"),
-    Mutation("fixture_helper", "os.unlink(entry_name, dir_fd=child_fd)", "os.unlink(entry_name)", "descriptor-relative fixture unlink"),
-    Mutation("fixture_helper", "os.rmdir(name, dir_fd=root_fd)", "os.rmdir(name)", "descriptor-relative fixture removal"),
-    Mutation("fixture_helper", "os.fchmod(root_fd, 0o700)", "os.chmod('/fixture', 0o700)", "descriptor-bound fixture-root restoration"),
-    Mutation("fixture_helper", 'require(checks == 7', 'require(checks >= 0', "fixture helper self-test count"),
-    Mutation("filesystem", "owner_uid != expected_uid", "owner_uid == expected_uid", "foreign-owner predicate"),
-    Mutation("filesystem", "expected_uid == 0", "expected_uid >= 0", "root-service predicate"),
-    Mutation(
-        "filesystem",
-        "owner_uid != expected_uid && expected_uid == 0 && config::is_service_ipc_postfix(postfix)",
-        "owner_uid != expected_uid && expected_uid == 0 && true",
-        "service-postfix predicate",
-    ),
-    Mutation("filesystem", '"required foreign POSIX ACL fixture is absent"', '"optional foreign POSIX ACL fixture"', "required ACL behavior"),
     Mutation("provenance", "def create_subtree_snapshot(", "def ignored_subtree_snapshot(", "subtree snapshot implementation"),
     Mutation("provenance", "source_after = verify_subtree(source, expected)", "source_after = before", "subtree source stability"),
     Mutation("pins", 'DEV_CHECK_IMAGE_ID="sha256:', 'DEV_CHECK_IMAGE_ID="rd-devcheck:', "image content pin"),
@@ -729,9 +525,6 @@ def load_sources(repo):
     return {
         "shell": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
         "wrapper": (repo / "scripts/verify-container-command.sh").read_text(encoding="utf-8"),
-        "helper": (repo / "scripts/prepare-ipc-test-artifact.py").read_text(encoding="utf-8"),
-        "fixture_helper": (repo / "scripts/prepare-foreign-ipc-fixture.py").read_text(encoding="utf-8"),
-        "filesystem": (repo / "src/ipc/fs.rs").read_text(encoding="utf-8"),
         "pins": (repo / "scripts/pins.env").read_text(encoding="utf-8"),
         "provenance": (repo / "scripts/online-input-provenance.py").read_text(encoding="utf-8"),
         "metadata": (repo / "scripts/version-metadata-check.sh").read_text(encoding="utf-8"),

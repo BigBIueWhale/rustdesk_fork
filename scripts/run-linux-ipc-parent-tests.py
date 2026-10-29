@@ -6,7 +6,6 @@ import importlib.util
 import json
 import os
 from pathlib import Path
-import select
 import shutil
 import stat
 import struct
@@ -19,7 +18,7 @@ WORK = VM_ROOT / 'ipc-parent-native'
 FUNCTIONS = ('expected_ipc_parent_mode', 'open_ipc_parent_dir_fd',
              'remove_parent_entry_via_fd', 'scrub_preexisting_ipc_parent_entries',
              'recreate_foreign_service_ipc_parent_dir', 'should_recreate_foreign_service_ipc_parent',
-             'ensure_secure_ipc_parent_dir', 'scrub_secure_ipc_parent_dir')
+             'verify_linux_service_ipc_namespace', 'ensure_secure_ipc_parent_dir', 'scrub_secure_ipc_parent_dir')
 RUSTC = '/usr/local/rustup/toolchains/1.75.0-x86_64-unknown-linux-gnu/bin/rustc'
 ENV = {'PATH': '/usr/bin:/bin', 'LC_ALL': 'C', 'HOME': '/tmp', 'RUSTC': RUSTC}
 
@@ -92,22 +91,20 @@ def build():
     generated = ('extern crate self as hbb_common;\npub extern crate libc;\n'
                  'type ResultType<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;\n'
                  'use std::{ffi::CString, io::{Error, ErrorKind}, os::unix::ffi::OsStrExt, path::Path};\n'
-                 'mod config { pub ' + function(config, 'is_service_ipc_postfix') + '}\n' + fragment
+                 'mod config { static APP_NAME: std::sync::RwLock<&str> = std::sync::RwLock::new("RustDesk");\n'
+                 'pub ' + function(config, 'is_service_ipc_postfix')
+                 + 'pub ' + function(config, 'ipc_parent_dir_for_uid') + '}\n' + fragment
                  + (repo / 'scripts/test-linux-ipc-parent.rs').read_text())
     source = target / 'ipc-parent.rs'
     source.write_text(generated)
     binary = target / 'ipc-parent'
     run([rustc, '--edition=2021', '--extern', f'libc={library}', str(source), '-o', str(binary)])
-    barrier = target / 'ipc-parent-barrier.so'
-    run(['/usr/bin/cc', '-Wall', '-Wextra', '-Werror', '-shared', '-fPIC',
-         str(repo / 'scripts/test-linux-ipc-parent-barrier.c'), '-ldl', '-o', str(barrier)])
-    print(f'LINUX_IPC_PARENT_BARRIER=pass artifact_sha256={sha(barrier)} scheduling=real-openat', flush=True)
     print(f'LINUX_IPC_PARENT_BUILD=pass artifact_sha256={sha(binary)} source_sha256={sha(fs_path)} '
           f'fragment_sha256={hashlib.sha256(fragment.encode()).hexdigest()} '
-          f'config_sha256={sha(config_path)} libc=0.2.171 functions=8 error_adapter=std-boxed', flush=True)
+          f'config_sha256={sha(config_path)} libc=0.2.171 functions=9 error_adapter=std-boxed name_adapter=RustDesk-rwlock', flush=True)
 
 
-def native(expected_sha, barrier_sha):
+def native(expected_sha):
     require(os.geteuid() == 0 and Path('/run/rustdesk-verifier-vm').stat().st_uid == 0
             and Path('/proc/1/comm').read_text().strip() == 'systemd'
             and sorted(p.name for p in Path('/sys/class/net').iterdir()) == ['lo']
@@ -124,17 +121,11 @@ def native(expected_sha, barrier_sha):
     shutil.copyfile(artifact, probe)
     probe.chmod(0o555)
     require(sha(probe) == expected_sha and probe.stat().st_uid == 0, 'sealed probe differs')
-    barrier_artifact = artifact.with_name('ipc-parent-barrier.so')
-    metadata = barrier_artifact.lstat()
-    require(stat.S_ISREG(metadata.st_mode) and metadata.st_uid == 1000 and metadata.st_nlink == 1
-            and metadata.st_size < 1048576 and sha(barrier_artifact) == barrier_sha, 'barrier artifact differs')
-    barrier = WORK / 'barrier.so'
-    shutil.copyfile(barrier_artifact, barrier)
-    barrier.chmod(0o555)
-    require(sha(barrier) == barrier_sha and barrier.stat().st_uid == 0, 'sealed barrier differs')
     data = WORK / 'data'
     data.mkdir(mode=0o1777)
     data.chmod(0o1777)
+    service = Path('/run/RustDesk-service')
+    require(not os.path.lexists(service), 'service fixture already exists')
     fd_before = len(list(Path('/proc/self/fd').iterdir()))
     cases = []
 
@@ -154,195 +145,171 @@ def native(expected_sha, barrier_sha):
         cases.append(name)
         print(f'LINUX_IPC_PARENT_CASE=pass name={name}', flush=True)
 
-    def denied_write(parent):
-        actor('import errno,os,sys\ntry:\n fd=os.open(sys.argv[1]+"/intrusion",os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600)\n'
-              'except OSError as e:\n assert e.errno==errno.EACCES\n'
-              'else:\n os.close(fd);raise AssertionError("foreign write admitted")', parent)
-        require(not (parent / 'intrusion').exists(), 'foreign file appeared')
+    def denied(code, *args):
+        actor('import errno,os,pathlib,sys\ntry:\n ' + code + '\n'
+              'except OSError as e:\n assert e.errno in (errno.EACCES,errno.EPERM)\n'
+              'else:\n raise AssertionError("namespace mutation admitted")', *args)
 
-    # Real ordinary processes create the foreign inode and both ACL kinds.
-    create_foreign = ('import os,pathlib,struct,sys\np=pathlib.Path(sys.argv[1]);p.mkdir(mode=0o700)\n'
-                      'acl=struct.pack("<I",2)+b"".join(struct.pack("<HHI",*e) for e in '
-                      '[(1,7,0xffffffff),(2,7,4001),(4,0,0xffffffff),(16,7,0xffffffff),(32,0,0xffffffff)])\n'
-                      'os.setxattr(p,"system.posix_acl_access",acl);os.setxattr(p,"system.posix_acl_default",acl)\n'
-                      '(p/"ipc_service").write_bytes(b"stale");(p/"ipc_service.pid").write_bytes(b"stale")\n')
+    def identity(path):
+        st = path.lstat()
+        return st.st_dev, st.st_ino, st.st_uid, st.st_gid, st.st_mode
+
     for postfix in ('_service', '_service_password', '_service_credential'):
-        parent = data / ('fresh' + postfix)
-        call(parent, postfix)
-        st = parent.stat()
-        require(st.st_uid == 0 and stat.S_IMODE(st.st_mode) == 0o711, 'fresh service mode/owner differs')
-        require(call(parent, postfix) is False, 'healthy parent requests scrub')
-        denied_write(parent)
-        parent.rmdir()
-    record('fresh-service-parents-and-repeat')
+        for uid in (0, 4001):
+            result = run([str(probe), 'path', str(uid), postfix], uid=uid)
+            require(result.stdout == str(service) + '\n' and not result.stderr, 'service route differs')
+    for uid in (0, 4001):
+        for postfix in ('', '_password'):
+            result = run([str(probe), 'path', str(uid), postfix], uid=uid)
+            require(result.stdout == f'/tmp/RustDesk-{uid}\n', 'user route changed')
+    record('service-routing')
 
-    parent = data / 'foreign-service'
-    actor(create_foreign, parent)
-    old = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    try:
-        old_identity = os.fstat(old)
-        require(old_identity.st_uid == 4001, 'foreign actor did not own fixture')
-        for attr in ('system.posix_acl_access', 'system.posix_acl_default'):
-            require(os.getxattr(old, attr), 'foreign ACL missing')
-        require(call(parent) is True, 'foreign replacement must request scrub')
-        st = parent.stat()
-        require(st.st_uid == 0 and stat.S_IMODE(st.st_mode) == 0o711
-                and st.st_ino != old_identity.st_ino and os.fstat(old).st_nlink == 0,
-                'foreign inode was adopted or remained linked')
-        for attr in ('system.posix_acl_access', 'system.posix_acl_default'):
-            try:
-                os.getxattr(parent, attr)
-            except OSError as error:
-                require(error.errno == errno.ENODATA, 'ACL inspection failed')
-            else:
-                raise RuntimeError('foreign ACL survived replacement')
-        require(not list(parent.iterdir()), 'stale artifacts survived replacement')
-        denied_write(parent)
-    finally:
-        os.close(old)
-    parent.rmdir()
-    record('foreign-access-and-default-acl-replacement')
+    import socket
+    for postfix in ('_service', '_service_password', '_service_credential'):
+        call(service, postfix)
+        st = service.stat()
+        require(st.st_uid == 0 and stat.S_IMODE(st.st_mode) == 0o711, 'service mode/owner differs')
+        require(call(service, postfix) is False, 'healthy parent requests scrub')
+        endpoint = service / ('ipc' + postfix)
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+            listener.settimeout(5)
+            listener.bind(str(endpoint))
+            endpoint.chmod(0o666)
+            listener.listen(1)
+            result = actor('import os,socket,sys\nwith socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as s:\n'
+                           ' s.settimeout(5);s.connect(sys.argv[1]);s.sendall(b"R");print(os.getpid())', endpoint)
+            peer, _ = listener.accept()
+            with peer:
+                peer.settimeout(5)
+                pid, uid, gid = struct.unpack('3i', peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+                require((pid, uid, gid) == (int(result.stdout.strip()), 4001, 4001)
+                        and peer.recv(2) == b'R', 'ordinary client or kernel peer credentials differ')
+        endpoint.unlink()
+        service.rmdir()
+    record('fresh-runtime-parent-and-local-socket-access')
 
-    parent = data / 'nonempty-service'
-    actor(create_foreign + '(p/"keep").write_bytes(b"untouched")\n', parent)
-    before = parent.stat()
-    call(parent, refused=True)
-    after = parent.stat()
-    require((before.st_dev, before.st_ino, before.st_uid) == (after.st_dev, after.st_ino, after.st_uid)
-            and (parent / 'keep').read_bytes() == b'untouched', 'nonempty refusal changed foreign authority')
-    actor('import pathlib,sys\np=pathlib.Path(sys.argv[1]);(p/"keep").unlink();p.rmdir()', parent)
-    record('nonempty-foreign-refusal')
+    call(service, uid=4001, refused=True)
+    require(not service.exists(), 'nonroot service created its parent')
+    denied('pathlib.Path(sys.argv[1]).mkdir()', service)
+    call(service)
+    before = identity(service)
+    denied('pathlib.Path(sys.argv[1]).rename(sys.argv[2])', service, '/run/RustDesk-service-moved')
+    denied('pathlib.Path(sys.argv[1]).rmdir()', service)
+    denied('os.open(sys.argv[1]+"/intrusion",os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600)', service)
+    require(identity(service) == before and not list(service.iterdir()), 'foreign mutation changed service parent')
+    service.rmdir()
+    record('unprivileged-create-rename-and-remove-refused')
 
-    target, link = data / 'target', data / 'link'
+    # A root-created misconfiguration is refused without changing its owner, ACLs or contents.
+    service.mkdir(mode=0o700)
+    os.chown(service, 4001, 4001)
+    actor('import os,pathlib,struct,sys\np=pathlib.Path(sys.argv[1])\n'
+          'acl=struct.pack("<I",2)+b"".join(struct.pack("<HHI",*e) for e in '
+          '[(1,7,0xffffffff),(2,7,4001),(4,0,0xffffffff),(16,7,0xffffffff),(32,0,0xffffffff)])\n'
+          'os.setxattr(p,"system.posix_acl_access",acl);os.setxattr(p,"system.posix_acl_default",acl)\n'
+          '(p/"ipc_service").write_bytes(b"keep");(p/"unrelated").write_bytes(b"untouched")', service)
+    before = identity(service)
+    attrs = {name: os.getxattr(service, name)
+             for name in ('system.posix_acl_access', 'system.posix_acl_default')}
+    call(service, refused=True)
+    require(identity(service) == before and all(os.getxattr(service, k) == v for k, v in attrs.items())
+            and (service / 'ipc_service').read_bytes() == b'keep'
+            and (service / 'unrelated').read_bytes() == b'untouched', 'foreign parent was adopted or scrubbed')
+    (service / 'ipc_service').unlink(); (service / 'unrelated').unlink(); service.rmdir()
+    record('foreign-access-and-default-acl-refused')
+
+    target = data / 'target'
     target.mkdir(mode=0o700)
     (target / 'keep').write_bytes(b'untouched')
-    link.symlink_to(target, target_is_directory=True)
-    call(link, refused=True)
-    require(link.is_symlink() and (target / 'keep').read_bytes() == b'untouched', 'symlink refusal changed target')
-    link.unlink(); (target / 'keep').unlink(); target.rmdir()
-    record('symlink-parent-refusal')
+    service.symlink_to(target, target_is_directory=True)
+    before = identity(service)
+    call(service, refused=True)
+    require(identity(service) == before and (target / 'keep').read_bytes() == b'untouched', 'symlink target changed')
+    service.unlink(); (target / 'keep').unlink(); target.rmdir()
+    record('symlink-parent-refused')
 
     parent = data / 'user-owned'
     call(parent, '', uid=4001)
-    st = parent.stat()
-    require(st.st_uid == 4001 and stat.S_IMODE(st.st_mode) == 0o700, 'user-mode parent differs')
+    before = identity(parent)
+    require(before[2] == 4001 and stat.S_IMODE(before[4]) == 0o700, 'user-mode parent differs')
     call(parent, '', uid=4002, refused=True)
     call(parent, '', uid=0, refused=True)
-    require(parent.stat().st_ino == st.st_ino and parent.stat().st_uid == 4001, 'wrong owner adopted user parent')
+    require(identity(parent) == before, 'wrong owner adopted user parent')
     actor('import pathlib,sys\npathlib.Path(sys.argv[1]).rmdir()', parent)
     record('user-owned-success-and-other-principal-refusal')
 
-    parent = data / 'repair'
-    parent.mkdir(mode=0o777)
-    parent.chmod(0o777)
+    service.mkdir(mode=0o777)
+    service.chmod(0o777)
     sentinel = data / 'sentinel'
     sentinel.write_bytes(b'untouched')
     actor('import pathlib,sys\np=pathlib.Path(sys.argv[1]);(p/"ipc_service").symlink_to(sys.argv[2]);'
-          '(p/"ipc_service.pid").write_bytes(b"stale");(p/"keep").write_bytes(b"unrelated")', parent, sentinel)
-    require(call(parent) is True, 'unsafe mode did not request scrub')
-    call(parent, action='scrub')
-    require(stat.S_IMODE(parent.stat().st_mode) == 0o711 and sentinel.read_bytes() == b'untouched'
-            and [p.name for p in parent.iterdir()] == ['keep'], 'scrub followed link or removed unrelated entry')
-    denied_write(parent)
-    (parent / 'keep').unlink(); parent.rmdir(); sentinel.unlink()
+          '(p/"ipc_service.pid").write_bytes(b"stale");(p/"keep").write_bytes(b"unrelated")', service, sentinel)
+    require(call(service) is True and (service / 'ipc_service').is_symlink()
+            and (service / 'ipc_service.pid').read_bytes() == b'stale', 'mode repair scrubbed before liveness')
+    call(service, action='scrub')
+    require(stat.S_IMODE(service.stat().st_mode) == 0o711 and sentinel.read_bytes() == b'untouched'
+            and [p.name for p in service.iterdir()] == ['keep'], 'scrub followed link or removed unrelated entry')
+    denied('os.open(sys.argv[1]+"/intrusion",os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600)', service)
+    (service / 'keep').unlink(); service.rmdir(); sentinel.unlink()
     record('mode-repair-and-exact-symlink-scrub')
 
-    failures = []
-    for phase in ('before-open', 'after-open'):
-        for replacement in ('file', 'symlink', 'missing', 'empty-directory', 'nonempty-directory'):
-            name = f'race-{phase}-{replacement}'
-            parent, moved = data / name, data / (name + '-moved')
-            sentinel = data / (name + '-target')
-            sentinel.mkdir(mode=0o700)
-            (sentinel / 'keep').write_bytes(b'untouched')
-            actor('import pathlib,sys\npathlib.Path(sys.argv[1]).mkdir(mode=0o700)', parent)
-            original = parent.stat()
-            ready_read, ready_write = os.pipe()
-            release_read, release_write = os.pipe()
-            process = None
-            try:
-                process = subprocess.Popen(
-                    [str(probe), 'ensure', str(parent / 'ipc_service'), '_service'],
-                    env={**ENV, 'LD_PRELOAD': str(barrier), 'IPC_PARENT_BARRIER_NAME': name,
-                         'IPC_PARENT_BARRIER_PHASE': phase, 'IPC_PARENT_READY_FD': str(ready_write),
-                         'IPC_PARENT_RELEASE_FD': str(release_read)},
-                    pass_fds=(ready_write, release_read), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                    user=0, group=0, extra_groups=[], text=True)
-                os.close(ready_write); ready_write = -1
-                os.close(release_read); release_read = -1
-                require(select.select([ready_read], [], [], 10)[0] == [ready_read]
-                        and os.read(ready_read, 1) == b'R', 'production openat barrier not reached')
-                actor('import pathlib,sys\np=pathlib.Path(sys.argv[1]);p.rename(sys.argv[2])\n'
-                      'if sys.argv[3]=="file": p.write_bytes(b"replacement")\n'
-                      'elif sys.argv[3]=="symlink": p.symlink_to(sys.argv[4],target_is_directory=True)\n'
-                      'elif sys.argv[3].endswith("directory"):\n'
-                      ' p.mkdir(mode=0o700)\n'
-                      ' if sys.argv[3]=="nonempty-directory":\n'
-                      '  (p/"ipc_service").write_bytes(b"replacement content");(p/"keep").write_bytes(b"unrelated")\n',
-                      parent, moved, replacement, sentinel)
-                replacement_stat = parent.lstat() if replacement != 'missing' else None
-                require(os.write(release_write, b'G') == 1, 'cannot release production openat')
-                stdout, stderr = process.communicate(timeout=10)
-            finally:
-                if process is not None:
-                    if process.poll() is None:
-                        process.kill()
-                    process.communicate()
-                for fd in (ready_read, ready_write, release_read, release_write):
-                    if fd >= 0:
-                        os.close(fd)
-            require(len(stdout) + len(stderr) < 65536, 'race output exceeded bound')
-            require(moved.stat().st_ino == original.st_ino and moved.stat().st_uid == 4001
-                    and not list(moved.iterdir()) and (sentinel / 'keep').read_bytes() == b'untouched',
-                    'race changed moved directory or symlink target')
-            current = parent.lstat() if os.path.lexists(parent) else None
-            preserved = current is None if replacement_stat is None else (
-                current is not None and (current.st_dev, current.st_ino, current.st_mode, current.st_uid)
-                == (replacement_stat.st_dev, replacement_stat.st_ino, replacement_stat.st_mode, replacement_stat.st_uid))
-            if preserved and replacement == 'file':
-                preserved = parent.read_bytes() == b'replacement'
-            if preserved and replacement == 'symlink':
-                preserved = os.readlink(parent) == str(sentinel)
-            if preserved and replacement == 'empty-directory':
-                preserved = not list(parent.iterdir())
-            if preserved and replacement == 'nonempty-directory':
-                preserved = (sorted(p.name for p in parent.iterdir()) == ['ipc_service', 'keep']
-                             and (parent / 'ipc_service').read_bytes() == b'replacement content'
-                             and (parent / 'keep').read_bytes() == b'unrelated')
-            passed = process.returncode == 3 and not stdout and stderr.startswith('ERR ') and preserved
-            print(f'LINUX_IPC_PARENT_RACE={"pass" if passed else "fail"} name={name} '
-                  f'exit={process.returncode} replacement_preserved={str(preserved).lower()} '
-                  'actor_uid=4001 schedule=controlled-openat cleanup=joined', flush=True)
-            if passed:
-                record(name)
+    runtime = Path('/run')
+    runtime_before = identity(runtime)
+    for name in ('unsafe-run-mode-refused', 'foreign-run-owner-refused'):
+        try:
+            if name.startswith('unsafe'):
+                runtime.chmod(0o777)
             else:
-                failures.append(name)
-            if current is not None:
-                if stat.S_ISDIR(current.st_mode):
-                    for child in ('ipc_service', 'keep'):
-                        if (parent / child).exists():
-                            (parent / child).unlink()
-                    parent.rmdir()
-                else:
-                    parent.unlink()
-            moved.rmdir(); (sentinel / 'keep').unlink(); sentinel.rmdir()
+                os.chown(runtime, 4001, 4001)
+            call(service, refused=True)
+            require(not service.exists(), 'unsafe runtime namespace created a service parent')
+        finally:
+            os.chown(runtime, runtime_before[2], runtime_before[3])
+            runtime.chmod(stat.S_IMODE(runtime_before[4]))
+        require(identity(runtime) == runtime_before, 'runtime fixture was not restored')
+        record(name)
 
-    require(not list(data.iterdir()) and len(list(Path('/proc/self/fd').iterdir())) == fd_before,
-            'native fixture or descriptor leaked')
-    require(sha(probe) == expected_sha and sha(artifact) == expected_sha
-            and sha(barrier) == barrier_sha and sha(barrier_artifact) == barrier_sha,
-            'artifact changed during execution')
-    data.rmdir(); probe.unlink(); barrier.unlink(); WORK.rmdir()
-    require(not failures, f'parent replacement races failed after joined cleanup: {failures}')
-    require(len(cases) == 16, 'native case inventory differs')
-    print(f'LINUX_IPC_PARENT_NATIVE=pass cases=16 artifact_sha256={expected_sha} '
+    # Public namespaces are rejected before any cleanup, regardless of the replacement type.
+    for replacement in ('file', 'symlink', 'missing', 'empty-directory', 'nonempty-directory'):
+        parent = data / replacement
+        actor('import pathlib,sys\np=pathlib.Path(sys.argv[1])\n'
+              'if sys.argv[2]=="file":p.write_bytes(b"replacement")\n'
+              'elif sys.argv[2]=="symlink":p.symlink_to("unresolved")\n'
+              'elif sys.argv[2].endswith("directory"):\n'
+              ' p.mkdir(mode=0o700)\n'
+              ' if sys.argv[2]=="nonempty-directory":(p/"ipc_service").write_bytes(b"replacement")\n',
+              parent, replacement)
+        before = identity(parent) if os.path.lexists(parent) else None
+        call(parent, refused=True)
+        after = identity(parent) if os.path.lexists(parent) else None
+        require(after == before, 'public-namespace refusal changed an entry')
+        if replacement == 'file':
+            require(parent.read_bytes() == b'replacement', 'public file changed')
+        elif replacement == 'symlink':
+            require(os.readlink(parent) == 'unresolved', 'public symlink changed')
+        elif replacement == 'nonempty-directory':
+            require((parent / 'ipc_service').read_bytes() == b'replacement', 'public directory was scrubbed')
+            (parent / 'ipc_service').unlink()
+        if after is not None:
+            if stat.S_ISDIR(after[4]):
+                parent.rmdir()
+            else:
+                parent.unlink()
+        record('public-namespace-' + replacement + '-refused')
+
+    require(not list(data.iterdir()) and not os.path.lexists(service)
+            and len(list(Path('/proc/self/fd').iterdir())) == fd_before, 'fixture or descriptor leaked')
+    require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed during execution')
+    data.rmdir(); probe.unlink(); WORK.rmdir()
+    require(len(cases) == 14, 'native case inventory differs')
+    print(f'LINUX_IPC_PARENT_NATIVE=pass cases=14 artifact_sha256={expected_sha} '
           'receiver_uid=0 actors=4001,4002 source=production-functions installed=unexecuted cleanup=joined', flush=True)
 
 
 if __name__ == '__main__':
     if sys.argv[1:] == ['build']:
         build()
-    elif len(sys.argv) == 4 and sys.argv[1] == 'native':
-        native(sys.argv[2], sys.argv[3])
+    elif len(sys.argv) == 3 and sys.argv[1] == 'native':
+        native(sys.argv[2])
     else:
-        raise SystemExit('expected build or native ARTIFACT_SHA256 BARRIER_SHA256')
+        raise SystemExit('expected build or native ARTIFACT_SHA256')

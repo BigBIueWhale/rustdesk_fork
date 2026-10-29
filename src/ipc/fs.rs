@@ -336,7 +336,38 @@ fn should_recreate_foreign_service_ipc_parent(
     expected_uid: u32,
     postfix: &str,
 ) -> bool {
-    owner_uid != expected_uid && expected_uid == 0 && config::is_service_ipc_postfix(postfix)
+    cfg!(target_os = "macos")
+        && owner_uid != expected_uid
+        && expected_uid == 0
+        && config::is_service_ipc_postfix(postfix)
+}
+
+#[cfg(target_os = "linux")]
+fn verify_linux_service_ipc_namespace(parent_dir: &Path) -> ResultType<()> {
+    if unsafe { hbb_common::libc::geteuid() } != 0
+        || parent_dir.parent() != Some(Path::new("/run"))
+    {
+        return Err(Error::new(
+            ErrorKind::PermissionDenied,
+            "service IPC requires root and a direct child of /run",
+        )
+        .into());
+    }
+    let runtime = CString::new("/run")?;
+    let fd = open_ipc_parent_dir_fd(&runtime)?;
+    let _guard = FdGuard(fd);
+    let mut st: hbb_common::libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { hbb_common::libc::fstat(fd, &mut st) } != 0 {
+        return Err(Error::last_os_error().into());
+    }
+    if st.st_uid != 0 || st.st_mode & 0o022 != 0 {
+        return Err(Error::new(
+            ErrorKind::PermissionDenied,
+            "service IPC runtime directory must be root-owned and not group/other writable",
+        )
+        .into());
+    }
+    Ok(())
 }
 
 // Purpose:
@@ -346,8 +377,8 @@ fn should_recreate_foreign_service_ipc_parent(
 // Approach:
 // - Open parent dir with O_NOFOLLOW/O_DIRECTORY and operate on that fd.
 // - Validate inode type/owner/mode via fstat.
-// - For a protected root-service postfix, replace a foreign-owned parent on a fresh inode, then
-//   scrub stale RustDesk IPC artifacts when the directory trust boundary changed.
+// - Linux service parents live beneath root-controlled /run and refuse foreign ownership.
+// - macOS replaces a foreign service parent; stale artifacts are scrubbed after liveness checks.
 //
 // Main steps:
 // 1) Resolve parent path and open/create directory securely.
@@ -369,6 +400,10 @@ pub(crate) fn ensure_secure_ipc_parent_dir(path: &str, postfix: &str) -> ResultT
     let parent_dir = Path::new(path)
         .parent()
         .ok_or_else(|| Error::new(ErrorKind::InvalidInput, format!("invalid ipc path: {path}")))?;
+    #[cfg(target_os = "linux")]
+    if config::is_service_ipc_postfix(postfix) {
+        verify_linux_service_ipc_namespace(parent_dir)?;
+    }
     // Harden against common TOCTOU by opening the parent directory with O_NOFOLLOW (so the parent
     // itself cannot be a symlink) and then operating on its FD (fstat/fchmod). This ensures
     // we mutate the inode we opened, though it does not protect against symlinks in ancestor path
@@ -465,8 +500,7 @@ pub(crate) fn ensure_secure_ipc_parent_dir(path: &str, postfix: &str) -> ResultT
     let expected_uid = unsafe { hbb_common::libc::geteuid() as u32 };
     let mut owner_uid = st.st_uid as u32;
     let mut recreated_foreign_service_parent = false;
-    // Only root may replace a foreign-owned protected service parent; other ownership
-    // mismatches are rejected below. Never change the foreign inode's ownership.
+    // macOS may replace a foreign service parent. Linux rejects every foreign owner.
     if should_recreate_foreign_service_ipc_parent(owner_uid, expected_uid, postfix) {
         // Close the foreign parent fd before its directory is removed, then re-open the fresh one.
         drop(fd_guard);
@@ -717,9 +751,9 @@ mod tests {
         let link_dir = base.join("link");
         std::fs::create_dir_all(&real_dir).unwrap();
         symlink(&real_dir, &link_dir).unwrap();
-        let ipc_path = link_dir.join("ipc_service");
+        let ipc_path = link_dir.join("ipc");
         let res =
-            super::ensure_secure_ipc_parent_dir(ipc_path.to_string_lossy().as_ref(), "_service");
+            super::ensure_secure_ipc_parent_dir(ipc_path.to_string_lossy().as_ref(), "");
         assert!(res.is_err());
         std::fs::remove_file(&link_dir).ok();
         std::fs::remove_dir_all(&real_dir).ok();
@@ -760,10 +794,10 @@ mod tests {
     }
 
     #[test]
-    fn test_foreign_service_parent_recreation_policy_is_root_service_only() {
-        assert!(super::should_recreate_foreign_service_ipc_parent(
+    fn test_foreign_service_parent_recreation_policy_is_macos_root_service_only() {
+        assert_eq!(super::should_recreate_foreign_service_ipc_parent(
             1001, 0, "_service"
-        ));
+        ), cfg!(target_os = "macos"));
         assert!(!super::should_recreate_foreign_service_ipc_parent(
             0, 0, "_service"
         ));
@@ -1036,6 +1070,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")]
     fn test_ensure_secure_ipc_parent_dir_keeps_service_artifacts_before_liveness_probe() {
         use std::os::unix::fs::PermissionsExt;
 

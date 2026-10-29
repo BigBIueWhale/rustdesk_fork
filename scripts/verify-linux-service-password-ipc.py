@@ -717,7 +717,8 @@ def verify_endpoint_ownership(rust: Mapping[str, RustSource]) -> None:
     parent_path.require_order(
         (
             (("is_service_ipc_postfix", "(", "postfix", ")"), "service classification"),
-            (("format", "!", "(", '"/tmp/{app_name}-service"', ")"), "root-owned shared service parent"),
+            (("format", "!", "(", '"/run/{app_name}-service"', ")"), "Linux root-controlled service namespace"),
+            (("format", "!", "(", '"/tmp/{app_name}-service"', ")"), "macOS shared service parent"),
             (("format", "!", "(", '"/tmp/{app_name}-{uid}"', ")"), "UID-owned user parent"),
         )
     )
@@ -748,6 +749,18 @@ def verify_endpoint_ownership(rust: Mapping[str, RustSource]) -> None:
     ):
         open_parent.require(required, label, unique=True)
     secure_parent = fs.function("ensure_secure_ipc_parent_dir")
+    secure_parent.require_order(
+        (
+            (("verify_linux_service_ipc_namespace", "(", "parent_dir", ")"), "Linux service namespace admission"),
+            (("open_ipc_parent_dir_fd", "(", "&", "parent_c", ")"), "parent open after namespace admission"),
+        )
+    )
+    replacement_policy = fs.function("should_recreate_foreign_service_ipc_parent")
+    replacement_policy.require(
+        ("cfg", "!", "(", "target_os", "=", '"macos"', ")", "&&"),
+        "foreign-directory replacement is unavailable on Linux",
+        unique=True,
+    )
     secure_parent.require_order(
         (
             (("open_ipc_parent_dir_fd", "(", "&", "parent_c", ")"), "no-follow parent open"),

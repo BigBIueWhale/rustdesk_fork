@@ -6431,7 +6431,7 @@ elif [ "$MODE" = linux-pa-authority-tests ]; then
         'focused Linux PulseAudio authority cloud-init completion marker'
 elif [ "$MODE" = linux-ipc-parent-tests ]; then
     mapfile -t ipc_parent_artifacts < <(
-        /usr/bin/grep -Eo 'LINUX_IPC_PARENT_NATIVE=pass cases=16 artifact_sha256=[0-9a-f]{64}' "$SERIAL_LOG"
+        /usr/bin/grep -Eo 'LINUX_IPC_PARENT_NATIVE=pass cases=14 artifact_sha256=[0-9a-f]{64}' "$SERIAL_LOG"
     )
     [ "${#ipc_parent_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fo 'LINUX_IPC_PARENT_NATIVE=' "$SERIAL_LOG" | /usr/bin/wc -l)" -eq 1 ] \
@@ -6441,7 +6441,7 @@ elif [ "$MODE" = linux-ipc-parent-tests ]; then
         "${ipc_parent_artifacts[0]} receiver_uid=0 actors=4001,4002 source=production-functions installed=unexecuted cleanup=joined" \
         'IPC parent native authority and cleanup'
     require_exact_fixed_receipt \
-        "LINUX_IPC_PARENT_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE artifact_sha256=$IPC_PARENT_ARTIFACT_SHA256 cases=16 vm_network=none source=readonly cleanup=joined" \
+        "LINUX_IPC_PARENT_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE artifact_sha256=$IPC_PARENT_ARTIFACT_SHA256 cases=14 vm_network=none source=readonly cleanup=joined" \
         'IPC parent source-bound guest completion'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'IPC parent cloud-init completion'
 elif [ "$MODE" = linux-systemd-notification-tests ]; then
@@ -9016,7 +9016,7 @@ elif [ "$MODE" = linux-pa-authority-tests ]; then
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     fi
 elif [ "$MODE" = linux-ipc-parent-tests ]; then
-    printf 'LINUX_IPC_PARENT_VM_OUTER=pass host_uid=%s commit=%s tree=%s artifact_sha256=%s cases=16 network=none listeners=no-harness-addition inputs=readonly-landlocked root=guest-only cleanup=joined elapsed_seconds=%s\n' \
+    printf 'LINUX_IPC_PARENT_VM_OUTER=pass host_uid=%s commit=%s tree=%s artifact_sha256=%s cases=14 network=none listeners=no-harness-addition inputs=readonly-landlocked root=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
         "$IPC_PARENT_ARTIFACT_SHA256" "$vm_elapsed_seconds"
 elif [ "$MODE" = linux-systemd-notification-tests ]; then

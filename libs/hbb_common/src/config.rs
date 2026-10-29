@@ -983,6 +983,9 @@ pub fn is_service_ipc_postfix(postfix: &str) -> bool {
 fn ipc_parent_dir_for_uid(uid: u32, postfix: &str) -> String {
     let app_name = APP_NAME.read().unwrap().clone();
     if is_service_ipc_postfix(postfix) {
+        #[cfg(target_os = "linux")]
+        return format!("/run/{app_name}-service");
+        #[cfg(target_os = "macos")]
         format!("/tmp/{app_name}-service")
     } else {
         format!("/tmp/{app_name}-{uid}")
@@ -6893,8 +6896,12 @@ unrelated = "preserved"
             assert_eq!(path_root, path_user);
 
             let app_name = APP_NAME.read().unwrap().clone();
+            #[cfg(target_os = "linux")]
+            let expected_parent = format!("/run/{app_name}-service/");
+            #[cfg(target_os = "macos")]
+            let expected_parent = format!("/tmp/{app_name}-service/");
             assert!(
-                path_root.starts_with(&format!("/tmp/{app_name}-service/")),
+                path_root.starts_with(&expected_parent),
                 "unexpected service ipc path: {}",
                 path_root
             );

@@ -117156,3 +117156,12 @@ comparison files total 224,124 bytes per host with matching hashes. Exact scope,
 unchanged-fixture comparison and `git diff --check` pass. Full application,
 installed settings/authorization, cross-version and other-platform acceptance,
 and all separately parked work remain OPEN. A fresh ledger count follows.
+
+Ledger count `wo8I48Q0wU` at `a2bca3f7` reports 359,416 tokens using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 1,643,293 bytes, SHA-256
+`83d2acb67ff8ff95fa9af1d014ee5f0d3fce6c8e7e310c7ce17732e72b85c4e2`.
+Seven controls and the complete text round trip pass. QEMU 1782198 joins after
+30.715 seconds; RAM `run.ys3vodth` retires and all three listener deltas are zero.
+Six count files add 102,945 bytes; all twenty evidence files total 327,069 bytes
+per host with matching hashes. This audit-only receipt preserves the measured
+ledger bytes; the approximate 400,000-token budget remains met.

@@ -116,11 +116,13 @@ def build():
     transport += function(ipc, 'next_windows_service_main_ipc_event')
     (work / 'transport.rs').write_text(transport.replace('pub(crate) ', ''))
     connection = ''
-    for name in ('SERVICE_IPC_MAX_FRAME_BYTES', 'MAIN_IPC_MAX_FRAME_BYTES', 'SERVICE_IPC_REQUEST_TIMEOUT_MS'):
+    for name in ('SERVICE_IPC_MAX_FRAME_BYTES', 'MAIN_IPC_MAX_FRAME_BYTES', 'SERVICE_IPC_REQUEST_TIMEOUT_MS',
+                 'DESKTOP_URL_IPC_MAX_FRAME_BYTES', 'DESKTOP_URL_IPC_IO_TIMEOUT_MS'):
         start = ipc.all().require(('const', name), 'connection constant', unique=True)
         end = next(i for i in range(start, len(ipc.tokens)) if ipc.tokens[i].text == ';')
         connection += ipc.text[ipc.tokens[start].offset:ipc.tokens[end].offset + 1] + '\n'
-    for kind, name in (('enum', 'ServiceIpcRequest'), ('enum', 'ServiceIpcResponse'), ('struct', 'ConnectionTmpl')):
+    for kind, name in (('enum', 'ServiceIpcRequest'), ('enum', 'ServiceIpcResponse'),
+                       ('enum', 'DesktopUrlIpcRequest'), ('struct', 'ConnectionTmpl')):
         body = ipc.item(kind, name)
         start = ipc.all().require((kind, name), 'connection item', unique=True)
         offset = ipc.tokens[start].offset
@@ -129,8 +131,9 @@ def build():
         connection += ipc.text[offset:ipc.tokens[body.end].offset + 1] + '\n'
     methods = ipc.impl(('impl', '<', 'T', '>', 'ConnectionTmpl', '<', 'T', '>'), 'connection methods')
     connection += 'impl<T: AsyncRead + AsyncWrite + Unpin> ConnectionTmpl<T> {\n'
-    for name in ('new', 'new_with_max_packet_length', 'new_protected_service', 'new_main',
-                 'send_json', 'send_json_timeout', 'next_json', 'send_service_request_timeout',
+    for name in ('new', 'new_with_max_packet_length', 'new_protected_service', 'new_main', 'new_desktop_url',
+                 'send_json', 'send_json_timeout', 'next_json', 'next_json_strict', 'send_service_request_timeout',
+                 'send_desktop_url_request_timeout', 'next_desktop_url_request_timeout',
                  'next_service_request_timeout', 'send_service_response_timeout',
                  'next_service_response_timeout', 'next_main_response_timeout',
                  'send_main_request_timeout', 'next_main_timeout',
@@ -140,7 +143,11 @@ def build():
     peers = auth.impl(('impl', '<', 'T', '>', 'ConnectionTmpl', '<', 'T', '>'), 'peer methods')
     connection += ''.join(function(auth, name, parent=peers.start - 1) for name in ('peer_uid', 'peer_pid'))
     connection += '}\n' + function(ipc, 'handle_service_request')
+    url_methods = ipc.impl(('impl', 'DesktopUrlIpcRequest'), 'desktop URL request validation')
+    connection += 'impl DesktopUrlIpcRequest {\n' + function(ipc, 'validate', parent=url_methods.start - 1) + '}\n'
     (work / 'connection.rs').write_text(connection)
+    server = parsed(repo / 'src/server.rs')
+    (work / 'url_server.rs').write_text(function(server, 'start_ipc_url_server'))
     responses = ''
     for name in ('MAIN_IPC_MAX_OPTION_COUNT', 'MAIN_IPC_MAX_OPTION_VALUE_BYTES',
                  'MAIN_IPC_MAX_CONFIG_VALUE_BYTES'):
@@ -235,6 +242,7 @@ incremental = false
           f'option_cli_sha256={sha(work / "option_cli.rs")} '
           f'main_responses_sha256={sha(work / "main_responses.rs")} '
           f'main_transaction_sha256={sha(work / "main_transaction.rs")} '
+          f'url_server_sha256={sha(work / "url_server.rs")} '
           'transport=parity-tokio-ipc-root-locked framing=production', flush=True)
 
 
@@ -288,6 +296,11 @@ def native(expected_sha, barrier_sha):
               f'exit={result.returncode} stdout={result.stdout.strip()!r} stderr={result.stderr.strip()!r}', flush=True)
 
     for uid in (0, 4001):
+        for scenario in ('success', 'recovery'):
+            action = 'url-accept-' + scenario
+            result = check('', uid, action=action)
+            record(f'{action}-{uid}', result.returncode == 0
+                   and result.stdout == f'OK {action} uid={uid} cleanup=joined\n', result)
         for scenario in ('config-oversized', 'config-none', 'status-oversized', 'status-duplicate',
                          'status-count', 'option-oversized', 'option-limit', 'option-none'):
             action = 'main-validation-' + scenario
@@ -1075,8 +1088,8 @@ def native(expected_sha, barrier_sha):
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
     require(sha(barrier) == barrier_sha, 'barrier changed')
     probe.unlink(); barrier.unlink(); work.rmdir()
-    require(len(cases) == 242, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=242 failures={len(failures)} '
+    require(len(cases) == 246, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=246 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 

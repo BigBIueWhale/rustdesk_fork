@@ -40,6 +40,13 @@ mod main_transaction {
     }
     include!("main_transaction.rs");
 }
+mod url_server {
+    use super::*;
+    include!("url_server.rs");
+}
+// Only Activate/CloseAll are exercised. URL parsing and target-OS sender
+// authorization/Flutter delivery are outside this Linux accept-lifetime fixture.
+fn validate_desktop_url_ipc_open_url(_: &str) -> ResultType<()> { panic!("URL parsing is outside fixture") }
 type Connection = ConnectionTmpl<Conn>;
 type ServiceIpcRequesterAuthorization = ();
 use ipc::ipc_fs::*;
@@ -68,7 +75,6 @@ fn timeout<T: std::future::Future>(ms: u64, future: T) -> tokio::time::Timeout<T
 }
 impl<T> ConnectionTmpl<T> {
     fn new_pulse_audio(_: T) -> Self { panic!("outside fixture") }
-    fn new_desktop_url(_: T) -> Self { panic!("outside fixture") }
     fn new_whiteboard(_: T) -> Self { panic!("outside fixture") }
 }
 fn ensure_linux_root_service_connection<T: AsyncRead + AsyncWrite + Unpin + AsRawFd>(s: &ConnectionTmpl<T>, postfix: &str) -> ResultType<u32> {
@@ -346,6 +352,94 @@ async fn windows_main_admission_fixture(scenario: &str) {
     }
     assert_eq!(fd_count(), before);
     println!("OK windows-main-admission-{scenario} uid={} cleanup=joined", unsafe { libc::geteuid() });
+}
+
+async fn url_accept_fixture(scenario: &str) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
+    use tokio::io::AsyncReadExt;
+
+    struct Observer { errors: AtomicUsize, requests: AtomicUsize }
+    impl log::Log for Observer {
+        fn enabled(&self, _: &log::Metadata) -> bool { true }
+        fn flush(&self) {}
+        fn log(&self, record: &log::Record) {
+            let message = record.args().to_string();
+            if message.starts_with("Failed to accept desktop URL IPC connection:")
+                && message.contains("(os error 24)") {
+                self.errors.fetch_add(1, Ordering::SeqCst);
+            }
+            if message == "Desktop URL IPC request arrived without Flutter support" {
+                self.requests.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+    }
+    static OBSERVER: Observer = Observer { errors: AtomicUsize::new(0), requests: AtomicUsize::new(0) };
+    log::set_logger(&OBSERVER).unwrap();
+    log::set_max_level(log::LevelFilter::Warn);
+    let before = fd_count();
+    let path = Config::ipc_path("_url");
+    let server = tokio::spawn(url_server::start_ipc_url_server());
+    timeout(1000, async {
+        while !Path::new(&path).exists() {
+            assert!(!server.is_finished(), "URL listener failed before admission");
+            tokio::task::yield_now().await;
+        }
+    }).await.unwrap();
+    // Queue the peer without yielding, then exhaust descriptors before the
+    // production loop can accept it on this single-threaded runtime.
+    let socket = std::os::unix::net::UnixStream::connect(&path).unwrap();
+    socket.set_nonblocking(true).unwrap();
+    let mut client = ConnectionTmpl::new_desktop_url(tokio::net::UnixStream::from_std(socket).unwrap());
+    assert_eq!(client.peer_uid(), Some(unsafe { libc::geteuid() }));
+    assert_eq!(client.peer_pid(), Some(std::process::id()));
+    let mut original = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+    assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut original) }, 0);
+    let mut fillers = Vec::new();
+    if scenario == "recovery" {
+        assert!(original.rlim_cur >= 64);
+        let limited = libc::rlimit { rlim_cur: 64, rlim_max: original.rlim_max };
+        assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &limited) }, 0);
+        loop {
+            assert!(fillers.len() < 64);
+            match fs::File::open("/dev/null") {
+                Ok(file) => fillers.push(file),
+                Err(err) => { assert_eq!(err.raw_os_error(), Some(libc::EMFILE)); break; }
+            }
+        }
+        timeout(500, async {
+            while !server.is_finished() && OBSERVER.errors.load(Ordering::SeqCst) == 0 {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        }).await.unwrap();
+    } else { assert_eq!(scenario, "success"); }
+    drop(fillers);
+    assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &original) }, 0);
+    let survived = !server.is_finished();
+    let accept_errors = OBSERVER.errors.load(Ordering::SeqCst);
+    let delivered = if survived {
+        async {
+            client.send_desktop_url_request_timeout(&DesktopUrlIpcRequest::Activate {}, 1000).await?;
+            let mut byte = [0];
+            anyhow::ensure!(timeout(1000, client.inner.get_mut().read(&mut byte)).await?? == 0);
+            drop(client);
+            let mut next = ConnectionTmpl::new_desktop_url(Endpoint::connect(&path).await?);
+            next.send_desktop_url_request_timeout(&DesktopUrlIpcRequest::CloseAll {}, 1000).await?;
+            anyhow::ensure!(timeout(1000, next.inner.get_mut().read(&mut byte)).await?? == 0);
+            Ok::<_, anyhow::Error>(())
+        }.await
+    } else { drop(client); Err(anyhow::anyhow!("URL listener stopped after accept failure")) };
+    let still_live = !server.is_finished();
+    server.abort();
+    let joined = server.await;
+    fs::remove_file(path).unwrap();
+    assert_eq!(fd_count(), before);
+    assert!(survived, "URL listener stopped after recoverable descriptor exhaustion");
+    assert_eq!(accept_errors, usize::from(scenario == "recovery"));
+    delivered.unwrap();
+    assert_eq!(OBSERVER.requests.load(Ordering::SeqCst), 2);
+    assert!(still_live && joined.unwrap_err().is_cancelled());
+    println!("OK url-accept-{scenario} uid={} cleanup=joined", unsafe { libc::geteuid() });
 }
 
 async fn accept_failure_fixture(scenario: &str) {
@@ -1021,6 +1115,11 @@ fn main() {
     let postfix = &args[2];
     assert!(["", "_password", "_service_password", "_service_credential", "_service"].contains(&postfix.as_str()));
     let path = Config::ipc_path(postfix);
+    if let Some(scenario) = args[1].strip_prefix("url-accept-") {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(url_accept_fixture(scenario));
+        return;
+    }
     if let Some(scenario) = args[1].strip_prefix("main-validation-") {
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         runtime.block_on(main_validation_fixture(scenario));

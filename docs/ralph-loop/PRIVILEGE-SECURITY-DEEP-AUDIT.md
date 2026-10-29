@@ -114086,3 +114086,38 @@ identity-checked and retired from admission while retaining diagnostics.
 The corrected launcher still needs execution of the 37 rendered cases and
 three parser checks. Broader native audio/IPC and all fifteen credential actions
 remain OPEN. The counted hardening ledger is unchanged.
+
+## 2026-10-29 — TUF rendered audio keyboard acceptance
+
+On pushed `a6211d88`, TUF run `Q7FpB7Im7m` exits zero: all 37 tests in three
+suites and all three result-parser checks pass. The three new rendered CM cases
+exercise Tab traversal, Enter/Space open and selection, Escape dismissal,
+pending reads/writes and call replacement through failure/retry, and cancelled
+pointer presses. Existing device identity, owner-retirement, serialization and
+feedback controls pass. Production panel SHA-256 is
+`dc55238a9c03386d479efe5ccd2af7c0f51403ee590365d32a4cda14dfa7d391`;
+test SHA-256 is
+`a2fac87ac63bd83b480cdf2e058f903634e5a1778393536f75c6d1a04150168d`.
+The runtime verifies the exact panel copy and explicitly reports native-binding
+doubles. This accepts the rendered component correction `4012c905`; it does not
+establish full-app keyboard routing, native audio/IPC or real microphones. The
+earlier old-product attempts never reached these keyboard tests, so no new
+keyboard A/B result is claimed.
+
+Read-only ISO inspection confirms 0555 for the root, repo and scripts directories
+with their 4000:4000 ownership; the validator file remains 0755, and TUF's host
+checkout stays 0700. The unchanged pinned Pub-cache closure passes. The storage
+receipt spans 270.076 seconds, with 4,490,645,504 peak scratch bytes,
+4,294,774,784 peak overlay bytes and 3,420,160 peak durable-run bytes. QEMU
+1543825 joins exit zero with 4,096 observed host-write bytes; its PID, RAM
+workspace `run.uugsp3ph` and active run roots are absent. All four listener
+snapshots have zero additions/removals. No OOM or OOM kill is reported.
+
+The 21 bounded run files copied to CTE total 237,722 bytes.
+`cm-audio-keyboard-4012c905.json` (45,165 bytes; SHA-256
+`00170170d4a454b58e4aef1ff023ab8988da3a297d47625aff0e6e10855ad0a3`)
+binds successful execution, both pre-test staging failures, hardlink restoration,
+ISO metadata and the installation receipt. Update only the audio-control row of
+the hardening ledger; its fresh isolated count follows. The shared payload
+permission change has actual Flutter-profile acceptance; broader profile/native
+security and all fifteen credential actions remain OPEN.

@@ -3615,7 +3615,7 @@ failed preservation despite an error. The Linux fix removes that replacement pat
 TUF run `NcMZACtQFx` passes routing, real Unix socket reachability/kernel peer UID,
 unprivileged namespace mutation refusal, owner/ACL/symlink/mode/refusal cases,
 and exact cleanup in 34.554 seconds. All four host listener deltas are zero;
-QEMU joins and RAM scratch retires. `--linux-ipc-parent-tests` compiles nine
+QEMU joins and RAM scratch retires. `--linux-ipc-parent-tests` compiles the
 production filesystem functions and the config classification/path functions
 with pinned Rust/libc, a boxed-error adapter and a fixed RustDesk name binding.
 Python owns the socket exercise; this is not `new_listener`, the complete
@@ -9041,7 +9041,7 @@ sandbox implementation and checker-repair history remain in Git.
   its bounded typed liveness round trip; failed or malformed response is an error, not
   cleanup authority. Stale removal stays descriptor-relative; probing grants no request authority.
 
-  **Linux startup/liveness component: fifty-six native cases pass.** `26b069fb`
+  **Linux startup/liveness component: seventy native cases pass.** `26b069fb`
   reserves each endpoint through cleanup, bind and socket permissions using a
   validated persistent lock inode. Reservation follows asynchronous probing;
   no lock spans an await. A fresh nonblocking connection under the reservation
@@ -9049,7 +9049,7 @@ sandbox implementation and checker-repair history remain in Git.
   ambiguous endpoints. Separate endpoints start independently. This extends
   `641bb1b2`'s transport-error and cleanup-error correction.
   Baseline `qtOVFk9av1` reproduces two concurrent starts both reporting success
-  while one replaces the other's socket. `c369d9e2`, TUF `CTs8Use2ux`, passes
+  while one replaces the other's socket. `3a37b232`, TUF `ogoe9261yx`, passes
   those races, independent starts, restart, eight unsafe-lock refusals,
   unrelated-image preservation and the prior nine transport cases, plus eight
   protected-service liveness scenarios. Valid replies prove liveness; unknown
@@ -9061,7 +9061,7 @@ sandbox implementation and checker-repair history remain in Git.
   probe and reservation; kernel peer PID/UID and the socket inode identify the
   winner. Killing the reservation holder permits restart using the same lock
   inode. Deleted and unreadable executable identities refuse probe/startup
-  without removing the live socket. The 79.675-second run also passes fourteen
+  without removing the live socket. The 83.152-second run also passes fourteen
   directory cases. Root and UID 4001
   execute the same sealed component with production `new_listener`, connection
   methods, codec, typed liveness handler and kernel identity checks. Dependencies
@@ -9076,14 +9076,16 @@ sandbox implementation and checker-repair history remain in Git.
   Baseline `4JEWjk1tZi` fails all twelve fresh/recovery cases for root/UID 4001
   with masks 0200/0400/0600. The candidate passes those plus two nondumpable-user
   cases, retaining the lock inode and preserving process umask/descriptor counts.
-  These cases start with valid parents. **Next:** reproduce/correct first creation
-  or recovery of an unreadable ordinary-user parent: `ensure_secure_ipc_parent_dir`
-  still attempts a readable directory open before mode repair. This remains OPEN.
-  Capsules: `ipc-lock-umask-c369d9e2.json`, `ipc-listener-recovery-c3d8dbc9.json` and
+  `3a37b232` also fixes unreadable directory creation/recovery. Linux parent handles
+  use `O_PATH`; ownership is checked before repair through the verified descriptor
+  alias, then exact mode/owner are rechecked. Baseline `6qyNTSepKJ` fails eight
+  ordinary-user cases. The same fourteen parent startup scenarios now pass for
+  masks 0400/0700/0777, including nondumpable users, exact inode preservation and
+  unrelated contents. No process-wide umask change or foreign-parent adoption occurs.
+  Capsules: `ipc-parent-umask-3a37b232.json`, `ipc-lock-umask-c369d9e2.json` and
   `ipc-listener-bind-26b069fb.json`; audit entries “2026-10-29 — Linux IPC startup
-  lock permissions”, “2026-10-29 — Linux IPC startup arrival, crash recovery and
-  unavailable identity” and “2026-10-29 — Linux concurrent IPC startup” retain
-  current and baseline provenance.
+  parent permissions”, “2026-10-29 — Linux IPC startup lock permissions” and
+  “2026-10-29 — Linux concurrent IPC startup” retain current and baseline provenance.
   PID-file reads/writes and the process-table scan remain removed; historical
   `.pid` entries remain only in stale-artifact cleanup. The finite UID/executable
   regression remains supplementary to these native component observations.

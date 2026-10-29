@@ -115006,3 +115006,53 @@ The 30.169-second run joins QEMU 1622672 with exit zero and retires workspace
 Six copied count files total 102,434 bytes and match both hosts; serial SHA-256
 is `c4f3911e53256a47461515c3264607d2c03cc415a49d71eee9fdf70a8a45bb0d`.
 This audit-only receipt leaves the counted ledger unchanged.
+
+## 2026-10-29 — Linux IPC startup parent permissions
+
+The preceding turn fixed lock permissions and identified the parent-directory
+read-open failure. This turn reproduces and corrects that path. `80075072`
+adds fourteen actual `new_listener` scenarios: fresh/existing parents, root
+and UID 4001, masks 0400/0700/0777, plus nondumpable-user fresh/recovery cases.
+Baseline TUF `6qyNTSepKJ` passes 62 listener cases and fails all eight ordinary-
+user parent cases with EACCES before repair. Fourteen directory controls pass.
+The same listener scenarios are used for the candidate.
+
+`3a37b232` opens Linux IPC directories with O_PATH, O_DIRECTORY, O_NOFOLLOW
+and O_CLOEXEC. Directory type and effective-UID ownership are validated before
+repair. The retained descriptor's numeric alias is checked for matching
+device/inode in a procfs-verified `/proc/thread-self/fd` directory; fchmodat
+changes that inode, then fstat rechecks exact mode and owner. Errors are
+captured before descriptor cleanup. Lock recovery shares the procfs-directory
+check. Linux service namespace admission and foreign-parent refusal remain
+in place; other platforms retain their read-open/fchmod algorithm.
+
+[open(2)](https://man7.org/linux/man-pages/man2/open.2.html) documents O_PATH's
+permission-independent metadata access, fstat/fstatfs and directory-relative
+operations. It does not permit fchmod directly. The verified procfs alias
+provides the retained target for [fchmodat](https://man7.org/linux/man-pages/man2/chmod.2.html)
+without requiring Linux 6.6's newer empty-path mode or changing the process umask.
+
+Accepted TUF `ogoe9261yx` passes all 70 listener and 14 directory cases in
+83.152 seconds. The new startup cases verify successful bind, exact parent
+mode/owner, retained inode and unrelated sentinel content; the existing
+in-process descriptor and umask observations remain. Ownership, ACL, symlink,
+namespace and unsafe-lock refusals pass. Listener binary SHA-256:
+`9e4b8691b83412d9a1983cf320c56d8cb8001cc385e0e511c2cbfe561e6f5308`;
+directory binary SHA-256:
+`cae93cb9321022dacef73aac3b3b737a0e87401e0706f380712b86420e3fc9ef`.
+Both QEMU children join exit zero and RAM workspaces retire. All eight host
+listener deltas are zero. Accepted peak RAM scratch is 3,434,590,208 bytes,
+overlay 3,238,400,000 bytes and durable run 3,411,968 bytes. Diff checks pass.
+
+Fourteen run files total 182,101 bytes. Capsule
+`ipc-parent-umask-3a37b232.json`, 52,635 bytes, SHA-256
+`52078185e555ab543488d73a6a2adcdbb17b0f0426a9fe066436193f882545c5`.
+All fifteen files match on CTE/TUF. The exact failed-baseline diagnostic tree
+is removed after evidence verification under the shared lock, with inode,
+owner/type and process-absence checks; 3,457,024 allocated disk bytes are freed.
+
+This closes the reproduced parent-permission startup failure within the native
+component. Full application and installed authority, CM/PA process proofs,
+macOS, remaining namespace/crash/metadata races, coexisting versions, release
+artifacts and independent review remain OPEN. Config name/path and service
+authorization adapters remain explicit limits of the executed component.

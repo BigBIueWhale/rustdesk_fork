@@ -115584,3 +115584,40 @@ availability. Other errors, Windows/macOS, full installed operations, CM/PA,
 remaining socket/metadata races, release artifacts, independent reproduction and
 external review remain OPEN. The separate Linux abstract whiteboard listener is
 outside this factory and unchanged.
+
+### 2026-10-29 — Exclude macOS parent replacement from Linux compilation
+
+`2a2f7f66` replaces the Boolean `cfg!` policy helper with a macOS-only statement
+and restricts the replacement/scrub helper definitions to macOS. Linux already
+refused foreign ownership; this cleanup removes unavailable-target code, rather
+than correcting a newly reproduced runtime defect. Both Linux native component
+builders now omit the macOS helpers. Losing the statement's target guard would
+therefore fail their compilation. The obsolete Boolean-policy unit test is
+deleted; the two actual scrub/inode tests are retained for macOS.
+
+The [Rust Reference](https://doc.rust-lang.org/reference/conditional-compilation.html)
+distinguishes `cfg!`'s Boolean result from a false `cfg` attribute's removal of its
+attached form. The three macOS helper bodies are byte-identical to `a8ec64c6`;
+the caller retains the same foreign-owner/root/service condition and descriptor
+ownership. No macOS compilation or runtime acceptance is claimed.
+
+TUF command: `bash scripts/smoke-verifier-vm-authority.sh --linux-ipc-parent-tests`.
+Run `kBqFhnCxYH` passes 150 listener and 14 directory cases in 85.383 seconds,
+including foreign ownership/ACL preservation, authorized startup, mode repair,
+real sockets and existing concurrency/recovery cases. The focused desktop source
+check and diff checks pass. This uses the existing sealed production components,
+fixture adapters, pinned offline builder and ordinary-user zero-NIC QEMU topology.
+The parent build now extracts five filesystem functions instead of nine.
+
+Listener SHA-256: `ae2f3ffe61066479c85dc1746b6fe3bc0e3ea4330b62b0396729f90b3dc71dd2`;
+directory SHA-256: `cf3ff9888f652e60de132b4494c57f86cb4b3f2b80ada9969a8cb158e5e806fc`.
+All four host listener deltas are zero. QEMU 1670066 joins and RAM workspace
+`run.mfory5xk` retires. Peak scratch is 3,438,514,176 allocated bytes, overlay
+3,242,266,624 and durable run storage 3,424,256. Seven run files plus
+`ipc-target-cfg-2a2f7f66.json` total 110,436 bytes, retained on CTE and TUF.
+Capsule SHA-256: `b4d02f3143a7adf1161b9420677f8b071cea65e78f19747bd2be5d2bff184144`.
+
+Full installed application/settings authority, macOS replacement races and native
+acceptance, CM/PA, remaining namespace/metadata races, release artifacts,
+independent reproduction and external review remain OPEN. Normative requirements
+and live instructions are unchanged.

@@ -3643,6 +3643,16 @@ unchanged, so the existing 132-listener/14-directory evidence is reused rather
 than rerun. Receipt: `ipc-fixture-removal-d41b6a36.json`. Installed-service and
 macOS acceptance remain OPEN.
 
+`2a2f7f66` excludes foreign-parent replacement and its scrub helpers from Linux
+compilation. The Linux component builders no longer supply those macOS-only
+functions; the obsolete Boolean replacement-policy helper/test is deleted, while
+the two real scrub tests remain macOS-only. Linux continues to refuse foreign
+ownership unchanged. This is target-specific code cleanup, with no new runtime
+defect or privilege-boundary closure claimed. TUF `kBqFhnCxYH` passes all 150
+listener and 14 directory cases in 85.383 seconds, plus the focused desktop source
+check. QEMU joins, RAM scratch retires and all four host listener deltas are zero.
+Receipt: `ipc-target-cfg-2a2f7f66.json`. macOS native acceptance remains OPEN.
+
 **Main and service listener admission.** `1a5665b8` rotates credential/password/service
 accept priority; `d4987511` alternates main/password admission. Each continuously
 ready endpoint gets a turn within three service or two main admissions. Pending
@@ -9116,8 +9126,8 @@ sandbox implementation and checker-repair history remain in Git.
   Baseline `DRZBPWPlFn` reproduces nineteen valid failures; two special-bit fixtures
   required correction before they could count. The audit records that distinction.
 
-  **Current native evidence:** `7b1279bd`, TUF `eMd7q9vrIi`, passes 150 listener
-  cases and 14 directory cases in 85.133 seconds, including the twelve main/service
+  **Current native evidence:** `2a2f7f66`, TUF `kBqFhnCxYH`, passes 150 listener
+  cases and 14 directory cases in 85.383 seconds, including the twelve main/service
   scheduling and six accept-error cases recorded above. Baseline `mG75yce2f7` reproduces
   ten non-socket replacements, two PID-file deletions and two startup failures
   caused by nonempty PID directories. The same fourteen scenarios now preserve
@@ -9145,7 +9155,8 @@ sandbox implementation and checker-repair history remain in Git.
   Config name/path and service authorization remain fixture adapters. The directory
   fixture no longer invokes macOS-only scrub code on Linux; it checks parent
   hardening and preservation. All host listener deltas are zero, QEMU joins and RAM
-  scratch retires. Provenance: `ipc-accept-retry-7b1279bd.json`,
+  scratch retires. Provenance: `ipc-target-cfg-2a2f7f66.json`,
+  `ipc-accept-retry-7b1279bd.json`,
   `ipc-main-fairness-d4987511.json`,
   `ipc-service-fairness-1a5665b8.json`,
   `ipc-bind-parent-e2ea2d8c.json`,

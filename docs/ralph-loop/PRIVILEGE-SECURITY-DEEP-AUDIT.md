@@ -117374,3 +117374,91 @@ Seven tokenizer controls and full text round trip pass. QEMU 1794991 joins after
 Six count files total 104,559 bytes. All twenty files across the three runs total
 272,285 bytes per host with matching hashes. This audit-only receipt preserves
 the measured ledger bytes and its approximate 400,000-token budget.
+
+### 2026-10-30 — remove PAKE secret encoding heap copies
+
+At `bccdd34f`, `generator_string` calls `prepend_len(prs)` merely to calculate
+length; that temporary owns an unwiped PRS copy. `lv_cat` creates another
+temporary for each field and grows its output. `compute_isk` uses it with the
+shared secret K, then extends the assembled input with the public transcript.
+Wiping the final generator/ISK input does not wipe earlier temporary or
+reallocated buffers. This is a concrete secret-buffer lifetime gap under
+R-T15(a)/R-P12, not a demonstrated standalone local privilege escalation.
+
+The [pinned zeroize 1.8.1 documentation](https://raw.githubusercontent.com/RustCrypto/utils/zeroize-v1.8.1/zeroize/src/lib.rs)
+explicitly distinguishes wiping current capacity from copies left by moves,
+borrowers and reallocation. The [pinned SHA-2 0.10.8 API](https://raw.githubusercontent.com/RustCrypto/hashes/sha2-v0.10.8/sha2/src/lib.rs)
+supports incremental updates and finalization. The selected correction feeds
+the exact draft encoding directly into SHA-512, so these two derivations do not
+create secret-bearing heap encodings in the first place. Public transcript
+ordering and the length-prefixed zero-pad field remain part of the input.
+
+Preparation `db5a0e4f38baba7e5b68374f3b7510d62ebb56f4` adds an optimized,
+thread-local allocation observer behind `cfg(all(test, pake_allocation_probe))`.
+It forwards to System and counts allocation/reallocation calls; it neither scans
+uninitialized/freed storage nor pretends to measure stack erasure. A black-boxed
+Vec control must allocate. The ordinary timing build omits the observer entirely.
+The new `--pake-allocation-tests` profile uses the same bounded 4 GiB VM/2 GiB
+container and 6 GiB RAM scratch/4 GiB overlay limits as the optimized timing profile.
+The old standalone o_cat test is replaced with actual ISK/reference comparisons
+and argument reversal across six length pairs; fourteen PRS lengths exercise
+generator padding and LEB128 boundaries. Published/fork vectors and authentication,
+role, replay, identity, malformed-element and password controls remain.
+
+Baseline `FSlqdCxESB` at that preparation passes all seventeen functional checks,
+then fails the unchanged no-heap probe. Generator derivation performs nine
+allocations/ten reallocations; ISK derivation performs eleven/twelve. The control
+observes one allocation. Pre-execution artifact SHA-256 is
+`03ad318944d671650a4103d4f8a597f72ba926c9ced2e6d594aece8516f0e75a`;
+the failed probe exits 101 before the runner's success-only after-hash check.
+QEMU 1796306 joins after 102.943 seconds; RAM `run.iyfrxl0o` retires and all four
+listener deltas are zero. Seven raw files total 86,232 bytes on both hosts.
+After checking those hashes, the exact retired diagnostic tree (inode 78294410)
+is removed, reclaiming 3,452,928 bytes.
+
+Product correction `2a3e8d45b7fe11ad9763c8c27c9cd446637b804f` changes only
+`libs/pake/src/lib.rs` relative to preparation: 52 additions/72 deletions.
+LEB128 and concatenated public fields have borrowed iterators; generator and ISK
+hashing stream their inputs. The secret-copying `prepend_len`/`generator_string`,
+materialized o_cat and handwritten comparison are removed. Lexicographic ordering
+compares only public element/AD encodings. ISK's digest copy is explicitly wiped
+after copying its result; existing caller/state secret ownership remains. No wire,
+public API, dependency, key derivation or authentication policy changes.
+
+Corrected run `cu7Q4C196e` passes the same seventeen functional checks and the
+same allocation probe: generator and ISK each report zero allocations and zero
+reallocations, while the positive control still reports one allocation. The
+artifact is `e4f239867cff0c7a4f3d524ab47bfd1d42e6384b3380936cc5367351f0d34bbf`,
+unchanged before/after execution; source tree is
+`385597fbda4ac154af0a4f388c1037d86c0f4bdb`. Rust 1.75.0 / LLVM 17.0.6, release
+opt-level 3, LTO, one codegen unit, target CPU x86-64, pinned dependencies and
+Darwin/Windows execution limits match the preceding timing scope. Tests run as
+UID/GID 1000 inside the networkless disposable guest/container with read-only
+source/root, no capabilities, no-new-privileges and AppArmor. QEMU 1797083 joins
+after 103.758 seconds; RAM `run.0h1nvef3` retires and all four listener deltas are
+zero. Seven raw files total 81,960 bytes on both hosts.
+
+Raw serial/console/storage/listener receipts use the prefix
+`android-rust-lifecycle-tests-run.<run-id>` (console inserts `console-` before
+`run`). Source review identifies the old secret copies; the optimized observer
+proves allocation behavior for its tested calls, not the contents of arbitrary
+memory after an operation. Full stack/register and hash/HMAC/HKDF internal-state
+erasure, scalar RNG-error cleanup, remaining MAC-digest copies, target-native
+shipping artifacts and independent review remain OPEN. The same-source timing
+profile is rerun because `verify_tag` shares the changed public encoding helper.
+All separately parked lanes and installed privilege/settings acceptance remain
+unchanged.
+
+Timing run `UECTPi1FV7` at the same `2a3e8d45` passes without the allocation
+observer. Its four input digests, million-observation budgets, four calls per
+observation, warmup and threshold 10 match the previous timing run. Raw/p99
+statistics are -3028.334261/-13247.264963 for the positive control,
+-1.068124/-0.325857 for tag mismatch position, 1.717052/-2.368862 for key classes,
+and -0.312302/-0.852337 for scalar reduction. No production difference is detected
+under these conditions; the scoped first-order and platform limitations remain.
+Artifact SHA-256 `9d42a498c84d1ae5978431e41dc15a091f026569ac058b1669fb0ce147db7540`
+matches before/after. Measurements take 5.98 seconds. QEMU 1797885 joins after
+106.575 seconds, RAM `run.e54t5o12` retires and all four listener deltas are zero.
+Seven raw files total 82,640 bytes; the twenty-one files across these three runs
+total 250,832 bytes per host with matching hashes. The final ledger count also
+executes the added allocation-profile memory admission/refusal and selection cases.

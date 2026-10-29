@@ -1268,7 +1268,10 @@ void main() {
         }
       ],
       [
-        {'id': '192.0.2.7:21118', 'alias': [secret]}
+        {
+          'id': '192.0.2.7:21118',
+          'alias': [secret]
+        }
       ],
     ];
     for (final value in invalid) {

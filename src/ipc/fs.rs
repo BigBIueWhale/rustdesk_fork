@@ -644,7 +644,11 @@ pub(crate) fn scrub_secure_ipc_parent_dir(path: &str, postfix: &str) -> ResultTy
 }
 
 #[cfg(target_os = "linux")]
-fn restore_ipc_socket_owner_access(path: &str, postfix: &str) -> ResultType<()> {
+pub(crate) fn set_ipc_socket_permissions(
+    path: &str,
+    postfix: &str,
+    restore_owner_write: bool,
+) -> ResultType<()> {
     use hbb_common::libc;
 
     let path = Path::new(path);
@@ -677,9 +681,9 @@ fn restore_ipc_socket_owner_access(path: &str, postfix: &str) -> ResultType<()> 
     let original = metadata(fd)?;
     if original.st_mode & libc::S_IFMT != libc::S_IFSOCK || original.st_uid != uid
         || original.st_nlink != 1 || original.st_mode & 0o7000 != 0
-        || original.st_mode & 0o200 != 0
+        || (restore_owner_write && original.st_mode & 0o200 != 0)
     {
-        return Err(Error::new(ErrorKind::PermissionDenied, "ipc socket is not an owned socket missing owner write").into());
+        return Err(Error::new(ErrorKind::PermissionDenied, "unsafe ipc socket permission target").into());
     }
     let require_identity = |directory, entry: &std::ffi::CStr, flags| -> ResultType<()> {
         let mut st: libc::stat = unsafe { std::mem::zeroed() };
@@ -696,8 +700,8 @@ fn restore_ipc_socket_owner_access(path: &str, postfix: &str) -> ResultType<()> 
     let descriptor = CString::new(fd.to_string())?;
     require_identity(descriptors.0, &descriptor, 0)?;
     let mode = if config::is_service_ipc_postfix(postfix) { 0o666 } else { 0o600 };
-    // A crash between bind and chmod can leave owner write masked off. Repair
-    // only this retained socket; permission denial never authorizes unlinking.
+    // Both initial mode establishment and interrupted-startup recovery mutate
+    // only this retained socket; permission failure never authorizes unlinking.
     if unsafe { libc::fchmodat(descriptors.0, descriptor.as_ptr(), mode, 0) } != 0 {
         return Err(Error::last_os_error().into());
     }
@@ -714,7 +718,7 @@ async fn connect_existing_listener(postfix: &str) -> ResultType<Option<Connectio
     let client: ResultType<Option<ConnClient>> = hbb_common::timeout(1000, async {
         let result = match Endpoint::connect(&path).await {
             Err(err) if err.raw_os_error() == Some(hbb_common::libc::EACCES) => {
-                restore_ipc_socket_owner_access(&path, postfix)?;
+                set_ipc_socket_permissions(&path, postfix, true)?;
                 Endpoint::connect(&path).await
             }
             result => result,

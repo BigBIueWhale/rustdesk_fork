@@ -797,12 +797,7 @@ def verify_endpoint_ownership(rust: Mapping[str, RustSource]) -> None:
             (("check_existing_listener", "(", "postfix", ")"), "live listener check"),
             (("scrub_secure_ipc_parent_dir", "(", "&", "path", ",", "postfix", ")"), "stale artifact scrub"),
             (("Endpoint", "::", "new", "(", "path", ".", "clone", "(", ")", ")"), "endpoint construction after hardening"),
-            (("is_service_ipc_postfix", "(", "postfix", ")"), "socket-mode classification"),
-            (("0o0666",), "world-connectable authenticated service socket"),
-            (("0o0600",), "owner-only user socket"),
-            (("set_permissions", "(", "&", "path"), "post-bind socket mode enforcement"),
-            (("remove_file", "(", "&", "path", ")"), "failed-mode cleanup"),
-            (("return", "Err", "(", "err", ".", "into", "(", ")", ")"), "failed-mode fail closed"),
+            (("set_ipc_socket_permissions", "(", "&", "path", ",", "postfix", ",", "false", ")", "?"), "Linux descriptor-bound socket finalization"),
         )
     )
 

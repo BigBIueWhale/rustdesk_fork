@@ -141,7 +141,10 @@ type ServiceIpcRequesterAuthorization = ipc_auth::ServiceScopedIpcAuthorization;
 #[cfg(target_os = "linux")]
 type ServiceIpcRequesterAuthorization = ();
 #[cfg(target_os = "linux")]
-use ipc_fs::{prepare_ipc_listener_bind, probe_existing_listener, terminal_count_candidate_uids};
+use ipc_fs::{
+    prepare_ipc_listener_bind, probe_existing_listener, set_ipc_socket_permissions,
+    terminal_count_candidate_uids,
+};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use ipc_fs::ensure_secure_ipc_parent_dir;
 #[cfg(target_os = "macos")]
@@ -5142,14 +5145,11 @@ pub async fn new_listener(postfix: &str) -> ResultType<Incoming> {
     endpoint.set_security_attributes(attr);
     match endpoint.incoming() {
         Ok(incoming) => {
-            if postfix == crate::POSTFIX_SERVICE {
-                log::info!("Started protected ipc service server: postfix={}", postfix);
-            } else {
-                log::info!("Started ipc{} server at path: {}", postfix, &path);
-            }
-            #[cfg(any(target_os = "linux", target_os = "macos"))]
+            #[cfg(target_os = "linux")]
+            set_ipc_socket_permissions(&path, postfix, false)?;
+            #[cfg(target_os = "macos")]
             {
-                // NOTE: On Linux/macOS, some IPC sockets are intentionally world-connectable
+                // Some IPC sockets are intentionally world-connectable
                 // (0666) so the active (non-root) user process can connect. Authorization is
                 // enforced at accept-time for these channels, and the protected `_service`
                 // channel is further restricted by an explicit message allowlist.
@@ -5170,6 +5170,11 @@ pub async fn new_listener(postfix: &str) -> ResultType<Incoming> {
                     std::fs::remove_file(&path).ok();
                     return Err(err.into());
                 }
+            }
+            if postfix == crate::POSTFIX_SERVICE {
+                log::info!("Started protected ipc service server: postfix={}", postfix);
+            } else {
+                log::info!("Started ipc{} server at path: {}", postfix, &path);
             }
             Ok(incoming)
         }

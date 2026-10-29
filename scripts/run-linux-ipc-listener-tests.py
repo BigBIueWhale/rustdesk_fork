@@ -71,8 +71,7 @@ def build():
         filesystem += function(fs_source, 'open_ipc_startup_lock')
     if fs_source.functions('ipc_descriptor_directory'):
         filesystem += function(fs_source, 'ipc_descriptor_directory')
-    if fs_source.functions('restore_ipc_socket_owner_access'):
-        filesystem += function(fs_source, 'restore_ipc_socket_owner_access')
+    filesystem += function(fs_source, 'set_ipc_socket_permissions')
     (work / 'filesystem.rs').write_text(filesystem)
     auth = parsed(repo / 'src/ipc/auth.rs')
     identity = ''.join(function(auth, name) for name in (

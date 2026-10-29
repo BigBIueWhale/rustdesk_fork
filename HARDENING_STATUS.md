@@ -9035,39 +9035,42 @@ sandbox implementation and checker-repair history remain in Git.
   incumbent probing is fallible and separate from message admission. Generic incumbents
   must prove kernel peer UID/PID, current effective UID equality and current-executable
   identity. A positive UID/executable mismatch is a foreign stale candidate; missing
-  credentials or unavailable executable proof propagates an error through `check_existing_listener`
-  and `new_listener`, preserving the ambiguous live pathname. Linux `_cm`/`_pa`
+  credentials or unavailable executable proof propagates an error through startup,
+  preserving the ambiguous live pathname. Linux `_cm`/`_pa`
   retain their stronger exact process/launch proofs. Protected `_service` also requires
   its bounded typed liveness round trip; failed or malformed response is an error, not
   cleanup authority. Stale removal stays descriptor-relative; probing grants no request authority.
 
-  **Linux transport/cleanup component: nine native cases pass.** `641bb1b2`
-  separates startup connection probing from the client API that refuses raw
-  credential endpoints. Only a transport-level missing/refused connection selects
-  absence; other errors preserve the endpoint. Incumbent UID/executable and
-  endpoint-specific proofs still follow a successful connection. Cleanup errors
-  propagate before bind. The baseline reproduces six failures: deletion of three
-  live raw endpoint paths, deletion under full-backlog/permission errors, and
-  ignored cleanup failure. TUF `77Eoncp3uA` passes all nine cases, including live
-  ordinary IPC and stale/missing-socket recovery, in 73.32 seconds; the fourteen
-  directory cases also pass. Root and UID 4001 execute the same sealed component.
-  It compiles production connect/probe/cleanup and kernel/executable identity
-  functions against root-locked parity-tokio-ipc/Tokio. Config and connection
-  framing are adapters; CM/PA proofs and service framing are deliberately
-  unexecuted. This does not run `new_listener`, installed services or macOS.
-  Source checks pass in a confined non-root networkless container. All VM listener
-  deltas are zero, QEMU joins and RAM scratch retires. Evidence capsule:
-  `ipc-listener-preservation-641bb1b2.json`; audit entry
-  “2026-10-29 — Linux incumbent transport and cleanup”.
+  **Linux startup component: twenty-one native cases pass.** `26b069fb`
+  reserves each endpoint through cleanup, bind and socket permissions using a
+  validated persistent lock inode. Reservation follows asynchronous probing;
+  no lock spans an await. A fresh nonblocking connection under the reservation
+  permits cleanup only for missing/refused transport, preserving live or
+  ambiguous endpoints. Separate endpoints start independently. This extends
+  `641bb1b2`'s transport-error and cleanup-error correction.
+  Baseline `qtOVFk9av1` reproduces two concurrent starts both reporting success
+  while one replaces the other's socket. Candidate `FZcAbSQZIu` passes those
+  root/user races, independent starts, restart, five unsafe-lock refusals,
+  unrelated-image preservation and the prior nine cases in 73.394 seconds;
+  fourteen directory cases also pass. Root and UID 4001 execute the same sealed
+  component, including production `new_listener`, filesystem/transport and
+  kernel identity functions against pinned parity-tokio-ipc/Tokio/socket2.
+  Config and connection framing remain adapters; CM/PA proofs and service
+  framing are deliberately unexecuted. Full application, installed-service and
+  macOS acceptance remain OPEN. Confined source checks pass; listener deltas
+  are zero, QEMU joins and RAM scratch retires. Capsules:
+  `ipc-listener-bind-26b069fb.json` and `ipc-listener-preservation-641bb1b2.json`;
+  audit entry “2026-10-29 — Linux concurrent IPC startup”.
   PID-file reads/writes and the process-table scan remain removed; historical
   `.pid` entries remain only in stale-artifact cleanup. The finite UID/executable
   regression remains supplementary to these native component observations.
 
   **Still required:** exact-current installed Linux/macOS endpoint tests with genuine,
   wrong-principal and unrelated-image incumbents, missing/unavailable proof, process
-  replacement, malformed/failed service liveness, concurrent startup and stale
-  cleanup/namespace races, restart
-  and bounded resources. Cold release artifacts and independent/external review remain OPEN.
+  replacement, malformed/failed service liveness, remaining startup/crash and
+  cleanup/namespace races, coexisting versions, restart and bounded resources.
+  Older binaries do not participate in the new advisory reservation. Cold release
+  artifacts and independent/external review remain OPEN.
   Code already running as the same UID can repeatedly mutate its own mode-0700 socket
   directory; this source correction is not a stronger OS-principal denial-of-service boundary.
 - **R-S11bt/R-S11e-86 — Windows Installer never launches the remote-control application — SOURCE

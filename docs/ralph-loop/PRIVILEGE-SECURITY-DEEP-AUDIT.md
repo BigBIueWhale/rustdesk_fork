@@ -114729,3 +114729,62 @@ virtiofsd copies, were removed under the shared lock with inode/owner/type and
 process-absence checks. This reclaims 13,729,792 allocated disk bytes; bounded
 receipts and canonical offline inputs remain. This audit-only receipt leaves
 the counted ledger unchanged.
+
+## 2026-10-29 — Linux concurrent IPC startup
+
+`c366f9b8` extends the isolated listener fixture to compile the full production
+`new_listener`. A test-only unlinkat interposer pauses one real process immediately
+before its stale-socket removal while another executes startup. It delays the
+syscall without changing its arguments or result. Baseline TUF `qtOVFk9av1`
+reproduces both root `_service_password` and UID-4001 `_password` failures: both
+starts report success and the resumed process replaces the competitor's socket.
+The prior nine cases and fourteen directory cases pass. This demonstrates lost
+listener reachability, not a demonstrated privilege gain.
+
+`26b069fb` adds an endpoint-specific reservation after asynchronous incumbent
+probing. The parent is reopened without following links and its owner/mode is
+checked. The descriptor-relative `.lock` open is nonblocking, no-follow and
+close-on-exec; a regular, single-link, same-owner mode-0600 inode is required.
+Nonblocking exclusive flock covers a fresh nonblocking socket check, exact stale
+cleanup, bind and permission establishment. Only ENOENT/ECONNREFUSED permits
+cleanup; live or ambiguous transport is preserved. The lock file is never
+unlinked by the product. Descriptor closure releases the reservation on every
+return, and distinct endpoints use distinct lock inodes. No lock crosses an await.
+The existing socket2 dependency supplies checked Unix addresses and close-on-exec
+sockets; no product dependency was added. macOS keeps its previous path.
+
+Primary references: [flock(2)](https://man7.org/linux/man-pages/man2/flock.2.html)
+defines nonblocking advisory locks and descriptor-owned release;
+[open(2)](https://man7.org/linux/man-pages/man2/open.2.html) defines relative
+no-follow/nonblocking opens; [connect(2)](https://man7.org/linux/man-pages/man2/connect.2.html)
+distinguishes absent/refused transport from permission and backlog failures.
+An advisory lock coordinates participating versions; it cannot constrain older
+binaries or code already able to replace entries under the same principal.
+
+Candidate TUF `FZcAbSQZIu` passes twenty-one listener cases: the prior nine,
+unrelated-image live preservation, symlink/FIFO/writable/foreign-owner/hardlink
+lock refusals, and root/user concurrent starts, independent endpoint starts and
+restart after contention. The kernel-reported peer PID/UID identifies the retained
+listener. Fourteen parent cases also pass. Both artifacts use pinned Rust 1.75
+and root-locked dependencies; config name and connection framing are adapters.
+CM/PA proofs and protected-service framing deliberately panic if reached.
+Full application, installed actions, macOS, additional arrival/crash timing,
+coexisting versions and external review remain OPEN.
+
+Baseline artifact SHA-256:
+`8e343264fc39f3aa1cf4a25d0decc1f2d26b5e82ec96cc9a32a446c2a41453da`.
+Candidate:
+`156ac952e73613977a4e1dde24d8a3e786b5608a7ade7cb0165146a772f34bec`.
+The candidate completes in 73.394 seconds, peaking at 3,364,581,376 RAM scratch
+bytes, 3,168,473,088 overlay bytes and 3,391,488 durable-run bytes. Both QEMU
+children join with exit zero, both RAM workspaces retire and all eight listener
+deltas are zero. The static container exits zero and is removed with unchanged
+host listeners; source checks, shell/Python syntax and diff checks pass.
+
+Fourteen copied evidence files total 163,042 bytes and match TUF hashes.
+Capsule `ipc-listener-bind-26b069fb.json`, 38,697 bytes, SHA-256
+`45dbfbe9a4eadbb290a159a98463dcd5b3bb981a87d1f6e38026b55aa39ed1a2`.
+The capsule also matches on TUF. After evidence verification, the exact retired
+baseline diagnostic tree is removed under the shared lock after identity/type
+and process-absence checks, reclaiming 3,444,736 allocated disk bytes. Canonical
+inputs and bounded receipts remain. The fresh ledger count follows.

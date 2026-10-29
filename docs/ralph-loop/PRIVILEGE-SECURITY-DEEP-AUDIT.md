@@ -114559,3 +114559,16 @@ The successful serial SHA-256 is
 `121b44cdda4a4882f2556dae6d476d5b2133080c6da86f1c0f3f58da96c80ee9`.
 Native/installed listener acceptance, full application compilation and all
 previously open credential actions remain OPEN. The ledger count follows.
+
+Fresh isolated count at `4f00ac07`, TUF run `dof3tQywte`, exits zero:
+356,699 tokens / 1,630,709 bytes, down 91 tokens / 260 bytes. The pinned
+tiktoken method passes seven controls and byte round-trip; ledger SHA-256 is
+`31cd3135a1092e7c01d496489f61f58af7a580fc3fbe52fa699bf65ab9a5b76c`.
+The 31.228-second run peaks at 402,272,256 RAM scratch bytes, 305,729,536 overlay
+bytes and 258,048 durable-run bytes. QEMU 1585352 joins exit zero; its PID,
+workspace `run.w35hhjti` and active run roots are absent. All three listener
+deltas are zero. Six copied files total 102,974 bytes and match TUF hashes;
+serial SHA-256 is
+`eb6fb7726a91219a447e7c0917395a4d7574bc5be9c60af16ce9e45609e6eea5`.
+The PID-removal capsule and baseline sources also match on both hosts.
+This audit-only receipt leaves the counted ledger unchanged.

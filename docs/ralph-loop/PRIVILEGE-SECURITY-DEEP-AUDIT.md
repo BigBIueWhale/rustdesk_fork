@@ -114006,3 +114006,16 @@ child environments, polkit decisions or full verifier acceptance. Required
 actual-child/installed evidence, all fifteen credential actions and the pending
 CM audio execution remain open. CTE's 14,117,804 KiB available-memory observation
 is below audio admission; TUF still lacks QEMU and its package approval is pending.
+
+Fresh count on pushed `1d0bbb1b`, run `9p02hdUz8z`, exits zero in 28 outer
+seconds: 355,981 tokens / 1,627,104 bytes, an increase of 54 tokens / 249 bytes.
+The pinned tokenizer's seven controls and byte round-trip pass; nine native
+cache-admission cases pass. Ledger SHA-256:
+`b6d7faa7f8a5dba04bd0606d1438d50eeb045f3ca39c85418132640aec5917c6`.
+Serial evidence is 34,063 bytes, SHA-256
+`9d9769c3664822af8db07dd261bc7e799d644a357a000cd664bee3b5c3909c0f`.
+Storage peaks are 402,460,672 scratch bytes, 305,926,144 overlay bytes and
+253,952 durable run bytes. QEMU PID 3515895 is joined with exit zero and
+4,096 host-write bytes; it and RAM workspace `run.zgvsk_go` are absent.
+Before/during/after listener deltas are zero. The ledger remains within its
+approximate 400,000-token budget; this audit receipt does not change that input.

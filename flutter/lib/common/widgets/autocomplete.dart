@@ -103,14 +103,6 @@ class AutocompletePeerTile extends StatefulWidget {
 }
 
 class AutocompletePeerTileState extends State<AutocompletePeerTile> {
-  List _frontN<T>(List list, int n) {
-    if (list.length <= n) {
-      return list;
-    } else {
-      return list.sublist(0, n);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final double tileRadius = 5;
@@ -119,7 +111,7 @@ class AutocompletePeerTileState extends State<AutocompletePeerTile> {
     final greyStyle = TextStyle(
         fontSize: 11,
         color: Theme.of(context).textTheme.titleLarge?.color?.withOpacity(0.6));
-    final child = GestureDetector(
+    return GestureDetector(
         onTap: () => widget.onSelect(),
         child: Padding(
             padding: EdgeInsets.only(left: 5, right: 5),
@@ -215,13 +207,5 @@ class AutocompletePeerTileState extends State<AutocompletePeerTile> {
                     )
                   ],
                 ))));
-    return Tooltip(
-      message: !(isDesktop || isWebDesktop)
-          ? ''
-          : widget.peer.tags.isNotEmpty
-              ? '${translate('Tags')}: ${widget.peer.tags.join(', ')}'
-              : '',
-      child: child,
-    );
   }
 }

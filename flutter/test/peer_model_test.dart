@@ -9,8 +9,6 @@ void main() {
     'hostname': 'local-host',
     'platform': 'Linux',
     'alias': 'Local peer',
-    'tags': <String>['local'],
-    'note': 'Local peer note',
   };
 
   test('direct peers retain their address and local display metadata', () {
@@ -20,8 +18,6 @@ void main() {
     expect(peer.username, 'local-user');
     expect(peer.hostname, 'local-host');
     expect(peer.platform, 'Linux');
-    expect(peer.tags, ['local']);
-    expect(peer.note, 'Local peer note');
     peer.alias = '';
     expect(peer.getId(), peer.id);
   });
@@ -35,10 +31,11 @@ void main() {
       'device_group_name': 17,
       'same_server': <String>['retired'],
       'access_token': <String>['SyntheticToken'],
+      'tags': 'retired-tags',
+      'note': <String>['retired-note'],
     });
     expect(peer.id, metadata['id']);
     expect(peer.getId(), metadata['alias']);
-    expect(peer.note, metadata['note']);
   });
 
   test('direct peers expose no retired credential or group fields', () {

@@ -1268,7 +1268,7 @@ void main() {
         }
       ],
       [
-        {'id': '192.0.2.7:21118', 'tags': secret}
+        {'id': '192.0.2.7:21118', 'alias': [secret]}
       ],
     ];
     for (final value in invalid) {
@@ -1289,8 +1289,6 @@ void main() {
       'hostname': 'local-host',
       'platform': 'Linux',
       'alias': 'Local peer',
-      'tags': ['local'],
-      'note': 'SyntheticPrivatePeerNote',
     };
     final valid = jsonEncode([metadata]);
     peers.updatePeers({'peers': valid, 'ids': 'next,other'});
@@ -1310,8 +1308,6 @@ void main() {
     expect(peer.hostname, metadata['hostname']);
     expect(peer.platform, metadata['platform']);
     expect(peer.alias, metadata['alias']);
-    expect(peer.tags, metadata['tags']);
-    expect(peer.note, metadata['note']);
     expect(notifications, 2);
     expect(diagnostics, ['peers(): invalid peer data']);
   });

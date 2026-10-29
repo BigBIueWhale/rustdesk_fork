@@ -9,8 +9,6 @@ class Peer {
   String hostname;
   String platform;
   String alias;
-  List<dynamic> tags;
-  String note;
 
   String getId() {
     if (alias != '') {
@@ -24,9 +22,7 @@ class Peer {
         username = json['username'] ?? '',
         hostname = json['hostname'] ?? '',
         platform = json['platform'] ?? '',
-        alias = json['alias'] ?? '',
-        tags = json['tags'] ?? [],
-        note = json['note'] is String ? json['note'] : '';
+        alias = json['alias'] ?? '';
 }
 
 class Peers extends ChangeNotifier {

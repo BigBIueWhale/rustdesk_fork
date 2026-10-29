@@ -117105,3 +117105,11 @@ ledger byte is unchanged. `requirements.html`, instructions, product, tests,
 dependencies and harness are unchanged. `git diff --check` passes. This is ledger
 compression; it supplies no new product acceptance and leaves whole-document
 classification open. A fresh isolated ledger count follows.
+
+Count `LVoetJ0kQo` at `c8f44da4` reports 359,279 tokens (478 fewer) using the
+unchanged `tiktoken-0.12.0/cl100k_base/encode_ordinary` method, with seven controls
+and the complete text round trip. Input SHA-256:
+`67c381842216ca6ed4919f781c3c8bdcac2dbefe1088a51d43b259678309295e`.
+QEMU 1778545 joins after 30.807 seconds; RAM `run.xj29oq45` retires and all three
+host listener deltas are zero. Six evidence files total 102,633 bytes per host
+with matching hashes. This audit-only receipt leaves the counted ledger unchanged.

@@ -116251,3 +116251,11 @@ QEMU 1716992 joins, RAM `run.06uv08dh` retires and all four listener deltas are 
 `4babc475f23254521f6656193a372d8d7b8ef8cfd96fbbcddb437104ed92f9e6`.
 Eight evidence files total 85,343 bytes on CTE and TUF. Whole-app/installed/native,
 device and R-S0/R-F5 acceptance remain OPEN; every existing user park remains.
+
+At `d2a41553`, fresh count `8476K636RX` reports **358,695 tokens** / 1,640,254 bytes,
+SHA-256 `33a997aa9999d31b0e2dacede01b504f648413d0f2e6924aa9f6b91bca16ffc7`.
+Seven pinned tokenizer controls and the complete byte round trip pass. QEMU 1719001
+joins after 30.618 seconds, RAM `run.rkkwedor` retires and all three listener deltas
+are zero. Six count files add 104,206 bytes; all fourteen retained files total
+189,549 bytes on both hosts. This audit-only receipt leaves the measured ledger
+unchanged; the overall hardening goal remains OPEN.

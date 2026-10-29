@@ -4939,6 +4939,32 @@ async fn prepare_windows_service_main_ipc() -> ResultType<PreparedWindowsService
 }
 
 #[cfg(target_os = "windows")]
+enum WindowsServiceMainIpcEvent {
+    Shutdown,
+    Completed(Option<Result<(), tokio::task::JoinError>>),
+    Control(Option<std::io::Result<Conn>>),
+    Credential(Option<std::io::Result<Conn>>),
+}
+
+#[cfg(target_os = "windows")]
+async fn next_windows_service_main_ipc_event(
+    shutdown: impl std::future::Future<Output = ()>,
+    completed: impl std::future::Future<Output = Option<Result<(), tokio::task::JoinError>>>,
+    control: impl std::future::Future<Output = Option<std::io::Result<Conn>>>,
+    credential: impl std::future::Future<Output = Option<std::io::Result<Conn>>>,
+    control_first: &mut bool,
+) -> WindowsServiceMainIpcEvent {
+    let _ = control_first;
+    tokio::select! {
+        biased;
+        _ = shutdown => WindowsServiceMainIpcEvent::Shutdown,
+        result = control => WindowsServiceMainIpcEvent::Control(result),
+        result = completed => WindowsServiceMainIpcEvent::Completed(result),
+        result = credential => WindowsServiceMainIpcEvent::Credential(result),
+    }
+}
+
+#[cfg(target_os = "windows")]
 async fn run_windows_service_main_ipc(listeners: PreparedWindowsServiceMainIpc) -> ResultType<()> {
     let PreparedWindowsServiceMainIpc {
         mut credential_incoming,
@@ -4948,11 +4974,23 @@ async fn run_windows_service_main_ipc(listeners: PreparedWindowsServiceMainIpc) 
     let mut transactions = JoinSet::new();
     let shutdown = crate::server::shutdown_token();
     let mut listener_error = None;
+    let mut control_first = true;
     loop {
-        tokio::select! {
-            biased;
-            _ = shutdown.cancelled() => break,
-            result = control_incoming.next() => {
+        match next_windows_service_main_ipc_event(
+            shutdown.cancelled(),
+            async {
+                if transactions.is_empty() {
+                    std::future::pending().await
+                } else {
+                    transactions.join_next().await
+                }
+            },
+            control_incoming.next(),
+            credential_incoming.next(),
+            &mut control_first,
+        ).await {
+            WindowsServiceMainIpcEvent::Shutdown => break,
+            WindowsServiceMainIpcEvent::Control(result) => {
                 let Some(result) = result else {
                     listener_error = Some("Windows service-main control IPC listener ended unexpectedly".to_owned());
                     crate::server::request_graceful_shutdown_after_listener_failure();
@@ -4975,12 +5013,12 @@ async fn run_windows_service_main_ipc(listeners: PreparedWindowsServiceMainIpc) 
                 };
                 transactions.spawn(handle_windows_service_control_transaction(stream, requester, permit));
             }
-            completed = transactions.join_next(), if !transactions.is_empty() => {
+            WindowsServiceMainIpcEvent::Completed(completed) => {
                 if let Some(Err(err)) = completed {
                     log::error!("Windows service-main transaction task failed: {err}");
                 }
             }
-            result = credential_incoming.next() => {
+            WindowsServiceMainIpcEvent::Credential(result) => {
                 let Some(result) = result else {
                     listener_error = Some("Windows service credential IPC listener ended unexpectedly".to_owned());
                     crate::server::request_graceful_shutdown_after_listener_failure();

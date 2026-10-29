@@ -225,6 +225,115 @@ async fn admission_fixture(scenario: &str, main: bool) {
     println!("OK {prefix}admission-{scenario} uid={uid} cleanup=joined");
 }
 
+async fn windows_main_admission_fixture(scenario: &str) {
+    use std::future::{pending, poll_fn, Future};
+    use std::io::Write;
+    use std::task::Poll;
+    use tokio::io::AsyncReadExt;
+
+    async fn accept(listeners: &mut [IpcListener; 2], first: &mut bool) -> WindowsServiceMainIpcEvent {
+        let [control, credential] = listeners;
+        next_windows_service_main_ipc_event(
+            pending(), pending(), control.next(), credential.next(), first,
+        ).await
+    }
+
+    async fn label(event: WindowsServiceMainIpcEvent) -> usize {
+        let (kind, mut stream) = match event {
+            WindowsServiceMainIpcEvent::Control(stream) => (0, stream.unwrap().unwrap()),
+            WindowsServiceMainIpcEvent::Credential(stream) => (1, stream.unwrap().unwrap()),
+            _ => panic!("unexpected lifecycle event"),
+        };
+        assert_eq!(peer_uid_from_fd(stream.as_raw_fd()), Some(unsafe { libc::geteuid() }));
+        assert_eq!(peer_pid_from_fd(stream.as_raw_fd()), Some(std::process::id()));
+        let mut byte = [0];
+        timeout(1000, stream.read_exact(&mut byte)).await.unwrap().unwrap();
+        assert_eq!(byte[0] as usize, kind);
+        kind
+    }
+
+    let before = fd_count();
+    {
+        let postfixes = ["", "_password"];
+        let mut listeners = [new_listener(postfixes[0]).await.unwrap(), new_listener(postfixes[1]).await.unwrap()];
+        let mut first = true;
+        let connect = |kind: usize| {
+            let mut client = std::os::unix::net::UnixStream::connect(Config::ipc_path(postfixes[kind])).unwrap();
+            client.write_all(&[kind as u8]).unwrap();
+            client
+        };
+        match scenario {
+            "backlog" => {
+                let clients: Vec<_> = (0..2).flat_map(|kind| (0..9).map(move |_| kind)).map(connect).collect();
+                for _ in 0..3 {
+                    let mut served = 0;
+                    for _ in 0..2 {
+                        let event = timeout(1000, accept(&mut listeners, &mut first)).await.unwrap();
+                        served |= 1 << label(event).await;
+                    }
+                    assert_eq!(served, 3, "a ready service-main endpoint was starved");
+                }
+                drop(clients);
+            }
+            "sparse" | "cancel" => {
+                for kind in [1, 0, 0, 1, 0, 1] {
+                    if scenario == "cancel" {
+                        let prior = first;
+                        let descriptors = fd_count();
+                        {
+                            let event = accept(&mut listeners, &mut first);
+                            tokio::pin!(event);
+                            poll_fn(|cx| {
+                                assert!(event.as_mut().poll(cx).is_pending());
+                                Poll::Ready(())
+                            }).await;
+                        }
+                        assert_eq!(first, prior);
+                        assert_eq!(fd_count(), descriptors);
+                    }
+                    let client = connect(kind);
+                    let event = timeout(1000, accept(&mut listeners, &mut first)).await.unwrap();
+                    assert_eq!(label(event).await, kind);
+                    drop(client);
+                }
+            }
+            "completion" | "shutdown" => {
+                let clients = [connect(0), connect(1)];
+                let mut transactions = tokio::task::JoinSet::new();
+                let task = transactions.spawn(async {});
+                tokio::task::yield_now().await;
+                assert!(task.is_finished(), "transaction must finish before selection");
+                let prior = first;
+                let [control, credential] = &mut listeners;
+                let event = timeout(1000, next_windows_service_main_ipc_event(
+                    async { if scenario != "shutdown" { pending::<()>().await; } },
+                    transactions.join_next(), control.next(), credential.next(), &mut first,
+                )).await.unwrap();
+                if scenario == "shutdown" {
+                    assert!(matches!(event, WindowsServiceMainIpcEvent::Shutdown));
+                    assert_eq!(transactions.len(), 1);
+                    transactions.join_next().await.unwrap().unwrap();
+                } else {
+                    assert!(matches!(event, WindowsServiceMainIpcEvent::Completed(Some(Ok(())))),
+                            "completed work was not joined before accepting another connection");
+                    assert!(transactions.is_empty());
+                }
+                assert_eq!(first, prior);
+                let mut served = 0;
+                for _ in 0..2 {
+                    let event = timeout(1000, accept(&mut listeners, &mut first)).await.unwrap();
+                    served |= 1 << label(event).await;
+                }
+                assert_eq!(served, 3, "lifecycle selection consumed a queued connection");
+                drop(clients);
+            }
+            _ => panic!("unknown Windows service-main scenario"),
+        }
+    }
+    assert_eq!(fd_count(), before);
+    println!("OK windows-main-admission-{scenario} uid={} cleanup=joined", unsafe { libc::geteuid() });
+}
+
 async fn accept_failure_fixture(scenario: &str) {
     use std::future::{poll_fn, Future};
     use std::io::Write;
@@ -729,6 +838,11 @@ fn main() {
         .or_else(|| args[1].strip_prefix("main-admission-").map(|s| (s, true))) {
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         runtime.block_on(admission_fixture(scenario, main));
+        return;
+    }
+    if let Some(scenario) = args[1].strip_prefix("windows-main-admission-") {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(windows_main_admission_fixture(scenario));
         return;
     }
     if let Some(scenario) = args[1].strip_prefix("service-") {

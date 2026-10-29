@@ -105,13 +105,15 @@ def build():
     listener = ipc.impl(('impl', 'IpcListener'), 'IPC listener methods')
     start = ipc.all().require(('impl', 'IpcListener'), 'IPC listener methods', unique=True)
     transport += ipc.text[ipc.tokens[start].offset:ipc.tokens[listener.end].offset + 1] + '\n'
-    for name in ('ServiceIpcAccept', 'MainIpcListenerEvent', 'SensitiveMainListenerEvent'):
+    for name in ('ServiceIpcAccept', 'MainIpcListenerEvent', 'SensitiveMainListenerEvent',
+                 'WindowsServiceMainIpcEvent'):
         admission = ipc.item('enum', name)
         start = ipc.all().require(('enum', name), 'admission result', unique=True)
         transport += ipc.text[ipc.tokens[start].offset:ipc.tokens[admission.end].offset + 1] + '\n'
     transport += function(ipc, 'next_service_ipc_connection')
     transport += function(ipc, 'next_main_ipc_event')
     transport += function(ipc, 'next_sensitive_main_listener_event', index=0)
+    transport += function(ipc, 'next_windows_service_main_ipc_event')
     (work / 'transport.rs').write_text(transport.replace('pub(crate) ', ''))
     connection = ''
     for name in ('SERVICE_IPC_MAX_FRAME_BYTES', 'MAIN_IPC_MAX_FRAME_BYTES', 'SERVICE_IPC_REQUEST_TIMEOUT_MS'):
@@ -305,6 +307,13 @@ def native(expected_sha, barrier_sha):
                     if uid == 0 else ('_password', '', '_url'))
                 for postfix in postfixes:
                     path(postfix, uid).unlink(missing_ok=True)
+        for scenario in ('backlog', 'sparse', 'cancel', 'completion', 'shutdown'):
+            action = 'windows-main-admission-' + scenario
+            result = check('', uid, action=action)
+            record(f'{action}-{uid}', result.returncode == 0
+                   and result.stdout == f'OK {action} uid={uid} cleanup=joined\n', result)
+            for postfix in ('', '_password'):
+                path(postfix, uid).unlink(missing_ok=True)
 
     for postfix in ('_password', '_service_password', '_service_credential', ''):
         uid = 4001 if postfix == '_password' else 0
@@ -1015,8 +1024,8 @@ def native(expected_sha, barrier_sha):
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
     require(sha(barrier) == barrier_sha, 'barrier changed')
     probe.unlink(); barrier.unlink(); work.rmdir()
-    require(len(cases) == 204, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=204 failures={len(failures)} '
+    require(len(cases) == 214, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=214 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 

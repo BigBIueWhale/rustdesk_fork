@@ -5,14 +5,15 @@ pub use anyhow;
 pub use libc;
 pub use log;
 use anyhow::bail;
-use std::{fs, path::{Path, PathBuf}, os::fd::{AsRawFd, RawFd}};
-use parity_tokio_ipc::{ConnectionClient as ConnClient, Endpoint};
+use std::{fs, path::{Path, PathBuf}, os::fd::{AsRawFd, RawFd}, os::unix::fs::PermissionsExt};
+use parity_tokio_ipc::{ConnectionClient as ConnClient, Endpoint, Incoming, SecurityAttributes};
 type ResultType<T> = anyhow::Result<T>;
 const POSTFIX_SERVICE: &str = "_service";
 const CM_IPC_MAX_FRAME_BYTES: usize = 1024;
 thread_local! { static USE_USER_MAIN_IPC: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
 include!("identity.rs");
 include!("transport.rs");
+use ipc::ipc_fs::*;
 
 mod config {
     static APP_NAME: std::sync::RwLock<&str> = std::sync::RwLock::new("RustDesk");
@@ -99,10 +100,21 @@ fn main() {
         assert_eq!(line, "stop\n");
         return;
     }
-    assert_eq!(args[1], "check");
+    assert!(["start", "try-start"].contains(&args[1].as_str()));
     let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
-    match runtime.block_on(ipc::ipc_fs::check_existing_listener(postfix)) {
-        Ok(alive) => println!("OK {alive}"),
+    match runtime.block_on(new_listener(postfix)) {
+        Ok(_listener) => {
+            if args[1] == "try-start" {
+                println!("OK started");
+            } else {
+                use std::io::{BufRead, Write};
+                println!("READY");
+                std::io::stdout().flush().unwrap();
+                let mut line = String::new();
+                std::io::stdin().lock().read_line(&mut line).unwrap();
+                assert_eq!(line, "stop\n");
+            }
+        }
         Err(error) => { eprintln!("ERR {error}"); std::process::exit(3); }
     }
 }

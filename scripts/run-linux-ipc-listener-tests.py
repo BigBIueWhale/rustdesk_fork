@@ -55,7 +55,11 @@ def build():
     guard = fs_source.impl(('impl', 'Drop', 'for', 'FdGuard'), 'fd guard')
     filesystem = fs_source.text[fs_source.text.index('struct FdGuard(i32);'):fs_source.tokens[guard.end].offset + 1] + '\n'
     for name in ('open_ipc_parent_dir_fd', 'remove_parent_entry_via_fd', 'remove_ipc_socket_via_secure_parent_fd',
-                 'probe_existing_listener', 'existing_listener_identity_is_acceptable', 'current_euid', 'check_existing_listener'):
+                 'probe_existing_listener', 'existing_listener_identity_is_acceptable', 'current_euid', 'check_existing_listener',
+                 'expected_ipc_parent_mode', 'scrub_preexisting_ipc_parent_entries',
+                 'recreate_foreign_service_ipc_parent_dir', 'should_recreate_foreign_service_ipc_parent',
+                 'verify_linux_service_ipc_namespace', 'ensure_secure_ipc_parent_dir',
+                 'scrub_secure_ipc_parent_dir', 'should_scrub_parent_entries_after_listener_check'):
         filesystem += function(fs_source, name)
     if fs_source.functions('connect_existing_listener'):
         filesystem += function(fs_source, 'connect_existing_listener')
@@ -68,7 +72,7 @@ def build():
     # Root-level helpers have crate visibility rather than a parent module.
     (work / 'identity.rs').write_text(identity.replace('pub(crate) ', ''))
     ipc = parsed(repo / 'src/ipc.rs')
-    transport = ''.join(function(ipc, name) for name in ('connect', 'connect_with_path'))
+    transport = ''.join(function(ipc, name) for name in ('connect', 'connect_with_path', 'new_listener'))
     (work / 'transport.rs').write_text(transport.replace('pub(crate) ', ''))
     config = parsed(repo / 'libs/hbb_common/src/config.rs')
     (work / 'config.rs').write_text(''.join(function(config, name) for name in (
@@ -104,12 +108,17 @@ parity-tokio-ipc = { git = "https://github.com/rustdesk-org/parity-tokio-ipc" }
     shutil.copyfile(work / 'target/debug/ipc-listener', binary)
     binary.chmod(0o555)
     require(binary.stat().st_size < 64 * 1024 * 1024, 'binary exceeds bound')
+    barrier = Path('/cargo-target/ipc-listener-barrier.so')
+    subprocess.run(['/usr/bin/cc', '-shared', '-fPIC', '-Wall', '-Wextra', '-Werror',
+                    str(repo / 'scripts/test-linux-ipc-listener-barrier.c'), '-ldl', '-o', str(barrier)],
+                   env=ENV, check=True, timeout=30)
     print(f'LINUX_IPC_LISTENER_BUILD=pass artifact_sha256={sha(binary)} '
           f'fs_fragment_sha256={hashlib.sha256(filesystem.encode()).hexdigest()} '
+          f'barrier_sha256={sha(barrier)} '
           'transport=parity-tokio-ipc-root-locked framing=unexecuted', flush=True)
 
 
-def native(expected_sha):
+def native(expected_sha, barrier_sha):
     require(os.geteuid() == 0 and Path('/run/rustdesk-verifier-vm').stat().st_uid == 0
             and Path('/proc/1/comm').read_text().strip() == 'systemd'
             and sorted(p.name for p in Path('/sys/class/net').iterdir()) == ['lo']
@@ -126,6 +135,12 @@ def native(expected_sha):
     probe = work / 'probe'
     shutil.copyfile(artifact, probe)
     probe.chmod(0o555)
+    barrier_input = ROOT / 'focused-rust-test-target/ipc-listener-barrier.so'
+    metadata = barrier_input.lstat()
+    require(stat.S_ISREG(metadata.st_mode) and metadata.st_uid == 1000 and metadata.st_nlink == 1
+            and metadata.st_size < 1048576 and sha(barrier_input) == barrier_sha, 'barrier differs')
+    barrier = work / 'barrier.so'
+    shutil.copyfile(barrier_input, barrier); barrier.chmod(0o555)
     parents = [Path('/run/RustDesk-service'), Path('/tmp/RustDesk-0'), Path('/tmp/RustDesk-4001')]
     for parent, uid in zip(parents, (0, 0, 4001)):
         require(not os.path.lexists(parent), 'fixture parent already exists')
@@ -141,7 +156,7 @@ def native(expected_sha):
         return dict(args=[str(probe), action, postfix], env=ENV, user=uid, group=uid, extra_groups=[])
 
     def check(postfix, uid=0):
-        result = subprocess.run(**command('check', postfix, uid), capture_output=True, text=True, timeout=5)
+        result = subprocess.run(**command('try-start', postfix, uid), capture_output=True, text=True, timeout=5)
         require(len(result.stdout) + len(result.stderr) < 65536, 'output exceeds bound')
         return result
 
@@ -162,7 +177,7 @@ def native(expected_sha):
             before = endpoint.lstat()
             result = check(postfix, uid)
             preserved = endpoint.exists() and endpoint.lstat().st_ino == before.st_ino
-            record('active-' + (postfix or 'main'), result.returncode == 0 and result.stdout == 'OK true\n' and preserved, result)
+            record('active-' + (postfix or 'main'), result.returncode == 3 and preserved, result)
         finally:
             child.communicate('stop\n', timeout=5)
             require(child.returncode == 0, 'listener did not join')
@@ -196,22 +211,81 @@ def native(expected_sha):
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stale:
         stale.bind(str(endpoint))
     result = check('_service_password')
-    record('stale-socket', result.returncode == 0 and result.stdout == 'OK false\n' and not endpoint.exists(), result)
+    record('stale-socket', result.returncode == 0 and result.stdout == 'OK started\n' and endpoint.is_socket(), result)
     endpoint.unlink(missing_ok=True)
     result = check('_service_password')
-    record('missing-socket', result.returncode == 0 and result.stdout == 'OK false\n' and not endpoint.exists(), result)
+    record('missing-socket', result.returncode == 0 and result.stdout == 'OK started\n' and endpoint.is_socket(), result)
+    endpoint.unlink(missing_ok=True)
     endpoint = path('')
     endpoint.mkdir(); (endpoint / 'keep').write_bytes(b'preserved')
     result = check('')
     record('cleanup-failure', result.returncode == 3 and (endpoint / 'keep').read_bytes() == b'preserved', result)
     (endpoint / 'keep').unlink(); endpoint.rmdir()
+
+    # A is stopped immediately before its descriptor-relative stale unlink.
+    # B then runs the complete production startup while A's observation is stale.
+    for postfix, uid in (('_service_password', 0), ('_password', 4001)):
+        endpoint = path(postfix, uid)
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stale:
+            stale.bind(str(endpoint))
+        endpoint.chmod(0o666)
+        entered_r, entered_w = os.pipe()
+        release_r, release_w = os.pipe()
+        children = []
+        try:
+            launch = command('start', postfix, uid)
+            launch['env'] = dict(ENV, LD_PRELOAD=str(barrier), IPC_BARRIER_ENTER=str(entered_w),
+                                 IPC_BARRIER_RELEASE=str(release_r), IPC_BARRIER_ENTRY=endpoint.name)
+            first = subprocess.Popen(**launch, pass_fds=(entered_w, release_r), stdin=subprocess.PIPE,
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            children.append(first)
+            os.close(entered_w); entered_w = None
+            os.close(release_r); release_r = None
+            require(select.select([entered_r], [], [], 5)[0] and os.read(entered_r, 1) == b'R', 'unlink barrier not reached')
+            second = subprocess.Popen(**command('start', postfix, uid), stdin=subprocess.PIPE,
+                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            children.append(second)
+            require(select.select([second.stdout], [], [], 5)[0], 'competing startup did not finish')
+            second_ready = second.stdout.readline() == 'READY\n'
+            if not second_ready:
+                second.wait(timeout=5)
+            os.write(release_w, b'G'); os.close(release_w); release_w = None
+            require(select.select([first.stdout], [], [], 5)[0] and first.stdout.readline() == 'READY\n', 'first startup did not finish')
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+                peer.settimeout(2); peer.connect(str(endpoint))
+                import struct
+                connected_pid, connected_uid, _ = struct.unpack('3i', peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+            result = subprocess.CompletedProcess([], second.returncode if not second_ready else 0,
+                                                 f'competitor_ready={second_ready} connected_pid={connected_pid}', '')
+            record('concurrent-start-' + postfix, not second_ready and second.returncode == 3
+                   and connected_pid == first.pid and connected_uid == uid, result)
+        finally:
+            if release_w is not None:
+                try:
+                    os.write(release_w, b'G')
+                except BrokenPipeError:
+                    pass
+            for fd in (entered_r, entered_w, release_r, release_w):
+                if fd is not None:
+                    os.close(fd)
+            cleanup_ok = True
+            for child in children:
+                try:
+                    child.communicate('stop\n', timeout=5)
+                except subprocess.TimeoutExpired:
+                    child.kill(); child.communicate(timeout=5)
+                    cleanup_ok = False
+                cleanup_ok = cleanup_ok and child.returncode in (0, 3)
+            endpoint.unlink(missing_ok=True)
+            require(cleanup_ok, 'startup child did not join normally')
     for parent in parents:
         parent.rmdir()
     require(len(list(Path('/proc/self/fd').iterdir())) == fd_before, 'descriptor leaked')
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
-    probe.unlink(); work.rmdir()
-    require(len(cases) == 9, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=9 failures={len(failures)} '
+    require(sha(barrier) == barrier_sha, 'barrier changed')
+    probe.unlink(); barrier.unlink(); work.rmdir()
+    require(len(cases) == 11, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=11 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 
@@ -219,7 +293,7 @@ def native(expected_sha):
 if __name__ == '__main__':
     if sys.argv[1:] == ['build']:
         build()
-    elif len(sys.argv) == 3 and sys.argv[1] == 'native':
-        native(sys.argv[2])
+    elif len(sys.argv) == 4 and sys.argv[1] == 'native':
+        native(sys.argv[2], sys.argv[3])
     else:
-        raise SystemExit('expected build or native ARTIFACT_SHA256')
+        raise SystemExit('expected build or native ARTIFACT_SHA256 BARRIER_SHA256')

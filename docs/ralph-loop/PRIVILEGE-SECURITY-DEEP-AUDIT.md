@@ -116057,3 +116057,54 @@ QEMU 1705877 joins after 30.753 seconds, RAM `run.audi3ckq` retires and all thre
 listener deltas are zero. Six count files add 102,814 bytes, bringing retained
 evidence to 35 files / 458,254 bytes on both hosts. This audit-only receipt leaves
 the measured ledger unchanged; the overall hardening goal remains OPEN.
+
+### 2026-10-29 — option CLI query failure reporting
+
+Review finds one production caller of `ipc::get_options`: the installed/admin
+`--option <name>` read branch in `core_main`. Its getter converted every failed
+main-status query or options conversion into `Config::get_options()`, then the
+CLI printed a value and returned success. The fallback also ran after successful
+queries because [`Result::unwrap_or`](https://doc.rust-lang.org/std/result/enum.Result.html#method.unwrap_or)
+evaluates its argument eagerly. This is a wrong-source/status defect; no new
+privilege escalation is claimed.
+
+Preparation `cbca46ba` compiles the actual getter and CLI read body in the existing
+Linux component VM. Status retrieval/conversion and local configuration are
+controlled doubles; installed/admin eligibility, real query authentication and
+application startup are outside this test. Separate processes observe exact
+stdout, stderr and exit status for a returned value, missing key, refused request,
+timeout, disconnect and invalid options, under root and UID 4001. The local-read
+double emits a diagnostic, exposing even eager reads whose value is discarded.
+
+Unchanged product `zZfMNzJ7Du` passes the existing 172 listener/transport and
+14 directory cases but fails all twelve new CLI checks. Both value/missing-key
+controls perform the unwanted local read; all eight injected-error cases print
+`local-value` and exit 0. The baseline artifact is
+`af833db4a3492d74171a73ae60fb6d032e83d6e5ebb18f24ca1a9a7afab1b9fc`.
+
+`629fdb26` returns the query/conversion error through `Result`; the CLI writes
+that error to stderr and exits 1 without option output. Successful and missing-key
+output remains receiver-derived. The redundant `get_options_` and
+`get_options_async` layers and uncalled `get_option_async` API are deleted.
+The existing synchronous CLI runtime boundary, installation/admin admission,
+typed status protocol and option mutation path are unchanged. Parent-build,
+option-ack integration and startup/config-loader investigations remain parked.
+
+The unchanged cases pass at `629fdb26`, TUF `ZnVcwrBpND`: **12 CLI reads,
+172 listener/transport and 14 directory cases**, plus the focused source check,
+in 86.206 seconds. The candidate artifact is
+`7b1a53588f28a00aea747f6dcbb91224707af86938a4effb5fb7d3a414700225`;
+getter and CLI-body fragment digests are
+`4ef346effc5dcd8cf81fde36505f5047eae9f7f7325c8ead3d37fd833972ca57` and
+`915c4175d425c97c8a4eb5d84473b0160692e4727b8710ad2d45e7fd2c10a715`.
+No failed read emits an option value; value/missing-key controls no longer call
+the local-read double. These twelve cases establish caller failure handling,
+not real timeout timing, installed CLI admission or service action authority.
+
+QEMU 1707192/1707944 joins, both bounded RAM workspaces retire and all eight
+listener deltas are zero. `cli-option-read-629fdb26.json` retains the comparison:
+21,460 bytes, SHA-256 `a1e44ae55582c3b9844189a4da44928b434d133b78b9a0ab55f2e08c102724ee`.
+Fifteen evidence files total 230,356 bytes on both hosts. After both copies are
+verified, the exact baseline scratch tree is deleted, freeing 3,489,792 allocated
+bytes. Canonical inputs and unrelated diagnostics remain. Complete application,
+installed/native settings, R-S0/R-S11/R-F5 and release acceptance remain OPEN.

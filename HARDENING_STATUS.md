@@ -3643,18 +3643,20 @@ unchanged, so the existing 132-listener/14-directory evidence is reused rather
 than rerun. Receipt: `ipc-fixture-removal-d41b6a36.json`. Installed-service and
 macOS acceptance remain OPEN.
 
-**Service listener admission.** `1a5665b8` replaces fixed credential/password/service
-accept priority with a retained rotating cursor. Each continuously ready endpoint
-gets a turn within three admissions; pending cancellation preserves the cursor.
-Shutdown and completed work retain priority, with the existing endpoint budgets,
-authorization and drain paths. Baseline `rQzwsSP60i` reproduces starvation in both
-root and user-owned socket fixtures. Candidate `FaoN9wUA0g` passes all six new
-backlog/sparse/cancellation cases plus the existing 132 listener and 14 directory
-cases in 82.064 seconds. The native component executes the actual accept helper
-and checks peer UID/PID, endpoint routing and descriptor cleanup. Full service-loop,
-installed privileged-action and macOS acceptance remain OPEN. Both VMs join,
-RAM scratch retires and all host listener deltas are zero. Receipt:
-`ipc-service-fairness-1a5665b8.json`.
+**Main and service listener admission.** `1a5665b8` rotates credential/password/service
+accept priority; `d4987511` alternates main/password admission. Each continuously
+ready endpoint gets a turn within three service or two main admissions. Pending
+cancellation preserves priority. Shutdown and completed work retain priority,
+with existing endpoint budgets, authorization, handlers and drain paths.
+Baselines `rQzwsSP60i` and `94ZSVIzQod` reproduce the respective starvation in
+root and user-owned socket fixtures. Current `axetWoOYyO` passes all 144 listener
+and 14 directory cases in 82.357 seconds, including twelve main/service
+backlog/sparse/cancellation cases. Production accept helpers and real Linux
+sockets check kernel peer UID/PID, endpoint routing and descriptor cleanup.
+Both pairs of VMs join, RAM scratch retires and all host listener deltas are zero.
+Full listener loops, installed privileged actions/settings and Windows/macOS
+native acceptance remain OPEN. Receipts: `ipc-service-fairness-1a5665b8.json`
+and `ipc-main-fairness-d4987511.json`.
 
 **R-X14 desktop resource removal.** `9c8ebb1c` deletes the unused `res/startwm.sh` and
 dummy `res/xorg.conf`, their Debian payload/conffile/executable entries and the empty
@@ -9104,8 +9106,8 @@ sandbox implementation and checker-repair history remain in Git.
   Baseline `DRZBPWPlFn` reproduces nineteen valid failures; two special-bit fixtures
   required correction before they could count. The audit records that distinction.
 
-  **Current native evidence:** `1a5665b8`, TUF `FaoN9wUA0g`, passes 138 listener
-  cases and 14 directory cases in 82.064 seconds, including the six service-accept
+  **Current native evidence:** `d4987511`, TUF `axetWoOYyO`, passes 144 listener
+  cases and 14 directory cases in 82.357 seconds, including the twelve main/service
   scheduling cases recorded above. Baseline `mG75yce2f7` reproduces
   ten non-socket replacements, two PID-file deletions and two startup failures
   caused by nonempty PID directories. The same fourteen scenarios now preserve
@@ -9133,7 +9135,8 @@ sandbox implementation and checker-repair history remain in Git.
   Config name/path and service authorization remain fixture adapters. The directory
   fixture no longer invokes macOS-only scrub code on Linux; it checks parent
   hardening and preservation. All host listener deltas are zero, QEMU joins and RAM
-  scratch retires. Provenance: `ipc-service-fairness-1a5665b8.json`,
+  scratch retires. Provenance: `ipc-main-fairness-d4987511.json`,
+  `ipc-service-fairness-1a5665b8.json`,
   `ipc-bind-parent-e2ea2d8c.json`,
   `ipc-socket-finalize-3dce8c79.json`,
   `ipc-peer-policy-99898ad8.json`,

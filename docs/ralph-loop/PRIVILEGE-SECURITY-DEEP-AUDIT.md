@@ -115474,3 +115474,55 @@ protected service authority. Accept-error rotation is source-reviewed; no error
 injection or whole-service wall-clock availability bound is claimed. Installed
 Linux/macOS operation, CM/PA, privileged authorization, existing socket/metadata
 races, release artifacts, independent reproduction and external review remain OPEN.
+
+### 2026-10-29 — Alternate main and password listener admission
+
+`run_main_ipc` had the corresponding fixed-priority problem: password events
+preceded ordinary main accepts. `332ac50d` extracts the original decision and
+adds six real-socket scenarios; `d4987511` alternates the two inputs through
+`next_main_ipc_event`. A ready event gives the next turn to the other input;
+pending cancellation preserves priority. The outer shutdown/completion order,
+existing authority checks, permits, handlers and shutdown drain stay unchanged.
+
+The helper accepts the actual futures, covering Unix password accepts and the
+existing Windows request-channel/absent-listener future without another queue,
+task or platform fallback. Pinned Tokio's [select documentation](https://raw.githubusercontent.com/tokio-rs/tokio/tokio-1.44.2/tokio/src/macros/select.rs)
+confirms biased ordering and cancellation safety for UnixListener::accept and
+mpsc Receiver::recv. Pinned parity-tokio-ipc's Unix and Windows implementations
+yield the existing Conn result type; their transport behavior is unchanged.
+Windows/macOS runtime behavior remains unexecuted.
+
+TUF command: `bash scripts/smoke-verifier-vm-authority.sh --linux-ipc-parent-tests`.
+Both ordinary-user QEMU runs have no NIC and use the same pinned offline builder
+and native fixture.
+
+| Source / run | Result | Elapsed |
+| --- | --- | --- |
+| `332ac50d` / `94ZSVIzQod` | Root and UID-4001 main backlog cases fail: only password accepts occur. Other 142 listener and 14 directory cases pass. | 79.070 s |
+| `d4987511` / `axetWoOYyO` | All 144 listener and 14 directory cases pass. | 82.357 s |
+
+The shared admission fixture now exercises two main sockets or three service
+sockets. Each main backlog has nine clients per endpoint and requires both
+endpoints in each of three successive pairs of accepts. Sparse/cancellation
+cases each cover six arrivals; cancellation preserves the actual priority state
+and descriptor count. Accepted streams must match endpoint bytes and kernel peer
+UID/PID, and final descriptor counts return to baseline. The existing service
+backlog tests also pass. The focused desktop source checker runs in the guest,
+checking outer shutdown/completion priority, exact helper wiring and retained
+authorization order. Diff checks pass; the full application/catalogue did not run.
+
+Listener binary: `ec3441bbb49b146b9474da76f129d2183bfb84340db3a531d34d0853a49f0663`
+before; `59ab82b32df35e7b8440be6f47240dd0bb4d3e7d06f2ef4beb7d87fa12153f01`
+after. All eight host-listener deltas are zero. QEMU 1665419 and 1666143 join,
+and both RAM workspaces retire. Candidate peak scratch is 3,402,448,896 allocated
+bytes, overlay 3,206,221,824 and durable run storage 3,436,544. Verified baseline
+leftovers are deleted, freeing 3,481,600 allocated bytes. Fourteen run files and
+`ipc-main-fairness-d4987511.json` total 222,210 bytes, matching CTE/TUF.
+Capsule SHA-256: `002032eea62c7c6677f2abb04559b700f009b73d3ac858b01944a81d19e00842`.
+
+This executes production accept helpers and Linux sockets, with the existing
+component adapters. It does not execute the complete main loop, password/settings
+operations or installed privileged receivers. No error/end-event injection or
+whole-loop wall-clock bound is claimed. Windows/macOS native acceptance, installed
+workflows, remaining socket/metadata races, release artifacts, independent
+reproduction and external review remain OPEN.

@@ -113912,3 +113912,40 @@ its unchanged RAM workspace, limits, monitor and joined cleanup, after TUF's
 package authorization or sufficient CTE capacity. All fifteen installed credential
 actions and broader native/security obligations remain OPEN. The counted ledger,
 product and test sources are unchanged; only this audit receipt is committed.
+
+## 2026-10-29 — obsolete Linux post-polkit verifier gate
+
+Classification finds one shared-verifier gate still requiring the asynchronous
+`grant_linux_service_owned_password_admission` removed by `3eabd727`. Its four
+source-region assignments and one predicate occupy 97 lines / 4,327 bytes. The
+current synchronous `authorize_and_admit_linux_password_request` retains one
+lookup context through requester replay and consuming commit admission; the
+desktop password checker covers those source invariants and explicitly forbids
+the removed grant. Delete the obsolete catalogue rather than recreate its old
+abstraction or duplicate the replacement's checks. No product or Rust test changes.
+
+The existing gate is evaluated against the current source in a networkless,
+read-only container running as 1000:1000, with all capabilities dropped,
+no-new-privileges, no ports, 512 MiB memory, one CPU and 32 processes maximum.
+Pinned Python image: `sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e`.
+It reproduces `linux-post-polkit-authority-not-typed-through-ledger-admission`;
+the removed helper's extracted region is empty. The unchanged complete desktop
+password source checker then passes. Total execution is 1.21 seconds; container
+`b0f9bad02da996da37967eab831b4af0cffd0c99513393ba47c7f0723929ad15`
+exits zero without OOM and is removed. Listener comparison shows no additions;
+one unrelated UDP endpoint disappears and is untouched.
+
+Exact byte comparison verifies only the classified deletion in `scripts/verify.sh`;
+the remaining embedded Python AST is identical and no deleted binding is used.
+Shell syntax and `git diff --check` pass. Deleted bytes have SHA-256
+`fc6547481cb7b0f69356a0a923acccdba339d2b249c73440cdd45ed8fa00e9f4`;
+the retained checker has SHA-256
+`63fd46c00ccf919692b3ad3c5702eba1d34a0ec0f256e90dca19dd24ae2cb54e`.
+This is focused verifier correction, not a full shared-verifier or native
+authorization pass. Separate pkcheck descriptor/environment gates still name
+the obsolete grant as their extraction endpoint and expect the former direct
+`command.spawn()` spelling; their cleanup remains open. Installed authority,
+requester lifetime, settings effects and all fifteen native credential actions
+remain OPEN. CTE is still below the audio profile's unchanged admission floor;
+TUF QEMU package approval remains pending. The 37 rendered audio cases and three
+parser checks remain unexecuted on the current correction.

@@ -1047,7 +1047,7 @@ for profile, memory, scratch, overlay in (
         ('audio-buffer', 2048, 6, 4),
         ('audio-mailbox', 2048, 6, 4),
         ('linux-resource-limits', 2048, 6, 4),
-        ('pake-timing', 2048, 6, 4),
+        ('pake-timing', 4096, 6, 4),
         ('main-config-key', 2048, 6, 4),
         ('language-selection', 2048, 6, 4),
         ('windows-pointer', 2048, 6, 4),
@@ -1096,7 +1096,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
                         ('audio-buffer', 2047), ('audio-buffer', 4096),
                         ('audio-mailbox', 2047), ('audio-mailbox', 4096),
                         ('linux-resource-limits', 2047), ('linux-resource-limits', 4096),
-                        ('pake-timing', 2047), ('pake-timing', 4096),
+                        ('pake-timing', 2048), ('pake-timing', 8192),
                         ('main-config-key', 2047), ('main-config-key', 4096),
                         ('language-selection', 2047), ('language-selection', 4096),
                         ('windows-pointer', 2047), ('windows-pointer', 4096),
@@ -5408,8 +5408,8 @@ run_focused_rust_tests() {
             )
         elif [ "$RUST_TEST_PROFILE" = pake-timing ]; then
             container_name=rustdesk-pake-timing-tests
-            memory=1g
-            memory_bytes=1073741824
+            memory=2g
+            memory_bytes=2147483648
             tmpfs_size=64m
             source_fingerprints=(Cargo.toml Cargo.lock libs/pake/Cargo.toml
                 libs/pake/src/lib.rs libs/pake/src/tests.rs libs/pake/src/timing_tests.rs

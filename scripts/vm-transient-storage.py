@@ -94,13 +94,13 @@ def storage_limits(profile, memory_mib):
         require(memory_mib == 10240, 'viewer suspension requires its 10 GiB guest')
         # Retained-app, single-lifecycle replay: one GiB beside the bounded overlay.
         return 6 * GIB, 5 * GIB
-    if profile in ('pake-timing', 'main-config-key', 'language-selection', 'windows-pointer', 'linux-resource-limits', 'linux-resolution-lifetime', 'fusermount-process', 'linux-service-uid-tests',
+    if profile in ('main-config-key', 'language-selection', 'windows-pointer', 'linux-resource-limits', 'linux-resolution-lifetime', 'fusermount-process', 'linux-service-uid-tests',
                    'audio-buffer', 'audio-mailbox', 'file-block', 'control-egress', 'clipboard-response',
                    'debian-package-tests'):
         require(memory_mib == 2048, f'{profile} storage profile requires its 2 GiB guest')
         return 6 * GIB, 4 * GIB
-    if profile == 'xrandr-acquisition':
-        require(memory_mib == 4096, 'xrandr acquisition requires its 4 GiB guest')
+    if profile in ('xrandr-acquisition', 'pake-timing'):
+        require(memory_mib == 4096, f'{profile} requires its 4 GiB guest')
         return 6 * GIB, 4 * GIB
     require(profile == 'standard', 'unknown VM storage profile')
     return SCRATCH_LIMIT, 8 * GIB

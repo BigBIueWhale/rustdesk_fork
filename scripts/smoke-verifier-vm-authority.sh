@@ -987,9 +987,9 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         || "$RUST_TEST_PROFILE" = input-revocation \
         || "$RUST_TEST_PROFILE" = clipboard ]]; then
         readonly VM_MEMORY=6144
-    elif [ "$RUST_TEST_PROFILE" = installer-package ]; then
+    elif [[ "$RUST_TEST_PROFILE" = installer-package || "$RUST_TEST_PROFILE" = pake-timing ]]; then
         readonly VM_MEMORY=4096
-    elif [[ "$RUST_TEST_PROFILE" = pake-timing || "$RUST_TEST_PROFILE" = main-config-key || "$RUST_TEST_PROFILE" = language-selection || "$RUST_TEST_PROFILE" = windows-pointer || "$RUST_TEST_PROFILE" = linux-resource-limits || "$RUST_TEST_PROFILE" = linux-xrandr-query || "$RUST_TEST_PROFILE" = resolution-restoration \
+    elif [[ "$RUST_TEST_PROFILE" = main-config-key || "$RUST_TEST_PROFILE" = language-selection || "$RUST_TEST_PROFILE" = windows-pointer || "$RUST_TEST_PROFILE" = linux-resource-limits || "$RUST_TEST_PROFILE" = linux-xrandr-query || "$RUST_TEST_PROFILE" = resolution-restoration \
         || "$RUST_TEST_PROFILE" = linux-resolution-lifetime || "$RUST_TEST_PROFILE" = audio-mailbox \
         || "$RUST_TEST_PROFILE" = audio-buffer || "$RUST_TEST_PROFILE" = fusermount-fd \
         || "$RUST_TEST_PROFILE" = fusermount-process || "$RUST_TEST_PROFILE" = file-block \

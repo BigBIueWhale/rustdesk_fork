@@ -14,12 +14,17 @@ printf 'PAKE_TIMING_BUILD=release opt=3 lto=true codegen_units=1 debug=0 target_
 cargo test --offline --locked --release -p pake --lib --no-run \
     --message-format=json-render-diagnostics >/cargo-target/pake-timing-build.json
 test_executable="$(python3 -I -S - <<'PY'
-import json,re
+import json,re,sys
 from pathlib import Path
 raw=Path('/cargo-target/pake-timing-build.json').read_bytes()
 assert len(raw)<=4*1024*1024
 messages=[json.loads(line) for line in raw.splitlines() if line.startswith(b'{')]
 assert [m.get('success') for m in messages if m.get('reason')=='build-finished']==[True]
+backend=[m for m in messages if m.get('reason')=='build-script-executed'
+         and 'curve25519-dalek' in m.get('package_id','')]
+assert len(backend)==1
+print('PAKE_TIMING_BACKEND='+json.dumps({key:backend[0][key]
+      for key in ('package_id','cfgs','env')},sort_keys=True),file=sys.stderr)
 artifacts=[m for m in messages if m.get('reason')=='compiler-artifact'
            and m.get('manifest_path')=='/source/libs/pake/Cargo.toml'
            and m.get('target',{}).get('name')=='pake'

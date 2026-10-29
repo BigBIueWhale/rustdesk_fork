@@ -462,6 +462,30 @@ def native(expected_sha, barrier_sha):
                 child.kill(); child.communicate(timeout=5)
                 raise RuntimeError('service fixture did not complete normally')
             endpoint.unlink(missing_ok=True)
+    # Lock creation and recovery must not inherit missing owner access from umask.
+    # Parents are already admitted; this tests the endpoint reservation itself.
+    for postfix, uid in (('_service_password', 0), ('_password', 4001)):
+        endpoint = path(postfix, uid)
+        lock = endpoint.with_name(endpoint.name + '.lock')
+        for mask in (0o200, 0o400, 0o600):
+            for state in ('fresh', 'recovery'):
+                lock.unlink(missing_ok=True)
+                before = None
+                if state == 'recovery':
+                    lock.write_bytes(b'')
+                    os.chown(lock, uid, uid)
+                    lock.chmod(0o600 & ~mask)
+                    before = lock.lstat()
+                result = subprocess.run(**command('try-start', postfix, uid), umask=mask,
+                                        capture_output=True, text=True, timeout=5)
+                after = lock.lstat()
+                record(f'lock-mask-{mask:03o}-{state}-{postfix}',
+                       result.returncode == 0 and result.stdout == 'OK started\n'
+                       and endpoint.is_socket() and stat.S_IMODE(after.st_mode) == 0o600
+                       and after.st_uid == uid and after.st_nlink == 1
+                       and (before is None or (after.st_dev, after.st_ino) == (before.st_dev, before.st_ino)), result)
+                endpoint.unlink(missing_ok=True)
+                lock.unlink()
     for parent in parents:
         for lock in parent.glob('ipc*.lock'):
             metadata = lock.lstat()
@@ -474,8 +498,8 @@ def native(expected_sha, barrier_sha):
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
     require(sha(barrier) == barrier_sha, 'barrier changed')
     probe.unlink(); barrier.unlink(); work.rmdir()
-    require(len(cases) == 39, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=39 failures={len(failures)} '
+    require(len(cases) == 51, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=51 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 

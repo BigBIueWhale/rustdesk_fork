@@ -163,8 +163,14 @@ fn main() {
         }
         return;
     }
-    match runtime.block_on(new_listener(postfix)) {
-        Ok(_listener) => {
+    let mask = || fs::read_to_string("/proc/self/status").unwrap().lines()
+        .find(|line| line.starts_with("Umask:")).unwrap().to_owned();
+    let original_mask = mask();
+    let descriptors = fd_count();
+    let result = runtime.block_on(new_listener(postfix));
+    assert_eq!(mask(), original_mask);
+    match result {
+        Ok(listener) => {
             if args[1] == "try-start" {
                 println!("OK started");
             } else {
@@ -175,7 +181,12 @@ fn main() {
                 std::io::stdin().lock().read_line(&mut line).unwrap();
                 assert_eq!(line, "stop\n");
             }
+            drop(listener);
+            assert_eq!(fd_count(), descriptors);
         }
-        Err(error) => { eprintln!("ERR {error}"); std::process::exit(3); }
+        Err(error) => {
+            assert_eq!(fd_count(), descriptors);
+            eprintln!("ERR {error}"); std::process::exit(3);
+        }
     }
 }

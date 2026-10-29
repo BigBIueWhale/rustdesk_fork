@@ -3649,14 +3649,24 @@ ready endpoint gets a turn within three service or two main admissions. Pending
 cancellation preserves priority. Shutdown and completed work retain priority,
 with existing endpoint budgets, authorization, handlers and drain paths.
 Baselines `rQzwsSP60i` and `94ZSVIzQod` reproduce the respective starvation in
-root and user-owned socket fixtures. Current `axetWoOYyO` passes all 144 listener
-and 14 directory cases in 82.357 seconds, including twelve main/service
+root and user-owned socket fixtures. Current `eMd7q9vrIi` passes all 150 listener
+and 14 directory cases in 85.133 seconds, including twelve main/service
 backlog/sparse/cancellation cases. Production accept helpers and real Linux
 sockets check kernel peer UID/PID, endpoint routing and descriptor cleanup.
 Both pairs of VMs join, RAM scratch retires and all host listener deltas are zero.
 Full listener loops, installed privileged actions/settings and Windows/macOS
 native acceptance remain OPEN. Receipts: `ipc-service-fairness-1a5665b8.json`
 and `ipc-main-fairness-d4987511.json`.
+
+**Accept-error recovery.** `7b1279bd` makes `new_listener` return an owned
+`IpcListener` with a per-listener 100 ms retry deadline after an accept error.
+It returns the original error, preserves the deadline across cancellation and
+clears it after success. Baseline `UfEr9Z2jk5` reproduces four immediate-retry
+failures under real process-local descriptor exhaustion. All six root/UID-4001
+retry, cancellation/recovery and independent-listener cases now pass alongside
+the existing suite. Scope is the shared listener transport, not complete helpers
+or privileged handlers; Windows/macOS and other error classes need native
+acceptance. Receipt: `ipc-accept-retry-7b1279bd.json`.
 
 **R-X14 desktop resource removal.** `9c8ebb1c` deletes the unused `res/startwm.sh` and
 dummy `res/xorg.conf`, their Debian payload/conffile/executable entries and the empty
@@ -9106,9 +9116,9 @@ sandbox implementation and checker-repair history remain in Git.
   Baseline `DRZBPWPlFn` reproduces nineteen valid failures; two special-bit fixtures
   required correction before they could count. The audit records that distinction.
 
-  **Current native evidence:** `d4987511`, TUF `axetWoOYyO`, passes 144 listener
-  cases and 14 directory cases in 82.357 seconds, including the twelve main/service
-  scheduling cases recorded above. Baseline `mG75yce2f7` reproduces
+  **Current native evidence:** `7b1279bd`, TUF `eMd7q9vrIi`, passes 150 listener
+  cases and 14 directory cases in 85.133 seconds, including the twelve main/service
+  scheduling and six accept-error cases recorded above. Baseline `mG75yce2f7` reproduces
   ten non-socket replacements, two PID-file deletions and two startup failures
   caused by nonempty PID directories. The same fourteen scenarios now preserve
   inode/type/mode/owner/link metadata and contents, while PID artifacts do not
@@ -9135,7 +9145,8 @@ sandbox implementation and checker-repair history remain in Git.
   Config name/path and service authorization remain fixture adapters. The directory
   fixture no longer invokes macOS-only scrub code on Linux; it checks parent
   hardening and preservation. All host listener deltas are zero, QEMU joins and RAM
-  scratch retires. Provenance: `ipc-main-fairness-d4987511.json`,
+  scratch retires. Provenance: `ipc-accept-retry-7b1279bd.json`,
+  `ipc-main-fairness-d4987511.json`,
   `ipc-service-fairness-1a5665b8.json`,
   `ipc-bind-parent-e2ea2d8c.json`,
   `ipc-socket-finalize-3dce8c79.json`,

@@ -115526,3 +115526,61 @@ operations or installed privileged receivers. No error/end-event injection or
 whole-loop wall-clock bound is claimed. Windows/macOS native acceptance, installed
 workflows, remaining socket/metadata races, release artifacts, independent
 reproduction and external review remain OPEN.
+
+### 2026-10-29 — Retain a per-listener accept retry deadline
+
+The shared listener returned each accept error immediately. With a queued Unix
+connection and an exhausted descriptor table, repeated `next` calls could return
+EMFILE without waiting, repeatedly executing each caller's error/log branch.
+`fefc9005` introduces the owned `IpcListener` API with unchanged retry behavior
+and adds the reproduction. `7b1279bd` retains a 100 ms absolute Tokio deadline
+after an error and waits before another accept on that same listener. The original
+error still reaches the caller; success clears the deadline. Pending cancellation
+cannot consume/reset it, and other listeners retain independent readiness.
+There is no added runtime, task, lock, dependency or configurable fallback.
+
+Pinned [Tokio UnixListener documentation](https://raw.githubusercontent.com/tokio-rs/tokio/tokio-1.44.2/tokio/src/net/unix/listener.rs)
+identifies descriptor exhaustion as an accept failure that need not be fatal.
+[Linux accept(2)](https://man7.org/linux/man-pages/man2/accept.2.html) identifies
+EMFILE as process descriptor exhaustion and ENFILE as system open-file exhaustion.
+Pinned parity-tokio-ipc wraps the accept directly. This supports retaining the
+listener and original error while bounding retries, rather than destroying the
+socket on recoverable pressure. The two Windows refresh parameters now name the
+owned type; their refresh/session policy is unchanged.
+
+Both TUF runs use `bash scripts/smoke-verifier-vm-authority.sh --linux-ipc-parent-tests`,
+the same pinned offline builder and ordinary-user zero-NIC QEMU topology.
+
+| Source / run | Result | Elapsed |
+| --- | --- | --- |
+| `fefc9005` / `UfEr9Z2jk5` | Four root/user retry/cancellation failures; independent-listener controls and other 144 listener cases pass; 14 directory cases pass. | 79.039 s |
+| `7b1279bd` / `eMd7q9vrIi` | All 150 listener and 14 directory cases pass. | 85.133 s |
+
+The six new cases run as UID 0/4001 inside the VM. They queue real Unix clients,
+set the child process's soft RLIMIT_NOFILE to 64, open /dev/null until real EMFILE,
+then require the actual production accept to return EMFILE. Retry cases assert
+three successive error gaps of at least 90 ms before releasing one descriptor
+and accepting successfully. Cancellation cases drop pending accepts initially
+and after 60 ms, free a descriptor, and accept after another 60 ms without
+extending the original deadline. Independent-listener cases accept on the other
+endpoint within 50 ms after freeing one descriptor, then recover the first.
+Kernel peer UID/PID and queued bytes identify the streams. Successful cases
+restore the descriptor limit and original descriptor count. The focused desktop
+source checker and diff checks pass; no full application/catalogue ran.
+
+Listener SHA-256 before:
+`ec0522cb964e7e10c2081e8657f16ba3c5055769c534a87b63138b871534bda1`;
+after: `19e37b67022b113358066d41995b94222f362fc9bd906393c29e9c3818dbf225`.
+All eight host-listener deltas are zero. QEMU 1667563 and 1668329 join and both
+RAM workspaces retire. Accepted peak scratch is 3,376,451,584 allocated bytes,
+overlay 3,180,204,032 and durable run storage 3,436,544. Verified baseline
+leftovers are removed, freeing 3,481,600 allocated bytes. Fourteen run files
+and `ipc-accept-retry-7b1279bd.json` total 223,214 bytes and match CTE/TUF.
+Capsule SHA-256: `06b8270b201a53e0f27c24507c0b58a085a56baf284d2d8ca49ceda15d94e5d2`.
+
+This establishes Linux transport retry/recovery behavior, not complete helper,
+settings or privileged-receiver behavior, a CPU/logging benchmark, or whole-loop
+availability. Other errors, Windows/macOS, full installed operations, CM/PA,
+remaining socket/metadata races, release artifacts, independent reproduction and
+external review remain OPEN. The separate Linux abstract whiteboard listener is
+outside this factory and unchanged.

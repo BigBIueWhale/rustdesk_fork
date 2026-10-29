@@ -47,6 +47,10 @@ mod url_server {
 // Only Activate/CloseAll are exercised. URL parsing and target-OS sender
 // authorization/Flutter delivery are outside this Linux accept-lifetime fixture.
 fn validate_desktop_url_ipc_open_url(_: &str) -> ResultType<()> { panic!("URL parsing is outside fixture") }
+fn authorize_url_ipc_sender(stream: &Connection) -> bool {
+    stream.peer_uid() == Some(unsafe { libc::geteuid() })
+        && stream.peer_pid() == Some(std::process::id())
+}
 type Connection = ConnectionTmpl<Conn>;
 type ServiceIpcRequesterAuthorization = ();
 use ipc::ipc_fs::*;

@@ -117076,3 +117076,12 @@ QEMU 1774723 joins after 91.627 seconds; RAM `run.dy9_qx1v` retires and all four
 host listener deltas are zero. Seven candidate files add 111,852 bytes, making
 the retained comparison fourteen files / 226,268 bytes per host with matching
 copied hashes. `git diff --check` and exact scope/fixture comparisons pass.
+
+Ledger count `7XsUZWLuZt` at `1432b4e9` reports 359,757 tokens using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 1,645,158 bytes, SHA-256
+`2c6c4fdd4fb4b5d1b702a4d9c391783fbdd25885d13907d08ebc067ec1682deb`.
+Seven controls and the complete text round trip pass. QEMU 1776479 joins after
+30.368 seconds; RAM `run.hhn8eqbo` retires and all three listener deltas are zero.
+Six count files add 104,106 bytes; all twenty evidence files total 330,374 bytes
+per host with matching copied hashes. This audit-only receipt preserves the
+measured ledger bytes.

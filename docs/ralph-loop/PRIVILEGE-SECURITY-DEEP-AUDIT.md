@@ -116757,3 +116757,15 @@ Seven tokenizer controls and byte round trip pass. QEMU 1752855 joins after
 30.810 seconds; RAM `run.7wh_74ff` retires and three host listener deltas are zero.
 Six retained files total 103,221 bytes per host. This audit-only receipt leaves
 the measured ledger unchanged.
+
+### 2026-10-29 — credential-verifier ledger compression
+
+The R-S11ia–R-S11io ledger repeated completed catalogue deletions and their
+intermediate verification history. Replace that 64-line block with 17 lines
+naming the retained source/component checks and archived provenance, reducing
+the ledger by 3,969 bytes. Classification checks the current desktop/shared
+verifiers and the retained Rust test definitions; it executes no product tests.
+The fifteen-action table, shared native acceptance, identity/handoff limitations,
+parked state, headings and anchors remain byte-identical. Exact comparison and
+`git diff --check` pass; every byte outside this ledger block is preserved.
+Product, tests, requirements and live instructions are unchanged.

@@ -3744,69 +3744,22 @@ with Windows transport in `src/platform/windows.rs`, macOS authorization in
 | R-S11in / R-S11e-277 / #399 | Native verification is read-only: exact policy reads bracket noninteractive evaluation and checked imported-right destruction. Only their conjunction permits admission. | Missing/malformed/denied/expired/drifted policy, cleanup failure and concurrent privileged policy changes; verify no repair or mutation on refusal. |
 | R-S11io / R-S11e-278 / #400 | The macOS creator preclears output, externalizes locally, checks default-flags reference release, then conditionally publishes and wipes; Rust retains bounded zeroizing storage. | Creation/preauthorization/externalization/release failures leave zero output; later helper import, prompts, retries and repeated-operation cleanup must work. |
 
-The retained Windows-only
-`ipc::ipc_auth::tests::windows_service_owned_share_rdp_client_role_is_exact_interactive_ui`
-checks the finite role predicate. The R-S11hg wire regression checks closed deserialization.
-The 1,848-line macOS credential wording checker and its 84 in-memory string replacements are
-deleted, together with both invocations and the Apple gate's claim to prove peer/launchd authority.
-They never executed a credential exchange, kernel peer check, code-signature proof or launchd query.
-The closed service-protocol regression, five launchctl parser tests, three bounded-child process
-tests and their compiled gate commands remain unchanged, as do the shared prohibitions on generic
-credential variants, whole-config transfer and persistent credential mirroring. The duplicate
-636-line macOS identity/admission catalogue and its call are also removed from the desktop
-password source checker. It inspected token sequences, source ordering and test-body spelling;
-it did not execute a requester, socket, code-signature or Authorization Services transaction.
-The executable `r_s11e262_` role/audit-token predicates and their shared gate command remain,
-alongside the other password source checks and the shared/Apple checks they overlapped.
-Read-only AST and exact-byte comparison establish that the remaining checker bodies, product,
-Rust tests, gate commands and normative requirements are unchanged. No behavioral test or Apple
-compilation ran for these deletions; `mac-password-catalogue-187c9d91.json` retains the narrow
-deletion evidence and fresh ledger count. The retained models, source checks and historical results do not supply installed
-process/token authorization, real polkit, Authorization Services, named-pipe impersonation or
-protected-action evidence; all fifteen actions still require their native observations above.
+**Retained verification.** `scripts/verify-linux-service-password-ipc.py` checks
+raw-wire and endpoint separation, requester identity/admission, mutation
+coordination, finality/shutdown, Linux credential bootstrap and callers.
+Its R-S11p/R-S11y checks require an empty pkcheck environment, no replacement
+variables and descriptor setup before owned spawn. Complementary credential
+receiver/admission checks remain in `scripts/verify.sh`.
 
-The desktop password checker also drops its two duplicate Linux runtime-PRS receiver
-catalogues: 392 lines including their invocations. The shared R-S11ii/R-S11ik
-receiver checks remain in `scripts/verify.sh`; raw-wire, endpoint separation,
-identity, coordinator, finality, bootstrap and caller checks remain unchanged in
-the desktop checker. Read-only AST/byte comparison verifies only that deletion.
-Product code, runtime tests and gate commands are unchanged; no receiver or
-remaining-checker runtime pass is claimed. Classification and count are in the
-audit entry “2026-10-27 — duplicate Linux credential-receiver catalogues”.
+Executable tests retain the closed service protocols, five launchctl parser
+cases, three bounded-child process cases, the Windows interactive-UI role
+predicate and `r_s11e262_` role/audit-token predicates. These are component
+checks; installed authorization and protected actions require the observations
+above and below.
 
-The overlapping Windows password-admission catalogue also loses 245 lines
-(`30591f79`): duplicate capability/request shapes, endpoint selection, queue
-handoff and service-ledger call patterns. The shared gate retains those authority
-checks. The desktop checker retains its distinct fresh process/token/endpoint
-revalidation and main/Linux shutdown checks, byte-for-byte, with the same caller.
-Exact deletion comparison and Python AST parsing pass. Product code, executable
-tests, gate commands and requirements are unchanged; no Windows or remaining
-catalogue execution is claimed. All fifteen installed/native actions remain
-OPEN. The audit entry “2026-10-28 — overlapping Windows password source catalogue”
-records classification and the fresh ledger count.
-
-The desktop checker also drops 103 lines of overlapping Linux credential-response
-catalogue and its unused local source binding. The shared gate retains requester
-and admission shapes, exact child/endpoint replay, consuming operation-bound
-response, private authenticator, sole construction and handler-bypass checks.
-The desktop handler deadline, raw-wire, writer, coordinator, bootstrap and shutdown
-checks remain byte-identical. Exact deletion comparison and Python AST parsing
-pass; product, executable tests, shared gate, commands and requirements are unchanged.
-No checker or native transaction ran for this deletion. R-S11ig and all fifteen
-installed actions remain OPEN; classification is in the audit entry
-“2026-10-28 — overlapping Linux credential-response catalogue”.
-
-The shared verifier drops the obsolete 97-line post-polkit admission catalogue
-that required the asynchronous grant removed by `3eabd727`. Its two pkcheck launch
-checks also lose 53 lines: their deleted extraction endpoint reached unrelated
-test code, and they required the former spawn API. Eight lines in the existing
-desktop checker retain the R-S11p/R-S11y source invariants within parsed function
-bodies: empty environment, no replacement variables, descriptor setup before
-owned spawn. Isolated non-root, networkless execution reproduces the stale gate
-failures, passes the desktop checker and rejects seven targeted source violations.
-Exact diff/AST comparison and shell syntax pass. Product, actual-child tests and
-requirements are unchanged; no installed authorization ran. All fifteen actions
-remain OPEN. The 2026-10-29 audit entries record both corrections and their limits.
+Deleted overlapping wording catalogues are archived in Git and the audit's
+2026-10-27–29 credential-catalogue and pkcheck entries; the macOS deletion receipt
+is `mac-password-catalogue-187c9d91.json`.
 
 **Shared acceptance still required.** Each action needs current target-OS compilation and focused
 tests, the exact installed artifact and authorized/refused principals; its authorized effect,

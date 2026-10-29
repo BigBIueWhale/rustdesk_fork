@@ -117463,3 +117463,13 @@ matches before/after. Measurements take 5.98 seconds. QEMU 1797885 joins after
 Seven raw files total 82,640 bytes; the twenty-one files across these three runs
 total 250,832 bytes per host with matching hashes. The final ledger count also
 executes the added allocation-profile memory admission/refusal and selection cases.
+
+Ledger run `4yk58J2bRP` at `0556109a` passes the profile cases and 72 workload
+controls/five refusals. It reports 360,049 tokens using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 1,646,214 bytes, SHA-256
+`1099883dd4604208f49a2f100268055393f62fea39c582e9492f748df1d70547`.
+Seven controls and full text round trip pass. QEMU 1799802 joins after 30.807
+seconds; RAM `run.hjlrf8fz` retires and all three listener deltas are zero.
+Six count files add 103,057 bytes; all twenty-seven files across the four runs
+total 353,889 bytes per host with matching hashes. The audit-only receipt leaves
+the measured ledger unchanged and below its approximate 400,000-token budget.

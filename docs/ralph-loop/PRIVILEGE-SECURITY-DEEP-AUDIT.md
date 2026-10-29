@@ -116356,3 +116356,10 @@ AST parsing and `git diff --check` pass. `ipc-raw-read-errors-094d03a6.json` is
 fourteen raw files plus the capsule total 233,656 bytes. This establishes Linux
 transport-component error propagation. Full caller/application, installed service,
 other platforms and R-S0/R-F5 acceptance remain OPEN; all user parks remain.
+
+At `7c27debe`, fresh count `BYRikOl047` reports **358,790 tokens** / 1,640,602 bytes,
+SHA-256 `56ea243835caae82c6d6cd135306c18e8ee70ec061c75eb225f6174ea12182f5`.
+Seven pinned tokenizer controls and the complete byte round trip pass. QEMU 1727018
+joins after 30.310 seconds, RAM `run.f9itp62e` retires and three listener deltas are
+zero. Six count files add 102,998 bytes; all 21 evidence files total 336,654 bytes
+on each host. This audit-only receipt leaves the measured ledger unchanged.

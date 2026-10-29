@@ -3563,13 +3563,30 @@ enum MainIpcListenerEvent {
 async fn next_main_ipc_event(
     main: impl std::future::Future<Output = Option<std::io::Result<Conn>>>,
     password: impl std::future::Future<Output = SensitiveMainListenerEvent>,
-    _password_first: &mut bool,
+    password_first: &mut bool,
 ) -> MainIpcListenerEvent {
-    tokio::select! {
-        biased;
-        event = password => MainIpcListenerEvent::Password(event),
-        result = main => MainIpcListenerEvent::Main(result),
-    }
+    use std::{
+        future::{poll_fn, Future},
+        task::Poll,
+    };
+
+    tokio::pin!(main, password);
+    // Alternate after a ready event; cancelling a pending wait keeps its turn.
+    poll_fn(|cx| {
+        for poll_password in [*password_first, !*password_first] {
+            let event = if poll_password {
+                password.as_mut().poll(cx).map(MainIpcListenerEvent::Password)
+            } else {
+                main.as_mut().poll(cx).map(MainIpcListenerEvent::Main)
+            };
+            if event.is_ready() {
+                *password_first = !poll_password;
+                return event;
+            }
+        }
+        Poll::Pending
+    })
+    .await
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

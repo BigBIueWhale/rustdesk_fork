@@ -884,7 +884,10 @@ def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
     main_listener = ipc.function("run_main_ipc")
     main_listener.require_order(
         (
-            (("next_sensitive_main_listener_event", "(", "&", "mut", "password_events", ")"), "raw accept lane"),
+            (("biased", ";"), "main shutdown and completion priority"),
+            (("shutdown", ".", "cancelled", "(", ")"), "main shutdown before new admissions"),
+            (("transactions", ".", "join_next", "(", ")"), "completed main transactions before new admissions"),
+            (("next_main_ipc_event", "(", "incoming", ".", "next", "(", ")", ",", "next_sensitive_main_listener_event", "(", "&", "mut", "password_events", ")", ",", "&", "mut", "password_first", OPTIONAL_COMMA, ")"), "alternating main listener admission"),
             (("sensitive_main_ipc_authority", "(", "&", "stream", ")"), "raw peer authorization"),
             (("try_acquire_sensitive_main_ipc_transaction_slot", "(", "authority", ".", "mutation_kind", "(", ")", OPTIONAL_COMMA, ")"), "typed raw bounded admission"),
             (("transactions", ".", "spawn", "(", "handle_sensitive_main_ipc_transaction"), "raw handler spawn"),

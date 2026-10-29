@@ -4175,9 +4175,10 @@ run_focused_rust_tests() {
         toolchain_mode=devcheck-image
         toolchain_mount=()
         bridge_mounts=(--mount "type=bind,source=$vendor/libc-0.2.171,target=/ipc-libc,readonly,bind-recursive=disabled")
-        source_fingerprints=(Cargo.lock src/ipc/fs.rs libs/hbb_common/src/config.rs
+        source_fingerprints=(Cargo.lock src/ipc/fs.rs src/ipc.rs src/ipc/auth.rs libs/hbb_common/src/config.rs
             scripts/verify-linux-service-password-ipc.py scripts/run-linux-ipc-parent-tests.py
-            scripts/test-linux-ipc-parent.rs)
+            scripts/test-linux-ipc-parent.rs scripts/run-linux-ipc-listener-tests.py
+            scripts/test-linux-ipc-listener.rs)
         required_tests=()
     elif [ "$MODE" = linux-systemd-notification-tests ]; then
         container_name=rustdesk-linux-systemd-notification-tests
@@ -5683,7 +5684,7 @@ run_focused_rust_tests() {
         )
     fi
 
-    if [[ "$MODE" != linux-service-uid-tests && "$MODE" != linux-systemd-notification-tests && "$MODE" != linux-ipc-parent-tests ]]; then
+    if [[ "$MODE" != linux-service-uid-tests && "$MODE" != linux-systemd-notification-tests ]]; then
         dependency_mounts=(
             --mount "type=bind,source=$vendor,target=/vendor,readonly"
             --mount "type=bind,source=$vendor_config,target=/inputs/config.toml,readonly"
@@ -5957,7 +5958,7 @@ run_focused_rust_tests() {
                 IFS= read -r apparmor </proc/self/attr/current
                 case "$apparmor" in docker-default\ *) ;; *) exit 92 ;; esac
                 mkdir /tmp/home /tmp/cargo-home
-                if [[ "$RUST_TEST_MODE" != linux-service-uid-tests && "$RUST_TEST_MODE" != linux-systemd-notification-tests && "$RUST_TEST_MODE" != linux-ipc-parent-tests ]]; then
+                if [[ "$RUST_TEST_MODE" != linux-service-uid-tests && "$RUST_TEST_MODE" != linux-systemd-notification-tests ]]; then
                     sed "s#^directory = \"/online/cargo-vendor\"#directory = \"/vendor\"#" \
                         /inputs/config.toml >/tmp/cargo-home/config.toml
                     [ "$(grep -Fc '\''directory = "/vendor"'\'' /tmp/cargo-home/config.toml)" -eq 1 ]
@@ -6373,6 +6374,7 @@ run_focused_rust_tests() {
                         ;;
                     linux-ipc-parent-tests)
                         python3 -B -I -S /source/scripts/run-linux-ipc-parent-tests.py build
+                        python3 -B -I -S /source/scripts/run-linux-ipc-listener-tests.py build
                         ;;
                     linux-systemd-notification-tests)
                         rustc --edition=2021 --test /source/scripts/test-linux-systemd-notifications.rs \
@@ -7064,7 +7066,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             || { tail -n 200 "$output" >&2; fail 'focused Rust build did not execute its offline network canary'; }
     fi
     if [ "$MODE" = linux-ipc-parent-tests ]; then
-        local ipc_parent_sha native_output=$ROOT/ipc-parent-native.out
+        local ipc_parent_sha ipc_listener_sha native_output=$ROOT/ipc-parent-native.out
         local -a ipc_parent_builds
         mapfile -t ipc_parent_builds < <(grep -E '^LINUX_IPC_PARENT_BUILD=pass artifact_sha256=[0-9a-f]{64} source_sha256=[0-9a-f]{64} fragment_sha256=[0-9a-f]{64} config_sha256=[0-9a-f]{64} libc=0.2.171 functions=9 error_adapter=std-boxed name_adapter=RustDesk-rwlock$' "$output")
         [ "${#ipc_parent_builds[@]}" -eq 1 ] \
@@ -7072,6 +7074,11 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             || fail 'IPC parent build receipt differs'
         ipc_parent_sha=${ipc_parent_builds[0]#*artifact_sha256=}
         ipc_parent_sha=${ipc_parent_sha%% *}
+        mapfile -t ipc_parent_builds < <(grep -E '^LINUX_IPC_LISTENER_BUILD=pass artifact_sha256=[0-9a-f]{64} fs_fragment_sha256=[0-9a-f]{64} transport=parity-tokio-ipc-root-locked framing=unexecuted$' "$output")
+        [ "${#ipc_parent_builds[@]}" -eq 1 ] && [ "$(grep -Fc 'LINUX_IPC_LISTENER_BUILD=' "$output")" -eq 1 ] \
+            || fail 'IPC listener build receipt differs'
+        ipc_listener_sha=${ipc_parent_builds[0]#*artifact_sha256=}
+        ipc_listener_sha=${ipc_listener_sha%% *}
         cat "$output"
         [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
             || fail 'IPC parent builder has not terminated'
@@ -7087,6 +7094,15 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             || fail 'IPC parent native inventory or cleanup differs'
         [ "$source_before" = "$source_archive_sha:$(cd "$source_root" && sha256sum "${source_fingerprints[@]}")" ] \
             || fail 'IPC parent production or fixture source changed'
+        cat "$native_output"
+        setpriv --no-new-privs /usr/bin/prlimit --as=536870912 --nofile=128:128 --core=0:0 --fsize=67108864 \
+            /usr/bin/python3 -B -I -S "$source_root/scripts/run-linux-ipc-listener-tests.py" native "$ipc_listener_sha" \
+            >"$native_output" 2>&1 \
+            || { tail -c 65536 "$native_output" >&2; fail 'IPC listener native cases failed'; }
+        [ "$(stat -c '%s' "$native_output")" -le 65536 ] \
+            && [ "$(grep -Fc 'LINUX_IPC_LISTENER_CASE=pass ' "$native_output")" -eq 9 ] \
+            && [ "$(grep -Fxc "LINUX_IPC_LISTENER_NATIVE=pass cases=9 failures=0 artifact_sha256=$ipc_listener_sha cleanup=joined" "$native_output")" -eq 1 ] \
+            || fail 'IPC listener native inventory or cleanup differs'
         cat "$native_output"
         stop_docker_authority
         umount "$inputs" || fail 'cannot retire IPC parent sealed inputs'

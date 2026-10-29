@@ -2159,6 +2159,7 @@ linux_service_uid_input_inventory() {
     if [ "$MODE" = linux-ipc-parent-tests ]; then
         /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$CARGO_VENDOR_ROOT/libc-0.2.171"
         /usr/bin/sha256sum -- "$CARGO_VENDOR_ROOT/libc-0.2.171/.cargo-checksum.json"
+        /usr/bin/sha256sum -- "$CARGO_VENDOR_CONFIG"
     fi
 }
 
@@ -6437,6 +6438,12 @@ elif [ "$MODE" = linux-ipc-parent-tests ]; then
         && [ "$(/usr/bin/grep -Fo 'LINUX_IPC_PARENT_NATIVE=' "$SERIAL_LOG" | /usr/bin/wc -l)" -eq 1 ] \
         || fail 'IPC parent native artifact receipt differs'
     IPC_PARENT_ARTIFACT_SHA256=${ipc_parent_artifacts[0]##*=}
+    mapfile -t ipc_listener_artifacts < <(
+        /usr/bin/grep -Eo 'LINUX_IPC_LISTENER_NATIVE=pass cases=9 failures=0 artifact_sha256=[0-9a-f]{64} cleanup=joined' "$SERIAL_LOG"
+    )
+    [ "${#ipc_listener_artifacts[@]}" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fo 'LINUX_IPC_LISTENER_NATIVE=' "$SERIAL_LOG" | /usr/bin/wc -l)" -eq 1 ] \
+        || fail 'IPC listener native receipt differs'
     require_exact_fixed_receipt \
         "${ipc_parent_artifacts[0]} receiver_uid=0 actors=4001,4002 source=production-functions installed=unexecuted cleanup=joined" \
         'IPC parent native authority and cleanup'

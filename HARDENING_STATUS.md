@@ -9041,28 +9041,32 @@ sandbox implementation and checker-repair history remain in Git.
   its bounded typed liveness round trip; failed or malformed response is an error, not
   cleanup authority. Stale removal stays descriptor-relative; probing grants no request authority.
 
-  `9a3668e2` removes redundant PID-file reads/writes and the process-table scan.
-  The old PID/name branch still required the same socket probe performed below it;
-  startup now performs that probe once. Kernel peer/role checks and protected
-  liveness are unchanged. Exact deletion/caller comparison and the existing
-  desktop-password source check pass in isolation. That deletion left directory
-  functions unchanged and reused the then-current native directory evidence.
-  Historical `.pid` entries remain in the exact stale-artifact cleanup list.
-  No new installed-listener or full-application result is claimed.
-
-  The historical confined Rust-1.75 locked/offline `r_s11e85_` policy regression recorded
-  with `100ae3e5` passed 1/1. This checks the UID/executable conjunction, not live kernel
-  credentials, process replacement, native endpoint cleanup or installed artifacts.
-  The 331-line Python checker and its shared/Apple invocations are deleted. Source
-  substring ordering, in-memory replacements and self-wiring checks did not execute
-  peer identity, liveness or endpoint cleanup. The Rust policy regression and production
-  authentication are unchanged; no new native endpoint result is claimed. Original
-  receipts remain in Git and the audit. Design references remain [Unix peer credentials](https://man7.org/linux/man-pages/man7/unix.7.html)
-  and [executable-reference permissions](https://man7.org/linux/man-pages/man5/proc_pid_exe.5.html).
+  **Linux transport/cleanup component: nine native cases pass.** `641bb1b2`
+  separates startup connection probing from the client API that refuses raw
+  credential endpoints. Only a transport-level missing/refused connection selects
+  absence; other errors preserve the endpoint. Incumbent UID/executable and
+  endpoint-specific proofs still follow a successful connection. Cleanup errors
+  propagate before bind. The baseline reproduces six failures: deletion of three
+  live raw endpoint paths, deletion under full-backlog/permission errors, and
+  ignored cleanup failure. TUF `77Eoncp3uA` passes all nine cases, including live
+  ordinary IPC and stale/missing-socket recovery, in 73.32 seconds; the fourteen
+  directory cases also pass. Root and UID 4001 execute the same sealed component.
+  It compiles production connect/probe/cleanup and kernel/executable identity
+  functions against root-locked parity-tokio-ipc/Tokio. Config and connection
+  framing are adapters; CM/PA proofs and service framing are deliberately
+  unexecuted. This does not run `new_listener`, installed services or macOS.
+  Source checks pass in a confined non-root networkless container. All VM listener
+  deltas are zero, QEMU joins and RAM scratch retires. Evidence capsule:
+  `ipc-listener-preservation-641bb1b2.json`; audit entry
+  “2026-10-29 — Linux incumbent transport and cleanup”.
+  PID-file reads/writes and the process-table scan remain removed; historical
+  `.pid` entries remain only in stale-artifact cleanup. The finite UID/executable
+  regression remains supplementary to these native component observations.
 
   **Still required:** exact-current installed Linux/macOS endpoint tests with genuine,
   wrong-principal and unrelated-image incumbents, missing/unavailable proof, process
-  replacement, malformed/failed service liveness, stale cleanup/namespace races, restart
+  replacement, malformed/failed service liveness, concurrent startup and stale
+  cleanup/namespace races, restart
   and bounded resources. Cold release artifacts and independent/external review remain OPEN.
   Code already running as the same UID can repeatedly mutate its own mode-0700 socket
   directory; this source correction is not a stronger OS-principal denial-of-service boundary.

@@ -114649,3 +114649,66 @@ serial SHA-256 is
 `a44e0389c3e0e3c95830b8e5cb9f2e528ca80d7a09678f20d4474d70e130b555`.
 The runtime-namespace capsule also matches on both hosts. This audit-only
 receipt leaves the counted ledger unchanged.
+
+## 2026-10-29 — Linux incumbent transport and cleanup
+
+The preceding turn completed and recorded the Linux runtime namespace fix.
+All fifteen installed credential actions remain OPEN in the current checklist.
+This slice addresses startup's stale-socket decision in `src/ipc/fs.rs`; the
+parked parent-build, credential integration and macOS directory work stays parked.
+
+`probe_existing_listener` used the general `connect` API. That API deliberately
+rejects `_password`, `_service_password` and `_service_credential` before opening
+a socket; the probe converted every error to absence. `check_existing_listener`
+then removed the endpoint and ignored cleanup failures. The same conversion
+treated a full Unix backlog or permission denial as absence. Linux
+[connect errors](https://man7.org/linux/man-pages/man2/connect.2.html) distinguish
+these conditions from missing/refused connections. The pinned
+[IPC transport](https://github.com/rustdesk-org/parity-tokio-ipc/blob/d0ae39bffe5d5a3e8d82a1b6bcb1ca5a9b2f1c01/src/unix.rs)
+uses Tokio UnixStream directly and preserves its I/O errors.
+
+The intended model separates transport presence from incumbent authentication.
+`641bb1b2` adds a Linux startup connection path with the existing one-second
+deadline, preserving every error except transport NotFound/ConnectionRefused.
+Successful connections continue through the existing UID/executable and
+endpoint-specific proofs. Raw credential endpoints are not sent ordinary IPC
+messages. Stale-removal failure now propagates to `new_listener` before bind.
+The ordinary client API still refuses raw endpoints; message authorization is
+unchanged. macOS retains its previous connection-probe path; the shared cleanup
+error propagation also applies there, without a native macOS claim.
+
+The isolated component uses exact production connect, probe, cleanup, kernel
+peer-credential and executable-path functions, real root-locked
+parity-tokio-ipc/Tokio, and Rust 1.75. Config name/path and ConnectionTmpl framing
+are fixture adapters. CM/PA proofs, service framing and user-main redirection are
+deliberately unavailable, so an accidental exercise fails. No complete app,
+production `new_listener`, installed service, polkit, credential mutation or macOS
+transaction ran. Concurrent startup/cleanup races, positive foreign-identity
+replacement, service liveness and all installed-action evidence remain OPEN.
+
+The baseline at `8679b15e`, TUF `jSZA9pGBOa`, reproduces six failures out of nine:
+three live raw endpoints are removed; full-backlog and permission-denied sockets
+are removed; nonempty-directory cleanup failure is ignored. Ordinary live IPC
+and stale/missing recovery pass. The baseline binary SHA-256 is
+`749edd4ac482b596de36405cef32b6783bd5f5961edf8e48a87df8527c40fda2`.
+At `641bb1b2`, TUF `77Eoncp3uA`, the same nine cases all pass with artifact
+`02961fa4e9496821bd1ae88bd1b702b00b124e30144db9a7f5c1fc4a50829c5b`.
+The fixture observes preserved socket inodes, real same-executable listeners,
+root/UID-4001 callers, kernel EAGAIN on an actually full backlog, EACCES and
+ENOTEMPTY, exact child joins, unchanged artifacts and descriptor counts. The
+fourteen directory cases also pass with the unchanged `06f462b1...` binary.
+
+Three earlier attempts stopped on fixture visibility, Cargo's hard-linked output
+and restrictive-umask traversal respectively; none supplies behavioral evidence.
+Their receipts are retained, and their completed, process-free run directories
+were renamed under the shared lock. All five VMs joined QEMU with exit zero,
+retired RAM scratch, and had four zero host-listener deltas each. The accepted
+73.32-second run peaks at 3,376,336,896 RAM scratch bytes, 3,180,269,568 overlay
+bytes and 3,391,488 durable-run bytes. QEMU 1598946 and workspace `run.h_wot_zs`
+are absent. The CTE source-check container also exited zero and was removed;
+its before/after listener inventory is identical. Diff checks pass.
+
+Thirty-five copied evidence files total 385,452 bytes and match TUF hashes.
+Capsule `ipc-listener-preservation-641bb1b2.json`, 65,506 bytes, SHA-256
+`a17ed2ca0c29315183be37e6a39a0b4bd91443da798047c718e6e9ccb6140227`.
+The fresh ledger count follows.

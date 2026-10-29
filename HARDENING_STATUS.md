@@ -3618,9 +3618,11 @@ those obligations.
 
 <a id="linux-ipc-components"></a>
 
-**Linux IPC / option CLI — component acceptance; installed acceptance OPEN.**
-At `118a5f85`, TUF `ar7zaw6vZX` passes all **172 listener/transport, 32 CLI
-and 14 directory cases** plus the focused desktop source check in 85.836 seconds.
+**IPC / option CLI — component acceptance; installed acceptance OPEN.**
+At `8401f39a`, TUF `v5FHye8JkJ` passes all **172 listener/transport, 32 CLI,
+10 Windows selector and 14 directory cases** plus the focused desktop source
+check in 88.646 seconds. All execute in Linux; the Windows selector uses real
+Unix sockets and Tokio tasks, not Windows pipes or privileged receivers.
 The command is
 `bash scripts/smoke-verifier-vm-authority.sh --linux-ipc-parent-tests`.
 It compiles production filesystem, listener, peer, connection, reader, codec and
@@ -3631,7 +3633,7 @@ Real Unix sockets establish the named IPC outcomes, not complete application or
 privileged-receiver authorization. All four host
 listener deltas are zero; QEMU joins, bounded RAM scratch retires and exact
 fixture socket/descriptor cleanup passes. Current receipt:
-`ipc-endpoint-test-retirement-118a5f85.json`.
+`windows-main-fairness-8401f39a.json`.
 
 Both components now compile the exact `Config::ipc_path` and `ipc_path_for_uid`
 methods; the handwritten listener path methods are deleted. The existing routing
@@ -3639,13 +3641,15 @@ case checks complete service/user socket paths through both methods under root
 and UID 4001, including absence of filesystem side effects. The 105-line endpoint
 token catalogue is removed; the source parser, other password invariants and all
 native case inventories remain. Removed macOS source-order checks supplied no
-native acceptance; macOS correction and execution remain OPEN.
+native acceptance; macOS correction and execution remain OPEN. Retained deletion
+comparison: `ipc-endpoint-test-retirement-118a5f85.json`.
 
 | Surface | Current implementation and component evidence | Retained comparison/provenance |
 | --- | --- | --- |
 | R-S11a namespace | `c1a2402a` puts protected Linux endpoints in `/run/{app}-service`. Root creation requires a no-follow-opened, root-owned `/run` without group/other write access; foreign parent ownership is refused unchanged. No public-temporary service fallback or cleanup exists. Ordinary user IPC remains separate. Fourteen directory cases cover routing, reachability, principal/mutation refusal, ownership, ACLs, symlinks, modes and preservation. | `ipc-runtime-namespace-c1a2402a.json`, `ipc-stale-kind-99cbec37.json` |
 | Target-specific filesystem code and fixtures | `2a2f7f66` restricts foreign-parent replacement/scrub helpers and their real scrub tests to macOS. Linux fixtures exercise production refusal and parent-mode repair/preservation. The obsolete Boolean policy test and ignored Linux replacement tests/tooling are deleted. R-S11bg/Appendix C #184 retain target-native and isolation obligations. | `ipc-target-cfg-2a2f7f66.json`, `ipc-fixture-removal-d41b6a36.json` |
 | Listener admission | `1a5665b8` rotates the three service endpoints; `d4987511` alternates main/password admission. Continuously ready endpoints receive a turn within three/two admissions, while pending cancellation preserves priority. Shutdown/completed-work priority, budgets, authorization and drain ownership remain. Twelve native backlog/sparse/cancellation cases cover both loops' extracted accept helpers. | `ipc-service-fairness-1a5665b8.json`, `ipc-main-fairness-d4987511.json` |
+| Windows service-main selection | `8401f39a` polls shutdown and completed transactions before alternating control/credential accepts. Previously a ready control endpoint preceded both task collection and credential admission. The unchanged selector fixtures reproduce backlog and completion-priority failures under root/UID 4001; all ten backlog, sparse, cancellation, completion and shutdown cases pass after correction. Handlers, authorization, capacity and shutdown drain are unchanged. This is extracted selector behavior on Linux; complete Windows compilation, named-pipe behavior and installed authorization remain OPEN. | `windows-main-fairness-8401f39a.json` |
 | Accept-error recovery | `7b1279bd` gives each `IpcListener` a 100 ms retry deadline after an error, preserves it across cancellation and clears it after success. Six root/UID-4001 descriptor-exhaustion cases cover repeated errors, cancellation/recovery and independent listeners. | `ipc-accept-retry-7b1279bd.json` |
 | JSON construction | `8307a2d6` enforces the encoded-byte cap before fallible buffer growth and publishes only complete serialization. Forty string/cap combinations, bounded sequence traversal, serializer failure and real allocation refusal check no rejected output and valid reuse of the same socket. The 16 MiB allocation fixture cap changes no product endpoint. | `ipc-json-budget-8307a2d6.json`, `ipc-json-allocation-ff8956ed.json` |
 | Frame writes | `8e5979d9` removes the second full-payload allocation: writes chain the existing payload with a stack header, then write and flush. The ordinary codec shares header construction. Both scalar IPC transport and vectored socket-pair paths pass root/user pressure and boundary cases, exact bytes, raw-cap refusal, codec round trips and limit restoration. Wire format, endpoint caps and caller timeout/retirement ownership are unchanged. | `ipc-wire-allocation-8e5979d9.json`, `ipc-scalar-writes-c22068e6.json` |

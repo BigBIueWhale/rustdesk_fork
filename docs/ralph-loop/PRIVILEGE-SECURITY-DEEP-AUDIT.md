@@ -116449,3 +116449,50 @@ complete byte round trips. QEMU 1732256 joins after 30.515 seconds, RAM
 `run.r5xby0fl` retires and all three listener deltas are zero. Six retained count
 files total 103,563 bytes on both hosts. This audit-only receipt changes neither
 measured input.
+
+### 2026-10-29 — Windows service-main event selection
+
+At `c60bcf86`, `run_windows_service_main_ipc` uses biased selection ordered
+shutdown, control accept, completed transaction, credential accept. A continuously
+ready control endpoint can prevent credential admission and completed-task
+collection. This is a scheduling defect; neither an LPE nor unbounded heap growth
+was demonstrated. Pinned Tokio [select documentation](https://github.com/tokio-rs/tokio/blob/tokio-1.44.2/tokio/src/macros/select.rs)
+assigns fairness to the caller when polling is biased. Its
+[JoinSet implementation](https://github.com/tokio-rs/tokio/blob/tokio-1.44.2/tokio/src/task/join_set.rs)
+preserves entries when a join wait is cancelled. The design therefore polls
+shutdown and completion before rotating the two admission futures; pending
+cancellation preserves the next endpoint's turn.
+
+`76b2296d` extracts the selector while preserving the original polling order.
+`8401f39a` changes only that helper. Comparison retains every handler and shutdown
+tail byte, with no authorization, capacity, protocol or action change. Empty
+transaction sets supply a pending future. Ten component cases use real Linux
+sockets, kernel peer UID/PID, endpoint bytes and actual completed Tokio tasks:
+root/UID-4001 backlog, sparse arrivals, cancelled waits, completion and shutdown.
+They check cursor preservation, queued-connection retention and descriptor cleanup.
+The fixtures are byte-identical between baseline and candidate.
+
+Baseline `giwX47nuN4` at `76b2296d` fails exactly four backlog/completion cases;
+the other 210 listener/CLI/selector cases and 14 directory cases pass. Candidate
+`v5FHye8JkJ` at `8401f39a` passes all **214 plus 14** and the focused desktop
+source checker. Listener artifacts are respectively
+`dbd1a9f5d355e677864b3f009d9a02038667d12169b7a6d58f9be5af4737fd56` and
+`ae7e895432b03a483816e2d0747fed1df6e5a16a7d4351e48bd51d5fe44364f5`.
+The directory artifact remains
+`4325b54d71c327e4e2e2c982b52735b1a68f091cc1fe6c157fb0c0b03a1904cd`.
+
+The zero-NIC Linux VM runs take 88.138/88.646 seconds. QEMU 1733577/1734577
+join, RAM workspaces `run.fcl6mwcv`/`run.tr2_j6zt` retire and both sets of four
+host listener deltas are zero. After evidence preservation, exact retired baseline
+scratch inode 78294410 is removed, reclaiming 3,502,080 allocated bytes.
+Fourteen raw files and `windows-main-fairness-8401f39a.json` total 244,113 bytes
+per host; the capsule is 24,886 bytes, SHA-256
+`b440cb5f973e8edea18cb8788ae4247bed0ec394ce209e17b4f8fc52343e0d5c`.
+The existing bounded RAM-storage admission and monitor remain enabled.
+
+This executes the exact target-neutral selector with Linux sockets, not Windows
+pipes, its full application caller or privileged authorization. Native Windows
+compilation/installed behavior, current release artifacts, R-S0/R-F5, independent
+reproduction and external review remain open. Windows VM storage and every other
+user-parked item stay parked. Python parsing, both edited shell syntax checks and
+`git diff --check` pass; no live instruction or dependency changes.

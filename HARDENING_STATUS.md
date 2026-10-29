@@ -3714,14 +3714,17 @@ No checker or native transaction ran for this deletion. R-S11ig and all fifteen
 installed actions remain OPEN; classification is in the audit entry
 “2026-10-28 — overlapping Linux credential-response catalogue”.
 
-The shared verifier drops its obsolete 97-line Linux post-polkit admission
-catalogue. It required the asynchronous grant removed by `3eabd727`, contradicting
-the retained desktop checker's prohibition on that helper. An isolated non-root,
-networkless run reproduces the obsolete gate's failure and passes the retained
-desktop password source checker. Exact deletion comparison, embedded Python AST
-comparison and shell syntax pass; product and executable tests are unchanged.
-No installed authorization ran. All fifteen actions remain OPEN; the audit entry
-“2026-10-29 — obsolete Linux post-polkit verifier gate” records the scope.
+The shared verifier drops the obsolete 97-line post-polkit admission catalogue
+that required the asynchronous grant removed by `3eabd727`. Its two pkcheck launch
+checks also lose 53 lines: their deleted extraction endpoint reached unrelated
+test code, and they required the former spawn API. Eight lines in the existing
+desktop checker retain the R-S11p/R-S11y source invariants within parsed function
+bodies: empty environment, no replacement variables, descriptor setup before
+owned spawn. Isolated non-root, networkless execution reproduces the stale gate
+failures, passes the desktop checker and rejects seven targeted source violations.
+Exact diff/AST comparison and shell syntax pass. Product, actual-child tests and
+requirements are unchanged; no installed authorization ran. All fifteen actions
+remain OPEN. The 2026-10-29 audit entries record both corrections and their limits.
 
 **Shared acceptance still required.** Each action needs current target-OS compilation and focused
 tests, the exact installed artifact and authorized/refused principals; its authorized effect,

@@ -1375,16 +1375,24 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
         ),
         unique=True,
     )
+    environment = ipc.function("configure_linux_pkcheck_environment")
+    if environment.values != ["command", ".", "env_clear", "(", ")", ";"]:
+        raise VerificationError(f"{environment.label}: pkcheck requires an empty environment")
     polkit = ipc.function("linux_pkcheck_authorizes_service_owned_password_change")
+    for setter in ("env", "envs"):
+        polkit.forbid((".", setter, "("), "replacement pkcheck environment")
     polkit.require_order(
         (
             (("trusted_linux_pkcheck_path", "(", ")"), "trusted fixed pkcheck path"),
             (("Command", "::", "new", "(", "pkcheck", ")"), "trusted command execution"),
+            (("configure_linux_pkcheck_environment", "(", "&", "mut", "command", ")"), "empty helper environment"),
             (("arg", "(", '"--action-id"', ")"), "polkit action argument"),
             (("arg", "(", "SET_UNATTENDED_PASSWORD_POLKIT_ACTION", ")"), "fixed action ID"),
             (("arg", "(", '"--process"', ")"), "process subject mode"),
             (("arg", "(", "&", "subject", ")"), "PID/start-time/UID subject"),
             (("arg", "(", '"--allow-user-interaction"', ")"), "interactive authorization"),
+            (("configure_command_close_nonstdio_on_exec", "(", "&", "mut", "command", ")"), "pre-exec non-stdio descriptor policy"),
+            (("OwnedAuthorizationChild", "::", "spawn", "(", "&", "mut", "command", ")"), "owned helper spawn after launch policies"),
             (("Instant", "::", "now", "(", ")", "+", "PKCHECK_AUTHORIZATION_TIMEOUT"), "bounded authorization deadline"),
             (("Ok", "(", "Some", "(", "status", ")", ")", "if", "status", ".", "success", "(", ")", "=>", "return", "true"), "successful pkcheck exit as the only authorization result"),
         )

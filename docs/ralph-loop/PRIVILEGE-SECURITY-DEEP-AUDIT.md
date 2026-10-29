@@ -113966,3 +113966,43 @@ The first count invocation refused before allocation because the source commit
 had not yet been pushed; the successful run followed that push. No product,
 Flutter or installed-service test ran. This final audit-only receipt leaves the
 counted ledger unchanged.
+
+## 2026-10-29 — scope pkcheck launch checks to their actual functions
+
+The remaining R-S11p/R-S11y shell checks extract from the pkcheck function to the
+deleted asynchronous grant, extending through the rest of `src/ipc.rs`. They
+mistake actual-child test environment markers for production additions and
+require the former `command.spawn()` instead of the current owned-child API.
+Isolated execution reproduces both failures. Their purpose remains binding:
+an empty child environment and descriptor policy before exec. Rust's official
+[Command documentation](https://doc.rust-lang.org/std/process/struct.Command.html#method.env_clear)
+confirms that `env_clear` removes explicit and inherited variables; the
+[Unix pre-exec contract](https://doc.rust-lang.org/std/os/unix/process/trait.CommandExt.html#tymethod.pre_exec)
+places the configured hook before exec and propagates hook failure to spawn.
+Retain these source invariants within the existing parser rather than duplicate
+another source-region extractor. Delete 53 shell lines and add eight lines to
+`verify_linux_identity_and_authority`; no product or actual-child test changes.
+
+Pinned Python image and numeric-user/networkless/read-only isolation match the
+preceding receipt. The initial baseline setup lacked writable space for Bash's
+large here-strings and is invalid evidence. After that exact container exits
+and is removed, a fresh container with a bounded 16 MiB non-executable `/tmp`
+tmpfs reproduces the intended descriptor and environment gate failures.
+Candidate execution passes the complete desktop checker and seven source-only
+negative controls: removed environment helper body/call, single/bulk replacement
+variables, removed descriptor hook, hook after spawn and direct unowned spawn.
+It completes in 3.403 seconds, exits zero without OOM, and its exact container
+`d61e248ffb299c7a63f72c3f19a6ccf36dc5692026a5d643e0c1082a6d84296a`
+is removed. Before/after listener deltas are zero. These checks execute no product
+or OS authorization.
+
+Exact comparison confirms only the classified shell deletion and one changed
+Python function body; syntax and diff checks pass. Deleted block SHA-256:
+`9880f09dbfd3575f540ca7fef83824db401873ec94439849fa2bb4ba81217d2c`.
+Candidate checker SHA-256:
+`b43d31c516597d3d0054b814e850eb6f170bbf04491c0d27d1c79bc7c40c0b8b`.
+The scope is source wiring and ordering, not native descriptor absence, empty
+child environments, polkit decisions or full verifier acceptance. Required
+actual-child/installed evidence, all fifteen credential actions and the pending
+CM audio execution remain open. CTE's 14,117,804 KiB available-memory observation
+is below audio admission; TUF still lacks QEMU and its package approval is pending.

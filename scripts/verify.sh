@@ -4994,59 +4994,6 @@ fi
 if [ -n "$r_s11e29" ]; then echo "  FAIL R-S11e-29 Linux service helper inherited descriptor authority:$r_s11e29"; rc=1; else
   echo "  ok  R-S11e-29 Linux generic sudo/env run-as-user launch is absent and retained reopen helpers mark non-stdio descriptors close-on-exec before helper exec"; fi
 
-# (3b-iii-d9) R-S11p/R-S11e-30: Linux service-owned polkit
-# authorization helpers do not inherit root-service non-stdio
-# descriptors. pkcheck is the admin authorization checker for the
-# service-owned unattended-password operation, so the root service must
-# apply the same descriptor policy before its helper image executes.
-echo "== (3b-iii-d9) Linux pkcheck helper inherited descriptor authority (R-S11p/R-S11e-30) =="
-r_s11e30=
-pkcheck_authorization_block=$(awk '/fn linux_pkcheck_authorizes_service_owned_password_change/,/async fn grant_linux_service_owned_password_admission/' src/ipc.rs)
-for pkcheck_binding in \
-  'let mut command = std::process::Command::new(pkcheck);' \
-  'hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(&mut command)' \
-  'failed to constrain pkcheck descriptors' \
-  'let child = command.spawn();'; do
-  grep -qF "$pkcheck_binding" <<<"$pkcheck_authorization_block" || r_s11e30="$r_s11e30 pkcheck-descriptor-policy-missing"
-done
-pkcheck_policy_line=$(grep -nF 'configure_command_close_nonstdio_on_exec(&mut command)' <<<"$pkcheck_authorization_block" | head -n1 | cut -d: -f1)
-pkcheck_spawn_line=$(grep -nF 'let child = command.spawn();' <<<"$pkcheck_authorization_block" | head -n1 | cut -d: -f1)
-if [ -z "$pkcheck_policy_line" ] || [ -z "$pkcheck_spawn_line" ] \
-  || [ "$pkcheck_policy_line" -ge "$pkcheck_spawn_line" ]; then
-  r_s11e30="$r_s11e30 pkcheck-descriptor-policy-after-spawn"
-fi
-if grep -Eq 'std::process::Command::new\(pkcheck\)[[:space:]]*\.' <<<"$pkcheck_authorization_block"; then
-  r_s11e30="$r_s11e30 pkcheck-direct-spawn-without-descriptor-policy"
-fi
-if [ -n "$r_s11e30" ]; then echo "  FAIL R-S11e-30 Linux pkcheck helper inherited descriptor authority:$r_s11e30"; rc=1; else
-  echo "  ok  R-S11e-30 Linux service-owned pkcheck authorization marks non-stdio descriptors close-on-exec before helper exec"; fi
-
-# (3b-iii-d9a) R-S11y/R-S11e-39: the service-owned pkcheck
-# authorization decision is independent of the root supervisor's
-# ambient environment. In particular, DBUS_SYSTEM_BUS_ADDRESS must not
-# redirect the helper away from the operating system's default system
-# bus endpoint.
-echo "== (3b-iii-d9a) Linux pkcheck helper ambient environment authority (R-S11y/R-S11e-39) =="
-r_s11e39=
-pkcheck_environment_policy=$(awk '/fn configure_linux_pkcheck_environment/,/fn linux_pkcheck_authorizes_service_owned_password_change/' src/ipc.rs)
-grep -qF 'fn configure_linux_pkcheck_environment(command: &mut std::process::Command)' <<<"$pkcheck_environment_policy" \
-  || r_s11e39="$r_s11e39 environment-policy-missing"
-grep -qF 'command.env_clear();' <<<"$pkcheck_environment_policy" \
-  || r_s11e39="$r_s11e39 environment-clear-missing"
-if grep -Eq '\.envs?[[:space:]]*\(' <<<"$pkcheck_environment_policy$pkcheck_authorization_block"; then
-  r_s11e39="$r_s11e39 explicit-environment-reintroduced"
-fi
-grep -qF 'configure_linux_pkcheck_environment(&mut command);' <<<"$pkcheck_authorization_block" \
-  || r_s11e39="$r_s11e39 authorization-policy-call-missing"
-pkcheck_environment_line=$(grep -nF 'configure_linux_pkcheck_environment(&mut command);' <<<"$pkcheck_authorization_block" | head -n1 | cut -d: -f1)
-if [ -z "$pkcheck_environment_line" ] || [ -z "$pkcheck_policy_line" ] || [ -z "$pkcheck_spawn_line" ] \
-  || [ "$pkcheck_environment_line" -ge "$pkcheck_policy_line" ] \
-  || [ "$pkcheck_environment_line" -ge "$pkcheck_spawn_line" ]; then
-  r_s11e39="$r_s11e39 environment-policy-order-invalid"
-fi
-if [ -n "$r_s11e39" ]; then echo "  FAIL R-S11e-39 Linux pkcheck helper ambient environment authority:$r_s11e39"; rc=1; else
-  echo "  ok  R-S11e-39 source checks: pkcheck environment clearing precedes descriptor setup and spawn, with no replacement variables"; fi
-
 # R-S11e-40 parser/query unit cases; real logind uses --linux-logind-tests.
 echo "== Linux loginctl parsing and query unit tests (R-S11e-40) =="
 "${RUN[@]}" cargo test -p hbb_common --lib r_s11e40_ --color never

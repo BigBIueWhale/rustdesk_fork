@@ -9101,12 +9101,6 @@ pub(crate) async fn request_windows_service_owned_sas() -> ResultType<()> {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-async fn get_options_(ms_timeout: u64) -> ResultType<HashMap<String, String>> {
-    let snapshot = get_main_status_snapshot(ms_timeout).await?;
-    snapshot.options.into_map()
-}
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub async fn get_main_status_snapshot(ms_timeout: u64) -> ResultType<MainStatusSnapshot> {
     match main_ipc_request(MainIpcRequest::StatusSnapshot, ms_timeout).await? {
         MainIpcResponse::StatusSnapshot(snapshot) => Ok(snapshot),
@@ -9194,23 +9188,10 @@ pub async fn get_controlled_session_count(ms_timeout: u64) -> ResultType<usize> 
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub async fn get_options_async() -> HashMap<String, String> {
-    get_options_(1000).await.unwrap_or(Config::get_options())
-}
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tokio::main(flavor = "current_thread")]
-pub async fn get_options() -> HashMap<String, String> {
-    get_options_async().await
-}
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub async fn get_option_async(key: &str) -> String {
-    if let Some(v) = get_options_async().await.get(key) {
-        v.clone()
-    } else {
-        "".to_owned()
-    }
+pub async fn get_options() -> ResultType<HashMap<String, String>> {
+    let snapshot = get_main_status_snapshot(1000).await?;
+    snapshot.options.into_map()
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

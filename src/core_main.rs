@@ -498,7 +498,13 @@ pub fn core_main() -> Option<Vec<String>> {
             }
             if crate::platform::is_installed() && is_root() {
                 if args.len() == 2 {
-                    let options = crate::ipc::get_options();
+                    let options = match crate::ipc::get_options() {
+                        Ok(options) => options,
+                        Err(err) => {
+                            eprintln!("{err}");
+                            std::process::exit(1);
+                        }
+                    };
                     println!("{}", options.get(&args[1]).unwrap_or(&"".to_owned()));
                 } else if args.len() == 3 {
                     if let Err(err) = crate::ipc::set_option(&args[1], &args[2]) {

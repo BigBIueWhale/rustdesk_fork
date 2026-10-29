@@ -117285,3 +117285,82 @@ Seven controls and the complete text round trip pass. QEMU 1790841 joins after
 Six raw evidence files total 102,844 bytes per host with matching hashes. This
 audit-only receipt preserves the measured ledger bytes and its approximate
 400,000-token budget.
+
+### 2026-10-30 — optimized PAKE primitive timing
+
+R-P12 requires optimized timing measurements, defined input classes and budget,
+a leakage criterion, a variable-time positive control and exact build/target
+provenance. The retired median-ratio placeholder supplied none of the scalar
+coverage or calibrated sensitivity. The [dudect authors' method](https://github.com/oreparaz/dudect)
+and [DATE 2017 paper](https://eprint.iacr.org/2016/1123) inform randomized input
+classes and Welch statistics. A detected class difference requires investigation;
+absence of detection under a finite budget does not prove constant-time behavior.
+No external implementation or dependency is added.
+
+`1a2fcdfbefae0a1b6571751641a01ff3370a8328` adds a Linux x86-64 test-only module
+and the focused `--pake-timing-tests` VM profile. Production crypto is unchanged.
+The existing `libs/pake/src/lib.rs::verify_tag` executes HMAC-SHA512 verification;
+`sample_scalar` uses Dalek's `Scalar::from_bytes_mod_order_wide`, measured directly.
+The ignored test is invoked explicitly by the isolated runner. Ordinary PAKE tests
+remain intact; this does not wire a new automatic CI job.
+
+Each of four cohorts has one million measured observations, four calls per
+observation, one 20,000-observation warmup and randomized classes prepared outside
+the clock. Fixed SplitMix64 seeds generate only nonsecret test data. Input class
+and byte digests include warmup. Welford moments feed raw and pooled-p99-cropped
+Welch tests; either absolute statistic above 10 detects a difference. Unusable
+variance, inadequate class counts, unavailable positive-control sensitivity or
+any production detection refuses success. Estimator arithmetic controls run first.
+All four cohorts finish before the combined verdict. No budget or threshold was
+adjusted after seeing measurements.
+
+Initial run `naAwMrlY5z` at `1a2fcdfb` reaches release LTO, then the 1 GiB container
+memory cgroup kills Cargo with status 137; the guest kernel log explicitly records
+`CONSTRAINT_MEMCG`. No timing case executes. QEMU 1792322 joins after 103.387
+seconds; RAM `run.rl1pqbbj` retires and all four listener deltas are zero. Seven
+raw files total 84,984 bytes. After matching their hashes on both hosts, the exact
+retired diagnostic tree (inode 78294410) is removed, reclaiming 3,448,832 bytes.
+
+`a90567f368c3081c2ce8fcd263c5e06542dfad53` gives only this profile a 2 GiB
+container inside a 4 GiB guest, preserving its 6 GiB RAM scratch/4 GiB overlay
+ceilings, 6 GiB host headroom, live monitor and joined cleanup. It also records
+Dalek's actual build-script cfgs. Source tree is
+`fd2ebb22c1babb5898e7fbe007ad108f08de32a2`. Command:
+`bash scripts/smoke-verifier-vm-authority.sh --pake-timing-tests`.
+
+Accepted run `HJyHNtXGuV` passes the one timing test in 6.60 seconds. Artifact
+SHA-256 is `35061ab18f92ca76e17dc93de74aa6ca14dd3445c1744cb81da06b606b883a2c`,
+unchanged before/after execution. Build: Rust 1.75.0 / LLVM 17.0.6, opt-level 3,
+LTO, one codegen unit, debug info off, target CPU `x86-64`, test panic unwinding.
+Cargo.lock SHA-256 is `3689a064d25488d75a13773a4bf42147264fdbb9e35ec0d8bec15eb16ecfab50`.
+Dalek 4.1.3 reports 64-bit/simd selection; full dependency features are retained.
+The guest reports Intel Core Ultra 9 285K, microcode 0x11b, Linux
+6.1.0-50-cloud-amd64 and complete CPU flags. Execution is pinned to guest CPU 0;
+host CPU affinity, scheduling and frequency are uncontrolled. `Instant` measures
+elapsed time. The runner executes as UID/GID 1000 with no capabilities, read-only
+source/root, no-new-privileges, AppArmor and no VM/container network.
+
+| Measured classes | Raw t | Pooled-p99 t | Observation |
+| --- | ---: | ---: | --- |
+| Early-exit comparison, first versus last mismatching byte | -2470.206611 | -13384.009047 | Positive control detected |
+| Actual tag verification, first versus last mismatching byte | -1.645874 | -1.305819 | No difference detected |
+| Actual tag verification, zero versus random 64-byte key | 1.315598 | 1.400429 | No difference detected |
+| Actual wide scalar reduction, zero versus random 64-byte input | -0.799628 | -1.480187 | No difference detected |
+
+`android-rust-lifecycle-tests-run.HJyHNtXGuV.serial.log` retains exact counts,
+means, cutoffs, seeds, input SHA-512 values, compiler/features/backend and image
+bindings. Its companion console/storage/four listener files bind cleanup. QEMU
+1793151 joins after 113.008 seconds; RAM `run.0_gg_2wo` is absent. All four listener
+deltas are zero. Peak RAM scratch allocation is 3,283,238,912 bytes; only bounded
+evidence remains. Seven accepted-run files total 82,742 bytes, hash-identical on
+CTE/TUF; fourteen files across both runs total 167,726 bytes per host.
+
+Scope remains first-order measurements for these classes and this optimized
+Linux test artifact. The positive control establishes sensitivity to its large
+early-exit difference, not a minimum detectable leak for every primitive. Complete
+scalar sampling/RNG acquisition and erasure, generator/multiplication, finer and
+higher-order effects, other targets/compiler/backend choices, exact shipping
+artifacts, automatic CI integration, independent reproduction and R-V3 expert
+review remain OPEN. Installed privilege/settings acceptance and every user-parked
+lane remain unchanged. A fresh ledger count also exercises the new storage
+profile admission/refusal and workload-selection cases.

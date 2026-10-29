@@ -4954,13 +4954,32 @@ async fn next_windows_service_main_ipc_event(
     credential: impl std::future::Future<Output = Option<std::io::Result<Conn>>>,
     control_first: &mut bool,
 ) -> WindowsServiceMainIpcEvent {
-    let _ = control_first;
+    use std::{
+        future::{poll_fn, Future},
+        task::Poll,
+    };
+
+    tokio::pin!(control, credential);
     tokio::select! {
         biased;
         _ = shutdown => WindowsServiceMainIpcEvent::Shutdown,
-        result = control => WindowsServiceMainIpcEvent::Control(result),
         result = completed => WindowsServiceMainIpcEvent::Completed(result),
-        result = credential => WindowsServiceMainIpcEvent::Credential(result),
+        event = poll_fn(|cx| {
+            // Join completed work before admitting more. Alternate ready
+            // endpoints; cancelling a pending wait preserves its turn.
+            for poll_control in [*control_first, !*control_first] {
+                let event = if poll_control {
+                    control.as_mut().poll(cx).map(WindowsServiceMainIpcEvent::Control)
+                } else {
+                    credential.as_mut().poll(cx).map(WindowsServiceMainIpcEvent::Credential)
+                };
+                if event.is_ready() {
+                    *control_first = !poll_control;
+                    return event;
+                }
+            }
+            Poll::Pending
+        }) => event,
     }
 }
 

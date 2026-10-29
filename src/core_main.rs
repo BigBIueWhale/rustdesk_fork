@@ -492,9 +492,13 @@ pub fn core_main() -> Option<Vec<String>> {
         // server adoption), `--assign`, and `--deploy` account/control-plane CLI
         // paths are excised from this serverless direct-IP fork.
         } else if args[0] == "--option" {
+            if args.len() != 2 && args.len() != 3 {
+                eprintln!("usage: rustdesk --option <name> [<value>]");
+                std::process::exit(2);
+            }
             if is_cli_setting_change_disabled() {
-                println!("Settings are disabled!");
-                return None;
+                eprintln!("Settings are disabled!");
+                std::process::exit(1);
             }
             if crate::platform::is_installed() && is_root() {
                 if args.len() == 2 {
@@ -513,7 +517,8 @@ pub fn core_main() -> Option<Vec<String>> {
                     }
                 }
             } else {
-                println!("Installation and administrative privileges required!");
+                eprintln!("Installation and administrative privileges required!");
+                std::process::exit(1);
             }
             return None;
         } else if args[0] == "--terminal-helper" {

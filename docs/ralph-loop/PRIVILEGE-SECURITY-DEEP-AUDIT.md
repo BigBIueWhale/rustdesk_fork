@@ -116363,3 +116363,46 @@ Seven pinned tokenizer controls and the complete byte round trip pass. QEMU 1727
 joins after 30.310 seconds, RAM `run.f9itp62e` retires and three listener deltas are
 zero. Six count files add 102,998 bytes; all 21 evidence files total 336,654 bytes
 on each host. This audit-only receipt leaves the measured ledger unchanged.
+
+### 2026-10-29 — production IPC path tests and endpoint catalogue retirement
+
+At clean `922a734b`, listener-startup review establishes no new product defect.
+The endpoint source catalogue checks token presence/order for routing, modes,
+opens, macOS replacement and startup. Linux component tests already execute the
+filesystem/listener behavior, but their Config path methods are handwritten or
+bypassed by directly testing the parent helper. That is a real coverage gap:
+the tested route could agree with itself while the production wrapper differed.
+
+`118a5f85` compiles exact production `Config::ipc_path` and `ipc_path_for_uid`
+bodies in both builders, removes the handwritten methods and makes the existing
+routing case compare both production methods with complete expected socket paths.
+Root/UID-4001 cases cover all three service and both user postfixes, including
+absence of parent creation by path lookup. It deletes `verify_endpoint_ownership`
+and its call: 105 lines of token checks, with 97 net lines removed across five
+scripts. The parser and all other checker bytes remain unchanged. Password
+authority, raw endpoint separation, coordination and shutdown assertions remain
+because this native component does not cover those boundaries.
+
+The removed macOS token ordering cannot establish native replacement, chmod or
+cleanup. Its correction and execution obligations stay open. Rust's
+[conditional-compilation rules](https://doc.rust-lang.org/reference/conditional-compilation.html#the-cfg-attribute)
+explain why executing the Linux-selected code supplies no macOS/Windows pass.
+Product sources, requirements, instructions, dependency pins, orchestration and
+case inventories are unchanged. This is verification correction, not a new LPE
+fix or evidence that every endpoint property is complete.
+
+TUF `ar7zaw6vZX` passes **204 listener/CLI and 14 directory cases**, plus the
+remaining desktop password source checker, in 85.836 seconds. The directory
+artifact is `4325b54d71c327e4e2e2c982b52735b1a68f091cc1fe6c157fb0c0b03a1904cd`;
+the listener artifact is
+`f56c9980fa9a17e331b1cf4c9cabb705110317d982486939432d08d9184abd0d`.
+QEMU 1728325 joins, RAM `run.mo12ayka` retires and four host listener deltas are
+zero. The existing 2-GiB guest, 6-GiB RAM scratch and 4-GiB overlay bounds remain.
+
+`ipc-endpoint-test-retirement-118a5f85.json` binds classification, source hashes,
+command, artifacts and cleanup: 12,518 bytes, SHA-256
+`b41336782b0c66ee0c18460a68bbc60fe2b92f28fefb51772492526865dd1bf6`.
+Seven raw files plus the capsule total 119,343 bytes on CTE and TUF. Python AST
+parsing and `git diff --check` pass. Full application/installed authority, other
+platforms, unexercised descriptor inheritance and later metadata races remain
+open; no parked task resumes, and R-S0/R-F5 acceptance is unchanged.

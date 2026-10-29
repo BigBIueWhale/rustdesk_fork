@@ -3618,19 +3618,27 @@ those obligations.
 <a id="linux-ipc-components"></a>
 
 **Linux IPC / option CLI — component acceptance; installed acceptance OPEN.**
-At `094d03a6`, TUF `lzak6FB9Zm` passes all **172 listener/transport, 32 CLI
-and 14 directory cases** plus the focused desktop source check in 85.400 seconds.
+At `118a5f85`, TUF `ar7zaw6vZX` passes all **172 listener/transport, 32 CLI
+and 14 directory cases** plus the focused desktop source check in 85.836 seconds.
 The command is
 `bash scripts/smoke-verifier-vm-authority.sh --linux-ipc-parent-tests`.
 It compiles production filesystem, listener, peer, connection, reader, codec and
-CLI branch/getter with pinned dependencies. Config name/path, boxed errors and
+CLI branch/getter with pinned dependencies. Config name/type, boxed errors and
 service authorization have fixture adapters. CLI eligibility, status retrieval/conversion,
 mutation and local configuration are doubles; cases observe process output and exit status.
 Real Unix sockets establish the named IPC outcomes, not complete application or
 privileged-receiver authorization. All four host
 listener deltas are zero; QEMU joins, bounded RAM scratch retires and exact
 fixture socket/descriptor cleanup passes. Current receipt:
-`ipc-raw-read-errors-094d03a6.json`.
+`ipc-endpoint-test-retirement-118a5f85.json`.
+
+Both components now compile the exact `Config::ipc_path` and `ipc_path_for_uid`
+methods; the handwritten listener path methods are deleted. The existing routing
+case checks complete service/user socket paths through both methods under root
+and UID 4001, including absence of filesystem side effects. The 105-line endpoint
+token catalogue is removed; the source parser, other password invariants and all
+native case inventories remain. Removed macOS source-order checks supplied no
+native acceptance; macOS correction and execution remain OPEN.
 
 | Surface | Current implementation and component evidence | Retained comparison/provenance |
 | --- | --- | --- |

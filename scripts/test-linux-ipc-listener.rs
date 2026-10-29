@@ -390,6 +390,40 @@ async fn json_serialization_fixture(scenario: &str) {
                 }
                 observed = checks;
             }
+            "allocation" => {
+                struct AddressLimit(libc::rlimit);
+                impl Drop for AddressLimit {
+                    fn drop(&mut self) {
+                        assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_AS, &self.0) }, 0);
+                    }
+                }
+
+                round_trip(&mut sender, &mut receiver, "warm").await;
+                let frame_bytes = 16 * 1024 * 1024;
+                let value = "x".repeat(frame_bytes - 2);
+                sender.set_max_packet_length(frame_bytes);
+                let pages: u64 = fs::read_to_string("/proc/self/statm").unwrap()
+                    .split_whitespace().next().unwrap().parse().unwrap();
+                let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+                assert!(page_size > 0);
+                let ceiling = pages.checked_mul(page_size as u64).unwrap()
+                    .checked_add(1024 * 1024).unwrap();
+                let mut original = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+                assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_AS, &mut original) }, 0);
+                assert!(ceiling < original.rlim_cur);
+                let limited = libc::rlimit { rlim_cur: ceiling, rlim_max: original.rlim_max };
+                assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_AS, &limited) }, 0);
+                let restore = AddressLimit(original);
+                let result = sender.send_json_timeout(&value, 1000).await;
+                drop(restore);
+                let mut restored = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+                assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_AS, &mut restored) }, 0);
+                assert_eq!((restored.rlim_cur, restored.rlim_max), (original.rlim_cur, original.rlim_max));
+                assert_eq!(result.unwrap_err().to_string(), "IPC frame allocation failed");
+                no_wire_bytes(receiver.inner.get_ref());
+                round_trip(&mut sender, &mut receiver, &value).await;
+                observed = frame_bytes;
+            }
             "streaming" | "failure" => {
                 let visited = Cell::new(0);
                 let value = Sequence { visited: &visited, fail: scenario == "failure" };

@@ -116413,3 +116413,29 @@ Seven tokenizer controls and the complete byte round trip pass. QEMU 1730164 joi
 after 31.102 seconds, RAM `run.7d9c126p` retires and three listener deltas are zero.
 Six count files add 104,076 bytes; all fourteen retained files total 223,419 bytes
 on both hosts. This audit-only receipt leaves the measured ledger unchanged.
+
+### 2026-10-29 — UI DTO requirement roles
+
+At `f8a1da2c`, R-G4a and R-G9 still carry deletion narration and duplicate
+Rust/Flutter/shared/Apple mutation-catalogue mandates from `0c87d5c23` and
+`0c49811fc` (2026-07-21). The shared UI acceptance clause, rewritten in
+`395bd6493`, already requires source coverage, executable UI/serialization tests
+and exact-artifact native desktop/mobile behavior with independent reproduction.
+Shared, Dart and Apple gates do not depend on the removed requirement wording.
+
+Only those two requirement lines change. The edit removes 663 bytes, retaining
+every code spelling, forbidden field/API scope, ignored historical JSON, sole
+CPace authorization edge, consumed CM facts, authenticated capability owner,
+AuthConnType confinement, native sinks and post-PAKE viewer Permission path.
+Account provenance remains unconditionally forbidden; R-G6's relay-field
+prohibition is expressed without a deletion-status claim. The shared acceptance
+clause and all other specification bytes remain identical.
+
+Comparison preserves all 411 requirement declarations, 2,863 requirement
+references, 211 links and 34 anchors, plus the complete ordered finding inventory.
+The requirement file changes from 1,679,865 to 1,679,202 bytes; its new SHA-256 is
+`4beb17f22035b6bedb79287694efcf72631cbdabaede8f36f33c2cefb91ea4b6`.
+Product, fixtures, test commands, source checkers and live instructions are
+unchanged. `git diff --check` passes. No product runtime run or new security
+closure is claimed; current native/installed, R-S0/R-F5 and release obligations
+remain open, with every existing user park retained.

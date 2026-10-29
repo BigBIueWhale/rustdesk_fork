@@ -115991,3 +115991,61 @@ capsule total 113,655 bytes on CTE and TUF; capsule SHA-256 is
 `016d7fd066dadcb08036170a923e285c66c308ee8c087ec96684d6d0cf4551e0`.
 This audit-only addition leaves both measured inputs unchanged. Whole-document
 classification, native/installed acceptance and all user parks remain OPEN.
+
+### 2026-10-29 — peer event registration ownership
+
+`Peers` ignored duplicate registration refusal, then unregistered by the shared
+event/handler names on disposal. Disposing the rejected model therefore removed
+the incumbent's event handler. Historical `GgcjL3jsDg` at `e6c8d283` demonstrates
+the failure after four passing peer controls. The peer model, both platform
+facades, dispatcher and peer tests are byte-identical between that source and
+pre-change `496b4955`; no Windows chooser work is resumed or rerun.
+
+`0625112a` makes successful registration return an opaque cancellation handle;
+refusal returns null. Cancellation requires the exact binding object still
+installed under the names, retires its pending events and releases its slot.
+Repeated or superseded cancellation cannot remove a successor, including one
+using the same callback. Already-invoked work retains its existing drain rule.
+Both native/web name-only unregister methods are removed, and `Peers.dispose`
+uses only its retained handle. Process-lifetime theme/language registrations
+remain process-owned. No privileged operation or IPC authorization changes.
+
+Primary references: [Flutter ChangeNotifier disposal](https://api.flutter.dev/flutter/foundation/ChangeNotifier/dispose.html)
+requires owner-controlled retirement; [Dart object identity](https://api.dart.dev/dart-core/identical.html)
+distinguishes fresh binding objects even when their callback is reused. The
+existing bounded dispatcher already captures those bindings for delivery, so
+the correction uses that identity rather than a second name-based authority.
+
+The peer-data shard gains seven peer and twelve dispatcher cases, including the
+old duplicate-disposal oracle adapted from Boolean refusal to nullable handles,
+later owners, replacement, same-callback reuse, active/pending delivery, capacity
+and complete drain. The original five peer-data suites remain. Result inventories
+and counts follow those additions; `1a0b612b` selects the existing three parser
+controls for this shard only. Broader parser fixes, parent/installed integration
+and all other user parks remain open. `g684Esy2gj` stops at formatting before
+compilation/tests; `2f6c5418` applies the formatter's one assignment wrap.
+
+`zyEpIR8Hio` reaches result validation but fails the three already-parked
+models-profile inventory controls. Its peer-case JSON is not published before
+that failure, so no per-case acceptance is attributed to this run. The final
+shard selects its own existing parser controls; the parser's acceptance algorithm
+and unrelated models-profile failures are unchanged.
+
+Final `1a0b612b`, TUF `8DmykJOpct`, passes all **113 cases / seven suites** and
+three focused result controls in 261.501 seconds. The exact-inventory/finality
+parser validates the guest's result stream; the retained serial contains its
+aggregate acceptance, generated bridge and pinned source/dependency receipts.
+Full Dart library comparison (excluding fresh generated bindings) and all seven
+test-copy comparisons pass. This exercises Dart production behavior, not native
+bridge dispatch, an installed service or a browser/device session.
+
+QEMU 1695574/1700463/1703491 joins and all three bounded RAM workspaces retire;
+all twelve new-run listener deltas are zero. Receipt
+`peer-event-owner-0625112a.json` is 29,598 bytes, SHA-256
+`1d96a2d32415e18e387b84b17a52bf039a17b413a64e3d3722a61b14dd0df6a0`.
+Together with the historical baseline and three runs, 29 retained evidence files
+total 355,440 bytes on CTE and TUF. After both copies are verified, only the two
+current failed-run scratch trees are deleted, freeing 6,860,800 allocated bytes.
+The parked historical chooser diagnostics and canonical offline inputs are
+preserved. Complete app/session, browser/mobile/device, privileged settings,
+installed/native and release acceptance remain OPEN.

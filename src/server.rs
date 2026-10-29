@@ -1217,7 +1217,14 @@ pub async fn start_ipc_url_server() {
     log::debug!("Start an ipc server for listening to url schemes");
     match crate::ipc::new_listener("_url").await {
         Ok(mut incoming) => {
-            while let Some(Ok(conn)) = incoming.next().await {
+            while let Some(result) = incoming.next().await {
+                let conn = match result {
+                    Ok(conn) => conn,
+                    Err(err) => {
+                        log::warn!("Failed to accept desktop URL IPC connection: {err}");
+                        continue;
+                    }
+                };
                 let mut conn = crate::ipc::Connection::new_desktop_url(conn);
                 // R-X6/R-S11c-9: this URL listener bypasses the main IPC handler, so sender auth
                 // happens before any rustdesk:// URL is delivered to Flutter.

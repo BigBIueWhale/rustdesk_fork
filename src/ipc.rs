@@ -3358,6 +3358,32 @@ pub enum MainIpcResponse {
     TerminalSessionCount(usize),
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl MainIpcResponse {
+    fn validate(self) -> ResultType<Self> {
+        Ok(match self {
+            Self::StatusSnapshot(mut snapshot) => {
+                snapshot.options = snapshot.options.validate()?;
+                Self::StatusSnapshot(snapshot)
+            }
+            Self::Config { key, value } => {
+                if value
+                    .as_ref()
+                    .is_some_and(|value| value.len() > MAIN_IPC_MAX_CONFIG_VALUE_BYTES)
+                {
+                    bail!("main IPC config value is oversized");
+                }
+                Self::Config { key, value }
+            }
+            Self::OptionSet { result, effective } => Self::OptionSet {
+                result,
+                effective: effective.map(MainStatusOption::validate).transpose()?,
+            },
+            response => response,
+        })
+    }
+}
+
 #[cfg(any(target_os = "windows", test))]
 pub(crate) const WINDOWS_SERVICE_CREDENTIAL_IPC_POSTFIX: &str = "_service_credential";
 #[cfg(any(target_os = "windows", test))]
@@ -7999,7 +8025,8 @@ where
         &mut self,
         ms_timeout: u64,
     ) -> ResultType<Option<MainIpcResponse>> {
-        Ok(timeout(ms_timeout, self.next_json()).await??)
+        let response: Option<MainIpcResponse> = timeout(ms_timeout, self.next_json()).await??;
+        response.map(MainIpcResponse::validate).transpose()
     }
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     pub(crate) async fn send_service_request_timeout(

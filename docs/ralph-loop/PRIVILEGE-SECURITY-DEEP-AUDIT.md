@@ -116536,3 +116536,13 @@ commands and live instructions are unchanged; `git diff --check` passes. No
 product/compiler rerun or new native closure is claimed for this documentation
 edit. Current native/installed, R-S0/R-F5 and release obligations stay open, and
 all user-parked work remains parked.
+
+At `5d84ecbf`, isolated count `AcpENnz65c` reports **359,264 ledger tokens** /
+1,643,030 bytes, SHA-256
+`414cdde92576ed5cb68ef86dc3464eab9d42efbeae4d503dbff0d8440bb3db84`.
+Requirements count **367,717 tokens**, 67 fewer than the prior count bound to
+the unchanged baseline digest. Both inputs pass seven tokenizer controls and
+complete byte round trips. QEMU 1738373 joins after 30.504 seconds, RAM
+`run.cu1tkjol` retires and all three host listener deltas are zero. Six retained
+files total 103,365 bytes on each host. This audit-only receipt changes neither
+measured input.

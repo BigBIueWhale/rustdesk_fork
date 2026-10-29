@@ -13679,30 +13679,6 @@ if [ -n "$rsv9_http" ]; then
 else
   echo "  ok  R-SV9 front-end/helper paths carry no plaintext or live upstream RustDesk/GitHub URL literals"
 fi
-# R-S11a / R-S8 (cross-uid IPC authorization + parent-dir hardening): two MUSTs over the world-mode
-# 0o0666 `_service`/`_uinput_*` sockets. (a) AUTHORIZATION — the `_service` UID gate authorizes the
-# peer against a FRESH active-user lookup (active_uid_fresh, src/ipc/auth.rs), NOT the service-loop
-# cache, so a just-switched-out user cannot pass in the cache-lag window (matching uinput); the cached
-# active_uid() stays only for config-sync routing. (b) the parent dir the root service owns + locks
-# down BEFORE binding — opened O_NOFOLLOW (symlink-TOCTOU, R-S8), the opened FD fchmod'd to the
-# expected mode (0o0711 service / 0o0700 else) + fchown'd, stale artifacts scrubbed — so a local user
-# cannot pre-stage a world-traversable dir/socket the service trusts. Gate both present + wired.
-# R-S11a(b) reject-and-recreate (a foreign-owned service dir is rmdir'd + recreated on a FRESH inode,
-# never fchown-adopted, so a pre-set ACL cannot survive) is DONE (commit b46e427) + behavior-tested at (3b).
-r_s11a_missing=
-grep -q 'fn active_uid_fresh' src/ipc/auth.rs                      || r_s11a_missing="$r_s11a_missing fresh-auth-fn"
-grep -q 'let active_uid = active_uid_fresh()' src/ipc/auth.rs      || r_s11a_missing="$r_s11a_missing fresh-auth-wire"
-grep -q 'ensure_secure_ipc_parent_dir(&path, postfix)' src/ipc.rs || r_s11a_missing="$r_s11a_missing new_listener-wire"
-grep -q 'scrub_secure_ipc_parent_dir(&path, postfix)'  src/ipc.rs || r_s11a_missing="$r_s11a_missing scrub-wire"
-grep -q 'fn ensure_secure_ipc_parent_dir' src/ipc/fs.rs           || r_s11a_missing="$r_s11a_missing ensure-fn"
-grep -q 'O_NOFOLLOW' src/ipc/fs.rs                                 || r_s11a_missing="$r_s11a_missing O_NOFOLLOW"
-grep -q 'fn expected_ipc_parent_mode' src/ipc/fs.rs               || r_s11a_missing="$r_s11a_missing expected-mode"
-grep -qE '0o0?711' src/ipc/fs.rs                                   || r_s11a_missing="$r_s11a_missing 0o711"
-if [ -n "$r_s11a_missing" ]; then
-  echo "  FAIL R-S11a/R-S8: IPC fresh-auth or parent-dir hardening incomplete/unwired:$r_s11a_missing"; rc=1
-else
-  echo "  ok  R-S11a(a) fresh _service active-uid auth + R-S11a(b)/R-S8 parent-dir hardening (O_NOFOLLOW+0o0711+scrub) present & wired"
-fi
 # R-S8/R-S11: file responses carry a connection token plus monotonic generation. The worker and
 # connection both validate exact session/job/phase authority; finalization retains the reservation
 # until the typed worker acknowledgement arrives.

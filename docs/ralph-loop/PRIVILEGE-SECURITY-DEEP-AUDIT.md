@@ -114288,3 +114288,45 @@ joins exit zero; its PID, RAM workspace `run.lxy4v_b0` and active run roots are
 absent, with all three listener deltas zero. Six copied files total 102,881 bytes;
 serial/storage/listener hashes match locked TUF reads. This audit-only addition
 does not change the counted ledger or require another run.
+
+## 2026-10-29 — Unix IPC directory evidence correction
+
+Previous turn: no new hardening progress; it rechecked the completed TUF install.
+The current R-S11b/R-S11c checklist still leaves all fifteen credential actions
+without installed/native acceptance. Their parked work stays parked.
+
+The shared verifier's 24-line R-S11a grep block does not establish its advertised
+Linux authorization/directory wiring. Its no-argument fresh-lookup pattern matches
+the macOS branch. Its no-follow and mode searches accept occurrences elsewhere in
+the file. The function-scoped desktop checker already checks the Linux lookup,
+parent ownership/open/recreation/mode and listener ordering, and remains invoked.
+The separate filesystem and UID-policy executable tests remain unchanged.
+
+Isolated non-root, networkless classification at `c71ff4b4` confirms that the old
+block passes three independently altered source copies: Linux fresh lookup
+replaced by the cache, parent open without O_NOFOLLOW, and owner rejection
+replaced by an unrelated comparison. The retained checker rejects each and passes
+current source. Delete the duplicate block rather than repair a redundant gate.
+The first candidate comparison could not start Git inside the minimal image;
+the completed comparison instead receives compressed baseline bytes and exact
+expected hashes derived from the Git object. It confirms the exact 24-line
+deletion, byte-identical retained checker, unchanged Rust executable/test tokens
+and valid shell syntax. All three containers terminated and were removed; host
+listener inventories are equal. No product or native filesystem test ran.
+
+The filesystem comments also incorrectly claimed that a foreign named-user ACL
+write permission stays effective after chown/chmod. Linux
+[acl(5)](https://man7.org/linux/man-pages/man5/acl.5.html) binds group mode bits to
+the access-ACL mask: chmod(0711) removes effective named-user write permission,
+while entries and a default ACL can remain. The corrected comments describe the
+required fresh-inode replacement without claiming this masked write permission
+is an escalation. R-S11a's no-adoption contract and production behavior remain
+unchanged. Root/current/stale-principal, installed listener, race and complete
+R-S0 acceptance remain OPEN. A separate native root filesystem harness has not
+been added or run; no full-parent build was resumed.
+
+Retained capsule: `ipc-parent-evidence-c71ff4b4.json`, 41,315 bytes, SHA-256
+`1002880ac6332fa3c2f64cf956271b298498a010a6475eade5fb6be051c1e6ac`.
+It includes the classification/comparison inputs, commands, outputs, isolation,
+terminal states and listener inventories. Only the matching architecture ledger
+entry changes; its fresh isolated token count follows.

@@ -571,6 +571,16 @@ they do not establish compiler, scanner, installed, native or release acceptance
 Historical repair narratives and size/token comparisons are archived in Git, including
 the pre-consolidation source `a40b7ce7`.
 
+**R-S11a duplicate gate removed.** The 24-line shared grep block accepted removal
+of the Linux fresh lookup, parent no-follow flag and owner rejection; the retained
+function-scoped desktop checker rejects all three. Its current source pass and
+shell syntax pass in isolated non-root, networkless execution. Exact comparison
+confirms only that block was deleted and filesystem executable/test tokens are
+unchanged. Comments now distinguish ACL-entry retention from effective write
+permission after chmod. Directory replacement remains mandatory. No new native
+filesystem or installed-service acceptance is claimed; the audit entry
+“2026-10-29 — Unix IPC directory evidence correction” records the classification.
+
 **OPEN:** whole-document and test classification; all fifteen credential actions;
 R-S0 immunity with complete functionality; actual R-F5 impairment recovery and
 multi-hour freshness; exact-current builders/artifacts and installed/native authority;

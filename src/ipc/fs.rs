@@ -195,14 +195,11 @@ fn remove_ipc_socket_via_secure_parent_fd(postfix: &str) -> ResultType<()> {
     remove_parent_entry_via_fd(fd, parent_dir, &format!("ipc{}", postfix))
 }
 
-// R-S11a(b): REJECT-AND-RECREATE a foreign-owned service IPC parent dir on a FRESH inode instead of
-// fchown-ADOPTING it. Adopting keeps the foreign-created inode, so a pre-set POSIX ACL/xattr granting
-// the foreign user write survives chown+chmod (mode bits don't clear ACLs) and could race-inject a
-// socket after the scrub; a fresh inode carries none. Operates relative to the GRANDPARENT fd
-// (O_NOFOLLOW), so it removes exactly `parent_dir` (= grandparent + basename, both DERIVED from the
-// passed path — never a hardcoded/wrong dir; no grandparent ⇒ fail-closed). Fail-closed on any race /
-// non-empty / error: a recreate failure refuses to listen (a detectable DoS), never an adopt. Returns
-// the fresh dir's fd for the caller to fstat-verify (root-owned, expected mode).
+// R-S11a(b): replace the foreign-created inode rather than relabel its ownership.
+// This also discards its access/default ACLs and other inode metadata. Linux chmod(0711)
+// masks named-user write access, but does not remove the ACL entries or the default ACL.
+// Remove only known IPC artifacts and recreate relative to the opened grandparent;
+// leftover entries or failed recreation refuse startup. The caller verifies the returned fd.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn recreate_foreign_service_ipc_parent_dir(parent_dir: &Path, postfix: &str) -> ResultType<i32> {
     let grandparent = parent_dir.parent().ok_or_else(|| {
@@ -351,7 +348,7 @@ pub(crate) fn ensure_secure_ipc_parent_dir(path: &str, postfix: &str) -> ResultT
         .parent()
         .ok_or_else(|| Error::new(ErrorKind::InvalidInput, format!("invalid ipc path: {path}")))?;
     // Harden against common TOCTOU by opening the parent directory with O_NOFOLLOW (so the parent
-    // itself cannot be a symlink) and then operating on its FD (fstat/fchown/fchmod). This ensures
+    // itself cannot be a symlink) and then operating on its FD (fstat/fchmod). This ensures
     // we mutate the inode we opened, though it does not protect against symlinks in ancestor path
     // components.
     let parent_c = CString::new(parent_dir.as_os_str().as_bytes().to_vec())?;
@@ -446,11 +443,8 @@ pub(crate) fn ensure_secure_ipc_parent_dir(path: &str, postfix: &str) -> ResultT
     let expected_uid = unsafe { hbb_common::libc::geteuid() as u32 };
     let mut owner_uid = st.st_uid as u32;
     let mut recreated_foreign_service_parent = false;
-    // R-S11a(b): if running as root and the protected service-postfix parent dir is FOREIGN-owned, do
-    // NOT fchown-ADOPT it — adopting keeps the foreign-created inode, so a pre-set POSIX ACL/xattr
-    // granting the foreign user write SURVIVES the chown+chmod and could race-inject a socket after the
-    // scrub. REJECT-AND-RECREATE on a fresh inode instead (no surviving ACL). The helper removes exactly
-    // this dir via its grandparent fd and fails closed on any race/non-empty/error — never an adopt.
+    // Only root may replace a foreign-owned protected service parent; other ownership
+    // mismatches are rejected below. Never change the foreign inode's ownership.
     if should_recreate_foreign_service_ipc_parent(owner_uid, expected_uid, postfix) {
         // Close the foreign parent fd before its directory is removed, then re-open the fresh one.
         drop(fd_guard);
@@ -1139,12 +1133,8 @@ mod tests {
             "recreated dir must be 0o711"
         );
 
-        // The decisive check: the attacker's pre-set named-user ACL entry must be gone.
-        // reject-and-recreate rmdir's the foreign inode (destroying its ACL) and mkdir's a fresh one, so
-        // the named-user grant cannot survive; an fchown-ADOPT keeps the inode and the grant survives.
-        // This is robust to inode-NUMBER reuse — a freed inode number may be recycled by rmdir+mkdir on
-        // some filesystems, so the old `assert_ne!(ino)` was environment-flaky; the ACL is the real
-        // security property R-S11a(b) protects.
+        // Observe removal of the named-user ACL entry, not merely masking its permissions.
+        // Inode numbers can be reused after rmdir, so number inequality is not required.
         assert!(
             !foreign_named_user_acl_is_present(&parent_dir, foreign_uid),
             "reject-and-recreate must drop the pre-set foreign POSIX ACL; inode adoption would preserve it"

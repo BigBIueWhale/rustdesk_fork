@@ -672,7 +672,7 @@ class _CmAudioInputButton extends StatefulWidget {
 }
 
 class _CmAudioInputButtonState extends State<_CmAudioInputButton> {
-  bool _pending = false;
+  static final _selectionPending = ValueNotifier(false);
 
   Future<void> _selectDevice(Client client, CmVoiceCallOwner voiceOwner) async {
     bool isCurrent() =>
@@ -689,8 +689,8 @@ class _CmAudioInputButtonState extends State<_CmAudioInputButton> {
         !client.disconnected &&
         !client.incomingVoiceCall &&
         client.inVoiceCall;
-    if (_pending || !isCurrent()) return;
-    setState(() => _pending = true);
+    if (_selectionPending.value || !isCurrent()) return;
+    _selectionPending.value = true;
     try {
       final devicesInfo = await AudioInput.getDevicesInfo(true, true);
       if (!isCurrent()) return;
@@ -755,7 +755,7 @@ class _CmAudioInputButtonState extends State<_CmAudioInputButton> {
       debugPrint('Failed to select CM audio input: $error');
       if (isCurrent()) showToast(translate('Failed'));
     } finally {
-      if (mounted) setState(() => _pending = false);
+      _selectionPending.value = false;
     }
   }
 
@@ -763,16 +763,19 @@ class _CmAudioInputButtonState extends State<_CmAudioInputButton> {
   Widget build(BuildContext context) {
     final client = widget.client;
     final voiceOwner = CmVoiceCallOwner(client);
-    return Opacity(
-      opacity: _pending ? 0.6 : 1,
-      child: AbsorbPointer(
-        absorbing: _pending,
-        child: _CmControlPanel.buildButton(context,
-            color: MyTheme.accent,
-            onClick: () => _selectDevice(client, voiceOwner),
-            icon: Icon(Icons.call_rounded, color: Colors.white, size: 14),
-            text: 'Audio input',
-            textColor: Colors.white),
+    return ValueListenableBuilder<bool>(
+      valueListenable: _selectionPending,
+      builder: (context, pending, child) => Opacity(
+        opacity: pending ? 0.6 : 1,
+        child: AbsorbPointer(
+          absorbing: pending,
+          child: _CmControlPanel.buildButton(context,
+              color: MyTheme.accent,
+              onClick: () => _selectDevice(client, voiceOwner),
+              icon: Icon(Icons.call_rounded, color: Colors.white, size: 14),
+              text: 'Audio input',
+              textColor: Colors.white),
+        ),
       ),
     );
   }

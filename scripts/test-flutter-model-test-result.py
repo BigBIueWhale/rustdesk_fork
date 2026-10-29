@@ -198,7 +198,7 @@ class ResultTests(unittest.TestCase):
 
     def test_complete_profiles(self):
         if SINGLE_PROFILE == "audio-input":
-            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (3, 37))
+            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (3, 40))
             return
         if SINGLE_PROFILE == "password-fields":
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (3, 25))

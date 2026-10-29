@@ -115865,3 +115865,12 @@ product fix or privilege-boundary closure. Full applications, installed actions,
 other-platform behavior, other allocation sites and release/review acceptance
 remain OPEN. The helper handshake review remains parked. Requirements and live
 instruction contents are unchanged.
+
+Fresh ledger count at `42045af9`, TUF `lNNENqU8Mr`: **359,180 tokens** /
+1,641,808 bytes using pinned `tiktoken-0.12.0/cl100k_base/encode_ordinary`, seven
+controls and complete byte round trip. Input SHA-256:
+`8d12424f1392ef24884a2f7043be994a97e059e6679ea1435b761a4cd89fdce2`.
+QEMU 1684591 joins after 30.302 seconds, `run.df39432n` retires and all three
+listener deltas are zero. Six count records total 102,669 bytes; the fourteen
+retained files for this slice total 214,518 bytes on both machines. This audit-only
+addition leaves the measured ledger unchanged and below its approximate budget.

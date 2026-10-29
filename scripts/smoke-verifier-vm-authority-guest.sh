@@ -1881,7 +1881,7 @@ run_android_frame_tests() {
     fi
     if [ "${X11_CLIPBOARD_ONLY:-0}" -eq 1 ]; then
         native_script=test-native-clipboard-listener.py
-        native_receipt='CLIPBOARD_LISTENER_NATIVE=pass scope=linux-component source=production master=owned-x11 callbacks=actual old=retained current=joined late_admission=refused startup_observer=retired tests=14 network=none cleanup=joined'
+        native_receipt='CLIPBOARD_LISTENER_NATIVE=pass scope=linux-component source=production master=owned-x11 callbacks=actual old=retained current=joined late_admission=refused startup_observer=retired tests=15 network=none cleanup=joined'
     fi
     if [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
         native_receipt='XDO_KEY_INPUT_SHARD=pass source=production-components provider=current-only parser=absent real_events=observed maps=restored network=none uid=4000 cleanup=joined whole_app=false'

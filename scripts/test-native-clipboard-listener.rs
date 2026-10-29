@@ -392,6 +392,71 @@ fn e_native_startup_deadline() {
 }
 
 #[test]
+fn g_native_same_name_replacement() {
+    let (connection, selection, windows) = native_selection_driver();
+    let baseline = resources();
+    let children = root_children(&connection);
+    for keep_other in [false, true] {
+        for retire_receiver in [false, true] {
+            let other = keep_other.then(|| subscribe("replacement-survivor".to_owned()).unwrap());
+            let (old_owner, old_receiver) = subscribe("replacement".to_owned()).unwrap();
+            let mut old_receiver = Some(old_receiver);
+            let before = root_children(&connection);
+            assert_eq!(before.len(), children.len() + 1);
+            assert!(subscribe("replacement".to_owned()).is_err());
+            assert_eq!(root_children(&connection), before,
+                       "duplicate admission changed the native listener");
+            let mut receivers = vec![old_receiver.as_ref().unwrap()];
+            if let Some((_, receiver)) = &other { receivers.push(receiver); }
+            change_and_observe(&connection, selection, windows, &receivers);
+            drop(receivers);
+
+            if retire_receiver {
+                drop(old_receiver.take());
+            } else {
+                old_owner.close();
+                assert!(matches!(old_receiver.as_ref().unwrap().recv_timeout(Duration::from_secs(1)),
+                                 Some(CallbackResult::Stop)));
+            }
+            if keep_other {
+                assert_eq!(root_children(&connection), before);
+            } else {
+                assert_native_window_retired(&connection, &children);
+                assert_resources_retired(baseline);
+            }
+
+            let (current, receiver) = subscribe("replacement".to_owned()).unwrap();
+            let replacement_children = root_children(&connection);
+            assert_eq!(replacement_children.len(), children.len() + 1);
+            old_owner.close();
+            std::thread::scope(|scope| {
+                let owner = scope.spawn(move || drop(old_owner));
+                let receiver = scope.spawn(move || drop(old_receiver));
+                owner.join().unwrap();
+                receiver.join().unwrap();
+            });
+            assert_eq!(root_children(&connection), replacement_children,
+                       "stale retirement removed the replacement's native window");
+            let mut receivers = vec![&receiver];
+            if let Some((_, receiver)) = &other { receivers.push(receiver); }
+            change_and_observe(&connection, selection, windows, &receivers);
+            drop(receivers);
+            drop(receiver);
+            drop(current);
+            if let Some((owner, receiver)) = other {
+                change_and_observe(&connection, selection, windows, &[&receiver]);
+                drop(receiver);
+                drop(owner);
+            }
+            assert_native_window_retired(&connection, &children);
+            assert_resources_retired(baseline);
+            println!("CLIPBOARD_NATIVE_REPLACEMENT_CYCLE survivor={keep_other} receiver_first={retire_receiver} duplicate=refused stale_handles=retired replacement=working resources=baseline");
+        }
+    }
+    println!("CLIPBOARD_NATIVE_REPLACEMENT=pass cycles=4 duplicate=refused same_name=reused stale_close=ignored stale_drop=concurrent callbacks=actual survivor=working native_window=retired resources=baseline");
+}
+
+#[test]
 fn f_native_cookie_authentication() {
     let correct = std::env::var("XAUTHORITY").unwrap();
     // Keep one FIFO writer live; another FIFO has no writer at all. The

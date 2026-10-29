@@ -49,7 +49,7 @@ def build():
         if source.tokens[start - 1].text == 'async':
             start -= 1
         body = source.functions(name)[chosen]
-        return 'pub(super) ' + source.text[source.tokens[start].offset:source.tokens[body.end].offset + 1] + '\n'
+        return 'pub(crate) ' + source.text[source.tokens[start].offset:source.tokens[body.end].offset + 1] + '\n'
 
     fs_source = parsed(repo / 'src/ipc/fs.rs')
     guard = fs_source.impl(('impl', 'Drop', 'for', 'FdGuard'), 'fd guard')
@@ -66,10 +66,10 @@ def build():
         'executable_paths_match', 'peer_executable_is_current_by_pid', 'validate_linux_root_service_peer'))
     identity += function(auth, 'peer_exe_canonical_path_by_pid', index=0)
     # Root-level helpers have crate visibility rather than a parent module.
-    (work / 'identity.rs').write_text(identity.replace('pub(super) ', ''))
+    (work / 'identity.rs').write_text(identity.replace('pub(crate) ', ''))
     ipc = parsed(repo / 'src/ipc.rs')
     transport = ''.join(function(ipc, name) for name in ('connect', 'connect_with_path'))
-    (work / 'transport.rs').write_text(transport.replace('pub(super) ', ''))
+    (work / 'transport.rs').write_text(transport.replace('pub(crate) ', ''))
     config = parsed(repo / 'libs/hbb_common/src/config.rs')
     (work / 'config.rs').write_text(''.join(function(config, name) for name in (
         'is_service_ipc_postfix', 'ipc_parent_dir_for_uid')))

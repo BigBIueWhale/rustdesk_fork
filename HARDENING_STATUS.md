@@ -3685,10 +3685,16 @@ Baseline `AFd90Yq4au` serializes all 100,000 sequence elements before rejecting
 the 32 KiB frame; `HaPrQjXlT0` stops at element 16,385. Both root/UID-4001 cases
 pass, alongside forty string/size combinations and serializer-error recovery on
 real Unix sockets. Refusal sends no bytes and the same stream accepts a subsequent
-valid frame. All 156 listener and 14 directory cases pass in 82.262 seconds;
-the focused source check passes and VM/RAM cleanup joins with zero listener deltas.
-Receipt: `ipc-json-budget-8307a2d6.json`. Full endpoint/application flows,
-allocation-failure injection and other-platform acceptance remain OPEN.
+valid frame. `ff8956ed` additionally tests real allocation refusal by reducing
+each test process's soft address-space limit. Both principals receive the explicit
+allocation error with no wire bytes, restore the original limits and transfer the
+same complete 16 MiB message on the same socket. Product code is unchanged; the
+16 MiB cap belongs only to this component test. Current `RyBrijiVOO` passes all
+158 listener and 14 directory cases in 85.468 seconds, plus the focused source
+check; VM/RAM cleanup joins with zero listener deltas. Receipts:
+`ipc-json-budget-8307a2d6.json`, `ipc-json-allocation-ff8956ed.json`.
+Full endpoint/application flows, other allocation sites and other-platform
+acceptance remain OPEN.
 
 **R-X14 desktop resource removal.** `9c8ebb1c` deletes the unused `res/startwm.sh` and
 dummy `res/xorg.conf`, their Debian payload/conffile/executable entries and the empty
@@ -9138,9 +9144,9 @@ sandbox implementation and checker-repair history remain in Git.
   Baseline `DRZBPWPlFn` reproduces nineteen valid failures; two special-bit fixtures
   required correction before they could count. The audit records that distinction.
 
-  **Current native evidence:** `8307a2d6`, TUF `HaPrQjXlT0`, passes 156 listener
-  cases and 14 directory cases in 82.262 seconds, including the twelve main/service
-  scheduling, six accept-error and six JSON serialization cases recorded above.
+  **Current native evidence:** `ff8956ed`, TUF `RyBrijiVOO`, passes 158 listener
+  cases and 14 directory cases in 85.468 seconds, including the twelve main/service
+  scheduling, six accept-error and eight JSON serialization cases recorded above.
   Baseline `mG75yce2f7` reproduces
   ten non-socket replacements, two PID-file deletions and two startup failures
   caused by nonempty PID directories. The same fourteen scenarios now preserve
@@ -9168,7 +9174,8 @@ sandbox implementation and checker-repair history remain in Git.
   Config name/path and service authorization remain fixture adapters. The directory
   fixture no longer invokes macOS-only scrub code on Linux; it checks parent
   hardening and preservation. All host listener deltas are zero, QEMU joins and RAM
-  scratch retires. Provenance: `ipc-json-budget-8307a2d6.json`,
+  scratch retires. Provenance: `ipc-json-allocation-ff8956ed.json`,
+  `ipc-json-budget-8307a2d6.json`,
   `ipc-target-cfg-2a2f7f66.json`,
   `ipc-accept-retry-7b1279bd.json`,
   `ipc-main-fairness-d4987511.json`,

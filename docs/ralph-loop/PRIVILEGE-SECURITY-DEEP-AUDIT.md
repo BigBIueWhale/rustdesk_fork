@@ -115679,3 +115679,36 @@ all three listener deltas are zero. Its six retained files total 102,532 bytes
 on CTE and TUF. The ledger is below its approximate 400,000-token budget;
 whole-document classification/compression remains open. This audit-only addition
 does not change the measured ledger input.
+
+### 2026-10-29 — IPC allocation refusal under real address-space pressure
+
+`ff8956ed` verifies the existing `8307a2d6` allocation-error path without changing
+production code. The root and UID-4001 subprocesses warm a real Unix socket pair,
+prepare a valid 16 MiB JSON string and set the component's frame cap to that exact
+size. Each reduces only its own soft RLIMIT_AS to current virtual size plus 1 MiB,
+requires `IPC frame allocation failed`, restores and verifies both original limits,
+and proves no rejected bytes were sent. The identical full message then transfers
+successfully on the same socket with exact encoded-byte comparison. Kernel peer
+UID/PID and the original descriptor count are checked. The component test cap does
+not alter any product endpoint's configured limit.
+
+[getrlimit(2)](https://man7.org/linux/man-pages/man2/getrlimit.2.html) documents
+the ENOMEM behavior of address-space-limited allocations and restoration of a
+soft limit within its retained hard ceiling. [proc_pid_statm(5)](https://man7.org/linux/man-pages/man5/proc_pid_statm.5.html)
+defines the virtual-size page count used with the queried native page size.
+
+TUF `RyBrijiVOO`, command `bash scripts/smoke-verifier-vm-authority.sh --linux-ipc-parent-tests`,
+passes all 158 listener and 14 directory cases plus the focused desktop source
+checker in 85.468 seconds. The production connection/filesystem/codec fragments
+match the preceding accepted run. Listener binary SHA-256:
+`da40f214d323b417f22be4b5232b5677b776c51f3f533f89f1418c9f894c80d9`.
+All four listener deltas are zero. QEMU 1675188 joins and `run.bbs3slj0` retires;
+peak scratch is 3,381,059,584 allocated bytes and durable run storage 3,428,352.
+Seven run files plus `ipc-json-allocation-ff8956ed.json` total 111,005 bytes on
+CTE and TUF; capsule SHA-256:
+`e9ce14cc01945afad999a47dafa9f24f0dd4d9c5596853f3f8c39f553e572860`.
+
+This closes the named Linux serialization-buffer allocation-refusal observation.
+Other allocator sites, arbitrary system-wide OOM, full application/installed
+privileged actions, other-platform acceptance and the existing release/review
+obligations remain OPEN. No new LPE closure or product correction is claimed.

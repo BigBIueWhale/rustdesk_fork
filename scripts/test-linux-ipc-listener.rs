@@ -23,6 +23,7 @@ type ResultType<T> = anyhow::Result<T>;
 const POSTFIX_SERVICE: &str = "_service";
 const CM_IPC_MAX_FRAME_BYTES: usize = 1024;
 thread_local! { static USE_USER_MAIN_IPC: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
+thread_local! { static MAIN_ROUTE_UID: std::cell::Cell<Option<u32>> = const { std::cell::Cell::new(None) }; }
 include!("identity.rs");
 include!("transport.rs");
 include!("connection.rs");
@@ -73,7 +74,9 @@ mod common {
 }
 fn whiteboard_ipc_postfix_is_valid(_: &str) -> bool { false }
 fn linux_whiteboard_endpoint_address(_: &str) -> ResultType<String> { panic!("outside fixture") }
-fn user_main_ipc_server_uid() -> ResultType<u32> { panic!("outside fixture") }
+fn user_main_ipc_server_uid() -> ResultType<u32> {
+    MAIN_ROUTE_UID.with(|uid| uid.get().ok_or_else(|| anyhow::anyhow!("main route is outside fixture")))
+}
 fn timeout<T: std::future::Future>(ms: u64, future: T) -> tokio::time::Timeout<T> {
     tokio::time::timeout(std::time::Duration::from_millis(ms), future)
 }
@@ -1217,6 +1220,62 @@ async fn read_fixture(scenario: &str) {
     println!("OK read-{scenario} uid={} cleanup=joined", unsafe { libc::geteuid() });
 }
 
+async fn main_peer_server(route_uid: u32, client_uid: u32, dumpable: u32) {
+    assert_eq!(unsafe { libc::prctl(libc::PR_SET_DUMPABLE, dumpable as libc::c_ulong,
+                                  0 as libc::c_ulong, 0 as libc::c_ulong, 0 as libc::c_ulong) }, 0);
+    assert_eq!(unsafe { libc::prctl(libc::PR_GET_DUMPABLE) }, dumpable as i32);
+    let before = fd_count();
+    let mut payloads = 0;
+    {
+        let path = Config::ipc_path_for_uid(route_uid, "");
+        let listener = tokio::net::UnixListener::bind(&path).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o666)).unwrap();
+        ready("READY");
+        for _ in 0..2 {
+            let (stream, _) = timeout(4000, listener.accept()).await.unwrap().unwrap();
+            assert_eq!(peer_uid_from_fd(stream.as_raw_fd()), Some(client_uid));
+            assert!(peer_pid_from_fd(stream.as_raw_fd()).is_some_and(|pid| pid > 0));
+            let mut stream = ConnectionTmpl::new_main(stream);
+            match stream.next_main_timeout(2000).await.unwrap() {
+                Some(MainIpcRequest::StatusSnapshot) => {
+                    payloads += 1;
+                    stream.send_json_timeout(&MainIpcResponse::StatusSnapshot(MainStatusSnapshot {
+                        options: MainStatusOptions(Vec::new()), file_transfer_enabled: None,
+                    }), 1000).await.unwrap();
+                }
+                None => {}
+                other => panic!("unexpected main request: {other:?}"),
+            }
+        }
+    }
+    assert_eq!(fd_count(), before);
+    println!("OK main-peer-server uid={} payloads={payloads} cleanup=joined", unsafe { libc::geteuid() });
+}
+
+async fn main_peer_client(route_uid: u32, allowed: bool) {
+    let before = fd_count();
+    MAIN_ROUTE_UID.with(|uid| uid.set(Some(route_uid)));
+    USE_USER_MAIN_IPC.with(|enabled| enabled.set(unsafe { libc::geteuid() } == 0));
+    let ordinary = main_transaction::main_ipc_request(MainIpcRequest::StatusSnapshot, 1000).await;
+    let explicit = async {
+        let stream = connect_for_uid(1000, route_uid, "").await?;
+        main_transaction::main_ipc_request_on_stream(stream, MainIpcRequest::StatusSnapshot, 1000).await
+    }.await;
+    assert_eq!(fd_count(), before);
+    for (route, result) in [("ordinary", ordinary), ("explicit", explicit)] {
+        if allowed {
+            assert!(matches!(result, Ok(MainIpcResponse::StatusSnapshot(ref snapshot))
+                if snapshot.options.0.is_empty() && snapshot.file_transfer_enabled.is_none()),
+                "valid {route} response was not returned: {result:?}");
+        } else {
+            assert!(result.as_ref().err().is_some_and(|error|
+                error.to_string().contains("Linux main IPC server principal does not match")),
+                "foreign {route} peer was not refused: {result:?}");
+        }
+    }
+    println!("OK main-peer-client route_uid={route_uid} allowed={allowed} cleanup=joined");
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     assert_eq!(args.len(), 3);
@@ -1228,6 +1287,19 @@ fn main() {
     let postfix = &args[2];
     assert!(["", "_password", "_service_password", "_service_credential", "_service"].contains(&postfix.as_str()));
     let path = Config::ipc_path(postfix);
+    if let Some(parameters) = args[1].strip_prefix("main-peer-server-") {
+        let values: Vec<u32> = parameters.split('-').map(|value| value.parse().unwrap()).collect();
+        assert_eq!(values.len(), 3);
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(main_peer_server(values[0], values[1], values[2]));
+        return;
+    }
+    if let Some(parameters) = args[1].strip_prefix("main-peer-client-") {
+        let (uid, allowed) = parameters.split_once('-').unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(main_peer_client(uid.parse().unwrap(), allowed.parse().unwrap()));
+        return;
+    }
     if let Some(scenario) = args[1].strip_prefix("url-accept-") {
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         runtime.block_on(url_accept_fixture(scenario));

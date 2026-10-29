@@ -98,7 +98,7 @@ def build():
         core.tokens[option.start].offset:core.tokens[option.end].offset] + '}\n'
     (work / 'option_cli.rs').write_text(option_cli)
     shutil.copyfile(repo / 'scripts/test-cli-option-read.rs', work / 'cli_option_read.rs')
-    transport = ''.join(function(ipc, name) for name in ('connect', 'connect_with_path', 'new_listener'))
+    transport = ''.join(function(ipc, name) for name in ('connect', 'connect_with_path', 'connect_for_uid', 'new_listener'))
     listener = ipc.item('struct', 'IpcListener')
     start = ipc.all().require(('struct', 'IpcListener'), 'owned IPC listener', unique=True)
     transport += ipc.text[ipc.tokens[start].offset:ipc.tokens[listener.end].offset + 1] + '\n'
@@ -294,6 +294,48 @@ def native(expected_sha, barrier_sha):
             failures.append(name)
         print(f'LINUX_IPC_LISTENER_CASE={"pass" if passed else "fail"} name={name} '
               f'exit={result.returncode} stdout={result.stdout.strip()!r} stderr={result.stderr.strip()!r}', flush=True)
+
+    for label, client_uid, route_uid, peer_uid, dumpable in (
+            ('foreign-root-route', 0, 0, 4002, 1),
+            ('foreign-user-route', 4001, 4001, 4002, 1),
+            ('foreign-root-to-user', 0, 4001, 4002, 1),
+            ('foreign-root-peer', 4001, 4001, 0, 1),
+            ('root', 0, 0, 0, 1),
+            ('user', 4001, 4001, 4001, 1),
+            ('nondumpable-user', 4001, 4001, 4001, 0),
+            ('nondumpable-root-to-user', 0, 4001, 4001, 0)):
+        endpoint = path('', route_uid)
+        parent = endpoint.parent
+        original = parent.stat()
+        # Model an endpoint pre-created by a different user before daemon startup.
+        os.chown(parent, peer_uid, peer_uid); parent.chmod(0o711)
+        child = subprocess.Popen(**command(f'main-peer-server-{route_uid}-{client_uid}-{dumpable}', '', peer_uid),
+                                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE, text=True)
+        try:
+            require(select.select([child.stdout], [], [], 5)[0] and child.stdout.readline() == 'READY\n',
+                    'main peer listener did not start')
+            before = endpoint.lstat()
+            require(before.st_uid == peer_uid and stat.S_ISSOCK(before.st_mode), 'main peer socket differs')
+            allowed = peer_uid == route_uid
+            result = check('', client_uid, action=f'main-peer-client-{route_uid}-{str(allowed).lower()}')
+            output, errors = child.communicate(timeout=5)
+            after = endpoint.lstat()
+            passed = result.returncode == 0 and not result.stderr \
+                and result.stdout == f'OK main-peer-client route_uid={route_uid} allowed={str(allowed).lower()} cleanup=joined\n' \
+                and child.returncode == 0 and not errors \
+                and output == f'OK main-peer-server uid={peer_uid} payloads={2 if allowed else 0} cleanup=joined\n' \
+                and (before.st_dev, before.st_ino, before.st_mode, before.st_uid) \
+                    == (after.st_dev, after.st_ino, after.st_mode, after.st_uid)
+        finally:
+            if child.poll() is None:
+                child.kill(); child.communicate(timeout=5)
+                raise RuntimeError('main peer listener did not join normally')
+            endpoint.unlink(missing_ok=True)
+            os.chown(parent, original.st_uid, original.st_gid)
+            parent.chmod(stat.S_IMODE(original.st_mode))
+        record('main-peer-' + label, passed, subprocess.CompletedProcess([], result.returncode,
+               result.stdout + output, result.stderr + errors))
 
     for uid in (0, 4001):
         for scenario in ('success', 'recovery'):
@@ -1089,8 +1131,8 @@ def native(expected_sha, barrier_sha):
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
     require(sha(barrier) == barrier_sha, 'barrier changed')
     probe.unlink(); barrier.unlink(); work.rmdir()
-    require(len(cases) == 248, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=248 failures={len(failures)} '
+    require(len(cases) == 256, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=256 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 

@@ -13870,6 +13870,18 @@ establish full clipboard startup after application leader exit. Outer status is 
 observations, endpoint inventories and joined bounded-RAM cleanup. Application reachability
 of this boundary, full-app/root/installed and other-kernel/platform acceptance remain OPEN.
 
+**Native subscription replacement (`14add6fe`).** The unchanged production listener
+passes four same-name replacement cycles against private Xvfb: owner-first and
+receiver-first retirement, each with and without another live subscriber.
+Duplicate names refuse; repeated stale close and drops on separate joined threads
+preserve the replacement window and its real XFixes callbacks.
+The other subscriber remains functional, and final windows/tasks/descriptors
+return to baseline. The complete focused run passes six state and nine native
+cases, plus the six authority-reader scenarios, in 106.570 seconds. All three
+host listener deltas are zero and bounded RAM cleanup joins. This is new native
+component evidence, not a product correction or installed LPE acceptance;
+`clipboard-replacement-14add6fe.json` binds source, artifacts and observations.
+
 **Still OPEN:** Wayland fallback/lifetime limits; Windows/macOS native behavior; full
 parent/root-Cargo feature compilation/linking; exact current whole-app and installed
 master startup/callback, viewer/controlled subscriptions, focus/background/reconnect/

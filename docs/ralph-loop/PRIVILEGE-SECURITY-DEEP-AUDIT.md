@@ -114228,3 +114228,49 @@ joins exit zero with 4,096 observed host-write bytes; its PID, RAM workspace
 zero. Six bounded count files copied to CTE total 102,771 bytes; copied serial,
 storage and listener hashes match the locked TUF reads. This audit-only receipt
 leaves the counted ledger unchanged and needs no repeat count.
+
+## 2026-10-29 — native clipboard subscription replacement
+
+Previous turn: progress, with the audio correction and accepted evidence committed.
+The current R-S11b/R-S11c ledger still requires native/installed acceptance for all
+fifteen credential actions; their parked follow-ups remain parked. This slice
+tests the existing clipboard subscription-generation boundary through actual
+Linux listener lifetimes. Product code and requirements are unchanged.
+
+`src/clipboard.rs` binds each subscription and receiver to one name/generation.
+Both explicit close and Drop reach `unsubscribe_exact`; the final current
+subscriber signals and joins its native worker. The old state-only test checked
+map removal but did not exercise replacement windows or callbacks. The required
+behavior is that retained old handles cannot retire a new subscription using
+the same name, including when another subscriber shares the worker. Rust's
+[JoinHandle documentation](https://doc.rust-lang.org/std/thread/struct.JoinHandle.html#method.join)
+distinguishes joining from detaching; the [XFixes selection-tracking contract](https://xorg.freedesktop.org/archive/current/doc/fixesproto/fixesproto.txt)
+defines the native ownership-change events. The test observes callbacks,
+QueryTree window identity and final task/descriptor counts separately.
+
+Pushed `14add6fe` adds one native test with four cycles: owner-first versus
+receiver-first retirement, with versus without a surviving second subscriber.
+Every cycle refuses a duplicate name, reuses the retired name, repeats stale
+close and drops retained stale handles on joined threads, then observes working
+replacement callbacks and final resource retirement. TUF run `dCbAA5Sowj` exits
+zero: six state and nine native tests plus six authority-reader scenarios pass;
+the existing historical failure controls still reproduce their expected failures.
+The complete production listener compiles in the isolated component with pinned
+Rust 1.75 and root-locked dependencies; this is not a whole-app build. Product
+SHA-256 is `5c15056e25c7f0c5608014edce16c319e90c55b774574b680e43a636e4402c8f`;
+the current fixture binary hash is
+`a1b69142d991d18136eff7b695c368fd95fd011c0511891e81e9abd86a187424`.
+
+The 106.570-second receipt records 3,964,956,672 peak RAM scratch bytes,
+2,973,896,704 peak overlay bytes and 225,280 peak durable-run bytes. QEMU 1553989
+joins exit zero with 4,096 observed host-write bytes; its PID, RAM workspace
+`run.9jgzu6gu` and active run roots are absent. All three listener deltas are
+zero. Six bounded evidence files copied to CTE total 89,238 bytes with hashes
+matching locked TUF reads. The retained capsule is
+`clipboard-replacement-14add6fe.json` (29,377 bytes, SHA-256
+`4edba11e28780505fb1762a7a0ba65f0a2f137ad8f6a1dde0623bd01c2682c0f`);
+the native devcheck image and seven Xvfb
+packages are intentional reusable TUF inputs, not disposable scratch. No new
+LPE or product defect was demonstrated. Whole-app/installed, other-platform,
+exact overlap/all interleavings, arbitrary backpressure and full R-S0/R-F5
+acceptance remain OPEN.

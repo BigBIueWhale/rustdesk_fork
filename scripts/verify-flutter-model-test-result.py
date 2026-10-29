@@ -1136,13 +1136,6 @@ PEER_LOADER_TESTS = {
     "peer loader clear refuses later loading and model publication",
     "peer loader clear retires a pending request and its failure",
 }
-PEER_DATA_SUITES = {
-    "chat_history_test.dart": CHAT_HISTORY_TESTS,
-    "peer_decode_test.dart": PEER_DATA_TESTS,
-    "peer_tab_cache_test.dart": PEER_CACHE_TESTS,
-    "autocomplete_peer_tile_test.dart": AUTOCOMPLETE_PEER_TESTS,
-    "all_peers_loader_test.dart": PEER_LOADER_TESTS,
-}
 SETTINGS_NAVIGATION_TESTS = {
     "desktop theme owns one save across clicks rebuilds and tab changes",
     "desktop theme write failure remains visible and permits retry",
@@ -1227,10 +1220,29 @@ GLOBAL_EVENT_TESTS = {
     "byte and message bounds fail the exact fallback visibly",
     "registered handler inventory is finite and reusable after retirement",
     "registered handlers are captured and retired by exact registration",
+    "stale cancellation preserves same-callback replacement and capacity",
     "registered-only routing never falls through to session fallback",
     "configured latest-state events hand off synchronously outside FIFO",
     "configured synchronous handoff fails closed on an async callback",
     "handler and malformed-input failures remain visible and drainable",
+}
+PEER_MODEL_TESTS = {
+    "direct peers retain their address and local display metadata",
+    "retired account metadata cannot prevent a direct peer from loading",
+    "direct peers expose no retired credential or group fields",
+    "disposing owned peers releases their registration",
+    "disposed duplicate peers cannot retire the incumbent",
+    "rejected peers cannot retire a later owner with the same name",
+    "replaced peers cannot cancel their replacement registration",
+}
+PEER_DATA_SUITES = {
+    "peer_model_test.dart": PEER_MODEL_TESTS,
+    "global_event_dispatcher_test.dart": GLOBAL_EVENT_TESTS,
+    "chat_history_test.dart": CHAT_HISTORY_TESTS,
+    "peer_decode_test.dart": PEER_DATA_TESTS,
+    "peer_tab_cache_test.dart": PEER_CACHE_TESTS,
+    "autocomplete_peer_tile_test.dart": AUTOCOMPLETE_PEER_TESTS,
+    "all_peers_loader_test.dart": PEER_LOADER_TESTS,
 }
 CREDENTIAL_DIALOG_TESTS = {
     "windows_session_dialog_test.dart": {
@@ -1245,13 +1257,7 @@ CREDENTIAL_DIALOG_TESTS = {
         "Windows chooser retired dropdown cannot update disposed state",
     },
     "global_event_dispatcher_test.dart": GLOBAL_EVENT_TESTS,
-    "peer_model_test.dart": {
-        "direct peers retain their address and local display metadata",
-        "retired account metadata cannot prevent a direct peer from loading",
-        "direct peers expose no retired credential or group fields",
-        "disposing owned peers releases their registration",
-        "disposed duplicate peers cannot retire the incumbent",
-    },
+    "peer_model_test.dart": PEER_MODEL_TESTS,
     "connect_password_dialog_lifecycle_test.dart": {
         *(f"connect keyboard action submits once on {platform}" for platform in
           ("android", "iOS", "linux", "windows", "macOS")),

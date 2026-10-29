@@ -238,7 +238,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("status-refresh"), "status-refresh"), (2, 16))
         self.assertEqual(self.parse(self.events("share-rdp"), "share-rdp"), (1, 4))
         self.assertEqual(self.parse(self.events("window-dispatch"), "window-dispatch"), (1, 8))
-        self.assertEqual(self.parse(self.events("peer-data"), "peer-data"), (5, 94))
+        self.assertEqual(self.parse(self.events("peer-data"), "peer-data"), (7, 113))
         self.assertEqual(self.parse(self.events("file-progress"), "file-progress"), (1, 43))
         self.assertEqual(self.parse(self.events("audio-input"), "audio-input"), (3, 40))
         self.assertEqual(self.parse(self.events("reconnect"), "reconnect"), (2, 11))
@@ -255,7 +255,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("desktop-theme"), "desktop-theme"), (1, 16))
         self.assertEqual(self.parse(self.events("modifier-release"), "modifier-release"), (5, 112))
         self.assertEqual(self.parse(self.events("connect-password"), "connect-password"), (1, 14))
-        self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (10, 114))
+        self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (10, 117))
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "count"
             path.write_bytes(b"7\n")

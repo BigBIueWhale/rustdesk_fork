@@ -11,6 +11,7 @@ import socket
 import stat
 import subprocess
 import sys
+import time
 import tomllib
 
 ROOT = Path('/var/tmp/rustdesk-verifier-authority')
@@ -40,15 +41,15 @@ def build():
     def parsed(path):
         return parser.RustSource.parse(str(path), path.read_text())
 
-    def function(source, name, *, index=None):
+    def function(source, name, *, index=None, parent=None):
         starts = [i for i, t in enumerate(source.tokens[:-1]) if t.text == 'fn'
-                  and source.tokens[i + 1].text == name and source.brace_parent[i] is None]
+                  and source.tokens[i + 1].text == name and source.brace_parent[i] == parent]
         require(len(starts) == (2 if index is not None else 1), f'ambiguous function: {name}')
         chosen = 0 if index is None else index
         start = starts[chosen]
         if source.tokens[start - 1].text == 'async':
             start -= 1
-        body = source.functions(name)[chosen]
+        body = source.functions(name, parent=parent)[chosen]
         return 'pub(crate) ' + source.text[source.tokens[start].offset:source.tokens[body.end].offset + 1] + '\n'
 
     fs_source = parsed(repo / 'src/ipc/fs.rs')
@@ -76,6 +77,31 @@ def build():
     ipc = parsed(repo / 'src/ipc.rs')
     transport = ''.join(function(ipc, name) for name in ('connect', 'connect_with_path', 'new_listener'))
     (work / 'transport.rs').write_text(transport.replace('pub(crate) ', ''))
+    connection = ''
+    for name in ('SERVICE_IPC_MAX_FRAME_BYTES', 'MAIN_IPC_MAX_FRAME_BYTES', 'SERVICE_IPC_REQUEST_TIMEOUT_MS'):
+        start = ipc.all().require(('const', name), 'connection constant', unique=True)
+        end = next(i for i in range(start, len(ipc.tokens)) if ipc.tokens[i].text == ';')
+        connection += ipc.text[ipc.tokens[start].offset:ipc.tokens[end].offset + 1] + '\n'
+    for kind, name in (('enum', 'ServiceIpcRequest'), ('enum', 'ServiceIpcResponse'), ('struct', 'ConnectionTmpl')):
+        body = ipc.item(kind, name)
+        start = ipc.all().require((kind, name), 'connection item', unique=True)
+        offset = ipc.tokens[start].offset
+        if kind == 'enum':
+            offset = ipc.text.rindex('#[derive(', 0, offset)
+        connection += ipc.text[offset:ipc.tokens[body.end].offset + 1] + '\n'
+    methods = ipc.impl(('impl', '<', 'T', '>', 'ConnectionTmpl', '<', 'T', '>'), 'connection methods')
+    connection += 'impl<T: AsyncRead + AsyncWrite + Unpin> ConnectionTmpl<T> {\n'
+    for name in ('new', 'new_with_max_packet_length', 'new_protected_service', 'new_main',
+                 'send_json', 'send_json_timeout', 'next_json', 'send_service_request_timeout',
+                 'next_service_request_timeout', 'send_service_response_timeout',
+                 'next_service_response_timeout', 'set_max_packet_length'):
+        connection += function(ipc, name, parent=methods.start - 1)
+    connection += '}\nimpl<T: AsyncRead + AsyncWrite + Unpin + AsRawFd> ConnectionTmpl<T> {\n'
+    peers = auth.impl(('impl', '<', 'T', '>', 'ConnectionTmpl', '<', 'T', '>'), 'peer methods')
+    connection += ''.join(function(auth, name, parent=peers.start - 1) for name in ('peer_uid', 'peer_pid'))
+    connection += '}\n' + function(ipc, 'handle_service_request')
+    (work / 'connection.rs').write_text(connection)
+    shutil.copyfile(repo / 'libs/hbb_common/src/bytes_codec.rs', work / 'bytes_codec.rs')
     config = parsed(repo / 'libs/hbb_common/src/config.rs')
     (work / 'config.rs').write_text(''.join(function(config, name) for name in (
         'is_service_ipc_postfix', 'ipc_parent_dir_for_uid')))
@@ -89,10 +115,15 @@ name = "ipc-listener"
 path = "main.rs"
 [dependencies]
 anyhow = "=1.0.103"
+bytes = "=1.11.1"
+futures-util = { version = "=0.3.31", features = ["sink"] }
 libc = "=0.2.171"
 log = "=0.4.22"
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.118"
 socket2 = "=0.5.10"
 tokio = { version = "=1.44.2", features = ["full"] }
+tokio-util = { version = "=0.7.15", features = ["codec"] }
 parity-tokio-ipc = { git = "https://github.com/rustdesk-org/parity-tokio-ipc" }
 ''')
     shutil.copyfile(repo / 'Cargo.lock', work / 'Cargo.lock')
@@ -118,7 +149,9 @@ parity-tokio-ipc = { git = "https://github.com/rustdesk-org/parity-tokio-ipc" }
     print(f'LINUX_IPC_LISTENER_BUILD=pass artifact_sha256={sha(binary)} '
           f'fs_fragment_sha256={hashlib.sha256(filesystem.encode()).hexdigest()} '
           f'barrier_sha256={sha(barrier)} '
-          'transport=parity-tokio-ipc-root-locked framing=unexecuted', flush=True)
+          f'connection_fragment_sha256={hashlib.sha256(connection.encode()).hexdigest()} '
+          f'codec_sha256={sha(work / "bytes_codec.rs")} '
+          'transport=parity-tokio-ipc-root-locked framing=production', flush=True)
 
 
 def native(expected_sha, barrier_sha):
@@ -158,8 +191,8 @@ def native(expected_sha, barrier_sha):
     def command(action, postfix, uid=0):
         return dict(args=[str(probe), action, postfix], env=ENV, user=uid, group=uid, extra_groups=[])
 
-    def check(postfix, uid=0):
-        result = subprocess.run(**command('try-start', postfix, uid), capture_output=True, text=True, timeout=5)
+    def check(postfix, uid=0, action='try-start'):
+        result = subprocess.run(**command(action, postfix, uid), capture_output=True, text=True, timeout=5)
         require(len(result.stdout) + len(result.stderr) < 65536, 'output exceeds bound')
         return result
 
@@ -329,6 +362,46 @@ def native(expected_sha, barrier_sha):
         record('restart-after-contention-' + postfix, result.returncode == 0
                and result.stdout == 'OK started\n' and endpoint.is_socket(), result)
         endpoint.unlink(missing_ok=True)
+
+    for scenario in ('valid', 'unknown-field', 'unknown-type', 'malformed',
+                     'oversized', 'truncated', 'silent', 'disconnect'):
+        endpoint = path('_service')
+        child = subprocess.Popen(**command('service-' + scenario, '_service'),
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            require(select.select([child.stdout], [], [], 5)[0] and child.stdout.readline() == 'READY\n',
+                    'service listener failed')
+            before = endpoint.lstat()
+            passed = True
+            elapsed = []
+            for action in ('probe', 'try-start'):
+                started = time.monotonic()
+                result = check('_service', action=action)
+                elapsed.append(time.monotonic() - started)
+                require(select.select([child.stdout], [], [], 3)[0] and child.stdout.readline() == 'PROBE\n',
+                        'typed liveness request was not received')
+                preserved = endpoint.exists() and endpoint.lstat().st_ino == before.st_ino
+                expected_exit = 0 if scenario == 'valid' and action == 'probe' else 3
+                passed = passed and preserved and result.returncode == expected_exit
+                if scenario == 'valid':
+                    passed = passed and (result.stdout == 'OK alive\n' if action == 'probe'
+                                         else 'ipc listener is active' in result.stderr)
+                elif scenario in ('unknown-field', 'unknown-type', 'malformed'):
+                    passed = passed and 'invalid liveness response' in result.stderr
+                else:
+                    passed = passed and 'liveness read failed' in result.stderr
+                passed = passed and elapsed[-1] < 3.0
+                if scenario == 'silent':
+                    passed = passed and elapsed[-1] >= 0.75
+            output, errors = child.communicate(timeout=5)
+            passed = passed and child.returncode == 0 and not output and not errors
+            record('service-liveness-' + scenario, passed,
+                   subprocess.CompletedProcess([], child.returncode, f'seconds={elapsed}', errors))
+        finally:
+            if child.poll() is None:
+                child.kill(); child.communicate(timeout=5)
+                raise RuntimeError('service fixture did not complete normally')
+            endpoint.unlink(missing_ok=True)
     for parent in parents:
         for lock in parent.glob('ipc*.lock'):
             metadata = lock.lstat()
@@ -341,8 +414,8 @@ def native(expected_sha, barrier_sha):
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
     require(sha(barrier) == barrier_sha, 'barrier changed')
     probe.unlink(); barrier.unlink(); work.rmdir()
-    require(len(cases) == 21, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=21 failures={len(failures)} '
+    require(len(cases) == 29, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=29 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 

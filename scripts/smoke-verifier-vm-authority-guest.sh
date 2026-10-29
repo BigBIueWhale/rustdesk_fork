@@ -4176,6 +4176,7 @@ run_focused_rust_tests() {
         toolchain_mount=()
         bridge_mounts=(--mount "type=bind,source=$vendor/libc-0.2.171,target=/ipc-libc,readonly,bind-recursive=disabled")
         source_fingerprints=(Cargo.lock src/ipc/fs.rs src/ipc.rs src/ipc/auth.rs libs/hbb_common/src/config.rs
+            libs/hbb_common/src/bytes_codec.rs
             scripts/verify-linux-service-password-ipc.py scripts/run-linux-ipc-parent-tests.py
             scripts/test-linux-ipc-parent.rs scripts/run-linux-ipc-listener-tests.py
             scripts/test-linux-ipc-listener.rs scripts/test-linux-ipc-listener-barrier.c)
@@ -7074,7 +7075,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             || fail 'IPC parent build receipt differs'
         ipc_parent_sha=${ipc_parent_builds[0]#*artifact_sha256=}
         ipc_parent_sha=${ipc_parent_sha%% *}
-        mapfile -t ipc_parent_builds < <(grep -E '^LINUX_IPC_LISTENER_BUILD=pass artifact_sha256=[0-9a-f]{64} fs_fragment_sha256=[0-9a-f]{64} barrier_sha256=[0-9a-f]{64} transport=parity-tokio-ipc-root-locked framing=unexecuted$' "$output")
+        mapfile -t ipc_parent_builds < <(grep -E '^LINUX_IPC_LISTENER_BUILD=pass artifact_sha256=[0-9a-f]{64} fs_fragment_sha256=[0-9a-f]{64} barrier_sha256=[0-9a-f]{64} connection_fragment_sha256=[0-9a-f]{64} codec_sha256=[0-9a-f]{64} transport=parity-tokio-ipc-root-locked framing=production$' "$output")
         [ "${#ipc_parent_builds[@]}" -eq 1 ] && [ "$(grep -Fc 'LINUX_IPC_LISTENER_BUILD=' "$output")" -eq 1 ] \
             || fail 'IPC listener build receipt differs'
         ipc_listener_sha=${ipc_parent_builds[0]#*artifact_sha256=}
@@ -7102,8 +7103,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             >"$native_output" 2>&1 \
             || { tail -c 65536 "$native_output" >&2; fail 'IPC listener native cases failed'; }
         [ "$(stat -c '%s' "$native_output")" -le 65536 ] \
-            && [ "$(grep -Fc 'LINUX_IPC_LISTENER_CASE=pass ' "$native_output")" -eq 21 ] \
-            && [ "$(grep -Fxc "LINUX_IPC_LISTENER_NATIVE=pass cases=21 failures=0 artifact_sha256=$ipc_listener_sha cleanup=joined" "$native_output")" -eq 1 ] \
+            && [ "$(grep -Fc 'LINUX_IPC_LISTENER_CASE=pass ' "$native_output")" -eq 29 ] \
+            && [ "$(grep -Fxc "LINUX_IPC_LISTENER_NATIVE=pass cases=29 failures=0 artifact_sha256=$ipc_listener_sha cleanup=joined" "$native_output")" -eq 1 ] \
             || fail 'IPC listener native inventory or cleanup differs'
         cat "$native_output"
         stop_docker_authority

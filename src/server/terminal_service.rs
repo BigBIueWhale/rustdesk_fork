@@ -1068,15 +1068,6 @@ fn ensure_cleanup_task() -> Result<()> {
     Ok(())
 }
 
-#[cfg(target_os = "linux")]
-pub fn get_terminal_session_count(include_zombie_tasks: bool) -> usize {
-    let mut c = TERMINAL_SERVICES.lock().unwrap().len();
-    if include_zombie_tasks {
-        c += TERMINAL_TASKS.lock().unwrap().len();
-    }
-    c
-}
-
 #[derive(Clone)]
 pub struct TerminalService {
     sp: GenericService,

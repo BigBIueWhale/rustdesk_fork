@@ -142,7 +142,7 @@ type ServiceIpcRequesterAuthorization = ipc_auth::ServiceScopedIpcAuthorization;
 #[cfg(target_os = "linux")]
 type ServiceIpcRequesterAuthorization = ();
 #[cfg(target_os = "linux")]
-use ipc_fs::{prepare_ipc_listener_bind, probe_existing_listener, terminal_count_candidate_uids};
+use ipc_fs::{prepare_ipc_listener_bind, probe_existing_listener};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use ipc_fs::ensure_secure_ipc_parent_dir;
 #[cfg(target_os = "macos")]
@@ -3328,8 +3328,6 @@ pub enum MainIpcRequest {
     CpuUsage,
     #[cfg(target_os = "windows")]
     ControlledSessionCount,
-    #[cfg(target_os = "linux")]
-    TerminalSessionCount,
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -3356,8 +3354,6 @@ pub enum MainIpcResponse {
     CpuUsage(Option<f64>),
     #[cfg(target_os = "windows")]
     ControlledSessionCount(usize),
-    #[cfg(target_os = "linux")]
-    TerminalSessionCount(usize),
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -4914,10 +4910,6 @@ async fn handle_main_ipc_request(request: MainIpcRequest, stream: &Connection) -
         MainIpcRequest::ControlledSessionCount => {
             MainIpcResponse::ControlledSessionCount(crate::Connection::alive_conns().len())
         }
-        #[cfg(target_os = "linux")]
-        MainIpcRequest::TerminalSessionCount => MainIpcResponse::TerminalSessionCount(
-            crate::terminal_service::get_terminal_session_count(true),
-        ),
     }
 }
 
@@ -9465,68 +9457,6 @@ pub async fn close_windows_service_owned_main_server(
     {
         WindowsServiceControlResponse::ShutdownAccepted => Ok(()),
         _ => bail!("invalid Windows service-main shutdown response"),
-    }
-}
-
-#[cfg(target_os = "linux")]
-#[tokio::main(flavor = "current_thread")]
-pub async fn get_terminal_session_count() -> ResultType<usize> {
-    let timeout_ms = 1_000;
-    let effective_uid = unsafe { hbb_common::libc::geteuid() as u32 };
-    let candidate_uids = terminal_count_candidate_uids(effective_uid);
-    let mut last_err: Option<anyhow::Error> = None;
-    for candidate_uid in candidate_uids {
-        let socket_path = Config::ipc_path_for_uid(candidate_uid, "");
-        let connect_result = timeout(timeout_ms, Endpoint::connect(&socket_path))
-            .await
-            .map_err(|err| {
-                anyhow::anyhow!(
-                    "Timeout connecting to terminal ipc at {}: {}",
-                    socket_path,
-                    err
-                )
-            });
-        let connection = match connect_result {
-            Ok(Ok(connection)) => connection,
-            Ok(Err(err)) => {
-                last_err = Some(anyhow::anyhow!(
-                    "Failed to connect to terminal ipc at {}: {}",
-                    socket_path,
-                    err
-                ));
-                continue;
-            }
-            Err(err) => {
-                last_err = Some(err);
-                continue;
-            }
-        };
-        let ipc_conn = ConnectionTmpl::new_main(connection);
-        match main_ipc_request_on_stream(ipc_conn, MainIpcRequest::TerminalSessionCount, timeout_ms)
-            .await
-        {
-            Ok(MainIpcResponse::TerminalSessionCount(session_count)) => {
-                return Ok(session_count);
-            }
-            Ok(_) => {
-                last_err = Some(anyhow::anyhow!(
-                    "Unexpected terminal session count response via ipc at {}",
-                    socket_path
-                ));
-            }
-            Err(err) => {
-                last_err = Some(anyhow::anyhow!(
-                    "Failed to read terminal session count via ipc at {}: {}",
-                    socket_path,
-                    err
-                ));
-            }
-        }
-    }
-    if let Some(err) = last_err {
-        Err(err.into())
-    } else {
-        Ok(0)
     }
 }
 

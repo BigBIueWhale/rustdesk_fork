@@ -115721,3 +115721,43 @@ QEMU 1677046 joins after 30.822 seconds, `run.279ls5aq` retires and all three
 listener deltas are zero. The six count records total 102,840 bytes on both
 machines. This audit-only receipt leaves the measured ledger unchanged and below
 its approximate 400,000-token budget; broader document cleanup remains open.
+
+### 2026-10-29 — framed IPC write-timeout caller review
+
+Source reviewed at `f7cb7e031a4fdc94710cb06d0157aae21bf5dc17`. The open ledger still
+requires installed privileged-action acceptance, complete endpoint/application
+flows, other-platform execution and release/review evidence. This review concerns
+reuse of a framed connection after a failed or cancelled write.
+
+The pinned [futures-util 0.3.31 send implementation](https://raw.githubusercontent.com/rust-lang/futures-rs/0.3.31/futures-util/src/sink/send.rs)
+feeds the item before awaiting flush; [tokio-util 0.7.15 framing](https://raw.githubusercontent.com/tokio-rs/tokio/tokio-util-0.7.15/tokio-util/src/codec/framed_impl.rs)
+keeps encoded bytes in the frame owner's buffer while the underlying write is
+pending. Therefore cancellation alone does not discard that buffer or prove that
+no bytes reached the receiver. A later send could flush it if the caller retained
+and reused the connection.
+
+The reviewed production owners do not take that reuse path:
+
+- Main request clients consume their stream in `main_ipc_request_on_stream` and
+  its deadline variant (`src/ipc.rs:7636,7651`); a send error returns through `?`.
+  `handle_main_ipc_transaction` owns one request/response and then drops its stream
+  (`src/ipc.rs:4546`).
+- Linux/macOS `handle_service_ipc_transaction` and Windows
+  `handle_windows_service_ipc_request` likewise own one transaction
+  (`src/ipc.rs:4894`, `src/platform/windows.rs:1673`). Their response helpers do
+  not loop or hand the stream to another operation. The readiness, service
+  configuration and URL clients reviewed also retain no stream after return.
+- Both CM write directions terminate on failure: the server-side `start_ipc`
+  propagates timeout/write errors (`src/server/connection.rs:13871,13956`), and
+  every `IpcTaskRunner::send_response` error breaks its owner loop
+  (`src/ui_cm_interface.rs:1946,1968,1983,2031`). `ipc_task` drops that runner
+  after its single `run` call; its destructor does not flush the stream.
+
+No retained-stream resend defect was found in these paths, so no product change
+or new connection-poisoning abstraction is justified by this review. Bytes already
+accepted by the OS and an action already performed remain separate outcome
+uncertainties; dropping the stream is not transaction rollback. Raw credential,
+audio and whiteboard lifecycles are outside this conclusion. This is source
+classification only: no native cancellation/backpressure test or installed
+privilege-boundary acceptance ran. Product, tests, requirements, live instructions
+and `HARDENING_STATUS.md` are unchanged; its last token count still applies.

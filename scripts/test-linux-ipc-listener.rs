@@ -8,8 +8,8 @@ use anyhow::bail;
 use std::{fs, path::{Path, PathBuf}, os::fd::{AsRawFd, RawFd}, os::unix::fs::PermissionsExt};
 use parity_tokio_ipc::{Connection as Conn, ConnectionClient as ConnClient, Endpoint, Incoming, SecurityAttributes};
 use tokio::io::{AsyncRead, AsyncWrite};
-use tokio_util::codec::Framed;
-use futures_util::{StreamExt, SinkExt};
+use tokio_util::codec::FramedRead;
+use futures_util::StreamExt;
 use serde::{Serialize, Deserialize};
 use bytes::Bytes;
 mod bytes_codec;
@@ -101,9 +101,9 @@ async fn service_fixture(scenario: &str) {
         ready("PROBE");
         match scenario {
             "valid" => handle_service_request(ServiceIpcRequest::LivenessProbe {}, &mut stream, ()).await,
-            "unknown-field" => stream.inner.send(bytes::Bytes::from_static(b"{\"t\":\"Liveness\",\"extra\":true}")).await.unwrap(),
-            "unknown-type" => stream.inner.send(bytes::Bytes::from_static(b"{\"t\":\"Other\"}")).await.unwrap(),
-            "malformed" => stream.inner.send(bytes::Bytes::from_static(b"{")).await.unwrap(),
+            "unknown-field" => stream.send_raw(bytes::Bytes::from_static(b"{\"t\":\"Liveness\",\"extra\":true}")).await.unwrap(),
+            "unknown-type" => stream.send_raw(bytes::Bytes::from_static(b"{\"t\":\"Other\"}")).await.unwrap(),
+            "malformed" => stream.send_raw(bytes::Bytes::from_static(b"{")).await.unwrap(),
             "oversized" => {
                 stream.inner.get_mut().write_all(&((32769u32 << 2) | 2).to_le_bytes()[..3]).await.unwrap();
                 let mut byte = [0];
@@ -486,6 +486,24 @@ async fn wire_fixture(scenario: &str) {
         };
         for &(length, header) in cases {
             let payload = Bytes::from(vec![0x5a; length]);
+            if scenario == "bounds" {
+                let mut wire = bytes::BytesMut::new();
+                let mut codec = BytesCodec::new();
+                tokio_util::codec::Encoder::encode(&mut codec, payload.clone(), &mut wire).unwrap();
+                assert_eq!(&wire[..header.len()], header);
+                assert_eq!(&wire[header.len()..], payload.as_ref());
+                assert_eq!(tokio_util::codec::Decoder::decode(&mut codec, &mut wire)
+                    .unwrap().unwrap().as_ref(), payload.as_ref());
+                assert!(wire.is_empty());
+                if length > 0 {
+                    sender.set_max_packet_length(length - 1);
+                    assert!(sender.send_raw(payload.clone()).await.is_err());
+                    let mut byte = 0u8;
+                    assert_eq!(unsafe { libc::recv(receiver.as_raw_fd(), (&mut byte as *mut u8).cast(),
+                        1, libc::MSG_DONTWAIT | libc::MSG_PEEK) }, -1);
+                    assert_eq!(std::io::Error::last_os_error().kind(), std::io::ErrorKind::WouldBlock);
+                }
+            }
             sender.set_max_packet_length(length);
             let restore = if scenario == "allocation" {
                 let pages: u64 = fs::read_to_string("/proc/self/statm").unwrap()
@@ -505,9 +523,20 @@ async fn wire_fixture(scenario: &str) {
                 timeout(1000, sender.send_raw(payload)),
                 timeout(1000, receive(&mut receiver, length, header)),
             );
+            let original = restore.as_ref().map(|limit| (limit.0.rlim_cur, limit.0.rlim_max));
             drop(restore);
+            if let Some(original) = original {
+                let mut restored = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+                assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_AS, &mut restored) }, 0);
+                assert_eq!((restored.rlim_cur, restored.rlim_max), original);
+            }
             sent.unwrap().unwrap();
             received.unwrap();
+        }
+        assert_eq!(BytesCodec::encode_header(0x3fff_ffff).unwrap(), ([255; 4], 4));
+        for length in [0x4000_0000, usize::MAX] {
+            assert_eq!(BytesCodec::encode_header(length).unwrap_err().kind(),
+                       std::io::ErrorKind::InvalidInput);
         }
         sender.send_raw(Bytes::new()).await.unwrap();
         receive(&mut receiver, 0, &[0]).await;

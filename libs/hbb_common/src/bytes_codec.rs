@@ -1,4 +1,4 @@
-use bytes::{Buf, BufMut, Bytes, BytesMut};
+use bytes::{Buf, Bytes, BytesMut};
 use std::io;
 use tokio_util::codec::{Decoder, Encoder};
 
@@ -36,6 +36,22 @@ impl BytesCodec {
     /// at `FramedStream::set_session_keys` reads it back).
     pub fn max_packet_length(&self) -> usize {
         self.max_packet_length
+    }
+
+    pub fn encode_header(length: usize) -> io::Result<([u8; 4], usize)> {
+        let width = if length <= 0x3F {
+            1
+        } else if length <= 0x3FFF {
+            2
+        } else if length <= 0x3FFFFF {
+            3
+        } else if length <= 0x3FFFFFFF {
+            4
+        } else {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "Overflow"));
+        };
+        let header = ((length as u32) << 2) | (width as u32 - 1);
+        Ok((header.to_le_bytes(), width))
     }
 
     fn decode_head(&mut self, src: &mut BytesMut) -> io::Result<Option<usize>> {
@@ -116,19 +132,8 @@ impl Encoder<Bytes> for BytesCodec {
     type Error = io::Error;
 
     fn encode(&mut self, data: Bytes, buf: &mut BytesMut) -> Result<(), io::Error> {
-        if data.len() <= 0x3F {
-            buf.put_u8((data.len() << 2) as u8);
-        } else if data.len() <= 0x3FFF {
-            buf.put_u16_le((data.len() << 2) as u16 | 0x1);
-        } else if data.len() <= 0x3FFFFF {
-            let h = (data.len() << 2) as u32 | 0x2;
-            buf.put_u16_le((h & 0xFFFF) as u16);
-            buf.put_u8((h >> 16) as u8);
-        } else if data.len() <= 0x3FFFFFFF {
-            buf.put_u32_le((data.len() << 2) as u32 | 0x3);
-        } else {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "Overflow"));
-        }
+        let (header, width) = Self::encode_header(data.len())?;
+        buf.extend_from_slice(&header[..width]);
         buf.extend(data);
         Ok(())
     }
@@ -137,6 +142,7 @@ impl Encoder<Bytes> for BytesCodec {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bytes::BufMut;
     #[test]
     fn test_codec1() {
         let mut codec = BytesCodec::new();

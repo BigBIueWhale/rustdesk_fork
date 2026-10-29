@@ -35,13 +35,12 @@ use hbb_common::{
     bytes_codec::BytesCodec,
     config::{self, Config},
     futures::StreamExt as _,
-    futures_util::sink::SinkExt,
     log, timeout,
     tokio::{
         self,
         io::{AsyncRead, AsyncWrite},
     },
-    tokio_util::codec::Framed,
+    tokio_util::codec::FramedRead,
     ResultType,
 };
 #[cfg(target_os = "linux")]
@@ -7796,7 +7795,7 @@ mod pulse_audio;
 #[cfg(target_os = "linux")]
 pub use self::pulse_audio::start_pa;
 pub struct ConnectionTmpl<T> {
-    inner: Framed<T, BytesCodec>,
+    inner: FramedRead<T, BytesCodec>,
 }
 
 pub type Connection = ConnectionTmpl<Conn>;
@@ -7812,7 +7811,7 @@ where
 {
     pub fn new(conn: T) -> Self {
         Self {
-            inner: Framed::new(conn, BytesCodec::new()),
+            inner: FramedRead::new(conn, BytesCodec::new()),
         }
     }
 
@@ -7820,7 +7819,7 @@ where
         let mut codec = BytesCodec::new();
         codec.set_max_packet_length(max_packet_length);
         Self {
-            inner: Framed::new(conn, codec),
+            inner: FramedRead::new(conn, codec),
         }
     }
 
@@ -7878,14 +7877,13 @@ where
         }
 
         // Enforce the encoded-byte budget while serializing. Only a complete
-        // accepted frame may enter the transport's write buffer.
+        // accepted frame may enter the transport.
         let mut frame = FrameWriter {
             bytes: Vec::new(),
-            limit: self.inner.codec().max_packet_length(),
+            limit: self.inner.decoder().max_packet_length(),
         };
         serde_json::to_writer(&mut frame, value)?;
-        self.inner.send(bytes::Bytes::from(frame.bytes)).await?;
-        Ok(())
+        self.send_raw(bytes::Bytes::from(frame.bytes)).await
     }
 
     pub(crate) async fn send_json_timeout<S: serde::Serialize>(
@@ -8184,7 +8182,7 @@ where
 
     pub(crate) fn set_max_packet_length(&mut self, max_packet_length: usize) {
         self.inner
-            .codec_mut()
+            .decoder_mut()
             .set_max_packet_length(max_packet_length);
     }
 
@@ -8205,7 +8203,10 @@ where
     }
 
     pub async fn send_raw(&mut self, data: Bytes) -> ResultType<()> {
-        let max_packet_length = self.inner.codec().max_packet_length();
+        use bytes::Buf;
+        use tokio::io::AsyncWriteExt;
+
+        let max_packet_length = self.inner.decoder().max_packet_length();
         if data.len() > max_packet_length {
             bail!(
                 "outbound raw IPC frame exceeds codec limit: frame={}, limit={}",
@@ -8213,7 +8214,11 @@ where
                 max_packet_length
             );
         }
-        self.inner.send(data).await?;
+        let (header, width) = BytesCodec::encode_header(data.len())?;
+        let mut frame = (&header[..width]).chain(data);
+        let writer = self.inner.get_mut();
+        writer.write_all_buf(&mut frame).await?;
+        writer.flush().await?;
         Ok(())
     }
 
@@ -10885,7 +10890,7 @@ mod test {
         let mut client = ConnectionTmpl::new_desktop_url(client_end);
         let mut server = ConnectionTmpl::new_desktop_url(server_end);
         assert_eq!(
-            client.inner.codec().max_packet_length(),
+            client.inner.decoder().max_packet_length(),
             DESKTOP_URL_IPC_MAX_FRAME_BYTES
         );
         client
@@ -11298,7 +11303,7 @@ mod test {
         let mut owner = ConnectionTmpl::new_whiteboard(owner_end);
         let mut helper = ConnectionTmpl::new_whiteboard(helper_end);
         assert_eq!(
-            owner.inner.codec().max_packet_length(),
+            owner.inner.decoder().max_packet_length(),
             WHITEBOARD_IPC_MAX_FRAME_BYTES
         );
         helper
@@ -11521,7 +11526,7 @@ mod test {
         let mut client = ConnectionTmpl::new_pulse_audio(client_end);
         let mut server = ConnectionTmpl::new_pulse_audio(server_end);
         assert_eq!(
-            client.inner.codec().max_packet_length(),
+            client.inner.decoder().max_packet_length(),
             PULSE_AUDIO_IPC_MAX_FRAME_BYTES
         );
         client
@@ -11616,20 +11621,20 @@ mod test {
         let (service_end, _peer_end) = tokio::io::duplex(SERVICE_IPC_MAX_FRAME_BYTES * 2);
         let service = ConnectionTmpl::new_protected_service(service_end);
         assert_eq!(
-            service.inner.codec().max_packet_length(),
+            service.inner.decoder().max_packet_length(),
             SERVICE_IPC_MAX_FRAME_BYTES
         );
 
         let (main_end, _peer_end) = tokio::io::duplex(MAIN_IPC_MAX_FRAME_BYTES * 2);
         let main = ConnectionTmpl::new_main(main_end);
         assert_eq!(
-            main.inner.codec().max_packet_length(),
+            main.inner.decoder().max_packet_length(),
             MAIN_IPC_MAX_FRAME_BYTES
         );
 
         let (generic_end, _peer_end) = tokio::io::duplex(SERVICE_IPC_MAX_FRAME_BYTES * 2);
         let generic = ConnectionTmpl::new(generic_end);
-        assert_eq!(generic.inner.codec().max_packet_length(), usize::MAX);
+        assert_eq!(generic.inner.decoder().max_packet_length(), usize::MAX);
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -12470,10 +12475,10 @@ mod test {
         let mut cm = ConnectionTmpl::new(cm_end);
 
         cm.set_max_packet_length(CM_IPC_MAX_FRAME_BYTES);
-        assert_eq!(cm.inner.codec().max_packet_length(), CM_IPC_MAX_FRAME_BYTES);
+        assert_eq!(cm.inner.decoder().max_packet_length(), CM_IPC_MAX_FRAME_BYTES);
         cm.set_max_packet_length(CM_FILE_BLOCK_MAX_FRAME_BYTES);
         assert_eq!(
-            cm.inner.codec().max_packet_length(),
+            cm.inner.decoder().max_packet_length(),
             CM_FILE_BLOCK_MAX_FRAME_BYTES
         );
     }

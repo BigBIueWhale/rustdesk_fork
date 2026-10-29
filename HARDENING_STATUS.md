@@ -9064,8 +9064,17 @@ sandbox implementation and checker-repair history remain in Git.
   timeout. Permission denial alone never authorizes unlinking. Process umask stays
   unchanged. These corrections are `c369d9e2`, `3a37b232` and `fc083c93`.
 
-  **Current native evidence:** `99898ad8`, TUF `hsBzgq7opY`, passes 95 listener
-  cases and 14 directory cases in 82.250 seconds. Baseline `mG75yce2f7` reproduces
+  `3dce8c79` uses the same retained-socket permission path for Linux finalization.
+  Unsafe type/owner/link/special-bit targets are refused; inode or metadata changes
+  observed after chmod also refuse startup. Finalization failure drops the listener
+  without deleting the pathname. Success logging follows mode establishment.
+  Twenty-one native cases cover substitutions before admission and around chmod,
+  real EPERM, preserved metadata/contents and subsequent successful restart.
+  Baseline `DRZBPWPlFn` reproduces nineteen valid failures; two special-bit fixtures
+  required correction before they could count. The audit records that distinction.
+
+  **Current native evidence:** `e1320ede`, TUF `dYNOXFor2f`, passes 116 listener
+  cases and 14 directory cases in 82.540 seconds. Baseline `mG75yce2f7` reproduces
   ten non-socket replacements, two PID-file deletions and two startup failures
   caused by nonempty PID directories. The same fourteen scenarios now preserve
   inode/type/mode/owner/link metadata and contents, while PID artifacts do not
@@ -9092,7 +9101,8 @@ sandbox implementation and checker-repair history remain in Git.
   Config name/path and service authorization remain fixture adapters. The directory
   fixture no longer invokes macOS-only scrub code on Linux; it checks parent
   hardening and preservation. All host listener deltas are zero, QEMU joins and RAM
-  scratch retires. Provenance: `ipc-peer-policy-99898ad8.json`,
+  scratch retires. Provenance: `ipc-socket-finalize-3dce8c79.json`,
+  `ipc-peer-policy-99898ad8.json`,
   `ipc-stale-kind-99cbec37.json`, `ipc-socket-crash-fc083c93.json` and the audit
   entries for Linux incumbent peer policy, stale endpoint classification and
   socket recovery. Historical intermediate receipts remain in the audit and Git.
@@ -9102,6 +9112,9 @@ sandbox implementation and checker-repair history remain in Git.
   genuine/wrong-principal/unrelated-image incumbents, process replacement,
   remaining namespace/metadata/crash races, coexisting versions and bounded
   resources; cold release artifacts, independent reproduction and external review.
+  Finalization does not distinguish an otherwise admissible same-owner socket
+  substituted before its metadata open, nor make namespace/metadata observations
+  atomic against later changes. macOS retains pathname chmod and error cleanup.
   The type check and unlink are not one atomic conditional operation. Older binaries
   do not participate in the advisory reservation. Code already running as the same
   UID can mutate its own mode-0700 directory; this is not a stronger OS-principal

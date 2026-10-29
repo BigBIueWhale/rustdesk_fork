@@ -115221,3 +115221,77 @@ production component, with Config name/path and service authorization adapters.
 Full application/installed privileged request acceptance, CM/PA, macOS,
 remaining process/namespace/metadata/crash races, coexisting versions, release
 artifacts and independent/external review remain OPEN.
+
+## 2026-10-29 — Linux socket permission finalization
+
+The previous turn made progress on native incumbent policy. This slice follows
+`new_listener` at the prior `c2f8cd02` source: after `Endpoint::incoming` binds,
+`src/ipc.rs:5146` reported startup, then pathname `set_permissions` followed a
+replacement entry; its error branch silently attempted pathname deletion.
+The intended boundary is an owned, single-link socket in a validated parent,
+retained through mode establishment and final observations. Failure cannot grant
+authority to delete whatever later occupies the name.
+
+`3dce8c79` replaces Linux finalization with `set_ipc_socket_permissions` in
+`src/ipc/fs.rs`. Initial establishment and EACCES recovery now share the existing
+no-follow parent/socket opens, owner/type/link/special-bit admission, verified
+procfs descriptor alias, exact 0600/0666 chmod and metadata/name rechecks.
+Recovery additionally requires missing owner write. Linux error cleanup is removed;
+dropping the unreturned listener closes it, and ordinary startup handles a later
+stale socket. Success logging moves after finalization. macOS retains its pathname
+permission/cleanup algorithm. The desktop source checker replaces the obsolete
+Linux pathname-cleanup expectation with the descriptor-finalization call.
+
+[chmod(2)](https://man7.org/linux/man-pages/man2/chmod.2.html) distinguishes
+pathname and descriptor targets and documents EPERM for an unauthorized owner.
+[open(2)](https://man7.org/linux/man-pages/man2/open.2.html) provides metadata-only
+O_PATH handles and directory-relative lookup;
+[unlink(2)](https://man7.org/linux/man-pages/man2/unlink.2.html) removes the named
+entry, so an earlier permission failure is not proof of deletion ownership.
+The design reuses the already tested procfs alias rather than adding a dependency
+or requiring a newer-kernel empty-path chmod operation.
+
+The VM fixture pauses actual startup after listen and immediately before/after
+permission mutation. Kernel peer PID/UID prove the bound listener first. The
+controller substitutes regular files, FIFOs, directories, symlinks, dangling
+symlinks and foreign-owner/multiply-linked/special-bit sockets, then compares
+inode/type/mode/owner/link metadata and file/link contents. Another schedule
+changes the socket owner before the UID-4001 chmod, producing real EPERM.
+Each refused attempt must join, preserve the entry and permit a subsequent start
+after fixture retirement. The barrier changes scheduling only, never syscall results.
+
+| Run / source | Native result | Elapsed |
+| --- | --- | --- |
+| `DRZBPWPlFn` / `c2f8cd02` | Existing 95 listener and 14 directory cases pass; 19 valid new cases fail. Two additional reported failures have invalid special-bit setup. | 82.183 s |
+| `ZsZz0pM456` / `3dce8c79` | 114 listener cases and 14 directory cases pass; the two invalid fixture cases still fail. | 82.106 s |
+| `dYNOXFor2f` / `e1320ede` | All 116 listener and 14 directory cases pass. | 82.540 s |
+
+The initial fixture set special bits before chown, which cleared them; those two
+old-run failures do not establish product rejection behavior. `e1320ede` sets and
+asserts mode 04600 after ownership. The accepted listener binary is unchanged from
+the first candidate: SHA-256
+`975d99fd25bede21191668dfdbc312dd2dd76371509c76262e7716c3f2bbc731`.
+The production filesystem fragment is
+`31a88388f074f83dc7d542200dd0292fd039772a5fddc813ec11547a2dc09efc`;
+the directory binary remains `2c18066a2a0125e010bbab3e189707e990324fe4db2ff524bd99ddf15352dfb8`.
+The focused desktop source checker also passes in a pinned, non-root, read-only,
+networkless container in 1.769 seconds; its container is removed and listener
+inventories match. Diff checks pass. No full verifier catalogue or parent build ran.
+
+All twelve VM host-listener deltas are zero. QEMU PIDs 1647744, 1648482 and
+1649271 join exit zero and their RAM workspaces retire. The accepted run peaks at
+3,459,510,272 bytes RAM scratch, 3,263,238,144 bytes overlay and 3,416,064 bytes
+durable run storage. After verifying retained evidence on CTE/TUF, both failed-run
+trees are removed, freeing 6,946,816 allocated bytes. Twenty-one run files total
+287,578 bytes. Capsule `ipc-socket-finalize-3dce8c79.json` is 38,533 bytes,
+SHA-256 `e3bbbc7771f52006f26499911c7fb41b176703015aeb72938d2d985586e35189`;
+all 22 evidence files match across hosts.
+
+This proves the extracted production component with Config name/path and service
+authorization adapters. Fixture namespace changes require namespace-owner
+authority; they do not demonstrate unprivileged mutation of the protected /run
+parent or a new LPE. An otherwise admissible same-owner socket substituted before
+the metadata open remains indistinguishable here; parent replacement and changes
+after final observations are not made atomic. Full installed acceptance, privileged
+actions, CM/PA, macOS, remaining races, coexisting versions, release artifacts,
+independent reproduction and external review remain OPEN.

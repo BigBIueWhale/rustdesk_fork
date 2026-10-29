@@ -3620,22 +3620,25 @@ those obligations.
 <a id="linux-ipc-components"></a>
 
 **IPC / option CLI — component acceptance; installed acceptance OPEN.**
-At `e15ac8c2`, TUF `pDeLerjmEX` passes all **172 listener/transport, 32 CLI,
-10 Windows selector, 20 main-response, 8 main-transaction and 14 directory cases**
-plus the focused desktop source check in 91.788 seconds. All execute in Linux;
+At `a71edcd8`, TUF `usDjZ2CHNl` passes all **172 listener/transport, 32 CLI,
+10 Windows selector, 20 main-response, 8 main-transaction, 4 URL-loop and
+14 directory cases**, plus the focused desktop source check in 91.922 seconds.
+All execute in Linux;
 the Windows selector uses real
 Unix sockets and Tokio tasks, not Windows pipes or privileged receivers.
 The command is
 `bash scripts/smoke-verifier-vm-authority.sh --linux-ipc-parent-tests`.
 It compiles production filesystem, listener, peer, connection, reader, codec and
-CLI branch/getter with pinned dependencies. Config name/type, boxed errors and
+CLI branch/getter and URL receiver loop with pinned dependencies. Config name/type, boxed errors and
 service authorization have fixture adapters. CLI eligibility, status retrieval/conversion,
 mutation and local configuration are doubles; cases observe process output and exit status.
+URL sender authority is a fixture UID/PID check; URL parsing, target-OS authorization
+and Flutter delivery are unexecuted. Its non-Flutter branch observes request processing.
 Real Unix sockets establish the named IPC outcomes, not complete application or
 privileged-receiver authorization. All four host
 listener deltas are zero; QEMU joins, bounded RAM scratch retires and exact
 fixture socket/descriptor cleanup passes. Current receipt:
-`main-response-validation-e15ac8c2.json`.
+`url-accept-recovery-a71edcd8.json`.
 
 Unused IPC surfaces are removed: the old service-role/root-UID password predicate
 and `ConnectionTmpl::next_timeout2` had no repository callers. Their last callers
@@ -3658,6 +3661,7 @@ comparison: `ipc-endpoint-test-retirement-118a5f85.json`.
 | Listener admission | `1a5665b8` rotates the three service endpoints; `d4987511` alternates main/password admission. Continuously ready endpoints receive a turn within three/two admissions, while pending cancellation preserves priority. Shutdown/completed-work priority, budgets, authorization and drain ownership remain. Twelve native backlog/sparse/cancellation cases cover both loops' extracted accept helpers. | `ipc-service-fairness-1a5665b8.json`, `ipc-main-fairness-d4987511.json` |
 | Windows service-main selection | `8401f39a` polls shutdown and completed transactions before alternating control/credential accepts. Previously a ready control endpoint preceded both task collection and credential admission. The unchanged selector fixtures reproduce backlog and completion-priority failures under root/UID 4001; all ten backlog, sparse, cancellation, completion and shutdown cases pass after correction. Handlers, authorization, capacity and shutdown drain are unchanged. This is extracted selector behavior on Linux; complete Windows compilation, named-pipe behavior and installed authorization remain OPEN. | `windows-main-fairness-8401f39a.json` |
 | Accept-error recovery | `7b1279bd` gives each `IpcListener` a 100 ms retry deadline after an error, preserves it across cancellation and clears it after success. Six root/UID-4001 descriptor-exhaustion cases cover repeated errors, cancellation/recovery and independent listeners. | `ipc-accept-retry-7b1279bd.json` |
+| Desktop URL accept recovery | `a71edcd8` keeps the sequential URL receiver alive after accept errors, using the listener's existing retry delay. Real descriptor exhaustion previously ended the extracted loop under root/UID 4001. Both unchanged recovery cases now process Activate/CloseAll frames after resource restoration; two normal-request controls also pass. Task join, socket removal and descriptor restoration precede assertions. Sender checks, protocol, caps and handler bytes are unchanged. Native Windows/macOS transport, sender authorization and UI effects remain OPEN. | `url-accept-recovery-a71edcd8.json` |
 | JSON construction | `8307a2d6` enforces the encoded-byte cap before fallible buffer growth and publishes only complete serialization. Forty string/cap combinations, bounded sequence traversal, serializer failure and real allocation refusal check no rejected output and valid reuse of the same socket. The 16 MiB allocation fixture cap changes no product endpoint. | `ipc-json-budget-8307a2d6.json`, `ipc-json-allocation-ff8956ed.json` |
 | Main response frame budget | `74b75d58` sizes main frames at 2 MiB: the existing 64-entry/4 KiB status budget can require 1,572,864 bytes of escaped values before JSON structure. The old 256 KiB cap refuses valid 295,488-byte status and 393,276-byte config responses under both root and UID 4001; all four unchanged cases now round-trip exact production response types. They also prove cap+1 outbound refusal without bytes, valid reuse and inbound header refusal before payload. Per-value/count limits, concurrency budgets, authorization and the separate 32 KiB service cap remain. These are protocol-valid strings, not installed settings/persistence or real device-getter acceptance. | `main-response-budget-74b75d58.json` |
 | Main response value admission | `e15ac8c2` validates decoded responses at the shared reader: status maps reuse their count/value/duplicate checks, config values obey the existing 64 KiB limit, and effective option acknowledgements reuse the 4 KiB validator. Previously the reader published all five invalid forms under root/UID 4001; ten negative cases now observe their exact semantic errors. Six controls preserve absent config values, rejected acknowledgements without values and exact-limit option values; the escaped config/status boundary cases also remain green. Existing downstream validators remain. Validation precedes publication, not JSON allocation; installed settings and authorization remain OPEN. | `main-response-validation-e15ac8c2.json` |

@@ -116777,3 +116777,45 @@ Seven tokenizer controls and byte round trip pass. QEMU 1754823 joins after
 30.621 seconds; RAM `run.zgcrorap` retires and three host listener deltas are zero.
 Six retained files total 104,520 bytes per host. The measured ledger is unchanged
 by this audit-only count receipt.
+
+### 2026-10-29 — desktop URL listener accept recovery
+
+At `86bd2da8`, `start_ipc_url_server` uses `while let Some(Ok(conn))`, so any
+accept error ends the listener. [Pinned Tokio 1.44.2 UnixListener documentation](https://raw.githubusercontent.com/tokio-rs/tokio/tokio-1.44.2/tokio/src/net/unix/listener.rs)
+identifies descriptor exhaustion as potentially recoverable. `a71edcd8` handles
+the error and continues on the same listener, whose existing 100 ms retry delay
+prevents spinning. Only EOF ends this loop. Sender authorization, typed request
+validation, 8 KiB cap, one-second I/O and sequential ownership remain unchanged;
+exact comparison preserves every other source byte. No new LPE is demonstrated.
+
+Prep `92998487` extracts the complete URL server function body, omitting only
+its outer target/runtime attributes, into the existing Linux component. Initial
+run `CFUZsxQ3im` stops at E0425 before behavior: the fixture lacks its sender
+adapter. `4f9e5f8f` supplies the fixture's kernel UID/PID check; `d272fa5e` permits
+more than one paced error before resource restoration. This authority adapter
+does not exercise Windows/macOS sender proof. Only Activate/CloseAll run;
+OpenUrl parsing is a panic adapter, and the non-Flutter branch records processing
+without UI effects. The real socket, frame reader/types and server loop execute.
+
+Baseline `PEL2Vi5L6I` at `d272fa5e` fails exactly the two root/UID-4001 recovery
+cases: a queued connection plus real RLIMIT_NOFILE exhaustion ends the listener.
+Both normal controls and the other 242 cases pass, as do fourteen directories.
+Candidate `usDjZ2CHNl` at `a71edcd8` passes all 246 cases, fourteen directories
+and the focused desktop source check. Recovery observes an actual EMFILE error,
+restores capacity, processes two control frames and remains live. Task join,
+socket removal and descriptor restoration precede result assertions. The case
+inventory and all compiled fragment digests except the URL function are equal.
+
+The A/B runs take 87.577/91.922 seconds. QEMU 1756706/1757474 joins and RAM
+`run.pgvl0dnf`/`run.cipazgxf` retires. All four listener deltas per run are zero.
+Excluded fixture QEMU 1755919 likewise joins; its RAM workspace retires and its
+four deltas are zero. After retaining evidence, exact failed scratch trees are
+removed, reclaiming 3,436,544 and 3,497,984 bytes. Twenty-one raw files plus
+`url-accept-recovery-a71edcd8.json` total 319,089 bytes per host. The capsule is
+21,268 bytes, SHA-256
+`5318d830779a0f3d5e87b20627ad664c4e43780ab3810ddaa450bd24353aea7c`.
+
+Python parsing, both edited shell syntax checks and `git diff --check` pass.
+Requirements and live instructions are unchanged. Native Windows/macOS transport,
+installed authorization, full application/UI and release acceptance remain open;
+all user-parked work stays parked, including CLI address/native-handoff follow-up.

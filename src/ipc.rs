@@ -3529,7 +3529,7 @@ enum SensitiveMainListenerEvent {
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-async fn next_sensitive_main_listener_event(listener: &mut Incoming) -> SensitiveMainListenerEvent {
+async fn next_sensitive_main_listener_event(listener: &mut IpcListener) -> SensitiveMainListenerEvent {
     match listener.next().await {
         Some(Ok(stream)) => SensitiveMainListenerEvent::Accepted(stream),
         Some(Err(err)) => SensitiveMainListenerEvent::AcceptFailed(err.to_string()),
@@ -3591,9 +3591,9 @@ async fn next_main_ipc_event(
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 struct PreparedMainIpc {
-    incoming: Incoming,
+    incoming: IpcListener,
     #[cfg(any(target_os = "linux", target_os = "macos"))]
-    password_events: Incoming,
+    password_events: IpcListener,
     #[cfg(target_os = "windows")]
     password_events:
         Option<mpsc::Receiver<crate::platform::windows::WindowsUserOwnedPasswordRequest>>,
@@ -3855,9 +3855,9 @@ async fn handle_sensitive_main_ipc_transaction(
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 struct PreparedServiceIpc {
-    incoming: Incoming,
-    password_incoming: Incoming,
-    credential_incoming: Incoming,
+    incoming: IpcListener,
+    password_incoming: IpcListener,
+    credential_incoming: IpcListener,
     listener_guard: LocalIpcListenerGuard,
 }
 
@@ -4017,9 +4017,9 @@ enum ServiceIpcAccept {
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 async fn next_service_ipc_connection(
-    credential: &mut Incoming,
-    password: &mut Incoming,
-    service: &mut Incoming,
+    credential: &mut IpcListener,
+    password: &mut IpcListener,
+    service: &mut IpcListener,
     next: &mut usize,
 ) -> ServiceIpcAccept {
     use std::{
@@ -4914,8 +4914,8 @@ async fn handle_service_ipc_transaction(
 
 #[cfg(target_os = "windows")]
 struct PreparedWindowsServiceMainIpc {
-    credential_incoming: Incoming,
-    control_incoming: Incoming,
+    credential_incoming: IpcListener,
+    control_incoming: IpcListener,
     listener_guard: LocalIpcListenerGuard,
 }
 
@@ -5195,7 +5195,18 @@ async fn handle_windows_service_control_transaction(
         }
     }
 }
-pub async fn new_listener(postfix: &str) -> ResultType<Incoming> {
+
+pub struct IpcListener {
+    incoming: Incoming,
+}
+
+impl IpcListener {
+    pub async fn next(&mut self) -> Option<std::io::Result<Conn>> {
+        self.incoming.next().await
+    }
+}
+
+pub async fn new_listener(postfix: &str) -> ResultType<IpcListener> {
     #[cfg(target_os = "linux")]
     if whiteboard_ipc_postfix_is_valid(postfix) {
         bail!("Linux whiteboard requires its owned abstract listener");
@@ -5268,7 +5279,7 @@ pub async fn new_listener(postfix: &str) -> ResultType<Incoming> {
             } else {
                 log::info!("Started ipc{} server at path: {}", postfix, &path);
             }
-            Ok(incoming)
+            Ok(IpcListener { incoming })
         }
         Err(err) => {
             log::error!(

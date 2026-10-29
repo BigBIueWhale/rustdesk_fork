@@ -1621,7 +1621,7 @@ fn authorize_service_scoped_ipc_connection(
 }
 
 async fn refresh_service_ipc_listener(
-    incoming: &mut Option<parity_tokio_ipc::Incoming>,
+    incoming: &mut Option<ipc::IpcListener>,
 ) -> ResultType<()> {
     let previous = incoming
         .take()
@@ -1632,7 +1632,7 @@ async fn refresh_service_ipc_listener(
 }
 
 async fn refresh_service_sas_ipc_listener(
-    incoming: &mut Option<parity_tokio_ipc::Incoming>,
+    incoming: &mut Option<ipc::IpcListener>,
 ) -> ResultType<()> {
     let previous = incoming
         .take()

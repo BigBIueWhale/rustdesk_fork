@@ -127,7 +127,7 @@ async fn admission_fixture(scenario: &str, main: bool) {
     use std::task::Poll;
     use tokio::io::AsyncReadExt;
 
-    async fn accept(listeners: &mut [Incoming], next: &mut usize, password_first: &mut bool) -> (usize, Conn) {
+    async fn accept(listeners: &mut [IpcListener], next: &mut usize, password_first: &mut bool) -> (usize, Conn) {
         match listeners {
             [password, main] => match next_main_ipc_event(
                 main.next(), next_sensitive_main_listener_event(password), password_first,
@@ -226,6 +226,104 @@ async fn admission_fixture(scenario: &str, main: bool) {
     println!("OK {prefix}admission-{scenario} uid={uid} cleanup=joined");
 }
 
+async fn accept_failure_fixture(scenario: &str) {
+    use std::future::{poll_fn, Future};
+    use std::io::Write;
+    use std::task::Poll;
+    use std::time::{Duration, Instant};
+    use tokio::io::AsyncReadExt;
+
+    async fn exhausted(listener: &mut IpcListener) {
+        match timeout(1000, listener.next()).await.unwrap() {
+            Some(Err(error)) => assert_eq!(error.raw_os_error(), Some(libc::EMFILE)),
+            _ => panic!("accept did not report real descriptor exhaustion"),
+        }
+    }
+
+    async fn pending_once(listener: &mut IpcListener) {
+        let next = listener.next();
+        tokio::pin!(next);
+        poll_fn(|cx| {
+            assert!(next.as_mut().poll(cx).is_pending(), "failed listener retried without waiting");
+            Poll::Ready(())
+        }).await;
+    }
+
+    async fn check_stream(mut stream: Conn, expected: u8) {
+        assert_eq!(peer_uid_from_fd(stream.as_raw_fd()), Some(unsafe { libc::geteuid() }));
+        assert_eq!(peer_pid_from_fd(stream.as_raw_fd()), Some(std::process::id()));
+        let mut byte = [0];
+        timeout(500, stream.read_exact(&mut byte)).await.unwrap().unwrap();
+        assert_eq!(byte[0], expected);
+    }
+
+    let before = fd_count();
+    {
+        let mut failed = new_listener("_password").await.unwrap();
+        let mut other = new_listener("").await.unwrap();
+        let clients: Vec<_> = ["_password", ""].iter().enumerate().map(|(index, postfix)| {
+            let mut client = std::os::unix::net::UnixStream::connect(Config::ipc_path(postfix)).unwrap();
+            client.write_all(&[index as u8]).unwrap();
+            client
+        }).collect();
+        let mut original = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+        assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut original) }, 0);
+        assert!(original.rlim_cur >= 64);
+        let limited = libc::rlimit { rlim_cur: 64, rlim_max: original.rlim_max };
+        assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &limited) }, 0);
+        let mut fillers = Vec::new();
+        loop {
+            assert!(fillers.len() < 64);
+            match fs::File::open("/dev/null") {
+                Ok(file) => fillers.push(file),
+                Err(error) => {
+                    assert_eq!(error.raw_os_error(), Some(libc::EMFILE));
+                    break;
+                }
+            }
+        }
+        exhausted(&mut failed).await;
+        match scenario {
+            "retry" => {
+                for _ in 0..3 {
+                    let started = Instant::now();
+                    exhausted(&mut failed).await;
+                    assert!(started.elapsed() >= Duration::from_millis(90), "accept errors can spin");
+                }
+                drop(fillers.pop().unwrap());
+                check_stream(timeout(1000, failed.next()).await.unwrap().unwrap().unwrap(), 0).await;
+            }
+            "cancel" => {
+                pending_once(&mut failed).await;
+                tokio::time::sleep(Duration::from_millis(60)).await;
+                pending_once(&mut failed).await;
+                drop(fillers.pop().unwrap());
+                tokio::time::sleep(Duration::from_millis(60)).await;
+                let accepted = {
+                    let next = failed.next();
+                    tokio::pin!(next);
+                    poll_fn(|cx| match next.as_mut().poll(cx) {
+                        Poll::Ready(result) => Poll::Ready(result),
+                        Poll::Pending => panic!("cancellation extended the original retry deadline"),
+                    }).await
+                };
+                check_stream(accepted.unwrap().unwrap(), 0).await;
+            }
+            "independent" => {
+                drop(fillers.pop().unwrap());
+                check_stream(timeout(50, other.next()).await.unwrap().unwrap().unwrap(), 1).await;
+                check_stream(timeout(1000, failed.next()).await.unwrap().unwrap().unwrap(), 0).await;
+            }
+            _ => panic!("unknown accept failure scenario"),
+        }
+        drop(fillers);
+        assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &original) }, 0);
+        drop(clients);
+    }
+    assert_eq!(fd_count(), before);
+    println!("OK accept-{scenario} uid={} cleanup=joined", unsafe { libc::geteuid() });
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     assert_eq!(args.len(), 3);
@@ -233,6 +331,11 @@ fn main() {
     let postfix = &args[2];
     assert!(["", "_password", "_service_password", "_service_credential", "_service"].contains(&postfix.as_str()));
     let path = Config::ipc_path(postfix);
+    if let Some(scenario) = args[1].strip_prefix("accept-") {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(accept_failure_fixture(scenario));
+        return;
+    }
     if let Some((scenario, main)) = args[1].strip_prefix("admission-").map(|s| (s, false))
         .or_else(|| args[1].strip_prefix("main-admission-").map(|s| (s, true))) {
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();

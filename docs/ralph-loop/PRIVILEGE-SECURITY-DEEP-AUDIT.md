@@ -116672,3 +116672,52 @@ joins after 30.409 seconds, RAM `run.emfpw4_6` retires and three host listener
 deltas are zero. Six count files add 104,460 bytes; all 21 retained evidence
 files total 342,303 bytes per host. This audit-only receipt leaves the measured
 ledger unchanged.
+
+### 2026-10-29 — main response validation before publication
+
+At `cc840661`, `next_main_response_timeout` returns any successfully decoded
+`MainIpcResponse`. Config replies can exceed the sender's 64 KiB value limit,
+and status/option constraints are applied only by selected downstream callers.
+`get_main_status_snapshot` itself returns the unchecked snapshot. Existing
+`into_map`/`into_pair` callers already reject invalid status/effective values;
+this finding is inconsistent reader admission, not a demonstrated escalation
+or proof that every downstream caller accepted malformed data.
+
+[Serde's deserialization model](https://serde.rs/impl-deserialize.html) maps
+input into declared field types; additional domain restrictions require explicit
+handling. `e15ac8c2` gives `MainIpcResponse` one consuming validation step and
+calls it at the shared reader before returning a response. Status snapshots
+reuse `MainStatusOptions::validate`; effective option acknowledgements reuse
+`MainStatusOption::validate`; optional config values use the existing 64 KiB
+bound. Caller validation remains useful for directly constructed/deserialized
+values. No clone, dependency, field, wire format, frame cap, transaction budget,
+sender check, authority or pinned-policy change is introduced. Validation follows
+bounded JSON decoding and does not establish a new pre-decode allocation limit.
+
+Prep `046f32ff` adds sixteen real Linux socket-pair cases with exact production
+response types, reader and validators, kernel UID/PID checks and descriptor
+restoration before result assertions. Baseline `wcR58oh1Dt` fails exactly ten:
+65,537-byte config values, 4,097-byte status values, duplicate status keys,
+65-entry status maps and 4,097-byte effective option acknowledgements are returned
+under both root and UID 4001. All other 232 cases and fourteen directories pass.
+Candidate `pDeLerjmEX`, with unchanged fixtures, passes all 242 cases, fourteen
+directories and the focused desktop source check. Each negative requires its
+specific semantic error, so timeout or parse failure cannot substitute. Six
+positive cases preserve optional empty values and 4,096-byte acknowledgements;
+the existing 65,536-byte escaped config and 12-by-4,096-byte status round trips
+also pass. Only the response validator and its reader call change in production;
+framing, transport, request transactions and dependency inputs remain identical.
+
+The zero-NIC A/B VMs take 87.756/91.788 seconds. QEMU 1748007/1748756 joins,
+RAM `run.lm9ojxyp`/`run.2kp7ckuv` retires and both sets of four host listener
+deltas are zero. After evidence preservation, exact failed baseline scratch
+inode 78294410 is removed, reclaiming 3,506,176 allocated bytes. Fourteen raw
+files plus `main-response-validation-e15ac8c2.json` total 248,704 bytes per host;
+the capsule is 26,129 bytes, SHA-256
+`13774010426e5e6b58fbbd2293f7505f57ee9870434a633e78ba010c0464f4b1`.
+
+Full application/settings persistence, installed authorization, native
+Windows/macOS, current release artifacts, R-S0/R-F5, independent reproduction
+and external review remain open. User-parked work stays parked. Python parsing,
+both edited shell syntax checks and `git diff --check` pass. Requirements and
+live instructions are unchanged.

@@ -114995,3 +114995,14 @@ installed receiver/action authority, CM/PA, macOS, remaining namespace/crash
 and cross-version behavior, release artifacts and independent review remain
 OPEN. This turn establishes lock behavior inside the existing production-code
 component, with the previously documented config/authorization adapters.
+
+Fresh isolated count at `01563221`, TUF `UMEwfWDesD`: 357,241 tokens /
+1,633,340 bytes, up 219 tokens / 908 bytes. Pinned tiktoken 0.12.0/cl100k_base
+encode_ordinary passes seven controls and byte round-trip; ledger SHA-256 is
+`264ef325a6364bb4aaaf15204176ac63545c7eb96e48f5c93be69717bf9c53d7`.
+The 30.169-second run joins QEMU 1622672 with exit zero and retires workspace
+`run.9usxv3wz`; all three listener deltas are zero. Peak RAM scratch is
+402,477,056 bytes, overlay 305,926,144 bytes and durable run 253,952 bytes.
+Six copied count files total 102,434 bytes and match both hosts; serial SHA-256
+is `c4f3911e53256a47461515c3264607d2c03cc415a49d71eee9fdf70a8a45bb0d`.
+This audit-only receipt leaves the counted ledger unchanged.

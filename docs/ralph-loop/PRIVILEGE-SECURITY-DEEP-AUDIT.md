@@ -114274,3 +114274,17 @@ packages are intentional reusable TUF inputs, not disposable scratch. No new
 LPE or product defect was demonstrated. Whole-app/installed, other-platform,
 exact overlap/all interleavings, arbitrary backpressure and full R-S0/R-F5
 acceptance remain OPEN.
+
+Fresh isolated ledger count at pushed `d58fa1a1`, TUF run `ZduqhOgQgz`, exits
+zero: 356,362 tokens / 1,629,020 bytes, up 165 tokens / 850 bytes and within the
+approximate 400,000-token budget. The pinned tiktoken method passes seven controls
+and byte round-trip. Ledger SHA-256:
+`f446c35be34a2730d6424caad7ecee5605d0c2981571b23ac0f3edbde6c451d6`.
+Serial evidence is 34,061 bytes, SHA-256
+`b7ade97742764a1f4df43d48468b9e6fc9f7bf2e35a9353708332bd3bc15f45d`.
+The 33.630-second receipt records 402,464,768 peak RAM scratch bytes,
+305,926,144 peak overlay bytes and 253,952 peak durable-run bytes. QEMU 1556967
+joins exit zero; its PID, RAM workspace `run.lxy4v_b0` and active run roots are
+absent, with all three listener deltas zero. Six copied files total 102,881 bytes;
+serial/storage/listener hashes match locked TUF reads. This audit-only addition
+does not change the counted ledger or require another run.

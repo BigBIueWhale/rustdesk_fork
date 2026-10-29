@@ -116663,3 +116663,12 @@ independent reproduction and external review remain open. All user-parked work
 stays parked. Python parsing, both edited harness shell syntax checks and
 `git diff --check` pass. Requirements, dependencies and live instructions are
 unchanged.
+
+At `59d579ae`, isolated count `Jy9nDvpnl5` reports **359,605 ledger tokens** /
+1,644,616 bytes, SHA-256
+`e9c97456c3779d869a502b577dfea3cfe5c1d5d3e55c801c4520b3b895719514`.
+Seven tokenizer controls and the complete byte round trip pass. QEMU 1746967
+joins after 30.409 seconds, RAM `run.emfpw4_6` retires and three host listener
+deltas are zero. Six count files add 104,460 bytes; all 21 retained evidence
+files total 342,303 bytes per host. This audit-only receipt leaves the measured
+ledger unchanged.

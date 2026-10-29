@@ -9042,6 +9042,8 @@ sandbox implementation and checker-repair history remain in Git.
   live pathname. Linux CM/PA retain their exact process/launch proofs. Protected
   `_service` also requires a bounded typed liveness response; malformed/failed responses
   do not authorize cleanup. Probing grants no privileged request authority.
+  `99898ad8` removes the redundant second UID comparison and its Boolean-only
+  model test; the early UID rejection and subsequent executable proof remain.
 
   **Linux startup and recovery.** A validated persistent per-endpoint lock spans the
   fresh nonblocking transport check, descriptor-relative cleanup, bind and permission
@@ -9062,8 +9064,8 @@ sandbox implementation and checker-repair history remain in Git.
   timeout. Permission denial alone never authorizes unlinking. Process umask stays
   unchanged. These corrections are `c369d9e2`, `3a37b232` and `fc083c93`.
 
-  **Current native evidence:** `99cbec37`, TUF `LdsAUYuaQS`, passes 92 listener
-  cases and 14 directory cases in 82.274 seconds. Baseline `mG75yce2f7` reproduces
+  **Current native evidence:** `99898ad8`, TUF `hsBzgq7opY`, passes 95 listener
+  cases and 14 directory cases in 82.250 seconds. Baseline `mG75yce2f7` reproduces
   ten non-socket replacements, two PID-file deletions and two startup failures
   caused by nonempty PID directories. The same fourteen scenarios now preserve
   inode/type/mode/owner/link metadata and contents, while PID artifacts do not
@@ -9079,16 +9081,21 @@ sandbox implementation and checker-repair history remain in Git.
   oversized/truncated, disconnected and silent peers through production framing.
   Oversized headers are rejected while the sender stays connected; silent peers
   time out near one second. Descriptor counts return to baseline before exit.
+  Four same-UID/same-image cases explicitly require successful identity probing;
+  a same-UID foreign image requires a negative identity decision. Three same-image
+  UID-4001 incumbents at the protected service endpoints also require a negative
+  decision and startup refusal, with their live socket identities preserved. Each
+  observes three root-client connections ending at EOF without any payload.
 
   The sealed component uses production `new_listener`, filesystem/peer checks,
   connection methods, codec and typed liveness handler with pinned dependencies.
   Config name/path and service authorization remain fixture adapters. The directory
   fixture no longer invokes macOS-only scrub code on Linux; it checks parent
   hardening and preservation. All host listener deltas are zero, QEMU joins and RAM
-  scratch retires. Provenance: `ipc-stale-kind-99cbec37.json`,
-  `ipc-socket-crash-fc083c93.json`, `ipc-listener-bind-26b069fb.json` and the audit
-  entries for Linux stale endpoint classification, socket recovery and concurrent
-  startup. Historical intermediate receipts remain in the audit and Git.
+  scratch retires. Provenance: `ipc-peer-policy-99898ad8.json`,
+  `ipc-stale-kind-99cbec37.json`, `ipc-socket-crash-fc083c93.json` and the audit
+  entries for Linux incumbent peer policy, stale endpoint classification and
+  socket recovery. Historical intermediate receipts remain in the audit and Git.
 
   **Still required:** exact-current full-app/installed Linux/macOS endpoints and
   privileged actions, CM/PA launch proofs and service accept-time authorization;

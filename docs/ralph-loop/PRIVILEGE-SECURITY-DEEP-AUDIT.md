@@ -115177,3 +115177,47 @@ intermediate history remains here and in Git. No full application, installed
 authority, CM/PA launch proof, macOS, remaining metadata/namespace/crash race,
 coexisting-version, release-artifact or independent-review completion is claimed.
 Config name/path and service authorization remain component fixture adapters.
+
+## 2026-10-29 — Linux incumbent peer policy
+
+The previous turn completed stale-entry classification. This turn reviews the
+two startup probes against R-S11bs and Appendix C #212. Their required identity,
+endpoint-specific and liveness proofs remain; a successful transport alone is
+not promoted to singleton authority. The locked presence check still protects
+an incumbent arriving after the authenticated probe.
+
+`99898ad8` removes `existing_listener_identity_is_acceptable` and its test of
+three literal Boolean combinations. The production caller already returns on
+UID mismatch before obtaining PID/executable proof, so the helper's repeated
+UID comparison was redundant. The remaining executable comparison is explicit.
+The existing policy is unchanged.
+
+Native coverage now explicitly requires four same-UID/same-image probes to
+succeed and a same-UID foreign-image probe to return false, not a transport
+error. For each of `_service`, `_service_password` and `_service_credential`,
+the same sealed executable runs as UID 4001 while root probes and attempts
+startup. The fixture creates its listener before restoring the root-owned
+service parent to mode 0711. Each peer accepts three root-client connections,
+checks kernel UID, observes EOF with zero payload and restores its descriptor
+count before exit. The controller observes the original socket metadata and
+peer PID/UID, a negative identity decision, startup refusal and exact child join.
+[unix(7)](https://man7.org/linux/man-pages/man7/unix.7.html) documents SO_PEERCRED
+as kernel credentials captured at connection/listen/socketpair establishment.
+
+TUF `hsBzgq7opY` passes all 95 listener and 14 directory cases in 82.250 seconds.
+Listener binary SHA-256:
+`9b44c16e7a2e465ef35676bf088689093011e4c5eceb7aeafe8e8ed65589664f`.
+The directory binary remains `2c18066a2a0125e010bbab3e189707e990324fe4db2ff524bd99ddf15352dfb8`.
+QEMU 1646332 joins exit zero, RAM workspace `run.2u887nnc` retires and all four
+host listener deltas are zero. Peak RAM scratch is 3,432,398,848 bytes, overlay
+3,236,143,104 bytes and durable run 3,420,160 bytes. Seven run files total
+94,201 bytes. Capsule `ipc-peer-policy-99898ad8.json`, 29,902 bytes, SHA-256
+`a7681b12a08dcd2d4a602c1bc5753b295aa55ea3af5410e1773d55a4f789fc45`.
+All eight files match CTE/TUF. Diff checks pass; retired helper/test references
+are absent from source/scripts. Compilation and execution stay in the owned VM.
+
+These observations establish incumbent decisions and payload absence in the
+production component, with Config name/path and service authorization adapters.
+Full application/installed privileged request acceptance, CM/PA, macOS,
+remaining process/namespace/metadata/crash races, coexisting versions, release
+artifacts and independent/external review remain OPEN.

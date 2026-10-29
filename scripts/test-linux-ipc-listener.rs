@@ -82,10 +82,15 @@ fn ready(message: &str) {
     std::io::stdout().flush().unwrap();
 }
 
+fn fd_count() -> usize {
+    fs::read_dir("/proc/self/fd").unwrap().map(|entry| entry.unwrap()).count()
+}
+
 async fn service_fixture(scenario: &str) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     assert_eq!(SERVICE_IPC_MAX_FRAME_BYTES, 32768);
     let mut incoming = new_listener(POSTFIX_SERVICE).await.unwrap();
+    let descriptors = fd_count();
     ready("READY");
     for _ in 0..2 {
         let stream = timeout(4000, incoming.next()).await.unwrap().unwrap().unwrap();
@@ -107,6 +112,8 @@ async fn service_fixture(scenario: &str) {
             "disconnect" => {},
             _ => panic!("unknown service scenario"),
         }
+        drop(stream);
+        assert_eq!(fd_count(), descriptors);
     }
 }
 
@@ -136,7 +143,10 @@ fn main() {
     assert!(["start", "try-start", "probe"].contains(&args[1].as_str()));
     let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
     if args[1] == "probe" {
-        match runtime.block_on(probe_existing_listener(postfix)) {
+        let descriptors = fd_count();
+        let result = runtime.block_on(probe_existing_listener(postfix));
+        assert_eq!(fd_count(), descriptors);
+        match result {
             Ok(true) => println!("OK alive"),
             Ok(false) => std::process::exit(4),
             Err(error) => { eprintln!("ERR {error}"); std::process::exit(3); }

@@ -122,15 +122,18 @@ log = "=0.4.22"
 serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.118"
 socket2 = "=0.5.10"
-tokio = { version = "=1.44.2", features = ["full"] }
+tokio = { version = "=1.44.2", features = ["rt", "net", "time", "io-util"] }
 tokio-util = { version = "=0.7.15", features = ["codec"] }
 parity-tokio-ipc = { git = "https://github.com/rustdesk-org/parity-tokio-ipc" }
+[profile.dev]
+debug = 0
+incremental = false
 ''')
     shutil.copyfile(repo / 'Cargo.lock', work / 'Cargo.lock')
     env = dict(ENV, CARGO_HOME='/tmp/cargo-home', CARGO_TARGET_DIR=str(work / 'target'),
                RUSTC='/usr/local/rustup/toolchains/1.75.0-x86_64-unknown-linux-gnu/bin/rustc')
     command = ['/usr/local/rustup/toolchains/1.75.0-x86_64-unknown-linux-gnu/bin/cargo',
-               'build', '--offline', '--manifest-path', str(work / 'Cargo.toml'), '--jobs', '2']
+               'build', '--offline', '--manifest-path', str(work / 'Cargo.toml'), '--jobs', '1']
     subprocess.run(command, env=env, check=True, timeout=180)
     root_packages = tomllib.loads((repo / 'Cargo.lock').read_text())['package']
     for package in tomllib.loads((work / 'Cargo.lock').read_text())['package']:

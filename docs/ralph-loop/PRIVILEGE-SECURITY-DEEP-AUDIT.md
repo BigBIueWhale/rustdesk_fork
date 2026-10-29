@@ -116211,3 +116211,43 @@ listener deltas are zero. Six raw files plus `appendix-risk-history-f8183c2a.jso
 total 118,935 bytes on CTE and TUF. The capsule is 14,341 bytes, SHA-256
 `fdc3ac5cbe30ac92e68f408960250a123c515b7e1d8fbf6c88964673463f1a6c`.
 This audit-only receipt leaves both measured inputs unchanged.
+
+### 2026-10-29 — dormant peer-model interfaces
+
+At clean `ce3c54ac`, review identifies retained peer-model machinery without a
+current caller or producer. Git `3309b49d^` shows the only non-null `getInitPeers`
+providers in the subsequently deleted address-book and group models. Every current
+production/test/probe constructor passes null. Recent and Favorite events are both
+produced through `src/ui_interface.rs::peer_to_map`, whose five fields omit the
+model's `rdpPort`, `rdpUsername` and `loginName`; no production Dart consumer reads
+those three fields. `getByIndex`/`getPeersCount` have no callers, and `Peer.loading`
+is reached only by the unused accessor and one placeholder assertion. This is
+dormant-source retirement under R-G4/R-SV6, not a demonstrated current failure or LPE.
+
+`235d92f8` deletes those fields and their decoder assignments, the placeholder
+constructor/accessors, `GetInitPeers`, its nullable callback/alternate publication
+path and the now-unused Get import. Retained callers use the event-only constructor.
+Fixtures drop null arguments and assertions for removed data; all existing test
+names/case counts remain. The separate peer-search source fragment receives the
+same constructor update but is not executed here. The net diff removes 53 lines.
+
+Exact comparison preserves the remaining event-decoding, validation and atomic
+publication tail, global event dispatcher, Rust peer-list producers, result parser
+and actual `rdp_port` settings read/write workflow. Reference checks find no remaining
+removed symbols in Dart sources/tests/probes or scripts. `git diff --check` passes.
+No new behavioral test or hypothetical malformed-event claim is introduced solely
+to justify deleting unused declarations.
+
+TUF `Aa12gixOUo` passes **113 tests / seven peer-data suites**, plus three focused
+result-parser controls, in 251.719 seconds. Fresh bridge generation, exact library
+copies except generated bindings and all seven test copies pass. The retained serial
+contains validated aggregate results, input/source identities and generated hashes;
+this is Dart/framework evidence with controlled backend responses, not native
+FFI/IPC/storage, an installed application or browser/device execution.
+
+QEMU 1716992 joins, RAM `run.06uv08dh` retires and all four listener deltas are zero.
+`peer-model-retirement-235d92f8.json` retains classification and execution evidence:
+10,808 bytes, SHA-256
+`4babc475f23254521f6656193a372d8d7b8ef8cfd96fbbcddb437104ed92f9e6`.
+Eight evidence files total 85,343 bytes on CTE and TUF. Whole-app/installed/native,
+device and R-S0/R-F5 acceptance remain OPEN; every existing user park remains.

@@ -115981,3 +115981,13 @@ shrinks 945 bytes, from 1,682,780 to 1,681,835. Its SHA-256 changes from
 `5b1a37cacabf59f8123de5b78a0e2a2d785f96243f40a15c81fffbc2495e3a38`.
 `helper-exclusion-spec-3bcc5293.json` retains the classified before/after cells and
 comparison. Product/tests/verifiers and live instruction files are unchanged.
+
+At `bd40c25f`, `conUiytnUp` counts the ledger at **357,956 tokens** / 1,636,712
+bytes and the specification at **368,286 tokens** / 1,681,835 bytes, 232 fewer
+specification tokens. Both pinned counts pass seven controls and complete byte
+round trips. QEMU 1694070 joins after 30.301 seconds, `run.03hy1aa1` retires and
+all three listener deltas are zero. Six raw records and the 10,058-byte comparison
+capsule total 113,655 bytes on CTE and TUF; capsule SHA-256 is
+`016d7fd066dadcb08036170a923e285c66c308ee8c087ec96684d6d0cf4551e0`.
+This audit-only addition leaves both measured inputs unchanged. Whole-document
+classification, native/installed acceptance and all user parks remain OPEN.

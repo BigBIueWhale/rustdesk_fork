@@ -115947,3 +115947,11 @@ deltas are zero; QEMU 1688258/1689062/1689870 and their RAM workspaces retire.
 After evidence verification, the two exact failed-run trees are removed, freeing
 6,901,760 allocated bytes. Full application/installed privileged actions,
 CM/PA proofs, macOS/Windows, release artifacts and independent review remain OPEN.
+
+Fresh count at `a561a9cf`, TUF `kUHl8iiBJo`: **357,840 tokens** / 1,636,052 bytes,
+using the pinned method, seven controls and complete byte round trip. Ledger SHA-256:
+`cb3fcf091914ef4506f5e29c13f5527dd545b2a328b5f7813db192fae8db33a9`.
+QEMU 1691765 joins after 30.714 seconds, `run.2ajri600` retires and all three
+listener deltas are zero. Six count records add 103,480 bytes; all 28 retained
+files total 407,790 bytes on both machines. This audit-only receipt leaves the
+measured ledger unchanged. Broader hardening and documentation cleanup remain OPEN.

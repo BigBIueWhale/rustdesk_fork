@@ -71,7 +71,14 @@ def build():
         filesystem += function(fs_source, 'open_ipc_startup_lock')
     if fs_source.functions('ipc_descriptor_directory'):
         filesystem += function(fs_source, 'ipc_descriptor_directory')
-    filesystem += function(fs_source, 'set_ipc_socket_permissions')
+    filesystem += function(fs_source, 'restore_ipc_socket_owner_access')
+    filesystem += function(fs_source, 'set_ipc_socket_permissions_at')
+    binding = fs_source.item('struct', 'IpcListenerBind')
+    start = fs_source.all().require(('struct', 'IpcListenerBind'), 'listener binding', unique=True)
+    filesystem += 'pub(crate) ' + fs_source.text[fs_source.tokens[start].offset:fs_source.tokens[binding.end].offset + 1] + '\n'
+    binding = fs_source.impl(('impl', 'IpcListenerBind'), 'listener binding methods')
+    start = fs_source.all().require(('impl', 'IpcListenerBind'), 'listener binding methods', unique=True)
+    filesystem += fs_source.text[fs_source.tokens[start].offset:fs_source.tokens[binding.end].offset + 1] + '\n'
     (work / 'filesystem.rs').write_text(filesystem)
     auth = parsed(repo / 'src/ipc/auth.rs')
     identity = ''.join(function(auth, name) for name in (

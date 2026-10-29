@@ -644,13 +644,7 @@ pub(crate) fn scrub_secure_ipc_parent_dir(path: &str, postfix: &str) -> ResultTy
 }
 
 #[cfg(target_os = "linux")]
-pub(crate) fn set_ipc_socket_permissions(
-    path: &str,
-    postfix: &str,
-    restore_owner_write: bool,
-) -> ResultType<()> {
-    use hbb_common::libc;
-
+fn restore_ipc_socket_owner_access(path: &str, postfix: &str) -> ResultType<()> {
     let path = Path::new(path);
     let parent = path.parent().ok_or_else(|| Error::new(ErrorKind::InvalidInput, "invalid ipc parent"))?;
     let name = CString::new(format!("ipc{postfix}"))?;
@@ -661,6 +655,18 @@ pub(crate) fn set_ipc_socket_permissions(
         verify_linux_service_ipc_namespace(parent)?;
     }
     let parent = FdGuard(open_ipc_parent_dir_fd(&CString::new(parent.as_os_str().as_bytes())?)?);
+    set_ipc_socket_permissions_at(parent.0, postfix, true)
+}
+
+#[cfg(target_os = "linux")]
+fn set_ipc_socket_permissions_at(
+    parent_fd: i32,
+    postfix: &str,
+    restore_owner_write: bool,
+) -> ResultType<()> {
+    use hbb_common::libc;
+
+    let name = CString::new(format!("ipc{postfix}"))?;
     let metadata = |fd| -> std::io::Result<libc::stat> {
         let mut st: libc::stat = unsafe { std::mem::zeroed() };
         if unsafe { libc::fstat(fd, &mut st) } != 0 {
@@ -669,11 +675,11 @@ pub(crate) fn set_ipc_socket_permissions(
         Ok(st)
     };
     let uid = unsafe { libc::geteuid() };
-    let directory = metadata(parent.0)?;
+    let directory = metadata(parent_fd)?;
     if directory.st_uid != uid || directory.st_mode & 0o7777 != expected_ipc_parent_mode(postfix) {
         return Err(Error::new(ErrorKind::PermissionDenied, "unsafe ipc socket parent").into());
     }
-    let fd = unsafe { libc::openat(parent.0, name.as_ptr(), libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
+    let fd = unsafe { libc::openat(parent_fd, name.as_ptr(), libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
     if fd < 0 {
         return Err(Error::last_os_error().into());
     }
@@ -695,7 +701,7 @@ pub(crate) fn set_ipc_socket_permissions(
         }
         Ok(())
     };
-    require_identity(parent.0, &name, libc::AT_SYMLINK_NOFOLLOW)?;
+    require_identity(parent_fd, &name, libc::AT_SYMLINK_NOFOLLOW)?;
     let descriptors = ipc_descriptor_directory()?;
     let descriptor = CString::new(fd.to_string())?;
     require_identity(descriptors.0, &descriptor, 0)?;
@@ -709,7 +715,7 @@ pub(crate) fn set_ipc_socket_permissions(
     if repaired.st_uid != uid || repaired.st_nlink != 1 || repaired.st_mode & 0o7777 != mode {
         return Err(Error::new(ErrorKind::PermissionDenied, "ipc socket metadata changed").into());
     }
-    require_identity(parent.0, &name, libc::AT_SYMLINK_NOFOLLOW)
+    require_identity(parent_fd, &name, libc::AT_SYMLINK_NOFOLLOW)
 }
 
 #[cfg(target_os = "linux")]
@@ -718,7 +724,7 @@ async fn connect_existing_listener(postfix: &str) -> ResultType<Option<Connectio
     let client: ResultType<Option<ConnClient>> = hbb_common::timeout(1000, async {
         let result = match Endpoint::connect(&path).await {
             Err(err) if err.raw_os_error() == Some(hbb_common::libc::EACCES) => {
-                set_ipc_socket_permissions(&path, postfix, true)?;
+                restore_ipc_socket_owner_access(&path, postfix)?;
                 Endpoint::connect(&path).await
             }
             result => result,
@@ -960,10 +966,54 @@ fn open_ipc_startup_lock(parent_fd: i32, name: &std::ffi::CStr, uid: u32) -> Res
 }
 
 #[cfg(target_os = "linux")]
+pub(crate) struct IpcListenerBind {
+    parent: FdGuard,
+    _lock: FdGuard,
+    parent_path: CString,
+    path: String,
+    postfix: String,
+}
+
+#[cfg(target_os = "linux")]
+impl IpcListenerBind {
+    pub(crate) fn path(&self) -> &str {
+        &self.path
+    }
+
+    fn validate_parent(&self) -> ResultType<()> {
+        use hbb_common::libc;
+
+        let mut retained: libc::stat = unsafe { std::mem::zeroed() };
+        let mut named: libc::stat = unsafe { std::mem::zeroed() };
+        if unsafe { libc::fstat(self.parent.0, &mut retained) } != 0
+            || unsafe { libc::fstatat(libc::AT_FDCWD, self.parent_path.as_ptr(), &mut named, libc::AT_SYMLINK_NOFOLLOW) } != 0
+        {
+            return Err(Error::last_os_error().into());
+        }
+        let uid = unsafe { libc::geteuid() };
+        let mode = expected_ipc_parent_mode(&self.postfix);
+        if (retained.st_dev, retained.st_ino) != (named.st_dev, named.st_ino)
+            || retained.st_uid != uid || named.st_uid != uid
+            || retained.st_mode & 0o7777 != mode || named.st_mode & 0o7777 != mode
+            || named.st_mode & libc::S_IFMT != libc::S_IFDIR
+        {
+            return Err(Error::new(ErrorKind::PermissionDenied, "ipc listener parent identity or metadata changed").into());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn finish(&self) -> ResultType<()> {
+        self.validate_parent()?;
+        set_ipc_socket_permissions_at(self.parent.0, &self.postfix, false)?;
+        self.validate_parent()
+    }
+}
+
+#[cfg(target_os = "linux")]
 pub(crate) fn prepare_ipc_listener_bind(
     path: &str,
     postfix: &str,
-) -> ResultType<impl Drop> {
+) -> ResultType<IpcListenerBind> {
     use hbb_common::libc;
 
     let path = Path::new(path);
@@ -974,9 +1024,12 @@ pub(crate) fn prepare_ipc_listener_bind(
     let parent = path
         .parent()
         .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "invalid ipc parent"))?;
+    if config::is_service_ipc_postfix(postfix) {
+        verify_linux_service_ipc_namespace(parent)?;
+    }
     let parent_c = CString::new(parent.as_os_str().as_bytes())?;
     let parent_fd = open_ipc_parent_dir_fd(&parent_c)?;
-    let _parent_guard = FdGuard(parent_fd);
+    let parent_guard = FdGuard(parent_fd);
     let mut st: libc::stat = unsafe { std::mem::zeroed() };
     if unsafe { libc::fstat(parent_fd, &mut st) } != 0 {
         return Err(Error::last_os_error().into());
@@ -991,11 +1044,31 @@ pub(crate) fn prepare_ipc_listener_bind(
     let lock_name = CString::new(format!("{basename}.lock"))?;
     let guard = open_ipc_startup_lock(parent_fd, &lock_name, uid)?;
 
+    // Linux has no bindat. Its procfs descriptor alias keeps bind and the fresh
+    // transport check in the retained directory even if the public name moves.
+    let descriptors = ipc_descriptor_directory()?;
+    let descriptor = CString::new(parent_fd.to_string())?;
+    let mut alias: libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstatat(descriptors.0, descriptor.as_ptr(), &mut alias, 0) } != 0 {
+        return Err(Error::last_os_error().into());
+    }
+    if (alias.st_dev, alias.st_ino) != (st.st_dev, st.st_ino) {
+        return Err(Error::new(ErrorKind::PermissionDenied, "ipc parent descriptor changed").into());
+    }
+    let bind = IpcListenerBind {
+        parent: parent_guard,
+        _lock: guard,
+        parent_path: parent_c,
+        path: format!("/proc/thread-self/fd/{parent_fd}/{basename}"),
+        postfix: postfix.to_owned(),
+    };
+    bind.validate_parent()?;
+
     // The asynchronous probe predates this reservation. Refuse any transport
     // that appeared meanwhile; this check grants no peer or request authority.
     let socket = socket2::Socket::new(socket2::Domain::UNIX, socket2::Type::STREAM, None)?;
     socket.set_nonblocking(true)?;
-    match socket.connect(&socket2::SockAddr::unix(path)?) {
+    match socket.connect(&socket2::SockAddr::unix(bind.path())?) {
         Ok(()) => return Err(Error::new(ErrorKind::AddrInUse, "ipc listener is active").into()),
         Err(err) if matches!(err.kind(), ErrorKind::NotFound | ErrorKind::ConnectionRefused) => {}
         Err(err) => return Err(err.into()),
@@ -1019,9 +1092,10 @@ pub(crate) fn prepare_ipc_listener_bind(
             }
         }
     }
-    // The caller retains this guard through bind and socket-mode establishment,
-    // without another await. Every error releases it by closing the descriptor.
-    Ok(guard)
+    bind.validate_parent()?;
+    // The caller retains both directory and reservation through synchronous bind
+    // and finalization. No descriptor alias or lock crosses an await.
+    Ok(bind)
 }
 
 #[cfg(any(target_os = "macos", test))]

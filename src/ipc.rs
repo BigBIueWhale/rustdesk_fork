@@ -141,10 +141,7 @@ type ServiceIpcRequesterAuthorization = ipc_auth::ServiceScopedIpcAuthorization;
 #[cfg(target_os = "linux")]
 type ServiceIpcRequesterAuthorization = ();
 #[cfg(target_os = "linux")]
-use ipc_fs::{
-    prepare_ipc_listener_bind, probe_existing_listener, set_ipc_socket_permissions,
-    terminal_count_candidate_uids,
-};
+use ipc_fs::{prepare_ipc_listener_bind, probe_existing_listener, terminal_count_candidate_uids};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use ipc_fs::ensure_secure_ipc_parent_dir;
 #[cfg(target_os = "macos")]
@@ -5121,7 +5118,7 @@ pub async fn new_listener(postfix: &str) -> ResultType<Incoming> {
         return Err(std::io::Error::new(std::io::ErrorKind::AddrInUse, "ipc listener is active").into());
     }
     #[cfg(target_os = "linux")]
-    let _bind_guard = prepare_ipc_listener_bind(&path, postfix)?;
+    let bind = prepare_ipc_listener_bind(&path, postfix)?;
     #[cfg(target_os = "macos")]
     let existing_listener_alive = check_existing_listener(postfix).await?;
     #[cfg(target_os = "macos")]
@@ -5131,6 +5128,9 @@ pub async fn new_listener(postfix: &str) -> ResultType<Incoming> {
     ) {
         scrub_secure_ipc_parent_dir(&path, postfix)?;
     }
+    #[cfg(target_os = "linux")]
+    let mut endpoint = Endpoint::new(bind.path().to_owned());
+    #[cfg(not(target_os = "linux"))]
     let mut endpoint = Endpoint::new(path.clone());
     #[cfg(windows)]
     let attr = windows_ipc_listener_security_attributes(postfix).map_err(|err| {
@@ -5146,7 +5146,7 @@ pub async fn new_listener(postfix: &str) -> ResultType<Incoming> {
     match endpoint.incoming() {
         Ok(incoming) => {
             #[cfg(target_os = "linux")]
-            set_ipc_socket_permissions(&path, postfix, false)?;
+            bind.finish()?;
             #[cfg(target_os = "macos")]
             {
                 // Some IPC sockets are intentionally world-connectable

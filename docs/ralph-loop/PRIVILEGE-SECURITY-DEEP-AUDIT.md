@@ -116505,3 +116505,34 @@ joins after 30.814 seconds, RAM `run.dnfbwl11` retires and three listener deltas
 are zero. Six count files add 103,615 bytes; all 21 retained evidence files total
 347,728 bytes on each host. This audit-only receipt leaves the measured ledger
 unchanged.
+
+### 2026-10-29 — file-mode requirement roles
+
+At `67d394ae`, R-S11av still describes the already-promoted IPC PID-file literal
+from `3b49ab02` (2026-07-19), although `9a3668e2` removed that writer and its
+compiler case. Current config, transfer, paste and placeholder creation calls
+use promoted `c_uint`; the retained compiler fixture extracts those four actual
+expressions plus three fixed-prototype expressions on both Darwin architectures.
+Appendix C #170 already states the enduring ABI and compiler-evidence contract.
+
+The requirement removes the obsolete PID example, comparison with a particular
+existing helper, repair narration and source-catalogue terminology. It retains
+the promoted variadic type, fixed-prototype `mode_t`, every creation/descriptor/
+cleanup safeguard, all-call source review, pinned SDK-free Darwin compiler check,
+native SDK-backed behavior and signed/exact-artifact obligations. The latter are
+stated as requirements rather than future work. Rust's
+[E0617 documentation](https://doc.rust-lang.org/error_codes/E0617.html) and
+[variadic type contract](https://doc.rust-lang.org/core/ffi/trait.VaArgSafe.html),
+alongside Apple's [open/openat declarations](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/fcntl.h),
+continue to support this ABI distinction; no dependency or toolchain update follows.
+
+Exact comparison changes only the classified R-S11av text: 311 bytes removed.
+All 411 requirement declarations, 2,863 references, 211 links, 34 anchors and the
+complete ordered Appendix finding rows remain identical. Requirements now occupy
+1,678,891 bytes, SHA-256
+`1d1c0329c6f7234f609f7203dbf21ee73629f48d67c3ac536a500f0dc9f64be4`.
+No script depends on the deleted wording. Product, compiler fixtures, test
+commands and live instructions are unchanged; `git diff --check` passes. No
+product/compiler rerun or new native closure is claimed for this documentation
+edit. Current native/installed, R-S0/R-F5 and release obligations stay open, and
+all user-parked work remains parked.

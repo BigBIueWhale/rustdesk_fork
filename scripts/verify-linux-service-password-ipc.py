@@ -914,7 +914,7 @@ def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
     )
     service_listener.require_order(
         (
-            (("password_incoming", ".", "next", "(", ")"), "raw service accept lane"),
+            (("ServiceIpcAccept", "::", "Password", "(", "result", ")"), "raw service accept lane"),
             (("try_acquire_service_password_ipc_transaction_slot", "(", ")"), "raw service bounded admission"),
             (("let", "deadline", "=", "std", "::", "time", "::", "Instant", "::", "now", "(", ")", "+", "std", "::", "time", "::", "Duration", "::", "from_millis", "(", "SERVICE_IPC_REQUEST_TIMEOUT_MS", ")"), "deadline established before password proof"),
             (("authorization_workers", ".", "spawn_blocking", "("), "retained blocking proof worker"),
@@ -934,7 +934,7 @@ def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
     )
     service_listener.require_order(
         (
-            (("credential_incoming", ".", "next", "(", ")"), "raw credential accept lane"),
+            (("ServiceIpcAccept", "::", "Credential", "(", "result", ")"), "raw credential accept lane"),
             (("try_acquire_service_credential_ipc_transaction_slot", "(", ")"), "credential work admission"),
             (("LinuxServiceOwnedCredentialReplicaRequester", "::", "authenticate", "(", "&", "stream", OPTIONAL_COMMA, ")"), "typed exact-child proof before request read"),
             (("LinuxServiceAuthorizationCompletion", "::", "Credential", "{"), "owned credential proof completion"),

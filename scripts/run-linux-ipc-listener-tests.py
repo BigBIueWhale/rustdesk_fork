@@ -89,6 +89,10 @@ def build():
     (work / 'identity.rs').write_text(identity.replace('pub(crate) ', ''))
     ipc = parsed(repo / 'src/ipc.rs')
     transport = ''.join(function(ipc, name) for name in ('connect', 'connect_with_path', 'new_listener'))
+    admission = ipc.item('enum', 'ServiceIpcAccept')
+    start = ipc.all().require(('enum', 'ServiceIpcAccept'), 'service admission result', unique=True)
+    transport += ipc.text[ipc.tokens[start].offset:ipc.tokens[admission.end].offset + 1] + '\n'
+    transport += function(ipc, 'next_service_ipc_connection')
     (work / 'transport.rs').write_text(transport.replace('pub(crate) ', ''))
     connection = ''
     for name in ('SERVICE_IPC_MAX_FRAME_BYTES', 'MAIN_IPC_MAX_FRAME_BYTES', 'SERVICE_IPC_REQUEST_TIMEOUT_MS'):
@@ -218,6 +222,15 @@ def native(expected_sha, barrier_sha):
             failures.append(name)
         print(f'LINUX_IPC_LISTENER_CASE={"pass" if passed else "fail"} name={name} '
               f'exit={result.returncode} stdout={result.stdout.strip()!r} stderr={result.stderr.strip()!r}', flush=True)
+
+    for uid in (0, 4001):
+        for scenario in ('backlog', 'sparse', 'cancel'):
+            result = check('', uid, action='admission-' + scenario)
+            record(f'admission-{scenario}-{uid}', result.returncode == 0
+                   and result.stdout == f'OK admission-{scenario} uid={uid} cleanup=joined\n', result)
+            for postfix in (('_service_credential', '_service_password', '_service')
+                            if uid == 0 else ('_password', '', '_url')):
+                path(postfix, uid).unlink(missing_ok=True)
 
     for postfix in ('_password', '_service_password', '_service_credential', ''):
         uid = 4001 if postfix == '_password' else 0
@@ -928,8 +941,8 @@ def native(expected_sha, barrier_sha):
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
     require(sha(barrier) == barrier_sha, 'barrier changed')
     probe.unlink(); barrier.unlink(); work.rmdir()
-    require(len(cases) == 132, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=132 failures={len(failures)} '
+    require(len(cases) == 138, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=138 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 

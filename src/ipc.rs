@@ -3966,6 +3966,28 @@ impl LinuxServiceAuthorizationCompletion {
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
+enum ServiceIpcAccept {
+    Credential(Option<std::io::Result<Conn>>),
+    Password(Option<std::io::Result<Conn>>),
+    Service(Option<std::io::Result<Conn>>),
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+async fn next_service_ipc_connection(
+    credential: &mut Incoming,
+    password: &mut Incoming,
+    service: &mut Incoming,
+    _next: &mut usize,
+) -> ServiceIpcAccept {
+    tokio::select! {
+        biased;
+        result = credential.next() => ServiceIpcAccept::Credential(result),
+        result = password.next() => ServiceIpcAccept::Password(result),
+        result = service.next() => ServiceIpcAccept::Service(result),
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> ResultType<()> {
     let PreparedServiceIpc {
         mut incoming,
@@ -3973,6 +3995,7 @@ async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> Result
         mut credential_incoming,
         listener_guard,
     } = listeners;
+    let mut next_service_listener = 0;
     let mut transactions = JoinSet::new();
     let shutdown = crate::server::shutdown_token();
     #[cfg(target_os = "linux")]
@@ -4041,206 +4064,211 @@ async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> Result
                     crate::server::request_graceful_shutdown_after_authority_failure();
                 }
             }
-            result = credential_incoming.next() => {
-                #[cfg(target_os = "linux")]
-                {
-                    let Some(result) = result else {
-                        listener_error = Some("protected service credential IPC listener ended unexpectedly".to_owned());
-                        crate::server::request_graceful_shutdown_after_listener_failure();
-                        break;
-                    };
-                    let stream = match result {
-                        Ok(stream) => stream,
-                        Err(err) => {
-                            log::error!("Could not accept protected service credential IPC client: {err}");
-                            continue;
-                        }
-                    };
-                    let Some(permit) = try_acquire_service_credential_ipc_transaction_slot() else {
-                        continue;
-                    };
-                    let shutdown = shutdown.clone();
-                    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
-                    authorization_workers.spawn_blocking(move || {
-                        let requester = if shutdown.is_cancelled() || std::time::Instant::now() >= deadline {
-                            Err(anyhow::anyhow!("Linux credential requester authorization cancelled"))
-                        } else {
-                            LinuxServiceOwnedCredentialReplicaRequester::authenticate(&stream)
+            accepted = next_service_ipc_connection(
+                &mut credential_incoming, &mut password_incoming, &mut incoming,
+                &mut next_service_listener,
+            ) => match accepted {
+                ServiceIpcAccept::Credential(result) => {
+                    #[cfg(target_os = "linux")]
+                    {
+                        let Some(result) = result else {
+                            listener_error = Some("protected service credential IPC listener ended unexpectedly".to_owned());
+                            crate::server::request_graceful_shutdown_after_listener_failure();
+                            break;
                         };
-                        let requester = requester.and_then(|requester| {
-                            if shutdown.is_cancelled() || std::time::Instant::now() >= deadline {
-                                bail!("Linux credential requester authorization expired");
+                        let stream = match result {
+                            Ok(stream) => stream,
+                            Err(err) => {
+                                log::error!("Could not accept protected service credential IPC client: {err}");
+                                continue;
                             }
-                            Ok(requester)
+                        };
+                        let Some(permit) = try_acquire_service_credential_ipc_transaction_slot() else {
+                            continue;
+                        };
+                        let shutdown = shutdown.clone();
+                        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
+                        authorization_workers.spawn_blocking(move || {
+                            let requester = if shutdown.is_cancelled() || std::time::Instant::now() >= deadline {
+                                Err(anyhow::anyhow!("Linux credential requester authorization cancelled"))
+                            } else {
+                                LinuxServiceOwnedCredentialReplicaRequester::authenticate(&stream)
+                            };
+                            let requester = requester.and_then(|requester| {
+                                if shutdown.is_cancelled() || std::time::Instant::now() >= deadline {
+                                    bail!("Linux credential requester authorization expired");
+                                }
+                                Ok(requester)
+                            });
+                            LinuxServiceAuthorizationCompletion::Credential { stream, permit, requester, deadline }
                         });
-                        LinuxServiceAuthorizationCompletion::Credential { stream, permit, requester, deadline }
-                    });
+                    }
+                    #[cfg(target_os = "macos")]
+                    {
+                        let Some(result) = result else {
+                            listener_error = Some("protected macOS service credential IPC listener ended unexpectedly".to_owned());
+                            crate::server::request_graceful_shutdown_after_listener_failure();
+                            break;
+                        };
+                        let stream = match result {
+                            Ok(stream) => stream,
+                            Err(err) => {
+                                log::error!("Could not accept protected service credential IPC client: {err}");
+                                continue;
+                            }
+                        };
+                        let Some(permit) = try_acquire_service_credential_ipc_transaction_slot() else {
+                            continue;
+                        };
+                        let Some(authorization_permit) =
+                            try_acquire_macos_service_credential_ipc_authorization_slot()
+                        else {
+                            continue;
+                        };
+                        let authorization =
+                            ipc_auth::service_scoped_ipc_authorization_snapshot_from_stream(
+                                &stream,
+                                password::SERVICE_CREDENTIAL_IPC_POSTFIX,
+                            );
+                        transactions.spawn(async move {
+                            let deadline = tokio::time::Instant::now()
+                                + std::time::Duration::from_millis(
+                                    SERVICE_IPC_REQUEST_TIMEOUT_MS,
+                                );
+                            let Some(authorization) =
+                                authorize_macos_service_scoped_credential_stream_for_task(
+                                    authorization,
+                                    authorization_permit,
+                                    deadline,
+                                )
+                                .await
+                            else {
+                                return;
+                            };
+                            handle_macos_service_credential_snapshot_transaction(
+                                stream,
+                                authorization,
+                                permit,
+                            )
+                            .await;
+                        });
+                    }
                 }
-                #[cfg(target_os = "macos")]
-                {
+                ServiceIpcAccept::Password(result) => {
                     let Some(result) = result else {
-                        listener_error = Some("protected macOS service credential IPC listener ended unexpectedly".to_owned());
+                        listener_error = Some("protected service password IPC listener ended unexpectedly".to_owned());
                         crate::server::request_graceful_shutdown_after_listener_failure();
                         break;
                     };
                     let stream = match result {
                         Ok(stream) => stream,
                         Err(err) => {
-                            log::error!("Could not accept protected service credential IPC client: {err}");
+                            log::error!("Could not accept protected service password IPC client: {err}");
                             continue;
                         }
                     };
-                    let Some(permit) = try_acquire_service_credential_ipc_transaction_slot() else {
+                    let Some(permit) = try_acquire_service_password_ipc_transaction_slot() else {
                         continue;
                     };
-                    let Some(authorization_permit) =
-                        try_acquire_macos_service_credential_ipc_authorization_slot()
-                    else {
-                        continue;
-                    };
-                    let authorization =
-                        ipc_auth::service_scoped_ipc_authorization_snapshot_from_stream(
-                            &stream,
-                            password::SERVICE_CREDENTIAL_IPC_POSTFIX,
-                        );
-                    transactions.spawn(async move {
-                        let deadline = tokio::time::Instant::now()
-                            + std::time::Duration::from_millis(
-                                SERVICE_IPC_REQUEST_TIMEOUT_MS,
+                    #[cfg(target_os = "linux")]
+                    {
+                        let shutdown = shutdown.clone();
+                        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
+                        authorization_workers.spawn_blocking(move || {
+                            let cancelled = || shutdown.is_cancelled();
+                            let mut lookup = hbb_common::platform::linux::LoginctlLookup::new(deadline, &cancelled);
+                            let identity = lookup.check_pending().map_err(anyhow::Error::from)
+                                .and_then(|_| authenticate_linux_service_owned_password_requester(&stream, &mut lookup))
+                                .and_then(|identity| {
+                                    lookup.check_pending()?;
+                                    Ok(identity)
+                                });
+                            LinuxServiceAuthorizationCompletion::Password { stream, permit, identity, deadline }
+                        });
+                    }
+                    #[cfg(target_os = "macos")]
+                    {
+                        let Some(authorization_permit) = try_acquire_macos_service_password_ipc_authorization_slot() else { continue; };
+                        let authorization =
+                            ipc_auth::service_scoped_ipc_authorization_snapshot_from_stream(
+                                &stream,
+                                password::SERVICE_PASSWORD_IPC_POSTFIX,
                             );
-                        let Some(authorization) =
-                            authorize_macos_service_scoped_credential_stream_for_task(
+                        transactions.spawn(async move {
+                            let deadline = tokio::time::Instant::now()
+                                + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
+                            let Some(requester) = authenticate_macos_service_owned_password_requester_for_task(
                                 authorization,
                                 authorization_permit,
                                 deadline,
                             )
-                            .await
-                        else {
-                            return;
-                        };
-                        handle_macos_service_credential_snapshot_transaction(
-                            stream,
-                            authorization,
-                            permit,
-                        )
-                        .await;
-                    });
-                }
-            }
-            result = password_incoming.next() => {
-                let Some(result) = result else {
-                    listener_error = Some("protected service password IPC listener ended unexpectedly".to_owned());
-                    crate::server::request_graceful_shutdown_after_listener_failure();
-                    break;
-                };
-                let stream = match result {
-                    Ok(stream) => stream,
-                    Err(err) => {
-                        log::error!("Could not accept protected service password IPC client: {err}");
-                        continue;
+                            .await else { return; };
+                            handle_sensitive_macos_service_ipc_transaction(
+                                stream,
+                                requester,
+                                permit,
+                                deadline,
+                            )
+                            .await;
+                        });
                     }
-                };
-                let Some(permit) = try_acquire_service_password_ipc_transaction_slot() else {
-                    continue;
-                };
-                #[cfg(target_os = "linux")]
-                {
-                    let shutdown = shutdown.clone();
-                    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
-                    authorization_workers.spawn_blocking(move || {
-                        let cancelled = || shutdown.is_cancelled();
-                        let mut lookup = hbb_common::platform::linux::LoginctlLookup::new(deadline, &cancelled);
-                        let identity = lookup.check_pending().map_err(anyhow::Error::from)
-                            .and_then(|_| authenticate_linux_service_owned_password_requester(&stream, &mut lookup))
-                            .and_then(|identity| {
+                }
+                ServiceIpcAccept::Service(result) => {
+                    let Some(result) = result else {
+                        listener_error = Some("protected _service IPC listener ended unexpectedly".to_owned());
+                        crate::server::request_graceful_shutdown_after_listener_failure();
+                        break;
+                    };
+                    let stream = match result {
+                        Ok(stream) => stream,
+                        Err(err) => {
+                            log::error!("Could not accept protected _service IPC client: {err}");
+                            continue;
+                        }
+                    };
+                    let stream = Connection::new_protected_service(stream);
+                    let Some(permit) = try_acquire_service_ipc_transaction_slot() else {
+                        continue;
+                    };
+                    #[cfg(target_os = "linux")]
+                    {
+                        let shutdown = shutdown.clone();
+                        let postfix = postfix.to_owned();
+                        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
+                        authorization_workers.spawn_blocking(move || {
+                            let cancelled = || shutdown.is_cancelled();
+                            let mut lookup = hbb_common::platform::linux::LoginctlLookup::new(deadline, &cancelled);
+                            let authorization = (|| {
                                 lookup.check_pending()?;
-                                Ok(identity)
-                            });
-                        LinuxServiceAuthorizationCompletion::Password { stream, permit, identity, deadline }
-                    });
-                }
-                #[cfg(target_os = "macos")]
-                {
-                    let Some(authorization_permit) = try_acquire_macos_service_password_ipc_authorization_slot() else { continue; };
-                    let authorization =
-                        ipc_auth::service_scoped_ipc_authorization_snapshot_from_stream(
-                            &stream,
-                            password::SERVICE_PASSWORD_IPC_POSTFIX,
-                        );
-                    transactions.spawn(async move {
-                        let deadline = tokio::time::Instant::now()
-                            + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
-                        let Some(requester) = authenticate_macos_service_owned_password_requester_for_task(
-                            authorization,
-                            authorization_permit,
-                            deadline,
-                        )
-                        .await else { return; };
-                        handle_sensitive_macos_service_ipc_transaction(
-                            stream,
-                            requester,
-                            permit,
-                            deadline,
-                        )
-                        .await;
-                    });
-                }
-            }
-            result = incoming.next() => {
-                let Some(result) = result else {
-                    listener_error = Some("protected _service IPC listener ended unexpectedly".to_owned());
-                    crate::server::request_graceful_shutdown_after_listener_failure();
-                    break;
-                };
-                let stream = match result {
-                    Ok(stream) => stream,
-                    Err(err) => {
-                        log::error!("Could not accept protected _service IPC client: {err}");
-                        continue;
+                                if !authorize_service_scoped_ipc_connection(&stream, &postfix, &mut lookup) {
+                                    bail!("Linux service requester authority was not proved");
+                                }
+                                lookup.check_pending()?;
+                                Ok(())
+                            })();
+                            LinuxServiceAuthorizationCompletion::Service { stream, permit, postfix, authorization, deadline }
+                        });
                     }
-                };
-                let stream = Connection::new_protected_service(stream);
-                let Some(permit) = try_acquire_service_ipc_transaction_slot() else {
-                    continue;
-                };
-                #[cfg(target_os = "linux")]
-                {
-                    let shutdown = shutdown.clone();
-                    let postfix = postfix.to_owned();
-                    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
-                    authorization_workers.spawn_blocking(move || {
-                        let cancelled = || shutdown.is_cancelled();
-                        let mut lookup = hbb_common::platform::linux::LoginctlLookup::new(deadline, &cancelled);
-                        let authorization = (|| {
-                            lookup.check_pending()?;
-                            if !authorize_service_scoped_ipc_connection(&stream, &postfix, &mut lookup) {
-                                bail!("Linux service requester authority was not proved");
-                            }
-                            lookup.check_pending()?;
-                            Ok(())
-                        })();
-                        LinuxServiceAuthorizationCompletion::Service { stream, permit, postfix, authorization, deadline }
-                    });
+                    #[cfg(target_os = "macos")]
+                    {
+                        let Some(authorization_permit) = try_acquire_macos_service_ipc_authorization_slot() else { continue; };
+                        let authorization = ipc_auth::service_scoped_ipc_authorization_snapshot(
+                            &stream,
+                            postfix,
+                        );
+                        let postfix = postfix.to_owned();
+                        transactions.spawn(async move {
+                            let _permit = permit;
+                            let deadline = tokio::time::Instant::now()
+                                + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
+                            let Some(authorization) = authorize_macos_service_scoped_ipc_connection_for_task(
+                                authorization, authorization_permit, deadline,
+                            ).await else { return; };
+                            handle_service_ipc_transaction(stream, &postfix, authorization).await;
+                        });
+                    }
                 }
-                #[cfg(target_os = "macos")]
-                {
-                    let Some(authorization_permit) = try_acquire_macos_service_ipc_authorization_slot() else { continue; };
-                    let authorization = ipc_auth::service_scoped_ipc_authorization_snapshot(
-                        &stream,
-                        postfix,
-                    );
-                    let postfix = postfix.to_owned();
-                    transactions.spawn(async move {
-                        let _permit = permit;
-                        let deadline = tokio::time::Instant::now()
-                            + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
-                        let Some(authorization) = authorize_macos_service_scoped_ipc_connection_for_task(
-                            authorization, authorization_permit, deadline,
-                        ).await else { return; };
-                        handle_service_ipc_transaction(stream, &postfix, authorization).await;
-                    });
-                }
-            }
+            },
         }
     }
     #[cfg(target_os = "macos")]

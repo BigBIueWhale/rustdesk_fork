@@ -2542,8 +2542,8 @@ linux_credential_handler = between(
 )
 linux_credential_accept = between(
     run_service,
-    "result = credential_incoming.next()",
-    "result = password_incoming.next()",
+    "ServiceIpcAccept::Credential(result)",
+    "ServiceIpcAccept::Password(result)",
 )
 need(
     "linux-credential-authority-not-typed-through-operation-bound-response",
@@ -2998,8 +2998,8 @@ need(
 )
 mac_password_accept = between(
     run_service,
-    "result = password_incoming.next()",
-    "result = incoming.next()",
+    "ServiceIpcAccept::Password(result)",
+    "ServiceIpcAccept::Service(result)",
 )
 need(
     "macos-peer-proof-not-before-raw-read",
@@ -3296,7 +3296,7 @@ mac_service_proof = between(
 )
 mac_service_accept = between(
     run_service,
-    "result = incoming.next()",
+    "ServiceIpcAccept::Service(result)",
     "password_mutations().begin_shutdown()",
 )
 service_transaction = between(
@@ -3425,8 +3425,8 @@ mac_credential_pretask_proof = between(
 )
 mac_credential_accept = between(
     run_service,
-    "result = credential_incoming.next()",
-    "result = password_incoming.next()",
+    "ServiceIpcAccept::Credential(result)",
+    "ServiceIpcAccept::Password(result)",
 )
 mac_credential_handler = between(
     ipc,

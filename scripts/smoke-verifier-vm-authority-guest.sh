@@ -6374,6 +6374,7 @@ run_focused_rust_tests() {
                         fi
                         ;;
                     linux-ipc-parent-tests)
+                        python3 -B -I -S /source/scripts/verify-linux-service-password-ipc.py --repo /source
                         python3 -B -I -S /source/scripts/run-linux-ipc-parent-tests.py build
                         python3 -B -I -S /source/scripts/run-linux-ipc-listener-tests.py build
                         ;;
@@ -7103,8 +7104,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             >"$native_output" 2>&1 \
             || { tail -c 65536 "$native_output" >&2; fail 'IPC listener native cases failed'; }
         [ "$(stat -c '%s' "$native_output")" -le 65536 ] \
-            && [ "$(grep -Fc 'LINUX_IPC_LISTENER_CASE=pass ' "$native_output")" -eq 132 ] \
-            && [ "$(grep -Fxc "LINUX_IPC_LISTENER_NATIVE=pass cases=132 failures=0 artifact_sha256=$ipc_listener_sha cleanup=joined" "$native_output")" -eq 1 ] \
+            && [ "$(grep -Fc 'LINUX_IPC_LISTENER_CASE=pass ' "$native_output")" -eq 138 ] \
+            && [ "$(grep -Fxc "LINUX_IPC_LISTENER_NATIVE=pass cases=138 failures=0 artifact_sha256=$ipc_listener_sha cleanup=joined" "$native_output")" -eq 1 ] \
             || fail 'IPC listener native inventory or cleanup differs'
         cat "$native_output"
         stop_docker_authority

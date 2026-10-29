@@ -6443,7 +6443,7 @@ elif [ "$MODE" = linux-ipc-parent-tests ]; then
         || fail 'IPC parent native artifact receipt differs'
     IPC_PARENT_ARTIFACT_SHA256=${ipc_parent_artifacts[0]##*=}
     mapfile -t ipc_listener_artifacts < <(
-        /usr/bin/grep -Eo 'LINUX_IPC_LISTENER_NATIVE=pass cases=132 failures=0 artifact_sha256=[0-9a-f]{64} cleanup=joined' "$SERIAL_LOG"
+        /usr/bin/grep -Eo 'LINUX_IPC_LISTENER_NATIVE=pass cases=138 failures=0 artifact_sha256=[0-9a-f]{64} cleanup=joined' "$SERIAL_LOG"
     )
     [ "${#ipc_listener_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fo 'LINUX_IPC_LISTENER_NATIVE=' "$SERIAL_LOG" | /usr/bin/wc -l)" -eq 1 ] \

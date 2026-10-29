@@ -568,6 +568,133 @@ async fn wire_fixture(scenario: &str) {
     println!("OK wire-{scenario} uid={} cleanup=joined", unsafe { libc::geteuid() });
 }
 
+async fn read_fixture(scenario: &str) {
+    use std::os::unix::fs::MetadataExt;
+    use tokio::io::AsyncWriteExt;
+
+    async fn payload<S: AsyncWrite + Unpin>(sender: &mut S, mut remaining: usize) -> std::io::Result<()> {
+        let chunk = [0x5a; 8192];
+        while remaining > 0 {
+            let count = remaining.min(chunk.len());
+            sender.write_all(&chunk[..count]).await?;
+            remaining -= count;
+        }
+        Ok(())
+    }
+
+    let before = fd_count();
+    let mut incoming = new_listener("").await.unwrap();
+    let path = Config::ipc_path("");
+    let identity = fs::symlink_metadata(&path).unwrap();
+    let mut sender = timeout(1000, Endpoint::connect(&path)).await.unwrap().unwrap();
+    let receiver = timeout(1000, incoming.next()).await.unwrap().unwrap().unwrap();
+    for fd in [sender.as_raw_fd(), receiver.as_raw_fd()] {
+        assert_eq!(peer_uid_from_fd(fd), Some(unsafe { libc::geteuid() }));
+        assert_eq!(peer_pid_from_fd(fd), Some(std::process::id()));
+    }
+    let mut receiver = ConnectionTmpl::new(receiver);
+    sender.write_all(&[0]).await.unwrap();
+    assert!(receiver.inner.next().await.unwrap().unwrap().is_empty());
+    match scenario {
+        "allocation" => {
+            struct AddressLimit(libc::rlimit);
+            impl Drop for AddressLimit {
+                fn drop(&mut self) {
+                    assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_AS, &self.0) }, 0);
+                }
+            }
+            let length = 16 * 1024 * 1024;
+            receiver.set_max_packet_length(length);
+            let pages: u64 = fs::read_to_string("/proc/self/statm").unwrap()
+                .split_whitespace().next().unwrap().parse().unwrap();
+            let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+            assert!(page_size > 0);
+            let ceiling = pages.checked_mul(page_size as u64).unwrap()
+                .checked_add(1024 * 1024).unwrap();
+            let mut original = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+            assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_AS, &mut original) }, 0);
+            assert!(ceiling < original.rlim_cur);
+            let limited = libc::rlimit { rlim_cur: ceiling, rlim_max: original.rlim_max };
+            assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_AS, &limited) }, 0);
+            let restore = AddressLimit(original);
+            sender.write_all(&[3, 0, 0, 4]).await.unwrap();
+            let read = async move {
+                let result = timeout(1000, receiver.inner.next()).await.unwrap().unwrap();
+                assert!(timeout(1000, receiver.inner.next()).await.unwrap().is_none());
+                drop(receiver);
+                result
+            };
+            let (received, sent) = tokio::join!(read, timeout(1000, payload(&mut sender, length)));
+            drop(restore);
+            let mut restored = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+            assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_AS, &mut restored) }, 0);
+            assert_eq!((restored.rlim_cur, restored.rlim_max), (original.rlim_cur, original.rlim_max));
+            assert_eq!(received.unwrap_err().to_string(), "inbound IPC frame allocation failed");
+            assert!(matches!(sent.unwrap().unwrap_err().kind(),
+                std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset));
+        }
+        "fragments" => {
+            for (length, header) in [(0, &[0][..]), (1, &[4][..]), (63, &[252][..]),
+                (64, &[1, 1][..]), (16_383, &[253, 255][..]), (16_384, &[2, 0, 1][..]),
+                (4_194_303, &[254, 255, 255][..]), (4_194_304, &[3, 0, 0, 1][..])] {
+                receiver.set_max_packet_length(length);
+                for (index, byte) in header.iter().enumerate() {
+                    sender.write_all(std::slice::from_ref(byte)).await.unwrap();
+                    if index + 1 < header.len() || length > 0 {
+                        assert!(timeout(5, receiver.inner.next()).await.is_err());
+                    }
+                }
+                let mut remaining = length;
+                if length > 1 {
+                    sender.write_all(&[0x5a]).await.unwrap();
+                    remaining -= 1;
+                    assert!(timeout(5, receiver.inner.next()).await.is_err());
+                }
+                let (sent, received) = tokio::join!(
+                    timeout(1000, payload(&mut sender, remaining)),
+                    timeout(1000, receiver.inner.next()),
+                );
+                sent.unwrap().unwrap();
+                let frame = received.unwrap().unwrap().unwrap();
+                assert_eq!(frame.len(), length);
+                assert!(frame.iter().all(|byte| *byte == 0x5a));
+            }
+            sender.write_all(&[0, 4, 0x5a, 0]).await.unwrap();
+            sender.shutdown().await.unwrap();
+            for expected in [&[][..], &[0x5a][..], &[][..]] {
+                assert_eq!(receiver.inner.next().await.unwrap().unwrap().as_ref(), expected);
+            }
+            assert!(receiver.inner.next().await.is_none());
+            drop(receiver);
+        }
+        "refusal" => {
+            receiver.set_max_packet_length(8);
+            sender.write_all(&[36]).await.unwrap();
+            let error = timeout(1000, receiver.inner.next()).await.unwrap().unwrap().unwrap_err();
+            assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+            drop(receiver);
+            for prefix in [&[1][..], &[2][..], &[2, 0][..], &[3][..], &[3, 0][..],
+                &[3, 0, 0][..], &[4][..], &[1, 1][..], &[1, 1, 0x5a][..],
+                &[2, 0, 1][..], &[3, 0, 0, 1][..]] {
+                let (mut writer, reader) = tokio::net::UnixStream::pair().unwrap();
+                let mut reader = ConnectionTmpl::new(reader);
+                writer.write_all(prefix).await.unwrap();
+                writer.shutdown().await.unwrap();
+                let error = timeout(1000, reader.inner.next()).await.unwrap().unwrap().unwrap_err();
+                assert_eq!(error.kind(), std::io::ErrorKind::UnexpectedEof);
+            }
+        }
+        _ => panic!("unknown read scenario"),
+    }
+    drop(sender);
+    drop(incoming);
+    let retained = fs::symlink_metadata(&path).unwrap();
+    assert_eq!((retained.dev(), retained.ino()), (identity.dev(), identity.ino()));
+    fs::remove_file(path).unwrap();
+    assert_eq!(fd_count(), before);
+    println!("OK read-{scenario} uid={} cleanup=joined", unsafe { libc::geteuid() });
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     assert_eq!(args.len(), 3);
@@ -575,6 +702,11 @@ fn main() {
     let postfix = &args[2];
     assert!(["", "_password", "_service_password", "_service_credential", "_service"].contains(&postfix.as_str()));
     let path = Config::ipc_path(postfix);
+    if let Some(scenario) = args[1].strip_prefix("read-") {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(read_fixture(scenario));
+        return;
+    }
     if let Some(scenario) = args[1].strip_prefix("wire-") {
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         runtime.block_on(wire_fixture(scenario));

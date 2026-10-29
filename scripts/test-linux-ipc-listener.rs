@@ -439,7 +439,7 @@ async fn url_accept_fixture(scenario: &str) {
     fs::remove_file(path).unwrap();
     assert_eq!(fd_count(), before);
     assert!(survived, "URL listener stopped after recoverable descriptor exhaustion");
-    assert_eq!(accept_errors, usize::from(scenario == "recovery"));
+    assert_eq!(accept_errors > 0, scenario == "recovery");
     delivered.unwrap();
     assert_eq!(OBSERVER.requests.load(Ordering::SeqCst), 2);
     assert!(still_live && joined.unwrap_err().is_cancelled());

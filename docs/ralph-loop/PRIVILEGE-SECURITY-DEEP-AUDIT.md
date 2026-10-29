@@ -115902,3 +115902,48 @@ byte round trip. Its input hash matches the reviewed replacement above. QEMU
 deltas are zero. Six count records total 102,667 bytes on CTE and TUF. This audit
 receipt does not change the measured ledger; broader documentation cleanup and
 all previously open acceptance obligations remain OPEN.
+
+### 2026-10-29 — fallible IPC receive buffer growth
+
+At `ff29d03d`, `ConnectionTmpl` reads through pinned Tokio-util `FramedRead`;
+its `poll_next` calls infallible `BytesMut::reserve(1)` as received input grows.
+Preparation `fa4a6a0c`, TUF `WMNk4MV0ZL`, passes 170 listener and 14 directory
+cases but both new root/UID-4001 pressure cases abort with SIGABRT on a refused
+1,048,576-byte allocation. The sender uses fixed chunks over real parity IPC;
+the receiving process has its current virtual size plus 1 MiB of soft address
+space, retaining the original hard limit and a 16 MiB fixture-only frame cap.
+
+Product `aaf02b9a` adds `src/ipc/framed.rs::IpcFrameReader` and selects it in
+`ConnectionTmpl`. The unchanged codec owns framing/cap/EOF semantics. The reader
+owns partial input across cancellation, reads into initialized 8 KiB scratch,
+reclaims existing capacity without allocation and uses `try_reserve_exact` for
+bulk growth only after bytes arrive. Growth requests are capped by the engaged
+frame limit plus one read-ahead chunk. Newly owned backing transfers without a
+payload-copy fallback. Failure releases buffered input and makes future reads
+terminal; the caller still owns transport retirement. No authority path changes.
+
+The design follows pinned [Tokio-util framing](https://raw.githubusercontent.com/tokio-rs/tokio/tokio-util-0.7.15/tokio-util/src/codec/framed_impl.rs),
+[Tokio read cancellation](https://raw.githubusercontent.com/tokio-rs/tokio/tokio-1.44.2/tokio/src/io/util/async_read_ext.rs),
+[BytesMut reclamation](https://raw.githubusercontent.com/tokio-rs/bytes/v1.11.1/src/bytes_mut.rs)
+and [unique Bytes conversion](https://raw.githubusercontent.com/tokio-rs/bytes/v1.11.1/src/bytes.rs).
+Local dependency source was also inspected. Small Bytes bookkeeping, error/JSON
+allocation, simultaneous old/new backing during growth and whole-service memory
+bounds are outside the demonstrated bulk-allocation correction.
+
+`oWKkGCpVhG` compiled but stopped at the stale build-record regex before native
+cases; `28ed8259` admits the new reader digest. Unchanged behavioral cases then
+pass **172 listener + 14 directory**, plus the focused source check, in
+`h5O49hcPUv` (82.789 seconds). Both pressure processes return the expected error,
+restore limits, terminate reader admission and join peer/socket/descriptor cleanup.
+Controls exercise all four header widths, interrupted header/payload reads,
+coalesced and empty frames, exact data, early cap refusal and eleven truncated
+inputs. The binary is `c35a34747a1c5662fc583770395664d02b39b7ae10fdc34c5ae67ef8c21db7f9`.
+
+Receipt `ipc-receive-allocation-aaf02b9a.json` binds source, dependencies, artifacts,
+commands, A/B output and the excluded attempt: 26,966 bytes, SHA-256
+`fb45e379e6e30f1ad7dcb11da59f2d77805f9493cab700bb42dc80d57dc9c29c`.
+Twenty-two retained files total 304,310 bytes on CTE and TUF. All twelve listener
+deltas are zero; QEMU 1688258/1689062/1689870 and their RAM workspaces retire.
+After evidence verification, the two exact failed-run trees are removed, freeing
+6,901,760 allocated bytes. Full application/installed privileged actions,
+CM/PA proofs, macOS/Windows, release artifacts and independent review remain OPEN.

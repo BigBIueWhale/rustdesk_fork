@@ -3606,17 +3606,17 @@ those obligations.
 
 <a id="linux-ipc-components"></a>
 
-**Linux IPC — component acceptance; installed acceptance OPEN.** At `c22068e6`,
-TUF `6HvrVoDDda` passes all **166 listener and 14 directory cases** plus the
-focused desktop source check in 82.248 seconds. The command is
+**Linux IPC — component acceptance; installed acceptance OPEN.** At `28ed8259`,
+TUF `h5O49hcPUv` passes all **172 listener and 14 directory cases** plus the
+focused desktop source check in 82.789 seconds. The command is
 `bash scripts/smoke-verifier-vm-authority.sh --linux-ipc-parent-tests`.
-It compiles production filesystem, listener, peer, connection and codec functions
+It compiles production filesystem, listener, peer, connection, reader and codec functions
 with pinned dependencies; config name/path, boxed errors and service authorization
 have fixture adapters. Real Unix sockets establish the named component outcomes,
 not complete application or privileged-receiver authorization. All four host
 listener deltas are zero; QEMU joins, bounded RAM scratch retires and exact
 fixture socket/descriptor cleanup passes. Current receipt:
-`ipc-scalar-writes-c22068e6.json`.
+`ipc-receive-allocation-aaf02b9a.json`.
 
 | Surface | Current implementation and component evidence | Retained comparison/provenance |
 | --- | --- | --- |
@@ -3625,7 +3625,8 @@ fixture socket/descriptor cleanup passes. Current receipt:
 | Listener admission | `1a5665b8` rotates the three service endpoints; `d4987511` alternates main/password admission. Continuously ready endpoints receive a turn within three/two admissions, while pending cancellation preserves priority. Shutdown/completed-work priority, budgets, authorization and drain ownership remain. Twelve native backlog/sparse/cancellation cases cover both loops' extracted accept helpers. | `ipc-service-fairness-1a5665b8.json`, `ipc-main-fairness-d4987511.json` |
 | Accept-error recovery | `7b1279bd` gives each `IpcListener` a 100 ms retry deadline after an error, preserves it across cancellation and clears it after success. Six root/UID-4001 descriptor-exhaustion cases cover repeated errors, cancellation/recovery and independent listeners. | `ipc-accept-retry-7b1279bd.json` |
 | JSON construction | `8307a2d6` enforces the encoded-byte cap before fallible buffer growth and publishes only complete serialization. Forty string/cap combinations, bounded sequence traversal, serializer failure and real allocation refusal check no rejected output and valid reuse of the same socket. The 16 MiB allocation fixture cap changes no product endpoint. | `ipc-json-budget-8307a2d6.json`, `ipc-json-allocation-ff8956ed.json` |
-| Frame writes | `8e5979d9` removes the second full-payload allocation: `FramedRead` owns decoding, while writes chain the existing payload with a stack header, then write and flush. The ordinary codec shares header construction. Both scalar IPC transport and vectored socket-pair paths pass root/user pressure and boundary cases, exact bytes, raw-cap refusal, codec round trips and limit restoration. Wire format, endpoint caps and caller timeout/retirement ownership are unchanged. | `ipc-wire-allocation-8e5979d9.json`, `ipc-scalar-writes-c22068e6.json` |
+| Frame writes | `8e5979d9` removes the second full-payload allocation: writes chain the existing payload with a stack header, then write and flush. The ordinary codec shares header construction. Both scalar IPC transport and vectored socket-pair paths pass root/user pressure and boundary cases, exact bytes, raw-cap refusal, codec round trips and limit restoration. Wire format, endpoint caps and caller timeout/retirement ownership are unchanged. | `ipc-wire-allocation-8e5979d9.json`, `ipc-scalar-writes-c22068e6.json` |
+| Frame reads | `aaf02b9a` replaces infallible bulk-buffer growth with `IpcFrameReader`: retained codec/input state, initialized 8 KiB read scratch, nonallocating reclamation and fallible growth only after bytes arrive. Errors release buffered input and end read admission. Root/user 16 MiB input under real address-space pressure now returns an error where the baseline aborts on a 1 MiB allocation. The same artifacts pass fragmented headers/payloads, cancelled reads, coalesced/empty frames, exact bytes, cap refusal, eleven truncated inputs, limit restoration and descriptor/socket cleanup. Small bookkeeping/parser allocations, complete handlers and other platforms remain open. | `ipc-receive-allocation-aaf02b9a.json` |
 
 Incumbent identity, retained-parent startup and remaining namespace/metadata races
 are detailed in R-S11bs/R-S11e-85 below. **OPEN:** complete listener/application

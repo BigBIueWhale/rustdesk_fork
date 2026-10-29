@@ -7848,16 +7848,43 @@ where
     }
 
     async fn send_json<S: serde::Serialize>(&mut self, value: &S) -> ResultType<()> {
-        let value = serde_json::to_vec(value)?;
-        let max_packet_length = self.inner.codec().max_packet_length();
-        if value.len() > max_packet_length {
-            bail!(
-                "outbound IPC frame exceeds codec limit: frame={}, limit={}",
-                value.len(),
-                max_packet_length
-            );
+        struct FrameWriter {
+            bytes: Vec<u8>,
+            limit: usize,
         }
-        self.inner.send(bytes::Bytes::from(value)).await?;
+
+        impl std::io::Write for FrameWriter {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                if bytes.len() > self.limit.saturating_sub(self.bytes.len()) {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "outbound IPC frame exceeds codec limit",
+                    ));
+                }
+                let required = self.bytes.len() + bytes.len();
+                if required > self.bytes.capacity() {
+                    let capacity = self.bytes.capacity().saturating_mul(2).max(required).min(self.limit);
+                    self.bytes.try_reserve_exact(capacity - self.bytes.len()).map_err(|_| {
+                        std::io::Error::new(std::io::ErrorKind::Other, "IPC frame allocation failed")
+                    })?;
+                }
+                self.bytes.extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        // Enforce the encoded-byte budget while serializing. Only a complete
+        // accepted frame may enter the transport's write buffer.
+        let mut frame = FrameWriter {
+            bytes: Vec::new(),
+            limit: self.inner.codec().max_packet_length(),
+        };
+        serde_json::to_writer(&mut frame, value)?;
+        self.inner.send(bytes::Bytes::from(frame.bytes)).await?;
         Ok(())
     }
 

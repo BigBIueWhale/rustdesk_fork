@@ -665,11 +665,15 @@ def native(expected_sha, barrier_sha):
                 else:
                     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as replacement:
                         replacement.bind(str(endpoint))
-                    endpoint.chmod(0o4600 if kind == 'special-socket' else 0o400)
+                    endpoint.chmod(0o400)
                     if kind == 'hardlink-socket':
                         os.link(endpoint, target)
                 os.chown(endpoint, (4001 if uid == 0 else 0) if kind == 'foreign-socket' else uid,
                          uid, follow_symlinks=False)
+                if kind == 'special-socket':
+                    endpoint.chmod(0o4600)
+                    require(stat.S_IMODE(endpoint.lstat().st_mode) == 0o4600,
+                            'special socket mode was not established')
             before = (entry_state(endpoint), entry_state(target))
             os.write(release_w, b'G'); os.close(release_w); release_w = None
             output, errors = child.communicate('stop\n', timeout=5)

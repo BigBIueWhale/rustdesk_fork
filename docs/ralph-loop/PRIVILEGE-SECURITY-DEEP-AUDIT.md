@@ -116819,3 +116819,17 @@ Python parsing, both edited shell syntax checks and `git diff --check` pass.
 Requirements and live instructions are unchanged. Native Windows/macOS transport,
 installed authorization, full application/UI and release acceptance remain open;
 all user-parked work stays parked, including CLI address/native-handoff follow-up.
+
+The [pinned Windows supplier implementation](https://raw.githubusercontent.com/rustdesk-org/parity-tokio-ipc/d0ae39bffe5d5a3e8d82a1b6bcb1ca5a9b2f1c01/src/win.rs)
+returns each accept failure as `Some(Err)` and retains its pipe when connection
+or replacement creation fails. Continuing permits another poll; successful
+Windows pipe recovery still requires native observation and is not inferred
+from this Linux comparison.
+
+At `18d07eab`, isolated count `kIMhRLLn4c` reports **359,228 ledger tokens** /
+1,642,557 bytes, SHA-256
+`0dbf039f62a96ff006c7d46d3a8517cf62f5d9f92e305c9051f5340507f78341`.
+Seven tokenizer controls and byte round trip pass. QEMU 1759334 joins after
+30.417 seconds; RAM `run.g_b9zccd` retires and three host listener deltas are zero.
+Six count files add 102,696 bytes; all 28 retained files total 421,785 bytes per
+host. This audit-only receipt leaves the measured ledger unchanged.

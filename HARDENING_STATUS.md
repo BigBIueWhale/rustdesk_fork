@@ -3604,120 +3604,37 @@ those obligations.
 
 ## R-S11b/R-S11c/R-S11i — service-owned IPC authority
 
-**R-S11a Linux service IPC uses a root-controlled runtime namespace — fourteen native cases pass.**
-`c1a2402a` routes the three protected endpoints to `/run/{app}-service`, requires
-root and a no-follow-opened, root-owned `/run` without group/other write access,
-and refuses foreign parent ownership without changing it. Public `/tmp` service
-paths have no Linux fallback or cleanup. Ordinary user-owned IPC remains separate.
-The preceding directory-substitution run reproduced three preservation failures:
-two empty replacements were removed with success, and a nonempty replacement
-failed preservation despite an error. The Linux fix removes that replacement path.
-Current TUF run `LdsAUYuaQS` passes routing, real Unix socket reachability/kernel peer UID,
-unprivileged namespace mutation refusal, owner/ACL/symlink/mode/refusal cases,
-and exact fixture cleanup. The combined directory/listener run takes 82.274 seconds.
-All four host listener deltas are zero;
-QEMU joins and RAM scratch retires. `--linux-ipc-parent-tests` compiles the
-production filesystem functions and the config classification/path functions
-with pinned Rust/libc, a boxed-error adapter and a fixed RustDesk name binding.
-The directory fixture no longer invokes macOS-only scrub code on Linux; its mode
-repair case checks preservation and unprivileged mutation refusal. Python owns
-this component's socket exercise; actual `new_listener` coverage is recorded in
-R-S11bs below. Neither component proves the complete application, installed
-service or privileged message authorization.
-macOS still uses the public namespace/replacement mechanism and requires its
-own correction and native evidence. Upgrade/coexisting-version behavior, full
-R-S11a/R-S0 and installed credential actions remain OPEN. Receipt:
-`ipc-stale-kind-99cbec37.json`; original namespace provenance remains in
-`ipc-runtime-namespace-c1a2402a.json` and its audit entry.
+<a id="linux-ipc-components"></a>
 
-`d41b6a36` removes the two ignored Linux foreign-parent replacement tests and
-their artifact-copy, two-principal container and ACL-fixture tooling. Those tests
-called the macOS replacement helper directly, bypassing Linux's production
-refusal, and supplied no native macOS acceptance. R-S11bg and Appendix C #184 now
-require each target's production decision while retaining verifier isolation and
-cleanup obligations. The ordinary unit-test stage and native Linux fixtures remain.
-`f4dcc9d2`, TUF `6qXWXpIaOp`, passes the remaining main-verifier contract checks
-and real verifier-entry/workspace-cleanup smoke in 92.897 seconds; QEMU joins,
-RAM scratch retires and all host listener deltas are zero. Production Rust is
-unchanged, so the existing 132-listener/14-directory evidence is reused rather
-than rerun. Receipt: `ipc-fixture-removal-d41b6a36.json`. Installed-service and
-macOS acceptance remain OPEN.
+**Linux IPC — component acceptance; installed acceptance OPEN.** At `c22068e6`,
+TUF `6HvrVoDDda` passes all **166 listener and 14 directory cases** plus the
+focused desktop source check in 82.248 seconds. The command is
+`bash scripts/smoke-verifier-vm-authority.sh --linux-ipc-parent-tests`.
+It compiles production filesystem, listener, peer, connection and codec functions
+with pinned dependencies; config name/path, boxed errors and service authorization
+have fixture adapters. Real Unix sockets establish the named component outcomes,
+not complete application or privileged-receiver authorization. All four host
+listener deltas are zero; QEMU joins, bounded RAM scratch retires and exact
+fixture socket/descriptor cleanup passes. Current receipt:
+`ipc-scalar-writes-c22068e6.json`.
 
-`2a2f7f66` excludes foreign-parent replacement and its scrub helpers from Linux
-compilation. The Linux component builders no longer supply those macOS-only
-functions; the obsolete Boolean replacement-policy helper/test is deleted, while
-the two real scrub tests remain macOS-only. Linux continues to refuse foreign
-ownership unchanged. This is target-specific code cleanup, with no new runtime
-defect or privilege-boundary closure claimed. TUF `kBqFhnCxYH` passes all 150
-listener and 14 directory cases in 85.383 seconds, plus the focused desktop source
-check. QEMU joins, RAM scratch retires and all four host listener deltas are zero.
-Receipt: `ipc-target-cfg-2a2f7f66.json`. macOS native acceptance remains OPEN.
+| Surface | Current implementation and component evidence | Retained comparison/provenance |
+| --- | --- | --- |
+| R-S11a namespace | `c1a2402a` puts protected Linux endpoints in `/run/{app}-service`. Root creation requires a no-follow-opened, root-owned `/run` without group/other write access; foreign parent ownership is refused unchanged. No public-temporary service fallback or cleanup exists. Ordinary user IPC remains separate. Fourteen directory cases cover routing, reachability, principal/mutation refusal, ownership, ACLs, symlinks, modes and preservation. | `ipc-runtime-namespace-c1a2402a.json`, `ipc-stale-kind-99cbec37.json` |
+| Target-specific filesystem code and fixtures | `2a2f7f66` restricts foreign-parent replacement/scrub helpers and their real scrub tests to macOS. Linux fixtures exercise production refusal and parent-mode repair/preservation. The obsolete Boolean policy test and ignored Linux replacement tests/tooling are deleted. R-S11bg/Appendix C #184 retain target-native and isolation obligations. | `ipc-target-cfg-2a2f7f66.json`, `ipc-fixture-removal-d41b6a36.json` |
+| Listener admission | `1a5665b8` rotates the three service endpoints; `d4987511` alternates main/password admission. Continuously ready endpoints receive a turn within three/two admissions, while pending cancellation preserves priority. Shutdown/completed-work priority, budgets, authorization and drain ownership remain. Twelve native backlog/sparse/cancellation cases cover both loops' extracted accept helpers. | `ipc-service-fairness-1a5665b8.json`, `ipc-main-fairness-d4987511.json` |
+| Accept-error recovery | `7b1279bd` gives each `IpcListener` a 100 ms retry deadline after an error, preserves it across cancellation and clears it after success. Six root/UID-4001 descriptor-exhaustion cases cover repeated errors, cancellation/recovery and independent listeners. | `ipc-accept-retry-7b1279bd.json` |
+| JSON construction | `8307a2d6` enforces the encoded-byte cap before fallible buffer growth and publishes only complete serialization. Forty string/cap combinations, bounded sequence traversal, serializer failure and real allocation refusal check no rejected output and valid reuse of the same socket. The 16 MiB allocation fixture cap changes no product endpoint. | `ipc-json-budget-8307a2d6.json`, `ipc-json-allocation-ff8956ed.json` |
+| Frame writes | `8e5979d9` removes the second full-payload allocation: `FramedRead` owns decoding, while writes chain the existing payload with a stack header, then write and flush. The ordinary codec shares header construction. Both scalar IPC transport and vectored socket-pair paths pass root/user pressure and boundary cases, exact bytes, raw-cap refusal, codec round trips and limit restoration. Wire format, endpoint caps and caller timeout/retirement ownership are unchanged. | `ipc-wire-allocation-8e5979d9.json`, `ipc-scalar-writes-c22068e6.json` |
 
-**Main and service listener admission.** `1a5665b8` rotates credential/password/service
-accept priority; `d4987511` alternates main/password admission. Each continuously
-ready endpoint gets a turn within three service or two main admissions. Pending
-cancellation preserves priority. Shutdown and completed work retain priority,
-with existing endpoint budgets, authorization, handlers and drain paths.
-Baselines `rQzwsSP60i` and `94ZSVIzQod` reproduce the respective starvation in
-root and user-owned socket fixtures. Run `eMd7q9vrIi` passes all 150 listener
-and 14 directory cases in 85.133 seconds, including twelve main/service
-backlog/sparse/cancellation cases. Production accept helpers and real Linux
-sockets check kernel peer UID/PID, endpoint routing and descriptor cleanup.
-Both pairs of VMs join, RAM scratch retires and all host listener deltas are zero.
-Full listener loops, installed privileged actions/settings and Windows/macOS
-native acceptance remain OPEN. Receipts: `ipc-service-fairness-1a5665b8.json`
-and `ipc-main-fairness-d4987511.json`.
-
-**Accept-error recovery.** `7b1279bd` makes `new_listener` return an owned
-`IpcListener` with a per-listener 100 ms retry deadline after an accept error.
-It returns the original error, preserves the deadline across cancellation and
-clears it after success. Baseline `UfEr9Z2jk5` reproduces four immediate-retry
-failures under real process-local descriptor exhaustion. All six root/UID-4001
-retry, cancellation/recovery and independent-listener cases now pass alongside
-the existing suite. Scope is the shared listener transport, not complete helpers
-or privileged handlers; Windows/macOS and other error classes need native
-acceptance. Receipt: `ipc-accept-retry-7b1279bd.json`.
-
-**Outbound JSON serialization.** `8307a2d6` enforces the engaged frame limit during
-serialization, before buffer growth or transport publication. Growth is fallible
-and requested capacity stays within that limit; only a complete frame is sent.
-Baseline `AFd90Yq4au` serializes all 100,000 sequence elements before rejecting
-the 32 KiB frame; `HaPrQjXlT0` stops at element 16,385. Both root/UID-4001 cases
-pass, alongside forty string/size combinations and serializer-error recovery on
-real Unix sockets. Refusal sends no bytes and the same stream accepts a subsequent
-valid frame. `ff8956ed` additionally tests real allocation refusal by reducing
-each test process's soft address-space limit. Both principals receive the explicit
-allocation error with no wire bytes, restore the original limits and transfer the
-same complete 16 MiB message on the same socket. Product code is unchanged; the
-16 MiB cap belongs only to this component test. Run `RyBrijiVOO` passes all
-158 listener and 14 directory cases in 85.468 seconds, plus the focused source
-check; VM/RAM cleanup joins with zero listener deltas. Receipts:
-`ipc-json-budget-8307a2d6.json`, `ipc-json-allocation-ff8956ed.json`.
-Full endpoint/application flows, other allocation sites and other-platform
-acceptance remain OPEN.
-
-**Outbound frame writes.** `8e5979d9` removes the second full-payload allocation
-after JSON serialization and from raw sends. IPC owns `FramedRead` for decoding;
-writes chain the existing payload with a stack header, then write and flush.
-The shared codec produces the same header for ordinary encoded frames. Frame
-limits, wire format and caller timeout/retirement ownership are unchanged.
-Baseline `cMncO4XRsE` aborts both root/UID-4001 processes when a prepared 16 MiB
-frame encounters a soft address-space limit with only 1 MiB spare. Corrected
-`eG2mDDnIId` transfers both frames and passes all 162 listener/14 directory cases
-in 85.839 seconds, plus the focused desktop source check. Native controls cover
-all header widths, exact bytes, codec round trips, raw-cap refusal before output,
-limit restoration and descriptor cleanup. Both VMs join, RAM scratch retires and
-all eight listener deltas are zero. Receipt: `ipc-wire-allocation-8e5979d9.json`.
-This is Linux component acceptance; full applications, installed privileged
-actions, other-platform behavior and other allocation sites remain OPEN.
-
-`c22068e6` additionally runs the wire fixture through the pinned IPC endpoint
-transport, which uses scalar writes; the socket-pair cases exercise vectored
-writes. Root and UID-4001 pressure/boundary cases pass through both. Current
-`6HvrVoDDda` passes all 166 listener/14 directory cases in 82.248 seconds, with
-the production fragments unchanged, exact socket/descriptor cleanup, joined
-VM/RAM retirement and four zero listener deltas. Product code is unchanged.
-Receipt: `ipc-scalar-writes-c22068e6.json`; the broader obligations above remain OPEN.
+Incumbent identity, retained-parent startup and remaining namespace/metadata races
+are detailed in R-S11bs/R-S11e-85 below. **OPEN:** complete listener/application
+flows and installed privileged actions/settings; CM/PA launch proof and accept-time
+authorization; other accept/allocation failures; macOS namespace/replacement
+correction and native macOS/Windows behavior; upgrades/coexisting versions, R-S0,
+current release artifacts, independent reproduction and external review.
+Historical failing baselines and superseded totals remain in the cited receipts,
+audit and Git; they are not separate current acceptance claims.
 
 **R-X14 desktop resource removal.** `9c8ebb1c` deletes the unused `res/startwm.sh` and
 dummy `res/xorg.conf`, their Debian payload/conffile/executable entries and the empty
@@ -9124,91 +9041,55 @@ sandbox implementation and checker-repair history remain in Git.
   installation must still exercise concurrent controlled calls, controlled/outgoing overlap, Activity replacement,
   task swipe/reopen with the persistent service retained, Force Stop, projection replacement/revocation, injected
   permission/buffer/start/read failures, peer reconnect/presentation, and exact thread/audio/projection cleanup.
-- **R-S11bs/R-S11e-85 — Unix incumbent-listener identity is explicit —
-  SOURCE IMPLEMENTED; installed/native endpoint acceptance remains OPEN.** Linux/macOS
-  probing requires kernel peer UID/PID, the current effective UID and current-executable
-  identity. Missing or unavailable identity proof propagates an error and preserves the
-  live pathname. Linux CM/PA retain their exact process/launch proofs. Protected
-  `_service` also requires a bounded typed liveness response; malformed/failed responses
-  do not authorize cleanup. Probing grants no privileged request authority.
-  `99898ad8` removes the redundant second UID comparison and its Boolean-only
-  model test; the early UID rejection and subsequent executable proof remain.
+- **R-S11bs/R-S11e-85 — Unix incumbent-listener identity and startup —
+  SOURCE IMPLEMENTED; installed/native endpoint acceptance remains OPEN.**
+  Linux/macOS probing requires kernel peer UID/PID, current effective UID equality
+  and current-executable identity. Missing/unavailable proof preserves the live
+  pathname and returns an error. Linux CM/PA retain their stronger process/launch
+  proofs; protected `_service` additionally requires a bounded typed liveness
+  response. Malformed/failed liveness does not authorize cleanup. Probing grants
+  no privileged request authority.
 
-  **Linux startup and recovery.** `e2ea2d8c` retains the validated parent and persistent
-  per-endpoint lock together through the fresh transport check, cleanup, bind and
-  permission establishment. A verified procfs directory-descriptor alias anchors
-  connect/bind; finalization uses that same directory handle and rechecks the public
-  parent's identity, owner and mode. No lock or alias spans an await; separate
-  endpoints start independently. Sixteen native parent-replacement cases preserve
-  replacement directories/symlink targets and recover after restoration. Baseline
-  `w2NuWVgSM8` reproduces thirteen failures. Normal clients retain the configured path.
-  Live/ambiguous transport is preserved. `99cbec37` additionally requires a no-follow
-  socket-type observation before unlinking; regular files, FIFOs, directories and
-  symlinks at the endpoint name refuse startup unchanged. Linux no longer touches
-  legacy `.pid` entries or consumes the obsolete parent-scrub flag. PID-file reads,
-  writes and process-table scanning remain absent. macOS cleanup is unchanged.
+  **Linux ownership and recovery.** The validated parent and persistent
+  per-endpoint lock are retained through fresh transport checking, cleanup, bind
+  and permission establishment. Verified procfs directory-descriptor aliases
+  anchor connect/bind and finalization; the public parent's identity, owner and
+  mode are rechecked. No lock/alias spans an await; endpoints start independently.
+  Live or ambiguous transport is preserved. Only an observed no-follow socket
+  type permits stale unlink; files, FIFOs, directories and symlinks refuse startup
+  unchanged. Linux PID-file reads/writes, process scanning, legacy PID cleanup
+  and parent-scrub consumption are absent.
 
-  Parent permissions are repaired on retained, owned directory identities. Lock
-  admission requires a regular file, current owner, one link and no permissions
-  beyond owner read/write; recovery establishes exact mode 0600 before reservation.
-  Socket recovery after EACCES requires a validated parent and a retained, owned,
-  single-link socket with no special bits and missing owner write. Verified procfs
-  descriptor aliases bind permission changes to those inodes. Metadata and names
-  are rechecked; the socket then gets one connection retry within the original
-  timeout. Permission denial alone never authorizes unlinking. Process umask stays
-  unchanged. These corrections are `c369d9e2`, `3a37b232` and `fc083c93`.
+  Permission repair targets retained owned inodes without changing process umask.
+  Locks require regular type, current owner, one link and no permissions beyond
+  owner read/write; reservation follows exact mode-0600 establishment. EACCES
+  socket recovery requires a validated parent and retained owned single-link
+  socket with no special bits and missing owner write. Metadata/name replay
+  precedes one connect retry within the original deadline; permission denial
+  alone never permits unlink. Final socket permission establishment likewise
+  rejects unsafe or changed identity/metadata. Failure drops the listener without
+  pathname deletion; success logging follows mode establishment.
 
-  `3dce8c79` uses the same retained-socket permission path for Linux finalization.
-  Unsafe type/owner/link/special-bit targets are refused; inode or metadata changes
-  observed after chmod also refuse startup. Finalization failure drops the listener
-  without deleting the pathname. Success logging follows mode establishment.
-  Twenty-one native cases cover substitutions before admission and around chmod,
-  real EPERM, preserved metadata/contents and subsequent successful restart.
-  Baseline `DRZBPWPlFn` reproduces nineteen valid failures; two special-bit fixtures
-  required correction before they could count. The audit records that distinction.
+  **Evidence.** The [current Linux IPC component run](#linux-ipc-components)
+  covers root/user competing starts, independent endpoints, probe/reservation
+  arrivals, persistent-lock restart and reservation-holder death; bind/listen/chmod
+  crashes, restrictive masks/nondumpable callers, unsafe locks, parent/socket
+  substitution, real EPERM and recovery; non-socket/PID-artifact preservation;
+  genuine, wrong-UID, foreign-image and unavailable-image incumbents; and valid,
+  unknown-field/type, malformed, oversized/truncated, disconnected and silent
+  service-liveness peers. Kernel PID/UID, inode/metadata/content preservation,
+  payload-free EOF for wrong-UID service incumbents and descriptor cleanup are
+  observed. Oversized headers refuse while the sender remains connected; silent
+  peers time out near one second. Mode-000 live incumbents remain active.
+  Config/service-authorization adapters and the component scope do not establish
+  complete CM/PA proof, installed endpoints or privileged actions.
 
-  **Current native evidence:** `ff8956ed`, TUF `RyBrijiVOO`, passes 158 listener
-  cases and 14 directory cases in 85.468 seconds, including the twelve main/service
-  scheduling, six accept-error and eight JSON serialization cases recorded above.
-  Baseline `mG75yce2f7` reproduces
-  ten non-socket replacements, two PID-file deletions and two startup failures
-  caused by nonempty PID directories. The same fourteen scenarios now preserve
-  inode/type/mode/owner/link metadata and contents, while PID artifacts do not
-  prevent legitimate startup. Stale sockets and missing endpoints still start.
-
-  Other passing scenarios cover root/UID 4001 competing starts, independent
-  endpoints, arrival between probe and reservation, persistent-lock restart,
-  reservation-holder death and crashes after bind/listen/chmod, restrictive masks
-  and nondumpable callers, eight unsafe-lock refusals, live foreign images, and
-  deleted/unreadable executable identity. Socket inode and kernel peer PID/UID
-  identify retained/replacement listeners. Mode-000 live incumbents remain active.
-  Eight service-liveness scenarios exercise valid, unknown-field/type, malformed,
-  oversized/truncated, disconnected and silent peers through production framing.
-  Oversized headers are rejected while the sender stays connected; silent peers
-  time out near one second. Descriptor counts return to baseline before exit.
-  Four same-UID/same-image cases explicitly require successful identity probing;
-  a same-UID foreign image requires a negative identity decision. Three same-image
-  UID-4001 incumbents at the protected service endpoints also require a negative
-  decision and startup refusal, with their live socket identities preserved. Each
-  observes three root-client connections ending at EOF without any payload.
-
-  The sealed component uses production `new_listener`, filesystem/peer checks,
-  connection methods, codec and typed liveness handler with pinned dependencies.
-  Config name/path and service authorization remain fixture adapters. The directory
-  fixture no longer invokes macOS-only scrub code on Linux; it checks parent
-  hardening and preservation. All host listener deltas are zero, QEMU joins and RAM
-  scratch retires. Provenance: `ipc-json-allocation-ff8956ed.json`,
-  `ipc-json-budget-8307a2d6.json`,
-  `ipc-target-cfg-2a2f7f66.json`,
-  `ipc-accept-retry-7b1279bd.json`,
-  `ipc-main-fairness-d4987511.json`,
-  `ipc-service-fairness-1a5665b8.json`,
-  `ipc-bind-parent-e2ea2d8c.json`,
-  `ipc-socket-finalize-3dce8c79.json`,
-  `ipc-peer-policy-99898ad8.json`,
-  `ipc-stale-kind-99cbec37.json`, `ipc-socket-crash-fc083c93.json` and the audit
-  entries for Linux incumbent peer policy, stale endpoint classification and
-  socket recovery. Historical intermediate receipts remain in the audit and Git.
+  Startup comparisons and implementation provenance are retained in
+  `ipc-bind-parent-e2ea2d8c.json`, `ipc-socket-finalize-3dce8c79.json`,
+  `ipc-peer-policy-99898ad8.json`, `ipc-stale-kind-99cbec37.json` and
+  `ipc-socket-crash-fc083c93.json`; the audit records lock/parent umask recovery
+  and excluded intermediate fixtures. Shared scheduling, framing and allocation
+  receipts are indexed once in the component status above.
 
   **Still required:** exact-current full-app/installed Linux/macOS endpoints and
   privileged actions, CM/PA launch proofs and service accept-time authorization;

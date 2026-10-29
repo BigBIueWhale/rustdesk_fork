@@ -115874,3 +115874,23 @@ QEMU 1684591 joins after 30.302 seconds, `run.df39432n` retires and all three
 listener deltas are zero. Six count records total 102,669 bytes; the fourteen
 retained files for this slice total 214,518 bytes on both machines. This audit-only
 addition leaves the measured ledger unchanged and below its approximate budget.
+
+### 2026-10-29 — consolidate Linux IPC component status
+
+The authority overview and R-S11bs startup entry duplicated implementation history,
+baseline failures and superseded totals; the latter still called 158 cases current
+after the accepted 166-case run. Both now use one current component receipt and
+separate implementation/evidence from outstanding installed/native obligations.
+The six-surface table retains the namespace, target-specific cleanup, admission,
+accept-error, serialization and frame-write state. The detailed startup entry
+retains ownership, permissions, liveness and scenario coverage.
+
+Exact document comparison confines the rewrite to those two spans, preserves all
+fifteen evidence-file references and leaves the complete open-residual paragraph
+and every unrelated ledger byte unchanged. Net change is 119 lines / 6,462 bytes
+removed: 1,641,808 to 1,635,346 bytes. Before/after SHA-256:
+`8d12424f1392ef24884a2f7043be994a97e059e6679ea1435b761a4cd89fdce2` /
+`03c6a37b7fcad8ebc66dae6d750eff9a7f76243a1c6c96d273d748fd7e16a4d3`.
+The new internal reference resolves once and whitespace checks pass. Product,
+tests, normative requirements and live instructions are unchanged; prior native
+evidence is reused without another product run. No acceptance item is closed.

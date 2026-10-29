@@ -114409,3 +114409,18 @@ total 146,574 bytes and match locked TUF hashes on CTE. Capsule
 The preliminary isolated shell-syntax container exited zero and was removed;
 it added no host endpoint, while one unrelated baseline UDP endpoint disappeared.
 `git diff --check` passes. The ledger's fresh isolated count follows.
+
+Fresh count at pushed `f0388982`, TUF run `twku8MISrw`, exits zero:
+356,778 tokens / 1,630,953 bytes, up 279 tokens / 1,214 bytes and within the
+approximate 400,000-token budget. The pinned tiktoken method passes seven
+controls and byte round-trip; ledger SHA-256 is
+`7656d662a37f9d35784bea8d697b0ac8d4352f37de5d048df650a47a9764b499`.
+The updated workload-admission inventory passes 40 modes, 70 controls and five
+refusals. The 36.135-second run records 402,731,008 peak RAM scratch bytes,
+306,188,288 overlay bytes and 258,048 durable-run bytes. QEMU 1564804 joins
+exit zero; its PID, RAM workspace `run.3enhfaxg` and active run roots are absent.
+All three listener deltas are zero. Six copied files total 103,500 bytes and
+match locked TUF hashes; serial SHA-256 is
+`756541fe3777cc12f1b0d854bcc124c381865820c430f09610a4b20b2b7f6f72`.
+The native capsule also matches on both hosts. This audit-only receipt leaves
+the counted ledger unchanged.

@@ -35,14 +35,14 @@ class _Binding implements RustdeskImpl {
 
   @override
   Future<String> getVoiceCallInputDevice({required bool isCm, dynamic hint}) async {
-    expect(isCm, isTrue);
+    expectSync(isCm, isTrue);
     return current;
   }
 
   @override
   Future<void> setVoiceCallInputDevice(
       {required bool isCm, required String device, dynamic hint}) async {
-    expect(isCm, isTrue);
+    expectSync(isCm, isTrue);
     final write = _Write(device);
     writes.add(write);
     await write.result.future;
@@ -269,6 +269,7 @@ void main() {
       expect(h.binding.reads, hasLength(1));
       h.binding.reads.single.complete(_inputs);
       await tester.pumpAndSettle();
+      expect(find.text('Microphone B'), findsOneWidget);
       second();
       await tester.pump();
       expect(h.binding.reads, hasLength(1), reason: 'menu owns input');

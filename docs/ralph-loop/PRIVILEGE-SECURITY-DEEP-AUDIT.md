@@ -114922,3 +114922,14 @@ application, macOS, remaining lifecycle/namespace races, coexisting versions
 and independent/external review remain OPEN. These focused observations do
 not establish full local privilege-escalation immunity. The fresh ledger count
 follows separately.
+
+Fresh isolated count at `22b0f299`, TUF `zbPgb9Wu4c`: 357,022 tokens /
+1,632,432 bytes, up 68 tokens / 378 bytes. Pinned tiktoken 0.12.0/cl100k_base
+encode_ordinary passes seven controls and byte round-trip; ledger SHA-256 is
+`6bf081ddee80da52a09911ed9d4cd9783e31c6b8ba13ce25f32563fd6afa8741`.
+The 30.609-second run joins QEMU 1617961 with exit zero and retires workspace
+`run.uw2p384n`; all three listener deltas are zero. Peak RAM scratch is
+403,460,096 bytes, overlay 306,909,184 bytes and durable run 266,240 bytes.
+Six copied count files total 107,696 bytes and match both hosts; serial SHA-256
+is `2c82d16679163beef30917d4676b90404503c00a5e080744d7a15189b22a95cc`.
+This audit-only receipt leaves the counted ledger unchanged.

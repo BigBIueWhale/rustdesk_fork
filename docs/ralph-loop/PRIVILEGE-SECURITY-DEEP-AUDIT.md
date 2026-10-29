@@ -116406,3 +116406,10 @@ Seven raw files plus the capsule total 119,343 bytes on CTE and TUF. Python AST
 parsing and `git diff --check` pass. Full application/installed authority, other
 platforms, unexercised descriptor inheritance and later metadata races remain
 open; no parked task resumes, and R-S0/R-F5 acceptance is unchanged.
+
+At `2bd9c7f2`, fresh count `4vP3VrBTt7` reports **358,896 tokens** / 1,641,156 bytes,
+SHA-256 `5710004483e44699603e7498433a4168cffff524b2ed283beb4101b198ff6b74`.
+Seven tokenizer controls and the complete byte round trip pass. QEMU 1730164 joins
+after 31.102 seconds, RAM `run.7d9c126p` retires and three listener deltas are zero.
+Six count files add 104,076 bytes; all fourteen retained files total 223,419 bytes
+on both hosts. This audit-only receipt leaves the measured ledger unchanged.

@@ -114212,3 +114212,19 @@ This accepts rendered Dart control ordering with binding/registry doubles.
 Full-app routing, other isolates/processes, real microphone effects, native
 IPC finality and all installed privilege-boundary obligations remain OPEN.
 Only the audio-control ledger row changes; its fresh isolated count follows.
+
+Fresh isolated ledger count on pushed `89a9d7fb`, TUF run `QHakY6fOny`, exits
+zero: 356,197 tokens / 1,628,170 bytes, up 149 tokens / 764 bytes and within
+the approximate 400,000-token budget. The pinned
+`tiktoken-0.12.0/cl100k_base/encode_ordinary` method passes seven controls and
+the byte round-trip. Ledger SHA-256 is
+`3ccb8e47a1f5838decee0b003308069c175ef16cc081edef3383782751492c70`.
+Serial evidence is 34,059 bytes, SHA-256
+`9c106ac7deba362136893f844f54d401a969606116c78b5ad9efca2b5bd8f285`.
+The 33.628-second receipt records 402,202,624 peak RAM scratch bytes,
+305,664,000 peak overlay bytes and 253,952 peak durable-run bytes. QEMU 1550880
+joins exit zero with 4,096 observed host-write bytes; its PID, RAM workspace
+`run.m2ls7__l` and active run roots are absent. All three listener deltas are
+zero. Six bounded count files copied to CTE total 102,771 bytes; copied serial,
+storage and listener hashes match the locked TUF reads. This audit-only receipt
+leaves the counted ledger unchanged and needs no repeat count.

@@ -113866,3 +113866,49 @@ SDK exclusions and installer retirement; no smaller equivalent profile was
 established. All resource and isolation limits remain intact. The resumed run
 is blocked again pending sufficient RAM for exact candidate execution; the
 three parser checks and broader native/security acceptance remain open.
+
+## 2026-10-29 — complete storage accounting and focused TUF preparation
+
+The preceding turn made progress: privileged read-only accounting corrected the
+checkout-only storage answer and identified a second authorized execution host.
+RustDesk-attributed storage is 52,173,893,632 allocated bytes: 37,385,003,008 in
+the checkout, 14,787,579,904 in 411 matching Codex session records, and 1,310,720
+in project-specific Claude records/cache. The checkout already includes
+6,125,416,448 bytes of Docker image archives and the 346,886,144-byte base VM.
+CTE's shared Docker/containerd directories separately account for approximately
+1,590,876,561,408 bytes; they cannot all be attributed to RustDesk. Docker's image
+and cache API totals overlap and are not added to that physical count. Concurrent
+builds removed two snapshot directories during traversal. The bounded report
+`storage-accounting-20261029.json` retains scope, shared caches, VM-image inventory,
+and measurement limits: 9,400 bytes, SHA-256
+`72817ca38899ba0433f63528e1b74346fdcf99e5f094c7f875a6e1dc5d776fd3`.
+Accounting containers are retired; existing images, caches and VMs were not removed.
+
+The user authorized TUF through the existing `/tmp/cm199.sock` SSH master.
+Read-only preflight finds working ordinary-user KVM access and 45,920,668 KiB
+available RAM. Of the harness's 36 fixed host tools, only `qemu-img` and
+`qemu-system-x86_64` are absent; present tools have the required metadata.
+An apt simulation for `qemu-system-x86 qemu-utils` adds 16 packages, no upgrades
+or removals, with 18,639,150 download bytes and 95,096,832 installed bytes.
+The separate host-package authorization question remains unanswered. No host
+package installation, product execution or VM launch has occurred on TUF.
+
+Under the granted host-use authorization, a dedicated checkout now exists at
+`/home/user/Desktop/rustdesk_fork` on TUF. Its clean HEAD, master and copied
+origin/master all equal `788454bd`; Git connectivity succeeds. Only tracked source,
+Git history and the selected audio-profile inputs were transferred: 6,183,912,076
+logical bytes, 6,437,822,464 allocated bytes. SHA-256 content/metadata inventories
+match across all 69,877 input files in 13 groups. Existing nested Pub-cache Git
+hardlinks became independent copied files; their contents and modes match, while
+standalone authenticated inputs retain their required single-link metadata.
+The identical 5,595-byte capsule `tuf-audio-staging-788454bd.json` on both hosts has
+SHA-256 `bcfbce73b054422f6dc82cbd5854525e39507ff3ce8ba8772ba7f649a2722780`.
+
+This is execution preparation, not acceptance of `4012c905`. The unchanged
+37 rendered audio cases and three parser checks remain pending. CTE's final
+14,097,880 KiB available-memory observation is still below admission; no new local
+launch follows. The next execution uses the existing audio-profile command and
+its unchanged RAM workspace, limits, monitor and joined cleanup, after TUF's
+package authorization or sufficient CTE capacity. All fifteen installed credential
+actions and broader native/security obligations remain OPEN. The counted ledger,
+product and test sources are unchanged; only this audit receipt is committed.

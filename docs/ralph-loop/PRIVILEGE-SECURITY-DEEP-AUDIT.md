@@ -115669,3 +115669,13 @@ unbounded codecs, or exercise allocator failure, full endpoint/application flows
 installed privileged actions or other platforms. Those obligations, remaining
 namespace/metadata races, release artifacts, independent reproduction and external
 review remain OPEN. Requirements and live instructions are unchanged.
+
+Fresh ledger count at `98e387f5`, TUF `ZGAlvXQzKR`: **358,686 tokens** /
+1,639,704 bytes using the pinned `tiktoken-0.12.0/cl100k_base/encode_ordinary`
+method, seven controls and a complete byte round trip. Input SHA-256:
+`4789633b864e76b7ae00fe4ebdd1caf7de4d5b7c979b798e44181cd8065ec219`.
+The 30.465-second count run joins QEMU 1674099 and retires `run.x9yke0op`;
+all three listener deltas are zero. Its six retained files total 102,532 bytes
+on CTE and TUF. The ledger is below its approximate 400,000-token budget;
+whole-document classification/compression remains open. This audit-only addition
+does not change the measured ledger input.

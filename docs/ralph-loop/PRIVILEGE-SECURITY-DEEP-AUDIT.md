@@ -116769,3 +116769,11 @@ The fifteen-action table, shared native acceptance, identity/handoff limitations
 parked state, headings and anchors remain byte-identical. Exact comparison and
 `git diff --check` pass; every byte outside this ledger block is preserved.
 Product, tests, requirements and live instructions are unchanged.
+
+At `57432403`, isolated count `YN3LkZYxVj` reports **359,059 tokens** /
+1,641,730 bytes, down 761 tokens. Ledger SHA-256:
+`ef977f9421a42b92f2aef0ea0dd266b9b8a1b19c0851b942a37f2237ca434b75`.
+Seven tokenizer controls and byte round trip pass. QEMU 1754823 joins after
+30.621 seconds; RAM `run.zgcrorap` retires and three host listener deltas are zero.
+Six retained files total 104,520 bytes per host. The measured ledger is unchanged
+by this audit-only count receipt.

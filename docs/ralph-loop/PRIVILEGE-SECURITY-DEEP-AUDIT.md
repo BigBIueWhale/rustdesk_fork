@@ -116749,3 +116749,11 @@ Reference inspection and `git diff --check` pass. No runtime test is rerun for
 this unused-code/comment deletion; the previous component receipt retains its
 original source identity. Installed authority, functional settings acceptance
 and the existing platform evidence obligations remain open.
+
+Isolated ledger count `TyodTe2ICq` at `1dc5d69d` reports **359,820 tokens** /
+1,645,699 bytes, SHA-256
+`4fde83a4abcd4dcd6027d5823b64608df9bcaed8d61d982b40b8a2533ba3b11c`.
+Seven tokenizer controls and byte round trip pass. QEMU 1752855 joins after
+30.810 seconds; RAM `run.7wh_74ff` retires and three host listener deltas are zero.
+Six retained files total 103,221 bytes per host. This audit-only receipt leaves
+the measured ledger unchanged.

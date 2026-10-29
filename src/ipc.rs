@@ -7688,8 +7688,11 @@ async fn connect_sensitive_unix(
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 async fn main_ipc_request(request: MainIpcRequest, ms_timeout: u64) -> ResultType<MainIpcResponse> {
-    let stream = connect(ms_timeout, "").await?;
-    main_ipc_request_on_stream(stream, request, ms_timeout).await
+    timeout(ms_timeout, async {
+        let stream = connect(ms_timeout, "").await?;
+        main_ipc_request_on_stream(stream, request, ms_timeout).await
+    })
+    .await?
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

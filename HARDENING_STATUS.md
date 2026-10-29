@@ -3604,22 +3604,26 @@ those obligations.
 
 ## R-S11b/R-S11c/R-S11i — service-owned IPC authority
 
-**R-S11a Linux IPC directory component — twelve native cases pass.**
-`0cb28efa`/`d3bf50ba` make foreign-parent removal directory-only and propagate
-open/scrub/removal failures. Previously, a parent replaced by a file/symlink or
-removed during startup was deleted/recreated and reported success. The unchanged
-six controlled race cases reproduce that behavior on the old binary and pass
-on the correction, preserving replacement entries. A test-only shim pauses
-around the real openat; an actual UID 4001 process changes the name. The six
-existing owner/mode/ACL/nonempty/symlink/scrub cases also pass. TUF run
-`qkxuCvDPBq` takes 34.169 seconds, joins QEMU and removes RAM scratch; all four
-listener inventories have zero deltas. `--linux-ipc-parent-tests` compiles eight
-exact production functions and the config predicate with pinned Rust/libc and
-a boxed-error adapter. Supplied paths do not exercise `Config::ipc_path`, actual
-socket binding, `new_listener`, installed services or active-session/role selection.
-Directory-to-directory replacement and other schedules, macOS execution and
-full R-S0 remain OPEN. Receipt: `ipc-parent-race-d3bf50ba.json`; audit entry
-“2026-10-29 — IPC parent replacement failure handling”.
+**R-S11a Linux service IPC uses a root-controlled runtime namespace — fourteen native cases pass.**
+`c1a2402a` routes the three protected endpoints to `/run/{app}-service`, requires
+root and a no-follow-opened, root-owned `/run` without group/other write access,
+and refuses foreign parent ownership without changing it. Public `/tmp` service
+paths have no Linux fallback or cleanup. Ordinary user-owned IPC remains separate.
+The preceding directory-substitution run reproduced three preservation failures:
+two empty replacements were removed with success, and a nonempty replacement
+failed preservation despite an error. The Linux fix removes that replacement path.
+TUF run `NcMZACtQFx` passes routing, real Unix socket reachability/kernel peer UID,
+unprivileged namespace mutation refusal, owner/ACL/symlink/mode/refusal cases,
+and exact cleanup in 34.554 seconds. All four host listener deltas are zero;
+QEMU joins and RAM scratch retires. `--linux-ipc-parent-tests` compiles nine
+production filesystem functions and the config classification/path functions
+with pinned Rust/libc, a boxed-error adapter and a fixed RustDesk name binding.
+Python owns the socket exercise; this is not `new_listener`, the complete
+application, installed service or privileged message authorization acceptance.
+macOS still uses the public namespace/replacement mechanism and requires its
+own correction and native evidence. Upgrade/coexisting-version behavior, full
+R-S11a/R-S0 and installed credential actions remain OPEN. Receipt:
+`ipc-runtime-namespace-c1a2402a.json`; audit entry “2026-10-29 — Linux protected IPC runtime namespace”.
 
 **R-X14 desktop resource removal.** `9c8ebb1c` deletes the unused `res/startwm.sh` and
 dummy `res/xorg.conf`, their Debian payload/conffile/executable entries and the empty
@@ -9041,8 +9045,8 @@ sandbox implementation and checker-repair history remain in Git.
   The old PID/name branch still required the same socket probe performed below it;
   startup now performs that probe once. Kernel peer/role checks and protected
   liveness are unchanged. Exact deletion/caller comparison and the existing
-  desktop-password source check pass in isolation. Directory-function bodies
-  are unchanged, so the twelve native directory cases above were not repeated.
+  desktop-password source check pass in isolation. That deletion left directory
+  functions unchanged and reused the then-current native directory evidence.
   Historical `.pid` entries remain in the exact stale-artifact cleanup list.
   No new installed-listener or full-application result is claimed.
 
@@ -12773,8 +12777,9 @@ sandbox implementation and checker-repair history remain in Git.
 - **Local IPC/CM authorization audit — ⚠️ SUPERSEDED 2026-07-08 by R-S11b/R-S11c.** The
   2026-07-01 pass remains useful only for its transport facts: owner-only channels are
   0600 socket + 0700 per-uid parent; the service parent-dir hardening uses
-  `O_NOFOLLOW|O_DIRECTORY`, rejects symlinked/foreign-owned parents, and recreates
-  rather than adopts; foreign uid access to owner-only sockets is
+  `O_NOFOLLOW|O_DIRECTORY` and rejects symlinked parents. Linux now refuses foreign
+  service-parent ownership beneath `/run`; macOS replaces rather than adopts.
+  Foreign uid access to owner-only sockets is
   kernel-blocked. Its conclusion that the local IPC boundary was "sound" is retired.
   The missed model was authority ownership in installed-service mode: "same UID",
   "same session", "active uid + executable path", and "only `SyncConfig`" are not

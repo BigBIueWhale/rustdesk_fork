@@ -114572,3 +114572,67 @@ serial SHA-256 is
 `eb6fb7726a91219a447e7c0917395a4d7574bc5be9c60af16ce9e45609e6eea5`.
 The PID-removal capsule and baseline sources also match on both hosts.
 This audit-only receipt leaves the counted ledger unchanged.
+
+## 2026-10-29 — Linux protected IPC runtime namespace
+
+The previous PID-file turn made concrete progress. The current R-S11b/R-S11c
+checklist still leaves all fifteen installed credential actions OPEN. This
+slice follows the directory-to-directory replacement gap in R-S11a; parked
+parent-build and credential integration work remains parked.
+
+`e36184f1` extends the existing controlled native schedule with empty/nonempty
+directory substitutions before and after the real openat. TUF `iIz7s3xa7l`
+reproduces three failures: both empty replacements are removed and startup
+returns success; the nonempty before-open replacement fails preservation even
+though startup returns an error. The other thirteen cases pass. The binary is
+the same `04235c1a786a0e984dc1ceabceafebd072df427ef10c3eadfaea6ebf6a3bfb3a`
+as the prior native directory result; the test-only barrier is also unchanged.
+This establishes a filesystem correctness failure, not demonstrated elevation.
+
+An [open descriptor](https://man7.org/linux/man-pages/man2/open.2.html) keeps
+the opened object, while [unlinkat](https://man7.org/linux/man-pages/man2/unlink.2.html)
+still removes the named entry. Another pathname identity check would leave
+another race. `c1a2402a` instead removes the public-namespace replacement
+operation from Linux service startup. Protected sockets resolve to
+`/run/{app}-service` for every UID. Before parent mutation, the receiver requires
+effective UID zero, a direct `/run` child, and a no-follow directory open of
+root-owned `/run` with no group/other write permission. A foreign service
+parent is refused without cleanup or relabeling. The root-owned parent is
+mode 0711 and sockets retain 0666 reachability; message authorization remains
+independent. The [Linux hierarchy](https://uapi-group.org/specifications/specs/linux_file_system_hierarchy/)
+identifies `/run` as the privileged runtime/socket location. R-S11a now states
+this Linux contract explicitly, preserving the separate macOS obligations.
+No legacy path fallback, automatic migration or old-path cleanup is added.
+
+TUF `NcMZACtQFx` passes fourteen native cases on the correction. Exact production
+path functions select the same protected parent for root and UID 4001 while
+preserving user endpoints. Python binds all three actual filesystem sockets;
+UID 4001 connects and sends a byte, and the receiver observes its exact PID,
+UID and GID through SO_PEERCRED. UID 4001 cannot create, rename, remove or write
+the service parent. Foreign ownership/ACLs and symlink targets stay intact;
+mode repair preserves artifacts until explicit scrub. Unsafe `/run` mode or
+owner refuses creation; those VM-only mutations are restored in finally blocks.
+All five public-namespace entry types are refused unchanged. The replaced
+Linux mechanism's test-only preload shim is deleted; its baseline remains in Git.
+
+This compiles nine filesystem functions plus config classification/path functions
+with root-locked libc 0.2.171 and Rust 1.75. The error alias and fixed RustDesk
+name lock are adapters. Binary SHA-256:
+`06f462b1e32c0665fecfd753a919e50fd82f5b28748ab1f68621ef09f89fb4f4`.
+It does not compile the complete app or run production `new_listener`, polkit,
+credentials, installed services, update/coexisting-version handling or macOS.
+The retained macOS replacement path requires a separate correction and native
+acceptance. No platform-wide or R-S0 completion is claimed.
+
+The networkless CTE static container exits zero and is removed: desktop-password
+source checks, Python parsing and shell syntax pass. A transient UDP port appeared
+in the after snapshot, was absent on follow-up, and the final inventory equals
+the baseline. No host endpoint came from the network-none container. Both TUF
+VMs have four zero listener deltas, joined QEMU and absent RAM workspaces.
+The accepted 34.554-second run peaks at 3,379,351,552 RAM scratch bytes,
+3,183,349,760 overlay bytes and 3,375,104 durable-run bytes. QEMU 1592516 joins
+zero; its PID and workspace `run.7b59h5v_` are absent. Fourteen copied evidence
+files total 148,067 bytes and match TUF hashes. Capsule
+`ipc-runtime-namespace-c1a2402a.json`, 41,119 bytes, SHA-256
+`71845b5fbd4d86ce2fde9e11f68d4bc5d288bc1cef63dabc05d5afdc2c662ba9`.
+The fresh ledger count follows.

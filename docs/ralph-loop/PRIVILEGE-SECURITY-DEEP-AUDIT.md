@@ -116108,3 +116108,11 @@ Fifteen evidence files total 230,356 bytes on both hosts. After both copies are
 verified, the exact baseline scratch tree is deleted, freeing 3,489,792 allocated
 bytes. Canonical inputs and unrelated diagnostics remain. Complete application,
 installed/native settings, R-S0/R-S11/R-F5 and release acceptance remain OPEN.
+
+At `9a3ee86e`, fresh count `qyLlIoLAYf` reports **358,306 tokens** /
+1,638,401 bytes, with seven pinned controls and a complete byte round trip.
+Ledger SHA-256: `e4a4affe3b26e10253b469efff2ba67d793a3b2305243bf62c100820b705f538`.
+QEMU 1709849 joins after 30.531 seconds; RAM `run._j8w_j_r` retires and all three
+listener deltas are zero. Six count files add 102,630 bytes; all 21 retained files
+total 332,986 bytes on both hosts. This audit-only receipt leaves the measured
+ledger unchanged. The overall hardening goal remains OPEN.

@@ -236,8 +236,8 @@ fn recreate_foreign_service_ipc_parent_dir(parent_dir: &Path, postfix: &str) -> 
     })?;
     let _gp_guard = FdGuard(gp_fd);
 
-    // Scrub only known IPC artifacts through the no-follow directory fd. A changed
-    // parent or failed scrub refuses replacement; unrelated entries keep it nonempty.
+    // Scrub only known IPC artifacts through the no-follow directory fd. A failed
+    // open or scrub refuses replacement; unrelated entries keep it nonempty.
     let base_c = CString::new(basename.as_bytes().to_vec())?;
     let foreign_fd = unsafe {
         hbb_common::libc::openat(

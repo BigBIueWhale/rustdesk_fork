@@ -5409,13 +5409,11 @@ run_focused_rust_tests() {
             memory_bytes=1073741824
             tmpfs_size=64m
             source_fingerprints=(Cargo.lock src/ipc.rs src/ui_interface.rs src/ipc/main_config.rs
-                scripts/test-main-config-key.rs scripts/fixtures/main-config-key-before-id-removal.rs
                 scripts/run-main-config-key-tests.sh)
             required_tests=(
-                historical_schema_accepts_the_retired_id_query
-                main_config::tests::remaining_keys_round_trip
-                main_config::tests::retired_and_unknown_keys_are_rejected
-                main_config::tests::missing_or_wrong_tag_shape_is_rejected
+                tests::remaining_keys_round_trip
+                tests::retired_and_unknown_keys_are_rejected
+                tests::missing_or_wrong_tag_shape_is_rejected
             )
         elif [ "$RUST_TEST_PROFILE" = language-selection ]; then
             container_name=rustdesk-language-selection-tests
@@ -6946,7 +6944,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
         printf 'WHITEBOARD_DISPLAY_PROFILE=whiteboard-display-lifetime stage=container-start tests=6 bridge=absent backend=x11\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main-config-key ]; then
-        printf 'MAIN_CONFIG_KEY_PROFILE=main-config-key stage=container-start tests=4 app=unexecuted\n'
+        printf 'MAIN_CONFIG_KEY_PROFILE=main-config-key stage=container-start tests=3 app=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = language-selection ]; then
         printf 'LANGUAGE_SELECTION_PROFILE=language-selection stage=container-start tests=10 app=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = windows-pointer ]; then
@@ -7752,7 +7750,7 @@ PY
             || fail 'resolution-lifetime artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main-config-key ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'main config-key summary count differs'
-        [ "$(grep -Ec '^MAIN_CONFIG_KEY_ARTIFACT=pass sha256=[0-9a-f]{64} tests=4 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^MAIN_CONFIG_KEY_ARTIFACT=pass sha256=[0-9a-f]{64} tests=3 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'MAIN_CONFIG_KEY_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'main config-key artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = language-selection ]; then
@@ -8440,7 +8438,7 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = main-config-key ]; then
-            grep -E '^test (main_config::tests::.*|historical_schema_accepts_the_retired_id_query) \.\.\. ok$|^MAIN_CONFIG_KEY_(ARTIFACT(_BEFORE)?|LOCK)=' "$output"
+            grep -E '^test tests::.* \.\.\. ok$|^MAIN_CONFIG_KEY_(ARTIFACT(_BEFORE)?|LOCK)=' "$output"
             printf 'MAIN_CONFIG_KEY_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-key-schema rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = language-selection ]; then

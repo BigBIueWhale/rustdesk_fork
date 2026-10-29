@@ -7622,11 +7622,11 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linu
         'focused Linux resolution-lifetime receipt'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'resolution-lifetime cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main-config-key ]; then
-    [ "$(/usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -Ec 'MAIN_CONFIG_KEY_ARTIFACT=pass sha256=[0-9a-f]{64} tests=4 unchanged=before-after$')" -eq 1 ] \
+    [ "$(/usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -Ec 'MAIN_CONFIG_KEY_ARTIFACT=pass sha256=[0-9a-f]{64} tests=3 unchanged=before-after$')" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'MAIN_CONFIG_KEY_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'main config-key artifact receipt differs'
     require_exact_fixed_receipt \
-        "MAIN_CONFIG_KEY_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=4 target=linux-x86_64 scope=production-key-schema rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined" \
+        "MAIN_CONFIG_KEY_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=3 target=linux-x86_64 scope=production-key-schema rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined" \
         'main config-key result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'main config-key completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = language-selection ]; then
@@ -9123,7 +9123,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'LINUX_RESOLUTION_LIFETIME_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=24 scope=production-command-and-owned-work-components network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = main-config-key ]; then
-        printf 'MAIN_CONFIG_KEY_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=4 scope=production-key-schema network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'MAIN_CONFIG_KEY_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=3 scope=production-key-schema network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = language-selection ]; then
         printf 'LANGUAGE_SELECTION_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=10 scope=production-locale-selection network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

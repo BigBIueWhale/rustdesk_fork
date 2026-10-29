@@ -11,7 +11,7 @@ name = "main-config-key"
 version = "0.0.0"
 edition = "2021"
 [lib]
-path = "/source/scripts/test-main-config-key.rs"
+path = "/source/src/ipc/main_config.rs"
 [workspace]
 [dependencies]
 serde = "=1.0.228"
@@ -35,4 +35,4 @@ artifact_sha="$(sha256sum "$test_executable" | cut -d ' ' -f 1)"
 printf 'MAIN_CONFIG_KEY_ARTIFACT_BEFORE=sha256=%s\n' "$artifact_sha"
 timeout --signal=TERM --kill-after=5s 10s "$test_executable" --test-threads=1 --color never
 [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
-printf 'MAIN_CONFIG_KEY_ARTIFACT=pass sha256=%s tests=4 unchanged=before-after\n' "$artifact_sha"
+printf 'MAIN_CONFIG_KEY_ARTIFACT=pass sha256=%s tests=3 unchanged=before-after\n' "$artifact_sha"

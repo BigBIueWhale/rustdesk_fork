@@ -14,7 +14,6 @@ fn main() {
     assert!(!path.components().any(|part| matches!(part, std::path::Component::ParentDir)));
     let result = match args[1].as_str() {
         "ensure" => ensure_secure_ipc_parent_dir(&args[2], &args[3]),
-        "scrub" => scrub_secure_ipc_parent_dir(&args[2], &args[3]).map(|()| false),
         _ => panic!("unknown fixture operation"),
     };
     match result {

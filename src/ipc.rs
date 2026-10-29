@@ -5109,14 +5109,16 @@ pub async fn new_listener(postfix: &str) -> ResultType<Incoming> {
         bail!("Linux whiteboard requires its owned abstract listener");
     }
     let path = Config::ipc_path(postfix);
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    ensure_secure_ipc_parent_dir(&path, postfix)?;
+    #[cfg(target_os = "macos")]
     let should_scrub_parent_entries = ensure_secure_ipc_parent_dir(&path, postfix)?;
     #[cfg(target_os = "linux")]
     if probe_existing_listener(postfix).await? {
         return Err(std::io::Error::new(std::io::ErrorKind::AddrInUse, "ipc listener is active").into());
     }
     #[cfg(target_os = "linux")]
-    let _bind_guard = prepare_ipc_listener_bind(&path, postfix, should_scrub_parent_entries)?;
+    let _bind_guard = prepare_ipc_listener_bind(&path, postfix)?;
     #[cfg(target_os = "macos")]
     let existing_listener_alive = check_existing_listener(postfix).await?;
     #[cfg(target_os = "macos")]

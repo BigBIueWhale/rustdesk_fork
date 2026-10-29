@@ -410,7 +410,7 @@ fn verify_linux_service_ipc_namespace(parent_dir: &Path) -> ResultType<()> {
 // 1) Resolve parent path and open/create directory securely.
 // 2) Verify directory inode type and owner uid.
 // 3) Enforce expected mode on the retained inode.
-// 4) Scrub stale IPC artifacts when owner/mode was unsafe before hardening.
+// 4) Report parent repair for the macOS caller's separate artifact cleanup.
 //
 // References:
 // - open(2): O_NOFOLLOW/O_DIRECTORY/O_CLOEXEC
@@ -968,7 +968,6 @@ fn open_ipc_startup_lock(parent_fd: i32, name: &std::ffi::CStr, uid: u32) -> Res
 pub(crate) fn prepare_ipc_listener_bind(
     path: &str,
     postfix: &str,
-    should_scrub_parent_entries: bool,
 ) -> ResultType<impl Drop> {
     use hbb_common::libc;
 
@@ -1006,9 +1005,24 @@ pub(crate) fn prepare_ipc_listener_bind(
         Err(err) if matches!(err.kind(), ErrorKind::NotFound | ErrorKind::ConnectionRefused) => {}
         Err(err) => return Err(err.into()),
     }
-    remove_parent_entry_via_fd(parent_fd, parent, &basename)?;
-    if should_scrub_parent_entries {
-        remove_parent_entry_via_fd(parent_fd, parent, &format!("{basename}.pid"))?;
+    // A missing/refused transport does not make an arbitrary filesystem entry
+    // a stale socket. Preserve collisions, including symlinks and directories.
+    let name = CString::new(basename)?;
+    if unsafe { libc::fstatat(parent_fd, name.as_ptr(), &mut st, libc::AT_SYMLINK_NOFOLLOW) } != 0 {
+        let err = Error::last_os_error();
+        if err.kind() != ErrorKind::NotFound {
+            return Err(err.into());
+        }
+    } else {
+        if st.st_mode & libc::S_IFMT != libc::S_IFSOCK {
+            return Err(Error::new(ErrorKind::AlreadyExists, "ipc endpoint exists and is not a socket").into());
+        }
+        if unsafe { libc::unlinkat(parent_fd, name.as_ptr(), 0) } != 0 {
+            let err = Error::last_os_error();
+            if err.kind() != ErrorKind::NotFound {
+                return Err(err.into());
+            }
+        }
     }
     // The caller retains this guard through bind and socket-mode establishment,
     // without another await. Every error releases it by closing the descriptor.

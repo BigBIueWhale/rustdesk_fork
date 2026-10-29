@@ -7069,7 +7069,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     if [ "$MODE" = linux-ipc-parent-tests ]; then
         local ipc_parent_sha ipc_listener_sha ipc_listener_barrier_sha native_output=$ROOT/ipc-parent-native.out
         local -a ipc_parent_builds
-        mapfile -t ipc_parent_builds < <(grep -E '^LINUX_IPC_PARENT_BUILD=pass artifact_sha256=[0-9a-f]{64} source_sha256=[0-9a-f]{64} fragment_sha256=[0-9a-f]{64} config_sha256=[0-9a-f]{64} libc=0.2.171 functions=10 error_adapter=std-boxed name_adapter=RustDesk-rwlock$' "$output")
+        mapfile -t ipc_parent_builds < <(grep -E '^LINUX_IPC_PARENT_BUILD=pass artifact_sha256=[0-9a-f]{64} source_sha256=[0-9a-f]{64} fragment_sha256=[0-9a-f]{64} config_sha256=[0-9a-f]{64} libc=0.2.171 functions=9 error_adapter=std-boxed name_adapter=RustDesk-rwlock$' "$output")
         [ "${#ipc_parent_builds[@]}" -eq 1 ] \
             && [ "$(grep -Fc 'LINUX_IPC_PARENT_BUILD=' "$output")" -eq 1 ] \
             || fail 'IPC parent build receipt differs'

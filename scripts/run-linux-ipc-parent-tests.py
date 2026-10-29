@@ -18,7 +18,7 @@ WORK = VM_ROOT / 'ipc-parent-native'
 FUNCTIONS = ('expected_ipc_parent_mode', 'open_ipc_parent_dir_fd',
              'remove_parent_entry_via_fd', 'scrub_preexisting_ipc_parent_entries',
              'recreate_foreign_service_ipc_parent_dir', 'should_recreate_foreign_service_ipc_parent',
-             'verify_linux_service_ipc_namespace', 'ensure_secure_ipc_parent_dir', 'scrub_secure_ipc_parent_dir')
+             'verify_linux_service_ipc_namespace', 'ensure_secure_ipc_parent_dir')
 RUSTC = '/usr/local/rustup/toolchains/1.75.0-x86_64-unknown-linux-gnu/bin/rustc'
 ENV = {'PATH': '/usr/bin:/bin', 'LC_ALL': 'C', 'HOME': '/tmp', 'RUSTC': RUSTC}
 
@@ -135,8 +135,8 @@ def native(expected_sha):
     def actor(code, *args, uid=4001):
         return run(['/usr/bin/python3', '-I', '-S', '-c', code, *map(str, args)], uid=uid)
 
-    def call(parent, postfix='_service', *, uid=0, action='ensure', refused=False):
-        result = run([str(probe), action, str(parent / ('ipc' + postfix)), postfix],
+    def call(parent, postfix='_service', *, uid=0, refused=False):
+        result = run([str(probe), 'ensure', str(parent / ('ipc' + postfix)), postfix],
                      uid=uid, expected=3 if refused else 0)
         if refused:
             require(not result.stdout and result.stderr.startswith('ERR '), 'refusal receipt differs')
@@ -249,12 +249,12 @@ def native(expected_sha):
           '(p/"ipc_service.pid").write_bytes(b"stale");(p/"keep").write_bytes(b"unrelated")', service, sentinel)
     require(call(service) is True and (service / 'ipc_service').is_symlink()
             and (service / 'ipc_service.pid').read_bytes() == b'stale', 'mode repair scrubbed before liveness')
-    call(service, action='scrub')
     require(stat.S_IMODE(service.stat().st_mode) == 0o711 and sentinel.read_bytes() == b'untouched'
-            and [p.name for p in service.iterdir()] == ['keep'], 'scrub followed link or removed unrelated entry')
+            and (service / 'keep').read_bytes() == b'unrelated', 'mode repair removed unrelated entry')
     denied('os.open(sys.argv[1]+"/intrusion",os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600)', service)
+    (service / 'ipc_service').unlink(); (service / 'ipc_service.pid').unlink()
     (service / 'keep').unlink(); service.rmdir(); sentinel.unlink()
-    record('mode-repair-and-exact-symlink-scrub')
+    record('mode-repair-preserves-unrelated-entries')
 
     runtime = Path('/run')
     runtime_before = identity(runtime)

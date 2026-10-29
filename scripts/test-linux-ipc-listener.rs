@@ -561,7 +561,7 @@ async fn main_transaction_fixture(scenario: &str) {
         let client = async {
             let start = Instant::now();
             let result = main_transaction::main_ipc_request(
-                MainIpcRequest::Config(MainConfigKey::VoiceCallInput), 500,
+                MainIpcRequest::Config(MainConfigKey::VoiceCallInput {}), 500,
             ).await;
             (result, start.elapsed())
         };
@@ -576,11 +576,11 @@ async fn main_transaction_fixture(scenario: &str) {
                 assert_eq!(peer_pid_from_fd(stream.as_raw_fd()), Some(std::process::id()));
                 let mut stream = Connection::new_main(stream);
                 assert!(matches!(stream.next_main_timeout(1000).await.unwrap(),
-                                 Some(MainIpcRequest::Config(MainConfigKey::VoiceCallInput))));
+                                 Some(MainIpcRequest::Config(MainConfigKey::VoiceCallInput {}))));
                 let sent = if scenario == "peer-stall" { None } else {
                     tokio::time::sleep(Duration::from_millis(delay)).await;
                     Some(stream.send_json_timeout(&MainIpcResponse::Config {
-                        key: MainConfigKey::VoiceCallInput, value: Some("receiver-device".to_owned()),
+                        key: MainConfigKey::VoiceCallInput {}, value: Some("receiver-device".to_owned()),
                     }, 1000).await.is_ok())
                 };
                 let mut byte = [0];
@@ -596,7 +596,7 @@ async fn main_transaction_fixture(scenario: &str) {
     match scenario {
         "success" => {
             assert!(matches!(result.unwrap(), MainIpcResponse::Config {
-                key: MainConfigKey::VoiceCallInput, value: Some(value),
+                key: MainConfigKey::VoiceCallInput {}, value: Some(value),
             } if value == "receiver-device"));
             assert_eq!(peer, Some(true));
             assert!(elapsed < Duration::from_millis(500));
@@ -621,16 +621,34 @@ async fn main_validation_fixture(scenario: &str) {
         }
         let mut sender = ConnectionTmpl::new_main(sender);
         let mut receiver = ConnectionTmpl::new_main(receiver);
+        if scenario == "config-none" {
+            for (response, wire) in [
+                (false, serde_json::json!({"t":"Config", "c":{
+                    "t":"VoiceCallInput", "future":true
+                }})),
+                (true, serde_json::json!({"t":"Config", "c":{
+                    "key":{"t":"VoiceCallInput", "future":true}, "value":null
+                }})),
+            ] {
+                let read = async {
+                    if response { receiver.next_main_response_timeout(1000).await.unwrap().is_none() }
+                    else { receiver.next_main_timeout(1000).await.unwrap().is_none() }
+                };
+                let (sent, refused) = tokio::join!(sender.send_json_timeout(&wire, 1000), read);
+                sent.unwrap();
+                assert!(refused, "accepted surplus config-key field, response={response}");
+            }
+        }
         let option = |length| MainStatusOption {
             key: MainStatusOptionKey::AudioInput, value: "x".repeat(length),
         };
         let (response, error) = match scenario {
             "config-oversized" => (MainIpcResponse::Config {
-                key: MainConfigKey::VoiceCallInput,
+                key: MainConfigKey::VoiceCallInput {},
                 value: Some("x".repeat(MAIN_IPC_MAX_CONFIG_VALUE_BYTES + 1)),
             }, Some("main IPC config value is oversized")),
             "config-none" => (MainIpcResponse::Config {
-                key: MainConfigKey::VoiceCallInput, value: None,
+                key: MainConfigKey::VoiceCallInput {}, value: None,
             }, None),
             "status-oversized" | "status-duplicate" | "status-count" => {
                 let (entries, error) = match scenario {
@@ -697,7 +715,7 @@ async fn main_response_fixture(scenario: &str) {
                 })
             }
             "config" => MainIpcResponse::Config {
-                key: MainConfigKey::VoiceCallInput,
+                key: MainConfigKey::VoiceCallInput {},
                 value: Some("\0".repeat(MAIN_IPC_MAX_CONFIG_VALUE_BYTES)),
             },
             _ => panic!("unknown main response scenario"),

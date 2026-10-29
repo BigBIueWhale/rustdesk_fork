@@ -1,13 +1,13 @@
 use serde_derive::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
-#[serde(tag = "t")]
+#[serde(tag = "t", deny_unknown_fields)]
 pub enum MainConfigKey {
-    PermanentPasswordSet,
-    UserOwnedPermanentPasswordWritable,
-    HideConnectionManager,
-    VoiceCallInput,
-    DirectListenerBound,
+    PermanentPasswordSet {},
+    UserOwnedPermanentPasswordWritable {},
+    HideConnectionManager {},
+    VoiceCallInput {},
+    DirectListenerBound {},
 }
 
 #[cfg(test)]
@@ -17,11 +17,11 @@ mod tests {
     #[test]
     fn remaining_keys_round_trip() {
         for (key, tag) in [
-            (MainConfigKey::PermanentPasswordSet, "PermanentPasswordSet"),
-            (MainConfigKey::UserOwnedPermanentPasswordWritable, "UserOwnedPermanentPasswordWritable"),
-            (MainConfigKey::HideConnectionManager, "HideConnectionManager"),
-            (MainConfigKey::VoiceCallInput, "VoiceCallInput"),
-            (MainConfigKey::DirectListenerBound, "DirectListenerBound"),
+            (MainConfigKey::PermanentPasswordSet {}, "PermanentPasswordSet"),
+            (MainConfigKey::UserOwnedPermanentPasswordWritable {}, "UserOwnedPermanentPasswordWritable"),
+            (MainConfigKey::HideConnectionManager {}, "HideConnectionManager"),
+            (MainConfigKey::VoiceCallInput {}, "VoiceCallInput"),
+            (MainConfigKey::DirectListenerBound {}, "DirectListenerBound"),
         ] {
             let wire = format!(r#"{{"t":"{tag}"}}"#);
             assert_eq!(serde_json::to_string(&key).unwrap(), wire);

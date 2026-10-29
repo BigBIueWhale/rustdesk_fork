@@ -2807,7 +2807,7 @@ for token in \
 done
 grep -qF 'storage + "\n" + &salt' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 credential-storage-string-payload-present"
 grep -q 'PermanentPasswordSet' <<<"$main_config_enum" || r_s11b2="$r_s11b2 typed-password-status-key-missing"
-grep -q 'MainConfigKey::PermanentPasswordSet => Some' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 typed-password-status-handler-missing"
+grep -qF 'MainConfigKey::PermanentPasswordSet {} => Some' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 typed-password-status-handler-missing"
 grep -q 'permanent_password_is_set_for_current_process().await' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 receiver-derived-password-status-missing"
 grep -q 'ipc::is_permanent_password_set()' "$REPO/src/ui_interface.rs" || r_s11b2="$r_s11b2 ui-password-status-not-daemon-derived"
 for token in \

@@ -4749,7 +4749,7 @@ async fn handle_main_ipc_request(request: MainIpcRequest, stream: &Connection) -
         }
         MainIpcRequest::Config(key) => {
             let value = match key {
-                MainConfigKey::PermanentPasswordSet => Some(
+                MainConfigKey::PermanentPasswordSet {} => Some(
                     if permanent_password_is_set_for_current_process().await {
                         "Y"
                     } else {
@@ -4757,7 +4757,7 @@ async fn handle_main_ipc_request(request: MainIpcRequest, stream: &Connection) -
                     }
                     .to_owned(),
                 ),
-                MainConfigKey::UserOwnedPermanentPasswordWritable => Some(
+                MainConfigKey::UserOwnedPermanentPasswordWritable {} => Some(
                     if current_process_allows_user_owned_permanent_password_write()
                         && !Config::is_disable_change_permanent_password()
                     {
@@ -4767,17 +4767,17 @@ async fn handle_main_ipc_request(request: MainIpcRequest, stream: &Connection) -
                     }
                     .to_owned(),
                 ),
-                MainConfigKey::HideConnectionManager => {
+                MainConfigKey::HideConnectionManager {} => {
                     if crate::common::is_custom_client() {
                         Some(hbb_common::password_security::hide_cm().to_string())
                     } else {
                         None
                     }
                 }
-                MainConfigKey::VoiceCallInput => {
+                MainConfigKey::VoiceCallInput {} => {
                     crate::audio_service::get_voice_call_input_device()
                 }
-                MainConfigKey::DirectListenerBound => {
+                MainConfigKey::DirectListenerBound {} => {
                     Some(crate::direct_service::is_direct_listener_bound().to_string())
                 }
             };
@@ -8391,13 +8391,13 @@ async fn get_config_async(name: &str, ms_timeout: u64) -> ResultType<Option<Stri
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn main_config_key(name: &str) -> Option<MainConfigKey> {
     match name {
-        "permanent-password-set" => Some(MainConfigKey::PermanentPasswordSet),
+        "permanent-password-set" => Some(MainConfigKey::PermanentPasswordSet {}),
         "permanent-password-user-owned-writable" => {
-            Some(MainConfigKey::UserOwnedPermanentPasswordWritable)
+            Some(MainConfigKey::UserOwnedPermanentPasswordWritable {})
         }
-        "hide_cm" => Some(MainConfigKey::HideConnectionManager),
-        "voice-call-input" => Some(MainConfigKey::VoiceCallInput),
-        "direct-listener-bound" => Some(MainConfigKey::DirectListenerBound),
+        "hide_cm" => Some(MainConfigKey::HideConnectionManager {}),
+        "voice-call-input" => Some(MainConfigKey::VoiceCallInput {}),
+        "direct-listener-bound" => Some(MainConfigKey::DirectListenerBound {}),
         _ => None,
     }
 }
@@ -8662,13 +8662,13 @@ async fn user_owned_permanent_password_is_writable() -> ResultType<bool> {
     let stream = connect_user_owned_password_main(ms_timeout).await?;
     match main_ipc_request_on_stream(
         stream,
-        MainIpcRequest::Config(MainConfigKey::UserOwnedPermanentPasswordWritable),
+        MainIpcRequest::Config(MainConfigKey::UserOwnedPermanentPasswordWritable {}),
         ms_timeout,
     )
     .await?
     {
         MainIpcResponse::Config {
-            key: MainConfigKey::UserOwnedPermanentPasswordWritable,
+            key: MainConfigKey::UserOwnedPermanentPasswordWritable {},
             value,
         } => Ok(value.as_deref().is_some_and(|value| value.trim() == "Y")),
         _ => bail!("invalid user-owned password capability response"),
@@ -11010,7 +11010,7 @@ mod test {
         assert!(main_config_key("id").is_none());
         assert_eq!(
             main_config_key("permanent-password-set"),
-            Some(MainConfigKey::PermanentPasswordSet)
+            Some(MainConfigKey::PermanentPasswordSet {})
         );
         assert!(main_config_key("local-permanent-password-set").is_none());
         assert!(main_config_key("permanent-password-is-preset").is_none());

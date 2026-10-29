@@ -933,7 +933,7 @@ write = src[write_start:write_end]
 can_body = src[can_start:set_start]
 set_body = src[set_start:set_end]
 query_connect = query.find("connect_user_owned_password_main(ms_timeout).await?")
-query_send = query.find("MainIpcRequest::Config(MainConfigKey::UserOwnedPermanentPasswordWritable)")
+query_send = query.find("MainIpcRequest::Config(MainConfigKey::UserOwnedPermanentPasswordWritable {})")
 write_connect = write.find("connect_user_owned_password_stream(deadline).await")
 write_send = write.find("password::send_request_unix(")
 can_service = can_body.find("can_request_service_owned_unattended_password_change()")
@@ -4318,7 +4318,7 @@ done
 grep -qF 'set_permanent_password_storage_for_sync' libs/hbb_common/src/config.rs && r_s11b4="$r_s11b4 persistent-credential-sync-writer-present"
 grep -qF 'storage + "\n" + &salt' src/ipc.rs && r_s11b4="$r_s11b4 credential-storage-string-payload-present"
 grep -q 'PermanentPasswordSet' <<<"$r_s11b4_config_enum" || r_s11b4="$r_s11b4 typed-password-status-key-missing"
-grep -q 'MainConfigKey::PermanentPasswordSet => Some' src/ipc.rs || r_s11b4="$r_s11b4 typed-password-status-handler-missing"
+grep -qF 'MainConfigKey::PermanentPasswordSet {} => Some' src/ipc.rs || r_s11b4="$r_s11b4 typed-password-status-handler-missing"
 grep -q 'permanent_password_is_set_for_current_process().await' src/ipc.rs || r_s11b4="$r_s11b4 receiver-derived-password-status-missing"
 grep -q 'pub fn is_permanent_password_set() -> bool' src/ipc.rs || r_s11b4="$r_s11b4 password-status-client-missing"
 grep -q 'ipc::is_permanent_password_set()' src/ui_interface.rs || r_s11b4="$r_s11b4 ui-password-status-not-daemon-derived"

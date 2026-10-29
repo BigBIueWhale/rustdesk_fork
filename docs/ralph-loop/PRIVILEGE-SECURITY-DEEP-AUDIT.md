@@ -114496,3 +114496,66 @@ serial SHA-256 is
 `8e4f2344dc772bfb001a32274322d66873d1e44d39fcff2f9235b0fe977e9151`.
 The regression capsule also matches on both hosts. This audit-only receipt
 leaves the counted ledger unchanged.
+
+## 2026-10-29 — redundant Unix IPC PID files
+
+All fifteen R-S11b/R-S11c credential actions still require installed/native
+acceptance. This slice removes redundant incumbent-listener bookkeeping;
+it does not claim a newly demonstrated privilege escalation or close R-S0.
+
+At `afd0a15d`, `check_pid` read a numeric PID, scanned the process table and
+compared process names, but still required `probe_existing_listener`. The same
+probe followed unconditionally when that branch did not return success.
+`9a3668e2` removes the PID reader/writer, its call and writer-only test, and
+renames the operation `check_existing_listener`. Startup now probes once.
+Kernel peer UID/PID, endpoint-specific process/launch checks, executable proof
+and protected service liveness remain in the unchanged probe. The exact stale
+artifact list retains historical `.pid` names so old residue can be removed.
+No PID hint or process name grants authority. This matches the distinction
+between [socket peer credentials](https://man7.org/linux/man-pages/man7/unix.7.html)
+and a [process name](https://man7.org/linux/man-pages/man5/proc_pid_stat.5.html).
+
+The isolated CTE check proves the exact deletion/caller update and unchanged
+probe plus eight directory-function bodies. The desktop-password checker and
+shell syntax pass. Container `53847d1b9c8f` runs as 1000:1000, network-none,
+read-only, capability-free, with 512 MiB/32-PID limits; it exits zero and is
+removed. No listener was added; an unrelated baseline UDP endpoint disappeared.
+The prior twelve native directory cases were not repeated because their exact
+production functions are unchanged. No full application or live listener ran.
+Baseline sources are retained in `ipc-pid-baseline-afd0a15d.json`, 110,845 bytes,
+SHA-256 `f1e3ee42e7d5a58cfe3ebe16e3003f54d4d29e8dac41e4559246d4f767733088`.
+
+The Darwin mode-expression fixture drops the deleted writer, leaving seven
+calls. Actual compilation exposed two stale selectors from earlier refactors:
+the config transaction body moved in `b1b3ed24`, and transfer I/O moved in
+`2c6ceb26`. Runs `1BdGfGPIgZ`/`xAwWIqhSBH` fail before a positive result;
+`2c69d342`/`1be37bd2` point the fixture at the existing actual call sites.
+Those product functions are unchanged. Both failed VMs join QEMU and retire
+RAM scratch; bounded diagnostics remain. One launch with an unsupported
+timeout argument exits 2 before creating a VM; the valid launch uses the
+mode's existing 300-second limit.
+
+TUF gained one intentional reusable compiler input copied from CTE:
+`apple-check.docker.tar.gz`, 981,362,321 bytes, SHA-256
+`cab82041a9cde0492170885773d6ed084f87887bf1b5057ddaeefdf87f14d334`.
+The pinned digest and private read-only file identity match on both machines.
+Compilation and VM overlays use admitted, bounded RAM scratch; no CTE VM ran.
+The corrected `1be37bd2` run `INXlr3EYRD` exits zero in 125.243 seconds.
+Both Darwin targets produce nonempty metadata; all fourteen negative controls
+identify the exact call with E0617/E0308 and status 101. Dependencies match the
+root lock; source, fixture-lock and vendor/image postconditions pass. The
+no-NIC VM runs guest-only, networkless, nonroot, capability-free Docker.
+All three runs have four zero host-listener deltas. The successful run peaks
+at 8,043,679,744 RAM scratch bytes, 7,847,677,952 overlay bytes and 3,788,800
+durable-run bytes. QEMU 1583518 joins exit zero; its PID, workspace
+`run.w84h0qc5` and active run roots are absent. Observed QEMU block writes
+are 4,096 bytes. This is mode-expression compilation, without linking or
+native macOS execution, and does not compile the removed IPC path's callers.
+
+Twenty-one copied evidence files total 452,171 bytes and match TUF hashes.
+`ipc-pid-removal-1be37bd2.json` is 65,319 bytes, SHA-256
+`a5b78a3b0b8e86f495522aad8d7e1196000f0f506bd85f563c07e1f66b19d712`.
+The successful serial SHA-256 is
+`121b44cdda4a4882f2556dae6d476d5b2133080c6da86f1c0f3f58da96c80ee9`.
+Native/installed listener acceptance, full application compilation and all
+previously open credential actions remain OPEN. The ledger count follows.

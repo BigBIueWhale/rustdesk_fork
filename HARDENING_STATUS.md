@@ -764,34 +764,23 @@ installed authority, advisory/cold/release and R-S0/R-F5 acceptance remain OPEN.
 The latest document-history consolidation is recorded in
 `.harness-state/verifier-vm/ledger-document-history-a40b7ce7.json`.
 
-**R-S11av macOS file-mode compiler: focused component checks accepted; native acceptance OPEN.** The
-289-line string/mutation checker and its duplicate shared/Apple invocations are
-removed. They inspected eight call shapes and two verifier banners without
-executing a compiler. The Apple gate now compiles AST-extracted production mode
-expressions against the root-locked Darwin `libc` before it can accept an SDK
-boundary. The focused `--apple-conform --file-mode-compile` transaction targets
-five variadic and three fixed-prototype calls on both macOS architectures, with
-positive metadata and 16 negative compiler checks identifying the exact call.
-Exact source `99f69e4676fe479b46b3ee40da441e53a55ca407` passed the focused
-transaction in **100 VM seconds** with pinned Rust 1.81, Darwin `libc 0.2.171`,
-Syn 2.0.98 and Quote 1.0.36. Both targets produced nonempty compiler metadata;
-all 16 controls returned 101 with E0617 or E0308 at the exact generated call.
-Resolved package versions, sources and checksums match the root lock, and source,
-fixture-lock and full vendor/image postconditions pass. The VM uses no NIC and
-guest-only networkless, nonroot, capability-free Docker. Source/index/audit/
-ledger/specification/instruction freezes match; owned joins and RAM retirement
-pass. The leaf consumes the already private, owner-checked, read-only vendor
-projection with full closure, inode and mount-option checks before/after use,
-removing the duplicate bulk snapshot. Overlay peak is 8,086,491,136 bytes under
-the unchanged 8 GiB ceiling; RAM scratch peaks at 8,245,723,136 bytes and observed
-QEMU block writes are 4,096 bytes. Raw serial is 309,975 bytes, SHA-256
-`413a94d1f1a8e7a42aececc53861107de0c58575c67ac513793a06d3db956d49`.
-The bounded acceptance bundle `.harness-state/verifier-vm/macos-file-mode-accepted-99f69e46.json`
-binds source, compiler results, prior failures, endpoint observations and cleanup.
-Filesystem source guards and real regressions remain. This is an extracted
-mode-expression compiler check; complete app/functions, the full Apple matrix
-after the shared snapshot change, linking, native filesystem behavior, signed
-artifacts and installed acceptance remain OPEN.
+**R-S11av macOS file-mode compiler: component checks pass; native acceptance OPEN.**
+The Apple gate compiles AST-extracted production mode expressions against the
+root-locked Darwin `libc`. After removing the unused IPC PID writer, the focused
+`--apple-conform --file-mode-compile` transaction covers four variadic and three
+fixed-prototype calls on both macOS architectures. Config and transfer selectors
+now name their current implementation functions. Source `1be37bd2` passes in TUF
+run `INXlr3EYRD`: both targets produce metadata and all fourteen negative controls
+return 101 with E0617/E0308 at the exact generated call. Pinned Rust 1.81,
+`libc 0.2.171`, Syn 2.0.98 and Quote 1.0.36 use root-lock-matching dependencies.
+Source/vendor/image postconditions, owned joins and RAM retirement pass; all four
+host listener deltas are zero. The 125.243-second run uses no-NIC VM isolation and
+guest-only, networkless, nonroot, capability-free Docker. RAM scratch peaks at
+8,043,679,744 bytes; overlay peak 7,847,677,952 remains below the 8 GiB ceiling.
+`ipc-pid-removal-1be37bd2.json` retains exact results and prior fixture failures.
+The obsolete string/mutation checker remains deleted. Complete app/functions,
+the full Apple matrix, linking, native filesystem behavior, signed artifacts
+and installed acceptance remain OPEN.
 
 Windows §12.2 and R-B8/R-B10/R-B11/R-B11a/§12.3 state the admitted verifier-VM boundary,
 sole acquisition authority, immutable host baseline and exact creator-owned retirement. Historical
@@ -9042,11 +9031,20 @@ sandbox implementation and checker-repair history remain in Git.
   incumbent probing is fallible and separate from message admission. Generic incumbents
   must prove kernel peer UID/PID, current effective UID equality and current-executable
   identity. A positive UID/executable mismatch is a foreign stale candidate; missing
-  credentials or unavailable executable proof propagates an error through `check_pid`
+  credentials or unavailable executable proof propagates an error through `check_existing_listener`
   and `new_listener`, preserving the ambiguous live pathname. Linux `_cm`/`_pa`
   retain their stronger exact process/launch proofs. Protected `_service` also requires
   its bounded typed liveness round trip; failed or malformed response is an error, not
   cleanup authority. Stale removal stays descriptor-relative; probing grants no request authority.
+
+  `9a3668e2` removes redundant PID-file reads/writes and the process-table scan.
+  The old PID/name branch still required the same socket probe performed below it;
+  startup now performs that probe once. Kernel peer/role checks and protected
+  liveness are unchanged. Exact deletion/caller comparison and the existing
+  desktop-password source check pass in isolation. Directory-function bodies
+  are unchanged, so the twelve native directory cases above were not repeated.
+  Historical `.pid` entries remain in the exact stale-artifact cleanup list.
+  No new installed-listener or full-application result is claimed.
 
   The historical confined Rust-1.75 locked/offline `r_s11e85_` policy regression recorded
   with `100ae3e5` passed 1/1. This checks the UID/executable conjunction, not live kernel
@@ -12776,7 +12774,7 @@ sandbox implementation and checker-repair history remain in Git.
   2026-07-01 pass remains useful only for its transport facts: owner-only channels are
   0600 socket + 0700 per-uid parent; the service parent-dir hardening uses
   `O_NOFOLLOW|O_DIRECTORY`, rejects symlinked/foreign-owned parents, and recreates
-  rather than adopts; pid files are 0600; foreign uid access to owner-only sockets is
+  rather than adopts; foreign uid access to owner-only sockets is
   kernel-blocked. Its conclusion that the local IPC boundary was "sound" is retired.
   The missed model was authority ownership in installed-service mode: "same UID",
   "same session", "active uid + executable path", and "only `SyncConfig`" are not

@@ -639,11 +639,6 @@ SETTING_OPTION_TESTS = {
     "image choice retirement blocks admission and late feedback",
     "image Custom errors and retirement never write a marker",
     "image preset selection admits only the three named presets",
-    "quality monitor preserves delay at zero FPS",
-    "quality monitor preserves delay before FPS arrives",
-    "quality monitor keeps delay through frame rate changes",
-    "quality monitor distinguishes absent and measured zero delay",
-    "quality monitor visibility preserves reported values",
     "quality editor preserves values between slider divisions",
     "quality editor More preserves the current slider value",
     "quality editor Close preserves the full stored bitrate range",
@@ -1371,6 +1366,20 @@ def require(condition, message):
         raise ResultError(message)
 
 
+IMAGE_QUALITY_SUITES = {
+    "setting_option_mutation_test.dart": {
+        name for name in SETTING_OPTION_TESTS if name.startswith("quality ")
+    },
+    "quality_monitor_test.dart": {
+        "quality monitor preserves delay at zero FPS",
+        "quality monitor preserves delay before FPS arrives",
+        "quality monitor keeps delay through frame rate changes",
+        "quality monitor distinguishes absent and measured zero delay",
+        "quality monitor visibility preserves reported values",
+    },
+}
+
+
 def model_test_count(path=None):
     if path is None:
         path = os.path.join(os.path.dirname(__file__), "flutter-model-test-count.txt")
@@ -1829,8 +1838,9 @@ def parse_result(path, profile="models"):
         expected_tests = len(WINDOW_DISPATCH_TESTS)
         expected_names = WINDOW_DISPATCH_TESTS
     elif profile == "image-quality":
-        expected_suites = {"setting_option_mutation_test.dart"}
-        expected_names = {name for name in SETTING_OPTION_TESTS if name.startswith("quality ")}
+        expected_by_suite = IMAGE_QUALITY_SUITES
+        expected_suites = set(expected_by_suite)
+        expected_names = set().union(*expected_by_suite.values())
         expected_tests = len(expected_names)
     elif profile == "auto-disconnect":
         expected_by_suite = {

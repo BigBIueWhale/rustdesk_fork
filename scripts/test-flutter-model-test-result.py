@@ -88,8 +88,8 @@ class ResultTests(unittest.TestCase):
             suites = sorted(result.RECONNECT_SUITES)
             names = sorted(set().union(*result.RECONNECT_SUITES.values()))
         elif profile == "image-quality":
-            suites = ["setting_option_mutation_test.dart"]
-            names = sorted(name for name in result.SETTING_OPTION_TESTS if name.startswith("quality "))
+            suites = sorted(result.IMAGE_QUALITY_SUITES)
+            names = sorted(set().union(*result.IMAGE_QUALITY_SUITES.values()))
         elif profile == "custom-scale":
             suites = ["custom_scale_controls_test.dart"]
             names = sorted(result.CUSTOM_SCALE_TESTS)
@@ -164,8 +164,9 @@ class ResultTests(unittest.TestCase):
             suite_id = test_id % len(suites)
             if profile == "models":
                 suite_id = suites.index(model_cases[test_id][0])
-            if profile in ("credential-dialog", "terminal-output", "file-navigation", "modifier-release", "peer-data", "tab-selection", "status-refresh", "audio-input", "trackpad-speed", "reconnect", "credential-badge", "menu-button", "password-fields"):
+            if profile in ("credential-dialog", "terminal-output", "file-navigation", "modifier-release", "peer-data", "tab-selection", "status-refresh", "audio-input", "trackpad-speed", "reconnect", "credential-badge", "menu-button", "password-fields", "image-quality"):
                 inventory = (result.AUDIO_INPUT_SUITES if profile == "audio-input"
+                             else result.IMAGE_QUALITY_SUITES if profile == "image-quality"
                              else result.TRACKPAD_SPEED_SUITES if profile == "trackpad-speed"
                              else result.CREDENTIAL_BADGE_SUITES if profile == "credential-badge"
                              else result.MENU_BUTTON_SUITES if profile == "menu-button"
@@ -200,6 +201,9 @@ class ResultTests(unittest.TestCase):
             return result.parse_result(path, profile)
 
     def test_complete_profiles(self):
+        if SINGLE_PROFILE == "image-quality":
+            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 29))
+            return
         if SINGLE_PROFILE == "status-refresh":
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 23))
             return
@@ -222,7 +226,7 @@ class ResultTests(unittest.TestCase):
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE),
                              (1, {"locales": 10, "screenshot-save": 12,
                                   "draggable-divider": 22, "file-columns": 13,
-                                  "file-progress": 43, "peer-search": 36, "image-quality": 29,
+                                  "file-progress": 43, "peer-search": 36,
                                   "desktop-theme": 22, "custom-scale": 42}[SINGLE_PROFILE]))
             return
         self.assertEqual(

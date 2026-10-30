@@ -118035,3 +118035,76 @@ QEMU 1825696 joins in 30.709 seconds; RAM `run.qev6koww` retires and three liste
 deltas are zero. Six count files add 104,094 bytes. Thirteen raw files across both
 runs total 262,139 bytes per host with matching hashes; this audit-only receipt
 preserves the measured ledger and its approximate 400,000-token budget.
+
+### 2026-10-30 — MXCSR status comparison for multiplication timing
+
+This focused R-P12 diagnostic tests the preceding MCDT hypothesis. Installed
+IPC/actions, other native acceptance and separately parked items remain open.
+At `c037227ac757b85bf75f748664cc4ac63caef938` (tree
+`e80fa51bbcf0d41a862d4c7d4421d1d2883fb972`), only timing tests and their
+runner/receipt inventory change. Production crypto, dependencies and wiping
+owners are unchanged.
+
+[Intel's MCDT guidance](https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/best-practices/mxcsr-configuration-dependent-timing.html)
+identifies CPUID leaf 7/subleaf 2 EDX bit 5 as MCDT_NO and prescribes serialized
+MXCSR 0x1fbf where mitigation is needed. [Rust's MXCSR contract](https://doc.rust-lang.org/core/arch/x86_64/fn._mm_setcsr.html)
+permits exception-status manipulation but requires default floating-point
+controls. The private, non-Send/non-Sync test guard first requires default
+controls, changes only the six status flags, fences the load, and restores the
+observed value on the same thread. Normal return and actual caught unwind are
+checked before timing; the unwind payload is verified. No host register or
+frequency setting is changed.
+
+The original nineteen cohorts retain input hashes, class counts, seeds,
+sample budgets and threshold. Five additional comparisons use the same
+100,000 measurements, four operations and 20,000 warm-ups: variable-time
+positive control, prepared multiplication with original/reversed/identical
+inputs under 0x1fbf, and original inputs after restoring the prior setting.
+All observations precede the verdict; any assessed detection still fails.
+The native deadline is 150 seconds; the VM remains bounded at 300 seconds.
+
+Run `21IgvVMhez` completes all 24 cohorts in 105.62 seconds and exits 101.
+Before/after executable SHA-256:
+`a630a52b03ded7b9a234221a827f2bcffd1592dbe4b7a107b3c2fa2590bca4f3`.
+CPUID.1 EAX is `0x000c0662`, hypervisor=1; leaf 7 maximum subleaf is 2,
+and subleaf 2 EDX is 32: **MCDT_NO=1**. AVX2 is available. Initial MXCSR is
+0x1f80; ordinary measurements after statistics observe 0x1fa0. Every scoped
+cohort observes 0x1fbf at both boundaries. Restoration returns to 0x1fa0,
+including the subsequent baseline. Normal/unwind restoration checks pass.
+
+| Measurement | MXCSR | Raw t | Pooled-p99 t |
+| --- | --- | ---: | ---: |
+| reduce-multiply-one-random | 0x1fa0 | -5.278798 | -9.284392 |
+| reduce-multiply-random-one | 0x1fa0 | 8.117929 | **10.557547** |
+| multiply-prepared-one-random | 0x1fa0 | -3.559125 | -7.943358 |
+| multiply-prepared-random-one | 0x1fa0 | 3.810766 | 8.920448 |
+| multiply-mcdt-one-random | 0x1fbf | -6.757091 | **-11.713019** |
+| multiply-mcdt-random-one | 0x1fbf | 2.298634 | 4.080772 |
+| multiply-mcdt-one-one | 0x1fbf | 0.836917 | 1.909044 |
+| multiply-restored-one-random | 0x1fa0 | -4.225649 | -2.985092 |
+
+All four deliberate variable-time controls detect; all five identical-input
+controls remain below threshold. Generator, tag, reduction and separate
+reduction/wiping and point-copy/wiping cohorts remain below. Scoped
+one/random means are 65,495.865677/65,623.904171 ns per four operations.
+The difference persists with 0x1fbf on a guest enumerating MCDT_NO; this
+does not support choosing an MXCSR mitigation as the product correction.
+Its smaller magnitude and below-threshold baselines do not clear prior
+detections. Backend, hardware and measurement causes remain unresolved;
+a scalar-backend comparison is the next focused diagnostic.
+
+Eleven captured bodies pass retained length/hash checks. The new guard entry
+is at 0x39380 (136 bytes): STMXCSR, control validation, status-bit OR and
+LFENCE/LDMXCSR/LFENCE before return. Drop at 0x39410 (10 bytes) is
+LFENCE/LDMXCSR/LFENCE/RET. Their disassembly hashes are
+`9279b29e5476bcd7d5558f52b07e6bec391fdbfc66c90c897927a2cfcd2d59f0`
+and `bd01e642cfa688ad91c81752d55c4e70645752dcff0b7855f8e85580382f089f`.
+This emitted-code review and capability observation are not a runtime backend
+trace or proof of constant-time execution.
+
+QEMU 1827043 joins in 207.969 seconds; RAM `run.9qp0osrk` retires and four
+host listener deltas are zero. Seven raw files total 162,597 bytes on each host
+with matching hashes. Exact failed-run scratch inode 78294410 is removed after
+copying, reclaiming 3,608,576 allocated bytes. The VM's peak writable overlay
+was 3,128,627,200 bytes in bounded RAM; measured QEMU host block writes are
+4,096 bytes. No product/test executable ran on either host.

@@ -188,10 +188,11 @@ class _DesktopSettingPageState extends State<DesktopSettingPage>
         children: <Widget>[
           SizedBox(
             width: _kTabWidth,
-            child: Column(
+            child: ListView(
+              primary: false,
               children: [
                 _header(context),
-                Flexible(child: _listView(tabs: _settingTabs())),
+                ..._settingTabs().map((tab) => _listItem(tab: tab)),
               ],
             ),
           ),
@@ -241,13 +242,6 @@ class _DesktopSettingPageState extends State<DesktopSettingPage>
           ).marginOnly(left: 20, right: 10, top: isWeb ? 0 : 10),
         ),
       ],
-    );
-  }
-
-  Widget _listView({required List<_TabInfo> tabs}) {
-    return ListView(
-      primary: false,
-      children: tabs.map((tab) => _listItem(tab: tab)).toList(),
     );
   }
 

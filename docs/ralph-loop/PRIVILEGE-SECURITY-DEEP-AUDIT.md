@@ -117596,3 +117596,12 @@ bytes per host with matching hashes, under the existing
 Command: `bash scripts/smoke-verifier-vm-authority.sh --pake-allocation-tests`.
 The ledger consolidates the three related secret-lifetime corrections into one
 current-state row, preserving baseline provenance and all open erasure limits.
+
+Ledger run `t7DWkuH0IY` at `6d42ab3d` passes 72 workload controls/five refusals,
+seven tokenizer controls and full text round trip. It counts 360,166 tokens with
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 1,646,733 bytes, SHA-256
+`a2d9e9f2fc1fd0cc2dfc6255b30b78fbf0f682c609cc65297dfd8aa61a92ea00`.
+QEMU 1806849 joins in 30.793 seconds; RAM `run.okdyhar5` retires and three listener
+deltas are zero. Six count files add 102,882 bytes; thirteen files across both
+runs total 185,301 bytes per host with matching hashes. This audit-only receipt
+leaves the measured ledger unchanged and below its approximate 400,000-token budget.

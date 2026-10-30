@@ -9840,8 +9840,7 @@ impl Connection {
                                     if let Err(error) = self.send_fs(ipc::FS::SendConfirmForRead {
                                         id: r.id,
                                         file_num: r.file_num,
-                                        skip: r.skip(),
-                                        offset_blk: r.offset_blk(),
+                                        confirmation: r.union.clone().map(Into::into),
                                         conn_id: self.inner.id(),
                                         generation,
                                     })
@@ -9858,8 +9857,7 @@ impl Connection {
                                     if let Err(error) = self.send_fs(ipc::FS::SendConfirm {
                                         id: r.id,
                                         file_num: r.file_num,
-                                        skip: r.skip(),
-                                        offset_blk: r.offset_blk(),
+                                        confirmation: r.union.clone().map(Into::into),
                                         conn_id: self.inner.id(),
                                         generation,
                                     })

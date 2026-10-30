@@ -1,7 +1,7 @@
 #[cfg(windows)]
 use std::os::windows::prelude::*;
 use std::{
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     path::{Path, PathBuf},
     sync::atomic::{AtomicI32, Ordering},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -823,6 +823,8 @@ pub struct TransferJob {
     receive_write_claim: Option<ReceiveWriteClaim>,
     #[serde(skip_serializing)]
     receive_file_offset: u64,
+    #[serde(skip_serializing)]
+    resume_preparing: bool,
     #[serde(skip)]
     send_file_offset: u64,
     pub total_size: u64,
@@ -3382,11 +3384,11 @@ impl ReceivePathLease {
         creation: ReceiveFileCreation,
         artifact: ReceiveOwnedArtifact,
     ) -> std::io::Result<std::fs::File> {
-        let readable = matches!(artifact, ReceiveOwnedArtifact::Digest);
+        // Resume content verification reads the exact owned payload before admitting writes.
         #[cfg(unix)]
         {
             let name = self.child_name(path)?;
-            let access = if readable { RegularFileAccess::ReadWrite } else { RegularFileAccess::Write };
+            let access = RegularFileAccess::ReadWrite;
             let file = open_regular_child_no_follow(&self.parent, &name, access, creation)?;
             if let Err(error) = artifact.validate(&file) {
                 if matches!(creation, ReceiveFileCreation::CreateNew) {
@@ -3404,7 +3406,7 @@ impl ReceivePathLease {
         }
         #[cfg(not(unix))]
         {
-            open_recv_file_no_follow_std(path, false, creation, false, readable)
+            open_recv_file_no_follow_std(path, false, creation, false, true)
         }
     }
 
@@ -3497,8 +3499,15 @@ struct ReceiveWriteClaim {
     download_file: std::fs::File,
     digest_file: std::fs::File,
     published: bool,
-    cleanup_on_drop: bool,
+    cleanup_on_drop: ReceiveClaimCleanup,
     _lease: ReceivePathLease,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum ReceiveClaimCleanup {
+    Artifacts,
+    Lease,
+    None,
 }
 
 impl ReceiveWriteClaim {
@@ -3579,13 +3588,13 @@ impl ReceiveWriteClaim {
                 download_file,
                 digest_file,
                 published: false,
-                cleanup_on_drop: true,
+                cleanup_on_drop: ReceiveClaimCleanup::Artifacts,
                 _lease: lease,
             },
         ))
     }
 
-    fn resume(
+    fn prepare_resume(
         final_path: PathBuf,
         expected_digest: FileDigest,
         expected_size: u64,
@@ -3631,7 +3640,7 @@ impl ReceiveWriteClaim {
                     download_file,
                     digest_file,
                     published: false,
-                    cleanup_on_drop: true,
+                    cleanup_on_drop: ReceiveClaimCleanup::Lease,
                     _lease: lease,
                 },
             )),
@@ -3672,7 +3681,7 @@ impl ReceiveWriteClaim {
         );
         if result.is_ok() {
             self._lease.retire()?;
-            self.cleanup_on_drop = false;
+            self.cleanup_on_drop = ReceiveClaimCleanup::None;
         }
         result
     }
@@ -3680,8 +3689,13 @@ impl ReceiveWriteClaim {
     fn cleanup(mut self) -> std::io::Result<()> {
         // The caller reports this attempt's exact result. Drop is only the fallback for a
         // claim whose owning async task disappeared before it could request cleanup.
-        self.cleanup_on_drop = false;
-        self.retire()
+        let pending = matches!(self.cleanup_on_drop, ReceiveClaimCleanup::Lease);
+        self.cleanup_on_drop = ReceiveClaimCleanup::None;
+        if pending {
+            self._lease.retire()
+        } else {
+            self.retire()
+        }
     }
 
     fn retire(&mut self) -> std::io::Result<()> {
@@ -3709,16 +3723,60 @@ impl ReceiveWriteClaim {
 
 impl Drop for ReceiveWriteClaim {
     fn drop(&mut self) {
-        if self.cleanup_on_drop {
-            if let Err(error) = self.retire() {
-                log::error!(
-                    "failed to retire abandoned receive claim {}: {}",
-                    self.final_path.display(),
-                    error
-                );
-            }
+        let result = match self.cleanup_on_drop {
+            ReceiveClaimCleanup::Artifacts => self.retire(),
+            ReceiveClaimCleanup::Lease => self._lease.retire(),
+            ReceiveClaimCleanup::None => Ok(()),
+        };
+        if let Err(error) = result {
+            log::error!(
+                "failed to retire abandoned receive claim {}: {}",
+                self.final_path.display(), error
+            );
         }
     }
+}
+
+fn receive_confirmation_prefix(r: &FileTransferSendConfirmRequest) -> ResultType<Option<[u8; 32]>> {
+    match r.union.as_ref() {
+        Some(file_transfer_send_confirm_request::Union::Resume(resume)) => {
+            if resume.offset == 0 {
+                bail!("resume confirmation requires a nonzero offset");
+            }
+            let proof = resume.prefix_sha256.as_ref().try_into()
+                .map_err(|_| anyhow!("resume confirmation requires a 32-byte prefix proof"))?;
+            Ok(Some(proof))
+        }
+        Some(file_transfer_send_confirm_request::Union::OffsetBlk(0))
+            | Some(file_transfer_send_confirm_request::Union::Skip(_)) => Ok(None),
+        Some(_) => bail!("nonzero resume offsets require content proof"),
+        None => bail!("confirmation has no action"),
+    }
+}
+
+async fn transfer_prefix_sha256(file: &mut File, size: u64, offset: u64) -> ResultType<[u8; 32]> {
+    use crate::sha2::{Digest, Sha256};
+    let mut buffer = Vec::new();
+    buffer.try_reserve_exact(64 * 1024)
+        .map_err(|_| std::io::Error::from(std::io::ErrorKind::OutOfMemory))?;
+    buffer.resize(64 * 1024, 0);
+    let mut hash = Sha256::new();
+    hash.update(b"rustdesk.file-transfer.resume-prefix.v1\0");
+    hash.update(size.to_le_bytes());
+    hash.update(offset.to_le_bytes());
+    file.seek(std::io::SeekFrom::Start(0)).await?;
+    let mut remaining = offset;
+    while remaining > 0 {
+        let limit = remaining.min(buffer.len() as u64) as usize;
+        let read = file.read(&mut buffer[..limit]).await?;
+        if read == 0 {
+            bail!("resume prefix ended before the confirmed offset");
+        }
+        hash.update(&buffer[..read]);
+        remaining -= read as u64;
+        tokio::task::yield_now().await;
+    }
+    Ok(hash.finalize().into())
 }
 
 impl TransferJob {
@@ -4102,6 +4160,9 @@ impl TransferJob {
     }
 
     pub async fn write(&mut self, block: FileTransferBlock) -> ResultType<()> {
+        if self.resume_preparing {
+            bail!("previous resume preparation did not complete");
+        }
         if self.role != TransferRole::Receive {
             bail!("cannot write an incoming block into a send job");
         }
@@ -4172,6 +4233,11 @@ impl TransferJob {
             .data_stream
             .as_mut()
             .ok_or(anyhow!("data stream is None"))?;
+        // A resumed block means the peer accepted our prefix proof. Until this
+        // point a local confirmation producer preserves its saved partial on refusal.
+        if let Some(claim) = self.receive_write_claim.as_mut() {
+            claim.cleanup_on_drop = ReceiveClaimCleanup::Artifacts;
+        }
         file.write_all(&bytes).await?;
         // Native writes must finish within the owning receive operation.
         file.flush().await?;
@@ -4253,6 +4319,9 @@ impl TransferJob {
     /// Open the regular send source for the current file.
     /// Returns Ok(true) if job is done, Ok(false) otherwise.
     async fn open_data_stream(&mut self) -> ResultType<bool> {
+        if self.resume_preparing {
+            bail!("previous resume preparation did not complete");
+        }
         if self.role != TransferRole::Send {
             bail!("cannot initialize a send source for a receive job");
         }
@@ -4340,6 +4409,9 @@ impl TransferJob {
     }
 
     pub async fn read(&mut self) -> ResultType<Option<FileTransferBlock>> {
+        if self.resume_preparing {
+            bail!("previous resume preparation did not complete");
+        }
         if self.role != TransferRole::Send {
             bail!("cannot read an outgoing block from a receive job");
         }
@@ -4558,7 +4630,12 @@ impl TransferJob {
         Ok(true)
     }
 
-    async fn set_stream_offset(&mut self, file_num: usize, offset: u64) -> ResultType<()> {
+    async fn set_stream_offset(
+        &mut self,
+        file_num: usize,
+        offset: u64,
+        expected_prefix: Option<[u8; 32]>,
+    ) -> ResultType<[u8; 32]> {
         if file_num >= self.files.len() {
             bail!("confirmation file number {} is out of range", file_num);
         }
@@ -4582,26 +4659,29 @@ impl TransferJob {
             .checked_add(offset)
             .ok_or_else(|| anyhow!("finished byte counter overflow"))?;
         let expected_size = entry.size;
-        match self.role {
+        let (mut file, mut claim) = match self.role {
             TransferRole::Receive => {
                 if self.receive_write_claim.is_some() {
                     bail!("receive write job already owns a destination claim");
                 }
                 let digest = self.digest;
                 let (stream_file, claim) = tokio::task::spawn_blocking(move || {
-                    ReceiveWriteClaim::resume(path, digest, expected_size, offset)
+                    ReceiveWriteClaim::prepare_resume(path, digest, expected_size, offset)
                 })
                 .await??;
-                self.data_stream = Some(File::from_std(stream_file));
-                self.receive_write_claim = Some(claim);
+                (File::from_std(stream_file), Some(claim))
             }
             TransferRole::Send => {
-                let mut opened_file = None;
-                let file = match self.data_stream.as_mut() {
-                    Some(file) => file,
-                    None => opened_file.insert(Self::open_send_file(path).await?),
+                // Own the cursor throughout hashing. Failure/cancellation closes this
+                // stream instead of leaving a partially repositioned stream in the job.
+                let opened_file = if self.data_stream.is_none() {
+                    Some(Self::open_send_file(path).await?)
+                } else {
+                    None
                 };
-                let available = file.metadata().await?.len();
+                let retained = self.data_stream.as_ref().or(opened_file.as_ref())
+                    .ok_or_else(|| anyhow!("resume source is absent"))?;
+                let available = retained.metadata().await?.len();
                 if offset > available {
                     bail!(
                         "confirmed offset {} exceeds file length {}",
@@ -4609,19 +4689,49 @@ impl TransferJob {
                         available
                     );
                 }
-                file.seek(std::io::SeekFrom::Start(offset)).await?;
-                if let Some(file) = opened_file {
-                    self.data_stream = Some(file);
+                let file = self.data_stream.take().or(opened_file)
+                    .ok_or_else(|| anyhow!("resume source is absent"))?;
+                (file, None)
+            }
+        };
+        // A cancelled or failed hash is terminal for this job. Its caller retires
+        // the job; a fresh request may inspect the preserved partial again.
+        self.resume_preparing = true;
+        let result = transfer_prefix_sha256(&mut file, expected_size, offset).await
+            .and_then(|prefix| {
+                if expected_prefix.is_some_and(|expected| expected != prefix) {
+                    bail!("resume prefix differs from the current source");
                 }
+                Ok(prefix)
+            });
+        let prefix = match result {
+            Ok(prefix) => prefix,
+            Err(error) => {
+                drop(file);
+                if let Some(mut claim) = claim {
+                    claim.cleanup_on_drop = ReceiveClaimCleanup::None;
+                    if let Err(cleanup) = claim._lease.retire() {
+                        return Err(anyhow!("{error}; pending resume lease cleanup failed: {cleanup}"));
+                    }
+                }
+                return Err(error);
+            }
+        };
+        if expected_prefix.is_some() {
+            if let Some(claim) = claim.as_mut() {
+                claim.cleanup_on_drop = ReceiveClaimCleanup::Artifacts;
             }
         }
+        self.data_stream = Some(file);
+        self.receive_write_claim = claim;
+        self.resume_preparing = false;
         self.transferred = transferred;
         self.finished_size = finished_size;
         match self.role {
             TransferRole::Receive => self.receive_file_offset = offset,
             TransferRole::Send => self.send_file_offset = offset,
         }
-        Ok(())
+        Ok(prefix)
     }
 
     /// Admit the exact byte offset before publishing a protocol confirmation.
@@ -4636,53 +4746,72 @@ impl TransferJob {
                 u32::MAX
             )
         })?;
+        self.validate_confirmation_target(self.id, file_num)?;
+        let action = if offset > 0 {
+            let prefix = self.set_stream_offset(file_num as usize, offset as u64, None).await?;
+            file_transfer_send_confirm_request::Union::Resume(FileTransferResume {
+                offset,
+                prefix_sha256: prefix.to_vec().into(),
+                ..Default::default()
+            })
+        } else {
+            file_transfer_send_confirm_request::Union::OffsetBlk(0)
+        };
         let request = FileTransferSendConfirmRequest {
             id: self.id,
             file_num,
-            union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(offset)),
+            union: Some(action),
             ..Default::default()
         };
-        self.confirm(&request).await?;
+        self.set_file_confirmed(true);
         Ok(request)
     }
 
-    pub async fn confirm(&mut self, r: &FileTransferSendConfirmRequest) -> ResultType<()> {
-        if r.id != self.id {
+    fn validate_confirmation_target(&self, id: i32, file_num: i32) -> ResultType<()> {
+        if self.resume_preparing {
+            bail!("previous resume preparation did not complete");
+        }
+        if id != self.id {
             bail!(
                 "confirmation job {} does not match active job {}",
-                r.id,
+                id,
                 self.id
             );
         }
-        if self.file_num() != r.file_num {
+        if self.file_num() != file_num {
             bail!(
                 "confirmation file {} does not match active file {}",
-                r.file_num,
+                file_num,
                 self.file_num()
             );
         }
-        if r.file_num < 0 || self.files.get(r.file_num as usize).is_none() {
-            bail!("confirmation file number {} is out of range", r.file_num);
+        if file_num < 0 || self.files.get(file_num as usize).is_none() {
+            bail!("confirmation file number {} is out of range", file_num);
         }
         if self.file_confirmed() {
             bail!("file {} is already confirmed", self.file_num());
         }
-        match r.union {
+        Ok(())
+    }
+
+    pub async fn confirm(&mut self, r: &FileTransferSendConfirmRequest) -> ResultType<()> {
+        self.validate_confirmation_target(r.id, r.file_num)?;
+        let prefix = receive_confirmation_prefix(r)?;
+        match r.union.as_ref() {
             Some(file_transfer_send_confirm_request::Union::Skip(s)) => {
-                if s {
+                if *s {
                     self.set_file_skipped()?;
                 } else {
                     self.set_file_confirmed(true);
                 }
             }
-            Some(file_transfer_send_confirm_request::Union::OffsetBlk(offset)) => {
-                // A nonzero resume offset is admitted only after the exact local stream is open
-                // and positioned. Publishing confirmation before that would let the peer continue
-                // from an offset against a truncated or absent destination.
-                if offset > 0 {
-                    self.set_stream_offset(r.file_num as usize, offset as u64)
-                        .await?;
-                }
+            Some(file_transfer_send_confirm_request::Union::Resume(resume)) => {
+                // Verify the exact retained prefix before publishing stream, counters or
+                // confirmation. Size/mtime agreement alone cannot admit resumed bytes.
+                self.set_stream_offset(r.file_num as usize, resume.offset as u64, prefix).await?;
+                self.set_file_confirmed(true);
+            }
+            Some(file_transfer_send_confirm_request::Union::OffsetBlk(_)) => {
                 self.set_file_confirmed(true);
             }
             None => bail!("confirmation has no action"),
@@ -5070,6 +5199,23 @@ pub fn serialize_transfer_job(job: &TransferJob, done: bool, cancel: bool, error
 mod tests {
     use super::*;
 
+    fn fixture_resume_prefix(size: u64, prefix: &[u8]) -> bytes::Bytes {
+        use crate::sha2::{Digest, Sha256};
+        let mut hash = Sha256::new();
+        hash.update(b"rustdesk.file-transfer.resume-prefix.v1\0");
+        hash.update(size.to_le_bytes());
+        hash.update((prefix.len() as u64).to_le_bytes());
+        hash.update(prefix);
+        hash.finalize().to_vec().into()
+    }
+
+    fn fixture_resume_action(offset: u32, prefix_sha256: bytes::Bytes)
+        -> file_transfer_send_confirm_request::Union {
+        file_transfer_send_confirm_request::Union::Resume(FileTransferResume {
+            offset, prefix_sha256, ..Default::default()
+        })
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     fn file_metadata_receive_parent_ownership_survives_path_replacement() {
@@ -5093,9 +5239,9 @@ mod tests {
                 stream.write_all(b"pay").unwrap();
                 if action == "resume-finish" {
                     drop(stream);
-                    claim.cleanup_on_drop = false;
+                    claim.cleanup_on_drop = ReceiveClaimCleanup::None;
                     drop(claim);
-                    (stream, claim) = ReceiveWriteClaim::resume(
+                    (stream, claim) = ReceiveWriteClaim::prepare_resume(
                         destination.clone(), digest, 7, 3).unwrap();
                 }
                 stream.write_all(b"load").unwrap();
@@ -6035,10 +6181,10 @@ mod tests {
                 filetime::set_file_mtime(&source_path,
                     filetime::FileTime::from_unix_time(31, 0)).unwrap();
                 std::fs::write(&final_path, b"prior destination").unwrap();
-                write_receive_partial_fixture(receive_fixture_path(&final_path, ".download"),
-                    b"abc").unwrap();
-                write_receive_partial_fixture(receive_fixture_path(&final_path, ".digest"),
-                    br#"{"size":6,"modified":31}"#).unwrap();
+                let partial_path = receive_fixture_path(&final_path, ".download");
+                let digest_path = receive_fixture_path(&final_path, ".digest");
+                write_receive_partial_fixture(&partial_path, b"abc").unwrap();
+                write_receive_partial_fixture(&digest_path, br#"{"size":6,"modified":31}"#).unwrap();
                 let mut sender = TransferJob::new_read(491, JobType::Generic, String::new(),
                     source, 0, false, false, true).unwrap();
                 let mut receiver = TransferJob::new_write(491, JobType::Generic, String::new(),
@@ -6075,10 +6221,18 @@ mod tests {
                 }.await;
                 let actual = std::fs::read(&final_path).unwrap();
                 let source_preserved = std::fs::read(&source_path).unwrap() == current;
+                let verifier = if sender_initiates { &receiver } else { &sender };
+                let refusal_before_confirmation = !verifier.file_confirmed()
+                    && verifier.finished_size() == 0 && verifier.transferred() == 0;
                 let safe = if matches { result.is_ok() && actual == current }
-                    else { result.is_err() && actual == b"prior destination" };
+                    else { result.as_ref().err().is_some_and(|e|
+                        e.to_string().contains("resume prefix differs"))
+                        && actual == b"prior destination" && refusal_before_confirmation };
                 receiver.retire_current_file_state().unwrap();
                 sender.retire_current_file_state().unwrap();
+                let partial_correct = if matches { !partial_path.exists() && !digest_path.exists() }
+                    else { std::fs::read(&partial_path).unwrap() == b"abc"
+                        && std::fs::read(&digest_path).unwrap() == br#"{"size":6,"modified":31}"# };
                 drop((receiver, sender));
                 let fixture = root.path.clone();
                 drop(root);
@@ -6087,14 +6241,205 @@ mod tests {
                     "prefix_matches":matches, "same_size_and_mtime":true,
                     "transfer_ok":result.is_ok(), "error":result.err().map(|e|e.to_string()),
                     "final_bytes":actual, "source_preserved":source_preserved,
+                    "partial_correct":partial_correct, "refusal_before_confirmation":refusal_before_confirmation,
                     "fixture_retired":true, "safe":safe}));
-                all_safe &= safe && source_preserved;
+                all_safe &= safe && source_preserved && partial_correct;
             }
         }
         for observation in observations {
             println!("FILE_METADATA_RESUME_CONTENT={observation}");
         }
         assert!(all_safe, "resume must verify the saved prefix against the current source before publication");
+    }
+
+    #[tokio::test]
+    async fn file_metadata_resume_proof_shape_and_content_precede_confirmation() {
+        const PROOF: [u8; 32] = [47, 71, 79, 75, 169, 73, 186, 196, 65, 235, 147, 232,
+            129, 160, 195, 115, 4, 119, 19, 59, 146, 28, 113, 117, 180, 119, 6, 164,
+            116, 234, 144, 245];
+        assert_eq!(fixture_resume_prefix(6, b"abc").as_ref(), PROOF);
+        for receive in [false, true] {
+            for case in ["missing", "short", "long", "wrong", "wrong-size", "wrong-offset", "valid"] {
+                let root = TestTempDir::new("rustdesk_resume_proof");
+                std::fs::create_dir_all(&root.path).unwrap();
+                let source = root.join("source.zip");
+                std::fs::write(&source, b"abcdef").unwrap();
+                let target = root.join("incoming.bin");
+                std::fs::write(&target, b"prior destination").unwrap();
+                let partial = receive_fixture_path(&target, ".download");
+                let digest_path = receive_fixture_path(&target, ".digest");
+                write_receive_partial_fixture(&partial, b"abc").unwrap();
+                write_receive_partial_fixture(&digest_path, br#"{"size":6,"modified":31}"#).unwrap();
+                let mut job = if receive {
+                    TransferJob::new_write(492, JobType::Generic, String::new(), root.path.clone(),
+                        0, false, false, true).with_files(vec![FileEntry {
+                            name:"incoming.bin".into(), size:6, modified_time:31, ..Default::default()
+                        }]).unwrap()
+                } else {
+                    TransferJob::new_read(492, JobType::Generic, String::new(), source.clone(),
+                        0, false, false, true).unwrap()
+                };
+                if receive {
+                    job.inspect_receive_digest(&FileTransferDigest { id:492, file_num:0,
+                        file_size:6, last_modified:31, ..Default::default() }, true).await.unwrap();
+                }
+                let proof = match case {
+                    "missing" => Vec::new().into(),
+                    "short" => PROOF[..31].to_vec().into(),
+                    "long" => [PROOF.as_slice(), &[0]].concat().into(),
+                    "wrong" => vec![0; 32].into(),
+                    "wrong-size" => fixture_resume_prefix(7, b"abc"),
+                    "wrong-offset" => fixture_resume_prefix(6, b"ab"),
+                    _ => PROOF.to_vec().into(),
+                };
+                let request = FileTransferSendConfirmRequest { id:492, file_num:0,
+                    union:Some(fixture_resume_action(3, proof)), ..Default::default() };
+                let request = FileTransferSendConfirmRequest::parse_from_bytes(&request.write_to_bytes().unwrap()).unwrap();
+                let result = job.confirm(&request).await;
+                if case == "valid" {
+                    result.unwrap();
+                    assert!(job.file_confirmed());
+                    assert_eq!((job.finished_size(), job.transferred()), (3, 3));
+                } else {
+                    assert!(result.is_err());
+                    assert!(!job.file_confirmed());
+                    assert_eq!((job.finished_size(), job.transferred()), (0, 0));
+                    assert!(job.receive_write_claim.is_none());
+                }
+                job.retire_current_file_state().unwrap();
+                if case != "valid" || !receive {
+                    assert_eq!(std::fs::read(&partial).unwrap(), b"abc");
+                    assert_eq!(std::fs::read(&digest_path).unwrap(), br#"{"size":6,"modified":31}"#);
+                }
+                assert_eq!(std::fs::read(&target).unwrap(), b"prior destination");
+                assert_eq!(std::fs::read(&source).unwrap(), b"abcdef");
+                drop(job);
+                let path = root.path.clone();
+                drop(root);
+                assert!(!path.exists());
+                println!("FILE_METADATA_RESUME_PROOF=pass receive={receive} case={case} fixture=retired");
+            }
+        }
+        for action in [Some(file_transfer_send_confirm_request::Union::OffsetBlk(3)),
+            Some(fixture_resume_action(0, PROOF.to_vec().into())), None] {
+            assert!(receive_confirmation_prefix(&FileTransferSendConfirmRequest {
+                union:action, ..Default::default()
+            }).is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn file_metadata_pending_resume_retirement_preserves_saved_bytes() {
+        for explicit in [false, true] {
+            let root = TestTempDir::new("rustdesk_pending_resume");
+            let target = root.join("incoming.bin");
+            let partial = receive_fixture_path(&target, ".download");
+            let digest = receive_fixture_path(&target, ".digest");
+            write_receive_partial_fixture(&partial, b"abc").unwrap();
+            write_receive_partial_fixture(&digest, br#"{"size":6,"modified":31}"#).unwrap();
+            let (stream, claim) = ReceiveWriteClaim::prepare_resume(target.clone(),
+                FileDigest { size:6, modified:31 }, 6, 3).unwrap();
+            drop(stream);
+            if explicit { claim.cleanup().unwrap(); } else { drop(claim); }
+            assert_eq!(std::fs::read(&partial).unwrap(), b"abc");
+            assert_eq!(std::fs::read(&digest).unwrap(), br#"{"size":6,"modified":31}"#);
+            let (stream, claim) = ReceiveWriteClaim::prepare_resume(target,
+                FileDigest { size:6, modified:31 }, 6, 3).unwrap();
+            drop(stream);
+            claim.cleanup().unwrap();
+            let path = root.path.clone();
+            drop(root);
+            assert!(!path.exists());
+            println!("FILE_METADATA_PENDING_RESUME=pass explicit={explicit} partial=preserved lease=reacquired fixture=retired");
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn file_metadata_resume_cancellation_preserves_partial_and_refuses_reuse() {
+        use std::{future::Future, io::Read, os::fd::FromRawFd, os::unix::ffi::OsStrExt, task::Poll};
+
+        for receive in [false, true] {
+            let root = TestTempDir::new("rustdesk_resume_cancel");
+            std::fs::create_dir_all(&root.path).unwrap();
+            let prefix = vec![b'a'; 128 * 1024];
+            let size = prefix.len() as u64 + 4;
+            let source = root.join("source.zip");
+            std::fs::write(&source, [&prefix[..], b"tail"].concat()).unwrap();
+            let target = root.join("incoming.bin");
+            std::fs::write(&target, b"prior destination").unwrap();
+            let partial = receive_fixture_path(&target, ".download");
+            let digest_path = receive_fixture_path(&target, ".digest");
+            let digest = FileDigest { size, modified: 31 };
+            let digest_bytes = serde_json::to_vec(&digest).unwrap();
+            write_receive_partial_fixture(&partial, &prefix).unwrap();
+            write_receive_partial_fixture(&digest_path, &digest_bytes).unwrap();
+            let make_job = || {
+                if receive {
+                    let mut job = TransferJob::new_write(493, JobType::Generic, String::new(),
+                        root.path.clone(), 0, false, false, true).with_files(vec![FileEntry {
+                            name: "incoming.bin".into(), size, modified_time: 31,
+                            ..Default::default()
+                        }]).unwrap();
+                    job.digest = digest;
+                    job
+                } else {
+                    TransferJob::new_read(493, JobType::Generic, String::new(), source.clone(),
+                        0, false, false, true).unwrap()
+                }
+            };
+            let mut job = make_job();
+            let watched = if receive { &partial } else { &source };
+            let path = std::ffi::CString::new(watched.as_os_str().as_bytes()).unwrap();
+            let fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
+            assert!(fd >= 0, "{}", std::io::Error::last_os_error());
+            let mut watch = unsafe { std::fs::File::from_raw_fd(fd) };
+            assert!(unsafe { libc::inotify_add_watch(fd, path.as_ptr(), libc::IN_ACCESS) } >= 0);
+            let mut operation = Box::pin(job.confirm_with_offset(0, prefix.len() as u64));
+            let cancelled_after_read = tokio::time::timeout(Duration::from_secs(2),
+                std::future::poll_fn(|cx| {
+                    let outcome = operation.as_mut().poll(cx);
+                    let mut events = [0u8; 4096];
+                    match watch.read(&mut events) {
+                        Ok(count) => {
+                            assert!(count >= std::mem::size_of::<libc::inotify_event>());
+                            Poll::Ready(outcome.is_pending())
+                        }
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                            if outcome.is_ready() { Poll::Ready(false) } else { Poll::Pending }
+                        }
+                        Err(error) => panic!("cannot observe prefix read: {error}"),
+                    }
+                })).await.unwrap();
+            drop(operation);
+            drop(watch);
+            assert!(cancelled_after_read, "confirmation must still be pending after its first read");
+            assert!(job.resume_preparing);
+            assert!(!job.file_confirmed());
+            assert!(job.data_stream.is_none() && job.receive_write_claim.is_none());
+            assert_eq!((job.finished_size(), job.transferred()), (0, 0));
+            assert_err_contains(job.confirm_with_offset(0, prefix.len() as u64).await.unwrap_err(),
+                "previous resume preparation did not complete");
+            let error = if receive {
+                job.write(FileTransferBlock { id: 493, file_num: 0,
+                    data: b"tail".to_vec().into(), ..Default::default() }).await.unwrap_err()
+            } else { job.read().await.unwrap_err() };
+            assert_err_contains(error, "previous resume preparation did not complete");
+            job.retire_current_file_state().unwrap();
+            let mut fresh = make_job();
+            let request = fresh.confirm_with_offset(0, prefix.len() as u64).await.unwrap();
+            assert_eq!(request.resume().prefix_sha256, fixture_resume_prefix(size, &prefix));
+            fresh.retire_current_file_state().unwrap();
+            assert_eq!(std::fs::read(&partial).unwrap(), prefix);
+            assert_eq!(std::fs::read(&digest_path).unwrap(), digest_bytes);
+            assert_eq!(std::fs::read(&target).unwrap(), b"prior destination");
+            assert_eq!(std::fs::read(&source).unwrap(), [&prefix[..], b"tail"].concat());
+            drop((fresh, job));
+            let path = root.path.clone();
+            drop(root);
+            assert!(!path.exists());
+            println!("FILE_METADATA_RESUME_CANCEL=pass receive={receive} native_read=observed reuse=refused fresh=accepted partial=preserved fixture=retired");
+        }
     }
 
     #[cfg(target_os = "linux")]
@@ -6271,7 +6616,7 @@ mod tests {
             })
         } else {
             assert_eq!(action, "resume");
-            match ReceiveWriteClaim::resume(final_path.clone(), digest, 6, 3) {
+            match ReceiveWriteClaim::prepare_resume(final_path.clone(), digest, 6, 3) {
                 Ok((mut stream, mut claim)) => {
                     if should_refuse {
                         if artifact == "download" && mode & 0o077 != 0 {
@@ -6480,7 +6825,7 @@ mod tests {
             tokio::task::spawn_blocking(move || -> ResultType<()> {
                 use std::io::Write;
                 let (mut stream, mut claim) =
-                    ReceiveWriteClaim::resume(final_path, digest, 6, 3)?;
+                    ReceiveWriteClaim::prepare_resume(final_path, digest, 6, 3)?;
                 stream.write_all(b"def")?;
                 stream.sync_all()?;
                 drop(stream);
@@ -9466,7 +9811,7 @@ mod tests {
         job.confirm(&FileTransferSendConfirmRequest {
             id: 98,
             file_num: 0,
-            union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(1)),
+            union: Some(fixture_resume_action(1, fixture_resume_prefix(4, b"o"))),
             ..Default::default()
         })
         .await
@@ -9774,9 +10119,8 @@ mod tests {
                 job.confirm(&FileTransferSendConfirmRequest {
                     id: 92,
                     file_num: 0,
-                    union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(
-                        FIRST.len() as u32,
-                    )),
+                    union: Some(fixture_resume_action(FIRST.len() as u32,
+                        fixture_resume_prefix(TOTAL_SIZE, FIRST))),
                     ..Default::default()
                 })
                 .await
@@ -10542,7 +10886,7 @@ mod tests {
         let request = FileTransferSendConfirmRequest {
             id: 83,
             file_num: 0,
-            union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(1)),
+            union: Some(fixture_resume_action(1, vec![0; 32].into())),
             ..Default::default()
         };
 
@@ -11424,7 +11768,7 @@ mod tests {
         let request = FileTransferSendConfirmRequest {
             id: 84,
             file_num: 0,
-            union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(7)),
+            union: Some(fixture_resume_action(7, fixture_resume_prefix(12, b"source-"))),
             ..Default::default()
         };
 
@@ -11474,7 +11818,7 @@ mod tests {
         let request = FileTransferSendConfirmRequest {
             id: 172,
             file_num: 0,
-            union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(9)),
+            union: Some(fixture_resume_action(9, fixture_resume_prefix(14, b"original-"))),
             ..Default::default()
         };
 
@@ -11536,7 +11880,7 @@ mod tests {
         let mut request = FileTransferSendConfirmRequest {
             id: 173,
             file_num: 0,
-            union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(6)),
+            union: Some(fixture_resume_action(6, vec![0; 32].into())),
             ..Default::default()
         };
 
@@ -11553,7 +11897,7 @@ mod tests {
 
         std::fs::write(tmp.join("announced.bin"), b"short-value")
             .expect("restore the retained object's admitted contents before valid resume");
-        request.union = Some(file_transfer_send_confirm_request::Union::OffsetBlk(2));
+        request.union = Some(fixture_resume_action(2, fixture_resume_prefix(11, b"sh")));
         job.confirm(&request)
             .await
             .expect("a valid offset still seeks the retained source");
@@ -11678,9 +12022,9 @@ mod tests {
                 job.confirm(&FileTransferSendConfirmRequest {
                     id: 178,
                     file_num: 0,
-                    union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(
-                        start as u32,
-                    )),
+                    union: Some(if start == 0 { file_transfer_send_confirm_request::Union::OffsetBlk(0) }
+                        else { fixture_resume_action(start as u32,
+                            fixture_resume_prefix(size as u64, &expected[..start])) }),
                     ..Default::default()
                 })
                 .await
@@ -11814,7 +12158,7 @@ mod tests {
         let mut request = FileTransferSendConfirmRequest {
             id: 176,
             file_num: 0,
-            union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(6)),
+            union: Some(fixture_resume_action(6, vec![0; 32].into())),
             ..Default::default()
         };
 
@@ -11842,7 +12186,7 @@ mod tests {
         writer
             .set_len(5)
             .expect("restore the same source's admitted length");
-        request.union = Some(file_transfer_send_confirm_request::Union::OffsetBlk(2));
+        request.union = Some(fixture_resume_action(2, fixture_resume_prefix(5, b"sh")));
         job.confirm(&request).await.expect("admit a valid resume");
         assert!(job.file_confirmed());
         assert_eq!(job.finished_size(), 2);
@@ -11917,7 +12261,7 @@ mod tests {
         let mut request = FileTransferSendConfirmRequest {
             id: 999,
             file_num: 0,
-            union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(2)),
+            union: Some(fixture_resume_action(2, fixture_resume_prefix(job.files()[0].size, b"pa"))),
             ..Default::default()
         };
 
@@ -11961,7 +12305,7 @@ mod tests {
         let request = FileTransferSendConfirmRequest {
             id: 86,
             file_num: 0,
-            union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(1)),
+            union: Some(fixture_resume_action(1, vec![0; 32].into())),
             ..Default::default()
         };
 
@@ -12047,7 +12391,7 @@ mod tests {
                 .expect("decode admitted confirmation");
             assert_eq!(decoded.id, 219);
             assert_eq!(decoded.file_num, 0);
-            assert_eq!(decoded.offset_blk(), 2);
+            assert_eq!(decoded.resume().offset, 2);
             assert_eq!(job.finished_size(), 2);
             assert_eq!(job.transferred(), 2);
             if receive {
@@ -12116,7 +12460,7 @@ mod tests {
         let wire = request.write_to_bytes().expect("encode exact maximum");
         let decoded = FileTransferSendConfirmRequest::parse_from_bytes(&wire)
             .expect("decode exact maximum");
-        assert_eq!(u64::from(decoded.offset_blk()), offset);
+        assert_eq!(u64::from(decoded.resume().offset), offset);
         assert_eq!(job.finished_size(), offset);
         assert_eq!(job.transferred(), offset);
         let block = job
@@ -12484,7 +12828,7 @@ mod tests {
             ("skip", Union::Skip(true)),
             ("overwrite", Union::Skip(false)),
             ("zero-offset", Union::OffsetBlk(0)),
-            ("nonzero-offset", Union::OffsetBlk(1)),
+            ("nonzero-offset", fixture_resume_action(1, vec![0; 32].into())),
         ]
     }
 

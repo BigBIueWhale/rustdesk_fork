@@ -487,8 +487,16 @@ message FileTransferSendConfirmRequest {
   sint32 file_num = 2;
   oneof union {
     bool skip = 3;
-    uint32 offset_blk = 4;
+    uint32 offset_blk = 4; // Zero starts fresh. Nonzero offsets require resume.
+    FileTransferResume resume = 5;
   }
+}
+
+message FileTransferResume {
+  uint32 offset = 1;
+  // SHA-256 of "rustdesk.file-transfer.resume-prefix.v1\0", total size and
+  // offset as little-endian uint64 values, then the exact prefix bytes.
+  bytes prefix_sha256 = 2;
 }
 
 message FileTransferDone {

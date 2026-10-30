@@ -2156,6 +2156,43 @@ pub enum CmWriteDigestResult {
     Error(String),
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum CmFileConfirmation {
+    Skip(bool),
+    Offset(u32),
+    Resume { offset: u32, prefix_sha256: Bytes },
+}
+
+impl From<hbb_common::message_proto::file_transfer_send_confirm_request::Union> for CmFileConfirmation {
+    fn from(value: hbb_common::message_proto::file_transfer_send_confirm_request::Union) -> Self {
+        use hbb_common::message_proto::file_transfer_send_confirm_request::Union;
+        match value {
+            Union::Skip(skip) => Self::Skip(skip),
+            Union::OffsetBlk(offset) => Self::Offset(offset),
+            Union::Resume(resume) => Self::Resume {
+                offset: resume.offset,
+                prefix_sha256: resume.prefix_sha256,
+            },
+        }
+    }
+}
+
+impl From<CmFileConfirmation> for hbb_common::message_proto::file_transfer_send_confirm_request::Union {
+    fn from(value: CmFileConfirmation) -> Self {
+        match value {
+            CmFileConfirmation::Skip(skip) => Self::Skip(skip),
+            CmFileConfirmation::Offset(offset) => Self::OffsetBlk(offset),
+            CmFileConfirmation::Resume { offset, prefix_sha256 } => {
+                Self::Resume(hbb_common::message_proto::FileTransferResume {
+                    offset,
+                    prefix_sha256,
+                    ..Default::default()
+                })
+            }
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub enum CmFileResponseKind {
     ReadDirectory {
@@ -2329,8 +2366,7 @@ pub enum FS {
     SendConfirm {
         id: i32,
         file_num: i32,
-        skip: bool,
-        offset_blk: u32,
+        confirmation: Option<CmFileConfirmation>,
         conn_id: i32,
         generation: u64,
     },
@@ -2359,8 +2395,7 @@ pub enum FS {
     SendConfirmForRead {
         id: i32,
         file_num: i32,
-        skip: bool,
-        offset_blk: u32,
+        confirmation: Option<CmFileConfirmation>,
         conn_id: i32,
         generation: u64,
     },

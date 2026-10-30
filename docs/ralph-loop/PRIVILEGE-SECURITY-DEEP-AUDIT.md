@@ -121890,6 +121890,37 @@ retires and all three listener deltas are zero. Raw serial: 36,138 bytes, SHA-25
 `4e24074739128361f0b6fd5cfe779ee6afec7fbfd13a763d70bcbe985b4199a7`.
 This audit-only receipt preserves the counted ledger and unchanged product source.
 
+### Resume content proof candidate — 2026-10-31
+
+Continue the reproduced receive-staging prerequisite, ahead of layout replacement:
+both saved-prefix mismatch directions currently publish incorrect bytes. The candidate
+adds a distinct protobuf resume action carrying a 32-byte SHA-256 proof over a fixed
+domain, declared total size, resume offset and exact prefix. The peer verifies it on
+the retained file before admitting the resumed stream/counters. Old nonzero offset
+actions, missing actions and malformed proofs are refused; zero-offset fresh transfers
+and skip actions retain their behavior. CM forwarding preserves the complete action
+instead of reconstructing it from default-valued getters. Older-peer/installed CM
+compatibility remains an execution obligation, not an inference from this change.
+
+Prefix IO uses a fallibly allocated 64 KiB buffer and yields after each chunk. An
+interrupted/failed hash makes that job unusable; a prepared receive claim retires its
+lease while preserving saved payload/digest. A local proof producer retains that
+preservation until an incoming resumed block is admitted. Existing final files stay
+untouched on mismatch. Tests extend the paired real-job baseline, malformed/content
+proof cases, pending-claim retirement and actual cancellation after a kernel-observed
+prefix read. Existing offset/retained-source fixtures use the new action. Native
+full-parent/installed callers and other parked topics are not reopened.
+
+Research already reviewed: Tokio File documents shared cursors and pending IO after
+drop (https://docs.rs/tokio/latest/tokio/fs/struct.File.html); Unix FileExt::read_at
+leaves the cursor unchanged whereas Windows seek_read changes it
+(https://doc.rust-lang.org/std/os/unix/fs/trait.FileExt.html,
+https://doc.rust-lang.org/std/os/windows/fs/trait.FileExt.html). The implementation
+owns the stream during bounded async hashing and does not use a supposedly independent
+cloned cursor. This preparation claims no pass. The canonical metadata lane retains
+all three failing completed-destination oracles and exports the preceding proof
+observations before those oracles. No namespace-layout correction is claimed here.
+
 ### Receive generation-lock retirement — 2026-10-31
 
 Continue the completed-destination blocker with the private coordination lifetime

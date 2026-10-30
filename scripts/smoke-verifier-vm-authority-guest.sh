@@ -3641,6 +3641,9 @@ run_focused_rust_tests() {
                 fs::tests::file_metadata_receive_namespace_keeps_independent_file_claims
                 fs::tests::file_metadata_receive_namespace_accepts_maximum_native_filename
                 fs::tests::file_metadata_resume_requires_matching_source_prefix
+                fs::tests::file_metadata_resume_proof_shape_and_content_precede_confirmation
+                fs::tests::file_metadata_pending_resume_retirement_preserves_saved_bytes
+                fs::tests::file_metadata_resume_cancellation_preserves_partial_and_refuses_reuse
                 fs::receive_namespace::tests::setup_recovers_only_private_identity_prefixes
                 fs::receive_namespace::tests::generation_lock_retires_only_after_last_owner
                 fs::receive_namespace::tests::generation_retirement_error_releases_exclusion
@@ -8143,6 +8146,9 @@ PY
     if [ "$MODE" = hbb-common-fs ] && [ "$RUST_TEST_PROFILE" = file-metadata ]; then
         grep -E '^RECEIVE_GENERATION_(RETIREMENT|ERROR)=observed ' "$output"
         printf 'RECEIVE_GENERATION_RETIREMENT_ARTIFACT=observed sha256=%s\n' "$hbb_test_artifact_sha"
+        grep -E '^FILE_METADATA_(RESUME_CONTENT|RESUME_PROOF|PENDING_RESUME|RESUME_CANCEL)=' "$output"
+        printf 'FILE_METADATA_RESUME_ARTIFACT=observed sha256=%s tests=%s groups=%s\n' \
+            "$hbb_test_artifact_sha" "$tests_passed" "${#result_lines[@]}"
         local authority_record authority_sha authority_executable authority_source_sha authority_work
         local authority_output=$ROOT/receive-native-authority.out
         local -a authority_records

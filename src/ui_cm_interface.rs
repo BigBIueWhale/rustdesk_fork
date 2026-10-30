@@ -2968,8 +2968,7 @@ async fn handle_fs(
         ipc::FS::SendConfirm {
             id,
             file_num,
-            skip,
-            offset_blk,
+            confirmation,
             conn_id,
             generation,
         } => {
@@ -2986,13 +2985,7 @@ async fn handle_fs(
                     let request = FileTransferSendConfirmRequest {
                         id,
                         file_num,
-                        union: if skip {
-                            Some(file_transfer_send_confirm_request::Union::Skip(true))
-                        } else {
-                            Some(file_transfer_send_confirm_request::Union::OffsetBlk(
-                                offset_blk,
-                            ))
-                        },
+                        union: confirmation.map(Into::into),
                         ..Default::default()
                     };
                     job.job
@@ -3065,8 +3058,7 @@ async fn handle_fs(
         ipc::FS::SendConfirmForRead {
             id,
             file_num,
-            skip,
-            offset_blk,
+            confirmation,
             conn_id,
             generation,
         } => {
@@ -3083,13 +3075,7 @@ async fn handle_fs(
                     let req = FileTransferSendConfirmRequest {
                         id,
                         file_num,
-                        union: if skip {
-                            Some(file_transfer_send_confirm_request::Union::Skip(true))
-                        } else {
-                            Some(file_transfer_send_confirm_request::Union::OffsetBlk(
-                                offset_blk,
-                            ))
-                        },
+                        union: confirmation.map(Into::into),
                         ..Default::default()
                     };
                     job.job
@@ -6857,8 +6843,7 @@ mod tests {
                         ipc::FS::SendConfirm {
                             id: 81,
                             file_num: 1,
-                            skip: false,
-                            offset_blk: 0,
+                            confirmation: Some(ipc::CmFileConfirmation::Offset(0)),
                             conn_id: 59,
                             generation: 23,
                         },
@@ -7105,8 +7090,10 @@ mod tests {
             ipc::FS::SendConfirm {
                 id: 75,
                 file_num: 0,
-                skip: false,
-                offset_blk: 1,
+                confirmation: Some(ipc::CmFileConfirmation::Resume {
+                    offset: 1,
+                    prefix_sha256: vec![0; 32].into(),
+                }),
                 conn_id: 54,
                 generation: 14,
             },

@@ -88,8 +88,11 @@ async fn confirmation(peer: &mut Stream, expected: u64) {
         panic!("wrong viewer action");
     };
     assert_eq!((confirm.id, confirm.file_num), (371, 0));
-    assert_eq!(confirm.union,
-        Some(file_transfer_send_confirm_request::Union::OffsetBlk(expected as u32)));
+    let Some(file_transfer_send_confirm_request::Union::Resume(resume)) = confirm.union else {
+        panic!("missing content-bound resume action");
+    };
+    assert_eq!(u64::from(resume.offset), expected);
+    assert_eq!(resume.prefix_sha256.len(), 32);
 }
 
 async fn no_confirmation(viewer: &mut Stream, peer: &mut Stream) {

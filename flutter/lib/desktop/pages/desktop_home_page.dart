@@ -68,6 +68,9 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   Widget buildLeftPane(BuildContext context) {
     final isIncomingOnly = bind.isIncomingOnly();
     final isOutgoingOnly = bind.isOutgoingOnly();
+    if (isIncomingOnly) {
+      _scheduleWindowSize();
+    }
     final children = <Widget>[
       if (bind.isCustomClient())
         Align(
@@ -80,35 +83,13 @@ class _DesktopHomePageState extends State<DesktopHomePage>
       ),
       buildTip(context),
       if (!isOutgoingOnly) buildPasswordBoard(context),
-      FutureBuilder<Widget>(
-        future: Future.value(buildHelpCards()),
-        builder: (_, data) {
-          if (data.hasData) {
-            if (isIncomingOnly) {
-              if (isInHomePage()) {
-                Future.delayed(Duration(milliseconds: 300), () {
-                  _updateWindowSize();
-                });
-              }
-            }
-            return data.data!;
-          } else {
-            return const Offstage();
-          }
-        },
-      ),
+      buildHelpCards(),
     ];
     if (isIncomingOnly) {
       children.addAll([
         Divider(),
         DirectListenerStatusWidget(
-          onSvcStatusChanged: () {
-            if (isInHomePage()) {
-              Future.delayed(Duration(milliseconds: 300), () {
-                _updateWindowSize();
-              });
-            }
-          },
+          onSvcStatusChanged: _scheduleWindowSize,
         ).marginOnly(bottom: 6, right: 6)
       ]);
     }
@@ -634,12 +615,14 @@ class _DesktopHomePageState extends State<DesktopHomePage>
       }
     });
     _uniLinksSubscription = listenUniLinks();
+  }
 
-    if (bind.isIncomingOnly()) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+  void _scheduleWindowSize() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && isInHomePage()) {
         _updateWindowSize();
-      });
-    }
+      }
+    });
   }
 
   _updateWindowSize() {

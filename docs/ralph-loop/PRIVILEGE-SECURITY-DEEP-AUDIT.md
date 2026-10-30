@@ -118976,3 +118976,13 @@ No full handler, installed settings, Windows/macOS transport or privileged actio
 was exercised; no new LPE was demonstrated. Exhaustive nested-type admission and
 the separately parked CM payload/handshake work remain open. The status ledger
 updates only this acceptance and its current component receipt.
+
+**Fresh ledger count.** At `59af5dae0c966fea3c8c9072d9441ff1e3be2a3e`,
+isolated `2b3whPFMM7` passes the seven tokenizer controls and exact byte
+round trip. The unchanged `tiktoken-0.12.0/cl100k_base/encode_ordinary` method
+measures 360,762 tokens / 1,649,519 bytes, SHA-256
+`c6e3b4cba2beebb7f442b32be29bffe4ca3bb5e9c9a370d36adfec831aaf2162`.
+QEMU 1865852 joins after 30.466 seconds, RAM `run._q_m_4ww` retires and all
+three listener deltas are zero. Six count files add 103,682 bytes; all twenty
+files from this slice total 292,056 bytes per host with matching hashes.
+This audit-only receipt leaves the measured ledger unchanged.

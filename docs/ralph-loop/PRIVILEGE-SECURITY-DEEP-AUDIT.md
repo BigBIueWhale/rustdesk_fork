@@ -119414,3 +119414,50 @@ QEMU 1896948 joins in 31.528 seconds, RAM `run.3yx5qpk1` retires and all
 three listener deltas are zero. Six count files add 104,031 bytes; twenty files
 from this slice total 313,723 bytes per host with matching hashes. This audit-only
 receipt leaves the measured ledger unchanged.
+
+### 2026-10-30 — growth ceiling after quality clamping
+
+At starting source `16c43c0c274fea690ab5681217506e598b70ac44`,
+`VideoQoS::adjust_ratio` limits growth before applying its preset floor. Exact
+display retirement can raise that floor; the subsequent clamp then bypasses the
+existing 150-kbps ceiling even when the current ratio is above `BR_SPEED`.
+The same controller must apply both constraints to its final value. Product
+`2f38ab606ef77e56f83e4205186b87f550c23df6` moves the clamp before the
+ceiling (`src/server/video_qos.rs:661–673`). Healthy feedback may approach a
+raised preset floor over multiple steps. Wide arithmetic/downward rounding,
+zero-bitrate and below-`BR_SPEED` policy, congestion reductions, explicit choices,
+live owners and encoder/protocol boundaries are unchanged; no new LPE is claimed.
+
+[Rust's clamp contract](https://doc.rust-lang.org/std/primitive.f32.html#method.clamp)
+confirms that a value below the minimum is raised to it. The ordering correction
+also follows [RFC 8836 §2](https://www.rfc-editor.org/rfc/rfc8836.html#section-2)'s
+changing-media-load and self-induced-delay guidance, without claiming RTP
+conformance or measured network behavior. R-F5 remains the product requirement.
+
+Preparation `8a18107d0d00b4085443d6d7c2436c0a9f0f0191` adds 49 lines to
+the existing bitrate test; production bytes and the 27-test inventory remain.
+Actual congestion adaptations reach ratio 0.5004327 before display retirement.
+Four healthy excess delays × eight surviving reports × static/dynamic screens
+exercise three subsequent adjustments each, without injecting the starting ratio.
+Baseline `vSKeH1UxG7` passes 26 tests and fails the expanded test: 24/64 cases
+exceed the budget, including 163.149163 kbps; all owner/validity checks pass.
+The identical test module at corrected source passes all 27 tests in
+`I6opsT9mxJ`: all 64 growth cases are budgeted, finite and preserve settings/owners.
+All 64 prior congested-floor cases also preserve nonincrease and recovery.
+Baseline/candidate artifact SHA-256, respectively:
+`2b9c0f032439060249b2f901d4fb0f716678b685c32cf85467ff987e40c42770` /
+`d5090c661a6d5bc30659691f5e92dffad4c57b4a89f7e2ed51cfdb8c265eacb2`.
+
+Both runs use `bash scripts/smoke-verifier-vm-authority.sh
+--video-qos-controller-tests`: production controller/application components,
+Linux Rust 1.75, controlled feedback/bitrate/encoder inputs, nonroot networkless
+guest containers and zero-NIC bounded-RAM VMs. QEMU 1897938/1898724 joins in
+118.098/118.751 seconds; `run.lpay7fuf`/`run.q7bbe3_d` retires and all eight
+listener deltas are zero. Fourteen raw files total 227,854 bytes per host with
+matching hashes. The exact failed-run diagnostic workspace was removed after
+copying evidence, reclaiming 3,485,696 allocated bytes. Exact source comparison
+confirms the clamp/comment-only product change and identical complete tests;
+`git diff --check` passes. Full application/codec/presentation and target-native
+R-F5 impairment/soak, installed settings and all fifteen credential actions,
+independent reproduction and release acceptance remain OPEN. Parked tasks remain
+parked. The ledger consolidates both floor corrections; fresh measurement follows.

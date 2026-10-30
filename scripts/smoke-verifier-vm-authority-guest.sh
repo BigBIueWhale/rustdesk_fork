@@ -3365,6 +3365,7 @@ run_focused_rust_tests() {
             libs/hbb_common/src/fs/receive_namespace.rs
             libs/hbb_common/Cargo.toml
             libs/hbb_common/tests/receive_authority.rs
+            scripts/test-receive-filesystem.py
             flutter/test/fixtures/direct_address.json
             src/client.rs
             src/ipc.rs
@@ -8168,6 +8169,8 @@ PY
             || fail 'receive authority protected runtime copy differs'
         printf 'RECEIVE_NATIVE_AUTHORITY_ARTIFACT_START=observed sha256=%s source_sha256=%s executable=protected-guest-copy\n' \
             "$authority_sha" "$authority_source_sha"
+        timeout --signal=TERM --kill-after=5s 30s \
+            python3 -B -I -S "$source_root/scripts/test-receive-filesystem.py"
         # Privileged receiver and irreversible UID drop run only inside this disposable VM.
         setpriv --no-new-privs env -i PATH=/usr/bin:/bin HOME="$authority_work/home" \
             LANG=C LC_ALL=C \

@@ -121799,3 +121799,25 @@ is absent and all three listener deltas are zero. Serial: 35,832 bytes, SHA-256
 The baseline diagnostic directory was retired after evidence verification,
 reclaiming 3,469,312 allocated bytes. This audit-only receipt changes neither
 the counted ledger nor product source; the completed-destination defect stays open.
+
+### Receive staging identity/topology prerequisite — 2026-10-31
+
+The reproduced completed-destination regression remains the selected blocker.
+Before moving staging out of the destination, a bounded guest-only experiment
+checks descriptor mount identity, opaque file handles, rename stability, replacement
+and up to 64 inode-reuse attempts under root and UID 4001. Native, tmpfs, bind and
+overlay fixtures run in a private mount namespace; six rename controls distinguish
+same-mount publication from separate filesystems and writable/read-only bind aliases.
+Every child is joined and all exact mounts retire before the observation receipt.
+This probes kernel primitives only; it does not execute or accept a replacement
+product design. The existing twenty-two receive cases remain unchanged and the
+three completed-destination failures still prevent canonical acceptance.
+
+The ABI/semantics are checked against Linux v6.1 `include/uapi/linux/stat.h`,
+`include/uapi/linux/fcntl.h`, and man-pages `name_to_handle_at(2)`/`mount(2)`.
+Only statx fields present in its returned mask count. Unsupported file handles
+are measured as errors, never replaced with an inode-only identity assertion.
+An ordinary user's ability to create a destination does not prove it can create
+a staging anchor in that destination's root-owned parent. This prerequisite must
+resolve that functional boundary before selecting the new production placement.
+No product source or acceptance result changes in this preparation commit.

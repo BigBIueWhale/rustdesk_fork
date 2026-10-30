@@ -77,6 +77,12 @@ and copy files to remote.
 
 ### windows
 
+![scene](./docs/assets/scene3.png)
+
+![A1->B1](./docs/assets/win_A_B.png)
+
+![B1->A1](./docs/assets/win_B_A.png)
+
 The protocol was originally designed as an extension of the Windows RDP,
 so the specific message packages fits windows well.
 
@@ -84,6 +90,8 @@ When starting cliprdr, a thread is spawned to create an invisible window
 and to subscribe to OLE clipboard events.
 The window's callback (see `cliprdr_proc` in [wf_cliprdr.c](src/windows/wf_cliprdr.c)) was
 set to handle a variety of events.
+
+Detailed implementation is shown in pictures above.
 
 ### Linux
 

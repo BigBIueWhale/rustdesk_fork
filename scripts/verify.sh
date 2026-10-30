@@ -5300,7 +5300,6 @@ echo "== (3b-iii-d9c4) Linux current-image lifecycle authority deletion (R-S11ae
 r_s11e45=
 service_replacement_policy=$(awk '/fn service_child_needs_replacement\(/,/fn should_start_server\(/' src/platform/linux.rs)
 service_replacement_driver=$(awk '/fn should_start_server\(/,/pub fn start_os_service\(/' src/platform/linux.rs)
-service_replacement_test=$(awk '/fn r_s11e45_linux_service_child_replacement_uses_owned_state_only\(\)/,/fn r_s11c10_process_discovery_matches_xwayland_by_argv\(\)/' src/platform/linux.rs)
 server_tray_launch=$(awk '/else if args\[0\] == "--server"/,/#\[cfg\(any\(target_os = "linux", target_os = "windows"\)\)\]/' src/core_main.rs)
 tray_receiver=$(awk '/if args\[0\] == "--tray"/,/else if args\[0\] == "--install-service"/' src/core_main.rs)
 for binding in \
@@ -5347,14 +5346,6 @@ for binding in \
   'crate::tray::start_tray();'; do
   grep -qF "$binding" <<<"$tray_receiver" || r_s11e45="$r_s11e45 tray-singleton-receiver-missing"
 done
-for binding in \
-  'fn r_s11e45_linux_service_child_replacement_uses_owned_state_only()' \
-  'assert!(!service_child_needs_replacement(false, &mut uid, &stable));' \
-  'assert!(service_child_needs_replacement(true, &mut uid, &stable));' \
-  'assert_eq!(uid, "1001");' \
-  'assert!(uid.is_empty());'; do
-  grep -qF "$binding" <<<"$service_replacement_test" || r_s11e45="$r_s11e45 focused-regression-missing"
-done
 if [ -n "$r_s11e45" ]; then echo "  FAIL R-S11e-45 Linux current-image lifecycle authority deletion:$r_s11e45"; rc=1; else
   echo "  ok  R-S11e-45 service replacement uses selected logind state plus the retained Child, and server startup signals no tray or CM selected through process text"; fi
 
@@ -5369,8 +5360,6 @@ linux_root_policy=$(awk '/fn effective_uid_is_root\(/,/pub fn get_pa_sources\(/'
 empty_arg_tray_launch=$(awk '/if args\.is_empty\(\)/,/^    }/' src/core_main.rs)
 server_tray_launch=$(awk '/else if args\[0\] == "--server"/,/#\[cfg\(any\(target_os = "linux", target_os = "windows"\)\)\]/' src/core_main.rs)
 tray_receiver=$(awk '/if args\[0\] == "--tray"/,/else if args\[0\] == "--install-service"/' src/core_main.rs)
-principal_test=$(awk '/fn r_s11e46_linux_tray_requires_non_root_principal\(\)/,/^    }/' src/core_main.rs)
-root_policy_test=$(awk '/fn r_s11e46_linux_root_principal_is_numeric_effective_uid\(\)/,/^    }/' src/platform/linux.rs)
 for binding in \
   'fn linux_user_session_ui_allowed(is_root: bool) -> bool {' \
   '!is_root'; do
@@ -5405,19 +5394,6 @@ for binding in \
   'crate::tray::start_tray();'; do
   grep -qF "$binding" <<<"$tray_receiver" || r_s11e46="$r_s11e46 tray-receiver-principal-boundary-missing"
 done
-for binding in \
-  'fn r_s11e46_linux_tray_requires_non_root_principal()' \
-  'assert!(linux_user_session_ui_allowed(false));' \
-  'assert!(!linux_user_session_ui_allowed(true));'; do
-  grep -qF "$binding" <<<"$principal_test" || r_s11e46="$r_s11e46 focused-regression-missing"
-done
-for binding in \
-  'fn r_s11e46_linux_root_principal_is_numeric_effective_uid()' \
-  'assert!(effective_uid_is_root(0));' \
-  'assert!(!effective_uid_is_root(1));' \
-  'assert!(!effective_uid_is_root(1_000));'; do
-  grep -qF "$binding" <<<"$root_policy_test" || r_s11e46="$r_s11e46 numeric-root-regression-missing"
-done
 if [ -n "$r_s11e46" ]; then echo "  FAIL R-S11e-46 Linux privileged service-to-tray boundary:$r_s11e46"; rc=1; else
   echo "  ok  R-S11e-46 root service-owned servers create no tray/autostart/UI role, the tray receiver refuses root, and non-root user-session tray behavior remains"; fi
 
@@ -5428,7 +5404,6 @@ echo "== (3b-iii-d9c6) macOS numeric service-principal authority (R-S11ag/R-S11e
 r_s11e47=
 macos_root_policy=$(awk '/fn effective_uid_is_root\(/,/#\[cfg\(test\)\]/' src/platform/macos.rs)
 macos_service_entry=$(awk '/pub fn start_os_service\(/,/#\[cfg\(test\)\]/' src/platform/macos.rs)
-macos_root_test=$(awk '/fn r_s11e47_macos_root_principal_is_numeric_effective_uid\(\)/,/^    }/' src/platform/macos.rs)
 macos_core_service_entry=$(awk '/#\[cfg\(target_os = "macos"\)\]/{capture=1} capture{print} capture && /#\[cfg\(target_os = "linux"\)\]/{exit}' src/core_main.rs)
 macos_service_binary=$(cat src/service.rs)
 for binding in \
@@ -5471,13 +5446,6 @@ for binding in \
   'std::process::exit(1);'; do
   grep -qF "$binding" <<<"$macos_service_binary" || r_s11e47="$r_s11e47 dedicated-service-entry-error-propagation-missing"
 done
-for binding in \
-  'fn r_s11e47_macos_root_principal_is_numeric_effective_uid()' \
-  'assert!(effective_uid_is_root(0));' \
-  'assert!(!effective_uid_is_root(1));' \
-  'assert!(!effective_uid_is_root(501));'; do
-  grep -qF "$binding" <<<"$macos_root_test" || r_s11e47="$r_s11e47 numeric-root-regression-missing"
-done
 grep -qF 'macOS numeric service-principal authority (R-S11ag/R-S11e-47)' scripts/apple-conform-check.sh \
   || r_s11e47="$r_s11e47 apple-source-conformance-gate-missing"
 if [ -n "$r_s11e47" ]; then echo "  FAIL R-S11e-47 macOS numeric service-principal authority:$r_s11e47"; rc=1; else
@@ -5495,7 +5463,6 @@ linux_child_launcher=$(awk '/fn try_start_server_\(/,/^}/' src/platform/linux.rs
 linux_child_pre_exec=$(awk '/fn configure_service_child_pre_exec\(/,/^}/' src/platform/linux.rs)
 linux_start_wrapper=$(awk '/fn start_server\(/,/^}/' src/platform/linux.rs)
 linux_service_supervisor=$(awk '/pub fn start_os_service\(\) -> ResultType/,/    terminate_child\(&mut user_server/' src/platform/linux.rs)
-linux_selected_principal_test=$(awk '/fn r_s11e48_linux_service_child_principal_uses_selected_numeric_uid\(\)/,/^    }/' src/platform/linux.rs)
 for binding in \
   'if desktop.uid.is_empty() && desktop.username.is_empty() {' \
   'return Ok(None);' \
@@ -5559,23 +5526,6 @@ if [ -z "$setgroups_line" ] || [ -z "$setresgid_line" ] || [ -z "$setresuid_line
   || [ "$setresuid_line" -ge "$no_new_privs_line" ]; then
   r_s11e48="$r_s11e48 active-user-credential-drop-order-invalid"
 fi
-for binding in \
-  'fn r_s11e48_linux_service_child_principal_uses_selected_numeric_uid()' \
-  'username: "renamed-admin".to_owned()' \
-  'username: "root".to_owned()' \
-  'Some(ServiceChildPrincipal::ActiveDesktopUser)' \
-  'username: "gdm".to_owned()' \
-  'protocol: DISPLAY_SERVER_WAYLAND.to_owned()' \
-  'selected_service_child_principal(&Desktop::default()).unwrap()' \
-  'let noncanonical_uid = Desktop {' \
-  'uid: "01000".to_owned()' \
-  'let malformed_uid = Desktop {' \
-  'uid: "not-a-uid".to_owned()' \
-  'let missing_username = Desktop {' \
-  'let missing_uid = Desktop {' \
-  'assert!(selected_service_child_principal(&invalid).is_err());'; do
-  grep -qF "$binding" <<<"$linux_selected_principal_test" || r_s11e48="$r_s11e48 focused-regression-missing"
-done
 if [ -n "$r_s11e48" ]; then echo "  FAIL R-S11e-48 Linux numeric selected-session service-child authority:$r_s11e48"; rc=1; else
   echo "  ok  R-S11e-48 Linux service-child root privilege is derived from the selected canonical UID inside both supervisor and launcher; account-name root authority is absent"; fi
 
@@ -5586,7 +5536,6 @@ echo "== (3b-iii-d9c8) exact service-owned server process role (R-S11ai/R-S11e-4
 "${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config r_s11e49_ --color never
 r_s11e49=
 service_owned_role_policy=$(awk '/enum ServiceOwnedServerRole/,/^pub struct SimpleCallOnReturn/' src/common.rs)
-service_owned_role_tests=$(awk '/fn r_s11e49_service_owned_server_role_requires_exact_arguments\(\)/,/fn custom_client_app_name_identifier_contract\(\)/' src/common.rs)
 core_service_role_entry=$(awk '/pub fn core_main\(\) -> Option<Vec<String>> {/,/if !crate::common::global_init\(\)/' src/core_main.rs)
 core_service_owned_rejection=$(awk '/if crate::common::current_service_owned_server_role\(\)/,/#\[cfg\(windows\)\]/' src/core_main.rs)
 windows_bootstrap=$(awk '/pub fn bootstrap\(\) -> bool {/,/^}/' src/platform/windows.rs)
@@ -5629,25 +5578,6 @@ if grep -qF 'SERVICE_OWNED_SERVER_ARG)' <<<"$windows_bootstrap" \
   || grep -qF 'initialize_windows_service_owned_root(&program_data, true)' <<<"$windows_bootstrap"; then
   r_s11e49="$r_s11e49 windows-bootstrap-marker-search-present"
 fi
-for binding in \
-  'fn r_s11e49_service_owned_server_role_requires_exact_arguments()' \
-  'service_owned_server_role_from_args(["--server", SERVICE_OWNED_SERVER_ARG])' \
-  'vec![SERVICE_OWNED_SERVER_ARG]' \
-  'vec![SERVICE_OWNED_SERVER_ARG, "--server"]' \
-  'vec!["--server", SERVICE_OWNED_SERVER_ARG, "--extra"]' \
-  'vec!["--extra", "--server", SERVICE_OWNED_SERVER_ARG]' \
-  'vec![
-                "--server",
-                SERVICE_OWNED_SERVER_ARG,
-                SERVICE_OWNED_SERVER_ARG,
-            ]' \
-  'fn r_s11e49_unowned_roles_cannot_become_service_owned()' \
-  'Vec::<&str>::new()' \
-  'vec!["--server"]' \
-  'vec!["--server", "--tray"]' \
-  'ServiceOwnedServerRole::Absent'; do
-  grep -qF "$binding" <<<"$service_owned_role_tests" || r_s11e49="$r_s11e49 focused-regression-missing"
-done
 if [ -n "$r_s11e49" ]; then echo "  FAIL R-S11e-49 exact service-owned server process role:$r_s11e49"; rc=1; else
   echo "  ok  R-S11e-49 service-owned process policy accepts only exact --server + marker argv, rejects malformed marker-bearing entry before initialization, and keeps Windows child bootstrap read-only on that shared classifier"; fi
 
@@ -5657,7 +5587,6 @@ echo "== (3b-iii-d9c9) exact desktop service-supervisor process role (R-S11aj/R-
 "${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config r_s11e50_ --color never
 r_s11e50=
 service_supervisor_role_policy=$(awk '/enum ServiceSupervisorRole/,/^pub struct SimpleCallOnReturn/' src/common.rs)
-service_supervisor_role_tests=$(awk '/fn r_s11e50_service_supervisor_role_requires_exact_arguments\(\)/,/^    #\[cfg\(target_os = "linux"\)\]/' src/common.rs)
 core_service_supervisor_entry=$(awk '/pub fn core_main\(\) -> Option<Vec<String>> {/,/if !crate::common::global_init\(\)/' src/core_main.rs)
 core_service_supervisor_rejection=$(awk '/if service_supervisor_role == crate::common::ServiceSupervisorRole::Malformed {/,/if crate::common::current_service_owned_server_role\(\)/' src/core_main.rs)
 core_service_supervisor_dispatch=$(awk '/args\[0\] == "--uninstall-service"/,/args\[0\] == "--server"/' src/core_main.rs)
@@ -5727,21 +5656,6 @@ if grep -qF 'std::env::args_os().nth(1).as_deref()' src/core_main.rs src/platfor
   || grep -qF 'args[0] == "--service"' src/core_main.rs; then
   r_s11e50="$r_s11e50 first-argument-only-supervisor-admission-present"
 fi
-for binding in \
-  'fn r_s11e50_service_supervisor_role_requires_exact_arguments()' \
-  'service_supervisor_role_from_args(["--service"])' \
-  'vec!["--service", "--extra"]' \
-  'vec!["--extra", "--service"]' \
-  'vec!["--service", "--service"]' \
-  'vec!["--server", "--service"]' \
-  'vec!["--service", SERVICE_OWNED_SERVER_ARG]' \
-  'fn r_s11e50_marker_free_roles_cannot_become_service_supervisor()' \
-  'Vec::<&str>::new()' \
-  'vec!["--server", SERVICE_OWNED_SERVER_ARG]' \
-  'vec!["--tray"]' \
-  'ServiceSupervisorRole::Absent'; do
-  grep -qF "$binding" <<<"$service_supervisor_role_tests" || r_s11e50="$r_s11e50 focused-regression-missing"
-done
 grep -qFx 'ExecStart=/usr/bin/rustdesk --service' res/rustdesk.service || r_s11e50="$r_s11e50 systemd-exact-role-missing"
 grep -qFx 'DAEMON_ARGS=--service' res/rustdesk.init || r_s11e50="$r_s11e50 sysv-exact-role-missing"
 grep -qF 'command_args="--service"' res/service-managers/openrc/rustdesk || r_s11e50="$r_s11e50 openrc-exact-role-missing"

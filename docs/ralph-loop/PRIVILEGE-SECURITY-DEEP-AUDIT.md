@@ -119246,3 +119246,23 @@ QEMU 1883582 joins in 30.306 seconds, RAM `run.uo6i25kd` retires and all
 three listener deltas are zero. Six count files add 105,655 bytes; the twenty
 files from this slice total 335,220 bytes per host with matching hashes.
 This audit-only receipt leaves the measured ledger unchanged.
+
+### 2026-10-30 — remove lifecycle and principal test-wording inventories
+
+Starting at `d25a56bff19b3a0dd39ca95445e7560430bcc270`, the shared verifier
+extracts seven Rust test regions for R-S11e-45–50 and checks literal names,
+assertions and fixture values. The Apple verifier duplicates the macOS numeric-UID
+test-wording check. These loops do not execute the tests or observe a privileged
+action; their wording is not an independent authority boundary. R-S11ae–aj retain
+the actual lifecycle, principal and exact-role requirements and executable/native
+acceptance obligations.
+
+Delete all eight loops and their sole-use extraction assignments: 86 lines /
+4,569 bytes from `scripts/verify.sh`, eight lines / 427 bytes from
+`scripts/apple-conform-check.sh`. An exact comparison reconstructs the result using
+only those deletions and proves every other verifier byte, including all Cargo
+commands, unchanged. The nine underlying Rust test functions, product code,
+requirements and instructions are byte-identical. `bash -n` on both verifiers and
+`git diff --check` pass. No product execution, full verifier or installed/native
+acceptance is claimed. All fifteen credential actions and separately parked work
+remain open; the ledger receives a fresh isolated token count below.

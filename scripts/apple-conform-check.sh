@@ -3463,7 +3463,6 @@ echo "== (2b-iv-a-0a) macOS numeric service-principal authority (R-S11ag/R-S11e-
 r_s11e47=
 macos_root_policy=$(awk '/fn effective_uid_is_root\(/,/#\[cfg\(test\)\]/' "$macos_rs")
 macos_service_entry=$(awk '/pub fn start_os_service\(/,/#\[cfg\(test\)\]/' "$macos_rs")
-macos_root_test=$(awk '/fn r_s11e47_macos_root_principal_is_numeric_effective_uid\(\)/,/^    }/' "$macos_rs")
 macos_core_service_entry=$(awk '/#\[cfg\(target_os = "macos"\)\]/{capture=1} capture{print} capture && /#\[cfg\(target_os = "linux"\)\]/{exit}' "$REPO/src/core_main.rs")
 macos_service_binary=$(cat "$REPO/src/service.rs")
 for binding in \
@@ -3504,13 +3503,6 @@ for binding in \
   'eprintln!("macOS service bootstrap authority failed closed: {err}");' \
   'std::process::exit(1);'; do
   grep -qF "$binding" <<<"$macos_service_binary" || r_s11e47="$r_s11e47 dedicated-service-entry-error-propagation-missing"
-done
-for binding in \
-  'fn r_s11e47_macos_root_principal_is_numeric_effective_uid()' \
-  'assert!(effective_uid_is_root(0));' \
-  'assert!(!effective_uid_is_root(1));' \
-  'assert!(!effective_uid_is_root(501));'; do
-  grep -qF "$binding" <<<"$macos_root_test" || r_s11e47="$r_s11e47 numeric-root-regression-missing"
 done
 if [ -n "$r_s11e47" ]; then
   echo "  FAIL R-S11e-47 macOS numeric service-principal authority:$r_s11e47"

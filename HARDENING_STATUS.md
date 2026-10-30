@@ -3807,9 +3807,12 @@ interactive-UI role predicates and `r_s11e262_` role/audit-token predicates. The
 checks; installed authorization and protected actions require the observations
 above and below.
 
-The redundant Linux password-role test-text inventory is removed. Exact deletion
-and Python syntax-tree comparison preserve all other verifier checks; the executable
-Rust regression and its Cargo invocation are unchanged. This adds no runtime acceptance.
+Redundant test-text inventories are removed for Linux password roles and
+R-S11e-45–50 lifecycle, numeric-principal and exact process-role regressions.
+The latter deletion removes eight wording loops and their extraction variables
+from the shared and Apple verifiers (94 lines); exact deletion comparison preserves
+every other verifier byte. Executable Rust tests and Cargo commands are unchanged.
+Syntax/whitespace checks pass; these deletions add no runtime acceptance.
 
 `320f86f0` removes service/SAS test-wording inventories, duplicate test-name
 greps and six Apple mutations of test text (62 lines). Executable protocol tests,

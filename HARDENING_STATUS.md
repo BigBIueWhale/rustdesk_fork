@@ -16197,8 +16197,23 @@ Next resolve same-mount protected placement and resumable destination identity
 together, including these ordinary-user and unsupported-handle cases, before
 replacing the retained per-destination layout. Existing receive oracles remain binding.
 
-Per-file artifacts/directories retire. One container, its small identity file
-and two bounded coordinator records persist per destination. Broader crash/fault
+**Generation-lock retirement (`edddaf7b`) — component accepted.** Completed claims
+release their shared membership under the private enrollment gate. Only exclusive
+ownership permits exact lock-name removal and synchronization; live owners retain
+the name, and retries through unlinked old descriptors cannot delete a replacement.
+Two real-file cases pass under UID 1000, covering independent claims, completed
+objects kept alive, fresh generations, stale retries, removal refusal, exclusion
+release and successful cleanup retry. TUF `fo9e1BpNpc` preserves all nineteen earlier
+native scenarios/twenty actors. Thirty-two completed destinations add zero generation
+locks, but still add 31 directory records / 126,976 allocated bytes; an earlier
+lookup key was reused. The unchanged three overall lifecycle oracles still fail.
+The audit retains the failing baseline and exact candidate receipts; the failure
+path does not export a new complete unit-suite acceptance receipt.
+
+Successful per-file retirement also removes the final generation lock. Interrupted
+or failed admission before lease construction can still leave a lock for recovery.
+One container, its small identity file and one directory record persist per
+destination. Broader crash/fault
 boundaries, long-term coordination retention/cleanup, remount/filesystem identity,
 ACL/non-local filesystems, other platforms, installed/authenticated-peer
 integration, physical power-loss durability, R-S0/R-F5 and release acceptance

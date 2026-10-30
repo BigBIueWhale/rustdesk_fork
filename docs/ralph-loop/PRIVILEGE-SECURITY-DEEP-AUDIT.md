@@ -121929,10 +121929,35 @@ The candidate releases a completed claim's shared membership under the existing
 enrollment gate. Only nonblocking exclusive ownership permits exact private-name
 removal and synchronization; remaining live owners preserve the name. Removed
 old descriptors can only repeat the directory barrier. Every exclusive retirement
-attempt releases its lock even on error, so a completed object cannot deadlock
-new enrollment while that enrollment holds the gate. A second real-file case
+attempt also attempts lock release on error and reports a release failure, rather
+than leaving exclusive ownership on the ordinary error path. A second real-file case
 replaces this exact private name in the fixture, requires visible refusal and
 replacement preservation, probes shared acquisition, restores the original name,
 and retries cleanup. This exercises error finality in addition to normal retirement.
 Public containers and directory records remain; this is a coordination-lifetime
 component of the selected correction, not full receive acceptance.
+
+**Candidate checkpoint accepted for generation-lock retirement.** Source
+`edddaf7b1ab4642cf16e6cdd5616a1d12da8737a`, tree
+`2b5030619c64c310b69c4aa5445f0e70b66ae7de`, TUF `fo9e1BpNpc`, passes all seven
+original lifetime observations and all four added error/retry observations under
+UID 1000. Both fixtures retire with exact final bytes. Unit artifact SHA-256:
+`5440438f7414f1ccb232e2fbec6a139db4743a62408b8bde7ff4cb19e8a730dd`.
+The native production driver passes all nineteen earlier scenarios and twenty
+actors, including all three syscall-window refusals and three crash recoveries.
+Its completed-destination measurement adds zero locks and 31 directory records /
+126,976 allocated bytes for 32 retained destinations; one earlier lookup key was
+reused. Listing and both empty-directory removal APIs retain their demonstrated
+failures, so the unchanged canonical lifecycle verdict remains `0/3 retired` and
+exit one. No new complete unit-suite acceptance receipt is exported on this path.
+
+Native artifact SHA-256
+`f3c74227bcda05b70ca90d3787bd336bfb68bd129ad2f90d320140acc4854d9f`, driver
+`d2195f7c607d69de02e25f989269a4514b7b64ffa1d9f32e9473a5c1a0bc1dbe`.
+Serial 31,111 bytes, SHA-256
+`72ed4bb95ba4a293c01839ecb51ceddffb383eeedd516654bffbede4f47502b5`.
+QEMU 2925990 joins after 201.922 seconds; RAM `run.ls6yvspx` retires and all four
+listener deltas are zero. Seven raw evidence files are hash-verified on both hosts
+before exact diagnostic-scratch removal. Full receive acceptance remains OPEN:
+the next correction must retire directory records and eliminate staging residue
+while preserving same-mount publication, resume identity and authorized access.

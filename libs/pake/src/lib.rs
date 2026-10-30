@@ -769,6 +769,9 @@ impl Initiator {
     /// `ya`, compute `Ya`, `K` (abort on identity, R-P7), `ISK`, the directional
     /// keys and `mac_key`, and emit [`Step3`] `{Ya, Ta}`.
     pub fn recv_step2(self, step2: &Step2) -> Result<(InitiatorAwaitConfirm, Step3), PakeError> {
+        if step2.adb.as_slice() != AD_RESPONDER {
+            return Err(PakeError::AdMismatch);
+        }
         let ya = sample_scalar()?;
         self.recv_step2_with(step2, ya)
     }
@@ -778,9 +781,6 @@ impl Initiator {
         step2: &Step2,
         ya: Zeroizing<Scalar>,
     ) -> Result<(InitiatorAwaitConfirm, Step3), PakeError> {
-        if step2.adb.as_slice() != AD_RESPONDER {
-            return Err(PakeError::AdMismatch);
-        }
         let mut sid = [0u8; 32];
         sid[..16].copy_from_slice(&self.sid_a);
         sid[16..].copy_from_slice(&step2.sid_b);
@@ -865,6 +865,9 @@ impl Responder {
     /// Consume [`Step1`]: verify `ADa == b"viewer"` (R-P5), sample `sid_b`, form
     /// the full `sid`, derive `g`, sample `yb`, and emit [`Step2`] `{sid_b, ADb, Yb}`.
     pub fn recv_step1(self, step1: &Step1) -> Result<(ResponderAwaitConfirm, Step2), PakeError> {
+        if step1.ada.as_slice() != AD_INITIATOR {
+            return Err(PakeError::AdMismatch);
+        }
         let mut sid_b = [0u8; 16];
         fill_random(&mut sid_b)?;
         let yb = sample_scalar()?;
@@ -877,9 +880,6 @@ impl Responder {
         sid_b: [u8; 16],
         yb: Zeroizing<Scalar>,
     ) -> Result<(ResponderAwaitConfirm, Step2), PakeError> {
-        if step1.ada.as_slice() != AD_INITIATOR {
-            return Err(PakeError::AdMismatch);
-        }
         let mut sid = [0u8; 32];
         sid[..16].copy_from_slice(&step1.sid_a);
         sid[16..].copy_from_slice(&sid_b);

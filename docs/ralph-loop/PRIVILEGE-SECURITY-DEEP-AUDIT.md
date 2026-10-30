@@ -120015,4 +120015,23 @@ Regression file SHA-256:
 This accepts the widget correction only. Native settings persistence, OS screen
 readers and complete application/device behavior remain unexecuted. The broader
 runner's stale count and two parked edge-scroll failures are untouched. The ledger
-receives only this UI result; a fresh isolated ledger count follows.
+receives only this UI result.
+
+**Storage-selector count correction and fresh ledger count.** The first count run,
+`8a643a18` / `0G6qVsZna4`, executes all 75 workload controls and five refusals
+successfully, then rejects the obsolete expected total of 74 before tokenization.
+`afaca4ce` updates only the guest count and its exact guest/outer receipts to 75.
+QEMU 2276591 joins in 12.185 seconds and RAM `run.6hs_x1sw` retires; all three
+listener deltas are zero. Its six raw files total 85,838 bytes, copied and
+hash-verified before removing the exact 229,376-byte diagnostic tree. This is a
+runner-inventory correction; no UI source or assertion changes or reruns follow.
+
+At `afaca4ceecc0fe17be7d88e31c74dc8da5ba6c36`, TUF `tHJdBu09UA` accepts all
+75 controls/five refusals and passes seven tokenizer controls plus exact byte
+round trip: **363,095 tokens / 1,660,215 bytes**, using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`. Input SHA-256:
+`04802917f5a6e65c1fdfde92654f37ccf49fe47c4296969eeb86ce595f26cba8`.
+QEMU 2278214 joins in 30.409 seconds, RAM `run.d1h6bzhy` retires and three
+listener deltas are zero. Six successful count files add 104,396 bytes. All
+26 raw files total 377,684 bytes on each host with matching hashes. This audit-only
+receipt leaves the measured ledger unchanged.

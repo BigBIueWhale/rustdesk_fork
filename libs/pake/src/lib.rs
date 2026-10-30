@@ -176,16 +176,16 @@ fn lv_cat_bytes<'a>(args: &'a [&'a [u8]]) -> impl Iterator<Item = u8> + 'a {
     })
 }
 
-/// Materialized encoding for public channel identifiers and confirmation inputs.
+/// Materialized encoding for public channel identifiers.
 fn lv_cat(args: &[&[u8]]) -> Vec<u8> {
     lv_cat_bytes(args).collect()
 }
 
-/// Feed the same encoding without creating secret-bearing heap copies.
-fn hash_lv_cat(hash: &mut Sha512, args: &[&[u8]]) {
+/// Feed the same encoding into a hash or MAC without temporary heap copies.
+fn hash_lv_cat(hash: &mut impl sha2::digest::Update, args: &[&[u8]]) {
     for bytes in args {
         for byte in leb128_bytes(bytes.len()) {
-            hash.update([byte]);
+            hash.update(&[byte]);
         }
         hash.update(bytes);
     }
@@ -276,7 +276,7 @@ fn derive_mac_key(sid: &[u8], isk: &[u8; 64]) -> Zeroizing<[u8; 64]> {
 /// `T = HMAC-SHA512( mac_key, lv_cat(Y, AD) )` (R-P3).
 fn compute_tag(mac_key: &[u8; 64], y: &[u8], ad: &[u8]) -> [u8; 64] {
     let mut mac = HmacSha512::new_from_slice(mac_key).expect("hmac key");
-    mac.update(&lv_cat(&[y, ad]));
+    hash_lv_cat(&mut mac, &[y, ad]);
     let tag = mac.finalize().into_bytes();
     let mut out = [0u8; 64];
     out.copy_from_slice(&tag);
@@ -287,7 +287,7 @@ fn compute_tag(mac_key: &[u8; 64], y: &[u8], ad: &[u8]) -> [u8; 64] {
 /// `verify_slice`; never a `==` compare.
 fn verify_tag(mac_key: &[u8; 64], y: &[u8], ad: &[u8], tag: &[u8; 64]) -> bool {
     let mut mac = HmacSha512::new_from_slice(mac_key).expect("hmac key");
-    mac.update(&lv_cat(&[y, ad]));
+    hash_lv_cat(&mut mac, &[y, ad]);
     mac.verify_slice(tag).is_ok()
 }
 

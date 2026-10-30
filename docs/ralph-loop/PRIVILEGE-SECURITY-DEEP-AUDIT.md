@@ -119130,3 +119130,12 @@ and live instructions are unchanged. No checker, product or installed runtime
 execution is claimed for this deletion; all fifteen credential-action acceptance
 items remain open. The preceding isolated ledger measurement is 360,740 tokens /
 1,649,443 bytes; the edited ledger receives a fresh isolated count below.
+
+**Fresh ledger count.** At `4f503a4a6935a67d7aa3c099649eca5e7a9364e9`,
+TUF `4o4OmknfYV` passes seven tokenizer controls and the exact byte round trip
+using `tiktoken-0.12.0/cl100k_base/encode_ordinary`: 360,788 tokens /
+1,649,726 bytes, SHA-256
+`fa8b6ce4d74bc8243ecfba2712c82704615e9c49a3a4516b74c4423832724266`.
+QEMU 1875802 joins in 30.213 seconds, RAM `run.1rmhxrtg` retires and all
+three listener deltas are zero. Six retained files total 103,363 bytes per
+host with matching hashes. This audit-only receipt leaves the ledger unchanged.

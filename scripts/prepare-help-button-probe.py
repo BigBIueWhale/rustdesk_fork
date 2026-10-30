@@ -14,7 +14,8 @@ def main():
     verify = sys.argv[-1] == 'verify'
     repo, project = Path(sys.argv[1]), Path(sys.argv[2])
     names = ('flutter/lib/desktop/widgets/button.dart', 'flutter/lib/common.dart',
-             'flutter/test_probes/fixed_width_button_cases.dart.inc')
+             'flutter/test_probes/fixed_width_button_cases.dart.inc',
+             'flutter/test_probes/fixed_width_button_layout_cases.dart.inc')
     inputs = {name: (repo / name).read_bytes() for name in names}
     for name, data in inputs.items():
         if (project / name[len('flutter/'):]).read_bytes() != data:
@@ -37,7 +38,8 @@ def main():
     body = source.replace(marker, '') + '\n' + support
     tests = inputs[names[2]].decode('utf-8')
     for name, text in (('fixed_width_button_probe.dart', body),
-                       ('fixed_width_button_probe_test.dart', tests)):
+                       ('fixed_width_button_probe_test.dart', tests),
+                       ('fixed_width_button_layout_test.dart', inputs[names[3]].decode('utf-8'))):
         path = project / 'test_probes' / name
         if not verify:
             with path.open('x', encoding='utf-8') as stream:

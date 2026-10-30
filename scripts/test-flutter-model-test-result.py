@@ -22,7 +22,7 @@ spec.loader.exec_module(result)
 
 
 SINGLE_PROFILE = None
-if len(sys.argv) > 1 and sys.argv[1] in ("--screenshot-save", "--locales", "--draggable-divider", "--file-columns", "--trackpad-speed", "--menu-button", "--password-fields", "--file-progress", "--peer-search", "--audio-input", "--peer-data", "--combo-box", "--image-quality", "--desktop-theme", "--status-refresh", "--custom-scale"):
+if len(sys.argv) > 1 and sys.argv[1] in ("--screenshot-save", "--locales", "--draggable-divider", "--file-columns", "--trackpad-speed", "--menu-button", "--help-button", "--password-fields", "--file-progress", "--peer-search", "--audio-input", "--peer-data", "--combo-box", "--image-quality", "--desktop-theme", "--status-refresh", "--custom-scale"):
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
 
 
@@ -51,6 +51,9 @@ class ResultTests(unittest.TestCase):
         elif profile == "setting-checkbox":
             suites = ["setting_checkbox_test.dart"]
             names = sorted(result.SETTING_CHECKBOX_TESTS)
+        elif profile == "help-button":
+            suites = sorted(result.HELP_BUTTON_SUITES)
+            names = sorted(set().union(*result.HELP_BUTTON_SUITES.values()))
         elif profile == "menu-button":
             suites = sorted(result.MENU_BUTTON_SUITES)
             names = sorted(set().union(*result.MENU_BUTTON_SUITES.values()))
@@ -167,12 +170,13 @@ class ResultTests(unittest.TestCase):
             suite_id = test_id % len(suites)
             if profile == "models":
                 suite_id = suites.index(model_cases[test_id][0])
-            if profile in ("credential-dialog", "terminal-output", "file-navigation", "modifier-release", "peer-data", "tab-selection", "status-refresh", "audio-input", "trackpad-speed", "reconnect", "credential-badge", "menu-button", "password-fields", "combo-box", "image-quality"):
+            if profile in ("credential-dialog", "terminal-output", "file-navigation", "modifier-release", "peer-data", "tab-selection", "status-refresh", "audio-input", "trackpad-speed", "reconnect", "credential-badge", "menu-button", "help-button", "password-fields", "combo-box", "image-quality"):
                 inventory = (result.AUDIO_INPUT_SUITES if profile == "audio-input"
                              else result.COMBO_BOX_SUITES if profile == "combo-box"
                              else result.IMAGE_QUALITY_SUITES if profile == "image-quality"
                              else result.TRACKPAD_SPEED_SUITES if profile == "trackpad-speed"
                              else result.CREDENTIAL_BADGE_SUITES if profile == "credential-badge"
+                             else result.HELP_BUTTON_SUITES if profile == "help-button"
                              else result.MENU_BUTTON_SUITES if profile == "menu-button"
                              else result.PASSWORD_FIELD_SUITES if profile == "password-fields"
                              else result.RECONNECT_SUITES if profile == "reconnect"
@@ -205,6 +209,9 @@ class ResultTests(unittest.TestCase):
             return result.parse_result(path, profile)
 
     def test_complete_profiles(self):
+        if SINGLE_PROFILE == "help-button":
+            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 12))
+            return
         if SINGLE_PROFILE == "combo-box":
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 12))
             return
@@ -310,7 +317,7 @@ class ResultTests(unittest.TestCase):
                         path.unlink()
 
     def test_inventory_is_exact(self):
-        for profile in ((SINGLE_PROFILE,) if SINGLE_PROFILE is not None else ("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "modifier-release", "combo-box", "image-quality")):
+        for profile in ((SINGLE_PROFILE,) if SINGLE_PROFILE is not None else ("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "help-button", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "modifier-release", "combo-box", "image-quality")):
             events = self.events(profile)
             for edit in ("rename", "duplicate", "suite", "missing", "wrong-suite"):
                 with self.subTest(profile=profile, edit=edit):
@@ -334,7 +341,7 @@ class ResultTests(unittest.TestCase):
                         self.parse(changed, profile)
 
     def test_failure_skip_incomplete_and_changed_inputs_are_rejected(self):
-        for profile in ((SINGLE_PROFILE,) if SINGLE_PROFILE is not None else ("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "modifier-release", "combo-box", "image-quality")):
+        for profile in ((SINGLE_PROFILE,) if SINGLE_PROFILE is not None else ("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "help-button", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "modifier-release", "combo-box", "image-quality")):
             events = self.events(profile)
             done_index = next(
                 i for i, event in enumerate(events) if event["type"] == "testDone"

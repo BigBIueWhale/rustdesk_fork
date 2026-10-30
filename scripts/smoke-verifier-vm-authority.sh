@@ -384,7 +384,7 @@ case "$#:${1:-}" in
         MODE=flutter-model-tests
         ;;
     2:--flutter-model-tests)
-        [[ "$2" = --frame-queue || "$2" = --direct-address || "$2" = --file-metadata || "$2" = --password-fields || "$2" = --share-rdp || "$2" = --connect-password || "$2" = --credential-dialog || "$2" = --terminal-output || "$2" = --settings-navigation || "$2" = --desktop-theme || "$2" = --window-dispatch || "$2" = --keyboard-layout || "$2" = --menu-button || "$2" = --hold-drag || "$2" = --locales || "$2" = --path-labels || "$2" = --setting-checkbox || "$2" = --draggable-divider || "$2" = --list-search || "$2" = --credential-badge || "$2" = --peer-search || "$2" = --tab-selection || "$2" = --status-refresh || "$2" = --peer-data || "$2" = --file-progress || "$2" = --file-search || "$2" = --file-columns || "$2" = --screenshot-save || "$2" = --clipboard-keystrokes || "$2" = --floating-position || "$2" = --virtual-joystick || "$2" = --virtual-mouse-buttons || "$2" = --custom-scale || "$2" = --trackpad-speed || "$2" = --audio-input || "$2" = --reconnect || "$2" = --file-navigation || "$2" = --directory-ordering || "$2" = --modifier-release || "$2" = --auto-disconnect || "$2" = --combo-box || "$2" = --image-quality ]] \
+        [[ "$2" = --frame-queue || "$2" = --direct-address || "$2" = --file-metadata || "$2" = --password-fields || "$2" = --share-rdp || "$2" = --connect-password || "$2" = --credential-dialog || "$2" = --terminal-output || "$2" = --settings-navigation || "$2" = --desktop-theme || "$2" = --window-dispatch || "$2" = --keyboard-layout || "$2" = --menu-button || "$2" = --help-button || "$2" = --hold-drag || "$2" = --locales || "$2" = --path-labels || "$2" = --setting-checkbox || "$2" = --draggable-divider || "$2" = --list-search || "$2" = --credential-badge || "$2" = --peer-search || "$2" = --tab-selection || "$2" = --status-refresh || "$2" = --peer-data || "$2" = --file-progress || "$2" = --file-search || "$2" = --file-columns || "$2" = --screenshot-save || "$2" = --clipboard-keystrokes || "$2" = --floating-position || "$2" = --virtual-joystick || "$2" = --virtual-mouse-buttons || "$2" = --custom-scale || "$2" = --trackpad-speed || "$2" = --audio-input || "$2" = --reconnect || "$2" = --file-navigation || "$2" = --directory-ordering || "$2" = --modifier-release || "$2" = --auto-disconnect || "$2" = --combo-box || "$2" = --image-quality ]] \
             && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'focused Flutter shard or input/run authority differs' >&2; exit 2; }
@@ -683,6 +683,7 @@ case "$#:${1:-}" in
         printf 'Focused desktop window error replies: %s --flutter-model-tests --window-dispatch\n' "${0##*/}" >&2
         printf 'Focused status refresh retirement: %s --flutter-model-tests --status-refresh\n' "${0##*/}" >&2
         printf 'Rendered menu button accessibility: %s --flutter-model-tests --menu-button\n' "${0##*/}" >&2
+        printf 'Rendered help button layout: %s --flutter-model-tests --help-button\n' "${0##*/}" >&2
         printf 'Rendered keyboard layout choices: %s --flutter-model-tests --keyboard-layout\n' "${0##*/}" >&2
         printf 'Saved-credential badge accessibility: %s --flutter-model-tests --credential-badge\n' "${0##*/}" >&2
         printf 'Rendered tap-and-hold drag: %s --flutter-model-tests --hold-drag\n' "${0##*/}" >&2
@@ -1059,7 +1060,7 @@ elif [ "$MODE" = flutter-model-tests ]; then
         readonly VM_TIMEOUT_SECONDS=300
         readonly OVERLAY_SIZE=12G
         readonly VM_MEMORY=2560
-    elif [[ "$FLUTTER_TEST_PROFILE" = locales || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = menu-button || "$FLUTTER_TEST_PROFILE" = password-fields ]]; then
+    elif [[ "$FLUTTER_TEST_PROFILE" = locales || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = menu-button || "$FLUTTER_TEST_PROFILE" = help-button || "$FLUTTER_TEST_PROFILE" = password-fields ]]; then
         readonly VM_TIMEOUT_SECONDS=300
         readonly OVERLAY_SIZE=12G
         readonly VM_MEMORY=2048
@@ -5663,7 +5664,7 @@ elif [ "$MODE" = ledger-token-count ]; then
         'actual suspension profile CLI and RAM refusal'
     require_exact_fixed_receipt 'VM_TRANSIENT_X11_INPUT_CLI=pass profile=x11-key-input guest_mib=4096 required_mib=20480 insufficient_ram=refused allocation=not-entered' \
         'actual input profile CLI and RAM refusal'
-    require_exact_fixed_receipt 'VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=40 controls=76 refusals=5 allocation=not-entered' \
+    require_exact_fixed_receipt 'VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=40 controls=77 refusals=5 allocation=not-entered' \
         'VM workload class selection and unconfigured workload refusal'
     require_exact_fixed_receipt 'VM_TRANSIENT_ROOT_REFUSAL=pass operations=5 principal=root qemu=not-started' \
         'VM storage root refusal'
@@ -8345,6 +8346,12 @@ else
         require_exact_fixed_receipt \
             "FLUTTER_KEYBOARD_LAYOUT_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=7 flutter=$FLUTTER_VERSION bridge=absent source=readonly network=none cleanup=joined" \
             'rendered keyboard layout choices'
+    elif [ "$FLUTTER_TEST_PROFILE" = help-button ]; then
+        widget_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/desktop/widgets/button.dart" | /usr/bin/awk '{print $1}')"
+        widget_tests_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test_probes/fixed_width_button_layout_cases.dart.inc" | /usr/bin/awk '{print $1}')"
+        require_exact_fixed_receipt \
+            "FLUTTER_HELP_BUTTON_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=2 tests=12 flutter=$FLUTTER_VERSION widget=$widget_sha256 tests_source=$widget_tests_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-help-button-tests cleanup=joined" \
+            'focused Flutter help-button receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = menu-button ]; then
         widget_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/desktop/widgets/menu_button.dart" | /usr/bin/awk '{print $1}')"
         widget_tests_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test/menu_button_test.dart" | /usr/bin/awk '{print $1}')"
@@ -9342,6 +9349,9 @@ else
             "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$FLUTTER_TEST_PROFILE" = keyboard-layout ]; then
         printf 'FLUTTER_KEYBOARD_LAYOUT_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=rendered-keyboard-layout-choices cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
+    elif [ "$FLUTTER_TEST_PROFILE" = help-button ]; then
+        printf 'FLUTTER_HELP_BUTTON_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=rendered-help-button-tests cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$FLUTTER_TEST_PROFILE" = menu-button ]; then
         printf 'FLUTTER_MENU_BUTTON_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=rendered-menu-button-tests cleanup=joined elapsed_seconds=%s\n' \

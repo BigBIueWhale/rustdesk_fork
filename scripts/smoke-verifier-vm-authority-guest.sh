@@ -12790,6 +12790,9 @@ run_flutter_model_tests() {
         grep -Fx 'FLUTTER_DIALOG_TOOLCHAIN=pass components=rustc,cargo,rust-std,rustfmt installer=retired' "$output"
         grep -Fx "${resource_prefix}_SDK=pass android=omitted web=omitted pub_preload=omitted" "$output"
     fi
+    if [ "$FLUTTER_TEST_PROFILE" = image-quality ]; then
+        grep -E '^\{' "$output"
+    fi
     if [ "$FLUTTER_TEST_PROFILE" = audio-input ]; then
         [ "$(grep -Ec '^CM_AUDIO_SOURCE=(prepare|verify) panel=[0-9a-f]{64} tests=[0-9a-f]{64} panel_copy=exact native_binding=double$' "$output")" -eq 2 ] \
             || fail 'CM audio source receipts differ'

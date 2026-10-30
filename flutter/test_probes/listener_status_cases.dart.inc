@@ -13,9 +13,10 @@ const _unconfigured =
 const _green = Color.fromARGB(255, 50, 190, 166);
 
 Color? _indicatorColor(WidgetTester tester) {
-  final indicator = tester.widget<Container>(find.byWidgetPredicate((widget) =>
-      widget is Container && widget.decoration is BoxDecoration &&
-      (widget.decoration as BoxDecoration).shape == BoxShape.circle));
+  final indicator = tester.widget<Container>(find.descendant(
+      of: find.byType(DirectListenerStatusWidget),
+      matching: find.byWidgetPredicate((widget) =>
+          widget is Container && widget.decoration is BoxDecoration)));
   return (indicator.decoration as BoxDecoration).color;
 }
 

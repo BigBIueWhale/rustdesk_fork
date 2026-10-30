@@ -931,10 +931,12 @@ mod linux {
         let after = coordination_inventory()?;
         let added: Vec<_> = after.iter().filter(|(path, _)| !before.contains_key(*path)).collect();
         let retained_bytes: u64 = added.iter().map(|(_, bytes)| **bytes).sum();
+        let retained_locks = added.iter().filter(|(path, _)| path.extension().is_some_and(|s| s == "lock")).count();
         let retention_ok = added.is_empty();
         retired += usize::from(retention_ok);
         println!("RECEIVE_NATIVE_CASE={}", json!({"case":"completed-destinations",
             "observed":{"destinations":32,"coordination_records_added":added.len(),
+                "coordination_locks_added":retained_locks,
                 "coordination_allocated_bytes_added":retained_bytes,"safe":retention_ok}}));
         fs::remove_dir_all(&base)?;
         println!("RECEIVE_NATIVE_RETIREMENT_SUMMARY=observed cases=3 retired={retired} children=joined fixture=retired");

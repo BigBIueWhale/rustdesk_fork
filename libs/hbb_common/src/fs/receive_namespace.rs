@@ -256,7 +256,51 @@ fn prepare_directory(destination: &File, record: &DirectoryRecord) -> io::Result
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::{FileDigest, ReceiveWriteClaim};
     use std::os::unix::fs::{symlink, PermissionsExt};
+
+    #[test]
+    fn generation_lock_retires_only_after_last_owner() {
+        let root = std::env::temp_dir().join(format!("receive-generation-{}", crate::uuid::Uuid::new_v4()));
+        std::fs::create_dir(&root).unwrap();
+        let (mut one, mut first) = ReceiveWriteClaim::start_new(root.join("one"), FileDigest::default()).unwrap();
+        let (mut two, mut second) = ReceiveWriteClaim::start_new(root.join("two"), FileDigest::default()).unwrap();
+        let generation = first._lease.namespace._generation.try_clone().unwrap();
+        let original = unix_fstat(&generation).unwrap();
+        one.write_all(b"one").unwrap();
+        first.finish(3, 31).unwrap();
+        let shared_preserved = generation.metadata().unwrap().nlink() == 1;
+
+        let (mut three, mut third) = ReceiveWriteClaim::start_new(root.join("three"), FileDigest::default()).unwrap();
+        let contender_shared = unix_require_same_object(&original,
+            &unix_fstat(&third._lease.namespace._generation).unwrap(), "live generation").is_ok();
+        three.write_all(b"three").unwrap();
+        third.finish(5, 33).unwrap();
+        let remaining_preserved = generation.metadata().unwrap().nlink() == 1;
+        two.write_all(b"two").unwrap();
+        second.finish(3, 32).unwrap();
+        // Completed claim objects and an old descriptor remain alive deliberately.
+        let last_retired = generation.metadata().unwrap().nlink() == 0;
+
+        let (mut four, mut fourth) = ReceiveWriteClaim::start_new(root.join("four"), FileDigest::default()).unwrap();
+        let replacement = fourth._lease.namespace._generation.try_clone().unwrap();
+        let fresh_generation = unix_require_same_object(&original,
+            &unix_fstat(&replacement).unwrap(), "retired generation").is_err();
+        first._lease.namespace.retire(|| Ok(())).unwrap();
+        let stale_retry_preserved = replacement.metadata().unwrap().nlink() == 1;
+        four.write_all(b"four").unwrap();
+        fourth.finish(4, 34).unwrap();
+        let next_retired = replacement.metadata().unwrap().nlink() == 0;
+        for (file, bytes) in [("one", b"one".as_slice()), ("two", b"two"),
+            ("three", b"three"), ("four", b"four")] {
+            assert_eq!(std::fs::read(root.join(file)).unwrap(), bytes);
+        }
+        drop((one, two, three, four, first, second, third, fourth, generation, replacement));
+        std::fs::remove_dir_all(&root).unwrap();
+        println!("RECEIVE_GENERATION_RETIREMENT=observed shared_preserved={shared_preserved} contender_shared={contender_shared} remaining_preserved={remaining_preserved} last_retired={last_retired} fresh_generation={fresh_generation} stale_retry_preserved={stale_retry_preserved} next_retired={next_retired} final_bytes=exact fixture=retired");
+        assert!(shared_preserved && contender_shared && remaining_preserved && last_retired
+            && fresh_generation && stale_retry_preserved && next_retired);
+    }
 
     #[test]
     fn setup_recovers_only_private_identity_prefixes() {

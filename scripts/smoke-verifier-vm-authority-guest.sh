@@ -3641,6 +3641,7 @@ run_focused_rust_tests() {
                 fs::tests::file_metadata_receive_namespace_keeps_independent_file_claims
                 fs::tests::file_metadata_receive_namespace_accepts_maximum_native_filename
                 fs::receive_namespace::tests::setup_recovers_only_private_identity_prefixes
+                fs::receive_namespace::tests::generation_lock_retires_only_after_last_owner
                 fs::tests::file_metadata_digest_mismatched_seconds_and_sizes_stay_distinct
                 fs::tests::recursive_owner_files_retain_the_listed_parent
                 fs::tests::recursive_owner_empty_dirs_retain_the_listed_parent
@@ -8138,6 +8139,8 @@ PY
     "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
     CONTAINER_ID=
     if [ "$MODE" = hbb-common-fs ] && [ "$RUST_TEST_PROFILE" = file-metadata ]; then
+        grep -F 'RECEIVE_GENERATION_RETIREMENT=observed ' "$output"
+        printf 'RECEIVE_GENERATION_RETIREMENT_ARTIFACT=observed sha256=%s\n' "$hbb_test_artifact_sha"
         local authority_record authority_sha authority_executable authority_source_sha authority_work
         local authority_output=$ROOT/receive-native-authority.out
         local -a authority_records
@@ -8307,7 +8310,7 @@ PY
         else
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'file metadata test total differs'
-            grep -Fx 'test fs::receive_namespace::tests::setup_recovers_only_private_identity_prefixes ... ok' "$output"
+            grep -E '^test fs::receive_namespace::tests::[a-z_]+ [.][.][.] ok$' "$output"
             grep -E '^test (policy_[a-z0-9_]+|r_f4_pinned_port_constant) [.][.][.] ok$|^SOCKET_DESCRIPTOR=|^SOCKET_POLICY_ARTIFACT' "$output"
             grep -E '^test fs::tests::(abandoned_blocking_|new_receive_|receive_write_|receive_next_|receive_done_|receive_destination_lease_|resume_confirmation_|recv_finish_|recv_digest_|receive_file_list_replacement_cannot_authorize_early_done)[[:alnum:]_]* [.][.][.] ok$' "$output"
             grep -E '^test fs::(tests::(file_metadata_[a-z_]+|rename_[a-z_]+|directory_entry_[a-z_]+|directory_enumeration_[a-z_]+|recursive_enumeration_[a-z_]+|empty_directory_enumeration_[a-z_]+|default_local_[a-z_]+|default_send_job_[a-z_]+|recursive_owner_[a-z_]+|enumeration_string_budget_matches_json_and_preserves_state|file_enumeration_refuses_unrepresentable_modification_times|budgeted_read_dir_rejects_too_many_entries_before_returning_vector|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[a-z_]+) [.][.][.] ok$|^FILE_METADATA_|^RECEIVE_DIGEST_ADMISSION=|^SOCKET_DESCRIPTOR_LIFETIME=|^DIRECTORY_ENTRY_|^RECURSIVE_OWNER=|^test socket_surface::tests::[a-z0-9_]+ [.][.][.] ok$|^SOCKET_SURFACE_IO=' "$output"

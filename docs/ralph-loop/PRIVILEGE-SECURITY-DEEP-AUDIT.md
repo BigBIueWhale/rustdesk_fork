@@ -121889,3 +121889,26 @@ UTF8 round trip pass. QEMU 2915308 joins after 30.913 seconds; RAM `run.gvnf2z0f
 retires and all three listener deltas are zero. Raw serial: 36,138 bytes, SHA-256
 `4e24074739128361f0b6fd5cfe779ee6afec7fbfd13a763d70bcbe985b4199a7`.
 This audit-only receipt preserves the counted ledger and unchanged product source.
+
+### Receive generation-lock retirement — 2026-10-31
+
+Continue the completed-destination blocker with the private coordination lifetime
+that the eventual staging layout must preserve. A completed claim currently keeps
+its shared generation lock until object destruction, and its named lock persists
+permanently. The new real-file regression keeps completed claim objects alive,
+admits independent files, completes their final owner, admits a new generation,
+and retries retirement through an old descriptor. It requires preservation while
+another owner is live, removal after the last owner, and no effect on a later lock.
+The native retention measurement also separates added lock files from other records.
+This preparation changes no production behavior and leaves all three lifecycle
+oracles intact. Generation retirement alone will not retire directory records or
+public staging containers; the overall correction remains OPEN/STOP-SHIP.
+
+Primary research: https://man7.org/linux/man-pages/man2/flock.2.html binds locks
+to open descriptions and warns that conversion is not atomic. Retirement must
+therefore hold the existing private enrollment gate through nonblocking exclusive
+acquisition, exact-name removal and directory synchronization; a live reader keeps
+the shared name, and a removed old inode cannot authorize removal of a replacement.
+Coordination stays private rather than adding a lock any reader of the public
+destination could contend for. No slot hash, public directory lock or new filesystem
+capability is needed for this lifetime correction.

@@ -119716,3 +119716,39 @@ QEMU 2138320 joins in 30.469 seconds; RAM `run._27m1rfj` retires and all
 three listener deltas are zero. Six raw files total 104,638 bytes per host with
 matching hashes. This audit-only receipt leaves the measured ledger unchanged.
 The count run executes no product or keyboard test.
+
+### 2026-10-30 — retire the historical send-digest getter replica
+
+At `f1091542f4f37beb79745b1ee4a618c01cfdaea8`, the send-digest tests
+compile a 21-line copy of the getter from `784daba1` solely to assert that it
+accepts changed file lengths. History comparison confirms the original method's
+SHA-256 `4b3b35e69ae51e5604481ba4fbe7f6bd68472a005623aaa62de687b0a91f8757`;
+only its test visibility/name differ. This historical demonstration does not
+exercise current production behavior and need not remain in every test build.
+The [Rust test configuration](https://doc.rust-lang.org/reference/conditional-compilation.html#test)
+confines the module to the test harness; this is not removal of a live product path.
+
+`7581d7d9f82fdf6164b52e65b4c4e7dfa4c6545f` deletes the complete fixture,
+its module declaration and six-line historical call/assertion/output block.
+The guest drops only that file's fingerprint and obsolete output alternative.
+Exact reconstruction preserves all production bytes and current-behavior assertions,
+including refusal before confirmation/publication, source/state preservation,
+and exact successful retry through CM and keyed TCP paths. The other thirteen
+selected tests, test inventory, execution commands and isolation remain unchanged.
+No dangling code/script reference remains; shell syntax and whitespace checks pass.
+
+TUF `Rwgjr0gfmJ`, `bash scripts/smoke-verifier-vm-authority.sh
+--file-send-digest-tests`, passes all 15 tests/13 groups. All eight digest
+refusal/restoration observations remain, alongside allocation retry, repeated-ID
+retirement, backpressure, confirmation, resume and round-robin controls.
+Artifact SHA-256:
+`a4477497b21f4f363388e17b50b7f8ce3c2b8cf6cacbe492e7297950baacde8a`.
+Linux Rust 1.75 executes the production library in a nonroot networkless guest
+container inside the zero-NIC bounded-RAM VM. QEMU 2139231 joins in 136.721
+seconds; RAM `run.y4leitnj` retires and all four listener deltas are zero.
+Seven raw files total 79,726 bytes per host with matching hashes. Historical
+evidence remains in Git and `file-send-digest-accepted-119b65c6-v2.json`.
+No product correction or new installed privilege acceptance is claimed. Actual
+CM IPC/UI, complete peer/handshake, other-platform/installed, R-S0/R-F5 and
+release acceptance remain OPEN, and all parked work stays parked. The existing
+send-digest ledger paragraph is updated; fresh token measurement follows.

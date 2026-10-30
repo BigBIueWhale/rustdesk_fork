@@ -16787,17 +16787,18 @@ The CM read-tick park remains unchanged. Peer disconnects, cancellation during t
 step, full application error delivery, other platforms, installed privilege, R-S0/R-F5
 and release acceptance remain OPEN.
 
-**Send-digest size admission — Linux library/file and keyed TCP component comparison ACCEPTED; caller/platform integration OPEN.**
-At `119b65c6`, the exact earlier getter from `784daba1` accepted lengths changed after enumeration;
-the corrected CM and keyed guest-loopback paths refused the same files before waiting or publishing
-a digest. Two executable tests cover eight comparisons: truncation to zero, shorter content, growth,
-and growth from an empty file on both routes. Restoring the admitted length permits exact metadata,
-keyed digest receipt, payload and EOF. Lists, counters and source ownership survive refusal.
-The focused `--file-send-digest-tests` transaction compiled the shared library once and passed both
-cases in 149 VM seconds; stable artifact, exact old-method provenance, source freezes, unchanged
-endpoints and joined bounded-RAM cleanup are retained in
-`.harness-state/verifier-vm/file-send-digest-accepted-119b65c6-v2.json`.
-This compares the old getter and current production entry points, not two whole-app artifacts.
+**Send-digest size admission — Linux library/file and keyed TCP component acceptance; caller/platform integration OPEN.**
+The retained source length must match the admitted entry before CM confirmation wait
+or keyed TCP digest publication. Two tests cover eight refusal/retry cases: truncation
+to zero, shorter content, growth and growth from empty on both routes. Restoring the
+admitted length permits exact metadata, keyed digest receipt, payload and EOF;
+lists, counters and source ownership survive refusal. At `7581d7d9`, TUF `Rwgjr0gfmJ`
+passes all 15 `--file-send-digest-tests` checks in 136.721 seconds. The historical
+getter replica and its old-behavior assertions are deleted; every assertion against
+current production behavior remains. Production and other test bytes are unchanged.
+The audit binds the artifact, eight digest observations and joined bounded-RAM cleanup
+with four zero listener deltas. The earlier comparison remains in Git and
+`file-send-digest-accepted-119b65c6-v2.json`; no historical replica is needed in the live suite.
 Length equality is observed at digest creation; content snapshots, later same-size mutations,
 actual CM IPC/caller error delivery, CPace handshake, installed/other-platform and release acceptance remain OPEN.
 

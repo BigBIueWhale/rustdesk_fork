@@ -7865,6 +7865,7 @@ mod pulse_audio;
 pub use self::pulse_audio::start_pa;
 pub struct ConnectionTmpl<T> {
     inner: IpcFrameReader<T>,
+    write_incomplete: bool,
 }
 
 pub type Connection = ConnectionTmpl<Conn>;
@@ -7881,6 +7882,7 @@ where
     pub fn new(conn: T) -> Self {
         Self {
             inner: IpcFrameReader::new(conn, BytesCodec::new()),
+            write_incomplete: false,
         }
     }
 
@@ -7889,6 +7891,7 @@ where
         codec.set_max_packet_length(max_packet_length);
         Self {
             inner: IpcFrameReader::new(conn, codec),
+            write_incomplete: false,
         }
     }
 
@@ -8268,6 +8271,9 @@ where
         use bytes::Buf;
         use tokio::io::AsyncWriteExt;
 
+        if self.write_incomplete {
+            bail!("previous IPC frame write did not complete");
+        }
         let max_packet_length = self.inner.decoder().max_packet_length();
         if data.len() > max_packet_length {
             bail!(
@@ -8278,9 +8284,13 @@ where
         }
         let (header, width) = BytesCodec::encode_header(data.len())?;
         let mut frame = (&header[..width]).chain(data);
+        // Cancellation or an I/O error discards this frame's remaining bytes.
+        // No later frame may be appended unless this write and flush complete.
+        self.write_incomplete = true;
         let writer = self.inner.get_mut();
         writer.write_all_buf(&mut frame).await?;
         writer.flush().await?;
+        self.write_incomplete = false;
         Ok(())
     }
 

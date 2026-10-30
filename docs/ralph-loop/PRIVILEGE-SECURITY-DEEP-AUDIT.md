@@ -117792,3 +117792,42 @@ and adds reversed one/random classes plus identical scalar-one inputs under
 both labels. It must reject a detected identical-input difference as inconclusive
 and must reject a detection in either one/random orientation. No production or
 dependency change is justified by the observations so far.
+
+Diagnostic run `z3Kyh3c6Qa` at `bac89877aeedb956c66c8ebab659903a96ba7686`
+(tree `7a44df3b6bf525a4b9761f50bba42c51f1c84981`) exits 101 after 36.49 seconds.
+Pre-execution artifact SHA-256 is
+`5ac8fcb9e41f68e5ceaa81807acf427ae004b88a52f3d51d19a62483672a8ed1`;
+failure again precedes the runner's after-hash receipt. All nine cohorts execute:
+
+| Cohort | Raw t | Pooled-p99 t | Threshold result |
+| --- | ---: | ---: | --- |
+| Early-exit comparison control | -1583.940317 | -13263.716268 | Detected, required |
+| Tag first/last mismatch | 2.500406 | 0.892677 | Below threshold |
+| Tag zero/random key | -1.177459 | -1.047334 | Below threshold |
+| Wide reduction zero/random | 0.846384 | 0.145757 | Below threshold |
+| Generator fixed/random PRS | 1.032391 | 0.503297 | Below threshold |
+| Variable-time group control | -5277.403532 | -10650.328907 | Detected, required |
+| Reduction/multiply one/random | -12.589880 | -14.667064 | Detected |
+| Reduction/multiply random/one | 10.149313 | 10.652187 | Detected |
+| Reduction/multiply one/one | 0.876830 | 0.995664 | Below threshold, required |
+
+The one/random means are 65,749.931849/66,005.610259 ns per four operations;
+reversed means are 65,828.614538/65,645.100913 ns. Reversal and the identical-input
+control support an input-dependent effect in this composed measurement, without
+identifying its source or demonstrating a usable attack. The fixed point is
+unchanged, input generation is untimed, and the same execution closure and label
+seed serve all three multiplication observations. Production bytes, dependencies,
+sample budgets, threshold and isolation remain unchanged. No all-green timing
+acceptance is claimed.
+
+QEMU 1816239 joins in 139.308 seconds; RAM `run.na760cnm` retires and four
+listener deltas are zero. Seven raw files add 88,296 bytes per host with matching
+hashes. Exact failed diagnostic directory inode 78294410 is removed after copy
+verification, reclaiming 3,457,024 bytes. All three runs use the pinned optimized
+Rust 1.75.0/LLVM 17.0.6 build, Dalek 4.1.3 with the 64-bit/SIMD selection, guest
+CPU 0 on the recorded Intel Core Ultra 9 285K, and no VM/container network.
+Host affinity/frequency are uncontrolled. Twenty-one retained files total
+258,429 bytes per host. The next investigation must separate reduction,
+multiplication and wiping-owner costs, inspect the source-bound emitted code,
+and vary seeds/points under the same controls. Backend/compiler comparisons are
+diagnostics; a different passing artifact cannot clear the recorded detection.

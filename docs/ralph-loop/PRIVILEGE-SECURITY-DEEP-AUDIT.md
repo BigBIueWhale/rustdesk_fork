@@ -121415,3 +121415,47 @@ the main README, build guide or top-level `docs/*.md` files. The two added paths
 resolve to tracked guides, and whitespace review passes. No product/test/build
 payload or VM is launched for this navigation-only edit. `HARDENING_STATUS.md`
 and its counted contents remain unchanged; no acceptance item is closed.
+
+## 2026-10-30 — About metadata across rebuilds
+
+Previous goal turn: PROGRESS through host-guide navigation (`cb7fca33`). The user
+pivot remains binding. Work continues on ordinary UI behavior; the unrun help-card
+integration stash and all earlier parked investigations remain open.
+
+`_AboutState.build` created a new future for version and build date on every build.
+The Rust getters return fixed `VERSION` and `BUILD_DATE` constants. Flutter's
+[FutureBuilder contract](https://api.flutter.dev/flutter/widgets/FutureBuilder-class.html)
+requires obtaining the future before build so rebuilds do not restart its work.
+Product `0d63ec3d` moves the existing load to `initState` and retains it in a final
+page-owned field. Rendering still evaluates current translations. Closing and
+reopening creates a fresh page and load; no global cache or new native API is added.
+
+Preparation `6a62ce49` adds three cases to the existing desktop settings profile.
+Baseline `EZZ3eIXxTq` passes 23 cases and fails two: the original delayed result
+never appears after rebuild, and three rebuilds cause four version/build-date
+reads instead of one each. The late-failure/reopened-page control passes.
+The identical candidate suite in `UkqDbdC049` passes all 25 cases, three focused
+parser controls and source postchecks. It observes pending-result publication,
+one read per value, refreshed translated labels and independent reopen behavior.
+The exact production settings page renders with fresh generated bindings and
+controlled native/parent/platform inputs. Native application execution and other
+platforms remain unverified; no installed or broader acceptance is claimed.
+
+Page SHA-256 before/after:
+`733654866653a919d3fdc97fb6588048119661ed4bf6fbffae3fbeda4ac1bee2` /
+`2aacb628b8551ccfbfe542544c28c6967a18488396a4de328c56615d0d6dd369`.
+Identical test SHA-256:
+`01e5ac32e84690eee8f91c6e51a44e429038915edcbc77e511b895c975b29033`.
+
+| Run | Serial SHA-256 | QEMU / seconds / retired RAM |
+| --- | --- | --- |
+| `EZZ3eIXxTq` | `9af712180f075d025cac4d9b2b941f0989c789365226550998d214c3226a18ee` | 2767618 / 236.424 / `run.2umsfp07` |
+| `UkqDbdC049` | `011aa8b5ed9f99d9d08e1a3a5fb9e141e5d86757a22631ece560b4eabe6b75bc` | 2768450 / 263.859 / `run.trjl2kls` |
+
+Both QEMU processes join, bounded RAM scratch retires and all eight endpoint
+deltas are zero. Fourteen raw files total 179,986 bytes per host, copied and
+hash-verified. The exact baseline diagnostic tree is removed after evidence
+verification (3,461,120 allocated bytes). The candidate outer exit is zero.
+Two earlier preflight attempts exit before a VM/run receipt; the captured second
+failure identifies a group-writable launcher after editing. Restoring the two
+edited shell entries to mode 0755 permits the comparison without changing checks.

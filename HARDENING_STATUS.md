@@ -4653,6 +4653,17 @@ cleanup are in the audit. This is Flutter component evidence with explicit nativ
 and parent doubles; native application linking and browser/device execution remain
 OPEN.
 
+**Desktop About metadata lifetime (`0d63ec3d`).** Each About page loads its fixed
+version/build date once in `initState`, retaining the same future across rebuilds.
+At unchanged product, the rendered regression loses the original pending result
+after a rebuild and performs four reads of each value across three later rebuilds.
+The identical corrected suite passes all 25 desktop cases, three parser controls
+and exact-source postchecks; current translated labels and a reopened page after
+the retired request fails remain correct. Production Flutter rendering runs with
+controlled native replies and parent bindings; installed/native application and
+other-platform acceptance remain OPEN. Audit entry “2026-10-30 — About metadata
+across rebuilds” binds runs `EZZ3eIXxTq` / `UkqDbdC049` and joined RAM cleanup.
+
 **Unused hardware-probe UI bridge (`d7d022d8`).** The empty native
 `check_hwcodec`, its `main_check_hwcodec` bridge and unimplemented web
 `mainCheckHwcodec` stub are deleted. Their last UI caller disappeared with the

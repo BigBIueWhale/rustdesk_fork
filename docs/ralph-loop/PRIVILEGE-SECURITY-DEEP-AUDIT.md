@@ -120264,3 +120264,60 @@ QEMU 2297994 joins in 30.496 seconds, RAM `run.083_zyok` retires and three
 listener deltas are zero. Six count files add 105,369 bytes; all twenty raw files
 total 289,238 bytes per host with matching hashes. This audit-only receipt leaves
 the measured ledger unchanged.
+
+## 2026-10-30 — user pivot; European Portuguese selection
+
+The user requests unrelated work. Saved-peer rename is OPEN/PARKED: stash
+`c2ad6e9ae594c0d0aaf0dc5c96851f13b362204e` preserves only its unrun fixture
+and partial profile edits. No rename product change or VM execution occurred.
+Earlier parks remain open. This slice concerns language selection only.
+
+`src/lang.rs` selected `ptbr::T` for every automatic Portuguese locale;
+`src/lang/pt_PT.rs` existed but had no module, route or language-menu entry.
+[Unicode CLDR's Portugal catalogue](https://github.com/unicode-org/cldr/blob/main/common/main/pt_PT.xml)
+identifies language `pt` and territory `PT` separately. The correction routes
+that region to `pt-pt`, adds an explicit Portugal choice, names the retained
+Brazil choice, and registers Flutter's `Locale('pt', 'PT')`. Saved preferences
+retain priority; generic/Brazil and other automatic Portuguese regions retain
+existing behavior. Only the empty chat-history notice changes in the Portugal
+table, using the nonempty English source; all existing translations, keys,
+placeholders and escapes are unchanged. Read-only catalogue comparison finds
+matching Portugal/Brazil key sets and placeholder/escape sequences, no duplicate
+keys and no remaining empty Portugal entry. Active routed catalogues total 50.
+
+Preparation `c9fd2f04e5d2aff7d3a786e3e07b6095c25bfea0` extends two existing Rust case tables
+and Flutter's live-language case. Unchanged-product TUF `gYq575pGzY` fails
+exactly at `pt_PT` selecting `pt` instead of `pt-pt`; nine groups pass.
+Its artifact SHA-256 is
+`e197a2769418bba57343fa286045e96cdd5354663b082a990cf948b2cf19d09d`.
+Product `9e09aff381412c30f51718bc716b58ddb99b80a5` passes all ten groups in
+`jLMB1vfPTg` with byte-identical test bodies. Corrected artifact SHA-256:
+`3ed8503bef62f669f39fa2adb8a19421715c7966f2e6be33c661fac09810a8fe`.
+Both run `bash scripts/smoke-verifier-vm-authority.sh --language-selection-tests`
+with Rust 1.75.0, compiling the actual selector directly without config doubles.
+
+At the same product commit, `WZ5CsDTpOj` passes all ten rendered Flutter
+cases and three focused parser controls using
+`bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --locales`.
+Pinned Flutter 3.24.5 observes live Portugal resolution, the Cancel label, Brazil
+fallback and existing language/direction controls through the production locale
+list. Source-copy postconditions pass. There is no pre-change rendered Portugal
+run; the historical failure demonstrated here belongs to the Rust selector.
+
+| Run | Serial SHA-256 | QEMU / seconds | Retired RAM workspace |
+| --- | --- | --- | --- |
+| `gYq575pGzY` | `b2625c6b8f167ba32820472d0544050cbbb3e5fc090019b5584b1f94ca1fd37c` | 2421376 / 60.641 | `run.9ic7bzq7` |
+| `jLMB1vfPTg` | `7342bb626c10de48a74186d69a634a72e9617842dd79c5c140333764d3710db9` | 2431892 / 64.601 | `run.gujcx4dy` |
+| `WZ5CsDTpOj` | `55fad4a7efe77b37198b2f0251af1b3761b74e0656c01e8ae5b40a1372e7ab63` | 2433953 / 104.062 | `run.ohdxzjam` |
+
+All three zero-NIC VMs and networkless unprivileged containers use unchanged
+bounded-RAM admission/monitoring. Exact QEMU joins and workspace absence are
+verified. No listener is added; Flutter's final snapshot has one pre-existing
+endpoint removal (19 bytes), left untouched. Twenty-one raw files total 225,849
+bytes per host, copied and hash-verified. After copy verification, the exact
+failed-baseline diagnostic tree (inode 78426660) is removed, releasing 3,424,256
+allocated bytes; its terminal wrapper and owned QEMU are absent. Both candidates
+exit 0. Full application/catalogue compilation, saved-setting UI/native storage,
+OS locale acquisition, actual devices, native-speaker review and release
+acceptance remain open. These checks establish selector and rendered framework
+behavior, not complete application acceptance.

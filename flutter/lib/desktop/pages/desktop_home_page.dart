@@ -483,6 +483,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
             top: 18,
             right: 0,
             child: IconButton(
+              tooltip: translate('Close'),
               icon: Icon(
                 Icons.close,
                 color: Colors.white,

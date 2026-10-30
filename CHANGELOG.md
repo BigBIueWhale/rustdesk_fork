@@ -1,219 +1,80 @@
 # Changelog — RustDesk Hardened Fork
 
-All notable changes to the hardened fork, newest first. Each entry's heading is the fork release name
-(`<upstream-base>-hardened.<N>` — see [`docs/VERSIONING.md`](docs/VERSIONING.md)). The single source of
-truth for the exact code a release contains is the **commit** it was built from, linked in the GitHub
-release notes.
+Source changes recorded under each fork version, newest first. The version headings
+follow [the fork versioning rules](docs/VERSIONING.md). These historical entries do
+not establish publication or release acceptance. The exact source commit identifies
+a build; current verification evidence and unresolved obligations belong in
+[HARDENING_STATUS.md](HARDENING_STATUS.md).
 
 ## 1.4.7-hardened.6 - 2026-07-14
 
-### Release-smoke coexistence
-- Made the mandatory Docker runtime smoke safe to execute beside an operational older RustDesk
-  installation. Runtime stages are mounted scripts rather than inline Docker argv, and the exact tested
-  executable is descriptor-launched with a neutral smoke-only argv zero plus the unchanged `--server`
-  role argument.
-- Added a signal-free full-host process guard that admits an exact stable baseline of pre-existing
-  historical `rustdesk +--server` matches and fails if the smoke adds any new match. Each test server is
-  independently bound to its PID/start time, executable device/inode, and exact NUL-delimited argv.
-- Kept the smoke in Docker's isolated PID/network namespaces with no published ports and preserved the
-  one-IPv4-TCP-on-container-loopback/zero-UDP runtime assertion. This harness fix does not change the
-  installed service or close the separately tracked upcoming Linux service-child lifecycle redesign.
+### Credentials and privileged operations
 
-### Privileged authority and unattended credentials
-- Made installed-service credential changes explicit privileged transactions rather than generic
-  configuration writes. Linux uses administrator-authorized service ownership, macOS uses the root
-  LaunchDaemon with exact LaunchAgent proof, and Windows uses the stable SCM service as the sole durable
-  authority.
-- Made credential changes generation-bound and fail-closed through derivation, durable replacement,
-  runtime publication, and authentication finality. A credential generation cannot be reused, an
-  authentication attempt cannot complete across a generation change, and ambiguous post-replacement
-  persistence terminates rather than reporting a false failure or success.
-- Replaced Windows profile-derived credential storage with an MSI-provisioned `ProgramData` root whose
-  protected ACL grants only SYSTEM and Administrators full control. Runtime access is handle-relative and
-  reparse-rejecting; only the LocalSystem SCM supervisor has write and durability authority.
-- Bound privileged IPC actions, service children, terminal helpers, clipboard helpers, URL forwarding,
-  SAS, and connection-manager operations to their actual receiver and session authority. Removed
-  password-valued CLI provisioning and remaining whole-configuration authority crossings.
+- Moved installed unattended credentials to the enforcing Linux root, macOS
+  LaunchDaemon or Windows LocalSystem service. Ordinary configuration IPC cannot
+  replace those credentials or supply a user-profile fallback.
+- Moved desktop password changes to dedicated bounded raw protocols, with endpoint
+  authorization before secret transfer, operation-bound status, secret wiping,
+  generation checks and explicit handling of uncertain durable/runtime outcomes.
+- Bound service children, session switching, SAS, connection-manager operations and
+  privileged helpers to their receiver, process generation and session authority.
+- Made Windows Installer the machine-installation authority and moved Windows
+  service credentials to protected ProgramData storage. Service-owned child jobs
+  retain and drain their exact process trees before reporting shutdown.
 
-### Credential IPC and finality
-- Moved every desktop password body to dedicated raw `_password` or `_service_password` transport. The
-  protocol is outside serde, JSON, `Bytes`, and `Framed`, with one canonical fixed header, exactly bounded
-  body, operation-bound status, and a Windows operation-bound status acknowledgement before disconnect.
-- Proved both connected endpoints before secret-body transfer. Fixed wiping body/stack allocations feed
-  redacted `SensitivePassword` and `SensitiveAuthorization` ownership without plaintext retry copies; macOS
-  also explicitly wipes native Authorization Services external-form stack copies.
-- Bound operation UUIDs to owner class and process-random-keyed HMAC-SHA256 value fingerprints. Each 64-entry
-  process-lifetime replay ledger reclaims only its oldest terminal result, never evicts admitted work, and keeps
-  retained results value-bound. Uncertain clients reuse one operation for at most 600 seconds; authoritative
-  rejection, internal failure, and shutdown are terminal. Restart remains explicitly non-durable exactly-once.
-- Bound Linux service mutation to the raw root endpoint, socket-derived PID/UID/start-time polkit subject,
-  bounded killed-and-reaped `pkcheck`, single-claimant authorization/commit recovery, and exact root-parent
-  plus service-owned-replica identity. Ordinary main IPC has no password write fallback.
-- Gave macOS generic and password proofs separate capacities and exactly owned, synchronously joined OS
-  threads that abort on timeout, cancellation, lost result, panic, or lost ownership. The user-paced admin
-  prompt sits between bounded right readiness and a fresh raw transport deadline; exact helper, installed-app,
-  LaunchAgent argv/launchd/plist, and runtime-only snapshot proofs remain required.
-- Made the Windows LocalSystem password listener one process-lifetime first-instance, local-only,
-  max-instances-one message pipe. Exact role/generation/process-token and last-message impersonation-token
-  proof, stable active-principal sampling around two token reads, live kernel-DACL reread, exact overlapped
-  cancellation/drain, and retained listener/client supervisors precede admission and operation-ACK-bound
-  disconnect. Arbitrary Interactive Users are rejected before header wait; an authorized active-principal
-  process in an exact RustDesk role can consume only bounded local work and receives no password or admin authority.
+### Remote sessions and desktop behavior
 
-### Windows machine authority
-- Made Windows Installer the sole machine-installation authority. Removed application-owned install,
-  uninstall, service, firewall, and elevated command-program paths; the setup bootstrapper admits only
-  its embedded MSI and invokes fixed System32 `msiexec.exe` through a closed command grammar.
-- Bound the LocalSystem child tree to an SCM-owned kill-on-close job assigned at process creation. Session
-  handoff and stop retain exact child identity, account for descendants, preserve active tunnel state,
-  drain admitted service work, and report `SERVICE_STOPPED` only after the owned tree is absent.
-- Bound runtime broker refresh, terminal launch, clipboard access, privacy-session handling, post-install
-  relaunch, MSI cleanup, and deferred installer actions to fixed files, exact tokens, package state, or
-  served-session authority as applicable.
+- Made remote input queues, physical key/button ownership, native execution and
+  teardown belong to the authenticated Remote connection. Native failures are
+  reported and unfinished cleanup is retained.
+- Removed the macOS privacy-blackout event tap; display obscuring does not
+  implicitly block local physical input.
+- Bound each desktop tunnel mapping to one validated target and owned setup,
+  authentication, relay and teardown work, with exclusive loopback listeners and
+  process-wide admission limits.
+- Removed RDP credentials from the dialog, peer configuration and tunnel path.
+  The Windows client receives the loopback endpoint and prompts for credentials.
+- Removed desktop main IPC from mobile builds, narrowed mobile configuration
+  crossing to connection-manager visibility, and rejected unsupported mobile
+  tunnel/RDP construction and dispatch.
 
-### Remote input ownership
-- Made desktop input execution an owned resource of one authenticated Remote connection from admission
-  through joined teardown. Bounded queues, cancellation, physical key and mouse-button ownership,
-  aggregate `BlockInput` leases, backend-canonical identities, and process-wide native dispatch prevent
-  one session from releasing or inheriting another session's input state.
-- Kept Windows input and `BlockInput` calls on a stable native executor, kept required macOS work on its
-  owned queue, and made Linux, macOS, and Windows injection failures explicit. Temporary modifiers and
-  teardown retry releases or fail closed instead of silently abandoning uncertain native state.
-- Removed the macOS privacy-blackout event tap. Display obscuring cannot implicitly block local physical
-  input; explicit `BlockInput` remains a separate Remote-only, connection-owned capability.
-- Bounded wheel and gesture magnitudes and retained Remote-only authorization at every controlled-side
-  input sink, including rewritten Android events and Windows service-owned SAS.
+### Codecs and packaging
 
-### TCP tunnels and RDP
-- Made every desktop tunnel mapping carry an immutable validated target and own its listener,
-  cancellation, setup, login, relay tasks, and teardown. Removal, replacement, command-channel closure,
-  and outer-session cancellation stop acceptance and join all owned work.
-- Made loopback listeners exclusive on each desktop platform, including Windows
-  `SO_EXCLUSIVEADDRUSE`. Added nonblocking limits of 32 mappings process-wide, 32 accepted connections
-  per mapping, and 128 accepted connections process-wide, with permits held through setup and relay.
-- Removed pre-login application reads and shared mutable target selection. Tunnel bytes enter relay only
-  after the remote authorizes the exact `PortForward` session.
-- Removed RDP usernames and passwords from the dialog, peer configuration, tunnel transport, process state,
-  and Windows Credential Manager. Legacy options are scrubbed on load/store; trusted System32 `mstsc.exe`
-  receives only the ephemeral loopback endpoint and `/prompt`.
+- Backported the libvpx VP9 encoder `write_superframe_index` fix tracked as
+  CVE-2026-1861/CVE-2026-2447, and removed the libaom/AV1 runtime and build scaffold.
+  In-process decoder risk remains explicit in the
+  [native-codec watch](docs/NATIVE-CODEC-WATCH.md).
+- Made Debian payload contents, ownership, modes and loader policies independent
+  of checkout metadata and generated staging inventories.
+- Tightened native-library inputs, Android signing checks, Apple helper provenance,
+  installer authority and final artifact manifests.
 
-### Native codecs and supply chain
-- Backported the exact upstream libvpx VP9 encoder `write_superframe_index` bounds fix tracked as
-  CVE-2026-1861/CVE-2026-2447 and pinned the source archive, patch, and Windows build tools by SHA-512.
-  Native codec staging remains offline and platform-specific; in-process decoder risk remains an explicit
-  accepted residual.
-- Removed the libaom/AV1 runtime and build scaffold instead of retaining another unreviewed in-process
-  decoder. Cargo, Dart, native-dependency, workflow, and build-script inventories are machine-derived and
-  verifier-gated.
-- Hardened dependency and build inputs, including bundled native libraries, runner libraries, Android
-  signing and final-manifest checks, Debian payload ownership and ELF search paths, and Apple
-  service/helper provenance.
-- Made the Debian package tree independent of checkout ownership, modes, and umask: one supported Flutter
-  constructor now cleans and exact-matches its payload shape, emits canonical public data/control modes, declares
-  editable `/etc/rustdesk` conffiles, rejects links and ambiguous inventories, requires canonical raw tar types,
-  names, owner fields, and padding, and is checked member-by-member before release hashing. Its source gate pins the
-  import surface, undecorated runtime constructor identity, process-launch APIs, and exact package operation program.
-  Producer and artifact library inventories are independently explicit; ignored Flutter-generated plugin metadata is
-  not source authority, while the actual staged bundle and emitted archive must exact-match those policies.
-  Loader-visible ELF proof requires exact x86-64 runtime identity and interpreter, non-W+X loads, one canonical
-  no-content GNU-stack header with exact non-executable RW permissions and ABI-valid producer alignment, bounded
-  dynamic tables, safe dependency basenames and SONAMEs, no auxiliary loader injection tags, and only the role-specific
-  bundle-relative RUNPATHs.
+### Build, verification and publication
 
-### Verification and release discipline
-- Made the desktop main-IPC protocol compile-time absent on mobile and replaced the inherited generic
-  mobile config crossing with one typed connection-manager visibility query. Android input validation
-  now compiles against the shared protocol constants. Mobile port-forward/RDP construction, deep links,
-  connect routing, and commands are rejected explicitly without creating a session, changing peer
-  configuration, or enqueueing an unconsumed command.
-- Added a mandatory pinned, offline Android Rust release gate that generates the real Flutter bridge and
-  checks the <code>aarch64-linux-android</code> release library with the APK build's exact toolchain and features.
-- Projected the immutable Android Gradle seed into a fresh non-root owner-only execution cache, rejected ambient
-  init authority and unsafe topology, and replaced the ignored `org.gradle.offline` property with a tracked init
-  script that sets Gradle's actual offline start parameter. Pinned Gradle execution and online-snapshot mutation
-  suites are mandatory release gates; `--network=none` remains the independent hard boundary.
-- Confined verifier scratch state to private workspaces and made mutation self-tests prove that source,
-  lockfile, release-ordering, and workspace-authority failures are detected.
-- Bound verifier fixture allocation and cleanup to retained no-follow scratch descriptors. Random descriptor-relative
-  creation, mount/identity-checked cleanup, acquisition-failure fixtures, exact descriptor inheritance, and a real
-  consumer pathname-replacement fixture reject redirection and preserve ambiguous edges.
-- Routed lifecycle-capable verifier commands through authenticated transient cgroup scopes with gated execution,
-  post-authentication `SCM_RIGHTS` descriptor handoff, pidfd target identity, exact unit/cgroup authentication,
-  `cgroup.kill`, recursive emptiness proof, and unit collection. Fixtures cover signals, `setsid`, lingering
-  descendants, and double-fork daemonization.
-- Moved canonical publication snapshots to a fresh pidfd-supervised worker and included ctime, `statx` mount and
-  attribute state, mount flags, visible xattrs, explicit ACL/capability probes, inode flags, two inventories,
-  exact content/EOF, final edges, and independent resource/deadline mutation gates.
-- Closed source-gate text scanning to fixed, root-owned GNU `grep`, with explicit match/no-match/error
-  status handling and a release preflight that runs before the online closure is copied.
-- Made the non-root portable password smoke stage execute from an immutable owner-scoped fixture, prove
-  its portable role and exact process ownership, and leave the mode-0700 release source bind unchanged.
-- Replaced runtime-smoke startup, event, capture, and teardown delays with bounded monotonic proof of one
-  retained child identity, exact listener ownership, and a dedicated typed readiness transaction bound to
-  that PID/start pair by `SO_PEERCRED`. Both UID-scoped IPC listener kernel inodes must belong to that process
-  before and after the transaction; probe and log evidence is descriptor-pinned, the complete transaction has
-  an outer hard deadline, and signals use pidfds without a raw-PID fallback. Runtime stages mount source
-  read-only; only the transcript-preserving build stage receives a writable source bind. Strict isolated
-  stages retain their complete output and real exit status; password watchdogs derive from the admitted-operation
-  recovery bound and enforce a finite kill ceiling, and file-transfer success requires successful serialization
-  and sends plus a non-empty peer identity rather than CPace keying alone.
-- Made each release pass an independent `--no-hardlinks --reject-shallow` private repository with its own object database, detached exact
-  commit, no remotes, strict object validation, mount closure, and complete inode-link closure. The release transaction
-  creates no Git worktree registration and never inspects or mutates the invoking repository's worktree registry.
-- Made generated-state normalization one retained-authority operation. It requires kernel hardlink protection and a
-  524,288-entry, depth-128 authority with exact descriptor accounting, retains every directory and unique non-directory
-  inode, records and re-proves complete type/owner/group/mode/link metadata, rejects external links, mounts, special
-  objects, and changed inventories, strips dangerous mode bits, and re-proves the exact private source before
-  fail-closed Git cleanup. Release preflight proves the 524,544-descriptor host and pinned-container budgets before
-  building. Every closure and normalization invocation re-authenticates bounded bytes read from one retained committed
-  helper descriptor; no release operation executes or mounts its mutable pathname.
-- Made production workspace cleanup a terminal privileged deletion instead of whole-workspace ownership normalization.
-  An exact hash-verified helper descriptor acquires complete mount, type, depth, inventory, and hardlink authority; a
-  no-network container receives bounded helper source directly from that descriptor and, with only filesystem
-  `DAC_OVERRIDE` and `FOWNER`, consumes authenticated edges without changing the online snapshot's ownership or
-  modes. Every use hashes the bounded descriptor bytes in memory against the committed digest; preflight exercises the
-  exact capability path against hostile metadata, and the host refuses late content before removing only the exact
-  empty root through retained parent authority. Missing production image authority preserves the workspace; recursive
-  host cleanup is fixture-only.
-- Isolated the production dirty-source proof in a private complete-history no-hardlink clone attached as `master` to the
-  expected commit. Its exclusive probe is the sole invalid source state, and its mount-closed, inode-link-closed fixture
-  is descriptor-removed and proved absent.
-- Made managed verifier finalization preserve the complete forced-kill, launcher-reap, descriptor-close,
-  unit-collection, and cgroup-path failure set instead of allowing one cleanup failure to hide another.
-- Made final `dist` installation an ext4-only same-parent transaction bound to the complete descriptor-retrieved ext4 UUID and
-  opaque object handles. Nonblocking retained-descriptor opens reject special-file substitution before reads; public
-  verification rejects unresolved journal state without repair.
-- Made the durable v3 journal advance through `initializing`, handle-bound `staging`, manifest-bound `prepared`, and
-  explicit `rollback` or `cleanup`. Unbound payloads are preserved as ambiguous, partial staging is removed only under
-  its recorded handle, first installation is kernel no-clobber, and replacement uses one atomic exchange.
-- Expanded restart and corruption fixtures across first and replacement publication, partial cleanup, no-clobber,
-  wrong-token canonical state, malformed reserved state, object substitution, modes, hardlinks, xattrs, root metadata,
-  and special-file types.
-  These are process-restart proofs; they do not claim physical power-loss simulation.
-- Deferred release success until signal-excluded final cleanup has reconciled publication, removed the exact private
-  workspace through retained descriptors, and proved its deletion boundary.
-- Made the complete release build require one clean committed `HEAD` before verification, after
-  verification, and after all cold reproducible target builds. Windows artifacts must be archived from
-  that same commit; generated checksums record the exact source commit and fork version.
-- Made target publication ownership explicit: each builder receives an absent output path and owns its
-  creation, while mutable Windows harness state remains pass-private and output-disjoint. Behavioral and
-  mutation fixtures reject precreated publication paths, equal or nested Windows state, non-atomic Windows
-  publication, and state authority on other targets.
-- Made release verification authenticate the manifest digest, full commit, and fork version through an
-  independent channel before checking artifacts. Documented fail-closed Android signing-key loss and
-  compromise handling: no pin bypass, and a suspected compromise retires the package identity.
-- Added focused behavioral and structural gates for credential transaction finality, service authority,
-  exact-child supervision, desktop input ownership, tunnel lifecycle and admission, installer authority,
-  and the native codec backport.
+- Added offline Android Rust/Flutter-bridge compilation and made Gradle use an
+  explicit offline execution policy.
+- Isolated build passes in independent exact-commit source copies and separated
+  target outputs, mutable harness state and authenticated input snapshots.
+- Strengthened runtime-smoke process ownership, readiness, bounded waits, failure
+  reporting and joined cleanup. Current execution and storage boundaries are in
+  [the build harness guide](scripts/README.md); historical harness descriptions
+  are not operating instructions.
+- Bound release publication and cleanup to retained filesystem authority and a
+  durable recovery journal. Ambiguous state is preserved for reconciliation;
+  process-restart fixtures do not establish physical power-loss recovery.
+- Required clean source identity throughout verification and independent cold
+  Debian, Android and Windows builds, with commit/version-bound manifests.
+- Required independent manifest authentication before artifact verification.
+  Documented Android signing-key loss and compromise handling without replacing
+  or bypassing the committed signing identity.
 
 ### Assurance scope
-- Linux behavior and compile gates, Apple source-conformance checks, and native Windows pre-build suites
-  cover platform-specific source contracts. Only the repository's complete clean committed cold release
-  build is artifact-level proof for Debian, Android, Windows EXE, and Windows MSI outputs.
-- These source notes establish no native Windows or artifact reproducibility evidence; only a complete clean
-  committed `.6` release transaction and its generated exact-commit manifest can establish that evidence.
-- This hardening was developed and reviewed with AI assistance and remains single-maintainer security
-  engineering, not an independent professional cryptographic or product-security audit.
+
+These are source-change summaries. Component checks, source gates and compilation
+do not establish installed-service behavior or complete artifact acceptance.
+Current native, reproducibility and release obligations remain in the hardening
+ledger. This work used AI assistance and single-maintainer review; it is not an
+independent professional cryptographic or product-security audit.
 
 ## 1.4.7-hardened.5 — 2026-07-11
 

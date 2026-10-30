@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/consts.dart';
@@ -37,6 +38,7 @@ const _mobileBooleans = [
 
 class _NativeSettings implements RustdeskImpl {
   final unexpected = <Symbol>[];
+  final translations = <String, String>{};
   String theme = 'light';
   final themeWrites = <String>[];
   final themeBroadcasts = <String>[];
@@ -72,7 +74,7 @@ class _NativeSettings implements RustdeskImpl {
     final key = call.namedArguments[#key];
     switch (call.memberName) {
       case #translate:
-        return call.namedArguments[#name];
+        return translations[call.namedArguments[#name]] ?? call.namedArguments[#name];
       case #isIncomingOnly:
       case #isOutgoingOnly:
       case #isDisableSettings:
@@ -987,6 +989,67 @@ void main() {
     expect(find.text('Failed'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  for (final sample in [
+    (language: 'English', scale: 1.0),
+    (language: 'English', scale: 3.0),
+    (language: 'German', scale: 2.0),
+  ]) {
+    testWidgets(
+        'settings sidebar labels fit for ${sample.language} scale ${sample.scale}',
+        (tester) async {
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      if (sample.language == 'German') {
+        // The sidebar values from src/lang/de.rs; other native reads stay fixtures.
+        native.translations.addAll({
+          'Settings': 'Einstellungen', 'General': 'Allgemein',
+          'Security': 'Sicherheit', 'Display': 'Bildschirm', 'About': 'Über',
+        });
+      }
+      await tester.binding.setSurfaceSize(const Size(1000, 420));
+      await tester.pumpWidget(MaterialApp(
+        theme: MyTheme.lightTheme,
+        home: MediaQuery(
+          data: MediaQueryData(textScaler: TextScaler.linear(sample.scale)),
+          child: DesktopSettingPage(initialTabkey: SettingsTabKey.about),
+        ),
+      ));
+      await _settle(tester);
+      expect(tester.takeException(), isNull);
+      final sidebar = find.byType(ListView).first;
+      final viewport = tester.getRect(sidebar);
+
+      void expectTextFits(Finder label, Rect bounds) {
+        final rect = tester.getRect(label);
+        expect(rect.left, greaterThanOrEqualTo(bounds.left - 0.1));
+        expect(rect.right, lessThanOrEqualTo(bounds.right + 0.1));
+        final paragraph = tester.renderObject<RenderParagraph>(label);
+        expect(paragraph.didExceedMaxLines, isFalse);
+        final boxes = paragraph.getBoxesForSelection(TextSelection(
+            baseOffset: 0, extentOffset: paragraph.text.toPlainText().length));
+        expect(boxes, isNotEmpty);
+        for (final box in boxes) {
+          expect(box.bottom, lessThanOrEqualTo(paragraph.size.height + 0.1));
+        }
+      }
+
+      expectTextFits(find.text(native.translations['Settings'] ?? 'Settings'),
+          Rect.fromLTRB(viewport.left, 0, viewport.right, viewport.top));
+      for (final key in ['General', 'Security', 'Display', 'About']) {
+        final label = find.descendant(of: sidebar,
+            matching: find.text(native.translations[key] ?? key));
+        await tester.ensureVisible(label);
+        await _settle(tester);
+        final tile = find.ancestor(of: label, matching: find.byType(InkWell));
+        final bounds = tester.getRect(tile);
+        expectTextFits(label, bounds);
+        expect(tester.getRect(label).top, greaterThanOrEqualTo(viewport.top - 0.1));
+        expect(tester.getRect(label).bottom, lessThanOrEqualTo(viewport.bottom + 0.1));
+      }
+      _expectSelection(tester, SettingsTabKey.about);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
 
   testWidgets('settings sidebar and external requests select the current page',
       (tester) async {

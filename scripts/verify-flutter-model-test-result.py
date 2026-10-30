@@ -1173,6 +1173,9 @@ SETTINGS_NAVIGATION_TESTS = {
     "recording directory cancellation and picker failure allow retry",
     "recording directory save failure retries and retires after close",
     "settings sidebar and external requests select the current page",
+    "settings sidebar labels fit for English scale 1.0",
+    "settings sidebar labels fit for English scale 3.0",
+    "settings sidebar labels fit for German scale 2.0",
     "settings close and reopen retire the exact navigation owner",
     *{f"settings {tab} scrolling survives rebuilds and retires on close"
       for tab in ("general", "safety", "display", "about")},

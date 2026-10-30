@@ -448,21 +448,21 @@ class _CmHeaderState extends State<_CmHeader>
                 if (client.type_() == ClientType.file)
                   FittedBox(
                     child: Text(
-                      translate("File Transfer"),
+                      translate("Transfer file"),
                       style: TextStyle(color: Colors.white70, fontSize: 12),
                     ),
                   ),
                 if (client.type_() == ClientType.camera)
                   FittedBox(
                     child: Text(
-                      translate("View Camera"),
+                      translate("View camera"),
                       style: TextStyle(color: Colors.white70, fontSize: 12),
                     ),
                   ),
                 if (client.portForward.isNotEmpty)
                   FittedBox(
                     child: Text(
-                      "Port Forward: ${client.portForward}",
+                      "${translate('TCP tunneling')}: ${client.portForward}",
                       style: TextStyle(color: Colors.white70, fontSize: 12),
                     ),
                   ),

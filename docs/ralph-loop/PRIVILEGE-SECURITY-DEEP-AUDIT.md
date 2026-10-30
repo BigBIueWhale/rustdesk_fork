@@ -121198,3 +121198,36 @@ QEMU 2644906 joins in 30.507 seconds, RAM `run.thcwqx9k` retires and all three
 endpoint deltas are zero. Six count files add 104,080 bytes; thirteen raw files
 total 199,217 bytes per host, copied and hash-verified. This audit-only receipt
 leaves the ledger unchanged.
+
+## 2026-10-30 — session-mode label localization
+
+Previous goal turn: PROGRESS through the build-guide correction and completed-run
+receipt. The user's pivot remains binding; all parked work and fifteen native
+credential-action acceptances remain open. An initial catalogue review finds no
+empty active translations, so none is changed. UI call-site review instead finds
+four hard-coded English window-title prefixes, two nonexistent connection-manager
+keys (`File Transfer`, `View Camera`) and its literal `Port Forward` prefix.
+The translator uses exact keys and returns unknown keys unchanged.
+
+Seven label expressions now reuse the existing connection-menu keys:
+`Transfer file`, `View camera`, `TCP tunneling` and `Control Remote Desktop`.
+The window-title helper retains its brand, peer-label composition, type selection
+and callers; connection-manager conditions, layout and endpoint text are unchanged.
+The shared title helper is called during initialized window creation and tab
+selection. Title-update scheduling is outside this correction.
+
+Read-only catalogue inspection follows the actual Rust module paths, including
+`pt_pt` at `lang/pt_PT.rs`, and confirms all 196 values across 49 non-English
+catalogues; English uses its existing value or key fallback. Exact before/after
+comparison proves only the seven intended expressions change, with every other
+byte in both source files preserved. Catalogue files and the translator remain
+unchanged; whitespace checks pass. No new test or product execution is added for
+this text-only change. Native rendering, bidirectional presentation and live
+language-change title refresh remain unverified.
+
+Source SHA-256 before/after:
+
+| File | Before | After |
+| --- | --- | --- |
+| `flutter/lib/common.dart` | `b841dec7c4d0aa286a6d99540c8924a02e82e9781857be53106a8a99c4108b85` | `27a81b205317d2707f5fcf430829ca74916e62caa622cf0a3dedb1b186ffcc73` |
+| `flutter/lib/desktop/pages/server_page.dart` | `d5991ac2387d40543ed2c1180329d22b5752d1e58c94c9e4b66d4381d2916d03` | `77577d288caa98ee4bff1e41d146e2196092d436c2ef44b6ee06d57fec30edcd` |

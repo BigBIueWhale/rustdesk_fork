@@ -121581,3 +121581,50 @@ QEMU 2890431 exits zero after 139.539 seconds; RAM `run.zeawpssy` is absent and
 the failed diagnostic root is retired under the shared lock. Outer exit is one.
 Review also distinguishes missing staging authority from an absent final target
 and uses a fresh directory enumeration offset when retrying namespace retirement.
+
+**Accepted Linux library checkpoint.** Source `83463c450731b634785b2edf98eaedec321b576f`,
+tree `e119455c21ed934d0a7850201422a3405166e47a`, TUF run `IUIXYHXDl7`:
+`bash scripts/smoke-verifier-vm-authority.sh --file-metadata-tests` exits zero.
+All 139 required tests pass in 34 groups, including the process-death/resume case,
+two independent simultaneous claims with same-target refusal, and a maximum-length
+native-byte filename. Unit artifact SHA-256:
+`c06b0fd96561b5399d965130a5452dc11272b4c9510a17249d2d2807d073b032`.
+
+All 16 root/UID-4001 scenarios and 20 actors complete and join. The three real
+syscall-entry cases now report `safe=3`: the actor cannot rename the private
+payload, digest or lease; each syscall completes normally, finalization and
+retirement succeed, and the final file has exact `abcdef` bytes, root ownership,
+0600 mode, one link and mtime 31. The actor has no capabilities or inherited
+fixture descriptors. Whole-container replacement preserves the foreign object,
+refuses a concurrent second generation and still lets the retained owner complete.
+Calibrated foreign artifacts are explicitly placed inside the private fixture by
+root to retain the owner/mode rejection controls; ordinary actors cannot place
+them there themselves. The three original syscall observers and failure oracles
+retain their actual named kernel operations and do not alter syscall execution.
+Native artifact `a57c9da0093fdb3f7ea510db13ddd617504db80484a1ad82775805522fc71caf`;
+driver source `c64157368adf6ccaa121a4fd52679de7e9a4e26ec58ac0e6c7fa5d4e6f94b72e`.
+
+The retained October 24 failing baseline remains applicable: exact source
+comparison from `bc81bb84` to this work's `b2399b80` start finds identical
+`finish_recv_write_at`, `remove_recv_child_at`, the complete receive lease surface
+and native driver (driver SHA-256 `d5cbb9310cb35c404bb2ebc6ef328ee1c81e69f8d758d9ed6ea6baef9566b0f3`).
+It was not needlessly rerun. Existing fixture locations/counts are migrated for
+the private layout; no supported feature or safety expectation is waived.
+
+Accepted raw `hbb-common-fs-run.IUIXYHXDl7.serial.log`: 103,206 bytes, SHA-256
+`f4c915f5f3406bc268eb20cae85d2f20ff7d4459f83d4bee12144025c4706a3b`.
+QEMU 2897385 joins with status zero after 208.928 seconds; bounded RAM
+`run.mw9cxafg` is absent. Peak scratch allocation is 4,086,251,520 bytes inside
+the admitted 6 GiB workspace; QEMU reports 4,096 durable write bytes. All four
+listener inventory deltas are zero. Seven raw/storage/listener files per run
+are retained on both hosts. The first failed diagnostic root was removed only
+after evidence hashing and exact process/workspace retirement (3,665,920 allocated
+bytes reclaimed). No host product, service, Docker or root execution occurred.
+
+The three demonstrated Linux library race windows are corrected. The complete
+receive requirement remains OPEN: crash boundaries during enrollment, persistent
+coordination retention/cleanup, remount and filesystem identity, non-local/ACL
+filesystems, installed/authenticated-peer integration, other platforms, physical
+durability and release/independent-review acceptance still require evidence or
+correction. Continue this selected blocker at those lifecycle boundaries; do not
+reopen unrelated parked topics. The whole goal remains active and incomplete.

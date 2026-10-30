@@ -16109,7 +16109,7 @@ replacement, ACL/non-local filesystems, other platforms, R-S0/R-F5 and release
 acceptance remain OPEN. The native cases provide controls for that next correction;
 they do not establish immunity to the remaining namespace race.
 
-**Receive namespace syscall windows — Linux failures REPRODUCED; production correction OPEN.**
+**Receive namespace syscall windows — three Linux races corrected; broader acceptance OPEN.**
 `bc81bb84` extends that native driver with three syscall-entry cases. A root
 receiver uses the unchanged production `TransferJob` API; a separate UID/GID 4001
 actor, with zero capabilities, no-new-privileges and no inherited fixture
@@ -16125,28 +16125,42 @@ after publishing the valid payload. All three actual syscalls return zero.
 The original root-owned objects remain private under the actor-renamed entry.
 The driver completes all fifteen observations/nineteen actors and retires its
 fixtures, then fails with `0/3 safe`. The canonical `--file-metadata-tests`
-lane now requires these cases to pass and correctly fails on current production.
+lane requires these cases to pass and correctly failed on that baseline.
 No new unit-suite pass is claimed: that failure path does not export its unit
 logs or outer success receipt. The first attempt is rejected compile evidence
 (missing Rust 2018 `TryFrom` import), not a behavioral run. Both disposable VMs
 and RAM workspaces are joined and retired. Evidence:
 `.harness-state/verifier-vm/receive-namespace-window-d6cee89c.json`.
 
-This is a reproducible regression, not a production fix or installed-service
-acceptance. Replace the public staging/cleanup namespace with a protected one;
-preserve exact destination ownership, native names, resume/crash recovery,
-concurrent different-file transfers, durable publication and bounded cleanup.
-Other platforms/filesystems, installed/peer integration, R-S0/R-F5 and release
-acceptance remain OPEN.
+**Specifically resumed by the user; Linux library checkpoint accepted.**
+The user answered "Resume this file-receive fix" on October 30. The old
+`263bbb965d97c3113658b6cf0e3c2d330568ffa7` stash remains preserved; its draft is
+rebased and revised in `6e938933`/`83463c45`. Other user parks remain unchanged.
+Linux receive artifacts now live in private effective-owner directories, with
+NSS-derived protected coordination, retained destination/staging descriptors,
+per-file leases and cross-process namespace-generation exclusion. Publication
+syncs both affected directories. Missing staging authority remains an error.
 
-**OPEN/PARKED — receive implementation at user topic pivot.** The unfinished
-private-staging implementation and fixture migration are preserved in stash
-`263bbb965d97c3113658b6cf0e3c2d330568ffa7`, based on `9dd16625`. It contains
-`libs/hbb_common/src/fs.rs` and the new `fs/receive_namespace.rs`; neither was
-compiled or executed. The committed production path and three reproduced timing
-failures remain unchanged and OPEN. Do not resume this parked implementation
-from a general goal continuation; work proceeds on other topics until the user
-specifically resumes it.
+At `83463c45`, TUF `IUIXYHXDl7` passes all **139 focused tests** and **16 native
+root/UID-4001 scenarios with 20 joined actors** in 208.928 VM seconds. Each of
+the three actual syscall-entry replacement attempts is denied by the kernel;
+authorized publication and retirement succeed with exact bytes/mode/mtime.
+Moving the complete private container cannot admit a competing generation,
+and the retained original claim finishes without modifying the replacement.
+Ordinary fresh/resumed writes, calibrated foreign-artifact/mode refusals,
+cancellation, parent replacement, process-death resume, independent file claims
+and maximum-length native filenames retain their named controls. The first
+candidate compiled but stopped at an obsolete directory-count fixture; its
+failure and the corrected run are retained in the audit and raw VM logs.
+
+Per-file artifacts/directories retire. One container, its small identity file
+and two bounded coordinator records persist per destination. Enrollment-crash
+boundaries, long-term coordination retention/cleanup, remount/filesystem identity,
+ACL/non-local filesystems, other platforms, installed/authenticated-peer
+integration, physical power-loss durability, R-S0/R-F5 and release acceptance
+remain OPEN. The filesystem-ID hash is a lookup key, not a portable durable
+identity guarantee. This checkpoint closes the three reproduced Linux library
+windows; it does not close the complete receive requirement.
 
 **Native receive-path identity — Linux file transactions ACCEPTED; caller/platform acceptance OPEN.**
 `c1df5d00` preserves native bytes when appending receive staging suffixes.

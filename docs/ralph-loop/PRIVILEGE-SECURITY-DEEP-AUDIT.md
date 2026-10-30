@@ -119821,3 +119821,12 @@ actual receiver, concurrency and sustained-flood CPU/memory/access, installed
 authorization/settings, other-platform clocks, R-S0/R-F5 and release acceptance
 remain OPEN. All parked work stays parked. The existing R-S10 ledger paragraph
 is updated; fresh token measurement follows.
+
+**Fresh ledger count.** At `9aaf7119b788c4e4aca3727b62b32d0eb09b2d3b`,
+TUF `efRZ2ycXXF` passes seven tokenizer controls and exact byte round trip using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 362,399 tokens / 1,657,119 bytes,
+SHA-256 `2b5042549cf7bffb0c3050c262fd1593cb7b8dc072bbee5244c29a8fdce9771b`.
+QEMU 2144872 joins in 31.118 seconds, RAM `run.k7yafb8k` retires, and all three
+listener deltas are zero. Six count files add 105,258 bytes; the complete twenty
+raw files total 260,221 bytes per host with matching hashes. This audit-only
+receipt leaves the measured ledger unchanged.

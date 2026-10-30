@@ -120,17 +120,14 @@ class _DesktopHomePageState extends State<DesktopHomePage>
         color: Theme.of(context).colorScheme.background,
         child: Stack(
           children: [
-            Column(
-              children: [
-                SingleChildScrollView(
-                  controller: _leftPaneScrollController,
-                  child: Column(
-                    key: _childKey,
-                    children: children,
-                  ),
+            Positioned.fill(
+              child: SingleChildScrollView(
+                controller: _leftPaneScrollController,
+                child: Column(
+                  key: _childKey,
+                  children: children,
                 ),
-                Expanded(child: Container())
-              ],
+              ),
             ),
             if (isOutgoingOnly)
               Positioned(

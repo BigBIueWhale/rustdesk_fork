@@ -119404,3 +119404,13 @@ their complete test modules match; `git diff --check` passes. Real codecs,
 full application/installed settings, target-native R-F5 recovery/soak, all fifteen
 credential actions, independent reproduction and release acceptance remain OPEN.
 Every separately parked task remains parked. Fresh ledger measurement follows.
+
+**Fresh ledger count.** At `9e337cd185a51c5b24ecb87b7a402e8ad2e15c54`,
+TUF `N415FsnI0B` passes seven tokenizer controls and the exact byte round trip
+using `tiktoken-0.12.0/cl100k_base/encode_ordinary`: 361,679 tokens /
+1,653,807 bytes, SHA-256
+`b99f7cedd05347a79ab560479c4d1d1bf4172d3d7423075d6e1afc5250c5ff59`.
+QEMU 1896948 joins in 31.528 seconds, RAM `run.3yx5qpk1` retires and all
+three listener deltas are zero. Six count files add 104,031 bytes; twenty files
+from this slice total 313,723 bytes per host with matching hashes. This audit-only
+receipt leaves the measured ledger unchanged.

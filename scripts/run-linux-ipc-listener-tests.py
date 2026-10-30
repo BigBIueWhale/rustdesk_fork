@@ -357,7 +357,8 @@ def native(expected_sha, barrier_sha):
         for scenario in ('status', 'config', 'shape'):
             action = 'main-response-' + scenario
             result = check('', uid, action=action)
-            detail = ' rejected=38 controls=10 retired=2' if scenario == 'shape' else ''
+            detail = (' rejected=38 controls=10 retired=2 request_rejected=24 request_controls=18'
+                      if scenario == 'shape' else '')
             record(f'{action}-{uid}', result.returncode == 0
                    and result.stdout == f'OK {action} uid={uid}{detail} cleanup=joined\n', result)
         for scenario in ('value', 'missing', 'refused', 'timeout', 'disconnected', 'invalid'):

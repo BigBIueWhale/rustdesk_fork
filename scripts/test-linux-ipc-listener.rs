@@ -696,6 +696,7 @@ async fn main_response_shape_fixture() {
     let mut failures = Vec::new();
     let (mut rejected, mut controls) = (0, 0);
     let mut retired = 0;
+    let (mut request_rejected, mut request_controls) = (0, 0);
     {
         let (sender, receiver) = tokio::net::UnixStream::pair().unwrap();
         for fd in [sender.as_raw_fd(), receiver.as_raw_fd()] {
@@ -721,6 +722,68 @@ async fn main_response_shape_fixture() {
             sent.unwrap();
             if matches!(refused, Ok(true)) { retired += 1; }
             else { failures.push(format!("retired terminal-count response={response}: {refused:?}")); }
+        }
+        for (index, wire) in [
+            r#"{"t":"StatusSnapshot","extra":true}"#,
+            r#"{"t":"StatusSnapshot","c":{"extra":true}}"#,
+            r#"{"c":{"extra":true},"t":"StatusSnapshot"}"#,
+            r#"{"t":"StatusSnapshot","c":[]}"#,
+            r#"{"extra":true,"t":"ReadinessSnapshot"}"#,
+            r#"{"t":"ReadinessSnapshot","t":"StatusSnapshot"}"#,
+            r#"{"c":null,"t":"ReadinessSnapshot","c":null}"#,
+            r#"{"t":"Config","c":{"t":"PermanentPassword"}}"#,
+            r#"{"t":"SetVoiceCallInput","c":false}"#,
+            r#"{"t":"SetVoiceCallInput"}"#,
+            r#"{"t":"PasswordMutationStatus","c":{"operation_id":"fixture","extra":true}}"#,
+            r#"{"c":{"operation_id":"a","operation_id":"b"},"t":"PasswordMutationStatus"}"#,
+            r#"{"t":"PasswordMutationStatus","c":{}}"#,
+            r#"{"t":"SetOption","c":{"key":"PermanentPassword","value":"unused"}}"#,
+            r#"{"t":"SetOption","c":{"key":"AudioInput","key":"VoiceCallInput","value":"device"}}"#,
+            r#"{"c":{"key":"AudioInput","value":"a","value":"b"},"t":"SetOption"}"#,
+            r#"{"t":"SetOption","c":{"key":"AudioInput","value":"device","extra":true}}"#,
+            r#"{"t":"ValidateCmConnection","c":{"id":1,"conn_type":{"t":"Remote"},"cm_auth_token":"fixture","extra":true}}"#,
+            r#"{"t":"ValidateCmConnection","c":{"id":1,"conn_type":{"t":"Unknown"},"cm_auth_token":"fixture"}}"#,
+            r#"{"c":{"id":1,"id":2,"conn_type":{"t":"Remote"},"cm_auth_token":"fixture"},"t":"ValidateCmConnection"}"#,
+            r#"{"t":"ValidateCmConnection","c":{"id":1,"conn_type":{"t":"Remote"}}}"#,
+            r#"{"t":"ValidatePulseAudioStart","c":{"token":"fixture","extra":true}}"#,
+            r#"{"c":{"token":"a","token":"b"},"t":"ValidatePulseAudioStart"}"#,
+            r#"{"t":"SetPermanentPassword","c":"unused"}"#,
+        ].into_iter().enumerate() {
+            let (sent, received) = tokio::join!(
+                sender.send_raw(Bytes::from_static(wire.as_bytes())),
+                receiver.next_main_timeout(1000),
+            );
+            sent.unwrap();
+            if matches!(received, Ok(None)) { request_rejected += 1; }
+            else { failures.push(format!("malformed request[{index}]: {received:?}")); }
+        }
+        for (tag, payload) in [
+            ("StatusSnapshot", "null"),
+            ("ReadinessSnapshot", "null"),
+            ("Config", r#"{"t":"VoiceCallInput"}"#),
+            ("SetVoiceCallInput", r#""device""#),
+            ("PasswordMutationStatus", r#"{"operation_id":"fixture"}"#),
+            ("SetOption", r#"{"key":"AudioInput","value":"device"}"#),
+            ("ValidateCmConnection", r#"{"id":1,"conn_type":{"t":"Remote"},"cm_auth_token":"fixture"}"#),
+            ("ValidatePulseAudioStart", r#"{"token":"fixture"}"#),
+        ] {
+            let tag = serde_json::to_string(tag).unwrap();
+            let canonical = if payload == "null" { format!(r#"{{"t":{tag}}}"#) }
+                else { format!(r#"{{"t":{tag},"c":{payload}}}"#) };
+            let expected: serde_json::Value = serde_json::from_str(&canonical).unwrap();
+            let mut wires = vec![format!(r#"{{"t":{tag},"c":{payload}}}"#),
+                                 format!(r#"{{"c":{payload},"t":{tag}}}"#)];
+            if payload == "null" { wires.push(canonical); }
+            for wire in wires {
+                let (sent, received) = tokio::join!(
+                    sender.send_raw(Bytes::from(wire)), receiver.next_main_timeout(1000),
+                );
+                sent.unwrap();
+                match received {
+                    Ok(Some(request)) if serde_json::to_value(request).unwrap() == expected => request_controls += 1,
+                    result => failures.push(format!("valid request {tag}: {result:?}")),
+                }
+            }
         }
         for (tag, payload) in [
             ("StatusSnapshot", r#"{"options":[{"key":"AudioInput","value":"device"}],"file_transfer_enabled":false}"#),
@@ -775,7 +838,8 @@ async fn main_response_shape_fixture() {
     assert!(failures.is_empty(), "response shape failures: {failures:?}");
     assert_eq!((rejected, controls), (38, 10));
     assert_eq!(retired, 2);
-    println!("OK main-response-shape uid={} rejected=38 controls=10 retired=2 cleanup=joined", unsafe { libc::geteuid() });
+    assert_eq!((request_rejected, request_controls), (24, 18));
+    println!("OK main-response-shape uid={} rejected=38 controls=10 retired=2 request_rejected=24 request_controls=18 cleanup=joined", unsafe { libc::geteuid() });
 }
 
 async fn main_response_fixture(scenario: &str) {

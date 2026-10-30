@@ -121231,3 +121231,11 @@ Source SHA-256 before/after:
 | --- | --- | --- |
 | `flutter/lib/common.dart` | `b841dec7c4d0aa286a6d99540c8924a02e82e9781857be53106a8a99c4108b85` | `27a81b205317d2707f5fcf430829ca74916e62caa622cf0a3dedb1b186ffcc73` |
 | `flutter/lib/desktop/pages/server_page.dart` | `d5991ac2387d40543ed2c1180329d22b5752d1e58c94c9e4b66d4381d2916d03` | `77577d288caa98ee4bff1e41d146e2196092d436c2ef44b6ee06d57fec30edcd` |
+
+Fresh ledger count at `77eba2118e6c9f09de25fda491c1cce7f198648b`:
+`EjKz5ivrOe` passes seven controls and exact byte round trip using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 366,464 tokens / 1,676,546 bytes,
+input SHA-256 `dd977fc31ad95cf29c324d30adde757ef8519e61e3acdba255b3657b04e4d0f6`.
+QEMU 2646724 joins in 30.462 seconds, RAM `run.1fdvl8jy` retires and all three
+endpoint deltas are zero. Six raw count files total 103,770 bytes per host,
+copied and hash-verified. This audit-only receipt leaves the ledger unchanged.

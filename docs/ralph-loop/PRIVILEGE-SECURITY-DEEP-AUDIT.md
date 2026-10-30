@@ -119654,3 +119654,13 @@ installed acceptance. Network admission, flood/resource performance, other-platf
 clocks/suspend, privileged credential/settings actions, R-S0/R-F5 and release/
 independent-review acceptance remain OPEN. Parked tasks remain parked. Only the
 existing R-S10 ledger paragraph changes; fresh measurement follows.
+
+**Fresh ledger count.** At `10b8767e6df616614cd76fbe4789324f1360571b`,
+TUF `KnceI44b5O` passes seven tokenizer controls and the exact byte round trip
+using `tiktoken-0.12.0/cl100k_base/encode_ordinary`: 362,112 tokens /
+1,655,685 bytes, SHA-256
+`b89b60e174f0a5b9f23c4d17a9bff881341e7c04693eaa45f86171e1c7778b64`.
+QEMU 2076017 joins in 30.393 seconds, RAM `run.oxqe1uwp` retires and all
+three listener deltas are zero. Six count files add 103,656 bytes; thirteen files
+from this slice total 177,911 bytes per host with matching hashes. This audit-only
+receipt leaves the measured ledger unchanged.

@@ -117668,3 +117668,45 @@ QEMU 1809710 joins in 30.285 seconds; RAM `run.b53k4ozx` retires and three liste
 deltas are zero. Six count files add 103,898 bytes; thirteen files across both
 runs total 186,469 bytes per host with matching hashes. This audit-only receipt
 preserves the measured ledger and its approximate 400,000-token budget.
+
+### 2026-10-30 — remove the MAC-key input allocation
+
+At `b44d3b48`, `derive_mac_key` copies the ISK into a temporary vector containing
+`MAC_DSI || sid || ISK`. That vector already has a wiping owner; this correction
+removes an unnecessary secret copy and allocation, not a newly demonstrated
+unwiped heap buffer. The [pinned SHA-2 API](https://raw.githubusercontent.com/RustCrypto/hashes/sha2-v0.10.8/sha2/src/lib.rs)
+supports incremental updates. `1cb70c23` feeds the same three borrowed inputs in
+the same order and finalizes the hash. Bare concatenation, digest/output wiping,
+public interfaces, dependencies and protocol values remain unchanged.
+
+Preparation `322997020f66d2c1ebfa3c8aba7505bd32b0066b` adds actual MAC-key derivation
+to the existing thread-local allocation observer and names all three measured
+derivations in the VM receipts. Baseline `rcn0NDPeMD` passes twenty functional
+checks, then fails the unchanged allocation assertion: MAC-key derivation reports
+one allocation/zero reallocations; generator and ISK each report zero/zero and
+the positive control still reports one allocation. Pre-execution artifact SHA-256
+is `ccc91ffdacd78f4b78149402585c53d480b866a0ef6b55e969201a5c8cbccc5b`.
+The expected test exit 101 precedes the runner's after-hash check. QEMU 1810679
+joins in 99.811 seconds; RAM `run.c3dxz_lr` retires and four listener deltas are
+zero. Seven raw files total 83,165 bytes per host with matching hashes. After
+copy verification, exact diagnostic directory inode 78294410 is removed,
+reclaiming 3,444,736 bytes.
+
+The observer measures allocation calls, not internal hash-state or post-return
+memory contents. Full erasure, other targets/shipping artifacts, independent
+review and installed authority remain OPEN. Prior primitive timing remains
+scoped to its earlier artifact; the measured bodies are unchanged. Parked work
+is unchanged.
+
+Corrected run `rbjv59T3Pr` at `1cb70c23e930d40ca9052b92a82ba942cf8745e0`
+(tree `89c21509789778b37aac94632fcb3ca429d73f64`) passes all twenty-one checks.
+MAC-key, generator and ISK derivations each report zero allocations/reallocations;
+the positive control detects one allocation. Published/fork vectors, real random
+handshakes and existing refusal/error cases remain green. Artifact SHA-256
+`2119b1c2d32730aedcc09c5324cef788fc01107834a3e12f354d815114fc408c`
+matches before and after execution. The optimized pinned Rust 1.75.0 artifact runs
+as UID/GID 1000 with read-only source/root and no VM/container network. QEMU
+1811486 joins in 103.669 seconds; RAM `run.2535gen3` retires and four listener
+deltas are zero. Seven raw files total 82,434 bytes per host with matching hashes,
+under `android-rust-lifecycle-tests-run.rbjv59T3Pr` (console adds `console-`).
+Command: `bash scripts/smoke-verifier-vm-authority.sh --pake-allocation-tests`.

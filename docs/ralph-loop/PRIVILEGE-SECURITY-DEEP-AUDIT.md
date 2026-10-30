@@ -121189,3 +121189,12 @@ files and existing bootstrap/no-argument dispatchers. Local Markdown paths and
 fragments resolve; whitespace checks pass. No acquisition, setup, product build
 or product test is run for this documentation correction. The previous execution
 rules, recipes, inputs, product and tests remain unchanged.
+
+Fresh ledger count at `8cdcf97a3c7889f4889a4636b454f8995323326a`:
+`JEsY289o5x` passes seven controls and exact byte round trip using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 366,343 tokens / 1,675,867 bytes,
+input SHA-256 `6bc39f0c6871522b744857afd8c9106cc79f0a416ad14c847b579c7feb2fc911`.
+QEMU 2644906 joins in 30.507 seconds, RAM `run.thcwqx9k` retires and all three
+endpoint deltas are zero. Six count files add 104,080 bytes; thirteen raw files
+total 199,217 bytes per host, copied and hash-verified. This audit-only receipt
+leaves the ledger unchanged.

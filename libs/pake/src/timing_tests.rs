@@ -382,7 +382,18 @@ fn optimized_timing_evidence() {
 #[test]
 #[ignore = "requires the isolated optimized backend comparison"]
 fn backend_timing_evidence() {
+    backend_measurements(3, GROUP_SAMPLES);
+}
+
+#[test]
+#[ignore = "requires the isolated optimized backend comparison"]
+fn backend_long_timing_evidence() {
+    backend_measurements(1, 500_000);
+}
+
+fn backend_measurements(fixture_count: usize, assessed_samples: usize) {
     assert!(!cfg!(debug_assertions), "timing requires an optimized build");
+    assert!((1..=3).contains(&fixture_count));
     check_mxcsr_scope();
     let mut controls = [false; 3];
     let mut detected = [[false; 3]; 3];
@@ -393,7 +404,7 @@ fn backend_timing_evidence() {
         ("baseline", b'A', b'A', 0x62, 0x8d02_57be_a913_c64f, 0x4a16_c09e_72f3_b85d),
         ("ones", b'/', b'8', 0x17, 0x61b9_a40d_327e_8f05, 0xb385_19d2_40ec_76a9),
         ("pattern", b'V', b'U', 0xe9, 0xa09c_7d43_8b62_e1f5, 0x31d7_e4a9_065c_b28f),
-    ].into_iter().enumerate() {
+    ].into_iter().take(fixture_count).enumerate() {
         let mut prs = [fill; 44];
         prs[42] = last;
         prs[43] = b'=';
@@ -414,17 +425,20 @@ fn backend_timing_evidence() {
             |scalar| RistrettoPoint::vartime_double_scalar_mul_basepoint(
                 scalar, black_box(&point), black_box(&Scalar::ZERO)));
         for (orientation, suffix) in ["one-random", "random-one", "one-one"].iter().enumerate() {
+            let samples = if orientation == 2 { GROUP_SAMPLES } else { assessed_samples };
             detected[index][orientation] = measure_prepared(&format!("{fixture}-multiply-prepared-{suffix}"),
-                seed, GROUP_SAMPLES, |bytes, class, state| {
+                seed, samples, |bytes, class, state| {
                     let class = match orientation { 0 => class, 1 => class ^ 1, _ => 0 };
                     scalar_inputs(bytes, class, state);
                 }, Scalar::from_bytes_mod_order_wide, |scalar| scalar * black_box(&*point));
         }
     }
-    assert!(controls.iter().all(|value| *value), "variable-time positive control was not detected: inconclusive");
-    assert!(!detected.iter().any(|fixture| fixture[2]),
+    assert!(controls[..fixture_count].iter().all(|value| *value),
+        "variable-time positive control was not detected: inconclusive");
+    assert!(!detected[..fixture_count].iter().any(|fixture| fixture[2]),
         "identical-input negative control detected a difference: inconclusive");
-    assert!(!detected.iter().any(|fixture| fixture[..2].iter().any(|value| *value)),
+    assert!(!detected[..fixture_count].iter().any(|fixture| fixture[..2].iter().any(|value| *value)),
         "backend timing difference detected");
-    println!("PAKE_TIMING_BACKEND_RESULT=no-difference-detected fixtures=3 cohorts=6 positive_controls=3 negative_controls=3 samples=100000 repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact");
+    println!("PAKE_TIMING_BACKEND_RESULT=no-difference-detected fixtures={fixture_count} cohorts={} positive_controls={fixture_count} negative_controls={fixture_count} samples={assessed_samples} control_samples={GROUP_SAMPLES} repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact",
+        fixture_count * 2);
 }

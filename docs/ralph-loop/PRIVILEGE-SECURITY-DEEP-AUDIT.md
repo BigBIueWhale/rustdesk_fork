@@ -119553,3 +119553,13 @@ and `git diff --check` pass. Network choke-point behavior, expiry/flood resource
 acceptance, installed privileged actions/settings, target-platform and release
 acceptance, independent reproduction and external review remain OPEN. Parked work
 remains parked. Only the R-S10 ledger paragraph changes; fresh measurement follows.
+
+**Fresh ledger count.** At `7bd2f5faf85dcd0602dc478961cab78c1897d84f`,
+TUF `ufAI3NjgI3` passes seven tokenizer controls and the exact byte round trip
+using `tiktoken-0.12.0/cl100k_base/encode_ordinary`: 361,961 tokens /
+1,655,010 bytes, SHA-256
+`5b5024ef1e7d2380e9eed9df5bd7f3beb6ae075014d3218363cb2f8e7445392b`.
+QEMU 2018094 joins in 30.502 seconds, RAM `run.a5nbbnr_` retires and all
+three listener deltas are zero. Six count files add 105,333 bytes; twenty files
+from this slice total 284,041 bytes per host with matching hashes. This audit-only
+receipt leaves the measured ledger unchanged.

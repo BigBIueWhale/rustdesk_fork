@@ -1326,16 +1326,19 @@ class _CloseButton extends StatelessWidget {
             width: _kIconSize,
             child: () {
               if (visible) {
-                return InkWell(
-                  hoverColor: MyTheme.tabbar(context).closeHoverColor,
-                  customBorder: const CircleBorder(),
-                  onTap: () => onClose(),
-                  child: Icon(
-                    Icons.close,
-                    size: _kIconSize,
-                    color: tabSelected
-                        ? MyTheme.tabbar(context).selectedIconColor
-                        : MyTheme.tabbar(context).unSelectedIconColor,
+                return Tooltip(
+                  message: translate('Close'),
+                  child: InkWell(
+                    hoverColor: MyTheme.tabbar(context).closeHoverColor,
+                    customBorder: const CircleBorder(),
+                    onTap: () => onClose(),
+                    child: Icon(
+                      Icons.close,
+                      size: _kIconSize,
+                      color: tabSelected
+                          ? MyTheme.tabbar(context).selectedIconColor
+                          : MyTheme.tabbar(context).unSelectedIconColor,
+                    ),
                   ),
                 );
               } else {

@@ -118732,3 +118732,59 @@ QEMU 1851356 joins in 30.916 seconds, RAM `run.13ytutmy` retires and all
 three listener deltas are zero. Six count files add 103,673 bytes; this slice
 retains fourteen files / 258,360 bytes per host with matching hashes.
 This audit-only receipt leaves the measured ledger unchanged.
+
+### 2026-10-30 — reject wrong CPace roles before requesting randomness
+
+Starting at `28ba386354ca77606785dc2d238106aabb053928`, both public
+receivers requested randomness before their private helpers checked the peer's
+associated-data role. The initiator sampled its scalar; the responder sampled
+sid/scalar material. R-P5 already requires explicit fixed-role rejection.
+[`getrandom(2)`](https://man7.org/linux/man-pages/man2/getrandom.2.html)
+can wait for initialization or fail, so invalid roles should not reach that
+dependency. This corrects refusal ordering and avoidable RNG work; the previous
+code already refused wrong roles when randomness succeeded.
+
+Production `430b273effdc16884b2131d23ffb99fd4c9a5d75` moves the same two
+three-line checks into `Initiator::recv_step2` / `Responder::recv_step1`
+before their first RNG call. The private helpers retain one production caller
+each, through those entry points; their only other callers are the existing
+valid-role deterministic vector test. No duplicate guard, new API, fallback,
+dependency or cryptographic change is introduced. R-P14c still classifies both
+`AdMismatch` and `Rng` as non-password-guess errors. The unchanged transport
+conversion maps both to `HandshakeError::Pake`; that integration was source
+reviewed, not executed.
+
+Test commit `f4c54a9ca8af05580a725264af6f54670a728af3` extends the existing
+native RNG-error test. It creates genuine handshake states/messages before
+the existing worker-local seccomp filter returns EIO for `getrandom`.
+The same worker exercises valid and reflected-role messages for both public
+receivers. It joins before assertions; the parent proves RNG availability is
+restored. No host filter, process or service is modified.
+
+| Source/run | Native outcomes | Executable SHA-256 |
+| --- | --- | --- |
+| Baseline `f4c54a9c` / `fDvXYW6QUy` | 19 functional pass; RNG test fails, native 101 / outer 1 | `a9d4a471d697a86b79dec85690571d9b40922c0fbe4b27fe3e65bbfddbfed7cd` |
+| Corrected `430b273e` / `sp2jDlvbLU` | All 20 functional and one allocation test pass, native/outer 0 | `1b1a07ae64c69f6171710c90f397044987b6ae396d6457d9abf452dc8f3c724a` |
+
+Both runs use `bash scripts/smoke-verifier-vm-authority.sh --pake-allocation-tests`,
+Rust 1.75.0, optimized/LTO Linux x86-64 and the unchanged pinned dependencies.
+Baseline prints `Rng` for all four role cases. Corrected execution passes the
+unchanged assertions requiring `AdMismatch` for both wrong roles and `Rng`
+for both valid-role controls. Its successful log retains the named test result,
+not that test's stdout. Existing 64-byte clearing, scalar refusal, empty-input
+and restored-parent controls also pass. Published/fork vectors, real random
+round trips, mirrored keys, refusal/replay cases and generator/ISK/MAC-key
+allocation observations remain green. The corrected artifact hash is checked
+before/after; baseline stops after its native failure. No timing rerun or
+post-drop erasure claim is made.
+
+QEMUs 1852379 / 1853142 join in 103.249 / 103.750 seconds; RAM workspaces
+`run.h131nwlw` / `run.cqnoft15` retire. All eight listener deltas are zero,
+and each QEMU reports 4,096 host block-write bytes. Seven raw files per run
+retain 82,257 / 82,246 bytes: fourteen files / 164,503 bytes per host, with
+matching hashes. The exact failed baseline scratch directory
+`pake-role-baseline.fDvXYW6QUy` (inode 78294410) is deleted after evidence
+copying, releasing 3,444,736 allocated bytes. No VM/run scratch remains.
+Full application/network and other-platform acceptance, the open timing result,
+full erasure, installed R-S11b/R-S11c actions/settings, independent review and
+separately parked work remain open.

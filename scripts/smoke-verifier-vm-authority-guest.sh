@@ -3642,6 +3642,7 @@ run_focused_rust_tests() {
                 fs::tests::file_metadata_receive_namespace_accepts_maximum_native_filename
                 fs::receive_namespace::tests::setup_recovers_only_private_identity_prefixes
                 fs::receive_namespace::tests::generation_lock_retires_only_after_last_owner
+                fs::receive_namespace::tests::generation_retirement_error_releases_exclusion
                 fs::tests::file_metadata_digest_mismatched_seconds_and_sizes_stay_distinct
                 fs::tests::recursive_owner_files_retain_the_listed_parent
                 fs::tests::recursive_owner_empty_dirs_retain_the_listed_parent
@@ -8139,7 +8140,7 @@ PY
     "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
     CONTAINER_ID=
     if [ "$MODE" = hbb-common-fs ] && [ "$RUST_TEST_PROFILE" = file-metadata ]; then
-        grep -F 'RECEIVE_GENERATION_RETIREMENT=observed ' "$output"
+        grep -E '^RECEIVE_GENERATION_(RETIREMENT|ERROR)=observed ' "$output"
         printf 'RECEIVE_GENERATION_RETIREMENT_ARTIFACT=observed sha256=%s\n' "$hbb_test_artifact_sha"
         local authority_record authority_sha authority_executable authority_source_sha authority_work
         local authority_output=$ROOT/receive-native-authority.out

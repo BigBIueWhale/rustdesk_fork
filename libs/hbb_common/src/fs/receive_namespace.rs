@@ -265,7 +265,7 @@ mod tests {
         std::fs::create_dir(&root).unwrap();
         let (mut one, mut first) = ReceiveWriteClaim::start_new(root.join("one"), FileDigest::default()).unwrap();
         let (mut two, mut second) = ReceiveWriteClaim::start_new(root.join("two"), FileDigest::default()).unwrap();
-        let generation = first._lease.namespace._generation.try_clone().unwrap();
+        let generation = first._lease.namespace.generation.try_clone().unwrap();
         let original = unix_fstat(&generation).unwrap();
         one.write_all(b"one").unwrap();
         first.finish(3, 31).unwrap();
@@ -273,7 +273,7 @@ mod tests {
 
         let (mut three, mut third) = ReceiveWriteClaim::start_new(root.join("three"), FileDigest::default()).unwrap();
         let contender_shared = unix_require_same_object(&original,
-            &unix_fstat(&third._lease.namespace._generation).unwrap(), "live generation").is_ok();
+            &unix_fstat(&third._lease.namespace.generation).unwrap(), "live generation").is_ok();
         three.write_all(b"three").unwrap();
         third.finish(5, 33).unwrap();
         let remaining_preserved = generation.metadata().unwrap().nlink() == 1;
@@ -283,7 +283,7 @@ mod tests {
         let last_retired = generation.metadata().unwrap().nlink() == 0;
 
         let (mut four, mut fourth) = ReceiveWriteClaim::start_new(root.join("four"), FileDigest::default()).unwrap();
-        let replacement = fourth._lease.namespace._generation.try_clone().unwrap();
+        let replacement = fourth._lease.namespace.generation.try_clone().unwrap();
         let fresh_generation = unix_require_same_object(&original,
             &unix_fstat(&replacement).unwrap(), "retired generation").is_err();
         first._lease.namespace.retire(|| Ok(())).unwrap();
@@ -300,6 +300,40 @@ mod tests {
         println!("RECEIVE_GENERATION_RETIREMENT=observed shared_preserved={shared_preserved} contender_shared={contender_shared} remaining_preserved={remaining_preserved} last_retired={last_retired} fresh_generation={fresh_generation} stale_retry_preserved={stale_retry_preserved} next_retired={next_retired} final_bytes=exact fixture=retired");
         assert!(shared_preserved && contender_shared && remaining_preserved && last_retired
             && fresh_generation && stale_retry_preserved && next_retired);
+    }
+
+    #[test]
+    fn generation_retirement_error_releases_exclusion() {
+        let root = std::env::temp_dir().join(format!("receive-generation-error-{}", crate::uuid::Uuid::new_v4()));
+        std::fs::create_dir(&root).unwrap();
+        let (mut stream, mut claim) = ReceiveWriteClaim::start_new(root.join("incoming"), FileDigest::default()).unwrap();
+        let generation = claim._lease.namespace.generation.try_clone().unwrap();
+        let coordinator = claim._lease.namespace.coordinator.try_clone().unwrap();
+        let selected = claim._lease.namespace.generation_name.clone();
+        let held = name(&format!("test-held-{}", crate::uuid::Uuid::new_v4())).unwrap();
+        assert_eq!(unsafe { libc::renameat(coordinator.as_raw_fd(), selected.as_ptr(),
+            coordinator.as_raw_fd(), held.as_ptr()) }, 0);
+        let replacement = open_regular_child_no_follow(&coordinator, &selected,
+            RegularFileAccess::Write, ReceiveFileCreation::CreateNew).unwrap();
+        stream.write_all(b"exact").unwrap();
+        let result = claim.finish(5, 31);
+        let refusal = result.as_ref().err().is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied);
+        let replacement_preserved = ensure_recv_child_matches_open_file(&coordinator,
+            &selected, &replacement).is_ok() && replacement.metadata().unwrap().len() == 0;
+        let probe = open_regular_child_no_follow(&coordinator, &held,
+            RegularFileAccess::Read, ReceiveFileCreation::Existing).unwrap();
+        let released = lock(&probe, libc::LOCK_SH | libc::LOCK_NB).is_ok();
+        lock(&probe, libc::LOCK_UN).unwrap();
+        remove_recv_child_at(&coordinator, &selected, &replacement).unwrap();
+        assert_eq!(unsafe { libc::renameat(coordinator.as_raw_fd(), held.as_ptr(),
+            coordinator.as_raw_fd(), selected.as_ptr()) }, 0);
+        claim.cleanup().unwrap();
+        let recovered = generation.metadata().unwrap().nlink() == 0;
+        assert_eq!(std::fs::read(root.join("incoming")).unwrap(), b"exact");
+        drop((stream, generation, coordinator, replacement, probe));
+        std::fs::remove_dir_all(&root).unwrap();
+        println!("RECEIVE_GENERATION_ERROR=observed refusal={refusal} replacement_preserved={replacement_preserved} exclusion_released={released} retry_retired={recovered} final_bytes=exact fixture=retired");
+        assert!(refusal && replacement_preserved && released && recovered);
     }
 
     #[test]
@@ -370,7 +404,8 @@ pub(super) struct ReceiveNamespace {
     coordinator: File,
     directory: File,
     child: CString,
-    _generation: File,
+    generation: File,
+    generation_name: CString,
 }
 
 impl ReceiveNamespace {
@@ -440,11 +475,36 @@ impl ReceiveNamespace {
         let child = name(&format!("{:x}", digest.finalize()))?;
         let artifacts = private_child(&directory, &child)?;
         // The caller keeps enrollment locked until its exact per-file lease is acquired.
-        Ok(Self { destination, artifacts, coordinator, directory, child, _generation: generation })
+        Ok(Self { destination, artifacts, coordinator, directory, child, generation, generation_name })
     }
 
     pub(super) fn complete_enrollment(&self) -> io::Result<()> {
         lock(&self.coordinator, libc::LOCK_UN)
+    }
+
+    fn retire_generation(&self) -> io::Result<()> {
+        // The enrollment gate remains held. Retired claims release their shared
+        // membership even when another file still owns this namespace generation.
+        // A retry through an unlinked old inode can only repeat the durability barrier.
+        if self.generation.metadata()?.nlink() == 0 {
+            return sync_recv_directory(&self.coordinator);
+        }
+        lock(&self.generation, libc::LOCK_UN)?;
+        match lock(&self.generation, libc::LOCK_EX | libc::LOCK_NB) {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => return Ok(()),
+            Err(error) => return Err(error),
+        }
+        let result = remove_recv_child_at(&self.coordinator, &self.generation_name, &self.generation)
+            .and_then(|()| sync_recv_directory(&self.coordinator));
+        // A failed removal must not strand an exclusive lock in a completed claim
+        // while a later enrollment holds the gate and waits for shared membership.
+        let released = lock(&self.generation, libc::LOCK_UN);
+        match (result, released) {
+            (Ok(()), result) | (result, Ok(())) => result,
+            (Err(error), Err(release)) => Err(io::Error::new(error.kind(),
+                format!("{error}; receive generation lock release failed: {release}"))),
+        }
     }
 
     pub(super) fn retire(&self, remove_lease: impl FnOnce() -> io::Result<()>) -> io::Result<()> {
@@ -461,11 +521,8 @@ impl ReceiveNamespace {
             if unsafe { libc::unlinkat(self.directory.as_raw_fd(), self.child.as_ptr(), libc::AT_REMOVEDIR) } != 0 {
                 return Err(io::Error::last_os_error());
             }
-            // Retain one namespace and two bounded coordination files per destination.
-            // Removing the public container by name would reintroduce the unlink race.
-            // Payloads, digests, leases and empty per-file directories are retired here.
             sync_recv_directory(&self.directory)
-        })();
+        })().and_then(|()| self.retire_generation());
         let released = lock(&self.coordinator, libc::LOCK_UN);
         match (result, released) {
             (Ok(()), result) | (result, Ok(())) => result,

@@ -121912,3 +121912,27 @@ the shared name, and a removed old inode cannot authorize removal of a replaceme
 Coordination stays private rather than adding a lock any reader of the public
 destination could contend for. No slot hash, public directory lock or new filesystem
 capability is needed for this lifetime correction.
+
+Baseline `89b9aaddc958b405b0431c40b0124997977e04e7`, TUF `0eVAE5mSl7`,
+reproduces the failure in the actual claim code under UID 1000: live sharing and
+exact output pass, but final-owner retirement, fresh generation and next-generation
+retirement are all false. The fixture retires before its failing assertion. Native
+root scenarios do not run after this unit failure. Artifact SHA-256
+`7c94f130c0c672ae9a114902702369ca88eb5de68abf9b5a11c977d46038c6ba`;
+serial 116,687 bytes, SHA-256
+`4bf8054a733e534d9febf75693cc93ae08ddc3fcc6e8966a0725df6f07d0547e`.
+QEMU 2924772 joins after 130.019 seconds; RAM `run.um0k28oj` retires and all
+four listener deltas are zero. Raw evidence is hash-verified on both hosts before
+exact diagnostic-scratch removal.
+
+The candidate releases a completed claim's shared membership under the existing
+enrollment gate. Only nonblocking exclusive ownership permits exact private-name
+removal and synchronization; remaining live owners preserve the name. Removed
+old descriptors can only repeat the directory barrier. Every exclusive retirement
+attempt releases its lock even on error, so a completed object cannot deadlock
+new enrollment while that enrollment holds the gate. A second real-file case
+replaces this exact private name in the fixture, requires visible refusal and
+replacement preservation, probes shared acquisition, restores the original name,
+and retries cleanup. This exercises error finality in addition to normal retirement.
+Public containers and directory records remain; this is a coordination-lifetime
+component of the selected correction, not full receive acceptance.

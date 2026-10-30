@@ -16,6 +16,22 @@ if [ "$allocation_probe" -eq 1 ]; then
     bash -n scripts/verify.sh
     export RUSTFLAGS="$RUSTFLAGS --cfg pake_allocation_probe"
     printf 'PAKE_ALLOCATION_BUILD=observer=thread-local counts=alloc-realloc source=production cfg=pake_allocation_probe\n'
+else
+    mkdir -m 700 /cargo-target/pake-linker
+    cat > /cargo-target/pake-linker/cc <<'CC'
+#!/bin/bash
+set -euo pipefail
+for argument in "$@"; do
+    case "$argument" in
+        /cargo-target/release/deps/pake-????????????????)
+            exec /usr/bin/cc "$@" -Wl,-Map=/cargo-target/pake-timing.map ;;
+    esac
+done
+exec /usr/bin/cc "$@"
+CC
+    chmod 700 /cargo-target/pake-linker/cc
+    export PATH="/cargo-target/pake-linker:$PATH"
+    printf 'PAKE_TIMING_LINK_MAP=driver=/usr/bin/cc output=/cargo-target/pake-timing.map strip=unchanged\n'
 fi
 rustc -vV | sed 's/^/PAKE_TIMING_COMPILER=/'
 cargo tree --offline --locked -p pake -e features --prefix none | sed 's/^/PAKE_TIMING_DEPENDENCY=/'
@@ -73,16 +89,16 @@ if [ "$allocation_probe" -eq 1 ]; then
     exit 0
 fi
 python3 -I -S - "$test_executable" <<'PY'
-import base64,hashlib,json,subprocess,sys,zlib
+import base64,hashlib,json,re,subprocess,sys,zlib
+from pathlib import Path
 artifact=sys.argv[1]
-symbols=subprocess.check_output(['nm','-S','--defined-only','--demangle',artifact],timeout=10)
-assert len(symbols)<=4*1024*1024
-selected=[]
-for line in symbols.decode().splitlines():
-    fields=line.split(maxsplit=3)
-    if len(fields)==4 and fields[2] in ('t','T') and \
-            'variable_base::spec_avx2::mul' in fields[3]:
-        selected.append((int(fields[0],16),int(fields[1],16),fields[3]))
+map_bytes=Path('/cargo-target/pake-timing.map').read_bytes()
+assert len(map_bytes)<=4*1024*1024
+sections=[(int(address,16),int(size,16),name) for name,address,size in
+    re.findall(r'(?m)^ \.text\.(\S+)\s+(0x[0-9a-f]+)\s+(0x[0-9a-f]+)\s',map_bytes.decode())
+    if int(address,16)>0 and int(size,16)>0]
+selected=[entry for entry in sections if all(part in entry[2]
+    for part in ('variable_base','spec_avx2','3mul'))]
 assert len(selected)==1, ('AVX2 multiplication symbol count',selected)
 start,size,name=selected[0]
 assert 0<size<=64*1024
@@ -94,6 +110,8 @@ assert len(encoded)<=128*1024
 version=subprocess.check_output(['objdump','--version'],timeout=10).decode().splitlines()[0]
 print('PAKE_TIMING_DISASSEMBLY='+json.dumps({'symbol':name,'address':start,
     'code_bytes':size,'text_bytes':len(assembly),'text_sha256':hashlib.sha256(assembly).hexdigest(),
+    'link_map_sha256':hashlib.sha256(map_bytes).hexdigest(),
+    'dalek_symbols':[entry for entry in sections if 'curve25519_dalek' in entry[2]],
     'objdump':version,'encoding':'zlib-base64','data':encoded},sort_keys=True))
 PY
 test_status=0

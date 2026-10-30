@@ -121751,3 +121751,40 @@ The intended correction must put staging in a protected same-mount namespace,
 retire completed transaction metadata without splitting live claims, and preserve
 resume, independent-file concurrency and full authorized destination access. A
 listing filter or public-container unlink would not meet these conditions.
+
+**Native regression reproduced.** Source `fe9c5667da31da8566963e43b36a9b29ac3dbc63`,
+tree `c7245a7feef879f45194f3c3542c95d381c228e7`, TUF `x3PR4RTdN0`, canonical
+`--file-metadata-tests` exits one after all three lifecycle observations. Hidden=false
+lists only `incoming.bin`; hidden=true additionally lists the private staging
+directory. Deleting `incoming.bin` succeeds, but both nonrecursive and recursive
+production empty-directory removals return `Directory not empty (os error 39)`.
+Thirty-two completed transfers with all destination inodes retained add 64
+coordinator entries and 131,072 allocated bytes. Summary: `0/3 retired`. All
+nineteen earlier authority/crash scenarios and twenty actors complete, including
+`3/3 safe` replacement windows and `3/3 recovered` crash cases. No new unit-suite
+pass is claimed because this failure path does not export its completed unit logs.
+
+Native artifact `5b9c71092b39ca7d2c0ca006cf3b7751a88ea135f7f74d4498dbb8b604872279`;
+driver `cea0d9b2a0c5be565c4d5fc24e99c54a4ef57a0e03f1322e929cbb35fc14875a`.
+Raw serial 21,421 bytes, SHA-256
+`57f74a5f89ae3259ec570c20039a55c1424c090a3e289e333b234a0728101566`.
+QEMU 2909560 joins with status zero after 202.733 seconds; bounded RAM
+`run.7gg4bsmp` is absent and all four listener deltas are zero. Seven raw evidence
+files are copied and hash-verified on both hosts before exact failed-workspace
+cleanup. Product source remains unchanged by this reproduction; the regression
+belongs to the current per-destination retained namespace and remains STOP-SHIP.
+
+Replacement-design constraints from primary Linux documentation:
+`rename(2)` refuses cross-mount publication even when mounts share a filesystem;
+`proc_pid_fdinfo(5)` exposes descriptor mount IDs (since Linux 3.15), while
+`statx(2)` mount-ID support is newer. A home-only staging directory therefore
+cannot preserve all authorized destinations. `name_to_handle_at(2)` provides
+opaque object identity for supported filesystems; its availability must be tested,
+not assumed. Moving durable staging outside the destination also removes the
+current directory-entry link to that destination, so inode reuse/remount identity
+must be resolved rather than using a filesystem-ID/inode hash as authority.
+Next: derive and natively validate protected same-mount staging and exact destination
+identity for root/ordinary principals, separate filesystems and bind mounts; then
+replace the per-destination retained layout and rerun these unchanged workflow
+oracles together with the original authority/resume/concurrency/crash controls.
+This is a concrete unclosed implementation prerequisite, not a release waiver.

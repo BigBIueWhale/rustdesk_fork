@@ -16109,7 +16109,7 @@ replacement, ACL/non-local filesystems, other platforms, R-S0/R-F5 and release
 acceptance remain OPEN. The native cases provide controls for that next correction;
 they do not establish immunity to the remaining namespace race.
 
-**Receive namespace syscall windows — three Linux races corrected; broader acceptance OPEN.**
+**Receive namespace — race/crash checkpoints accepted; completed-destination regression STOP-SHIP.**
 `bc81bb84` extends that native driver with three syscall-entry cases. A root
 receiver uses the unchanged production `TransferJob` API; a separate UID/GID 4001
 actor, with zero capabilities, no-new-privileges and no inherited fixture
@@ -16163,6 +16163,20 @@ now finish with one container, no added temporary record and exact output. The
 eight setup controls cover missing/empty/partial/complete markers and wrong,
 unrelated, symlinked and read-shared contents. This establishes process-death
 recovery at the three selected boundaries, not physical power-loss durability.
+
+**Completed-destination lifecycle — reproduced regression, OPEN/STOP-SHIP.**
+At unchanged product `fe9c5667`, TUF `x3PR4RTdN0`, the nineteen earlier native
+scenarios still pass, but all three new lifecycle cases fail. After a completed
+transfer, hidden-file listing exposes the internal staging directory. After the
+received file is deleted, both production empty-directory removal APIs fail with
+`ENOTEMPTY`. Thirty-two completed transfers to retained distinct destinations add
+64 coordinator files / 131,072 allocated bytes. Fixtures and child processes retire
+before the failing verdict. This is production-library behavior; the installed UI
+did not run. The retained staging design must change before full receive acceptance:
+completed destinations must support ordinary listing/deletion, and coordination
+must track live/resumable work rather than completed destination history. Preserve
+the accepted race/crash controls and full authorized access across mounts; hiding
+the directory or unlinking it from an attacker-mutable parent is not a correction.
 
 Per-file artifacts/directories retire. One container, its small identity file
 and two bounded coordinator records persist per destination. Broader crash/fault

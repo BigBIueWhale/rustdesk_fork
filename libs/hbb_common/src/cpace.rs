@@ -895,7 +895,7 @@ mod guess_limiter_tests {
         }
         assert!(!guess_limiter_allows(oldest));
         let mut peak = guess_limiter_tracked_count();
-        let source = |index| IpAddr::V4(Ipv4Addr::from(0x0a00_0000 + index));
+        let source = |index: u32| IpAddr::V4(Ipv4Addr::from(0x0a00_0000 + index));
         for index in 0..9000 {
             assert!(record_handshake_failure(source(index), HandshakeError::Confirmation));
             let retained = guess_limiter_tracked_count();

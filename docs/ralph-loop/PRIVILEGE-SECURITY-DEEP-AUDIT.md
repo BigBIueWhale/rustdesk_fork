@@ -117724,7 +117724,7 @@ preserves the measured ledger and its approximate 400,000-token budget.
 
 The preceding MAC-key slice is complete; this is progress, not a blocked/waiting
 turn. At `763fe6bb`, the R-P12 row still has no generator or multiplication timing
-observation. Production `derive_generator` at `libs/pake/src/lib.rs:212` consumes
+observation. Production `derive_generator` at `libs/pake/src/lib.rs:207` consumes
 the PRS; all three handshake multiplication sites use ordinary scalar/point
 `*`. The [pinned Dalek API](https://raw.githubusercontent.com/dalek-cryptography/curve25519-dalek/curve25519-4.1.3/curve25519-dalek/src/ristretto.rs)
 distinguishes that operator from its explicitly variable-time double-scalar API.
@@ -117831,3 +117831,13 @@ Host affinity/frequency are uncontrolled. Twenty-one retained files total
 multiplication and wiping-owner costs, inspect the source-bound emitted code,
 and vary seeds/points under the same controls. Backend/compiler comparisons are
 diagnostics; a different passing artifact cannot clear the recorded detection.
+
+Ledger run `vHCU8ktHcD` at `9d99c57c` passes 72 workload controls/five refusals,
+seven tokenizer controls and full text round trip. It reports 360,313 tokens with
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 1,647,434 bytes, SHA-256
+`c1af1925b8ec1b1d33b8371e5cc5441a6e382f65716e1753b506d9be7b3766f1`.
+QEMU 1818103 joins in 31.006 seconds; RAM `run.myyt9gxj` retires and three listener
+deltas are zero. Six count files add 103,159 bytes; twenty-seven files across all
+four runs total 361,588 bytes per host with matching hashes. This audit-only
+receipt and source-line correction preserve the measured ledger and its
+approximate 400,000-token budget.

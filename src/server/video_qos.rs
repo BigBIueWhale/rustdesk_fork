@@ -1548,6 +1548,57 @@ mod tests {
         println!("VIDEO_QOS_CONGESTION=complete kind=post-outage cases={} failures={failures}", outcomes.len());
         assert_eq!(failures, 0,
             "continued congestion cannot justify increasing the sending rate after an outage");
+
+        let mut quality_outcomes = Vec::new();
+        for quality in [ImageQuality::Low.value(), ImageQuality::Balanced.value(),
+            ImageQuality::Best.value(), 75 << 8] {
+            for excess in [150, 199, 200, 299, 300, 499, 500, 1000] {
+                for remaining_bitrate in [0, 100] {
+                    let mut qos = controller_with_baseline(20);
+                    qos.user_custom_fps(7, 20);
+                    qos.user_image_quality(7, quality);
+                    let target = qos.latest_quality();
+                    store_test_bitrate(&mut qos, 10000);
+                    let retiring = qos.displays["monitor"].generation.clone();
+                    let surviving = qos.new_display("survivor".into());
+                    assert!(qos.set_support_changing_quality("survivor", &surviving, true));
+                    assert!(qos.set_display_bitrate("survivor", &surviving, remaining_bitrate));
+                    qos.user_delay_response_elapsed(7, 4000);
+                    for _ in 0..20 { qos.adjust_ratio(true); }
+                    let before = qos.ratio();
+                    assert!(before < target.ratio());
+                    qos.remove_display("monitor", &retiring);
+                    for _ in 0..2 { qos.user_network_delay(7, 20 + excess); }
+                    let measured = qos.users[&7].delay.avg_delay();
+                    let mut ratios = Vec::new();
+                    let mut nonincreasing = true;
+                    for _ in 0..3 {
+                        let previous = qos.ratio();
+                        qos.adjust_ratio(true);
+                        let ratio = qos.ratio();
+                        nonincreasing &= ratio.is_finite() && ratio <= previous
+                            && ratio >= BR_MIN_HIGH_RESOLUTION;
+                        ratios.push(ratio);
+                    }
+                    for _ in 0..60 {
+                        qos.user_network_delay(7, 20);
+                        qos.adjust_ratio(true);
+                    }
+                    let recovered = qos.ratio() == target.ratio() && qos.fps() == 20
+                        && qos.users[&7].delay.avg_delay() == 0;
+                    let owner = qos.users.len() == 1 && qos.users[&7].custom_fps == Some(20)
+                        && qos.latest_quality() == target && qos.displays.len() == 1
+                        && qos.is_display_current("survivor", &surviving)
+                        && qos.bitrate() == remaining_bitrate;
+                    println!("VIDEO_QOS_CONGESTION=observed kind=quality-floor quality={target:?} excess_ms={excess} measured_ms={measured} remaining_kbps={remaining_bitrate} before={before} ratios={ratios:?} nonincreasing={nonincreasing} recovered={recovered} owner={owner}");
+                    quality_outcomes.push(measured == excess && nonincreasing && recovered && owner);
+                }
+            }
+        }
+        let failures = quality_outcomes.iter().filter(|&&ok| !ok).count();
+        println!("VIDEO_QOS_CONGESTION=complete kind=quality-floor cases={} failures={failures}", quality_outcomes.len());
+        assert_eq!(failures, 0,
+            "a changed bitrate floor cannot increase quality during continued congestion");
     }
 
     #[test]

@@ -118334,6 +118334,7 @@ QEMU 1836428 joins in 30.368 seconds; RAM `run.g_9n1cmf` retires and three
 listener deltas are zero. Six count files add 104,908 bytes. The thirteen raw
 files from both runs total 240,149 bytes per host with matching hashes.
 This audit-only receipt leaves the measured ledger unchanged.
+
 ### 2026-10-30 — three point/seed backend comparison
 
 At `8f6d01abb8fb99faf14b321aa945ad6a5543f3f0` (tree
@@ -119235,3 +119236,13 @@ The failed baseline's exact diagnostic directory is removed after retention
 The service-owned pair has source evidence only; its installed runtime, macOS,
 full application, all fifteen credential-action acceptances and release evidence
 remain OPEN. Separately parked work is unchanged.
+
+**Fresh ledger count.** At `86da52bd99f739b2ac1095c3ead33a3ff5fcc19d`,
+TUF `BGrrNBCZE4` passes seven tokenizer controls and the exact byte round trip
+using `tiktoken-0.12.0/cl100k_base/encode_ordinary`: 361,130 tokens /
+1,651,345 bytes, SHA-256
+`d97c4945cf43ea76645bb70a320ae04f0713eac11e9b8eb68d11c752691c21ba`.
+QEMU 1883582 joins in 30.306 seconds, RAM `run.uo6i25kd` retires and all
+three listener deltas are zero. Six count files add 105,655 bytes; the twenty
+files from this slice total 335,220 bytes per host with matching hashes.
+This audit-only receipt leaves the measured ledger unchanged.

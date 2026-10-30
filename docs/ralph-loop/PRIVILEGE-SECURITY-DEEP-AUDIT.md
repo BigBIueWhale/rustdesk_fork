@@ -120408,7 +120408,7 @@ leaves the measured ledger unchanged.
 
 The preceding compiled translation lookup is completed progress; user parks remain
 open. Every `translate_locale` call passed through `extract_placeholder`, which
-compiled `\\{(.*?)\\}` and then searched twice, even for an ordinary label.
+compiled `\{(.*?)\}` for every label and searched again when a placeholder matched.
 The [pinned regex documentation](https://docs.rs/regex/1.11.1/regex/#avoid-re-compiling-regexes-especially-in-a-loop)
 identifies repeated compilation as expensive; its character syntax specifies that
 the default dot excludes LF. This grammar needs only the earliest opening brace
@@ -120469,3 +120469,13 @@ host, copied and hash-verified. After copying, the exact failed-baseline diagnos
 tree (inode 79475215) is removed with wrapper/QEMU/workspace absence established,
 releasing 3,432,448 allocated bytes. Full application, real preference persistence,
 platform/device and release acceptance remain open.
+
+**Fresh ledger count.** At `3031c1bb3208696823de41dadc9db2946c3fbb53`, TUF
+`iZllMjTJm0` passes seven controls and exact byte round trip:
+364,190 tokens / 1,665,412 bytes using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`, input SHA-256
+`417e481d45b3938862874abed443de5761fd4014e8334eb2b88a1bbe6f692d0e`.
+QEMU 2443513 joins in 30.701 seconds; RAM `run.ta7p4fwk` retires and all
+three listener deltas are zero. Six count files add 104,553 bytes; twenty raw
+files total 256,082 bytes per host with matching hashes. This audit-only receipt
+leaves the measured ledger unchanged.

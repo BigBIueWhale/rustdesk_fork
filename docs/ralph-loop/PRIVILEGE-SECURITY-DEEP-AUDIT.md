@@ -118334,3 +118334,110 @@ QEMU 1836428 joins in 30.368 seconds; RAM `run.g_9n1cmf` retires and three
 listener deltas are zero. Six count files add 104,908 bytes. The thirteen raw
 files from both runs total 240,149 bytes per host with matching hashes.
 This audit-only receipt leaves the measured ledger unchanged.
+
+### 2026-10-30 — three point/seed backend comparison
+
+At `8f6d01abb8fb99faf14b321aa945ad6a5543f3f0` (tree
+`e2150c53ee05f27f379d64acdaf62b9b95e3d400`), the backend timing test adds
+two predetermined point/seed fixtures to the original one. Both existing
+backend profiles now execute this matched twelve-group corpus. The ordinary
+full optimized suite remains unchanged and runs through `--pake-timing-tests`;
+the earlier full serial run remains bound to `1040d59a`. Only timing-test
+source, its runner and guest selection/receipt admission change. No production
+Rust, dependencies, backend policy, secret owner or storage limit changes.
+
+The [dudect authors' assessment guidance](https://raw.githubusercontent.com/oreparaz/dudect/master/README.md)
+states that input design, compiler and hardware matter and a pass is not a
+constant-time proof. The pinned [Ristretto multiplication implementation](https://raw.githubusercontent.com/dalek-cryptography/curve25519-dalek/curve25519-4.1.3/curve25519-dalek/src/ristretto.rs)
+delegates scalar/point multiplication to Edwards arithmetic; its variable-time
+double-scalar routine with a zero basepoint scalar provides the deliberate
+positive control. The [serial implementation](https://raw.githubusercontent.com/dalek-cryptography/curve25519-dalek/curve25519-4.1.3/curve25519-dalek/src/backend/serial/scalar_mul/variable_base.rs)
+builds its table from the supplied point. These support varying actual point
+inputs while retaining ordinary variable-base multiplication and the existing
+measurement method. They do not justify a shipping-backend decision from a
+below-threshold run.
+
+PRS fixtures are canonical base64 of 32 repeated 0x00, 0xff and 0x55 bytes;
+SID is 32 repetitions of the byte below and CI uses production CI_PORT.
+Point derivation, distinct/nonidentity checks, control result-equivalence
+checks, encoding and scalar reduction occur outside timing. Each fixture
+runs one variable-time control, ordinary one/random, reversed random/one and
+identical one/one inputs. Assertions follow all twelve measurements.
+
+| Fixture | SID byte | Scalar/control seeds | Encoded point |
+| --- | --- | --- | --- |
+| baseline | 62 | 8d0257bea913c64f / 4a16c09e72f3b85d | `1e28f8d494aedea537cd313b3f8382d3869ba8cacb9c70b87f83c8a32e832858` |
+| ones | 17 | 61b9a40d327e8f05 / b38519d240ec76a9 | `ee3ad711ae75c4b415ba04b58f873e3c0967c16a1b30b1a41c4170254a15936e` |
+| pattern | e9 | a09c7d438b62e1f5 / 31d7e4a9065cb28f | `18fe940aca47482fafc14f924ec574fd8bb3a7aa3612479bc876a51a6020670e` |
+
+Both commands run on TUF in the existing zero-NIC disposable VM and guest
+network-none container as UID/GID 1000:
+`bash scripts/smoke-verifier-vm-authority.sh --pake-backend-default-tests`
+and `--pake-backend-serial-tests`.
+Each cohort retains 100,000 measurements, four operations, 20,000 warm-ups
+and absolute raw/pooled-p99 Welch threshold 10. All twelve input hashes, seeds,
+class counts, repeat counts and point encodings match across backends. The
+four baseline input hashes/seeds/counts also match the preceding focused
+comparison. Canonical base64 decoding confirms all three intended public PRS
+byte patterns.
+
+| Build/run | Native result | Executable SHA-256 before and after |
+| --- | --- | --- |
+| Default `SAm07Y7kwO` | 20 functional tests pass; timing exits 101 after 82.61 s | `7af7bd8f12bfe2b577220608276b67d13ebb69d400b46a101a1a7eb64601de95` |
+| Serial `jBjy59QE1n` | All 21 tests pass; timing takes 103.88 s | `2fa78b662d12bf5b9ca9a4a04ad05b147a741c97c826c7f69cbce864e3f49fd8` |
+
+| Cohort | Default raw/p99 t | Serial raw/p99 t |
+| --- | ---: | ---: |
+| baseline-vartime-prepared-one-random | -4261.463830 / -7433.595096 | -3598.196017 / -4892.220896 |
+| baseline-multiply-prepared-one-random | -6.910523 / -8.383363 | -2.007007 / -1.782253 |
+| baseline-multiply-prepared-random-one | 6.564190 / 12.230961 | 5.524878 / 4.037007 |
+| baseline-multiply-prepared-one-one | -0.980859 / -0.953834 | -0.249364 / -0.400715 |
+| ones-vartime-prepared-one-random | -3773.797580 / -8310.547746 | -3758.083861 / -5511.556165 |
+| ones-multiply-prepared-one-random | -6.010168 / -5.960236 | -2.809723 / -2.253000 |
+| ones-multiply-prepared-random-one | 6.724426 / 8.442770 | 4.236626 / 1.782372 |
+| ones-multiply-prepared-one-one | 1.285133 / 1.110210 | 0.449011 / 0.914610 |
+| pattern-vartime-prepared-one-random | -3956.685748 / -8033.661262 | -3947.798707 / -7159.791356 |
+| pattern-multiply-prepared-one-random | -4.290149 / -6.679294 | -4.179327 / -2.938373 |
+| pattern-multiply-prepared-random-one | 6.918859 / 8.535334 | 2.852325 / 2.760154 |
+| pattern-multiply-prepared-one-one | -1.139029 / -1.211050 | 0.660702 / 0.059950 |
+
+The default reverse baseline crosses the criterion. All three positive and
+three negative controls behave as required on both builds. The serial maximum
+assessed absolute t is 5.524878, below the predeclared criterion. Nevertheless,
+all six serial raw means follow the same input-dependent direction: scalar-one
+measurements are shorter than random-scalar measurements. This observation
+does not establish causation, but is not grounds to close the timing finding
+or declare the serial backend constant time. Independent reproduction and a
+predeclared larger measurement budget for that directional signal are next,
+before choosing a product correction. Additional points and seeds in one
+environment do not constitute independent reproduction.
+
+Actual build configuration remains simd/64-bit versus serial/64-bit. Compiler,
+flags, dependency versions and guest hardware match the preceding comparison:
+Rust 1.75.0/LLVM 17.0.6, opt=3/LTO/one codegen unit, x86-64 target CPU,
+Intel Core Ultra 9 285K, microcode 0x11b and Linux 6.1.0-50-cloud-amd64;
+host affinity remains uncontrolled. Both report MCDT_NO=1 and AVX2 availability.
+The scope guard restores normally/on unwind; first controls observe MXCSR
+0x1f80 and subsequent groups 0x1fa0. No scoped-MXCSR cohorts run in this corpus.
+
+All eleven default and twelve serial captured disassemblies pass length/hash
+checks. Selected multiplication bodies remain 12,507 and 2,800 bytes, at
+0x72920 and 0x71500 respectively, with the same conditional-branch offsets as
+the prior captures. Serial capture again has no AVX backend/dispatch symbols.
+Recompilation changes whole executable/layout identities. This is neither
+runtime dispatch tracing nor review of the resolved libc copy implementation;
+the preceding source/emitted arithmetic review and its limits remain.
+
+Default QEMU 1837348 joins in 186.958 seconds; RAM `run.3qr0_3rx` retires.
+Serial QEMU 1838222 joins in 202.352 seconds; RAM `run.pvekt2xf` retires.
+All eight listener deltas are zero. Seven raw files per run total 158,705 and
+131,073 bytes, 289,778 bytes per host with matching hashes. The default failed
+scratch directory, inode 78294410, is removed after copying and releases
+3,600,384 allocated bytes. No VM/run scratch remains. Both overlays stayed
+within the existing 4 GiB bound in the admitted RAM workspace, and each QEMU
+reports 4,096 host block-write bytes. No host product/test workload ran.
+
+Earlier full-suite and default/MXCSR observations remain valid only for their
+recorded artifacts/conditions. Full sampling/RNG timing, other targets and
+shipping artifacts, higher-order leakage, automatic CI, erasure and R-V3
+remain open, along with installed IPC/actions and separately parked work.

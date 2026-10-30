@@ -3639,6 +3639,7 @@ run_focused_rust_tests() {
                 fs::tests::file_metadata_receive_finalization_links
                 fs::tests::file_metadata_receive_namespace_keeps_independent_file_claims
                 fs::tests::file_metadata_receive_namespace_accepts_maximum_native_filename
+                fs::receive_namespace::tests::setup_recovers_only_private_identity_prefixes
                 fs::tests::file_metadata_digest_mismatched_seconds_and_sizes_stay_distinct
                 fs::tests::recursive_owner_files_retain_the_listed_parent
                 fs::tests::recursive_owner_empty_dirs_retain_the_listed_parent
@@ -6136,7 +6137,8 @@ run_focused_rust_tests() {
                             for group in socket_surface::tests:: \
                                 fs::tests::receive_post_publish_sync_failure_never_deletes_visible_file \
                                 fs::tests::rename_ \
-                                fs::tests::file_metadata_ fs::atomic_write::unix::tests:: \
+                                fs::tests::file_metadata_ fs::receive_namespace::tests:: \
+                                fs::atomic_write::unix::tests:: \
                                 fs::tests::directory_entry_ fs::tests::directory_enumeration_ \
                                 fs::tests::recursive_enumeration_ fs::tests::empty_directory_enumeration_ \
                                 fs::tests::default_local_ fs::tests::default_send_job_ \
@@ -7235,7 +7237,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         expected_groups=9
         # The digest pair and resume pair each share one invocation.
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=$(( ${#required_tests[@]} - 2 )); fi
-        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=34; fi
+        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=35; fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=12; fi
         if [ "$RUST_TEST_PROFILE" = guess-limiter ]; then expected_groups=1; fi
         if [ "$RUST_TEST_PROFILE" = compression ]; then expected_groups=2; fi
@@ -8301,6 +8303,7 @@ PY
         else
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'file metadata test total differs'
+            grep -Fx 'test fs::receive_namespace::tests::setup_recovers_only_private_identity_prefixes ... ok' "$output"
             grep -E '^test (policy_[a-z0-9_]+|r_f4_pinned_port_constant) [.][.][.] ok$|^SOCKET_DESCRIPTOR=|^SOCKET_POLICY_ARTIFACT' "$output"
             grep -E '^test fs::tests::(abandoned_blocking_|new_receive_|receive_write_|receive_next_|receive_done_|receive_destination_lease_|resume_confirmation_|recv_finish_|recv_digest_|receive_file_list_replacement_cannot_authorize_early_done)[[:alnum:]_]* [.][.][.] ok$' "$output"
             grep -E '^test fs::(tests::(file_metadata_[a-z_]+|rename_[a-z_]+|directory_entry_[a-z_]+|directory_enumeration_[a-z_]+|recursive_enumeration_[a-z_]+|empty_directory_enumeration_[a-z_]+|default_local_[a-z_]+|default_send_job_[a-z_]+|recursive_owner_[a-z_]+|enumeration_string_budget_matches_json_and_preserves_state|file_enumeration_refuses_unrepresentable_modification_times|budgeted_read_dir_rejects_too_many_entries_before_returning_vector|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[a-z_]+) [.][.][.] ok$|^FILE_METADATA_|^RECEIVE_DIGEST_ADMISSION=|^SOCKET_DESCRIPTOR_LIFETIME=|^DIRECTORY_ENTRY_|^RECURSIVE_OWNER=|^test socket_surface::tests::[a-z0-9_]+ [.][.][.] ok$|^SOCKET_SURFACE_IO=' "$output"

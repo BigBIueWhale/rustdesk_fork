@@ -121658,3 +121658,25 @@ temporary record under the private coordinator and its enrollment gate. Preparin
 state may not grant authority to foreign objects or bypass generation exclusion.
 This test-preparation commit leaves production unchanged; no new runtime result
 or crash-recovery acceptance is claimed yet.
+
+Baseline `2bf1fdde22a9513094fcb85a06357488ce5120d5`, TUF `9N3Hy9iZVA`,
+reproduces all three failures: recovery completes but leaves two containers in
+every case; interrupted record publication additionally leaves one temporary
+record. All sixteen earlier scenarios/twenty actors complete, including `3/3`
+safe syscall windows. The crash summary reports `0/3` recovered without residue.
+Native artifact `4e83d41e58bed3e8715a7d909646beb7e723370603b6d6d2c9b5061ea87b0788`;
+unchanged observer source `6b9f07998ca0ba30c182a6f39d8573857a6f89cc551cf8f4b933a89dfb30d56b`.
+Raw serial 20,603 bytes, SHA-256
+`ded73e23d5e498774bf970a7a0a542ed5fba36e6744d3115a3845e1d7a18724d`.
+Outer exit one is the expected failed behavioral oracle; QEMU 2905415 joins
+with status zero after 208.230 seconds and RAM `run.ilbdepp8` is absent.
+This failure path does not export the completed nonroot unit-test results.
+
+The correction candidate stores a preparing record before mkdir, reuses only its
+private directory and exact/partial identity marker, and publishes the ready inode
+after file/directory sync. A per-destination temporary filename is retired under
+the protected enrollment gate. Generation exclusion and private artifact checks
+remain mandatory. A focused native-filesystem unit case covers absent/empty/partial/
+complete identity recovery and unchanged refusal of wrong, unrelated, linked and
+read-shared contents. The three real crash observers remain byte-identical.
+Candidate runtime acceptance is pending.

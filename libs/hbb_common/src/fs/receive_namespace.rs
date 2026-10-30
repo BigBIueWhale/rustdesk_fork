@@ -131,7 +131,8 @@ fn directory_key(directory: &File) -> io::Result<String> {
 struct DirectoryRecord {
     version: u8,
     name: String,
-    inode: u64,
+    // None records durable setup intent; only Some admits transfer artifacts.
+    inode: Option<u64>,
 }
 
 fn read_record(coordinator: &File, record_name: &CStr) -> io::Result<Option<DirectoryRecord>> {
@@ -159,7 +160,7 @@ fn record_directory(destination: &File, record: &DirectoryRecord) -> io::Result<
     let directory = directory_at(destination, &name(&record.name)?)?;
     private_directory(&directory)?;
     let metadata = directory.metadata()?;
-    if metadata.ino() != record.inode || metadata.dev() != destination.metadata()?.dev() {
+    if Some(metadata.ino()) != record.inode || metadata.dev() != destination.metadata()?.dev() {
         return Err(refused("receive directory record identifies a different namespace"));
     }
     let identity = open_regular_child_no_follow(&directory, &name("identity")?,
@@ -173,8 +174,20 @@ fn record_directory(destination: &File, record: &DirectoryRecord) -> io::Result<
     Ok(directory)
 }
 
-fn write_record(coordinator: &File, record_name: &CStr, record: &DirectoryRecord) -> io::Result<()> {
-    let temporary = name(&format!("{}.tmp", crate::uuid::Uuid::new_v4().simple()))?;
+fn retire_record_temporary(coordinator: &File, temporary: &CStr) -> io::Result<()> {
+    let file = match open_regular_child_no_follow(coordinator, temporary,
+        RegularFileAccess::Read, ReceiveFileCreation::Existing) {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    ReceiveOwnedArtifact::Payload.validate(&file)?;
+    remove_recv_child_at(coordinator, temporary, &file)?;
+    sync_recv_directory(coordinator)
+}
+
+fn write_record(coordinator: &File, record_name: &CStr, temporary: &CStr,
+    record: &DirectoryRecord) -> io::Result<()> {
     let mut file = open_regular_child_no_follow(coordinator, &temporary,
         RegularFileAccess::Write, ReceiveFileCreation::CreateNew)?;
     let mut published = false;
@@ -203,6 +216,109 @@ fn write_record(coordinator: &File, record_name: &CStr, record: &DirectoryRecord
     }
 }
 
+fn prepare_directory(destination: &File, record: &DirectoryRecord) -> io::Result<File> {
+    let container_name = name(&record.name)?;
+    match mkdir_at(destination, &container_name) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+        Err(error) => return Err(error),
+    }
+    let directory = directory_at(destination, &container_name)?;
+    private_directory(&directory)?;
+    if directory.metadata()?.dev() != destination.metadata()?.dev() {
+        return Err(refused("receive setup directory is on a different filesystem"));
+    }
+    // A preparing namespace has no transfer artifacts. Recovery may complete only
+    // its private identity marker, never adopt existing payloads or other contents.
+    let identity_name = name("identity")?;
+    let scan = directory_at(&directory, &name(".")?)?;
+    if unix_directory_entry_names(&scan, &mut EmptyDirectoryRemovalState::default())?
+        .iter().any(|entry| entry != &identity_name) {
+        return Err(refused("preparing receive namespace contains unexpected entries"));
+    }
+    unix_require_same_object(&unix_fstat(&directory)?,
+        &unix_fstatat_no_follow(destination.as_raw_fd(), &container_name)?, "receive setup namespace")?;
+    let mut identity = open_regular_child_no_follow(&directory, &identity_name,
+        RegularFileAccess::ReadWrite, ReceiveFileCreation::OpenOrCreate)?;
+    ReceiveOwnedArtifact::Payload.validate(&identity)?;
+    let mut bytes = Vec::new();
+    (&mut identity).take(65).read_to_end(&mut bytes)?;
+    if !record.name.as_bytes().starts_with(&bytes) {
+        return Err(refused("preparing receive identity differs from its protected intent"));
+    }
+    identity.write_all(&record.name.as_bytes()[bytes.len()..])?;
+    sync_recv_regular_file(&identity)?;
+    sync_recv_directory(&directory)?;
+    sync_recv_directory(destination)?;
+    Ok(directory)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::{symlink, PermissionsExt};
+
+    #[test]
+    fn setup_recovers_only_private_identity_prefixes() {
+        let root = std::env::temp_dir().join(format!("receive-setup-{}", crate::uuid::Uuid::new_v4()));
+        std::fs::create_dir(&root).unwrap();
+        let destination = File::open(&root).unwrap();
+        for case in ["absent", "empty", "partial", "complete", "wrong", "unexpected", "symlink", "shared"] {
+            let record = DirectoryRecord { version: 1,
+                name: format!(".rustdesk-receive-{}", crate::uuid::Uuid::new_v4().simple()), inode: None };
+            let path = root.join(&record.name);
+            let marker = path.join("identity");
+            let allowed = matches!(case, "absent" | "empty" | "partial" | "complete");
+            if case != "absent" {
+                mkdir_at(&destination, &name(&record.name).unwrap()).unwrap();
+                if case == "unexpected" {
+                    std::fs::write(path.join("payload.download"), b"unrelated").unwrap();
+                } else if case == "symlink" {
+                    symlink("../outside", &marker).unwrap();
+                } else {
+                    let bytes = match case {
+                        "empty" => b"".as_slice(),
+                        "partial" => &record.name.as_bytes()[..11],
+                        "wrong" => b"unrelated".as_slice(),
+                        _ => record.name.as_bytes(),
+                    };
+                    OpenOptions::new().write(true).create_new(true).mode(0o600)
+                        .open(&marker).unwrap().write_all(bytes).unwrap();
+                    if case == "shared" {
+                        std::fs::set_permissions(&marker, std::fs::Permissions::from_mode(0o644)).unwrap();
+                    }
+                }
+            }
+            let inventory = || {
+                let mut entries: Vec<_> = std::fs::read_dir(&path).unwrap().map(|entry| {
+                    let entry = entry.unwrap();
+                    let metadata = std::fs::symlink_metadata(entry.path()).unwrap();
+                    let bytes = if metadata.file_type().is_symlink() {
+                        std::fs::read_link(entry.path()).unwrap().as_os_str().as_bytes().to_vec()
+                    } else { std::fs::read(entry.path()).unwrap() };
+                    (entry.file_name(), metadata.ino(), metadata.mode(), bytes)
+                }).collect();
+                entries.sort();
+                entries
+            };
+            let before = if allowed { Vec::new() } else { inventory() };
+            let result = prepare_directory(&destination, &record);
+            if allowed {
+                let recovered = result.unwrap();
+                assert_eq!(std::fs::read(&marker).unwrap(), record.name.as_bytes());
+                assert_eq!(std::fs::read_dir(&path).unwrap().count(), 1);
+                private_directory(&recovered).unwrap();
+            } else {
+                assert!(result.is_err(), "unexpected setup admission: {case}");
+                assert_eq!(before, inventory(), "refused setup changed contents: {case}");
+            }
+            std::fs::remove_dir_all(&path).unwrap();
+        }
+        assert!(!root.join("outside").exists());
+        std::fs::remove_dir(&root).unwrap();
+    }
+}
+
 #[derive(Debug)]
 pub(super) struct ReceiveNamespace {
     pub(super) destination: File,
@@ -227,8 +343,13 @@ impl ReceiveNamespace {
         sync_recv_directory(&coordinator)?;
         lock(&generation, libc::LOCK_SH)?;
         let record_name = name(&format!("{key}.json"))?;
+        let temporary = name(&format!("{key}.tmp"))?;
+        // The enrollment gate excludes every record writer. A killed writer's
+        // bounded temporary file is not committed authority and can be retired.
+        retire_record_temporary(&coordinator, &temporary)?;
         let record = read_record(&coordinator, &record_name)?;
-        let existing = record.as_ref().map(|r| record_directory(&destination, r));
+        let existing = record.as_ref().filter(|r| r.inode.is_some())
+            .map(|r| record_directory(&destination, r));
         let directory = match existing {
             Some(Ok(directory)) => directory,
             missing => {
@@ -246,27 +367,21 @@ impl ReceiveNamespace {
                         return Err(error);
                     }
                 }
-                let container = format!(".rustdesk-receive-{}", crate::uuid::Uuid::new_v4().simple());
-                let container_name = name(&container)?;
-                mkdir_at(&destination, &container_name)?;
-                let directory = directory_at(&destination, &container_name)?;
-                private_directory(&directory)?;
-                // No pre-existing contents acquire receive-artifact authority.
-                if !is_empty(&directory)? {
-                    return Err(refused("new receive namespace is not empty"));
-                }
+                let mut record = match record {
+                    Some(record) if record.inode.is_none() => record,
+                    _ => {
+                        let record = DirectoryRecord { version: 1,
+                            name: format!(".rustdesk-receive-{}", crate::uuid::Uuid::new_v4().simple()),
+                            inode: None };
+                        // Publish and sync intent before creating any public entry.
+                        write_record(&coordinator, &record_name, &temporary, &record)?;
+                        record
+                    }
+                };
+                let directory = prepare_directory(&destination, &record)?;
                 let opened = unix_fstat(&directory)?;
-                unix_require_same_object(&opened,
-                    &unix_fstatat_no_follow(destination.as_raw_fd(), &container_name)?, "receive namespace")?;
-                let mut identity = open_regular_child_no_follow(&directory, &name("identity")?,
-                    RegularFileAccess::Write, ReceiveFileCreation::CreateNew)?;
-                ReceiveOwnedArtifact::Payload.validate(&identity)?;
-                identity.write_all(container.as_bytes())?;
-                sync_recv_regular_file(&identity)?;
-                sync_recv_directory(&directory)?;
-                sync_recv_directory(&destination)?;
-                let record = DirectoryRecord { version: 1, name: container, inode: directory.metadata()?.ino() };
-                write_record(&coordinator, &record_name, &record)?;
+                record.inode = Some(directory.metadata()?.ino());
+                write_record(&coordinator, &record_name, &temporary, &record)?;
                 // LOCK_EX -> LOCK_SH is not atomic. The enrollment gate excludes another
                 // initializer throughout the conversion and the following identity replay.
                 lock(&generation, libc::LOCK_SH)?;

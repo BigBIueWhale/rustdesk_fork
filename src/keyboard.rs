@@ -659,8 +659,8 @@ fn start_grab_loop() {
     if let Err(err) = rdev::start_grab_listen(move |event: Event| match event.event_type {
         EventType::KeyPress(key) | EventType::KeyRelease(key) => {
             let is_press = matches!(event.event_type, EventType::KeyPress(_));
-            if let Key::Unknown(keycode) = key {
-                log::error!("rdev get unknown key, keycode is {:?}", keycode);
+            if let Key::Unknown(_) = key {
+                log::error!("Unsupported key from keyboard capture");
             } else {
                 #[cfg(feature = "flutter")]
                 if should_block_relative_mouse_shortcut(key, is_press) {
@@ -1240,7 +1240,7 @@ fn legacy_keyboard_mode(event: &Event, mut key_event: KeyEvent, state: &Keyboard
             }
             key_event.set_chr(chr as _);
         } else {
-            log::error!("Unknown key {:?}", &event);
+            log::error!("Unsupported legacy keyboard input");
             return events;
         }
     }

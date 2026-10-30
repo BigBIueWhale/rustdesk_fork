@@ -121513,3 +121513,12 @@ Both QEMU processes join, bounded RAM scratch retires and all eight endpoint
 deltas are zero. Fourteen raw files total 191,936 bytes per host, copied and
 hash-verified. The exact baseline diagnostic tree is removed after evidence
 verification (3,485,696 allocated bytes). The candidate outer exit is zero.
+
+Fresh ledger count at `f9e76023575f8a14cb6b86b84d80af70856072b4`:
+`qtnyqHjMQK` passes seven controls and exact byte round trip using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 367,233 tokens / 1,680,193 bytes,
+input SHA-256 `47c313a7eb391f4ecbb2958cbcde392a830a81964bf1dbe3fa8e067b8a1610a4`.
+All 77 admission controls and five refusals pass. QEMU 2816337 joins after
+30.559 seconds, RAM `run.abqowasd` retires and all three endpoint deltas are zero.
+Six raw files total 105,172 bytes per host, copied and hash-verified; outer exit
+is zero. This audit-only receipt leaves the counted ledger unchanged.

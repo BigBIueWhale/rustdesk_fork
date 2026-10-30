@@ -117926,3 +117926,103 @@ QEMU 1822213 joins in 31.209 seconds; RAM `run.1hon982n` retires and three liste
 deltas are zero. Six count files add 104,549 bytes; twenty raw files across the
 three runs total 310,513 bytes per host with matching hashes. This audit-only
 receipt preserves the measured ledger and its approximate 400,000-token budget.
+
+### 2026-10-30 — separate multiplication, reduction and wiping measurements
+
+The preceding pass made progress by retaining failed-test hashes and inspecting
+the emitted multiplication body's fixed counters. The cause remains unresolved;
+installed IPC/actions, native platforms and independent review remain open.
+This slice separates the composed operation's costs. Production crypto, secret
+owners, dependencies and every separately parked item remain unchanged.
+
+`6ea5f3e3` adds batch preparation to the existing estimator. Original raw fixtures
+retain their labels, seed, byte digest, warm-up, sample budget and threshold;
+the additional prepared-input buffer is allocated and populated outside timing.
+New cohorts measure reduction plus its wiping owner, multiplication on already
+reduced scalars without wiping owners, and copy/wipe of the actual precomputed
+multiplication result. Each has original, reversed and identical-input classes.
+A prepared-scalar variable-time multiplication control checks the new input path.
+All ten diagnostics use 100,000 measurements, four operations and 20,000 warm-ups.
+Existing nine cohorts remain. All observations execute before the verdict; any
+assessed detection or missing control rejects the run. The native deadline grows
+from 90 to 120 seconds for the additional work; VM/storage limits are unchanged.
+This changes the test artifact and measurement layout, so a passing result cannot
+clear detections on earlier artifacts. No production owner is removed.
+
+The [dudect implementation](https://raw.githubusercontent.com/oreparaz/dudect/master/src/dudect.h)
+separates batch preparation from measurement and retains uncropped statistics;
+those properties remain in this diagnostic. [Rust's black-box documentation](https://doc.rust-lang.org/std/hint/fn.black_box.html)
+limits its optimization-barrier guarantee; it does not prove constant time.
+Pinned [Dalek dispatch](https://raw.githubusercontent.com/dalek-cryptography/curve25519-dalek/curve25519-4.1.3/curve25519-dalek/src/backend/mod.rs)
+selects the backend from CPU capabilities, and [Subtle 2.6.1](https://raw.githubusercontent.com/dalek-cryptography/subtle/2.6.1/src/lib.rs)
+uses a volatile-read choice barrier. The capture now includes their relevant
+emitted functions, reduction/Montgomery arithmetic, AVX2 field multiplication
+and point wiping, with a 256 KiB aggregate compressed-data ceiling. Addresses
+and hashes still bind the disassembly to the actual stripped test executable.
+
+Run `08pQWlX4qJ` at `6ea5f3e367f7be18e9b92612ac40e4be19e51ef0`
+(tree `faf414b64d15bfbf9d83d11796eb7573efe15d8a`) completes all nineteen
+cohorts in 71.18 seconds and exits 101. The executable remains unchanged:
+SHA-256 `bd94b722f5b6a30b66e6159b1c463f5c815cafaaab7c2bc358fd11950a463d4d`.
+All nine original fixture digests/class counts match the preceding capture.
+Each component's raw fixture digest also matches its corresponding composed
+orientation. All three deliberate variable-time controls detect; all four
+identical-input controls remain below threshold. Generator, tag and standalone
+wide-reduction cohorts remain below threshold.
+
+| Measurement | Raw t | Pooled-p99 t | Result |
+| --- | ---: | ---: | --- |
+| reduce-multiply-one-random | -11.851029 | -14.119318 | Detected |
+| reduce-multiply-random-one | 19.092780 | 24.348732 | Detected |
+| reduce-multiply-one-one | -0.751462 | -0.035979 | Below threshold |
+| reduce-wipe-one-random | -0.387723 | -0.517531 | Below threshold |
+| multiply-prepared-one-random | -34.365747 | -36.895613 | Detected |
+| point-copy-wipe-one-random | 0.588671 | 2.582182 | Below threshold |
+| reduce-wipe-random-one | 0.164648 | 1.438730 | Below threshold |
+| multiply-prepared-random-one | 22.495811 | 28.777066 | Detected |
+| point-copy-wipe-random-one | -1.696667 | 1.502509 | Below threshold |
+| reduce-wipe-one-one | -2.728774 | -0.952527 | Below threshold |
+| multiply-prepared-one-one | 0.373334 | 0.613830 | Below threshold |
+| point-copy-wipe-one-one | 0.255682 | 1.473736 | Below threshold |
+
+Prepared multiplication means are 66,308.251819/67,114.297154 ns per four
+operations for one/random and 66,066.983792/65,600.717537 ns for random/one.
+The difference therefore persists without measured reduction or wiping owners,
+and follows the input under class reversal. Separate reduction/wiping and
+point-copy/wiping measurements do not detect a difference at this budget.
+This narrows the measured effect to the multiplication path and its measurement
+environment; it does not establish which instruction or processor behavior
+causes it, a usable attack, or erasure coverage.
+
+Nine function bodies are retained. Main AVX2 multiplication is at `0x60a60`,
+12,507 bytes, with the same four fixed-counter branch sites relative to its
+entry. Its direct callees are now identified and inspected: `0x63ef0` is
+2,367 bytes of AVX2 field multiplication, with no calls or conditional branches;
+`0x2d210` is Subtle's 11-byte choice barrier (stack-byte store, load and return).
+The captured 1,460-byte wide reducer has two calls to the 1,590-byte Montgomery
+multiplier; neither contains a conditional branch. Point wiping is 138 bytes of
+fixed-offset stores and return. The multiplication dispatcher tests a cached
+CPU-capability byte, initializes it with CPUID/XCR0 checks and branches to the
+AVX2 routine when enabled; this is code inspection, not a runtime branch trace.
+The serial backend and all instructions outside these captured ranges are not
+fully reviewed by this pass.
+
+[General Intel timing guidance](https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/best-practices/data-operand-independent-timing-isa-guidance.html)
+does not equate an instruction's data-independent execution timing with immunity
+to frequency effects. More specifically, [Intel's MCDT guidance](https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/best-practices/mxcsr-configuration-dependent-timing.html)
+and its [instruction list](https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/resources/mcdt-data-operand-independent-timing-instructions.html)
+cover `VPMULDQ`/`VPMULUDQ`, which occur in the captured arithmetic. They prescribe
+CPUID leaf 7/subleaf 2 EDX bit 5 enumeration and, where needed, a serialized
+MXCSR `0x1fbf` scope with restoration. Neither that capability nor the thread's
+MXCSR was observed in this run. A focused capability/MXCSR comparison is the next
+concrete diagnostic; MCDT is a hypothesis, not the assigned cause. Any test must
+preserve Rust's floating-point environment contract and restore thread state;
+no host register, frequency, service or global policy change is authorized by
+this investigation. Backend/point/seed comparisons and independent reproduction
+remain required before choosing a product correction.
+
+QEMU 1823291 joins in 174.814 seconds; RAM `run.mn9kh5ii` retires and four
+listener deltas are zero. Seven raw files total 158,045 bytes per host with
+matching hashes. Exact failed diagnostic directory inode 78294410 is removed
+after copying, reclaiming 3,596,288 allocated bytes. The earlier detection
+receipts remain intact; production crypto and ownership are unchanged.

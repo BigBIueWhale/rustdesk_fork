@@ -120153,3 +120153,45 @@ QEMU 2285276 joins in 30.818 seconds, RAM `run.of0bypz6` retires and three
 listener deltas are zero. Six count files add 104,384 bytes; thirteen raw files
 total 193,396 bytes per host with matching hashes. This audit-only receipt leaves
 the measured ledger unchanged.
+
+## 2026-10-30 — About screen custom-server metadata retirement
+
+The user-directed ordinary UI pivot continues; earlier parked work remains open.
+Tracked references show one About caller of `mainGetLicense`, its native wrapper,
+the empty `ui_interface::get_license` and an empty web stub. Historical `dc8ed4a4`
+removed the custom-server Key/Host/API metadata in June. This getter never supplies
+legal license text. `199d5fd718e5eb61da37f7fdfd06124db606246f` removes the complete
+empty path, its trailing blank line and an unused local link style. Version, build
+date, fork identity, Purslane copyright wording and license files remain.
+
+The existing navigation test checks all four displayed information fields. The
+About scrolling case replaces forty invented metadata lines with actual content
+in a 1000×180 viewport, retaining position across three rebuilds and observing
+disposal. Flutter's [surface-size contract](https://api.flutter.dev/flutter/flutter_test/TestWidgetsFlutterBinding/setSurfaceSize.html)
+requires resetting the viewport; the existing teardown does so. The native double
+rejects unexpected calls, including any restored obsolete getter. The
+[FRB v1 generation contract](https://cjycode.com/flutter_rust_bridge/v1/integrate/ios_gen.html)
+requires fresh bindings after Rust API changes. The existing four-output absence
+check now includes the removed names. No generated file is hand-edited.
+
+TUF `EwBdpwPuPz` runs `bash scripts/smoke-verifier-vm-authority.sh
+--flutter-model-tests --desktop-theme` at that exact commit. All sixteen rendered
+desktop settings cases and three focused result-parser controls pass; outer exit
+is 0. The parser uses the existing profile-selection mechanism with its sixteen-case
+inventory, avoiding the separately parked broad catalogue. Flutter 3.24.5 runs the
+exact production page with fresh bindings and explicit native/parent/platform
+doubles in the networkless unprivileged container inside the zero-NIC VM. Page
+and fixture SHA-256 values are respectively
+`8b2d024c7fae587f1b7ecccdeefced1425484efc41582d9f56ca152d99b74f03` and
+`49f703b6f292bebb5ea79330f657cdb5a52ac3a3a27a8a11a75b5011e46ed92c`.
+The complete serial retains all sixteen named outcomes and four generated hashes:
+`flutter-model-tests-run.EwBdpwPuPz.serial.log`, 11,398 bytes, SHA-256
+`b69a52cabf80bff0772fd9cddc3998adfcb2ba157e8fc9ceb354a62359dc10b6`.
+
+QEMU 2286214 joins in 270.015 seconds; RAM `run.fsh8tppy` retires and all four
+listener deltas are zero. Seven raw files total 82,981 bytes per host, copied and
+hash-verified. The existing 4 GiB guest, 7 GiB scratch, 6 GiB overlay/headroom
+limits and live monitor remain. This retires an empty metadata path and verifies
+rendered component behavior; native application linking, browser/device execution,
+full settings/native persistence and release acceptance remain open. No new
+security failure or baseline behavioral defect is claimed.

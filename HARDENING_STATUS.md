@@ -4574,6 +4574,18 @@ scenario or actual codec switch is claimed. Complete menu rendering, native
 FFI/peer switching, device/installed/platform, R-S0/R-F5 and release acceptance
 remain OPEN.
 
+**Desktop About metadata (`199d5fd7`).** The empty custom-server metadata getter,
+its native/web bridge methods and the About request are removed. Version, build
+date, fork identity and Purslane copyright wording remain; the unused trailing
+line is removed. The existing About test uses real content in a short viewport
+instead of forty fabricated metadata lines, and checks displayed attribution and
+version information. TUF `EwBdpwPuPz` passes all sixteen rendered desktop settings
+cases and three focused parser controls with fresh bindings; all four generated
+outputs omit the retired export. Exact source/output identities and joined RAM
+cleanup are in the audit. This is Flutter component evidence with explicit native
+and parent doubles; native application linking and browser/device execution remain
+OPEN.
+
 **Unused hardware-probe UI bridge (`d7d022d8`).** The empty native
 `check_hwcodec`, its `main_check_hwcodec` bridge and unimplemented web
 `mainCheckHwcodec` stub are deleted. Their last UI caller disappeared with the

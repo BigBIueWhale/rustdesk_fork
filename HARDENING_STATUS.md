@@ -4574,6 +4574,18 @@ scenario or actual codec switch is claimed. Complete menu rendering, native
 FFI/peer switching, device/installed/platform, R-S0/R-F5 and release acceptance
 remain OPEN.
 
+**Unused hardware-probe UI bridge (`d7d022d8`).** The empty native
+`check_hwcodec`, its `main_check_hwcodec` bridge and unimplemented web
+`mainCheckHwcodec` stub are deleted. Their last UI caller disappeared with the
+hardware-codec card in `d63b3d23`; tracked reference review finds no remaining
+product consumer. Three product files contain deletions only. TUF `RjS6rU04pU`
+freshly generates all four bridge outputs, checks the removed names are absent
+and passes the unchanged 24-case settings smoke plus three result-parser controls.
+The outer runner exits 0, QEMU joins and bounded RAM scratch retires with zero
+listener deltas. Exact sources, output hashes and classification are in the audit.
+This retires an unused API; native application linking, browser execution and
+actual codec/device behavior remain unexecuted for this deletion.
+
 **Native software-codec menu data — dormant hardware fields retired.**
 `48710f22` removes H264/H265 from the decoder preference matcher and native
 alternative-codec JSON. Shared `PeerConfig::load` already normalizes every codec

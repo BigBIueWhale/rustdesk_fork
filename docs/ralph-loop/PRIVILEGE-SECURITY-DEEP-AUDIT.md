@@ -120097,3 +120097,49 @@ QEMU 2281802 joins in 30.512 seconds, RAM `run.ohlk5_5c` retires and three
 listener deltas are zero. Six count files add 103,930 bytes; all twenty raw files
 total 287,925 bytes per host with matching hashes. This audit-only receipt leaves
 the measured ledger unchanged.
+
+## 2026-10-30 — retire the unused hardware-codec UI probe bridge
+
+The previous turn completed and verified saved bitrate preservation. This slice
+continues the ordinary UI pivot and R-G1/R-R2b's removal of unused hardware controls.
+Repository-wide tracked references identify only `ui_interface::check_hwcodec`,
+its `flutter_ffi::main_check_hwcodec` wrapper and the web `mainCheckHwcodec` stub.
+The native body is empty; the web body throws `UnimplementedError`. Git commit
+`d63b3d23` removed the last UI caller with the desktop hardware-codec card.
+The unrelated `option_synced` path still has a live server-model caller and stays.
+
+`d7d022d8` deletes those three unused surfaces and six lines of adjacent historical
+hardware-wrapper commentary. The three product files contain deletions only,
+totaling 693 bytes; retained source bytes are unchanged. No codec algorithm,
+hardware detection, active menu, native setting or dependency is modified.
+
+The [FRB v1 generation instructions](https://cjycode.com/flutter_rust_bridge/v1/integrate/ios_gen.html)
+require generating bindings from the Rust API input. The existing isolated Flutter
+runner does that from the committed `src/flutter_ffi.rs`; its four-output absence
+check now rejects both removed hardware-probe names alongside the retired device-ID
+names. This extends the existing check by one pattern rather than adding a new
+catalogue. The existing digest receipt retains its device-ID name and identifies
+the same four checked outputs. The unchanged 24-case image-quality profile supplies
+fresh Dart compilation/settings smoke coverage; native application linking and
+actual codec/device operation remain separate, open acceptance work.
+
+At `d7d022d8a4b5b73a97000c8d4e235f229dff8e64`, TUF `RjS6rU04pU` passes fresh
+generation, four-output absence checks, source postconditions, all 24 unchanged
+settings cases and three result-parser controls; outer exit is 0. The command is
+`bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --image-quality`.
+Flutter 3.24.5 and the pinned FRB/toolchain/dependency inputs run in the existing
+networkless unprivileged container inside the zero-NIC VM. This is generator and
+Flutter compilation/widget evidence, not a native application-link or browser run.
+
+Generated Rust, Rust I/O, Dart and Freezed SHA-256 values, respectively:
+`4e4dbbe67c63e513642bc57b5f8731eb2e2a19b5819a17e3fddd9391234d1f55`,
+`e7308ea3a23c4d8d0294c80f676b36eeb6c69e2a743267e4bf2ff559b03d1f20`,
+`59ce0f8d0b5937e23d469dc035bd2b906150daf5fb76d44e38ed2be2c471f007`,
+`07607702bac08dd620102cda04ef86759902ba04f256e469e2f567b9f5b5a686`.
+The serial is 17,703 bytes, SHA-256
+`141da0f79fdb743eac3b1e5a1a5e8d84f790e5c453390c93841dc720c2d07ad7`.
+QEMU 2283460 joins in 267.225 seconds; RAM `run.5wgk4s96` retires and all
+four listener deltas are zero. Seven raw files total 89,012 bytes per host,
+copied and hash-verified. The bounded 4 GiB guest / 7 GiB scratch / 6 GiB overlay
+profile and live monitor are unchanged. No failing behavior comparison is claimed
+for the uncalled no-op; existing parks and native/release obligations remain open.

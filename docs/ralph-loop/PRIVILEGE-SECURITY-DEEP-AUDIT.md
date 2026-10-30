@@ -121291,3 +121291,12 @@ Both QEMU processes join, bounded RAM workspaces retire and all eight endpoint
 deltas are zero. Fourteen raw files total 166,682 bytes per host, copied and
 hash-verified. After exact process, workspace, directory and evidence checks,
 the failed baseline diagnostic tree is removed (3,452,928 allocated bytes).
+
+The first ledger-count attempt `r22oBgQzou` stops before tokenization: adding the
+dropdown profile creates 76 successful resource-admission controls plus five
+refusals, but the guest and outer acceptance still expect 75 controls. Only those
+three expected-count values are corrected to 76; admission rules, limits and the
+passing product/test sources are unchanged. This failed count supplies no token
+result. QEMU 2652697 joins after 12.094 seconds, RAM `run.89cgic_s` retires and all
+three endpoint deltas are zero. Six raw files total 86,055 bytes per host, copied
+and hash-verified; its exact diagnostic tree is removed (229,376 allocated bytes).

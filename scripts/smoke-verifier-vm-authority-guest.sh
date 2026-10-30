@@ -3542,7 +3542,7 @@ run_focused_rust_tests() {
             )
         fi
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
-            source_fingerprints+=(scripts/fixtures/file-send-digest-before-size-admission.rs libs/hbb_common/src/fs/file_block.rs)
+            source_fingerprints+=(libs/hbb_common/src/fs/file_block.rs)
             required_tests=(
                 fs::tests::transfer_resume_send_is_once_and_preserves_live_progress
                 fs::tests::transfer_resume_receive_is_once_and_preserves_owned_output
@@ -8304,7 +8304,7 @@ PY
                 || fail 'nonterminal send-job retention differs'
             [ "$(grep -Fxc 'READ_JOB_BACKPRESSURE=pass cases=4 byte_refusals=3 channel_refusals=1 selected=retired survivors=exact writer=joined permits=returned receipt=closed storage=retired' "$output")" -eq 1 ] \
                 || fail 'native backpressure send-job retirement differs'
-            grep -E '^test fs::(tests::(send_(digest_|read_buffer_)|read_step_|transfer_resume_)|file_block::tests::allocation_refusal_).* \.\.\. ok$|^test tcp::writer_lifetime_tests::read_jobs_retire_before_native_writer_pressure_errors \.\.\. ok$|^SEND_DIGEST_(BEFORE|SIZE)=|^SEND_READ_ALLOCATION(_CASE)?=|^FILE_COMPRESSION_(ALLOCATION|CASE)=|^READ_TERMINAL_RETIREMENT(_CASE)?=|^READ_NONTERMINAL_RETIREMENT=|^READ_JOB_BACKPRESSURE(_CASE)?=|^READ_ROUND_ROBIN(_CASE)?=.*|^READ_CONFIRMATION_READY=|^TRANSFER_RESUME_' "$output"
+            grep -E '^test fs::(tests::(send_(digest_|read_buffer_)|read_step_|transfer_resume_)|file_block::tests::allocation_refusal_).* \.\.\. ok$|^test tcp::writer_lifetime_tests::read_jobs_retire_before_native_writer_pressure_errors \.\.\. ok$|^SEND_DIGEST_SIZE=|^SEND_READ_ALLOCATION(_CASE)?=|^FILE_COMPRESSION_(ALLOCATION|CASE)=|^READ_TERMINAL_RETIREMENT(_CASE)?=|^READ_NONTERMINAL_RETIREMENT=|^READ_JOB_BACKPRESSURE(_CASE)?=|^READ_ROUND_ROBIN(_CASE)?=.*|^READ_CONFIRMATION_READY=|^TRANSFER_RESUME_' "$output"
         else
         grep -E '^test platform::linux::tests::r_s11at_loginctl_output_.* \.\.\. ok$|^LOGINCTL_(WAIT_AUTHORITY|LOST_WAIT)=' "$output"
         if [ "$HBB_LOGIND_NATIVE" -eq 0 ]; then

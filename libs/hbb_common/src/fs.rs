@@ -27,10 +27,6 @@ mod atomic_write;
 pub use atomic_write::write_user_file_atomically;
 use file_block::SIZE as FILE_TRANSFER_BLOCK_SIZE;
 
-#[cfg(test)]
-#[path = "../../../scripts/fixtures/file-send-digest-before-size-admission.rs"]
-mod send_digest_before_size_admission;
-
 static NEXT_JOB_ID: AtomicI32 = AtomicI32::new(1);
 
 pub const DEFAULT_FILE_TRANSFER_MAX_FILES: usize = 10_000;
@@ -10422,12 +10418,6 @@ mod tests {
                 .expect("open source for an in-place length change")
                 .set_len(changed_size).expect("change the admitted source length");
             assert!(!job.open_data_stream().await.expect("open the changed native file"));
-
-            let (_, before_size) = job.digest_before_size_admission().await
-                .expect("the exact earlier getter accepted changed length");
-            assert_eq!(before_size, changed_size);
-            assert_ne!(before_size, admitted_size as u64);
-            println!("SEND_DIGEST_BEFORE=observed wire={wire} admitted={admitted_size} accepted={before_size}");
 
             let mut wire_pair = if wire { Some(keyed_read_job_tcp_pair(8 * 1024).await) } else { None };
             let result = match wire_pair.as_mut() {

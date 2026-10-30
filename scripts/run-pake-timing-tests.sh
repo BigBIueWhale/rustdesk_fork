@@ -100,22 +100,35 @@ sections=[(int(address,16),int(size,16),name) for name,address,size in
 selected=[entry for entry in sections if all(part in entry[2]
     for part in ('variable_base','spec_avx2','3mul'))]
 assert len(selected)==1, ('AVX2 multiplication symbol count',selected)
-start,size,name=selected[0]
-assert 0<size<=64*1024
-assembly=subprocess.check_output(['objdump','-d','--demangle',
-    '--start-address='+str(start),'--stop-address='+str(start+size),artifact],timeout=10)
-assert 0<len(assembly)<=1024*1024
-encoded=base64.b64encode(zlib.compress(assembly,9)).decode()
-assert len(encoded)<=128*1024
+related=[entry for entry in sections if any(part in entry[2] for part in
+    ('from_bytes_mod_order_wide','montgomery_mul','cpuid_avx2','subtle9black_box'))
+    or ('edwards..EdwardsPoint$u20$as$u20$core..ops..arith..Mul' in entry[2]
+        and 'scalar..Scalar' in entry[2])
+    or ('avx2..field..FieldElement2625x4' in entry[2] and '9_impl_mul' in entry[2])
+    or ('ristretto..RistrettoPoint' in entry[2] and '7zeroize' in entry[2])]
+assert 5<=len(related)<=12
+def disassemble(entry):
+    start,size,name=entry
+    assert 0<size<=64*1024
+    assembly=subprocess.check_output(['objdump','-d','--demangle',
+        '--start-address='+str(start),'--stop-address='+str(start+size),artifact],timeout=10)
+    assert 0<len(assembly)<=1024*1024
+    encoded=base64.b64encode(zlib.compress(assembly,9)).decode()
+    assert len(encoded)<=128*1024
+    return {'symbol':name,'address':start,'code_bytes':size,'text_bytes':len(assembly),
+        'text_sha256':hashlib.sha256(assembly).hexdigest(),'encoding':'zlib-base64','data':encoded}
+record=disassemble(selected[0])
+record['related']=[disassemble(entry) for entry in related]
+assert sum(len(item['data']) for item in [record,*record['related']])<=256*1024
 version=subprocess.check_output(['objdump','--version'],timeout=10).decode().splitlines()[0]
-print('PAKE_TIMING_DISASSEMBLY='+json.dumps({'symbol':name,'address':start,
-    'code_bytes':size,'text_bytes':len(assembly),'text_sha256':hashlib.sha256(assembly).hexdigest(),
+record.update({
     'link_map_sha256':hashlib.sha256(map_bytes).hexdigest(),
     'dalek_symbols':[entry for entry in sections if 'curve25519_dalek' in entry[2]],
-    'objdump':version,'encoding':'zlib-base64','data':encoded},sort_keys=True))
+    'objdump':version})
+print('PAKE_TIMING_DISASSEMBLY='+json.dumps(record,sort_keys=True))
 PY
 test_status=0
-timeout --signal=TERM --kill-after=5s 90s taskset -c "$cpu" "$test_executable" \
+timeout --signal=TERM --kill-after=5s 120s taskset -c "$cpu" "$test_executable" \
     --exact timing_tests::optimized_timing_evidence --ignored --test-threads=1 --color never --show-output \
     || test_status=$?
 [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]

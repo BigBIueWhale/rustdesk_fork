@@ -64,6 +64,17 @@ fn measure<T>(
     prepare: impl Fn(&mut [u8; 64], usize, &mut u64),
     execute: impl Fn(&[u8; 64]) -> T,
 ) -> bool {
+    measure_prepared(name, seed, samples, prepare, |bytes| *bytes, execute)
+}
+
+fn measure_prepared<I, T>(
+    name: &str,
+    seed: u64,
+    samples: usize,
+    prepare: impl Fn(&mut [u8; 64], usize, &mut u64),
+    decode: impl Fn(&[u8; 64]) -> I,
+    execute: impl Fn(&I) -> T,
+) -> bool {
     assert!(samples >= BATCH && samples % BATCH == 0);
     let mut state = seed;
     let mut inputs = vec![([0u8; 64], 0usize); BATCH];
@@ -76,10 +87,13 @@ fn measure<T>(
             digest.update([*class as u8]);
             digest.update(*bytes);
         }
-        for (bytes, class) in &inputs {
+        // Decode the entire batch before timing so reduction or point creation
+        // can be excluded without changing the label stream or source inputs.
+        let prepared: Vec<_> = inputs.iter().map(|(bytes, class)| (decode(bytes), *class)).collect();
+        for (input, class) in &prepared {
             let start = Instant::now();
             for _ in 0..REPEATS {
-                black_box(execute(black_box(bytes)));
+                black_box(execute(black_box(input)));
             }
             let elapsed = start.elapsed().as_nanos();
             assert!(elapsed > 0 && elapsed <= u64::MAX as u128);
@@ -216,9 +230,51 @@ fn optimized_timing_evidence() {
         GROUP_SAMPLES, |bytes, class, state| scalar_inputs(bytes, class ^ 1, state), multiply);
     let identical = measure("reduce-multiply-one-one", 0x8d02_57be_a913_c64f,
         GROUP_SAMPLES, |bytes, _, state| scalar_inputs(bytes, 0, state), multiply);
-    assert!(control && group_control, "variable-time positive control was not detected: inconclusive");
-    assert!(!identical, "identical-input negative control detected a difference: inconclusive");
+
+    // Separate the composed operation's costs. These are public test fixtures;
+    // the unguarded multiplication below changes no production secret owner.
+    let prepared_control = measure_prepared("vartime-prepared-one-random", 0x4a16_c09e_72f3_b85d,
+        GROUP_SAMPLES, scalar_inputs, Scalar::from_bytes_mod_order_wide,
+        |scalar| RistrettoPoint::vartime_double_scalar_mul_basepoint(
+            scalar, black_box(&point), black_box(&Scalar::ZERO)));
+    let mut component_differences = [false; 3];
+    let mut component_identical = [false; 3];
+    for (orientation, suffix) in ["one-random", "random-one", "one-one"].iter().enumerate() {
+        let inputs = |bytes: &mut [u8; 64], class: usize, state: &mut u64| {
+            let class = match orientation {
+                0 => class,
+                1 => class ^ 1,
+                _ => 0,
+            };
+            scalar_inputs(bytes, class, state);
+        };
+        let reduction = measure(&format!("reduce-wipe-{suffix}"), 0x8d02_57be_a913_c64f,
+            GROUP_SAMPLES, inputs,
+            |bytes| Zeroizing::new(Scalar::from_bytes_mod_order_wide(bytes)));
+        let arithmetic = measure_prepared(&format!("multiply-prepared-{suffix}"), 0x8d02_57be_a913_c64f,
+            GROUP_SAMPLES, inputs, Scalar::from_bytes_mod_order_wide,
+            |scalar| scalar * black_box(&*point));
+        // Copy and wipe the actual multiplication result, prepared outside the
+        // clock. This measures that owner's cost, not post-drop erasure coverage.
+        let cleanup = measure_prepared(&format!("point-copy-wipe-{suffix}"), 0x8d02_57be_a913_c64f,
+            GROUP_SAMPLES, inputs, |bytes| &Scalar::from_bytes_mod_order_wide(bytes) * &*point,
+            |prepared_point| Zeroizing::new(*prepared_point));
+        let differences = [reduction, arithmetic, cleanup];
+        if orientation == 2 {
+            component_identical = differences;
+        } else {
+            for (detected, difference) in component_differences.iter_mut().zip(differences) {
+                *detected |= difference;
+            }
+        }
+    }
+    assert!(control && group_control && prepared_control,
+        "variable-time positive control was not detected: inconclusive");
+    assert!(!identical && !component_identical.iter().any(|detected| *detected),
+        "identical-input negative control detected a difference: inconclusive");
     assert!(!tag_position && !tag_key && !scalar && !generator && !multiplication && !reversed,
         "timing difference detected");
-    println!("PAKE_TIMING_RESULT=no-difference-detected cohorts=6 positive_controls=2 negative_control=passed primitive_samples=1000000 group_samples=100000 repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact");
+    assert!(!component_differences.iter().any(|detected| *detected),
+        "component timing difference detected");
+    println!("PAKE_TIMING_RESULT=no-difference-detected cohorts=12 positive_controls=3 negative_controls=4 primitive_samples=1000000 group_samples=100000 repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact");
 }

@@ -119830,3 +119830,55 @@ QEMU 2144872 joins in 31.118 seconds, RAM `run.k7yafb8k` retires, and all three
 listener deltas are zero. Six count files add 105,258 bytes; the complete twenty
 raw files total 260,221 bytes per host with matching hashes. This audit-only
 receipt leaves the measured ledger unchanged.
+
+### 2026-10-30 — Debian ELF virtual load-range admission
+
+Read-only review at `6fb0a91ca440b67f8f9874322c0ceb3973244f73` finds that
+`validate_elf_identity` checks LOAD file bounds and permissions but does not bound
+the virtual address plus memory size. Python's unbounded addition allows a segment
+whose range wraps in the target's 64-bit address calculation. The
+[ELF program-header contract](https://gabi.xinuos.com/elf/07-pheader.html)
+defines these fields; the [Linux v6.1 loader](https://raw.githubusercontent.com/torvalds/linux/v6.1/fs/binfmt_elf.c)
+independently checks the load range against task address space before completing
+execution. The correction belongs in the shared ELF predicate used for every
+packaged object, before archive acceptance; no privileged runtime authority changes.
+
+Test-only `590f3481a5aaf1ff1bc746360dbf271c57f04bf2` adds three compiled
+runner cases to the existing full package self-test. Each actual Debian archive
+contains matching primary/service-child bytes and regenerated checksums; extracted
+bytes are compared with the executable passed to native execution. The valid control
+exits0. Changing only the last LOAD's memory-size field to end exactly at 2^64,
+or to UINT64_MAX, makes native execution terminate with SIGSEGV. Child execution
+has no core dumps, a 128 MiB address-space limit, a three-second CPU limit and a
+five-second parent wait. TUF `QwbdLATswX` demonstrates that the unchanged complete
+package validator accepts both invalid archives; the test correctly fails.
+
+`5dba0135f984e1e0d15a3736ff43f5fb1ec4bf61` adds the missing range rejection.
+The unchanged fixtures pass in TUF `LOW8C0B2VP` through
+`bash scripts/smoke-verifier-vm-authority.sh --debian-package-tests`: both malformed
+archives are refused for the new diagnostic, while the valid archive and executable
+succeed. The complete archive/production-finalizer self-test also passes, including
+two valid CLI archives and eight changed/missing maintainer-source refusals.
+All three executable SHA-256 values match between runs:
+
+- Valid: `4c30f53939375d74ed83c9e03cd7cb5e41212b3d40d09abf7db7ee6aac2792c3`.
+- Wrap boundary: `186554502971721980ccfc66cc0ec9f3a8bd18fe01dbc0856f96366280e974af`.
+- Maximum memory size: `a054f2941e9b955ecde7ea06404c8339ca93c2ab9817e46933e99146b9d68d6a`.
+
+The nonroot guest container uses pinned image
+`sha256:5bf549eb60a88e1039a751ffb37de390b655895c20009db97fb48f54e09415fa`,
+read-only source, no network, no capabilities and no-new-privileges inside the
+zero-NIC VM. Baseline QEMU 2146965 joins in 34.544 seconds and retires RAM
+`run.rjg5ldyo`; candidate QEMU 2148547 joins in 34.401 seconds and retires
+`run.bjrla_cg`. All three listener observations per run have zero additions and
+removals. Twelve raw serial/console/storage/listener files total 145,240 bytes per
+host and have matching hashes. Their prefixes are
+`.harness-state/verifier-vm/debian-package-tests-run.QwbdLATswX` and
+`debian-package-tests-run.LOW8C0B2VP`; console files use the corresponding
+`debian-package-tests-console-run` prefix. After evidence copy and owner absence
+checks, the exact failed diagnostic tree is removed (200,704 allocated bytes).
+
+This is a package-gate correctness fix with native fixture evidence. It does not
+establish an LPE, installed product behavior, complete ELF validity or R-S0/R-F5
+acceptance. Parked parent compilation/settings integration remains parked. The
+ledger's existing Debian admission section is updated; fresh token count follows.

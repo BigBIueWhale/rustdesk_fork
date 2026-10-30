@@ -6999,6 +6999,20 @@ unaccepted. This closes these artifact admission defects only; no RustDesk proce
 or root service ran. Complete final RustDesk package validation, installed
 loader/service behavior, release and independent reproduction remain OPEN.
 
+**Debian ELF load ranges (`5dba0135`).** The package gate rejects every LOAD
+whose virtual address plus memory size overflows the 64-bit address calculation.
+At unchanged validator `590f3481`, two complete, checksum-correct Debian fixtures
+pass admission although their compiled runners terminate with SIGSEGV: one ends
+exactly at the wrap boundary, the other uses the maximum memory-size field.
+The corrected validator refuses both; the valid control remains accepted and
+exits0. All three executable hashes match across runs. TUF `QwbdLATswX` and
+`LOW8C0B2VP` retain the native and archive observations; the latter also passes
+the full archive/production-finalizer self-test and existing maintainer CLI cases.
+Both no-NIC VM runs join, retire RAM scratch and leave three host-listener
+observations unchanged. This closes the demonstrated artifact-admission gap;
+complete ELF/dependency validity, the installed RustDesk service, R-S0 and release
+acceptance remain OPEN. The audit retains source, artifact and cleanup receipts.
+
 **Debian archive admission.** `229b13d3` removes the obsolete producer-layout AST
 catalogue and source-mutation tests. Actual archive admission does not import or execute
 `build.py`; an invocation without an archive or explicit self-test is refused. Archive

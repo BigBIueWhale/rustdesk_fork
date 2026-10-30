@@ -121711,3 +121711,12 @@ per-destination coordination retention, filesystem/remount identity, installed
 authenticated-peer and other-platform behavior, physical durability and release
 acceptance. This checkpoint does not reopen other user parks or complete R-S0,
 R-F5, independent reproduction/external review, or the overall goal.
+
+Ledger verification at `98e41a8885efd2f251c2463e6e4d7d417ec81698`, TUF
+`WVJh7uru0r`, exits zero: 367,598 tokens / 1,682,055 bytes, SHA-256
+`f10b2f904cf6201d74aff3a415da74deefbf233e2fcd62bc5e526c1d5dfce8e2`.
+Pinned `tiktoken-0.12.0/cl100k_base/encode_ordinary`, all seven controls and the
+strict-UTF8 round trip pass. QEMU 2908549 joins after 30.259 seconds; RAM
+`run.kmjm67ow` retires and all three listener deltas are zero. Raw serial:
+35,833 bytes, SHA-256 `ec90606a962924284dff1597ead42f253df32cb045cfcc537b5e81cdbc4663e9`.
+This audit-only receipt preserves the counted ledger and validated product.

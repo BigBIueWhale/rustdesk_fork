@@ -121100,3 +121100,11 @@ call the same function; text, automatic sizing, style and tooltip stay unchanged
 Source/caller review and whitespace checks cover this small spacing correction.
 No new test fixture or product execution is added; rendered/device and broader
 application acceptance remain open.
+
+Fresh ledger count at `edf1d1b370a11789c2152d65106008b3c1c0a0dd`:
+`2vQS7icbOj` passes seven controls and exact byte round trip using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 366,069 tokens / 1,674,651 bytes,
+input SHA-256 `d7306abd0cce8aafe0f7700b504541e4ee33c5e313b88c0310185e04f01abdf6`.
+QEMU 2638569 joins in 30.311 seconds, RAM `run.0alkpqlm` retires and all three
+endpoint deltas are zero. Six raw files total 103,906 bytes per host, copied and
+hash-verified. This audit-only receipt leaves the ledger unchanged.

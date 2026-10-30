@@ -118117,3 +118117,90 @@ QEMU 1829000 joins in 30.409 seconds; RAM `run.w5hr15b0` retires and three
 listener deltas are zero. Six count files add 103,537 bytes. Thirteen raw files
 across both runs total 266,134 bytes per host with matching hashes; this audit-only
 receipt preserves the measured ledger and its approximate 400,000-token budget.
+
+### 2026-10-30 — default versus serial multiplication backend
+
+The preceding MXCSR comparison made progress by observing MCDT_NO and showing
+that setting status flags did not eliminate the measured difference. This
+slice compares backend selection; production cryptography and all parked work
+remain unchanged. Installed IPC/actions and broader native acceptance remain
+open.
+
+The pinned [Dalek build script](https://raw.githubusercontent.com/dalek-cryptography/curve25519-dalek/curve25519-4.1.3/curve25519-dalek/build.rs)
+supports `curve25519_dalek_backend="serial"`; its default on this x86-64
+target is simd. [Dispatch source](https://raw.githubusercontent.com/dalek-cryptography/curve25519-dalek/curve25519-4.1.3/curve25519-dalek/src/backend/mod.rs)
+omits the vector module and AVX selection when serial is selected.
+The [serial variable-base implementation](https://raw.githubusercontent.com/dalek-cryptography/curve25519-dalek/curve25519-4.1.3/curve25519-dalek/src/backend/serial/scalar_mul/variable_base.rs)
+uses fixed radix-16 traversal and table selection; its source description does
+not replace emitted-code inspection or measurements.
+
+At `b16adf1df3617bd2f3105d5c4319ab9ccc774882` (tree
+`46def6a48e44c4b4ff384dd89d8e518c26882c27`), two focused guest profiles
+build the same source with default selection or the serial cfg override.
+The runner requires the actual build-script backend and 64-bit arithmetic
+configuration, captures the selected multiplication entry and related bodies,
+and rejects AVX backend/dispatch symbols in the serial map. It runs twenty
+functional tests and then the four-cohort comparison, preserving native failure
+status and executable hashes before/after. Existing broader timing and
+allocation profiles remain; their shared input functions retain the same byte
+generation. No production dependency, backend setting or secret owner changes.
+
+Commands are `bash scripts/smoke-verifier-vm-authority.sh
+--pake-backend-default-tests` and `--pake-backend-serial-tests`. Both use
+the admitted pake-timing storage class: 4 GiB guest, 2 GiB container, 6 GiB RAM
+scratch, 4 GiB overlay, 6 GiB host headroom and 300-second VM limit. Each
+comparison uses 100,000 measurements, four operations and 20,000 warm-ups;
+threshold remains 10 on raw and pooled-p99 Welch statistics. The fixed point,
+label stream, seed, raw input hashes/counts and measured reduction exclusion
+match across both builds and the preceding prepared-scalar cohorts. Whole
+executables and their layouts differ, as expected for this build comparison.
+
+| Build/run | Native result | Executable SHA-256 |
+| --- | --- | --- |
+| Default `aZrYyRHF3d` | 20 functional tests pass; timing exits 101 after 28.10 seconds | `bd986749a3f104a85d3d471a04ecc7926f3f7ae4c1a12b0f807675780338a53e` |
+| Serial `oFumbLOVUU` | All 21 tests pass; timing takes 34.86 seconds | `abded8eb0b459751ca03350906bb568fbceff0ca830f5b37b6144cac4edf63c4` |
+
+| Cohort | Default raw/p99 t | Serial raw/p99 t |
+| --- | ---: | ---: |
+| Variable-time control | -3548.832345 / -5839.589021 | -3404.655923 / -4854.269491 |
+| Prepared one/random | **-15.272896 / -17.737147** | -4.026218 / -1.979756 |
+| Prepared random/one | **11.894143 / 11.458579** | 1.990658 / 0.584486 |
+| Identical one/one | -0.761830 / -0.571947 | 0.643448 / 1.363220 |
+
+Both controls behave as required. Ordinary cohorts observe MXCSR 0x1fa0 at
+both boundaries; each run enumerates MCDT_NO=1 and AVX2 availability. Functional
+coverage includes published/fork vectors, real random handshakes, transcript
+and element refusal, final confirmation, RNG-error cleanup and encoding
+boundaries. One/random means are 67,504.415161/67,938.221179 ns per four
+operations for default and 83,492.793968/83,605.483508 ns for serial. These
+are measurements of these guest artifacts, not a product performance claim.
+
+All eleven captured bodies per build pass length/hash checks. Default AVX2
+multiplication remains 12,507 bytes at 0x70f90, with the same four conditional
+branch offsets as preceding captures. Serial multiplication is 2,800 bytes at
+0x6fcc0; disassembly SHA-256 is
+`7b5a0e2a90c4e6c9e3fbc78aa44e910ff18532fec05bb4137bbd04ad8db6ac1c`.
+Its inspected branches traverse seven table-building entries, radix positions
+and 63 remaining digits. The captured scalar field multiplier has no
+conditional branch. Table selection, point addition, pow2k and indirect-copy
+callees are not all captured/reviewed, so complete emitted-call-chain review
+remains open. The serial cfg and absent AVX symbols establish the compiled
+backend distinction; default runtime branch tracing remains absent.
+
+This comparison identifies a serial-backend candidate for further assessment.
+A single below-threshold serial run cannot establish constant-time behavior,
+identify the cause, clear prior failures or justify switching shipping builds.
+Next work should extend that candidate to all optimized primitive/composed
+cohorts, other points/seeds and independent reproduction, then assess the
+appropriate product change and performance. Full sampling/RNG timing, other
+targets/shipping artifacts, higher-order leakage, automatic CI, erasure and
+R-V3 remain open.
+
+Default QEMU 1830109 joins in 132.934 seconds and RAM `run.6jwrjbjo` retires;
+serial QEMU 1830936 joins in 136.948 seconds and RAM `run.f95p8b_o` retires.
+All eight host listener deltas are zero. Their seven raw files total 157,396
+and 127,771 bytes respectively, 285,167 bytes per host with matching hashes.
+The exact default failed-run directory, inode 78294410, is removed after
+copying and releases 3,592,192 allocated bytes. No VM/run scratch remains.
+Both overlays stayed in bounded RAM; each QEMU reports 4,096 host block-write
+bytes. No product/test executable ran on a host.

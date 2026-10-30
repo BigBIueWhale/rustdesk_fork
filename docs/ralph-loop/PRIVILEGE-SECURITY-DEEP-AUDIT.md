@@ -121788,3 +121788,14 @@ identity for root/ordinary principals, separate filesystems and bind mounts; the
 replace the per-destination retained layout and rerun these unchanged workflow
 oracles together with the original authority/resume/concurrency/crash controls.
 This is a concrete unclosed implementation prerequisite, not a release waiver.
+
+Ledger verification at `3832abf27108cf0f4014c19e225c8781d7b8837b`, TUF
+`pAqSH9pMUL`, exits zero: 367,813 tokens / 1,683,123 bytes, SHA-256
+`6791aee4b22c9a1067148180c005c3f13ee03a84713c5cd7412ab0e45480d287`.
+Pinned `tiktoken-0.12.0/cl100k_base/encode_ordinary`, seven controls and the strict
+UTF8 round trip pass. QEMU 2911452 joins after 30.300 seconds; RAM `run.m228l0ng`
+is absent and all three listener deltas are zero. Serial: 35,832 bytes, SHA-256
+`6fbaa73885fb1ed98efc2fc3fac7b08e841dede1f07bb1d64cf38aff3dcf1347`.
+The baseline diagnostic directory was retired after evidence verification,
+reclaiming 3,469,312 allocated bytes. This audit-only receipt changes neither
+the counted ledger nor product source; the completed-destination defect stays open.

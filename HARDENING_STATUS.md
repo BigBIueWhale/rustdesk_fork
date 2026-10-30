@@ -4396,6 +4396,17 @@ deltas. Save callbacks are controlled; native persistence, OS screen readers and
 complete application acceptance remain unexecuted for this correction. The server's
 adaptive bitrate cap is unchanged. Broader runner and parked work remain open.
 
+**Image-quality More control (`a025bcaa`).** The translated label and checkbox
+share one accessibility node and click target. Checkbox, label, keyboard and
+accessibility activation use the existing range handler; fixed quality and Close
+still disable changes. Baseline `5ace31a5` reproduces an ignored label click and
+missing enabled/disabled accessible names, with 21 other cases passing. The
+identical 24-case suite passes at the correction, including both layouts,
+unchanged low-range values without writes and exactly one bounded save when
+leaving the expanded range. The audit binds both runs and cleanup. This is
+rendered Flutter evidence with controlled save callbacks; native screen readers,
+mobile devices and complete application/native persistence remain OPEN.
+
 **Autosave restoration (`8d9bc485`).** Quality, FPS and trackpad controls represent
 the confirmed value as unknown after an exception, null or invalid save result.
 An explicit newer edit remains dirty even when it restores an earlier value;

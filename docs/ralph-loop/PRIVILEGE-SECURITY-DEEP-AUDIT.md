@@ -120205,3 +120205,52 @@ QEMU 2288057 joins in 30.564 seconds, RAM `run.957xwlqj` retires and all three
 listener deltas are zero. Six count files add 105,719 bytes; all thirteen raw
 files total 188,700 bytes per host with matching hashes. This audit-only receipt
 leaves the measured ledger unchanged.
+
+## 2026-10-30 — image-quality More label interaction and accessibility
+
+The preceding About cleanup is completed progress. Ordinary UI work continues;
+previous user parks remain open. `CustomImageQualityWidget` placed a Checkbox and
+translated More text in a plain Row. Only the square received pointer activation;
+the text was a separate semantics node, leaving the checkbox unnamed. Flutter's
+[MergeSemantics contract](https://api.flutter.dev/flutter/widgets/MergeSemantics-class.html)
+specifically covers combining a checkbox's state with its adjacent text. The
+[labeled-checkbox guidance](https://api.flutter.dev/flutter/material/CheckboxListTile-class.html)
+also describes a single interactive target. The existing `SettingCheckbox` uses
+this same local pattern; adopting the larger ListTile layout is unnecessary.
+
+Preparation `5ace31a53f439cac7dfe8791e659b8b4cc910c15` extends three existing
+cases without changing the 24-case inventory. TUF `1Mfb4VJ9EW` passes 21 and
+fails three: a label click leaves the slider maximum at 100 instead of 4095;
+the enabled and disabled checkbox nodes both have empty names. Product source
+is unchanged from `31122343`. The baseline serial is 22,545 bytes, SHA-256
+`54b23da538d8bc2d7bdaa9167004078db36339a801e99a85e5baaed79ea6a0d5`.
+QEMU 2288962 joins in 242.155 seconds; RAM `run.aqapf51k` retires and all four
+listener deltas are zero. Seven raw files total 94,515 bytes per host; after
+copy/hash verification, the exact retired diagnostic tree releases 3,469,312
+allocated bytes. Terminal wrapper, QEMU and RAM absence are checked; normal
+runner completion joins its capture and virtiofsd owners before reporting the
+guest test failure.
+
+`a025bcaa78f7fec2ab209ae7b5d0ecb5d5ab96aa` merges the More semantics and makes
+its complete row tappable. Both entry points retain the existing active/closing
+predicate and `_changeMore` handler. Range, debounce, save, retry and lifetime
+code is unchanged. The byte-identical tests now exercise checkbox, label,
+accessibility and Space activation on both desktop/mobile layouts, check named
+checked/unchecked/disabled states, preserve 75 without a write on range toggles,
+and observe exactly one 100 save when leaving the expanded range from 500.
+The test/product SHA-256 values are respectively
+`da5cb48c7831300df6d94cb072749348eafc7c8d8053d28bf3451bad190256d1` and
+`00ab3d3f9e2e7dd4f347e5de90c67470297addbb3f1ffa6d67abeee30d237d44`.
+
+TUF `6hCESTqR6T` passes all 24 cases, three focused parser controls, fresh bridge
+generation and source postconditions; outer exit is 0. Both runs use
+`bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --image-quality`
+with pinned Flutter 3.24.5 in the networkless unprivileged container and zero-NIC
+VM. The candidate serial is 17,710 bytes, SHA-256
+`0a4faae287f46d03135f2b285bae03ff79271a9e8d333be45a7fd42e58160abb`.
+QEMU 2289818 joins in 270.237 seconds; RAM `run.5oro6_2i` retires and all four
+listener deltas are zero. Fourteen raw files total 183,869 bytes per host, copied
+and hash-verified. Bounded RAM admission/monitoring remains unchanged. This is
+rendered production-widget/framework semantics and callback evidence; actual
+screen readers, mobile devices, native persistence and full application/release
+acceptance remain open.

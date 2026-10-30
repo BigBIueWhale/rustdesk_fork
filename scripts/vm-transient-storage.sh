@@ -59,6 +59,7 @@ elif [[ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:connect-pass
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:desktop-theme \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:peer-data \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:custom-scale \
+    || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:image-quality \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:virtual-mouse-buttons \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:virtual-joystick \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:floating-position \

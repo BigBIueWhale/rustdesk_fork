@@ -227,7 +227,8 @@ HELP_BUTTON_SUITES = {
     "fixed_width_button_layout_test.dart": {
         f"help button {variant} {case}"
         for variant in ("filled", "outline")
-        for case in ("fits a long translated label",
+        for case in ("honors an explicit single-line limit",
+                     "fits a long translated label",
                      "fits enlarged text in both directions")
     },
 }

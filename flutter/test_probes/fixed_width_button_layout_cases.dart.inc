@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'fixed_width_button_probe.dart';
 
 Widget _subject(bool outline, String label, double scale,
-        TextDirection direction, VoidCallback onPressed) =>
+        TextDirection direction, VoidCallback onPressed, {int? maxLines}) =>
     MaterialApp(
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context).copyWith(
@@ -14,19 +14,22 @@ Widget _subject(bool outline, String label, double scale,
         child: Directionality(textDirection: direction, child: child!),
       ),
       home: Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              FixedWidthButton(
-                width: 150,
-                padding: 8,
-                textSize: 20,
-                isOutline: outline,
-                text: label,
-                onTap: onPressed,
-              ),
-            ],
+        body: SingleChildScrollView(
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FixedWidthButton(
+                  width: 150,
+                  padding: 8,
+                  textSize: 20,
+                  isOutline: outline,
+                  text: label,
+                  maxLines: maxLines,
+                  onTap: onPressed,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -59,6 +62,27 @@ void _expectCompleteLabel(WidgetTester tester, String label) {
 void main() {
   for (final outline in [false, true]) {
     final variant = outline ? 'outline' : 'filled';
+    testWidgets('help button $variant honors an explicit single-line limit',
+        (tester) async {
+      for (final direction in TextDirection.values) {
+        final label = direction == TextDirection.ltr
+            ? 'Berechtigungen konfigurieren'
+            : 'הגדרה';
+        final scale = direction == TextDirection.ltr ? 1.0 : 3.0;
+        await tester.pumpWidget(_subject(outline, label, scale, direction,
+            () {}, maxLines: 1));
+        final paragraph = tester.renderObject<RenderParagraph>(find.descendant(
+          of: find.byType(FixedWidthButton),
+          matching: find.byType(RichText),
+        ));
+        expect(paragraph.didExceedMaxLines, isTrue);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(
+            _subject(outline, label, scale, direction, () {}));
+        _expectCompleteLabel(tester, label);
+      }
+    });
+
     testWidgets('help button $variant fits a long translated label',
         (tester) async {
       const label = 'Berechtigungen konfigurieren';

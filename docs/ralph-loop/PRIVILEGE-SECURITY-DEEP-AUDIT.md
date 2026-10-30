@@ -121048,3 +121048,32 @@ QEMU 2633378 joins in 31.121 seconds, RAM `run.sgaamn0p` retires and all three
 endpoint deltas are zero. Six count files add 103,976 bytes; twenty-seven raw
 files total 468,855 bytes per host, copied and hash-verified. This audit-only
 receipt leaves the ledger unchanged.
+
+## 2026-10-30 — user pivot; obsolete Android store copy
+
+The user requests completely unrelated work. All parked investigations and the
+fifteen native credential-action acceptances remain open. The preceding file-menu
+work is left at its existing committed state, `0a26c523`; no further implementation
+or test run is started for it. Its already-running candidate `jXHd2cEqXS` exits 0:
+53 unique widget cases, three parser controls and source postchecks pass. QEMU
+2634983 joins in 110.341 seconds, RAM `run.c2ddhqya` retires, and four endpoint
+deltas are zero. Seven raw files total 136,532 bytes per host, copied and
+hash-verified; serial SHA-256 is
+`a73775ef1c273c118bb56dcba41435fa681882b58ac837984b259c29ac800149`.
+The prior `QsdjNIYVTi` baseline records 47 passes and six keyboard-position
+failures; its seven retained files total 113,797 bytes per host and its exact
+failed diagnostic tree was already removed (3,506,176 allocated bytes).
+These extracted production-method widget fixtures use controlled translations,
+icons and operation callbacks. Full file-manager/native acceptance remains open.
+
+The unrelated documentation slice deletes eight upstream Android store
+descriptions (4,321 bytes) imported unchanged in `c2abd3b3`. The four full
+descriptions advertise upstream rendezvous/relay services, direct users to
+upstream desktop downloads and promise no security concerns; their corresponding
+short descriptions market the upstream product. This fork has no tracked Fastfile,
+Appfile or Supplyfile, and repository searches find no publishing/build consumer
+of these descriptions. The current README and Android guide already describe the
+fork. All nine store images, those guides, licenses, product and build code remain
+byte-identical. Exact deletion, preserved-file hashes and whitespace review cover
+this documentation-only correction. No product test or store publication is
+performed for it; Git retains the obsolete copy.

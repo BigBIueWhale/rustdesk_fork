@@ -711,20 +711,18 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 /// Fixed (tumbling) per-source window for the online-guess limiter — NOT sliding: the window
-/// start is not advanced per failure (see `record_handshake_failure`), so at most
-/// `MAX_GUESSES_PER_WINDOW` confirmation failures per `GUESS_WINDOW` per source IP are allowed
-/// (R-S10), with a ~2x worst case straddling a boundary. That is immaterial: the CPace password is
-/// the real gate (one online guess per attempt, nothing offline-crackable); this is only DoS-safe
-/// rate-limiting, fail-cheap before the scalar-mult (R-P14c) — defence-in-depth, not the auth.
+/// start is not advanced per failure (see `record_handshake_failure`). A retained entry blocks
+/// new admission after `MAX_GUESSES_PER_WINDOW` confirmation failures until its window expires.
+/// Already-admitted handshakes may finish afterward, and capacity eviction may retire an unexpired
+/// block. This is bounded flood shedding (R-S10), not a strict password-guess budget or authentication.
 const GUESS_WINDOW: Duration = Duration::from_secs(60);
 /// Confirmation failures allowed from one source within a window before it is shed.
 const MAX_GUESSES_PER_WINDOW: u32 = 10;
 /// R-S10(b): a HARD ceiling on the number of distinct source IPs tracked, backstopping the
 /// time-eviction in `record_handshake_failure` — so even a flood of distinct sources within one window
 /// (each must complete a PAKE and fail R-P3 to be recorded here, and v4-only per R-D5 bounds the
-/// keyspace) cannot grow the map without bound. 8192 is ample for any real DMZ; over it, the
-/// oldest-window entries are evicted first — those past GUESS_WINDOW are already un-blocked
-/// (guess_limiter_allows lets them through), so eviction never weakens the live rate-limit.
+/// keyspace) cannot grow the map without bound. Over the cap, the oldest-window entry is evicted,
+/// whether or not its block has expired; an evicted source is eligible for admission again.
 const MAX_TRACKED_SOURCES: usize = 8192;
 
 lazy_static::lazy_static! {
@@ -767,9 +765,8 @@ pub fn record_handshake_failure(source: IpAddr, error: HandshakeError) -> bool {
     map.retain(|_, (_, start)| start.elapsed() < GUESS_WINDOW.saturating_mul(2));
     // R-S10(b): a hard entry-count ceiling backstops the time-eviction — under a distinct-source
     // flood, evict the single oldest-window entry (closest to lapsing; any past GUESS_WINDOW is
-    // already un-blocked) whenever an insert pushes the map over the cap. An O(n) min-scan, not a
-    // sort, so even at-cap each failure stays cheap (and a failure already cost the attacker a full
-    // PAKE). Runs only when over cap, so normal operation is untouched.
+    // already un-blocked) whenever an insert pushes the map over the cap. The scan is bounded by
+    // the table capacity; it does not preserve every live block during a distinct-source flood.
     while map.len() > MAX_TRACKED_SOURCES {
         let oldest = map
             .iter()
@@ -846,7 +843,6 @@ mod guess_limiter_tests {
     #[test]
     fn mapped_sources_share_one_guess_budget() {
         let _serial = TEST_LOCK.lock().unwrap();
-        let before = guess_limiter_tracked_count();
         let mut blocked_cases = 0;
         for mode in 0..4 {
             let address = Ipv4Addr::new(198, 51, 100, 220 + mode);
@@ -877,10 +873,50 @@ mod guess_limiter_tests {
             assert!(unrelated.iter().all(|source| guess_limiter_allows(*source)));
             println!("GUESS_LIMITER_ALIAS_CASE=mode:{mode} failures:10 both_blocked:{blocked} non_guesses:8 unrelated:allowed");
         }
-        let added_entries = guess_limiter_tracked_count() - before;
-        println!("GUESS_LIMITER_ALIAS=cases:4 blocked:{blocked_cases} entries:{added_entries}");
+        let map = GUESS_FAILURES.lock().unwrap();
+        let entries = (220..224).map(|last| {
+            let address = Ipv4Addr::new(198, 51, 100, last);
+            [IpAddr::V4(address), IpAddr::V6(address.to_ipv6_mapped())]
+                .iter().filter(|source| map.contains_key(*source)).count()
+        }).sum::<usize>();
+        println!("GUESS_LIMITER_ALIAS=cases:4 blocked:{blocked_cases} entries:{entries}");
         assert_eq!(blocked_cases, 4, "both representations must share the same failure budget");
-        assert_eq!(added_entries, 4, "one source must occupy exactly one map entry");
+        assert_eq!(entries, 4, "one source must occupy exactly one map entry");
+    }
+
+    #[test]
+    fn distinct_source_flood_bounds_retained_state() {
+        let _serial = TEST_LOCK.lock().unwrap();
+        let started = Instant::now();
+        let oldest = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 200));
+        let unrelated = IpAddr::V4(Ipv4Addr::new(203, 0, 113, 200));
+        for _ in 0..10 {
+            assert!(record_handshake_failure(oldest, HandshakeError::Confirmation));
+        }
+        assert!(!guess_limiter_allows(oldest));
+        let mut peak = guess_limiter_tracked_count();
+        let source = |index| IpAddr::V4(Ipv4Addr::from(0x0a00_0000 + index));
+        for index in 0..9000 {
+            assert!(record_handshake_failure(source(index), HandshakeError::Confirmation));
+            let retained = guess_limiter_tracked_count();
+            peak = peak.max(retained);
+            assert!(retained <= 8192, "source {index} exceeded the retained-entry cap");
+            assert!(guess_limiter_allows(unrelated));
+        }
+        assert_eq!(guess_limiter_tracked_count(), 8192);
+        // Observe eviction separately from expiry; no test clock or map state is substituted.
+        assert!(started.elapsed() < Duration::from_secs(60));
+        let evicted_block_allows = guess_limiter_allows(oldest);
+        let recent = source(8999);
+        for _ in 1..10 {
+            assert!(guess_limiter_allows(recent));
+            assert!(record_handshake_failure(recent, HandshakeError::Confirmation));
+        }
+        assert!(!guess_limiter_allows(recent));
+        assert!(guess_limiter_allows(unrelated));
+        assert_eq!(guess_limiter_tracked_count(), 8192);
+        println!("GUESS_LIMITER_CAPACITY=pass sources:9000 peak:{peak} retained:8192 evicted_block_allows:{evicted_block_allows} recent:blocked unrelated:allowed elapsed_ms:{}",
+            started.elapsed().as_millis());
     }
 }
 

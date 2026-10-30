@@ -4043,6 +4043,7 @@ run_focused_rust_tests() {
         fi
         if [ "$RUST_TEST_PROFILE" = guess-limiter ]; then
             required_tests=(
+                cpace::guess_limiter_tests::distinct_source_flood_bounds_retained_state
                 cpace::guess_limiter_tests::mapped_sources_share_one_guess_budget
                 cpace::guess_limiter_tests::expired_window_recovers_without_success_or_restart
             )
@@ -7086,7 +7087,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                 /^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|FAILURE_READ|RETIREMENT_ARTIFACT_STOP)=/ { if (++writer_observations <= 32) print }
                 /^(CIPHER_SEAL_ALLOCATION|TCP_SEAL_ALLOCATION|CIPHER_KEY_GUARD)/ { if (++seal_observations <= 20) print }
                 /^(RECEIVE_CIPHER|RECEIVE_CODEC)/ { if (++receive_observations <= 20) print }
-                /^GUESS_LIMITER_(ALIAS|EXPIRY)/ { if (++limiter_observations <= 9) print }
+                /^GUESS_LIMITER_(ALIAS|EXPIRY|CAPACITY)/ { if (++limiter_observations <= 10) print }
                 /^GUESS_LIMITER_ARTIFACT_STOP=/ { if (++limiter_artifacts <= 1) print }
             ' "$output" >&2 || printf 'Transport failure diagnostics could not be read\n' >&2
             awk '/^FILE_PEER_PROBE_ARTIFACT_START=observed / { print; exit }' "$output" >&2 \
@@ -7278,9 +7279,9 @@ PY
                     || fail "writer retirement test group differs: $group"
             done
         elif [ "$RUST_TEST_PROFILE" = guess-limiter ]; then
-            [ "$(grep -Ec '^test result: ok\. 2 passed; 0 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in .+s$' "$output")" -eq 1 ] \
-                && [ "$(grep -Ec '^test [[:alnum:]_:]+ [.][.][.] ok$' "$output")" -eq 2 ] \
-                || fail 'source limiter must execute exactly its two tests'
+            [ "$(grep -Ec '^test result: ok\. 3 passed; 0 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in .+s$' "$output")" -eq 1 ] \
+                && [ "$(grep -Ec '^test [[:alnum:]_:]+ [.][.][.] ok$' "$output")" -eq 3 ] \
+                || fail 'source limiter must execute exactly its three tests'
         fi
     elif [ "$MODE" = cpace-recovery-tests ]; then
         [ "${#result_lines[@]}" -eq 6 ] \
@@ -8281,7 +8282,7 @@ PY
             grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests|exclusive_listener_tests|seal_tests|open_tests)|cpace::(seal_tests|open_tests)|bytes_codec::tests|socket_client::tests)::[[:alnum:]_]+ [.][.][.] ok$|^test test::(test_get_version_number|test_try_into_v4) [.][.][.] ok$|^DIRECT_ADDRESS_NORMALIZATION=|^VERSION_NUMBER_(OVERFLOW|RANGE)=|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|FAILURE_READ)=|^READ_JOB_BACKPRESSURE(_CASE)?=|^(CIPHER_SEAL_ALLOCATION|TCP_SEAL_ALLOCATION|CIPHER_KEY_GUARD|RECEIVE_CIPHER|RECEIVE_CODEC)' "$output"
         elif [ "$RUST_TEST_PROFILE" = guess-limiter ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'source limiter test total differs'
-            grep -E '^test cpace::guess_limiter_tests::[[:alnum:]_]+ [.][.][.] ok$|^GUESS_LIMITER_(ALIAS|EXPIRY)' "$output"
+            grep -E '^test cpace::guess_limiter_tests::[[:alnum:]_]+ [.][.][.] ok$|^GUESS_LIMITER_(ALIAS|EXPIRY|CAPACITY)' "$output"
         elif [ "$RUST_TEST_PROFILE" = compression ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'decompression test total differs'
             grep -E '^test (fs::file_block|compress)::tests::[[:alnum:]_]+ [.][.][.] ok$|^DECOMPRESSION_(WINDOW|INPUT)' "$output"

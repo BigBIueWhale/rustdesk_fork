@@ -9044,7 +9044,7 @@ elif [ "$MODE" = hbb-common-fs ]; then
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
             "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = guess-limiter ]; then
-        printf 'GUESS_LIMITER_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=2 artifact_sha256=%s scope=source-accounting-and-real-time-recovery network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'GUESS_LIMITER_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=3 artifact_sha256=%s scope=source-accounting-capacity-and-real-time-recovery network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
             "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = file-logging ]; then

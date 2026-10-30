@@ -288,8 +288,33 @@ mod linux {
         Ok(())
     }
 
+    fn coordinator() -> ResultType<PathBuf> {
+        Ok(hbb_common::platform::linux::get_effective_home_dir_trusted()
+            .ok_or_else(|| anyhow!("native receiver home absent"))?.join(".rustdesk-receive"))
+    }
+
+    fn temporary_records() -> ResultType<std::collections::BTreeSet<PathBuf>> {
+        let mut paths = std::collections::BTreeSet::new();
+        for entry in fs::read_dir(coordinator()?)? {
+            let entry = entry?;
+            if entry.file_name().as_encoded_bytes().ends_with(b".tmp") {
+                ensure!(paths.len() < 64, "native temporary-record inventory exceeds bound");
+                paths.insert(entry.path());
+            }
+        }
+        Ok(paths)
+    }
+
+    async fn crash_receiver(base: &Path) -> ResultType<()> {
+        identity(0)?;
+        io::stdout().write_all(syscall_window::ARMED)?;
+        let mut receiver = job(base)?;
+        admit(&mut receiver, false, 0).await?;
+        Err(anyhow!("required enrollment crash point was not reached"))
+    }
+
     mod syscall_window {
-        use super::{actor_command, private_final, report_actor, snapshot, ACTOR_UID};
+        use super::{actor_command, coordinator, private_final, report_actor, snapshot, ACTOR_UID};
         use hbb_common::{anyhow::{anyhow, ensure}, serde_json::{json, Value}, ResultType};
         use std::{
             collections::BTreeSet,
@@ -439,10 +464,15 @@ mod linux {
                 "payload-rename" => (libc::SYS_renameat, ".download"),
                 "digest-unlink" => (libc::SYS_unlinkat, ".digest"),
                 "lease-unlink" => (libc::SYS_unlinkat, ".download.lock"),
+                "crash-directory" => (libc::SYS_mkdirat, ""),
+                "crash-identity" => (libc::SYS_fsync, "identity"),
+                "crash-record" => (libc::SYS_renameat, ".tmp"),
                 _ => return Err(anyhow!("unknown syscall window")),
             };
+            let crash = operation.starts_with("crash-");
+            let mut killed = false;
             let mut command = Command::new(std::env::current_exe()?);
-            command.arg("window-receiver").arg(&base)
+            command.arg(if crash { "crash-receiver" } else { "window-receiver" }).arg(&base)
                 .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
             unsafe {
                 command.pre_exec(|| {
@@ -492,6 +522,14 @@ mod linux {
                     continue;
                 }
                 ensure!(libc::WIFSTOPPED(status));
+                if killed {
+                    match trace(libc::PTRACE_CONT, pid, 0, libc::SIGKILL as usize) {
+                        Ok(_) => {}
+                        Err(error) if error.raw_os_error() == Some(libc::ESRCH) => {}
+                        Err(error) => return Err(error.into()),
+                    }
+                    continue;
+                }
                 let signal = libc::WSTOPSIG(status);
                 let event = status >> 16;
                 let mut deliver = 0;
@@ -522,8 +560,31 @@ mod linux {
                             armed = true;
                         }
                         if armed && observation.is_none() && info.data[0] as i64 == number {
-                            let path = source_path(pid, &info)?;
-                            if path.file_name().is_some_and(|n| n.as_encoded_bytes().ends_with(suffix.as_bytes())) {
+                            let path = if number == libc::SYS_fsync {
+                                fs::read_link(format!("/proc/{pid}/fd/{}", info.data[1]))?
+                            } else { source_path(pid, &info)? };
+                            let selected = if operation == "crash-directory" {
+                                path.parent() == Some(base.as_path()) && path.file_name()
+                                    .is_some_and(|n| n.as_encoded_bytes().starts_with(b".rustdesk-receive-"))
+                            } else if operation == "crash-record" {
+                                path.parent() == Some(coordinator()?.as_path())
+                                    && path.extension().is_some_and(|s| s == "tmp")
+                                    && fs::metadata(&path)?.len() <= 256
+                                    && hbb_common::serde_json::from_slice::<Value>(&fs::read(&path)?)?
+                                        ["inode"].as_u64().is_some()
+                            } else {
+                                path.file_name().is_some_and(|n| n.as_encoded_bytes().ends_with(suffix.as_bytes()))
+                            };
+                            if selected && crash {
+                                ensure!(path.starts_with(&base) || operation == "crash-record");
+                                observation = Some(json!({"source":path,"tid":pid,"syscall":number}));
+                                selected_task = Some(pid);
+                                if operation == "crash-record" {
+                                    owner.child.kill()?;
+                                    killed = true;
+                                    continue;
+                                }
+                            } else if selected {
                                 ensure!(path.starts_with(&base));
                                 let before = snapshot(&path)?;
                                 ensure!(before["uid"] == 0 && before["mode"] == 0o600 && before["links"] == 1);
@@ -539,6 +600,13 @@ mod linux {
                         ensure!(size >= 33, "incomplete syscall exit");
                         syscall_result = Some(json!({"return":info.data[0] as i64,
                             "is_error":info.data[1] & 255 != 0}));
+                        if crash {
+                            ensure!(info.data[0] == 0 && info.data[1] & 255 == 0,
+                                "selected enrollment syscall did not succeed");
+                            owner.child.kill()?;
+                            killed = true;
+                            continue;
+                        }
                     }
                 } else if signal != libc::SIGSTOP {
                     ensure!(event == 0, "unexpected ptrace event");
@@ -549,6 +617,14 @@ mod linux {
             ensure!(newborn_stops.is_empty(), "unclaimed tracee stop");
             let out = bounded_output(owner.child.stdout.take().ok_or_else(|| anyhow!("receiver stdout absent"))?)?;
             let err = bounded_output(owner.child.stderr.take().ok_or_else(|| anyhow!("receiver stderr absent"))?)?;
+            if crash {
+                ensure!(killed && main_status.is_some_and(|s| s.signal() == Some(libc::SIGKILL)));
+                ensure!(out == ARMED && err.is_empty(), "unexpected killed-receiver output");
+                let observation = observation.ok_or_else(|| anyhow!("required crash point not observed"))?;
+                return Ok(json!({"operation":operation,"selected":observation,
+                    "syscall_exit":syscall_result,"signal":"SIGKILL","children_joined":true,
+                    "trace_events":events}));
+            }
             ensure!(main_status.is_some_and(|s| s.success()), "receiver failed: {}", String::from_utf8_lossy(&err));
             let text = std::str::from_utf8(&out)?;
             let reports: Vec<_> = text.lines().filter_map(|l| l.strip_prefix("RECEIVE_NATIVE_WINDOW_RECEIVER=")).collect();
@@ -751,7 +827,36 @@ mod linux {
         ensure!(actors == 20, "unexpected joined actor total: {actors}");
         println!("RECEIVE_NATIVE_WINDOW_SUMMARY=observed cases=3 safe={safe_windows} children=joined fixture=retired");
         ensure!(safe_windows == 3, "receive namespace syscall-window cases failed: {safe_windows}/3 safe");
-        println!("RECEIVE_NATIVE_AUTHORITY=pass cases=16 actors={actors} receiver_uid=0 actor_uid=4001 children=joined fixture=retired");
+        let mut recovered = 0;
+        for operation in ["crash-directory", "crash-identity", "crash-record"] {
+            let base = root.join(operation);
+            fs::create_dir(&base)?;
+            let before = temporary_records()?;
+            let selected = base.clone();
+            let phase = operation.to_owned();
+            let crash = tokio::task::spawn_blocking(move || syscall_window::run(selected, phase)).await??;
+            let recovery = async {
+                let mut receiver = job(&base)?;
+                admit(&mut receiver, false, 0).await?;
+                write(&mut receiver, b"abcdef").await?;
+                receiver.finalize_write(1).await?;
+                receiver.retire_current_file_state()?;
+                Ok::<_, hbb_common::anyhow::Error>(())
+            }.await;
+            let containers = fs::read_dir(&base)?.collect::<Result<Vec<_>, _>>()?.into_iter()
+                .filter(|e| e.file_name().as_encoded_bytes().starts_with(b".rustdesk-receive-")).count();
+            let temporary = temporary_records()?.difference(&before).cloned().collect::<Vec<_>>();
+            let safe = recovery.is_ok() && containers == 1 && temporary.is_empty()
+                && private_final(&base).is_ok();
+            recovered += usize::from(safe);
+            println!("RECEIVE_NATIVE_CASE={}", json!({"case":operation,"observed":{
+                "crash":crash,"recovery_ok":recovery.is_ok(),"recovery_error":recovery.err().map(|e|e.to_string()),
+                "containers":containers,"temporary_records_added":temporary.len(),"safe":safe}}));
+            fs::remove_dir_all(&base)?;
+        }
+        println!("RECEIVE_NATIVE_ENROLLMENT_SUMMARY=observed cases=3 recovered={recovered} children=joined fixture=retired");
+        ensure!(recovered == 3, "receive enrollment crash cases failed: {recovered}/3 recovered");
+        println!("RECEIVE_NATIVE_AUTHORITY=pass cases=19 actors={actors} receiver_uid=0 actor_uid=4001 children=joined fixture=retired");
         Ok(())
     }
 
@@ -769,6 +874,10 @@ mod linux {
             let base = Path::new(&args[2]);
             ensure!(base.starts_with(&owned) && base != owned);
             window_receiver(base).await
+        } else if args.len() == 3 && args[1] == "crash-receiver" {
+            let base = Path::new(&args[2]);
+            ensure!(base.starts_with(&owned) && base != owned);
+            crash_receiver(base).await
         } else {
             ensure!(args.len() == 3 && args[1] == "run" && Path::new(&args[2]) == owned);
             parent(&owned).await

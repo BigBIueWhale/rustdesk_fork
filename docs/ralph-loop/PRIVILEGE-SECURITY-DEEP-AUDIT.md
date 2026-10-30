@@ -121637,3 +121637,24 @@ strict-UTF8 byte round trip pass. QEMU 2901903 joins after 30.504 seconds;
 RAM `run.yi0nf6o9` retires and all three listener deltas are zero. Count raw
 35,832 bytes, SHA-256 `18ba606cb391bf9a5ba509abfd8a0ce82e381ef7fcb6fe5c74df5192b634caca`.
 This audit-only receipt leaves the counted ledger and validated product unchanged.
+
+### Receive enrollment crash recovery — 2026-10-31
+
+Continue the specifically resumed receive namespace blocker. Source review finds
+that setup creates the public private-directory entry before publishing its
+protected record, and record writes use random temporary names. The native driver
+now kills and joins the actual receiver after successful directory creation,
+after identity-file fsync, and immediately before the ready record's rename.
+Each case restarts the production transfer and requires exact completed output,
+one container, no added temporary record, and retired per-file artifacts. These
+are process-death tests, not physical power-loss evidence. The existing sixteen
+authority scenarios and twenty unprivileged actors remain required.
+
+Primary Linux man-pages research (`fsync(2)`, `rename(2)`, `ptrace(2)` at man7.org)
+requires explicit parent-directory sync for durable names and distinguishes an
+atomic rename from durability. The proposed correction records a recoverable
+setup intent before public creation and uses a bounded, destination-specific
+temporary record under the private coordinator and its enrollment gate. Preparing
+state may not grant authority to foreign objects or bypass generation exclusion.
+This test-preparation commit leaves production unchanged; no new runtime result
+or crash-recovery acceptance is claimed yet.

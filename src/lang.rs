@@ -1,4 +1,3 @@
-use hbb_common::regex::Regex;
 use std::ops::Deref;
 
 mod ar;
@@ -224,13 +223,22 @@ pub fn translate_locale(name: String, locale: &str) -> String {
 // Write in the UI: translate("There are {24} hours in a day")
 // Write in the translation file: ("There are {} hours in a day", "{} hours make up a day")
 fn extract_placeholder(input: &str) -> (String, Option<String>) {
-    if let Ok(re) = Regex::new(r#"\{(.*?)\}"#) {
-        if let Some(captures) = re.captures(input) {
-            if let Some(inner_match) = captures.get(1) {
-                let name = re.replace(input, "{}").to_string();
-                let value = inner_match.as_str().to_string();
-                return (name, Some(value));
+    let mut start = None;
+    for (index, byte) in input.bytes().enumerate() {
+        match byte {
+            b'\n' => start = None,
+            b'{' if start.is_none() => start = Some(index),
+            b'}' => {
+                if let Some(start) = start {
+                    // ASCII delimiter offsets are UTF-8 boundaries.
+                    let mut name = String::with_capacity(input.len() - (index - start - 1));
+                    name.push_str(&input[..start]);
+                    name.push_str("{}");
+                    name.push_str(&input[index + 1..]);
+                    return (name, Some(input[start + 1..index].to_owned()));
+                }
             }
+            _ => {}
         }
     }
     (input.to_string(), None)

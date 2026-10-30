@@ -119954,3 +119954,65 @@ listener deltas are zero. Six count files add 105,142 bytes. All 34 raw files
 total 1,636,402 bytes per host with matching hashes; the four failed diagnostic
 trees are removed after exact owner/cleanup checks. This audit-only receipt
 does not alter the measured ledger.
+
+## 2026-10-30 — image-quality integer precision after the UI pivot
+
+Package/ELF and earlier parked work remain parked. This slice corrects the shared
+Flutter bitrate/FPS editor. Its old divisions snapped bitrate to multiples of
+five or ten and FPS to multiples of five, although the session setters take
+integers. The render object's discretized value could differ from the displayed
+saved value, and changing the range changed that discrepancy. Flutter's
+[Slider divisions](https://api.flutter.dev/flutter/material/Slider/divisions.html)
+and pinned 3.24.5 implementation establish the discrete-step behavior.
+
+`ff93931f` uses one division per integer and rounds the clamped edit to an exact
+whole-number double before the existing save transaction. This also avoids a
+floating-point approximation being truncated by the session's `toInt()` adapter.
+No range, debounce, acknowledgement, retry, Close or ownership mechanism changes.
+The native persistence adapters are source-reviewed, not executed here.
+
+Test preparation `6d99ab03` adds four rendered regressions and a focused
+`--flutter-model-tests --image-quality` profile selecting the exact 23 quality
+cases. The unchanged-product run fails all four new cases: 11% announces 10%,
+More makes 75% announce 80%, and accessibility/keyboard decrements select 70
+instead of 74. The existing nineteen cases pass. The new assertions are unchanged
+in the candidate; they cover desktop/mobile and enabled/disabled integer values,
+normal/expanded range transitions, actual semantics actions and keyboard events,
+and the resulting save callback values. Save callbacks and translation are doubles.
+
+| Source / TUF run | Outcome | QEMU joined / seconds | Retired RAM workspace |
+| --- | --- | --- | --- |
+| `6d99ab03` / `CQ2M1O8FHq` | 19 pass, four reproduced failures; outer exit 1 | 2202819 / 248.711 | `run.yxevpm7n` |
+| `6cd169a9` / `Te8z5F33eO` | All 23 pass, three parser controls pass; outer exit 0 | 2274773 / 261.812 | `run.cogf0owl` |
+
+Both run `bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests
+--image-quality`, pinned Flutter 3.24.5, fresh generated bindings, production Dart
+source postconditions and an unprivileged networkless container inside a zero-NIC
+Linux VM. Candidate `5be509db` retains successful per-case JSON in the serial;
+`6cd169a9` selects the existing Flutter storage profile and adds its selector case.
+The baseline used the bounded standard profile (16 GiB scratch/8 GiB overlay);
+the candidate uses 7 GiB scratch/6 GiB overlay. Both admit 4 GiB guest RAM and
+6 GiB host headroom, keep the live monitor enabled and have no disk fallback.
+Observed RAM scratch peaks are 6,369,882,112 and 6,372,323,328 bytes. QEMU's
+supervisor-reported host block writes are 4,096 bytes per run; this is not a total
+host-write measurement. Durable run peaks are 3,424,256 and 3,411,968 bytes.
+
+Each run retains serial, console, storage and four listener snapshots under
+`.harness-state/verifier-vm/flutter-model-tests-*run.<id>.*`. All eight listener
+deltas are zero. Fourteen raw files total 187,450 bytes per host, copied and
+hash-verified. The baseline diagnostic directory is removed after exact owner,
+QEMU and RAM absence checks; the successful run cleans itself.
+
+Baseline serial SHA-256 (23,608 bytes):
+`cfb2778679b8b6287f33a766f2951073320e9996b0357d28467ddd2149f22ec8`.
+Candidate serial SHA-256 (17,208 bytes):
+`a7ed6ebf0c3599d57eafb81004f505b616649389e793db9efd42bf05af6dc067`.
+Production widget SHA-256:
+`795d740be4dd75f27f0c2bb5cd1e90d9f7dbce43168c9b9fcc95e0506bb41786`.
+Regression file SHA-256:
+`bd72e8ac4a8db19c9b7628a028ba587709ceca5822369f11c844f3c129d31be5`.
+
+This accepts the widget correction only. Native settings persistence, OS screen
+readers and complete application/device behavior remain unexecuted. The broader
+runner's stale count and two parked edge-scroll failures are untouched. The ledger
+receives only this UI result; a fresh isolated ledger count follows.

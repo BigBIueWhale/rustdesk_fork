@@ -4380,6 +4380,20 @@ handle-cleanup repair, four source-bound runs and joined RAM cleanup with zero
 listener deltas. Native screen readers, full application and persistence remain
 unexecuted; package/ELF follow-ups and existing parks remain OPEN/PARKED.
 
+**Image-quality integer precision (`ff93931f`).** Bitrate and FPS sliders use
+one-unit divisions and round edits before saving. Loaded integers now agree with
+their slider position and accessibility value; toggling More preserves values
+within both ranges, and keyboard/accessibility steps save exactly one unit.
+Baseline `6d99ab03` fails all four new widget cases (11% announced as 10%, 75%
+becoming 80% on More, and a decrement saving 70 instead of 74); the existing
+19 cases pass. At `6cd169a9`, TUF `Te8z5F33eO` passes all 23 cases and three
+result-parser controls, with outer exit 0. The focused `--flutter-model-tests
+--image-quality` profile retains exact case results and uses bounded RAM scratch;
+both VMs join and retire scratch with zero listener deltas. This is production
+Flutter widget execution with controlled save callbacks, not native persistence,
+OS screen-reader or complete application acceptance. Broader runner and parked
+edge-scroll work remain open. Exact source, serial hashes and cleanup are in the audit.
+
 **Autosave restoration (`8d9bc485`).** Quality, FPS and trackpad controls represent
 the confirmed value as unknown after an exception, null or invalid save result.
 An explicit newer edit remains dirty even when it restores an earlier value;

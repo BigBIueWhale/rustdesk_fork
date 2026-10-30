@@ -118108,3 +118108,12 @@ with matching hashes. Exact failed-run scratch inode 78294410 is removed after
 copying, reclaiming 3,608,576 allocated bytes. The VM's peak writable overlay
 was 3,128,627,200 bytes in bounded RAM; measured QEMU host block writes are
 4,096 bytes. No product/test executable ran on either host.
+
+Ledger run `aL45wfs5aA` at `5655a365` passes 72 workload controls/five refusals,
+seven tokenizer controls and full text round trip. It reports 360,277 tokens with
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 1,647,348 bytes, SHA-256
+`d9c949e71eea92b16adbcdf1afb66af8fe111303c88be1ab6d70c9114f07c28e`.
+QEMU 1829000 joins in 30.409 seconds; RAM `run.w5hr15b0` retires and three
+listener deltas are zero. Six count files add 103,537 bytes. Thirteen raw files
+across both runs total 266,134 bytes per host with matching hashes; this audit-only
+receipt preserves the measured ledger and its approximate 400,000-token budget.

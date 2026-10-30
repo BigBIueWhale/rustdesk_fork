@@ -213,7 +213,7 @@ class ResultTests(unittest.TestCase):
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (3, 25))
             return
         if SINGLE_PROFILE == "menu-button":
-            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (5, 44))
+            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (6, 53))
             return
         if SINGLE_PROFILE == "trackpad-speed":
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 16))

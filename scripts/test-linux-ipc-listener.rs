@@ -780,7 +780,7 @@ async fn main_response_shape_fixture() {
                 );
                 sent.unwrap();
                 match received {
-                    Ok(Some(request)) if serde_json::to_value(request).unwrap() == expected => request_controls += 1,
+                    Ok(Some(request)) if serde_json::to_value(&request).unwrap() == expected => request_controls += 1,
                     result => failures.push(format!("valid request {tag}: {result:?}")),
                 }
             }

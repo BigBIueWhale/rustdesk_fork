@@ -14,6 +14,7 @@ List<Locale> supportedLocales = const [
   Locale('ko'),
   Locale('hu'),
   Locale('pt'),
+  Locale('pt', 'PT'),
   Locale('ru'),
   Locale('sk'),
   Locale('id'),

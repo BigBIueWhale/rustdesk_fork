@@ -37,6 +37,8 @@ mod ml;
 mod nb;
 mod nl;
 mod pl;
+#[path = "lang/pt_PT.rs"]
+mod pt_pt;
 mod ptbr;
 mod ro;
 mod ru;
@@ -62,7 +64,8 @@ pub const LANGS: &[(&str, &str)] = &[
     ("nb", "Norsk bokmål"),
     ("zh-cn", "简体中文"),
     ("zh-tw", "繁體中文"),
-    ("pt", "Português"),
+    ("pt", "Português (Brasil)"),
+    ("pt-pt", "Português (Portugal)"),
     ("es", "Español"),
     ("et", "Eesti keel"),
     ("eu", "Euskara"),
@@ -131,6 +134,7 @@ pub fn translate_locale(name: String, locale: &str) -> String {
         "id" => id::T.deref(),
         "br" => ptbr::T.deref(),
         "pt" => ptbr::T.deref(),
+        "pt-pt" => pt_pt::T.deref(),
         "tr" => tr::T.deref(),
         "cs" => cs::T.deref(),
         "da" => da::T.deref(),

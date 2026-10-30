@@ -119563,3 +119563,47 @@ QEMU 2018094 joins in 30.502 seconds, RAM `run.a5nbbnr_` retires and all
 three listener deltas are zero. Six count files add 105,333 bytes; twenty files
 from this slice total 284,041 bytes per host with matching hashes. This audit-only
 receipt leaves the measured ledger unchanged.
+
+### 2026-10-30 — real-clock source-limiter recovery
+
+At `d5cd9a35526190a8486ce4f0514ca22611ecb361`, the focused limiter test
+establishes threshold and source representation behavior but does not execute
+R-S10(c)'s finite recovery. Source review also checks the accepted-socket source
+at `src/server.rs:844,860`, the pre-spawn semaphore at `src/direct_service.rs:1222`
+and expensive PAKE work after first-message receipt. This review establishes no
+additional product defect or installed privilege acceptance.
+
+`c0a5c5eade748ba1aca4e941ae11592eeb31d235` adds one synchronous test of
+the public production limiter. Ten alternating native/mapped confirmation failures
+block one source; the test observes refusal at 0, 20 and 40 seconds, passing all
+four non-confirmation errors through both forms at each checkpoint. After 60.020
+seconds both forms recover, a fresh ten-failure budget works and blocks again,
+and an unrelated source remains allowed throughout. No successful handshake,
+process restart, map reset, timestamp injection or accelerated clock occurs.
+This is limiter-component execution with supplied typed failures, not a real
+network handshake or the complete authentication choke point.
+
+Rust's [Instant documentation](https://doc.rust-lang.org/std/time/struct.Instant.html)
+defines the monotonic measurement and platform/suspend limits;
+[thread::sleep](https://doc.rust-lang.org/std/thread/fn.sleep.html) may oversleep
+but does not shorten the requested wait. The test uses ordinary synchronous sleeps.
+Only its limiter group receives a 90-second harness deadline; other groups retain
+20 seconds. A test-only mutex serializes the two global-map tests for ordinary
+parallel libtest execution. The existing alias assertions and all production bytes
+are unchanged. No pre-change failure or product fix is claimed for this coverage.
+
+TUF `773vj9M50X`, `bash scripts/smoke-verifier-vm-authority.sh
+--writer-retirement-tests`, passes all 50 checks, including both limiter tests.
+The output records checkpoints at 0/20000/40000 ms, recovery at 60020 ms,
+24 uncharged non-guess errors, fresh budget 10 and both representations reblocked.
+The prior alias cases still report 4/4 shared blocks and four entries.
+Artifact SHA-256:
+`ac43f750d721aeaee886c6f2694384ead6d707df7320c24cb2dd3433576fc49a`.
+Linux Rust 1.75 runs in a nonroot networkless guest container inside the zero-NIC
+bounded-RAM VM. QEMU 2020440 joins in 199.972 seconds; RAM `run.e7ls90e7`
+retires and all four listener deltas are zero. Seven raw files total 85,658 bytes
+per host with matching hashes. Source comparison, both shell syntax checks and
+`git diff --check` pass. Flood/resource performance, real network admission,
+other-platform clock/suspend behavior, installed credential/settings actions,
+R-S0/R-F5 and release/independent-review acceptance remain OPEN. Parked tasks remain
+parked. The existing R-S10 ledger paragraph is updated; fresh measurement follows.

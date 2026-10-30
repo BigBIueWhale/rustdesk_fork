@@ -12932,12 +12932,17 @@ sandbox implementation and checker-repair history remain in Git.
   accounting. The unchanged four-case regression fails before the two-line fix
   (zero shared block decisions, six entries) and passes afterward (four shared
   block decisions, four entries). Thirty-two non-confirmation errors consume no
-  budget and unrelated sources remain allowed. TUF `pKddKHkfIC` passes all 49
-  shared-library component checks in 142.652 seconds; both comparison runs join
-  and retire their RAM workspaces with zero host listener changes. The audit
-  retains source/artifact identities. The current IPv4-only listener does not
-  establish a remotely reachable alias bypass; network admission, expiry/flood
-  performance, installed and release acceptance remain OPEN.
+  budget and unrelated sources remain allowed. At `c0a5c5ea`, TUF `773vj9M50X`
+  passes all 50 shared-library checks in 199.972 seconds. The added real-clock
+  regression observes refusal at 0/20/40 seconds and recovery after 60.020 seconds
+  without success, restart or clock/map manipulation. Twenty-four non-confirmation
+  errors do not extend the block; both address forms share a fresh ten-failure
+  budget afterward, and unrelated sources remain allowed. The VM joins and RAM
+  scratch retires with four zero listener deltas. The audit retains source/artifact
+  identities and the earlier alias comparison. Production code is unchanged by
+  the expiry test. Network choke-point behavior, flood/resource performance,
+  other-platform clocks/suspend, installed and release acceptance remain OPEN.
+  The current IPv4-only listener does not establish a remotely reachable alias bypass.
 - **Local IPC/CM authorization audit — ⚠️ SUPERSEDED 2026-07-08 by R-S11b/R-S11c.** The
   2026-07-01 pass remains useful only for its transport facts: owner-only channels are
   0600 socket + 0700 per-uid parent; the service parent-dir hardening uses

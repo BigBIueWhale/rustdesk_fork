@@ -177,6 +177,11 @@ MENU_BUTTON_TESTS = {
     "menu button disabled rebuild refuses activation and can recover",
 }
 MENU_BUTTON_SUITES = {
+    "file_menu_probe_test.dart": {
+        f"file menu keyboard anchor {direction} {layout}"
+        for direction in ("ltr", "rtl")
+        for layout in ("root", "offset", "scaled")
+    } | {f"file menu selects {action}" for action in ("hidden", "all", "none")},
     "connection_menu_probe_test.dart": {
         f"connection menu keyboard anchor {direction} {layout}"
         for direction in ("ltr", "rtl")

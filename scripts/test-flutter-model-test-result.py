@@ -235,7 +235,7 @@ class ResultTests(unittest.TestCase):
         )
         self.assertEqual(self.parse(self.events("direct-address"), "direct-address"), (1, 33))
         self.assertEqual(self.parse(self.events("password-fields"), "password-fields"), (3, 25))
-        self.assertEqual(self.parse(self.events("menu-button"), "menu-button"), (5, 44))
+        self.assertEqual(self.parse(self.events("menu-button"), "menu-button"), (6, 53))
         self.assertEqual(self.parse(self.events("hold-drag"), "hold-drag"), (1, 17))
         self.assertEqual(self.parse(self.events("locales"), "locales"), (1, 10))
         self.assertEqual(self.parse(self.events("path-labels"), "path-labels"), (1, 16))

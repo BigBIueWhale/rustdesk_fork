@@ -121720,3 +121720,34 @@ strict-UTF8 round trip pass. QEMU 2908549 joins after 30.259 seconds; RAM
 `run.kmjm67ow` retires and all three listener deltas are zero. Raw serial:
 35,833 bytes, SHA-256 `ec90606a962924284dff1597ead42f253df32cb045cfcc537b5e81cdbc4663e9`.
 This audit-only receipt preserves the counted ledger and validated product.
+
+### Receive completed-destination lifecycle — 2026-10-31
+
+Continue the specifically resumed namespace correction after the accepted crash
+checkpoint. Current source intentionally retains a private container/identity in
+every destination and two coordinator files per destination. The real file manager
+uses `fs::read_dir` and `fs::remove_directory`/`remove_empty_directory_tree`
+(`src/ui_cm_interface.rs::remove_dir`); retained internal metadata can therefore
+affect ordinary listing/removal as well as storage. This functionality question
+takes priority over optimizing the size of retained records.
+
+The canonical native driver now completes real production transfers, checks both
+hidden-file listing modes, deletes the received file through the production API,
+and attempts both ordinary and recursive empty-directory removal. A separate
+32-destination control retains every destination through measurement, excluding
+inode reuse, and measures added coordinator entries/allocation after completion.
+All observations and fixture cleanup precede the combined failure verdict. The
+nineteen existing authority/crash cases remain required. This preparation changes
+no production source and claims no new runtime result.
+
+Linux primary research: https://man7.org/linux/man-pages/man2/unlink.2.html and
+https://man7.org/linux/man-pages/man2/flock.2.html confirm that named removal is
+not descriptor-target removal and an unlinked open lock remains a distinct live
+object. Removing/recreating a generation-lock name cannot be treated as releasing
+its old owners. https://man7.org/linux/man-pages/man2/link.2.html establishes that
+descriptor-based hard linking does not replace existing destinations or link
+directories; it cannot by itself replace the staged publication transaction.
+The intended correction must put staging in a protected same-mount namespace,
+retire completed transaction metadata without splitting live claims, and preserve
+resume, independent-file concurrency and full authorized destination access. A
+listing filter or public-container unlink would not meet these conditions.

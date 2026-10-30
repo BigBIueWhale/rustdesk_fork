@@ -305,6 +305,31 @@ mod linux {
         Ok(paths)
     }
 
+    fn coordination_inventory() -> ResultType<std::collections::BTreeMap<PathBuf, u64>> {
+        let mut records = std::collections::BTreeMap::new();
+        for entry in fs::read_dir(coordinator()?)? {
+            let entry = entry?;
+            let metadata = fs::symlink_metadata(entry.path())?;
+            ensure!(records.len() < 1024 && metadata.is_file() && metadata.len() <= 4096,
+                "native coordination inventory exceeds fixture bounds");
+            records.insert(entry.path(), metadata.blocks() * 512);
+        }
+        Ok(records)
+    }
+
+    async fn complete_transfer(base: &Path) -> ResultType<()> {
+        let mut receiver = job(base)?;
+        admit(&mut receiver, false, 0).await?;
+        write(&mut receiver, b"abcdef").await?;
+        receiver.finalize_write(1).await?;
+        receiver.retire_current_file_state()?;
+        let final_state = snapshot(&base.join("incoming.bin"))?;
+        ensure!(final_state["bytes"] == json!(b"abcdef".to_vec())
+            && final_state["uid"] == 0 && final_state["mode"] == 0o600
+            && final_state["links"] == 1 && final_state["mtime"] == 31);
+        Ok(())
+    }
+
     async fn crash_receiver(base: &Path) -> ResultType<()> {
         identity(0)?;
         io::stdout().write_all(syscall_window::ARMED)?;
@@ -856,7 +881,65 @@ mod linux {
         }
         println!("RECEIVE_NATIVE_ENROLLMENT_SUMMARY=observed cases=3 recovered={recovered} children=joined fixture=retired");
         ensure!(recovered == 3, "receive enrollment crash cases failed: {recovered}/3 recovered");
-        println!("RECEIVE_NATIVE_AUTHORITY=pass cases=19 actors={actors} receiver_uid=0 actor_uid=4001 children=joined fixture=retired");
+        let mut retired = 0;
+        let base = root.join("completed-listing");
+        fs::create_dir(&base)?;
+        complete_transfer(&base).await?;
+        let mut listings = Vec::new();
+        let mut listing_ok = true;
+        for hidden in [false, true] {
+            let listing = hbb_common::fs::read_dir(&base, hidden)?;
+            let mut names: Vec<_> = listing.entries.iter().map(|e| e.name.clone()).collect();
+            names.sort();
+            listing_ok &= names == ["incoming.bin"];
+            listings.push(json!({"include_hidden":hidden,"names":names}));
+        }
+        retired += usize::from(listing_ok);
+        println!("RECEIVE_NATIVE_CASE={}", json!({"case":"completed-listing",
+            "observed":{"listings":listings,"safe":listing_ok}}));
+        fs::remove_dir_all(&base)?;
+
+        let mut removals = Vec::new();
+        let mut removal_ok = true;
+        for recursive in [false, true] {
+            let base = root.join(format!("completed-removal-{recursive}"));
+            fs::create_dir(&base)?;
+            complete_transfer(&base).await?;
+            hbb_common::fs::remove_file(base.join("incoming.bin").to_str()
+                .ok_or_else(|| anyhow!("native removal path is not UTF-8"))?)?;
+            let result = if recursive { hbb_common::fs::remove_empty_directory_tree(&base) }
+                else { hbb_common::fs::remove_directory(&base) };
+            let absent = !base.try_exists()?;
+            removal_ok &= result.is_ok() && absent;
+            removals.push(json!({"recursive":recursive,"removed":absent,
+                "success":result.is_ok(),"error":result.err().map(|e| e.to_string())}));
+            if !absent { fs::remove_dir_all(&base)?; }
+        }
+        retired += usize::from(removal_ok);
+        println!("RECEIVE_NATIVE_CASE={}", json!({"case":"completed-removal",
+            "observed":{"removals":removals,"safe":removal_ok}}));
+
+        let base = root.join("completed-destinations");
+        fs::create_dir(&base)?;
+        let before = coordination_inventory()?;
+        for index in 0..32 {
+            let destination = base.join(index.to_string());
+            fs::create_dir(&destination)?;
+            complete_transfer(&destination).await?;
+        }
+        // Retain all destinations until after measurement, excluding inode reuse.
+        let after = coordination_inventory()?;
+        let added: Vec<_> = after.iter().filter(|(path, _)| !before.contains_key(*path)).collect();
+        let retained_bytes: u64 = added.iter().map(|(_, bytes)| **bytes).sum();
+        let retention_ok = added.is_empty();
+        retired += usize::from(retention_ok);
+        println!("RECEIVE_NATIVE_CASE={}", json!({"case":"completed-destinations",
+            "observed":{"destinations":32,"coordination_records_added":added.len(),
+                "coordination_allocated_bytes_added":retained_bytes,"safe":retention_ok}}));
+        fs::remove_dir_all(&base)?;
+        println!("RECEIVE_NATIVE_RETIREMENT_SUMMARY=observed cases=3 retired={retired} children=joined fixture=retired");
+        ensure!(retired == 3, "receive completed-destination cases failed: {retired}/3 retired");
+        println!("RECEIVE_NATIVE_AUTHORITY=pass cases=22 actors={actors} receiver_uid=0 actor_uid=4001 children=joined fixture=retired");
         Ok(())
     }
 

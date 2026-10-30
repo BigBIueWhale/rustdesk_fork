@@ -120960,3 +120960,12 @@ Both QEMU processes join and RAM workspaces retire; all eight endpoint deltas ar
 zero. Fourteen raw files total 228,308 bytes per host, copied and hash-verified.
 After evidence and exact process/workspace checks, the failed baseline diagnostic
 tree is removed, releasing 3,489,792 allocated bytes.
+
+Fresh ledger count at `2bd9b4b154b2b33a52e17f08ae8f34311a27d55d`:
+`0QNk1sB32d` passes seven controls and exact byte round trip using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 365,599 tokens / 1,672,244 bytes,
+input SHA-256 `46e2a74e9a13fa98d79285ad52a6a01a1e6701d51b96c5747b3e0a4e0c03e5dd`.
+QEMU 2627219 joins in 30.409 seconds, RAM `run.79vx0j5v` retires, and all three
+endpoint deltas are zero. Six count files add 104,043 bytes; twenty raw files
+total 332,351 bytes per host, copied and hash-verified. This audit-only receipt
+leaves the ledger unchanged.

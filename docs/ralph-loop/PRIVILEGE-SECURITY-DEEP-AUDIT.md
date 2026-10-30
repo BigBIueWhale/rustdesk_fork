@@ -118721,3 +118721,14 @@ directory `pake-memcpy-serial.l7uE7lOxEI` (inode 78294410) is deleted,
 releasing 3,584,000 allocated bytes. No VM/run scratch remains. Full sampling/RNG,
 other targets/shipping artifacts, higher-order leakage, automatic CI, erasure,
 installed IPC/actions, R-V3 and separately parked work remain open.
+
+**Fresh ledger count.** At `fbbd88dcdb5146e5ea21c9ff1ae67527bb5cfdfd`,
+isolated `bTMeeK035J` passes 74 admission controls, five refusals, seven
+tokenizer controls and round-trip validation. The unchanged method
+`tiktoken-0.12.0/cl100k_base/encode_ordinary` measures 360,282 tokens,
+1,647,208 bytes, SHA-256
+`46bc6704350cb6024d5301e4426ce9257544af3c7c6af77ce3bddfbeaa994b47`.
+QEMU 1851356 joins in 30.916 seconds, RAM `run.13ytutmy` retires and all
+three listener deltas are zero. Six count files add 103,673 bytes; this slice
+retains fourteen files / 258,360 bytes per host with matching hashes.
+This audit-only receipt leaves the measured ledger unchanged.

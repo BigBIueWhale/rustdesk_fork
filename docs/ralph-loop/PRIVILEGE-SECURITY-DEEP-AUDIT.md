@@ -118920,3 +118920,15 @@ Its detailed acquisition status and historical-evidence limits remain unchanged:
 current acquisition-VM, cold artifact, installed/native, independent and external
 review obligations stay open. Whole-document role cleanup and separately parked
 work remain open; this documentation change adds no runtime acceptance.
+
+**Fresh two-document count.** At `7a5ff792798a482d938b4296aaebc2197f185520`,
+isolated `px0QyAIyPq` passes 74 admission controls, five refusals, and seven
+tokenizer controls plus exact byte round trips for each document, using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`. Requirements count **366,781
+tokens**, 936 fewer than the source-bound prior count; their bytes and SHA-256
+match the comparison above. The ledger counts **360,631 tokens** / 1,648,818
+bytes, SHA-256
+`a36c0ee88c60aa1cc87cb4f3d1f5126267f73e96fa0a55dc54352a68269a0861`.
+QEMU 1862029 joins after 30.389 seconds, RAM `run.it1cfsv3` retires and all
+three listener deltas are zero. Six retained files total 106,629 bytes per host
+with matching hashes. This audit-only receipt changes neither measured document.

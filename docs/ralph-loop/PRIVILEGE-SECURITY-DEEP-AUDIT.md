@@ -119497,3 +119497,12 @@ all fifteen installed credential actions, authorized effects/persistence,
 refusals, lifecycle/race/failure handling and exact-artifact review. Product and
 normative instructions are unchanged; parked work remains parked. The ledger's
 existing inventory paragraph is updated in place. Fresh ledger measurement follows.
+
+**Fresh ledger count.** At `df2b0a06db2d3503c81abe7c7eeeabfa6899acf5`,
+TUF `rwYpqqJC1q` passes seven tokenizer controls and the exact byte round trip
+using `tiktoken-0.12.0/cl100k_base/encode_ordinary`: 361,795 tokens /
+1,654,238 bytes, SHA-256
+`28d742ca233955bf27545eebafeeff04d799e650d83748cec570079abd1cdfef`.
+QEMU 1907203 joins in 30.629 seconds, RAM `run.wjd6_s9e` retires and all
+three listener deltas are zero. Six raw files total 105,015 bytes per host with
+matching hashes. This audit-only receipt leaves the measured ledger unchanged.

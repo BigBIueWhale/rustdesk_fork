@@ -5769,7 +5769,6 @@ macos_config_get_home=$(awk '/pub fn get_home\(\)/,/^    }/' libs/hbb_common/src
 macos_config_initialize=$(awk '/pub fn initialize_macos_service_owned_root\(/,/#\[cfg\(target_os = "linux"\)\]/{print}' libs/hbb_common/src/config.rs)
 macos_config_path=$(awk '/pub fn path<P: AsRef<Path>>\(p: P\)/{in_path=1} in_path && /#\[cfg\(target_os = "macos"\)\]/{capture=1} capture{print} capture && /#\[cfg\(target_os = "linux"\)\]/{exit}' libs/hbb_common/src/config.rs)
 macos_config_log_path=$(awk '/pub fn log_path\(\)/,/pub fn ipc_path\(postfix/' libs/hbb_common/src/config.rs)
-macos_config_test=$(awk '/fn r_s11e52_macos_service_owned_paths_ignore_ambient_home\(\)/,/^    }/' libs/hbb_common/src/config.rs)
 macos_core_entry=$(awk '/#\[cfg\(target_os = "macos"\)\]/{capture=1} capture{print} capture && /#\[cfg\(target_os = "linux"\)\]/{exit}' src/core_main.rs)
 macos_service_binary=$(cat src/service.rs)
 for binding in \
@@ -5844,15 +5843,6 @@ for entry in "$macos_core_entry" "$macos_service_binary"; do
   if grep -qF 'load_custom_client()' <<<"$entry" || grep -qF 'init_log(' <<<"$entry"; then
     r_s11e52="$r_s11e52 service-entry-prebootstrap-config-or-log-present"
   fi
-done
-for binding in \
-  'fn r_s11e52_macos_service_owned_paths_ignore_ambient_home()' \
-  'Path::new("/var/root/Library/Application Support/com.carriez.RustDesk")' \
-  'Path::new("/var/root/Library/Logs/RustDesk")' \
-  'Path::new("relative/root")' \
-  '"../RustDesk"' \
-  '".."'; do
-  grep -qF "$binding" <<<"$macos_config_test" || r_s11e52="$r_s11e52 path-derivation-regression-missing"
 done
 grep -qF 'macOS service-owned config/log root (R-S11al/R-S11e-52)' scripts/apple-conform-check.sh \
   || r_s11e52="$r_s11e52 apple-source-conformance-gate-missing"
@@ -6604,7 +6594,6 @@ if [ -n "$r_s11e41" ]; then echo "  FAIL R-S11e-41 Linux systemctl service-lifec
 echo "== (3b-iii-d10) Linux same-executable child inherited descriptor authority (R-S11q/R-S11e-31) =="
 r_s11e31=
 run_me_with_env_block=$(awk '/pub fn run_me_with_env</,/pub fn username\(\)/' src/common.rs)
-run_me_descriptor_test=$(awk '/fn linux_run_me_child_excludes_inherited_nonstdio_descriptors\(\)/,/R-SV6\(d\)/' src/common.rs)
 headless_cm_launch=$(awk '/The headless path and ordinary user-owned server start the CM/,/for _ in 0\.\.20/' src/server/connection.rs)
 for run_me_binding in \
   '#[cfg(target_os = "linux")]' \
@@ -6621,16 +6610,6 @@ if [ -z "$run_me_policy_line" ] || [ -z "$run_me_spawn_line" ] \
 fi
 [ "$(grep -cF '.spawn();' <<<"$run_me_with_env_block")" = 1 ] \
   || r_s11e31="$r_s11e31 run-me-spawn-shape-unexpected"
-for runtime_binding in \
-  'Command::new("/bin/sh")' \
-  'exec 9<>\"$1\"; exec \"$2\" --exact \"$3\" --nocapture' \
-  'Some(std::ffi::OsStr::new("9"))' \
-  'run_me_with_env(vec!["--exact", TEST_NAME, "--nocapture"], envs)' \
-  'fs::read_dir("/proc/self/fd")' \
-  'metadata.dev() == target.dev() && metadata.ino() == target.ino()' \
-  'inherited.is_none()'; do
-  grep -qF "$runtime_binding" <<<"$run_me_descriptor_test" || r_s11e31="$r_s11e31 actual-child-proof-missing"
-done
 grep -qF 'crate::common::run_me_with_env_and_parent_death(' <<<"$headless_cm_launch" \
   && grep -qF 'cm_launch_env(cm_launch_token())' <<<"$headless_cm_launch" \
   || r_s11e31="$r_s11e31 service-owned-headless-cm-consumer-missing"
@@ -6650,8 +6629,6 @@ xrandr_change_helper=$(awk '/pub fn change_resolution_directly/,/mod desktop/' s
 systemctl_helper=$(awk '/fn systemctl_service/,/pub fn uninstall_service/' src/platform/linux.rs)
 fuse_mount_helper=$(awk '/fn mount_with_fixed_fusermount/,/fn fuse_device_still_mounted/' libs/clipboard/src/platform/unix/fuse/mod.rs)
 fuse_unmount_helper=$(awk '/fn fixed_fusermount_unmount/,/fn unmount_stale_fuse_mount/' libs/clipboard/src/platform/unix/fuse/mod.rs)
-shared_descriptor_test=$(awk '/fn r_s11e32_linux_command_descriptor_allowlist_is_exact\(\)/,/fn r_s11e32_linux_command_descriptor_allowlist_rejects_invalid_entries/' libs/hbb_common/src/platform/linux.rs)
-invalid_allowlist_test=$(awk '/fn r_s11e32_linux_command_descriptor_allowlist_rejects_invalid_entries\(\)/,/Test get_home_dir_trusted/' libs/hbb_common/src/platform/linux.rs)
 for shared_binding in \
   'descriptor_limit.checked_sub(1)' \
   'fn validated_nonstdio_descriptor_allowlist(' \
@@ -6702,21 +6679,6 @@ if [ -z "$fuse_policy_line" ] || [ -z "$fuse_spawn_line" ] \
   || [ "$fuse_policy_line" -ge "$fuse_spawn_line" ]; then
   r_s11e32="$r_s11e32 fusermount-descriptor-policy-order-invalid"
 fi
-for runtime_binding in \
-  'exec 9<>\"$1\"; exec \"$2\" --exact \"$3\" --nocapture' \
-  'metadata.dev() == target.dev() && metadata.ino() == target.ino()' \
-  'configure_command_descriptor_allowlist_on_exec(&mut allowed, &[9])' \
-  'Some(std::ffi::OsStr::new("9"))' \
-  'configure_command_close_nonstdio_on_exec(&mut closed)' \
-  'inherited.is_none()'; do
-  grep -qF "$runtime_binding" <<<"$shared_descriptor_test" || r_s11e32="$r_s11e32 actual-child-allowlist-proof-missing"
-done
-for invalid_binding in \
-  '&[libc::STDERR_FILENO]' \
-  '&[9, 9]' \
-  '&[outside_bound]'; do
-  grep -qF "$invalid_binding" <<<"$invalid_allowlist_test" || r_s11e32="$r_s11e32 invalid-allowlist-proof-missing"
-done
 if [ -n "$r_s11e32" ]; then echo "  FAIL R-S11e-32 Linux external-helper descriptor allowlist authority:$r_s11e32"; rc=1; else
   echo "  ok  R-S11e-32 every production Linux helper has an application-owned descriptor contract; only fusermount receives its exact communication socket"; fi
 
@@ -8140,38 +8102,9 @@ if [ -n "$r_s11c27c" ]; then echo "  FAIL R-S11c-27c Linux bounded direct-child 
 
 echo "== (3b-iii-h2e) Linux supervisor crash/restart recovery is exact and noninterfering (R-S11c-27d) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c27d_linux_service_child_crash_restart_recovery_is_exact --color never
-r_s11c27d=
-service_child_crash_test=$(awk '/fn r_s11c27d_linux_service_child_crash_restart_recovery_is_exact/,/fn r_s11c27e_linux_service_child_executable_object_recovery_is_exact/' src/platform/linux.rs)
-grep -qE 'nasm busybox( |\\)' scripts/Dockerfile.devcheck || r_s11c27d="$r_s11c27d exact-role-fixture-runtime-missing"
-grep -qF '.arg0("yes")' src/platform/linux.rs || r_s11c27d="$r_s11c27d exact-three-argv-fixture-missing"
-echo "$service_child_crash_test" | grep -qF 'Ok("contender")' || r_s11c27d="$r_s11c27d live-lease-conflict-not-tested"
-echo "$service_child_crash_test" | grep -qF 'Ok("recoverer")' || r_s11c27d="$r_s11c27d fresh-recovery-process-not-tested"
-echo "$service_child_crash_test" | grep -qF 'open_service_child_pidfd(crashed_record.pid)' || r_s11c27d="$r_s11c27d crashed-child-pidfd-not-retained"
-echo "$service_child_crash_test" | grep -qF 'service_child_pidfd_exited(&crashed_child_pidfd' || r_s11c27d="$r_s11c27d post-exec-parent-death-not-observed"
-echo "$service_child_crash_test" | grep -qF 'runtime.recover_previous_child()' || r_s11c27d="$r_s11c27d production-recovery-path-not-exercised"
-for hostile_case in 'reused pid' 'different executable with identical argv' 'wrong generation' 'record role marker is invalid'; do
-  echo "$service_child_crash_test" | grep -qF "$hostile_case" || r_s11c27d="$r_s11c27d hostile-evidence-case-missing:$hostile_case"
-done
-echo "$service_child_crash_test" | grep -qF 'exact_owner.0.try_wait().unwrap().is_none()' || r_s11c27d="$r_s11c27d unrelated-process-survival-not-observed"
-if [ -n "$r_s11c27d" ]; then echo "  FAIL R-S11c-27d Linux supervisor crash/restart recovery behavior:$r_s11c27d"; rc=1; else
-  echo "  ok  R-S11c-27d private-runtime crash/restart releases the singleton lease, reaps only exact evidence, and preserves live mismatches without signaling"; fi
 
 echo "== (3b-iii-h2f) Linux recovery binds executable objects across pathname replacement/deletion (R-S11c-27e) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c27e_linux_service_child_executable_object_recovery_is_exact --color never
-r_s11c27e=
-service_child_executable_test=$(awk '/fn r_s11c27e_linux_service_child_executable_object_recovery_is_exact/,/fn r_s11c27a_linux_service_child_parent_death/' src/platform/linux.rs)
-echo "$service_child_executable_test" | grep -qF 'fs::rename(&replacement_path, &owned_path)' || r_s11c27e="$r_s11c27e atomic-path-replacement-not-tested"
-echo "$service_child_executable_test" | grep -qF 'fs::remove_file(&unlinked_path)' || r_s11c27e="$r_s11c27e direct-executable-unlink-not-tested"
-echo "$service_child_executable_test" | grep -qF 'mismatched_replacement_record.executable_inode = owned_record.executable_inode' || r_s11c27e="$r_s11c27e real-cross-object-record-not-tested"
-echo "$service_child_executable_test" | grep -qF '.contains("executable identity changed")' || r_s11c27e="$r_s11c27e cross-object-rejection-reason-not-checked"
-echo "$service_child_executable_test" | grep -qF 'Some(mismatched_replacement_record.clone())' || r_s11c27e="$r_s11c27e mismatched-record-preservation-not-checked"
-if [ "$(echo "$service_child_executable_test" | grep -cF 'replacement_owner.0.try_wait().unwrap().is_none()')" -lt 3 ]; then
-  r_s11c27e="$r_s11c27e replacement-process-survival-not-checked-at-each-decision"
-fi
-echo "$service_child_executable_test" | grep -qF 'runtime.publish_record(&owned_record)' || r_s11c27e="$r_s11c27e replaced-original-positive-recovery-not-tested"
-echo "$service_child_executable_test" | grep -qF 'runtime.publish_record(&unlinked_record)' || r_s11c27e="$r_s11c27e unlinked-object-positive-recovery-not-tested"
-if [ -n "$r_s11c27e" ]; then echo "  FAIL R-S11c-27e Linux executable-object recovery behavior:$r_s11c27e"; rc=1; else
-  echo "  ok  R-S11c-27e recovery follows the recorded executable object across replacement/unlink and never targets an identical-role different-inode process"; fi
 
 echo "== (3b-iii-h2g) Linux manual supervisor stop/restart is graceful, bounded, and noninterfering (R-S11c-27f) =="
 r_s11c27f=

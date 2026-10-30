@@ -119275,3 +119275,24 @@ using `tiktoken-0.12.0/cl100k_base/encode_ordinary`: 361,179 tokens /
 QEMU 1885561 joins in 30.526 seconds, RAM `run.nhdwzp7i` retires and all
 three listener deltas are zero. Six retained files total 103,984 bytes per host
 with matching hashes. This audit-only receipt leaves the measured ledger unchanged.
+
+### 2026-10-30 — remove helper and recovery test-wording inventories
+
+At `c618183c821a586fefa2a933bfa561627b458af6`, five shared/Apple loops inspect
+the spelling of macOS root-path and Linux descriptor tests; two further shared
+blocks repeat assertion and fixture inventories immediately after the real
+service-child recovery Cargo commands. These checks do not execute the named
+behavior. The recovery tests themselves require the BusyBox fixture and observe
+exact process/executable identities, so the duplicate fixture-source inventory
+adds no independent acceptance. R-S11q/R-S11r/R-S11al and the existing recovery
+contracts retain their functional, source-review and native acceptance duties.
+
+Delete these seven inventories and their seven extraction assignments: 67 lines /
+5,855 bytes from `scripts/verify.sh` and ten lines / 501 bytes from the Apple
+verifier. Exact reconstruction from the starting source proves all remaining
+verifier bytes and every Cargo test command unchanged. All six corresponding
+Rust test bodies, production code, Docker fixture, requirements and instructions
+are unchanged. Both shell files parse and `git diff --check` passes. No product
+execution, full verifier or installed/native acceptance is claimed. All fifteen
+credential actions and user-parked work remain open. Fresh ledger measurement
+follows below.

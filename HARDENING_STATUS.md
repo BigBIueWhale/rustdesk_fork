@@ -3808,11 +3808,13 @@ checks; installed authorization and protected actions require the observations
 above and below.
 
 Redundant test-text inventories are removed for Linux password roles and
-R-S11e-45–50 lifecycle, numeric-principal and exact process-role regressions.
-The latter deletion removes eight wording loops and their extraction variables
-from the shared and Apple verifiers (94 lines); exact deletion comparison preserves
-every other verifier byte. Executable Rust tests and Cargo commands are unchanged.
-Syntax/whitespace checks pass; these deletions add no runtime acceptance.
+R-S11e-45–50 lifecycle, numeric-principal and exact process-role regressions,
+macOS root paths, Linux descriptor inheritance and service-child crash/object
+recovery. The latest deletion removes five wording loops and two post-test
+inventories from the shared and Apple verifiers (77 lines); all other verifier
+bytes, including Cargo commands, are preserved. The six corresponding Rust tests
+and every product/requirement byte are unchanged. Exact deletion comparison and
+syntax/whitespace checks pass; these deletions add no runtime acceptance.
 
 `320f86f0` removes service/SAS test-wording inventories, duplicate test-name
 greps and six Apple mutations of test text (62 lines). Executable protocol tests,

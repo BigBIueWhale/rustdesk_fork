@@ -3521,7 +3521,6 @@ macos_config_get_home=$(awk '/pub fn get_home\(\)/,/^    }/' "$config_rs")
 macos_config_initialize=$(awk '/pub fn initialize_macos_service_owned_root\(/,/#\[cfg\(target_os = "linux"\)\]/{print}' "$config_rs")
 macos_config_path=$(awk '/pub fn path<P: AsRef<Path>>\(p: P\)/{in_path=1} in_path && /#\[cfg\(target_os = "macos"\)\]/{capture=1} capture{print} capture && /#\[cfg\(target_os = "linux"\)\]/{exit}' "$config_rs")
 macos_config_log_path=$(awk '/pub fn log_path\(\)/,/pub fn ipc_path\(postfix/' "$config_rs")
-macos_config_test=$(awk '/fn r_s11e52_macos_service_owned_paths_ignore_ambient_home\(\)/,/^    }/' "$config_rs")
 macos_core_entry=$(awk '/#\[cfg\(target_os = "macos"\)\]/{capture=1} capture{print} capture && /#\[cfg\(target_os = "linux"\)\]/{exit}' "$REPO/src/core_main.rs")
 for binding in \
   'let effective_uid = unsafe { hbb_common::libc::geteuid() };' \
@@ -3580,15 +3579,6 @@ for entry in "$macos_core_entry" "$macos_service_binary"; do
   if grep -qF 'load_custom_client()' <<<"$entry" || grep -qF 'init_log(' <<<"$entry"; then
     r_s11e52="$r_s11e52 service-entry-prebootstrap-config-or-log-present"
   fi
-done
-for binding in \
-  'fn r_s11e52_macos_service_owned_paths_ignore_ambient_home()' \
-  'Path::new("/var/root/Library/Application Support/com.carriez.RustDesk")' \
-  'Path::new("/var/root/Library/Logs/RustDesk")' \
-  'Path::new("relative/root")' \
-  '"../RustDesk"' \
-  '".."'; do
-  grep -qF "$binding" <<<"$macos_config_test" || r_s11e52="$r_s11e52 path-derivation-regression-missing"
 done
 if [ -n "$r_s11e52" ]; then
   echo "  FAIL R-S11e-52 macOS service-owned config/log root:$r_s11e52"

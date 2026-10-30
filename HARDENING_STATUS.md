@@ -74,6 +74,10 @@ case inventories, intermediate failures, source/artifact hashes and timings rema
 receipts under `.harness-state/verifier-vm/` and in Git history. Shared current-artifact,
 installed/other-platform, R-S0/R-F5, resource/soak and release obligations below remain OPEN.
 
+**User pivot (2026-10-30):** Further Debian package/ELF checks remain OPEN/PARKED.
+The completed load-range correction is retained. Work moved to image-quality
+slider accessibility; do not resume package follow-ups automatically.
+
 **User pivot (2026-10-28):** Bulk Favorites selection ownership remains
 OPEN/PARKED. Test preparation `c1732910` is preserved but unrun; no Favorites
 product correction follows. Work moved to audio-input failure feedback.
@@ -4364,6 +4368,17 @@ identities. This is shared widget/model evidence with controlled preferences
 and platform themes. Complete desktop/mobile menus, native screen readers,
 persistence and installed/native security acceptance remain OPEN; existing parks
 and all fifteen credential actions remain open.
+
+**Image-quality slider announcements (`183ec59f`).** The bitrate and FPS controls
+use their translated names and actual units in one accessibility node, replacing
+unnamed normalized track percentages. Baseline `6ed13b4a` reproduces four failures
+(50% announced as 44%; 500% as 25%). At `46b8109d`, TUF `miKu2oK0NU` passes all
+19 quality/FPS widget cases, including the four extended regressions. The broader
+runner reports 342 passes and the same two user-parked edge-scroll failures; no
+whole-run pass is claimed. The audit records the label-merging correction, test
+handle-cleanup repair, four source-bound runs and joined RAM cleanup with zero
+listener deltas. Native screen readers, full application and persistence remain
+unexecuted; package/ELF follow-ups and existing parks remain OPEN/PARKED.
 
 **Autosave restoration (`8d9bc485`).** Quality, FPS and trackpad controls represent
 the confirmed value as unknown after an exception, null or invalid save result.

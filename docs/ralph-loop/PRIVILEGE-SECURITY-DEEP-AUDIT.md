@@ -119891,3 +119891,56 @@ QEMU 2150239 joins in 30.710 seconds, RAM `run._napawwo` retires and three
 listener deltas are zero. Six count files add 103,663 bytes; the eighteen raw
 files total 248,903 bytes per host with matching hashes. This audit-only receipt
 leaves the measured ledger unchanged.
+
+## 2026-10-30 — user pivot: image-quality slider announcements
+
+The user explicitly requested unrelated work. Further Debian package/ELF checks
+are OPEN/PARKED; the completed load-range fix remains. This slice addresses only
+the shared Flutter image-quality controls and their existing widget tests.
+
+`CustomImageQualityWidget` supplied no accessible names or value formatters.
+Flutter 3.24.5's [Slider implementation](https://github.com/flutter/flutter/blob/3.24.5/packages/flutter/lib/src/material/slider.dart#L1655-L1681)
+therefore announced normalized track percentages. The unchanged-product test
+preparation `6ed13b4a` observes displayed bitrate 50% announced as 44%, and 500%
+as 25%, with no slider label. Four extended existing tests fail on those semantics;
+338 other cases pass and two previously parked edge-scroll cases fail.
+
+`511ead8c` formats bitrate with its percentage unit and FPS as a frame-rate number,
+using the existing translated names. Its values are correct, but the labels remain
+separate nodes. `183ec59f` uses [MergeSemantics](https://api.flutter.dev/flutter/widgets/MergeSemantics-class.html)
+to combine each name with its slider. All four UI assertion bodies then pass;
+their end-of-test guard finds that the fixture's addTearDown handle release is too
+late. `46b8109d` uses Flutter's `semanticsEnabled` test ownership instead. Assertions
+are unchanged by that fixture correction. Ranges, layout and saving are unchanged.
+
+All runs use `bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests
+--auto-disconnect` on TUF, pinned Flutter 3.24.5, fresh generated bindings, a zero-NIC
+Linux VM and the existing bounded-RAM profile. Save callbacks and translation are
+controlled widget-test inputs; these runs do not execute OS screen readers or
+native settings persistence. The broader runner remains unaccepted because its
+two existing edge-scroll failures are parked. Its 341-case acceptance literal is
+also older than the 344 executed cases; that later acceptance stage is unreached.
+No runner, parked test or edge-scroll product code is modified.
+
+| Source / run | Result | QEMU joined / seconds | Retired RAM workspace |
+| --- | --- | --- | --- |
+| `6ed13b4a` / `V7wdvbMO6V` | Four UI regressions and two parked failures | 2152675 / 253.991 | `run.01w8nsbs` |
+| `511ead8c` / `reeMHrwqLh` | Values corrected; four name regressions and two parked failures | 2153512 / 263.536 | `run.bt3w2mvq` |
+| `183ec59f` / `5WKwAELTAb` | UI assertions pass; four fixture cleanup failures and two parked failures | 2154360 / 257.432 | `run.e3wyjj9l` |
+| `46b8109d` / `miKu2oK0NU` | All 19 quality/FPS cases pass; 342 total passes and only two parked failures | 2155199 / 265.888 | `run.i5hil12t` |
+
+Each run retains its serial, console, storage receipt and four listener snapshots
+under `.harness-state/verifier-vm/flutter-model-tests-*run.<id>.*`. All sixteen
+listener deltas are zero. The 28 raw files total 1,531,260 bytes on each host,
+copied and hash-verified before exact failed diagnostic directories are removed.
+
+The final serial is 304,482 bytes, SHA-256
+`c13be8947bb2eafbe41f96b841c028bbdc0d6b6bd7db604c89db3abf9361129e`.
+The production widget SHA-256 is
+`29ce0f9eb8eca957d9e3450acdd8b8b17036e12b9c8d841d71b45eeae1732885`;
+the final test SHA-256 is
+`4378eb09cea2eb976f382016152aa560d94a010c22103b6c705319645203b04a`.
+The four regression assertions cover initial and effective saved bitrate/FPS,
+disabled actions, expanded bitrate and its normal-range return, and the narrow
+mobile layout with hidden FPS. The unchanged earlier assertions establish the
+baseline mismatch before fixture teardown. No broader runner acceptance is claimed.

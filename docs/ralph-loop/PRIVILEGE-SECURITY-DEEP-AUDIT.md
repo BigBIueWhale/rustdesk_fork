@@ -121108,3 +121108,47 @@ input SHA-256 `d7306abd0cce8aafe0f7700b504541e4ee33c5e313b88c0310185e04f01abdf6`
 QEMU 2638569 joins in 30.311 seconds, RAM `run.0alkpqlm` retires and all three
 endpoint deltas are zero. Six raw files total 103,906 bytes per host, copied and
 hash-verified. This audit-only receipt leaves the ledger unchanged.
+
+## 2026-10-30 — quality-monitor delay display
+
+Previous goal turn: PROGRESS through connection-heading spacing. The user pivot
+remains binding; all parked investigations and fifteen native credential-action
+acceptances remain open. This slice corrects ordinary connection-quality display.
+
+`QualityMonitor` substituted zero for a reported delay when FPS was missing,
+empty or entirely zero. The source has independent producers: the client status
+timer supplies frame counts, while `handle_test_delay` forwards the server's last
+round-trip measurement. Product `d9f2e5b6849a6fc4b5981ad64b903ecd3ae8d37d` removes
+only the FPS-dependent expression and its comment. The existing missing-value
+placeholder and measured zero remain. Desktop/mobile remote and camera pages
+share this widget; measurement and transport code are unchanged.
+
+Preparation `408690ac` adds five monitor cases to the existing focused
+`--flutter-model-tests --image-quality` run, retaining all 24 editor cases in
+their unchanged file. Baseline `iGMXTQkRjk` passes 26 and fails all three cases
+for zero FPS, absent FPS and a 30-to-0 FPS transition without a delay update.
+Candidate `IDFcUurt7q` runs the identical suite and passes all 29 cases,
+three focused parser controls, source postchecks and outer acceptance. The new
+cases also cover multi-display zero strings, subsequent delay/FPS updates,
+unknown versus measured-zero delay and hidden/reopened display. They execute the
+production widget and `QualityMonitorModel.updateQualityStatus` with controlled
+FPS/visibility and an unused session double; native binding/event delivery and
+FPS decoding are outside this evidence. Flutter's
+[change-notification contract](https://api.flutter.dev/flutter/foundation/ChangeNotifier-class.html)
+and frame pumps supply the rendered update check. Native devices, metric age,
+presentation latency and R-F5 impairment/recovery/soak acceptance remain open.
+
+Overlay baseline/candidate SHA-256:
+`03283bcad13e821f4d54855277dcd3a01356873ee291912953274f36c0a20b5d` /
+`5382f6e32cb7bfd39202d6a77bb26f6a589c8b9b798d840a5c024c7e6984dec6`.
+Test SHA-256: `c2e8ff00d400437f142c55ced52a84fad15d1fade208d041ec526238e49fe610`.
+
+| Run | Serial SHA-256 | QEMU / seconds | Retired RAM workspace |
+| --- | --- | --- | --- |
+| `iGMXTQkRjk` | `689aa58a77d3c85259a94374e266ccdec87ae90e58ce37abb357500adf5c2336` | 2639452 / 247.808 | `run.3lvhr1rq` |
+| `IDFcUurt7q` | `605ffb4ca03ccce3eebcaecd665ea05e2cd0ba3f47368a17424170e7f630cc1d` | 2640286 / 267.175 | `run.m25gsks5` |
+
+Both QEMU processes join, bounded RAM workspaces retire and all eight endpoint
+deltas are zero. Fourteen raw files total 191,557 bytes per host, copied and
+hash-verified. After exact process, workspace, directory and evidence checks,
+the failed baseline diagnostic tree is removed (3,477,504 allocated bytes).

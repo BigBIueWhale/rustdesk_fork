@@ -659,7 +659,8 @@ impl VideoQoS {
             v = current_ratio * 0.8;
         }
 
-        // Limit quality increase rate for better stability
+        v = v.clamp(min, max);
+        // Apply the growth ceiling after the quality floor and target bounds.
         if let Some(ratio_add_150kbps) = ratio_add_150kbps {
             if v > ratio_add_150kbps
                 && current_ratio >= BR_SPEED
@@ -668,7 +669,7 @@ impl VideoQoS {
             }
         }
 
-        self.ratio = v.clamp(min, max);
+        self.ratio = v;
         self.adjust_ratio_instant = Instant::now();
     }
 

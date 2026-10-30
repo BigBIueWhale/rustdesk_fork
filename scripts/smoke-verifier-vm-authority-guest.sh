@@ -292,9 +292,9 @@ case "$#:${8:-}" in
         exit 2
         ;;
 esac
-FLUTTER_SETTINGS_TEST_COUNT=46
+FLUTTER_SETTINGS_TEST_COUNT=49
 if [ "$FLUTTER_TEST_PROFILE" = desktop-theme ]; then
-    FLUTTER_SETTINGS_TEST_COUNT=16
+    FLUTTER_SETTINGS_TEST_COUNT=19
 fi
 readonly RUST_TEST_PROFILE
 readonly DOCKER_ARCHIVE=$1
@@ -12288,7 +12288,7 @@ run_flutter_model_tests() {
                     test_name_filter=(--name "^quality ")
                 fi
                 if [ "$FLUTTER_TEST_PROFILE" = desktop-theme ]; then
-                    test_name_filter=(--name "^(desktop theme|recording directory|settings )")
+                    test_name_filter=(--name "^(desktop home|desktop theme|recording directory|settings )")
                 fi
                 if [ "$FLUTTER_TEST_PROFILE" = audio-input ]; then
                     test_name_filter=(--name "^audio ")

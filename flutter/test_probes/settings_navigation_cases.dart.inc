@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/mobile/pages/settings_page.dart' as mobile;
+import 'package:flutter_hbb/desktop/pages/desktop_home_page.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_setting_page.dart';
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
 import 'package:flutter_hbb/generated_bridge.dart';
@@ -79,6 +80,9 @@ class _NativeSettings implements RustdeskImpl {
       case #mainIsInstalled:
       case #mainAudioSupportLoopback:
       case #mainGetUseTextureRender:
+      case #isSelinuxEnforcing:
+      case #mainCurrentIsWayland:
+      case #mainIsLoginWayland:
         return false;
       case #mainIsOptionFixed:
         return fixedOptions.contains(key);
@@ -263,7 +267,7 @@ Future<void> _showBoolean(WidgetTester tester, String label) async {
   await _settle(tester);
 }
 
-Future<void> _mountMobile(WidgetTester tester, TargetPlatform platform) async {
+void _mockLogo(WidgetTester tester) {
   // Branding is outside this settings probe; the application source is unchanged.
   tester.binding.defaultBinaryMessenger.setMockMessageHandler('flutter/assets',
       (message) async {
@@ -278,6 +282,10 @@ Future<void> _mountMobile(WidgetTester tester, TargetPlatform platform) async {
     }
     return null;
   });
+}
+
+Future<void> _mountMobile(WidgetTester tester, TargetPlatform platform) async {
+  _mockLogo(tester);
   await tester.binding.setSurfaceSize(const Size(400, 600));
   await tester.pumpWidget(ChangeNotifierProvider<FfiModel>(
     create: (_) => _MobileSettingsModel(),
@@ -366,6 +374,90 @@ void main() {
     Get.reset();
     expect(native.unexpected, isEmpty);
     isTest = false;
+  });
+
+  for (final scale in [1.0, 1.5]) {
+    testWidgets('desktop home pane scrolls all status text at scale $scale',
+        (tester) async {
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      _mockLogo(tester);
+      // Render the actual pane builder without starting window/status services.
+      // The fixture owns the unattached page State and its pane controller.
+      final dynamic owner = const DesktopHomePage().createState();
+      const status = 'Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLast line';
+      owner.systemError = status;
+      Future<void> mount() async {
+        await tester.pumpWidget(MaterialApp(
+          theme: MyTheme.lightTheme,
+          home: MediaQuery(
+            data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+            child: Material(child: Align(
+              alignment: Alignment.topLeft,
+              child: Builder(builder: (context) => owner.buildLeftPane(context)),
+            )),
+          ),
+        ));
+        await _settle(tester);
+      }
+      await tester.binding.setSurfaceSize(const Size(1000, 240));
+      ScrollController? controller;
+      try {
+        await mount();
+        final pane = find.byType(SingleChildScrollView);
+        controller = tester.widget<SingleChildScrollView>(pane).controller!;
+        expect(tester.takeException(), isNull);
+        expect(controller.position.maxScrollExtent, greaterThan(80));
+        expect(tester.getRect(find.text(status)).bottom,
+            greaterThan(tester.getRect(pane).bottom));
+        await tester.drag(pane, const Offset(0, -1000));
+        await _settle(tester);
+        final viewport = tester.getRect(pane);
+        final message = tester.getRect(find.text(status));
+        expect(controller.offset, greaterThan(0));
+        expect(message.bottom, lessThanOrEqualTo(viewport.bottom + 0.1));
+        expect(message.bottom, greaterThan(viewport.top));
+        controller.jumpTo(40);
+        await mount();
+        expect(tester.widget<SingleChildScrollView>(pane).controller, same(controller));
+        expect(controller.offset, closeTo(40, 0.1));
+        await tester.binding.setSurfaceSize(const Size(1000, 280));
+        await _settle(tester);
+        expect(controller.offset, closeTo(40, 0.1));
+        expect(tester.takeException(), isNull);
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        controller?.dispose();
+      }
+    });
+  }
+
+  testWidgets('desktop home pane keeps fitting content visible without scrolling',
+      (tester) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    _mockLogo(tester);
+    final dynamic owner = const DesktopHomePage().createState();
+    owner.systemError = 'Short status';
+    await tester.binding.setSurfaceSize(const Size(1000, 900));
+    ScrollController? controller;
+    try {
+      await tester.pumpWidget(MaterialApp(
+        theme: MyTheme.lightTheme,
+        home: Material(child: Align(alignment: Alignment.topLeft,
+          child: Builder(builder: (context) => owner.buildLeftPane(context)),
+        )),
+      ));
+      await _settle(tester);
+      final pane = find.byType(SingleChildScrollView);
+      controller = tester.widget<SingleChildScrollView>(pane).controller!;
+      expect(controller.position.maxScrollExtent, 0);
+      expect(controller.offset, 0);
+      expect(find.text('Short status').hitTestable(), findsOneWidget);
+      expect(find.text('Your Desktop').hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      controller?.dispose();
+    }
   });
 
   testWidgets('desktop theme owns one save across clicks rebuilds and tab changes',

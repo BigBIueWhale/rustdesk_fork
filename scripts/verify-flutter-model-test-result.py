@@ -1142,6 +1142,9 @@ PEER_LOADER_TESTS = {
     "peer loader clear retires a pending request and its failure",
 }
 SETTINGS_NAVIGATION_TESTS = {
+    "desktop home pane scrolls all status text at scale 1.0",
+    "desktop home pane scrolls all status text at scale 1.5",
+    "desktop home pane keeps fitting content visible without scrolling",
     "desktop theme owns one save across clicks rebuilds and tab changes",
     "desktop theme write failure remains visible and permits retry",
     "desktop theme notification failure stays local and permits retry",
@@ -1897,7 +1900,7 @@ def parse_result(path, profile="models"):
         expected_names = SETTINGS_NAVIGATION_TESTS
         if profile == "desktop-theme":
             expected_names = {name for name in expected_names
-                              if name.startswith(("desktop theme", "recording directory", "settings "))}
+                              if name.startswith(("desktop home", "desktop theme", "recording directory", "settings "))}
         expected_tests = len(expected_names)
     elif profile == "terminal-output":
         expected_by_suite = TERMINAL_OUTPUT_TESTS

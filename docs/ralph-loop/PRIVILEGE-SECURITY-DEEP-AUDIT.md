@@ -118865,3 +118865,14 @@ This is Linux transport/component evidence. Native Windows/macOS pipes/sockets,
 buffered-writer flush failure, full application behavior, installed action
 authorization/settings, descriptor handoff, R-S0, independent reproduction and
 external review remain open. No installed privilege-boundary acceptance is added.
+
+**Fresh ledger count.** At `e74743f85c6438b501cf265cecd1e58c9d098d9c`,
+isolated `937AzYtYPk` passes 74 admission controls, five refusals, seven
+tokenizer controls and round-trip validation. The unchanged method
+`tiktoken-0.12.0/cl100k_base/encode_ordinary` measures 360,593 tokens,
+1,648,637 bytes, SHA-256
+`b04bd3ca47ef4d5926fd2c426847a64ae8eefc45fb68853c711e28aa9c2e27f5`.
+QEMU 1859812 joins in 30.508 seconds, RAM `run.5stq3tlq` retires and all
+three listener deltas are zero. Six count files add 103,742 bytes: this slice
+retains 27 files / 443,575 bytes per host with matching hashes. The counted
+ledger remains unchanged by this audit-only receipt.

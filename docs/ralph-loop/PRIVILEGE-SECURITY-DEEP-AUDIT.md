@@ -118799,3 +118799,69 @@ QEMU 1855044 joins in 30.782 seconds, RAM `run.zncqpuy7` retires and all
 three listener deltas are zero. Six count files add 105,221 bytes, bringing
 this slice to twenty retained files / 269,724 bytes per host with matching
 hashes. This audit-only receipt leaves the measured ledger unchanged.
+
+### 2026-10-30 — prevent further writes after interrupted IPC frames
+
+Starting at `8eb86dd2531e8862f13e62715871c06474e0cc8a`, review of main
+transactions, CM responses and the server's CM owner, Windows clipboard reads,
+whiteboard sends and PulseAudio sends found their error paths retire the stream.
+No application path reusing a failed writer, or new reachable local privilege
+escalation, was established. That finding constrained this slice to the shared
+transport contract; the separately parked callers remain unchanged.
+
+`ConnectionTmpl::send_raw` retained its header/payload cursor only inside the
+send future. [Tokio 1.44.2's write_all_buf contract](https://raw.githubusercontent.com/tokio-rs/tokio/tokio-1.44.2/tokio/src/io/util/async_write_ext.rs)
+permits partial writes on cancellation and advances the supplied buffer.
+Dropping our future also dropped that cursor, while another send could start
+on the same connection. `f005071010f284e86c4d14992539d6d506b6f243` adds
+connection-owned incomplete-write state after local validation and before the
+first write await. Only successful write-plus-flush clears it. Cancellation or
+I/O failure therefore prevents another frame from being appended. Pre-write
+serialization/header/cap refusals preserve reuse. Reads, wire format, caps,
+peer/action authorization and caller-owned disposal are unchanged; the flag
+does not close the descriptor or roll back receiver-side actions.
+
+Test commit `6c98a04aff5a7e55a8b20c8360be08737a55f3bc` adds four
+native cases to the existing component runner. Each first exchanges a valid
+empty frame, reduces the real socket send buffer, then times out a blocked
+1 MiB send after 25 ms. The observer requires a partial header/payload with
+exact bytes, drains it, then attempts both a raw and a JSON send. Both must
+refuse with no new bytes. Both transport paths check kernel UID/PID; descriptor
+restoration and, for the pathname transport, exact socket identity/removal
+precede the final verdict. The fixture uses the production connection and
+reader methods, not a replacement writer.
+
+| Source / run | Result | Listener executable SHA-256 |
+| --- | --- | --- |
+| `6c98a04a` / `IletP9tJat` | 256 prior cases pass; four cancellation cases fail; outer 1 | `a3c7e18f8eb2e0f8706244d649816b781549e74d2040a90443dae0159bcf837e` |
+| `f0050710` / `9lxEtFsAAq` | All 260 native cases pass; outer 1 from stale expected count | `b4c477d7b5c09072f21837b587c0ff8502e797e878eabd9373920318851c2905` |
+| `b712ffd7` / `jcmaMnqj3O` | All 260 native cases and complete harness pass; outer 0 | Same corrected executable |
+
+All three use `bash scripts/smoke-verifier-vm-authority.sh --linux-ipc-parent-tests`
+in a zero-NIC disposable Linux VM on TUF, with the pinned unprivileged guest
+builder and dependency closure. All fourteen production directory cases and the
+focused desktop source check also pass. Baseline vectored/scalar writes leave
+8,064/8,067 bytes respectively, then both subsequent sends report success and
+append twelve bytes, under both root and UID 4001. The unchanged four cases pass
+after correction. Successful writes, frame/JSON bounds, allocation-pressure
+refusals, malformed replies and reusable pre-write refusal controls remain green.
+The first corrected run completed its native checks and cloud-init; the outer
+receipt still expected 256. `b712ffd7` updates that single count. The final run
+has the identical corrected artifact, with before/after hash checks and complete
+source-bound guest and outer success. No product or fixture changed for that rerun.
+
+QEMUs 1856365 / 1857145 / 1857983 join in 90.785 / 91.116 / 88.145 seconds.
+RAM workspaces `run.xv67x2m4`, `run.4czz2ysr`, `run.fk50y96z` retire;
+all twelve listener deltas are zero. Each QEMU reports 4,096 host block-write
+bytes. Seven raw files per run retain 115,136 / 112,150 / 112,547 bytes:
+21 files / 339,833 bytes per host, with matching hashes. Retained basenames are
+`linux-ipc-parent-tests-run.{IletP9tJat,9lxEtFsAAq,jcmaMnqj3O}.*` plus
+their console logs. Exact failed-run scratch directories
+`ipc-write-baseline.IletP9tJat` and `ipc-write-corrected.9lxEtFsAAq`,
+each observed at inode 78294410 after separate runs, are deleted after evidence
+copying, releasing 3,510,272 / 3,502,080 allocated bytes. No VM/run scratch remains.
+
+This is Linux transport/component evidence. Native Windows/macOS pipes/sockets,
+buffered-writer flush failure, full application behavior, installed action
+authorization/settings, descriptor handoff, R-S0, independent reproduction and
+external review remain open. No installed privilege-boundary acceptance is added.

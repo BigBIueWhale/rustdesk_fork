@@ -121468,3 +121468,48 @@ All 77 admission controls and five refusals pass. QEMU 2770260 joins after
 30.613 seconds, RAM `run.7h2f88mk` retires and all three endpoint deltas are zero.
 Six raw files total 106,057 bytes per host, copied and hash-verified. The outer
 exit is zero. This audit-only receipt leaves the counted ledger unchanged.
+
+## 2026-10-30 — latest toast replacement
+
+Previous goal turn: PROGRESS through About metadata (`0d63ec3d`, final receipt
+`5f817500`). The user pivot remains binding; this slice concerns ordinary UI
+notifications. All earlier parked work remains open.
+
+The shared `showToast` inserted an independent overlay and uncancellable delayed
+removal for every message. Messages used the same default position and could
+remain stacked until their separate timeouts. Product `584ab939` keeps one current
+toast entry and timer. A new call retires the old timer/entry before inserting its
+message; expiry clears ownership, removes the entry and disposes it. The existing
+layout, caller-selected alignment, click-through and timeout API remain.
+The design follows Dart's [timer cancellation contract](https://api.dart.dev/dart-async/Timer/cancel.html)
+and Flutter's [remove-before-dispose contract](https://api.flutter.dev/flutter/widgets/OverlayEntry/dispose.html).
+The pinned Flutter 3.24.5 overlay source also handles removal after its overlay
+has unmounted. These are global-navigator notifications, not page-owned dialogs;
+individual callers' delayed-feedback ownership remains outside this correction.
+
+Preparation `41fc16a6` adds five cases to the existing desktop settings profile.
+Baseline `g1NshomZhY` passes 28 cases and fails two: older text survives its
+replacement, and a same-frame burst renders 41 toast messages. Candidate
+`viTFnNcSM5` passes the identical 30-case suite, three parser controls and source
+postchecks. The five cases observe three-second default expiry and pointer input,
+replacement with its own full timeout, burst replacement, navigator retirement
+and replacement across the old deadline, and absence of a navigator. The suite
+renders the exact shared function with real Flutter overlays/timers and the
+existing controlled native/parent bindings. Device/native-window execution and
+complete caller integration remain unverified.
+
+Common-source SHA-256 before/after:
+`4c80f1eabf6d840f687a5d5cef38e88738820dcd412df3610cc6531d1375692d` /
+`44bd3bbf56ee92609a825dad4557a4cb1e2728322c9a2dafc842c4da85d37e2f`.
+Identical test SHA-256:
+`87ec1c7b9c873fb040c5c4eadac1b6fb853435aff01933e0e46a3913ee418124`.
+
+| Run | Serial SHA-256 | QEMU / seconds / retired RAM |
+| --- | --- | --- |
+| `g1NshomZhY` | `78783525e704abb8e29b5a472c3757a215dbebbb0e278e12933f24568fbc9dff` | 2784310 / 244.736 / `run.jzx46uo4` |
+| `viTFnNcSM5` | `4b31f9689667dc5ec4b5bae38bc40676e5d35e3c6ee35d1c997dc27a6571bcdd` | 2806276 / 264.153 / `run.7rggn76u` |
+
+Both QEMU processes join, bounded RAM scratch retires and all eight endpoint
+deltas are zero. Fourteen raw files total 191,936 bytes per host, copied and
+hash-verified. The exact baseline diagnostic tree is removed after evidence
+verification (3,485,696 allocated bytes). The candidate outer exit is zero.

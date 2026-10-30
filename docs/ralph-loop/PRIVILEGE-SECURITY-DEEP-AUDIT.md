@@ -120331,3 +120331,65 @@ QEMU 2435868 joins in 30.302 seconds; RAM `run.b5ww2n0_` retires and all
 three listener deltas are zero. Six count files add 104,136 bytes; the twenty-seven
 raw files total 329,985 bytes per host with matching hashes. This audit-only
 receipt leaves the measured ledger unchanged.
+
+## 2026-10-30 — production translation lookup
+
+The preceding Portugal correction is verified progress. User parks remain open.
+The old `--language-selection-tests` entry compiled only `lang_locale.rs`,
+so its pass could not establish that `lang.rs` loaded or routed a catalogue.
+`4812b1085926f327c683f770d17697bd73d1916e` extends that same isolated runner
+to compile the actual translation module, selector and all 50 active catalogues.
+Only LocalConfig's synchronous language read and application branding are fixture
+inputs; no production source or translation changes in this slice.
+
+The standalone Cargo recipe pins existing lazy_static 1.5.0, regex 1.11.1 and
+sys-locale 0.3.1 from the authenticated offline vendor closure. The final lock
+SHA-256 is `51ee939f55aee780565be8988d1862a67eb01f006e547eda3d1e38122bf82936`.
+Compilation uses the original module layout in a private guest directory; byte
+comparison covers the fixture, production module/selector and entire catalogue
+directory. Original-source fingerprints and executable before/after hashes also
+remain required. No production dependency, VM/storage profile or admission limit
+changes. The runner retains its zero-NIC VM and networkless UID/GID-1000 container.
+
+Two pre-VM attempts stop at entry authority: edited orchestration files had mode
+0775. Restoring their intended 0755 modes resolves that mismatch without changing
+source content. Both wrappers exit 1 before a run directory or QEMU is created.
+An earlier attempted launch also refuses the still-held source-sync lock; it
+creates no test run. Terminal state is checked before retrying.
+
+`tnGwVRnB5K` at `4812b108` fails compilation with E0583/E0425 before any
+case runs: loading `lang.rs` through a path attribute changes child-module
+resolution in the fixture. Following the
+[Rust module-layout contract](https://doc.rust-lang.org/reference/items/modules.html#module-source-filenames),
+`eb2721c8` preserves the normal source tree and byte-checks its copies.
+`xwVr2f2MyB` then compiles all catalogues and passes 14/15 cases. The remaining
+fixture wrongly expected fallback text to retain `{α}`; the documented existing
+substitution syntax yields `α`. `fe08a769bf19b341b3f8863878e5b16fc2e91f09`
+corrects that expectation and also exercises the public translator with a saved
+Portugal preference. Neither failed run is a new product-regression baseline.
+
+At that final source, `XfXlqozMeB` passes all 15 cases and outer acceptance
+with `bash scripts/smoke-verifier-vm-authority.sh --language-selection-tests`.
+All ten original selector cases and the existing placeholder case execute,
+followed by four actual-lookup cases. They observe distinct Portugal/Brazil text,
+French/Hebrew controls, saved preference priority and unsupported-language English
+fallback, distinct menu keys/names and localized notices for every menu language,
+Unicode/dollar/backslash substitutions and unknown-key fallback. The public entry
+also returns Portugal text with the configured override. Tests finish in 0.03 s;
+full isolated execution takes 67.419 s. Artifact SHA-256:
+`583efbc97ae305aaf3356d03551c241369f623a8d140326043d8a60464ca33f8`.
+
+| Run | Serial SHA-256 | QEMU / seconds | Retired RAM workspace |
+| --- | --- | --- | --- |
+| `tnGwVRnB5K` | `b15d10afb77136d6c4693611dd2fad6a7509d1a0e03cfd76c42c167fd4bf3d28` | 2436874 / 66.788 | `run._zycit23` |
+| `xwVr2f2MyB` | `17e5b7ad053d08628f494b2ceae4a54be6e56a3600c5806b59aedcad6c261cbc` | 2437646 / 67.499 | `run.7odl9zou` |
+| `XfXlqozMeB` | `66046918c5a97be7f1b8c24646c7bef1ff01525f6a77eca22596cd781237d5ad` | 2438390 / 67.419 | `run.ph1iexkd` |
+
+All twelve listener deltas are zero. Each exact QEMU joins and RAM workspace
+retires. Twenty-one raw files total 225,628 bytes per host, copied and hash-verified.
+The two failed diagnostic trees are removed only after evidence copying and
+terminal wrapper/QEMU/workspace checks, releasing 3,436,544 and 3,424,256 allocated
+bytes. Full application compilation, real preference persistence/settings flows,
+platform language changes, devices and native-speaker review remain open; fixture
+configuration reads do not establish those behaviors. The preceding Flutter checks
+are not rerun because UI and product source are unchanged.

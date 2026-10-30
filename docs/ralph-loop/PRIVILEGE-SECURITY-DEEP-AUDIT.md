@@ -120802,3 +120802,13 @@ After evidence and exact process/workspace checks, the failed baseline diagnosti
 tree is removed, releasing 3,457,024 allocated bytes. The prior tab-label receipt
 is also corrected above: its post-test parser failure was misreported as occurring
 before test execution. That correction adds no new runtime acceptance.
+
+Fresh ledger count at `3f17612fcf2d6c12c40d99f4f67222a09fdf144c`:
+TUF `eHqbdiptCK` passes seven controls and exact byte round trip with
+`--ledger-token-count`, using `tiktoken-0.12.0/cl100k_base/encode_ordinary`:
+365,178 tokens / 1,670,257 bytes, input SHA-256
+`97a98c5371ca54db5932965056172dde64fbcc860210f2e7d25a77468b5c86a1`.
+QEMU 2617078 joins in 30.600 seconds; RAM `run.lkaukelw` retires,
+and all three listener deltas are zero. Six files add 106,500 bytes; twenty
+raw files total 280,021 bytes per host, copied and hash-verified. This audit-only
+receipt leaves the measured ledger unchanged.

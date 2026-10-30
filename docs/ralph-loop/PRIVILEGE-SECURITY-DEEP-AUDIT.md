@@ -118204,3 +118204,14 @@ The exact default failed-run directory, inode 78294410, is removed after
 copying and releases 3,592,192 allocated bytes. No VM/run scratch remains.
 Both overlays stayed in bounded RAM; each QEMU reports 4,096 host block-write
 bytes. No product/test executable ran on a host.
+
+Ledger run `qeJiTVX5aa` at `d2b3d312` passes 74 workload controls/five refusals,
+including both new profiles selecting the existing bounded PAKE storage class,
+plus seven tokenizer controls and full text round trip. It reports 360,336 tokens
+with `tiktoken-0.12.0/cl100k_base/encode_ordinary`: 1,647,494 bytes, SHA-256
+`e74e34cbb1e9c713ffe49901b48eb60822f78b7278b230d64471afe62046e212`.
+QEMU 1832969 joins in 30.815 seconds; RAM `run.ur7knd7l` retires and three
+listener deltas are zero. Six count files add 104,109 bytes. Twenty raw files
+across all three runs total 389,276 bytes per host with matching hashes; this
+audit-only receipt preserves the measured ledger and its approximate
+400,000-token budget.

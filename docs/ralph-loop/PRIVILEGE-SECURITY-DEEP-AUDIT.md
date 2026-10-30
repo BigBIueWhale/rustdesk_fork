@@ -119182,3 +119182,13 @@ Fourteen files total 181,584 bytes per host with matching hashes. Baseline diagn
 inode 78294410 is deleted after retention (3,469,312 allocated bytes).
 Shipping artifacts, other targets, full application/installed authorization,
 all fifteen credential actions, erasure/timing and independent review remain open.
+
+**Fresh ledger count.** At `73bcfbfe0e56639f45bd4290de4e5d6056766f06`,
+TUF `MqJLeW2LF4` passes seven tokenizer controls and the exact byte round trip
+using `tiktoken-0.12.0/cl100k_base/encode_ordinary`: 360,970 tokens /
+1,650,495 bytes, SHA-256
+`a870c1434c47c7dca3d9a957dc0828c80df2e23f75f6cae35bc8f1e4cb8cd109`.
+QEMU 1879681 joins in 30.703 seconds, RAM `run.vdheg13b` retires and all
+three listener deltas are zero. Six count files add 105,130 bytes; the twenty
+files from this slice total 286,714 bytes per host with matching hashes.
+This audit-only receipt leaves the measured ledger unchanged.

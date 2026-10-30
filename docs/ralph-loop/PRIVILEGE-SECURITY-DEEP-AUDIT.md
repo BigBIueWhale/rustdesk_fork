@@ -121239,3 +121239,55 @@ input SHA-256 `dd977fc31ad95cf29c324d30adde757ef8519e61e3acdba255b3657b04e4d0f6`
 QEMU 2646724 joins in 30.462 seconds, RAM `run.1fdvl8jy` retires and all three
 endpoint deltas are zero. Six raw count files total 103,770 bytes per host,
 copied and hash-verified. This audit-only receipt leaves the ledger unchanged.
+
+## 2026-10-30 — shared dropdown enlarged text
+
+Previous goal turn: PROGRESS through session-label localization. The user pivot
+remains binding. Initial audio-selector inspection encounters its existing park;
+no audio source or test is changed or executed. Work proceeds on shared `ComboBox`
+layout with ordinary language labels and controlled selection callbacks. All
+earlier parks and fifteen native credential-action acceptances remain open.
+
+Preparation `7cf64ff893c6eb972b94aef185bed9a58256746f` adds four rendered layout
+cases and a focused `--flutter-model-tests --combo-box` workload. It reuses the
+eight unchanged selection cases from `setting_option_mutation_test.dart` and the
+existing bounded 4-GiB guest/3-GiB container profile. The new profile validates its
+two-suite/twelve-case inventory with the existing three focused parser controls;
+other test bodies, profile selections and limits are unchanged. No parked audio,
+settings persistence or native session workflow is resumed.
+
+Unchanged-product run `yFTuFsju9T` passes nine cases and fails three: text extends
+beyond the selected-label, unavailable-label and open-menu-item bounds at enlarged
+scale. Product `ca316d495ee5a7c61f339b84f33df1d0929f840c` removes the fixed
+42-pixel container height and sets `DropdownButton.itemHeight` to null. Flutter's
+[intrinsic item-height contract](https://api.flutter.dev/flutter/material/DropdownButton/itemHeight.html)
+and the [pinned 3.24.5 implementation](https://github.com/flutter/flutter/blob/3.24.5/packages/flutter/lib/src/material/dropdown.dart)
+support sizing from the text while retaining the framework's minimum item height.
+The redundant height comment is removed; option identity, selection admission,
+callback, disabled-state and label logic remain byte-identical.
+
+Candidate `RTkRgYAf3D` runs the identical tests and passes all twelve cases,
+three parser controls, exact-source postchecks and outer acceptance. Coverage
+includes selected text at 1–4× scale, a missing selected key, open-menu selection,
+long German/Hebrew labels in a 180-pixel view, and both reading directions. The
+existing cases preserve duplicate-label identities, disabled/empty/unchanged
+choices, refreshed labels, confirmed values and pending/failed changes. This is
+production Flutter widget/layout and event execution with controlled data and
+callbacks; full pages, native fonts/devices, settings persistence and audio/session
+integration remain open.
+
+Common source SHA-256 before/after:
+`27a81b205317d2707f5fcf430829ca74916e62caa622cf0a3dedb1b186ffcc73` /
+`4c80f1eabf6d840f687a5d5cef38e88738820dcd412df3610cc6531d1375692d`.
+Unchanged new test SHA-256:
+`2d02407dde3813b39d764e2ab6cca8954c2597cab0b65c1ae86b86e80519b6be`.
+
+| Run | Serial SHA-256 | QEMU / seconds | Retired RAM workspace |
+| --- | --- | --- | --- |
+| `yFTuFsju9T` | `bf98692826c6900aa3a404ca517efe0ae25b89dd037429f177911ee0070ea6bc` | 2647673 / 239.004 | `run.rfogw5bn` |
+| `RTkRgYAf3D` | `25930d0e9b792a2ac12b0e706a71a282ac77b66080ecf449e64b2abb801f46ed` | 2648528 / 267.104 | `run.w75h_15u` |
+
+Both QEMU processes join, bounded RAM workspaces retire and all eight endpoint
+deltas are zero. Fourteen raw files total 166,682 bytes per host, copied and
+hash-verified. After exact process, workspace, directory and evidence checks,
+the failed baseline diagnostic tree is removed (3,452,928 allocated bytes).

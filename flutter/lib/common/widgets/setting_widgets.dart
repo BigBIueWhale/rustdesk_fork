@@ -306,11 +306,15 @@ class _CustomImageQualityWidgetState extends State<CustomImageQualityWidget> {
   Widget build(BuildContext context) {
     final text = widget.translateText ?? translate;
     final mobile = widget.mobileLayout ?? isMobile;
-    final moreControl = Row(children: [
-      Checkbox(value: _more,
-        onChanged: _quality.active && !_closing ? _changeMore : null),
-      Expanded(child: Text(text('More'))),
-    ]);
+    final moreEnabled = _quality.active && !_closing;
+    final moreControl = MergeSemantics(child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: moreEnabled ? () => _changeMore(!_more) : null,
+      child: Row(children: [
+        Checkbox(value: _more, onChanged: moreEnabled ? _changeMore : null),
+        Expanded(child: Text(text('More'))),
+      ]),
+    ));
     Widget status(_QualityField field) => Column(mainAxisSize: MainAxisSize.min,
       children: [
         if (field.saving) const LinearProgressIndicator(),

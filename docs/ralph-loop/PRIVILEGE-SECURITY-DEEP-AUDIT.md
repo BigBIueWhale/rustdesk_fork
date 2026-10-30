@@ -120143,3 +120143,13 @@ four listener deltas are zero. Seven raw files total 89,012 bytes per host,
 copied and hash-verified. The bounded 4 GiB guest / 7 GiB scratch / 6 GiB overlay
 profile and live monitor are unchanged. No failing behavior comparison is claimed
 for the uncalled no-op; existing parks and native/release obligations remain open.
+
+**Fresh ledger count.** At `ea830e5f949fe7ef8c4974c29a706eb74720cb53`, TUF
+`qvWRIEJqg3` passes seven tokenizer controls and exact byte round trip:
+363,321 tokens / 1,661,235 bytes using `tiktoken-0.12.0/cl100k_base/encode_ordinary`.
+Input SHA-256:
+`5acbddbbd3c85ef990b0249d29cedca24e9a3e9758b86d6b18cfaf347703093f`.
+QEMU 2285276 joins in 30.818 seconds, RAM `run.of0bypz6` retires and three
+listener deltas are zero. Six count files add 104,384 bytes; thirteen raw files
+total 193,396 bytes per host with matching hashes. This audit-only receipt leaves
+the measured ledger unchanged.

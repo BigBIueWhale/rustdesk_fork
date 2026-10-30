@@ -305,8 +305,9 @@ abstract class CustomScaleControls<T extends StatefulWidget> extends State<T> {
     };
   }
 
-  Widget buildScaleStatus() => !_failed ? const SizedBox.shrink() : Row(
-    mainAxisSize: MainAxisSize.min,
+  Widget buildScaleStatus() => !_failed ? const SizedBox.shrink() : Wrap(
+    alignment: WrapAlignment.center,
+    crossAxisAlignment: WrapCrossAlignment.center,
     children: [Text(scaleFailureText), TextButton(
       key: const ValueKey('custom-scale-retry'),
       onPressed: _operationPending ? null : retryScale,

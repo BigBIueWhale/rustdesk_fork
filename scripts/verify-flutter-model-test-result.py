@@ -423,6 +423,9 @@ SCROLL_PREFERENCE_TESTS = {
 }
 
 CUSTOM_SCALE_TESTS = {
+    "custom scale English failure fits and remains retryable",
+    "custom scale German failure fits and remains retryable",
+    "custom scale Hebrew failure fits and remains retryable",
     "custom scale keyboard moves through the hundred percent detent",
     "custom scale accessibility actions move away from the detent",
     "custom scale accessibility reports zoom across the full range",

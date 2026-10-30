@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart' show SessionID;
 import 'package:flutter_hbb/common/widgets/custom_scale_base.dart';
@@ -125,9 +126,12 @@ class _Session implements FFI {
 }
 
 class _Controls extends StatefulWidget {
-  const _Controls({super.key, required this.session, this.changed});
+  const _Controls({super.key, required this.session, this.changed,
+    this.failureText = 'Failed', this.retryText = 'Retry'});
   final _Session session;
   final ValueChanged<int>? changed;
+  final String failureText;
+  final String retryText;
   @override
   State<_Controls> createState() => _ControlsState();
 }
@@ -138,9 +142,9 @@ class _ControlsState extends CustomScaleControls<_Controls> {
   @override
   ValueChanged<int>? get onScaleChanged => widget.changed;
   @override
-  String get scaleFailureText => 'Failed';
+  String get scaleFailureText => widget.failureText;
   @override
-  String get scaleRetryText => 'Retry';
+  String get scaleRetryText => widget.retryText;
 
   @override
   Widget build(BuildContext context) => Column(children: [
@@ -153,10 +157,15 @@ class _ControlsState extends CustomScaleControls<_Controls> {
 }
 
 Widget _root(_Session session, {Key key = const ValueKey('controls'), ValueChanged<int>? changed,
-    TargetPlatform platform = TargetPlatform.linux, TextDirection direction = TextDirection.ltr}) =>
+    TargetPlatform platform = TargetPlatform.linux, TextDirection direction = TextDirection.ltr,
+    double width = 400, double textScale = 1,
+    String failureText = 'Failed', String retryText = 'Retry'}) =>
     MaterialApp(theme: ThemeData(platform: platform), home: Directionality(
-      textDirection: direction, child: Scaffold(body: SizedBox(width: 400,
-        child: _Controls(key: key, session: session, changed: changed)))));
+      textDirection: direction, child: MediaQuery(
+        data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
+        child: Scaffold(body: SizedBox(key: const ValueKey('scale-viewport'), width: width,
+          child: _Controls(key: key, session: session, changed: changed,
+            failureText: failureText, retryText: retryText))))));
 
 String _percent(WidgetTester tester) => tester.widget<Text>(find.byKey(const ValueKey('percent'))).data!;
 Future<void> _flush(WidgetTester tester) async { await tester.pump(); await tester.pump(); }
@@ -175,6 +184,50 @@ List<Object> _canvasState(_Session session) => [session.canvasModel.x, session.c
   session.canvasModel.scrollX, session.canvasModel.scrollY, session.inputModel.refreshes];
 
 void main() {
+  for (final (language, failure, retry, direction, textScale) in [
+    ('English', 'Failed', 'Retry', TextDirection.ltr, 2.0),
+    ('German', 'Fehlgeschlagen', 'Erneut versuchen', TextDirection.ltr, 1.5),
+    ('Hebrew', 'נכשל', 'נסה שוב', TextDirection.rtl, 3.0),
+  ]) {
+    testWidgets('custom scale $language failure fits and remains retryable', (tester) async {
+      for (final (width, scale) in [(700.0, 1.0), (240.0, textScale)]) {
+        final session = _Session()..preferences.percent = 150;
+        session.preferences.read = (call) => call == 1
+            ? Future.error(StateError('read failed')) : Future.value(1.5);
+        try {
+          await tester.pumpWidget(_root(session, width: width, textScale: scale,
+              direction: direction, failureText: failure, retryText: retry));
+          await _flush(tester);
+          expect(tester.takeException(), isNull);
+          final viewport = tester.getRect(find.byKey(const ValueKey('scale-viewport')));
+          final retryButton = find.byKey(const ValueKey('custom-scale-retry'));
+          for (final target in [find.text(failure), find.text(retry), retryButton]) {
+            final bounds = tester.getRect(target);
+            expect(bounds.left, greaterThanOrEqualTo(viewport.left));
+            expect(bounds.right, lessThanOrEqualTo(viewport.right));
+            expect(bounds.bottom, lessThanOrEqualTo(viewport.bottom));
+          }
+          for (final label in [failure, retry]) {
+            final paragraph = tester.renderObject<RenderParagraph>(find.descendant(
+                of: find.text(label), matching: find.byType(RichText)));
+            expect(paragraph.didExceedMaxLines, isFalse);
+          }
+          expect(tester.widget<TextButton>(retryButton).onPressed, isNotNull);
+          await tester.tap(retryButton);
+          await _flush(tester);
+          expect(_percent(tester), '150');
+          expect(session.preferences.reads, 2);
+          expect(session.writer.calls, isEmpty);
+          expect(find.text(failure), findsNothing);
+          expect(retryButton, findsNothing);
+          expect(tester.takeException(), isNull);
+        } finally {
+          await _finish(tester, [session]);
+        }
+      }
+    });
+  }
+
   testWidgets('custom scale keyboard moves through the hundred percent detent', (tester) async {
     for (final platform in [TargetPlatform.linux, TargetPlatform.macOS,
         TargetPlatform.android, TargetPlatform.iOS]) {

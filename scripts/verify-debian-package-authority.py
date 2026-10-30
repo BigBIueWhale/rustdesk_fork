@@ -595,6 +595,8 @@ def validate_elf_identity(contents, name, label):
         if segment_type == 1:
             if file_size > memory_size or file_offset + file_size > len(contents):
                 raise ValidationError(f"{label}: ELF load segment is out of bounds")
+            if virtual_address + memory_size >= (1 << 64):
+                raise ValidationError(f"{label}: ELF load segment virtual range overflows")
             if segment_flags & 1 and segment_flags & 2:
                 raise ValidationError(f"{label}: ELF load segment is writable and executable")
             if (align not in (0, 1)

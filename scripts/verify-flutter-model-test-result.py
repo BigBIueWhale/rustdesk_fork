@@ -615,6 +615,10 @@ SETTING_OPTION_TESTS = {
     "image choice retirement blocks admission and late feedback",
     "image Custom errors and retirement never write a marker",
     "image preset selection admits only the three named presets",
+    "quality editor preserves values between slider divisions",
+    "quality editor More preserves the current slider value",
+    "quality editor accessibility adjusts and saves one unit",
+    "quality editor keyboard adjusts and saves one unit",
     "quality editor Close waits for an admitted hidden FPS save",
     "quality dialog editing initializes its counterpart without losing a draft",
     "quality editor Close flushes latest edits and waits for both fields",
@@ -1708,7 +1712,7 @@ MODEL_TESTS = {
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "image-quality"}, "test profile is unknown")
     expected_suites = set(MODEL_TESTS)
     expected_by_suite = None
     if profile == "frame-queue":
@@ -1788,6 +1792,10 @@ def parse_result(path, profile="models"):
         expected_suites = {"desktop_window_dispatch_test.dart"}
         expected_tests = len(WINDOW_DISPATCH_TESTS)
         expected_names = WINDOW_DISPATCH_TESTS
+    elif profile == "image-quality":
+        expected_suites = {"setting_option_mutation_test.dart"}
+        expected_names = {name for name in SETTING_OPTION_TESTS if name.startswith("quality ")}
+        expected_tests = len(expected_names)
     elif profile == "auto-disconnect":
         expected_by_suite = {
             "auto_disconnect_timeout_dialog_test.dart": AUTO_DISCONNECT_TESTS,
@@ -2009,7 +2017,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "image-quality"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -2038,6 +2046,7 @@ def main():
         "window-dispatch": "FLUTTER_WINDOW_DISPATCH_TEST_JSON",
         "modifier-release": "FLUTTER_MODIFIER_RELEASE_TEST_JSON",
         "auto-disconnect": "FLUTTER_AUTO_DISCONNECT_TEST_JSON",
+        "image-quality": "FLUTTER_IMAGE_QUALITY_TEST_JSON",
         "keyboard-layout": "FLUTTER_KEYBOARD_LAYOUT_TEST_JSON",
         "directory-ordering": "FLUTTER_DIRECTORY_ORDERING_TEST_JSON",
         "file-navigation": "FLUTTER_FILE_NAVIGATION_TEST_JSON",

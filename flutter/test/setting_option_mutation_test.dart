@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/cupertino.dart' show CupertinoSwitch;
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/audio_input.dart';
@@ -922,6 +924,102 @@ void main() {
     expect(await choose('unknown'), isFalse);
     expect(writes, ['low', 'balanced', 'best']);
     expect(failures, 1);
+  });
+
+  testWidgets('quality editor preserves values between slider divisions', (tester) async {
+    Future<double?> save(double value) async => value;
+    for (final mobile in [false, true]) {
+      for (final enabled in [false, true]) {
+        for (final value in [10, 11, 49, 51, 75, 99, 100, 101, 751, 1999, 2000]) {
+          await _qualityEditor(tester, quality: value.toDouble(), mobile: mobile,
+            saveQuality: enabled ? save : null, saveFps: enabled ? save : null);
+          expect(tester.getSemantics(find.byType(Slider).at(0)).getSemanticsData().value,
+            '$value%', reason: 'quality=$value mobile=$mobile enabled=$enabled');
+          expect(find.text('$value%'), findsOneWidget);
+        }
+        for (final value in [5, 6, 29, 31, 37, 59, 60, 61, 119, 120]) {
+          await _qualityEditor(tester, fps: value.toDouble(), mobile: mobile,
+            saveQuality: enabled ? save : null, saveFps: enabled ? save : null);
+          expect(tester.getSemantics(find.byType(Slider).at(1)).getSemanticsData().value,
+            '$value', reason: 'fps=$value mobile=$mobile enabled=$enabled');
+          expect(find.text('$value'), findsOneWidget);
+        }
+      }
+    }
+  }, semanticsEnabled: true);
+
+  testWidgets('quality editor More preserves the current slider value', (tester) async {
+    for (final mobile in [false, true]) {
+      final calls = <double>[];
+      await _qualityEditor(tester, quality: 75, mobile: mobile,
+        editorKey: ValueKey(('more', mobile)),
+        saveQuality: (value) async { calls.add(value); return value; });
+      for (final maximum in [2000, 100]) {
+        await tester.tap(find.byType(Checkbox));
+        await tester.pump();
+        expect(_qualitySlider(tester, 0).max, maximum);
+        expect(tester.getSemantics(find.byType(Slider).at(0)).getSemanticsData().value, '75%');
+        expect(find.text('75%'), findsOneWidget);
+        await tester.pump(const Duration(seconds: 1));
+        expect(calls, isEmpty);
+      }
+    }
+  }, semanticsEnabled: true);
+
+  testWidgets('quality editor accessibility adjusts and saves one unit', (tester) async {
+    for (final mobile in [false, true]) {
+      for (final initial in [75, 751]) {
+        for (final field in [0, 1]) {
+          for (final increase in [false, true]) {
+            final calls = [<double>[], <double>[]];
+            await _qualityEditor(tester, quality: initial.toDouble(), fps: 37,
+              mobile: mobile, editorKey: ValueKey((mobile, initial, field, increase)),
+              saveQuality: (value) async { calls[0].add(value); return value; },
+              saveFps: (value) async { calls[1].add(value); return value; });
+            final expected = (field == 0 ? initial : 37) + (increase ? 1 : -1);
+            final announced = field == 0 ? '$expected%' : '$expected';
+            final node = tester.getSemantics(find.byType(Slider).at(field));
+            final data = node.getSemanticsData();
+            expect(increase ? data.increasedValue : data.decreasedValue, announced);
+            tester.binding.pipelineOwner.semanticsOwner!.performAction(node.id,
+              increase ? ui.SemanticsAction.increase : ui.SemanticsAction.decrease);
+            await tester.pump();
+            await tester.pump(const Duration(seconds: 1));
+            expect(calls[field], [expected.toDouble()]);
+            expect(calls[1 - field], isEmpty);
+            expect(find.text(announced), findsOneWidget);
+            expect(tester.getSemantics(find.byType(Slider).at(field)).getSemanticsData().value,
+              announced);
+            await tester.pumpWidget(const SizedBox.shrink());
+          }
+        }
+      }
+    }
+  }, semanticsEnabled: true);
+
+  testWidgets('quality editor keyboard adjusts and saves one unit', (tester) async {
+    for (final field in [0, 1]) {
+      for (final increase in [false, true]) {
+        final calls = [<double>[], <double>[]];
+        await _qualityEditor(tester, quality: 75, fps: 37,
+          editorKey: ValueKey(('keyboard', field, increase)),
+          saveQuality: (value) async { calls[0].add(value); return value; },
+          saveFps: (value) async { calls[1].add(value); return value; });
+        for (var i = 0; i < (field == 0 ? 1 : 3); i++) {
+          await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+          await tester.pump();
+        }
+        await tester.sendKeyEvent(increase ? LogicalKeyboardKey.arrowRight
+          : LogicalKeyboardKey.arrowLeft);
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+        final expected = (field == 0 ? 75 : 37) + (increase ? 1 : -1);
+        expect(calls[field], [expected.toDouble()]);
+        expect(calls[1 - field], isEmpty);
+        expect(_qualitySlider(tester, field).value, expected);
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    }
   });
 
   testWidgets('quality editor Close waits for an admitted hidden FPS save', (tester) async {

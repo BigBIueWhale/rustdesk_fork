@@ -39,6 +39,10 @@ const _mobileBooleans = [
 class _NativeSettings implements RustdeskImpl {
   final unexpected = <Symbol>[];
   final translations = <String, String>{};
+  int versionReads = 0;
+  int buildDateReads = 0;
+  Future<String> Function()? readVersion;
+  Future<String> Function()? readBuildDate;
   String theme = 'light';
   final themeWrites = <String>[];
   final themeBroadcasts = <String>[];
@@ -166,9 +170,11 @@ class _NativeSettings implements RustdeskImpl {
         }
         break;
       case #mainGetVersion:
-        return Future<String>.value('1.0.0');
+        versionReads++;
+        return readVersion?.call() ?? Future<String>.value('1.0.0');
       case #mainGetBuildDate:
-        return Future<String>.value('2026-10-26');
+        buildDateReads++;
+        return readBuildDate?.call() ?? Future<String>.value('2026-10-26');
     }
     unexpected.add(call.memberName);
     throw UnsupportedError('Unexpected settings native call: ${call.memberName}');
@@ -1002,6 +1008,94 @@ void main() {
     expect(native.recordingWrites,
         ['/work/failed-recordings', '/work/failed-recordings']);
     expect(find.text('Failed'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('settings about retains pending metadata across rebuilds',
+      (tester) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final versions = <Completer<String>>[];
+    final dates = <Completer<String>>[];
+    native.readVersion = () {
+      final result = Completer<String>();
+      versions.add(result);
+      return result.future;
+    };
+    native.readBuildDate = () {
+      final result = Completer<String>();
+      dates.add(result);
+      return result.future;
+    };
+    try {
+      await _mount(tester, SettingsTabKey.about);
+      final about = find.byWidgetPredicate(
+          (widget) => widget.runtimeType.toString() == '_About');
+      tester.state(about).setState(() {});
+      await _settle(tester);
+      versions.first.complete('1.0.0');
+      await _settle(tester);
+      expect(dates, hasLength(1));
+      tester.state(about).setState(() {});
+      await _settle(tester);
+      dates.first.complete('2026-10-26');
+      await _settle(tester);
+      expect(find.text('Version: 1.0.0'), findsOneWidget);
+      expect(find.text('Build Date: 2026-10-26'), findsOneWidget);
+      expect(native.versionReads, 1);
+      expect(native.buildDateReads, 1);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      for (final result in versions) {
+        if (!result.isCompleted) result.complete('1.0.0');
+      }
+      await _settle(tester);
+      for (final result in dates) {
+        if (!result.isCompleted) result.complete('2026-10-26');
+      }
+      await _settle(tester);
+    }
+  });
+
+  testWidgets('settings about reuses loaded metadata with current labels',
+      (tester) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await _mount(tester, SettingsTabKey.about);
+    final about = find.byWidgetPredicate(
+        (widget) => widget.runtimeType.toString() == '_About');
+    native.translations['Build Date'] = 'Erstellungsdatum';
+    for (var i = 0; i < 3; i++) {
+      tester.state(about).setState(() {});
+      await _settle(tester);
+      expect(find.text('Version: 1.0.0'), findsOneWidget);
+      expect(find.text('Erstellungsdatum: 2026-10-26'), findsOneWidget);
+    }
+    final reads = (native.versionReads, native.buildDateReads);
+    await tester.pumpWidget(const SizedBox.shrink());
+    expect(reads, (1, 1));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('settings about reopened page owns fresh metadata after late failure',
+      (tester) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final oldVersion = Completer<String>();
+    final newVersion = Completer<String>();
+    native.readVersion = () =>
+        native.versionReads == 1 ? oldVersion.future : newVersion.future;
+    await _mount(tester, SettingsTabKey.about);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await _mount(tester, SettingsTabKey.about);
+    oldVersion.completeError(StateError('retired metadata request failed'));
+    await _settle(tester);
+    expect(find.text('Version: 1.0.0'), findsNothing);
+    newVersion.complete('1.0.0');
+    await _settle(tester);
+    expect(find.text('Version: 1.0.0'), findsOneWidget);
+    expect(find.text('Build Date: 2026-10-26'), findsOneWidget);
+    expect(native.versionReads, 2);
+    expect(native.buildDateReads, 1);
+    await tester.pumpWidget(const SizedBox.shrink());
     expect(tester.takeException(), isNull);
   });
 

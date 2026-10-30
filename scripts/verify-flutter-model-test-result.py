@@ -1177,6 +1177,9 @@ PEER_LOADER_TESTS = {
     "peer loader clear retires a pending request and its failure",
 }
 SETTINGS_NAVIGATION_TESTS = {
+    "settings about retains pending metadata across rebuilds",
+    "settings about reuses loaded metadata with current labels",
+    "settings about reopened page owns fresh metadata after late failure",
     "desktop home pane scrolls all status text at scale 1.0",
     "desktop home pane scrolls all status text at scale 1.5",
     "desktop home pane keeps fitting content visible without scrolling",

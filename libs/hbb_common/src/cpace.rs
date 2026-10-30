@@ -791,6 +791,51 @@ pub fn guess_limiter_tracked_count() -> usize {
     GUESS_FAILURES.lock().unwrap().len()
 }
 
+#[cfg(test)]
+mod guess_limiter_tests {
+    use super::*;
+    use std::net::Ipv4Addr;
+
+    #[test]
+    fn mapped_sources_share_one_guess_budget() {
+        let before = guess_limiter_tracked_count();
+        let mut blocked_cases = 0;
+        for mode in 0..4 {
+            let address = Ipv4Addr::new(198, 51, 100, 220 + mode);
+            let forms = [IpAddr::V4(address), IpAddr::V6(address.to_ipv6_mapped())];
+            let other = Ipv4Addr::new(198, 51, 100, 240 + mode);
+            let unrelated = [IpAddr::V4(other), IpAddr::V6(other.to_ipv6_mapped())];
+            assert!(forms.iter().all(|source| guess_limiter_allows(*source)));
+            for attempt in 0..9 {
+                let index = match mode {
+                    0 => 0,
+                    1 => 1,
+                    2 => attempt % 2,
+                    _ => (attempt + 1) % 2,
+                };
+                assert!(record_handshake_failure(forms[index], HandshakeError::Confirmation));
+            }
+            for source in forms {
+                for error in [HandshakeError::Io, HandshakeError::Protocol,
+                    HandshakeError::Pake, HandshakeError::PeerConfirmationUnavailable] {
+                    assert!(!record_handshake_failure(source, error));
+                }
+                assert!(guess_limiter_allows(source), "non-guess errors consumed the tenth slot");
+            }
+            let final_index = match mode { 0 | 3 => 0, _ => 1 };
+            assert!(record_handshake_failure(forms[final_index], HandshakeError::Confirmation));
+            let blocked = forms.iter().all(|source| !guess_limiter_allows(*source));
+            blocked_cases += usize::from(blocked);
+            assert!(unrelated.iter().all(|source| guess_limiter_allows(*source)));
+            println!("GUESS_LIMITER_ALIAS_CASE=mode:{mode} failures:10 both_blocked:{blocked} non_guesses:8 unrelated:allowed");
+        }
+        let added_entries = guess_limiter_tracked_count() - before;
+        println!("GUESS_LIMITER_ALIAS=cases:4 blocked:{blocked_cases} entries:{added_entries}");
+        assert_eq!(blocked_cases, 4, "both representations must share the same failure budget");
+        assert_eq!(added_entries, 4, "one source must occupy exactly one map entry");
+    }
+}
+
 // The wire-level round-trip / adversarial tests live in the dedicated `cpace_it`
 // crate (libs/cpace_it): hbb_common's own test build links the `webrtc` dev-
 // dependency, whose `sdp` crate does not compile on the pinned 1.75 toolchain, so

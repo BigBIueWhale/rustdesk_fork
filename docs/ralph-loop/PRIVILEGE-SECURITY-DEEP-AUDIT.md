@@ -121821,3 +121821,24 @@ An ordinary user's ability to create a destination does not prove it can create
 a staging anchor in that destination's root-owned parent. This prerequisite must
 resolve that functional boundary before selecting the new production placement.
 No product source or acceptance result changes in this preparation commit.
+
+First run `rJAijwQw3T` at `43f70767` completes fourteen primitive observations.
+It reproduces inode reuse with identical birth timestamps, including on overlayfs,
+and `EXDEV` for both bind aliases. Default overlayfs returns `EOPNOTSUPP` for
+handles; ext4 and tmpfs return handles under both principals. UID 4001 can write
+its owned destination but cannot create the anchor in its root-owned parent.
+The handle-reopening observation needs correction: its mount argument was an
+`O_PATH` descriptor, and Linux 6.1 `fs/fhandle.c::get_vfsmount_from_fd` uses
+`fdget`, returning `EBADF` for that descriptor. This is a probe error, not evidence
+that root cannot reopen the supported handle. Use an ordinary readable directory
+descriptor for this owned fixture and assert root success / UID-4001 `EPERM`.
+Other observations remain valid; no product source changes.
+
+All nineteen earlier receive cases still pass; all three completed-destination
+cases still fail. This run adds 62 coordinator entries / 126,976 allocated bytes
+for the 32 retained destinations; earlier fixture inode reuse means the number of
+new lookup records need not be exactly two per newly created destination.
+QEMU 2912443 joins after 202.498 seconds; RAM `run.8o8f3wjv` retires, four
+listener deltas are zero, and 3,485,696 allocated scratch bytes are removed after
+seven raw evidence files (103,793 bytes) are hash-verified on both hosts. Serial
+SHA-256: `d9dd7e221a2a5f31251a9ef6f74a91deec4373f4030330a7b538946cc473a536`.

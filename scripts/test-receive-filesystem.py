@@ -96,7 +96,9 @@ def identity_case(base):
             os.close(reopened)
         by_handle_errno = None
         if before["handle"] is not None:
-            mount_fd = directory(base)
+            # Linux 6.1 resolves this argument with fdget(), which excludes
+            # O_PATH descriptors. The owned fixture permits a readable open.
+            mount_fd = os.open(base, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
             try:
                 opened = LIBC.open_by_handle_at(mount_fd, ctypes.byref(handle),
                                                os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
@@ -107,6 +109,7 @@ def identity_case(base):
                             before["device"], before["inode"])
                     finally:
                         os.close(opened)
+                assert by_handle_errno == (0 if os.geteuid() == 0 else errno.EPERM)
             finally:
                 os.close(mount_fd)
         renamed.rmdir()

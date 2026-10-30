@@ -617,6 +617,7 @@ SETTING_OPTION_TESTS = {
     "image preset selection admits only the three named presets",
     "quality editor preserves values between slider divisions",
     "quality editor More preserves the current slider value",
+    "quality editor Close preserves the full stored bitrate range",
     "quality editor accessibility adjusts and saves one unit",
     "quality editor keyboard adjusts and saves one unit",
     "quality editor Close waits for an admitted hidden FPS save",

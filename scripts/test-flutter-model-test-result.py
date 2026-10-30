@@ -219,7 +219,7 @@ class ResultTests(unittest.TestCase):
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE),
                              (1, {"locales": 10, "screenshot-save": 12,
                                   "draggable-divider": 22, "file-columns": 13,
-                                  "file-progress": 43, "peer-search": 36, "image-quality": 23}[SINGLE_PROFILE]))
+                                  "file-progress": 43, "peer-search": 36, "image-quality": 24}[SINGLE_PROFILE]))
             return
         self.assertEqual(
             self.parse(self.events("models"), "models"),

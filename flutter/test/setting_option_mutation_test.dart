@@ -930,7 +930,7 @@ void main() {
     Future<double?> save(double value) async => value;
     for (final mobile in [false, true]) {
       for (final enabled in [false, true]) {
-        for (final value in [10, 11, 49, 51, 75, 99, 100, 101, 751, 1999, 2000]) {
+        for (final value in [10, 11, 49, 51, 75, 99, 100, 101, 751, 1999, 2000, 2001, 3000, 4094, 4095]) {
           await _qualityEditor(tester, quality: value.toDouble(), mobile: mobile,
             saveQuality: enabled ? save : null, saveFps: enabled ? save : null);
           expect(tester.getSemantics(find.byType(Slider).at(0)).getSemanticsData().value,
@@ -954,7 +954,7 @@ void main() {
       await _qualityEditor(tester, quality: 75, mobile: mobile,
         editorKey: ValueKey(('more', mobile)),
         saveQuality: (value) async { calls.add(value); return value; });
-      for (final maximum in [2000, 100]) {
+      for (final maximum in [4095, 100]) {
         await tester.tap(find.byType(Checkbox));
         await tester.pump();
         expect(_qualitySlider(tester, 0).max, maximum);
@@ -965,6 +965,35 @@ void main() {
       }
     }
   }, semanticsEnabled: true);
+
+  testWidgets('quality editor Close preserves the full stored bitrate range', (tester) async {
+    final failures = <String>[];
+    for (final mobile in [false, true]) {
+      for (final (initial, expected) in [(2000.0, 2000.0), (2001.0, 2001.0),
+          (3000.0, 3000.0), (4095.0, 4095.0), (4096.0, 50.0)]) {
+        final qualityCalls = <double>[];
+        final fpsCalls = <double>[];
+        var closes = 0;
+        await _qualityEditor(tester, quality: initial, mobile: mobile,
+          editorKey: ValueKey(('stored-range', initial, mobile)),
+          saveQuality: (value) async { qualityCalls.add(value); return value; },
+          saveFps: (value) async { fpsCalls.add(value); return value; },
+          onClose: () { closes++; });
+        final displayed = _qualitySlider(tester, 0).value;
+        await tester.tap(find.text('Close'));
+        await tester.pump();
+        expect(closes, 1);
+        expect(qualityCalls, hasLength(1));
+        expect(fpsCalls, [30]);
+        if (displayed != expected || qualityCalls.single != expected) {
+          failures.add('initial=$initial mobile=$mobile displayed=$displayed '
+            'saved=${qualityCalls.single} expected=$expected');
+        }
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    }
+    expect(failures, isEmpty);
+  });
 
   testWidgets('quality editor accessibility adjusts and saves one unit', (tester) async {
     for (final mobile in [false, true]) {

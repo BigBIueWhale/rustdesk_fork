@@ -254,6 +254,67 @@ fn round_trip_random_matching_password() {
     let _ = (kr2,);
 }
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_pointer_width = "64"))]
+#[test]
+fn rng_error_clears_output_and_refuses_scalar() {
+    // Filter only this owned worker; joining it retires the irreversible filter
+    // before any assertion about production behavior or reuse of the test thread.
+    let worker = std::thread::spawn(|| {
+        #[repr(C)]
+        struct Filter {
+            code: u16,
+            jt: u8,
+            jf: u8,
+            k: u32,
+        }
+        #[repr(C)]
+        struct Program {
+            len: u16,
+            filter: *const Filter,
+        }
+        extern "C" {
+            fn prctl(option: std::os::raw::c_int, ...) -> std::os::raw::c_int;
+        }
+
+        let mut buf = [0u8; 64];
+        fill_random(&mut buf).unwrap(); // Initialize and exercise the real backend.
+        buf.fill(0xa5); // Deterministic nonsecret contents, not a random-byte assertion.
+        let filter = [
+            Filter { code: 0x20, jt: 0, jf: 0, k: 4 }, // seccomp_data.arch
+            Filter { code: 0x15, jt: 1, jf: 0, k: 0xc000003e }, // AUDIT_ARCH_X86_64
+            Filter { code: 0x06, jt: 0, jf: 0, k: 0x80000000 }, // KILL_PROCESS
+            Filter { code: 0x20, jt: 0, jf: 0, k: 0 }, // seccomp_data.nr
+            Filter { code: 0x15, jt: 0, jf: 1, k: 318 }, // __NR_getrandom
+            Filter { code: 0x06, jt: 0, jf: 0, k: 0x00050005 }, // ERRNO | EIO
+            Filter { code: 0x06, jt: 0, jf: 0, k: 0x7fff0000 }, // ALLOW
+        ];
+        let program = Program { len: filter.len() as u16, filter: filter.as_ptr() };
+        // SAFETY: Linux x86-64 UAPI layouts/constants, with live immutable filter
+        // storage for the synchronous kernel copy. No TSYNC or child is used.
+        unsafe {
+            assert_eq!(prctl(38, 1usize, 0usize, 0usize, 0usize), 0,
+                "no_new_privs: {}", std::io::Error::last_os_error());
+            assert_eq!(prctl(22, 2usize, &program as *const Program, 0usize, 0usize), 0,
+                "seccomp: {}", std::io::Error::last_os_error());
+        }
+        let errno = getrandom::getrandom(&mut buf).unwrap_err().raw_os_error();
+        let fill = fill_random(&mut buf);
+        let scalar = sample_scalar().map(|mut value| value.zeroize());
+        let empty = fill_random(&mut []);
+        (buf, errno, fill, scalar, empty)
+    });
+    let (buf, errno, fill, scalar, empty) = worker.join().unwrap();
+    let restored = fill_random(&mut [0u8; 64]);
+    println!("PAKE_RNG_CASE=errno:{errno:?} cleared:{} fill:{fill:?} scalar:{scalar:?} empty:{empty:?} restored:{restored:?} worker:joined",
+        buf.iter().filter(|&&byte| byte == 0).count());
+    assert_eq!(errno, Some(5), "actual OS EIO reaches getrandom");
+    assert_eq!(fill, Err(PakeError::Rng));
+    assert_eq!(scalar, Err(PakeError::Rng));
+    assert_eq!(empty, Ok(()));
+    assert_eq!(restored, Ok(()), "filter must not affect the test runner");
+    assert_eq!(buf, [0u8; 64], "RNG errors must clear all output bytes");
+}
+
 /// A wrong password fails at the responder's R-P3 check and is the sole
 /// limiter-feeding event (R-P14c).
 #[test]

@@ -121566,3 +121566,18 @@ whose private home is in its existing tmpfs; production never trusts HOME for th
 coordinator. Planned validation uses only the admitted, monitored, zero-NIC TUF VM
 and the existing authenticated inputs. No product/build/test runs on either host.
 No candidate compile/runtime result is claimed by this preparation entry.
+
+First candidate `6e938933f43355f983484bf49474bdc59a565bad`, TUF run
+`GXwTp0QFcp`, compiles the real library. Its 40-test metadata group, including
+both new namespace tests, passes. The run stops at
+`receive_write_refuses_done_before_the_admitted_file_list_ends`: its final
+directory-count assertion still expected zero entries, whereas the intentional
+persistent namespace contributes one. The remaining multiline fixture inventory
+assertions are migrated without changing the required payload/claim outcomes.
+The root driver has not executed in this attempt. Serial: 121,879 bytes,
+SHA-256 `156796a56a63c1913f3cdf163ab9f20c5aa17f6de0ee65857df851a3599468b8`;
+unit artifact `f8e86ba7dcf149f72836a232a83ca3f07631d72d2555c2cbc49fff5a3c23c079`.
+QEMU 2890431 exits zero after 139.539 seconds; RAM `run.zeawpssy` is absent and
+the failed diagnostic root is retired under the shared lock. Outer exit is one.
+Review also distinguishes missing staging authority from an absent final target
+and uses a fresh directory enumeration offset when retrying namespace retirement.

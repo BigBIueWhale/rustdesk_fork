@@ -3280,7 +3280,15 @@ impl ReceivePathLease {
             path.parent().unwrap_or_else(|| Path::new(".")), create_parent,
         )?;
         #[cfg(target_os = "linux")]
-        let namespace = receive_namespace::ReceiveNamespace::acquire(parent, &cstring_file_name(final_path)?)?;
+        let namespace = receive_namespace::ReceiveNamespace::acquire(parent, &cstring_file_name(final_path)?)
+            .map_err(|error| {
+                // Only the destination-parent walk above may mean an absent destination.
+                // A missing coordination/staging object is an admission failure.
+                if error.kind() == std::io::ErrorKind::NotFound {
+                    std::io::Error::new(std::io::ErrorKind::PermissionDenied,
+                        format!("receive staging namespace disappeared during admission: {error}"))
+                } else { error }
+            })?;
         #[cfg(target_os = "linux")]
         let parent = namespace.artifacts.try_clone()?;
         #[cfg(unix)]
@@ -8878,7 +8886,7 @@ mod tests {
             std::fs::read_dir(&tmp.path)
                 .expect("read receive directory")
                 .count(),
-            0
+            usize::from(cfg!(target_os = "linux"))
         );
     }
 
@@ -9002,7 +9010,7 @@ mod tests {
             std::fs::read_dir(&tmp.path)
                 .expect("read receive directory")
                 .count(),
-            2
+            2 + usize::from(cfg!(target_os = "linux"))
         );
     }
 
@@ -9060,7 +9068,7 @@ mod tests {
             std::fs::read_dir(&tmp.path)
                 .expect("inspect receive directory")
                 .count(),
-            2
+            if cfg!(target_os = "linux") { 1 } else { 2 }
         );
     }
 
@@ -12098,7 +12106,7 @@ mod tests {
             std::fs::read_dir(&destination)
                 .expect("inspect cleanup")
                 .count(),
-            1
+            1 + usize::from(cfg!(target_os = "linux"))
         );
     }
 
@@ -12591,7 +12599,7 @@ mod tests {
                 std::fs::read_dir(directory)
                     .expect("inspect retired sidecars")
                     .count(),
-                1
+                1 + usize::from(cfg!(target_os = "linux"))
             );
         }
         assert!(

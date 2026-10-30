@@ -49,6 +49,13 @@ fn private_directory(directory: &File) -> io::Result<()> {
     Ok(())
 }
 
+fn is_empty(directory: &File) -> io::Result<bool> {
+    // A dup shares its directory offset. Reopen the retained object so retries
+    // cannot mistake an exhausted enumeration for an empty namespace.
+    let scan = directory_at(directory, &name(".")?)?;
+    Ok(unix_directory_entry_names(&scan, &mut EmptyDirectoryRemovalState::default())?.is_empty())
+}
+
 fn mkdir_at(parent: &File, child: &CStr) -> io::Result<()> {
     if unsafe { libc::mkdirat(parent.as_raw_fd(), child.as_ptr(), 0o700) } != 0 {
         return Err(io::Error::last_os_error());
@@ -245,7 +252,7 @@ impl ReceiveNamespace {
                 let directory = directory_at(&destination, &container_name)?;
                 private_directory(&directory)?;
                 // No pre-existing contents acquire receive-artifact authority.
-                if !unix_directory_entry_names(&directory, &mut EmptyDirectoryRemovalState::default())?.is_empty() {
+                if !is_empty(&directory)? {
                     return Err(refused("new receive namespace is not empty"));
                 }
                 let opened = unix_fstat(&directory)?;
@@ -287,7 +294,7 @@ impl ReceiveNamespace {
             remove_lease()?;
             if self.artifacts.metadata()?.nlink() == 0 { return Ok(()); }
             // Resume inspection deliberately leaves a payload/digest pair in this directory.
-            if !unix_directory_entry_names(&self.artifacts, &mut EmptyDirectoryRemovalState::default())?.is_empty() {
+            if !is_empty(&self.artifacts)? {
                 return Ok(());
             }
             unix_require_same_object(&unix_fstat(&self.artifacts)?,

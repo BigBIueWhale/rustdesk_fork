@@ -117534,3 +117534,12 @@ verification and wide-reduction bodies are unchanged, so it is not rerun or
 relabeled as current-artifact timing. Full copy/register/hash-state erasure,
 other targets/shipping artifacts, independent review and installed authority
 acceptance remain OPEN. Parked lanes remain parked.
+
+Ledger run `m7HIFlgAba` at `2498903e` passes 72 workload controls/five refusals,
+seven tokenizer controls and full text round trip. The ledger is 360,314 tokens
+using `tiktoken-0.12.0/cl100k_base/encode_ordinary`, 1,647,383 bytes, SHA-256
+`0be2e6c3fb780ab09c779d2aa24d65f41a2482dd0d0634ec15f97746f2e72169`.
+QEMU 1803922 joins in 30.312 seconds; RAM `run.iqi0sbjz` retires and three listener
+deltas are zero. Six count files total 103,069 bytes; all twenty files across
+the three runs total 269,768 bytes per host with matching hashes. This audit-only
+receipt preserves the counted ledger and its approximate 400,000-token budget.

@@ -4120,6 +4120,17 @@ production loading, logging and recovery are byte-identical in this slice.
 Full app/installed logger sinks and permissions, previous log retention, native
 other-platform, R-S0/R-F5 and release acceptance remain OPEN.
 
+**Keyboard error diagnostics (`346ae056`) — source corrected; native acceptance OPEN.**
+The desktop legacy-conversion failure no longer formats the complete input event,
+whose pinned `rdev` debug representation includes Unicode text and UTF-16 values.
+Linux capture's unknown-key diagnostic also omits its raw keycode. Both retain
+fixed error messages. Exact comparison limits the change to those two statements
+and the unused pattern binding; all conversion, admission and return bytes remain.
+Whitespace checks pass. No application build, native input/log capture or runtime
+comparison ran; the full-app lane remains user-parked. The audit records the
+callers, dependency source and required native failure/control scenarios. Historical
+logs, other-platform behavior, full input/settings and R-S0 acceptance remain OPEN.
+
 **File-log size rotation (`88c90361`).** The shared release file-logger builder
 rotates at either a day boundary or after 4 MiB, retaining the existing timestamp
 naming and 31-archive policy. Quiet logging keeps daily rotation; busy logging no

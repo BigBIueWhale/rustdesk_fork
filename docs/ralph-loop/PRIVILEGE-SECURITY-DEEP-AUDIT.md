@@ -119664,3 +119664,45 @@ QEMU 2076017 joins in 30.393 seconds, RAM `run.oxqe1uwp` retires and all
 three listener deltas are zero. Six count files add 103,656 bytes; thirteen files
 from this slice total 177,911 bytes per host with matching hashes. This audit-only
 receipt leaves the measured ledger unchanged.
+
+### 2026-10-30 — keyboard error diagnostics omit input data
+
+At `dec2bd7d0a29b21d517030ae498c72db8b716b3e`, the error branch in
+`src/keyboard.rs:1243` formats the complete `rdev::Event` when legacy conversion
+cannot produce a character or control key. This is live code: capture calls
+`client::process_event`, and Flutter's `prepare_key` constructs Unicode metadata
+from the supplied character before `flutter_key_events` selects the same converter
+(`src/ui_session_interface.rs:1346–1371`, `src/keyboard.rs:928–1002`). A source
+event with an unsupported key and text longer than two UTF-8 bytes reaches the
+diagnostic when neither control-key nor ASCII fallback mapping applies.
+The Linux capture callback separately logs every unknown key's raw code at line 663.
+
+The [pinned rdev source](https://github.com/rustdesk-org/rdev/blob/f9b60b1dd0f3300a1b797d7a74c116683cd232c8/src/rdev.rs#L318-L346)
+derives `Debug` for both Event and UnicodeInfo, including the name, UTF-16 values
+and event/code fields. These are input data, not a safe diagnostic category.
+[CWE-532](https://cwe.mitre.org/data/definitions/532.html) explains the separate
+disclosure path created by logging sensitive values. No actual user's input or
+host logs were inspected, and no local privilege escalation or installed log-reader
+access was established.
+
+`346ae056` replaces the two data-bearing diagnostics with fixed error messages;
+the unknown-key pattern no longer binds the discarded code. Error severity,
+branch selection, input conversion, grab ownership, return values and all other
+file bytes are unchanged. Exact three-line reconstruction and `git diff --check`
+pass. Source SHA-256 changes from
+`1d4b37ab5900bdeaec6aadb50392289b41e39e221e52059514ed504412ee801c` to
+`96fb4b42c1e72d19c384723bb17dcf8d31f8d086ba644c7ea28674a03dd0f17f`.
+
+**Evidence limit and remaining native check.** No application build or behavioral
+run is claimed. The full Linux application lane remains user-parked, and no host
+input capture, reduced substitute implementation or new wording-test catalogue is
+used. Target-native acceptance must capture the real logger while sending synthetic
+unsupported legacy events with distinct text/UTF-16/code sentinels and exercising
+Linux's unknown-key callback. The prior artifact must expose the applicable fixture
+fields; the corrected artifact must retain the errors without those fields and
+preserve empty rejected output. Supported ASCII/control-key press/release controls
+must retain their exact output. Desktop-platform compilation, actual capture/Flutter
+paths, historical log retention/permissions, full input/settings and installed R-S0
+acceptance remain OPEN. This fixes the reviewed source disclosure statements;
+it does not close those native obligations or resume any parked work. The ledger
+adds this bounded source-level finding; fresh token measurement follows.

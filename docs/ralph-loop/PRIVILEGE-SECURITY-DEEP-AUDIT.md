@@ -119139,3 +119139,46 @@ using `tiktoken-0.12.0/cl100k_base/encode_ordinary`: 360,788 tokens /
 QEMU 1875802 joins in 30.213 seconds, RAM `run.1rmhxrtg` retires and all
 three listener deltas are zero. Six retained files total 103,363 bytes per
 host with matching hashes. This audit-only receipt leaves the ledger unchanged.
+
+### 2026-10-30 — session-key guard diagnostic secrecy
+
+Starting at `f2f3fa258c2519f3461013cae393cfec8c32663d`, review finds
+`split_session_keys` passes both engaged key arrays to `assert_ne!`. Its custom
+message does not suppress operand formatting: the pinned
+[Rust 1.75 macro](https://raw.githubusercontent.com/rust-lang/rust/1.75.0/library/core/src/macros/mod.rs)
+passes both operands to the
+[panic formatter](https://raw.githubusercontent.com/rust-lang/rust/1.75.0/library/core/src/panicking.rs).
+This is a secret-bearing invariant-failure diagnostic; no new reachable remote
+trigger or local privilege escalation is demonstrated.
+
+`4098808e` uses a Boolean `assert!` with the same fixed message and engaged-key
+comparison. Refusal, cipher construction, key directions and nonce behavior remain.
+The adjacent historical comment is shortened and the existing shared source gate
+follows the comparison syntax. Protocol, requirements, instructions and dependencies
+are unchanged. The fixture introduced in `cecdcea9` is byte-identical across runs:
+two child processes trigger the real guard with synthetic repeated/varying keys,
+then the parent checks exit status, guard identity and absence of key formatting.
+Both children join before the disclosure verdict. Two distinct-key controls differ
+at byte 0 or 31 and each exchange empty/nonempty payloads in both directions.
+
+- Baseline `cecdcea92d181ac332b4a34db8ff1997f95ecf0d`, `bC1jfP9gSS`:
+  both children refuse but disclose their keys; 44 tests pass and this regression
+  fails. The remaining three groups are not reached. Artifact SHA-256
+  `b7140c1efb4a6759b87f3d32c7235e663ed5ff0ad28a470edee2a242d9db2fff`.
+- Corrected `28124421cc09add5352e42839ce76808d2d68a2d`, `FCo3OvIzRJ`:
+  all 48 tests pass; both refusals disclose no key and valid cipher controls pass.
+  Artifact SHA-256, unchanged before/between/after groups:
+  `dafc14181a3531c92243eb92e72d4caac2c83e1cd21438106c3b640d3b7e434a`.
+
+Command: `bash scripts/smoke-verifier-vm-authority.sh --writer-retirement-tests`.
+The focused inventory adds the one regression and corrects its stale codec count
+from twelve to the thirteen already named and compiled cases. The separately
+parked CPace integration inventory is unchanged. Shell parsing, fixture comparison
+and `git diff --check` pass. These are Rust 1.75 Linux library tests in numeric
+UID/GID 1000, networkless guest Docker inside zero-NIC bounded-RAM VMs.
+QEMU 1876852/1877772 join in 139.452/142.910 seconds; RAM
+`run.lnhzype_`/`run.22igxnzi` retires and all eight listener deltas are zero.
+Fourteen files total 181,584 bytes per host with matching hashes. Baseline diagnostic
+inode 78294410 is deleted after retention (3,469,312 allocated bytes).
+Shipping artifacts, other targets, full application/installed authorization,
+all fifteen credential actions, erasure/timing and independent review remain open.

@@ -120746,3 +120746,13 @@ QEMU 2610001 joins after 245.578 seconds, RAM `run.vl34br4w` retires,
 and all four listener deltas are zero. Seven raw files total 74,080 bytes per
 host, copied and hash-verified. After exact process/workspace absence checks,
 the failed diagnostic tree is removed, releasing 3,428,352 allocated bytes.
+
+Fresh ledger count at `a56d35e9457ffa06c2317bbd71e73dc1d1f5b40e`:
+TUF `6cAHYnn7Hp` passes seven controls and exact byte round trip with
+`--ledger-token-count`, using `tiktoken-0.12.0/cl100k_base/encode_ordinary`:
+365,024 tokens / 1,669,500 bytes, input SHA-256
+`afabc45b61f931f7ca5b5960fc3d3bc061f7e1af1bbcae3f8da548ff0ffe0630`.
+QEMU 2611831 joins in 30.697 seconds; RAM `run.k06w8nmf` retires,
+and all three listener deltas are zero. Six files add 105,952 bytes; thirteen
+raw files total 180,032 bytes per host, copied and hash-verified. This audit-only
+receipt leaves the measured ledger unchanged and establishes no product behavior.

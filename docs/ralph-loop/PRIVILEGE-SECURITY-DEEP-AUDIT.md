@@ -120403,3 +120403,69 @@ QEMU 2440113 joins in 31.013 seconds; RAM `run.r9qvsrh3` retires and three
 listener deltas are zero. Six count files add 103,949 bytes; twenty-seven raw
 files total 329,577 bytes per host with matching hashes. This audit-only receipt
 leaves the measured ledger unchanged.
+
+## 2026-10-30 — translation placeholder allocation work
+
+The preceding compiled translation lookup is completed progress; user parks remain
+open. Every `translate_locale` call passed through `extract_placeholder`, which
+compiled `\\{(.*?)\\}` and then searched twice, even for an ordinary label.
+The [pinned regex documentation](https://docs.rs/regex/1.11.1/regex/#avoid-re-compiling-regexes-especially-in-a-loop)
+identifies repeated compilation as expensive; its character syntax specifies that
+the default dot excludes LF. This grammar needs only the earliest opening brace
+and first subsequent closing brace on the same LF-delimited line. A direct scan
+removes both repeated compilation and general matching machinery from this path.
+
+Preparation `876b5b04386a76fbc799035fabf0cc6fcc536038` keeps all production bytes
+unchanged and extends the existing placeholder case with eight explicit Unicode,
+NUL, nested-brace and line-ending examples plus all 1,555 strings of length 0–4
+from six delimiter/line-ending/ordinary/Unicode characters. All 1,563 inputs are
+compared with the former regex expression. The existing five direct assertions
+remain. One added component test delegates to System through a per-thread heap
+request counter; an idle interval must count zero and an opaque 4,096-byte Vec
+must be observed. It then checks exact translated output for 100 warmed plain
+labels and 100 labels with Unicode substitutions. The predeclared budget allows
+1,000 allocation requests and 64 KiB per cohort. It counts alloc, alloc_zeroed and
+realloc requests, including reallocation sizes; these totals are not retained
+memory, RSS or a complete application's allocation profile. Configuration reads
+and branding retain the existing fixture inputs.
+
+Unchanged-product `FMH6TovN6I` passes the other fifteen cases, including the
+expanded equivalence comparison, and fails only the allocation budget. Baseline
+artifact SHA-256:
+`0412463fd2057f3fe686d9a84cd4841c915798332640c6500b3cbec95b8ef4c1`.
+`762aaf0624cc84275195a10fa3be4fcc23b994e8` replaces the regex path with one byte
+scan. LF retires an unmatched opener; nested openers preserve the earliest one;
+the first matching close returns the same normalized key and value. The ASCII
+delimiter positions are valid UTF-8 slice boundaries. The owned return API,
+fallback and substitution rules remain. No production dependency is added.
+Test bodies and fixture bytes are identical to the baseline.
+
+Corrected `zqD8nbiOsy` passes all sixteen cases and outer acceptance with
+`bash scripts/smoke-verifier-vm-authority.sh --language-selection-tests`.
+The complete production translation module and all 50 active catalogues compile
+with Rust 1.75.0 and the same pinned offline dependencies. Copied-source and
+before/after executable checks pass. Corrected artifact SHA-256:
+`36e822f1af8d905757b2abe4037a3caeb6bb2c84630f325e6e19a7d307b2671f`.
+
+| 100-label cohort | Baseline requests / bytes | Corrected requests / bytes |
+| --- | --- | --- |
+| Plain Build Date label | 23,800 / 37,035,300 | 500 / 5,000 |
+| Download label with Unicode value | 26,500 / 37,384,800 | 800 / 11,600 |
+
+The counter controls pass in both artifacts. All original locale, catalogue,
+preference, public-entry, Unicode and fallback cases remain green. No application
+startup, rendered-frame or input latency improvement is inferred from allocation
+counts; those device/native performance observations remain open.
+
+| Run | Serial SHA-256 | QEMU / seconds | Retired RAM workspace |
+| --- | --- | --- | --- |
+| `FMH6TovN6I` | `f57073f6ec28cf5f91a48df27704b589bdcf4f98937fa1874eb50abd7e8910b5` | 2441017 / 66.935 | `run.yfxgnq2z` |
+| `zqD8nbiOsy` | `83a1f8fbc7bc86c1ac837bc616b349e920929a7604bbf8048891d1c90226ccb3` | 2441754 / 67.883 | `run.ihwdjicu` |
+
+Both zero-NIC VMs use the unchanged bounded RAM/storage profile and networkless
+unprivileged container. All eight listener deltas are zero. Exact QEMU joins and
+RAM workspace absence are verified. Fourteen raw files total 151,529 bytes per
+host, copied and hash-verified. After copying, the exact failed-baseline diagnostic
+tree (inode 79475215) is removed with wrapper/QEMU/workspace absence established,
+releasing 3,432,448 allocated bytes. Full application, real preference persistence,
+platform/device and release acceptance remain open.

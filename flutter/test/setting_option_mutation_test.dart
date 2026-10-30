@@ -1126,13 +1126,25 @@ void main() {
   });
 
   testWidgets('quality editor uses confirmed effective quality and FPS', (tester) async {
+    final semantics = tester.ensureSemantics();
+    addTearDown(semantics.dispose);
     await _qualityEditor(tester,
       saveQuality: (_) async => 75, saveFps: (_) async => 45);
+    expect(tester.getSemantics(find.byType(Slider).at(0)),
+      containsSemantics(label: 'Bitrate', value: '50%',
+        hasIncreaseAction: true, hasDecreaseAction: true));
+    expect(tester.getSemantics(find.byType(Slider).at(1)),
+      containsSemantics(label: 'FPS', value: '30',
+        hasIncreaseAction: true, hasDecreaseAction: true));
     await _slideQuality(tester, 0, 80);
     await _slideQuality(tester, 1, 50);
     await tester.pump(const Duration(seconds: 1));
     expect(_qualitySlider(tester, 0).value, 75);
     expect(_qualitySlider(tester, 1).value, 45);
+    expect(tester.getSemantics(find.byType(Slider).at(0)),
+      containsSemantics(label: 'Bitrate', value: '75%'));
+    expect(tester.getSemantics(find.byType(Slider).at(1)),
+      containsSemantics(label: 'FPS', value: '45'));
   });
 
   testWidgets('quality and FPS restore earlier values after unconfirmed saves', (tester) async {
@@ -1203,10 +1215,15 @@ void main() {
   });
 
   testWidgets('quality editor fixed quality disables its More control', (tester) async {
+    final semantics = tester.ensureSemantics();
+    addTearDown(semantics.dispose);
     await _qualityEditor(tester, saveFps: (v) async => v);
     expect(_qualitySlider(tester, 0).onChanged, isNull);
     expect(tester.widget<Checkbox>(find.byType(Checkbox)).onChanged, isNull);
     expect(_qualitySlider(tester, 1).onChanged, isNotNull);
+    expect(tester.getSemantics(find.byType(Slider).at(0)),
+      containsSemantics(label: 'Bitrate', value: '50%',
+        hasIncreaseAction: false, hasDecreaseAction: false));
   });
 
   testWidgets('quality and FPS rebuilds preserve unconfirmed saves', (tester) async {
@@ -1289,22 +1306,32 @@ void main() {
   });
 
   testWidgets('quality editor leaving More saves its bounded current value', (tester) async {
+    final semantics = tester.ensureSemantics();
+    addTearDown(semantics.dispose);
     final calls = <double>[];
     await _qualityEditor(tester, quality: 500, saveQuality: (v) async { calls.add(v); return v; });
     expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
+    expect(tester.getSemantics(find.byType(Slider).at(0)),
+      containsSemantics(label: 'Bitrate', value: '500%'));
     await tester.tap(find.byType(Checkbox));
     await tester.pump();
     expect(_qualitySlider(tester, 0).value, 100);
     expect(_qualitySlider(tester, 0).max, 100);
     await tester.pump(const Duration(seconds: 1));
     expect(calls, [100]);
+    expect(tester.getSemantics(find.byType(Slider).at(0)),
+      containsSemantics(label: 'Bitrate', value: '100%'));
   });
 
   testWidgets('quality editor preserves narrow mobile layout and hidden FPS', (tester) async {
+    final semantics = tester.ensureSemantics();
+    addTearDown(semantics.dispose);
     await _qualityEditor(tester, mobile: true, showFps: false, saveQuality: (v) async => v);
     expect(find.byType(Slider), findsOneWidget);
     expect(find.byType(Checkbox), findsOneWidget);
     expect(tester.takeException(), isNull);
+    expect(tester.getSemantics(find.byType(Slider)),
+      containsSemantics(label: 'Bitrate', value: '50%'));
   });
 
   testWidgets('trackpad draft survives rebuild and uses the current save callback',

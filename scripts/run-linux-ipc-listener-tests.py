@@ -84,6 +84,10 @@ def build():
     identity += function(auth, 'peer_exe_canonical_path_by_pid', index=0)
     # Root-level helpers have crate visibility rather than a parent module.
     (work / 'identity.rs').write_text(identity.replace('pub(crate) ', ''))
+    (work / 'argv_auth.rs').write_text(''.join(function(auth, name) for name in (
+        'linux_proc_cmdline_args', 'process_argv_is_exact', 'user_owned_main_server_argv_is_expected',
+        'main_server_cmdline_args', 'ensure_peer_executable_matches_current_by_pid',
+        'ensure_user_owned_main_server_is_trusted', 'ensure_user_owned_password_server_is_trusted')))
     ipc = parsed(repo / 'src/ipc.rs')
     option_reader = '#[tokio::main(flavor = "current_thread")]\n' + function(ipc, 'get_options')
     for name in ('get_options_async', 'get_options_'):
@@ -294,6 +298,32 @@ def native(expected_sha, barrier_sha):
             failures.append(name)
         print(f'LINUX_IPC_LISTENER_CASE={"pass" if passed else "fail"} name={name} '
               f'exit={result.returncode} stdout={result.stdout.strip()!r} stderr={result.stderr.strip()!r}', flush=True)
+
+    for uid in (0, 4001):
+        for allowed in (False, True):
+            endpoint = path('', uid)
+            args = [str(probe), '--server']
+            if not allowed:
+                args.append('synthetic-private-argument')
+            child = subprocess.Popen(args, env=dict(ENV, RUSTDESK_ARGV_PEER='1'),
+                                     user=uid, group=uid, extra_groups=[],
+                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE, text=True)
+            try:
+                require(select.select([child.stdout], [], [], 5)[0] and child.stdout.readline() == 'READY\n',
+                        'argv peer did not start')
+                action = 'argv-auth-' + str(allowed).lower()
+                result = check('', uid, action=action)
+                output, errors = child.communicate(timeout=5)
+                passed = result.returncode == 0 and not result.stderr \
+                    and result.stdout == f'OK {action} uid={uid} checks=2 cleanup=joined\n' \
+                    and child.returncode == 0 and not output and not errors
+            finally:
+                if child.poll() is None:
+                    child.kill(); child.communicate(timeout=5)
+                    raise RuntimeError('argv peer did not join normally')
+                endpoint.unlink(missing_ok=True)
+            record(f'{action}-{uid}', passed, result)
 
     for label, client_uid, route_uid, peer_uid, dumpable in (
             ('foreign-root-route', 0, 0, 4002, 1),
@@ -1132,8 +1162,8 @@ def native(expected_sha, barrier_sha):
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
     require(sha(barrier) == barrier_sha, 'barrier changed')
     probe.unlink(); barrier.unlink(); work.rmdir()
-    require(len(cases) == 260, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=260 failures={len(failures)} '
+    require(len(cases) == 264, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=264 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 

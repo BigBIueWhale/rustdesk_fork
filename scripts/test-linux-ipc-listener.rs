@@ -28,6 +28,10 @@ include!("identity.rs");
 include!("transport.rs");
 include!("connection.rs");
 include!("main_responses.rs");
+mod argv_auth {
+    use super::*;
+    include!("argv_auth.rs");
+}
 mod main_transaction {
     use super::*;
     thread_local! { pub(super) static CONNECT_DELAY_MS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) }; }
@@ -1384,10 +1388,49 @@ async fn main_peer_client(route_uid: u32, allowed: bool) {
     println!("OK main-peer-client route_uid={route_uid} allowed={allowed} cleanup=joined");
 }
 
+async fn argv_auth_fixture(allowed: bool) {
+    let descriptors = fd_count();
+    let mut failures = 0;
+    for main in [true, false] {
+        let stream = tokio::net::UnixStream::connect(Config::ipc_path("")).await.unwrap();
+        let pid = peer_pid_from_fd(stream.as_raw_fd()).unwrap();
+        let result = if main {
+            let stream = ConnectionTmpl::new_main(stream);
+            argv_auth::ensure_user_owned_main_server_is_trusted(&stream)
+        } else {
+            argv_auth::ensure_user_owned_password_server_is_trusted(&stream, unsafe { libc::geteuid() })
+        };
+        if allowed {
+            assert!(result.is_ok(), "valid server role refused: {result:?}");
+        } else {
+            let error = result.unwrap_err().to_string();
+            assert!(error.contains("argv mismatch") && error.contains(&format!("pid={pid}")));
+            let marker = "synthetic-private-argument";
+            let disclosed = error.contains(marker) || error.contains(&format!("{:?}", marker.as_bytes()));
+            failures += usize::from(disclosed);
+        }
+    }
+    assert_eq!(fd_count(), descriptors);
+    assert_eq!(failures, 0, "peer arguments entered rejection diagnostics");
+    println!("OK argv-auth-{allowed} uid={} checks=2 cleanup=joined", unsafe { libc::geteuid() });
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    assert_eq!(args.len(), 3);
     assert!(Path::new("/run/rustdesk-verifier-vm").is_dir());
+    if std::env::var_os("RUSTDESK_ARGV_PEER").is_some() {
+        use std::io::Read;
+        let _listener = std::os::unix::net::UnixListener::bind(Config::ipc_path("")).unwrap();
+        ready("READY");
+        assert_eq!(std::io::stdin().read(&mut [0u8]).unwrap(), 0);
+        return;
+    }
+    assert_eq!(args.len(), 3);
+    if let Some(allowed) = args[1].strip_prefix("argv-auth-") {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(argv_auth_fixture(allowed.parse().unwrap()));
+        return;
+    }
     if args[1].starts_with("cli-option-") {
         cli_option_read::run();
         return;

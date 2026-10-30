@@ -16197,6 +16197,16 @@ Next resolve same-mount protected placement and resumable destination identity
 together, including these ordinary-user and unsupported-handle cases, before
 replacing the retained per-destination layout. Existing receive oracles remain binding.
 
+**Resume content binding — reproduced prerequisite, OPEN/STOP-SHIP.** At unchanged
+production source in `640a9680`, TUF `ZoWbc47wT7`, both confirmation directions
+accept a staged `abc` prefix against current source `XYZdef` with the same size and
+mtime, publish `abcdef`, and report success. Matching-prefix controls pass. These
+are actual paired library jobs and encoded protocol messages under UID 1000, with
+fixture partials; authenticated transport, process death and installed CM do not run.
+Before relocating resumable data, bind the confirmed prefix to the current source
+and enforce it at both receiving roles, including CM's field-by-field confirmation
+forwarding. Size/mtime and namespace lookup keys cannot serve as content proof.
+
 **Generation-lock retirement (`edddaf7b`) — component accepted.** Completed claims
 release their shared membership under the private enrollment gate. Only exclusive
 ownership permits exact lock-name removal and synchronization; live owners retain

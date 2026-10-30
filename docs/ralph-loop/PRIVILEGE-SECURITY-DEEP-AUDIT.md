@@ -122000,3 +122000,31 @@ descriptor-identity comparison (https://man7.org/linux/man-pages/man2/unlink.2.h
 between append and append-verify illustrates why retained prefixes need content
 verification (https://download.samba.org/pub/rsync/rsync.1#opt--append-verify).
 These references guide the investigation; they do not establish RustDesk behavior.
+
+**Baseline reproduced.** Source `640a9680ce74f210f1601cbc3a4084fce9c539bf`, tree
+`36e33711eda2764d066bd46cdca99be422651d18`, TUF `ZoWbc47wT7`, executes all four
+comparisons under UID 1000. Both matching-prefix controls publish exact `abcdef`.
+Both mismatches accept the same metadata and resume offset, report successful
+finalization, and replace the prior destination with `abcdef` although the source
+is `XYZdef`. Sources remain unchanged and all fixtures retire before assertion.
+The forty other tests in the metadata group pass; the new test fails. Later groups
+and the root native driver do not run, so there is no new full-suite acceptance.
+This establishes incorrect resume content, not local privilege escalation.
+
+The observed unit artifact is unchanged before/after execution, SHA-256
+`3b3f47eb9badb641be608f7a888549943aa561245c574426f6965a6d97374065`.
+Serial: 119,168 bytes, SHA-256
+`e00405d960e0cd3b9a2ba7bd1d4c01d3081e8f57bcc19e42a2a0f406ea0c28e3`.
+QEMU 2929465 joins after 130.258 seconds; RAM `run.1fmos7cq` is absent and all
+four listener deltas are zero. Seven raw files total 192,685 bytes per host,
+hash-verified on both hosts before exact diagnostic-scratch retirement.
+
+The next correction must carry content agreement through both confirmation
+directions and the CM `SendConfirm`/`SendConfirmForRead` forwarding/reconstruction
+in `src/server/connection.rs`, `src/ipc.rs` and `src/ui_cm_interface.rs`. The current
+library callback error paths retire the exact affected jobs; actual CM/peer
+acceptance remains unproved. A bounded hash of retained prefix bytes must precede
+stream/counter confirmation and preserve the old final file on mismatch. Missing
+proof cannot fall back to size/mtime. Staging placement, directory records and the
+three completed-destination failures remain open; this prerequisite does not itself
+make a replacement namespace layout correct.

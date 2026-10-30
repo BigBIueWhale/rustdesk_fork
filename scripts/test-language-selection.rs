@@ -69,6 +69,8 @@ mod tests {
             assert_eq!(lang::translate_locale("Build Date".into(), locale), expected,
                 "configured={configured} locale={locale}");
         }
+        set_language("pt-pt");
+        assert_eq!(lang::translate("Build Date".into()), "Data de compilação");
     }
 
     #[test]
@@ -101,8 +103,12 @@ mod tests {
                 let input = format!("Downloading {{{value}}}");
                 assert_eq!(lang::translate_locale(input, "en_US"), format!("{prefix}{value}"));
             }
-            for input in ["unknown status", "unknown {α} status", " } { "] {
-                assert_eq!(lang::translate_locale(input.into(), "en_US"), input);
+            for (input, expected) in [
+                ("unknown status", "unknown status"),
+                ("unknown {α} status", "unknown α status"),
+                (" } { ", " } { "),
+            ] {
+                assert_eq!(lang::translate_locale(input.into(), "en_US"), expected);
             }
         }
     }

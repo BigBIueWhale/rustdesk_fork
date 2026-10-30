@@ -120254,3 +120254,13 @@ and hash-verified. Bounded RAM admission/monitoring remains unchanged. This is
 rendered production-widget/framework semantics and callback evidence; actual
 screen readers, mobile devices, native persistence and full application/release
 acceptance remain open.
+
+**Fresh ledger count.** At `b490505973421bf9c7dd958abdc3c3a5e169a431`, TUF
+`E26oFFdbFq` passes seven tokenizer controls and exact byte round trip:
+363,633 tokens / 1,662,823 bytes using `tiktoken-0.12.0/cl100k_base/encode_ordinary`.
+Input SHA-256:
+`e7a27be057d76f5e5e816ffa66dcf23fca97439ea554d5f7b6689e0369ff83e7`.
+QEMU 2297994 joins in 30.496 seconds, RAM `run.083_zyok` retires and three
+listener deltas are zero. Six count files add 105,369 bytes; all twenty raw files
+total 289,238 bytes per host with matching hashes. This audit-only receipt leaves
+the measured ledger unchanged.

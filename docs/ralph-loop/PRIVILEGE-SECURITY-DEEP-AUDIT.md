@@ -121077,3 +121077,11 @@ fork. All nine store images, those guides, licenses, product and build code rema
 byte-identical. Exact deletion, preserved-file hashes and whitespace review cover
 this documentation-only correction. No product test or store publication is
 performed for it; Git retains the obsolete copy.
+
+Fresh ledger count at `32eeac71073d39232ef26443d817d0a3a127fe42`:
+`VoOggzgR37` passes seven controls and exact byte round trip using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 365,991 tokens / 1,674,256 bytes,
+input SHA-256 `0fe6aa5a1141792feaeed6a8b513e33d408bb079719fb7ee7c527ff897e625bd`.
+QEMU 2636813 joins in 30.908 seconds, RAM `run.zsyam6tj` retires and all three
+endpoint deltas are zero. Six count files total 104,025 bytes per host, copied
+and hash-verified. This audit-only receipt leaves the ledger unchanged.

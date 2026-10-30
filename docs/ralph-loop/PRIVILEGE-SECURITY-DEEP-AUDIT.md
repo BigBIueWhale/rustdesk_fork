@@ -121085,3 +121085,18 @@ input SHA-256 `0fe6aa5a1141792feaeed6a8b513e33d408bb079719fb7ee7c527ff897e625bd`
 QEMU 2636813 joins in 30.908 seconds, RAM `run.zsyam6tj` retires and all three
 endpoint deltas are zero. Six count files total 104,025 bytes per host, copied
 and hash-verified. This audit-only receipt leaves the ledger unchanged.
+
+## 2026-10-30 — connection-heading direction
+
+Previous goal turn: PROGRESS through obsolete store-copy removal. The user pivot
+remains binding; parked investigations and all fifteen native credential-action
+acceptances remain open. This slice changes only the shared connection heading.
+Its physical right margin placed the four-pixel gap outside the title in RTL.
+`Padding` with `EdgeInsetsDirectional.only(end: 4)` puts the gap between title
+and help icon in either direction, following Flutter's
+[directional inset contract](https://api.flutter.dev/flutter/painting/EdgeInsetsDirectional-class.html).
+The unused Get import is removed. Desktop and the mobile page's web-desktop branch
+call the same function; text, automatic sizing, style and tooltip stay unchanged.
+Source/caller review and whitespace checks cover this small spacing correction.
+No new test fixture or product execution is added; rendered/device and broader
+application acceptance remain open.

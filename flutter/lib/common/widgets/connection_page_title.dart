@@ -1,6 +1,5 @@
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 
 import '../../common.dart';
 
@@ -11,15 +10,18 @@ Widget getConnectionPageTitle(BuildContext context) {
           child: Row(
         children: [
           Flexible(
-            child: AutoSizeText(
-              translate('Control Remote Desktop'),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context)
-                  .textTheme
-                  .titleLarge
-                  ?.merge(TextStyle(height: 1)),
-            ).marginOnly(right: 4),
+            child: Padding(
+              padding: const EdgeInsetsDirectional.only(end: 4),
+              child: AutoSizeText(
+                translate('Control Remote Desktop'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context)
+                    .textTheme
+                    .titleLarge
+                    ?.merge(TextStyle(height: 1)),
+              ),
+            ),
           ),
           Tooltip(
             waitDuration: Duration(milliseconds: 300),

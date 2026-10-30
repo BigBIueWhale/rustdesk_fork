@@ -606,7 +606,7 @@ class _PeerSearchBarState extends State<PeerSearchBar> {
                           contentPadding:
                               const EdgeInsets.symmetric(vertical: 6),
                           hintText:
-                              _focused.value ? null : translate("Search address"),
+                              _focused.value ? null : translate("Search"),
                           hintStyle: TextStyle(
                               fontSize: 14, color: Theme.of(context).hintColor),
                           border: InputBorder.none,

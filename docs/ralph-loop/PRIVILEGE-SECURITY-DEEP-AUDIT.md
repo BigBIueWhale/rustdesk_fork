@@ -121300,3 +121300,25 @@ passing product/test sources are unchanged. This failed count supplies no token
 result. QEMU 2652697 joins after 12.094 seconds, RAM `run.89cgic_s` retires and all
 three endpoint deltas are zero. Six raw files total 86,055 bytes per host, copied
 and hash-verified; its exact diagnostic tree is removed (229,376 allocated bytes).
+
+## 2026-10-30 — user pivot; search-label localization
+
+The user explicitly requests unrelated work. Remaining dropdown integration and
+earlier parked investigations stay open; work moves to ordinary UI wording.
+The preceding count job has already exited successfully and retired its QEMU and
+RAM workspace. No previous product test is relaunched.
+
+The shared saved-computer search field calls `translate("Search address")`, but
+that key is absent from all 50 active catalogues. `translate_locale` therefore
+returns the English key. The field now uses `Search`, the same existing key as
+its opening button. All 49 non-English catalogues contain a nonempty value;
+English uses its key fallback. Examples include German `Suchen`, Hebrew `חפש`,
+French `Rechercher` and Arabic `بحث`.
+
+Read-only review follows the actual module mappings, including `pt_PT.rs`, and
+the translator's selected-language/English/key lookup. Exact before/after review
+limits the product edit to this one literal; catalogue contents, search behavior,
+focus, layout and favorites operations are unchanged. Whitespace checks pass.
+No new test or product run is added for a text-only change. Device rendering,
+live language-change behavior and the separately parked search/favorites work
+remain unverified/open.

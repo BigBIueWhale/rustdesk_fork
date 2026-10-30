@@ -121961,3 +121961,13 @@ listener deltas are zero. Seven raw evidence files are hash-verified on both hos
 before exact diagnostic-scratch removal. Full receive acceptance remains OPEN:
 the next correction must retire directory records and eliminate staging residue
 while preserving same-mount publication, resume identity and authorized access.
+
+Ledger verification at `db1b452ec0715dd95254d0d40823b5d595cb2dc5`, TUF
+`x4RnoynvEA`, exits zero: 368,322 tokens / 1,685,667 bytes, SHA-256
+`3f4b5bb343d4272c7aa0d2f9180bd573558f7fa97ac6130a8a214bcbfc506b61`.
+Pinned `tiktoken-0.12.0/cl100k_base/encode_ordinary`, seven controls and strict
+UTF8 round trip pass. QEMU 2928518 joins after 30.514 seconds; RAM `run.ukugrse6`
+retires and all three listener deltas are zero. Raw serial: 35,832 bytes, SHA-256
+`f6f9e414972e44aa98d69a5f2a28f8f3848c639ad991e01d20fe72af291bca97`.
+All twenty raw files for this checkpoint total 396,724 bytes per host and are
+hash-verified on both hosts. This audit-only receipt preserves the counted ledger.

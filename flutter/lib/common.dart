@@ -1084,9 +1084,23 @@ makeMobileActionsOverlayEntry(VoidCallback? onHide, {FFI? ffi}) {
   });
 }
 
+OverlayEntry? _toastEntry;
+Timer? _toastTimer;
+
+void _dismissToast() {
+  _toastTimer?.cancel();
+  _toastTimer = null;
+  final entry = _toastEntry;
+  _toastEntry = null;
+  entry
+    ?..remove()
+    ..dispose();
+}
+
 void showToast(String text,
     {Duration timeout = const Duration(seconds: 3),
     Alignment alignment = const Alignment(0.0, 0.8)}) {
+  _dismissToast();
   final overlayState = globalKey.currentState?.overlay;
   if (overlayState == null) return;
   final entry = OverlayEntry(builder: (context) {
@@ -1113,9 +1127,8 @@ void showToast(String text,
             )));
   });
   overlayState.insert(entry);
-  Future.delayed(timeout, () {
-    entry.remove();
-  });
+  _toastEntry = entry;
+  _toastTimer = Timer(timeout, _dismissToast);
 }
 
 // TODO

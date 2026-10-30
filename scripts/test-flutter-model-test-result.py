@@ -22,7 +22,7 @@ spec.loader.exec_module(result)
 
 
 SINGLE_PROFILE = None
-if len(sys.argv) > 1 and sys.argv[1] in ("--screenshot-save", "--locales", "--draggable-divider", "--file-columns", "--trackpad-speed", "--menu-button", "--password-fields", "--file-progress", "--peer-search", "--audio-input", "--peer-data", "--image-quality", "--desktop-theme", "--status-refresh"):
+if len(sys.argv) > 1 and sys.argv[1] in ("--screenshot-save", "--locales", "--draggable-divider", "--file-columns", "--trackpad-speed", "--menu-button", "--password-fields", "--file-progress", "--peer-search", "--audio-input", "--peer-data", "--image-quality", "--desktop-theme", "--status-refresh", "--custom-scale"):
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
 
 
@@ -223,7 +223,7 @@ class ResultTests(unittest.TestCase):
                              (1, {"locales": 10, "screenshot-save": 12,
                                   "draggable-divider": 22, "file-columns": 13,
                                   "file-progress": 43, "peer-search": 36, "image-quality": 24,
-                                  "desktop-theme": 22}[SINGLE_PROFILE]))
+                                  "desktop-theme": 22, "custom-scale": 42}[SINGLE_PROFILE]))
             return
         self.assertEqual(
             self.parse(self.events("models"), "models"),

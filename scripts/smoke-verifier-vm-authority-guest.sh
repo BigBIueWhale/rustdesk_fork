@@ -12381,11 +12381,11 @@ run_flutter_model_tests() {
                 [ "$(stat -c %s /work/test.err)" -le 1048576 ]
                 [ ! -s /work/test.err ] || tail -n 120 /work/test.err >&2
                 file_navigation_stage validate-results
-                if [[ "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = direct-address || "$FLUTTER_TEST_PROFILE" = hold-drag || "$FLUTTER_TEST_PROFILE" = menu-button || "$FLUTTER_TEST_PROFILE" = password-fields ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = direct-address || "$FLUTTER_TEST_PROFILE" = hold-drag || "$FLUTTER_TEST_PROFILE" = menu-button || "$FLUTTER_TEST_PROFILE" = password-fields || "$FLUTTER_TEST_PROFILE" = custom-scale ]]; then
                     cat /work/test.json
                 fi
                 parser_args=()
-                if [[ "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = image-quality || "$FLUTTER_TEST_PROFILE" = desktop-theme ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = image-quality || "$FLUTTER_TEST_PROFILE" = desktop-theme || "$FLUTTER_TEST_PROFILE" = custom-scale ]]; then
                     parser_args=("--$FLUTTER_TEST_PROFILE")
                 fi
                 if [[ "$FLUTTER_TEST_PROFILE" = screenshot-save || "$FLUTTER_TEST_PROFILE" = locales || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = menu-button || "$FLUTTER_TEST_PROFILE" = password-fields || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = peer-data ]]; then

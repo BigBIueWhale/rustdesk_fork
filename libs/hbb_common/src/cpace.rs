@@ -736,6 +736,7 @@ lazy_static::lazy_static! {
 /// guess rate within the current window (R-S10). MUST be called before the
 /// scalar-mult (R-P14c) so a blocked source costs almost nothing.
 pub fn guess_limiter_allows(source: IpAddr) -> bool {
+    let source = source.to_canonical();
     let map = GUESS_FAILURES.lock().unwrap();
     match map.get(&source) {
         Some(&(count, start)) if start.elapsed() < GUESS_WINDOW => count < MAX_GUESSES_PER_WINDOW,
@@ -753,6 +754,7 @@ pub fn record_handshake_failure(source: IpAddr, error: HandshakeError) -> bool {
         return false;
     }
 
+    let source = source.to_canonical();
     let mut map = GUESS_FAILURES.lock().unwrap();
     let now = Instant::now();
     match map.get_mut(&source) {

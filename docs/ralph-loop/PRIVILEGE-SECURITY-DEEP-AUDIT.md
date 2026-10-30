@@ -121386,3 +121386,12 @@ Both failed diagnostic trees are removed after exact ownership/evidence checks
 PID 2740286/start tick 278149434 during retirement: state, empty command line,
 terminal exit record, missing tmux session and readable pidfd establish termination;
 parent reaping is not claimed. No host process is signalled or reconfigured.
+
+Fresh ledger count at `f4c27d3533bfaa77f9f9227bc3c1e6768d6f9a9a`:
+`ih14rYZ6wo` passes seven controls and exact byte round trip with
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 366,908 tokens / 1,678,627 bytes,
+input SHA-256 `cefd766b56f689bb020b15fa8552ae0a9ce30aa3d5cf78a30b737e1597effcfd`.
+The 77 admission controls and five refusals pass. QEMU 2766465 joins after 30.597
+seconds, RAM `run.m8i_fblo` retires and all three endpoint deltas are zero.
+Six raw files total 104,706 bytes per host, copied and hash-verified. This
+audit-only receipt leaves the counted ledger unchanged.

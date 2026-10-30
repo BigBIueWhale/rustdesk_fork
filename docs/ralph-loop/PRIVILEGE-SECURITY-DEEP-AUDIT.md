@@ -118324,3 +118324,13 @@ choosing a product backend change and assessing performance. Full sampling/RNG
 timing, other targets and shipping artifacts, higher-order leakage, automatic
 CI, erasure and R-V3 remain open. Installed IPC/actions and parked work remain
 open and unchanged.
+
+Ledger run `VLVdtfZcfX` at `bdbfc1cb` passes 74 workload controls/five
+refusals, seven tokenizer controls and full text round trip. It reports
+360,310 tokens using `tiktoken-0.12.0/cl100k_base/encode_ordinary`:
+1,647,400 bytes, SHA-256
+`f67c5f40922c662f464080572bc82fa34700a220fa733dafe5ad3e57384d2793`.
+QEMU 1836428 joins in 30.368 seconds; RAM `run.g_9n1cmf` retires and three
+listener deltas are zero. Six count files add 104,908 bytes. The thirteen raw
+files from both runs total 240,149 bytes per host with matching hashes.
+This audit-only receipt leaves the measured ledger unchanged.

@@ -266,10 +266,11 @@ fn derive_mac_key(sid: &[u8], isk: &[u8; 64]) -> Zeroizing<[u8; 64]> {
     input.extend_from_slice(MAC_DSI);
     input.extend_from_slice(sid);
     input.extend_from_slice(isk);
-    let mac = Sha512::digest(&input[..]);
-    let mut out = [0u8; 64];
+    let mut mac = Sha512::digest(&input[..]);
+    let mut out = Zeroizing::new([0u8; 64]);
     out.copy_from_slice(&mac);
-    Zeroizing::new(out)
+    mac.as_mut_slice().zeroize();
+    out
 }
 
 /// `T = HMAC-SHA512( mac_key, lv_cat(Y, AD) )` (R-P3).
@@ -699,18 +700,19 @@ fn normalize_prs(password: &str) -> Result<Zeroizing<Vec<u8>>, PakeError> {
 }
 
 fn fill_random(buf: &mut [u8]) -> Result<(), PakeError> {
-    getrandom::getrandom(buf).map_err(|_| PakeError::Rng)
+    getrandom::getrandom(buf).map_err(|_| {
+        buf.zeroize();
+        PakeError::Rng
+    })
 }
 
 /// Sample a fresh ephemeral scalar via the wide reduction `Scalar::random` uses
 /// (R-P12) — 64 CSPRNG bytes, no bit-masking; never the deprecated, Edwards-only
 /// `Scalar::from_bits` (§10.4 trap #1).
 fn sample_scalar() -> Result<Scalar, PakeError> {
-    let mut wide = [0u8; 64];
-    fill_random(&mut wide)?;
-    let s = Scalar::from_bytes_mod_order_wide(&wide);
-    wide.zeroize();
-    Ok(s)
+    let mut wide = Zeroizing::new([0u8; 64]);
+    fill_random(&mut wide[..])?;
+    Ok(Scalar::from_bytes_mod_order_wide(&wide))
 }
 
 /// Decompress a received element, mapping a decode failure to [`PakeError::Decode`]

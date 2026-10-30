@@ -119882,3 +119882,12 @@ This is a package-gate correctness fix with native fixture evidence. It does not
 establish an LPE, installed product behavior, complete ELF validity or R-S0/R-F5
 acceptance. Parked parent compilation/settings integration remains parked. The
 ledger's existing Debian admission section is updated; fresh token count follows.
+
+**Fresh ledger count.** At `e938bf0c48fa9936c8e3417ddcf78e0d2c009b5d`,
+TUF `PQwbNxP4UA` passes seven tokenizer controls and exact byte round trip using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 362,620 tokens / 1,658,148 bytes,
+SHA-256 `3d168eb9f42c03736584a0867907b169bc5f83258e7c7aa23f5990e6553a9e4b`.
+QEMU 2150239 joins in 30.710 seconds, RAM `run._napawwo` retires and three
+listener deltas are zero. Six count files add 103,663 bytes; the eighteen raw
+files total 248,903 bytes per host with matching hashes. This audit-only receipt
+leaves the measured ledger unchanged.

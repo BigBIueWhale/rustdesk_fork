@@ -119461,3 +119461,13 @@ confirms the clamp/comment-only product change and identical complete tests;
 R-F5 impairment/soak, installed settings and all fifteen credential actions,
 independent reproduction and release acceptance remain OPEN. Parked tasks remain
 parked. The ledger consolidates both floor corrections; fresh measurement follows.
+
+**Fresh ledger count.** At `bf41110bdb5a21f19540191eb8ce458404c6c891`,
+TUF `p6yjhEWstc` passes seven tokenizer controls and the exact byte round trip
+using `tiktoken-0.12.0/cl100k_base/encode_ordinary`: 361,786 tokens /
+1,654,150 bytes, SHA-256
+`1fd8eaeeb1dbcae469824e64922b2c6f5dc924f68dc14cc2b609c5de659c343f`.
+QEMU 1900750 joins in 30.306 seconds, RAM `run.8r1yix7l` retires and all
+three listener deltas are zero. Six count files add 105,446 bytes; twenty files
+from this slice total 333,300 bytes per host with matching hashes. This audit-only
+receipt leaves the measured ledger unchanged.

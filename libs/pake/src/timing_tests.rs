@@ -5,13 +5,80 @@
 use super::{channel_identifier, compute_tag, derive_generator, verify_tag, RistrettoPoint,
     Scalar, Sha512, Zeroizing, AD_RESPONDER, CI_PORT};
 use sha2::Digest;
-use std::{hint::black_box, time::Instant};
+use std::{arch::{asm, x86_64::__cpuid_count}, hint::black_box, marker::PhantomData, time::Instant};
 
 const SAMPLES: usize = 1_000_000;
 const GROUP_SAMPLES: usize = 100_000;
 const BATCH: usize = 20_000;
 const REPEATS: usize = 4;
 const THRESHOLD: f64 = 10.0;
+
+fn read_mxcsr() -> u32 {
+    let mut value = 0u32;
+    // SAFETY: x86-64 provides SSE; STMXCSR writes exactly this live u32.
+    unsafe { asm!("stmxcsr [{value}]", value = in(reg) &mut value, options(nostack, preserves_flags)); }
+    value
+}
+
+// Test-thread-only diagnostic: change status flags, never Rust's floating-point
+// masks, rounding mode, DAZ or FTZ. Restore on return and unwind on this thread.
+struct McdtStatusScope {
+    saved: u32,
+    _thread: PhantomData<*mut ()>,
+}
+
+impl McdtStatusScope {
+    #[inline(never)]
+    fn enter() -> Self {
+        let saved = read_mxcsr();
+        assert_eq!(saved & !0x3f, 0x1f80, "nondefault MXCSR controls");
+        let value = saved | 0x3f;
+        let scope = Self { saved, _thread: PhantomData };
+        // SAFETY: only the six status flags differ from a valid observed value;
+        // controls stay at Rust defaults. Memory is live and fences serialize
+        // the change. No preserves_flags promise is made for this write.
+        unsafe { asm!("lfence", "ldmxcsr [{value}]", "lfence",
+            value = in(reg) &value, options(nostack)); }
+        scope
+    }
+}
+
+impl Drop for McdtStatusScope {
+    #[inline(never)]
+    fn drop(&mut self) {
+        // SAFETY: saved was read on this thread with default controls; the guard
+        // cannot be sent to another thread. Only status flags were modified.
+        unsafe { asm!("lfence", "ldmxcsr [{value}]", "lfence",
+            value = in(reg) &self.saved, options(nostack)); }
+    }
+}
+
+fn check_mxcsr_scope() {
+    let before = read_mxcsr();
+    {
+        let _scope = McdtStatusScope::enter();
+        assert_eq!(read_mxcsr(), 0x1fbf);
+    }
+    assert_eq!(read_mxcsr(), before);
+    let unwind = std::panic::catch_unwind(|| -> () {
+        let _scope = McdtStatusScope::enter();
+        assert_eq!(read_mxcsr(), 0x1fbf);
+        std::panic::resume_unwind(Box::new(()));
+    });
+    assert!(unwind.expect_err("diagnostic did not unwind").is::<()>());
+    assert_eq!(read_mxcsr(), before);
+    // SAFETY: CPUID is available on x86-64; query supported leaves/subleaves.
+    let (leaf1, leaf7, mcdt) = unsafe {
+        assert!(__cpuid_count(0, 0).eax >= 7);
+        let leaf1 = __cpuid_count(1, 0);
+        let leaf7 = __cpuid_count(7, 0);
+        let mcdt = (leaf7.eax >= 2).then(|| __cpuid_count(7, 2).edx);
+        (leaf1, leaf7, mcdt)
+    };
+    println!("PAKE_TIMING_MXCSR_SCOPE=pass normal_restore=true unwind_restore=true initial={before:08x} controls=00001f80 configured=00001fbf cpuid1_eax={:08x} hypervisor={} leaf7_max_subleaf={} leaf7_2_edx={mcdt:?} mcdt_no={:?} avx2_available={}",
+        leaf1.eax, leaf1.ecx >> 31, leaf7.eax, mcdt.map(|value| value & (1 << 5) != 0),
+        std::is_x86_feature_detected!("avx2"));
+}
 
 #[derive(Clone, Copy, Default)]
 struct Moments {
@@ -80,6 +147,7 @@ fn measure_prepared<I, T>(
     let mut inputs = vec![([0u8; 64], 0usize); BATCH];
     let mut observations = Vec::with_capacity(samples);
     let mut digest = Sha512::new();
+    let mxcsr_begin = read_mxcsr();
     for batch in 0..=samples / BATCH {
         for (bytes, class) in &mut inputs {
             *class = (random(&mut state) >> 63) as usize;
@@ -103,6 +171,7 @@ fn measure_prepared<I, T>(
             }
         }
     }
+    let mxcsr_end = read_mxcsr();
     assert_eq!(observations.len(), samples);
     let mut durations: Vec<_> = observations.iter().map(|(ns, _)| *ns).collect();
     let cutoff_index = samples * 99 / 100;
@@ -127,7 +196,8 @@ fn measure_prepared<I, T>(
         "PAKE_TIMING_CASE=name:{name} seed:{seed:016x} samples:{samples} repeats:{REPEATS} \
          n0:{} n1:{} mean0_ns:{:.6} mean1_ns:{:.6} t_raw:{raw_t:.6} \
          cropped_n0:{} cropped_n1:{} cutoff_ns:{cutoff} t_p99:{cropped_t:.6} \
-         threshold:{THRESHOLD} detected:{detected} input_sha512:{input_sha512}",
+         threshold:{THRESHOLD} detected:{detected} input_sha512:{input_sha512} \
+         mxcsr_begin:{mxcsr_begin:08x} mxcsr_end:{mxcsr_end:08x}",
         raw[0].n, raw[1].n, raw[0].mean, raw[1].mean, cropped[0].n, cropped[1].n,
     );
     detected
@@ -137,6 +207,7 @@ fn measure_prepared<I, T>(
 #[ignore = "requires the isolated optimized timing profile"]
 fn optimized_timing_evidence() {
     assert!(!cfg!(debug_assertions), "timing requires an optimized build");
+    check_mxcsr_scope();
     // Arithmetic controls exercise the same estimator used for the measurements.
     let mut a = Moments::default();
     let mut b = Moments::default();
@@ -268,13 +339,40 @@ fn optimized_timing_evidence() {
             }
         }
     }
-    assert!(control && group_control && prepared_control,
+    let before_mcdt = read_mxcsr();
+    let (mcdt_control, mcdt_multiply, mcdt_reversed, mcdt_identical) = {
+        let _scope = McdtStatusScope::enter();
+        assert_eq!(read_mxcsr(), 0x1fbf);
+        let control = measure_prepared("vartime-mcdt-one-random", 0x4a16_c09e_72f3_b85d,
+            GROUP_SAMPLES, scalar_inputs, Scalar::from_bytes_mod_order_wide,
+            |scalar| RistrettoPoint::vartime_double_scalar_mul_basepoint(
+                scalar, black_box(&point), black_box(&Scalar::ZERO)));
+        let multiply = |scalar: &Scalar| scalar * black_box(&*point);
+        let ordinary = measure_prepared("multiply-mcdt-one-random", 0x8d02_57be_a913_c64f,
+            GROUP_SAMPLES, scalar_inputs, Scalar::from_bytes_mod_order_wide, multiply);
+        let reversed = measure_prepared("multiply-mcdt-random-one", 0x8d02_57be_a913_c64f,
+            GROUP_SAMPLES, |bytes, class, state| scalar_inputs(bytes, class ^ 1, state),
+            Scalar::from_bytes_mod_order_wide, multiply);
+        let identical = measure_prepared("multiply-mcdt-one-one", 0x8d02_57be_a913_c64f,
+            GROUP_SAMPLES, |bytes, _, state| scalar_inputs(bytes, 0, state),
+            Scalar::from_bytes_mod_order_wide, multiply);
+        assert_eq!(read_mxcsr(), 0x1fbf);
+        (control, ordinary, reversed, identical)
+    };
+    assert_eq!(read_mxcsr(), before_mcdt);
+    println!("PAKE_TIMING_MXCSR_RESTORED=value:{before_mcdt:08x}");
+    let restored = measure_prepared("multiply-restored-one-random", 0x8d02_57be_a913_c64f,
+        GROUP_SAMPLES, scalar_inputs, Scalar::from_bytes_mod_order_wide,
+        |scalar| scalar * black_box(&*point));
+
+    assert!(control && group_control && prepared_control && mcdt_control,
         "variable-time positive control was not detected: inconclusive");
-    assert!(!identical && !component_identical.iter().any(|detected| *detected),
+    assert!(!identical && !mcdt_identical && !component_identical.iter().any(|detected| *detected),
         "identical-input negative control detected a difference: inconclusive");
     assert!(!tag_position && !tag_key && !scalar && !generator && !multiplication && !reversed,
         "timing difference detected");
     assert!(!component_differences.iter().any(|detected| *detected),
         "component timing difference detected");
-    println!("PAKE_TIMING_RESULT=no-difference-detected cohorts=12 positive_controls=3 negative_controls=4 primitive_samples=1000000 group_samples=100000 repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact");
+    assert!(!mcdt_multiply && !mcdt_reversed && !restored, "MXCSR comparison timing difference detected");
+    println!("PAKE_TIMING_RESULT=no-difference-detected cohorts=15 positive_controls=4 negative_controls=5 primitive_samples=1000000 group_samples=100000 repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact");
 }

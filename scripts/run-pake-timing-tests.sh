@@ -101,7 +101,7 @@ selected=[entry for entry in sections if all(part in entry[2]
     for part in ('variable_base','spec_avx2','3mul'))]
 assert len(selected)==1, ('AVX2 multiplication symbol count',selected)
 related=[entry for entry in sections if any(part in entry[2] for part in
-    ('from_bytes_mod_order_wide','montgomery_mul','cpuid_avx2','subtle9black_box'))
+    ('from_bytes_mod_order_wide','montgomery_mul','cpuid_avx2','subtle9black_box','McdtStatusScope'))
     or ('edwards..EdwardsPoint$u20$as$u20$core..ops..arith..Mul' in entry[2]
         and 'scalar..Scalar' in entry[2])
     or ('avx2..field..FieldElement2625x4' in entry[2] and '9_impl_mul' in entry[2])
@@ -128,7 +128,7 @@ record.update({
 print('PAKE_TIMING_DISASSEMBLY='+json.dumps(record,sort_keys=True))
 PY
 test_status=0
-timeout --signal=TERM --kill-after=5s 120s taskset -c "$cpu" "$test_executable" \
+timeout --signal=TERM --kill-after=5s 150s taskset -c "$cpu" "$test_executable" \
     --exact timing_tests::optimized_timing_evidence --ignored --test-threads=1 --color never --show-output \
     || test_status=$?
 [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]

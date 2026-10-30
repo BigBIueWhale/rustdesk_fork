@@ -4036,6 +4036,7 @@ run_focused_rust_tests() {
                 cpace::open_tests::owned_frame_opens_with_rust_allocations_refused
                 tcp::open_tests::decoder_reuses_the_authenticated_frame_storage
                 cpace::guess_limiter_tests::mapped_sources_share_one_guess_budget
+                cpace::guess_limiter_tests::expired_window_recovers_without_success_or_restart
             )
         fi
         if [ "$HBB_FUSE_READ_TESTS" -eq 1 ]; then
@@ -6251,7 +6252,10 @@ run_focused_rust_tests() {
                                 bytes_codec::tests:: tcp::writer_lifetime_tests:: test::test_get_version_number test::test_try_into_v4 socket_client::tests:: tcp::exclusive_listener_tests:: \
                                 cpace::seal_tests:: tcp::seal_tests:: cpace::open_tests:: tcp::open_tests:: cpace::guess_limiter_tests::; do
                                 group_status=0
-                                timeout --signal=TERM --kill-after=5s 20s \
+                                group_timeout=20s
+                                # This group exercises the real 60-second expiry window.
+                                if [ "$group" = cpace::guess_limiter_tests:: ]; then group_timeout=90s; fi
+                                timeout --signal=TERM --kill-after=5s "$group_timeout" \
                                     "$test_executable" "$group" --color never --test-threads=1 --show-output \
                                     || group_status=$?
                                 [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
@@ -7066,7 +7070,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                 /^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|FAILURE_READ|RETIREMENT_ARTIFACT_STOP)=/ { if (++writer_observations <= 32) print }
                 /^(CIPHER_SEAL_ALLOCATION|TCP_SEAL_ALLOCATION|CIPHER_KEY_GUARD)/ { if (++seal_observations <= 20) print }
                 /^(RECEIVE_CIPHER|RECEIVE_CODEC)/ { if (++receive_observations <= 20) print }
-                /^GUESS_LIMITER_ALIAS/ { if (++limiter_observations <= 5) print }
+                /^GUESS_LIMITER_(ALIAS|EXPIRY)/ { if (++limiter_observations <= 9) print }
             ' "$output" >&2 || printf 'Transport failure diagnostics could not be read\n' >&2
             awk '/^FILE_PEER_PROBE_ARTIFACT_START=observed / { print; exit }' "$output" >&2 \
                 || printf 'File-peer probe failure artifact metadata could not be read\n' >&2
@@ -7250,7 +7254,7 @@ PY
                 || fail 'direct address normalization test differs'
             for group in tcp::writer_receipt_tests:13 tcp::eof_tests:4 \
                 bytes_codec::tests:13 tcp::writer_lifetime_tests:7 tcp::exclusive_listener_tests:1 \
-                cpace::seal_tests:2 tcp::seal_tests:1 cpace::open_tests:1 tcp::open_tests:1 cpace::guess_limiter_tests:1; do
+                cpace::seal_tests:2 tcp::seal_tests:1 cpace::open_tests:1 tcp::open_tests:1 cpace::guess_limiter_tests:2; do
                 count=${group##*:}; group=${group%:*}
                 [ "$(grep -Ec "^test ${group}::[[:alnum:]_]+ [.][.][.] ok$" "$output")" -eq "$count" ] \
                     || fail "writer retirement test group differs: $group"
@@ -8252,7 +8256,7 @@ PY
             grep -E '^test (config|password_security)::[[:alnum:]_:]+ [.][.][.] ok$|^OPTION_COMMIT_' "$output"
         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'writer retirement test total differs'
-            grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests|exclusive_listener_tests|seal_tests|open_tests)|cpace::(seal_tests|open_tests|guess_limiter_tests)|bytes_codec::tests|socket_client::tests)::[[:alnum:]_]+ [.][.][.] ok$|^test test::(test_get_version_number|test_try_into_v4) [.][.][.] ok$|^DIRECT_ADDRESS_NORMALIZATION=|^VERSION_NUMBER_(OVERFLOW|RANGE)=|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|FAILURE_READ)=|^READ_JOB_BACKPRESSURE(_CASE)?=|^(CIPHER_SEAL_ALLOCATION|TCP_SEAL_ALLOCATION|CIPHER_KEY_GUARD|RECEIVE_CIPHER|RECEIVE_CODEC|GUESS_LIMITER_ALIAS)' "$output"
+            grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests|exclusive_listener_tests|seal_tests|open_tests)|cpace::(seal_tests|open_tests|guess_limiter_tests)|bytes_codec::tests|socket_client::tests)::[[:alnum:]_]+ [.][.][.] ok$|^test test::(test_get_version_number|test_try_into_v4) [.][.][.] ok$|^DIRECT_ADDRESS_NORMALIZATION=|^VERSION_NUMBER_(OVERFLOW|RANGE)=|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|FAILURE_READ)=|^READ_JOB_BACKPRESSURE(_CASE)?=|^(CIPHER_SEAL_ALLOCATION|TCP_SEAL_ALLOCATION|CIPHER_KEY_GUARD|RECEIVE_CIPHER|RECEIVE_CODEC|GUESS_LIMITER_(ALIAS|EXPIRY))' "$output"
         elif [ "$RUST_TEST_PROFILE" = compression ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'decompression test total differs'
             grep -E '^test (fs::file_block|compress)::tests::[[:alnum:]_]+ [.][.][.] ok$|^DECOMPRESSION_(WINDOW|INPUT)' "$output"

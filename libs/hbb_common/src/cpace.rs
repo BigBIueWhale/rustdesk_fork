@@ -798,8 +798,54 @@ mod guess_limiter_tests {
     use super::*;
     use std::net::Ipv4Addr;
 
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn expired_window_recovers_without_success_or_restart() {
+        let _serial = TEST_LOCK.lock().unwrap();
+        let address = Ipv4Addr::new(198, 51, 100, 250);
+        let forms = [IpAddr::V4(address), IpAddr::V6(address.to_ipv6_mapped())];
+        let other = Ipv4Addr::new(198, 51, 100, 251);
+        let unrelated = [IpAddr::V4(other), IpAddr::V6(other.to_ipv6_mapped())];
+        for attempt in 0..10 {
+            assert!(forms.iter().all(|source| guess_limiter_allows(*source)));
+            assert!(record_handshake_failure(forms[attempt % 2], HandshakeError::Confirmation));
+        }
+        let blocked_at = Instant::now();
+        for checkpoint in 0..3 {
+            if checkpoint != 0 {
+                std::thread::sleep(Duration::from_secs(20));
+            }
+            for source in forms {
+                assert!(!guess_limiter_allows(source));
+                for error in [HandshakeError::Io, HandshakeError::Protocol,
+                    HandshakeError::Pake, HandshakeError::PeerConfirmationUnavailable] {
+                    assert!(!record_handshake_failure(source, error));
+                }
+            }
+            assert!(unrelated.iter().all(|source| guess_limiter_allows(*source)));
+            println!("GUESS_LIMITER_EXPIRY_STAGE=checkpoint:{checkpoint} elapsed_ms:{} blocked:true unrelated:allowed",
+                blocked_at.elapsed().as_millis());
+        }
+        std::thread::sleep(Duration::from_millis(20_020));
+        let elapsed = blocked_at.elapsed();
+        assert!(elapsed >= Duration::from_secs(60));
+        assert!(forms.iter().all(|source| guess_limiter_allows(*source)),
+            "a blocked source must recover without success or process restart");
+        for attempt in 0..10 {
+            assert!(forms.iter().all(|source| guess_limiter_allows(*source)),
+                "an expired counter must start a fresh failure budget");
+            assert!(record_handshake_failure(forms[(attempt + 1) % 2], HandshakeError::Confirmation));
+        }
+        assert!(forms.iter().all(|source| !guess_limiter_allows(*source)));
+        assert!(unrelated.iter().all(|source| guess_limiter_allows(*source)));
+        println!("GUESS_LIMITER_EXPIRY=pass elapsed_ms:{} non_guesses:24 recovered:both fresh_budget:10 reblocked:both unrelated:allowed clock:real",
+            elapsed.as_millis());
+    }
+
     #[test]
     fn mapped_sources_share_one_guess_budget() {
+        let _serial = TEST_LOCK.lock().unwrap();
         let before = guess_limiter_tracked_count();
         let mut blocked_cases = 0;
         for mode in 0..4 {

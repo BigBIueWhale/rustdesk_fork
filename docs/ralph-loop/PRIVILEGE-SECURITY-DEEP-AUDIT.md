@@ -121890,37 +121890,6 @@ retires and all three listener deltas are zero. Raw serial: 36,138 bytes, SHA-25
 `4e24074739128361f0b6fd5cfe779ee6afec7fbfd13a763d70bcbe985b4199a7`.
 This audit-only receipt preserves the counted ledger and unchanged product source.
 
-### Resume content proof candidate — 2026-10-31
-
-Continue the reproduced receive-staging prerequisite, ahead of layout replacement:
-both saved-prefix mismatch directions currently publish incorrect bytes. The candidate
-adds a distinct protobuf resume action carrying a 32-byte SHA-256 proof over a fixed
-domain, declared total size, resume offset and exact prefix. The peer verifies it on
-the retained file before admitting the resumed stream/counters. Old nonzero offset
-actions, missing actions and malformed proofs are refused; zero-offset fresh transfers
-and skip actions retain their behavior. CM forwarding preserves the complete action
-instead of reconstructing it from default-valued getters. Older-peer/installed CM
-compatibility remains an execution obligation, not an inference from this change.
-
-Prefix IO uses a fallibly allocated 64 KiB buffer and yields after each chunk. An
-interrupted/failed hash makes that job unusable; a prepared receive claim retires its
-lease while preserving saved payload/digest. A local proof producer retains that
-preservation until an incoming resumed block is admitted. Existing final files stay
-untouched on mismatch. Tests extend the paired real-job baseline, malformed/content
-proof cases, pending-claim retirement and actual cancellation after a kernel-observed
-prefix read. Existing offset/retained-source fixtures use the new action. Native
-full-parent/installed callers and other parked topics are not reopened.
-
-Research already reviewed: Tokio File documents shared cursors and pending IO after
-drop (https://docs.rs/tokio/latest/tokio/fs/struct.File.html); Unix FileExt::read_at
-leaves the cursor unchanged whereas Windows seek_read changes it
-(https://doc.rust-lang.org/std/os/unix/fs/trait.FileExt.html,
-https://doc.rust-lang.org/std/os/windows/fs/trait.FileExt.html). The implementation
-owns the stream during bounded async hashing and does not use a supposedly independent
-cloned cursor. This preparation claims no pass. The canonical metadata lane retains
-all three failing completed-destination oracles and exports the preceding proof
-observations before those oracles. No namespace-layout correction is claimed here.
-
 ### Receive generation-lock retirement — 2026-10-31
 
 Continue the completed-destination blocker with the private coordination lifetime
@@ -122069,3 +122038,58 @@ retires and all three listener deltas are zero. Serial: 35,831 bytes, SHA-256
 `fb9a5cd13fa052d03abb1cb2d2bddcce378c30bcf85b639e123913bdaede3dec`.
 The thirteen raw files total 297,387 bytes per host, hash-verified on both hosts.
 This audit-only receipt preserves the counted ledger and unchanged product source.
+
+### Resume content proof candidate — 2026-10-31
+
+Continue the reproduced receive-staging prerequisite, ahead of layout replacement:
+both saved-prefix mismatch directions currently publish incorrect bytes. The candidate
+adds a distinct protobuf resume action carrying a 32-byte SHA-256 proof over a fixed
+domain, declared total size, resume offset and exact prefix. The peer verifies it on
+the retained file before admitting the resumed stream/counters. Old nonzero offset
+actions, missing actions and malformed proofs are refused; zero-offset fresh transfers
+and skip actions retain their behavior. CM forwarding preserves the complete action
+instead of reconstructing it from default-valued getters. Older-peer/installed CM
+compatibility remains an execution obligation, not an inference from this change.
+
+Prefix IO uses a fallibly allocated 64 KiB buffer and yields after each chunk. An
+interrupted/failed hash makes that job unusable; a prepared receive claim retires its
+lease while preserving saved payload/digest. A local proof producer retains that
+preservation until an incoming resumed block is admitted. Existing final files stay
+untouched on mismatch. Tests extend the paired real-job baseline, malformed/content
+proof cases, pending-claim retirement and actual cancellation after a kernel-observed
+prefix read. Existing offset/retained-source fixtures use the new action. Native
+full-parent/installed callers and other parked topics are not reopened.
+
+Research already reviewed: Tokio File documents shared cursors and pending IO after
+drop (https://docs.rs/tokio/latest/tokio/fs/struct.File.html); Unix FileExt::read_at
+leaves the cursor unchanged whereas Windows seek_read changes it
+(https://doc.rust-lang.org/std/os/unix/fs/trait.FileExt.html,
+https://doc.rust-lang.org/std/os/windows/fs/trait.FileExt.html). The implementation
+owns the stream during bounded async hashing and does not use a supposedly independent
+cloned cursor. This preparation claims no pass. The canonical metadata lane retains
+all three failing completed-destination oracles and exports the preceding proof
+observations before those oracles. No namespace-layout correction is claimed here.
+
+At `a942f5f52901553f1b792181b6bae22fa4f2ea29`, TUF `EL4Da9LMhT`, all 44 metadata
+tests pass, including both formerly corrupting directions, both valid controls,
+fourteen proof cases, two pending-claim cases and both actual hash cancellations.
+The maximum wire-offset test then reaches its unchanged 20-second deadline while
+hashing 4,294,967,295 sparse bytes. It exits 124; later unit groups and native
+authority scenarios do not run. This is not complete metadata acceptance.
+The exact maximum-offset case now gets its own 120-second budget and timing receipt;
+all ordinary budgets/oracles remain. Eight existing retained-source/counter tests
+are added to the narrow send-digest lane because those changed confirmation paths
+need execution; no parked pre-I/O or full-parent test is selected.
+
+Artifact SHA-256 `aa8d912f37aa60e5b880ed5735797cf60b1677d22e99e50a5a95568ad69cde8b`.
+Serial 128,662 bytes, SHA-256
+`bcbb69bf7af099c19c5added5adce09ead0e0965bab9c10f2641f87370e0d02e`.
+QEMU 2980178 joins after 159.962 seconds, RAM `run.6oub44bt` retires, and all four
+listener deltas are zero. Seven raw files total 201,462 bytes per host and are
+hash-verified on both hosts before exact diagnostic scratch retirement.
+
+Protocol compatibility reference: the official proto3 guide states that an unknown
+oneof member appears unset to an older decoder
+(https://protobuf.dev/programming-guides/proto3/#backwards-compatibility-issues).
+This motivates preserving the action rather than inferring zero/false from getters;
+it does not establish complete older-version application behavior.

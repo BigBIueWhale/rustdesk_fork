@@ -12453,6 +12453,7 @@ mod tests {
             true,
         )
         .expect("admit sparse source");
+        let started = std::time::Instant::now();
         let request = job
             .confirm_with_offset(0, offset)
             .await
@@ -12474,6 +12475,7 @@ mod tests {
         let eof = job.read().await.expect("read exact EOF").expect("EOF block");
         assert!(eof.data.is_empty());
         assert_eq!(job.file_num(), 1);
+        println!("FILE_METADATA_MAX_OFFSET=pass bytes={offset} elapsed_ms={}", started.elapsed().as_millis());
     }
 
     #[tokio::test]

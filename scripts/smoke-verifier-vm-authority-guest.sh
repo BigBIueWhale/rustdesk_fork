@@ -3573,6 +3573,14 @@ run_focused_rust_tests() {
                 fs::tests::read_step_confirmation_resumes_and_disabled_flags_do_not_pause
                 fs::tests::read_step_waiting_confirmation_does_not_block_other_jobs
                 fs::tests::read_step_round_robin_preserves_transfer_lifetimes
+                fs::tests::send_resume_seeks_the_source_not_receive_sidecars
+                fs::tests::send_resume_keeps_the_announced_source_after_path_replacement
+                fs::tests::send_resume_bounds_the_offset_by_the_announced_source
+                fs::tests::send_read_preserves_exact_lengths_and_resumed_eof
+                fs::tests::send_resume_refuses_grown_retained_source_beyond_admitted_size
+                fs::tests::send_resume_refuses_grown_first_open_beyond_admitted_size
+                fs::tests::confirmation_rejects_wrong_job_and_duplicate_progress
+                fs::tests::resume_counter_overflow_does_not_publish_stream_ownership
             )
         fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
@@ -6182,7 +6190,13 @@ run_focused_rust_tests() {
                                 fs::tests::receive_file_list_replacement_cannot_authorize_early_done \
                                 fs::tests::receive_destination_lease_is_cross_process_and_crash_resumable; do
                                 receive_status=0
-                                timeout --signal=TERM --kill-after=5s 20s \
+                                receive_budget=20s
+                                if [ "$receive_case" = fs::tests::resume_confirmation_preserves_the_largest_wire_offset ]; then
+                                    # This boundary now reads/hashes the complete sparse 4 GiB prefix.
+                                    receive_budget=120s
+                                    printf "FILE_METADATA_MAX_OFFSET=started bytes=4294967295 budget=120s\n"
+                                fi
+                                timeout --signal=TERM --kill-after=5s "$receive_budget" \
                                     "$test_executable" --exact "$receive_case" --color never --test-threads=1 --show-output \
                                     || receive_status=$?
                                 [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
@@ -6339,7 +6353,15 @@ run_focused_rust_tests() {
                                 fs::tests::read_step_terminal_retirement_precedes_egress_admission \
                                 tcp::writer_lifetime_tests::read_jobs_retire_before_native_writer_pressure_errors \
                                 fs::tests::read_step_confirmation_resumes_and_disabled_flags_do_not_pause \
-                                fs::tests::read_step_waiting_confirmation_does_not_block_other_jobs; do
+                                fs::tests::read_step_waiting_confirmation_does_not_block_other_jobs \
+                                fs::tests::send_resume_seeks_the_source_not_receive_sidecars \
+                                fs::tests::send_resume_keeps_the_announced_source_after_path_replacement \
+                                fs::tests::send_resume_bounds_the_offset_by_the_announced_source \
+                                fs::tests::send_read_preserves_exact_lengths_and_resumed_eof \
+                                fs::tests::send_resume_refuses_grown_retained_source_beyond_admitted_size \
+                                fs::tests::send_resume_refuses_grown_first_open_beyond_admitted_size \
+                                fs::tests::confirmation_rejects_wrong_job_and_duplicate_progress \
+                                fs::tests::resume_counter_overflow_does_not_publish_stream_ownership; do
                                 group_status=0
                                 timeout --signal=TERM --kill-after=5s 20s \
                                     "$test_executable" --exact "$test_name" --color never --test-threads=1 --show-output \
@@ -8146,7 +8168,7 @@ PY
     if [ "$MODE" = hbb-common-fs ] && [ "$RUST_TEST_PROFILE" = file-metadata ]; then
         grep -E '^RECEIVE_GENERATION_(RETIREMENT|ERROR)=observed ' "$output"
         printf 'RECEIVE_GENERATION_RETIREMENT_ARTIFACT=observed sha256=%s\n' "$hbb_test_artifact_sha"
-        grep -E '^FILE_METADATA_(RESUME_CONTENT|RESUME_PROOF|PENDING_RESUME|RESUME_CANCEL)=' "$output"
+        grep -E '^FILE_METADATA_(RESUME_CONTENT|RESUME_PROOF|PENDING_RESUME|RESUME_CANCEL|MAX_OFFSET)=' "$output"
         printf 'FILE_METADATA_RESUME_ARTIFACT=observed sha256=%s tests=%s groups=%s\n' \
             "$hbb_test_artifact_sha" "$tests_passed" "${#result_lines[@]}"
         local authority_record authority_sha authority_executable authority_source_sha authority_work
@@ -8354,6 +8376,7 @@ PY
             [ "$(grep -Fxc 'READ_JOB_BACKPRESSURE=pass cases=4 byte_refusals=3 channel_refusals=1 selected=retired survivors=exact writer=joined permits=returned receipt=closed storage=retired' "$output")" -eq 1 ] \
                 || fail 'native backpressure send-job retirement differs'
             grep -E '^test fs::(tests::(send_(digest_|read_buffer_)|read_step_|transfer_resume_)|file_block::tests::allocation_refusal_).* \.\.\. ok$|^test tcp::writer_lifetime_tests::read_jobs_retire_before_native_writer_pressure_errors \.\.\. ok$|^SEND_DIGEST_SIZE=|^SEND_READ_ALLOCATION(_CASE)?=|^FILE_COMPRESSION_(ALLOCATION|CASE)=|^READ_TERMINAL_RETIREMENT(_CASE)?=|^READ_NONTERMINAL_RETIREMENT=|^READ_JOB_BACKPRESSURE(_CASE)?=|^READ_ROUND_ROBIN(_CASE)?=.*|^READ_CONFIRMATION_READY=|^TRANSFER_RESUME_' "$output"
+            grep -E '^test fs::tests::(send_resume_[a-z_]+|send_read_preserves_exact_lengths_and_resumed_eof|confirmation_rejects_wrong_job_and_duplicate_progress|resume_counter_overflow_does_not_publish_stream_ownership) [.][.][.] ok$' "$output"
         else
         grep -E '^test platform::linux::tests::r_s11at_loginctl_output_.* \.\.\. ok$|^LOGINCTL_(WAIT_AUTHORITY|LOST_WAIT)=' "$output"
         if [ "$HBB_LOGIND_NATIVE" -eq 0 ]; then

@@ -119762,3 +119762,62 @@ QEMU 2140968 joins in 30.810 seconds; RAM `run.ug3t6pot` retires and all
 three listener deltas are zero. Six count files add 104,064 bytes; thirteen files
 from this slice total 183,790 bytes per host with matching hashes. This audit-only
 receipt leaves the measured ledger unchanged.
+
+### 2026-10-30 — source limiter capacity and live-block eviction
+
+At `e5f9e03d222e1444ca464d8cbb29e248012385c3`, review of
+`libs/hbb_common/src/cpace.rs` finds two unsupported comments: a strict maximum
+of ten guesses per window, and capacity eviction that never weakens a live block.
+`record_handshake_failure` removes the oldest window after exceeding 8192 entries
+without requiring expiry. `src/server.rs` checks admission before awaiting CPace
+and records confirmation failure afterward, so in-flight work is also outside a
+strict admission reservation. R-S10 specifies loose, bounded per-source shedding,
+finite recovery and owner access; it does not authorize replacing this with a
+global lockout. No authentication or limiter policy change is made.
+
+`f6a0a13b` corrects the comments and adds an executable capacity check to the
+existing focused limiter profile. It observes the real public accounting and
+admission functions after every one of 9000 distinct-source failures, checks
+recent-source blocking and unrelated-source admission, and records old-block
+eligibility separately from expiry. It neither clears the map nor replaces its
+clock. The alias case counts its exact native/mapped keys rather than a global
+length delta, preserving its four-case oracle even when eviction offsets insertion.
+The expiry case is unchanged. Only comments change outside the test module;
+comparison of the preceding source with comment-only lines removed is identical,
+SHA-256 `0898d690944a952c70e3271ea0722f0fc7aacac170cece066d920f3a7cdc3bad`.
+Shell syntax and `git diff --check` pass.
+
+The standard-library contracts for
+[HashMap retention](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.retain)
+and [elapsed time](https://doc.rust-lang.org/std/time/struct.Instant.html#method.elapsed)
+support the bounded-table and real-clock observation design. Entry count does not
+measure allocator bytes, and this elapsed observation is not a sustained-load or
+cross-platform clock benchmark.
+
+The first run, `aClk6I6UkV`, stops at a test-only `From<i32>` compilation error;
+`2847a4b3d85aa0d990625bfa7a11bf38e1929642` annotates the generator parameter
+as `u32`. That failed run executes no behavioral check. QEMU 2142242 joins in
+127.658 seconds, RAM `run.0c9b5119` retires, four listener deltas are zero,
+and the exact retired diagnostic tree is removed after seven raw files
+(80,508 bytes) are copied and hash-verified on CTE.
+
+TUF `HpG3sJPrK2`, `bash scripts/smoke-verifier-vm-authority.sh
+--guess-limiter-tests`, passes all three checks on Rust 1.75 in the nonroot,
+networkless guest container and zero-NIC bounded-RAM VM. Artifact SHA-256:
+`c62ba8002c7454df50b21d7fb135419068669e0acc47c4b724aee738718ab448`.
+The capacity case observes peak/final count 8192 and the evicted blocked source
+allowed again within 1717 ms, well before 60-second expiry. A recent source still
+blocks after ten failures, and the unrelated source remains allowed throughout.
+All four address-alias cases retain one entry and a shared block each; 32
+non-confirmation errors remain uncharged. The expiry case preserves its 0/20/40
+second refusals, 60020 ms recovery, fresh ten-failure budget and 24 uncharged
+non-confirmation errors. QEMU 2142996 joins in 197.026 seconds, RAM
+`run.zxzsmucv` retires, and all four listener deltas are zero. Seven accepted-run
+raw files add 74,455 bytes; all fourteen files have matching hashes on both hosts.
+
+This is native component evidence and a corrected security claim, not a product
+behavior fix or 9000 completed network handshakes. Source-IP provenance at the
+actual receiver, concurrency and sustained-flood CPU/memory/access, installed
+authorization/settings, other-platform clocks, R-S0/R-F5 and release acceptance
+remain OPEN. All parked work stays parked. The existing R-S10 ledger paragraph
+is updated; fresh token measurement follows.

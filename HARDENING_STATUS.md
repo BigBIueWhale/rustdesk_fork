@@ -12935,27 +12935,34 @@ sandbox implementation and checker-repair history remain in Git.
   test remain, and the main gate still runs `pake` and `cpace_it`. Wording/symbol
   checks are not behavioral coverage. Retaining these executable tests is not a fresh
   test pass, native or current-release acceptance, or external review; R-V3 remains open.
-  **R-S10 limiter scope:** production uses a ten-confirmation-failure, 60-second
-  tumbling window per source and an 8192-entry source-map ceiling; roughly twice
-  the failure count can straddle a boundary.
-  This is flood shedding, not a stronger credential guarantee.
+  **R-S10 limiter scope:** a retained source entry blocks new admission after ten
+  confirmation failures until its 60-second tumbling window expires. The 8192-entry
+  ceiling evicts oldest windows, including live blocks; already-admitted handshakes
+  can also finish after blocking. This provides bounded flood shedding, not a strict
+  ten-guess guarantee. The unsupported source claims that eviction never weakens a
+  live block and that 8192 is sufficient for every DMZ are removed.
   `07983d0c` normalizes IPv4-mapped addresses at both admission and confirmation
   accounting. The unchanged four-case regression fails before the two-line fix
   (zero shared block decisions, six entries) and passes afterward (four shared
   block decisions, four entries). Thirty-two non-confirmation errors consume no
-  budget and unrelated sources remain allowed. At `5d7545af`, TUF `XBWa4cdqAX`
-  passes exactly two limiter checks in 199.793 seconds with
+  budget and unrelated sources remain allowed. At `2847a4b3`, TUF `HpG3sJPrK2`
+  passes three limiter checks in 197.026 seconds with
   `bash scripts/smoke-verifier-vm-authority.sh --guess-limiter-tests`.
-  This separate profile removes the 60-second wait from the 48 writer checks;
-  production and test bodies are unchanged, and the artifact matches the prior
-  50-check run. The real-clock regression observes refusal at 0/20/40 seconds
-  and recovery after 60.020 seconds
+  The capacity case checks the retained count after each of 9000 distinct-source
+  confirmation failures: peak/final count 8192, recent-source blocking and unrelated
+  admission preserved. The oldest blocked source is eligible again within 1.717
+  seconds, before expiry. These are direct calls to the production accounting API,
+  not 9000 network handshakes. Alias entry counts inspect their exact source keys
+  so capacity eviction cannot conceal an extra representation behind an unchanged
+  global count. The real-clock case retains refusal at 0/20/40 seconds and recovery
+  after 60.020 seconds
   without success, restart or clock/map manipulation. Twenty-four non-confirmation
   errors do not extend the block; both address forms share a fresh ten-failure
   budget afterward, and unrelated sources remain allowed. The VM joins and RAM
   scratch retires with four zero listener deltas. The audit retains source/artifact
-  identities and the earlier alias comparison. Production code is unchanged by
-  the expiry test. Network choke-point behavior, flood/resource performance,
+  identities and the earlier alias comparison. Production behavior is unchanged;
+  the separate profile keeps this wait out of the 48 writer checks.
+  Network choke-point behavior, sustained flood/resource performance,
   other-platform clocks/suspend, installed and release acceptance remain OPEN.
   The current IPv4-only listener does not establish a remotely reachable alias bypass.
 - **Local IPC/CM authorization audit — ⚠️ SUPERSEDED 2026-07-08 by R-S11b/R-S11c.** The

@@ -117710,3 +117710,12 @@ as UID/GID 1000 with read-only source/root and no VM/container network. QEMU
 deltas are zero. Seven raw files total 82,434 bytes per host with matching hashes,
 under `android-rust-lifecycle-tests-run.rbjv59T3Pr` (console adds `console-`).
 Command: `bash scripts/smoke-verifier-vm-authority.sh --pake-allocation-tests`.
+
+Ledger run `f2V9Bp7HdK` at `1f17f548` passes 72 workload controls/five refusals,
+seven tokenizer controls and full text round trip. It reports 360,216 tokens with
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 1,646,937 bytes, SHA-256
+`7373e7bbb78e0fa42ed454688059865b228193126cb449cbf3bb6b9f233f898d`.
+QEMU 1813405 joins in 30.415 seconds; RAM `run.ovzvvo8b` retires and three listener
+deltas are zero. Six count files add 104,031 bytes; twenty files across the three
+runs total 269,630 bytes per host with matching hashes. This audit-only receipt
+preserves the measured ledger and its approximate 400,000-token budget.

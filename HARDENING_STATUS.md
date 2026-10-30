@@ -16178,6 +16178,25 @@ must track live/resumable work rather than completed destination history. Preser
 the accepted race/crash controls and full authorized access across mounts; hiding
 the directory or unlinking it from an attacker-mutable parent is not a correction.
 
+**Replacement prerequisite — native mount/object observations.** The guest-only
+probe at `44030710`, TUF `O0tIK6FXlb`, exercises ext4, tmpfs, a bind alias and
+default overlayfs under root and UID 4001 on Linux 6.1.0-50. Same-mount publication
+succeeds; separate tmpfs and writable/read-only bind aliases return `EXDEV` with
+source bytes preserved. Ext4/bind and overlay reuse an inode within the bounded
+experiment; several replacements also have the original birth timestamp. Those
+metadata fields therefore cannot establish durable destination identity. Opaque
+handles distinguish the observed ext4 generations and exist on tmpfs, but default
+overlayfs returns `EOPNOTSUPP`. UID 4001 writes its owned destination while anchor
+creation in the root-owned parent returns `EACCES`. This excludes home-only staging,
+inode/birth-time identity and a universal handle requirement as complete solutions.
+Root reopens the supported handles; UID 4001 receives `EPERM`. All fourteen
+primitive observations finish with joined children and retired mounts/fixtures.
+The audit retains the first attempt's descriptor correction. No replacement
+product design is accepted, and all three lifecycle regressions still fail.
+Next resolve same-mount protected placement and resumable destination identity
+together, including these ordinary-user and unsupported-handle cases, before
+replacing the retained per-destination layout. Existing receive oracles remain binding.
+
 Per-file artifacts/directories retire. One container, its small identity file
 and two bounded coordinator records persist per destination. Broader crash/fault
 boundaries, long-term coordination retention/cleanup, remount/filesystem identity,

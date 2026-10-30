@@ -121842,3 +121842,41 @@ QEMU 2912443 joins after 202.498 seconds; RAM `run.8o8f3wjv` retires, four
 listener deltas are zero, and 3,485,696 allocated scratch bytes are removed after
 seven raw evidence files (103,793 bytes) are hash-verified on both hosts. Serial
 SHA-256: `d9dd7e221a2a5f31251a9ef6f74a91deec4373f4030330a7b538946cc473a536`.
+
+**Corrected primitive checkpoint.** Source `44030710b32ac34dc87c9566c131ee41f9247d2c`,
+tree `6cef9ada1060b48d917adf231ff1e7c7c8eb2666`, TUF `O0tIK6FXlb`, completes
+all fourteen observations on Linux `6.1.0-50-cloud-amd64`. Ext4, tmpfs and bind
+handles reopen under root; UID 4001 receives `EPERM`. All eight directory cases
+retain their observed identity through rename; retained descriptors distinguish
+replacement while live. After closing the old descriptor, ext4/bind and overlay
+reuse the inode on the first bounded attempt; four cases also repeat its birth
+timestamp. Ext4 handles distinguish those reused generations. Tmpfs does not
+reuse the inode within 64 attempts. Default overlayfs supplies no handle.
+Three same-mount publications succeed and all three cross-mount attempts return
+`EXDEV`, preserving source bytes and leaving no destination. All four ordinary-user
+cases create their destination but cannot create an anchor in its root-owned
+parent. Children, mounts and fixture retire before the complete receipt.
+
+These results reject inode/birth-time identity, home-only staging and universal
+handle availability as complete replacement designs. They do not prove identity
+across remount/reboot, other filesystems, or lower-backed overlay objects. Linux
+v6.1 `fs/overlayfs/super.c` installs its export operations only with NFS export
+enabled; the tested default is not a claim that every overlay configuration lacks
+handles. Primary source: https://raw.githubusercontent.com/torvalds/linux/v6.1/fs/overlayfs/super.c
+and https://raw.githubusercontent.com/torvalds/linux/v6.1/fs/fhandle.c .
+The next product model must resolve protected same-mount placement and resumable
+destination identity together, preserve ordinary-user reach, and retire completed
+records under one ownership gate. No product correction is accepted by this probe.
+
+The unchanged production artifact remains
+`5b9c71092b39ca7d2c0ca006cf3b7751a88ea135f7f74d4498dbb8b604872279`;
+nineteen existing scenarios/twenty actors pass, and three completed-destination
+cases fail with the same listing/removal effects and 62 added records / 126,976
+allocated bytes. No new exported unit-suite acceptance is claimed. Probe source
+SHA-256 `5509cf25d69420d09c1a583f9ef76d50ce6fedbfabc2c7f6e849176be82505ef`;
+serial 30,584 bytes, SHA-256
+`3b1a0427f61d2942700dd95078e3860c42d67ecae31cefb17aa6fb3c21fb0cba`.
+QEMU 2913459 joins after 208.263 seconds, RAM `run.vht0ipru` is absent, and all
+four listener deltas are zero. Seven raw files (102,410 bytes) are hash-verified
+on both hosts before removing 3,485,696 allocated bytes of exact diagnostic
+scratch. The receive lifecycle requirement remains OPEN/STOP-SHIP.

@@ -1142,13 +1142,21 @@ class _About extends StatefulWidget {
 }
 
 class _AboutState extends State<_About> {
+  late final Future<Map<String, String>> _metadata;
+
   @override
-  Widget build(BuildContext context) {
-    return futureBuilder(future: () async {
+  void initState() {
+    super.initState();
+    _metadata = () async {
       final version = await bind.mainGetVersion();
       final buildDate = await bind.mainGetBuildDate();
       return {'version': version, 'buildDate': buildDate};
-    }(), hasData: (data) {
+    }();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return futureBuilder(future: _metadata, hasData: (data) {
       final version = data['version'].toString();
       final buildDate = data['buildDate'].toString();
       return SingleChildScrollView(

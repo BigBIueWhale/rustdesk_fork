@@ -1499,13 +1499,22 @@ PY
         && [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
         || { tail -n 60 "$output" >&2; fail 'Debian archive integration tests failed'; }
     [ "$(grep -Fxc 'ok  Debian package archive and production-finalizer self-tests passed' "$output")" -eq 1 ] \
-        && [ "$(wc -l <"$output")" -eq 2 ] || fail 'Debian archive integration result differs'
+        && [ "$(wc -l <"$output")" -eq 3 ] || fail 'Debian archive integration result differs'
     /usr/bin/python3 -B -I -S - "$output" <<'PY'
 import json,re,sys
 from pathlib import Path
 lines=Path(sys.argv[1]).read_text().splitlines()
-assert lines[0].startswith("DEBIAN_PACKAGE_SELF_TEST_ARTIFACTS=")
-value=json.loads(lines[0].split("=",1)[1])
+assert lines[0].startswith("DEBIAN_ELF_LOAD_RANGES=")
+ranges=json.loads(lines[0].split("=",1)[1])
+assert set(ranges)=={"valid","wrap-boundary","max-memory"}
+for name,case in ranges.items():
+ assert set(case)=={"runner_sha256","archive_sha256","native_returncode","gate"}
+ assert case["native_returncode"]==(0 if name=="valid" else -11)
+ assert case["gate"]==("accepted" if name=="valid" else "refused")
+ assert all(re.fullmatch("[0-9a-f]{64}",case[key]) for key in ("runner_sha256","archive_sha256"))
+assert lines[1].startswith("DEBIAN_PACKAGE_SELF_TEST_ARTIFACTS=")
+value=json.loads(lines[1].split("=",1)[1])
+assert ranges["valid"]["runner_sha256"]==value["runner_sha256"]
 assert set(value)=={"fixture_archive_sha256","production_archive_sha256","runner_sha256","libraries_sha256","compiler_sha256","cli_verified_archives","maintainer_cli_cases"}
 assert value["cli_verified_archives"]==2 and len(value["libraries_sha256"])==12
 assert set(value["maintainer_cli_cases"])=={kind+"-"+name for kind in ("changed","missing-source") for name in ("preinst","postinst","prerm","postrm")}

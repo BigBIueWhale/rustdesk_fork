@@ -1851,6 +1851,57 @@ def expect_member_stream_failure(names, expected, directories=()):
     )
 
 
+def run_load_range_self_test(good_tree, tmp, polkit_policy):
+    runner = (good_tree / PRIMARY_BINARY[2:]).read_bytes()
+    layout = elf_dynamic_test_layout(runner)
+    offset, header = next(
+        item for item in reversed(layout["program_headers"])
+        if item[1][0] == 1 and item[1][3] > 1
+    )
+    observations = {}
+    for label, memory_size in (("valid", None), ("wrap-boundary", (1 << 64) - header[3]),
+                               ("max-memory", (1 << 64) - 1)):
+        tree = tmp / ("load-range-" + label)
+        shutil.copytree(good_tree, tree, symlinks=True)
+        payload = bytearray(runner)
+        if memory_size is not None:
+            struct.pack_into("<Q", payload, offset + 40, memory_size)
+        for name in RUNNER_BINARIES:
+            (tree / name[2:]).write_bytes(payload)
+        package = tmp / ("load-range-" + label + ".deb")
+        build_deb(tree, package, root_owner_group=True)
+        data = tar_stream_from_deb(package, "--fsys-tarfile")
+        members = tar_members_from_stream(data, str(package))
+        for name in RUNNER_BINARIES:
+            if archive_member_bytes(data, members[name], str(package)) != payload:
+                raise ValidationError("load-range archive and executed bytes differ")
+        result = subprocess.run(
+            ["/usr/bin/prlimit", "--core=0", "--as=134217728", "--cpu=3", "--",
+             str(tree / PRIMARY_BINARY[2:])],
+            stdin=subprocess.DEVNULL, capture_output=True, timeout=5, check=False,
+        )
+        expected = 0 if memory_size is None else -signal.SIGSEGV
+        if result.returncode != expected or result.stdout or result.stderr:
+            raise ValidationError(f"native {label} load range result differs: {result.returncode}")
+        gate = "accepted"
+        try:
+            validate_deb(package, expected_maintainer_scripts=synthetic_maintainer_scripts(),
+                         expected_polkit_policy=polkit_policy)
+        except ValidationError as err:
+            if memory_size is None or "ELF load segment virtual range overflows" not in str(err):
+                raise
+            gate = "refused"
+        observations[label] = {
+            "runner_sha256": hashlib.sha256(payload).hexdigest(),
+            "archive_sha256": hashlib.sha256(package.read_bytes()).hexdigest(),
+            "native_returncode": result.returncode,
+            "gate": gate,
+        }
+    print("DEBIAN_ELF_LOAD_RANGES=" + json.dumps(observations, sort_keys=True), flush=True)
+    if any(observations[label]["gate"] != "refused" for label in ("wrap-boundary", "max-memory")):
+        raise ValidationError("package gate accepted a natively rejected ELF load range")
+
+
 def run_self_test(repo, polkit_policy):
     if shutil.which("dpkg-deb") is None:
         raise ValidationError("dpkg-deb is required for self-test")
@@ -1889,6 +1940,7 @@ def run_self_test(repo, polkit_policy):
         ).read_bytes()
         validate_deb(good_deb, expected_systemd_unit, polkit_policy,
                      expected_maintainer_scripts=synthetic_maintainer_scripts())
+        run_load_range_self_test(good_tree, tmp, polkit_policy)
 
         permissive_polkit_policy = polkit_policy.replace(
             b"<allow_active>auth_admin</allow_active>",

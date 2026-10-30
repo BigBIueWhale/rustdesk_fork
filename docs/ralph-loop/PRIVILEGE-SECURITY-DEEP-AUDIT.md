@@ -117719,3 +117719,42 @@ QEMU 1813405 joins in 30.415 seconds; RAM `run.ovzvvo8b` retires and three liste
 deltas are zero. Six count files add 104,031 bytes; twenty files across the three
 runs total 269,630 bytes per host with matching hashes. This audit-only receipt
 preserves the measured ledger and its approximate 400,000-token budget.
+
+### 2026-10-30 — generator and group-multiplication timing
+
+The preceding MAC-key slice is complete; this is progress, not a blocked/waiting
+turn. At `763fe6bb`, the R-P12 row still has no generator or multiplication timing
+observation. Production `derive_generator` at `libs/pake/src/lib.rs:212` consumes
+the PRS; all three handshake multiplication sites use ordinary scalar/point
+`*`. The [pinned Dalek API](https://raw.githubusercontent.com/dalek-cryptography/curve25519-dalek/curve25519-4.1.3/curve25519-dalek/src/ristretto.rs)
+distinguishes that operator from its explicitly variable-time double-scalar API.
+The [dudect method](https://github.com/oreparaz/dudect) motivates randomized input
+classes and statistical comparison, with no proof claim from a negative result.
+No production authority, algorithm, interface, dependency or protocol changes.
+
+The existing optimized, isolated timing test adds two assessed cohorts and a
+second positive control. Each new cohort has a fixed 100,000-measurement budget,
+20,000 warm-up measurements and four operations per measurement. The existing
+four million-measurement cohorts, raw/pooled-p99 Welch calculation and absolute
+threshold 10 remain. The 90-second executable deadline and all VM admission,
+storage, identity, source/artifact and cleanup limits remain unchanged.
+
+- Generator: production `derive_generator` with fixed versus randomized canonical
+  44-byte base64 PRS, matching the representation produced by
+  `config/permanent_password.rs::derive_cpace_prs`; CI and 32-byte SID are fixed.
+  Input preparation and hashing of the fixture inputs are outside the clock.
+- Multiplication: wide scalar reduction followed by the same ordinary borrowed
+  scalar/point operator and wiping owners used in the handshake. Scalar one is
+  compared with reduced random 64-byte input; the non-table point is prepared
+  from the fixed PRS outside the measured region. OS RNG is excluded.
+- Group positive control: the dependency's explicitly variable-time operation
+  computes `scalar * point + 0 * basepoint` with the same scalar classes. Two
+  untimed equality checks establish its matching group result. Both this control
+  and the existing early-exit comparison must detect a difference; all five
+  assessed cohorts must remain within threshold for the test to pass.
+
+This measures the generator function and a composed reduction/multiplication
+primitive, not complete sampling, handshake timing or a shipping application.
+Other PRS lengths, varied points, other targets/backends, stronger leakage
+analysis, erasure, independent reproduction and R-V3 remain OPEN. Parked work is
+unchanged. Runtime results follow only after exact VM completion.

@@ -120911,3 +120911,52 @@ QEMU 2623976 joins in 30.412 seconds, RAM `run.vlguz0b8` retires, and all three
 endpoint deltas are zero. Six count files add 105,336 bytes; twenty-seven raw
 files total 439,707 bytes per host, copied and hash-verified. This audit-only
 receipt leaves the ledger unchanged.
+
+## 2026-10-30 — connection-mode button accessibility
+
+Previous goal turn: PROGRESS through the verified keyboard-positioning correction.
+All user parks and the fifteen open native credential-action acceptances remain.
+The connection-mode control still used an unnamed 14-pixel InkWell inside its
+28-pixel outline. `c1942c9a0a0f2000cd8f31f8012c62c54e11a960` reuses the existing
+desktop MenuButton with zero padding, transparent background, the theme hover
+color, a centered icon and `translate('More')`. The shared component provides
+button/enabled semantics and Tooltip; the inner Center expands the hit region.
+Outline, icon size, menu anchoring, choices and connection callbacks remain.
+The existing More key is nonempty in all 49 non-English catalogues; English uses
+the key itself. No catalogue or shared MenuButton change is made.
+
+Primary references: the pinned [Flutter 3.24.5 Tooltip implementation](https://github.com/flutter/flutter/blob/3.24.5/packages/flutter/lib/src/material/tooltip.dart)
+contributes the semantics tooltip field; [Center sizing](https://api.flutter.dev/flutter/widgets/Center-class.html)
+explains expansion under the existing constraints. Native assistive-technology
+presentation remains outside this widget evidence.
+
+Preparation `f51edef9` adds three cases and retains the existing 41. Baseline
+`mMhTZLZPdi` passes those 41 and fails the new semantics, inner-edge hit and hover
+description checks. The identical corrected run `QJsBTfvpvf` passes all 44 cases,
+three focused parser controls, source-copy checks and outer acceptance in the
+no-NIC VM. The semantics case invokes the real accessibility tap action and
+selects file transfer; the hit-region case clicks each of four inner edges while
+retaining 28-by-28 geometry; hover displays More. Earlier keyboard/RTL/transformed
+anchoring, dismissal and all three connection choices remain covered. Command:
+`bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --menu-button`.
+The exact control, menu entries and shared MenuButton run with identity translation,
+an icon fixture and simulated connection callbacks. Full page/session, native
+fonts/screen readers/devices, other platforms and release acceptance remain OPEN.
+
+Test source SHA-256: `043583fb6936f3d2cb4a840fb6fecfbf13b2b0a557407935933d96c9820e0ecd`.
+Connection-page baseline/candidate SHA-256:
+`9182981fcf47aaaf23a09df2009e10b459912e20fd0bba065ad6a3b4b75842bd` /
+`aa1c64417b1f8b84a012574f01ca35ffa63c2f9c1f982e5c7abb336cc5a8b08a`.
+The retained candidate fixture has matching before/after SHA-256
+`ccde4ad3b396c307e616a7f00311a1401720e2a38f0bc9dc1412a4999116d93b`;
+the guest now emits the existing connection-menu and popup-source receipts.
+
+| Run | Serial SHA-256 | QEMU / seconds | Retired RAM workspace |
+| --- | --- | --- | --- |
+| `mMhTZLZPdi` | `7dc0b399c8b98a3fede0034a2fa3c89e854493a03ea3602e77d66f043ed6a73d` | 2624792 / 86.163 | `run.cfftah7x` |
+| `QJsBTfvpvf` | `63cb25fae5c2340dab46675beb481c5608c7521ee588bff446cf5a9ac509bdff` | 2625496 / 109.963 | `run.yb6_1o61` |
+
+Both QEMU processes join and RAM workspaces retire; all eight endpoint deltas are
+zero. Fourteen raw files total 228,308 bytes per host, copied and hash-verified.
+After evidence and exact process/workspace checks, the failed baseline diagnostic
+tree is removed, releasing 3,489,792 allocated bytes.

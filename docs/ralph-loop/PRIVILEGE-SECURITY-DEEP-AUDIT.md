@@ -121459,3 +121459,12 @@ verification (3,461,120 allocated bytes). The candidate outer exit is zero.
 Two earlier preflight attempts exit before a VM/run receipt; the captured second
 failure identifies a group-writable launcher after editing. Restoring the two
 edited shell entries to mode 0755 permits the comparison without changing checks.
+
+Fresh ledger count at `1cb78f50e9bb9d186c133b49b28e8c05f9e8a4dd`:
+`yWLHq8pakT` passes seven controls and exact byte round trip using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 367,081 tokens / 1,679,445 bytes,
+input SHA-256 `043eb020b82afde47bafefeb93ba4f498e5b82aa910f02f759f5e4b93ac0504d`.
+All 77 admission controls and five refusals pass. QEMU 2770260 joins after
+30.613 seconds, RAM `run.7h2f88mk` retires and all three endpoint deltas are zero.
+Six raw files total 106,057 bytes per host, copied and hash-verified. The outer
+exit is zero. This audit-only receipt leaves the counted ledger unchanged.

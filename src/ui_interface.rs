@@ -45,13 +45,6 @@ lazy_static::lazy_static! {
 // there is no self-update path; the fork ships SHA-pinned releases (R-B2), never fetch-and-run.
 
 #[inline]
-pub fn get_license() -> String {
-    // R-X4: the custom_server license (custom-rendezvous-server-from-exe-name) is excised;
-    // the fork is direct-IP only, so there is no license to display.
-    Default::default()
-}
-
-#[inline]
 pub fn refresh_options() {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {

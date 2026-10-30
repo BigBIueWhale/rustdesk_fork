@@ -1098,11 +1098,6 @@ class RustdeskImpl {
     return '${mainGetAppNameSync().toLowerCase()}://';
   }
 
-  Future<String> mainGetLicense({dynamic hint}) {
-    // TODO: implement
-    return Future(() => '');
-  }
-
   Future<String> mainGetVersion({dynamic hint}) {
     return Future(() => js.context.callMethod('getByName', ['version']));
   }

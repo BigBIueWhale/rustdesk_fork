@@ -1156,19 +1156,12 @@ class _AboutState extends State<_About> {
   @override
   Widget build(BuildContext context) {
     return futureBuilder(future: () async {
-      final license = await bind.mainGetLicense();
       final version = await bind.mainGetVersion();
       final buildDate = await bind.mainGetBuildDate();
-      return {
-        'license': license,
-        'version': version,
-        'buildDate': buildDate
-      };
+      return {'version': version, 'buildDate': buildDate};
     }(), hasData: (data) {
-      final license = data['license'].toString();
       final version = data['version'].toString();
       final buildDate = data['buildDate'].toString();
-      const linkStyle = TextStyle(decoration: TextDecoration.underline);
       return SingleChildScrollView(
         primary: false,
         child: _Card(title: translate('About RustDesk'), children: [
@@ -1199,7 +1192,7 @@ class _AboutState extends State<_About> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Copyright © ${DateTime.now().toString().substring(0, 4)} Purslane Ltd.\n$license',
+                            'Copyright © ${DateTime.now().toString().substring(0, 4)} Purslane Ltd.',
                             style: const TextStyle(color: Colors.white),
                           ),
                           // R-G8 / §19 (de-brand): the upstream marketing slogan ("Made with heart

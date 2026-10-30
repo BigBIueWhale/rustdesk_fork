@@ -12056,7 +12056,7 @@ run_flutter_model_tests() {
                         "$codegen_source/flutter/lib/generated_bridge.dart" \
                         "$codegen_source/flutter/lib/generated_bridge.freezed.dart"; do
                         [ -s "$generated" ] && [ ! -L "$generated" ]
-                        if grep -Eq "main_get_uuid|mainGetUuid|main_check_hwcodec|mainCheckHwcodec" "$generated"; then
+                        if grep -Eq "main_get_uuid|mainGetUuid|main_check_hwcodec|mainCheckHwcodec|main_get_license|mainGetLicense" "$generated"; then
                             echo "Retired UI export remains in a generated bridge" >&2
                             exit 1
                         else
@@ -12378,8 +12378,8 @@ run_flutter_model_tests() {
                     cat /work/test.json
                 fi
                 parser_args=()
-                if [ "$FLUTTER_TEST_PROFILE" = image-quality ]; then
-                    parser_args=(--image-quality)
+                if [[ "$FLUTTER_TEST_PROFILE" = image-quality || "$FLUTTER_TEST_PROFILE" = desktop-theme ]]; then
+                    parser_args=("--$FLUTTER_TEST_PROFILE")
                 fi
                 if [[ "$FLUTTER_TEST_PROFILE" = screenshot-save || "$FLUTTER_TEST_PROFILE" = locales || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = menu-button || "$FLUTTER_TEST_PROFILE" = password-fields || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = peer-data ]]; then
                     parser_args=("--$FLUTTER_TEST_PROFILE")

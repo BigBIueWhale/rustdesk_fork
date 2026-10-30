@@ -159,8 +159,6 @@ class _NativeSettings implements RustdeskImpl {
           return Future<String>.value('true');
         }
         break;
-      case #mainGetLicense:
-        return Future<String>.value(List.filled(40, 'License text').join('\n'));
       case #mainGetVersion:
         return Future<String>.value('1.0.0');
       case #mainGetBuildDate:
@@ -915,6 +913,13 @@ void main() {
       ));
       await _settle(tester);
       _expectSelection(tester, entry.value);
+      if (entry.value == SettingsTabKey.about) {
+        expect(find.text('Version: 1.0.0'), findsOneWidget);
+        expect(find.text('Build Date: 2026-10-26'), findsOneWidget);
+        expect(find.text('Copyright © ${DateTime.now().year} Purslane Ltd.'),
+            findsOneWidget);
+        expect(find.text('RustDesk Hardened Fork'), findsOneWidget);
+      }
     }
     DesktopSettingPage.switch2page(SettingsTabKey.display);
     await _settle(tester);
@@ -957,6 +962,10 @@ void main() {
         (tester) async {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await _mount(tester, entry.key);
+      if (entry.key == SettingsTabKey.about) {
+        await tester.binding.setSurfaceSize(const Size(1000, 180));
+        await _settle(tester);
+      }
       final section = find.byWidgetPredicate(
           (widget) => widget.runtimeType.toString() == entry.value);
       final scrollable = find.descendant(
@@ -964,14 +973,15 @@ void main() {
       final scrollState = tester.state<ScrollableState>(scrollable);
       final position = scrollState.position;
       final controller = scrollState.widget.controller;
-      expect(position.maxScrollExtent, greaterThan(160));
-      position.jumpTo(160);
+      final offset = entry.key == SettingsTabKey.about ? 20.0 : 160.0;
+      expect(position.maxScrollExtent, greaterThan(offset));
+      position.jumpTo(offset);
       await tester.pump();
       for (var i = 0; i < 3; i++) {
         tester.state(section).setState(() {});
         await _settle(tester);
         expect(tester.state<ScrollableState>(scrollable).position, same(position));
-        expect(position.pixels, closeTo(160, 0.1));
+        expect(position.pixels, closeTo(offset, 0.1));
       }
       await tester.pumpWidget(const SizedBox.shrink());
       expect(() => position.addListener(() {}), throwsFlutterError);

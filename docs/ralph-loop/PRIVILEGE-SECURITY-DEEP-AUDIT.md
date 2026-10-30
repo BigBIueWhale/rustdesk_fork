@@ -117473,3 +117473,64 @@ seconds; RAM `run.hjlrf8fz` retires and all three listener deltas are zero.
 Six count files add 103,057 bytes; all twenty-seven files across the four runs
 total 353,889 bytes per host with matching hashes. The audit-only receipt leaves
 the measured ledger unchanged and below its approximate 400,000-token budget.
+
+### 2026-10-30 — PAKE RNG error and MAC digest cleanup
+
+At `2c31465a`, `sample_scalar` returns through `fill_random(...)?` before its
+explicit scratch wipe on an RNG error. `derive_mac_key` copies the digest without
+wiping that intermediate. These are R-P12/R-T15(a) lifetime gaps; this slice does
+not demonstrate a standalone privilege escalation.
+
+[getrandom 0.2.15](https://raw.githubusercontent.com/rust-random/getrandom/v0.2.15/src/lib.rs)
+leaves destination contents unspecified on errors, including partial reads.
+[Linux seccomp](https://docs.kernel.org/userspace-api/seccomp_filter.html) permits
+an unprivileged no-new-privileges worker to inject EIO for the real syscall.
+The [pinned Linux backend](https://raw.githubusercontent.com/rust-random/getrandom/v0.2.15/src/linux_android_with_fallback.rs)
+does not select its file fallback for EIO. The test initializes that backend,
+sets a deterministic nonsecret buffer, filters only an owned worker, then joins
+before checking the buffer, scalar refusal, empty input and unfiltered success.
+It reads live initialized storage, never freed or uninitialized memory.
+
+Preparation `322056fa4fe462d033c97aa41d0b74746badcf7a` adds the native test to the
+existing allocation profile. Baseline `Iax9xEU7YP` passes seventeen functional
+checks and fails the new assertion: actual EIO reaches getrandom, both production
+calls return `Rng`, but zero of 64 marker bytes are cleared. The worker joins and
+the unfiltered control succeeds. Pre-execution artifact SHA-256 is
+`edf6c28e54004a038af995435ae416235533a7b1c2e74d930a92788b2bbdfde9`.
+Exit 101 precedes the runner's after-hash and allocation-probe stages. QEMU
+1801274 joins in 103.139 seconds; RAM `run.h20dd02d` retires. After copying and
+hash-checking seven evidence files (82,915 bytes), exact diagnostic directory
+inode 78294410 is removed, reclaiming 3,444,736 bytes.
+
+Correction `3def67a4a455698d5015e6c8afcaf9c98d922701` changes only the three
+production functions: RNG errors wipe the entire borrowed output, scalar scratch
+uses `Zeroizing`, and the MAC digest is wiped after copying into guarded output.
+The [zeroize 1.8.1 contract](https://raw.githubusercontent.com/RustCrypto/utils/zeroize-v1.8.1/zeroize/src/lib.rs)
+provides non-elided explicit/drop wiping; it does not erase arbitrary earlier
+copies. No dependency, wire construction, authentication rule or public API changes.
+
+Corrected run `JnxIppYemN` passes all eighteen functional/error cases and the
+allocation probe. The same native assertions require all 64 bytes cleared, RNG
+and scalar refusal, worker retirement and successful normal randomness. Existing
+published/fork vectors and real random handshakes pass. Generator/ISK allocation
+counts remain zero, with the positive allocation control detected. Artifact
+`75e9bcbe94c1cea5a750f628e85c92ed6297fd3fdd7acd91f064980a07c39ef8`
+matches before/after; source tree is `6e8585393639cb5f878e36526a756ea7bfa0bfff`.
+The successful serial retains the named test verdict; the guest output filter
+does not forward its supplemental RNG observation line. Rust 1.75.0, release
+opt-level 3/LTO/one codegen unit, x86-64 and pinned offline inputs run as UID/GID
+1000 in the networkless VM/container. QEMU 1802048 joins in 100.556 seconds;
+RAM `run.dap2ra7e` retires. Both runs have four zero listener deltas. Fourteen raw
+serial/console/storage/listener files total 166,699 bytes per host, hash-identical.
+Their prefix is `android-rust-lifecycle-tests-run.<run-id>` (console adds
+`console-` before `run`). Command: `bash scripts/smoke-verifier-vm-authority.sh
+--pake-allocation-tests`.
+
+This proves live-buffer clearing after an injected error before any OS write,
+not partial-write injection or post-return scalar/digest stack observation.
+MAC-digest wiping has source/API review and KAT evidence for unchanged values.
+Prior `UECTPi1FV7` timing remains scoped to its earlier artifact: its measured tag
+verification and wide-reduction bodies are unchanged, so it is not rerun or
+relabeled as current-artifact timing. Full copy/register/hash-state erasure,
+other targets/shipping artifacts, independent review and installed authority
+acceptance remain OPEN. Parked lanes remain parked.

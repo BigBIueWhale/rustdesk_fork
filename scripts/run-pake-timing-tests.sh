@@ -72,7 +72,35 @@ if [ "$allocation_probe" -eq 1 ]; then
     printf 'PAKE_ALLOCATION_ARTIFACT=pass sha256=%s tests=21 optimized=true unchanged=before-after\n' "$artifact_sha"
     exit 0
 fi
+python3 -I -S - "$test_executable" <<'PY'
+import base64,hashlib,json,subprocess,sys,zlib
+artifact=sys.argv[1]
+symbols=subprocess.check_output(['nm','-S','--defined-only','--demangle',artifact],timeout=10)
+assert len(symbols)<=4*1024*1024
+selected=[]
+for line in symbols.decode().splitlines():
+    fields=line.split(maxsplit=3)
+    if len(fields)==4 and fields[2] in ('t','T') and \
+            'variable_base::spec_avx2::mul' in fields[3]:
+        selected.append((int(fields[0],16),int(fields[1],16),fields[3]))
+assert len(selected)==1, ('AVX2 multiplication symbol count',selected)
+start,size,name=selected[0]
+assert 0<size<=64*1024
+assembly=subprocess.check_output(['objdump','-d','--demangle',
+    '--start-address='+str(start),'--stop-address='+str(start+size),artifact],timeout=10)
+assert 0<len(assembly)<=1024*1024
+encoded=base64.b64encode(zlib.compress(assembly,9)).decode()
+assert len(encoded)<=128*1024
+version=subprocess.check_output(['objdump','--version'],timeout=10).decode().splitlines()[0]
+print('PAKE_TIMING_DISASSEMBLY='+json.dumps({'symbol':name,'address':start,
+    'code_bytes':size,'text_bytes':len(assembly),'text_sha256':hashlib.sha256(assembly).hexdigest(),
+    'objdump':version,'encoding':'zlib-base64','data':encoded},sort_keys=True))
+PY
+test_status=0
 timeout --signal=TERM --kill-after=5s 90s taskset -c "$cpu" "$test_executable" \
-    --exact timing_tests::optimized_timing_evidence --ignored --test-threads=1 --color never --show-output
+    --exact timing_tests::optimized_timing_evidence --ignored --test-threads=1 --color never --show-output \
+    || test_status=$?
 [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
+printf 'PAKE_TIMING_ARTIFACT_AFTER=sha256=%s test_exit=%s unchanged=true\n' "$artifact_sha" "$test_status"
+[ "$test_status" -eq 0 ] || exit "$test_status"
 printf 'PAKE_TIMING_ARTIFACT=pass sha256=%s tests=1 optimized=true unchanged=before-after\n' "$artifact_sha"

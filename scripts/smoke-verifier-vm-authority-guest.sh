@@ -7806,6 +7806,8 @@ PY
         [ "${#result_lines[@]}" -eq 1 ] || fail 'PAKE timing summary count differs'
         [ "$(grep -Ec '^PAKE_TIMING_ARTIFACT=pass sha256=[0-9a-f]{64} tests=1 optimized=true unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'PAKE_TIMING_ARTIFACT=' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^PAKE_TIMING_ARTIFACT_AFTER=sha256=[0-9a-f]{64} test_exit=0 unchanged=true$' "$output")" -eq 1 ] \
+            && [ "$(grep -c '^PAKE_TIMING_DISASSEMBLY=' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'PAKE_TIMING_RESULT=no-difference-detected cohorts=6 positive_controls=2 negative_control=passed primitive_samples=1000000 group_samples=100000 repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^PAKE_TIMING_CASE=name:(early-exit-first-last|verify-tag-first-last|verify-tag-zero-random-key|scalar-reduce-zero-random|generator-fixed-random-prs|vartime-multiply-one-random|reduce-multiply-one-random|reduce-multiply-random-one|reduce-multiply-one-one) ' "$output")" -eq 9 ] \
             || fail 'PAKE timing measurements or artifact differ'

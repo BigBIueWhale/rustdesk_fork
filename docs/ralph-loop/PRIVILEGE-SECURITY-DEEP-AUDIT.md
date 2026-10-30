@@ -117543,3 +117543,56 @@ QEMU 1803922 joins in 30.312 seconds; RAM `run.iqi0sbjz` retires and three liste
 deltas are zero. Six count files total 103,069 bytes; all twenty files across
 the three runs total 269,768 bytes per host with matching hashes. This audit-only
 receipt preserves the counted ledger and its approximate 400,000-token budget.
+
+### 2026-10-30 — retain PAKE scalar wiping owners
+
+At `0af8a5cf`, sampled scalars return and pass through the two private handshake
+handlers as bare `Scalar` values. Named error branches explicitly wipe them;
+the responder's retained scalar additionally has a hand-written state destructor.
+The gap is ownership across implicit copies and unwinding, not a demonstrated
+missed explicit `Result` branch or standalone privilege escalation.
+
+[Dalek 4.1.3 Scalar](https://raw.githubusercontent.com/dalek-cryptography/curve25519-dalek/curve25519-4.1.3/curve25519-dalek/src/scalar.rs)
+is `Copy` and implements `Zeroize`, without automatic wiping. Its
+[Ristretto multiplication](https://raw.githubusercontent.com/dalek-cryptography/curve25519-dalek/curve25519-4.1.3/curve25519-dalek/src/ristretto.rs)
+accepts borrowed scalars and points. The existing
+[Zeroizing owner](https://raw.githubusercontent.com/RustCrypto/utils/zeroize-v1.8.1/zeroize/src/lib.rs)
+wipes its value on drop and is not `Copy`; moves and library/compiler internals
+still prevent treating this as exhaustive memory erasure.
+
+`1cd13336` changes scalar sampling, both private handler parameters and the
+responder's retained scalar to `Zeroizing<Scalar>`. Multiplication borrows the
+owned scalar, and its owner is explicitly dropped immediately after deriving
+the shared point. Error/unwind and waiting-state retirement use the same owner.
+The manual responder destructor and repeated branch-specific wipes disappear;
+decode errors again use `?`. Public methods, wire/KAT values, primitive selection,
+dependencies and credential authority remain unchanged. The supplementary
+verifier follows the actual field owner and identifies its source-only scope.
+
+Two KAT fixture arguments adopt the private owner type. One new behavioral test
+covers responder step-3 noncanonical and identity elements, requiring the exact
+Decode/Identity errors and no password-guess classification. Existing normal
+handshakes, vectors, role/replay/refusal cases, RNG error and allocation cases
+remain. Native checks establish protocol behavior; source/dependency review
+establishes this ownership change. Post-drop stack/register/copy wiping,
+panic/cancellation erasure observation, other targets, shipping artifacts and
+independent review remain OPEN. Earlier `JnxIppYemN` functional evidence is reused
+without rebuilding an unchanged baseline; no old/new runtime erasure comparison
+is claimed. Primitive timing bodies are unchanged and their earlier artifact
+receipt remains scoped to that artifact. Installed authority and parked lanes
+remain open and unchanged.
+
+TUF `BEtvn5u92Z` at `1cd13336519275480a089ece17203df432ff85f5` passes all twenty
+checks (nineteen functional/error cases and one allocation probe), plus shell
+parsing of the changed verifier. Artifact SHA-256
+`422a2ea09e4904a7d52e2050ab2b80327b915ecf910f65767620f44157b98f93`
+matches before/after; source tree is `62ed0e813d6d30f69f1edb28508ca34a1fb994bb`.
+The optimized Rust 1.75.0 build, offline inputs, ordinary UID/GID 1000, no VM or
+container network, read-only source/root and bounded RAM profile are unchanged.
+QEMU 1805067 joins in 103.910 seconds; RAM `run.grxix8ew` retires and four listener
+deltas are zero. Seven raw serial/console/storage/listener files total 82,419
+bytes per host with matching hashes, under the existing
+`android-rust-lifecycle-tests-run.BEtvn5u92Z` prefix (console adds `console-`).
+Command: `bash scripts/smoke-verifier-vm-authority.sh --pake-allocation-tests`.
+The ledger consolidates the three related secret-lifetime corrections into one
+current-state row, preserving baseline provenance and all open erasure limits.

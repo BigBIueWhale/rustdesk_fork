@@ -118441,3 +118441,13 @@ Earlier full-suite and default/MXCSR observations remain valid only for their
 recorded artifacts/conditions. Full sampling/RNG timing, other targets and
 shipping artifacts, higher-order leakage, automatic CI, erasure and R-V3
 remain open, along with installed IPC/actions and separately parked work.
+
+Ledger run `7oGlYGP1E8` at `8125c292` passes 74 workload controls/five
+refusals, seven tokenizer controls and full text round trip. It reports
+360,344 tokens using `tiktoken-0.12.0/cl100k_base/encode_ordinary`:
+1,647,505 bytes, SHA-256
+`6fc449ff8cc07cc7352f976210cbff0187bb5c0958a4c4182844ee74db6aadd6`.
+QEMU 1840201 joins in 30.561 seconds; RAM `run.p536wx9q` retires and three
+listener deltas are zero. Six count files add 103,826 bytes. Twenty raw files
+across the three runs total 393,604 bytes per host with matching hashes.
+This audit-only receipt preserves the measured ledger.

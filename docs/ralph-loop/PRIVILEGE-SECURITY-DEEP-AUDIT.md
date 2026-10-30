@@ -119607,3 +119607,13 @@ per host with matching hashes. Source comparison, both shell syntax checks and
 other-platform clock/suspend behavior, installed credential/settings actions,
 R-S0/R-F5 and release/independent-review acceptance remain OPEN. Parked tasks remain
 parked. The existing R-S10 ledger paragraph is updated; fresh measurement follows.
+
+**Fresh ledger count.** At `1722730021f22592c4605db7c7716abd27af6688`,
+TUF `DQhENL5bjh` passes seven tokenizer controls and the exact byte round trip
+using `tiktoken-0.12.0/cl100k_base/encode_ordinary`: 362,058 tokens /
+1,655,445 bytes, SHA-256
+`33ae3337c95c06b3e651cebbaa551047f4da60cab10e543a80a2d77c062da046`.
+QEMU 2022377 joins in 30.709 seconds, RAM `run.besr31i9` retires and all
+three listener deltas are zero. Six count files add 104,173 bytes; thirteen files
+from this slice total 189,831 bytes per host with matching hashes. This audit-only
+receipt leaves the measured ledger unchanged.

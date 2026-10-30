@@ -433,9 +433,8 @@ class _ConnectionPageState extends State<ConnectionPage>
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Center(
-                    child: StatefulBuilder(
-                      builder: (context, setState) {
-                        var offset = Offset(0, 0);
+                    child: Builder(
+                      builder: (context) {
                         return Obx(() => InkWell(
                               child: _menuOpen.value
                                   ? Transform.rotate(
@@ -443,10 +442,15 @@ class _ConnectionPageState extends State<ConnectionPage>
                                       child: Icon(IconFont.more, size: 14),
                                     )
                                   : Icon(IconFont.more, size: 14),
-                              onTapDown: (e) {
-                                offset = e.globalPosition;
-                              },
                               onTap: () async {
+                                final button =
+                                    context.findRenderObject() as RenderBox;
+                                final offset = button.localToGlobal(Offset(
+                                  Directionality.of(context) == TextDirection.rtl
+                                      ? button.size.width
+                                      : 0,
+                                  button.size.height,
+                                ));
                                 _menuOpen.value = true;
                                 await mod_menu
                                     .showMenu(

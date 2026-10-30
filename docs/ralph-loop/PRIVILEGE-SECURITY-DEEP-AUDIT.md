@@ -121628,3 +121628,12 @@ filesystems, installed/authenticated-peer integration, other platforms, physical
 durability and release/independent-review acceptance still require evidence or
 correction. Continue this selected blocker at those lifecycle boundaries; do not
 reopen unrelated parked topics. The whole goal remains active and incomplete.
+
+Ledger verification at `445a02640697923c991cb3178981f2b6a0c6516c`, TUF
+`9FF2SObYWz`, exits zero: 367,444 tokens / 1,681,264 bytes, SHA-256
+`f8c80896404250ca2b0faf4025332d238054eee7ac08503a1a3892b2d56215c6`.
+Pinned `tiktoken-0.12.0/cl100k_base/encode_ordinary`, seven controls and the exact
+strict-UTF8 byte round trip pass. QEMU 2901903 joins after 30.504 seconds;
+RAM `run.yi0nf6o9` retires and all three listener deltas are zero. Count raw
+35,832 bytes, SHA-256 `18ba606cb391bf9a5ba509abfd8a0ce82e381ef7fcb6fe5c74df5192b634caca`.
+This audit-only receipt leaves the counted ledger and validated product unchanged.

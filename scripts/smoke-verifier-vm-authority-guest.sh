@@ -4031,6 +4031,7 @@ run_focused_rust_tests() {
                 tcp::writer_lifetime_tests::tcp_cancelled_retirement_keeps_writer_owned_until_retry
                 tcp::exclusive_listener_tests::second_exclusive_listener_bind_is_refused
                 cpace::seal_tests::allocation_refusal_preserves_nonce_and_wire
+                cpace::seal_tests::engaged_key_guard_does_not_disclose_keys
                 tcp::seal_tests::allocation_refusal_retires_the_native_writer
                 cpace::open_tests::owned_frame_opens_with_rust_allocations_refused
                 tcp::open_tests::decoder_reuses_the_authenticated_frame_storage
@@ -7062,7 +7063,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                 /^test fs::(tests::(file_metadata_[[:alnum:]_]+|rename_[[:alnum:]_]+|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[[:alnum:]_]+) \.\.\. (ok|FAILED)$/ { if (++metadata_cases <= 64) print }
                 /^FILE_METADATA_/ { if (++metadata_observations <= 96) print }
                 /^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|FAILURE_READ|RETIREMENT_ARTIFACT_STOP)=/ { if (++writer_observations <= 32) print }
-                /^(CIPHER_SEAL_ALLOCATION|TCP_SEAL_ALLOCATION)/ { if (++seal_observations <= 20) print }
+                /^(CIPHER_SEAL_ALLOCATION|TCP_SEAL_ALLOCATION|CIPHER_KEY_GUARD)/ { if (++seal_observations <= 20) print }
                 /^(RECEIVE_CIPHER|RECEIVE_CODEC)/ { if (++receive_observations <= 20) print }
             ' "$output" >&2 || printf 'Transport failure diagnostics could not be read\n' >&2
             awk '/^FILE_PEER_PROBE_ARTIFACT_START=observed / { print; exit }' "$output" >&2 \
@@ -7247,7 +7248,7 @@ PY
                 || fail 'direct address normalization test differs'
             for group in tcp::writer_receipt_tests:13 tcp::eof_tests:4 \
                 bytes_codec::tests:12 tcp::writer_lifetime_tests:7 tcp::exclusive_listener_tests:1 \
-                cpace::seal_tests:1 tcp::seal_tests:1 cpace::open_tests:1 tcp::open_tests:1; do
+                cpace::seal_tests:2 tcp::seal_tests:1 cpace::open_tests:1 tcp::open_tests:1; do
                 count=${group##*:}; group=${group%:*}
                 [ "$(grep -Ec "^test ${group}::[[:alnum:]_]+ [.][.][.] ok$" "$output")" -eq "$count" ] \
                     || fail "writer retirement test group differs: $group"
@@ -8249,7 +8250,7 @@ PY
             grep -E '^test (config|password_security)::[[:alnum:]_:]+ [.][.][.] ok$|^OPTION_COMMIT_' "$output"
         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'writer retirement test total differs'
-            grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests|exclusive_listener_tests|seal_tests|open_tests)|cpace::(seal_tests|open_tests)|bytes_codec::tests|socket_client::tests)::[[:alnum:]_]+ [.][.][.] ok$|^test test::(test_get_version_number|test_try_into_v4) [.][.][.] ok$|^DIRECT_ADDRESS_NORMALIZATION=|^VERSION_NUMBER_(OVERFLOW|RANGE)=|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|FAILURE_READ)=|^READ_JOB_BACKPRESSURE(_CASE)?=|^(CIPHER_SEAL_ALLOCATION|TCP_SEAL_ALLOCATION|RECEIVE_CIPHER|RECEIVE_CODEC)' "$output"
+            grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests|exclusive_listener_tests|seal_tests|open_tests)|cpace::(seal_tests|open_tests)|bytes_codec::tests|socket_client::tests)::[[:alnum:]_]+ [.][.][.] ok$|^test test::(test_get_version_number|test_try_into_v4) [.][.][.] ok$|^DIRECT_ADDRESS_NORMALIZATION=|^VERSION_NUMBER_(OVERFLOW|RANGE)=|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|FAILURE_READ)=|^READ_JOB_BACKPRESSURE(_CASE)?=|^(CIPHER_SEAL_ALLOCATION|TCP_SEAL_ALLOCATION|CIPHER_KEY_GUARD|RECEIVE_CIPHER|RECEIVE_CODEC)' "$output"
         elif [ "$RUST_TEST_PROFILE" = compression ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'decompression test total differs'
             grep -E '^test (fs::file_block|compress)::tests::[[:alnum:]_]+ [.][.][.] ok$|^DECOMPRESSION_(WINDOW|INPUT)' "$output"

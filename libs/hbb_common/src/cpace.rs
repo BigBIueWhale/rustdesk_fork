@@ -605,6 +605,54 @@ mod seal_tests {
     use super::*;
 
     #[test]
+    fn engaged_key_guard_does_not_disclose_keys() {
+        const CHILD: &str = "RUSTDESK_CIPHER_KEY_GUARD_CHILD";
+        const TEST: &str = "cpace::seal_tests::engaged_key_guard_does_not_disclose_keys";
+        let fixtures = [[0x3a; 32], std::array::from_fn(|index| index as u8)];
+        if let Some(case) = std::env::var_os(CHILD) {
+            let index = case.to_str().unwrap().parse::<usize>().unwrap();
+            let key = fixtures[index];
+            let _ = split_session_keys(&DirectionalKeys { send: key, recv: key });
+            panic!("identical keys were accepted");
+        }
+
+        let mut disclosures = 0;
+        for (index, key) in fixtures.into_iter().enumerate() {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", TEST, "--nocapture", "--test-threads=1"])
+                .env(CHILD, index.to_string())
+                .env("RUST_BACKTRACE", "0")
+                .output().unwrap();
+            assert!(output.stdout.len() + output.stderr.len() < 32_768);
+            assert_eq!(output.status.code(), Some(101), "key guard child must refuse");
+            let stderr = String::from_utf8(output.stderr).unwrap();
+            assert!(stderr.contains("R-A5: identical engaged send/recv keys"),
+                "the production key guard must cause the refusal");
+            let disclosed = stderr.contains(&format!("{key:?}"));
+            disclosures += usize::from(disclosed);
+            println!("CIPHER_KEY_GUARD_CASE=case:{index} refused:true disclosed:{disclosed} child:joined");
+        }
+
+        for differing_byte in [0, 31] {
+            let send = fixtures[1];
+            let mut recv = send;
+            recv[differing_byte] ^= 1;
+            let (mut a_seal, mut a_open) = split_session_keys(&DirectionalKeys { send, recv });
+            let (mut b_seal, mut b_open) = split_session_keys(&DirectionalKeys { send: recv, recv: send });
+            for payload in [b"".as_slice(), b"key guard control".as_slice()] {
+                let mut outbound = bytes::BytesMut::from(a_seal.seal(payload).unwrap().as_slice());
+                b_open.open(&mut outbound).unwrap();
+                assert_eq!(&outbound[..], payload);
+                let mut inbound = bytes::BytesMut::from(b_seal.seal(payload).unwrap().as_slice());
+                a_open.open(&mut inbound).unwrap();
+                assert_eq!(&inbound[..], payload);
+            }
+        }
+        assert_eq!(disclosures, 0, "key guard diagnostics must not disclose key bytes");
+        println!("CIPHER_KEY_GUARD=pass refusals=2 controls=2 directions=mirrored diagnostics=key-free children=joined");
+    }
+
+    #[test]
     fn allocation_refusal_preserves_nonce_and_wire() {
         const CHILD: &str = "RUSTDESK_CIPHER_SEAL_ALLOCATION_CHILD";
         if std::env::var_os(CHILD).is_none() {

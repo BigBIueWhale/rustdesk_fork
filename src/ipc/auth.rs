@@ -3065,9 +3065,8 @@ where
     let args = main_server_cmdline_args(peer_pid)?;
     if !user_owned_main_server_argv_is_expected(&args) {
         bail!(
-            "user-owned main IPC server argv mismatch: pid={}, args={:?}",
-            peer_pid,
-            args
+            "user-owned main IPC server argv mismatch: pid={}",
+            peer_pid
         );
     }
     Ok(())
@@ -3124,9 +3123,8 @@ where
     let args = main_server_cmdline_args(peer_pid)?;
     if !user_owned_main_server_argv_is_expected(&args) {
         bail!(
-            "user password IPC server argv mismatch: pid={}, args={:?}",
-            peer_pid,
-            args
+            "user password IPC server argv mismatch: pid={}",
+            peer_pid
         );
     }
     Ok(())
@@ -3371,9 +3369,8 @@ where
     let args = linux_proc_cmdline_args(identity.pid)?;
     if !linux_service_owned_server_argv_is_expected(&args) {
         bail!(
-            "service-owned main server argv mismatch: pid={}, args={:?}",
-            identity.pid,
-            args
+            "service-owned main server argv mismatch: pid={}",
+            identity.pid
         );
     }
     let expected_parent = std::process::id();
@@ -3454,9 +3451,8 @@ where
     let args = linux_proc_cmdline_args(identity.pid)?;
     if !linux_service_owned_server_argv_is_expected(&args) {
         bail!(
-            "service-owned password replica argv mismatch: pid={}, args={:?}",
-            identity.pid,
-            args
+            "service-owned password replica argv mismatch: pid={}",
+            identity.pid
         );
     }
     let expected_parent = std::process::id();

@@ -1371,6 +1371,10 @@ IMAGE_QUALITY_SUITES = {
         name for name in SETTING_OPTION_TESTS if name.startswith("quality ")
     },
     "quality_monitor_test.dart": {
+        "quality monitor decodes the selected display snapshot",
+        "quality monitor merges delay and frame snapshots independently",
+        "quality monitor preserves values across omitted and empty fields",
+        "quality monitor orders all displays and follows selection",
         "quality monitor preserves delay at zero FPS",
         "quality monitor preserves delay before FPS arrives",
         "quality monitor keeps delay through frame rate changes",

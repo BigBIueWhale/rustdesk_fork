@@ -202,7 +202,7 @@ class ResultTests(unittest.TestCase):
 
     def test_complete_profiles(self):
         if SINGLE_PROFILE == "image-quality":
-            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 29))
+            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 33))
             return
         if SINGLE_PROFILE == "status-refresh":
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 23))

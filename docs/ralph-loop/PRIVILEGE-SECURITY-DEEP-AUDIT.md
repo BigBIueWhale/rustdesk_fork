@@ -120195,3 +120195,13 @@ limits and live monitor remain. This retires an empty metadata path and verifies
 rendered component behavior; native application linking, browser/device execution,
 full settings/native persistence and release acceptance remain open. No new
 security failure or baseline behavioral defect is claimed.
+
+**Fresh ledger count.** At `62dd6cff3cda09870c787d45c5be5cf3c7940caa`, TUF
+`eWba2hCxT2` passes seven tokenizer controls and the exact byte round trip:
+363,480 tokens / 1,662,050 bytes, using `tiktoken-0.12.0/cl100k_base/encode_ordinary`.
+Input SHA-256:
+`3f35181a631720a37954527d9eb915d8407984a76b12a2eed1d80782de91f1c7`.
+QEMU 2288057 joins in 30.564 seconds, RAM `run.957xwlqj` retires and all three
+listener deltas are zero. Six count files add 105,719 bytes; all thirteen raw
+files total 188,700 bytes per host with matching hashes. This audit-only receipt
+leaves the measured ledger unchanged.

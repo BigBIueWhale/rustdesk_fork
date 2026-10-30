@@ -121680,3 +121680,34 @@ remain mandatory. A focused native-filesystem unit case covers absent/empty/part
 complete identity recovery and unchanged refusal of wrong, unrelated, linked and
 read-shared contents. The three real crash observers remain byte-identical.
 Candidate runtime acceptance is pending.
+
+**Accepted process-death recovery checkpoint.** Source
+`1b46d528b943f195a815c7dc8fb78a5632f0a527`, tree
+`f23ef539eda18e2067e0fa9a31d3b0aaaaf1709b`, TUF `v1Yicpqclj`:
+the canonical `--file-metadata-tests` command exits zero. All 140 named tests
+pass in 35 groups, including the eight setup admission/preservation controls.
+Unit artifact `29f93607ee72d95f89cb11df5b0ea18bfba43266d4568ac40f7e3f4013506c11`.
+All 19 native scenarios and 20 unprivileged actors complete and join. Each of the
+three unchanged crash observers now reports successful transfer recovery, one
+container, zero added temporary records and retired per-file artifacts. The
+three earlier syscall-entry replacement cases remain `3/3 safe`.
+Native artifact `60b9f782bdd0da42fb9e5e2c37b3fb2cd16624d200db4c5ad7baeb5ef36920ef`;
+observer source remains `6b9f07998ca0ba30c182a6f39d8573857a6f89cc551cf8f4b933a89dfb30d56b`.
+
+Accepted raw serial: 104,830 bytes, SHA-256
+`80b7977e2f95d15b69a297b06aab64c0730a11f6bfe4ad4e23fd2f97004101ef`.
+QEMU 2906694 joins with status zero after 202.634 seconds; RAM `run.7clmb3gj`
+is absent. Peak scratch is 4,164,542,464 bytes within the admitted 6 GiB workspace;
+QEMU durable write bytes are 4,096. All four listener deltas are zero in both
+baseline and corrected runs. Fourteen raw/console/storage/listener files are
+copied and hash-verified on both hosts. The exact failed diagnostic directory
+was removed after evidence verification and process/workspace retirement,
+reclaiming 3,469,312 allocated bytes. No host product, Docker, root, service or
+network mutation occurred.
+
+The three reproduced enrollment residue failures are corrected. Remaining
+receive obligations stay OPEN: broader crash/fault boundaries, long-term
+per-destination coordination retention, filesystem/remount identity, installed
+authenticated-peer and other-platform behavior, physical durability and release
+acceptance. This checkpoint does not reopen other user parks or complete R-S0,
+R-F5, independent reproduction/external review, or the overall goal.

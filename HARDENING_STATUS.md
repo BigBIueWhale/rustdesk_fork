@@ -16141,8 +16141,8 @@ NSS-derived protected coordination, retained destination/staging descriptors,
 per-file leases and cross-process namespace-generation exclusion. Publication
 syncs both affected directories. Missing staging authority remains an error.
 
-At `83463c45`, TUF `IUIXYHXDl7` passes all **139 focused tests** and **16 native
-root/UID-4001 scenarios with 20 joined actors** in 208.928 VM seconds. Each of
+At `1b46d528`, TUF `v1Yicpqclj` passes all **140 focused tests** and **19 native
+root/UID-4001 scenarios with 20 joined actors** in 202.634 VM seconds. Each of
 the three actual syscall-entry replacement attempts is denied by the kernel;
 authorized publication and retirement succeed with exact bytes/mode/mtime.
 Moving the complete private container cannot admit a competing generation,
@@ -16151,10 +16151,21 @@ Ordinary fresh/resumed writes, calibrated foreign-artifact/mode refusals,
 cancellation, parent replacement, process-death resume, independent file claims
 and maximum-length native filenames retain their named controls. The first
 candidate compiled but stopped at an obsolete directory-count fixture; its
-failure and the corrected run are retained in the audit and raw VM logs.
+failure and the corrected runs are retained in the audit and raw VM logs.
+
+**Enrollment crash recovery (`1b46d528`).** Setup publishes protected preparing
+intent before creating a staging container and uses one recoverable temporary
+record per destination. Recovery completes only private identity-marker prefixes;
+unexpected contents are refused unchanged. At unchanged-product baseline
+`2bf1fdde`, three real SIGKILL/restart cases each leave two containers, and the
+record-publication case also leaves a temporary record. The identical observers
+now finish with one container, no added temporary record and exact output. The
+eight setup controls cover missing/empty/partial/complete markers and wrong,
+unrelated, symlinked and read-shared contents. This establishes process-death
+recovery at the three selected boundaries, not physical power-loss durability.
 
 Per-file artifacts/directories retire. One container, its small identity file
-and two bounded coordinator records persist per destination. Enrollment-crash
+and two bounded coordinator records persist per destination. Broader crash/fault
 boundaries, long-term coordination retention/cleanup, remount/filesystem identity,
 ACL/non-local filesystems, other platforms, installed/authenticated-peer
 integration, physical power-loss durability, R-S0/R-F5 and release acceptance

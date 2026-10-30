@@ -1,10 +1,13 @@
 import 'dart:math';
+import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common/widgets/popup_menu_position.dart';
 import 'package:flutter_hbb/desktop/widgets/material_mod_popup_menu.dart'
     as mod_menu;
+import 'package:flutter_hbb/desktop/widgets/menu_button.dart' as menu_button;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 
@@ -55,6 +58,77 @@ Future<void> _closeMenu(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('connection menu exposes its description and button action',
+      (tester) async {
+    final selected = <String>[];
+    await tester.pumpWidget(_subject(TextDirection.ltr, 'root', selected.add));
+    final node = tester.getSemantics(find.byIcon(IconFont.more));
+    expect(node, containsSemantics(
+      tooltip: 'More',
+      isButton: true,
+      hasEnabledState: true,
+      isEnabled: true,
+      isFocusable: true,
+      hasTapAction: true,
+    ));
+    tester.binding.pipelineOwner.semanticsOwner!
+        .performAction(node.id, ui.SemanticsAction.tap);
+    await tester.pumpAndSettle();
+    try {
+      expect(_entries, findsNWidgets(3));
+      await tester.tap(find.text('Transfer file'));
+      await tester.pumpAndSettle();
+      expect(selected, ['file']);
+      expect(_entries, findsNothing);
+    } finally {
+      await _closeMenu(tester);
+    }
+    expect(tester.takeException(), isNull);
+  }, semanticsEnabled: true);
+
+  testWidgets('connection menu responds across the outlined button interior',
+      (tester) async {
+    final selected = <String>[];
+    await tester.pumpWidget(_subject(TextDirection.ltr, 'root', selected.add));
+    final bounds = tester.getRect(find.byType(_Probe));
+    expect(bounds.size, const Size(28, 28));
+    for (final point in [
+      Offset(bounds.left + 3, bounds.center.dy),
+      Offset(bounds.right - 3, bounds.center.dy),
+      Offset(bounds.center.dx, bounds.top + 3),
+      Offset(bounds.center.dx, bounds.bottom - 3),
+    ]) {
+      await tester.tapAt(point);
+      await tester.pumpAndSettle();
+      try {
+        expect(_entries, findsNWidgets(3));
+      } finally {
+        await _closeMenu(tester);
+      }
+    }
+    expect(selected, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('connection menu shows its description on hover', (tester) async {
+    await tester.pumpWidget(_subject(TextDirection.ltr, 'root', (_) {}));
+    final pointer = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await pointer.addPointer(location: Offset.zero);
+    try {
+      await pointer.moveTo(tester.getCenter(find.byIcon(IconFont.more)));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(find.text('More'), findsOneWidget);
+      expect(_entries, findsNothing);
+    } finally {
+      await pointer.removePointer();
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+    }
+    expect(tester.takeException(), isNull);
+  });
+
   for (final direction in TextDirection.values) {
     for (final layout in ['root', 'offset', 'scaled']) {
       testWidgets('connection menu keyboard anchor ${direction.name} $layout',

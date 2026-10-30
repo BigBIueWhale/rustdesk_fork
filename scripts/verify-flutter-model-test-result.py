@@ -181,7 +181,11 @@ MENU_BUTTON_SUITES = {
         f"connection menu keyboard anchor {direction} {layout}"
         for direction in ("ltr", "rtl")
         for layout in ("root", "offset", "scaled")
-    } | {f"connection menu selects {mode}" for mode in ("file", "camera", "terminal")},
+    } | {f"connection menu selects {mode}" for mode in ("file", "camera", "terminal")} | {
+        "connection menu exposes its description and button action",
+        "connection menu responds across the outlined button interior",
+        "connection menu shows its description on hover",
+    },
     "toolbar_button_probe_test.dart": {
         f"toolbar {variant} {case}"
         for variant in ("action", "submenu")

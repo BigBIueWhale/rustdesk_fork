@@ -16,7 +16,8 @@ def main():
     names = ('flutter/lib/desktop/pages/connection_page.dart',
              'flutter/lib/desktop/widgets/popup_menu.dart',
              'flutter/lib/common.dart', 'flutter/lib/consts.dart',
-             'flutter/test_probes/connection_menu_cases.dart.inc')
+             'flutter/test_probes/connection_menu_cases.dart.inc',
+             'flutter/lib/desktop/widgets/menu_button.dart')
     inputs = {name: (repo / name).read_bytes() for name in names}
     for name, data in inputs.items():
         if (project / name[len('flutter/'):]).read_bytes() != data:
@@ -24,7 +25,7 @@ def main():
         print(f'CONNECTION_MENU_INPUT=observed path={name} bytes={len(data)} '
               f'sha256={hashlib.sha256(data).hexdigest()}', flush=True)
     source, menu, common, constants, tests = (
-        inputs[name].decode('utf-8') for name in names)
+        inputs[name].decode('utf-8') for name in names[:5])
     start = '                Container(\n                  height: 28.0,\n                  width: 28.0,'
     end = '\n              ]),'
     if source.count(start) != 1:

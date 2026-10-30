@@ -120736,10 +120736,14 @@ small labeling change.
 
 TUF `VNW9kAPxzy`, command
 `bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --tab-selection`,
-prepares the exact source, then stops on the already-parked broad parser controls:
+prepares the exact source, then reaches the already-parked post-test parser controls:
 `test_inventory_is_exact`, profile `models`, edits rename/duplicate/wrong-suite.
-No widget tests execute; no compilation, rendered tooltip or native accessibility
-acceptance is claimed. The parser and test harness are not changed or rerun.
+Those controls fail before result validation and source postchecks. Reading the
+guest pipeline establishes that reaching them implies a successful test-command
+exit: a nonzero exit returns earlier. The previous description of failure before
+widget execution was incorrect. Per-case JSON was not emitted before this failure
+and was not retained; no exact-case, full-harness, tooltip-specific or native
+accessibility acceptance is claimed. The parser and harness are not changed or rerun.
 Widget SHA-256 is `28a7602374c2427a99a2a3e5c9ed581dcfae8877aa5f0acd8481789b667cc486`;
 serial SHA-256 is `897f62e908b0a894622add3f7094f46bd2eb5a3a6a87f03a7beea6329cc891a8`.
 QEMU 2610001 joins after 245.578 seconds, RAM `run.vl34br4w` retires,
@@ -120756,3 +120760,45 @@ QEMU 2611831 joins in 30.697 seconds; RAM `run.k06w8nmf` retires,
 and all three listener deltas are zero. Six files add 105,952 bytes; thirteen
 raw files total 180,032 bytes per host, copied and hash-verified. This audit-only
 receipt leaves the measured ledger unchanged and establishes no product behavior.
+
+## 2026-10-30 — home-card frame freshness
+
+Continued ordinary UI work; all user parks remain. The prior turn changed
+authoritative product/docs state and is classified as PROGRESS. The current
+R-S11ia–io native-action checklist remains open. No privileged path is changed.
+
+`buildLeftPane` synchronously constructed help cards but wrapped them in a fresh
+FutureBuilder on every rebuild. Flutter documents the
+[waiting-frame behavior](https://api.flutter.dev/flutter/widgets/FutureBuilder-class.html).
+Preparation `77f54c17fd19a9c6c5a0edbbb468f958c2305086` expands the existing
+fitting-content test to observe initial, replaced and cleared status in the first
+frame. Inventory remains 22 desktop cases. Baseline `I7bJVYK19i` passes 21 and
+fails because the initial “Short status” text is absent; its later assertions are
+not reached. Product `abb6ff010540a455e73fa633c956b9fe19a7e055` renders the
+cards directly and replaces delayed resize triggers with a shared
+[post-layout callback](https://api.flutter.dev/flutter/scheduler/SchedulerBinding/addPostFrameCallback.html)
+that checks mounting and the current home page. Card construction/actions remain.
+
+The identical checks pass in `3VhqVn74qn`: all 22 cases, three focused parser
+controls, exact source-copy checks and outer acceptance. Command:
+`bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --desktop-theme`.
+Pinned Flutter 3.24.5 renders the production pane builder with a fixture-owned
+unattached State, native/parent doubles and a logo asset fixture. Full home-page
+lifecycle, native window resizing, other platforms and device acceptance remain
+open; post-layout resizing is source-reviewed, not runtime-proved here.
+Tests SHA-256: `cd50261ffa40f40022fc5cb007815632333b331b69cbcc41fd97cfd1317e1d77`.
+Home-source baseline/candidate SHA-256:
+`50c3fb0d2b2a0098ecd4caf8c842b25f11e2d89e0b63309978251276abf25814` /
+`3fde9400db4e7adf02c3ce404592531f18f044aaacf2a2677e2cdc3e0a464bdd`.
+
+| Run | Serial SHA-256 | QEMU / seconds | Retired RAM workspace |
+| --- | --- | --- | --- |
+| `I7bJVYK19i` | `893ba9696d55ae155c8afe0a42bd965331d7dc328bcdaa1b6abee73791f7b646` | 2612652 / 247.876 | `run.yyzhza7w` |
+| `3VhqVn74qn` | `37c05e75d6172786d617410aafdf5c045bf9f777e9e250b15142e122dc3ad888` | 2615223 / 266.903 | `run.yry5lpw6` |
+
+Both QEMU processes join, RAM workspaces retire and all eight listener deltas
+are zero. Fourteen raw files total 173,521 bytes per host, copied and hash-verified.
+After evidence and exact process/workspace checks, the failed baseline diagnostic
+tree is removed, releasing 3,457,024 allocated bytes. The prior tab-label receipt
+is also corrected above: its post-test parser failure was misreported as occurring
+before test execution. That correction adds no new runtime acceptance.

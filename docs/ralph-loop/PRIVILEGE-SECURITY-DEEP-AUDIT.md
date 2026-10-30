@@ -118334,7 +118334,6 @@ QEMU 1836428 joins in 30.368 seconds; RAM `run.g_9n1cmf` retires and three
 listener deltas are zero. Six count files add 104,908 bytes. The thirteen raw
 files from both runs total 240,149 bytes per host with matching hashes.
 This audit-only receipt leaves the measured ledger unchanged.
-
 ### 2026-10-30 — three point/seed backend comparison
 
 At `8f6d01abb8fb99faf14b321aa945ad6a5543f3f0` (tree
@@ -119192,3 +119191,47 @@ QEMU 1879681 joins in 30.703 seconds, RAM `run.vdheg13b` retires and all
 three listener deltas are zero. Six count files add 105,130 bytes; the twenty
 files from this slice total 286,714 bytes per host with matching hashes.
 This audit-only receipt leaves the measured ledger unchanged.
+
+### 2026-10-30 — peer argument rejection diagnostics
+
+Starting at `ddc901f9456e30711838c84c1a0c2f05efa963d1`, four errors in
+`src/ipc/auth.rs` format the complete `Vec<Vec<u8>>` obtained from peer command-line
+inspection: user-owned main/password servers and Linux service-owned main/replica
+servers. Their callers propagate these errors, including the service-owned recovery
+warning in `src/ipc.rs`. Linux documents [process-controlled command-line contents](https://man7.org/linux/man-pages/man5/proc_pid_cmdline.5.html);
+Rust's [Debug formatting](https://doc.rust-lang.org/std/fmt/trait.Debug.html) provides
+no secrecy guarantee. Formatting rejected arguments is unnecessary disclosure, not
+proof that an application credential or a new privilege escalation is reachable.
+
+The intended boundary is unchanged receiver-side peer and exact-role proof, with
+rejection diagnostics limited to a fixed reason and PID. `ad638445` removes only
+the four argument formatting operands and their labels; exact source comparison
+preserves all predicates, identity queries, ordering and return behavior. No API
+redesign, compatibility path or new source catalogue is needed.
+
+Fixture `059aa2ad` extracts the complete two user-owned authentication functions
+and their argument/executable helpers. Separate processes execute the same immutable
+image with valid `--server` or an additional synthetic private argument. The checks
+use real Unix connections, kernel UID/PID, executable paths and `/proc` arguments.
+Both checks run under root and UID 4001; all sockets/descriptors and peer children
+retire before the harness verdict. The fixture is byte-identical across A/B runs.
+
+- Baseline `059aa2adbb1a7b6217a2580fdf1f1f064a32a813`, TUF `yJpOlOJxWE`:
+  262 cases pass; two negative cases fail after detecting disclosure in both
+  authentication functions each. Four valid-role observations pass. Artifact
+  `8adf76aa910cb26a12cd94ec07bb392d3402831663fec5f5adc67f35108c4279`.
+- Corrected `ad638445766b33a5b77beabd8f4b109c1b8dca7b`, TUF `1VEEFlN8jX`:
+  all 264 cases pass, including four non-disclosing refusals and four accepted
+  valid roles. Artifact `2cca8b598098e5cb5eb2fe3bd440e99c147ed065f78e12d609f7b856c3a23b84`.
+
+Both runs also pass fourteen directory cases. Command:
+`bash scripts/smoke-verifier-vm-authority.sh --linux-ipc-parent-tests`.
+Rust 1.75 builds in networkless, nonroot guest Docker; native actors execute inside
+the zero-NIC Linux VM. QEMU 1880948/1881709 joins in 93.959/95.069 seconds;
+RAM `run.53qva_93`/`run.es21tfjn` retires and all eight listener deltas are zero.
+Fourteen retained files total 229,565 bytes per host with matching hashes.
+The failed baseline's exact diagnostic directory is removed after retention
+(3,510,272 allocated bytes). Python/shell syntax and `git diff --check` pass.
+The service-owned pair has source evidence only; its installed runtime, macOS,
+full application, all fifteen credential-action acceptances and release evidence
+remain OPEN. Separately parked work is unchanged.

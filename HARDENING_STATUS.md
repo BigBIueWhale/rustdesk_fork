@@ -3622,9 +3622,10 @@ those obligations.
 <a id="linux-ipc-components"></a>
 
 **IPC / option CLI — component acceptance; installed acceptance OPEN.**
-At `33abe10a`, TUF `cCC240ealO` passes all **176 listener/transport, 32 CLI,
-10 Windows selector, 22 main-protocol, 8 main-transaction, 8 main-peer, 4 URL-loop and
-14 directory cases**, plus the focused desktop source check in 95.121 seconds.
+At `ad638445`, TUF `1VEEFlN8jX` passes all **176 listener/transport, 32 CLI,
+10 Windows selector, 22 main-protocol, 8 main-transaction, 8 main-peer, 4 URL-loop,
+4 peer-argument diagnostic and 14 directory cases**, plus the focused desktop source
+check in 95.069 seconds.
 All execute in Linux;
 the Windows selector uses real
 Unix sockets and Tokio tasks, not Windows pipes or privileged receivers.
@@ -3640,7 +3641,18 @@ Real Unix sockets establish the named IPC outcomes, not complete application or
 privileged-receiver authorization. All four host
 listener deltas are zero; QEMU joins, bounded RAM scratch retires and exact
 fixture socket/descriptor cleanup passes. Current receipt:
-`linux-ipc-parent-tests-run.cCC240ealO.serial.log`.
+`linux-ipc-parent-tests-run.1VEEFlN8jX.serial.log`.
+
+**Peer-argument diagnostics (`ad638445`).** Four authentication rejection errors
+retain their reason and PID while omitting the peer's complete argument values.
+The unchanged Linux fixture reproduces disclosure in both user-owned server checks
+under root and UID 4001; after correction all four refusals omit the synthetic
+argument, and four valid-role observations still succeed. The actual authentication
+functions read kernel peer credentials, executable paths and process arguments over
+real Unix connections. Authority predicates and control flow are unchanged. The two
+service-owned diagnostics receive the same deletion but their installed transactions,
+macOS execution and full application acceptance remain OPEN. The audit retains A/B
+source/artifact identities and cleanup evidence; no new LPE is demonstrated.
 
 **Linux main endpoint principal (`a6fabea5`).** Ordinary and explicit-UID main
 connections share routing and compare the connected kernel UID with the selected

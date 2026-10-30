@@ -323,14 +323,15 @@ class _CustomImageQualityWidgetState extends State<CustomImageQualityWidget> {
       ]);
     return Column(mainAxisSize: MainAxisSize.min, children: [
       Row(children: [
-        Expanded(flex: 3, child: Semantics(label: text('Bitrate'), child: Slider(
+        Expanded(flex: 3, child: MergeSemantics(child: Semantics(
+          label: text('Bitrate'), child: Slider(
           value: _quality.value, min: kMinQuality,
           max: _more ? kMaxMoreQuality : kMaxQuality,
           semanticFormatterCallback: (value) => '${value.round()}%',
           divisions: _more ? ((kMaxMoreQuality - kMinQuality) / 10).round()
               : ((kMaxQuality - kMinQuality) / 5).round(),
           onChanged: _quality.active && !_closing
-              ? (v) => _edit(_quality, v) : null))),
+              ? (v) => _edit(_quality, v) : null)))),
         Expanded(child: Text(_quality.value.round().toString() + '%',
           style: const TextStyle(fontSize: 15))),
         Expanded(flex: mobile ? 2 : 1, child: Text(text('Bitrate'),
@@ -342,12 +343,13 @@ class _CustomImageQualityWidgetState extends State<CustomImageQualityWidget> {
       status(_quality),
       if (widget.showFps) ...[
         Row(children: [
-          Expanded(flex: 3, child: Semantics(label: text('FPS'), child: Slider(
+          Expanded(flex: 3, child: MergeSemantics(child: Semantics(
+            label: text('FPS'), child: Slider(
             value: _fps.value, min: kMinFps, max: kMaxFps,
             semanticFormatterCallback: (value) => value.round().toString(),
             divisions: ((kMaxFps - kMinFps) / 5).round(),
             onChanged: _fps.active && !_closing
-                ? (v) => _edit(_fps, v) : null))),
+                ? (v) => _edit(_fps, v) : null)))),
           Expanded(child: Text(_fps.value.round().toString(),
             style: const TextStyle(fontSize: 15))),
           Expanded(flex: 2, child: Text(text('FPS'),

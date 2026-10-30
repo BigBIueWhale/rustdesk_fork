@@ -1,15 +1,16 @@
-# url\_launcher\_linux
+# Vendored `url_launcher_linux`
 
-The Linux implementation of [`url_launcher`][1].
+This fork carries a local copy of `url_launcher_linux` 3.2.1, the Linux
+implementation of `url_launcher`. The application's
+[pubspec.yaml](../../pubspec.yaml) selects this directory through a
+`dependency_overrides` path entry, and [pubspec.lock](../../pubspec.lock)
+records it as a path dependency. Application code continues to use `url_launcher`.
 
-## Usage
+The local copy includes a Linux engine-shutdown correction. See
+[UPSTREAM.md](UPSTREAM.md) for the imported package identity and the native change.
+The [changelog](CHANGELOG.md) records upstream package history;
+[LICENSE](LICENSE) and [AUTHORS](AUTHORS) retain upstream attribution.
 
-This package is [endorsed][2], which means you can simply use `url_launcher`
-normally. This package will be automatically included in your app when you do,
-so you do not need to add it to your `pubspec.yaml`.
-
-However, if you `import` this package to use any of its APIs directly, you
-should add it to your `pubspec.yaml` as usual.
-
-[1]: https://pub.dev/packages/url_launcher
-[2]: https://flutter.dev/to/endorsed-federated-plugin
+For changes and verification, follow the fork's
+[contribution guide](../../../docs/CONTRIBUTING.md) and
+[build execution boundary](../../../scripts/README.md#execution-boundary).

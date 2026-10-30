@@ -120812,3 +120812,34 @@ QEMU 2617078 joins in 30.600 seconds; RAM `run.lkaukelw` retires,
 and all three listener deltas are zero. Six files add 106,500 bytes; twenty
 raw files total 280,021 bytes per host, copied and hash-verified. This audit-only
 receipt leaves the measured ledger unchanged.
+
+## 2026-10-30 — user pivot; vendored package documentation
+
+The user explicitly requested completely unrelated work. Listener-status loading
+and error handling is OPEN/PARKED. Its unverified production patch is preserved
+in stash `c82aa2a5abc188551fcca31423ff0787b503f811`. Preparation commits
+`d3e7d7d5`, `529384e3` and `9bfe4d78` retain the expanded fixture and inventory.
+Baseline `HGXtB0tsTT` at `529384e3` reports 16 passing and seven failing cases;
+its indicator lookup assumed the wrong widget shape. The corrected fixture and
+candidate product have not run, so this is no completed before/after result.
+The native status adapter and all earlier user parks remain outside this slice.
+
+That completed VM joined QEMU 2617988 in 242.049 seconds and retired RAM workspace
+`run.kjfve2d0`. Seven raw files totaling 114,249 bytes were copied and hash-verified;
+serial SHA-256 is
+`e635eeafa8f4fe93e5288d93c3339f45eaa07f0dfb5e3a07a9540a1ec4e77982`.
+After verifying the retained evidence and exact process/workspace absence, the
+retired diagnostic tree `listener-states-fixture.HGXtB0tsTT` (inode 78426624)
+was removed, releasing 3,510,272 allocated bytes.
+
+The unrelated completed documentation correction identifies the local
+`url_launcher_linux` 3.2.1 copy and its existing application path override.
+The README previously described generic automatic upstream inclusion and omitted
+the fork's local modification and contribution workflow. It now links the actual
+pubspec, lockfile, provenance, history, attribution and contribution/build guides.
+The provenance introduction also stops calling the modified directory an exact
+upstream package. [Dart's dependency-override documentation](https://dart.dev/tools/pub/dependencies#dependency-overrides)
+confirms local-path selection semantics; the repository's pubspec and lockfile
+establish the concrete selection here. Only Markdown changes; runtime behavior
+and dependencies are unchanged. Relative-link review and `git diff --check` are
+the relevant checks; no new product test or runtime acceptance is claimed.

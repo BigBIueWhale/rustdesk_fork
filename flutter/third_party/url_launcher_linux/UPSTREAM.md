@@ -1,7 +1,7 @@
 # Vendored `url_launcher_linux`
 
-This directory is the exact `url_launcher_linux` 3.2.1 package whose hosted
-archive is locked in the pre-vendoring `flutter/pubspec.lock` with SHA-256
+This directory vendors `url_launcher_linux` 3.2.1 with the local change below.
+The hosted archive is locked in the pre-vendoring `flutter/pubspec.lock` with SHA-256
 `4e9ba368772369e3e08f231d2301b4ef72b9ff87c31192ef471b380ef29a4935`.
 The imported upstream `linux/url_launcher_plugin.cc` has SHA-256
 `52cd2d6ef9bc4e1b28eca16d4593c06c52fbc4de3be8083230060c35c4b0db2d`.

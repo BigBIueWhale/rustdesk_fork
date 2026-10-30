@@ -565,6 +565,21 @@ acceptance remain OPEN. Parked source, window/dispatcher and producer work remai
 
 ## Documentation and verification architecture
 
+**Vendored Linux URL-launcher documentation.** The package README now identifies
+the application's local path override, links its provenance and local correction,
+and points contributors to the fork's workflow. The provenance introduction no
+longer describes the modified directory as an exact upstream package. Package
+metadata, lockfiles and executable sources are unchanged; document/source and
+relative-link review supplies documentation evidence only.
+
+**OPEN/PARKED — listener-status loading and errors.** The user requested an
+unrelated task. Candidate UI changes are preserved in stash
+`c82aa2a5abc188551fcca31423ff0787b503f811`; preparation is at `9bfe4d78`.
+The first expanded baseline passes 16 cases and fails seven, with an indicator
+lookup defect in its fixture. The corrected fixture and product candidate remain
+unrun. No completed before/after comparison or new runtime acceptance is claimed.
+See the audit entry “2026-10-30 — user pivot; vendored package documentation”.
+
 **Windows installed-service evidence memory bounds (`0228d544`).** The Linux
 receipt checker hashes artifacts in 64-KiB chunks through one retained descriptor;
 its former whole-file read admitted 2-GiB files inside a 1-GiB helper container.

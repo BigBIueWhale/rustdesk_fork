@@ -120843,3 +120843,12 @@ confirms local-path selection semantics; the repository's pubspec and lockfile
 establish the concrete selection here. Only Markdown changes; runtime behavior
 and dependencies are unchanged. Relative-link review and `git diff --check` are
 the relevant checks; no new product test or runtime acceptance is claimed.
+
+Fresh ledger count at `1a19db8370fb57b609afd744f5173aeccd0cdafe`:
+`t8RK85oYGK` passes seven controls and exact byte round trip using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 365,390 tokens / 1,671,255 bytes,
+input SHA-256 `6848b8b2a290c73057e9f8dcd3e7516f40b8cbccd05f3a09348cc67ed71eff32`.
+QEMU 2619924 joins in 30.502 seconds and RAM `run.t16wqylt` retires.
+All three count-run and four prior listener-run endpoint deltas are zero.
+Six count files add 104,383 bytes; thirteen raw files total 218,632 bytes per
+host, copied and hash-verified. This audit-only receipt leaves the ledger unchanged.

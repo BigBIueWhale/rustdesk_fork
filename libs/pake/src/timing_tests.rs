@@ -204,13 +204,21 @@ fn optimized_timing_evidence() {
         });
     // Includes wide reduction, variable-base multiplication and wiping owners;
     // excludes OS RNG and point preparation. The fixed point is not a base table.
+    let multiply = |bytes: &[u8; 64]| {
+        let scalar = Zeroizing::new(Scalar::from_bytes_mod_order_wide(bytes));
+        Zeroizing::new(&*scalar * black_box(&*point))
+    };
     let multiplication = measure("reduce-multiply-one-random", 0x8d02_57be_a913_c64f,
-        GROUP_SAMPLES, scalar_inputs, |bytes| {
-            let scalar = Zeroizing::new(Scalar::from_bytes_mod_order_wide(bytes));
-            Zeroizing::new(&*scalar * black_box(&*point))
-        });
+        GROUP_SAMPLES, scalar_inputs, multiply);
+    // Keep the same label stream and execution closure. Reversal tests whether
+    // a difference follows input values; identical inputs check label bias.
+    let reversed = measure("reduce-multiply-random-one", 0x8d02_57be_a913_c64f,
+        GROUP_SAMPLES, |bytes, class, state| scalar_inputs(bytes, class ^ 1, state), multiply);
+    let identical = measure("reduce-multiply-one-one", 0x8d02_57be_a913_c64f,
+        GROUP_SAMPLES, |bytes, _, state| scalar_inputs(bytes, 0, state), multiply);
     assert!(control && group_control, "variable-time positive control was not detected: inconclusive");
-    assert!(!tag_position && !tag_key && !scalar && !generator && !multiplication,
+    assert!(!identical, "identical-input negative control detected a difference: inconclusive");
+    assert!(!tag_position && !tag_key && !scalar && !generator && !multiplication && !reversed,
         "timing difference detected");
-    println!("PAKE_TIMING_RESULT=no-difference-detected cohorts=5 positive_controls=2 primitive_samples=1000000 group_samples=100000 repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact");
+    println!("PAKE_TIMING_RESULT=no-difference-detected cohorts=6 positive_controls=2 negative_control=passed primitive_samples=1000000 group_samples=100000 repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact");
 }

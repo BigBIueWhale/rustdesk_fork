@@ -6988,7 +6988,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = pake-allocation ]; then
         printf 'PAKE_ALLOCATION_PROFILE=pake-allocation stage=container-start tests=21\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = pake-timing ]; then
-        printf 'PAKE_TIMING_PROFILE=pake-timing stage=container-start tests=1 cohorts=7\n'
+        printf 'PAKE_TIMING_PROFILE=pake-timing stage=container-start tests=1 cohorts=9\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main-config-key ]; then
         printf 'MAIN_CONFIG_KEY_PROFILE=main-config-key stage=container-start tests=3 app=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = language-selection ]; then
@@ -7806,8 +7806,8 @@ PY
         [ "${#result_lines[@]}" -eq 1 ] || fail 'PAKE timing summary count differs'
         [ "$(grep -Ec '^PAKE_TIMING_ARTIFACT=pass sha256=[0-9a-f]{64} tests=1 optimized=true unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'PAKE_TIMING_ARTIFACT=' "$output")" -eq 1 ] \
-            && [ "$(grep -Fxc 'PAKE_TIMING_RESULT=no-difference-detected cohorts=5 positive_controls=2 primitive_samples=1000000 group_samples=100000 repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact' "$output")" -eq 1 ] \
-            && [ "$(grep -Ec '^PAKE_TIMING_CASE=name:(early-exit-first-last|verify-tag-first-last|verify-tag-zero-random-key|scalar-reduce-zero-random|generator-fixed-random-prs|vartime-multiply-one-random|reduce-multiply-one-random) ' "$output")" -eq 7 ] \
+            && [ "$(grep -Fxc 'PAKE_TIMING_RESULT=no-difference-detected cohorts=6 positive_controls=2 negative_control=passed primitive_samples=1000000 group_samples=100000 repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^PAKE_TIMING_CASE=name:(early-exit-first-last|verify-tag-first-last|verify-tag-zero-random-key|scalar-reduce-zero-random|generator-fixed-random-prs|vartime-multiply-one-random|reduce-multiply-one-random|reduce-multiply-random-one|reduce-multiply-one-one) ' "$output")" -eq 9 ] \
             || fail 'PAKE timing measurements or artifact differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main-config-key ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'main config-key summary count differs'

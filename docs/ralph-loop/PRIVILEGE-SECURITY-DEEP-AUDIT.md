@@ -117758,3 +117758,37 @@ primitive, not complete sampling, handshake timing or a shipping application.
 Other PRS lengths, varied points, other targets/backends, stronger leakage
 analysis, erasure, independent reproduction and R-V3 remain OPEN. Parked work is
 unchanged. Runtime results follow only after exact VM completion.
+
+At `eda380bffba047683b5576cdf4c0d56ff6b55085` (tree
+`3d626cc9ea704124e797169421c7a2d52598152c`), first run `f4EdHvaB3M` detects a
+reduction/multiplication difference: raw/p99 t = -14.847377/-27.592003, against
+the unchanged absolute threshold 10. Four operations average 65,502.003398 ns
+for scalar one and 65,724.158754 ns for the random class. Generator t values
+are 0.874556/-0.405058; the three existing assessed cohorts also remain below
+threshold. Both positive controls detect their intended difference. The native
+test exits 101 after 20.80 seconds; no after-execution hash receipt runs on this
+failure. Pre-execution artifact SHA-256:
+`dba87d6be25de0e4d6184c9a1f8a4d61026c4bb69262ef6ab1958565f6263630`.
+QEMU 1814451 joins in 124.168 seconds; RAM `run.f2je1473` retires and four
+listener deltas are zero. Seven raw files total 86,336 bytes per host with
+matching hashes. Exact failed diagnostic directory inode 78294410 is removed
+after copy verification, reclaiming 3,452,928 bytes.
+
+One unchanged repeat, `HP3ohHL28q`, rebuilds that identical artifact and passes
+with its before/after hash unchanged. Multiplication t = -6.028439/-7.596646;
+means remain ordered in the same direction (65,710.175374/65,841.430390 ns).
+Generator t = 0.504817/-1.171230 and both positive controls detect. Execution
+takes 20.86 seconds; QEMU 1815332 joins in 122.000 seconds, RAM `run.j7p2cpxi`
+retires and four listener deltas are zero. Seven files add 83,797 bytes per host.
+The repeat does not erase the first detection; multiplication acceptance remains
+OPEN and the source of the difference is unclassified.
+
+The pinned [vector multiplication](https://raw.githubusercontent.com/dalek-cryptography/curve25519-dalek/curve25519-4.1.3/curve25519-dalek/src/backend/vector/scalar_mul/variable_base.rs)
+uses 64 fixed rounds; [table selection](https://raw.githubusercontent.com/dalek-cryptography/curve25519-dalek/curve25519-4.1.3/curve25519-dalek/src/window.rs)
+visits all entries with conditional assignment. That source review does not
+classify the generated-code, processor or measurement contribution. A diagnostic
+extension keeps the same execution closure, label seed, budgets and threshold,
+and adds reversed one/random classes plus identical scalar-one inputs under
+both labels. It must reject a detected identical-input difference as inconclusive
+and must reject a detection in either one/random orientation. No production or
+dependency change is justified by the observations so far.

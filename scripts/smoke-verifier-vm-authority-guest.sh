@@ -5440,6 +5440,8 @@ run_focused_rust_tests() {
                 if [ "$RUST_TEST_PROFILE" = pake-allocation ]; then
                     source_fingerprints+=(libs/pake/src/allocation_probe.rs scripts/verify.sh)
                     required_tests+=(allocation_probe::no_transient_secret_heap_copies)
+                elif [ "$RUST_TEST_PROFILE" = pake-backend-serial ]; then
+                    required_tests+=(timing_tests::optimized_timing_evidence)
                 else
                     required_tests+=(timing_tests::backend_timing_evidence)
                 fi
@@ -7002,7 +7004,9 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         printf 'PAKE_ALLOCATION_PROFILE=pake-allocation stage=container-start tests=21\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = pake-timing ]; then
         printf 'PAKE_TIMING_PROFILE=pake-timing stage=container-start tests=1 cohorts=24\n'
-    elif [ "$MODE" = android-rust-lifecycle-tests ] && [[ "$RUST_TEST_PROFILE" = pake-backend-default || "$RUST_TEST_PROFILE" = pake-backend-serial ]]; then
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = pake-backend-serial ]; then
+        printf 'PAKE_TIMING_PROFILE=pake-backend-serial stage=container-start tests=21 cohorts=24\n'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = pake-backend-default ]; then
         printf 'PAKE_TIMING_PROFILE=%s stage=container-start tests=21 cohorts=4\n' "$RUST_TEST_PROFILE"
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main-config-key ]; then
         printf 'MAIN_CONFIG_KEY_PROFILE=main-config-key stage=container-start tests=3 app=unexecuted\n'
@@ -7836,10 +7840,20 @@ PY
             && [ "$(grep -Fc 'PAKE_TIMING_BACKEND_ARTIFACT=' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^PAKE_TIMING_ARTIFACT_AFTER=sha256=[0-9a-f]{64} test_exit=0 unchanged=true$' "$output")" -eq 1 ] \
             && [ "$(grep -c '^PAKE_TIMING_DISASSEMBLY=' "$output")" -eq 1 ] \
-            && [ "$(grep -Fxc 'PAKE_TIMING_BACKEND_RESULT=no-difference-detected cohorts=2 positive_controls=1 negative_controls=1 samples=100000 repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact' "$output")" -eq 1 ] \
-            && [ "$(grep -Ec '^PAKE_TIMING_CASE=name:(vartime-prepared-one-random|multiply-prepared-(one-random|random-one|one-one)) ' "$output")" -eq 4 ] \
             && [ "$(grep -Ec '^PAKE_TIMING_MXCSR_SCOPE=pass normal_restore=true unwind_restore=true ' "$output")" -eq 1 ] \
             || fail 'PAKE backend measurements or artifact differ'
+        if [ "$RUST_TEST_PROFILE" = pake-backend-serial ]; then
+            [ "$(grep -Fxc 'PAKE_TIMING_RESULT=no-difference-detected cohorts=15 positive_controls=4 negative_controls=5 primitive_samples=1000000 group_samples=100000 repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact' "$output")" -eq 1 ] \
+                && [ "$(grep -Ec '^PAKE_TIMING_CASE=name:(early-exit-first-last|verify-tag-first-last|verify-tag-zero-random-key|scalar-reduce-zero-random|generator-fixed-random-prs|vartime-multiply-one-random|reduce-multiply-one-random|reduce-multiply-random-one|reduce-multiply-one-one) ' "$output")" -eq 9 ] \
+                && [ "$(grep -Ec '^PAKE_TIMING_CASE=name:(vartime-prepared-one-random|(reduce-wipe|multiply-prepared|point-copy-wipe)-(one-random|random-one|one-one)) ' "$output")" -eq 10 ] \
+                && [ "$(grep -Ec '^PAKE_TIMING_CASE=name:(vartime-mcdt-one-random|multiply-mcdt-(one-random|random-one|one-one)|multiply-restored-one-random) ' "$output")" -eq 5 ] \
+                && [ "$(grep -Ec '^PAKE_TIMING_MXCSR_RESTORED=value:[0-9a-f]{8}$' "$output")" -eq 1 ] \
+                || fail 'full serial-backend timing evidence differs'
+        else
+            [ "$(grep -Fxc 'PAKE_TIMING_BACKEND_RESULT=no-difference-detected cohorts=2 positive_controls=1 negative_controls=1 samples=100000 repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact' "$output")" -eq 1 ] \
+                && [ "$(grep -Ec '^PAKE_TIMING_CASE=name:(vartime-prepared-one-random|multiply-prepared-(one-random|random-one|one-one)) ' "$output")" -eq 4 ] \
+                || fail 'focused default-backend timing evidence differs'
+        fi
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main-config-key ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'main config-key summary count differs'
         [ "$(grep -Ec '^MAIN_CONFIG_KEY_ARTIFACT=pass sha256=[0-9a-f]{64} tests=3 unchanged=before-after$' "$output")" -eq 1 ] \
@@ -8540,7 +8554,7 @@ PY
         elif [[ "$RUST_TEST_PROFILE" = pake-backend-default || "$RUST_TEST_PROFILE" = pake-backend-serial ]]; then
             [ "$tests_passed" -eq 21 ] || fail 'PAKE backend test total differs'
             grep -E '^test (tests|timing_tests)::.* \.\.\. ok$|^PAKE_TIMING_' "$output"
-            printf 'PAKE_BACKEND_VM=pass commit=%s tree=%s selection=%s tests=21 target=linux-x86_64 scope=optimized-multiplication-comparison rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \
+            printf 'PAKE_BACKEND_VM=pass commit=%s tree=%s selection=%s tests=21 target=linux-x86_64 scope=optimized-backend-timing rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "${RUST_TEST_PROFILE#pake-backend-}" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = main-config-key ]; then

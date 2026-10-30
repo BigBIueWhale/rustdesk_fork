@@ -123,8 +123,11 @@ related=[entry for entry in sections if any(part in entry[2] for part in
     or edwards_mul(entry[2])
     or ('avx2..field..FieldElement2625x4' in entry[2] and '9_impl_mul' in entry[2])
     or ('ristretto..RistrettoPoint' in entry[2] and '7zeroize' in entry[2])
-    or (sys.argv[2]=='serial' and any(part in entry[2] for part in
-        ('serial..u64..field..FieldElement51', 'ProjectivePoint6double', 'variable_base3mul')))]
+    or (sys.argv[2]=='serial' and (
+        ('serial..u64..field..FieldElement51' in entry[2] and '3mul' in entry[2])
+        or 'FieldElement515pow2k' in entry[2] or 'ProjectivePoint6double' in entry[2]
+        or ('ProjectiveNielsPoint' in entry[2] and '3add' in entry[2])
+        or ('LookupTable' in entry[2] and '6select' in entry[2])))]
 related=[entry for entry in related if entry!=selected[0]]
 assert 5<=len(related)<=16
 def disassemble(entry):
@@ -141,9 +144,15 @@ record=disassemble(selected[0])
 record['related']=[disassemble(entry) for entry in related]
 assert sum(len(item['data']) for item in [record,*record['related']])<=256*1024
 version=subprocess.check_output(['objdump','--version'],timeout=10).decode().splitlines()[0]
+relocations=subprocess.check_output(['objdump','-R',artifact],timeout=10)
+assert len(relocations)<=4*1024*1024
+copy_relocations=[line for line in relocations.decode().splitlines()
+    if re.search(r'\s(?:memcpy|memmove|memset)(?:@|$)',line)]
+assert 1<=len(copy_relocations)<=8 and sum(map(len,copy_relocations))<=2048
 record.update({
     'link_map_sha256':hashlib.sha256(map_bytes).hexdigest(),
     'backend_comparison':sys.argv[2],
+    'copy_relocations':copy_relocations,
     'dalek_symbols':[entry for entry in sections if 'curve25519_dalek' in entry[2]],
     'objdump':version})
 print('PAKE_TIMING_DISASSEMBLY='+json.dumps(record,sort_keys=True))
@@ -151,7 +160,9 @@ PY
 test_status=0
 timing_test=optimized_timing_evidence
 if [ -n "$backend_comparison" ]; then
-    timing_test=backend_timing_evidence
+    if [ "$backend_comparison" = default ]; then
+        timing_test=backend_timing_evidence
+    fi
     timeout --signal=TERM --kill-after=5s 30s taskset -c "$cpu" "$test_executable" tests:: \
         --skip nfc_normalization_tests:: --skip timing_tests:: --test-threads=1 --color never --show-output \
         || test_status=$?

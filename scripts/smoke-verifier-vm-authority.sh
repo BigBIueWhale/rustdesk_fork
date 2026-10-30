@@ -7665,7 +7665,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [[ "$RUST_TEST_PROFILE" = pak
         && [ "$(/usr/bin/grep -Fc 'PAKE_TIMING_BACKEND_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'PAKE backend artifact receipt differs'
     require_exact_fixed_receipt \
-        "PAKE_BACKEND_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE selection=${RUST_TEST_PROFILE#pake-backend-} tests=21 target=linux-x86_64 scope=optimized-multiplication-comparison rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined" \
+        "PAKE_BACKEND_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE selection=${RUST_TEST_PROFILE#pake-backend-} tests=21 target=linux-x86_64 scope=optimized-backend-timing rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined" \
         'PAKE backend result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'PAKE backend completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main-config-key ]; then
@@ -9176,7 +9176,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'PAKE_TIMING_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=1 scope=optimized-primitive-timing network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [[ "$RUST_TEST_PROFILE" = pake-backend-default || "$RUST_TEST_PROFILE" = pake-backend-serial ]]; then
-        printf 'PAKE_BACKEND_VM_OUTER=pass host_uid=%s commit=%s tree=%s selection=%s tests=21 scope=optimized-multiplication-comparison network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'PAKE_BACKEND_VM_OUTER=pass host_uid=%s commit=%s tree=%s selection=%s tests=21 scope=optimized-backend-timing network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "${RUST_TEST_PROFILE#pake-backend-}" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = main-config-key ]; then
         printf 'MAIN_CONFIG_KEY_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=3 scope=production-key-schema network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

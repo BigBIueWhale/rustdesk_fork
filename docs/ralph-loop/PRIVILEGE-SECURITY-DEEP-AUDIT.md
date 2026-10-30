@@ -118932,3 +118932,47 @@ bytes, SHA-256
 QEMU 1862029 joins after 30.389 seconds, RAM `run.it1cfsv3` retires and all
 three listener deltas are zero. Six retained files total 106,629 bytes per host
 with matching hashes. This audit-only receipt changes neither measured document.
+
+### 2026-10-30 — main request schema behavior
+
+Starting at `3ddec7823698c79d7f195c78bfd24270463e1694`, review followed
+`handle_main_ipc_transaction` through `next_main_timeout`/`next_json` to the
+production `MainIpcRequest` schema and its handler. No production correction was
+needed for the selected malformed-envelope, struct-field and unit-payload cases.
+The pinned Serde 1.0.228 [adjacent-tag generator](https://raw.githubusercontent.com/serde-rs/serde/v1.0.228/serde_derive/src/de/enum_adjacently.rs)
+rejects unknown and duplicate envelope fields. Its [variant generator](https://raw.githubusercontent.com/serde-rs/serde/v1.0.228/serde_derive/src/de/enum_untagged.rs)
+uses the [untagged unit visitor](https://raw.githubusercontent.com/serde-rs/serde/v1.0.228/serde/src/private/de.rs)
+for unit content; this differs from the permissive internally tagged unit visitor.
+Do not infer identical rules for every nested enum from the outer annotation.
+
+`e240cd04` extends the existing real-socket schema fixture and its exact output
+receipt. `33abe10a` fixes a borrow in its match guard. Each root/UID-4001
+scenario sends 24 literal malformed request frames, then 18 schema-valid controls
+covering all eight Linux request variants, both tag/content orders and omitted
+or null content for unit variants. It checks decoded values and releases both
+sockets before asserting descriptor restoration and the accumulated outcomes.
+Existing response, retired-operation, transaction, transport and directory checks
+remain. Production source, dependencies and harness admission/limits are unchanged.
+
+The first isolated run `UF0NtcXUQ5` stopped at fixture compile error E0507;
+it supplies no behavioral result. QEMU 1863238 joined after 79.163 seconds,
+RAM `run.lpcl4e74` retired and all four listener deltas were zero. After retaining
+seven files / 76,091 bytes, exact failed scratch inode 78294410 was removed
+(3,436,544 allocated bytes).
+
+At `33abe10ae707e0b065bd383b8a3734f4c022f558`, corrected run
+`cCC240ealO` passes 260 IPC cases, 14 directory cases and the focused desktop
+source check. Both schema processes report `request_rejected=24 request_controls=18`
+with successful descriptor cleanup. The listener artifact SHA-256 is
+`b264c223e48f415a8d776413cda28e6a89614c17fa5f4337d12b299040c1c7d2`.
+QEMU 1864051 joins in 95.121 seconds, RAM `run._f60oz2d` retires and all
+four listener deltas are zero. Seven corrected-run files / 112,283 bytes are
+retained on CTE and TUF with matching hashes; both runs together retain 188,374
+bytes. Command: `bash scripts/smoke-verifier-vm-authority.sh --linux-ipc-parent-tests`.
+
+This establishes the listed production-schema/framed-reader outcomes on Linux.
+Fixture operation IDs/tokens are parsing inputs, not demonstrated authorization.
+No full handler, installed settings, Windows/macOS transport or privileged action
+was exercised; no new LPE was demonstrated. Exhaustive nested-type admission and
+the separately parked CM payload/handshake work remain open. The status ledger
+updates only this acceptance and its current component receipt.

@@ -120587,3 +120587,13 @@ QEMU 2482954 joins in 264.547 seconds and RAM `run.utsf6g9a` retires; all four
 listener deltas are zero. Seven raw files total 86,979 bytes per host, copied and
 hash-verified. User parks, native application/platform and release acceptance
 remain open.
+
+**Fresh ledger count.** At `1e57c903c4db8bb3326b00703b876d8ce839e0a6`, TUF
+`XsuNWbFMt4` passes seven controls and exact byte round trip:
+364,568 tokens / 1,667,235 bytes using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`, input SHA-256
+`015a396903a6c1455e437594ac948cc7b7b751f303ce8f02f4376845ff64a9e4`.
+QEMU 2487088 joins in 30.227 seconds; RAM `run.twky1a86` retires and all
+three listener deltas are zero. Six count files add 103,808 bytes; thirteen raw
+files total 190,787 bytes per host with matching hashes. This audit-only receipt
+leaves the measured ledger unchanged.

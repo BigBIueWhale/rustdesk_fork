@@ -5,8 +5,8 @@ Main lowlevel logic from [FreeRDP](https://github.com/FreeRDP/FreeRDP).
 
 To enjoy file copy and paste feature on Linux/OSX,
 please build with `unix-file-copy-paste` feature.
-
-TODO: Move this lib to a separate project.
+Use the fork's [build guide](../../scripts/README.md) for the supported
+build recipes and isolated execution environment.
 
 ## How it works
 
@@ -17,7 +17,7 @@ Terminologies:
 - remote: the endpoint which paste the file copied from `local`
 
 The main algorithm of copying and pasting files is from
-[Remote Desktop Protocol: Clipboard Virtual Channel Extension](https://winprotocoldoc.blob.core.windows.net/productionwindowsarchives/MS-RDPECLIP/%5bMS-RDPECLIP%5d.pdf),
+[Remote Desktop Protocol: Clipboard Virtual Channel Extension](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-rdpeclip/),
 and could be concluded as:
 
 0. local and remote notify each other that it's ready.
@@ -77,21 +77,13 @@ and copy files to remote.
 
 ### windows
 
-![scene](./docs/assets/scene3.png)
-
-![A1->B1](./docs/assets/win_A_B.png)
-
-![B1->A1](./docs/assets/win_B_A.png)
-
 The protocol was originally designed as an extension of the Windows RDP,
 so the specific message packages fits windows well.
 
 When starting cliprdr, a thread is spawned to create an invisible window
 and to subscribe to OLE clipboard events.
-The window's callback (see `cliprdr_proc` in `src/windows/wf_cliprdr.c`) was
+The window's callback (see `cliprdr_proc` in [wf_cliprdr.c](src/windows/wf_cliprdr.c)) was
 set to handle a variety of events.
-
-Detailed implementation is shown in pictures above.
 
 ### Linux
 
@@ -121,9 +113,6 @@ out the file requested and open it for reading if necessary.
 Also when receiving Format Data Request PDU from remote asking for file list,
 the local file list should be rebuilt from file list retrieved from Clipboard Client.
 
-Some caching and preloading could be done on it since applications are likely to read
-on the list sequentially.
-
 #### FUSE server
 
 The FUSE server could convert POSIX file reading request to File Contents
@@ -146,9 +135,6 @@ the FUSE server will figure out the file system tree and rearrange its content.
   DOS
   \usr\bin\rustdesk
   ```
-
-- To better fit for preserving permissions on unix-like platforms,
-  a reserved area of FileDescriptor PDU
 
 - Linux file-copy FUSE is mounted through a trusted fixed-path `fusermount3`
   or `fusermount` helper resolved to a checked canonical target, using the

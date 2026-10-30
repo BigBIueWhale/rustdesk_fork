@@ -117659,3 +117659,12 @@ zero. Seven raw serial/console/storage/listener files total 82,571 bytes per hos
 with matching hashes, under `android-rust-lifecycle-tests-run.pzKgHc90Mc`
 (console adds `console-`). Command:
 `bash scripts/smoke-verifier-vm-authority.sh --pake-allocation-tests`.
+
+Ledger run `yOVWPPdcRY` at `c657424b` passes 72 workload controls/five refusals,
+seven tokenizer controls and full text round trip. It reports 360,172 tokens with
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 1,646,763 bytes, SHA-256
+`6b5699a0a27d830912f3b6a6406bea818bb2c2f6f7989ff3cf52d3568d17cb20`.
+QEMU 1809710 joins in 30.285 seconds; RAM `run.b53k4ozx` retires and three listener
+deltas are zero. Six count files add 103,898 bytes; thirteen files across both
+runs total 186,469 bytes per host with matching hashes. This audit-only receipt
+preserves the measured ledger and its approximate 400,000-token budget.

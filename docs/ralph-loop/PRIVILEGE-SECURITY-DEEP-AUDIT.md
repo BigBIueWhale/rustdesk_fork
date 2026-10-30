@@ -121039,3 +121039,12 @@ endpoint deltas are zero. Twenty-one raw files total 364,879 bytes per host,
 copied and hash-verified. Exact process/workspace, directory identity and evidence
 checks precede removal of both failed diagnostic trees, releasing 7,061,504
 allocated bytes. Canonical inputs and unrelated data are preserved.
+
+Fresh ledger count at `126f4bd94ffbd9ee91984d9abaecd20d1fd7dab0`:
+`KZXKAtxKUL` passes seven controls and exact byte round trip using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 365,905 tokens / 1,673,771 bytes,
+input SHA-256 `edfdfbe00f113c416554824d952c74dcd88fc46d99a4700d934eeee7884e4e1c`.
+QEMU 2633378 joins in 31.121 seconds, RAM `run.sgaamn0p` retires and all three
+endpoint deltas are zero. Six count files add 103,976 bytes; twenty-seven raw
+files total 468,855 bytes per host, copied and hash-verified. This audit-only
+receipt leaves the ledger unchanged.

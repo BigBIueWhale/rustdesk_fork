@@ -3790,10 +3790,14 @@ variables and descriptor setup before owned spawn. Complementary credential
 receiver/admission checks remain in `scripts/verify.sh`.
 
 Executable tests retain the closed service protocols, five launchctl parser
-cases, three bounded-child process cases, the Windows interactive-UI role
-predicate and `r_s11e262_` role/audit-token predicates. These are component
+cases, three bounded-child process cases, the Linux password-client and Windows
+interactive-UI role predicates and `r_s11e262_` role/audit-token predicates. These are component
 checks; installed authorization and protected actions require the observations
 above and below.
+
+The redundant Linux password-role test-text inventory is removed. Exact deletion
+and Python syntax-tree comparison preserve all other verifier checks; the executable
+Rust regression and its Cargo invocation are unchanged. This adds no runtime acceptance.
 
 `320f86f0` removes service/SAS test-wording inventories, duplicate test-name
 greps and six Apple mutations of test text (62 lines). Executable protocol tests,

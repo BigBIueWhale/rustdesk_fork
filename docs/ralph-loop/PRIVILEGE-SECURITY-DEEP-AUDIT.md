@@ -119111,3 +119111,22 @@ QEMU 1873395 joins after 30.719 seconds, RAM `run.ncjoycfl` retires and all
 three listener deltas are zero. Six count files add 104,135 bytes; the twenty
 files from this slice total 270,602 bytes per host with matching hashes.
 This audit-only receipt leaves the measured ledger unchanged.
+
+### 2026-10-30 — remove redundant password-role test-text inventory
+
+Starting at `788c45efac0e9fbf7e5fe641a9767c282311a623`, remove eighteen
+lines (626 bytes) from `scripts/verify-linux-service-password-ipc.py` that
+searched the finite-role Rust test for argument tokens. Finding those tokens
+does not establish an assertion's result. The executable
+`r_s11e261_linux_service_owned_password_client_roles_are_finite` already calls
+the production predicate for the admitted and rejected roles; it and the
+`ipc::ipc_auth::tests` Cargo invocation remain byte-identical.
+
+The surrounding exact production-role and requester capture/replay checks remain.
+Read-only comparison proves the edited file is exactly the old file minus this
+block, and its Python syntax tree equals the old tree after removing only the
+two assignments and two loops. `git diff --check` passes. Production, requirements
+and live instructions are unchanged. No checker, product or installed runtime
+execution is claimed for this deletion; all fifteen credential-action acceptance
+items remain open. The preceding isolated ledger measurement is 360,740 tokens /
+1,649,443 bytes; the edited ledger receives a fresh isolated count below.

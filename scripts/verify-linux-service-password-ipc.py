@@ -1111,24 +1111,6 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
         unique=True,
     )
 
-    auth_tests = auth.item("mod", "tests")
-    password_role_regression = auth.function(
-        "r_s11e261_linux_service_owned_password_client_roles_are_finite",
-        parent=auth_tests.start - 1,
-    )
-    for admitted in ('"--password"', '"--password-stdin"'):
-        password_role_regression.require((admitted,), f"admitted {admitted} role")
-    for rejected in (
-        '"--server"',
-        "SERVICE_OWNED_SERVER_ARG",
-        '"--service"',
-        '"--tray"',
-        '"--cm"',
-        '"extra"',
-        '"--unexpected"',
-    ):
-        password_role_regression.require((rejected,), f"rejected {rejected} role")
-
     user_server_argv = auth.function("user_owned_main_server_argv_is_expected")
     if user_server_argv.values != [
         "process_argv_is_exact", "(", "args", ",", "&", "[", '"--server"', "]", ")",

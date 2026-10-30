@@ -903,8 +903,8 @@ impl Responder {
 
 impl ResponderAwaitConfirm {
     /// Consume [`Step3`]: compute `K = yb·Ya` (abort on identity, R-P7), derive
-    /// `ISK`/keys/`mac_key`, verify the initiator's `Ta` in constant time
-    /// **before** authorizing (R-P3/R-A1), then emit `Tb`. Returns the
+    /// `ISK`/`mac_key`, verify the initiator's `Ta` in constant time
+    /// **before** deriving traffic keys (R-P3/R-A1), then emit `Tb`. Returns the
     /// role-oriented keys — the controlled side seals with `k_s2c`, opens with
     /// `k_c2s` (R-P2).
     pub fn recv_step3(self, step3: &Step3) -> Result<(DirectionalKeys, Step4), PakeError> {
@@ -925,14 +925,12 @@ impl ResponderAwaitConfirm {
             compressed_k.as_bytes(),
         );
         drop(compressed_k);
-        let (k_c2s, k_s2c) = derive_session_keys(&isk);
         let mac_key = derive_mac_key(&self.sid, &isk);
 
         if !verify_tag(&mac_key, &step3.ya, AD_INITIATOR, &step3.ta) {
-            // k_c2s/k_s2c wipe here on scope exit (their `Zeroizing` drop) — they were never
-            // moved into the drop-guarded DirectionalKeys on this abort (R-T15(a)/R-P12).
             return Err(PakeError::Confirmation);
         }
+        let (k_c2s, k_s2c) = derive_session_keys(&isk);
         let tb = compute_tag(&mac_key, &self.yb_pt, AD_RESPONDER);
         Ok((
             DirectionalKeys {

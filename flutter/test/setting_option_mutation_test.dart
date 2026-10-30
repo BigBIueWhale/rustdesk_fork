@@ -1126,8 +1126,6 @@ void main() {
   });
 
   testWidgets('quality editor uses confirmed effective quality and FPS', (tester) async {
-    final semantics = tester.ensureSemantics();
-    addTearDown(semantics.dispose);
     await _qualityEditor(tester,
       saveQuality: (_) async => 75, saveFps: (_) async => 45);
     expect(tester.getSemantics(find.byType(Slider).at(0)),
@@ -1145,7 +1143,7 @@ void main() {
       containsSemantics(label: 'Bitrate', value: '75%'));
     expect(tester.getSemantics(find.byType(Slider).at(1)),
       containsSemantics(label: 'FPS', value: '45'));
-  });
+  }, semanticsEnabled: true);
 
   testWidgets('quality and FPS restore earlier values after unconfirmed saves', (tester) async {
     final failures = <String>[];
@@ -1215,8 +1213,6 @@ void main() {
   });
 
   testWidgets('quality editor fixed quality disables its More control', (tester) async {
-    final semantics = tester.ensureSemantics();
-    addTearDown(semantics.dispose);
     await _qualityEditor(tester, saveFps: (v) async => v);
     expect(_qualitySlider(tester, 0).onChanged, isNull);
     expect(tester.widget<Checkbox>(find.byType(Checkbox)).onChanged, isNull);
@@ -1224,7 +1220,7 @@ void main() {
     expect(tester.getSemantics(find.byType(Slider).at(0)),
       containsSemantics(label: 'Bitrate', value: '50%',
         hasIncreaseAction: false, hasDecreaseAction: false));
-  });
+  }, semanticsEnabled: true);
 
   testWidgets('quality and FPS rebuilds preserve unconfirmed saves', (tester) async {
     for (final field in [0, 1]) {
@@ -1306,8 +1302,6 @@ void main() {
   });
 
   testWidgets('quality editor leaving More saves its bounded current value', (tester) async {
-    final semantics = tester.ensureSemantics();
-    addTearDown(semantics.dispose);
     final calls = <double>[];
     await _qualityEditor(tester, quality: 500, saveQuality: (v) async { calls.add(v); return v; });
     expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
@@ -1321,18 +1315,16 @@ void main() {
     expect(calls, [100]);
     expect(tester.getSemantics(find.byType(Slider).at(0)),
       containsSemantics(label: 'Bitrate', value: '100%'));
-  });
+  }, semanticsEnabled: true);
 
   testWidgets('quality editor preserves narrow mobile layout and hidden FPS', (tester) async {
-    final semantics = tester.ensureSemantics();
-    addTearDown(semantics.dispose);
     await _qualityEditor(tester, mobile: true, showFps: false, saveQuality: (v) async => v);
     expect(find.byType(Slider), findsOneWidget);
     expect(find.byType(Checkbox), findsOneWidget);
     expect(tester.takeException(), isNull);
     expect(tester.getSemantics(find.byType(Slider)),
       containsSemantics(label: 'Bitrate', value: '50%'));
-  });
+  }, semanticsEnabled: true);
 
   testWidgets('trackpad draft survives rebuild and uses the current save callback',
       (tester) async {

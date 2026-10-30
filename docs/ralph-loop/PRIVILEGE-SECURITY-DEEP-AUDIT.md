@@ -120993,3 +120993,49 @@ input SHA-256 `be83ad1d364fff715d41d434ff3e510ca129b8ab245a258ae36dbb9b3dbe4c95`
 QEMU 2629022 joins in 30.708 seconds and RAM `run.08a7jk_s` retires;
 all three endpoint deltas are zero. Six raw files total 104,016 bytes per host,
 copied and hash-verified. This audit-only receipt leaves the ledger unchanged.
+
+## 2026-10-30 — zoom failure layout
+
+Previous goal turn: PROGRESS through the launch-screen guide correction. The user
+pivot remains binding; all parked investigations and fifteen native credential
+action acceptances stay open. This slice changes ordinary zoom-control layout.
+
+`CustomScaleControls.buildScaleStatus` put unconstrained failure text and Retry
+in one Row. Product `64f9b22a5e11125608629dbb59e36291c8f716fa` replaces only that
+layout with a centered [Wrap](https://api.flutter.dev/flutter/widgets/Wrap-class.html).
+It lets both children use the available width and another line as needed.
+The existing retry, pending state, read/save behavior and translations remain.
+
+Preparation `2e196678` retains all 39 prior test bodies and adds three rendered
+English/German/Hebrew cases with the existing catalogue text, LTR/RTL, a normal
+700-pixel control and a 240-pixel control at 200%/150%/300% text size respectively.
+Baseline `esMrwg4pDa` passes 39 and fails the three narrow layouts with 86/415/232
+pixels of overflow. Candidate `w8OEL8lqed` passes the widget command, then fails
+the three parked model-parser controls before individual JSON retention and
+postchecks; no complete acceptance or per-case receipt is claimed for that run.
+`ba57f140` selects existing parser controls for the zoom profile and emits its
+JSON before validation. Product/tests are unchanged. Final `MzLmgRfR8j` passes
+all 42 unique cases, three parser controls, source postchecks and outer acceptance.
+The new cases verify text/button bounds, untruncated labels and actual retry taps
+that reload 150% with exactly two reads and no write. Command:
+`bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --custom-scale`.
+These are production Flutter 3.24.5 widget/model tests with controlled preference,
+session and translation inputs. Full menus, native fonts/devices and persistence
+remain outside this evidence. The broader parser issue stays parked.
+
+Widget baseline/candidate SHA-256:
+`ecd14d54e2df7cd52fb16706faf8d2a037af0e333c0fc557ebedf1d567e04d39` /
+`2881a93846d2b2716b7a8ad17165c0ccec170fe7b7d289d61c5c4cf1a004f56e`.
+Test SHA-256: `6cd2e827845dda62e6aa92c00c493133a6ac1dd96b2c5c7f7feefe0241356077`.
+
+| Run | Serial SHA-256 | QEMU / seconds | Retired RAM workspace |
+| --- | --- | --- | --- |
+| `esMrwg4pDa` | `ac410c63bb89d28d16b0881d668d4ad99e23a9713e86b8b08fe2fa8798f6b402` | 2629837 / 242.515 | `run.jl8xgumc` |
+| `w8OEL8lqed` | `74bd58d10c835bb50220e3e3ffea423777b40251a77ccaab788f46673fb8a85e` | 2630694 / 247.841 | `run.8yrnjt1m` |
+| `MzLmgRfR8j` | `59c0993c5398872d55775d134e32b3b492bda8fc3cadafc941ddeaa2f9699adc` | 2631555 / 258.845 | `run.2xouc8_6` |
+
+All three QEMU processes join, bounded RAM workspaces retire and all twelve
+endpoint deltas are zero. Twenty-one raw files total 364,879 bytes per host,
+copied and hash-verified. Exact process/workspace, directory identity and evidence
+checks precede removal of both failed diagnostic trees, releasing 7,061,504
+allocated bytes. Canonical inputs and unrelated data are preserved.

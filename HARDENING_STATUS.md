@@ -4402,6 +4402,21 @@ and platform themes. Complete desktop/mobile menus, native screen readers,
 persistence and installed/native security acceptance remain OPEN; existing parks
 and all fifteen credential actions remain open.
 
+**Custom-scale failure layout (`64f9b22a`).** The shared desktop/mobile status
+uses a centered Wrap so the failure text and Retry button fit narrow controls
+and enlarged text. At unchanged product, all 39 earlier cases pass while three
+new cases reproduce English/German/Hebrew overflow. At `ba57f140`, the same
+42-case suite passes with all three focused parser controls and exact-source
+checks. The new cases cover normal wide layouts, enlarged text at 240 pixels,
+LTR/RTL, complete label bounds and actual Retry taps that reload 150% without a
+write. The first candidate's test command succeeds, then unrelated model-parser
+controls fail before individual results are retained; it is not full acceptance.
+The zoom profile now selects its own parser controls and retains results first;
+the broader parser issue remains parked. Audit entry “2026-10-30 — zoom failure
+layout” records all three runs and joined RAM cleanup. Production widget/model
+code runs with preference/session and translation fixtures; complete menus,
+native fonts/devices, persistence and existing acceptance obligations remain OPEN.
+
 **Image-quality slider announcements (`183ec59f`).** The bitrate and FPS controls
 use their translated names and actual units in one accessibility node, replacing
 unnamed normalized track percentages. Baseline `6ed13b4a` reproduces four failures

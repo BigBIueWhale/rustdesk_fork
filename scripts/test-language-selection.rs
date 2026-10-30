@@ -32,7 +32,6 @@ pub fn get_app_name() -> String {
     "RustDesk".to_owned()
 }
 
-#[path = "../src/lang.rs"]
 mod lang;
 
 #[cfg(test)]

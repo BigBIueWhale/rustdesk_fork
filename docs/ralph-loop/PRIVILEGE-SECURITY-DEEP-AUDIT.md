@@ -120852,3 +120852,53 @@ QEMU 2619924 joins in 30.502 seconds and RAM `run.t16wqylt` retires.
 All three count-run and four prior listener-run endpoint deltas are zero.
 Six count files add 104,383 bytes; thirteen raw files total 218,632 bytes per
 host, copied and hash-verified. This audit-only receipt leaves the ledger unchanged.
+
+## 2026-10-30 — connection-mode menu keyboard positioning
+
+Previous goal turn: PROGRESS through completed documentation correction. All user
+parks remain, including listener-status loading/errors. Current R-S11ia–io native
+action acceptance remains OPEN. This slice changes ordinary connection-menu UI.
+
+`connection_page.dart` initialized a cached menu point to zero and updated it only
+on mouse-down. Keyboard activation therefore opened the menu from that zero point,
+subject to screen-edge clamping. `1d0e84758f0a906901da2873151b1f69da99aedf`
+replaces that cache with the button's current lower leading edge, calculated with
+[RenderBox.localToGlobal](https://api.flutter.dev/flutter/rendering/RenderBox/localToGlobal.html)
+and [Directionality.of](https://api.flutter.dev/flutter/widgets/Directionality/of.html).
+The existing overlay-coordinate helper, menu entries and connection callbacks
+remain. StatefulBuilder becomes Builder; the product diff is ten added
+and six removed lines.
+
+Preparation `e71daeec` adds nine rendered cases to the existing 32-case menu
+profile. Initial `Kd6zn5fg5B` exposes the defect, but its RTL trigger leaves too
+little room to distinguish alignment from normal screen-edge clamping. Fixture
+`03415c2e` provides that space without changing assertions. At unchanged product,
+`BH4lVLCAV2` passes 35 cases and fails all six keyboard-anchor cases at their first
+Enter alignment assertion. The identical fixture passes all 41 cases at the
+corrected product in `NQuKhCxvvg`, plus three focused parser controls, source-copy
+checks and outer acceptance. Command:
+`bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --menu-button`.
+
+Pinned Flutter 3.24.5 renders the exact production control expression and menu-entry
+implementations with the real custom popup route and overlay-coordinate helper.
+Cases cover LTR/RTL, root/offset/scaled navigators, Enter and Space reopening,
+Escape dismissal and exactly one callback for each file/camera/terminal choice.
+Translation is identity, the icon is a fixture, and connection callbacks are
+doubles. Full-page lifecycle, native fonts/devices, real sessions, other platforms
+and shared release acceptance remain open. New tests SHA-256:
+`620d5402efce2cdb30b3bfa61d85f43dedf6d080cc258757a7032f7e23c38e28`.
+Connection-page baseline/candidate SHA-256:
+`bd9d2f6ffff5a7e61261c692acc9b037019f131bc76347820733c407ac86fa9f` /
+`9182981fcf47aaaf23a09df2009e10b459912e20fd0bba065ad6a3b4b75842bd`.
+
+| Run | Serial SHA-256 | QEMU / seconds | Retired RAM workspace |
+| --- | --- | --- | --- |
+| `Kd6zn5fg5B` | `31ad8593e1a9525fb33dfe6582e2b762bffc75690e716a41463df48b810de256` | 2620801 / 85.166 | `run.0izo9a87` |
+| `BH4lVLCAV2` | `ba3b30e85361361b0f2a82085a92de17bc64ac9120ac25d92de9449992d55263` | 2621524 / 85.617 | `run.jp_hjauu` |
+| `NQuKhCxvvg` | `01cc09d1ca0796c65659d3a282ce27d25f05d142770c98c789085aee8e7a1403` | 2622234 / 107.527 | `run.r_agc775` |
+
+All three QEMU processes join, bounded RAM workspaces retire, and all twelve
+endpoint deltas are zero. Twenty-one raw files total 334,371 bytes per host,
+copied and hash-verified. After exact process/workspace and retained-evidence
+checks, both failed baseline diagnostic trees are removed, releasing 6,987,776
+allocated bytes. No canonical cache or unrelated data is removed.

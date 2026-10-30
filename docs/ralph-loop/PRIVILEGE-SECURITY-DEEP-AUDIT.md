@@ -121395,3 +121395,23 @@ The 77 admission controls and five refusals pass. QEMU 2766465 joins after 30.59
 seconds, RAM `run.m8i_fblo` retires and all three endpoint deltas are zero.
 Six raw files total 104,706 bytes per host, copied and hash-verified. This
 audit-only receipt leaves the counted ledger unchanged.
+
+## 2026-10-30 — user pivot; host-setup guide navigation
+
+The user requests completely unrelated work. The unrun home-pane/help-card
+integration preparation is OPEN/PARKED in stash
+`02ba2dea721f3617d8e7634bb7f8a314864a05a1`, based on `6e245eff`.
+It contains six fixture/harness files, including four proposed rendered cases;
+no product change or execution result is claimed. Earlier parked work stays open.
+
+Work switches to documentation navigation. The main README linked build,
+contribution and release-verification guidance but did not expose either host
+setup guide. It now links the existing Debian/Ubuntu and Android guides with
+short descriptions of their contents. Both guides were read in full; their
+instructions remain unchanged.
+
+Read-only path and fragment review finds no unresolved local Markdown links in
+the main README, build guide or top-level `docs/*.md` files. The two added paths
+resolve to tracked guides, and whitespace review passes. No product/test/build
+payload or VM is launched for this navigation-only edit. `HARDENING_STATUS.md`
+and its counted contents remain unchanged; no acceptance item is closed.

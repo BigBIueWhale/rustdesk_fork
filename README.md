@@ -44,6 +44,15 @@ It requires an independently authenticated manifest digest, full source commit, 
 For the existing Android package identity, follow the [signing-key recovery procedure](docs/ANDROID-SIGNING-RECOVERY.md);
 a newly generated key cannot replace the committed signing identity.
 
+## Host setup
+
+- [Debian/Ubuntu host setup](docs/DEPLOYMENT.md) covers installation, password setup,
+  viewer connections and deployment checks.
+- [Android host setup](docs/ANDROID-SERVER.md) covers screen sharing, accessibility
+  input, capture consent and reconnects.
+
+## Development
+
 Contribution and review instructions are in [the contribution guide](docs/CONTRIBUTING.md).
 Build inputs, platform recipes and verification entrypoints are in
 [the build guide](scripts/README.md).

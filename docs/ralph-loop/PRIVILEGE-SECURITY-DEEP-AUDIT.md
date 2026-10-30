@@ -120087,3 +120087,13 @@ the monitor and joined cleanup remain enabled. Actual native settings persistenc
 full dialog routing, OS screen readers and peer presentation are not executed.
 The current-state ledger consolidates the precision/range result; existing parks
 and the complete native/release obligations remain open.
+
+**Fresh ledger count.** At `23f9b3cde27feffdf28736b340b365a9596981b2`, TUF
+`M14uyBysFz` passes seven tokenizer controls and the complete byte round trip:
+363,129 tokens / 1,660,391 bytes with `tiktoken-0.12.0/cl100k_base/encode_ordinary`.
+Input SHA-256 is
+`4d613db53284d17986724d9a19389efe97ae69d32f5d72026d2d9ec08571534b`.
+QEMU 2281802 joins in 30.512 seconds, RAM `run.ohlk5_5c` retires and three
+listener deltas are zero. Six count files add 103,930 bytes; all twenty raw files
+total 287,925 bytes per host with matching hashes. This audit-only receipt leaves
+the measured ledger unchanged.

@@ -120718,3 +120718,31 @@ QEMU 2608997 joins in 30.851 seconds; RAM `run.9u7xphl0` retires and all
 three listener deltas are zero. Six count files add 104,134 bytes; twenty-seven
 raw files total 390,593 bytes per host, copied and hash-verified. This audit-only
 receipt leaves the measured ledger unchanged.
+
+## 2026-10-30 — user pivot; connection-tab Close label
+
+The user requested unrelated work. Desktop settings-save investigation is left
+OPEN/PARKED, with no implementation or reproduced failure from that review.
+All earlier parks remain. Translation inspection found no empty active-catalogue
+entries to fill; no catalogue or template is changed.
+
+Product `2607e10050137fbb260b3d8b6360efc57901c03b` wraps the visible
+connection-tab close InkWell in a Tooltip using the existing `Close` translation.
+The icon previously had no textual label. Geometry, visibility and close callback
+remain unchanged. This follows Flutter's documented
+[Tooltip labeling](https://api.flutter.dev/flutter/material/Tooltip-class.html).
+The exact local diff and `git diff --check` pass. No new tests are added for this
+small labeling change.
+
+TUF `VNW9kAPxzy`, command
+`bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --tab-selection`,
+prepares the exact source, then stops on the already-parked broad parser controls:
+`test_inventory_is_exact`, profile `models`, edits rename/duplicate/wrong-suite.
+No widget tests execute; no compilation, rendered tooltip or native accessibility
+acceptance is claimed. The parser and test harness are not changed or rerun.
+Widget SHA-256 is `28a7602374c2427a99a2a3e5c9ed581dcfae8877aa5f0acd8481789b667cc486`;
+serial SHA-256 is `897f62e908b0a894622add3f7094f46bd2eb5a3a6a87f03a7beea6329cc891a8`.
+QEMU 2610001 joins after 245.578 seconds, RAM `run.vl34br4w` retires,
+and all four listener deltas are zero. Seven raw files total 74,080 bytes per
+host, copied and hash-verified. After exact process/workspace absence checks,
+the failed diagnostic tree is removed, releasing 3,428,352 allocated bytes.

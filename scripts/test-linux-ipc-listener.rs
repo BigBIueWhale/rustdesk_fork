@@ -994,7 +994,7 @@ async fn wire_fixture(scenario: &str) {
 
     async fn transfer<S: AsyncRead + AsyncWrite + Unpin + AsRawFd>(
         scenario: &str, sender: S, mut receiver: S,
-    ) {
+    ) -> Result<(), String> {
         for fd in [sender.as_raw_fd(), receiver.as_raw_fd()] {
             assert_eq!(peer_uid_from_fd(fd), Some(unsafe { libc::geteuid() }));
             assert_eq!(peer_pid_from_fd(fd), Some(std::process::id()));
@@ -1002,6 +1002,43 @@ async fn wire_fixture(scenario: &str) {
         let mut sender = ConnectionTmpl::new(sender);
         sender.send_raw(Bytes::new()).await.unwrap();
         receive(&mut receiver, 0, &[0]).await;
+        if scenario == "cancel" {
+            let capacity: libc::c_int = 4096;
+            assert_eq!(unsafe { libc::setsockopt(sender.inner.get_ref().as_raw_fd(),
+                libc::SOL_SOCKET, libc::SO_SNDBUF, (&capacity as *const libc::c_int).cast(),
+                std::mem::size_of_val(&capacity) as libc::socklen_t) }, 0);
+            let length = 1024 * 1024;
+            assert!(timeout(25, sender.send_raw(Bytes::from(vec![0x5a; length])))
+                .await.is_err(), "the real socket must block before the frame completes");
+            let mut prefix = Vec::new();
+            let mut chunk = [0u8; 8192];
+            loop {
+                let count = unsafe { libc::recv(receiver.as_raw_fd(), chunk.as_mut_ptr().cast(),
+                    chunk.len(), libc::MSG_DONTWAIT) };
+                if count < 0 {
+                    assert_eq!(std::io::Error::last_os_error().kind(), std::io::ErrorKind::WouldBlock);
+                    break;
+                }
+                assert!(count > 0);
+                prefix.extend_from_slice(&chunk[..count as usize]);
+                assert!(prefix.len() < length + 3);
+            }
+            assert!(prefix.len() > 3, "cancellation must follow a partial payload write");
+            assert_eq!(&prefix[..3], &[2, 0, 64]);
+            assert!(prefix[3..].iter().all(|byte| *byte == 0x5a));
+            let raw = timeout(1000, sender.send_raw(Bytes::from_static(b"next")))
+                .await.expect("subsequent raw send must finish");
+            let json = sender.send_json_timeout(&"next", 1000).await;
+            let count = unsafe { libc::recv(receiver.as_raw_fd(), chunk.as_mut_ptr().cast(),
+                chunk.len(), libc::MSG_DONTWAIT) };
+            let unchanged = count == -1
+                && std::io::Error::last_os_error().kind() == std::io::ErrorKind::WouldBlock;
+            if raw.is_ok() || json.is_ok() || !unchanged {
+                return Err(format!("partial_bytes={} raw={raw:?} json={json:?} appended={count}",
+                    prefix.len()));
+            }
+            return Ok(());
+        }
         let cases: &[(usize, &[u8])] = match scenario {
             "bounds" => &[(0, &[0]), (1, &[4]), (63, &[252]), (64, &[1, 1]),
                 (16_383, &[253, 255]), (16_384, &[2, 0, 1]),
@@ -1069,26 +1106,29 @@ async fn wire_fixture(scenario: &str) {
         assert_eq!(unsafe { libc::recv(receiver.as_raw_fd(), (&mut byte as *mut u8).cast(), 1,
                                      libc::MSG_DONTWAIT | libc::MSG_PEEK) }, -1);
         assert_eq!(std::io::Error::last_os_error().kind(), std::io::ErrorKind::WouldBlock);
+        Ok(())
     }
     let before = fd_count();
-    if let Some(scenario) = scenario.strip_prefix("ipc-") {
+    let result = if let Some(scenario) = scenario.strip_prefix("ipc-") {
         let mut incoming = new_listener("").await.unwrap();
         let path = Config::ipc_path("");
         let identity = fs::symlink_metadata(&path).unwrap();
         let sender = timeout(1000, Endpoint::connect(&path)).await.unwrap().unwrap();
         let receiver = timeout(1000, incoming.next()).await.unwrap().unwrap().unwrap();
         assert!(!sender.is_write_vectored(), "pinned IPC transport must exercise scalar writes");
-        transfer(scenario, sender, receiver).await;
+        let result = transfer(scenario, sender, receiver).await;
         drop(incoming);
         let retained = fs::symlink_metadata(&path).unwrap();
         assert_eq!((retained.dev(), retained.ino()), (identity.dev(), identity.ino()));
         fs::remove_file(path).unwrap();
+        result
     } else {
         let (sender, receiver) = tokio::net::UnixStream::pair().unwrap();
         assert!(sender.is_write_vectored(), "socket pair must exercise vectored writes");
-        transfer(scenario, sender, receiver).await;
-    }
+        transfer(scenario, sender, receiver).await
+    };
     assert_eq!(fd_count(), before);
+    result.expect("an interrupted frame must prevent subsequent writes");
     println!("OK wire-{scenario} uid={} cleanup=joined", unsafe { libc::geteuid() });
 }
 

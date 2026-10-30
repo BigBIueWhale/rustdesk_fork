@@ -384,7 +384,7 @@ def native(expected_sha, barrier_sha):
             result = check('', uid, action=action)
             record(f'{action}-{uid}', result.returncode == 0
                    and result.stdout == f'OK {action} uid={uid} cleanup=joined\n', result)
-        for scenario in ('bounds', 'allocation', 'ipc-bounds', 'ipc-allocation'):
+        for scenario in ('bounds', 'allocation', 'ipc-bounds', 'ipc-allocation', 'cancel', 'ipc-cancel'):
             action = 'wire-' + scenario
             result = check('', uid, action=action)
             record(f'{action}-{uid}', result.returncode == 0
@@ -1131,8 +1131,8 @@ def native(expected_sha, barrier_sha):
     require(sha(probe) == expected_sha and sha(artifact) == expected_sha, 'artifact changed')
     require(sha(barrier) == barrier_sha, 'barrier changed')
     probe.unlink(); barrier.unlink(); work.rmdir()
-    require(len(cases) == 256, 'case inventory differs')
-    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=256 failures={len(failures)} '
+    require(len(cases) == 260, 'case inventory differs')
+    print(f'LINUX_IPC_LISTENER_NATIVE={"fail" if failures else "pass"} cases=260 failures={len(failures)} '
           f'artifact_sha256={expected_sha} cleanup=joined', flush=True)
     require(not failures, 'listener failures: ' + ','.join(failures))
 

@@ -1102,6 +1102,55 @@ mod tests {
         println!("VIDEO_QOS_DISPLAY_BITRATE=complete growth_cases=6 budget_violations={budget_violations} metadata_failures={metadata_failures} retirement_checks=9 retirement_failures={retirement_failures}");
         assert_eq!((budget_violations, metadata_failures, retirement_failures), (0, 0, 0),
             "the shared ratio must use only live display-owned bitrate and preserve its total growth budget");
+
+        let mut floor_outcomes = Vec::new();
+        for excess in [0, 50, 100, 149] {
+            for remaining_bitrate in [0, 100, 750, 800, 820, 840, 1000, u32::MAX] {
+                for dynamic in [false, true] {
+                    let mut qos = controller_with_baseline(20);
+                    qos.user_custom_fps(7, 20);
+                    qos.user_image_quality(7, ImageQuality::Best.value());
+                    store_test_bitrate(&mut qos, 10000);
+                    // Reach the growth-limited range through actual congestion adaptation.
+                    for delay in [1020, 1020, 1020, 1020, 170, 170, 170, 170] {
+                        for _ in 0..2 { qos.user_network_delay(7, delay); }
+                        qos.adjust_ratio(true);
+                    }
+                    let before = qos.ratio();
+                    assert!((BR_SPEED..BR_SPEED + 0.01).contains(&before));
+                    let retiring = qos.displays["monitor"].generation.clone();
+                    let survivor = qos.new_display("survivor".into());
+                    assert!(qos.set_support_changing_quality("survivor", &survivor, true));
+                    assert!(qos.set_display_bitrate("survivor", &survivor, remaining_bitrate));
+                    qos.remove_display("monitor", &retiring);
+                    for _ in 0..2 { qos.user_network_delay(7, 20 + excess); }
+                    let measured = qos.users[&7].delay.avg_delay();
+                    let fps = qos.fps();
+                    let mut increases = Vec::new();
+                    let mut budgeted = true;
+                    let mut valid = true;
+                    for _ in 0..3 {
+                        let previous = qos.ratio();
+                        qos.adjust_ratio(dynamic);
+                        let current = qos.ratio();
+                        let increase = f64::from(remaining_bitrate)
+                            * (f64::from(current) / f64::from(previous) - 1.0);
+                        budgeted &= remaining_bitrate == 0 || increase <= 150.0 + 1e-6;
+                        valid &= current.is_finite() && current >= previous && current <= BR_BEST;
+                        increases.push(increase);
+                    }
+                    let owner = qos.users.len() == 1 && qos.users[&7].custom_fps == Some(20)
+                        && qos.latest_quality() == Quality::Best && qos.displays.len() == 1
+                        && qos.is_display_current("survivor", &survivor)
+                        && qos.bitrate() == remaining_bitrate && qos.fps() == fps;
+                    println!("VIDEO_QOS_BITRATE_STEP=observed kind=quality-floor excess_ms={excess} measured_ms={measured} remaining_kbps={remaining_bitrate} dynamic={dynamic} before={before} increases_kbps={increases:?} budgeted={budgeted} valid={valid} owner={owner}");
+                    floor_outcomes.push(measured == excess && budgeted && valid && owner);
+                }
+            }
+        }
+        let failures = floor_outcomes.iter().filter(|&&ok| !ok).count();
+        println!("VIDEO_QOS_BITRATE_STEP=complete kind=quality-floor cases={} failures={failures}", floor_outcomes.len());
+        assert_eq!(failures, 0, "quality floors must retain the final bitrate-growth ceiling");
     }
 
     fn healthy_pair() -> VideoQoS {

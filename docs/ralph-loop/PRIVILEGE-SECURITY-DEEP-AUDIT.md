@@ -117605,3 +117605,57 @@ QEMU 1806849 joins in 30.793 seconds; RAM `run.okdyhar5` retires and three liste
 deltas are zero. Six count files add 102,882 bytes; thirteen files across both
 runs total 185,301 bytes per host with matching hashes. This audit-only receipt
 leaves the measured ledger unchanged and below its approximate 400,000-token budget.
+
+### 2026-10-30 — preserve PAKE construction and waiting-state owners
+
+At `c7961c6b`, both handshake handlers call `k_pt.compress().to_bytes()` and wipe
+only the returned array. The intermediate compressed shared-secret representation
+has no wiping owner. Generator and ISK helpers also return bare secret values for
+callers to wrap, and the initiator copies guarded directional keys into bare
+waiting-state arrays with a separate destructor.
+
+The [pinned Dalek 4.1.3 API](https://raw.githubusercontent.com/dalek-cryptography/curve25519-dalek/curve25519-4.1.3/curve25519-dalek/src/ristretto.rs)
+defines `CompressedRistretto` as `Copy`; `to_bytes` copies its array, `as_bytes`
+borrows it, and the enabled `Zeroize` implementation wipes that array. It has no
+automatic wiping destructor. The existing
+[Zeroizing implementation](https://raw.githubusercontent.com/RustCrypto/utils/zeroize-v1.8.1/zeroize/src/lib.rs)
+provides that owner without changing dependencies or curve operations.
+
+`9c25ef2d` retains the compressed shared point under `Zeroizing` and passes its
+borrowed encoding into ISK derivation. The expanded point retires after compression;
+the compressed owner retires after hashing. Generator/ISK helpers now return
+wiping owners, and the initiator moves its directional-key owners into WAIT_4.
+The duplicate state destructor, caller-side wrapping and byte-array copy/wipe
+sequence are removed. The public `DirectionalKeys` boundary and its destructor
+remain unchanged. This corrects source-level ownership; physical copies made by
+the compiler or cryptographic internals remain outside the demonstrated claim.
+
+The eleven-line ownership-presence gate is deleted: its custom-destructor and
+caller-wrapper spellings reject producer/field ownership and never examined the
+compressed representation's lifetime. The primitive-selection source gate,
+functional vectors and allocation/RNG behavior checks remain. One new native
+case drives real random handshakes and flips the first or last final-tag byte;
+the initiator must return `Confirmation` without publishing keys. Normal final
+confirmation is covered by existing vector and random-handshake controls.
+KAT call sites borrow the returned owners; their expected values are unchanged.
+
+Previous `BEtvn5u92Z` functional evidence is reused without rebuilding a baseline.
+No post-drop memory comparison or erasure acceptance is inferred from protocol
+results. Full stack/register/move/library-state erasure, panic/cancellation
+observation, other targets, shipping artifacts, independent review and installed
+authority remain OPEN. The earlier primitive timing artifact is unchanged in
+scope; its measurement bodies are unaffected. Parked lanes remain parked.
+
+TUF run `pzKgHc90Mc` at `9c25ef2d060e5c133d763771ff32a8bf379f6654` passes all
+twenty-one checks (twenty functional/error cases and the allocation probe) and
+shell parsing of the verifier. Artifact
+`8dc80b4b13de9906585c801de24bdf06dbd17ebb4a1a0b90e9845bf73f12707e`
+matches before/after; source tree is `df97774e8304729d4bb1055912ee21f842fa7e96`.
+Generator/ISK allocations and reallocations remain zero with the positive
+allocation control detected. The same pinned optimized Rust 1.75.0 build runs as
+UID/GID 1000 with read-only source/root and no VM/container network. QEMU 1807854
+joins in 100.404 seconds; RAM `run.ud7a51yx` retires and four listener deltas are
+zero. Seven raw serial/console/storage/listener files total 82,571 bytes per host
+with matching hashes, under `android-rust-lifecycle-tests-run.pzKgHc90Mc`
+(console adds `console-`). Command:
+`bash scripts/smoke-verifier-vm-authority.sh --pake-allocation-tests`.

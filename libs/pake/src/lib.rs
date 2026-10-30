@@ -262,11 +262,11 @@ fn derive_session_keys(isk: &[u8; 64]) -> (Zeroizing<[u8; 32]>, Zeroizing<[u8; 3
 /// `mac_key = SHA512( MAC_DSI ‖ sid ‖ ISK )` — direct hash, **bare concat**, not
 /// `lv_cat`, not HKDF (R-P3, §10.4).
 fn derive_mac_key(sid: &[u8], isk: &[u8; 64]) -> Zeroizing<[u8; 64]> {
-    let mut input = Zeroizing::new(Vec::with_capacity(MAC_DSI.len() + sid.len() + 64));
-    input.extend_from_slice(MAC_DSI);
-    input.extend_from_slice(sid);
-    input.extend_from_slice(isk);
-    let mut mac = Sha512::digest(&input[..]);
+    let mut hash = Sha512::new();
+    hash.update(MAC_DSI);
+    hash.update(sid);
+    hash.update(isk);
+    let mut mac = hash.finalize();
     let mut out = Zeroizing::new([0u8; 64]);
     out.copy_from_slice(&mac);
     mac.as_mut_slice().zeroize();

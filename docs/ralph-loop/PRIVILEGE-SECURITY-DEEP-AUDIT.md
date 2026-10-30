@@ -120616,3 +120616,14 @@ section by the same heading boundary. The full diff and `git diff --check` pass
 review. No product/compiler/runtime test is needed for this prose-only change.
 No release was published or inferred from the historical version/date labels.
 Whole-document architecture and every existing acceptance obligation remain open.
+
+**Fresh ledger count.** At `c5445f2c01c116dc2cc062da562a4f2ae33080d6`, TUF
+`9FBGmiQlaJ` passes seven controls and exact byte round trip with
+`bash scripts/smoke-verifier-vm-authority.sh --ledger-token-count`:
+364,682 tokens / 1,667,779 bytes using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`, input SHA-256
+`3904b4b52aaf6117a6162530b1c7c38b1768d95604c46ef9d12d1db107c73983`.
+QEMU 2531279 joins in 30.465 seconds; RAM `run.lbkurkpq` retires and all
+three listener deltas are zero. Six raw files total 105,116 bytes per host,
+copied and hash-verified. This audit-only receipt leaves the measured ledger
+unchanged. The count establishes document size, not product behavior.

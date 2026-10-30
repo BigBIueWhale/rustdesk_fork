@@ -119506,3 +119506,50 @@ using `tiktoken-0.12.0/cl100k_base/encode_ordinary`: 361,795 tokens /
 QEMU 1907203 joins in 30.629 seconds, RAM `run.wjd6_s9e` retires and all
 three listener deltas are zero. Six raw files total 105,015 bytes per host with
 matching hashes. This audit-only receipt leaves the measured ledger unchanged.
+
+### 2026-10-30 — canonical IPv4 source accounting
+
+Starting source `43ce696e540f5164b09df142befb5cb88b7d57a5` uses the supplied
+`IpAddr` unchanged in both `guess_limiter_allows` and `record_handshake_failure`
+(`libs/hbb_common/src/cpace.rs:738–783`). Native IPv4 and its mapped representation
+therefore occupy different counters, contrary to R-S10(b). The accepted TCP
+address remains the sole production input (`src/server.rs:844,860`). The current
+direct listener uses IPv4 sockets; this is a component contract correction, not
+a demonstrated remotely reachable authentication bypass or LPE.
+
+[RFC 4291 §2.5.5.2](https://www.rfc-editor.org/rfc/rfc4291.html#section-2.5.5.2)
+defines the mapped representation. Rust's
+[`IpAddr::to_canonical`](https://doc.rust-lang.org/std/net/enum.IpAddr.html#method.to_canonical),
+stable since 1.75, converts only mapped IPv6 to IPv4. Product commit
+`07983d0c986ffeff41a2edd21e1abd22a335e89b` adds that call before map lookup
+and before recording a confirmation failure. Non-confirmation errors still return
+before touching the map. Thresholds, clocks, eviction, caller authority,
+authentication and listener topology are unchanged.
+
+Preparation `c940c1b7ae05798b5086e318125b46a9daecf1d8` adds one executable
+test and its selection/output handling to the existing shared-library VM profile;
+production bytes are identical to the starting source. Four cases record ten
+failures using native-only, mapped-only and both alternating orders. Each also
+passes all four non-guess error variants through both representations after nine
+failures, checks both admission forms and preserves an unrelated source. Public
+count observation checks one retained entry per source; no map/clock injection
+or transport peer is used. Baseline `KVA6ejh5eA` passes the existing 48 checks
+and fails the new test: 0/4 cases block both forms, and four sources use six entries.
+Candidate `pKddKHkfIC` passes all 49: 4/4 shared blocks, four entries, 32 non-guess
+errors uncharged and unrelated sources allowed. Test and harness bytes are identical
+between runs; the entire product diff is exactly two normalization statements.
+Baseline/candidate artifact SHA-256, respectively:
+`79bcba590f1bac26e1b40e1dcc7b2dd0adebfddc8ecdda88f078e4080eb8e100` /
+`5df7101d070595981796b13ebbb78423e9390697f9fc8666e59a6688fb787796`.
+
+Both use `bash scripts/smoke-verifier-vm-authority.sh --writer-retirement-tests`,
+production limiter code, Linux Rust 1.75, nonroot networkless guest containers
+and zero-NIC bounded-RAM VMs. QEMU 1959610/2014675 joins in 139.244/142.652
+seconds; RAM `run.x513mfa1`/`run.27vdamt5` retires and all eight listener deltas
+are zero. Fourteen raw files total 178,708 bytes per host with matching hashes.
+The exact failed-run diagnostic directory was removed after evidence copy,
+reclaiming 3,465,216 allocated bytes. Source comparison, both shell syntax checks
+and `git diff --check` pass. Network choke-point behavior, expiry/flood resource
+acceptance, installed privileged actions/settings, target-platform and release
+acceptance, independent reproduction and external review remain OPEN. Parked work
+remains parked. Only the R-S10 ledger paragraph changes; fresh measurement follows.

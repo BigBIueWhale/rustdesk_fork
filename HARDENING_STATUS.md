@@ -12928,6 +12928,16 @@ sandbox implementation and checker-repair history remain in Git.
   tumbling window per source and an 8192-entry source-map ceiling; roughly twice
   the failure count can straddle a boundary.
   This is flood shedding, not a stronger credential guarantee.
+  `07983d0c` normalizes IPv4-mapped addresses at both admission and confirmation
+  accounting. The unchanged four-case regression fails before the two-line fix
+  (zero shared block decisions, six entries) and passes afterward (four shared
+  block decisions, four entries). Thirty-two non-confirmation errors consume no
+  budget and unrelated sources remain allowed. TUF `pKddKHkfIC` passes all 49
+  shared-library component checks in 142.652 seconds; both comparison runs join
+  and retire their RAM workspaces with zero host listener changes. The audit
+  retains source/artifact identities. The current IPv4-only listener does not
+  establish a remotely reachable alias bypass; network admission, expiry/flood
+  performance, installed and release acceptance remain OPEN.
 - **Local IPC/CM authorization audit — ⚠️ SUPERSEDED 2026-07-08 by R-S11b/R-S11c.** The
   2026-07-01 pass remains useful only for its transport facts: owner-only channels are
   0600 socket + 0700 per-uid parent; the service parent-dir hardening uses

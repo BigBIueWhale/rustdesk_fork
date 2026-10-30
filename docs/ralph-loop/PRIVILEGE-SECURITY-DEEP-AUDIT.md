@@ -118026,3 +118026,12 @@ listener deltas are zero. Seven raw files total 158,045 bytes per host with
 matching hashes. Exact failed diagnostic directory inode 78294410 is removed
 after copying, reclaiming 3,596,288 allocated bytes. The earlier detection
 receipts remain intact; production crypto and ownership are unchanged.
+
+Ledger run `ouXNtayLzs` at `de52a876` passes 72 workload controls/five refusals,
+seven tokenizer controls and full text round trip. It reports 360,356 tokens with
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 1,647,727 bytes, SHA-256
+`9e696daf01e33d5ee77a7b9928fade059c6dda03f2e8af0526abb71a34949d72`.
+QEMU 1825696 joins in 30.709 seconds; RAM `run.qev6koww` retires and three listener
+deltas are zero. Six count files add 104,094 bytes. Thirteen raw files across both
+runs total 262,139 bytes per host with matching hashes; this audit-only receipt
+preserves the measured ledger and its approximate 400,000-token budget.

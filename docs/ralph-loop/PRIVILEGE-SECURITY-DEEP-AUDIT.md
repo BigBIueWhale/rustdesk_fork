@@ -118876,3 +118876,47 @@ QEMU 1859812 joins in 30.508 seconds, RAM `run.5stq3tlq` retires and all
 three listener deltas are zero. Six count files add 103,742 bytes: this slice
 retains 27 files / 443,575 bytes per host with matching hashes. The counted
 ledger remains unchanged by this audit-only receipt.
+
+### 2026-10-30 — acquisition-appendix consolidation
+
+Starting at `831e2ffb7d70ba45fb6815631f409cef98ac8def`, Appendix C
+#242–#248 repeated acquisition/publication mechanisms already specified in full
+by R-S11co–R-S11cu. The specification began as a requirements document in
+`28a6ce56`; later role cleanups `c588fcad`, `b5fbbe5b`, `31218b4f`,
+`951a4a8e`, `5f44c49c` and `b34e1c03` had removed repair history or
+corrected authority scope for these entries. This slice deletes the remaining
+duplicate summaries, retaining explicit references to each complete contract.
+It does not relabel the deleted text as nonbinding or remove its obligations.
+
+| Finding | Unchanged primary contract and classified duplicate obligations |
+| --- | --- |
+| #242 | R-S11co: locked/reconciled single-file producer authority; exact Git/archive identity and ambient-config exclusion; independent SHA-512/metadata verdicts; historical read-only validation; sealing, durable no-clobber publication, rollback/recovery; separate native-output/acquisition/release evidence. |
+| #243 | R-S11cp: both architectures' complete input keys and exact consumer output; independent inventory/metadata/archive/ELF checks; selected inode/digest journal and publication; refusal of unselected/old-schema/changed state; frozen historical-cache admission; cold/native/release/review acceptance. NDK extraction remains separately bound to R-S11cq. |
+| #244 | R-S11cq: exact r28c archive, confined networkless extraction, complete archive/output equality and resource/metadata validation; verified inode/digest publication and interrupted sealing; refusal/preservation and existing-tree rules; full lifecycle acceptance. |
+| #245 | R-S11cr/R-S11e-110: exact SDK archives and consumer inventory, independent tree identity, four producer mounts and bounded extraction; sealing/publication/recovery; SDK read-only Gradle consumption without SDK clone/exchange/publication; scope-appropriate acquisition/cold/device evidence. |
+| #246 | R-S11cs/R-S11e-111 under R-S11cj: fourteen pinned records, exact hosts/bytes, three-mount guest producer, independent verdict and durable publication/recovery; generic host-download removal; other profiles' separate pins; acquisition and cold-artifact acceptance. |
+| #247 | R-S11ct/R-S11e-112 under R-S11cj: one source plus 32 tools, exact acquisition/consumer manifests and independent downstream SHA-512; confined bounded delivery/publication/recovery; host downloader removal; other named profiles and complete acquisition/cold acceptance. |
+| #248 | R-S11cu/R-S11e-113 under R-S11cj: exact dated image and independent publisher hash, separate systemd-image root, three-mount bounded producer and publication/recovery; no unrelated online-root preparation; networkless consumer metadata, SHA-512, standalone QCOW2 and overlay checks; full acceptance. |
+
+Exact comparison against the starting Git blob shows that only those seven
+disposition cells change. All full primary clauses and finding descriptions,
+411 requirement declarations, the ordered 369 numeric finding rows, 211 links,
+34 anchors and the requirement-reference set remain identical. The remainder
+of the document is byte-identical. `git diff --check` passes. The four relevant
+`verify-online-fetch-*-output-authority.py` source checkers do not read the
+specification or depend on its appendix prose; shared verification retains its
+existing transaction/source invocations. No verifier, product, test, pin or live
+instruction file changes. No product/runtime rerun is needed for this deletion.
+
+Requirements shrink from 1,678,891 to 1,674,195 bytes (4,696 bytes removed).
+The before SHA-256 is
+`1d1c0329c6f7234f609f7203dbf21ee73629f48d67c3ac536a500f0dc9f64be4`;
+the after SHA-256 is
+`8af0160d0a065fb4389d45f0058e58435c47ff4cf3431b6d71b74a100f08b8dc`.
+The retained `ledger-token-count-run.AcpENnz65c.serial.log` binds the exact
+before bytes to 367,717 tokens; its receipt was reread for this comparison.
+The ledger's existing build-input row now references the consolidated entries.
+Its detailed acquisition status and historical-evidence limits remain unchanged:
+current acquisition-VM, cold artifact, installed/native, independent and external
+review obligations stay open. Whole-document role cleanup and separately parked
+work remain open; this documentation change adds no runtime acceptance.

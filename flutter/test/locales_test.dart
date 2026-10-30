@@ -74,11 +74,18 @@ void main() {
     for (final sample in <(Locale, String, String)>[
       (const Locale('kk', 'KZ'), 'kk', 'Бас тарту'),
       (const Locale('vi', 'VN'), 'vi', 'Huỷ'),
+      (const Locale('pt', 'PT'), 'pt', 'Cancelar'),
+      (const Locale('pt', 'BR'), 'pt', 'Cancelar'),
       (const Locale('en', 'US'), 'en', 'Cancel'),
     ]) {
       tester.binding.platformDispatcher.localesTestValue = [sample.$1];
       await tester.pumpAndSettle();
       _expectLocale(tester, sample.$2, sample.$3);
+      if (sample.$1.languageCode == 'pt') {
+        final context = tester.element(find.byKey(const ValueKey('cancel-label')));
+        expect(Localizations.localeOf(context).countryCode,
+            sample.$1.countryCode == 'PT' ? 'PT' : isNull);
+      }
     }
   });
 }

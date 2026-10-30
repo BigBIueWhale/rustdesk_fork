@@ -83,6 +83,10 @@ mod tests {
             ("nb", "no_NO_NY", "nb"),
             ("nn", "no_NO", "nn"),
             ("NB", "en_US", "nb"),
+            ("pt", "pt_PT", "pt"),
+            ("br", "pt_PT", "br"),
+            ("pt-pt", "pt_BR", "pt-pt"),
+            ("PT-PT", "en_US", "pt-pt"),
         ] {
             assert_eq!(select_language(configured, locale), expected);
         }
@@ -176,6 +180,13 @@ mod tests {
             ("no_NO.UTF-8@nynorsk", "nn"), ("no-Latn-NO-x-lvariant-NY", "nn"),
             ("en_NO", "en"), ("nob", "nob"), ("non", "non"),
             ("no-x-nyn", "nb"), ("no-NO-x-example-NY", "nb"),
+            ("pt_PT", "pt-pt"), ("pt-PT", "pt-pt"),
+            ("PT_pt.UTF-8", "pt-pt"), ("pt_PT@euro", "pt-pt"),
+            ("pt-Latn-PT", "pt-pt"), ("pt_PT_#Latn", "pt-pt"),
+            ("pt-PT-u-nu-latn", "pt-pt"), ("pt-PT-x-br", "pt-pt"),
+            ("pt", "pt"), ("pt-BR", "pt"), ("pt-Latn-BR", "pt"),
+            ("pt-BR-x-pt", "pt"), ("pt-x-pt", "pt"),
+            ("pt-u-rg-ptzzzz", "pt"), ("en-PT", "en"),
         ] {
             assert_eq!(select_language("", locale), expected, "{locale}");
         }

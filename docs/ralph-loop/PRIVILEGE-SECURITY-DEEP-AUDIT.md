@@ -118451,3 +118451,98 @@ QEMU 1840201 joins in 30.561 seconds; RAM `run.p536wx9q` retires and three
 listener deltas are zero. Six count files add 103,826 bytes. Twenty raw files
 across the three runs total 393,604 bytes per host with matching hashes.
 This audit-only receipt preserves the measured ledger.
+
+### 2026-10-30 — larger budget detects both serial and default timing differences
+
+At `3527da0cccd03a99f584f2bb3d4eaca247d13016` (tree
+`6ad4c5eb7ed2793b8387480b8c2bfaa9f64fc891`), the backend comparison adds a
+fixed larger-budget baseline test. Both existing backend profiles select it.
+The three-fixture test shares the same measurement helper and remains in
+source; the full optimized test is unchanged. Only timing-test source, runner
+selection and guest receipt admission change. Production Rust, backend policy,
+dependencies, compiler flags and secret owners remain unchanged.
+
+The preceding three-fixture result showed a consistent input direction in
+serial raw means despite remaining below the criterion. Before execution,
+this slice fixes each assessed orientation at 500,000 measurements, up from
+100,000, and retains 100,000 per positive/negative control, four operations,
+20,000 warm-ups and absolute raw/pooled-p99 Welch threshold 10. It evaluates
+both orientations before returning a verdict. The
+[dudect authors' guidance](https://raw.githubusercontent.com/oreparaz/dudect/master/README.md)
+describes smaller signals emerging with more measurements and explicitly
+limits below-threshold observations. No threshold or corpus was adjusted
+after observing these runs.
+
+Serial runs first, reversing the preceding build order. Commands remain
+`bash scripts/smoke-verifier-vm-authority.sh --pake-backend-serial-tests`
+and `--pake-backend-default-tests`. Both use ordinary UID/GID 1000 in the
+zero-NIC VM and guest network-none container. The existing 150-second native
+and 300-second VM limits, 4 GiB VM, 2 GiB container, 6 GiB RAM scratch,
+4 GiB overlay and 6 GiB host headroom remain.
+
+| Build/run | Native outcome | Executable SHA-256 before and after |
+| --- | --- | --- |
+| Serial `6owBzGtWs6` | 20 functional tests pass; timing exits 101 after 101.88 s | `110ccc9c81297f803189637606ab1c1bc0aa1696c93a0d16b1489e0ddb4fd0ed` |
+| Default `MludJCKE5c` | 20 functional tests pass; timing exits 101 after 81.30 s | `5ffa0aa214b505fb5464e482c7c3a8be8cb35ba8f6af9057e7e5d8a65b278de2` |
+
+| Cohort | Serial raw/p99 t | Default raw/p99 t |
+| --- | ---: | ---: |
+| baseline-vartime-prepared-one-random | -3286.298975 / -4953.045249 | -3159.822390 / -5119.012412 |
+| baseline-multiply-prepared-one-random | -13.040151 / -15.999299 | -27.136501 / -31.312983 |
+| baseline-multiply-prepared-random-one | 12.467069 / 13.521330 | 18.615725 / 19.323956 |
+| baseline-multiply-prepared-one-one | 0.687728 / 1.864293 | -1.475257 / -1.266630 |
+
+Both assessed orientations detect on both backends. The deliberate variable-time
+control detects and the identical-input control remains below. All four
+cohorts match in point encoding, input hash, seed, count and repeats across
+builds; both control inputs also match the preceding three-fixture run.
+The fixed point remains
+`1e28f8d494aedea537cd313b3f8382d3869ba8cacb9c70b87f83c8a32e832858`,
+derived from the canonical all-zero PRS, CI_PORT and 32-byte 0x62 SID.
+Assessed class counts are 250,202/249,798. Serial one/random means are
+83,342.532534/83,487.872217 ns per four operations; reversed means are
+83,410.002646/83,278.520044 ns. The direction follows the values, not merely
+the class labels.
+
+This result rejects using the earlier below-threshold serial tests as a
+resolved timing finding. A backend switch alone is not a supported correction.
+It does not identify the cause or demonstrate a remote key-recovery attack.
+The next diagnostic must control an unresolved environment variable rather
+than continue raising the budget: constrain and record the exact owned VM's
+host CPU placement, then compare the same prepared-scalar scenario.
+Independent reproduction remains required.
+
+The runner pins the native process to guest CPU 0 but records host affinity
+as uncontrolled; QEMU uses host CPU exposure and four vCPUs without an explicit
+host affinity. The [Linux affinity API](https://man7.org/linux/man-pages/man2/sched_setaffinity.2.html)
+is per-thread and inherited across fork/exec, supporting an owned-launch
+placement correction without modifying other host processes. Intel's
+[DOIT guidance](https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/best-practices/data-operand-independent-timing-isa-guidance.html)
+explicitly distinguishes instruction timing from power, thermal and frequency
+effects. These are reasons to inspect measurement assumptions, not evidence
+that scheduling or frequency caused this result. No affinity, MSR, governor,
+host service or other global host setting is changed in this slice.
+
+Actual build configuration is serial/64-bit and simd/64-bit respectively;
+the serial symbol map has no AVX backend/dispatch symbols. Both retain
+Rust 1.75.0/LLVM 17.0.6, release opt=3/LTO/one codegen unit and x86-64 target
+CPU, on the previously recorded Ultra 9 285K/microcode 0x11b guest environment.
+MCDT_NO=1, initial MXCSR 0x1f80 and ordinary MXCSR 0x1fa0 remain observed.
+The guard restoration controls pass. Twelve serial and eleven default
+disassembly captures pass length/hash checks; main multiplication sizes remain
+2,800 and 12,507 bytes. The broader call-chain and runtime-copy/dispatch
+limitations remain.
+
+Serial QEMU 1841156 joins in 204.871 seconds and RAM `run.0v1jw996` retires;
+default QEMU 1842043 joins in 183.879 seconds and RAM `run.dl9mfn_9` retires.
+All eight listener deltas are zero. Seven raw files per run total 129,093 and
+156,228 bytes, 285,321 bytes per host with matching hashes. The exact serial
+and default failed scratch directories, each observed with inode 78294410
+at its respective retirement, are removed after evidence copying and release
+3,538,944 and 3,592,192 allocated bytes. No VM/run scratch remains. Both overlays
+stay in bounded RAM; each QEMU reports 4,096 host block-write bytes.
+No host product/test workload ran.
+
+Full sampling/RNG timing, other targets and shipping artifacts, higher-order
+leakage, automatic CI, erasure and R-V3 remain open, together with installed
+IPC/actions and separately parked work.

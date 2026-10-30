@@ -81,7 +81,7 @@ class _FixedWidthButtonState extends State<FixedWidthButton> {
                           translate(
                             widget.text,
                           ),
-                          maxLines: widget.maxLines ?? 1,
+                          maxLines: widget.maxLines,
                           textAlign: TextAlign.center,
                           style: TextStyle(
                               fontSize: widget.textSize ?? 12.0,

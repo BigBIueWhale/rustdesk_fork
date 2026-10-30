@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common/widgets/connection_page_title.dart';
 import 'package:flutter_hbb/common/widgets/popup_menu_position.dart';
 import 'package:flutter_hbb/consts.dart';
+import 'package:flutter_hbb/desktop/widgets/menu_button.dart' as menu_button;
 import 'package:flutter_hbb/desktop/widgets/popup_menu.dart';
 import 'package:flutter_hbb/models/state_model.dart';
 import 'package:get/get.dart';
@@ -435,14 +436,20 @@ class _ConnectionPageState extends State<ConnectionPage>
                   child: Center(
                     child: Builder(
                       builder: (context) {
-                        return Obx(() => InkWell(
-                              child: _menuOpen.value
-                                  ? Transform.rotate(
-                                      angle: pi,
-                                      child: Icon(IconFont.more, size: 14),
-                                    )
-                                  : Icon(IconFont.more, size: 14),
-                              onTap: () async {
+                        return Obx(() => menu_button.MenuButton(
+                              color: Colors.transparent,
+                              hoverColor: Theme.of(context).hoverColor,
+                              padding: EdgeInsets.zero,
+                              tooltip: translate('More'),
+                              child: Center(
+                                child: _menuOpen.value
+                                    ? Transform.rotate(
+                                        angle: pi,
+                                        child: Icon(IconFont.more, size: 14),
+                                      )
+                                    : Icon(IconFont.more, size: 14),
+                              ),
+                              onPressed: () async {
                                 final button =
                                     context.findRenderObject() as RenderBox;
                                 final offset = button.localToGlobal(Offset(

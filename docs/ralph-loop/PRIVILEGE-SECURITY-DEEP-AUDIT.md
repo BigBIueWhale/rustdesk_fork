@@ -120497,3 +120497,13 @@ execution or memory measurement was performed for this small lifecycle repair;
 it is not evidence of a quantified leak or of complete page/resource acceptance.
 The ledger records that boundary and corrects a missing comma in the preceding
 Portuguese-selection row. A fresh isolated ledger count follows.
+
+**Fresh ledger count.** At `7a60ef7629c127774d85b74ce3e090f9a37a5ccf`, TUF
+`ycOfLORQpE` passes seven controls and exact byte round trip:
+364,282 tokens / 1,665,895 bytes using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`, input SHA-256
+`e6ebc5ce891dc5a7dcfa071d5fb90740efb8070f4a31236f9c0cc0e110e0adfa`.
+QEMU 2470767 joins in 30.367 seconds; RAM `run.to7cbqgw` retires and all
+three listener deltas are zero. Six raw files total 104,865 bytes per host,
+copied and hash-verified. This audit-only receipt leaves the measured ledger
+unchanged; the count is document validation, not a UI runtime test.

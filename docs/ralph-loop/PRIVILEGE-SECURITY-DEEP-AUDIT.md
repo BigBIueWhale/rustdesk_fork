@@ -121880,3 +121880,12 @@ QEMU 2913459 joins after 208.263 seconds, RAM `run.vht0ipru` is absent, and all
 four listener deltas are zero. Seven raw files (102,410 bytes) are hash-verified
 on both hosts before removing 3,485,696 allocated bytes of exact diagnostic
 scratch. The receive lifecycle requirement remains OPEN/STOP-SHIP.
+
+Ledger verification at `87eb78afde528593872b46827ee7e70e596b2c89`, TUF
+`zOH8KLqis3`, exits zero: 368,112 tokens / 1,684,575 bytes, SHA-256
+`5b0e37bee286e8dd9fc2ad122b0afb309c7f49c9f5682960dd6fcce6432ebf0d`.
+Pinned `tiktoken-0.12.0/cl100k_base/encode_ordinary`, seven controls and strict
+UTF8 round trip pass. QEMU 2915308 joins after 30.913 seconds; RAM `run.gvnf2z0f`
+retires and all three listener deltas are zero. Raw serial: 36,138 bytes, SHA-256
+`4e24074739128361f0b6fd5cfe779ee6afec7fbfd13a763d70bcbe985b4199a7`.
+This audit-only receipt preserves the counted ledger and unchanged product source.

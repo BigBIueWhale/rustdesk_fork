@@ -118335,6 +118335,83 @@ listener deltas are zero. Six count files add 104,908 bytes. The thirteen raw
 files from both runs total 240,149 bytes per host with matching hashes.
 This audit-only receipt leaves the measured ledger unchanged.
 
+### 2026-10-30 — fixed host CPU placement retains both backend timing differences
+
+At `0dab0cbc58a64e80a887fbd38c0a9ff50460c8ba` (tree
+`3ac4d00ca6f116b346ad08f5daab12aa9a88ccfe`), repeat the preceding fixed
+500,000-measurement comparison with owned-launch affinity. Production, tests,
+dependencies, compiler options, storage code and all time/resource limits
+are unchanged. Default runs first, then serial:
+
+```sh
+/usr/bin/taskset --cpu-list 0 /bin/bash scripts/smoke-verifier-vm-authority.sh --pake-backend-default-tests
+/usr/bin/taskset --cpu-list 0 /bin/bash scripts/smoke-verifier-vm-authority.sh --pake-backend-serial-tests
+```
+
+The authority is only the new ordinary-user launcher and its descendants.
+[taskset](https://man7.org/linux/man-pages/man1/taskset.1.html) sets placement
+before launch; [Linux affinity](https://man7.org/linux/man-pages/man2/sched_setaffinity.2.html)
+survives fork/exec and [new threads inherit their creator's mask](https://man7.org/linux/man-pages/man3/pthread_create.3.html).
+The existing QEMU `resourcecontrol=deny` sandbox denies `sched_setaffinity`
+in [upstream 8.2.2](https://raw.githubusercontent.com/qemu/qemu/v8.2.2/system/qemu-seccomp.c);
+TUF reports Ubuntu package `1:8.2.2+ds-0ubuntu1.18`.
+No existing host process's affinity, governor, MSR or service is modified.
+All four guest vCPUs and the launcher tree share the selected host CPU;
+this is a placement diagnostic, not exclusive-CPU or interference-free execution.
+
+Read-only observations retain the exact live QEMU PID/start time, command,
+thread masks and CPU metadata. Default snapshots at 03:43:04/03:44:28 UTC
+observe 21/10 threads; serial snapshots at 03:48:13/03:50:06 observe 11/9.
+Every observed thread has `Cpus_allowed_list=0` and seccomp mode 2.
+CPU 0 reports package/core 0, sibling list 0, capacity 1024,
+`intel_pstate/powersave`, and an 800,000–4,100,000 kHz scaling range.
+These observations do not measure actual instruction frequency or exclude
+contention. The guest's unchanged `host_affinity=uncontrolled` field has no
+host visibility; the separate `.affinity.1.json` / `.affinity.2.json` files
+provide the host observations. Their four hashes and contents match on CTE/TUF.
+
+| Build/run | Native timing exit/time | Executable SHA-256 before and after |
+| --- | --- | --- |
+| Default `YsyBA2gxgy` | 101 / 81.42 s | `5ffa0aa214b505fb5464e482c7c3a8be8cb35ba8f6af9057e7e5d8a65b278de2` |
+| Serial `D2RC4MRrQY` | 101 / 101.64 s | `110ccc9c81297f803189637606ab1c1bc0aa1696c93a0d16b1489e0ddb4fd0ed` |
+
+| Baseline cohort | Default raw/p99 t | Serial raw/p99 t |
+| --- | ---: | ---: |
+| vartime-prepared-one-random | -1583.423185 / -7925.815546 | -750.768480 / -12089.309725 |
+| multiply-prepared-one-random | -21.889542 / -65.549465 | -5.093394 / -25.462888 |
+| multiply-prepared-random-one | 21.496916 / 87.621859 | 0.556032 / 24.147625 |
+| multiply-prepared-one-one | 1.821575 / -0.336477 | -0.683554 / -0.510689 |
+
+Twenty functional tests pass per build. Both deliberate variable-time controls
+detect and both identical-input controls remain below the predeclared absolute
+threshold 10. Serial detection is specifically in pooled-p99, not raw t.
+All four input hashes, seeds, class counts, sample budgets, repeats and the
+derived point match across backends and their preceding unpinned runs.
+Each executable is byte-identical to its respective `3527da0c` artifact;
+all eleven default and twelve serial captured disassemblies match too.
+MXCSR restoration controls pass; MCDT_NO=1 remains observed.
+
+Fixed placement does not eliminate the measured difference. It does not
+establish an arithmetic defect, frequency mechanism or remote key-recovery
+attack. [Intel's DOIT guidance](https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/best-practices/data-operand-independent-timing-isa-guidance.html)
+keeps power/frequency effects outside instruction-level timing guarantees.
+The next source/evidence gap is the dynamically resolved libc copy path;
+capture that exact implementation and complete the emitted-call-chain review.
+Independent reproduction remains required. No backend switch or speculative
+cryptographic countermeasure is justified by this comparison.
+
+Default QEMU 1845069 joins in 227.245 seconds; serial QEMU 1845972 in 244.060.
+RAM `run.m0haxm68` / `run.d22x2iiu` retires, all eight listener deltas are
+zero, and both QEMUs report 4,096 host block-write bytes. Seven raw files plus
+two affinity snapshots per run total 162,240 / 138,416 bytes: eighteen files,
+300,656 bytes per host, with matching hashes. After evidence copying, the exact
+failed scratch directories (each inode 78294410 at its respective retirement)
+are deleted, releasing 3,588,096 / 3,538,944 allocated bytes. No VM/run scratch
+remains. R-P12, full sampling/RNG, other targets/shipping artifacts,
+higher-order leakage, automatic CI, erasure, installed IPC/actions, R-V3 and
+separately parked work remain open.
+
+
 ### 2026-10-30 — three point/seed backend comparison
 
 At `8f6d01abb8fb99faf14b321aa945ad6a5543f3f0` (tree

@@ -120507,3 +120507,52 @@ QEMU 2470767 joins in 30.367 seconds; RAM `run.to7cbqgw` retires and all
 three listener deltas are zero. Six raw files total 104,865 bytes per host,
 copied and hash-verified. This audit-only receipt leaves the measured ledger
 unchanged; the count is document validation, not a UI runtime test.
+
+## 2026-10-30 — desktop home pane viewport
+
+Continued ordinary UI correctness; every user park remains open. In
+`DesktopHomePage.buildLeftPane`, the outer Column laid out its non-flex scroll
+view with unbounded height, followed by an empty Expanded spacer. Long contents
+therefore enlarged the viewport beyond the pane instead of gaining scroll extent.
+The desktop tab's Expanded PageView supplies a finite pane height. Flutter's
+[scroll-view layout documentation](https://api.flutter.dev/flutter/widgets/SingleChildScrollView-class.html)
+explains the conflicting constraints; [Positioned.fill](https://api.flutter.dev/flutter/widgets/Positioned/Positioned.fill.html)
+provides the existing Stack's full bounded viewport without the redundant column.
+
+Preparation `f3a681fd1e248b40b75b0eb4cee043a0fddf47cf` adds three cases to the
+existing desktop rendering profile, with all product bytes unchanged. The actual
+pane builder and its child widgets compile and render with fixture native reads,
+status text and branding. Its State is deliberately not mounted as the complete
+home page: window/status services do not start, and the fixture owns and disposes
+the pane controller. This is layout evidence, not page-initialization, automatic
+controller-disposal or native integration evidence. The shared fixture logo setup
+is reused and the exact selected inventory grows from 16 to 19; the full inventory
+grows from 46 to 49 without executing the parked mobile cases.
+
+Baseline `p1qzbt7v07` passes seventeen cases and fails only the two short-window
+regressions, with RenderFlex bottom overflow of 159 pixels at scale 1.0 and 322
+pixels at scale 1.5. Product `7e3f589fda4ba7fb08c7ec754f5ca9423965d8e3`
+replaces the outer column/spacer with Positioned.fill around the existing scroll
+view. Its controller, content, overlays and callbacks are retained. Test and
+harness bytes are identical in both runs.
+
+Candidate `RgOD9DJoUQ` passes all nineteen rendered cases, three parser controls,
+source-copy verification and outer acceptance with
+`bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --desktop-theme`.
+Both scales scroll the final status line inside the viewport, retain the same
+controller and offset across a rebuild and a 240-to-280-pixel resize, and report
+no layout exception. The 900-pixel fitting-content control remains visible with
+zero scroll extent. Pinned Flutter 3.24.5 runs in the networkless unprivileged
+container inside the zero-NIC disposable Linux VM.
+
+| Run | Serial SHA-256 | QEMU / seconds | Retired RAM workspace |
+| --- | --- | --- | --- |
+| `p1qzbt7v07` | `e8eef976667aecc04db28ff37ed52174de4aefbf5e74d03ae24dbfb99a83eff9` | 2474434 / 245.326 | `run.5mwzhr9p` |
+| `RgOD9DJoUQ` | `39e4cb97c435d926a0cfd6836858ee29c517418ae142d92b7a338bc153ba7174` | 2475428 / 270.043 | `run.w1lj2ts1` |
+
+All eight listener deltas are zero; both exact QEMU processes join and RAM
+workspaces retire. Fourteen raw files total 172,361 bytes per host, copied and
+hash-verified. After evidence copying and wrapper/QEMU/workspace absence checks,
+the failed baseline's exact diagnostic tree is removed, releasing 3,452,928
+allocated bytes. Complete home-page lifecycle, native status/window integration,
+device/platform and release acceptance remain open.

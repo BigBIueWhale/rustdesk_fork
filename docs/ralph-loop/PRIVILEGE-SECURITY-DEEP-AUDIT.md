@@ -120321,3 +120321,13 @@ exit 0. Full application/catalogue compilation, saved-setting UI/native storage,
 OS locale acquisition, actual devices, native-speaker review and release
 acceptance remain open. These checks establish selector and rendered framework
 behavior, not complete application acceptance.
+
+**Fresh ledger count.** At `164d440a9e2aee222493cc9ad6c231a5e6a760ae`, TUF
+`ruqwrnnXZs` passes seven controls and the exact byte round trip:
+363,915 tokens / 1,664,089 bytes using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`, input SHA-256
+`b409929992350d1d5eb999751cdb3bda754f26034d2a23d446d535fbdfb49a5e`.
+QEMU 2435868 joins in 30.302 seconds; RAM `run.b5ww2n0_` retires and all
+three listener deltas are zero. Six count files add 104,136 bytes; the twenty-seven
+raw files total 329,985 bytes per host with matching hashes. This audit-only
+receipt leaves the measured ledger unchanged.

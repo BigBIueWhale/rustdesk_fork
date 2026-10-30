@@ -118788,3 +118788,14 @@ copying, releasing 3,444,736 allocated bytes. No VM/run scratch remains.
 Full application/network and other-platform acceptance, the open timing result,
 full erasure, installed R-S11b/R-S11c actions/settings, independent review and
 separately parked work remain open.
+
+**Fresh ledger count.** At `1f3fa7c784f4b42f64b7b14d362f46b5d3f8017a`,
+isolated `zycwKjNz4Q` passes 74 admission controls, five refusals, seven
+tokenizer controls and round-trip validation. The unchanged method
+`tiktoken-0.12.0/cl100k_base/encode_ordinary` measures 360,518 tokens,
+1,648,262 bytes, SHA-256
+`22fd24ed8cfa5d43aeb63bf04d23cf67f52b27d67c21fe6685e6be2c29f79512`.
+QEMU 1855044 joins in 30.782 seconds, RAM `run.zncqpuy7` retires and all
+three listener deltas are zero. Six count files add 105,221 bytes, bringing
+this slice to twenty retained files / 269,724 bytes per host with matching
+hashes. This audit-only receipt leaves the measured ledger unchanged.

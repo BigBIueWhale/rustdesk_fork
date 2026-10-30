@@ -119054,3 +119054,50 @@ QEMU 1869748 joins after 30.669 seconds, RAM `run.o2r2ml9a` retires
 and all three listener deltas are zero. Six count files add 104,113 bytes;
 the twenty files from this slice total 269,586 bytes per host with matching hashes.
 This audit-only receipt leaves the measured ledger unchanged.
+
+### 2026-10-30 — confirmation encoding without heap buffers
+
+Starting at `51eef2ccb0e553ff27e347729c1d9441ce0b6ad6`, input/IPC reader
+review established no further correction. The selected PAKE change removes the
+temporary `lv_cat(Y, AD)` vectors from `compute_tag` and `verify_tag`.
+These vectors hold public bytes, not secret copies. Eliminating their allocations
+is a resource/lifetime improvement; no new LPE or measured speedup is claimed.
+
+The [pinned draft §10.4](https://www.ietf.org/ietf-ftp/internet-drafts/draft-irtf-cfrg-cpace-21.html#section-10.4)
+specifies the same length-prefixed confirmation input. The pinned
+[digest buffering implementation](https://raw.githubusercontent.com/RustCrypto/traits/digest-v0.10.7/digest/src/core_api/wrapper.rs)
+supports incremental updates; [Mac::update and verify_slice](https://raw.githubusercontent.com/RustCrypto/traits/digest-v0.10.7/digest/src/mac.rs)
+delegate to that update trait and retain the constant-time comparison.
+`309bc544` generalizes the existing streaming encoder's argument to the shared
+`Update` trait and uses it for both HMAC operations. Key setup, finalization,
+verification, byte ordering, domain labels and the public API remain unchanged.
+Existing SHA-512 callers use the same updates. No dependency or harness changes.
+
+`5d71872c` extends the existing optimized allocation observer. Five input-size
+pairs cover 32/6-byte fields, empty fields and multi-byte length boundaries.
+Each compares production output with a materialized reference, then verifies a
+correct tag and tags changed at bytes 0 and 63: twenty observed operations.
+Inputs/reference construction and assertions stay outside allocator observation.
+The fixture is byte-identical in both runs; existing known-answer/state-machine,
+refusal and allocator positive controls remain.
+
+- Baseline `5d71872c87f7523250b464a0175a868d4c4cf964`, `MI5UecQcak`:
+  all twenty functional tests pass; the allocation regression fails because
+  every confirmation operation allocates once and reallocates zero to twice.
+  Artifact SHA-256:
+  `65efef18abf19d2a09f7f0e39d7d723af026a4f12a40d29f7591fb3af9cb3617`.
+- Corrected `309bc544c8a54e76386b78c5486870fbd5f713e2`, `EUe5A1pGqs`:
+  all twenty functional tests and the allocation test pass. All twenty operations
+  observe zero allocations/reallocations with identical tag/refusal outcomes.
+  Artifact SHA-256 verified before/after execution:
+  `66bfe059f5b8a54aa67cf826cedec4be5d3ca7221f254dcf790af03cc1553b3c`.
+
+Command: `bash scripts/smoke-verifier-vm-authority.sh --pake-allocation-tests`.
+QEMU 1870802/1871573 join in 103.374/106.801 seconds; RAM
+`run.4_3i0snj`/`run.psycf9ja` retires and all eight listener deltas are zero.
+Fourteen retained files total 166,467 bytes per host with matching hashes.
+Failed scratch inode 78294410 was removed after retention (3,444,736 allocated bytes).
+The ledger updates only the encoding/secret-owner row and retains older
+comparisons in this audit. Complete erasure, optimized timing, other targets,
+network/installed functionality, independent reproduction and external review
+remain open. Requirements and live instructions are unchanged.

@@ -120351,9 +120351,9 @@ directory. Original-source fingerprints and executable before/after hashes also
 remain required. No production dependency, VM/storage profile or admission limit
 changes. The runner retains its zero-NIC VM and networkless UID/GID-1000 container.
 
-Two pre-VM attempts stop at entry authority: edited orchestration files had mode
-0775. Restoring their intended 0755 modes resolves that mismatch without changing
-source content. Both wrappers exit 1 before a run directory or QEMU is created.
+Two pre-VM wrappers exit 1 without creating a run directory or QEMU. The visible
+retry identifies entry authority: edited orchestration files had mode 0775.
+Restoring their intended 0755 modes resolves that mismatch without changing source.
 An earlier attempted launch also refuses the still-held source-sync lock; it
 creates no test run. Terminal state is checked before retrying.
 
@@ -120393,3 +120393,13 @@ bytes. Full application compilation, real preference persistence/settings flows,
 platform language changes, devices and native-speaker review remain open; fixture
 configuration reads do not establish those behaviors. The preceding Flutter checks
 are not rerun because UI and product source are unchanged.
+
+**Fresh ledger count.** At `defc53351aefa297c49d013371beb7a832b71b48`, TUF
+`MU4UJ4wm4s` passes seven controls and exact byte round trip:
+363,971 tokens / 1,664,435 bytes using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`, input SHA-256
+`7a72c586f73028c4918bcf217685c05c60706ee5520b9d3e70629c33d0268471`.
+QEMU 2440113 joins in 31.013 seconds; RAM `run.r9qvsrh3` retires and three
+listener deltas are zero. Six count files add 103,949 bytes; twenty-seven raw
+files total 329,577 bytes per host with matching hashes. This audit-only receipt
+leaves the measured ledger unchanged.

@@ -120707,3 +120707,14 @@ changed. Twenty-one raw files total 286,459 bytes per host, copied and
 hash-verified. After evidence and exact wrapper/QEMU/workspace absence checks,
 the two failed diagnostic trees are removed, releasing 6,959,104 allocated
 bytes. Existing native/installed and release obligations remain open.
+
+**Fresh ledger count.** At `7119b949dd76bab8f6aa015c614daf01b32b0345`, TUF
+`EpxTvaAN8V` passes seven controls and exact byte round trip with
+`bash scripts/smoke-verifier-vm-authority.sh --ledger-token-count`:
+364,913 tokens / 1,668,966 bytes using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`, input SHA-256
+`05aa94cbb2cc15d14fcc88a37f6cc0404b4ff021db5bf4b5f63bf3c47893a44d`.
+QEMU 2608997 joins in 30.851 seconds; RAM `run.9u7xphl0` retires and all
+three listener deltas are zero. Six count files add 104,134 bytes; twenty-seven
+raw files total 390,593 bytes per host, copied and hash-verified. This audit-only
+receipt leaves the measured ledger unchanged.

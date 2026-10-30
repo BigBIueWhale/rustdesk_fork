@@ -119350,3 +119350,57 @@ QEMU 1891729 joins in 30.898 seconds, RAM `run.t9s07i60` retires and all
 three listener deltas are zero. Six count files add 103,987 bytes; thirteen
 files from this slice total 187,750 bytes per host with matching hashes.
 This audit-only receipt leaves the measured ledger unchanged.
+
+### 2026-10-30 — quality floor during continued congestion
+
+Starting source `ba02f010c640e0decf89dd2a8cd762f48df31e73` computes
+`VideoQoS::adjust_ratio`'s preset floor from current ratio and live display
+bitrate, then unconditionally clamps to it (`src/server/video_qos.rs:575–665`).
+Exact display retirement removes that display's bitrate. The smaller aggregate
+can raise the floor above the currently adapted ratio even while measured
+excess delay still requests a reduction. The production capture owner retires
+its generation in `src/server/video_service.rs`; no changed peer authority or
+new LPE is established by this finding.
+
+The controller continues to own adaptation for the current viewers/displays.
+Congested feedback cannot justify raising its current quality ratio; healthy
+feedback may restore the existing preset floor and selected target. Product
+`5be24365191fab9aac9862d395d4348b670daa85` bounds the floor by the current
+ratio only when excess delay is at least 150 ms. Six production lines implement
+this rule without changing quality choices, rate policy, thresholds, ownership,
+protocol, encoder calls or dependencies. This follows R-F5's recovery objective.
+[RFC 8836 §2](https://www.rfc-editor.org/rfc/rfc8836.html#section-2)
+also motivates minimizing self-induced delay while handling changing media load
+and recovering capacity. That RTP guidance informs the design; it is not a
+claim of RTP conformance or measured behavior of this TCP application.
+
+Preparation `5ad91df33f6e416da453ec2f807281f347a95ffb` extends the existing
+congestion test while preserving all production bytes. TUF `oBHieE5rxw`
+reproduces 32 failures among 64 added cases: after display retirement, Balanced
+increases 0.10 to 0.335 and Best 0.20 to 0.60 despite continued congestion.
+Low/custom controls and all recovery/owner checks pass; 26 other tests pass.
+Baseline artifact SHA-256:
+`4fd829ed44171122d517715ebced7659b2faa9ac700dc07c810d9b5d848314c3`.
+
+The identical test module at the corrected source passes all 27 tests in TUF
+`qfSGDwUKHX`, using `bash scripts/smoke-verifier-vm-authority.sh
+--video-qos-controller-tests`. All 64 cases cover four quality modes, eight
+150–1000-ms excess-delay inputs and zero/100-kbps surviving reports. Three
+successive adaptations never raise the ratio; fresh feedback restores selected
+quality and 20 FPS in the same viewer with the same surviving display. Existing
+rate, growth-budget, owner, encoder failure/retry and recording controls pass.
+Candidate artifact SHA-256:
+`f80901eadb122722bded67ab6217ab2b9703f0d493c1bcd46d85724cb1556df1`.
+
+These are production controller/application component tests on Linux Rust 1.75
+with controlled delay, bitrate and encoder inputs, not real network impairment
+or presented pixels. Nonroot, networkless guest containers ran in zero-NIC VMs.
+QEMU 1894237/1895058 joined in 118.419/118.633 seconds; RAM workspaces
+`run.lo8v05ch`/`run.lcpz0x83` retired. All eight host listener deltas are zero.
+Fourteen raw files total 209,692 bytes per host with matching hashes; the failed
+baseline's exact retained diagnostic workspace was retired after copying evidence.
+Exact comparison proves only the six production lines differ between runs and
+their complete test modules match; `git diff --check` passes. Real codecs,
+full application/installed settings, target-native R-F5 recovery/soak, all fifteen
+credential actions, independent reproduction and release acceptance remain OPEN.
+Every separately parked task remains parked. Fresh ledger measurement follows.

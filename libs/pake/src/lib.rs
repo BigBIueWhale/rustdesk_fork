@@ -765,22 +765,23 @@ impl Initiator {
         Ok((Initiator { prs, ci, sid_a }, step1))
     }
 
-    /// Consume [`Step2`]: verify `ADb == b"server"` (R-P5), derive `g`, sample
-    /// `ya`, compute `Ya`, `K` (abort on identity, R-P7), `ISK`, the directional
-    /// keys and `mac_key`, and emit [`Step3`] `{Ya, Ta}`.
+    /// Consume [`Step2`]: verify `ADb == b"server"` (R-P5), decode `Yb`, sample
+    /// `ya`, derive `g`, compute `Ya` and `K` (abort on identity, R-P7), then
+    /// derive `ISK`, the directional keys and `mac_key`, and emit [`Step3`] `{Ya, Ta}`.
     pub fn recv_step2(self, step2: &Step2) -> Result<(InitiatorAwaitConfirm, Step3), PakeError> {
         if step2.adb.as_slice() != AD_RESPONDER {
             return Err(PakeError::AdMismatch);
         }
-        let ya = sample_scalar()?;
-        self.recv_step2_with(step2, ya)
+        self.recv_step2_with(step2, sample_scalar)
     }
 
     fn recv_step2_with(
         self,
         step2: &Step2,
-        ya: Zeroizing<Scalar>,
+        sample_scalar: impl FnOnce() -> Result<Zeroizing<Scalar>, PakeError>,
     ) -> Result<(InitiatorAwaitConfirm, Step3), PakeError> {
+        let yb_pt = decompress(&step2.yb)?;
+        let ya = sample_scalar()?;
         let mut sid = [0u8; 32];
         sid[..16].copy_from_slice(&self.sid_a);
         sid[16..].copy_from_slice(&step2.sid_b);
@@ -788,7 +789,6 @@ impl Initiator {
         let g = derive_generator(&self.prs, &self.ci, &sid);
         let ya_pt = (&*ya * &*g).compress().to_bytes();
 
-        let yb_pt = decompress(&step2.yb)?;
         let k_pt = Zeroizing::new(&*ya * &yb_pt);
         drop(ya);
         if k_pt.is_identity() {

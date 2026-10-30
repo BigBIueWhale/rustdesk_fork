@@ -212,7 +212,7 @@ fn anchor_b_state_machine() {
     assert_eq!(hex(&s2.yb), an.yb, "Step2.Yb");
     assert_eq!(s2.adb, AD_RESPONDER);
 
-    let (init2, s3) = init.recv_step2_with(&s2, Zeroizing::new(ya)).unwrap();
+    let (init2, s3) = init.recv_step2_with(&s2, || Ok(Zeroizing::new(ya))).unwrap();
     assert_eq!(hex(&s3.ya), an.ya, "Step3.Ya");
     assert_eq!(hex(&s3.ta), clean(an.ta), "Step3.Ta");
 

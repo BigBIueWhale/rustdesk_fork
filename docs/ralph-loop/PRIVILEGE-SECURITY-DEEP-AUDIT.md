@@ -119944,3 +119944,13 @@ The four regression assertions cover initial and effective saved bitrate/FPS,
 disabled actions, expanded bitrate and its normal-range return, and the narrow
 mobile layout with hidden FPS. The unchanged earlier assertions establish the
 baseline mismatch before fixture teardown. No broader runner acceptance is claimed.
+
+**Fresh ledger count.** At `bb66d30dd74b0881c3252783e95f372da030290f`,
+TUF `mTPbXpeau4` passes seven tokenizer controls and exact byte round trip:
+362,862 tokens / 1,659,181 bytes using `tiktoken-0.12.0/cl100k_base/encode_ordinary`,
+input SHA-256 `f87e68d97ea647741d98a816a5f7b55ce58fc60fd11280d218a1e34c0eb06cc0`.
+QEMU 2163382 joins in 30.292 seconds, RAM `run.gzglzkv2` retires and three
+listener deltas are zero. Six count files add 105,142 bytes. All 34 raw files
+total 1,636,402 bytes per host with matching hashes; the four failed diagnostic
+trees are removed after exact owner/cleanup checks. This audit-only receipt
+does not alter the measured ledger.

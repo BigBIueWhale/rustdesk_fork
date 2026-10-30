@@ -125,6 +125,7 @@ case "$#:${8:-}" in
             --send-digest) HBB_SEND_DIGEST_TESTS=1 ;;
             --file-metadata) RUST_TEST_PROFILE=file-metadata ;;
             --writer-retirement) RUST_TEST_PROFILE=writer-retirement ;;
+            --guess-limiter) RUST_TEST_PROFILE=guess-limiter ;;
             --config-options) RUST_TEST_PROFILE=config-options ;;
             --compression) RUST_TEST_PROFILE=compression ;;
             --file-logging) RUST_TEST_PROFILE=file-logging ;;
@@ -3985,6 +3986,9 @@ run_focused_rust_tests() {
                 buffered_truncation_at_key_transition_is_terminal
             )
         fi
+        if [[ "$RUST_TEST_PROFILE" = writer-retirement || "$RUST_TEST_PROFILE" = guess-limiter ]]; then
+            source_fingerprints+=(libs/hbb_common/src/cpace.rs)
+        fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             required_tests=(
                 test::test_get_version_number
@@ -4035,6 +4039,10 @@ run_focused_rust_tests() {
                 tcp::seal_tests::allocation_refusal_retires_the_native_writer
                 cpace::open_tests::owned_frame_opens_with_rust_allocations_refused
                 tcp::open_tests::decoder_reuses_the_authenticated_frame_storage
+            )
+        fi
+        if [ "$RUST_TEST_PROFILE" = guess-limiter ]; then
+            required_tests=(
                 cpace::guess_limiter_tests::mapped_sources_share_one_guess_budget
                 cpace::guess_limiter_tests::expired_window_recovers_without_success_or_restart
             )
@@ -6250,12 +6258,9 @@ run_focused_rust_tests() {
                         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
                             for group in tcp::writer_receipt_tests:: tcp::eof_tests:: \
                                 bytes_codec::tests:: tcp::writer_lifetime_tests:: test::test_get_version_number test::test_try_into_v4 socket_client::tests:: tcp::exclusive_listener_tests:: \
-                                cpace::seal_tests:: tcp::seal_tests:: cpace::open_tests:: tcp::open_tests:: cpace::guess_limiter_tests::; do
+                                cpace::seal_tests:: tcp::seal_tests:: cpace::open_tests:: tcp::open_tests::; do
                                 group_status=0
-                                group_timeout=20s
-                                # This group exercises the real 60-second expiry window.
-                                if [ "$group" = cpace::guess_limiter_tests:: ]; then group_timeout=90s; fi
-                                timeout --signal=TERM --kill-after=5s "$group_timeout" \
+                                timeout --signal=TERM --kill-after=5s 20s \
                                     "$test_executable" "$group" --color never --test-threads=1 --show-output \
                                     || group_status=$?
                                 [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
@@ -6264,6 +6269,17 @@ run_focused_rust_tests() {
                                     exit "$group_status"
                                 fi
                             done
+                        elif [ "$RUST_TEST_PROFILE" = guess-limiter ]; then
+                            group_status=0
+                            timeout --signal=TERM --kill-after=5s 90s \
+                                "$test_executable" cpace::guess_limiter_tests:: --color never --test-threads=1 --show-output \
+                                || group_status=$?
+                            [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                            if [ "$group_status" -ne 0 ]; then
+                                printf "GUESS_LIMITER_ARTIFACT_STOP=observed sha256=%s status=%s unchanged=before-after\n" \
+                                    "$artifact_sha" "$group_status"
+                                exit "$group_status"
+                            fi
                         elif [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
                             timeout --signal=TERM --kill-after=5s 20s \
                                 "$test_executable" fs::tests::send_digest_ --color never --test-threads=1 --show-output
@@ -7071,6 +7087,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                 /^(CIPHER_SEAL_ALLOCATION|TCP_SEAL_ALLOCATION|CIPHER_KEY_GUARD)/ { if (++seal_observations <= 20) print }
                 /^(RECEIVE_CIPHER|RECEIVE_CODEC)/ { if (++receive_observations <= 20) print }
                 /^GUESS_LIMITER_(ALIAS|EXPIRY)/ { if (++limiter_observations <= 9) print }
+                /^GUESS_LIMITER_ARTIFACT_STOP=/ { if (++limiter_artifacts <= 1) print }
             ' "$output" >&2 || printf 'Transport failure diagnostics could not be read\n' >&2
             awk '/^FILE_PEER_PROBE_ARTIFACT_START=observed / { print; exit }' "$output" >&2 \
                 || printf 'File-peer probe failure artifact metadata could not be read\n' >&2
@@ -7189,7 +7206,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         # The digest pair and resume pair each share one invocation.
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=$(( ${#required_tests[@]} - 2 )); fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=34; fi
-        if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=13; fi
+        if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=12; fi
+        if [ "$RUST_TEST_PROFILE" = guess-limiter ]; then expected_groups=1; fi
         if [ "$RUST_TEST_PROFILE" = compression ]; then expected_groups=2; fi
         if [ "$RUST_TEST_PROFILE" = file-logging ]; then expected_groups=1; fi
         if [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then expected_groups=1; fi
@@ -7254,11 +7272,15 @@ PY
                 || fail 'direct address normalization test differs'
             for group in tcp::writer_receipt_tests:13 tcp::eof_tests:4 \
                 bytes_codec::tests:13 tcp::writer_lifetime_tests:7 tcp::exclusive_listener_tests:1 \
-                cpace::seal_tests:2 tcp::seal_tests:1 cpace::open_tests:1 tcp::open_tests:1 cpace::guess_limiter_tests:2; do
+                cpace::seal_tests:2 tcp::seal_tests:1 cpace::open_tests:1 tcp::open_tests:1; do
                 count=${group##*:}; group=${group%:*}
                 [ "$(grep -Ec "^test ${group}::[[:alnum:]_]+ [.][.][.] ok$" "$output")" -eq "$count" ] \
                     || fail "writer retirement test group differs: $group"
             done
+        elif [ "$RUST_TEST_PROFILE" = guess-limiter ]; then
+            [ "$(grep -Ec '^test result: ok\. 2 passed; 0 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in .+s$' "$output")" -eq 1 ] \
+                && [ "$(grep -Ec '^test [[:alnum:]_:]+ [.][.][.] ok$' "$output")" -eq 2 ] \
+                || fail 'source limiter must execute exactly its two tests'
         fi
     elif [ "$MODE" = cpace-recovery-tests ]; then
         [ "${#result_lines[@]}" -eq 6 ] \
@@ -8256,7 +8278,10 @@ PY
             grep -E '^test (config|password_security)::[[:alnum:]_:]+ [.][.][.] ok$|^OPTION_COMMIT_' "$output"
         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'writer retirement test total differs'
-            grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests|exclusive_listener_tests|seal_tests|open_tests)|cpace::(seal_tests|open_tests|guess_limiter_tests)|bytes_codec::tests|socket_client::tests)::[[:alnum:]_]+ [.][.][.] ok$|^test test::(test_get_version_number|test_try_into_v4) [.][.][.] ok$|^DIRECT_ADDRESS_NORMALIZATION=|^VERSION_NUMBER_(OVERFLOW|RANGE)=|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|FAILURE_READ)=|^READ_JOB_BACKPRESSURE(_CASE)?=|^(CIPHER_SEAL_ALLOCATION|TCP_SEAL_ALLOCATION|CIPHER_KEY_GUARD|RECEIVE_CIPHER|RECEIVE_CODEC|GUESS_LIMITER_(ALIAS|EXPIRY))' "$output"
+            grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests|exclusive_listener_tests|seal_tests|open_tests)|cpace::(seal_tests|open_tests)|bytes_codec::tests|socket_client::tests)::[[:alnum:]_]+ [.][.][.] ok$|^test test::(test_get_version_number|test_try_into_v4) [.][.][.] ok$|^DIRECT_ADDRESS_NORMALIZATION=|^VERSION_NUMBER_(OVERFLOW|RANGE)=|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|FAILURE_READ)=|^READ_JOB_BACKPRESSURE(_CASE)?=|^(CIPHER_SEAL_ALLOCATION|TCP_SEAL_ALLOCATION|CIPHER_KEY_GUARD|RECEIVE_CIPHER|RECEIVE_CODEC)' "$output"
+        elif [ "$RUST_TEST_PROFILE" = guess-limiter ]; then
+            [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'source limiter test total differs'
+            grep -E '^test cpace::guess_limiter_tests::[[:alnum:]_]+ [.][.][.] ok$|^GUESS_LIMITER_(ALIAS|EXPIRY)' "$output"
         elif [ "$RUST_TEST_PROFILE" = compression ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'decompression test total differs'
             grep -E '^test (fs::file_block|compress)::tests::[[:alnum:]_]+ [.][.][.] ok$|^DECOMPRESSION_(WINDOW|INPUT)' "$output"
@@ -8313,6 +8338,10 @@ PY
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             printf 'WRITER_RETIREMENT_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$hbb_test_artifact_sha" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = guess-limiter ]; then
+            printf 'GUESS_LIMITER_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$hbb_test_artifact_sha" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = file-logging ]; then

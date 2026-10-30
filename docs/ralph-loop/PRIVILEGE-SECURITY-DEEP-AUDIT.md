@@ -119266,3 +119266,12 @@ requirements and instructions are byte-identical. `bash -n` on both verifiers an
 `git diff --check` pass. No product execution, full verifier or installed/native
 acceptance is claimed. All fifteen credential actions and separately parked work
 remain open; the ledger receives a fresh isolated token count below.
+
+**Fresh ledger count.** At `f7ddfee53bb071e376a059fc625f76032d3c6543`,
+TUF `ZNmFJqarWi` passes seven tokenizer controls and the exact byte round trip
+using `tiktoken-0.12.0/cl100k_base/encode_ordinary`: 361,179 tokens /
+1,651,563 bytes, SHA-256
+`60a8818b07bb65eea791163413eaf8089f71e0d192da77e1f9ee0091df20f164`.
+QEMU 1885561 joins in 30.526 seconds, RAM `run.nhdwzp7i` retires and all
+three listener deltas are zero. Six retained files total 103,984 bytes per host
+with matching hashes. This audit-only receipt leaves the measured ledger unchanged.

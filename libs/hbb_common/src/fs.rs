@@ -6017,6 +6017,86 @@ mod tests {
         options.open(path)?.write_all(content.as_ref())
     }
 
+    #[tokio::test]
+    async fn file_metadata_resume_requires_matching_source_prefix() {
+        let mut observations = Vec::new();
+        let mut all_safe = true;
+        for sender_initiates in [false, true] {
+            for matches in [true, false] {
+                let root = TestTempDir::new("rustdesk_resume_content");
+                let source = root.join("source");
+                let destination = root.join("destination");
+                std::fs::create_dir_all(&source).unwrap();
+                std::fs::create_dir(&destination).unwrap();
+                let source_path = source.join("incoming.zip");
+                let final_path = destination.join("incoming.zip");
+                let current = if matches { b"abcdef" } else { b"XYZdef" };
+                std::fs::write(&source_path, current).unwrap();
+                filetime::set_file_mtime(&source_path,
+                    filetime::FileTime::from_unix_time(31, 0)).unwrap();
+                std::fs::write(&final_path, b"prior destination").unwrap();
+                write_receive_partial_fixture(receive_fixture_path(&final_path, ".download"),
+                    b"abc").unwrap();
+                write_receive_partial_fixture(receive_fixture_path(&final_path, ".digest"),
+                    br#"{"size":6,"modified":31}"#).unwrap();
+                let mut sender = TransferJob::new_read(491, JobType::Generic, String::new(),
+                    source, 0, false, false, true).unwrap();
+                let mut receiver = TransferJob::new_write(491, JobType::Generic, String::new(),
+                    destination, 0, false, false, true).with_files(sender.files().clone()).unwrap();
+                let (last_modified, file_size) = sender.init_data_stream_for_cm().await.unwrap().unwrap();
+                assert_eq!((last_modified, file_size), (31, 6));
+                let digest = FileTransferDigest { id:491, file_num:0, file_size, last_modified,
+                    is_upload:sender_initiates, is_resume:true, ..Default::default() };
+                let digest = FileTransferDigest::parse_from_bytes(&digest.write_to_bytes().unwrap()).unwrap();
+                let (inspected, _) = receiver.inspect_receive_digest(&digest, true).await.unwrap();
+                let DigestCheckResult::NeedConfirm(inspected) = inspected else {
+                    panic!("the real staged prefix must be inspected");
+                };
+                assert_eq!(inspected.transferred_size, 3);
+                let result: ResultType<()> = async {
+                    let request = if sender_initiates {
+                        sender.confirm_with_offset(0, inspected.transferred_size).await?
+                    } else {
+                        receiver.confirm_with_offset(0, inspected.transferred_size).await?
+                    };
+                    let request = FileTransferSendConfirmRequest::parse_from_bytes(&request.write_to_bytes()?)?;
+                    if sender_initiates { receiver.confirm(&request).await?; }
+                    else { sender.confirm(&request).await?; }
+                    let mut eof = false;
+                    for _ in 0..4 {
+                        match sender.read().await? {
+                            Some(block) => receiver.write(block).await?,
+                            None => { eof = true; break; }
+                        }
+                    }
+                    crate::anyhow::ensure!(eof, "resumed source did not reach EOF");
+                    receiver.finalize_write(1).await?;
+                    Ok(())
+                }.await;
+                let actual = std::fs::read(&final_path).unwrap();
+                let source_preserved = std::fs::read(&source_path).unwrap() == current;
+                let safe = if matches { result.is_ok() && actual == current }
+                    else { result.is_err() && actual == b"prior destination" };
+                receiver.retire_current_file_state().unwrap();
+                sender.retire_current_file_state().unwrap();
+                drop((receiver, sender));
+                let fixture = root.path.clone();
+                drop(root);
+                assert!(!fixture.exists());
+                observations.push(json!({"sender_initiates":sender_initiates,
+                    "prefix_matches":matches, "same_size_and_mtime":true,
+                    "transfer_ok":result.is_ok(), "error":result.err().map(|e|e.to_string()),
+                    "final_bytes":actual, "source_preserved":source_preserved,
+                    "fixture_retired":true, "safe":safe}));
+                all_safe &= safe && source_preserved;
+            }
+        }
+        for observation in observations {
+            println!("FILE_METADATA_RESUME_CONTENT={observation}");
+        }
+        assert!(all_safe, "resume must verify the saved prefix against the current source before publication");
+    }
+
     #[cfg(target_os = "linux")]
     fn file_metadata_finalization_authority_case(
         artifact: &str, change: &str, mode: u32, should_refuse: bool,

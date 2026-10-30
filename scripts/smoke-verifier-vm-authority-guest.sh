@@ -3640,6 +3640,7 @@ run_focused_rust_tests() {
                 fs::tests::file_metadata_receive_finalization_links
                 fs::tests::file_metadata_receive_namespace_keeps_independent_file_claims
                 fs::tests::file_metadata_receive_namespace_accepts_maximum_native_filename
+                fs::tests::file_metadata_resume_requires_matching_source_prefix
                 fs::receive_namespace::tests::setup_recovers_only_private_identity_prefixes
                 fs::receive_namespace::tests::generation_lock_retires_only_after_last_owner
                 fs::receive_namespace::tests::generation_retirement_error_releases_exclusion

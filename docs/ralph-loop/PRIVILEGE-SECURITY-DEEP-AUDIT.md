@@ -121971,3 +121971,32 @@ retires and all three listener deltas are zero. Raw serial: 35,832 bytes, SHA-25
 `f6f9e414972e44aa98d69a5f2a28f8f3848c639ad991e01d20fe72af291bca97`.
 All twenty raw files for this checkpoint total 396,724 bytes per host and are
 hash-verified on both hosts. This audit-only receipt preserves the counted ledger.
+
+### Receive staging prerequisite: resume content binding — 2026-10-31
+
+The preceding turn made verified progress: final-owner generation-lock retirement
+passed its two new real-file cases and the nineteen existing native scenarios.
+Continue the same lifecycle blocker. Moving partial data outside the destination
+requires separating stored bytes from current publication authority. Before choosing
+that layout, establish whether the existing resume protocol can safely reuse a
+partial when the current source has matching size/mtime but different content.
+`FileDigest`, `inspect_write_destination`, `ReceiveWriteClaim::resume` and wire
+confirmation currently carry no content proof. This is a source finding until the
+new behavioral comparison runs; it is not a newly demonstrated privilege escalation.
+
+The new test pairs real sender/receiver `TransferJob` objects and real files, with
+an explicitly staged three-byte prefix. It encodes/decodes the actual digest and
+confirmation messages, exercises both confirmation directions, and observes final
+bytes after production read/write/finalization. Matching-prefix controls must finish
+exactly; changed-prefix cases with identical size/mtime must refuse before replacing
+the prior destination. Every fixture retires before the combined verdict. The test
+does not exercise authenticated transport, GUI, installed service, or process death.
+No production/protocol change or staging-layout acceptance is claimed by preparation.
+
+Primary references: Linux `unlinkat` provides name-relative removal, not an atomic
+descriptor-identity comparison (https://man7.org/linux/man-pages/man2/unlink.2.html);
+`renameat2` flags do not supply that comparison either
+(https://man7.org/linux/man-pages/man2/rename.2.html). The rsync manual's distinction
+between append and append-verify illustrates why retained prefixes need content
+verification (https://download.samba.org/pub/rsync/rsync.1#opt--append-verify).
+These references guide the investigation; they do not establish RustDesk behavior.

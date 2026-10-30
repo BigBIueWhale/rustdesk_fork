@@ -120597,3 +120597,22 @@ QEMU 2487088 joins in 30.227 seconds; RAM `run.twky1a86` retires and all
 three listener deltas are zero. Six count files add 103,808 bytes; thirteen raw
 files total 190,787 bytes per host with matching hashes. This audit-only receipt
 leaves the measured ledger unchanged.
+
+## 2026-10-30 — changelog scope
+
+Continued the user-directed pivot with documentation cleanup; all parked work
+remains open. `f1579808c92ddae89df6183a71c3c5627d0dfce4` condenses the current
+fork-version entry's historical harness algorithms, limits and fixture narration
+into source-change summaries. Git retains that history. Product changes and
+evidence limits remain, with current instructions and acceptance linked to their
+own documents. No normative requirement, product code, test, live instruction,
+version metadata or older release entry changes.
+
+`CHANGELOG.md` shrinks from 334 lines / 26,857 bytes to 195 lines / 11,864 bytes.
+Exact comparison preserves all six release headings and the entire `.5` through
+`.1` suffix; all four links in the revised prefix resolve. Source review confirms
+`fork-version.sh` parses only those headings and the publisher extracts the first
+section by the same heading boundary. The full diff and `git diff --check` pass
+review. No product/compiler/runtime test is needed for this prose-only change.
+No release was published or inferred from the historical version/date labels.
+Whole-document architecture and every existing acceptance obligation remain open.

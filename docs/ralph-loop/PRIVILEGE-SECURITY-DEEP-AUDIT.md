@@ -119340,3 +119340,13 @@ with matching hashes. Exact source comparison and `git diff --check` pass.
 Full application/network integration, optimized timing, full erasure, other
 targets, installed credential actions and release acceptance remain OPEN;
 separately parked work is unchanged. Fresh ledger measurement follows.
+
+**Fresh ledger count.** At `16085e5ce15cfea7c15199dc3429b3914d0e125a`,
+TUF `gXzN5TFtwo` passes seven tokenizer controls and the exact byte round trip
+using `tiktoken-0.12.0/cl100k_base/encode_ordinary`: 361,390 tokens /
+1,652,549 bytes, SHA-256
+`de3d50008baeff229f1f75bffb1702cac287d55f92336cf5b46931a526ca69ee`.
+QEMU 1891729 joins in 30.898 seconds, RAM `run.t9s07i60` retires and all
+three listener deltas are zero. Six count files add 103,987 bytes; thirteen
+files from this slice total 187,750 bytes per host with matching hashes.
+This audit-only receipt leaves the measured ledger unchanged.

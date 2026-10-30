@@ -1384,6 +1384,19 @@ IMAGE_QUALITY_SUITES = {
 }
 
 
+COMBO_BOX_SUITES = {
+    "setting_option_mutation_test.dart": {
+        name for name in SETTING_OPTION_TESTS if name.startswith("combo ")
+    },
+    "combo_box_layout_test.dart": {
+        "combo selected label fits enlarged text in both directions",
+        "combo unavailable label fits enlarged text without a selection",
+        "combo menu items fit enlarged text and select the original key",
+        "combo long labels remain selectable in a narrow view",
+    },
+}
+
+
 def model_test_count(path=None):
     if path is None:
         path = os.path.join(os.path.dirname(__file__), "flutter-model-test-count.txt")
@@ -1761,7 +1774,7 @@ MODEL_TESTS = {
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "image-quality"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality"}, "test profile is unknown")
     expected_suites = set(MODEL_TESTS)
     expected_by_suite = None
     if profile == "frame-queue":
@@ -1841,6 +1854,11 @@ def parse_result(path, profile="models"):
         expected_suites = {"desktop_window_dispatch_test.dart"}
         expected_tests = len(WINDOW_DISPATCH_TESTS)
         expected_names = WINDOW_DISPATCH_TESTS
+    elif profile == "combo-box":
+        expected_by_suite = COMBO_BOX_SUITES
+        expected_suites = set(expected_by_suite)
+        expected_names = set().union(*expected_by_suite.values())
+        expected_tests = len(expected_names)
     elif profile == "image-quality":
         expected_by_suite = IMAGE_QUALITY_SUITES
         expected_suites = set(expected_by_suite)
@@ -2067,7 +2085,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "image-quality"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -2096,6 +2114,7 @@ def main():
         "window-dispatch": "FLUTTER_WINDOW_DISPATCH_TEST_JSON",
         "modifier-release": "FLUTTER_MODIFIER_RELEASE_TEST_JSON",
         "auto-disconnect": "FLUTTER_AUTO_DISCONNECT_TEST_JSON",
+        "combo-box": "FLUTTER_COMBO_BOX_TEST_JSON",
         "image-quality": "FLUTTER_IMAGE_QUALITY_TEST_JSON",
         "keyboard-layout": "FLUTTER_KEYBOARD_LAYOUT_TEST_JSON",
         "directory-ordering": "FLUTTER_DIRECTORY_ORDERING_TEST_JSON",

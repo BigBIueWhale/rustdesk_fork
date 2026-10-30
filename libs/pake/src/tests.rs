@@ -208,11 +208,11 @@ fn anchor_b_state_machine() {
     assert_eq!(s1.sid_a, sid_a);
 
     let resp = Responder::new(PRS, CI_PORT).unwrap();
-    let (resp2, s2) = resp.recv_step1_with(&s1, sid_b, yb).unwrap();
+    let (resp2, s2) = resp.recv_step1_with(&s1, sid_b, Zeroizing::new(yb)).unwrap();
     assert_eq!(hex(&s2.yb), an.yb, "Step2.Yb");
     assert_eq!(s2.adb, AD_RESPONDER);
 
-    let (init2, s3) = init.recv_step2_with(&s2, ya).unwrap();
+    let (init2, s3) = init.recv_step2_with(&s2, Zeroizing::new(ya)).unwrap();
     assert_eq!(hex(&s3.ya), an.ya, "Step3.Ya");
     assert_eq!(hex(&s3.ta), clean(an.ta), "Step3.Ta");
 
@@ -383,6 +383,18 @@ fn bad_element_aborts_decode() {
     let (_resp2, mut s2) = resp.recv_step1(&s1).unwrap();
     s2.yb = [0xff; 32]; // not a valid ristretto255 encoding
     assert_eq!(expect_err(init.recv_step2(&s2)), PakeError::Decode);
+}
+
+#[test]
+fn responder_rejects_invalid_or_identity_element() {
+    let (_init, s1) = Initiator::new("pw", CI_PORT).unwrap();
+    for (ya, expected) in [([0xff; 32], PakeError::Decode), ([0; 32], PakeError::Identity)] {
+        let resp = Responder::new("pw", CI_PORT).unwrap();
+        let (resp2, _s2) = resp.recv_step1(&s1).unwrap();
+        let err = expect_err(resp2.recv_step3(&Step3 { ya, ta: [0; 64] }));
+        assert_eq!(err, expected);
+        assert!(!err.is_password_guess());
+    }
 }
 
 /// Empty PRS after NFC is rejected (R-P1/R-S9). CPace has no empty-PRS guard.

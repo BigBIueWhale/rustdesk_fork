@@ -709,10 +709,10 @@ fn fill_random(buf: &mut [u8]) -> Result<(), PakeError> {
 /// Sample a fresh ephemeral scalar via the wide reduction `Scalar::random` uses
 /// (R-P12) — 64 CSPRNG bytes, no bit-masking; never the deprecated, Edwards-only
 /// `Scalar::from_bits` (§10.4 trap #1).
-fn sample_scalar() -> Result<Scalar, PakeError> {
+fn sample_scalar() -> Result<Zeroizing<Scalar>, PakeError> {
     let mut wide = Zeroizing::new([0u8; 64]);
     fill_random(&mut wide[..])?;
-    Ok(Scalar::from_bytes_mod_order_wide(&wide))
+    Ok(Zeroizing::new(Scalar::from_bytes_mod_order_wide(&wide)))
 }
 
 /// Decompress a received element, mapping a decode failure to [`PakeError::Decode`]
@@ -788,10 +788,9 @@ impl Initiator {
     fn recv_step2_with(
         self,
         step2: &Step2,
-        mut ya: Scalar,
+        ya: Zeroizing<Scalar>,
     ) -> Result<(InitiatorAwaitConfirm, Step3), PakeError> {
         if step2.adb.as_slice() != AD_RESPONDER {
-            ya.zeroize();
             return Err(PakeError::AdMismatch);
         }
         let mut sid = [0u8; 32];
@@ -801,22 +800,13 @@ impl Initiator {
         // R-T15(a)/R-P12: `g` is PRS-laden — wrap in `Zeroizing` so the expanded point
         // is wiped on every exit path, including the decompress-error early-return below.
         let g = Zeroizing::new(derive_generator(&self.prs, &self.ci, &sid));
-        let ya_pt = (ya * *g).compress().to_bytes();
+        let ya_pt = (&*ya * &*g).compress().to_bytes();
 
-        // R-T15(a)/R-P12: wipe the ephemeral scalar on the decompress-error early-return too
-        // (mirrors the responder's recv_step3) — the `?` form would skip the zeroize below,
-        // leaking `ya` on an attacker-triggerable malformed-Yb abort.
-        let yb_pt = match decompress(&step2.yb) {
-            Ok(p) => p,
-            Err(e) => {
-                ya.zeroize();
-                return Err(e);
-            }
-        };
+        let yb_pt = decompress(&step2.yb)?;
         // R-T15(a)/R-P12: the DH shared point `K` is as secret as its `k_bytes`
         // serialization — `Zeroizing` wipes the expanded point, not only the bytes.
-        let k_pt = Zeroizing::new(ya * yb_pt);
-        ya.zeroize();
+        let k_pt = Zeroizing::new(&*ya * &yb_pt);
+        drop(ya);
         if k_pt.is_identity() {
             return Err(PakeError::Identity);
         }
@@ -876,20 +866,9 @@ pub struct Responder {
 /// Responder state WAIT_3: `Yb` emitted via [`Step2`]; holds `yb` and the full
 /// sid; awaiting the initiator's element and tag.
 pub struct ResponderAwaitConfirm {
-    yb_scalar: Scalar,
+    yb_scalar: Zeroizing<Scalar>,
     yb_pt: [u8; 32],
     sid: [u8; 32],
-}
-
-impl Drop for ResponderAwaitConfirm {
-    /// R-T15(a)/R-P12: wipe the ephemeral scalar when this state is dropped — notably on the
-    /// R-P14b step-3 timeout (a peer that received `Step2` and then stalls), where it would
-    /// otherwise linger in freed memory. `recv_step3` also wipes it explicitly on each of its
-    /// own paths (belt-and-suspenders); this covers the drop that never reaches `recv_step3`.
-    /// `yb_pt`/`sid` are public. `Scalar` is `Copy`, so `recv_step3`'s reads do not move it out.
-    fn drop(&mut self) {
-        self.yb_scalar.zeroize();
-    }
 }
 
 impl Responder {
@@ -915,11 +894,9 @@ impl Responder {
         self,
         step1: &Step1,
         sid_b: [u8; 16],
-        yb: Scalar,
+        yb: Zeroizing<Scalar>,
     ) -> Result<(ResponderAwaitConfirm, Step2), PakeError> {
         if step1.ada.as_slice() != AD_INITIATOR {
-            let mut yb = yb;
-            yb.zeroize();
             return Err(PakeError::AdMismatch);
         }
         let mut sid = [0u8; 32];
@@ -928,7 +905,7 @@ impl Responder {
 
         // R-T15(a)/R-P12: `g` is PRS-laden — wipe the expanded point on drop.
         let g = Zeroizing::new(derive_generator(&self.prs, &self.ci, &sid));
-        let yb_pt = (yb * *g).compress().to_bytes();
+        let yb_pt = (&*yb * &*g).compress().to_bytes();
 
         let next = ResponderAwaitConfirm {
             yb_scalar: yb,
@@ -950,18 +927,12 @@ impl ResponderAwaitConfirm {
     /// **before** authorizing (R-P3/R-A1), then emit `Tb`. Returns the
     /// role-oriented keys — the controlled side seals with `k_s2c`, opens with
     /// `k_c2s` (R-P2).
-    pub fn recv_step3(mut self, step3: &Step3) -> Result<(DirectionalKeys, Step4), PakeError> {
-        let ya_pt = match decompress(&step3.ya) {
-            Ok(p) => p,
-            Err(e) => {
-                self.yb_scalar.zeroize();
-                return Err(e);
-            }
-        };
+    pub fn recv_step3(self, step3: &Step3) -> Result<(DirectionalKeys, Step4), PakeError> {
+        let ya_pt = decompress(&step3.ya)?;
         // R-T15(a)/R-P12: wipe the expanded DH point `K`, not only its `k_bytes` form.
-        let k_pt = Zeroizing::new(self.yb_scalar * ya_pt);
+        let k_pt = Zeroizing::new(&*self.yb_scalar * &ya_pt);
+        drop(self.yb_scalar);
         if k_pt.is_identity() {
-            self.yb_scalar.zeroize();
             return Err(PakeError::Identity);
         }
         let mut k_bytes = k_pt.compress().to_bytes();
@@ -982,11 +953,9 @@ impl ResponderAwaitConfirm {
         if !verify_tag(&mac_key, &step3.ya, AD_INITIATOR, &step3.ta) {
             // k_c2s/k_s2c wipe here on scope exit (their `Zeroizing` drop) — they were never
             // moved into the drop-guarded DirectionalKeys on this abort (R-T15(a)/R-P12).
-            self.yb_scalar.zeroize();
             return Err(PakeError::Confirmation);
         }
         let tb = compute_tag(&mac_key, &self.yb_pt, AD_RESPONDER);
-        self.yb_scalar.zeroize();
         Ok((
             DirectionalKeys {
                 send: *k_s2c,

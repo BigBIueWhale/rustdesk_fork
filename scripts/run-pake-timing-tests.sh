@@ -13,6 +13,7 @@ export CARGO_PROFILE_RELEASE_OPT_LEVEL=3 CARGO_PROFILE_RELEASE_LTO=true
 export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 RUSTFLAGS='-C target-cpu=x86-64'
 unset CARGO_ENCODED_RUSTFLAGS
 if [ "$allocation_probe" -eq 1 ]; then
+    bash -n scripts/verify.sh
     export RUSTFLAGS="$RUSTFLAGS --cfg pake_allocation_probe"
     printf 'PAKE_ALLOCATION_BUILD=observer=thread-local counts=alloc-realloc source=production cfg=pake_allocation_probe\n'
 fi
@@ -68,7 +69,7 @@ if [ "$allocation_probe" -eq 1 ]; then
     timeout --signal=TERM --kill-after=5s 30s taskset -c "$cpu" "$test_executable" \
         --exact allocation_probe::no_transient_secret_heap_copies --test-threads=1 --color never --show-output
     [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
-    printf 'PAKE_ALLOCATION_ARTIFACT=pass sha256=%s tests=19 optimized=true unchanged=before-after\n' "$artifact_sha"
+    printf 'PAKE_ALLOCATION_ARTIFACT=pass sha256=%s tests=20 optimized=true unchanged=before-after\n' "$artifact_sha"
     exit 0
 fi
 timeout --signal=TERM --kill-after=5s 90s taskset -c "$cpu" "$test_executable" \

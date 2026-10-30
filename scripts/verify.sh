@@ -12397,20 +12397,16 @@ if [ -z "$r_t4_missing" ]; then
 else
   echo "  FAIL R-T4: teardown cleanup not folded into Drop:$r_t4_missing"; rc=1
 fi
-# R-T15(a) / R-P12: secret-zeroization in libs/pake — curve25519-dalek 4.1.3 impls the Zeroize
-# TRAIT but not Drop, so secrets not explicitly wiped linger on attacker-inducible abort/timeout
-# paths. The ISK master secret is wrapped in Zeroizing, the initiator's ephemeral scalar is wiped
-# on the decompress-error early-return, and the two *AwaitConfirm states carry a Drop that wipes
-# their session keys / ephemeral scalar on the R-P14b step-timeout drop. The KATs check derived
-# VALUES, not wiping, so this is a presence gate.
+# R-T15(a) / R-P12 supplementary ownership presence checks, not an erasure test.
+# Initiator keys retain their Drop; the responder scalar and ISK have wiping owners.
 r_t15a_missing=
 grep -q 'impl Drop for InitiatorAwaitConfirm' libs/pake/src/lib.rs || r_t15a_missing="$r_t15a_missing InitiatorDrop"
-grep -q 'impl Drop for ResponderAwaitConfirm' libs/pake/src/lib.rs || r_t15a_missing="$r_t15a_missing ResponderDrop"
+grep -q 'yb_scalar: Zeroizing<Scalar>' libs/pake/src/lib.rs         || r_t15a_missing="$r_t15a_missing responder-scalar-owner"
 grep -q 'Zeroizing::new(compute_isk' libs/pake/src/lib.rs            || r_t15a_missing="$r_t15a_missing isk-Zeroizing"
 if [ -n "$r_t15a_missing" ]; then
   echo "  FAIL R-T15(a): pake secret-zeroization absent:$r_t15a_missing"; rc=1
 else
-  echo "  ok  R-T15(a) pake secret-zeroization present (isk Zeroizing + *AwaitConfirm Drop)"
+  echo "  ok  R-T15(a) pake secret owners present (source only; erasure acceptance separate)"
 fi
 # R-P12 supplementary source gate: retain HMAC verify_slice and wide scalar reduction,
 # and reject direct tag equality or deprecated Scalar::from_bits calls in these bodies.

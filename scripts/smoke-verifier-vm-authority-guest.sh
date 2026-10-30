@@ -5419,7 +5419,7 @@ run_focused_rust_tests() {
                 scripts/run-pake-timing-tests.sh)
             required_tests=(timing_tests::optimized_timing_evidence)
             if [ "$RUST_TEST_PROFILE" = pake-allocation ]; then
-                source_fingerprints+=(libs/pake/src/allocation_probe.rs)
+                source_fingerprints+=(libs/pake/src/allocation_probe.rs scripts/verify.sh)
                 required_tests=(
                     allocation_probe::no_transient_secret_heap_copies
                     tests::published_ristretto255_vector
@@ -5430,6 +5430,7 @@ run_focused_rust_tests() {
                     tests::non_confirmation_aborts_do_not_feed_limiter
                     tests::responder_rejects_wrong_ada tests::initiator_rejects_wrong_adb
                     tests::identity_element_aborts tests::bad_element_aborts_decode
+                    tests::responder_rejects_invalid_or_identity_element
                     tests::empty_password_rejected tests::nfc_non_ascii_password
                     tests::replayed_initiator_flow_aborts tests::lv_cat_encoding
                     tests::isk_order_independent tests::generator_padding_and_length_boundaries
@@ -6984,7 +6985,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
         printf 'WHITEBOARD_DISPLAY_PROFILE=whiteboard-display-lifetime stage=container-start tests=6 bridge=absent backend=x11\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = pake-allocation ]; then
-        printf 'PAKE_ALLOCATION_PROFILE=pake-allocation stage=container-start tests=19\n'
+        printf 'PAKE_ALLOCATION_PROFILE=pake-allocation stage=container-start tests=20\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = pake-timing ]; then
         printf 'PAKE_TIMING_PROFILE=pake-timing stage=container-start tests=1 cohorts=4\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main-config-key ]; then
@@ -7794,7 +7795,7 @@ PY
             || fail 'resolution-lifetime artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = pake-allocation ]; then
         [ "${#result_lines[@]}" -eq 2 ] || fail 'PAKE allocation summary count differs'
-        [ "$(grep -Ec '^PAKE_ALLOCATION_ARTIFACT=pass sha256=[0-9a-f]{64} tests=19 optimized=true unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^PAKE_ALLOCATION_ARTIFACT=pass sha256=[0-9a-f]{64} tests=20 optimized=true unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'PAKE_ALLOCATION_ARTIFACT=' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'PAKE_ALLOCATION_CASE=generator allocations=0 reallocations=0' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'PAKE_ALLOCATION_CASE=isk allocations=0 reallocations=0' "$output")" -eq 1 ] \

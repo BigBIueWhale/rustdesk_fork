@@ -660,6 +660,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
 
   @override
   void dispose() {
+    _leftPaneScrollController.dispose();
     _uniLinksSubscription?.cancel();
     Get.delete<RxBool>(tag: 'stop-service');
     unawaited(_statusRefreshLoop.close());

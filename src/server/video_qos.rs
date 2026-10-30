@@ -626,6 +626,12 @@ impl VideoQoS {
             Quality::Low => BR_MIN_HIGH_RESOLUTION,
             Quality::Custom(_) => BR_MIN_HIGH_RESOLUTION,
         };
+        // A changing bitrate floor cannot justify growth while feedback is congested.
+        let min = if max_delay >= DELAY_THRESHOLD_150MS {
+            min.min(current_ratio)
+        } else {
+            min
+        };
         let max = target_ratio * MAX_BR_MULTIPLE;
 
         let mut v = current_ratio;

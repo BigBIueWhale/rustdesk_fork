@@ -12,7 +12,8 @@ Widget _subject(TextDirection direction, String layout,
     ValueChanged<String> selected) {
   Widget page() => Scaffold(
         body: Padding(
-          padding: const EdgeInsets.only(left: 180, top: 120),
+          padding: EdgeInsets.only(
+              left: direction == TextDirection.rtl ? 360 : 180, top: 120),
           child: Align(alignment: Alignment.topLeft, child: _Probe(selected)),
         ),
       );

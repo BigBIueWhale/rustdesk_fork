@@ -279,6 +279,12 @@ fn rng_error_clears_output_and_refuses_scalar() {
         let mut buf = [0u8; 64];
         fill_random(&mut buf).unwrap(); // Initialize and exercise the real backend.
         buf.fill(0xa5); // Deterministic nonsecret contents, not a random-byte assertion.
+        let (init_valid, step1) = Initiator::new("pw", CI_PORT).unwrap();
+        let (init_wrong_role, _) = Initiator::new("pw", CI_PORT).unwrap();
+        let (pending, step2) = Responder::new("pw", CI_PORT).unwrap().recv_step1(&step1).unwrap();
+        drop(pending);
+        let resp_valid = Responder::new("pw", CI_PORT).unwrap();
+        let resp_wrong_role = Responder::new("pw", CI_PORT).unwrap();
         let filter = [
             Filter { code: 0x20, jt: 0, jf: 0, k: 4 }, // seccomp_data.arch
             Filter { code: 0x15, jt: 1, jf: 0, k: 0xc000003e }, // AUDIT_ARCH_X86_64
@@ -301,18 +307,31 @@ fn rng_error_clears_output_and_refuses_scalar() {
         let fill = fill_random(&mut buf);
         let scalar = sample_scalar().map(|mut value| value.zeroize());
         let empty = fill_random(&mut []);
-        (buf, errno, fill, scalar, empty)
+        let init_valid = expect_err(init_valid.recv_step2(&step2));
+        let resp_valid = expect_err(resp_valid.recv_step1(&step1));
+        let mut wrong_step1 = step1;
+        wrong_step1.ada = AD_RESPONDER.to_vec();
+        let mut wrong_step2 = step2;
+        wrong_step2.adb = AD_INITIATOR.to_vec();
+        let init_wrong_role = expect_err(init_wrong_role.recv_step2(&wrong_step2));
+        let resp_wrong_role = expect_err(resp_wrong_role.recv_step1(&wrong_step1));
+        (buf, errno, fill, scalar, empty, init_valid, resp_valid, init_wrong_role, resp_wrong_role)
     });
-    let (buf, errno, fill, scalar, empty) = worker.join().unwrap();
+    let (buf, errno, fill, scalar, empty, init_valid, resp_valid, init_wrong_role, resp_wrong_role) =
+        worker.join().unwrap();
     let restored = fill_random(&mut [0u8; 64]);
     println!("PAKE_RNG_CASE=errno:{errno:?} cleared:{} fill:{fill:?} scalar:{scalar:?} empty:{empty:?} restored:{restored:?} worker:joined",
         buf.iter().filter(|&&byte| byte == 0).count());
+    println!("PAKE_RNG_AD_CASE=initiator_valid:{init_valid:?} responder_valid:{resp_valid:?} initiator_wrong_role:{init_wrong_role:?} responder_wrong_role:{resp_wrong_role:?} worker:joined");
     assert_eq!(errno, Some(5), "actual OS EIO reaches getrandom");
     assert_eq!(fill, Err(PakeError::Rng));
     assert_eq!(scalar, Err(PakeError::Rng));
     assert_eq!(empty, Ok(()));
     assert_eq!(restored, Ok(()), "filter must not affect the test runner");
     assert_eq!(buf, [0u8; 64], "RNG errors must clear all output bytes");
+    assert_eq!((init_valid, resp_valid), (PakeError::Rng, PakeError::Rng));
+    assert_eq!((init_wrong_role, resp_wrong_role), (PakeError::AdMismatch, PakeError::AdMismatch),
+        "wrong roles must be rejected before requesting randomness");
 }
 
 /// A wrong password fails at the responder's R-P3 check and is the sole

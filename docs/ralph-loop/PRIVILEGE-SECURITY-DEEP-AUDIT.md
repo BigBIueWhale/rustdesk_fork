@@ -118335,6 +118335,64 @@ listener deltas are zero. Six count files add 104,908 bytes. The thirteen raw
 files from both runs total 240,149 bytes per host with matching hashes.
 This audit-only receipt leaves the measured ledger unchanged.
 
+### 2026-10-30 — PAKE point validation before randomness
+
+Starting at `fb10fc9beeaa2c141cd0ed951cf5495c6b14f191`, review of the Linux
+IPC startup reservation/cleanup path established no additional correction; its
+listed namespace/metadata races remain open. The selected product change is in
+the independent PAKE crate, leaving parked full-parent integration untouched.
+
+Previously `Initiator::recv_step2` checked the public role, sampled a scalar,
+derived the PRS-dependent generator and calculated its public share before
+decoding the received point. The [pinned CPace draft §8.3](https://www.ietf.org/ietf-ftp/internet-drafts/draft-irtf-cfrg-cpace-21.html#section-8.3)
+defines refusal for failed decoding and identity results; [dalek 4.1.3](https://raw.githubusercontent.com/dalek-cryptography/curve25519-dalek/curve25519-4.1.3/curve25519-dalek/src/ristretto.rs)
+decodes from public point bytes alone. Neither needs a fresh scalar or the PRS.
+Moving this check earlier is a local admission decision, not a new construction
+or a claim that the draft mandates this exact scheduling.
+
+`37406461` moves decoding before sampling and share generation. The existing
+private deterministic helper now accepts a once-invoked scalar factory: its sole
+production caller passes `sample_scalar`; its sole test caller supplies the
+fixed KAT scalar. No public callback, runtime mode or alternate sampler is added.
+The decoder's point is used directly for the shared multiplication. The required
+post-multiplication identity refusal, role check, zeroizing secret owners,
+confirmation and key publication remain. Both Decode and Rng still map to the
+parent's non-guess `HandshakeError::Pake`; no limiter behavior changes.
+
+The regression in `80103724` extends the existing actual-getrandom-EIO worker
+with a fresh initiator and the noncanonical `[0xff; 32]` peer encoding. Its worker
+joins before assertions; the parent verifies RNG recovery and the existing
+valid-input, role and output-clearing controls. The corrected regression body is
+identical. Only the separate fixed-scalar KAT call adapts to the private factory.
+
+- Baseline `801037241c00a0edb60bcd064343274c70a8648d`, run `G24PFplyf8`:
+  19 functional tests pass and the regression fails with `Rng` instead of
+  `Decode`. Artifact SHA-256
+  `05e0eb1c6145a0edcf4c268b22dcec85c4fcdad44e08780be08965a2a9962426`.
+  QEMU 1866933 joins in 103.128 seconds; RAM `run.czgpbngy` retires.
+- Corrected `3740646119706323ad19785b42402983607ae451`, run `W2buEjhSRF`:
+  all twenty functional tests plus the allocation test pass. Artifact SHA-256
+  `0268fd12122ab342444864906849c2904666489cb8a89cfd7e132caa1f3f3078`
+  is verified before/after execution. QEMU 1867720 joins in 106.830 seconds;
+  RAM `run.7ohqo1io` retires.
+
+Command: `bash scripts/smoke-verifier-vm-authority.sh --pake-allocation-tests`.
+All eight listener deltas are zero. Fourteen evidence files total 165,473 bytes
+on each host with matching hashes. Failed-run scratch inode 78294410 was removed
+after evidence retention, releasing 3,444,736 allocated bytes. Successful stdout
+filtering omits the per-case RNG lines; the retained named test pass and exact
+artifact/source binding establish the corrected assertions.
+
+Published/fork known-answer bytes, random handshakes, wrong-password/final-tag,
+identity/invalid-element, role/replay and non-guess classification tests pass.
+The allocation positive control observes one allocation; generator/ISK/MAC-key
+checks remain zero. Source ordering establishes the avoided generator/share work;
+no performance speedup or new LPE is claimed. Timing, full erasure, other targets,
+complete network/installed integration, independent reproduction and R-V3 review
+remain open. Production dependencies, protocol constants, harnesses, requirements
+and live instructions are unchanged.
+
+
 ### 2026-10-30 — three point/seed backend comparison
 
 At `8f6d01abb8fb99faf14b321aa945ad6a5543f3f0` (tree

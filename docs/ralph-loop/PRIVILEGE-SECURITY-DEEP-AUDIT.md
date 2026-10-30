@@ -121322,3 +121322,15 @@ focus, layout and favorites operations are unchanged. Whitespace checks pass.
 No new test or product run is added for a text-only change. Device rendering,
 live language-change behavior and the separately parked search/favorites work
 remain unverified/open.
+
+Ledger receipts use `tiktoken-0.12.0/cl100k_base/encode_ordinary`, with seven
+controls, exact byte round trip, 76 storage-admission controls and five refusals:
+
+| Source / run | Tokens / bytes | Input SHA-256 | QEMU / seconds / retired RAM |
+| --- | --- | --- | --- |
+| Pre-pivot `8bfb2443` / `VLVnUbI7C6` | 366,640 / 1,677,356 | `d31d0e04c86bfc6d4a7340ad23012c9c35c39e64b4b366c73b59a2b4cd333290` | 2662326 / 30.227 / `run.mfg5c13f` |
+| Search label `818397a9` / `KOPiVDDKiH` | 366,754 / 1,677,890 | `30d5bf2eb84e09e90818fac71435b4cd5e37f9ead907fe268cb4704932c6555d` | 2686981 / 34.510 / `run.frjj338a` |
+
+Both outer exits are zero, QEMU processes join, RAM workspaces retire and all six
+endpoint deltas are zero. Twelve raw files total 211,111 bytes per host, copied
+and hash-verified. This audit-only receipt leaves the counted ledger unchanged.

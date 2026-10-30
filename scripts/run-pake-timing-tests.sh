@@ -160,9 +160,7 @@ PY
 test_status=0
 timing_test=optimized_timing_evidence
 if [ -n "$backend_comparison" ]; then
-    if [ "$backend_comparison" = default ]; then
-        timing_test=backend_timing_evidence
-    fi
+    timing_test=backend_timing_evidence
     timeout --signal=TERM --kill-after=5s 30s taskset -c "$cpu" "$test_executable" tests:: \
         --skip nfc_normalization_tests:: --skip timing_tests:: --test-threads=1 --color never --show-output \
         || test_status=$?

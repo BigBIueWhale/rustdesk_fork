@@ -384,23 +384,47 @@ fn optimized_timing_evidence() {
 fn backend_timing_evidence() {
     assert!(!cfg!(debug_assertions), "timing requires an optimized build");
     check_mxcsr_scope();
-    let mut prs = [b'A'; 44];
-    prs[43] = b'=';
-    let point = derive_generator(&prs, &channel_identifier(CI_PORT), &[0x62; 32]);
-    let control = measure_prepared("vartime-prepared-one-random", 0x4a16_c09e_72f3_b85d,
-        GROUP_SAMPLES, scalar_inputs, Scalar::from_bytes_mod_order_wide,
-        |scalar| RistrettoPoint::vartime_double_scalar_mul_basepoint(
-            scalar, black_box(&point), black_box(&Scalar::ZERO)));
-    let mut detected = [false; 3];
-    for (orientation, suffix) in ["one-random", "random-one", "one-one"].iter().enumerate() {
-        detected[orientation] = measure_prepared(&format!("multiply-prepared-{suffix}"),
-            0x8d02_57be_a913_c64f, GROUP_SAMPLES, |bytes, class, state| {
-                let class = match orientation { 0 => class, 1 => class ^ 1, _ => 0 };
-                scalar_inputs(bytes, class, state);
-            }, Scalar::from_bytes_mod_order_wide, |scalar| scalar * black_box(&*point));
+    let mut controls = [false; 3];
+    let mut detected = [[false; 3]; 3];
+    let mut points = Vec::new();
+    // Canonical base64 of 32 repeated 0x00, 0xff and 0x55 bytes. Each point
+    // and scalar corpus is fixed before execution and shared across backends.
+    for (index, (fixture, fill, last, sid, seed, control_seed)) in [
+        ("baseline", b'A', b'A', 0x62, 0x8d02_57be_a913_c64f, 0x4a16_c09e_72f3_b85d),
+        ("ones", b'/', b'8', 0x17, 0x61b9_a40d_327e_8f05, 0xb385_19d2_40ec_76a9),
+        ("pattern", b'V', b'U', 0xe9, 0xa09c_7d43_8b62_e1f5, 0x31d7_e4a9_065c_b28f),
+    ].into_iter().enumerate() {
+        let mut prs = [fill; 44];
+        prs[42] = last;
+        prs[43] = b'=';
+        let point = derive_generator(&prs, &channel_identifier(CI_PORT), &[sid; 32]);
+        let encoded = point.compress();
+        assert_ne!(encoded.as_bytes(), &[0; 32], "identity fixture");
+        assert!(!points.contains(&encoded), "duplicate point fixture");
+        points.push(encoded);
+        let point_hex: String = encoded.as_bytes().iter().map(|byte| format!("{byte:02x}")).collect();
+        println!("PAKE_TIMING_FIXTURE=name:{fixture} prs:{} sid_byte:{sid:02x} point:{point_hex} seed:{seed:016x} control_seed:{control_seed:016x}",
+            std::str::from_utf8(&prs).expect("ASCII PRS fixture"));
+        for scalar in [Scalar::ONE, Scalar::from_bytes_mod_order_wide(&[0x63; 64])] {
+            assert_eq!((&scalar * &*point).compress(),
+                RistrettoPoint::vartime_double_scalar_mul_basepoint(&scalar, &point, &Scalar::ZERO).compress());
+        }
+        controls[index] = measure_prepared(&format!("{fixture}-vartime-prepared-one-random"),
+            control_seed, GROUP_SAMPLES, scalar_inputs, Scalar::from_bytes_mod_order_wide,
+            |scalar| RistrettoPoint::vartime_double_scalar_mul_basepoint(
+                scalar, black_box(&point), black_box(&Scalar::ZERO)));
+        for (orientation, suffix) in ["one-random", "random-one", "one-one"].iter().enumerate() {
+            detected[index][orientation] = measure_prepared(&format!("{fixture}-multiply-prepared-{suffix}"),
+                seed, GROUP_SAMPLES, |bytes, class, state| {
+                    let class = match orientation { 0 => class, 1 => class ^ 1, _ => 0 };
+                    scalar_inputs(bytes, class, state);
+                }, Scalar::from_bytes_mod_order_wide, |scalar| scalar * black_box(&*point));
+        }
     }
-    assert!(control, "variable-time positive control was not detected: inconclusive");
-    assert!(!detected[2], "identical-input negative control detected a difference: inconclusive");
-    assert!(!detected[..2].iter().any(|value| *value), "backend timing difference detected");
-    println!("PAKE_TIMING_BACKEND_RESULT=no-difference-detected cohorts=2 positive_controls=1 negative_controls=1 samples=100000 repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact");
+    assert!(controls.iter().all(|value| *value), "variable-time positive control was not detected: inconclusive");
+    assert!(!detected.iter().any(|fixture| fixture[2]),
+        "identical-input negative control detected a difference: inconclusive");
+    assert!(!detected.iter().any(|fixture| fixture[..2].iter().any(|value| *value)),
+        "backend timing difference detected");
+    println!("PAKE_TIMING_BACKEND_RESULT=no-difference-detected fixtures=3 cohorts=6 positive_controls=3 negative_controls=3 samples=100000 repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact");
 }

@@ -4380,19 +4380,21 @@ handle-cleanup repair, four source-bound runs and joined RAM cleanup with zero
 listener deltas. Native screen readers, full application and persistence remain
 unexecuted; package/ELF follow-ups and existing parks remain OPEN/PARKED.
 
-**Image-quality integer precision (`ff93931f`).** Bitrate and FPS sliders use
-one-unit divisions and round edits before saving. Loaded integers now agree with
-their slider position and accessibility value; toggling More preserves values
-within both ranges, and keyboard/accessibility steps save exactly one unit.
-Baseline `6d99ab03` fails all four new widget cases (11% announced as 10%, 75%
-becoming 80% on More, and a decrement saving 70 instead of 74); the existing
-19 cases pass. At `6cd169a9`, TUF `Te8z5F33eO` passes all 23 cases and three
-result-parser controls, with outer exit 0. The focused `--flutter-model-tests
---image-quality` profile retains exact case results and uses bounded RAM scratch;
-both VMs join and retire scratch with zero listener deltas. This is production
-Flutter widget execution with controlled save callbacks, not native persistence,
-OS screen-reader or complete application acceptance. Broader runner and parked
-edge-scroll work remain open. Exact source, serial hashes and cleanup are in the audit.
+**Image-quality precision and saved values (`ff93931f`, `fd550ead`).** Bitrate and
+FPS sliders use one-unit divisions and round edits before saving. Their displayed
+and accessibility values agree, and the expanded bitrate range matches native
+10–4095 admission. Previously the editor replaced valid values above 2000 with
+50, including when Close saved an otherwise unedited dialog. Baseline `6d92252f`
+reproduces all six 2001/3000/4095 × desktop/mobile replacements; its value and
+range assertions also fail, with 21 other cases passing. At `fd550ead`, TUF
+`sYgSBSNSoi` passes all 24 cases and three result-parser controls with outer exit 0,
+including the earlier precision, save/retry and lifetime regressions. The audit
+retains both this comparison and the earlier four precision failures. The focused
+`--flutter-model-tests --image-quality` profile retains exact case results and
+uses bounded RAM scratch; both VMs join and retire scratch with zero listener
+deltas. Save callbacks are controlled; native persistence, OS screen readers and
+complete application acceptance remain unexecuted for this correction. The server's
+adaptive bitrate cap is unchanged. Broader runner and parked work remain open.
 
 **Autosave restoration (`8d9bc485`).** Quality, FPS and trackpad controls represent
 the confirmed value as unknown after an exception, null or invalid save result.

@@ -120035,3 +120035,55 @@ QEMU 2278214 joins in 30.409 seconds, RAM `run.d1h6bzhy` retires and three
 listener deltas are zero. Six successful count files add 104,396 bytes. All
 26 raw files total 377,684 bytes on each host with matching hashes. This audit-only
 receipt leaves the measured ledger unchanged.
+
+## 2026-10-30 — preserve saved bitrate values when opening and closing the editor
+
+The native session setter (`src/client.rs::save_custom_image_quality`), peer
+deserializer and default-option getter (`libs/hbb_common/src/config.rs`) all
+admit quality 10–4095. The Flutter editor instead used 2000 as its maximum.
+`_QualityField._normalize` therefore replaced a valid larger input with 50;
+the existing Close initialization then sent that replacement to the save callback.
+This is a settings-preservation defect, including in a dialog opened only to view
+its current values. The previous goal turn made verified progress on integer
+precision; this slice continues the user's UI pivot, with existing parks retained.
+
+`fd550ead` changes only `kMaxMoreQuality` to 4095, matching the existing native
+admission range. Normal-range selection remains 10–100, and the previous integer
+divisions, debounce, save acknowledgement and failure behavior remain. Flutter's
+[Slider maximum](https://api.flutter.dev/flutter/material/Slider/max.html)
+governs the selectable range; the widget now represents every admitted integer.
+Native protocol/configuration code is unchanged. In particular, the server's
+existing adaptive bitrate clamp (`video_qos.rs::BR_MAX = 40`) is unchanged; this
+correction does not establish additional encoder throughput or presented quality.
+
+Preparation `6d92252f` extends the rendered value/range cases and adds a Close
+regression. TUF `mqk9sFHHTH` executes all 24 cases: 21 pass and three fail.
+The value case observes 2001% as 50%; the range assertion observes the old 2000
+maximum. The Close case observes all six 2001/3000/4095 × desktop/mobile scenarios
+displaying and saving 50, while the 2000 and invalid-4096 controls succeed.
+It observes actual widget callbacks; persistence is a controlled callback, not
+native file I/O. QEMU 2279166 joins in 239.065 seconds, RAM `run.s0rmp01z`
+retires and all four listener deltas are zero. Seven raw files total 94,950 bytes
+per host, copied and hash-verified before the exact 3,469,312-byte diagnostic
+tree is removed. Baseline serial SHA-256 (22,646 bytes):
+`5dba9530091ebe86c728fe1f0ce67c76b7cb2fcdfcff5b08cc6738b0553374da`.
+
+At `fd550ead69bd2825db6b466d447b841d886781d6`, TUF `sYgSBSNSoi` passes all
+24 cases and three result-parser controls with outer exit 0. Assertions are
+unchanged from the baseline. Candidate serial SHA-256 (17,703 bytes):
+`a87aed7d09893baf7fc870e2334b3e5ac3f8a68ce36aa8538c76a26f84446761`.
+The final constants/test hashes are respectively
+`689582f327bcb91cb767f913360eec719112eef28ff5378e6bb22b01cdfa8f46` and
+`22551e60ee01f8430cfc9e1b98285d0b6139c0d4179a55ee44693f04164ebec0`.
+QEMU 2280000 joins in 267.171 seconds, RAM `run.m2eaw02s` retires and all four
+listener deltas are zero. Fourteen raw files total 183,995 bytes per host,
+copied and hash-verified under the shared run lock.
+
+Both runs use `bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests
+--image-quality`, pinned Flutter 3.24.5, fresh bindings and source postconditions
+inside a networkless unprivileged container in the zero-NIC VM. The shared profile
+admits 4 GiB guest RAM, 7 GiB scratch, a 6 GiB overlay and 6 GiB host headroom;
+the monitor and joined cleanup remain enabled. Actual native settings persistence,
+full dialog routing, OS screen readers and peer presentation are not executed.
+The current-state ledger consolidates the precision/range result; existing parks
+and the complete native/release obligations remain open.

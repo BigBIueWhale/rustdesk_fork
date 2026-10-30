@@ -1061,8 +1061,6 @@ class _FileManagerViewState extends State<FileManagerView> {
   }
 
   Widget menu({bool isLocal = false}) {
-    var menuPos = Offset.zero;
-
     final List<MenuEntryBase<String>> items = [
       MenuEntrySwitch<String>(
         switchType: SwitchType.scheckbox,
@@ -1096,29 +1094,35 @@ class _FileManagerViewState extends State<FileManagerView> {
           dismissOnClicked: true)
     ];
 
-    return Listener(
-      onPointerDown: (e) {
-        menuPos = e.position;
-      },
-      child: MenuButton(
+    return Builder(
+      builder: (context) => MenuButton(
         tooltip: translate('More'),
-        onPressed: () => mod_menu.showMenu(
-          context: context,
-          position: popupMenuPosition(context, menuPos),
-          items: items
-              .map(
-                (e) => e.build(
-                  context,
-                  MenuConfig(
-                      commonColor: CustomPopupMenuTheme.commonColor,
-                      height: CustomPopupMenuTheme.height,
-                      dividerHeight: CustomPopupMenuTheme.dividerHeight),
-                ),
-              )
-              .expand((i) => i)
-              .toList(),
-          elevation: 8,
-        ),
+        onPressed: () {
+          final button = context.findRenderObject() as RenderBox;
+          final offset = button.localToGlobal(Offset(
+            Directionality.of(context) == TextDirection.rtl
+                ? button.size.width
+                : 0,
+            button.size.height,
+          ));
+          mod_menu.showMenu(
+            context: context,
+            position: popupMenuPosition(context, offset),
+            items: items
+                .map(
+                  (e) => e.build(
+                    context,
+                    MenuConfig(
+                        commonColor: CustomPopupMenuTheme.commonColor,
+                        height: CustomPopupMenuTheme.height,
+                        dividerHeight: CustomPopupMenuTheme.dividerHeight),
+                  ),
+                )
+                .expand((i) => i)
+                .toList(),
+            elevation: 8,
+          );
+        },
         child: SvgPicture.asset(
           "assets/dots.svg",
           colorFilter: svgColor(Theme.of(context).tabBarTheme.labelColor),

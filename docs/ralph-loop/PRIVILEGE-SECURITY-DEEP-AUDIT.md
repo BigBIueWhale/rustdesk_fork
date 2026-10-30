@@ -118215,3 +118215,112 @@ listener deltas are zero. Six count files add 104,109 bytes. Twenty raw files
 across all three runs total 389,276 bytes per host with matching hashes; this
 audit-only receipt preserves the measured ledger and its approximate
 400,000-token budget.
+
+### 2026-10-30 — full serial-backend timing and emitted callees
+
+At `1040d59a0a1405a34cc7e7d851daf3157c64032d` (tree
+`c2a9451dcad2ef02b24f3aebb3c85680568658b0`), the existing serial profile
+runs the full optimized timing suite after twenty functional tests. Only the
+runner and host/guest orchestration change. Rust source, dependency closure,
+compiler flags, product backend and secret owners remain unchanged. The
+default comparison retains its four cohorts. Capture now includes the serial
+table selector, point addition and pow2k, plus bounded copy-import relocations.
+
+Primary review uses pinned Dalek 4.1.3
+[table selection](https://raw.githubusercontent.com/dalek-cryptography/curve25519-dalek/curve25519-4.1.3/curve25519-dalek/src/window.rs),
+[point arithmetic](https://raw.githubusercontent.com/dalek-cryptography/curve25519-dalek/curve25519-4.1.3/curve25519-dalek/src/backend/serial/curve_models/mod.rs),
+[field arithmetic](https://raw.githubusercontent.com/dalek-cryptography/curve25519-dalek/curve25519-4.1.3/curve25519-dalek/src/backend/serial/u64/field.rs)
+and [GNU objdump documentation](https://sourceware.org/binutils/docs/binutils/objdump.html).
+The source traverses all eight table entries with conditional assignment;
+doubling uses fixed arithmetic and pow2k(1). Dynamic relocations identify
+imports, not the runtime-resolved implementation.
+
+TUF `Xj6zy0qlJT`, launched with
+`bash scripts/smoke-verifier-vm-authority.sh --pake-backend-serial-tests`,
+passes all twenty functional tests and the timing test, which takes 130.40
+seconds. The executable SHA-256 before and after is
+`abded8eb0b459751ca03350906bb568fbceff0ca830f5b37b6144cac4edf63c4`,
+identical to focused serial run `oFumbLOVUU`. The emitted backend is serial,
+64-bit; AVX backend/dispatch symbols are absent. Rust 1.75.0/LLVM 17.0.6,
+release optimization 3, LTO, one codegen unit and x86-64 target CPU remain.
+The guest reports Intel Core Ultra 9 285K, microcode 0x11b, Linux
+6.1.0-50-cloud-amd64, MCDT_NO=1 and AVX2 availability; host affinity is
+uncontrolled.
+
+All 24 cohorts match the preceding full default run `21IgvVMhez` in seed,
+measurement count, repeats, class counts and input SHA-512; the four overlapping
+cohorts also match `oFumbLOVUU`. Budgets remain one million primitive or
+100,000 group measurements, four operations and 20,000 warm-ups, with absolute
+raw/pooled-p99 Welch threshold 10. Four positive controls detect; fifteen
+assessed and five identical-input cohorts remain below. No new input corpus
+or independent reproduction is claimed.
+
+| Cohort | Raw t | Pooled-p99 t |
+| --- | ---: | ---: |
+| early-exit-first-last | -2680.947921 | -14825.929847 |
+| verify-tag-first-last | 0.950932 | 0.024462 |
+| verify-tag-zero-random-key | 1.022616 | 0.014056 |
+| scalar-reduce-zero-random | -0.396182 | -0.898619 |
+| generator-fixed-random-prs | 0.705755 | -0.572618 |
+| vartime-multiply-one-random | -4467.176325 | -10332.326631 |
+| reduce-multiply-one-random | -0.679361 | -1.044029 |
+| reduce-multiply-random-one | -0.496292 | -0.871706 |
+| reduce-multiply-one-one | 1.011528 | 0.341480 |
+| vartime-prepared-one-random | -3744.825595 | -5942.002909 |
+| reduce-wipe-one-random | 1.708600 | 0.151414 |
+| multiply-prepared-one-random | 0.079366 | 0.218005 |
+| point-copy-wipe-one-random | 1.253972 | 0.445555 |
+| reduce-wipe-random-one | 1.616720 | 0.850776 |
+| multiply-prepared-random-one | 1.206046 | -0.127699 |
+| point-copy-wipe-random-one | 1.400262 | -1.473177 |
+| reduce-wipe-one-one | 0.671391 | 0.112122 |
+| multiply-prepared-one-one | -1.007875 | -0.191013 |
+| point-copy-wipe-one-one | 1.604141 | -0.892125 |
+| vartime-mcdt-one-random | -3588.719917 | -7163.287430 |
+| multiply-mcdt-one-random | -2.869543 | -0.222987 |
+| multiply-mcdt-random-one | 0.625766 | 0.044071 |
+| multiply-mcdt-one-one | -0.660657 | -1.621178 |
+| multiply-restored-one-random | -2.396701 | 1.062246 |
+
+Normal/unwind MXCSR restoration passes. Initial MXCSR is 0x1f80, ordinary
+cohorts observe 0x1fa0, scoped cohorts 0x1fbf and the restored cohort 0x1fa0.
+The largest assessed absolute t is 2.869543. These observations support
+continued assessment of this candidate; they do not clear the earlier
+default-backend detections or establish their cause.
+
+All twelve disassembly payloads pass length/hash checks. Nine retained bodies
+are unchanged from the preceding serial capture. The three newly captured
+bodies are:
+
+- pow2k: 0x6e690, 543 bytes, text SHA-256
+  `fc0426204a792aecaa7cfe97935a95cf918f8f5f6ea44cda3a2f286e39c12424`;
+- projective-Niels addition: 0x6f8a0, 1,047 bytes,
+  `f3eb29b0306c43ac9ba2471bc8720a1c289d510fef367abcbd9f7223be1b2ca6`;
+- table selection: 0x707b0, 939 bytes,
+  `05ca77c40dad16deac02dc4b3fd3bfac9612119997cb229501cb411a50e58776`.
+
+The selector walks eight entries: r13 starts at 0x90, advances by 0xa0 and
+compares with 0x590; secret digit equality and sign select masks, not addresses
+or branches. Its calls reach the captured Subtle black box. Addition has
+fixed-offset accesses, no conditional branch and four calls to the captured
+field multiplier. pow2k's sole branch decrements its public count; all four
+calls from doubling load edx=1. The main multiply retains the previously
+reviewed fixed table/radix/digit traversal. Its copy calls use constant lengths
+0xa0 or 0x500; GOT slot 0x14fe38 is now identified as memcpy@GLIBC_2.14.
+The runtime-selected libc copy body remains unreviewed. This source/emitted
+inspection does not establish hardware timing or complete call-chain closure.
+
+The VM retains its existing 4 GiB RAM, 2 GiB container, 6 GiB RAM scratch,
+4 GiB overlay, 6 GiB host headroom and 300-second outer limit. QEMU 1833978
+joins in 235.703 seconds; RAM workspace `run.6xr0fghb` is absent. Peak overlay
+allocation is 3,127,840,768 bytes in bounded RAM; QEMU host block writes are
+4,096 bytes. All four listener deltas are zero. Seven raw files under
+`android-rust-lifecycle-tests-run.Xj6zy0qlJT.*` and the corresponding console
+log total 135,241 bytes per host with matching hashes. No failed scratch
+directory remains and no product/test workload ran on either host.
+
+Next is additional point/seed coverage and independent reproduction before
+choosing a product backend change and assessing performance. Full sampling/RNG
+timing, other targets and shipping artifacts, higher-order leakage, automatic
+CI, erasure and R-V3 remain open. Installed IPC/actions and parked work remain
+open and unchanged.

@@ -5483,18 +5483,24 @@ run_focused_rust_tests() {
             memory=1g
             memory_bytes=1073741824
             tmpfs_size=64m
-            source_fingerprints=(src/lang.rs src/lang_locale.rs scripts/test-language-selection.rs)
+            source_fingerprints=(Cargo.lock src/lang.rs src/lang_locale.rs
+                scripts/test-language-selection.rs scripts/run-language-selection-tests.sh)
             required_tests=(
-                locale::tests::configured_language_takes_precedence
-                locale::tests::chinese_regions_select_the_supported_script
-                locale::tests::explicit_script_wins_over_region
-                locale::tests::java_locale_scripts_win_over_country_and_variant
-                locale::tests::extensions_do_not_override_script_or_region
-                locale::tests::georgian_locales_select_the_catalogue_language
-                locale::tests::kazakh_locales_select_the_catalogue_language
-                locale::tests::other_locales_keep_their_language
-                locale::tests::hebrew_platform_codes_select_the_catalogue_language
-                locale::tests::indonesian_platform_codes_select_the_catalogue_language
+                lang::locale::tests::configured_language_takes_precedence
+                lang::locale::tests::chinese_regions_select_the_supported_script
+                lang::locale::tests::explicit_script_wins_over_region
+                lang::locale::tests::java_locale_scripts_win_over_country_and_variant
+                lang::locale::tests::extensions_do_not_override_script_or_region
+                lang::locale::tests::georgian_locales_select_the_catalogue_language
+                lang::locale::tests::kazakh_locales_select_the_catalogue_language
+                lang::locale::tests::other_locales_keep_their_language
+                lang::locale::tests::hebrew_platform_codes_select_the_catalogue_language
+                lang::locale::tests::indonesian_platform_codes_select_the_catalogue_language
+                lang::test::test_extract_placeholders
+                tests::portugal_and_brazil_use_distinct_catalogues
+                tests::saved_preferences_override_system_and_unknowns_fall_back
+                tests::every_menu_language_returns_a_localized_notice
+                tests::substitutions_preserve_unicode_and_literal_unknown_text
             )
         elif [ "$RUST_TEST_PROFILE" = windows-pointer ]; then
             container_name=rustdesk-windows-pointer-tests
@@ -5699,6 +5705,11 @@ run_focused_rust_tests() {
         else
             source_fingerprints+=(src/server/audio_service/pcm.rs)
         fi
+    fi
+    if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = language-selection ]; then
+        for catalogue in "$source_root"/src/lang/*.rs; do
+            source_fingerprints+=("${catalogue#"$source_root"/}")
+        done
     fi
     source_before="$source_archive_sha:$(
         cd "$source_root"
@@ -6614,13 +6625,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                                 /bin/bash /source/scripts/run-main-config-key-tests.sh
                                 exit 0
                             fi
-                            test_executable=/cargo-target/language-selection-tests
-                            rustc --edition=2021 --test /source/scripts/test-language-selection.rs -o "$test_executable"
-                            artifact_sha="$(sha256sum "$test_executable" | cut -d " " -f 1)"
-                            printf "LANGUAGE_SELECTION_ARTIFACT_BEFORE=sha256=%s\n" "$artifact_sha"
-                            "$test_executable" --test-threads=1 --color never
-                            [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
-                            printf "LANGUAGE_SELECTION_ARTIFACT=pass sha256=%s tests=10 unchanged=before-after\n" "$artifact_sha"
+                            /bin/bash /source/scripts/run-language-selection-tests.sh
                             exit 0
                         fi
                         if [ "$RUST_TEST_PROFILE" = windows-pointer ]; then
@@ -7040,7 +7045,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main-config-key ]; then
         printf 'MAIN_CONFIG_KEY_PROFILE=main-config-key stage=container-start tests=3 app=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = language-selection ]; then
-        printf 'LANGUAGE_SELECTION_PROFILE=language-selection stage=container-start tests=10 app=unexecuted\n'
+        printf 'LANGUAGE_SELECTION_PROFILE=language-selection stage=container-start tests=15 app=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = windows-pointer ]; then
         printf 'WINDOWS_POINTER_PROFILE=windows-pointer stage=container-start tests=5 windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-resource-limits ]; then
@@ -7893,7 +7898,7 @@ PY
             || fail 'main config-key artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = language-selection ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'language-selection summary count differs'
-        [ "$(grep -Ec '^LANGUAGE_SELECTION_ARTIFACT=pass sha256=[0-9a-f]{64} tests=10 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^LANGUAGE_SELECTION_ARTIFACT=pass sha256=[0-9a-f]{64} tests=15 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'LANGUAGE_SELECTION_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'language-selection artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = windows-pointer ]; then
@@ -8601,9 +8606,9 @@ PY
             printf 'MAIN_CONFIG_KEY_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-key-schema rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = language-selection ]; then
-            grep -E '^test locale::tests::.* \.\.\. ok$|^LANGUAGE_SELECTION_ARTIFACT(_BEFORE)?=' "$output"
-            printf 'LANGUAGE_SELECTION_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-locale-selection rust=1.75.0 devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \
-                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$image_index" "$image_config"
+            grep -E '^test (lang::|tests::).* \.\.\. ok$|^LANGUAGE_SELECTION_(ARTIFACT(_BEFORE)?|LOCK)=' "$output"
+            printf 'LANGUAGE_SELECTION_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-translation config=fixture rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = windows-pointer ]; then
             grep -E '^test absolute_pointer::tests::.* \.\.\. ok$|^WINDOWS_POINTER_ARTIFACT(_BEFORE)?=' "$output"
             printf 'WINDOWS_POINTER_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-normalization windows=unexecuted rust=1.75.0 devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \

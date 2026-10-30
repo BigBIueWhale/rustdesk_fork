@@ -726,7 +726,7 @@ case "$#:${1:-}" in
         printf 'Optimized PAKE primitive timing: %s --pake-timing-tests\n' "${0##*/}" >&2
         printf 'PAKE backend comparison: %s --pake-backend-{default,serial}-tests\n' "${0##*/}" >&2
         printf 'PAKE secret encoding allocations: %s --pake-allocation-tests\n' "${0##*/}" >&2
-        printf 'Production locale selection: %s --language-selection-tests\n' "${0##*/}" >&2
+        printf 'Production translation and locale selection: %s --language-selection-tests\n' "${0##*/}" >&2
         printf 'Windows pointer arithmetic (Linux component): %s --windows-pointer-tests\n' "${0##*/}" >&2
         printf 'Focused whiteboard presentation state tests: %s --android-rust-lifecycle-tests --whiteboard-presentation\n' "${0##*/}" >&2
         printf 'Focused whiteboard client state tests: %s --android-rust-lifecycle-tests --whiteboard-client\n' "${0##*/}" >&2
@@ -7685,11 +7685,11 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main
         'main config-key result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'main config-key completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = language-selection ]; then
-    [ "$(/usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -Ec 'LANGUAGE_SELECTION_ARTIFACT=pass sha256=[0-9a-f]{64} tests=10 unchanged=before-after$')" -eq 1 ] \
+    [ "$(/usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -Ec 'LANGUAGE_SELECTION_ARTIFACT=pass sha256=[0-9a-f]{64} tests=15 unchanged=before-after$')" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'LANGUAGE_SELECTION_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'language-selection artifact receipt differs'
     require_exact_fixed_receipt \
-        "LANGUAGE_SELECTION_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=10 target=linux-x86_64 scope=production-locale-selection rust=1.75.0 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined" \
+        "LANGUAGE_SELECTION_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=15 target=linux-x86_64 scope=production-translation config=fixture rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined" \
         'language-selection result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'language-selection completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = windows-pointer ]; then
@@ -9198,7 +9198,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'MAIN_CONFIG_KEY_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=3 scope=production-key-schema network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = language-selection ]; then
-        printf 'LANGUAGE_SELECTION_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=10 scope=production-locale-selection network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'LANGUAGE_SELECTION_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=15 scope=production-translation config=fixture network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = windows-pointer ]; then
         printf 'WINDOWS_POINTER_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=5 scope=production-normalization windows=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

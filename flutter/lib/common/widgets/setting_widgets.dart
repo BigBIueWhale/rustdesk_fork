@@ -127,7 +127,7 @@ class _QualityField {
     if (!active || !next.isFinite) return;
     _timer?.cancel();
     _timer = null;
-    value = next.clamp(minimum, maximum).toDouble();
+    value = next.clamp(minimum, maximum).roundToDouble();
     failed = _ready = false;
     _dirty = saving || value != confirmed;
     changed();
@@ -328,8 +328,7 @@ class _CustomImageQualityWidgetState extends State<CustomImageQualityWidget> {
           value: _quality.value, min: kMinQuality,
           max: _more ? kMaxMoreQuality : kMaxQuality,
           semanticFormatterCallback: (value) => '${value.round()}%',
-          divisions: _more ? ((kMaxMoreQuality - kMinQuality) / 10).round()
-              : ((kMaxQuality - kMinQuality) / 5).round(),
+          divisions: ((_more ? kMaxMoreQuality : kMaxQuality) - kMinQuality).round(),
           onChanged: _quality.active && !_closing
               ? (v) => _edit(_quality, v) : null)))),
         Expanded(child: Text(_quality.value.round().toString() + '%',
@@ -347,7 +346,7 @@ class _CustomImageQualityWidgetState extends State<CustomImageQualityWidget> {
             label: text('FPS'), child: Slider(
             value: _fps.value, min: kMinFps, max: kMaxFps,
             semanticFormatterCallback: (value) => value.round().toString(),
-            divisions: ((kMaxFps - kMinFps) / 5).round(),
+            divisions: (kMaxFps - kMinFps).round(),
             onChanged: _fps.active && !_closing
                 ? (v) => _edit(_fps, v) : null)))),
           Expanded(child: Text(_fps.value.round().toString(),

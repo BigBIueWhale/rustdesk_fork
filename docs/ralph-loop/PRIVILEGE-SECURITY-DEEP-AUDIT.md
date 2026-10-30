@@ -122028,3 +122028,13 @@ stream/counter confirmation and preserve the old final file on mismatch. Missing
 proof cannot fall back to size/mtime. Staging placement, directory records and the
 three completed-destination failures remain open; this prerequisite does not itself
 make a replacement namespace layout correct.
+
+Ledger verification at `5b676af2d46736d8129746b95f84f7ed2afe21b7`, TUF
+`9qxcySEwDz`, exits zero: 368,484 tokens / 1,686,412 bytes, SHA-256
+`f5412d8cb90deb9a94d39b80bc95915c8d3ad18ac629399e9f2454bee1787b77`.
+Pinned `tiktoken-0.12.0/cl100k_base/encode_ordinary`, seven controls and strict
+UTF8 round trip pass. QEMU 2931212 joins after 30.518 seconds; RAM `run.jm26toah`
+retires and all three listener deltas are zero. Serial: 35,831 bytes, SHA-256
+`fb9a5cd13fa052d03abb1cb2d2bddcce378c30bcf85b639e123913bdaede3dec`.
+The thirteen raw files total 297,387 bytes per host, hash-verified on both hosts.
+This audit-only receipt preserves the counted ledger and unchanged product source.

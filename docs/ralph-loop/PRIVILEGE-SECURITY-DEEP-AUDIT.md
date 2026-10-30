@@ -120646,3 +120646,16 @@ the Mermaid sequence, FreeRDP attribution and complete Linux FUSE description.
 Diff review and `git diff --check` pass. No product, test, requirement, instruction
 or native clipboard behavior changes, and no product/runtime test runs for this
 prose-only cleanup. Existing native/installed and release acceptance remains open.
+
+**Fresh ledger count.** At `5ed52413cd8fff253973f73c99c5a43cf2e10e9f`, TUF
+`iASYmGB1c2` passes seven controls and exact byte round trip with
+`bash scripts/smoke-verifier-vm-authority.sh --ledger-token-count`:
+364,770 tokens / 1,668,253 bytes using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`, input SHA-256
+`c1ea6346d3e29977533f446a8f3ba2c515b8d776ef54f1c2b9e333071333f47a`.
+QEMU 2597247 joins in 30.650 seconds and RAM `run.e3_npahm` retires.
+Before/during listener deltas are zero; the final snapshot retains one
+unattributed addition, TCP `127.0.0.1:8093`. Its owner is neither inspected nor
+changed, and no zero-delta claim is made. Six raw files total 105,964 bytes per
+host, copied and hash-verified. This audit-only receipt leaves the measured
+ledger unchanged; the count establishes document size, not product behavior.

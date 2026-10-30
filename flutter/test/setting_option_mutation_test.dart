@@ -954,14 +954,16 @@ void main() {
       await _qualityEditor(tester, quality: 75, mobile: mobile,
         editorKey: ValueKey(('more', mobile)),
         saveQuality: (value) async { calls.add(value); return value; });
-      for (final maximum in [4095, 100]) {
-        await tester.tap(find.byType(Checkbox));
-        await tester.pump();
-        expect(_qualitySlider(tester, 0).max, maximum);
-        expect(tester.getSemantics(find.byType(Slider).at(0)).getSemanticsData().value, '75%');
-        expect(find.text('75%'), findsOneWidget);
-        await tester.pump(const Duration(seconds: 1));
-        expect(calls, isEmpty);
+      for (final target in [find.byType(Checkbox), find.text('More')]) {
+        for (final maximum in [4095, 100]) {
+          await tester.tap(target);
+          await tester.pump();
+          expect(_qualitySlider(tester, 0).max, maximum);
+          expect(tester.getSemantics(find.byType(Slider).at(0)).getSemanticsData().value, '75%');
+          expect(find.text('75%'), findsOneWidget);
+          await tester.pump(const Duration(seconds: 1));
+          expect(calls, isEmpty);
+        }
       }
     }
   }, semanticsEnabled: true);
@@ -1340,13 +1342,22 @@ void main() {
   });
 
   testWidgets('quality editor fixed quality disables its More control', (tester) async {
-    await _qualityEditor(tester, saveFps: (v) async => v);
-    expect(_qualitySlider(tester, 0).onChanged, isNull);
-    expect(tester.widget<Checkbox>(find.byType(Checkbox)).onChanged, isNull);
-    expect(_qualitySlider(tester, 1).onChanged, isNotNull);
-    expect(tester.getSemantics(find.byType(Slider).at(0)),
-      containsSemantics(label: 'Bitrate', value: '50%',
-        hasIncreaseAction: false, hasDecreaseAction: false));
+    for (final mobile in [false, true]) {
+      await _qualityEditor(tester, mobile: mobile,
+        editorKey: ValueKey(('fixed-more', mobile)), saveFps: (v) async => v);
+      expect(_qualitySlider(tester, 0).onChanged, isNull);
+      expect(tester.widget<Checkbox>(find.byType(Checkbox)).onChanged, isNull);
+      expect(_qualitySlider(tester, 1).onChanged, isNotNull);
+      expect(tester.getSemantics(find.byType(Slider).at(0)),
+        containsSemantics(label: 'Bitrate', value: '50%',
+          hasIncreaseAction: false, hasDecreaseAction: false));
+      expect(tester.getSemantics(find.byType(Checkbox)),
+        containsSemantics(label: 'More', hasCheckedState: true, isChecked: false,
+          hasEnabledState: true, isEnabled: false, hasTapAction: false));
+      await tester.tap(find.text('More'));
+      await tester.pump();
+      expect(_qualitySlider(tester, 0).max, 100);
+    }
   }, semanticsEnabled: true);
 
   testWidgets('quality and FPS rebuilds preserve unconfirmed saves', (tester) async {
@@ -1429,19 +1440,42 @@ void main() {
   });
 
   testWidgets('quality editor leaving More saves its bounded current value', (tester) async {
-    final calls = <double>[];
-    await _qualityEditor(tester, quality: 500, saveQuality: (v) async { calls.add(v); return v; });
-    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
-    expect(tester.getSemantics(find.byType(Slider).at(0)),
-      containsSemantics(label: 'Bitrate', value: '500%'));
-    await tester.tap(find.byType(Checkbox));
-    await tester.pump();
-    expect(_qualitySlider(tester, 0).value, 100);
-    expect(_qualitySlider(tester, 0).max, 100);
-    await tester.pump(const Duration(seconds: 1));
-    expect(calls, [100]);
-    expect(tester.getSemantics(find.byType(Slider).at(0)),
-      containsSemantics(label: 'Bitrate', value: '100%'));
+    for (final mobile in [false, true]) {
+      for (final input in ['checkbox', 'label', 'accessibility', 'keyboard']) {
+        final calls = <double>[];
+        await _qualityEditor(tester, quality: 500, mobile: mobile,
+          editorKey: ValueKey(('leave-more', mobile, input)),
+          saveQuality: (v) async { calls.add(v); return v; });
+        expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
+        expect(tester.getSemantics(find.byType(Slider).at(0)),
+          containsSemantics(label: 'Bitrate', value: '500%'));
+        final checkbox = tester.getSemantics(find.byType(Checkbox));
+        expect(checkbox, containsSemantics(label: 'More', hasCheckedState: true,
+          isChecked: true, hasEnabledState: true, isEnabled: true, hasTapAction: true));
+        if (input == 'accessibility') {
+          tester.binding.pipelineOwner.semanticsOwner!.performAction(
+            checkbox.id, ui.SemanticsAction.tap);
+        } else if (input == 'keyboard') {
+          for (var i = 0; i < 2; i++) {
+            await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+            await tester.pump();
+          }
+          await tester.sendKeyEvent(LogicalKeyboardKey.space);
+        } else {
+          await tester.tap(input == 'label' ? find.text('More') : find.byType(Checkbox));
+        }
+        await tester.pump();
+        expect(_qualitySlider(tester, 0).value, 100);
+        expect(_qualitySlider(tester, 0).max, 100);
+        await tester.pump(const Duration(seconds: 1));
+        expect(calls, [100]);
+        expect(tester.getSemantics(find.byType(Slider).at(0)),
+          containsSemantics(label: 'Bitrate', value: '100%'));
+        expect(tester.getSemantics(find.byType(Checkbox)),
+          containsSemantics(label: 'More', hasCheckedState: true, isChecked: false));
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    }
   }, semanticsEnabled: true);
 
   testWidgets('quality editor preserves narrow mobile layout and hidden FPS', (tester) async {

@@ -120659,3 +120659,51 @@ unattributed addition, TCP `127.0.0.1:8093`. Its owner is neither inspected nor
 changed, and no zero-delta claim is made. Six raw files total 105,964 bytes per
 host, copied and hash-verified. This audit-only receipt leaves the measured
 ledger unchanged; the count establishes document size, not product behavior.
+
+## 2026-10-30 — settings sidebar text layout
+
+Continued ordinary desktop UI work; all user parks remain open. The settings
+heading and tab labels were non-flex children in 200-pixel-wide rows, with fixed
+heading/tab heights. Preparation `92c5657acdb1f0db8b9d421354571d78fb06bb94`
+adds three rendered cases to the existing profile: English at 1×/3× text and
+German at 2×, using the five exact sidebar translations from `src/lang/de.rs`.
+The fixture checks horizontal bounds, complete glyph height, absence of
+ellipsis truncation and scrolling each label into view in a 1000×420 viewport.
+Product bytes remain unchanged for the baseline; the selected inventory grows
+from nineteen to twenty-two and the full inventory from forty-nine to fifty-two.
+Parked mobile cases are not executed.
+
+Baseline `Fiq9NtFPSH` passes twenty cases and fails both enlarged-text cases.
+The headings overflow horizontally by 300/340 pixels, with additional tab-label
+overflows. `16696a243a8ce7944c2f16308a319e66adf614d8` bounds text width and
+changes fixed heights to minimums. Run `xVgCmmnGwr` then passes twenty-one
+cases but still places one English 3× label's bottom at 478 in a 420-pixel
+viewport: the fixed heading leaves insufficient navigation height.
+Final product `18b262a5ad4775b9d96fe547f889beefcaeb02b9` puts the heading
+and tabs in one ListView and removes the redundant nested list helper.
+This follows Flutter's [Row constraints](https://api.flutter.dev/flutter/widgets/Row-class.html),
+[minimum-size constraints](https://api.flutter.dev/flutter/widgets/ConstrainedBox-class.html)
+and [scrollable list layout](https://api.flutter.dev/flutter/widgets/ListView-class.html).
+Navigation handlers, settings operations, translations and sidebar width remain.
+
+The tests and harness are byte-identical across all three runs. With pinned
+Flutter 3.24.5, `bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --desktop-theme`
+passes all twenty-two cases, three parser controls, source-copy checks and outer
+acceptance in `CUCbRx4RSU`. The actual page renders in the no-network non-root
+container inside the no-NIC Linux VM; native binding, parent and platform values
+are fixtures. This is rendered layout/navigation evidence, not native window,
+installed-service, screen-reader, web or other-device acceptance.
+
+| Run | Serial SHA-256 | QEMU / seconds | Retired RAM workspace |
+| --- | --- | --- | --- |
+| `Fiq9NtFPSH` | `33821fb1fc430f4bd36e30c4b678ccb65e91ba5c2b1dff3bb74b804dc9b804f0` | 2600200 / 242.076 | `run.izn86dlg` |
+| `xVgCmmnGwr` | `0564afffe88873218c358bb0e0b6e24715cc481768dfb8214ded9272652318f8` | 2601733 / 254.085 | `run.2yrg3a0b` |
+| `CUCbRx4RSU` | `89017dbb7db96d2ee5f9015cb0c3e84165ce39573096365846a7390225e3fdbf` | 2605567 / 257.897 | `run.wm2j5fxf` |
+
+All three QEMU processes join and RAM workspaces retire. Baseline and final
+listener deltas are zero. The intermediate final snapshot retains one
+unattributed removal, TCP `127.0.0.1:8093`; its owner is neither inspected nor
+changed. Twenty-one raw files total 286,459 bytes per host, copied and
+hash-verified. After evidence and exact wrapper/QEMU/workspace absence checks,
+the two failed diagnostic trees are removed, releasing 6,959,104 allocated
+bytes. Existing native/installed and release obligations remain open.

@@ -117917,3 +117917,12 @@ matching hashes. After evidence copying, exact failed diagnostic directory
 inode 78294410 is removed, reclaiming 3,522,560 allocated bytes. Both capture
 attempts retain fourteen raw files totaling 205,964 bytes per host; neither VM
 nor failed scratch remains. No product/test executable ran on either host.
+
+Ledger run `7jSZw2m5W9` at `26370601` passes 72 workload controls/five refusals,
+seven tokenizer controls and full text round trip. It reports 360,318 tokens with
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 1,647,565 bytes, SHA-256
+`279005a3cd572abaaf4c1246881f291428fe4c509bd8c001bcdcf3e590d0ad8c`.
+QEMU 1822213 joins in 31.209 seconds; RAM `run.1hon982n` retires and three listener
+deltas are zero. Six count files add 104,549 bytes; twenty raw files across the
+three runs total 310,513 bytes per host with matching hashes. This audit-only
+receipt preserves the measured ledger and its approximate 400,000-token budget.

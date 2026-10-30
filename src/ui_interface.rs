@@ -686,12 +686,6 @@ pub fn video_save_directory(root: bool) -> String {
     Default::default()
 }
 
-// R-R2b / R-G1 (§18/§19): supported_hwdecodings (the H264/H265 decode-ability the excised Default-Codec
-// radios read via the main_supported_hwdecodings FFI, removed with them) is excised — the FFI was its
-// sole caller. The hardware-capability query wrappers are also absent. hwcodec/vram/mediacodec are
-// compiled out and AV1/libaom is absent. scrap::codec::Decoder::supported_decodings — the LIVE protocol decode-ability path —
-// is deliberately retained; only this UI-only wrapper is gone.
-
 #[inline]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn start_main_status_sync() {
@@ -795,8 +789,6 @@ pub fn support_remove_wallpaper() -> bool {
     #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     return false;
 }
-
-pub fn check_hwcodec() {}
 
 #[cfg(feature = "flutter")]
 pub fn max_encrypt_len() -> usize {

@@ -12056,8 +12056,8 @@ run_flutter_model_tests() {
                         "$codegen_source/flutter/lib/generated_bridge.dart" \
                         "$codegen_source/flutter/lib/generated_bridge.freezed.dart"; do
                         [ -s "$generated" ] && [ ! -L "$generated" ]
-                        if grep -Eq "main_get_uuid|mainGetUuid" "$generated"; then
-                            echo "Retired device-ID getter remains in a generated bridge" >&2
+                        if grep -Eq "main_get_uuid|mainGetUuid|main_check_hwcodec|mainCheckHwcodec" "$generated"; then
+                            echo "Retired UI export remains in a generated bridge" >&2
                             exit 1
                         else
                             [ "$?" -eq 1 ] || exit 1

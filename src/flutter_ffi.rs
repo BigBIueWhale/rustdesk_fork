@@ -2248,10 +2248,6 @@ pub fn main_get_buildin_option(key: String) -> SyncReturn<String> {
     SyncReturn(get_builtin_option(&key))
 }
 
-pub fn main_check_hwcodec() {
-    check_hwcodec()
-}
-
 pub fn main_max_encrypt_len() -> SyncReturn<usize> {
     SyncReturn(max_encrypt_len())
 }

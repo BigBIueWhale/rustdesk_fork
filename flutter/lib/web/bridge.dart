@@ -1657,10 +1657,6 @@ class RustdeskImpl {
     return mainGetLocalOption(key: key, hint: hint);
   }
 
-  Future<void> mainCheckHwcodec({dynamic hint}) {
-    throw UnimplementedError("mainCheckHwcodec");
-  }
-
   Future<void> sessionRequestNewDisplayInitMsgs(
       {required UuidValue sessionId, required int display, dynamic hint}) {
     throw UnimplementedError("sessionRequestNewDisplayInitMsgs");

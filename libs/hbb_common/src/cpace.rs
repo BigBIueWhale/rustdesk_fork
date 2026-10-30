@@ -433,19 +433,15 @@ impl OpenCipher {
 
 /// Split a completed handshake's role-oriented keys into the two cipher halves (R-T3).
 ///
-/// R-A5: the secretbox layer MUST have two **distinct** per-direction keys engaged — never one
-/// shared key both ways (the inherited catastrophic `(key, nonce)` reuse). HKDF's distinct c2s/s2c
-/// labels guarantee this by construction; the assertion fail-closes on a keying-mis-wire *regression*
-/// — exactly the case the wire-capture test (R-A9) would not catch, since the keys are derived
-/// internally and never attacker-influenced. The check is on the ENGAGED key material: a mis-wire
-/// like `recv_key: Key(keys.send)` engages one key both ways while `keys.send != keys.recv` still
-/// holds, and reading back the engaged fields fails closed on exactly that.
+/// R-A5 requires distinct engaged keys before either cipher half is published.
+/// Check the constructed keys so an input-to-field wiring error is also refused.
+/// The failure diagnostic contains no key material.
 pub fn split_session_keys(keys: &DirectionalKeys) -> (SealCipher, OpenCipher) {
     // `[u8; 32]` is Copy, so this copies out of the zeroize-on-drop keys.
     let send_key = Key(keys.send);
     let recv_key = Key(keys.recv);
-    assert_ne!(
-        send_key.0, recv_key.0,
+    assert!(
+        send_key.0 != recv_key.0,
         "R-A5: identical engaged send/recv keys — refusing to engage single-key reuse"
     );
     (

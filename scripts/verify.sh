@@ -12700,7 +12700,7 @@ ra6_clean 'write_seq *\+=|read_seq *\+=' 'R-A5 unchecked nonce-counter increment
 # check passes but the engaged read-back fails closed on. Assert the engaged form is present and the
 # old input-key form (`keys.send, keys.recv` in an assert) is gone.
 r_a5_dist=
-grep -qE 'send_key\.0,\s*recv_key\.0' libs/hbb_common/src/cpace.rs || r_a5_dist="$r_a5_dist engaged-key-assert-missing"
+grep -qE 'send_key\.0[[:space:]]*!=[[:space:]]*recv_key\.0' libs/hbb_common/src/cpace.rs || r_a5_dist="$r_a5_dist engaged-key-assert-missing"
 grep -qE 'keys\.send, keys\.recv'                     libs/hbb_common/src/cpace.rs && r_a5_dist="$r_a5_dist input-key-assert-still-present"
 if [ -n "$r_a5_dist" ]; then
   echo "  FAIL R-A5: engaged-key distinctness assert incomplete:$r_a5_dist"; rc=1

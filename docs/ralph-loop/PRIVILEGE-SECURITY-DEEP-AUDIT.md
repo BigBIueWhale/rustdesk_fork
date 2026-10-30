@@ -117841,3 +117841,79 @@ deltas are zero. Six count files add 103,159 bytes; twenty-seven files across al
 four runs total 361,588 bytes per host with matching hashes. This audit-only
 receipt and source-line correction preserve the measured ledger and its
 approximate 400,000-token budget.
+
+### 2026-10-30 — compiled multiplication investigation
+
+The preceding timing turn made progress: class reversal and identical-input
+controls narrowed the unresolved composed-operation difference. Installed IPC,
+native platforms and independent review remain open; parked work is unchanged.
+This slice inspects the code bound to those observations before changing crypto.
+The runner now retains a bounded disassembly and checks the executable hash after
+the native command even when its test exits nonzero; the original exit is preserved.
+This is diagnostic evidence, not a constant-time gate based on instruction names.
+
+Initial capture `lpDjhY42OD` at `f8824cd3` rebuilds artifact
+`5ac8fcb9e41f68e5ceaa81807acf427ae004b88a52f3d51d19a62483672a8ed1`, matching the
+previous diagnostic run. `nm` finds no symbols because the workspace's release
+profile strips them; the capture fails before native execution. QEMU 1819023
+joins in 102.856 seconds, RAM `run.w3ynxmi1` retires and four listener deltas are
+zero. Seven files total 82,811 bytes per host with matching hashes. After copying,
+exact failed diagnostic directory inode 78294410 is removed, reclaiming 3,444,736
+bytes. This attempt supplies no additional timing observation.
+
+`12fbb528` uses the [GNU linker map](https://sourceware.org/binutils/docs/ld/Options.html#index-Map)
+to obtain the selected AVX2 multiplication address and size while retaining the
+existing stripped build. A guest-only `cc` wrapper delegates to `/usr/bin/cc`,
+adding only the map output option for the exact PAKE test link. Rust sources,
+compiler flags, dependency closure and measurement classes remain unchanged.
+The map and tool temporary files stay in bounded guest scratch. The runner
+requires one nonempty selected symbol, a maximum 64 KiB code range and a bounded
+compressed disassembly; [objdump](https://sourceware.org/binutils/docs/binutils/objdump.html)
+reads that range from the actual executable. The retained record includes map,
+assembly and executable hashes, the tool version and Dalek address metadata.
+
+Capture run `bkNO7OWaZm` at `12fbb528a7be0ba221b4835252b3ad148523ad9f`
+(tree `a20b9114db3527b89259ebf9ff29d7e3794e661a`) retains that same artifact hash
+before and after native exit 101. Nine cohorts finish in 36.86 seconds. The
+reversed random/one composed operation detects again: raw/p99 t =
+11.581146/14.907613, means 66,385.314893/66,122.209951 ns per four operations.
+One/random is below threshold (-3.031036/-5.658383), as is the identical one/one
+control (0.526838/0.991841). Generator, both tag cohorts and standalone reduction
+stay below threshold; both deliberate variable-time controls detect. The fixed
+threshold, inputs, seed, budgets and artifact remain unchanged. All measurements
+are retained in `android-rust-lifecycle-tests-run.bkNO7OWaZm.serial.log`; this is
+another detection, not timing acceptance or an identified cause.
+
+The compressed record contains the AVX2 variable-base multiplication body at
+`0x58060`, 12,507 machine-code bytes and 134,699 disassembly bytes, produced by
+GNU objdump 2.40. Disassembly SHA-256 is
+`3b611656457714611143e99b5651d928e759bb6a71020cce4cbdbbc92bc27306`; map SHA-256 is
+`dabc56ae938c3073739d70dc4128c2b9707a484900cc488ac1d7da9eccf631a0`.
+Read-only decoding rechecks its length and hash. Review of the body finds four
+conditional branches and one unconditional loop jump:
+
+| Branch address | Counter origin and progression | Observed bound |
+| --- | --- | --- |
+| `0x58d5a` | `rbx=0` at `0x587d1`, adds `0xa0`, compares with `0x460` | Seven table-construction iterations |
+| `0x59098` | `eax=2` at `0x59061`, adds 2 until 64; `0x590c2` is its unconditional jump | Fixed radix recentering positions |
+| `0x5a48b` | `eax=4` at `0x5924d`, decremented once per body | Four doublings per digit |
+| `0x5ae9a` | `ecx=64` at `0x5918e`; digit load then decrement, saved at `0x5a4c9`, restored at `0x5ae8f` | 64 digit iterations |
+
+The body's indexed data accesses use those counters. The inspected selection
+sequence forms masks and combines fixed stack offsets; it does not branch on
+the digit. Direct calls go to `0x5b4f0` (mapped AVX2 field multiplication) and
+`0x2d1f0` (not identified by the retained Dalek-only symbol inventory). Their
+instructions are outside this capture. This is inspection of an AVX2 routine
+present in the tested executable, not a runtime dispatch trace or a proof of
+constant-time execution. Reduction, wiping-owner/drop code, called functions
+and hardware/measurement effects remain unclassified. No cryptographic product
+or dependency change follows from these observations. Next work must inspect
+those callees/dispatch and separate the composed costs without changing the
+acceptance threshold or treating another passing artifact as clearance.
+
+QEMU 1819997 joins in 138.904 seconds; RAM `run.ghgqfuq4` retires and all four
+listener deltas are zero. Seven raw files total 123,153 bytes per host with
+matching hashes. After evidence copying, exact failed diagnostic directory
+inode 78294410 is removed, reclaiming 3,522,560 allocated bytes. Both capture
+attempts retain fourteen raw files totaling 205,964 bytes per host; neither VM
+nor failed scratch remains. No product/test executable ran on either host.

@@ -1,6 +1,6 @@
 //! Allocator observation is compiled only by the isolated allocation profile.
 //! It counts calls, without inspecting freed or uninitialized memory.
-use super::{compute_isk, derive_generator, AD_INITIATOR, AD_RESPONDER};
+use super::{compute_isk, derive_generator, derive_mac_key, AD_INITIATOR, AD_RESPONDER};
 use std::{alloc::{GlobalAlloc, Layout, System}, cell::Cell, hint::black_box};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -69,9 +69,12 @@ fn no_transient_secret_heap_copies() {
     let yb = [0xe1u8; 32];
     let k = [0xb4u8; 32];
     let isk = observe(|| { black_box(compute_isk(&ya, AD_INITIATOR, &yb, AD_RESPONDER, &sid, black_box(&k))); });
+    let isk_bytes = [0x47u8; 64];
+    let mac_key = observe(|| { black_box(derive_mac_key(&sid, black_box(&isk_bytes))); });
     println!("PAKE_ALLOCATION_CASE=control allocations={} reallocations={}", control.allocations, control.reallocations);
     println!("PAKE_ALLOCATION_CASE=generator allocations={} reallocations={}", generator.allocations, generator.reallocations);
     println!("PAKE_ALLOCATION_CASE=isk allocations={} reallocations={}", isk.allocations, isk.reallocations);
+    println!("PAKE_ALLOCATION_CASE=mac-key allocations={} reallocations={}", mac_key.allocations, mac_key.reallocations);
     assert!(control.allocations > 0, "allocator observer did not detect its control");
-    assert_eq!((generator, isk), (Counts::default(), Counts::default()));
+    assert_eq!((generator, isk, mac_key), (Counts::default(), Counts::default(), Counts::default()));
 }

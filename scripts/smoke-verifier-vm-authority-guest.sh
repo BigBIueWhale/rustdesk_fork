@@ -3331,7 +3331,7 @@ run_focused_rust_tests() {
     local input_provider_installed=$ROOT/input-provider-installed
     local input_provider_sha
     local -a required_tests result_lines toolchain_mount bridge_mounts bridge_inputs clipboard_tests
-    local -a pa_mounts=() pa_env=() dependency_mounts=() whiteboard_mounts=() credential_mounts=()
+    local -a pa_mounts=() pa_env=() dependency_mounts=() whiteboard_mounts=() credential_mounts=() receive_mounts=()
 
     [ "$(stat -c '%u:%g:%a' -- "$SOCK")" = 0:1000:660 ] \
         || fail 'focused Rust-test Docker socket lacks the exact nonroot guest group'
@@ -3362,6 +3362,7 @@ run_focused_rust_tests() {
             libs/hbb_common/src/config.rs
             libs/hbb_common/src/fs.rs
             libs/hbb_common/src/fs/atomic_write.rs
+            libs/hbb_common/src/fs/receive_namespace.rs
             libs/hbb_common/Cargo.toml
             libs/hbb_common/tests/receive_authority.rs
             flutter/test/fixtures/direct_address.json
@@ -3636,6 +3637,8 @@ run_focused_rust_tests() {
                 fs::tests::file_metadata_receive_modes_gate_resume
                 fs::tests::file_metadata_receive_finalization_modes
                 fs::tests::file_metadata_receive_finalization_links
+                fs::tests::file_metadata_receive_namespace_keeps_independent_file_claims
+                fs::tests::file_metadata_receive_namespace_accepts_maximum_native_filename
                 fs::tests::file_metadata_digest_mismatched_seconds_and_sizes_stay_distinct
                 fs::tests::recursive_owner_files_retain_the_listed_parent
                 fs::tests::recursive_owner_empty_dirs_retain_the_listed_parent
@@ -5977,6 +5980,13 @@ run_focused_rust_tests() {
     if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-resource-limits ]; then
         focused_nofile=16384:32768
     fi
+    if [ "$MODE" = hbb-common-fs ]; then
+        # The production receive coordinator obtains its owner home from NSS, not HOME.
+        # Give the unprivileged container an explicit account backed by its private tmpfs.
+        printf 'root:x:0:0:root:/root:/bin/sh\nreceive:x:1000:1000:receive:/tmp/home:/bin/sh\n' >"$ROOT/receive-passwd"
+        chmod 0444 "$ROOT/receive-passwd"
+        receive_mounts=(--mount "type=bind,source=$ROOT/receive-passwd,target=/etc/passwd,readonly")
+    fi
     CONTAINER_ID="$(
         "$CLIENT" --host "unix://$SOCK" create \
             --name "$container_name" \
@@ -6010,6 +6020,7 @@ run_focused_rust_tests() {
             "${pa_env[@]}" \
             "${whiteboard_mounts[@]}" \
             "${credential_mounts[@]}" \
+            "${receive_mounts[@]}" \
             --tmpfs "/tmp:rw,exec,nosuid,nodev,size=$tmpfs_size,mode=700,uid=1000,gid=1000" \
             --workdir /source \
             "$image_config" /bin/bash --noprofile --norc -euo pipefail -c '
@@ -8163,10 +8174,10 @@ PY
             "$authority_work/probe" run "$authority_work/data" >"$authority_output" 2>&1 \
             || { tail -c 65536 "$authority_output" >&2; fail 'root/ordinary-user receive authority cases failed'; }
         [ "$(stat -c '%s' "$authority_output")" -le 65536 ] \
-            && [ "$(grep -Fc 'RECEIVE_NATIVE_CASE=' "$authority_output")" -eq 15 ] \
-            && [ "$(grep -Fc 'RECEIVE_NATIVE_ACTOR=' "$authority_output")" -eq 19 ] \
+            && [ "$(grep -Fc 'RECEIVE_NATIVE_CASE=' "$authority_output")" -eq 16 ] \
+            && [ "$(grep -Fc 'RECEIVE_NATIVE_ACTOR=' "$authority_output")" -eq 20 ] \
             && [ "$(grep -Fxc 'RECEIVE_NATIVE_WINDOW_SUMMARY=observed cases=3 safe=3 children=joined fixture=retired' "$authority_output")" -eq 1 ] \
-            && [ "$(grep -Fxc 'RECEIVE_NATIVE_AUTHORITY=pass cases=15 actors=19 receiver_uid=0 actor_uid=4001 children=joined fixture=retired' "$authority_output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'RECEIVE_NATIVE_AUTHORITY=pass cases=16 actors=20 receiver_uid=0 actor_uid=4001 children=joined fixture=retired' "$authority_output")" -eq 1 ] \
             || fail 'receive authority native scenario or join receipt differs'
         [ -z "$(find "$authority_work/data" -mindepth 1 -maxdepth 1 -print -quit)" ] \
             && [ "$authority_sha" = "$(sha256sum "$authority_work/probe" | cut -d ' ' -f 1)" ] \
@@ -8176,7 +8187,7 @@ PY
         rm -rf -- "$authority_work"
         [ ! -e "$authority_work" ] && [ ! -L "$authority_work" ] \
             || fail 'receive authority runtime workspace did not retire'
-        printf 'RECEIVE_NATIVE_AUTHORITY_VM=pass commit=%s tree=%s artifact_sha256=%s source_sha256=%s cases=15 actors=19 receiver_uid=0 actor_uid=4001 scope=production-library installed=unexecuted vm_network=none children=joined fixture=retired\n' \
+        printf 'RECEIVE_NATIVE_AUTHORITY_VM=pass commit=%s tree=%s artifact_sha256=%s source_sha256=%s cases=16 actors=20 receiver_uid=0 actor_uid=4001 scope=production-library installed=unexecuted vm_network=none children=joined fixture=retired\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$authority_sha" "$authority_source_sha"
     fi
     if [ "$MODE" = linux-service-uid-tests ]; then

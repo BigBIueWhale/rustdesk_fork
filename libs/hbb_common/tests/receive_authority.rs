@@ -79,9 +79,41 @@ mod linux {
             "mtime":m.mtime(), "mtime_ns":m.mtime_nsec(), "bytes":fs::read(path)?}))
     }
 
+    fn staging(base: &Path) -> ResultType<PathBuf> {
+        use hbb_common::sha2::{Digest, Sha256};
+        let mut directories = Vec::new();
+        for entry in fs::read_dir(base)? {
+            let entry = entry?;
+            if entry.file_name().as_encoded_bytes().starts_with(b".rustdesk-receive-") {
+                let metadata = fs::symlink_metadata(entry.path())?;
+                ensure!(metadata.is_dir() && metadata.uid() == 0 && metadata.mode() & 0o7777 == 0o700);
+                directories.push(entry.path());
+            }
+        }
+        ensure!(directories.len() == 1, "expected one production receive namespace");
+        let mut hash = Sha256::new();
+        hash.update(b"rustdesk.receive.file.v1\0");
+        hash.update(b"incoming.bin");
+        Ok(directories.remove(0).join(format!("{:x}", hash.finalize())))
+    }
+
+    async fn prepare_staging(base: &Path) -> ResultType<PathBuf> {
+        // Production inspection establishes the namespace, then releases its lease.
+        // Only the test fixtures below inject malformed artifacts into that private directory.
+        let mut receiver = job(base)?;
+        receiver.inspect_receive_digest(&incoming(), false).await?;
+        receiver.retire_current_file_state()?;
+        let path = staging(base)?;
+        fs::create_dir(&path)?;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;
+        Ok(path)
+    }
+
     fn state(base: &Path) -> ResultType<Vec<Value>> {
-        ["incoming.bin", "incoming.bin.download", "incoming.bin.digest",
-            "incoming.bin.download.lock"].iter().map(|n| snapshot(&base.join(n))).collect()
+        let artifacts = staging(base)?;
+        [base.join("incoming.bin"), artifacts.join("payload.download"),
+            artifacts.join("resume.digest"), artifacts.join("claim.download.lock")]
+            .iter().map(|path| snapshot(path)).collect()
     }
 
     fn denied<T>(result: io::Result<T>) -> bool {
@@ -94,7 +126,7 @@ mod linux {
         let digest = base.join("incoming.bin.digest");
         let details = match operation {
             "probe-data" | "probe-final" => {
-                let path = if operation == "probe-final" { base.join("incoming.bin") } else { data };
+                let path = if operation == "probe-final" { base.join("incoming.bin") } else { base.to_owned() };
                 let bytes = fs::read(&path);
                 let read_denied = matches!(&bytes, Err(e) if e.kind() == io::ErrorKind::PermissionDenied);
                 json!({"read_denied":read_denied, "bytes":bytes.ok(),
@@ -115,17 +147,24 @@ mod linux {
                 json!({"mutated":snapshot(&digest)?})
             }
             "replace-data" | "replace-digest" => {
-                let path = if operation == "replace-data" { data } else { digest };
-                let held = base.join("held");
-                fs::rename(&path, &held)?;
-                create(&path, b"replacement", 0o600)?;
-                ensure!(denied(fs::read(&held)), "actor read a private root artifact");
-                json!({"replacement":snapshot(&path)?, "held_read_denied":true})
+                let held = base.with_file_name("held");
+                ensure!(denied(fs::rename(base, &held)), "actor replaced a private receive artifact");
+                ensure!(denied(fs::read(base)), "actor read a private receive artifact");
+                json!({"replacement_denied":true, "read_denied":true})
             }
             "swap-parent" => {
                 fs::rename(base.join("selected"), base.join("held-parent"))?;
                 symlink(base.join("outside"), base.join("selected"))?;
                 json!({"parent_replaced":true})
+            }
+            "swap-namespace" => {
+                let held = base.with_file_name("held-namespace");
+                fs::rename(base, &held)?;
+                fs::create_dir(base)?;
+                fs::set_permissions(base, fs::Permissions::from_mode(0o700))?;
+                create(&base.join("foreign"), b"preserve this replacement", 0o600)?;
+                ensure!(denied(fs::read_dir(&held)));
+                json!({"namespace_replaced":true, "old_namespace_access_denied":true})
             }
             "replace-window" => {
                 let held = base.with_file_name("window-held");
@@ -230,9 +269,7 @@ mod linux {
         let m = fs::metadata(&path)?;
         ensure!(m.uid() == 0 && m.mode() & 0o7777 == 0o600 && m.nlink() == 1);
         ensure!(m.mtime() == 31 && fs::read(&path)? == b"abcdef");
-        for suffix in [".download", ".digest", ".download.lock"] {
-            ensure!(!base.join(format!("incoming.bin{suffix}")).exists());
-        }
+        ensure!(!staging(base)?.exists(), "completed receive retained its per-file namespace");
         snapshot(&path)
     }
 
@@ -546,7 +583,7 @@ mod linux {
         ensure!(fs::metadata(root)?.uid() == 0);
         let cases = ["fresh", "resume", "foreign-final", "foreign-lease", "foreign-data",
             "foreign-digest", "read-shared-data", "writable-digest", "replace-data-finalize",
-            "replace-data-cancel", "replace-digest-finalize", "replace-parent"];
+            "replace-data-cancel", "replace-digest-finalize", "replace-parent", "replace-namespace"];
         let mut actors = 0;
         println!("RECEIVE_NATIVE_RECEIVER={who}");
         for case in cases {
@@ -557,8 +594,9 @@ mod linux {
             let observation = match case {
                 "fresh" | "resume" | "foreign-final" => {
                     if case == "resume" {
-                        create(&base.join("incoming.bin.download"), b"abc", 0o600)?;
-                        create(&base.join("incoming.bin.digest"), DIGEST, 0o600)?;
+                        let artifacts = prepare_staging(&base).await?;
+                        create(&artifacts.join("payload.download"), b"abc", 0o600)?;
+                        create(&artifacts.join("resume.digest"), DIGEST, 0o600)?;
                     }
                     if case == "foreign-final" {
                         actor(&base, "foreign-final", &mut actors).await?;
@@ -567,7 +605,7 @@ mod linux {
                     }
                     admit(&mut receiver, case == "resume", if case == "resume" {3} else {0}).await?;
                     if case != "resume" { write(&mut receiver, b"abc").await?; }
-                    let probe = actor(&base, "probe-data", &mut actors).await?;
+                    let probe = actor(&staging(&base)?.join("payload.download"), "probe-data", &mut actors).await?;
                     ensure!(probe["read_denied"] == true && probe["write_denied"] == true);
                     write(&mut receiver, b"def").await?;
                     receiver.finalize_write(1).await?;
@@ -580,6 +618,7 @@ mod linux {
                 "foreign-lease" | "foreign-data" | "foreign-digest"
                     | "read-shared-data" | "writable-digest" => {
                     create(&base.join("incoming.bin"), b"original", 0o600)?;
+                    let artifacts = prepare_staging(&base).await?;
                     if case == "foreign-lease" {
                         actor(&base, case, &mut actors).await?;
                         OpenOptions::new().write(true).open(base.join("incoming.bin.download.lock"))?;
@@ -601,12 +640,19 @@ mod linux {
                                 fs::read(base.join(path))?;
                             }
                             "read-shared-data" => {
-                                let probe = actor(&base, "probe-data", &mut actors).await?;
+                                let probe = actor(&base.join("incoming.bin.download"), "probe-data", &mut actors).await?;
                                 ensure!(probe["bytes"] == json!(b"abc".to_vec())
                                     && probe["write_denied"] == true);
                             }
                             _ => { actor(&base, "mutate-digest", &mut actors).await?; }
                         }
+                    }
+                    // Root places the calibrated malformed objects inside its namespace.
+                    // Their foreign ownership/unsafe metadata must still be refused.
+                    for (old, new) in [("incoming.bin.download", "payload.download"),
+                        ("incoming.bin.digest", "resume.digest"),
+                        ("incoming.bin.download.lock", "claim.download.lock")] {
+                        if base.join(old).exists() { fs::rename(base.join(old), artifacts.join(new))?; }
                     }
                     let before = state(&base)?;
                     let result = receiver.inspect_receive_digest(&incoming(), case != "foreign-lease").await;
@@ -625,23 +671,47 @@ mod linux {
                     admit(&mut receiver, false, 0).await?;
                     write(&mut receiver, b"abcdef").await?;
                     let op = if case == "replace-digest-finalize" {"replace-digest"} else {"replace-data"};
-                    let changed = actor(&base, op, &mut actors).await?;
-                    ensure!(changed["held_read_denied"] == true);
-                    let replacement = if op == "replace-data" {"incoming.bin.download"} else {"incoming.bin.digest"};
-                    let before = snapshot(&base.join(replacement))?;
-                    let refused = if case == "replace-data-cancel" {
-                        receiver.retire_current_file_state().is_err()
+                    let artifacts = staging(&base)?;
+                    let selected = artifacts.join(if op == "replace-data" {"payload.download"} else {"resume.digest"});
+                    let before = snapshot(&selected)?;
+                    let changed = actor(&selected, op, &mut actors).await?;
+                    ensure!(changed["replacement_denied"] == true && snapshot(&selected)? == before);
+                    if case == "replace-data-cancel" {
+                        receiver.retire_current_file_state()?;
+                        ensure!(fs::read(base.join("incoming.bin"))? == b"original");
                     } else {
-                        let failed = receiver.finalize_write(1).await.is_err();
-                        ensure!(receiver.retire_current_file_state().is_err());
-                        failed
-                    };
-                    ensure!(refused && snapshot(&base.join(replacement))? == before);
-                    ensure!(fs::read(base.join("incoming.bin"))? == b"original");
-                    let held = fs::metadata(base.join("held"))?;
-                    ensure!(held.uid() == 0 && held.mode() & 0o7777 == 0o600);
-                    json!({"refused":refused, "replacement":before,
-                        "held_private":true, "target_preserved":true})
+                        receiver.finalize_write(1).await?;
+                        receiver.retire_current_file_state()?;
+                        private_final(&base)?;
+                    }
+                    ensure!(!artifacts.exists());
+                    json!({"actor_replacement_denied":true, "artifact_before":before,
+                        "authorized_operation_completed":true, "artifacts_retired":true})
+                }
+                "replace-namespace" => {
+                    admit(&mut receiver, false, 0).await?;
+                    write(&mut receiver, b"abc").await?;
+                    let artifacts = staging(&base)?;
+                    let container = artifacts.parent().ok_or_else(|| anyhow!("namespace parent absent"))?;
+                    actor(container, "swap-namespace", &mut actors).await?;
+                    let replacement = snapshot(&container.join("foreign"))?;
+                    let mut contender = job(&base)?;
+                    let error = contender.inspect_receive_digest(&incoming(), false).await
+                        .err().ok_or_else(|| anyhow!("parallel receive generation admitted"))?;
+                    ensure!(error.downcast_ref::<io::Error>()
+                        .is_some_and(|e| e.kind() == io::ErrorKind::WouldBlock));
+                    contender.retire_current_file_state()?;
+                    write(&mut receiver, b"def").await?;
+                    receiver.finalize_write(1).await?;
+                    receiver.retire_current_file_state()?;
+                    let final_state = snapshot(&base.join("incoming.bin"))?;
+                    ensure!(final_state["bytes"] == json!(b"abcdef".to_vec())
+                        && final_state["uid"] == 0 && final_state["mode"] == 0o600
+                        && final_state["mtime"] == 31);
+                    ensure!(snapshot(&container.join("foreign"))? == replacement);
+                    ensure!(fs::read_dir(base.join("held-namespace"))?.count() == 1);
+                    json!({"parallel_generation_refused":true, "retained_namespace_completed":true,
+                        "replacement_preserved":true, "final":final_state})
                 }
                 "replace-parent" => {
                     fs::create_dir(base.join("selected"))?;
@@ -678,10 +748,10 @@ mod linux {
             println!("RECEIVE_NATIVE_CASE={}", json!({"case":case,"observed":observed}));
             fs::remove_dir_all(&base)?;
         }
-        ensure!(actors == 19, "unexpected joined actor total: {actors}");
+        ensure!(actors == 20, "unexpected joined actor total: {actors}");
         println!("RECEIVE_NATIVE_WINDOW_SUMMARY=observed cases=3 safe={safe_windows} children=joined fixture=retired");
         ensure!(safe_windows == 3, "receive namespace syscall-window cases failed: {safe_windows}/3 safe");
-        println!("RECEIVE_NATIVE_AUTHORITY=pass cases=15 actors={actors} receiver_uid=0 actor_uid=4001 children=joined fixture=retired");
+        println!("RECEIVE_NATIVE_AUTHORITY=pass cases=16 actors={actors} receiver_uid=0 actor_uid=4001 children=joined fixture=retired");
         Ok(())
     }
 

@@ -25,6 +25,8 @@ pub(crate) use file_block::tests::{
 };
 mod atomic_write;
 pub use atomic_write::write_user_file_atomically;
+#[cfg(target_os = "linux")]
+mod receive_namespace;
 use file_block::SIZE as FILE_TRANSFER_BLOCK_SIZE;
 
 static NEXT_JOB_ID: AtomicI32 = AtomicI32::new(1);
@@ -3045,7 +3047,7 @@ fn visible_receive_commit_durability_error(error: std::io::Error) -> std::io::Er
 
 #[cfg(unix)]
 fn finish_recv_write_at(
-    parent: &std::fs::File,
+    lease: &ReceivePathLease,
     path: &Path,
     download_file: &std::fs::File,
     digest_file: &std::fs::File,
@@ -3057,9 +3059,10 @@ fn finish_recv_write_at(
         return Err(io_invalid_input("receive generation is already published"));
     }
     let mtime = checked_file_mtime(modified_time)?;
+    let parent = &lease.parent;
     let final_name = cstring_file_name(path)?;
-    let download_name = cstring_file_name(&recv_sidecar_path(path, ".download"))?;
-    let digest_name = cstring_file_name(&recv_sidecar_path(path, ".digest"))?;
+    let download_name = lease.child_name(&recv_sidecar_path(path, ".download"))?;
+    let digest_name = lease.child_name(&recv_sidecar_path(path, ".digest"))?;
     ensure_recv_child_matches_open_file(parent, &download_name, download_file)?;
     filetime::set_file_handle_times(download_file, None, Some(mtime))?;
     sync_recv_regular_file(download_file)?;
@@ -3067,13 +3070,13 @@ fn finish_recv_write_at(
     if unsafe {
         crate::libc::renameat(
             parent.as_raw_fd(), download_name.as_ptr(),
-            parent.as_raw_fd(), final_name.as_ptr(),
+            lease.destination_parent().as_raw_fd(), final_name.as_ptr(),
         )
     } != 0 {
         return Err(std::io::Error::last_os_error());
     }
     *published = true;
-    sync_recv_directory(parent).map_err(visible_receive_commit_durability_error)?;
+    lease.sync_publication_directories().map_err(visible_receive_commit_durability_error)?;
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     sync_recv_regular_file(download_file).map_err(visible_receive_commit_durability_error)?;
     Ok(())
@@ -3264,6 +3267,9 @@ struct ReceivePathLease {
     file: std::fs::File,
     #[cfg(unix)]
     parent: std::fs::File,
+    #[cfg(target_os = "linux")]
+    namespace: receive_namespace::ReceiveNamespace,
+    retired: bool,
 }
 
 impl ReceivePathLease {
@@ -3273,9 +3279,16 @@ impl ReceivePathLease {
         let parent = open_parent_dir_no_follow(
             path.parent().unwrap_or_else(|| Path::new(".")), create_parent,
         )?;
+        #[cfg(target_os = "linux")]
+        let namespace = receive_namespace::ReceiveNamespace::acquire(parent, &cstring_file_name(final_path)?)?;
+        #[cfg(target_os = "linux")]
+        let parent = namespace.artifacts.try_clone()?;
         #[cfg(unix)]
         let file = {
+            #[cfg(not(target_os = "linux"))]
             let name = cstring_file_name(&path)?;
+            #[cfg(target_os = "linux")]
+            let name = receive_namespace::ReceiveNamespace::artifact_name(".download.lock")?;
             let file = open_regular_child_no_follow(
                 &parent, &name, RegularFileAccess::Write, ReceiveFileCreation::OpenOrCreate,
             )?;
@@ -3287,8 +3300,11 @@ impl ReceivePathLease {
             &path, false, ReceiveFileCreation::OpenOrCreate, create_parent, false,
         )?;
         acquire_receive_path_lock(&file)?;
-        #[cfg(unix)]
+        #[cfg(all(unix, not(target_os = "linux")))]
         ensure_recv_child_matches_open_file(&parent, &cstring_file_name(&path)?, &file)?;
+        #[cfg(target_os = "linux")]
+        ensure_recv_child_matches_open_file(&parent,
+            &receive_namespace::ReceiveNamespace::artifact_name(".download.lock")?, &file)?;
         #[cfg(windows)]
         ensure_recv_path_matches_open_file(&path, &file)?;
         sync_recv_regular_file(&file)?;
@@ -3296,10 +3312,14 @@ impl ReceivePathLease {
         sync_recv_directory(&parent)?;
         #[cfg(any(target_os = "macos", target_os = "ios"))]
         sync_recv_regular_file(&file)?;
+        #[cfg(target_os = "linux")]
+        namespace.complete_enrollment()?;
         Ok(Self {
-            path, file,
+            path, file, retired: false,
             #[cfg(unix)]
             parent,
+            #[cfg(target_os = "linux")]
+            namespace,
         })
     }
 
@@ -3308,7 +3328,44 @@ impl ReceivePathLease {
         if path.parent() != self.path.parent() {
             return Err(io_invalid_input("receive artifact belongs to a different parent"));
         }
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::unix::ffi::OsStrExt;
+            let lease = cstring_file_name(&self.path)?;
+            let base = lease.to_bytes().strip_suffix(b".download.lock")
+                .ok_or_else(|| io_invalid_input("receive lease has no destination name"))?;
+            let child = path.file_name().ok_or_else(|| io_invalid_input("receive artifact has no name"))?;
+            let suffix = child.as_bytes().strip_prefix(base)
+                .and_then(|bytes| std::str::from_utf8(bytes).ok())
+                .ok_or_else(|| io_invalid_input("receive artifact belongs to a different destination"))?;
+            receive_namespace::ReceiveNamespace::artifact_name(suffix)
+        }
+        #[cfg(not(target_os = "linux"))]
         cstring_file_name(path)
+    }
+
+    #[cfg(unix)]
+    fn destination_parent(&self) -> &std::fs::File {
+        #[cfg(target_os = "linux")]
+        { &self.namespace.destination }
+        #[cfg(not(target_os = "linux"))]
+        { &self.parent }
+    }
+
+    #[cfg(unix)]
+    fn sync_publication_directories(&self) -> std::io::Result<()> {
+        let destination = sync_recv_directory(self.destination_parent());
+        #[cfg(target_os = "linux")]
+        {
+            let staging = sync_recv_directory(&self.parent);
+            match (destination, staging) {
+                (Ok(()), result) | (result, Ok(())) => result,
+                (Err(error), Err(staging)) => Err(std::io::Error::new(error.kind(),
+                    format!("{error}; receive staging directory sync failed: {staging}"))),
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        destination
     }
 
     fn open_receive_file(
@@ -3349,10 +3406,18 @@ impl ReceivePathLease {
         artifact: Option<ReceiveOwnedArtifact>,
     ) -> std::io::Result<std::fs::File> {
         #[cfg(unix)]
-        let file = open_regular_child_no_follow(
-            &self.parent, &self.child_name(path)?, RegularFileAccess::Read,
-            ReceiveFileCreation::Existing,
-        )?;
+        let file = {
+            if path.parent() != self.path.parent() {
+                return Err(io_invalid_input("receive inspection belongs to a different parent"));
+            }
+            let (parent, name) = if artifact.is_some() {
+                (&self.parent, self.child_name(path)?)
+            } else {
+                (self.destination_parent(), cstring_file_name(path)?)
+            };
+            open_regular_child_no_follow(parent, &name, RegularFileAccess::Read,
+                ReceiveFileCreation::Existing)?
+        };
         #[cfg(not(unix))]
         let file = open_recv_inspection_file_no_follow(path)?;
         if let Some(artifact) = artifact {
@@ -3380,7 +3445,18 @@ impl ReceivePathLease {
     }
 
     fn retire(&mut self) -> std::io::Result<()> {
-        remove_receive_artifacts_and_sync_parent(self, &[(&self.path, &self.file)])
+        if self.retired { return Ok(()); }
+        #[cfg(target_os = "linux")]
+        let result = self.namespace.retire(|| {
+            use std::os::unix::fs::MetadataExt;
+            // A retry must never remove a later lease after this lease was already unlinked.
+            if self.file.metadata()?.nlink() == 0 { return sync_recv_directory(&self.parent); }
+            remove_receive_artifacts_and_sync_parent(self, &[(&self.path, &self.file)])
+        });
+        #[cfg(not(target_os = "linux"))]
+        let result = remove_receive_artifacts_and_sync_parent(self, &[(&self.path, &self.file)]);
+        if result.is_ok() { self.retired = true; }
+        result
     }
 }
 
@@ -3571,7 +3647,7 @@ impl ReceiveWriteClaim {
         }
         #[cfg(unix)]
         let result = finish_recv_write_at(
-            &self._lease.parent,
+            &self._lease,
             &self.final_path,
             &self.download_file,
             &self.digest_file,
@@ -3603,7 +3679,7 @@ impl ReceiveWriteClaim {
     fn retire(&mut self) -> std::io::Result<()> {
         if self.published {
             #[cfg(unix)]
-            sync_recv_directory(&self._lease.parent)?;
+            self._lease.sync_publication_directories()?;
             sync_recv_regular_file(&self.download_file)?;
             self._lease.retire()?;
             return Ok(());
@@ -5857,6 +5933,68 @@ mod tests {
     use crate::compress::try_decompress;
     use crate::protobuf::Message as _;
 
+    fn receive_fixture_path(final_path: &Path, suffix: &str) -> PathBuf {
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::unix::{ffi::OsStrExt, io::AsRawFd};
+            // Prepare only the private container. Fixtures still create their own explicit
+            // bytes, metadata and malformed objects; no file lease or payload is fabricated.
+            let destination = open_parent_dir_no_follow(
+                final_path.parent().unwrap_or_else(|| Path::new(".")), true,
+            ).unwrap();
+            let namespace = receive_namespace::ReceiveNamespace::acquire(
+                destination, &cstring_file_name(final_path).unwrap(),
+            ).unwrap();
+            let parent = std::fs::read_link(format!("/proc/self/task/{}/fd/{}",
+                unsafe { crate::libc::syscall(crate::libc::SYS_gettid) }, namespace.artifacts.as_raw_fd())).unwrap();
+            let name = receive_namespace::ReceiveNamespace::artifact_name(suffix).unwrap();
+            namespace.complete_enrollment().unwrap();
+            parent.join(std::ffi::OsStr::from_bytes(name.to_bytes()))
+        }
+        #[cfg(not(target_os = "linux"))]
+        recv_sidecar_path(final_path, suffix)
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn file_metadata_receive_namespace_keeps_independent_file_claims() {
+        use std::{io::Write, os::unix::fs::MetadataExt};
+        let root = TestTempDir::new("rustdesk_receive_parallel_namespace");
+        let first = root.join("first.bin");
+        let second = root.join("second.bin");
+        let (mut one, mut first_claim) = ReceiveWriteClaim::start_new(first.clone(), FileDigest::default()).unwrap();
+        let (mut two, mut second_claim) = ReceiveWriteClaim::start_new(second.clone(), FileDigest::default()).unwrap();
+        let error = ReceiveWriteClaim::start_new(first.clone(), FileDigest::default()).unwrap_err();
+        assert_eq!(error.downcast_ref::<std::io::Error>().unwrap().kind(), std::io::ErrorKind::WouldBlock);
+        one.write_all(b"one").unwrap();
+        two.write_all(b"two").unwrap();
+        first_claim.finish(3, 31).unwrap();
+        second_claim.finish(3, 32).unwrap();
+        assert_eq!(std::fs::read(first).unwrap(), b"one");
+        assert_eq!(std::fs::read(second).unwrap(), b"two");
+        assert_eq!(first_claim._lease.namespace.artifacts.metadata().unwrap().nlink(), 0);
+        assert_eq!(second_claim._lease.namespace.artifacts.metadata().unwrap().nlink(), 0);
+        println!("RECEIVE_NAMESPACE_PARALLEL=pass independent=2 same_destination=refused final_bytes=exact");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn file_metadata_receive_namespace_accepts_maximum_native_filename() {
+        use std::{io::Write, os::unix::{ffi::OsStringExt, io::AsRawFd}};
+        let root = TestTempDir::new("rustdesk_receive_native_filename");
+        std::fs::create_dir_all(&root.path).unwrap();
+        let directory = open_parent_dir_no_follow(&root.path, false).unwrap();
+        let limit = unsafe { crate::libc::fpathconf(directory.as_raw_fd(), crate::libc::_PC_NAME_MAX) };
+        assert!(limit > 0 && limit <= 4096);
+        let filename = std::ffi::OsString::from_vec(vec![0xff; limit as usize]);
+        let path = root.path.join(filename);
+        let (mut stream, mut claim) = ReceiveWriteClaim::start_new(path.clone(), FileDigest::default()).unwrap();
+        stream.write_all(b"exact").unwrap();
+        claim.finish(5, 31).unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), b"exact");
+        println!("RECEIVE_NAMESPACE_NAME=pass length={limit} native_bytes=exact publication=exact");
+    }
+
     fn write_receive_partial_fixture<P: AsRef<Path>, C: AsRef<[u8]>>(
         path: P, content: C,
     ) -> std::io::Result<()> {
@@ -5879,9 +6017,9 @@ mod tests {
         let root = TestTempDir::new("rustdesk_receive_finalization_authority");
         std::fs::create_dir_all(&root.path).unwrap();
         let final_path = root.join("incoming.bin");
-        let download = root.join("incoming.bin.download");
-        let digest_path = root.join("incoming.bin.digest");
-        let lock = root.join("incoming.bin.download.lock");
+        let download = receive_fixture_path(&root.join("incoming.bin"), ".download");
+        let digest_path = receive_fixture_path(&root.join("incoming.bin"), ".digest");
+        let lock = receive_fixture_path(&root.join("incoming.bin"), ".download.lock");
         let alias = root.join("alias");
         std::fs::write(&final_path, b"original").unwrap();
         let (mut stream, mut claim) = ReceiveWriteClaim::start_new(
@@ -6009,9 +6147,9 @@ mod tests {
         let root = TestTempDir::new("rustdesk_receive_file_modes");
         std::fs::create_dir_all(&root.path).unwrap();
         let final_path = root.join("incoming.bin");
-        let download = root.join("incoming.bin.download");
-        let digest_path = root.join("incoming.bin.digest");
-        let lock = root.join("incoming.bin.download.lock");
+        let download = receive_fixture_path(&root.join("incoming.bin"), ".download");
+        let digest_path = receive_fixture_path(&root.join("incoming.bin"), ".digest");
+        let lock = receive_fixture_path(&root.join("incoming.bin"), ".download.lock");
         let digest = FileDigest { size: 6, modified: 31 };
         std::fs::write(&final_path, b"original").unwrap();
         std::fs::write(&download, b"abc").unwrap();
@@ -6091,7 +6229,7 @@ mod tests {
                 && published.mode() & 0o7777 == if artifact == "download" { mode } else { 0o600 }
                 && published.mtime() == 31
                 && after[1..].iter().all(Option::is_none)
-                && std::fs::read_dir(&root.path).unwrap().count() == 1
+                && std::fs::read_dir(&root.path).unwrap().count() == 2
         };
         serde_json::json!({
             "action": action, "artifact": artifact, "mode": mode,
@@ -6159,9 +6297,9 @@ mod tests {
         };
         std::fs::create_dir(&parent).unwrap();
         let final_path = parent.join("incoming.bin");
-        let selected_download = parent.join("incoming.bin.download");
-        let selected_digest = parent.join("incoming.bin.digest");
-        let selected_lock = parent.join("incoming.bin.download.lock");
+        let selected_download = receive_fixture_path(&final_path, ".download");
+        let selected_digest = receive_fixture_path(&final_path, ".digest");
+        let selected_lock = receive_fixture_path(&final_path, ".download.lock");
         let cwd_file = cwd.join("incoming.bin");
         std::fs::write(&cwd_file, b"working-directory sentinel").unwrap();
         let digest = FileDigest { size: 6, modified: 31 };
@@ -6419,7 +6557,7 @@ mod tests {
                 &std::fs::metadata(path).unwrap()), expected);
         }
         for suffix in [".download", ".digest", ".download.lock"] {
-            assert!(!recv_sidecar_path(&destination, suffix).exists());
+            assert!(!receive_fixture_path(&destination, suffix).exists());
         }
         println!("FILE_METADATA_DIGEST=observed source_seconds={source_seconds} source_nanos={source_nanos} destination_seconds={destination_seconds} destination_nanos={destination_nanos} destination_size={} identical={} confirmation=required unchanged=true", destination_bytes.len(), inspected.is_identical);
         inspected.is_identical
@@ -6531,7 +6669,7 @@ mod tests {
                     == std::fs::read(source.join(&entry.name)).unwrap()
             });
             let clean = files.iter().all(|entry| [".download", ".digest", ".download.lock"]
-                .iter().all(|suffix| !recv_sidecar_path(&target.join(&entry.name), suffix).exists()));
+                .iter().all(|suffix| !receive_fixture_path(&target.join(&entry.name), suffix).exists()));
             let counted = receiver.finished_size() == sender.total_size()
                 && sender.finished_size() == sender.total_size();
             println!("RECEIVE_NEXT_DIGEST=observed case={case} admitted={admitted} committed={committed} exact_bytes={exact} sidecars_absent={clean} counted={counted}");
@@ -6575,14 +6713,14 @@ mod tests {
                     && receiver.finished_size() == prefix as u64
                     && receiver.transferred() == prefix as u64
                     && receiver.data_stream.is_some() && receiver.receive_write_claim.is_some()
-                    && std::fs::read(tmp.join("first.zip.download")).unwrap() == b"abcd"[..prefix]
+                    && std::fs::read(receive_fixture_path(&tmp.join("first.zip"), ".download")).unwrap() == b"abcd"[..prefix]
                     && !tmp.join("first.zip").exists() && !tmp.join("next.zip").exists()
-                    && !tmp.join("next.zip.download").exists();
+                    && !receive_fixture_path(&tmp.join("next.zip"), ".download").exists();
                 println!("RECEIVE_NEXT_DIGEST_REFUSAL=observed prefix={prefix} case={case} refused={} preserved={preserved}", result.is_err());
                 assert!(result.is_err() && preserved);
             }
             receiver.retire_current_file_state().unwrap();
-            assert_eq!(std::fs::read_dir(&tmp.path).unwrap().count(), 0);
+            assert_eq!(std::fs::read_dir(&tmp.path).unwrap().count(), usize::from(cfg!(target_os = "linux")));
         }
     }
 
@@ -6605,8 +6743,8 @@ mod tests {
                 ..Default::default()
             }, false).await.unwrap();
             if case == "malformed-resume" {
-                write_receive_partial_fixture(recv_sidecar_path(&path, ".download"), b"ne").unwrap();
-                std::fs::write(recv_sidecar_path(&path, ".digest"), b"not json").unwrap();
+                write_receive_partial_fixture(receive_fixture_path(&path, ".download"), b"ne").unwrap();
+                std::fs::write(receive_fixture_path(&path, ".digest"), b"not json").unwrap();
             } else if case == "linked-destination" {
                 let target = tmp.join("target.bin");
                 std::fs::rename(&path, &target).unwrap();
@@ -6618,8 +6756,8 @@ mod tests {
             }
             let before_time = std::fs::metadata(&path).unwrap().modified().unwrap();
             let before_link = std::fs::read_link(&path).ok();
-            let before_download = std::fs::read(recv_sidecar_path(&path, ".download")).ok();
-            let before_digest = std::fs::read(recv_sidecar_path(&path, ".digest")).ok();
+            let before_download = std::fs::read(receive_fixture_path(&path, ".download")).ok();
+            let before_digest = std::fs::read(receive_fixture_path(&path, ".digest")).ok();
             let result = job.inspect_receive_digest(&FileTransferDigest {
                 id: 85, file_num: 0, file_size: 3, last_modified: 23,
                 ..Default::default()
@@ -6628,9 +6766,9 @@ mod tests {
             let objects_preserved = std::fs::read(&path).unwrap() == b"original"
                 && std::fs::metadata(&path).unwrap().modified().unwrap() == before_time
                 && std::fs::read_link(&path).ok() == before_link
-                && std::fs::read(recv_sidecar_path(&path, ".download")).ok() == before_download
-                && std::fs::read(recv_sidecar_path(&path, ".digest")).ok() == before_digest
-                && !recv_sidecar_path(&path, ".download.lock").exists();
+                && std::fs::read(receive_fixture_path(&path, ".download")).ok() == before_download
+                && std::fs::read(receive_fixture_path(&path, ".digest")).ok() == before_digest
+                && !receive_fixture_path(&path, ".download.lock").exists();
             let unconfirmed = job.file_num() == 0 && !job.file_confirmed()
                 && job.data_stream.is_none() && job.receive_write_claim.is_none()
                 && job.finished_size() == 0 && job.transferred() == 0;
@@ -6648,8 +6786,8 @@ mod tests {
             let path = tmp.join("incoming.bin");
             if case != "missing" { std::fs::write(&path, b"original").unwrap(); }
             if case == "resume" {
-                write_receive_partial_fixture(recv_sidecar_path(&path, ".download"), b"ne").unwrap();
-                std::fs::write(recv_sidecar_path(&path, ".digest"),
+                write_receive_partial_fixture(receive_fixture_path(&path, ".download"), b"ne").unwrap();
+                std::fs::write(receive_fixture_path(&path, ".digest"),
                     json!(FileDigest { size: 3, modified: 23 }).to_string()).unwrap();
             }
             let mut job = TransferJob::new_write(
@@ -6678,7 +6816,7 @@ mod tests {
             }).await.unwrap();
             job.finalize_write(1).await.unwrap();
             assert_eq!(std::fs::read(&path).unwrap(), b"new");
-            assert_eq!(std::fs::read_dir(&tmp.path).unwrap().count(), 1);
+            assert_eq!(std::fs::read_dir(&tmp.path).unwrap().count(), 1 + usize::from(cfg!(target_os = "linux")));
             println!("FILE_METADATA_INSPECTION_CACHE=control case={case} cached=true committed=true exact_bytes=true sidecars_absent=true");
         }
         let tmp = TestTempDir::new("rustdesk_next_inspection_failure");
@@ -6696,17 +6834,17 @@ mod tests {
             id: 87, file_num: 0, data: b"one".to_vec().into(), ..Default::default()
         }).await.unwrap();
         let next = tmp.join("next.bin");
-        write_receive_partial_fixture(recv_sidecar_path(&next, ".download"), b"ol").unwrap();
-        std::fs::write(recv_sidecar_path(&next, ".digest"), b"not json").unwrap();
+        write_receive_partial_fixture(receive_fixture_path(&next, ".download"), b"ol").unwrap();
+        std::fs::write(receive_fixture_path(&next, ".digest"), b"not json").unwrap();
         let result = job.inspect_receive_digest(&FileTransferDigest {
             id: 87, file_num: 1, file_size: 4, last_modified: 23, ..Default::default()
         }, true).await;
         let cache_preserved = job.digest == FileDigest { size: 3, modified: 17 };
         let previous_committed = std::fs::read(tmp.join("first.bin")).unwrap() == b"one";
         let next_preserved = !next.exists()
-            && std::fs::read(recv_sidecar_path(&next, ".download")).unwrap() == b"ol"
-            && std::fs::read(recv_sidecar_path(&next, ".digest")).unwrap() == b"not json"
-            && !recv_sidecar_path(&next, ".download.lock").exists();
+            && std::fs::read(receive_fixture_path(&next, ".download")).unwrap() == b"ol"
+            && std::fs::read(receive_fixture_path(&next, ".digest")).unwrap() == b"not json"
+            && !receive_fixture_path(&next, ".download.lock").exists();
         println!("FILE_METADATA_INSPECTION_CACHE=observed case=next-inspection refused={} cache_preserved={cache_preserved} previous_committed={previous_committed} next_preserved={next_preserved}", result.is_err());
         assert!(result.is_err() && cache_preserved && previous_committed && next_preserved);
     }
@@ -6736,7 +6874,7 @@ mod tests {
                 && job.digest.modified == if incoming_size == 3 { 23 } else { 17 };
             let unchanged = std::fs::read(&path).unwrap() == b"old!"
                 && [".download", ".digest", ".download.lock"].iter()
-                    .all(|suffix| !recv_sidecar_path(&path, suffix).exists());
+                    .all(|suffix| !receive_fixture_path(&path, suffix).exists());
             println!("RECEIVE_DIGEST_ADMISSION=observed case={case} admitted={admitted} unchanged={unchanged}");
             outcomes.push(admitted && unchanged);
             if incoming_size == 3 {
@@ -6748,7 +6886,7 @@ mod tests {
                 assert_eq!(std::fs::read(&path).unwrap(), b"new");
                 assert_eq!(job.finished_size(), 3);
                 assert!([".download", ".digest", ".download.lock"].iter()
-                    .all(|suffix| !recv_sidecar_path(&path, suffix).exists()));
+                    .all(|suffix| !receive_fixture_path(&path, suffix).exists()));
                 println!("RECEIVE_DIGEST_ADMISSION=observed case=roundtrip committed=true exact_bytes=true sidecars_absent=true");
             }
         }
@@ -6763,10 +6901,10 @@ mod tests {
         std::fs::create_dir_all(&tmp.path).unwrap();
         let path = tmp.join("incoming.bin");
         std::fs::write(&path, b"original").unwrap();
-        write_receive_partial_fixture(recv_sidecar_path(&path, ".download"), partial).unwrap();
+        write_receive_partial_fixture(receive_fixture_path(&path, ".download"), partial).unwrap();
         let digest = json!(FileDigest { size: stored_size, modified: 1_600_000_000 })
             .to_string().into_bytes();
-        std::fs::write(recv_sidecar_path(&path, ".digest"), &digest).unwrap();
+        std::fs::write(receive_fixture_path(&path, ".digest"), &digest).unwrap();
         (path, digest)
     }
 
@@ -6783,9 +6921,9 @@ mod tests {
             _ => 0,
         };
         let unchanged = std::fs::read(&path).unwrap() == b"original"
-            && std::fs::read(recv_sidecar_path(&path, ".download")).unwrap() == b"long"
-            && std::fs::read(recv_sidecar_path(&path, ".digest")).unwrap() == digest_before
-            && !recv_sidecar_path(&path, ".download.lock").exists();
+            && std::fs::read(receive_fixture_path(&path, ".download")).unwrap() == b"long"
+            && std::fs::read(receive_fixture_path(&path, ".digest")).unwrap() == digest_before
+            && !receive_fixture_path(&path, ".download.lock").exists();
         println!("FILE_METADATA_RESUME=observed scope=inspection declared=3 available=4 refused={} advertised_offset={advertised_offset} unchanged={unchanged}", result.is_err());
         assert!(result.is_err() && unchanged);
         assert!(result.err().unwrap().to_string().contains("exceeds declared file size"));
@@ -6810,9 +6948,9 @@ mod tests {
                 && job.receive_write_claim.is_none() && job.receive_file_offset == 0
                 && job.finished_size() == 0 && job.transferred() == 0;
             let unchanged = std::fs::read(&path).unwrap() == b"original"
-                && std::fs::read(recv_sidecar_path(&path, ".download")).unwrap() == b"long"
-                && std::fs::read(recv_sidecar_path(&path, ".digest")).unwrap() == digest_before
-                && !recv_sidecar_path(&path, ".download.lock").exists();
+                && std::fs::read(receive_fixture_path(&path, ".download")).unwrap() == b"long"
+                && std::fs::read(receive_fixture_path(&path, ".digest")).unwrap() == digest_before
+                && !receive_fixture_path(&path, ".download.lock").exists();
             println!("FILE_METADATA_RESUME=observed scope=admission declared=3 digest_size={stored_size} available=4 refused={} unadmitted={unadmitted} unchanged={unchanged}", result.is_err());
             outcomes.push(result.is_err() && unadmitted && unchanged);
             job.retire_current_file_state().unwrap();
@@ -6854,7 +6992,7 @@ mod tests {
             assert_eq!(std::fs::read(&path).unwrap(), b"new");
             assert_eq!(job.finished_size(), 3);
             for suffix in [".download", ".digest", ".download.lock"] {
-                assert!(!recv_sidecar_path(&path, suffix).exists());
+                assert!(!receive_fixture_path(&path, suffix).exists());
             }
             println!("FILE_METADATA_RESUME=observed scope=valid declared=3 available={available} published=true exact_bytes=true sidecars=absent");
         }
@@ -6897,9 +7035,9 @@ mod tests {
             let unchanged = job.files.is_empty() && !job.files_admitted && job.total_size == 0
                 && job.file_num == 0;
             let files_unchanged = std::fs::read(&final_path).unwrap() == b"original"
-                && !recv_sidecar_path(&final_path, ".download").exists()
-                && !recv_sidecar_path(&final_path, ".digest").exists()
-                && !recv_sidecar_path(&final_path, ".download.lock").exists();
+                && !receive_fixture_path(&final_path, ".download").exists()
+                && !receive_fixture_path(&final_path, ".digest").exists()
+                && !receive_fixture_path(&final_path, ".download.lock").exists();
             println!("FILE_METADATA_ADMISSION=observed seconds={modified_time} refused={} job_unchanged={unchanged} files_unchanged={files_unchanged}", result.is_err());
             assert!(result.is_err());
             assert!(unchanged && files_unchanged);
@@ -6926,7 +7064,7 @@ mod tests {
         drop(stream);
         filetime::set_file_handle_times(&claim.download_file, None,
             Some(filetime::FileTime::from_unix_time(1_600_000_000, 0))).unwrap();
-        let digest_path = recv_sidecar_path(&final_path, ".digest");
+        let digest_path = receive_fixture_path(&final_path, ".digest");
         let digest_before = std::fs::read(&digest_path).unwrap();
         let result = claim.finish(3, u64::MAX);
         let published = claim.published;
@@ -6963,7 +7101,7 @@ mod tests {
             assert_eq!(observed.nanoseconds(), 0);
             claim.cleanup().unwrap();
             for suffix in [".download", ".digest", ".download.lock"] {
-                assert!(!recv_sidecar_path(&final_path, suffix).exists());
+                assert!(!receive_fixture_path(&final_path, suffix).exists());
             }
         }
     }
@@ -8105,8 +8243,8 @@ mod tests {
         std::fs::write(&secret, b"DO-NOT-OVERWRITE").expect("write secret");
 
         let final_path = downloads.join("incoming.txt");
-        let download_path = recv_sidecar_path(&final_path, ".download");
-        let digest_path = recv_sidecar_path(&final_path, ".digest");
+        let download_path = receive_fixture_path(&final_path, ".download");
+        let digest_path = receive_fixture_path(&final_path, ".digest");
         std::fs::write(&download_path, b"payload").expect("write download");
         std::fs::write(&digest_path, b"{}").expect("write digest");
         std::os::unix::fs::symlink(&secret, &final_path).expect("create symlink final");
@@ -8129,9 +8267,10 @@ mod tests {
         .expect("open exact digest");
 
         let mut published = false;
-        let parent = open_parent_dir_no_follow(&downloads, false).expect("retain receive parent");
-        finish_recv_write_at(&parent, &final_path, &download_file, &digest_file, 1, &mut published)
+        let mut lease = ReceivePathLease::acquire(&final_path, false).expect("retain receive claim");
+        finish_recv_write_at(&lease, &final_path, &download_file, &digest_file, 1, &mut published)
             .expect("finish receive write");
+        lease.retire().expect("retire receive claim");
         assert!(published);
 
         assert_eq!(
@@ -8154,8 +8293,8 @@ mod tests {
         let tmp = TestTempDir::new("rustdesk_finish_parent_sync");
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");
         let final_path = tmp.join("incoming.txt");
-        let download_path = recv_sidecar_path(&final_path, ".download");
-        let digest_path = recv_sidecar_path(&final_path, ".digest");
+        let download_path = receive_fixture_path(&final_path, ".download");
+        let digest_path = receive_fixture_path(&final_path, ".digest");
         std::fs::write(&download_path, b"durable-payload").expect("write download");
         std::fs::write(&digest_path, b"{}").expect("write digest");
         let download_file =
@@ -8177,9 +8316,9 @@ mod tests {
         .expect("open exact digest");
 
         let mut published = false;
-        let parent = open_parent_dir_no_follow(&tmp.path, false).expect("retain receive parent");
+        let mut lease = ReceivePathLease::acquire(&final_path, false).expect("retain receive claim");
         let result = finish_recv_write_at(
-            &parent,
+            &lease,
             &final_path,
             &download_file,
             &digest_file,
@@ -8209,6 +8348,7 @@ mod tests {
         );
         assert!(!download_path.exists(), ".download must be renamed away");
         assert!(!digest_path.exists(), ".digest must be removed");
+        lease.retire().expect("retire receive claim");
     }
 
     #[test]
@@ -8220,12 +8360,12 @@ mod tests {
         let secret = tmp.join("secret.json");
         std::fs::write(&secret, b"{\"size\":1,\"modified\":1}").expect("write secret");
 
-        let digest = downloads.join("incoming.txt.digest");
+        let digest = receive_fixture_path(&downloads.join("incoming.txt"), ".digest");
         std::os::unix::fs::symlink(&secret, &digest).expect("create digest symlink");
 
         let mut lease = ReceivePathLease::acquire(&downloads.join("incoming.txt"), false)
             .expect("acquire the exact inspection parent");
-        let res = lease.read_sidecar(&digest, 4096);
+        let res = lease.read_sidecar(&recv_sidecar_path(&downloads.join("incoming.txt"), ".digest"), 4096);
         lease.retire().expect("retire the inspection lease");
         assert!(
             res.is_err(),
@@ -8670,8 +8810,8 @@ mod tests {
         })
         .await
         .expect("write exact receive block");
-        assert!(tmp.join("incoming.bin.download").exists());
-        assert!(tmp.join("incoming.bin.digest").exists());
+        assert!(receive_fixture_path(&tmp.join("incoming.bin"), ".download").exists());
+        assert!(receive_fixture_path(&tmp.join("incoming.bin"), ".digest").exists());
         assert!(!tmp.join("incoming.bin").exists());
 
         let error = job
@@ -8680,7 +8820,7 @@ mod tests {
             .expect_err("a terminal index that does not follow the active file must fail");
         assert!(error.to_string().contains("does not follow active file"));
         assert_eq!(job.file_num(), 0);
-        assert!(tmp.join("incoming.bin.download").exists());
+        assert!(receive_fixture_path(&tmp.join("incoming.bin"), ".download").exists());
         assert!(!tmp.join("incoming.bin").exists());
 
         job.finalize_write(1)
@@ -8691,8 +8831,8 @@ mod tests {
             std::fs::read(tmp.join("incoming.bin")).expect("read committed receive file"),
             payload
         );
-        assert!(!tmp.join("incoming.bin.download").exists());
-        assert!(!tmp.join("incoming.bin.digest").exists());
+        assert!(!receive_fixture_path(&tmp.join("incoming.bin"), ".download").exists());
+        assert!(!receive_fixture_path(&tmp.join("incoming.bin"), ".digest").exists());
     }
 
     #[tokio::test]
@@ -8726,8 +8866,8 @@ mod tests {
             assert!(!tmp.join("first.bin").exists());
             assert!(!tmp.join("second.bin").exists());
             for suffix in [".download", ".digest", ".download.lock"] {
-                assert!(tmp.join(&format!("first.bin{suffix}")).exists());
-                assert!(!tmp.join(&format!("second.bin{suffix}")).exists());
+                assert!(receive_fixture_path(&tmp.join("first.bin"), suffix).exists());
+                assert!(!receive_fixture_path(&tmp.join("second.bin"), suffix).exists());
             }
         }
         job.retire_current_file_state()
@@ -8746,7 +8886,7 @@ mod tests {
     async fn receive_next_file_setup_failure_preserves_committed_file_and_foreign_digest() {
         let tmp = TestTempDir::new("rustdesk_receive_next_setup_failure");
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");
-        let foreign_path = tmp.join("second.bin.digest");
+        let foreign_path = receive_fixture_path(&tmp.join("second.bin"), ".digest");
         let foreign_bytes = b"foreign resume metadata";
         std::fs::write(&foreign_path, foreign_bytes).expect("stage foreign digest");
         #[cfg(unix)]
@@ -8796,9 +8936,9 @@ mod tests {
         assert!(!tmp.join("second.bin").exists());
         for name in ["first.bin", "second.bin"] {
             assert!(!tmp.join(&format!("{name}.download")).exists());
-            assert!(!tmp.join(&format!("{name}.download.lock")).exists());
+            assert!(!receive_fixture_path(&tmp.join(name), ".download.lock").exists());
         }
-        assert!(!tmp.join("first.bin.digest").exists());
+        assert!(!receive_fixture_path(&tmp.join("first.bin"), ".digest").exists());
 
         job.finalize_write(2)
             .await
@@ -8870,8 +9010,8 @@ mod tests {
     async fn receive_done_requires_successful_file_list_admission() {
         let tmp = TestTempDir::new("rustdesk_receive_unadmitted_done");
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");
-        let partial = tmp.join("older.bin.download");
-        let digest = tmp.join("older.bin.digest");
+        let partial = receive_fixture_path(&tmp.join("older.bin"), ".download");
+        let digest = receive_fixture_path(&tmp.join("older.bin"), ".digest");
         std::fs::write(&partial, b"older partial").expect("stage unowned partial file");
         std::fs::write(&digest, b"older digest").expect("stage unowned digest");
         let mut job = TransferJob::new_write(
@@ -8978,7 +9118,7 @@ mod tests {
         job.retire_current_file_state()
             .expect("retire the incomplete exact receive generation");
         for suffix in [".download", ".digest", ".download.lock"] {
-            assert!(!tmp.join(&format!("incoming.bin{suffix}")).exists());
+            assert!(!receive_fixture_path(&tmp.join("incoming.bin"), suffix).exists());
         }
     }
 
@@ -9006,12 +9146,12 @@ mod tests {
         assert!(job.data_stream.is_none());
         assert!(job.receive_write_claim.is_none());
         for suffix in [".download", ".digest", ".download.lock"] {
-            assert!(!tmp.join(&format!("incoming.bin{suffix}")).exists());
+            assert!(!receive_fixture_path(&tmp.join("incoming.bin"), suffix).exists());
         }
         job.retire_current_file_state()
             .expect("retire the refused exact receive generation");
         for suffix in [".download", ".digest", ".download.lock"] {
-            assert!(!tmp.join(&format!("incoming.bin{suffix}")).exists());
+            assert!(!receive_fixture_path(&tmp.join("incoming.bin"), suffix).exists());
         }
     }
 
@@ -9039,7 +9179,7 @@ mod tests {
             .flush()
             .await
             .expect("settle the admitted write before changing staged length");
-        let staged_path = tmp.join("incoming.bin.download");
+        let staged_path = receive_fixture_path(&tmp.join("incoming.bin"), ".download");
         assert_eq!(
             std::fs::read(&staged_path).expect("read settled bytes"),
             b"four"
@@ -9064,7 +9204,7 @@ mod tests {
         job.retire_current_file_state()
             .expect("retire the exact changed staging generation");
         for suffix in [".download", ".digest", ".download.lock"] {
-            assert!(!tmp.join(&format!("incoming.bin{suffix}")).exists());
+            assert!(!receive_fixture_path(&tmp.join("incoming.bin"), suffix).exists());
         }
     }
 
@@ -9082,7 +9222,7 @@ mod tests {
         runtime.block_on(async {
             let tmp = TestTempDir::new("rustdesk_receive_native_write_owner");
             std::fs::create_dir_all(&tmp.path).expect("create private receive directory");
-            let staged_path = tmp.join("incoming.bin.download");
+            let staged_path = receive_fixture_path(&tmp.join("incoming.bin"), ".download");
             let mut job = new_write_job(99, tmp.path.clone(), "incoming.bin")
                 .expect("create a real receive job");
             job.files[0].size = 2;
@@ -9138,7 +9278,7 @@ mod tests {
                     job.retire_current_file_state().expect("reported cleanup success");
                     let retained_handles = open_handles();
                     for suffix in [".download", ".digest", ".download.lock"] {
-                        assert!(!tmp.join(&format!("incoming.bin{suffix}")).exists());
+                        assert!(!receive_fixture_path(&tmp.join("incoming.bin"), suffix).exists());
                     }
                     eprintln!(
                         "RECEIVE_NATIVE_WRITE_OWNERSHIP_OBSERVED early_completion=true retired=true retained_handles={retained_handles}"
@@ -9164,7 +9304,7 @@ mod tests {
             job.retire_current_file_state().expect("retire the completed exact stream");
             assert_eq!(open_handles(), 0, "retirement must close every exact native handle");
             for suffix in [".download", ".digest", ".download.lock"] {
-                assert!(!tmp.join(&format!("incoming.bin{suffix}")).exists());
+                assert!(!receive_fixture_path(&tmp.join("incoming.bin"), suffix).exists());
             }
             assert!(!tmp.join("incoming.bin").exists());
         });
@@ -9219,10 +9359,10 @@ mod tests {
         let tmp = TestTempDir::new("rustdesk_receive_real_partial_write");
         std::fs::create_dir_all(&tmp.path).expect("create private receive directory");
         let final_path = tmp.join("incoming.bin");
-        let staged_path = tmp.join("incoming.bin.download");
+        let staged_path = receive_fixture_path(&tmp.join("incoming.bin"), ".download");
         write_receive_partial_fixture(&staged_path, b"old!").expect("seed an already full-length resume file");
         std::fs::write(
-            tmp.join("incoming.bin.digest"),
+            receive_fixture_path(&tmp.join("incoming.bin"), ".digest"),
             serde_json::to_vec(&FileDigest {
                 size: 4,
                 modified: 17,
@@ -9303,7 +9443,7 @@ mod tests {
         job.retire_current_file_state()
             .expect("retire the failed exact receive generation");
         for suffix in [".download", ".digest", ".download.lock"] {
-            assert!(!tmp.join(&format!("incoming.bin{suffix}")).exists());
+            assert!(!receive_fixture_path(&tmp.join("incoming.bin"), suffix).exists());
         }
         assert!(!final_path.exists());
         println!("\n{}", RECEIPT);
@@ -9348,9 +9488,9 @@ mod tests {
             b"published-payload",
             "error cleanup must never delete or replace an irreversibly published generation"
         );
-        assert!(!tmp.join("incoming.bin.download").exists());
-        assert!(!tmp.join("incoming.bin.digest").exists());
-        assert!(!tmp.join("incoming.bin.download.lock").exists());
+        assert!(!receive_fixture_path(&tmp.join("incoming.bin"), ".download").exists());
+        assert!(!receive_fixture_path(&tmp.join("incoming.bin"), ".digest").exists());
+        assert!(!receive_fixture_path(&tmp.join("incoming.bin"), ".download.lock").exists());
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -9367,9 +9507,9 @@ mod tests {
             opened
         });
         staged_rx.await.expect("blocking worker must stage a claim");
-        assert!(tmp.join("incoming.bin.download").exists());
-        assert!(tmp.join("incoming.bin.digest").exists());
-        assert!(tmp.join("incoming.bin.download.lock").exists());
+        assert!(receive_fixture_path(&tmp.join("incoming.bin"), ".download").exists());
+        assert!(receive_fixture_path(&tmp.join("incoming.bin"), ".digest").exists());
+        assert!(receive_fixture_path(&tmp.join("incoming.bin"), ".download.lock").exists());
 
         // Model cancellation at TransferJob::write's spawn_blocking await: the receiver
         // disappears while the blocking worker still owns its successful open result.
@@ -9379,7 +9519,7 @@ mod tests {
             loop {
                 if [".download", ".digest", ".download.lock"]
                     .iter()
-                    .all(|suffix| !tmp.join(&format!("incoming.bin{suffix}")).exists())
+                    .all(|suffix| !receive_fixture_path(&tmp.join("incoming.bin"), suffix).exists())
                 {
                     break;
                 }
@@ -9416,8 +9556,8 @@ mod tests {
             (claim, result)
         });
         attempted_rx.await.expect("blocking worker must attempt finalization");
-        assert!(tmp.join("incoming.bin.download").exists());
-        assert!(tmp.join("incoming.bin.download.lock").exists());
+        assert!(receive_fixture_path(&tmp.join("incoming.bin"), ".download").exists());
+        assert!(receive_fixture_path(&tmp.join("incoming.bin"), ".download.lock").exists());
 
         drop(worker);
         release_tx.send(()).expect("release abandoned finalization result");
@@ -9425,7 +9565,7 @@ mod tests {
             loop {
                 if [".download", ".digest", ".download.lock"]
                     .iter()
-                    .all(|suffix| !tmp.join(&format!("incoming.bin{suffix}")).exists())
+                    .all(|suffix| !receive_fixture_path(&tmp.join("incoming.bin"), suffix).exists())
                 {
                     break;
                 }
@@ -9445,7 +9585,7 @@ mod tests {
         ] {
             let tmp = TestTempDir::new("rustdesk_receive_sidecar_collision");
             std::fs::create_dir_all(&tmp.path).expect("create receive directory");
-            let sidecar = tmp.join(&format!("incoming.bin{suffix}"));
+            let sidecar = receive_fixture_path(&tmp.join("incoming.bin"), suffix);
             std::fs::write(&sidecar, original).expect("stage an older receive artifact");
             let mut job = new_write_job(94, tmp.path.clone(), "incoming.bin")
                 .expect("create new receive job");
@@ -9465,13 +9605,13 @@ mod tests {
                 "the refused receive must preserve the older artifact"
             );
             assert!(!tmp.join("incoming.bin").exists());
-            assert!(!tmp.join("incoming.bin.download.lock").exists());
+            assert!(!receive_fixture_path(&tmp.join("incoming.bin"), ".download.lock").exists());
             let other_suffix = if suffix == ".download" {
                 ".digest"
             } else {
                 ".download"
             };
-            assert!(!tmp.join(&format!("incoming.bin{other_suffix}")).exists());
+            assert!(!receive_fixture_path(&tmp.join("incoming.bin"), other_suffix).exists());
         }
     }
 
@@ -9630,21 +9770,21 @@ mod tests {
             String::from_utf8_lossy(&contender.stderr)
         );
         assert_eq!(
-            std::fs::read(tmp.join("incoming.bin.download")).expect("read owner partial"),
+            std::fs::read(receive_fixture_path(&tmp.join("incoming.bin"), ".download")).expect("read owner partial"),
             FIRST,
             "the rejected process must not truncate or replace the owner's generation"
         );
-        assert!(tmp.join("incoming.bin.digest").exists());
-        assert!(tmp.join("incoming.bin.download.lock").exists());
+        assert!(receive_fixture_path(&tmp.join("incoming.bin"), ".digest").exists());
+        assert!(receive_fixture_path(&tmp.join("incoming.bin"), ".download.lock").exists());
 
         // Termination bypasses every Rust destructor. The kernel must release the advisory lock,
         // while the stable lock inode and exact partial generation remain available for resume.
         owner.kill().expect("terminate the owning receive process");
         let owner_status = owner.wait().expect("reap the owning receive process");
         assert!(!owner_status.success());
-        assert!(tmp.join("incoming.bin.download").exists());
-        assert!(tmp.join("incoming.bin.digest").exists());
-        assert!(tmp.join("incoming.bin.download.lock").exists());
+        assert!(receive_fixture_path(&tmp.join("incoming.bin"), ".download").exists());
+        assert!(receive_fixture_path(&tmp.join("incoming.bin"), ".digest").exists());
+        assert!(receive_fixture_path(&tmp.join("incoming.bin"), ".download.lock").exists());
 
         let resumed = run_worker("resume");
         assert!(
@@ -9657,9 +9797,9 @@ mod tests {
             std::fs::read(tmp.join("incoming.bin")).expect("read resumed final file"),
             [FIRST, SECOND].concat()
         );
-        assert!(!tmp.join("incoming.bin.download").exists());
-        assert!(!tmp.join("incoming.bin.digest").exists());
-        assert!(!tmp.join("incoming.bin.download.lock").exists());
+        assert!(!receive_fixture_path(&tmp.join("incoming.bin"), ".download").exists());
+        assert!(!receive_fixture_path(&tmp.join("incoming.bin"), ".digest").exists());
+        assert!(!receive_fixture_path(&tmp.join("incoming.bin"), ".download.lock").exists());
     }
 
     #[cfg(unix)]
@@ -9691,12 +9831,12 @@ mod tests {
                 "a refused receive must not alter a hard-linked target"
             );
             assert!(!tmp.join("incoming.bin").exists());
-            assert!(!tmp.join("incoming.bin.download.lock").exists());
+            assert!(!receive_fixture_path(&tmp.join("incoming.bin"), ".download.lock").exists());
             if sidecar_suffix == ".download" {
-                assert!(!tmp.join("incoming.bin.digest").exists());
+                assert!(!receive_fixture_path(&tmp.join("incoming.bin"), ".digest").exists());
             } else {
                 assert!(
-                    !tmp.join("incoming.bin.download").exists(),
+                    !receive_fixture_path(&tmp.join("incoming.bin"), ".download").exists(),
                     "a separately admitted download must be cleaned by exact handle"
                 );
             }
@@ -9710,13 +9850,13 @@ mod tests {
     fn r_s11fj_confirmation_probe_retires_its_snapshot_lease() {
         let tmp = TestTempDir::new("rustdesk_receive_confirmation_lease");
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");
-        write_receive_partial_fixture(tmp.join("incoming.bin.download"), b"partial")
+        write_receive_partial_fixture(receive_fixture_path(&tmp.join("incoming.bin"), ".download"), b"partial")
             .expect("stage resumable download");
         let stored = FileDigest {
             size: 7,
             modified: 19,
         };
-        std::fs::write(tmp.join("incoming.bin.digest"), json!(stored).to_string())
+        std::fs::write(receive_fixture_path(&tmp.join("incoming.bin"), ".digest"), json!(stored).to_string())
             .expect("stage matching resume digest");
         let final_path = tmp.join("incoming.bin");
         let final_path = final_path
@@ -9738,10 +9878,10 @@ mod tests {
             DigestCheckResult::NeedConfirm(digest) => assert_eq!(digest.transferred_size, 7),
             _ => panic!("matching resumable state must require confirmation"),
         }
-        assert!(tmp.join("incoming.bin.download").exists());
-        assert!(tmp.join("incoming.bin.digest").exists());
+        assert!(receive_fixture_path(&tmp.join("incoming.bin"), ".download").exists());
+        assert!(receive_fixture_path(&tmp.join("incoming.bin"), ".digest").exists());
         assert!(
-            !tmp.join("incoming.bin.download.lock").exists(),
+            !receive_fixture_path(&tmp.join("incoming.bin"), ".download.lock").exists(),
             "a read-only confirmation snapshot must not leave a lease inode behind"
         );
 
@@ -9765,9 +9905,9 @@ mod tests {
     fn r_s11fj_invalid_resume_digest_is_explicit_and_preserved() {
         let tmp = TestTempDir::new("rustdesk_receive_confirmation_invalid_digest");
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");
-        write_receive_partial_fixture(tmp.join("incoming.bin.download"), b"partial")
+        write_receive_partial_fixture(receive_fixture_path(&tmp.join("incoming.bin"), ".download"), b"partial")
             .expect("stage resumable download");
-        std::fs::write(tmp.join("incoming.bin.digest"), b"not-json")
+        std::fs::write(receive_fixture_path(&tmp.join("incoming.bin"), ".digest"), b"not-json")
             .expect("stage invalid resume digest");
         let final_path = tmp.join("incoming.bin");
         let final_path = final_path
@@ -9791,15 +9931,15 @@ mod tests {
         assert!(!error.to_string().is_empty());
 
         assert_eq!(
-            std::fs::read(tmp.join("incoming.bin.download")).expect("read staged download"),
+            std::fs::read(receive_fixture_path(&tmp.join("incoming.bin"), ".download")).expect("read staged download"),
             b"partial"
         );
         assert_eq!(
-            std::fs::read(tmp.join("incoming.bin.digest")).expect("read staged digest"),
+            std::fs::read(receive_fixture_path(&tmp.join("incoming.bin"), ".digest")).expect("read staged digest"),
             b"not-json"
         );
         assert!(
-            !tmp.join("incoming.bin.download.lock").exists(),
+            !receive_fixture_path(&tmp.join("incoming.bin"), ".download.lock").exists(),
             "failed read-only inspection must retire only its lease"
         );
     }
@@ -9808,13 +9948,13 @@ mod tests {
     fn r_s11fj_nonmatching_resume_digest_is_not_an_inspection_failure() {
         let tmp = TestTempDir::new("rustdesk_receive_confirmation_stale_digest");
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");
-        write_receive_partial_fixture(tmp.join("incoming.bin.download"), b"partial")
+        write_receive_partial_fixture(receive_fixture_path(&tmp.join("incoming.bin"), ".download"), b"partial")
             .expect("stage resumable download");
         let stored = FileDigest {
             size: 7,
             modified: 18,
         };
-        std::fs::write(tmp.join("incoming.bin.digest"), json!(stored).to_string())
+        std::fs::write(receive_fixture_path(&tmp.join("incoming.bin"), ".digest"), json!(stored).to_string())
             .expect("stage nonmatching resume digest");
         let final_path = tmp.join("incoming.bin");
         let final_path = final_path
@@ -9837,10 +9977,10 @@ mod tests {
             DigestCheckResult::NoSuchFile
         ));
 
-        assert!(tmp.join("incoming.bin.digest").exists());
-        assert!(tmp.join("incoming.bin.download").exists());
+        assert!(receive_fixture_path(&tmp.join("incoming.bin"), ".digest").exists());
+        assert!(receive_fixture_path(&tmp.join("incoming.bin"), ".download").exists());
         assert!(
-            !tmp.join("incoming.bin.download.lock").exists(),
+            !receive_fixture_path(&tmp.join("incoming.bin"), ".download.lock").exists(),
             "read-only inspection must retire only its lease"
         );
     }
@@ -9855,15 +9995,15 @@ mod tests {
             let digest = br#"{"size":7,"modified":19}"#;
             if linked_suffix == ".digest" {
                 std::fs::write(&source, digest).expect("stage digest source");
-                std::fs::hard_link(&source, tmp.join("incoming.bin.digest"))
+                std::fs::hard_link(&source, receive_fixture_path(&tmp.join("incoming.bin"), ".digest"))
                     .expect("stage hard-linked resume digest");
-                write_receive_partial_fixture(tmp.join("incoming.bin.download"), b"partial")
+                write_receive_partial_fixture(receive_fixture_path(&tmp.join("incoming.bin"), ".download"), b"partial")
                     .expect("stage resumable download");
             } else {
-                std::fs::write(tmp.join("incoming.bin.digest"), digest)
+                std::fs::write(receive_fixture_path(&tmp.join("incoming.bin"), ".digest"), digest)
                     .expect("stage resume digest");
                 std::fs::write(&source, b"partial").expect("stage download source");
-                std::fs::hard_link(&source, tmp.join("incoming.bin.download"))
+                std::fs::hard_link(&source, receive_fixture_path(&tmp.join("incoming.bin"), ".download"))
                     .expect("stage hard-linked resumable download");
             }
             let expected_source = std::fs::read(&source).expect("read staged source");
@@ -9892,10 +10032,10 @@ mod tests {
                 std::fs::read(&source).expect("read preserved source"),
                 expected_source
             );
-            assert!(tmp.join("incoming.bin.digest").exists());
-            assert!(tmp.join("incoming.bin.download").exists());
+            assert!(receive_fixture_path(&tmp.join("incoming.bin"), ".digest").exists());
+            assert!(receive_fixture_path(&tmp.join("incoming.bin"), ".download").exists());
             assert!(
-                !tmp.join("incoming.bin.download.lock").exists(),
+                !receive_fixture_path(&tmp.join("incoming.bin"), ".download.lock").exists(),
                 "failed read-only inspection must retire only its lease"
             );
         }
@@ -9942,7 +10082,7 @@ mod tests {
             b"do-not-follow"
         );
         assert!(
-            !tmp.join("incoming.bin.download.lock").exists(),
+            !receive_fixture_path(&tmp.join("incoming.bin"), ".download.lock").exists(),
             "failed read-only inspection must retire only its lease"
         );
     }
@@ -9993,12 +10133,12 @@ mod tests {
             .contains("unexpected write file transition"));
         assert_eq!(job.file_num(), 0);
         assert!(!tmp.join("zero.bin").exists());
-        assert!(tmp.join("zero.bin.download").exists());
-        assert!(!tmp.join("two.bin.download").exists());
+        assert!(receive_fixture_path(&tmp.join("zero.bin"), ".download").exists());
+        assert!(!receive_fixture_path(&tmp.join("two.bin"), ".download").exists());
         job.retire_current_file_state()
             .expect("clean exact partial receive generation");
-        assert!(!tmp.join("zero.bin.download").exists());
-        assert!(!tmp.join("zero.bin.digest").exists());
+        assert!(!receive_fixture_path(&tmp.join("zero.bin"), ".download").exists());
+        assert!(!receive_fixture_path(&tmp.join("zero.bin"), ".digest").exists());
     }
 
     #[cfg(unix)]
@@ -10018,8 +10158,8 @@ mod tests {
         .await
         .expect("write the admitted staging inode");
 
-        let download = tmp.join("incoming.bin.download");
-        let displaced = tmp.join("displaced.download");
+        let download = receive_fixture_path(&tmp.join("incoming.bin"), ".download");
+        let displaced = receive_fixture_path(&tmp.join("displaced"), ".download");
         std::fs::rename(&download, &displaced).expect("displace the admitted staging inode");
         std::fs::write(&download, b"replacement-must-survive")
             .expect("install a different regular staging inode");
@@ -10044,9 +10184,9 @@ mod tests {
             std::fs::read(&displaced).expect("read displaced admitted inode"),
             b"owned-payload"
         );
-        assert!(!tmp.join("incoming.bin.digest").exists());
+        assert!(!receive_fixture_path(&tmp.join("incoming.bin"), ".digest").exists());
         assert!(
-            tmp.join("incoming.bin.download.lock").exists(),
+            receive_fixture_path(&tmp.join("incoming.bin"), ".download.lock").exists(),
             "uncertain exact-artifact cleanup must preserve the stable lease marker"
         );
     }
@@ -10069,9 +10209,9 @@ mod tests {
         .expect("write the admitted staging generation");
 
         let final_path = tmp.join("incoming.bin");
-        let download = tmp.join("incoming.bin.download");
-        let digest = tmp.join("incoming.bin.digest");
-        let lock = tmp.join("incoming.bin.download.lock");
+        let download = receive_fixture_path(&tmp.join("incoming.bin"), ".download");
+        let digest = receive_fixture_path(&tmp.join("incoming.bin"), ".digest");
+        let lock = receive_fixture_path(&tmp.join("incoming.bin"), ".download.lock");
         std::fs::create_dir(&final_path).expect("make publication destination incompatible");
 
         job.finalize_write(1)
@@ -10163,7 +10303,7 @@ mod tests {
                 assert_eq!(std::fs::read(destination.join(&name)).expect("read published bytes"), content);
             }
         }
-        assert_eq!(std::fs::read_dir(destination).expect("inspect committed files").count(), 6);
+        assert_eq!(std::fs::read_dir(destination).expect("inspect committed files").count(), 6 + usize::from(cfg!(target_os = "linux")));
     }
 
     #[test]
@@ -10203,12 +10343,12 @@ mod tests {
         assert!(job.data_stream.is_none());
         assert!(job.receive_write_claim.is_none());
         for suffix in [".download", ".digest", ".download.lock"] {
-            assert!(!tmp.join(&format!("incoming.bin{suffix}")).exists());
+            assert!(!receive_fixture_path(&tmp.join("incoming.bin"), suffix).exists());
         }
         job.retire_current_file_state()
             .expect("clean malformed-compression receive artifacts");
-        assert!(!tmp.join("incoming.bin.download").exists());
-        assert!(!tmp.join("incoming.bin.digest").exists());
+        assert!(!receive_fixture_path(&tmp.join("incoming.bin"), ".download").exists());
+        assert!(!receive_fixture_path(&tmp.join("incoming.bin"), ".digest").exists());
     }
 
     #[tokio::test]
@@ -10239,7 +10379,7 @@ mod tests {
         let oversized = compress(b"ZZ").expect("encode the oversized fixture");
         let finished_size = job.finished_size();
         let transferred = job.transferred();
-        let digest = std::fs::read(tmp.join("first.bin.digest")).expect("read admitted digest");
+        let digest = std::fs::read(receive_fixture_path(&tmp.join("first.bin"), ".digest")).expect("read admitted digest");
 
         for (data, compressed) in [
             (b"not a zstd frame".to_vec(), true),
@@ -10268,16 +10408,16 @@ mod tests {
             assert!(job.data_stream.is_some());
             assert!(job.receive_write_claim.is_some());
             assert_eq!(
-                std::fs::read(tmp.join("first.bin.download")).expect("read current staging"),
+                std::fs::read(receive_fixture_path(&tmp.join("first.bin"), ".download")).expect("read current staging"),
                 payload
             );
             assert_eq!(
-                std::fs::read(tmp.join("first.bin.digest")).expect("read unchanged digest"),
+                std::fs::read(receive_fixture_path(&tmp.join("first.bin"), ".digest")).expect("read unchanged digest"),
                 digest
             );
             for suffix in [".download", ".digest", ".download.lock"] {
-                assert!(tmp.join(&format!("first.bin{suffix}")).exists());
-                assert!(!tmp.join(&format!("second.bin{suffix}")).exists());
+                assert!(receive_fixture_path(&tmp.join("first.bin"), suffix).exists());
+                assert!(!receive_fixture_path(&tmp.join("second.bin"), suffix).exists());
             }
         }
 
@@ -10295,7 +10435,7 @@ mod tests {
         assert_eq!(std::fs::read(tmp.join("first.bin")).expect("read first file"), payload);
         assert_eq!(std::fs::read(tmp.join("second.bin")).expect("read second file"), b"Z");
         assert_eq!(job.finished_size(), payload.len() as u64 + 1);
-        assert_eq!(std::fs::read_dir(&tmp.path).expect("read receive directory").count(), 2);
+        assert_eq!(std::fs::read_dir(&tmp.path).expect("read receive directory").count(), 2 + usize::from(cfg!(target_os = "linux")));
         assert!(job.data_stream.is_none());
         assert!(job.receive_write_claim.is_none());
     }
@@ -10304,8 +10444,8 @@ mod tests {
     async fn r_s11fi_receive_write_refuses_false_resume_and_retires_lease() {
         let tmp = TestTempDir::new("rustdesk_receive_resume");
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");
-        let download = tmp.join("incoming.bin.download");
-        let digest = tmp.join("incoming.bin.digest");
+        let download = receive_fixture_path(&tmp.join("incoming.bin"), ".download");
+        let digest = receive_fixture_path(&tmp.join("incoming.bin"), ".digest");
         std::fs::create_dir(&download).expect("stage a non-file resume target");
         std::fs::write(&digest, b"{}").expect("stage resume digest");
         let mut job =
@@ -10326,7 +10466,7 @@ mod tests {
         assert!(!job.file_confirmed());
         assert!(job.data_stream.is_none());
         assert!(
-            !tmp.join("incoming.bin.download.lock").exists(),
+            !receive_fixture_path(&tmp.join("incoming.bin"), ".download.lock").exists(),
             "a rejected resume must retire its idle lease marker"
         );
         job.retire_current_file_state()
@@ -11677,10 +11817,10 @@ mod tests {
     async fn confirmation_rejects_wrong_job_and_duplicate_progress() {
         let tmp = TestTempDir::new("rustdesk_receive_confirm_identity");
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");
-        write_receive_partial_fixture(tmp.join("incoming.bin.download"), b"partial")
+        write_receive_partial_fixture(receive_fixture_path(&tmp.join("incoming.bin"), ".download"), b"partial")
             .expect("stage partial download");
         std::fs::write(
-            tmp.join("incoming.bin.digest"),
+            receive_fixture_path(&tmp.join("incoming.bin"), ".digest"),
             json!(FileDigest::default()).to_string(),
         )
         .expect("stage resume digest");
@@ -11724,9 +11864,9 @@ mod tests {
     async fn resume_counter_overflow_does_not_publish_stream_ownership() {
         let tmp = TestTempDir::new("rustdesk_receive_resume_overflow");
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");
-        write_receive_partial_fixture(tmp.join("incoming.bin.download"), b"partial")
+        write_receive_partial_fixture(receive_fixture_path(&tmp.join("incoming.bin"), ".download"), b"partial")
             .expect("stage partial download");
-        std::fs::write(tmp.join("incoming.bin.digest"), b"{}").expect("stage resume digest");
+        std::fs::write(receive_fixture_path(&tmp.join("incoming.bin"), ".digest"), b"{}").expect("stage resume digest");
         let mut job =
             new_write_job(86, tmp.path.clone(), "incoming.bin").expect("create receive-write job");
         job.transferred = u64::MAX;
@@ -11755,8 +11895,8 @@ mod tests {
             let tmp = TestTempDir::new("rustdesk_resume_wire_limit");
             std::fs::create_dir_all(&tmp.path).expect("create transfer directory");
             let source = tmp.join("source.zip");
-            let download = tmp.join("incoming.bin.download");
-            let digest_path = tmp.join("incoming.bin.digest");
+            let download = receive_fixture_path(&tmp.join("incoming.bin"), ".download");
+            let digest_path = receive_fixture_path(&tmp.join("incoming.bin"), ".digest");
             let digest = json!(FileDigest::default()).to_string();
             std::fs::write(&source, b"partial").expect("create send source");
             write_receive_partial_fixture(&download, b"pa").expect("stage receive prefix");
@@ -11807,7 +11947,7 @@ mod tests {
                     std::fs::read_to_string(&digest_path).expect("read digest"),
                     digest
                 );
-                assert!(!tmp.join("incoming.bin.download.lock").exists());
+                assert!(!receive_fixture_path(&tmp.join("incoming.bin"), ".download.lock").exists());
             }
 
             let request = job
@@ -11839,7 +11979,7 @@ mod tests {
                     b"partial"
                 );
                 for suffix in [".download", ".digest", ".download.lock"] {
-                    assert!(!tmp.join(&format!("incoming.bin{suffix}")).exists());
+                    assert!(!receive_fixture_path(&tmp.join("incoming.bin"), suffix).exists());
                 }
             } else {
                 let block = job
@@ -11996,9 +12136,9 @@ mod tests {
     async fn default_receive_list_refuses_excess_before_admission_and_recovers() {
         let tmp = TestTempDir::new("rustdesk_receive_default_limit");
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");
-        std::fs::write(tmp.join("entry-0.bin.download"), b"unowned partial")
+        std::fs::write(receive_fixture_path(&tmp.join("entry-0.bin"), ".download"), b"unowned partial")
             .expect("create unowned partial");
-        std::fs::write(tmp.join("entry-0.bin.digest"), b"unowned digest")
+        std::fs::write(receive_fixture_path(&tmp.join("entry-0.bin"), ".digest"), b"unowned digest")
             .expect("create unowned digest");
         let mut job = TransferJob::new_write(
             224, JobType::Generic, String::new(), tmp.path.clone(), 0, false, true, false,
@@ -12015,7 +12155,7 @@ mod tests {
         assert!(job.data_stream.is_none());
         assert!(job.receive_write_claim.is_none());
         assert!(!tmp.join("entry-0.bin").exists());
-        assert!(!tmp.join("entry-0.bin.download.lock").exists());
+        assert!(!receive_fixture_path(&tmp.join("entry-0.bin"), ".download.lock").exists());
 
         let mut entry = new_file_entry("recovered.bin");
         entry.size = 4;
@@ -12030,10 +12170,10 @@ mod tests {
         assert_eq!(std::fs::read(tmp.join("recovered.bin")).unwrap(), b"tail");
         assert_eq!((job.finished_size(), job.transferred()), (4, 4));
         for suffix in [".download", ".digest", ".download.lock"] {
-            assert!(!tmp.join(&format!("recovered.bin{suffix}")).exists());
+            assert!(!receive_fixture_path(&tmp.join("recovered.bin"), suffix).exists());
         }
-        assert_eq!(std::fs::read(tmp.join("entry-0.bin.download")).unwrap(), b"unowned partial");
-        assert_eq!(std::fs::read(tmp.join("entry-0.bin.digest")).unwrap(), b"unowned digest");
+        assert_eq!(std::fs::read(receive_fixture_path(&tmp.join("entry-0.bin"), ".download")).unwrap(), b"unowned partial");
+        assert_eq!(std::fs::read(receive_fixture_path(&tmp.join("entry-0.bin"), ".digest")).unwrap(), b"unowned digest");
     }
 
     #[test]
@@ -12119,7 +12259,7 @@ mod tests {
         assert_eq!(job.file_num(), 0);
         assert!(job.data_stream.is_some());
         assert!(job.receive_write_claim.is_some());
-        assert_eq!(std::fs::read(tmp.join("first.bin.download")).unwrap(), b"first");
+        assert_eq!(std::fs::read(receive_fixture_path(&tmp.join("first.bin"), ".download")).unwrap(), b"first");
 
         job.write(FileTransferBlock {
             id: 217,
@@ -12139,7 +12279,7 @@ mod tests {
         assert_eq!(std::fs::read(tmp.join("second.bin")).unwrap(), b"next");
         assert!(job.data_stream.is_none());
         assert!(job.receive_write_claim.is_none());
-        assert_eq!(std::fs::read_dir(&tmp.path).unwrap().count(), 2);
+        assert_eq!(std::fs::read_dir(&tmp.path).unwrap().count(), 2 + usize::from(cfg!(target_os = "linux")));
     }
 
     #[tokio::test]
@@ -12182,7 +12322,7 @@ mod tests {
         assert_eq!(job.finished_size(), 2);
         assert_eq!(job.transferred(), 2);
         assert_eq!(job.receive_file_offset, 2);
-        assert_eq!(std::fs::read(tmp.join("incoming.bin.download")).unwrap(), b"ab");
+        assert_eq!(std::fs::read(receive_fixture_path(&tmp.join("incoming.bin"), ".download")).unwrap(), b"ab");
         assert!(!tmp.join("incoming.bin").exists());
 
         job.write(FileTransferBlock {
@@ -12197,7 +12337,7 @@ mod tests {
         assert_eq!(std::fs::read(tmp.join("incoming.bin")).unwrap(), b"abcd");
         assert!(job.data_stream.is_none());
         assert!(job.receive_write_claim.is_none());
-        assert_eq!(std::fs::read_dir(&tmp.path).unwrap().count(), 1);
+        assert_eq!(std::fs::read_dir(&tmp.path).unwrap().count(), 1 + usize::from(cfg!(target_os = "linux")));
     }
 
     #[tokio::test]

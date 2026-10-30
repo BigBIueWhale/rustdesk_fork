@@ -121522,3 +121522,47 @@ All 77 admission controls and five refusals pass. QEMU 2816337 joins after
 30.559 seconds, RAM `run.abqowasd` retires and all three endpoint deltas are zero.
 Six raw files total 105,172 bytes per host, copied and hash-verified; outer exit
 is zero. This audit-only receipt leaves the counted ledger unchanged.
+
+## Receive namespace correction specifically resumed — 2026-10-30
+
+The user answered **"Resume this file-receive fix"** to the explicit question
+about the October 24 park at line 102733. That authorization reopens this one
+namespace correction; all other user parks, including the three generic receive
+pre-I/O cases, remain in force. Starting source is `b2399b80487fdf7302d6a1274acfb7fa9f569487`.
+The demonstrated payload-rename, digest-unlink and lease-unlink failures take
+priority over further UI changes or release-input inventory. The required result
+is an unprivileged actor's inability to replace the names consumed by privileged
+publication/cleanup, together with normal transfer, resume and concurrency.
+
+The preserved `263bbb965d97c3113658b6cf0e3c2d330568ffa7` draft is rebased into the
+working candidate, with a protected record/namespace identity check and migrated
+native fixtures. Linux uses a private effective-owner home coordinator obtained
+from NSS, a retained destination directory, a private random staging container,
+and a private per-filename directory. The brief enrollment gate and shared
+generation lock prevent a moved container from admitting a second live generation;
+the per-file lease still permits different files concurrently. Publication syncs
+both affected directories. No public-sidecar compatibility fallback is added.
+
+Primary research revisits Linux man-pages `rename(2)`, `flock(2)`, `statfs(2)` and
+`open(2)` at man7.org. Named rename/unlink operations cannot be made exact-inode
+operations by adding another preceding check. Flock conversion is not atomic, so
+the enrollment gate covers conversion. The filesystem-ID hash is a lookup key,
+not a portable durable identity guarantee; the candidate additionally verifies
+private ownership, the retained directory identity and its protected recorded
+identity bytes. General remount/filesystem and installed acceptance remain open.
+
+Per-file payload/digest/lease directories retire. One private container, its small
+identity file and two bounded coordinator records remain per destination; deleting
+the public container by name would recreate the original removal race. Crash
+boundaries during enrollment and bounded long-term coordination retention still
+need explicit validation. This is a candidate, not a closed implementation claim.
+
+The canonical file-metadata lane retains the three actual syscall-entry windows,
+adds a separate-UID whole-container replacement case, and preserves calibrated
+foreign-artifact/mode refusal, ordinary writes, resume and retained-parent controls.
+Two unit cases cover concurrent different-file claims and the filesystem's maximum
+native filename length. The container receives an explicit UID-1000 NSS account
+whose private home is in its existing tmpfs; production never trusts HOME for this
+coordinator. Planned validation uses only the admitted, monitored, zero-NIC TUF VM
+and the existing authenticated inputs. No product/build/test runs on either host.
+No candidate compile/runtime result is claimed by this preparation entry.

@@ -119706,3 +119706,13 @@ paths, historical log retention/permissions, full input/settings and installed R
 acceptance remain OPEN. This fixes the reviewed source disclosure statements;
 it does not close those native obligations or resume any parked work. The ledger
 adds this bounded source-level finding; fresh token measurement follows.
+
+**Fresh ledger count.** At `26ab52bf207b8dd09144f406f99ce305210cdea9`,
+TUF `6L5mKBWSBa` passes seven tokenizer controls and the exact byte round trip
+using `tiktoken-0.12.0/cl100k_base/encode_ordinary`: 362,269 tokens /
+1,656,511 bytes, SHA-256
+`8412d6329eb52cbeae9b82e5452e76537a89afb0f652222cd03e7f9843b886c1`.
+QEMU 2138320 joins in 30.469 seconds; RAM `run._27m1rfj` retires and all
+three listener deltas are zero. Six raw files total 104,638 bytes per host with
+matching hashes. This audit-only receipt leaves the measured ledger unchanged.
+The count run executes no product or keyboard test.

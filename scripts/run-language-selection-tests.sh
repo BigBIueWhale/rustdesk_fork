@@ -41,6 +41,6 @@ done
 [ -n "$test_executable" ]
 artifact_sha="$(sha256sum "$test_executable" | cut -d ' ' -f 1)"
 printf 'LANGUAGE_SELECTION_ARTIFACT_BEFORE=sha256=%s\n' "$artifact_sha"
-timeout --signal=TERM --kill-after=5s 10s "$test_executable" --test-threads=1 --color never
+timeout --signal=TERM --kill-after=5s 10s "$test_executable" --test-threads=1 --color never --show-output
 [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
-printf 'LANGUAGE_SELECTION_ARTIFACT=pass sha256=%s tests=15 unchanged=before-after\n' "$artifact_sha"
+printf 'LANGUAGE_SELECTION_ARTIFACT=pass sha256=%s tests=16 unchanged=before-after\n' "$artifact_sha"

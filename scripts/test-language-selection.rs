@@ -34,6 +34,60 @@ pub fn get_app_name() -> String {
 
 mod lang;
 
+mod allocation {
+    use std::alloc::{GlobalAlloc, Layout, System};
+    use std::cell::Cell;
+
+    thread_local! {
+        static USAGE: Cell<Option<(usize, usize)>> = const { Cell::new(None) };
+    }
+
+    fn record(bytes: usize) {
+        let _ = USAGE.try_with(|usage| {
+            if let Some((calls, total)) = usage.get() {
+                usage.set(Some((calls.saturating_add(1), total.saturating_add(bytes))));
+            }
+        });
+    }
+
+    struct Counter;
+    unsafe impl GlobalAlloc for Counter {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            record(layout.size());
+            System.alloc(layout)
+        }
+        unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+            record(layout.size());
+            System.alloc_zeroed(layout)
+        }
+        unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, size: usize) -> *mut u8 {
+            record(size);
+            System.realloc(pointer, layout, size)
+        }
+        unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
+            System.dealloc(pointer, layout)
+        }
+    }
+
+    #[global_allocator]
+    static ALLOCATOR: Counter = Counter;
+
+    pub fn during(action: impl FnOnce()) -> (usize, usize) {
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                USAGE.with(|usage| usage.set(None));
+            }
+        }
+        USAGE.with(|usage| assert!(usage.replace(Some((0, 0))).is_none()));
+        let guard = Reset;
+        action();
+        let result = USAGE.with(|usage| usage.get().unwrap());
+        drop(guard);
+        result
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{config::set_language, lang};
@@ -110,6 +164,35 @@ mod tests {
             ] {
                 assert_eq!(lang::translate_locale(input.into(), "en_US"), expected);
             }
+        }
+    }
+
+    #[test]
+    fn repeated_labels_keep_allocation_work_bounded() {
+        use super::allocation::during;
+
+        assert_eq!(during(|| { std::hint::black_box(()); }), (0, 0));
+        let control = during(|| { std::hint::black_box(vec![0u8; 4096]); });
+        assert!(control.0 > 0 && control.1 >= 4096, "counter control: {control:?}");
+        set_language("pt-pt");
+        let mut measured = Vec::new();
+        for (name, input, expected) in [
+            ("plain", "Build Date", "Data de compilação"),
+            ("placeholder", "Downloading {שלום.txt}", "A transferir שלום.txt"),
+        ] {
+            assert_eq!(lang::translate_locale(input.into(), "en_US"), expected);
+            let (calls, bytes) = during(|| {
+                for _ in 0..100 {
+                    assert_eq!(lang::translate_locale(input.into(), "en_US"), expected);
+                }
+            });
+            println!("LANGUAGE_SELECTION_ALLOCATION=cohort:{name} labels:100 calls:{calls} requested_bytes:{bytes} idle_control:0 positive_control:{}", control.1);
+            measured.push((name, calls, bytes));
+        }
+        // A hundred short, warmed labels have room for their owned strings, but
+        // not a newly compiled matching engine on every translation.
+        for (name, calls, bytes) in measured {
+            assert!(calls <= 1000 && bytes <= 64 * 1024, "{name}: {calls} allocations / {bytes} requested bytes");
         }
     }
 }

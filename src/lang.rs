@@ -257,5 +257,34 @@ mod test {
             f("{2} times {4} makes {8}"),
             ("{} times {4} makes {8}".to_string(), Some("2".to_string()))
         );
+        let expression = hbb_common::regex::Regex::new(r#"\{(.*?)\}"#).unwrap();
+        let compare = |input: &str| {
+            let expected = match expression.captures(input) {
+                Some(captures) => (
+                    expression.replace(input, "{}").into_owned(),
+                    Some(captures.get(1).unwrap().as_str().to_owned()),
+                ),
+                None => (input.to_owned(), None),
+            };
+            assert_eq!(f(input), expected, "{input:?}");
+        };
+        for input in [
+            "before {α/שלום.txt} after {second}", "{\u{2028}}", "{\u{2029}}",
+            "{\0}", "{one\ntwo} {three}", "{one\r\ntwo} {three}",
+            "{{nested}}", "{unclosed\n{valid}",
+        ] {
+            compare(input);
+        }
+        let alphabet = ['{', '}', '\n', '\r', 'a', 'é'];
+        for length in 0..=4 {
+            for mut value in 0..alphabet.len().pow(length) {
+                let mut input = String::new();
+                for _ in 0..length {
+                    input.push(alphabet[value % alphabet.len()]);
+                    value /= alphabet.len();
+                }
+                compare(&input);
+            }
+        }
     }
 }

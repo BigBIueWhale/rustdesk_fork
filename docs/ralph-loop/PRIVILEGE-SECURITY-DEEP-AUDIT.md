@@ -119101,3 +119101,13 @@ The ledger updates only the encoding/secret-owner row and retains older
 comparisons in this audit. Complete erasure, optimized timing, other targets,
 network/installed functionality, independent reproduction and external review
 remain open. Requirements and live instructions are unchanged.
+
+**Fresh ledger count.** At `da8b8dc6f945a0fd4284a0a263912cbc5749ec53`,
+isolated `JrYzlxjfnk` passes seven tokenizer controls and the exact byte round
+trip using `tiktoken-0.12.0/cl100k_base/encode_ordinary`: 360,740 tokens /
+1,649,443 bytes, SHA-256
+`11e2cf49b743444b88cd3c6c2e676d65d8d6f3fc52a8a75af2528694540b9589`.
+QEMU 1873395 joins after 30.719 seconds, RAM `run.ncjoycfl` retires and all
+three listener deltas are zero. Six count files add 104,135 bytes; the twenty
+files from this slice total 270,602 bytes per host with matching hashes.
+This audit-only receipt leaves the measured ledger unchanged.

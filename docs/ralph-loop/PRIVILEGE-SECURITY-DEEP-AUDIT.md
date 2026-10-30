@@ -120566,3 +120566,24 @@ QEMU 2481899 joins in 30.708 seconds; RAM `run.9ck6bufs` retires and all
 three listener deltas are zero. Six count files add 105,272 bytes; twenty raw
 files total 277,633 bytes per host with matching hashes. This audit-only receipt
 leaves the measured ledger unchanged.
+
+## 2026-10-30 — home help-card close description
+
+`200854a21205738201bf13bb45682c281d158e11` gives the help-card close IconButton
+`tooltip: translate('Close')`. Previously the icon had no description. Flutter's
+[IconButton tooltip contract](https://api.flutter.dev/flutter/material/IconButton/tooltip.html)
+uses this text for the tooltip and accessibility. The existing translation key
+is reused; no catalogue, dismissal handler or preference mutation changes.
+The production diff is one line, with no new tests or verification machinery.
+
+TUF `r9vlJGzDCN` passes the existing nineteen desktop rendering tests, three
+parser controls, source-copy checks and outer acceptance with pinned Flutter
+3.24.5 and `bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --desktop-theme`.
+The existing cases cover home-pane layout and desktop settings behavior; they do
+not add a tooltip-specific assertion or prove native assistive-technology output
+or dismissal persistence. Those acceptance boundaries remain open.
+Serial SHA-256: `208bd434c039ad2c13d47310b26dfd20487120380c3703aefeec788f8e383870`.
+QEMU 2482954 joins in 264.547 seconds and RAM `run.utsf6g9a` retires; all four
+listener deltas are zero. Seven raw files total 86,979 bytes per host, copied and
+hash-verified. User parks, native application/platform and release acceptance
+remain open.

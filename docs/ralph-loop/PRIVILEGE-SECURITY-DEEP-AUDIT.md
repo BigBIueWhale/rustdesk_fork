@@ -120969,3 +120969,19 @@ QEMU 2627219 joins in 30.409 seconds, RAM `run.79vx0j5v` retires, and all three
 endpoint deltas are zero. Six count files add 104,043 bytes; twenty raw files
 total 332,351 bytes per host, copied and hash-verified. This audit-only receipt
 leaves the ledger unchanged.
+
+## 2026-10-30 — user pivot; launch-screen guide
+
+The user requests unrelated work; all previously parked items remain open.
+This slice corrects the iOS launch-image README's working-directory ambiguity.
+Its Xcode command now explicitly runs from the repository root and includes the
+`flutter/` prefix. Relative links identify the real launch storyboard and image
+manifest; the text names the three existing scale-specific images and the Xcode
+image-set selection. The files agree with Flutter's official
+[launch-screen workflow](https://docs.flutter.dev/platform-integration/ios/launch-screen).
+
+Read-only inspection confirms both relative links, all three tracked image files,
+the workspace at the corrected path, and the absent repository-root `ios/` path.
+`Info.plist` selects `LaunchScreen`, whose storyboard uses `LaunchImage`.
+Whitespace review passes. This is a documentation correction; assets, storyboard,
+application code and tests are unchanged. No Xcode or device execution is claimed.

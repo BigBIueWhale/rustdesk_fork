@@ -1,6 +1,7 @@
 //! Allocator observation is compiled only by the isolated allocation profile.
 //! It counts calls, without inspecting freed or uninitialized memory.
-use super::{compute_isk, derive_generator, derive_mac_key, AD_INITIATOR, AD_RESPONDER};
+use super::{compute_isk, compute_tag, derive_generator, derive_mac_key, lv_cat, verify_tag,
+    HmacSha512, Mac, AD_INITIATOR, AD_RESPONDER};
 use std::{alloc::{GlobalAlloc, Layout, System}, cell::Cell, hint::black_box};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -77,4 +78,37 @@ fn no_transient_secret_heap_copies() {
     println!("PAKE_ALLOCATION_CASE=mac-key allocations={} reallocations={}", mac_key.allocations, mac_key.reallocations);
     assert!(control.allocations > 0, "allocator observer did not detect its control");
     assert_eq!((generator, isk, mac_key), (Counts::default(), Counts::default(), Counts::default()));
+
+    let key = [0x39u8; 64];
+    let mut allocating_confirmations = 0;
+    for (case, (y_len, ad_len)) in [(32, 6), (0, 0), (127, 128), (128, 127), (255, 256)]
+        .into_iter().enumerate()
+    {
+        let y = vec![0x27; y_len];
+        let ad = vec![0x61; ad_len];
+        // Materialized reference outside observation; production must retain
+        // these exact bytes without allocating its own temporary encoding.
+        let mut reference = HmacSha512::new_from_slice(&key).unwrap();
+        reference.update(&lv_cat(&[&y, &ad]));
+        let expected: [u8; 64] = reference.finalize().into_bytes().into();
+        let mut actual = [0; 64];
+        let generated = observe(|| { actual = black_box(compute_tag(black_box(&key), &y, &ad)); });
+        assert_eq!(actual, expected);
+        println!("PAKE_ALLOCATION_CASE=tag-{case}-generate allocations={} reallocations={}",
+            generated.allocations, generated.reallocations);
+        allocating_confirmations += usize::from(generated != Counts::default());
+        for flipped in [None, Some(0), Some(63)] {
+            let mut tag = expected;
+            if let Some(index) = flipped { tag[index] ^= 1; }
+            let mut accepted = false;
+            let verified = observe(|| {
+                accepted = black_box(verify_tag(black_box(&key), &y, &ad, black_box(&tag)));
+            });
+            assert_eq!(accepted, flipped.is_none());
+            println!("PAKE_ALLOCATION_CASE=tag-{case}-verify-{flipped:?} accepted={accepted} allocations={} reallocations={}",
+                verified.allocations, verified.reallocations);
+            allocating_confirmations += usize::from(verified != Counts::default());
+        }
+    }
+    assert_eq!(allocating_confirmations, 0, "confirmation must not allocate temporary encodings");
 }

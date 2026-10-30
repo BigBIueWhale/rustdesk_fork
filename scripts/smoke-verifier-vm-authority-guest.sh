@@ -11331,7 +11331,7 @@ run_flutter_model_tests() {
             memory=3g
             memory_bytes=3221225472
             result_prefix=FLUTTER_STATUS_REFRESH_TEST_JSON
-            expected_result='suites=2 tests=16'
+            expected_result='suites=2 tests=23'
         elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
             result_prefix=FLUTTER_SHARE_RDP_TEST_JSON
             expected_result='suites=1 tests=4'
@@ -12384,7 +12384,7 @@ run_flutter_model_tests() {
                     cat /work/test.json
                 fi
                 parser_args=()
-                if [[ "$FLUTTER_TEST_PROFILE" = image-quality || "$FLUTTER_TEST_PROFILE" = desktop-theme ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = image-quality || "$FLUTTER_TEST_PROFILE" = desktop-theme ]]; then
                     parser_args=("--$FLUTTER_TEST_PROFILE")
                 fi
                 if [[ "$FLUTTER_TEST_PROFILE" = screenshot-save || "$FLUTTER_TEST_PROFILE" = locales || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = menu-button || "$FLUTTER_TEST_PROFILE" = password-fields || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = peer-data ]]; then
@@ -12398,7 +12398,7 @@ run_flutter_model_tests() {
                     exit 1
                 fi
                 file_navigation_stage source-postconditions
-                if [[ "$FLUTTER_TEST_PROFILE" = menu-button || "$FLUTTER_TEST_PROFILE" = locales || "$FLUTTER_TEST_PROFILE" = path-labels || "$FLUTTER_TEST_PROFILE" = setting-checkbox || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = list-search || "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = screenshot-save || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = credential-badge || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = auto-disconnect || "$FLUTTER_TEST_PROFILE" = image-quality || "$FLUTTER_TEST_PROFILE" = share-rdp || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = modifier-release ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = menu-button || "$FLUTTER_TEST_PROFILE" = locales || "$FLUTTER_TEST_PROFILE" = path-labels || "$FLUTTER_TEST_PROFILE" = setting-checkbox || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = list-search || "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = screenshot-save || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = credential-badge || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = auto-disconnect || "$FLUTTER_TEST_PROFILE" = image-quality || "$FLUTTER_TEST_PROFILE" = share-rdp || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = modifier-release ]]; then
                     cat /work/test.json
                 fi
                 if [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
@@ -12960,7 +12960,7 @@ run_flutter_model_tests() {
         tests_sha256="$(sha256sum "$source_root/flutter/test/server_status_refresh_loop_test.dart" | awk '{print $1}')"
         widget_sha256="$(sha256sum "$source_root/flutter/lib/desktop/pages/connection_page.dart" | awk '{print $1}')"
         widget_tests_sha256="$(sha256sum "$source_root/flutter/test_probes/listener_status_cases.dart.inc" | awk '{print $1}')"
-        printf 'FLUTTER_STATUS_REFRESH_TESTS_VM=pass commit=%s tree=%s suites=2 tests=16 flutter=3.24.5 lifecycle=%s tests_source=%s widget=%s widget_tests=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-status-refresh-tests cleanup=joined\n' \
+        printf 'FLUTTER_STATUS_REFRESH_TESTS_VM=pass commit=%s tree=%s suites=2 tests=23 flutter=3.24.5 lifecycle=%s tests_source=%s widget=%s widget_tests=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-status-refresh-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$lifecycle_sha256" "$tests_sha256" "$widget_sha256" "$widget_tests_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

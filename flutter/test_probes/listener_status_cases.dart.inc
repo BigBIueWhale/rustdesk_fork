@@ -10,6 +10,14 @@ const _reachable = 'Reachable on :21118';
 const _stopped = 'Not reachable — the service is not running';
 const _unconfigured =
     'Not reachable — set a permanent password to open the port';
+const _green = Color.fromARGB(255, 50, 190, 166);
+
+Color? _indicatorColor(WidgetTester tester) {
+  final indicator = tester.widget<Container>(find.byWidgetPredicate((widget) =>
+      widget is Container && widget.decoration is BoxDecoration &&
+      (widget.decoration as BoxDecoration).shape == BoxShape.circle));
+  return (indicator.decoration as BoxDecoration).color;
+}
 
 class _Binding implements RustdeskImpl {
   final keys = <String>[];
@@ -49,6 +57,12 @@ class _Binding implements RustdeskImpl {
     await tester.pump();
   }
 
+  Future<void> fail(WidgetTester tester, int index) async {
+    replies[index].completeError(StateError('status read failed'));
+    await tester.pump();
+    await tester.pump();
+  }
+
   Future<void> drain(WidgetTester tester) async {
     await tester.pumpWidget(const SizedBox.shrink());
     for (var index = 0; index < replies.length; index++) {
@@ -59,6 +73,110 @@ class _Binding implements RustdeskImpl {
 }
 
 void main() {
+  testWidgets('listener waits for its first status before reporting configuration',
+      (tester) async {
+    final binding = _Binding();
+    try {
+      await binding.show(tester);
+      expect(find.text('Loading...'), findsOneWidget);
+      expect(find.text(_unconfigured), findsNothing);
+      expect(find.text(_stopped), findsNothing);
+      expect(find.text(_reachable), findsNothing);
+      expect(_indicatorColor(tester), isNot(_green));
+      await binding.reply(tester, 0, 'false');
+      expect(find.text('Loading...'), findsOneWidget);
+      await binding.reply(tester, 1, 'true');
+      expect(find.text(_stopped), findsOneWidget);
+    } finally {
+      await binding.drain(tester);
+    }
+  });
+
+  testWidgets('listener clears reachable status before its explanation arrives',
+      (tester) async {
+    final binding = _Binding();
+    try {
+      await binding.show(tester);
+      await binding.reply(tester, 0, 'true');
+      expect(_indicatorColor(tester), _green);
+      await tester.pump(const Duration(seconds: 1));
+      await binding.reply(tester, 1, 'false');
+      expect(find.text(_reachable), findsNothing);
+      expect(_indicatorColor(tester), isNot(_green));
+      expect(find.text('Loading...'), findsOneWidget);
+      await binding.reply(tester, 2, 'true');
+      expect(find.text(_stopped), findsOneWidget);
+    } finally {
+      await binding.drain(tester);
+    }
+  });
+
+  for (final explanation in [false, true]) {
+    testWidgets('listener handles read failure at explanation $explanation',
+        (tester) async {
+      final binding = _Binding();
+      try {
+        await binding.show(tester);
+        await binding.reply(tester, 0, explanation ? 'false' : 'true');
+        if (!explanation) await tester.pump(const Duration(seconds: 1));
+        await binding.fail(tester, 1);
+        expect(find.text('Failed'), findsOneWidget);
+        expect(find.text(_reachable), findsNothing);
+        expect(find.text(_unconfigured), findsNothing);
+        expect(_indicatorColor(tester), isNot(_green));
+        expect(tester.takeException(), isNull);
+        await tester.pump(const Duration(seconds: 1));
+        expect(binding.keys, hasLength(3));
+        await binding.reply(tester, 2, 'true');
+        expect(find.text(_reachable), findsOneWidget);
+        expect(find.text('Failed'), findsNothing);
+        expect(_indicatorColor(tester), _green);
+      } finally {
+        await binding.drain(tester);
+      }
+    });
+
+    testWidgets('retired listener handles late read failure at explanation $explanation',
+        (tester) async {
+      final binding = _Binding();
+      try {
+        await binding.show(tester);
+        if (explanation) await binding.reply(tester, 0, 'false');
+        final reads = binding.keys.length;
+        await tester.pumpWidget(const SizedBox.shrink());
+        await binding.fail(tester, reads - 1);
+        await tester.pump(const Duration(seconds: 3));
+        expect(binding.keys, hasLength(reads));
+        expect(tester.takeException(), isNull);
+      } finally {
+        await binding.drain(tester);
+      }
+    });
+  }
+
+  testWidgets('listener rejects invalid status replies and recovers',
+      (tester) async {
+    final binding = _Binding();
+    try {
+      await binding.show(tester);
+      await binding.reply(tester, 0, '');
+      expect(find.text('Failed'), findsOneWidget);
+      expect(binding.keys, ['direct-listener-bound']);
+      await tester.pump(const Duration(seconds: 1));
+      await binding.reply(tester, 1, 'false');
+      await binding.reply(tester, 2, 'unknown');
+      expect(find.text('Failed'), findsOneWidget);
+      expect(find.text(_unconfigured), findsNothing);
+      expect(_indicatorColor(tester), isNot(_green));
+      await tester.pump(const Duration(seconds: 1));
+      await binding.reply(tester, 3, 'true');
+      expect(find.text(_reachable), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await binding.drain(tester);
+    }
+  });
+
   testWidgets('reachable listener publishes without a password read',
       (tester) async {
     final binding = _Binding();

@@ -330,6 +330,13 @@ STATUS_REFRESH_TESTS = {
 STATUS_REFRESH_SUITES = {
     "server_status_refresh_loop_test.dart": STATUS_REFRESH_TESTS,
     "listener_status_probe_test.dart": {
+        "listener waits for its first status before reporting configuration",
+        "listener clears reachable status before its explanation arrives",
+        "listener handles read failure at explanation false",
+        "listener handles read failure at explanation true",
+        "retired listener handles late read failure at explanation false",
+        "retired listener handles late read failure at explanation true",
+        "listener rejects invalid status replies and recovers",
         "reachable listener publishes without a password read",
         "unreachable listener reports configured password false",
         "unreachable listener reports configured password true",

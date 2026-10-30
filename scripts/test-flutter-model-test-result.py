@@ -22,7 +22,7 @@ spec.loader.exec_module(result)
 
 
 SINGLE_PROFILE = None
-if len(sys.argv) > 1 and sys.argv[1] in ("--screenshot-save", "--locales", "--draggable-divider", "--file-columns", "--trackpad-speed", "--menu-button", "--password-fields", "--file-progress", "--peer-search", "--audio-input", "--peer-data", "--image-quality", "--desktop-theme"):
+if len(sys.argv) > 1 and sys.argv[1] in ("--screenshot-save", "--locales", "--draggable-divider", "--file-columns", "--trackpad-speed", "--menu-button", "--password-fields", "--file-progress", "--peer-search", "--audio-input", "--peer-data", "--image-quality", "--desktop-theme", "--status-refresh"):
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
 
 
@@ -200,6 +200,9 @@ class ResultTests(unittest.TestCase):
             return result.parse_result(path, profile)
 
     def test_complete_profiles(self):
+        if SINGLE_PROFILE == "status-refresh":
+            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 23))
+            return
         if SINGLE_PROFILE == "peer-data":
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (7, 113))
             return
@@ -242,7 +245,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("credential-badge"), "credential-badge"), (2, 14))
         self.assertEqual(self.parse(self.events("peer-search"), "peer-search"), (1, 36))
         self.assertEqual(self.parse(self.events("tab-selection"), "tab-selection"), (2, 31))
-        self.assertEqual(self.parse(self.events("status-refresh"), "status-refresh"), (2, 16))
+        self.assertEqual(self.parse(self.events("status-refresh"), "status-refresh"), (2, 23))
         self.assertEqual(self.parse(self.events("share-rdp"), "share-rdp"), (1, 4))
         self.assertEqual(self.parse(self.events("window-dispatch"), "window-dispatch"), (1, 8))
         self.assertEqual(self.parse(self.events("peer-data"), "peer-data"), (7, 113))

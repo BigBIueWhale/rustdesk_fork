@@ -120511,7 +120511,7 @@ unchanged; the count is document validation, not a UI runtime test.
 ## 2026-10-30 — desktop home pane viewport
 
 Continued ordinary UI correctness; every user park remains open. In
-`DesktopHomePage.buildLeftPane`, the outer Column laid out its non-flex scroll
+`_DesktopHomePageState.buildLeftPane`, the outer Column laid out its non-flex scroll
 view with unbounded height, followed by an empty Expanded spacer. Long contents
 therefore enlarged the viewport beyond the pane instead of gaining scroll extent.
 The desktop tab's Expanded PageView supplies a finite pane height. Flutter's
@@ -120556,3 +120556,13 @@ hash-verified. After evidence copying and wrapper/QEMU/workspace absence checks,
 the failed baseline's exact diagnostic tree is removed, releasing 3,452,928
 allocated bytes. Complete home-page lifecycle, native status/window integration,
 device/platform and release acceptance remain open.
+
+**Fresh ledger count.** At `962398e08e3ea4b5069281ac2cda6a477c6064ab`, TUF
+`YXEsTakHBl` passes seven controls and exact byte round trip:
+364,461 tokens / 1,666,699 bytes using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`, input SHA-256
+`d592d119ea568da7b7db8d865a5b884910f136eedd057b7b68bc535dd1b29c6c`.
+QEMU 2481899 joins in 30.708 seconds; RAM `run.9ck6bufs` retires and all
+three listener deltas are zero. Six count files add 105,272 bytes; twenty raw
+files total 277,633 bytes per host with matching hashes. This audit-only receipt
+leaves the measured ledger unchanged.

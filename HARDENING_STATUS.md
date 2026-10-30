@@ -12932,9 +12932,13 @@ sandbox implementation and checker-repair history remain in Git.
   accounting. The unchanged four-case regression fails before the two-line fix
   (zero shared block decisions, six entries) and passes afterward (four shared
   block decisions, four entries). Thirty-two non-confirmation errors consume no
-  budget and unrelated sources remain allowed. At `c0a5c5ea`, TUF `773vj9M50X`
-  passes all 50 shared-library checks in 199.972 seconds. The added real-clock
-  regression observes refusal at 0/20/40 seconds and recovery after 60.020 seconds
+  budget and unrelated sources remain allowed. At `5d7545af`, TUF `XBWa4cdqAX`
+  passes exactly two limiter checks in 199.793 seconds with
+  `bash scripts/smoke-verifier-vm-authority.sh --guess-limiter-tests`.
+  This separate profile removes the 60-second wait from the 48 writer checks;
+  production and test bodies are unchanged, and the artifact matches the prior
+  50-check run. The real-clock regression observes refusal at 0/20/40 seconds
+  and recovery after 60.020 seconds
   without success, restart or clock/map manipulation. Twenty-four non-confirmation
   errors do not extend the block; both address forms share a fresh ten-failure
   budget afterward, and unrelated sources remain allowed. The VM joins and RAM

@@ -119617,3 +119617,40 @@ QEMU 2022377 joins in 30.709 seconds, RAM `run.besr31i9` retires and all
 three listener deltas are zero. Six count files add 104,173 bytes; thirteen files
 from this slice total 189,831 bytes per host with matching hashes. This audit-only
 receipt leaves the measured ledger unchanged.
+
+### 2026-10-30 — separate focused source-limiter profile
+
+At `8fc1be04340cfef29bfaf59e6662057f9c83515f`, the two limiter tests
+run inside `--writer-retirement-tests`, adding a real 60-second wait to unrelated
+transport checks. `5d7545af9fb33e08111eae6894b587df87fa5709` moves their
+selection into `--guess-limiter-tests`, leaving all product and test bodies
+unchanged. The writer required-name list, execution loop, count checks and output
+selection exactly match the accepted 48-check profile at `43ce696e`; its groups
+retain 20-second deadlines. The separate limiter group retains 90 seconds.
+Both profiles explicitly fingerprint their shared `cpace.rs` source.
+
+The [rustc libtest filter contract](https://doc.rust-lang.org/rustc/tests/index.html#filters)
+uses substring matching. The new profile therefore requires both exact test names,
+one successful two-test summary and exactly two successful test records, alongside
+the existing artifact and source identity checks. The guest and outer launcher
+select its own receipt; failure output retains bounded observations and the
+unchanged-artifact record. VM admission, isolation and joined cleanup are unchanged.
+
+TUF `XBWa4cdqAX`, `bash scripts/smoke-verifier-vm-authority.sh
+--guess-limiter-tests`, exits 0 with exactly two tests passed and 579 filtered out.
+The real-clock observations remain 0/20000/40000 ms blocked, recovery at 60020 ms,
+24 uncharged non-guess errors and a fresh ten-failure budget. The four alias cases
+remain 4/4 shared blocks with four entries. Artifact SHA-256
+`ac43f750d721aeaee886c6f2694384ead6d707df7320c24cb2dd3433576fc49a`
+exactly matches the prior 50-check run. The unchanged writer tests are not rerun.
+Linux Rust 1.75 executes in a nonroot networkless guest container inside the
+zero-NIC bounded-RAM VM. QEMU 2060699 joins in 199.793 seconds;
+RAM `run.fxlfk9nl` retires and all four listener deltas are zero. Seven raw files
+total 74,255 bytes per host with matching hashes. Both shell syntax checks,
+the exact selection comparison and `git diff --check` pass.
+
+This is focused-verification maintenance, not a product correction or additional
+installed acceptance. Network admission, flood/resource performance, other-platform
+clocks/suspend, privileged credential/settings actions, R-S0/R-F5 and release/
+independent-review acceptance remain OPEN. Parked tasks remain parked. Only the
+existing R-S10 ledger paragraph changes; fresh measurement follows.

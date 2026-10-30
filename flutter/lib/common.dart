@@ -3614,9 +3614,9 @@ class ComboBox extends StatelessWidget {
         borderRadius:
             BorderRadius.circular(8), //border raiuds of dropdown button
       ),
-      height: 42, // should be the height of a TextField
       child: DropdownButton<String>(
         isExpanded: true,
+        itemHeight: null,
         value: options.containsKey(selectedKey) ? selectedKey : null,
         hint: Text(selectedKey, overflow: TextOverflow.ellipsis)
             .marginOnly(left: 15),

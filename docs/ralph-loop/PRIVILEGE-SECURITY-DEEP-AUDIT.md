@@ -119752,3 +119752,13 @@ No product correction or new installed privilege acceptance is claimed. Actual
 CM IPC/UI, complete peer/handshake, other-platform/installed, R-S0/R-F5 and
 release acceptance remain OPEN, and all parked work stays parked. The existing
 send-digest ledger paragraph is updated; fresh token measurement follows.
+
+**Fresh ledger count.** At `1484efb9905fcd6aa78014df0b7ed866173f7168`,
+TUF `d6Pb6MjDzk` passes seven tokenizer controls and the exact byte round trip
+using `tiktoken-0.12.0/cl100k_base/encode_ordinary`: 362,276 tokens /
+1,656,517 bytes, SHA-256
+`b8b93ea04c9b1460a00ed27514137fd7ac077f7547c22c9434a946b29a53ff44`.
+QEMU 2140968 joins in 30.810 seconds; RAM `run.ug3t6pot` retires and all
+three listener deltas are zero. Six count files add 104,064 bytes; thirteen files
+from this slice total 183,790 bytes per host with matching hashes. This audit-only
+receipt leaves the measured ledger unchanged.

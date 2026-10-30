@@ -120479,3 +120479,21 @@ QEMU 2443513 joins in 30.701 seconds; RAM `run.ta7p4fwk` retires and all
 three listener deltas are zero. Six count files add 104,553 bytes; twenty raw
 files total 256,082 bytes per host with matching hashes. This audit-only receipt
 leaves the measured ledger unchanged.
+
+## 2026-10-30 — desktop home scroll-controller disposal
+
+Continued ordinary desktop UI maintenance; all user parks remain open.
+`59b43435aa0edca37526341222216f354157210a` adds the missing disposal of
+`_leftPaneScrollController` in its owning `_DesktopHomePageState.dispose`.
+The field is created once and passed only to the left-pane scroll view; no
+external owner, listener or asynchronous callback uses it. Its lifetime through
+rebuilds and keep-alive periods is unchanged. Flutter's
+[ScrollController disposal contract](https://api.flutter.dev/flutter/widgets/ScrollController/dispose.html)
+assigns disposal to its owner and clears its listeners.
+
+The production diff is one added call before the existing teardown. Reference,
+ownership and whitespace review pass. No new test infrastructure, application
+execution or memory measurement was performed for this small lifecycle repair;
+it is not evidence of a quantified leak or of complete page/resource acceptance.
+The ledger records that boundary and corrects a missing comma in the preceding
+Portuguese-selection row. A fresh isolated ledger count follows.

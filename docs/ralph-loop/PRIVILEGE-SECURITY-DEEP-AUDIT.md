@@ -120985,3 +120985,11 @@ the workspace at the corrected path, and the absent repository-root `ios/` path.
 `Info.plist` selects `LaunchScreen`, whose storyboard uses `LaunchImage`.
 Whitespace review passes. This is a documentation correction; assets, storyboard,
 application code and tests are unchanged. No Xcode or device execution is claimed.
+
+Fresh ledger count at `4a417faee01fc4c5f8b15f32a6f11f6cbd41f891`:
+`kT310YzJEi` passes seven controls and exact byte round trip using
+`tiktoken-0.12.0/cl100k_base/encode_ordinary`: 365,680 tokens / 1,672,658 bytes,
+input SHA-256 `be83ad1d364fff715d41d434ff3e510ca129b8ab245a258ae36dbb9b3dbe4c95`.
+QEMU 2629022 joins in 30.708 seconds and RAM `run.08a7jk_s` retires;
+all three endpoint deltas are zero. Six raw files total 104,016 bytes per host,
+copied and hash-verified. This audit-only receipt leaves the ledger unchanged.

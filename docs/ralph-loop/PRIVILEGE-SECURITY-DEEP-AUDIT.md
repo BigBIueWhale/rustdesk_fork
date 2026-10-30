@@ -119305,3 +119305,38 @@ using `tiktoken-0.12.0/cl100k_base/encode_ordinary`: 361,213 tokens /
 QEMU 1888704 joins in 30.773 seconds, RAM `run.95rae774` retires and all
 three listener deltas are zero. Six retained files total 103,834 bytes per host
 with matching hashes. This audit-only receipt leaves the measured ledger unchanged.
+
+### 2026-10-30 — responder traffic keys after confirmation
+
+Starting source `7943fc8366d39099d74da9e1e9c9f00054c9e288` derives both
+directional keys at `libs/pake/src/lib.rs:928` before verifying Step3's tag.
+`20e43924a204e7c9bdead0de91f4e659354df96d` moves that one call after the
+existing confirmation refusal and removes the obsolete failure-path comment.
+The responder authenticates with its independently derived MAC key, then derives
+traffic keys only for a successful return. Every formula, input, error, output,
+public API, dependency and wiping owner is preserved; the initiator is unchanged.
+
+Research: the pinned [CPace draft §10.3–10.4](https://www.ietf.org/archive/id/draft-irtf-cfrg-cpace-21.html#section-10.4)
+derives confirmation directly from ISK, sid and role-bound messages;
+[RFC 5869 §2](https://www.rfc-editor.org/rfc/rfc5869.html#section-2) defines the
+separate HKDF inputs. Source review establishes that confirmation consumes no
+directional key. Deferring that independent computation therefore preserves
+valid outputs while avoiding it on rejected confirmations. This is reduced
+rejection-path work and transient key creation, not a demonstrated bypass fix,
+benchmark speedup, constant-time proof or complete secret-erasure claim.
+
+TUF `zCZFJcfznE`, command `bash scripts/smoke-verifier-vm-authority.sh
+--pake-allocation-tests`, passes all twenty unchanged functional tests and the
+allocation check. Published/fork vectors, exact mirrored keys, valid random/NFC
+handshakes, wrong-password/replay/invalid-element refusal, error classification
+and real RNG EIO cleanup pass. The existing twenty confirmation allocation
+observations remain zero with the positive allocation control detected.
+Optimized Rust 1.75 artifact SHA-256:
+`0e8221d65981125bc4504b40943a3c11be3958d8d2ec1892e70eb6c2c5b6f353`.
+The nonroot networkless guest container runs inside a zero-NIC Linux VM.
+QEMU 1889857 joins in 106.474 seconds, RAM `run.wzghorfb` retires, and all four
+host listener deltas are zero. Seven retained files total 83,763 bytes per host
+with matching hashes. Exact source comparison and `git diff --check` pass.
+Full application/network integration, optimized timing, full erasure, other
+targets, installed credential actions and release acceptance remain OPEN;
+separately parked work is unchanged. Fresh ledger measurement follows.

@@ -7247,7 +7247,7 @@ PY
             [ "$(grep -Fxc 'test test::test_try_into_v4 ... ok' "$output")" -eq 1 ] \
                 || fail 'direct address normalization test differs'
             for group in tcp::writer_receipt_tests:13 tcp::eof_tests:4 \
-                bytes_codec::tests:12 tcp::writer_lifetime_tests:7 tcp::exclusive_listener_tests:1 \
+                bytes_codec::tests:13 tcp::writer_lifetime_tests:7 tcp::exclusive_listener_tests:1 \
                 cpace::seal_tests:2 tcp::seal_tests:1 cpace::open_tests:1 tcp::open_tests:1; do
                 count=${group##*:}; group=${group%:*}
                 [ "$(grep -Ec "^test ${group}::[[:alnum:]_]+ [.][.][.] ok$" "$output")" -eq "$count" ] \

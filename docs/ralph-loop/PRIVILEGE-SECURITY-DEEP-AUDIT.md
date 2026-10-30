@@ -120627,3 +120627,22 @@ QEMU 2531279 joins in 30.465 seconds; RAM `run.lbkurkpq` retires and all
 three listener deltas are zero. Six raw files total 105,116 bytes per host,
 copied and hash-verified. This audit-only receipt leaves the measured ledger
 unchanged. The count establishes document size, not product behavior.
+
+## 2026-10-30 — clipboard guide notes
+
+Continued documentation work while preserving all user parks. Source/history
+review classifies the clipboard README's separate-project TODO, proposed cache
+optimization and incomplete permissions bullet as obsolete or non-informative.
+They are deleted; the build guide and Windows callback source become direct
+links, and the protocol reference uses the official
+[MS-RDPECLIP page](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-rdpeclip/).
+The initial file search omitted three tracked diagram images. Direct filesystem
+and Git checks corrected that classification before publication; final source
+`19ef91b24aeb28d6951d2e03a73ea98077261a40` retains all three references.
+
+Relative to `f67e3190`, the guide changes from 167 lines / 6,118 bytes to
+161 lines / 5,959 bytes. All six local links resolve. Exact comparison preserves
+the Mermaid sequence, FreeRDP attribution and complete Linux FUSE description.
+Diff review and `git diff --check` pass. No product, test, requirement, instruction
+or native clipboard behavior changes, and no product/runtime test runs for this
+prose-only cleanup. Existing native/installed and release acceptance remains open.

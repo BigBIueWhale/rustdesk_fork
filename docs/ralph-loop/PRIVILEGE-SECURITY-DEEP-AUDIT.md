@@ -121334,3 +121334,55 @@ controls, exact byte round trip, 76 storage-admission controls and five refusals
 Both outer exits are zero, QEMU processes join, RAM workspaces retire and all six
 endpoint deltas are zero. Twelve raw files total 211,111 bytes per host, copied
 and hash-verified. This audit-only receipt leaves the counted ledger unchanged.
+
+## 2026-10-30 — help-card button label wrapping
+
+Previous goal turn: PROGRESS through search-label localization. The user pivot
+remains binding; ordinary UI work continues while earlier investigations and all
+fifteen installed credential-action acceptances remain open.
+
+`FixedWidthButton` defaulted to one line inside its fixed width. Preparation
+`0662ea80` adds four layout cases alongside eight unchanged button controls and
+a focused `--flutter-model-tests --help-button` workload. It reuses the bounded
+2-GiB guest/1,280-MiB container profile and exact production widget/theme extraction
+with identity translation. Other menu workloads are not executed. The added
+storage-admission case raises the expected controls from 76 to 77.
+
+Baseline `XAwCm5BoZj` passes eight controls and fails all four layout cases because
+the actual paragraph exceeds its line limit. Product `abb21b43` removes only the
+default `?? 1`; explicit caller limits remain. The pinned auto_size_text 3.0.0
+[maxLines contract](https://pub.dev/documentation/auto_size_text/latest/auto_size_text/AutoSizeText/maxLines.html)
+supports wrapping without the one-line cap. Source review places the help card in
+`buildLeftPane`'s `SingleChildScrollView`, with no fixed button height.
+
+Initial candidate `qnUIYBtP3c` passes ten cases, including both long-label checks,
+but the two enlarged-text cases encounter a 192-pixel overflow in the fixture's
+non-scrollable column. Fixture correction `0299ba6e` adds the real pane's scrolling
+parent and two controls comparing explicit `maxLines: 1` with the wrapping default
+in the same parent. This is not an identical-fixture fourteen-case historical A/B.
+Final `NIZqoqjma3` passes all fourteen cases, three focused parser controls,
+source postchecks and outer acceptance. Both filled/outlined variants retain
+semantics, focus pixels, Enter/Space/tap and cancelled-press geometry; layout
+checks cover controlled German/Hebrew labels, both directions and 1–3× text scale.
+Full application/card routing, native fonts, OS accessibility propagation and
+platform actions remain unexecuted. No parked menu or native action is resumed.
+
+Button SHA-256 before/after:
+`c7001ec49e6e0789e619e801b91033a72c6a427b96b522d6c7afdc12cea9261a` /
+`07f6528807801692b61444f6c82a691972673a6a3705da94b82de23c64aff9a9`.
+Final layout-test SHA-256:
+`a214f46f0b5e0671916ab8e3aa1d35f3a5f251ee4b88b60c58cbd53658a0a813`.
+
+| Run | Serial SHA-256 | QEMU / seconds / retired RAM |
+| --- | --- | --- |
+| `XAwCm5BoZj` | `020880e7204623e570ef1de49d3cd36df6e56d88d8598a1428d157451a814c59` | 2707351 / 85.682 / `run.taruckez` |
+| `qnUIYBtP3c` | `faad1e8060be2770a90c3e9c8b0f18d4ee2e97de3157eebf2a32e8c7faf07e28` | 2742305 / 82.007 / `run.eesr82p6` |
+| `NIZqoqjma3` | `50a0ae3210ecb5aab65f267070686ffc7c2eafd236882d3b86cfa993c3a729c8` | 2764734 / 104.006 / `run.ml6g0urg` |
+
+All QEMU processes join, RAM workspaces retire and all twelve endpoint deltas are
+zero. Twenty-one raw files total 264,987 bytes per host, copied and hash-verified.
+Both failed diagnostic trees are removed after exact ownership/evidence checks
+(3,452,928 allocated bytes each). The second wrapper remains an exited zombie at
+PID 2740286/start tick 278149434 during retirement: state, empty command line,
+terminal exit record, missing tmux session and readable pidfd establish termination;
+parent reaping is not claimed. No host process is signalled or reconfigured.

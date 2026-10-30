@@ -664,7 +664,6 @@ grep -qE 'pub async fn get_nat_type\(' "$REPO/src/common.rs" && r_sv6b="$r_sv6b 
 grep -qF 'self.id = id;' "$REPO/src/client.rs" || r_sv6b="$r_sv6b exact-address-assignment-missing"
 grep -qF 'let pure_id = self.id.clone();' "$REPO/src/client.rs" || r_sv6b="$r_sv6b exact-login-identity-missing"
 grep -qF 'fn login_identity_does_not_parse_cross_server_grammar()' "$REPO/src/client.rs" || r_sv6b="$r_sv6b client-regression-missing"
-grep -qF 'fn config2_ignores_retired_network_state_and_never_serializes_it()' "$REPO/libs/hbb_common/src/config.rs" || r_sv6b="$r_sv6b config2-regression-missing"
 if [ -n "$r_sv6b" ]; then
   echo "  FAIL R-SV6b shared direct-address authority:$r_sv6b"
   rc=1
@@ -2668,8 +2667,6 @@ r_s11b2=$(<"$apple_password_gate_dir/r_s11b2")
 grep -q -- '<string>--service-owned-server</string>' "$REPO/src/platform/privileges_scripts/agent.plist" || r_s11b2="$r_s11b2 agent-server-not-marked"
 grep -qF 'set_permanent_password_storage_for_sync' "$REPO/libs/hbb_common/src/config.rs" && r_s11b2="$r_s11b2 ordinary-main-credential-sync-writer-present"
 grep -q 'RUNTIME_PERMANENT_PASSWORD_PRS' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 macos-service-password-runtime-overlay-missing"
-grep -q 'runtime_password_snapshot_does_not_persist' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 macos-service-password-runtime-nonpersist-test-missing"
-grep -q 'test_set_permanent_password_persists_generated_storage_salt' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 explicit-password-persistence-test-missing"
 grep -q 'effective_permanent_password_prs' "$REPO/src/direct_service.rs" || r_s11b2="$r_s11b2 macos-service-password-listener-not-effective-prs"
 grep -q 'let credential = effective_permanent_password_credential_snapshot().await' "$REPO/src/server.rs" || r_s11b2="$r_s11b2 macos-service-password-cpace-snapshot-missing"
 grep -q 'let (prs_status, credential_generation) = credential.into_parts();' "$REPO/src/server.rs" || r_s11b2="$r_s11b2 macos-service-password-generation-binding-missing"

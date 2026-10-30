@@ -1217,9 +1217,6 @@ if grep -Eq 'remove_file|Self::remove' <<<"$peer_batch"; then
 fi
 grep -Fq 'const RETIRED_RDP_CREDENTIAL_OPTIONS: [&str; 2] = ["rdp_username", "rdp_password"];' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d retired-rdp-credential-policy-missing"
 grep -Fq 'options.retain(|key, _| !RETIRED_RDP_CREDENTIAL_OPTIONS.contains(&key.as_str()));' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d retired-rdp-credential-scrub-missing"
-grep -Fq 'peer_store_drops_retired_rdp_credential_options' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d retired-rdp-credential-store-test-missing"
-grep -Fq 'peer_load_removes_and_rewrites_legacy_rdp_credential_options' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d retired-rdp-credential-load-test-missing"
-grep -q 'peer_listing_reads_the_enumerated_alias_and_preserves_read_denial' libs/hbb_common/src/config/option_tests.rs || index_s11b4d="$index_s11b4d alias-path-listing-regression-missing"
 if grep -q 'let loaded = PeerConfig::load_with_status(&id)' libs/hbb_common/src/config.rs; then
   index_s11b4d="$index_s11b4d batch-peer-cleanup-loads-canonical-id-path"
 fi
@@ -1229,7 +1226,6 @@ fi
 grep -q 'fn harden_preserved_config_file(path: &Path) -> Result<()>' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d corrupt-recovery-hardener-missing"
 grep -q 'crate::libc::O_CLOEXEC | crate::libc::O_NOFOLLOW' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d corrupt-recovery-no-nofollow-open"
 grep -q 'crate::libc::fchmod(file.as_raw_fd(), 0o600 as crate::libc::mode_t)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d corrupt-recovery-no-fd-chmod"
-grep -q 'preserved_config_hardening_rejects_symlink_targets' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d corrupt-recovery-symlink-test-missing"
 [ "$(grep -c 'harden_preserved_config_file(&backup)' libs/hbb_common/src/config.rs)" -eq 1 ] || index_s11b4d="$index_s11b4d toml-corrupt-recovery-path-not-exact"
 if grep -q 'fs::set_permissions(&backup, fs::Permissions::from_mode(0o600))' libs/hbb_common/src/config.rs; then
   index_s11b4d="$index_s11b4d corrupt-recovery-path-chmod-present"
@@ -4299,7 +4295,6 @@ grep -qF 'MainConfigKey::PermanentPasswordSet {} => Some' src/ipc.rs || r_s11b4=
 grep -q 'permanent_password_is_set_for_current_process().await' src/ipc.rs || r_s11b4="$r_s11b4 receiver-derived-password-status-missing"
 grep -q 'pub fn is_permanent_password_set() -> bool' src/ipc.rs || r_s11b4="$r_s11b4 password-status-client-missing"
 grep -q 'ipc::is_permanent_password_set()' src/ui_interface.rs || r_s11b4="$r_s11b4 ui-password-status-not-daemon-derived"
-grep -q 'main_config_keys_expose_typed_password_status_but_not_credential_storage' src/ipc.rs || r_s11b4="$r_s11b4 nonsecret-main-config-regression-missing"
 for token in \
   'LocalPermanentPasswordSet' \
   'PermanentPasswordIsPreset' \
@@ -4325,7 +4320,6 @@ if grep -RInE 'isPresetPassword|is_preset_password|buildPresetPasswordWarning|pr
   r_s11b4="$r_s11b4 retired-preset-password-presentation-present"
 fi
 grep -q 'Self::read_permanent_password_prs().is_available()' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 typed-password-status-authority-missing"
-grep -q 'test_hard_settings_password_does_not_create_credential' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 hard-settings-not-a-credential-regression-missing"
 grep -q 'ServiceIpcRequest::PermanentPasswordSnapshot' src/ipc.rs && r_s11b4="$r_s11b4 macos-runtime-snapshot-still-generic-serde"
 grep -q 'ServiceIpcResponse::PermanentPasswordSnapshotResult' src/ipc.rs && r_s11b4="$r_s11b4 macos-runtime-snapshot-response-still-generic-serde"
 grep -q 'handle_macos_service_credential_snapshot_transaction' src/ipc.rs || r_s11b4="$r_s11b4 macos-runtime-raw-snapshot-handler-missing"
@@ -4333,8 +4327,6 @@ grep -q 'send_credential_replica_unix' src/ipc.rs || r_s11b4="$r_s11b4 macos-run
 grep -q 'receive_credential_replica_unix' src/ipc.rs || r_s11b4="$r_s11b4 macos-runtime-raw-replica-receive-missing"
 grep -q 'macos_launch_agent_owns_service_owned_server_pid' src/ipc.rs || r_s11b4="$r_s11b4 macos-runtime-snapshot-launchd-proof-missing"
 grep -q 'RUNTIME_PERMANENT_PASSWORD_PRS' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 runtime-prs-overlay-missing"
-grep -q 'runtime_password_snapshot_does_not_persist' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 runtime-snapshot-nonpersist-test-missing"
-grep -q 'test_set_permanent_password_persists_generated_storage_salt' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 explicit-password-persistence-test-missing"
 grep -q 'store_config_bytes_transaction(&path, serialized.as_bytes(), ConfigStoreFault::None)' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 toml-store-transaction-missing"
 grep -q 'store_config_bytes_transaction(&path, data, ConfigStoreFault::None)' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 raw-store-transaction-missing"
 unix_config_transaction=$(awk '/fn store_config_bytes_transaction_unix\(/,/^}/' libs/hbb_common/src/config.rs)
@@ -4344,7 +4336,6 @@ grep -q 'metadata.uid() != unsafe { crate::libc::geteuid() }' <<<"$unix_config_t
 grep -q 'metadata.mode() & 0o7777 != 0o600' <<<"$unix_config_transaction" || r_s11b4="$r_s11b4 unix-store-mode-proof-missing"
 grep -q 'sync_temp_file(&temp)' <<<"$unix_config_transaction" || r_s11b4="$r_s11b4 unix-store-file-sync-missing"
 grep -q 'parent.sync_all()' <<<"$unix_config_transaction" || r_s11b4="$r_s11b4 unix-store-directory-sync-missing"
-grep -q 'store_path_writes_owner_only_permissions' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 unix-store-mode-test-missing"
 grep -q 'windows_config_acl::prepare_config_path_for_load(&file)' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 windows-load-acl-gate-missing"
 windows_config_transaction=$(awk '
   /^#\[cfg\(windows\)\]$/ { candidate=1; next }
@@ -4363,7 +4354,6 @@ grep -q 'DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION' libs/h
 grep -q 'OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 windows-current-user-sid-missing"
 grep -q 'format!("D:P{}{}", ace("SY"), ace(user_sid))' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 windows-owner-system-sddl-missing"
 grep -q 'user_sid.eq_ignore_ascii_case("S-1-5-18")' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 windows-system-sddl-dedupe-missing"
-grep -q 'windows_config_acl_sddl_is_protected_owner_system_only' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 windows-acl-sddl-test-missing"
 for feature in aclapi accctrl errhandlingapi sddl; do
   grep -q "\"$feature\"" libs/hbb_common/Cargo.toml || r_s11b4="$r_s11b4 windows-winapi-feature-$feature-missing"
 done
@@ -4581,7 +4571,6 @@ fi
 if grep -qF 'XDG_CONFIG_HOME' <<<"$root_child_env"; then
   r_s11e25="$r_s11e25 root-child-xdg-config-home-present"
 fi
-grep -qF 'linux_service_owned_config_root_ignores_ambient_home_and_xdg' libs/hbb_common/src/config.rs || r_s11e25="$r_s11e25 ambient-root-regression-test-missing"
 if [ -n "$r_s11e25" ]; then echo "  FAIL R-S11e-25 Linux service-owned config-root authority:$r_s11e25"; rc=1; else
   echo "  ok  R-S11e-25 Linux service-owned roles bind Config home/path to the effective uid's passwd home before first config access; ambient HOME/XDG_CONFIG_HOME remains user-mode-only authority"; fi
 
@@ -11666,7 +11655,6 @@ grep -qE 'pub async fn get_nat_type\(' src/common.rs && r_sv6b="$r_sv6b nat-wrap
 grep -qF 'self.id = id;' src/client.rs || r_sv6b="$r_sv6b exact-address-assignment-missing"
 grep -qF 'let pure_id = self.id.clone();' src/client.rs || r_sv6b="$r_sv6b exact-login-identity-missing"
 grep -qF 'fn login_identity_does_not_parse_cross_server_grammar()' src/client.rs || r_sv6b="$r_sv6b client-regression-missing"
-grep -qF 'fn config2_ignores_retired_network_state_and_never_serializes_it()' libs/hbb_common/src/config.rs || r_sv6b="$r_sv6b config2-regression-missing"
 if [ -n "$r_sv6b" ]; then
   echo "  FAIL R-SV6b dormant rendezvous/NAT compatibility authority excision:$r_sv6b"; rc=1
 else

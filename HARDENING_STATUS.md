@@ -3813,14 +3813,15 @@ interactive-UI role predicates and `r_s11e262_` role/audit-token predicates. The
 checks; installed authorization and protected actions require the observations
 above and below.
 
-Redundant test-text inventories are removed for Linux password roles and
-R-S11e-45–50 lifecycle, numeric-principal and exact process-role regressions,
-macOS root paths, Linux descriptor inheritance and service-child crash/object
-recovery. The latest deletion removes five wording loops and two post-test
-inventories from the shared and Apple verifiers (77 lines); all other verifier
-bytes, including Cargo commands, are preserved. The six corresponding Rust tests
-and every product/requirement byte are unchanged. Exact deletion comparison and
-syntax/whitespace checks pass; these deletions add no runtime acceptance.
+Redundant test-text inventories are removed for configuration secrecy/persistence,
+Linux password roles and R-S11e-45–50 lifecycle, numeric-principal and exact
+process-role regressions, macOS root paths, Linux descriptor inheritance and
+service-child crash/object recovery. The latest cleanup deletes fifteen standalone
+test-name searches from the shared and Apple verifiers. All twelve corresponding
+Rust tests and their three source files remain byte-identical; every other verifier
+byte, including Cargo commands and production checks, is preserved. Exact deletion
+comparison and shell syntax/whitespace checks pass. The audit records provenance;
+these deletions add no runtime or installed acceptance.
 
 `320f86f0` removes service/SAS test-wording inventories, duplicate test-name
 greps and six Apple mutations of test text (62 lines). Executable protocol tests,

@@ -119471,3 +119471,29 @@ QEMU 1900750 joins in 30.306 seconds, RAM `run.8r1yix7l` retires and all
 three listener deltas are zero. Six count files add 105,446 bytes; twenty files
 from this slice total 333,300 bytes per host with matching hashes. This audit-only
 receipt leaves the measured ledger unchanged.
+
+### 2026-10-30 — configuration test-name catalogue retirement
+
+Starting source `0e4c71a265347c172ea991f8cd1450aab56952fa` has fifteen
+standalone greps for twelve configuration test names in `scripts/verify.sh`
+(twelve) and `scripts/apple-conform-check.sh` (three). They inspect only source
+spelling, without observing test execution or assertions. The cases concern
+retired RDP/network state, exact peer paths, symlink refusal, nonsecret status,
+runtime/durable credential separation, permissions and service config roots.
+The greps are deleted under the binding verifier-deletion posture. All other
+verifier bytes, including test invocations, production checks and embedded Python,
+are identical. All twelve tests and their complete files (`config.rs`,
+`config/option_tests.rs`, `src/ipc.rs`) are unchanged. Cargo's
+[test documentation](https://doc.rust-lang.org/cargo/commands/cargo-test.html)
+distinguishes executable libtest selection from source inspection; this cleanup
+does not claim those tests or target-native settings ran again.
+
+Exact reconstruction from the baseline by deleting only those fifteen lines,
+whole-file comparisons, `bash -n` for both scripts and `git diff --check` pass.
+The preceding read-only IPC review found no new demonstrated defect in retained
+read state, incomplete-write refusal or main-response value admission; it adds
+no installed authority acceptance. The current service checklist still requires
+all fifteen installed credential actions, authorized effects/persistence,
+refusals, lifecycle/race/failure handling and exact-artifact review. Product and
+normative instructions are unchanged; parked work remains parked. The ledger's
+existing inventory paragraph is updated in place. Fresh ledger measurement follows.

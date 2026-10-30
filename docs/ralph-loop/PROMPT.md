@@ -1,13 +1,14 @@
-/goal Continue the R-S11b/R-S11c service-owned IPC authority hardening loop in /home/user/Desktop/rustdesk_fork. On this invocation, inspect the current requirements, ledger, code, and git state; choose the next still-open coherent slice; implement only that slice correctly; then commit and push the completed slice to master.
+/goal Work toward a correct, verified release of the hardened RustDesk fork in /home/user/Desktop/rustdesk_fork. On this invocation, inspect the current requirements, release blockers, evidence, code, and git state; select the highest-value actionable release requirement or necessary prerequisite; advance it to a meaningful checkpoint; then commit and push any completed, intentional repository changes to master. Research, reproduction, integration testing, and validation without a product change are valid work.
 
 You are working in /home/user/Desktop/rustdesk_fork. Before making any code change in this loop, read:
 
 - AGENTS.md project rules if present
 - requirements.html sections R-S11, R-S11a, R-S11b, R-S11c, R-S16, R-S19, Appendix C #25-#29
 - HARDENING_STATUS.md section “R-S11b/R-S11c — service-owned IPC authority”
+- the requirements and current release-blocking evidence entries relevant to the selected work
 - the exact source files touched by the current slice
 
-Do not rush. Do not optimize for a quick patch. Optimize for correctness, deletion of unsafe legacy semantics, and source-level proof that the old authority path is unreachable. The final code should read as if the authority model was designed correctly from the beginning, not as if a vulnerability was papered over with special cases.
+Do not rush. Do not optimize for a quick patch. Optimize for correctness, deletion of unsafe legacy semantics, and authoritative evidence that the required behavior works and the old authority path is unreachable. The final code should read as if the authority model was designed correctly from the beginning, not as if a vulnerability was papered over with special cases.
 
 Important philosophy:
 
@@ -28,33 +29,80 @@ Important philosophy:
 - Do not create broad abstractions unless they remove real authority ambiguity.
 - Keep changes scoped. Do not refactor unrelated areas.
 
+## Release-directed work selection (user direction, 2026-10-30)
+
+Every iteration MUST advance an identifiable requirement for a correct release or a necessary
+prerequisite for validating it. This rule governs selection among the implementation, verification,
+research, and documentation work described elsewhere in this file; an item being open or easy to
+finish does not by itself make it the next task.
+
+- Choose the highest-value actionable work using current evidence: defect severity and reach,
+  importance of missing validation, dependencies unlocked, uncertainty reduced, and expected effort.
+  Prioritize demonstrated security/correctness failures and decisive evidence for privileged
+  authorization, required workflows, connection/display recovery, sustained resource bounds, and
+  release artifacts. Missing evidence is not proof of a defect; identify which kind of gap exists.
+  The hardest task is not automatically the best next task, and the smallest patch is not either.
+- Before starting, briefly name the release requirement/blocker, the concrete result sought, and
+  why it takes priority over the next plausible permitted alternative. Use the current ledger and
+  relevant audit evidence; do not create elaborate scores, duplicate trackers, or a fresh exhaustive
+  catalogue every turn. A prerequisite must identify the blocked validation or correction it enables
+  and the smallest useful completion condition.
+- Continue the selected blocker across turns until it is resolved, reaches a meaningful validation
+  checkpoint, is genuinely blocked, or the user redirects the work. Reassess at checkpoints and when
+  new evidence materially changes priorities. Do not abandon an important investigation merely
+  because a smaller unrelated fix becomes available or the next step will take another turn.
+- Reproduction, native integration tests, installed-artifact validation, and research needed for a
+  concrete design decision can be the entire slice. No product edit, new test, or commit is required
+  merely to demonstrate activity. Reuse valid source-bound artifacts and passed evidence; repeat a
+  check only for a relevant change, failure, or unresolved concern.
+- Cosmetic improvements, unrelated cleanup, documentation restructuring, and verifier expansion
+  must have a demonstrated connection to the selected release requirement or an explicit current
+  user request. Keep required status/evidence maintenance proportionate. Do not substitute these
+  activities for available work that would resolve a more consequential release blocker.
+- Respect explicit user pivots and parked items. A generic continue or goal resume does not reopen
+  them. Select the next highest-value permitted release task; if no such task or feasible prerequisite
+  remains, report the concrete constraint and what would unlock progress instead of filling time
+  with unrelated work. Follow the goal lifecycle rules when reporting a blocked objective.
+- Release priority does not relax the host isolation, network/listener, acquisition, or storage rules
+  below and in AGENTS.md. CTE is publicly exposed and resource-constrained. Inspect available capacity
+  and authenticated inputs before admitting work; use an already-authorized capable host when
+  appropriate. Keep disposable bulk storage in the admitted bounded RAM workspace, with monitoring
+  and joined cleanup. Unavailable resources or a missing legitimate target environment are explicit
+  dependencies, never permission for host execution, public test exposure, or disk-scratch fallback.
+- Judge progress by blockers resolved and required behavior actually demonstrated. Distinguish
+  implementation, component evidence, and target-native/installed release acceptance. Preserve the
+  specified functionality, platforms, security requirements, and evidence standards; do not shrink
+  scope, relabel an unresolved requirement, or weaken a check to manufacture release readiness.
+  Keep optional future improvements separate from the binding release requirements.
+
 Loop discipline for every invocation:
 
-1. Start by restating the current open R-S11b/R-S11c checklist from HARDENING_STATUS.md as it exists now, not from memory.
-2. Pick exactly one coherent implementation slice for this loop. Prefer the earliest release-blocking slice that can be completed correctly.
-3. Before editing, prove the current vulnerable/relevant path from code with file/line references.
-4. Define the intended authority model for this slice in one short paragraph.
-5. Identify whether the existing abstraction/API is wrong. If it is wrong, redesign that local surface instead of adding a guard around it.
-6. Implement the code change.
-7. Delete obsolete branches, comments, and compatibility surfaces in touched areas so the code reads as if designed this way from the start.
-8. Add or update targeted tests/verify gates. If a gate cannot be added in this loop, explain why and add the smallest source-level assertion/gate that is practical.
-9. Run targeted verification. At minimum run the relevant unit/source checks for the touched area and `git diff --check`. Run broader checks when the blast radius justifies it.
-10. Update HARDENING_STATUS.md only for the exact item touched:
+1. Inspect the current verdict, relevant release-blocking entries and open residuals in HARDENING_STATUS.md, the latest relevant audit evidence, and any in-progress blocker. Use current records, not memory alone.
+2. Select one coherent next step under the release-directed rule above and state its expected outcome and priority briefly. Carry unresolved selected work forward across turns.
+3. For a product correction, establish the relevant path from code and available behavioral evidence with file/line references. For validation, identify the exact unproved acceptance condition and the artifact/scenario that can decide it.
+4. Define the intended authority/behavior model and the observable success/failure condition for this slice in one short paragraph.
+5. When a correction is needed, identify whether the abstraction/API is wrong. If it is wrong, redesign that local surface instead of adding a guard around it.
+6. Implement the correction or execute the selected research, reproduction, integration, or validation work. Do not force a code change when the needed result is evidence.
+7. In changed product areas, delete obsolete branches, comments, and compatibility surfaces so the code reads as if designed this way from the start.
+8. Add or update focused behavioral tests where needed to distinguish the failure from correct behavior. Retain only load-bearing source checks; they do not replace missing native execution.
+9. Run verification appropriate to the changed behavior or selected acceptance condition, and `git diff --check` for repository edits. Run broader checks at a justified integration/release checkpoint; do not rerun unrelated passed checks by default.
+10. Update HARDENING_STATUS.md when the selected item's status or supporting evidence materially changes:
    - keep it OPEN if any platform/surface remains
    - mark subpieces done only with code references and verification
    - do not overclaim
 11. Review the full diff carefully for unrelated churn, stale comments, partial fixes, evil fallbacks, compatibility scar tissue, or contradictions with requirements.html.
-12. Commit the completed slice to `master` with a precise commit message.
-13. Push `master` to origin.
+12. Commit completed, intentional repository changes to `master` with a precise commit message. Evidence-only work does not require a product patch or an empty commit.
+13. Push completed commits on `master` to origin.
 14. End with a concise report:
-   - slice completed
-   - commit hash pushed to master
-   - files changed
-   - old path removed/blocked
-   - tests/gates run
-   - remaining R-S11b/R-S11c items
+   - selected release blocker and concrete progress or constraint
+   - commit hash pushed to master and files changed, if any
+   - behavior corrected or acceptance condition exercised
+   - evidence obtained and its limits
+   - remaining gap and next decisive step
 
-Suggested implementation order, unless code reading shows a safer order:
+Service-authority reference surfaces; the current release priorities and evidence determine order.
+This historical list does not require restarting completed work or choosing a source patch over
+missing installed/native validation:
 
 A. R-S11b-1: Linux/macOS `_service` whole-config boundary.
    Remove whole Config/Config2 SyncConfig across user↔root/LaunchDaemon service. Replace any required behavior with typed non-secret status or explicit service-owned operations. Ensure liveness probes do not read config. Gate that `_service` cannot reach whole-config set/get or password/key/trust fields.
@@ -82,9 +130,14 @@ H. R-S11c-6 through R-S11c-10 contained hardening.
 
 Constraints:
 
-- Commit and push each completed coherent slice to `origin/master`.
+- Commit and push completed, intentional repository changes to `origin/master`.
 - Do not publish, delete, or create releases.
-- Do not run the long full release build unless explicitly asked.
+- Planned isolated release-candidate builds and validation checkpoints are authorized when they
+  are the selected necessary step toward release readiness. This includes a full release build
+  when the exact artifacts or reproducibility comparison are needed. Keep them distinct from
+  publication; use the existing authenticated inputs, admitted resources, isolated launchers,
+  monitoring, and joined cleanup. Reuse valid artifacts and do not make a full build the routine
+  response to a small change. If the required environment cannot be admitted, report that dependency.
 - Do not use destructive git commands.
 - Do not revert user changes.
 - Prefer `rg` for search.

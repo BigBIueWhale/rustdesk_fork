@@ -232,20 +232,14 @@ class _DesktopSettingPageState extends State<DesktopSettingPage>
             },
             icon: Icon(Icons.arrow_back),
           ).marginOnly(left: 5),
-        if (isWeb)
-          SizedBox(
-            height: 62,
-            child: Align(
-              alignment: Alignment.center,
-              child: settingsText,
-            ),
-          ).marginOnly(left: 20),
-        if (!isWeb)
-          SizedBox(
-            height: 62,
-            child: settingsText,
-          ).marginOnly(left: 20, top: 10),
-        const Spacer(),
+        Expanded(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 62),
+            child: isWeb
+                ? Align(alignment: Alignment.centerLeft, child: settingsText)
+                : settingsText,
+          ).marginOnly(left: 20, right: 10, top: isWeb ? 0 : 10),
+        ),
       ],
     );
   }
@@ -260,9 +254,8 @@ class _DesktopSettingPageState extends State<DesktopSettingPage>
   Widget _listItem({required _TabInfo tab}) {
     return Obx(() {
       bool selected = tab.key == selectedTab.value;
-      return SizedBox(
-        width: _kTabWidth,
-        height: _kTabHeight,
+      return ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: _kTabHeight),
         child: InkWell(
           onTap: () {
             if (selectedTab.value != tab.key) {
@@ -285,12 +278,14 @@ class _DesktopSettingPageState extends State<DesktopSettingPage>
               color: selected ? _accentColor : null,
               size: 20,
             ).marginOnly(left: 13, right: 10),
-            Text(
-              translate(tab.label),
-              style: TextStyle(
-                  color: selected ? _accentColor : null,
-                  fontWeight: FontWeight.w400,
-                  fontSize: _kContentFontSize),
+            Expanded(
+              child: Text(
+                translate(tab.label),
+                style: TextStyle(
+                    color: selected ? _accentColor : null,
+                    fontWeight: FontWeight.w400,
+                    fontSize: _kContentFontSize),
+              ).marginOnly(top: 8, bottom: 8, right: 10),
             ),
           ]),
         ),

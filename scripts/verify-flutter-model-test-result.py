@@ -1177,6 +1177,11 @@ PEER_LOADER_TESTS = {
     "peer loader clear retires a pending request and its failure",
 }
 SETTINGS_NAVIGATION_TESTS = {
+    "settings toast default expiry preserves pointer input",
+    "settings toast newest message replaces older text and lifetime",
+    "settings toast same-frame burst displays only its latest message",
+    "settings toast retired navigator cannot expire a new message",
+    "settings toast without a navigator remains inactive",
     "settings about retains pending metadata across rebuilds",
     "settings about reuses loaded metadata with current labels",
     "settings about reopened page owns fresh metadata after late failure",

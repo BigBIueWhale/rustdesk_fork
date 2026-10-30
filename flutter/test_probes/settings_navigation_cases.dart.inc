@@ -320,6 +320,24 @@ Future<void> _mount(WidgetTester tester, SettingsTabKey tab) async {
   await _settle(tester);
 }
 
+Future<void> _mountToast(WidgetTester tester, {VoidCallback? onTap}) async {
+  await tester.pumpWidget(MaterialApp(
+    navigatorKey: globalKey,
+    theme: MyTheme.lightTheme,
+    home: Scaffold(body: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: const SizedBox.expand(),
+    )),
+  ));
+}
+
+Future<void> _retireToast(WidgetTester tester) async {
+  await tester.pumpWidget(const SizedBox.shrink());
+  // Drain the unchanged-product baseline's obsolete toast timers too.
+  await tester.pump(const Duration(minutes: 1));
+}
+
 PageController _controller() =>
     Get.find<PageController>(tag: 'settingPageController');
 
@@ -1008,6 +1026,94 @@ void main() {
     expect(native.recordingWrites,
         ['/work/failed-recordings', '/work/failed-recordings']);
     expect(find.text('Failed'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('settings toast default expiry preserves pointer input',
+      (tester) async {
+    var taps = 0;
+    try {
+      await _mountToast(tester, onTap: () => taps++);
+      showToast('toast default');
+      await tester.pump();
+      await tester.tapAt(tester.getCenter(find.text('toast default')));
+      expect(taps, 1);
+      await tester.pump(const Duration(milliseconds: 2999));
+      expect(find.text('toast default'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(find.text('toast default'), findsNothing);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await _retireToast(tester);
+    }
+  });
+
+  testWidgets('settings toast newest message replaces older text and lifetime',
+      (tester) async {
+    try {
+      await _mountToast(tester);
+      showToast('toast old', timeout: const Duration(seconds: 20));
+      await tester.pump(const Duration(milliseconds: 100));
+      showToast('toast current', timeout: const Duration(seconds: 1));
+      await tester.pump();
+      expect(find.text('toast old'), findsNothing);
+      expect(find.text('toast current'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 999));
+      expect(find.text('toast current'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(find.textContaining('toast '), findsNothing);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await _retireToast(tester);
+    }
+  });
+
+  testWidgets('settings toast same-frame burst displays only its latest message',
+      (tester) async {
+    try {
+      await _mountToast(tester);
+      for (var i = 0; i < 40; i++) {
+        showToast('toast burst $i', timeout: const Duration(seconds: 30));
+      }
+      showToast('toast burst last', timeout: const Duration(seconds: 1));
+      await tester.pump();
+      expect(find.textContaining('toast burst '), findsOneWidget);
+      expect(find.text('toast burst last'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.textContaining('toast burst '), findsNothing);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await _retireToast(tester);
+    }
+  });
+
+  testWidgets('settings toast retired navigator cannot expire a new message',
+      (tester) async {
+    try {
+      await _mountToast(tester);
+      showToast('toast retired', timeout: const Duration(milliseconds: 500));
+      await tester.pump();
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _mountToast(tester);
+      showToast('toast replacement', timeout: const Duration(seconds: 2));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('toast replacement'), findsOneWidget);
+      expect(find.text('toast retired'), findsNothing);
+      await tester.pump(const Duration(milliseconds: 1500));
+      expect(find.text('toast replacement'), findsNothing);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await _retireToast(tester);
+    }
+  });
+
+  testWidgets('settings toast without a navigator remains inactive',
+      (tester) async {
+    await tester.pumpWidget(const SizedBox.shrink());
+    expect(globalKey.currentState, isNull);
+    showToast('toast unavailable');
+    await tester.pump(const Duration(seconds: 3));
+    expect(find.text('toast unavailable'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

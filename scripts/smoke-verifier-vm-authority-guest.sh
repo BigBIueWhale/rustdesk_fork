@@ -292,9 +292,9 @@ case "$#:${8:-}" in
         exit 2
         ;;
 esac
-FLUTTER_SETTINGS_TEST_COUNT=55
+FLUTTER_SETTINGS_TEST_COUNT=60
 if [ "$FLUTTER_TEST_PROFILE" = desktop-theme ]; then
-    FLUTTER_SETTINGS_TEST_COUNT=25
+    FLUTTER_SETTINGS_TEST_COUNT=30
 fi
 readonly RUST_TEST_PROFILE
 readonly DOCKER_ARCHIVE=$1

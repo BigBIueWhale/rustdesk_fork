@@ -80,6 +80,68 @@ fn check_mxcsr_scope() {
         std::is_x86_feature_detected!("avx2"));
 }
 
+// Observe only this test process's read-only relocation and executable libc
+// bytes. The runner supplies the ELF-validated memcpy slot; no interposition or
+// foreign-process access changes the implementation being measured.
+fn capture_memcpy(phase: &str) {
+    use std::{fs::{File, OpenOptions}, io::{Read, Write}, os::unix::fs::{FileExt, MetadataExt}};
+    assert!(matches!(phase, "before" | "after"));
+    let mut maps = String::new();
+    File::open("/proc/self/maps").unwrap().take(65537).read_to_string(&mut maps).unwrap();
+    assert!(maps.len() <= 65536);
+    let mappings: Vec<Vec<_>> = maps.lines().map(|line| line.split_whitespace().collect()).collect();
+    let range = |parts: &Vec<&str>| {
+        let (start, end) = parts[0].split_once('-').unwrap();
+        (u64::from_str_radix(start, 16).unwrap(), u64::from_str_radix(end, 16).unwrap())
+    };
+    let region = |address: u64, size: u64| {
+        mappings.iter().find(|parts| {
+            let (start, end) = range(parts);
+            start <= address && address.checked_add(size).unwrap() <= end
+        }).unwrap()
+    };
+    let executable = std::fs::read_link("/proc/self/exe").unwrap();
+    let executable = executable.to_str().unwrap();
+    let bases: Vec<_> = mappings.iter().filter(|parts| parts.len() == 6
+        && parts[5] == executable && u64::from_str_radix(parts[2], 16).unwrap() == 0).collect();
+    assert_eq!(bases.len(), 1);
+    let base = range(bases[0]).0;
+    let mut offset = String::new();
+    File::open("/cargo-target/pake-memcpy-offset").unwrap().take(33)
+        .read_to_string(&mut offset).unwrap();
+    assert!(offset.len() <= 32);
+    let offset = u64::from_str_radix(offset.trim(), 16).unwrap();
+    let slot = base.checked_add(offset).unwrap();
+    let slot_map = region(slot, 8);
+    assert_eq!(slot_map.len(), 6);
+    assert_eq!((slot_map[1], slot_map[5]), ("r--p", executable));
+    let memory = File::open("/proc/self/mem").unwrap();
+    let mut pointer = [0u8; 8];
+    memory.read_exact_at(&mut pointer, slot).unwrap();
+    let target = u64::from_le_bytes(pointer);
+    let mapping = region(target, 8192);
+    assert_eq!(mapping.len(), 6);
+    assert_eq!(mapping[1], "r-xp");
+    let path = std::path::Path::new(mapping[5]);
+    let name = path.file_name().unwrap().to_str().unwrap();
+    assert!(path.is_absolute() && (name == "libc.so.6"
+        || (name.starts_with("libc-") && name.ends_with(".so"))));
+    let library = File::open(path).unwrap();
+    assert_eq!(library.metadata().unwrap().ino(), mapping[4].parse::<u64>().unwrap());
+    let file_offset = u64::from_str_radix(mapping[2], 16).unwrap()
+        .checked_add(target - range(mapping).0).unwrap();
+    let mut code = [0u8; 8192];
+    let mut file_code = [0u8; 8192];
+    memory.read_exact_at(&mut code, target).unwrap();
+    library.read_exact_at(&mut file_code, file_offset).unwrap();
+    assert_eq!(code, file_code, "loaded memcpy code differs from its backing file");
+    let output = |extension: &str| OpenOptions::new().write(true).create_new(true)
+        .open(format!("/cargo-target/pake-memcpy-{phase}.{extension}")).unwrap();
+    output("bin").write_all(&code).unwrap();
+    writeln!(output("txt"), "{}\n{base:x}\n{offset:x}\n{target:x}\n{}",
+        std::process::id(), mapping.join(" ")).unwrap();
+}
+
 #[derive(Clone, Copy, Default)]
 struct Moments {
     n: usize,
@@ -224,6 +286,7 @@ fn measure_prepared<I, T>(
 fn optimized_timing_evidence() {
     assert!(!cfg!(debug_assertions), "timing requires an optimized build");
     check_mxcsr_scope();
+    capture_memcpy("before");
     // Arithmetic controls exercise the same estimator used for the measurements.
     let mut a = Moments::default();
     let mut b = Moments::default();
@@ -367,6 +430,7 @@ fn optimized_timing_evidence() {
         GROUP_SAMPLES, scalar_inputs, Scalar::from_bytes_mod_order_wide,
         |scalar| scalar * black_box(&*point));
 
+    capture_memcpy("after");
     assert!(control && group_control && prepared_control && mcdt_control,
         "variable-time positive control was not detected: inconclusive");
     assert!(!identical && !mcdt_identical && !component_identical.iter().any(|detected| *detected),
@@ -395,6 +459,7 @@ fn backend_measurements(fixture_count: usize, assessed_samples: usize) {
     assert!(!cfg!(debug_assertions), "timing requires an optimized build");
     assert!((1..=3).contains(&fixture_count));
     check_mxcsr_scope();
+    capture_memcpy("before");
     let mut controls = [false; 3];
     let mut detected = [[false; 3]; 3];
     let mut points = Vec::new();
@@ -433,6 +498,7 @@ fn backend_measurements(fixture_count: usize, assessed_samples: usize) {
                 }, Scalar::from_bytes_mod_order_wide, |scalar| scalar * black_box(&*point));
         }
     }
+    capture_memcpy("after");
     assert!(controls[..fixture_count].iter().all(|value| *value),
         "variable-time positive control was not detected: inconclusive");
     assert!(!detected[..fixture_count].iter().any(|fixture| fixture[2]),

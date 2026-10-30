@@ -7823,6 +7823,7 @@ PY
             && [ "$(grep -Fc 'PAKE_TIMING_ARTIFACT=' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^PAKE_TIMING_ARTIFACT_AFTER=sha256=[0-9a-f]{64} test_exit=0 unchanged=true$' "$output")" -eq 1 ] \
             && [ "$(grep -c '^PAKE_TIMING_DISASSEMBLY=' "$output")" -eq 1 ] \
+            && [ "$(grep -c '^PAKE_TIMING_MEMCPY=' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'PAKE_TIMING_RESULT=no-difference-detected cohorts=15 positive_controls=4 negative_controls=5 primitive_samples=1000000 group_samples=100000 repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^PAKE_TIMING_CASE=name:(early-exit-first-last|verify-tag-first-last|verify-tag-zero-random-key|scalar-reduce-zero-random|generator-fixed-random-prs|vartime-multiply-one-random|reduce-multiply-one-random|reduce-multiply-random-one|reduce-multiply-one-one) ' "$output")" -eq 9 ] \
             && [ "$(grep -Ec '^PAKE_TIMING_CASE=name:(vartime-prepared-one-random|(reduce-wipe|multiply-prepared|point-copy-wipe)-(one-random|random-one|one-one)) ' "$output")" -eq 10 ] \
@@ -7838,6 +7839,8 @@ PY
             && [ "$(grep -c '^PAKE_TIMING_DISASSEMBLY=' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^PAKE_TIMING_MXCSR_SCOPE=pass normal_restore=true unwind_restore=true ' "$output")" -eq 1 ] \
             || fail 'PAKE backend measurements or artifact differ'
+        [ "$(grep -c '^PAKE_TIMING_MEMCPY=' "$output")" -eq 1 ] \
+            || fail 'PAKE resolved memcpy observation is absent'
         [ "$(grep -Fxc 'PAKE_TIMING_BACKEND_RESULT=no-difference-detected fixtures=1 cohorts=2 positive_controls=1 negative_controls=1 samples=500000 control_samples=100000 repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^PAKE_TIMING_FIXTURE=name:baseline ' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^PAKE_TIMING_CASE=name:baseline-(vartime-prepared-one-random|multiply-prepared-one-one) seed:[0-9a-f]{16} samples:100000 ' "$output")" -eq 2 ] \

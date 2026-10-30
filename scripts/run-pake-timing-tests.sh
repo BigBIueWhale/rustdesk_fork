@@ -102,7 +102,7 @@ if [ "$allocation_probe" -eq 1 ]; then
     exit 0
 fi
 python3 -I -S - "$test_executable" "$backend_comparison" <<'PY'
-import base64,hashlib,json,re,subprocess,sys,zlib
+import base64,hashlib,json,re,struct,subprocess,sys,zlib
 from pathlib import Path
 artifact=sys.argv[1]
 map_bytes=Path('/cargo-target/pake-timing.map').read_bytes()
@@ -149,6 +149,17 @@ assert len(relocations)<=4*1024*1024
 copy_relocations=[line for line in relocations.decode().splitlines()
     if re.search(r'\s(?:memcpy|memmove|memset)(?:@|$)',line)]
 assert 1<=len(copy_relocations)<=8 and sum(map(len,copy_relocations))<=2048
+memcpy=[line.split() for line in copy_relocations if line.split()[-1]=='memcpy@GLIBC_2.14']
+assert len(memcpy)==1 and memcpy[0][1]=='R_X86_64_GLOB_DAT'
+elf=Path(artifact).read_bytes()
+assert len(elf)<=16*1024*1024 and elf[:7]==b'\x7fELF\x02\x01\x01'
+assert struct.unpack_from('<HH',elf,16)==(3,62)
+phoff=struct.unpack_from('<Q',elf,32)[0]
+phsize,phcount=struct.unpack_from('<HH',elf,54)
+assert phsize==56 and 0<phcount<64
+loads=[struct.unpack_from('<IIQQQQQQ',elf,phoff+i*phsize) for i in range(phcount)]
+assert [p[3] for p in loads if p[0]==1 and p[2]==0]==[0]
+Path('/cargo-target/pake-memcpy-offset').write_text(memcpy[0][0]+'\n')
 record.update({
     'link_map_sha256':hashlib.sha256(map_bytes).hexdigest(),
     'backend_comparison':sys.argv[2],
@@ -172,6 +183,52 @@ if [ "$test_status" -eq 0 ]; then
 fi
 [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
 printf 'PAKE_TIMING_ARTIFACT_AFTER=sha256=%s test_exit=%s unchanged=true\n' "$artifact_sha" "$test_status"
+python3 -I -S - "$test_executable" <<'PY'
+import base64,hashlib,json,struct,subprocess,sys,zlib
+from pathlib import Path
+root=Path('/cargo-target')
+before=(root/'pake-memcpy-before.txt').read_bytes()
+after=(root/'pake-memcpy-after.txt').read_bytes()
+assert 0<len(before)<=4096 and before==after
+pid,base,slot,target,mapping=before.decode().splitlines()
+base,slot,target=[int(x,16) for x in (base,slot,target)]
+assert slot==int((root/'pake-memcpy-offset').read_text(),16)
+address,perms,offset,device,inode,path=mapping.split()
+start,end=[int(x,16) for x in address.split('-')]
+assert perms=='r-xp' and start<=target<target+8192<=end
+file_offset=int(offset,16)+target-start
+code=(root/'pake-memcpy-before.bin').read_bytes()
+assert len(code)==8192 and code==(root/'pake-memcpy-after.bin').read_bytes()
+library=Path(path)
+metadata=library.stat()
+assert metadata.st_ino==int(inode) and 0<metadata.st_size<=16*1024*1024
+elf=library.read_bytes()
+assert elf[file_offset:file_offset+len(code)]==code
+assert elf[:7]==b'\x7fELF\x02\x01\x01' and struct.unpack_from('<HH',elf,16)==(3,62)
+phoff=struct.unpack_from('<Q',elf,32)[0]
+phsize,phcount=struct.unpack_from('<HH',elf,54)
+assert phsize==56 and 0<phcount<64
+loads=[struct.unpack_from('<IIQQQQQQ',elf,phoff+i*phsize) for i in range(phcount)]
+segments=[p for p in loads if p[0]==1 and p[1]&1
+          and p[2]<=file_offset<file_offset+len(code)<=p[2]+p[5]]
+assert len(segments)==1
+entry=segments[0][3]+file_offset-segments[0][2]
+assembly=subprocess.check_output(['objdump','-d','--start-address='+str(entry),
+    '--stop-address='+str(entry+len(code)),path],timeout=10)
+assert 0<len(assembly)<=512*1024
+encoded=base64.b64encode(zlib.compress(assembly,9)).decode()
+assert len(encoded)<=64*1024
+version=subprocess.check_output(['getconf','GNU_LIBC_VERSION'],timeout=5).decode().strip()
+print('PAKE_TIMING_MEMCPY='+json.dumps({'pid':int(pid),'executable':sys.argv[1],
+    'executable_sha256':hashlib.sha256(Path(sys.argv[1]).read_bytes()).hexdigest(),
+    'executable_base':base,'relocation':slot,'resolved_address':target,
+    'mapping':mapping,'library':path,'library_sha256':hashlib.sha256(elf).hexdigest(),
+    'libc_version':version,'entry_vaddr':entry,'code_bytes':len(code),
+    'code_sha256':hashlib.sha256(code).hexdigest(),'text_bytes':len(assembly),
+    'text_sha256':hashlib.sha256(assembly).hexdigest(),'encoding':'zlib-base64','data':encoded,
+    'before_after_equal':True,'memory_equals_file':True,
+    'scope':'resolved-memcpy-entry-and-following-8192-bytes'},sort_keys=True))
+PY
 [ "$test_status" -eq 0 ] || exit "$test_status"
 if [ -n "$backend_comparison" ]; then
     printf 'PAKE_TIMING_BACKEND_ARTIFACT=pass selection=%s sha256=%s tests=21 optimized=true unchanged=before-after\n' \

@@ -5427,6 +5427,7 @@ run_focused_rust_tests() {
                     tests::anchor_b_state_machine tests::round_trip_random_matching_password
                     tests::rng_error_clears_output_and_refuses_scalar
                     tests::wrong_password_is_confirmation_failure
+                    tests::initiator_rejects_invalid_confirmation
                     tests::non_confirmation_aborts_do_not_feed_limiter
                     tests::responder_rejects_wrong_ada tests::initiator_rejects_wrong_adb
                     tests::identity_element_aborts tests::bad_element_aborts_decode
@@ -6985,7 +6986,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
         printf 'WHITEBOARD_DISPLAY_PROFILE=whiteboard-display-lifetime stage=container-start tests=6 bridge=absent backend=x11\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = pake-allocation ]; then
-        printf 'PAKE_ALLOCATION_PROFILE=pake-allocation stage=container-start tests=20\n'
+        printf 'PAKE_ALLOCATION_PROFILE=pake-allocation stage=container-start tests=21\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = pake-timing ]; then
         printf 'PAKE_TIMING_PROFILE=pake-timing stage=container-start tests=1 cohorts=4\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main-config-key ]; then
@@ -7795,7 +7796,7 @@ PY
             || fail 'resolution-lifetime artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = pake-allocation ]; then
         [ "${#result_lines[@]}" -eq 2 ] || fail 'PAKE allocation summary count differs'
-        [ "$(grep -Ec '^PAKE_ALLOCATION_ARTIFACT=pass sha256=[0-9a-f]{64} tests=20 optimized=true unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^PAKE_ALLOCATION_ARTIFACT=pass sha256=[0-9a-f]{64} tests=21 optimized=true unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'PAKE_ALLOCATION_ARTIFACT=' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'PAKE_ALLOCATION_CASE=generator allocations=0 reallocations=0' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'PAKE_ALLOCATION_CASE=isk allocations=0 reallocations=0' "$output")" -eq 1 ] \

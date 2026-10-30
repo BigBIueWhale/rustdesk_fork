@@ -7636,11 +7636,11 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linu
         'focused Linux resolution-lifetime receipt'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'resolution-lifetime cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = pake-allocation ]; then
-    [ "$(/usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -Ec 'PAKE_ALLOCATION_ARTIFACT=pass sha256=[0-9a-f]{64} tests=20 optimized=true unchanged=before-after$')" -eq 1 ] \
+    [ "$(/usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -Ec 'PAKE_ALLOCATION_ARTIFACT=pass sha256=[0-9a-f]{64} tests=21 optimized=true unchanged=before-after$')" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'PAKE_ALLOCATION_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'PAKE allocation artifact receipt differs'
     require_exact_fixed_receipt \
-        "PAKE_ALLOCATION_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=20 target=linux-x86_64 scope=production-generator-isk-no-heap rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined" \
+        "PAKE_ALLOCATION_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=21 target=linux-x86_64 scope=production-generator-isk-no-heap rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined" \
         'PAKE allocation result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'PAKE allocation completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = pake-timing ]; then
@@ -9153,7 +9153,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'LINUX_RESOLUTION_LIFETIME_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=24 scope=production-command-and-owned-work-components network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = pake-allocation ]; then
-        printf 'PAKE_ALLOCATION_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=20 scope=production-generator-isk-no-heap network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'PAKE_ALLOCATION_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=21 scope=production-generator-isk-no-heap network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = pake-timing ]; then
         printf 'PAKE_TIMING_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=1 scope=optimized-primitive-timing network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

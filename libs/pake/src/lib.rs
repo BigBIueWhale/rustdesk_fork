@@ -203,8 +203,8 @@ pub fn channel_identifier(port: u16) -> Vec<u8> {
 ///
 /// Stream the length-prefixed fields, including the pad, into SHA-512. PRS bytes
 /// never enter a temporary heap encoding. The digest and wide copy are wiped;
-/// callers retain a wiping owner for the returned PRS-derived point.
-fn derive_generator(prs: &[u8], ci: &[u8], sid: &[u8]) -> RistrettoPoint {
+/// the returned PRS-derived point retains a wiping owner.
+fn derive_generator(prs: &[u8], ci: &[u8], sid: &[u8]) -> Zeroizing<RistrettoPoint> {
     let len_zpad = S_IN_BYTES
         .saturating_sub(1 + leb128_bytes(prs.len()).count())
         .saturating_sub(prs.len())
@@ -216,14 +216,14 @@ fn derive_generator(prs: &[u8], ci: &[u8], sid: &[u8]) -> RistrettoPoint {
     let mut wide = Zeroizing::new([0u8; 64]);
     wide.copy_from_slice(&digest);
     digest.as_mut_slice().zeroize();
-    RistrettoPoint::from_uniform_bytes(&wide)
+    Zeroizing::new(RistrettoPoint::from_uniform_bytes(&wide))
 }
 
 /// `ISK = SHA512( lv_cat(ISK_DSI, sid, K) ‖ o_cat(lv_cat(Ya,ADa), lv_cat(Yb,ADb)) )`.
 ///
 /// Trap (§10.4 #2): the transcript is appended **raw**, never re-`lv_cat`-wrapped
 /// — re-wrapping silently yields a different ISK (`49ddbd…`) and fails the vector.
-fn compute_isk(ya: &[u8], ada: &[u8], yb: &[u8], adb: &[u8], sid: &[u8], k: &[u8]) -> [u8; 64] {
+fn compute_isk(ya: &[u8], ada: &[u8], yb: &[u8], adb: &[u8], sid: &[u8], k: &[u8]) -> Zeroizing<[u8; 64]> {
     let m_a = [ya, ada];
     let m_b = [yb, adb];
     let mut hash = Sha512::new();
@@ -238,7 +238,7 @@ fn compute_isk(ya: &[u8], ada: &[u8], yb: &[u8], adb: &[u8], sid: &[u8], k: &[u8
     hash_lv_cat(&mut hash, first);
     hash_lv_cat(&mut hash, second);
     let mut isk = hash.finalize();
-    let mut out = [0u8; 64];
+    let mut out = Zeroizing::new([0u8; 64]);
     out.copy_from_slice(&isk);
     isk.as_mut_slice().zeroize();
     out
@@ -742,20 +742,8 @@ pub struct Initiator {
 pub struct InitiatorAwaitConfirm {
     mac_key: Zeroizing<[u8; 64]>,
     yb: [u8; 32],
-    k_c2s: [u8; 32],
-    k_s2c: [u8; 32],
-}
-
-impl Drop for InitiatorAwaitConfirm {
-    /// R-T15(a)/R-P12: wipe the derived session keys when this state is dropped — notably
-    /// on the R-P14b step-4 timeout (a peer that opens the handshake and stalls), where the
-    /// keys would otherwise linger in freed memory. On the success path `recv_step4` copies
-    /// them (they are `Copy`) into `DirectionalKeys` (which wipes its own copy on drop) and
-    /// this wipes this struct's copy. `mac_key` is `Zeroizing` and self-wipes; `yb` is public.
-    fn drop(&mut self) {
-        self.k_c2s.zeroize();
-        self.k_s2c.zeroize();
-    }
+    k_c2s: Zeroizing<[u8; 32]>,
+    k_s2c: Zeroizing<[u8; 32]>,
 }
 
 impl Initiator {
@@ -797,42 +785,35 @@ impl Initiator {
         sid[..16].copy_from_slice(&self.sid_a);
         sid[16..].copy_from_slice(&step2.sid_b);
 
-        // R-T15(a)/R-P12: `g` is PRS-laden — wrap in `Zeroizing` so the expanded point
-        // is wiped on every exit path, including the decompress-error early-return below.
-        let g = Zeroizing::new(derive_generator(&self.prs, &self.ci, &sid));
+        let g = derive_generator(&self.prs, &self.ci, &sid);
         let ya_pt = (&*ya * &*g).compress().to_bytes();
 
         let yb_pt = decompress(&step2.yb)?;
-        // R-T15(a)/R-P12: the DH shared point `K` is as secret as its `k_bytes`
-        // serialization — `Zeroizing` wipes the expanded point, not only the bytes.
         let k_pt = Zeroizing::new(&*ya * &yb_pt);
         drop(ya);
         if k_pt.is_identity() {
             return Err(PakeError::Identity);
         }
-        let mut k_bytes = k_pt.compress().to_bytes();
-
-        // R-T15(a)/R-P12: ISK is the layer's master secret (mac_key + both directional keys
-        // derive from it), so wipe it on drop rather than leave it resident on the stack.
-        let isk = Zeroizing::new(compute_isk(
+        let compressed_k = Zeroizing::new(k_pt.compress());
+        drop(k_pt);
+        let isk = compute_isk(
             &ya_pt,
             AD_INITIATOR,
             &step2.yb,
             AD_RESPONDER,
             &sid,
-            &k_bytes,
-        ));
-        k_bytes.zeroize();
+            compressed_k.as_bytes(),
+        );
+        drop(compressed_k);
         let (k_c2s, k_s2c) = derive_session_keys(&isk);
         let mac_key = derive_mac_key(&sid, &isk);
         let ta = compute_tag(&mac_key, &ya_pt, AD_INITIATOR);
 
-        // Copy into the WAIT_4 state (its own Drop wipes them); the Zeroizing locals wipe on return.
         let next = InitiatorAwaitConfirm {
             mac_key,
             yb: step2.yb,
-            k_c2s: *k_c2s,
-            k_s2c: *k_s2c,
+            k_c2s,
+            k_s2c,
         };
         Ok((next, Step3 { ya: ya_pt, ta }))
     }
@@ -847,8 +828,8 @@ impl InitiatorAwaitConfirm {
             return Err(PakeError::Confirmation);
         }
         Ok(DirectionalKeys {
-            send: self.k_c2s,
-            recv: self.k_s2c,
+            send: *self.k_c2s,
+            recv: *self.k_s2c,
         })
     }
 }
@@ -903,8 +884,7 @@ impl Responder {
         sid[..16].copy_from_slice(&step1.sid_a);
         sid[16..].copy_from_slice(&sid_b);
 
-        // R-T15(a)/R-P12: `g` is PRS-laden — wipe the expanded point on drop.
-        let g = Zeroizing::new(derive_generator(&self.prs, &self.ci, &sid));
+        let g = derive_generator(&self.prs, &self.ci, &sid);
         let yb_pt = (&*yb * &*g).compress().to_bytes();
 
         let next = ResponderAwaitConfirm {
@@ -929,24 +909,22 @@ impl ResponderAwaitConfirm {
     /// `k_c2s` (R-P2).
     pub fn recv_step3(self, step3: &Step3) -> Result<(DirectionalKeys, Step4), PakeError> {
         let ya_pt = decompress(&step3.ya)?;
-        // R-T15(a)/R-P12: wipe the expanded DH point `K`, not only its `k_bytes` form.
         let k_pt = Zeroizing::new(&*self.yb_scalar * &ya_pt);
         drop(self.yb_scalar);
         if k_pt.is_identity() {
             return Err(PakeError::Identity);
         }
-        let mut k_bytes = k_pt.compress().to_bytes();
-
-        // R-T15(a)/R-P12: ISK is the layer's master secret — wipe it on drop.
-        let isk = Zeroizing::new(compute_isk(
+        let compressed_k = Zeroizing::new(k_pt.compress());
+        drop(k_pt);
+        let isk = compute_isk(
             &step3.ya,
             AD_INITIATOR,
             &self.yb_pt,
             AD_RESPONDER,
             &self.sid,
-            &k_bytes,
-        ));
-        k_bytes.zeroize();
+            compressed_k.as_bytes(),
+        );
+        drop(compressed_k);
         let (k_c2s, k_s2c) = derive_session_keys(&isk);
         let mac_key = derive_mac_key(&self.sid, &isk);
 

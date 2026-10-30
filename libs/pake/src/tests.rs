@@ -67,12 +67,12 @@ fn published_ristretto255_vector() {
 
     let ya = scalar_le(YA_DRAFT);
     let yb = scalar_le(YB_DRAFT);
-    let ya_pt = (ya * g).compress().to_bytes();
-    let yb_pt = (yb * g).compress().to_bytes();
+    let ya_pt = (&ya * &*g).compress().to_bytes();
+    let yb_pt = (&yb * &*g).compress().to_bytes();
     let k = (ya * decompress(&yb_pt).unwrap()).compress().to_bytes();
     let isk = compute_isk(&ya_pt, b"ADa", &yb_pt, b"ADb", &sid, &k);
     assert_eq!(
-        hex(&isk),
+        hex(&isk[..]),
         "544199d71f62f8d9a1fee55727e24fe4a45844593c2b6013c4fa3969d0e5debb\
          2244675c0b43397cbb68d342b01fc0f98fc961469a25134de9f0f813c1a57476",
         "published ISK_SY"
@@ -150,8 +150,8 @@ fn check_anchor_construction(an: &Anchor) {
 
     let ya = scalar_le(YA_DRAFT);
     let yb = scalar_le(YB_DRAFT);
-    let ya_pt = (ya * g).compress().to_bytes();
-    let yb_pt = (yb * g).compress().to_bytes();
+    let ya_pt = (&ya * &*g).compress().to_bytes();
+    let yb_pt = (&yb * &*g).compress().to_bytes();
     assert_eq!(hex(&ya_pt), an.ya, "Ya");
     assert_eq!(hex(&yb_pt), an.yb, "Yb");
 
@@ -161,7 +161,7 @@ fn check_anchor_construction(an: &Anchor) {
     assert_eq!(hex(&k), an.k, "K");
 
     let isk = compute_isk(&ya_pt, AD_INITIATOR, &yb_pt, AD_RESPONDER, &sid, &k);
-    assert_eq!(hex(&isk), clean(an.isk), "ISK");
+    assert_eq!(hex(&isk[..]), clean(an.isk), "ISK");
 
     let (k_c2s, k_s2c) = derive_session_keys(&isk);
     assert_eq!(hex(&k_c2s[..]), an.k_c2s, "k_c2s");
@@ -328,6 +328,22 @@ fn wrong_password_is_confirmation_failure() {
     assert!(err.is_password_guess(), "only confirmation feeds the limiter");
 }
 
+/// The initiator cannot publish keys after a bad final confirmation tag.
+#[test]
+fn initiator_rejects_invalid_confirmation() {
+    for index in [0, 63] {
+        let (init, s1) = Initiator::new("pw", CI_PORT).unwrap();
+        let resp = Responder::new("pw", CI_PORT).unwrap();
+        let (resp2, s2) = resp.recv_step1(&s1).unwrap();
+        let (init2, s3) = init.recv_step2(&s2).unwrap();
+        let (_keys_resp, mut s4) = resp2.recv_step3(&s3).unwrap();
+        s4.tb[index] ^= 1;
+        let err = expect_err(init2.recv_step4(&s4));
+        assert_eq!(err, PakeError::Confirmation);
+        assert!(err.is_password_guess());
+    }
+}
+
 /// Every non-confirmation abort must NOT feed the limiter (R-P14c).
 #[test]
 fn non_confirmation_aborts_do_not_feed_limiter() {
@@ -468,7 +484,7 @@ fn isk_order_independent() {
         let expected = Sha512::digest(input);
         let actual = compute_isk(&a, AD_INITIATOR, &b, AD_RESPONDER, &sid, &k);
         assert_eq!(&actual[..], expected.as_slice());
-        assert_eq!(actual, compute_isk(&b, AD_RESPONDER, &a, AD_INITIATOR, &sid, &k));
+        assert_eq!(*actual, *compute_isk(&b, AD_RESPONDER, &a, AD_INITIATOR, &sid, &k));
     }
 }
 
@@ -483,6 +499,6 @@ fn generator_padding_and_length_boundaries() {
         let encoded = lv_cat(&[SUITE_DSI, &prs, &pad, &ci, &sid]);
         let digest: [u8; 64] = Sha512::digest(encoded).into();
         let expected = RistrettoPoint::from_uniform_bytes(&digest);
-        assert_eq!(derive_generator(&prs, &ci, &sid), expected);
+        assert_eq!(*derive_generator(&prs, &ci, &sid), expected);
     }
 }

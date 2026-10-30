@@ -118644,3 +118644,80 @@ QEMU 1847949 joins in 30.520 seconds, RAM `run.4xvzid_q` retires and all three
 listener deltas are zero. Six count files add 105,897 bytes, bringing this
 slice's retained evidence to twenty-four files / 406,553 bytes per host.
 The audit-only finalization preserves the measured ledger.
+
+### 2026-10-30 — capture and review the runtime-resolved PAKE copy dependency
+
+Code `bd0cc96096023a4d16b19b3d12b75fab0ff2571b` (tree
+`ac816b75ae936adde8960891c337ed7ca0f1d51f`) adds a test-only observation
+to `timing_tests.rs`, its runner and the guest receipt. Production, dependencies,
+inputs, clocks, budgets and thresholds are unchanged. The runner validates the
+ELF64 PIE and its single `memcpy@GLIBC_2.14` GLOB_DAT relocation. Before/after
+the timed cohorts, the test reads its own read-only relocation via
+[`/proc/self/mem`](https://man7.org/linux/man-pages/man5/proc_pid_mem.5.html),
+checks the executable/library [mappings](https://man7.org/linux/man-pages/man5/proc_pid_maps.5.html),
+and compares 8 KiB of executable memory with the inode-matched libc file.
+Both observations must agree. The runner retains bounded, hashed disassembly
+even when the native timing verdict fails. No interposition, foreign-process
+attachment, new dependency, unsafe Rust or additional privilege is introduced.
+
+Command: `/usr/bin/taskset --cpu-list 0 /bin/bash scripts/smoke-verifier-vm-authority.sh --pake-backend-serial-tests`.
+TUF run `l7uE7lOxEI` passes twenty functional tests; the timing test exits 101
+in 101.66 seconds and the outer harness exits 1. Executable SHA-256 before/after:
+`bd37a0d2abb47260e8536655fd99c792b06b4f000907d7e92b6265f12e896d79`.
+This observer changes the test binary; it is not the preceding artifact.
+All four input hashes, seeds, class counts, sample budgets, repeats and threshold
+match `D2RC4MRrQY`. Assessed cohorts retain 500,000 samples each; controls
+100,000, four operations, 20,000 warm-ups and absolute raw/pooled-p99 threshold 10.
+
+| Baseline cohort | Raw t | Pooled-p99 t |
+| --- | ---: | ---: |
+| vartime-prepared-one-random | -1821.480014 | -9514.420553 |
+| multiply-prepared-one-random | -1.610302 | -24.581521 |
+| multiply-prepared-random-one | 1.039772 | 21.568321 |
+| multiply-prepared-one-one | 1.908555 | 0.524454 |
+
+The variable-time control detects; identical-input control remains below.
+MXCSR normal/unwind restoration passes and MCDT_NO=1 is observed. One live
+host snapshot at 04:06:30 UTC binds QEMU 1849169 and thirteen threads, all
+mask `0` / seccomp 2. No second snapshot was captured before completion.
+This retains inherited placement, not exclusive CPU or measured frequency.
+
+**Resolved copy.** Test PID 296's relocation `0x155e30` resolves into glibc 2.36,
+`/usr/lib/x86_64-linux-gnu/libc.so.6`, ELF virtual address `0x152780`.
+Library SHA-256:
+`318224fc988f40df2e4f0a02ab7b1679f7e61a58203c707d4ac858d5a6ffefcd`.
+The 8,192 captured bytes have SHA-256
+`2a6167c9997b6f79dca647a3e176d0abb76db23785b1178d8e39d37c13c8f939`;
+114,724 bytes of disassembly hash to
+`d737f63da07e2bc4dbb582ce3f80281f06319c68aa82cbbd217197e2d1f199ba`.
+The window includes subsequent routines; it is not a claimed function size.
+The reachable copy body reviewed ends at return `0x152e5d`; its branches stay
+inside that body and it has no calls. Branch inputs are length, address
+difference/alignment, loop counters and library thresholds/flags. Copied payload
+bytes do not feed those branch conditions or effective addresses. The AVX
+loads/stores, `vzeroupper` and optional `rep movsb` paths agree with upstream
+[glibc 2.36 vector-copy source](https://raw.githubusercontent.com/bminor/glibc/glibc-2.36/sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S)
+and its [32-byte AVX specialization](https://raw.githubusercontent.com/bminor/glibc/glibc-2.36/sysdeps/x86_64/multiarch/memmove-avx-unaligned-erms.S).
+The stripped objdump nearest-symbol label is not the implementation's name.
+
+Current serial multiplication is at `0x753c0`, 2,800 bytes. Its copy calls
+resolve through the captured `0x155e30` slot: eight initial `0xa0` copies,
+the fixed table-building loop's `0xa0` copy, one `0x500` table copy, and the
+fixed scalar-window loop's `0xa0` copy. Sources/destinations use stack offsets
+and public counters, not scalar-derived addresses. Serial dalek selection
+therefore does not mean the entire measured process avoids AVX. This is a
+control/data-flow review, not a dynamic branch trace or a claim that copy
+instructions cannot have microarchitectural timing effects. It identifies
+no copied-data branch to correct and does not explain the measured difference.
+R-P12 stays OPEN; independently reproduce and investigate remaining timing/
+environment effects before choosing a production correction. Default/full
+timing profiles were not rerun for this serial-copy observation.
+
+QEMU joins successfully in 248.269 seconds, RAM workspace `run.02rgnl34`
+retires, all four listener deltas are zero and QEMU reports 4,096 host block-write
+bytes. Eight retained files, including the affinity snapshot, total 154,687 bytes
+per host with matching hashes. After copying evidence, the exact failed scratch
+directory `pake-memcpy-serial.l7uE7lOxEI` (inode 78294410) is deleted,
+releasing 3,584,000 allocated bytes. No VM/run scratch remains. Full sampling/RNG,
+other targets/shipping artifacts, higher-order leakage, automatic CI, erasure,
+installed IPC/actions, R-V3 and separately parked work remain open.

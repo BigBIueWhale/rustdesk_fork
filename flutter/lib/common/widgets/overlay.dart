@@ -602,10 +602,9 @@ class QualityMonitor extends StatelessWidget {
                     children: [
                       _row("Speed", qualityMonitorModel.data.speed ?? '-'),
                       _row("FPS", qualityMonitorModel.data.fps ?? '-'),
-                      // let delay be 0 if fps is 0
                       _row(
                           "Delay",
-                          "${qualityMonitorModel.data.delay == null ? '-' : (qualityMonitorModel.data.fps ?? "").replaceAll(' ', '').replaceAll('0', '').isEmpty ? 0 : qualityMonitorModel.data.delay}ms",
+                          "${qualityMonitorModel.data.delay ?? '-'}ms",
                           rightColor: Colors.green),
                       _row("Target Bitrate",
                           "${qualityMonitorModel.data.targetBitrate ?? '-'}kb"),

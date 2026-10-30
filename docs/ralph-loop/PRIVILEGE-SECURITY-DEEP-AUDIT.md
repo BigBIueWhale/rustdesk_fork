@@ -118546,3 +118546,14 @@ No host product/test workload ran.
 Full sampling/RNG timing, other targets and shipping artifacts, higher-order
 leakage, automatic CI, erasure and R-V3 remain open, together with installed
 IPC/actions and separately parked work.
+
+**Fresh ledger count and final retention.** At documentation commit
+`09c93c0e7259702e8acdd9e7a7478a8e3735fbf4`, isolated count `GO9Z0QrTpO`
+passes 74 admission controls, five refusals, seven tokenizer controls and the
+round-trip check. `tiktoken-0.12.0/cl100k_base/encode_ordinary` counts 360,335
+tokens in 1,647,529 bytes, SHA-256
+`e3118f0dd665d6541cb8e41206f312c63cc5af672c25138f67c07ff3a9f8940c`.
+QEMU 1844127 joins in 30.975 seconds; RAM `run.paim1sl5` retires and all three
+listener deltas are zero. Six count files add 103,816 bytes. The three runs
+retain twenty raw files totaling 389,137 bytes per host with matching hashes.
+This audit-only receipt leaves the measured ledger unchanged.

@@ -28,12 +28,15 @@ not authorize adopting or deleting leftovers.
 
 ## Inputs and run order
 
+Run the following entrypoints from the repository root:
+
 1. Authenticate inert bootstrap inputs with
-   `online-fetch.sh --verifier-vm-inputs`.
-2. Acquire the canonical `online/inputs` closure through `online-fetch.sh` in
-   its acquisition VM. Explicit maintenance candidates remain outside that
-   closure.
-3. Select the required workload through `smoke-verifier-vm-authority.sh`.
+   `bash scripts/online-fetch.sh --verifier-vm-inputs`.
+2. Acquire the canonical `online/inputs` closure through
+   `bash scripts/online-fetch.sh` in its acquisition VM. Explicit maintenance
+   candidates remain outside that closure.
+3. Select the required workload through
+   `bash scripts/smoke-verifier-vm-authority.sh`.
    Its default mode exercises authority fixtures; product scenarios use their
    explicit workload modes.
 

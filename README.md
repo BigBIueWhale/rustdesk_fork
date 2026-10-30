@@ -45,6 +45,8 @@ For the existing Android package identity, follow the [signing-key recovery proc
 a newly generated key cannot replace the committed signing identity.
 
 Contribution and review instructions are in [the contribution guide](docs/CONTRIBUTING.md).
+Build inputs, platform recipes and verification entrypoints are in
+[the build guide](scripts/README.md).
 
 ## Attribution & license
 

@@ -121161,3 +121161,31 @@ QEMU 2642114 joins in 30.883 seconds, RAM `run.1zi8f5o3` retires and all three
 endpoint deltas are zero. Six count files add 103,886 bytes; twenty raw files
 total 295,443 bytes per host, copied and hash-verified. This audit-only receipt
 leaves the ledger unchanged.
+
+## 2026-10-30 — user pivot; build-guide entrypoints
+
+The user directs an immediate unrelated task. The previous goal turn added
+quality-monitor coverage in `1966eacc232d864e9b1899ae1c23899fb60fa5e5` without
+changing production code. Its already-started run `ftwK86gswZ` has completed:
+33 cases across two suites, three focused parser controls, source postchecks and
+outer exit zero. Four new cases exercise real FPS JSON decoding, selected/all-display
+ordering, independent delay/frame updates and omitted/empty fields through the
+production model/widget. Event maps, display metadata and visibility are fixtures.
+This verifies component behavior and identifies no new product defect. Native
+event delivery, devices, metric age, R-F5 and the broader monitor work remain
+OPEN/PARKED; no further monitor test is started after the pivot. All prior parks
+and fifteen native credential-action acceptances remain open.
+
+Serial SHA-256:
+`a052a4ffd908813de32d2365c0ff2a751fce1d83302362addea489c632edcb82`.
+QEMU 2642962 joins after 267.118 seconds; bounded RAM workspace `run.ki0gg_qi`
+retires and all four endpoint deltas are zero. Seven raw files total 95,137 bytes
+per host, copied and hash-verified. No failed diagnostic tree remains for this run.
+
+The unrelated documentation change adds a direct build-guide link to the main
+README and makes the guide's three input/run entrypoints explicit from the
+repository root with `bash scripts/…` paths. Read-only review confirms the linked
+files and existing bootstrap/no-argument dispatchers. Local Markdown paths and
+fragments resolve; whitespace checks pass. No acquisition, setup, product build
+or product test is run for this documentation correction. The previous execution
+rules, recipes, inputs, product and tests remain unchanged.

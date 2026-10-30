@@ -440,21 +440,36 @@ void main() {
     final dynamic owner = const DesktopHomePage().createState();
     owner.systemError = 'Short status';
     await tester.binding.setSurfaceSize(const Size(1000, 900));
+    Widget paneWidget() => MaterialApp(
+      theme: MyTheme.lightTheme,
+      home: Material(child: Align(alignment: Alignment.topLeft,
+        child: Builder(builder: (context) => owner.buildLeftPane(context)),
+      )),
+    );
     ScrollController? controller;
     try {
-      await tester.pumpWidget(MaterialApp(
-        theme: MyTheme.lightTheme,
-        home: Material(child: Align(alignment: Alignment.topLeft,
-          child: Builder(builder: (context) => owner.buildLeftPane(context)),
-        )),
-      ));
-      await _settle(tester);
+      await tester.pumpWidget(paneWidget());
       final pane = find.byType(SingleChildScrollView);
       controller = tester.widget<SingleChildScrollView>(pane).controller!;
+      expect(find.text('Short status').hitTestable(), findsOneWidget,
+          reason: 'Ready status must appear in its first frame');
+      await _settle(tester);
       expect(controller.position.maxScrollExtent, 0);
       expect(controller.offset, 0);
       expect(find.text('Short status').hitTestable(), findsOneWidget);
       expect(find.text('Your Desktop').hitTestable(), findsOneWidget);
+
+      owner.systemError = 'Replacement status';
+      await tester.pumpWidget(paneWidget());
+      expect(find.text('Replacement status').hitTestable(), findsOneWidget);
+      expect(find.text('Short status'), findsNothing);
+      await _settle(tester);
+
+      owner.systemError = '';
+      await tester.pumpWidget(paneWidget());
+      expect(find.text('Replacement status'), findsNothing,
+          reason: 'A cleared status must disappear in the same frame');
+      await _settle(tester);
       expect(tester.takeException(), isNull);
     } finally {
       await tester.pumpWidget(const SizedBox.shrink());

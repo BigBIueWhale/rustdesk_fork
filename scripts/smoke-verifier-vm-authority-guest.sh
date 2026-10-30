@@ -167,7 +167,7 @@ case "$#:${8:-}" in
             || "${13}" = --whiteboard-display-lifetime || "${13}" = --whiteboard-client \
             || "${13}" = --whiteboard-helper-lifetime || "${13}" = --input-revocation || "${13}" = --input-release || "${13}" = --input-lifetime \
             || "${13}" = --installer-package || "${13}" = --linux-password-admission \
-            || "${13}" = --pake-allocation || "${13}" = --pake-timing || "${13}" = --main-config-key || "${13}" = --language-selection || "${13}" = --windows-pointer || "${13}" = --linux-resource-limits || "${13}" = --linux-xrandr-query || "${13}" = --resolution-restoration \
+            || "${13}" = --pake-allocation || "${13}" = --pake-timing || "${13}" = --pake-backend-default || "${13}" = --pake-backend-serial || "${13}" = --main-config-key || "${13}" = --language-selection || "${13}" = --windows-pointer || "${13}" = --linux-resource-limits || "${13}" = --linux-xrandr-query || "${13}" = --resolution-restoration \
             || "${13}" = --linux-resolution-lifetime || "${13}" = --audio-mailbox \
             || "${13}" = --recording-output || "${13}" = --viewer-video || "${13}" = --video-qos || "${13}" = --video-vpx || "${13}" = --video-qos-controller || "${13}" = --option-ack || "${13}" = --resolution-parent || "${13}" = --file-receive-caller || "${13}" = --viewer-credentials || "${13}" = --viewer-resume || "${13}" = --local-file-listing \
             || "${13}" = --clipboard-filetime || "${13}" = --audio-buffer || "${13}" = --fusermount-fd \
@@ -1175,6 +1175,8 @@ cases.extend([('hbb-common-fs', {'HBB_LOGIND_NATIVE': '1'}, 'linux-logind'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'clipboard-keystrokes'}, 'flutter-credential-dialog'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'file-search'}, 'flutter-credential-dialog'),
               ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'pake-timing'}, 'pake-timing'),
+              ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'pake-backend-default'}, 'pake-timing'),
+              ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'pake-backend-serial'}, 'pake-timing'),
               ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'pake-allocation'}, 'pake-allocation'),
               ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'video-vpx'}, 'linux-parent-libtest'),
               ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'clipboard-response'}, 'clipboard-response'),
@@ -1213,9 +1215,9 @@ printf '%s\\n' "$VM_STORAGE_PROFILE"
         'pass': passed}, sort_keys=True), flush=True)
 print('VM_TRANSIENT_WORKLOAD_OBSERVED=' + json.dumps({
     'modes': len(modes), 'controls': controls, 'refusals': refusals}, sort_keys=True), flush=True)
-if (controls, refusals) != (72, 5):
+if (controls, refusals) != (74, 5):
     raise SystemExit('VM workload resource admission cases failed')
-print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=40 controls=72 refusals=5 allocation=not-entered')
+print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=40 controls=74 refusals=5 allocation=not-entered')
 PY
     for operation in preflight reserve check watch run; do
         root_status=0
@@ -5409,7 +5411,8 @@ run_focused_rust_tests() {
                 query_regressions::tests::output_names_are_literal_regex_text
                 query_regressions::tests::output_identity_cannot_continue_on_another_line
             )
-        elif [[ "$RUST_TEST_PROFILE" = pake-timing || "$RUST_TEST_PROFILE" = pake-allocation ]]; then
+        elif [[ "$RUST_TEST_PROFILE" = pake-timing || "$RUST_TEST_PROFILE" = pake-allocation \
+            || "$RUST_TEST_PROFILE" = pake-backend-default || "$RUST_TEST_PROFILE" = pake-backend-serial ]]; then
             container_name=rustdesk-${RUST_TEST_PROFILE}-tests
             memory=2g
             memory_bytes=2147483648
@@ -5418,10 +5421,8 @@ run_focused_rust_tests() {
                 libs/pake/src/lib.rs libs/pake/src/tests.rs libs/pake/src/timing_tests.rs
                 scripts/run-pake-timing-tests.sh)
             required_tests=(timing_tests::optimized_timing_evidence)
-            if [ "$RUST_TEST_PROFILE" = pake-allocation ]; then
-                source_fingerprints+=(libs/pake/src/allocation_probe.rs scripts/verify.sh)
+            if [ "$RUST_TEST_PROFILE" != pake-timing ]; then
                 required_tests=(
-                    allocation_probe::no_transient_secret_heap_copies
                     tests::published_ristretto255_vector
                     tests::anchor_a_construction tests::anchor_b_construction
                     tests::anchor_b_state_machine tests::round_trip_random_matching_password
@@ -5436,6 +5437,12 @@ run_focused_rust_tests() {
                     tests::replayed_initiator_flow_aborts tests::lv_cat_encoding
                     tests::isk_order_independent tests::generator_padding_and_length_boundaries
                 )
+                if [ "$RUST_TEST_PROFILE" = pake-allocation ]; then
+                    source_fingerprints+=(libs/pake/src/allocation_probe.rs scripts/verify.sh)
+                    required_tests+=(allocation_probe::no_transient_secret_heap_copies)
+                else
+                    required_tests+=(timing_tests::backend_timing_evidence)
+                fi
             fi
         elif [ "$RUST_TEST_PROFILE" = main-config-key ]; then
             container_name=rustdesk-main-config-key-tests
@@ -6546,7 +6553,9 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                             printf "RESOLUTION_RESTORATION_ARTIFACT=pass sha256=%s tests=6 unchanged=before-after\n" "$artifact_sha"
                             exit 0
                         fi
-                        if [[ "$RUST_TEST_PROFILE" = pake-allocation || "$RUST_TEST_PROFILE" = pake-timing || "$RUST_TEST_PROFILE" = language-selection || "$RUST_TEST_PROFILE" = main-config-key ]]; then
+                        if [[ "$RUST_TEST_PROFILE" = pake-allocation || "$RUST_TEST_PROFILE" = pake-timing \
+                            || "$RUST_TEST_PROFILE" = pake-backend-default || "$RUST_TEST_PROFILE" = pake-backend-serial \
+                            || "$RUST_TEST_PROFILE" = language-selection || "$RUST_TEST_PROFILE" = main-config-key ]]; then
                             python3 -I -S -c '\''import errno, socket
 with socket.socket() as canary:
     try:
@@ -6562,6 +6571,10 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                             fi
                             if [ "$RUST_TEST_PROFILE" = pake-timing ]; then
                                 /bin/bash /source/scripts/run-pake-timing-tests.sh
+                                exit 0
+                            fi
+                            if [[ "$RUST_TEST_PROFILE" = pake-backend-default || "$RUST_TEST_PROFILE" = pake-backend-serial ]]; then
+                                /bin/bash /source/scripts/run-pake-timing-tests.sh "--${RUST_TEST_PROFILE#pake-}"
                                 exit 0
                             fi
                             if [ "$RUST_TEST_PROFILE" = main-config-key ]; then
@@ -6989,6 +7002,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         printf 'PAKE_ALLOCATION_PROFILE=pake-allocation stage=container-start tests=21\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = pake-timing ]; then
         printf 'PAKE_TIMING_PROFILE=pake-timing stage=container-start tests=1 cohorts=24\n'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [[ "$RUST_TEST_PROFILE" = pake-backend-default || "$RUST_TEST_PROFILE" = pake-backend-serial ]]; then
+        printf 'PAKE_TIMING_PROFILE=%s stage=container-start tests=21 cohorts=4\n' "$RUST_TEST_PROFILE"
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main-config-key ]; then
         printf 'MAIN_CONFIG_KEY_PROFILE=main-config-key stage=container-start tests=3 app=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = language-selection ]; then
@@ -7815,6 +7830,16 @@ PY
             && [ "$(grep -Ec '^PAKE_TIMING_MXCSR_SCOPE=pass normal_restore=true unwind_restore=true ' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^PAKE_TIMING_MXCSR_RESTORED=value:[0-9a-f]{8}$' "$output")" -eq 1 ] \
             || fail 'PAKE timing measurements or artifact differ'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [[ "$RUST_TEST_PROFILE" = pake-backend-default || "$RUST_TEST_PROFILE" = pake-backend-serial ]]; then
+        [ "${#result_lines[@]}" -eq 2 ] || fail 'PAKE backend summary count differs'
+        [ "$(grep -Ec "^PAKE_TIMING_BACKEND_ARTIFACT=pass selection=${RUST_TEST_PROFILE#pake-backend-} sha256=[0-9a-f]{64} tests=21 optimized=true unchanged=before-after$" "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'PAKE_TIMING_BACKEND_ARTIFACT=' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^PAKE_TIMING_ARTIFACT_AFTER=sha256=[0-9a-f]{64} test_exit=0 unchanged=true$' "$output")" -eq 1 ] \
+            && [ "$(grep -c '^PAKE_TIMING_DISASSEMBLY=' "$output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'PAKE_TIMING_BACKEND_RESULT=no-difference-detected cohorts=2 positive_controls=1 negative_controls=1 samples=100000 repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^PAKE_TIMING_CASE=name:(vartime-prepared-one-random|multiply-prepared-(one-random|random-one|one-one)) ' "$output")" -eq 4 ] \
+            && [ "$(grep -Ec '^PAKE_TIMING_MXCSR_SCOPE=pass normal_restore=true unwind_restore=true ' "$output")" -eq 1 ] \
+            || fail 'PAKE backend measurements or artifact differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main-config-key ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'main config-key summary count differs'
         [ "$(grep -Ec '^MAIN_CONFIG_KEY_ARTIFACT=pass sha256=[0-9a-f]{64} tests=3 unchanged=before-after$' "$output")" -eq 1 ] \
@@ -8512,6 +8537,12 @@ PY
             grep -E '^test timing_tests::.* \.\.\. ok$|^PAKE_TIMING_' "$output"
             printf 'PAKE_TIMING_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=optimized-primitive-timing rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [[ "$RUST_TEST_PROFILE" = pake-backend-default || "$RUST_TEST_PROFILE" = pake-backend-serial ]]; then
+            [ "$tests_passed" -eq 21 ] || fail 'PAKE backend test total differs'
+            grep -E '^test (tests|timing_tests)::.* \.\.\. ok$|^PAKE_TIMING_' "$output"
+            printf 'PAKE_BACKEND_VM=pass commit=%s tree=%s selection=%s tests=21 target=linux-x86_64 scope=optimized-multiplication-comparison rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "${RUST_TEST_PROFILE#pake-backend-}" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = main-config-key ]; then
             grep -E '^test tests::.* \.\.\. ok$|^MAIN_CONFIG_KEY_(ARTIFACT(_BEFORE)?|LOCK)=' "$output"
             printf 'MAIN_CONFIG_KEY_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-key-schema rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \

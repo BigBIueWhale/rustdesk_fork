@@ -114,6 +114,22 @@ fn random(state: &mut u64) -> u64 {
     value ^ (value >> 31)
 }
 
+fn varied(bytes: &mut [u8; 64], class: usize, state: &mut u64) {
+    for chunk in bytes.chunks_exact_mut(8) {
+        chunk.copy_from_slice(&random(state).to_le_bytes());
+    }
+    if class == 0 {
+        bytes.fill(0);
+    }
+}
+
+fn scalar_inputs(bytes: &mut [u8; 64], class: usize, state: &mut u64) {
+    varied(bytes, class, state);
+    if class == 0 {
+        bytes[0] = 1;
+    }
+}
+
 #[inline(never)]
 fn early_exit_compare(expected: &[u8; 64], candidate: &[u8; 64]) -> bool {
     for i in 0..64 {
@@ -227,14 +243,6 @@ fn optimized_timing_evidence() {
         bytes[if class == 0 { 0 } else { 63 }] ^= 1;
         assert!(!verify_tag(&key, &public_element, AD_RESPONDER, bytes));
     };
-    let varied = |bytes: &mut [u8; 64], class: usize, state: &mut u64| {
-        for chunk in bytes.chunks_exact_mut(8) {
-            chunk.copy_from_slice(&random(state).to_le_bytes());
-        }
-        if class == 0 {
-            bytes.fill(0);
-        }
-    };
     let control = measure("early-exit-first-last", 0x116f_3ec2_40ba_c981, SAMPLES, mismatches,
         |bytes| early_exit_compare(black_box(&expected), bytes));
     let tag_position = measure("verify-tag-first-last", 0x7908_6dc5_183e_b2a4, SAMPLES, mismatches,
@@ -269,12 +277,6 @@ fn optimized_timing_evidence() {
     let mut fixed_prs = [b'A'; 44];
     fixed_prs[43] = b'=';
     let point = derive_generator(&fixed_prs, &ci, &sid);
-    let scalar_inputs = |bytes: &mut [u8; 64], class: usize, state: &mut u64| {
-        varied(bytes, class, state);
-        if class == 0 {
-            bytes[0] = 1;
-        }
-    };
     // The deliberate variable-time control computes the same group result.
     // Only this test uses it; production uses the ordinary multiplication operator.
     for scalar in [Scalar::ONE, Scalar::from_bytes_mod_order_wide(&[0x63; 64])] {
@@ -375,4 +377,30 @@ fn optimized_timing_evidence() {
         "component timing difference detected");
     assert!(!mcdt_multiply && !mcdt_reversed && !restored, "MXCSR comparison timing difference detected");
     println!("PAKE_TIMING_RESULT=no-difference-detected cohorts=15 positive_controls=4 negative_controls=5 primitive_samples=1000000 group_samples=100000 repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact");
+}
+
+#[test]
+#[ignore = "requires the isolated optimized backend comparison"]
+fn backend_timing_evidence() {
+    assert!(!cfg!(debug_assertions), "timing requires an optimized build");
+    check_mxcsr_scope();
+    let mut prs = [b'A'; 44];
+    prs[43] = b'=';
+    let point = derive_generator(&prs, &channel_identifier(CI_PORT), &[0x62; 32]);
+    let control = measure_prepared("vartime-prepared-one-random", 0x4a16_c09e_72f3_b85d,
+        GROUP_SAMPLES, scalar_inputs, Scalar::from_bytes_mod_order_wide,
+        |scalar| RistrettoPoint::vartime_double_scalar_mul_basepoint(
+            scalar, black_box(&point), black_box(&Scalar::ZERO)));
+    let mut detected = [false; 3];
+    for (orientation, suffix) in ["one-random", "random-one", "one-one"].iter().enumerate() {
+        detected[orientation] = measure_prepared(&format!("multiply-prepared-{suffix}"),
+            0x8d02_57be_a913_c64f, GROUP_SAMPLES, |bytes, class, state| {
+                let class = match orientation { 0 => class, 1 => class ^ 1, _ => 0 };
+                scalar_inputs(bytes, class, state);
+            }, Scalar::from_bytes_mod_order_wide, |scalar| scalar * black_box(&*point));
+    }
+    assert!(control, "variable-time positive control was not detected: inconclusive");
+    assert!(!detected[2], "identical-input negative control detected a difference: inconclusive");
+    assert!(!detected[..2].iter().any(|value| *value), "backend timing difference detected");
+    println!("PAKE_TIMING_BACKEND_RESULT=no-difference-detected cohorts=2 positive_controls=1 negative_controls=1 samples=100000 repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact");
 }

@@ -281,6 +281,7 @@ fn rng_error_clears_output_and_refuses_scalar() {
         buf.fill(0xa5); // Deterministic nonsecret contents, not a random-byte assertion.
         let (init_valid, step1) = Initiator::new("pw", CI_PORT).unwrap();
         let (init_wrong_role, _) = Initiator::new("pw", CI_PORT).unwrap();
+        let (init_invalid_element, _) = Initiator::new("pw", CI_PORT).unwrap();
         let (pending, step2) = Responder::new("pw", CI_PORT).unwrap().recv_step1(&step1).unwrap();
         drop(pending);
         let resp_valid = Responder::new("pw", CI_PORT).unwrap();
@@ -315,14 +316,19 @@ fn rng_error_clears_output_and_refuses_scalar() {
         wrong_step2.adb = AD_INITIATOR.to_vec();
         let init_wrong_role = expect_err(init_wrong_role.recv_step2(&wrong_step2));
         let resp_wrong_role = expect_err(resp_wrong_role.recv_step1(&wrong_step1));
-        (buf, errno, fill, scalar, empty, init_valid, resp_valid, init_wrong_role, resp_wrong_role)
+        wrong_step2.adb = AD_RESPONDER.to_vec();
+        wrong_step2.yb = [0xff; 32];
+        let init_invalid_element = expect_err(init_invalid_element.recv_step2(&wrong_step2));
+        (buf, errno, fill, scalar, empty, init_valid, resp_valid, init_wrong_role, resp_wrong_role,
+         init_invalid_element)
     });
-    let (buf, errno, fill, scalar, empty, init_valid, resp_valid, init_wrong_role, resp_wrong_role) =
-        worker.join().unwrap();
+    let (buf, errno, fill, scalar, empty, init_valid, resp_valid, init_wrong_role, resp_wrong_role,
+         init_invalid_element) = worker.join().unwrap();
     let restored = fill_random(&mut [0u8; 64]);
     println!("PAKE_RNG_CASE=errno:{errno:?} cleared:{} fill:{fill:?} scalar:{scalar:?} empty:{empty:?} restored:{restored:?} worker:joined",
         buf.iter().filter(|&&byte| byte == 0).count());
     println!("PAKE_RNG_AD_CASE=initiator_valid:{init_valid:?} responder_valid:{resp_valid:?} initiator_wrong_role:{init_wrong_role:?} responder_wrong_role:{resp_wrong_role:?} worker:joined");
+    println!("PAKE_RNG_CASE=invalid_element:{init_invalid_element:?} worker:joined");
     assert_eq!(errno, Some(5), "actual OS EIO reaches getrandom");
     assert_eq!(fill, Err(PakeError::Rng));
     assert_eq!(scalar, Err(PakeError::Rng));
@@ -332,6 +338,8 @@ fn rng_error_clears_output_and_refuses_scalar() {
     assert_eq!((init_valid, resp_valid), (PakeError::Rng, PakeError::Rng));
     assert_eq!((init_wrong_role, resp_wrong_role), (PakeError::AdMismatch, PakeError::AdMismatch),
         "wrong roles must be rejected before requesting randomness");
+    assert_eq!(init_invalid_element, PakeError::Decode,
+        "invalid peer encodings must be rejected before requesting randomness");
 }
 
 /// A wrong password fails at the responder's R-P3 check and is the sole

@@ -15,6 +15,7 @@ struct Response { id: u64, value: i64, error: i32, flags: u32 }
 
 struct Gate {
     identity: (u64, u64),
+    after_read: Option<AccessWatch>,
     held: oneshot::Sender<u32>,
     release: mpsc::Receiver<()>,
     finished: oneshot::Sender<bool>,
@@ -51,9 +52,20 @@ impl Observer {
                 assert_eq!(unsafe { libc::ioctl(fd.as_raw_fd(), 0xc050_2100u64, &mut notification) }, 0);
                 assert_eq!((notification.data.nr, notification.data.arch), (libc::SYS_fsync as i32, 0xc000_003e));
                 let mut report = None;
-                if let Some(active) = gate.as_ref() {
+                if let Some(active) = gate.as_mut() {
                     let meta = std::fs::metadata(format!("/proc/thread-self/fd/{}", notification.data.args[0])).unwrap();
-                    if (meta.dev(), meta.ino()) == active.identity {
+                    let target = (meta.dev(), meta.ino()) == active.identity;
+                    let read_observed = if target {
+                        match active.after_read.as_mut() {
+                            None => true,
+                            Some(watch) => match watch.0.read(&mut [0; 4096]) {
+                                Ok(count) => { assert!(count > 0); true }
+                                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => false,
+                                Err(error) => panic!("cannot observe native prefix read: {error}"),
+                            },
+                        }
+                    } else { false };
+                    if read_observed {
                         let active = gate.take().unwrap();
                         let _ = active.held.send(notification.pid);
                         // The unchanged blocking baseline must be released without help
@@ -111,25 +123,47 @@ fn stalled_receive_retirement_keeps_control_and_exact_cleanup_ownership() {
     let main_tid = unsafe { libc::syscall(libc::SYS_gettid) } as u32;
     let observations = runtime.block_on(async {
         let mut observations = Vec::new();
-        for abandon in [false, true] {
-            let fixture = ReceiveFixture::new(false);
+        for (phase, abandon) in [("completed", false), ("completed", true),
+            ("cancel", false), ("cancel", true), ("mismatch", false), ("mismatch", true)] {
+            let fixture = ReceiveFixture::new(phase == "cancel");
             let digest = std::fs::read(&fixture.digest).unwrap();
+            let job = fixture.job(724).await;
             let mut owner = FileConfirmations::default();
-            owner.prepare(fixture.job(724).await, 0, 3).unwrap();
-            tokio::time::timeout(Duration::from_secs(3), async {
-                while !owner.pending[0].join.as_ref().unwrap().task.is_finished() {
-                    tokio::task::yield_now().await;
-                }
-            }).await.unwrap();
+            let after_read = if phase == "completed" {
+                owner.prepare(job, 0, 3).unwrap();
+                tokio::time::timeout(Duration::from_secs(3), async {
+                    while !owner.pending[0].join.as_ref().unwrap().task.is_finished() {
+                        tokio::task::yield_now().await;
+                    }
+                }).await.unwrap();
+                None
+            } else { Some((job, AccessWatch::new(&fixture.payload))) };
             let meta = std::fs::metadata(fixture.lease.parent().unwrap()).unwrap();
             let (armed, ready) = oneshot::channel();
             let (held, mut notification) = oneshot::channel();
             let (release, released) = mpsc::sync_channel(1);
             let (finished, continued) = oneshot::channel();
-            observer.commands.send((Gate { identity: (meta.dev(), meta.ino()), held,
+            let (job, watch) = match after_read {
+                Some((job, watch)) => (Some(job), Some(watch)),
+                None => (None, None),
+            };
+            observer.commands.send((Gate { identity: (meta.dev(), meta.ino()), after_read: watch, held,
                 release: released, finished }, armed)).unwrap();
             ready.await.unwrap();
-            assert!(owner.cancel(724));
+            if let Some(job) = job {
+                if phase == "cancel" {
+                    let mut watch = AccessWatch::new(&fixture.payload);
+                    owner.prepare(job, 0, fixture.offset).unwrap();
+                    watch.wait().await;
+                    assert!(!owner.pending[0].join.as_ref().unwrap().task.is_finished());
+                } else {
+                    owner.start(job, FileTransferSendConfirmRequest { id: 724, file_num: 0,
+                        union: Some(file_transfer_send_confirm_request::Union::Resume(FileTransferResume {
+                            offset: 3, prefix_sha256: vec![0; 32].into(), ..Default::default()
+                        })), ..Default::default() }).unwrap();
+                }
+            }
+            if phase != "mismatch" { assert!(owner.cancel(724)); }
             let mut wait = Box::pin(owner.next());
             let mut completion = None;
             let start = Instant::now();
@@ -165,8 +199,14 @@ fn stalled_receive_retirement_keeps_control_and_exact_cleanup_ownership() {
                 if completion.is_none() { completion = Some(owner.next().await); }
                 assert!(owner.is_empty());
                 let completed = completion.take().unwrap();
-                assert!(completed.job.unwrap().is_none() && completed.confirmation.is_none());
-                assert!(completed.cancelled_log.is_some());
+                assert!(completed.confirmation.is_none());
+                if phase == "mismatch" {
+                    assert!(completed.job.err().unwrap().to_string().contains("resume prefix differs"));
+                    assert!(completed.cancelled_log.is_none());
+                } else {
+                    assert!(completed.job.unwrap().is_none());
+                    assert!(completed.cancelled_log.is_some());
+                }
             }
             let explicit = continued.await.unwrap();
             tokio::time::timeout(Duration::from_secs(3), async {
@@ -178,12 +218,12 @@ fn stalled_receive_retirement_keeps_control_and_exact_cleanup_ownership() {
             let mut lease = super::super::super::ReceivePathLease::acquire(&fixture.target, false).unwrap();
             lease.retire().unwrap();
             drop((lease, fixture));
-            println!("FILE_CONFIRMATION_SYNC=observed abandon={abandon} responsive={responsive} explicit_release={explicit} permits=returned partial=preserved lease=reacquired");
+            println!("FILE_CONFIRMATION_SYNC=observed phase={phase} abandon={abandon} responsive={responsive} explicit_release={explicit} permits=returned partial=preserved lease=reacquired");
             observations.push(responsive && explicit);
         }
         observations
     });
     drop(runtime);
     drop(observer);
-    assert_eq!(observations, vec![true, true]);
+    assert_eq!(observations, vec![true; 6]);
 }

@@ -122423,3 +122423,25 @@ the completed-destination staging regressions are still OPEN/STOP-SHIP. The
 specific application-validation resumption question remains unanswered; no parked
 test or unrelated work was resumed. The live instruction file and old stash remain
 unchanged. This checkpoint does not claim complete receive or release acceptance.
+
+### 2026-10-31 — retain pending receive claims through prefix failure; preparation
+
+The prior turn corrected accepted-job collection. This R-S8/R-S0 continuation
+targets the inner hash-failure path: `set_stream_offset()` currently retires the
+lease synchronously on error, and its local claim also retires when the hash future
+is dropped. The intended owner is the terminal job, with lease-only cleanup until
+proof acceptance. Its existing bounded confirmation owner must join native reads
+and cleanup before releasing capacity; failed confirmation cannot advance counters,
+publish proof or authorize payload writes.
+
+Reviewed [Tokio File lifetime](https://docs.rs/tokio/latest/tokio/fs/struct.File.html)
+and [JoinHandle ownership](https://docs.rs/tokio/latest/tokio/task/struct.JoinHandle.html):
+dropping a future/file does not establish native IO completion. The existing worker
+therefore remains cooperatively cancelled and exactly joined; no detached inner
+cleanup task is introduced. The native sync observer now waits for a real payload
+read before holding cleanup, excluding acquisition syncs. It covers mismatched
+proof and cancellation during hashing, each with recollection and owner drop, plus
+the two accepted completed-worker controls. Four existing prefix/content/cancellation
+tests join the focused lane. This is unchanged-product baseline preparation; no
+new failure or pass is yet claimed. Admission refusal, CM/full application work,
+staging lifecycle failures and all other user parks remain open.

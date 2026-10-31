@@ -3589,6 +3589,10 @@ run_focused_rust_tests() {
                 fs::confirmation::tests::prepared_proofs_roundtrip_both_transfer_roles
                 fs::confirmation::tests::prepared_receive_cancellation_preserves_partial_and_checkpoint_rules
                 fs::confirmation::tests::prepare_refuses_invalid_targets_before_worker_admission
+                fs::tests::file_metadata_resume_requires_matching_source_prefix
+                fs::tests::file_metadata_resume_proof_shape_and_content_precede_confirmation
+                fs::tests::file_metadata_pending_resume_retirement_preserves_saved_bytes
+                fs::tests::file_metadata_resume_cancellation_preserves_partial_and_refuses_reuse
                 fs::confirmation::tests::slow_sync::stalled_receive_retirement_keeps_control_and_exact_cleanup_ownership
             )
         fi
@@ -6379,6 +6383,10 @@ run_focused_rust_tests() {
                                 fs::confirmation::tests::prepared_proofs_roundtrip_both_transfer_roles \
                                 fs::confirmation::tests::prepared_receive_cancellation_preserves_partial_and_checkpoint_rules \
                                 fs::confirmation::tests::prepare_refuses_invalid_targets_before_worker_admission \
+                                fs::tests::file_metadata_resume_requires_matching_source_prefix \
+                                fs::tests::file_metadata_resume_proof_shape_and_content_precede_confirmation \
+                                fs::tests::file_metadata_pending_resume_retirement_preserves_saved_bytes \
+                                fs::tests::file_metadata_resume_cancellation_preserves_partial_and_refuses_reuse \
                                 fs::confirmation::tests::slow_sync::stalled_receive_retirement_keeps_control_and_exact_cleanup_ownership; do
                                 group_status=0
                                 timeout --signal=TERM --kill-after=5s 20s \
@@ -8396,6 +8404,7 @@ PY
             grep -E '^test fs::(tests::(send_(digest_|read_buffer_)|read_step_|transfer_resume_)|file_block::tests::allocation_refusal_).* \.\.\. ok$|^test tcp::writer_lifetime_tests::read_jobs_retire_before_native_writer_pressure_errors \.\.\. ok$|^SEND_DIGEST_SIZE=|^SEND_READ_ALLOCATION(_CASE)?=|^FILE_COMPRESSION_(ALLOCATION|CASE)=|^READ_TERMINAL_RETIREMENT(_CASE)?=|^READ_NONTERMINAL_RETIREMENT=|^READ_JOB_BACKPRESSURE(_CASE)?=|^READ_ROUND_ROBIN(_CASE)?=.*|^READ_CONFIRMATION_READY=|^TRANSFER_RESUME_' "$output"
             grep -E '^test fs::tests::(send_resume_[a-z_]+|send_read_preserves_exact_lengths_and_resumed_eof|confirmation_rejects_wrong_job_and_duplicate_progress|resume_counter_overflow_does_not_publish_stream_ownership) [.][.][.] ok$' "$output"
             grep -E '^test fs::confirmation::tests::(slow_sync::)?[a-z_]+ [.][.][.] ok$|^FILE_CONFIRMATION_' "$output"
+            grep -E '^test fs::tests::file_metadata_(resume_|pending_resume_)[a-z_]+ [.][.][.] ok$|^FILE_METADATA_(RESUME_|PENDING_RESUME)' "$output"
         else
         grep -E '^test platform::linux::tests::r_s11at_loginctl_output_.* \.\.\. ok$|^LOGINCTL_(WAIT_AUTHORITY|LOST_WAIT)=' "$output"
         if [ "$HBB_LOGIND_NATIVE" -eq 0 ]; then

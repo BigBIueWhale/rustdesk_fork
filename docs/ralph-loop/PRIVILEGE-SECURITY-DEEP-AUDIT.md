@@ -123869,3 +123869,15 @@ are zero. Seven raw files / 82,736 bytes per host are hash-verified before remov
 are verified absent. Application serial SHA-256:
 `21d2d62a081d60c76a025566f9affbd2fa3007b629f5547039144c7bd634b2f9`.
 Together these four behavior runs retain 28 raw files / 482,864 bytes per host.
+
+Fresh ledger count at `85117631`, TUF `dOl8zMfYHf`: **373,505 tokens /
+1,711,081 bytes**, SHA-256
+`df69255ddb325e617e59b7c4a40cd764472deb32ab8d360ac39c5182b2c6689c`.
+Pinned tiktoken 0.12.0/cl100k_base/encode_ordinary passes all seven controls and
+the exact whole-file UTF-8 round trip. QEMU 3184677 joins after 30.419 seconds;
+wrapper 3183255 and RAM `run.fumk_z1k` are absent, with three zero listener deltas.
+Count serial SHA-256:
+`d16d7bb564412ed05991035dd310d40c14b44d21ca150691c983560cc8c7abbc`.
+The six count files add 104,294 bytes. All 34 raw files / 587,158 bytes per host
+and the exact counted ledger hash are verified on both hosts. This audit-only
+receipt leaves the counted ledger and tested sources unchanged.

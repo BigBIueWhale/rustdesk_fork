@@ -16187,8 +16187,8 @@ recovery repeats that barrier before destructive cleanup. This replaces the firs
 candidate's record rewrite, which caused EFBIG during cleanup under an existing
 three-byte file-size limit. Replacement objects and lost parent protection refuse.
 
-At `1961046a`, TUF `tawtINZ14p`, the canonical `--file-metadata-tests` command
-exits zero: **155 library tests in 39 groups and 28 native root/UID-4001 cases
+At `1828f840`, TUF `L2yg9hfYYf`, the canonical `--file-metadata-tests` command
+exits zero: **155 library tests in 39 groups and 32 native root/UID-4001 cases
 with 20 joined actors pass**. The three original lifecycle observers now pass:
 hidden and ordinary listings contain only the received file, both empty-directory
 removal APIs succeed, and 32 retained completed destinations add zero records,
@@ -16198,10 +16198,16 @@ write succeeds while the three-byte limit remains active. Four existing neighbor
 tests join the profile; old leftover-directory counts and stale harness inventories
 are corrected without weakening content, ownership or failure checks.
 
-Five constructed retirement states recover or refuse/preserve as required; they
-do not establish real process-kill recovery at the new retirement boundaries.
+Four real SIGKILL cases now cover successful retirement-intent rename, identity
+unlink, container removal and record unlink. Every traced child is joined before
+a fresh receiver recovers. The exact published inode, bytes, ownership, permissions,
+link count and mtime survive, and coordination returns to its pre-case inventory.
+These complement five constructed recovery/refusal states; they prove process-death
+recovery on the tested Linux filesystem, not physical power-loss durability.
 The shared mutable-parent/mount-root layout still retains containers and records,
-and full viewer/CM/installed integration has not been rerun after this change.
+while all four full-application resume cases pass at `dfd59fa2` / `Ma7eWhOqDW`
+after this change. The separate admission regression remains failing; complete
+viewer/CM/installed acceptance remains OPEN.
 ACL/non-local filesystems, coordinator exhaustion, physical power loss and other
 platforms remain OPEN. No cleanup exception is accepted. The audit retains the
 failed attempts, exact artifacts, raw logs and joined RAM/listener cleanup.
@@ -16219,8 +16225,9 @@ creation in the root-owned parent returns `EACCES`. This excludes home-only stag
 inode/birth-time identity and a universal handle requirement as complete solutions.
 Root reopens the supported handles; UID 4001 receives `EPERM`. All fourteen
 primitive observations finish with joined children and retired mounts/fixtures.
-The audit retains the first attempt's descriptor correction. No replacement
-product design is accepted, and all three lifecycle regressions still fail.
+The audit retains the first attempt's descriptor correction. No complete
+shared-parent product design is accepted. The protected-parent correction above
+passes the three lifecycle cases; shared-parent cleanup remains OPEN.
 Next resolve same-mount protected placement and resumable destination identity
 together, including these ordinary-user and unsupported-handle cases, before
 replacing the retained per-destination layout. Existing receive oracles remain binding.
@@ -16420,7 +16427,7 @@ joined shutdown during active hashing; complete slow-storage/reconnect validatio
 and the independently reproduced staging-layout lifecycle correction remain required.
 
 **Resume application checkpoint — Linux handlers and live thread; complete flow OPEN.**
-At `1b16d7a1`, TUF `wqquru9qxZ`, the full Linux application library
+At `dfd59fa2`, TUF `Ma7eWhOqDW`, the full Linux application library
 compiles with Flutter features and freshly generated bridge bindings in 118 seconds.
 All three existing resume tests pass: oversized upload/download refusal preserves owner metadata,
 counters and saved bytes; valid offsets 2 and u32::MAX complete in both directions
@@ -16436,29 +16443,30 @@ production ownership checks. The new test also passes: the real viewer I/O threa
 connects through CPace and login, accepts resumed upload/download commands, and
 answers 21 ordered keepalive probes while native file access is observed during
 about two seconds of hashing. Among the 20 timed probes, worst replies are
-31.825 ms / 1.297 ms; both exact worker joins take 2 ms. Pending metadata remains
+1.242 ms / 1.241 ms; both exact worker joins take 2 ms. Pending metadata remains
 checkpointed. File inode, size and sentinel bytes survive; download digest bytes
 remain equal, no final file appears, and fresh inspection reacquires the lease.
 This is normal-storage shutdown during hashing, without a stalled-syscall injection.
 
-The five-test group takes 143.42 seconds: four pass, and the separate
+The five-test group takes 138.27 seconds: four pass, and the separate
 viewer-admission regression still fails all eight scenarios. The command exits one.
 The nineteen later tests and CLI check remain unexecuted; this is not a full-suite
 pass. Artifact SHA-256:
-`fe19f6bd2e4ed1a323f3f6edee05ed59342e40cfb361f4482d35bf02c9dabb57`.
+`9bc155f131d7282c7c792827a1d02cc7127aca6e6f2f65be4334d34a35bc228b`.
 QEMU and bounded RAM scratch retire, and all four listener deltas are zero.
 
 The first three tests execute digest/completion handlers; the new test executes
 the production connection loop and thread owner against a controlled peer with a
 test UI. It does not execute a controlled-side CM IPC transaction. Hash completion
 across the full 30-second inactivity window, stalled storage, explicit job cancel,
-reconnect, installed/root-service behavior, staging-layout cleanup, other platforms
+reconnect, installed/root-service behavior, shared-parent/mount-root staging cleanup, other platforms
 and release acceptance remain OPEN. The audit retains failed builds, environment
 failures and exact raw/cleanup identities.
 
-The latest maximum-offset preparation takes 64.268 seconds, exceeding the loops' 30-second receive deadline;
+In the latest library run, maximum-offset preparation takes 64.389 seconds,
+exceeding the loops' 30-second receive deadline;
 no installed disconnect has been measured. Large/slow-source resume and the
-staging-layout lifecycle failures remain OPEN/STOP-SHIP.
+shared-parent/mount-root staging-layout lifecycle failures remain OPEN/STOP-SHIP.
 
 **Concurrent source mutation — resumed-content correction accepted in the library.** At
 `652c83c3`, TUF `eDljAufR5T` extends the existing paired-file regression without

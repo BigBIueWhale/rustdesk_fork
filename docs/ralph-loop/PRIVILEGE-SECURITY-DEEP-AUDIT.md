@@ -123677,3 +123677,99 @@ Serial SHA-256:
 All **55 retained raw files / 1,211,104 bytes per host** for this retirement
 checkpoint and its count are hash-verified. This audit-only receipt changes
 neither the tested product nor the counted ledger.
+
+## 2026-10-31 — receive retirement application checkpoint
+
+The preceding turn made progress: it clarified persisted user authorization and
+completed the full-application check started before that instruction edit.
+At product source `dfd59fa2`, TUF `Ma7eWhOqDW`, the canonical
+`--viewer-resume-tests` command regenerates the Flutter bridge and builds
+the full Linux application library in 118 seconds. All four resume tests pass
+after the protected-parent retirement and fixture changes: oversized offsets
+are refused without adopting or removing saved data; valid offsets reach the
+wire and exact file tails; live upload/download hashing preserves keepalive
+responses, checkpoint state and exact worker shutdown.
+
+Both live observations last 2,043 ms and answer 21 keepalives. The worst timed
+replies are 1.242 ms / 1.241 ms; each worker joins in 2 ms. Artifact SHA-256:
+`9bc155f131d7282c7c792827a1d02cc7127aca6e6f2f65be4334d34a35bc228b`.
+The separate, independently parked viewer-admission regression still fails
+all eight cases. The five-test group takes 138.27 seconds, and the command
+exits one. Nineteen later tests and the CLI check remain unexecuted.
+This is a four-test application checkpoint, not complete-suite, controlled-side
+CM IPC, installed-service, stalled-storage or long-session acceptance.
+
+QEMU 3174520 joins with zero status after 501.079 seconds; wrapper 3174028
+and RAM `run.pvvvma7l` are absent. Peak scratch is 6,290,612,224 bytes
+within 7 GiB; minimum available host memory is 34,455,920,640 bytes.
+All four listener deltas are zero. Seven raw files / 82,946 bytes per host
+are hash-verified before the exact failed-run diagnostics are removed
+(3,444,736 allocated bytes). Serial
+`android-rust-lifecycle-tests-run.Ma7eWhOqDW.serial.log` SHA-256:
+`02cb65e64d247691352df664815655e6ed79df492e59fd605f5c267b118d55fe`.
+The subsequent `8a01894e` edit changes only the user-requested instruction
+clarification; it does not invalidate this product evidence.
+
+## 2026-10-31 — native owner death during receive retirement
+
+This slice advances R-S8/R-S11fi by testing the new protected-parent retirement
+path at real process boundaries, before extending placement to shared writable
+parents. Commit `1828f840` changes only the native driver and its two harness
+receipts. Production remains unchanged.
+
+The existing per-thread [ptrace controller](https://man7.org/linux/man-pages/man2/ptrace.2.html)
+observes syscall entry and successful exit, then sends SIGKILL to the owned
+receiver and joins all tracees. It changes no registers, arguments, return values
+or production branches. Retirement cases arm only after the real job has
+admitted and written its payload. Kernel [flock lifetime](https://man7.org/linux/man-pages/man2/flock.2.html)
+makes exact owner death relevant: recovery must reacquire authority after every
+owned descriptor closes. These observations do not replace the separate
+[directory synchronization](https://man7.org/linux/man-pages/man2/fsync.2.html)
+and power-loss acceptance obligations.
+
+At each selected entry the final file is already published and validated; its
+full snapshot is compared after death and after a fresh receiver's inspection.
+The fixture uses an initial ordinary inspection before inventory measurement
+to retire a stale lookup left by an earlier fixture's reused destination inode.
+It does not inject retirement records or simulate a successful syscall.
+
+TUF `L2yg9hfYYf`, canonical `--file-metadata-tests`, exits zero:
+**155 library tests in 39 groups and 32 native cases / 20 joined actors pass**.
+The original authority, enrollment/setup crash, filesystem-full and completed-
+destination cases retain their checks. All four new syscall exits return zero
+before SIGKILL. Each recovery preserves the same published inode, six bytes
+`abcdef`, UID/GID 0, mode 0600, one link and mtime 31, removes the staging
+namespace, and restores the exact coordination inventory.
+
+| Kill boundary | Containers / identity markers after death | Retiring records / generation locks after death | Recovery |
+| --- | --- | --- | --- |
+| Record rename to retirement intent | 1 / 1 | 1 / 1 | Passed |
+| Identity unlink | 1 / 0 | 1 / 1 | Passed |
+| Container removal | 0 / 0 | 1 / 1 | Passed |
+| Retirement-record unlink | 0 / 0 | 0 / 1 | Passed |
+
+Native driver SHA-256:
+`470c2f406cdc0a62839edc17a5e5b1ea4317251703e266921412ddcee748208b`;
+driver source SHA-256:
+`b1497ae1d070e93b7e9c2e927c578053844e81ed92fd35cac956b32e9c030069`.
+The library artifact remains
+`430d94bcfffc5bf04387793d40ce8d37629952658f3c6e8bcec3520c6d579e76`.
+Maximum-offset preparation takes 64.389 seconds; long-hash/live inactivity
+behavior remains unproved, and no installed disconnect is inferred.
+
+QEMU 3176079 joins with zero status after 290.267 seconds; wrapper 3175606 and
+RAM `run.dfwd8zv_` are absent. Peak scratch is 4,221,657,088 bytes within
+6 GiB; minimum available host memory is 36,364,906,496 bytes. All four listener
+deltas are zero. Successful-run diagnostics retire automatically. Seven raw
+files / 209,176 bytes per host are hash-verified; with the preceding application
+run, fourteen raw files / 292,122 bytes per host are verified.
+Serial `hbb-common-fs-run.L2yg9hfYYf.serial.log`, 137,327 bytes, SHA-256:
+`7611bc624dea2642a6978d93d265602b560b6327aded6ba6b62eae30c3e0d7df`.
+
+OPEN: shared writable-parent/mount-root layout and retained completed-destination
+records; ACL/non-local filesystems, coordinator exhaustion, remount identity,
+physical power loss and other platforms; controlled-side CM, installed/artifact,
+long-hash/cancellation/reconnect and full receive acceptance. The next design
+step remains same-mount protected placement with resumable identity and complete
+cleanup across required destinations. This is an engineering problem within
+the resumed scope, not a permission dependency. Independent parks remain intact.

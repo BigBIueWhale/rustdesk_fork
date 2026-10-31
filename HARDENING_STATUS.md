@@ -16236,21 +16236,28 @@ TUF `T2xAoQUQ4K` passes all 48 focused tests; the canonical run above retains
 all crash, concurrent-authority and disk-full controls. Fixtures create staging
 through explicit write admission. Shared-parent write cleanup remains OPEN.
 
-**Refused write enrollment — reproduced coordination retention; OPEN.** At
-test-only source `729bebe0`, TUF `FzrnRFqFOi`, sixteen production receive attempts
-across eight distinct read-only tmpfs destinations correctly return EROFS but
-leave sixteen coordination files / 32,768 allocated bytes. Repeated attempts at
-one destination reuse its two entries; growth follows distinct destinations.
-Original files, destination entries and progress counters remain unchanged;
-publication is refused. After writable remount, all eight transfers succeed and
-coordination returns to its pre-case inventory. The new native regression makes
-the canonical metadata command fail; the prior 32 native cases retain their
-outcomes, but this run exports no complete suite acceptance receipt. Enrollment
-currently publishes its generation lock and preparing intent before mkdir can
-succeed. Next give failed enrollment explicit cleanup ownership, retiring only
-unused state while preserving prior crash intent, partial setup and other live
-owners. Product code is unchanged; the broader shared-parent layout remains OPEN.
-Exact artifacts, raw observations and joined VM/storage cleanup are in the audit.
+**Refused initial write enrollment — Linux correction accepted; later stages OPEN.**
+At unchanged product `729bebe0`, TUF `FzrnRFqFOi`, sixteen attempts across eight
+read-only tmpfs destinations returned EROFS but retained sixteen coordination files /
+32,768 allocated bytes. `316cb5d5` explicitly retires unused generation membership
+after failed namespace admission. A newly published preparing record is retained
+by descriptor and removed only after failed mkdir and observed entry absence;
+prior intent, partial setup and other live owners remain protected. Cleanup errors
+are returned alongside the primary failure. The same last-owner operation serves
+normal retirement; no read-only preflight or destination cleanup shortcut is added.
+
+At `dba19678`, TUF `IG2hPib9Me`, the unchanged root observer now records zero
+retained entries and zero coordination bytes after every rejected attempt. Original
+files, counters and destination entries remain unchanged; writable retries complete
+all eight transfers with exact output and full coordination cleanup. All **157
+library tests / 39 groups and 33 native receive cases / 20 actors pass**. The new
+ordinary-user test covers EACCES with fresh/prior intent and refusal while an old
+generation is active, followed by exact successful retries. Existing crash,
+partial-setup, disk-full and replacement controls retain their passes. The first
+candidate's test-only compile error and exact artifacts/cleanup are retained in
+the audit. Later namespace-to-lease enrollment failures, shared-parent/mount-root
+layout, non-local filesystems and installed acceptance remain OPEN. Next exercise
+inode/descriptor exhaustion at the remaining handoff before claiming full cleanup.
 
 **Replacement prerequisite — native mount/object observations.** The guest-only
 probe at `44030710`, TUF `O0tIK6FXlb`, exercises ext4, tmpfs, a bind alias and

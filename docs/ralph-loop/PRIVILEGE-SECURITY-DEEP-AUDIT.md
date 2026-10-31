@@ -124343,3 +124343,81 @@ available memory is 45,809,795,072 bytes, and all three listener deltas are zero
 Six count files / 104,568 bytes and seven reproduction files total thirteen files /
 223,706 bytes per host, hash-verified on CTE and TUF. Both ledger copies match the
 counted hash; this audit-only receipt leaves that input unchanged.
+
+## 2026-10-31 — initial receive enrollment refusal retires unused coordination
+
+The preceding turn was progress: it reproduced the leak on unchanged product and
+retained source-bound evidence. `316cb5d5` gives the admitted generation file an
+explicit failure path. Failed namespace admission releases its own shared membership,
+tries exclusive ownership under the coordinator gate, preserves another live owner,
+and removes only the retained named generation when unused. Normal retirement uses
+that same operation. Its callback completes namespace retirement before generation
+removal; every acquired exclusive lock is released even when cleanup fails.
+
+Record publication returns the exact written file. Fresh preparing intent remains
+distinct from a previous owner's intent. If mkdir fails, only fresh intent with an
+observably absent destination entry can retire; an existing entry or failed lookup
+preserves it. Successful creation, incomplete identity initialization and prior
+intent retain recovery state. Cleanup errors are combined with the primary failure,
+while successful cleanup preserves the original OS error. The destination is never
+mutated by this new rollback path.
+
+The [POSIX mkdir contract](https://man7.org/linux/man-pages/man3/mkdir.3p.html)
+defines failed creation without a new directory; the
+[Linux implementation](https://raw.githubusercontent.com/torvalds/linux/v6.1/fs/namei.c)
+orders parent admission and filesystem creation in `do_mkdirat`/`vfs_mkdir`.
+The rollback additionally observes the retained parent after failure. The
+[flock contract](https://man7.org/linux/man-pages/man2/flock.2.html) associates
+locks with open file descriptions and allows non-atomic conversion, so the
+coordinator gate stays held throughout release/exclusive acquisition. The
+[fsync contract](https://man7.org/linux/man-pages/man2/fsync.2.html) requires
+directory synchronization for entry durability; record and generation removal
+retain those barriers. These sources guide the ownership design; non-local and
+power-loss acceptance are not established by the current execution.
+
+`dba19678` corrects two new test assertions to match `Err` directly: `libc::stat`
+does not implement the `Debug` bound required by `unwrap_err`. Production code is
+unchanged by that correction. At `316cb5d5`, TUF `F1Q01b2hPV`, compilation stopped
+with E0277 before behavioral execution. At `dba19678`, TUF `IG2hPib9Me`, the
+canonical `bash scripts/smoke-verifier-vm-authority.sh --file-metadata-tests`
+command exits zero with **157 tests / 39 groups and 33 root native cases / 20 actors**.
+
+The root driver is byte-identical to baseline `729bebe0`, SHA-256
+`24f5facc7be40f5cd72c7c43180735904bf3521fdb8b76268d734bbf6068d25f`.
+All sixteen read-only attempts across eight retained destinations now add zero
+entries/bytes, versus sixteen entries / 32,768 bytes before correction. Originals,
+counters and destination contents remain unchanged, finalization refuses, and
+writable remount allows eight exact transfers with restored coordinator inventory.
+The new ordinary-user test exercises two attempts each with fresh EACCES, an older
+preparing record under EACCES, and an unavailable namespace with a live generation
+returning WouldBlock. It proves unused lock retirement, exact prior intent/live
+generation preservation and successful subsequent publication/cleanup. The existing
+identity-ENOSPC retry, setup/death recovery, substitution and retirement controls pass.
+
+Final library artifact SHA-256:
+`9f8ac593662d6fc3e774bd21d4479cdc9d88119a9f8c2d985d8a522d0803206d`;
+root native artifact:
+`3e69601e5f15d7abdd78f87447cda113431d204a8e42e4303cb36d449229aec0`.
+Raw serials have prefix `hbb-common-fs-run.` and suffix `.serial.log`:
+
+| Run | Bytes | Serial SHA-256 | Result |
+| --- | ---: | --- | --- |
+| `F1Q01b2hPV` | 7,681 | `d9f0ef173f5611f99c71dc1d2b4733b53242a111704e8cf1cd9d82877fc0b9b3` | 1, test compile error |
+| `IG2hPib9Me` | 139,324 | `7f24535b7863c1ba52234672a764c0a1b5f39fab6e49528f902b43eb305b0753` | 0 |
+
+Fourteen raw files / 291,158 bytes per host are hash-verified on CTE and TUF.
+QEMU 3226207 / 3227059 joins zero after 127.220 / 287.054 seconds. Wrappers
+3225740 / 3226590 and RAM workspaces `run.73t0tdn3` / `run.oahfxh6r` are absent.
+Both runs have four zero listener deltas. Maximum scratch is 4,225,015,808 bytes
+within 6 GiB; minimum available host memory is 36,296,962,048 bytes. After evidence
+verification, exact failed-build diagnostics remove 3,440,640 allocated bytes;
+the successful harness retires its own run root.
+
+This accepts the named initial-refusal correction, not full enrollment or release
+cleanup. `ReceivePathLease::from_admission` still has early errors before a lease
+owner is constructed; creation/synchronization of the per-file directory also
+precedes that handoff. These are source-identified follow-up paths, not newly
+executed failures. Next use bounded inode/descriptor exhaustion to observe their
+actual retained state and complete failure ownership through the handoff. The
+shared-parent/mount-root layout, installed application, other platforms and broader
+release requirements remain OPEN. No permission dependency is introduced.

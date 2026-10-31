@@ -125579,3 +125579,66 @@ storage admission passes 79 controls and five refusals. QEMU 3388048 joins exit 
 after 30.266 seconds, 402,542,592 bytes peak RAM scratch retires and all three
 listener deltas are zero. All 17 checkpoint files, 341,088 bytes, are hash-verified
 on CTE/TUF. This audit-only receipt preserves the counted ledger bytes.
+
+## 2026-10-31 — Linux character shortcuts; native and full-app correction
+
+Continue the selected R-S0/R-S16/R-S19 Remote keyboard failure. The preceding
+full-app reproduction supplies the defect and unchanged acceptance scenario;
+clipboard reconnect, network impairment and independently parked topics stay parked.
+
+Source review finds that the current pinned Linux Enigo/XDO scalar API already
+owns a matched native key pair, preserves held modifiers and retains failed cleanup
+ownership. The server's blanket non-Windows Legacy character-hotkey refusal prevents
+that legitimate path. X.Org's [XKB state contract](https://xorg.freedesktop.org/archive/X11R7.5/doc/man/man3/XkbGetState.3.html)
+and [key translation model](https://www.x.org/archive/X11R7.7/doc/libX11/XKB/xkblib.html)
+support preserving effective-group character semantics and modifier state rather
+than substituting a physical-position mode. The current local provider source,
+not upstream provenance alone, determines the implementation decision.
+
+Before changing production code, `b77cd92b` adds actual native Ctrl+A observations
+to the complete Enigo test. Left/right Control, with/without Shift, each run across
+eight contexts in both complete and staged-provider executions: 64 native key pairs,
+exact translated control byte, keysyms, modifiers, preserved held keymap and final
+release. The fixture retains existing loader refusals and cleanup assertions.
+`c91a75ed` restores the Python fixture's original non-executable Git mode.
+Run `rsmEjgIodG` passes the complete key-input shard in 123.598 seconds; QEMU
+3392134 joins, 3,739,529,216 bytes peak RAM scratch retires, three listener deltas
+are zero. This is component evidence, not full-app or installed acceptance.
+
+Product commit `cf43789491c88148650878052929eb76be28eaa4` removes only Linux's
+Legacy character-shortcut refusal in `src/server/input_service.rs`. The current
+scalar path owns emission; the existing shift helper preserves shortcut modifiers.
+Windows semantic routing, other-platform refusal, Unicode/sequence guards,
+Remote authorization and worker/key cleanup remain. No keyboard-mode switch,
+physical-layout substitution, permissive fallback or new dependency is introduced.
+The only production-source difference from the failing `e57678d3` app is this branch.
+
+The retained baseline is moved under `.harness-state/linux-flutter-app-archive/`
+after complete manifest verification. All file identities, modes, times and hashes
+survive the rename; no artifact bytes are copied. The fresh build is admitted
+through the unchanged empty-publication-root guard and canonical RAM profile.
+Build `KOpPKyqxmt` passes in 716.620 seconds, using Rust 1.75 / Flutter 3.47.5 and
+the same pinned engine. Its 74 files total 70,291,394 bytes; app manifest SHA-256
+is `94941c425a12844e424c7ac903f8a84b93b19628f3ed391f29e77548e15f6d93`,
+core SHA-256 `ef7d2a654400a2b5bbfbac2e365bf31e5ca664516a46a027d6a80637890ede37`.
+QEMU 3395297 joins, 10,602,094,592 bytes peak RAM scratch retires and four listener
+deltas are zero. This producer does not execute the app.
+
+Full-app replay `giGOFtEevj` uses the same eleven-case observer and its identical
+binary SHA-256 `4d9bd4cc0f629ca50e6b2eabc9173db1ba93c3997e0fd4c855503af1285bdfd7`.
+All eleven cases and 28 actual controlled-side native events pass. Ctrl+A now
+delivers the A press/release with Control held and completes in 71 ms; the following
+`z` arrives unmodified in 10 ms. Both logical keymaps are empty, viewer window and
+TCP identity remain, RSS rises at most 928 KiB, threads zero and descriptors one.
+The exact current provider is observed mapped and unchanged before/after runtime.
+Replay takes 109.880 seconds; QEMU 3399958 joins, 3,012,763,648 bytes peak RAM
+scratch retires, four listener deltas are zero and no owned run root remains.
+
+`keyboard-shortcut-cf437894.json` retains commands, source/manifest/artifact bindings,
+native observations, all raw-file hashes and cleanup for the three transactions.
+It is 48,457 bytes, SHA-256
+`d6358383b38d8743bf02efcc3b1b9b9c5c59c91c8b50cf40f2dd166b08cdbb61`.
+This corrects the reproduced ordinary-user Linux X11/US-layout Legacy-character
+failure. Other layouts, IME, modes, shortcut families, physical devices, installed
+privilege boundaries/non-Remote refusal, other platforms and soak remain OPEN.
+These event-delivery times do not establish display latency or hardware receipt.

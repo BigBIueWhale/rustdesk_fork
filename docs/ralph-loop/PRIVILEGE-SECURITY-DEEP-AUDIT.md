@@ -124519,3 +124519,17 @@ permits bounded soft-limit restoration without changing the hard ceiling. That
 descriptor test is not yet implemented or executed. Shared-parent/mount-root layout,
 non-local/power-loss behavior, installed workflows, other platforms and release
 acceptance remain OPEN. No permission dependency is introduced.
+
+Ledger count at `5cfc835c`, TUF `u9NlJB6ybi`, exits zero: **374,427 tokens /
+1,715,996 bytes**, input SHA-256
+`47cfbea5953518c204a966a1870c1102a1a4aafbce3cdcdc63e6f7466e44a85e`.
+The tiktoken 0.12.0 / cl100k_base / encode_ordinary method, seven controls and
+strict whole-file UTF-8 round trip pass. Serial
+`ledger-token-count-run.u9NlJB6ybi.serial.log` is 35,830 bytes, SHA-256
+`00a5d29bdf7f23c8a471507ddc79d5806dc2d8f9071568063f23df895fdc8a62`.
+QEMU 3238906 joins zero after 30.305 seconds; wrapper 3237482 and RAM workspace
+`run.bk61w0nk` are absent. Peak scratch is 402,378,752 bytes within 4 GiB, minimum
+available memory is 45,694,365,696 bytes, and all three listener deltas are zero.
+Six count files / 104,147 bytes and fourteen behavioral-run files total twenty /
+441,172 bytes per host, hash-verified on CTE and TUF. Both ledger copies match the
+counted hash; this audit-only receipt leaves that input unchanged.

@@ -14,6 +14,7 @@
 #include <X11/extensions/XTest.h>
 #include <X11/keysym.h>
 #include <atspi/atspi.h>
+#include <gtk/gtk.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -1340,6 +1341,148 @@ static void print_resources(const char *phase, unsigned int sequence,
            resources->descriptors);
 }
 
+/* GTK owns the synthetic source selection. A separate Xlib connection reads the
+ * destination selection; only the two real applications can transfer between them. */
+static int exercise_clipboard_text(Display *source, Display *display,
+                                   const ViewerWindow *viewer,
+                                   const ConnectionIdentity *connection,
+                                   const ProcessResources *baseline) {
+    enum { TEXT_LIMIT = 16384, TRANSFER_LIMIT_MS = 5000, CASES = 6 };
+    GdkDisplay *gtk_displays[2] = {NULL, NULL};
+    GtkClipboard *clipboards[2] = {NULL, NULL};
+    Display *displays[2] = {source, display};
+    Window fixture_owners[2] = {None, None};
+    Window requestor = None;
+    Display *destination = NULL;
+    int status = -1;
+    const char *phase = "gtk-init";
+    unsigned int sequence = 0U;
+    char text[TEXT_LIMIT + 1U];
+
+    if (!gtk_init_check(NULL, NULL)) goto done;
+    gtk_displays[0] = gdk_display_open(DisplayString(source));
+    gtk_displays[1] = gdk_display_get_default();
+    if (gtk_displays[0] == NULL || gtk_displays[1] == NULL ||
+        strcmp(gdk_display_get_name(gtk_displays[1]), DisplayString(display)) != 0)
+        goto done;
+    for (unsigned int side = 0U; side < 2U; ++side) {
+        clipboards[side] = gtk_clipboard_get_for_display(gtk_displays[side],
+                                                       GDK_SELECTION_CLIPBOARD);
+        if (clipboards[side] == NULL) goto done;
+    }
+    for (sequence = 1U; sequence <= CASES; ++sequence) {
+        unsigned int from = sequence % 2U;
+        unsigned int to = 1U - from;
+        Atom selection = XInternAtom(displays[from], "CLIPBOARD", False);
+        Atom target, property;
+        uint64_t start, now, next_request = 0U;
+        int pending = 0, matched = 0;
+        size_t length;
+        const char *kind = sequence <= 2U ? "ascii" :
+                           sequence <= 4U ? "unicode" : "16k";
+        ConnectionIdentity after = {{0}, {0}, 0UL};
+        ProcessResources resources = {0};
+        ViewerWindow current = {0};
+        int prefix = snprintf(text, sizeof(text), "clipboard-%u-%s\n", sequence, kind);
+        if (prefix <= 0 || (size_t)prefix >= sizeof(text)) goto done;
+        length = (size_t)prefix;
+        if (sequence <= 4U) {
+            const char *body = sequence <= 2U ? "line one\nline two\tend" :
+                "caf\xc3\xa9 e\xcc\x81 \xd7\xa9\xd7\x9c\xd7\x95\xd7\x9d "
+                "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e \xf0\x9f\x99\x82\nlast line";
+            size_t body_length = strlen(body);
+            if (length + body_length >= sizeof(text)) goto done;
+            memcpy(text + length, body, body_length + 1U);
+            length += body_length;
+        } else {
+            for (; length < TEXT_LIMIT; ++length)
+                text[length] = (char)('a' + (length + sequence) % 26U);
+            text[length] = '\0';
+        }
+
+        destination = displays[to];
+        requestor = XCreateSimpleWindow(destination, DefaultRootWindow(destination),
+                                         0, 0, 1U, 1U, 0U, 0UL, 0UL);
+        if (requestor == None) goto done;
+        target = XInternAtom(destination, "UTF8_STRING", False);
+        property = XInternAtom(destination, "_RUSTDESK_CLIPBOARD_EVIDENCE", False);
+        phase = "source-ownership";
+        start = monotonic_millis();
+        if (start == 0U) goto done;
+        gtk_clipboard_set_text(clipboards[from], text, (gint)length);
+        gdk_display_sync(gtk_displays[from]);
+        fixture_owners[from] = XGetSelectionOwner(displays[from], selection);
+        if (fixture_owners[from] == None) goto done;
+        selection = XInternAtom(destination, "CLIPBOARD", False);
+        phase = "destination-readback";
+        while ((now = monotonic_millis()) >= start && now - start < TRANSFER_LIMIT_MS) {
+            XEvent event;
+            /* Bounded pumping serves native selection requests on both displays. */
+            for (unsigned int i = 0U; i < 64U && g_main_context_pending(NULL); ++i)
+                g_main_context_iteration(NULL, FALSE);
+            if (pending && XCheckTypedWindowEvent(destination, requestor,
+                                                  SelectionNotify, &event)) {
+                unsigned char *data = NULL;
+                Atom actual_type = None;
+                int format = 0;
+                unsigned long count = 0UL, remaining = 0UL;
+                pending = 0;
+                if (event.xselection.selection != selection ||
+                    event.xselection.target != target) goto done;
+                if (event.xselection.property != None) {
+                    if (event.xselection.property != property ||
+                        XGetWindowProperty(destination, requestor, property, 0L,
+                            TEXT_LIMIT / 4L, True, AnyPropertyType, &actual_type,
+                            &format, &count, &remaining, &data) != Success) {
+                        if (data != NULL) XFree(data);
+                        goto done;
+                    }
+                    matched = actual_type == target && format == 8 && remaining == 0UL &&
+                              count == length && data != NULL && memcmp(data, text, length) == 0;
+                    if (data != NULL) XFree(data);
+                    XDeleteProperty(destination, requestor, property);
+                }
+                if (matched) {
+                    Window owner = XGetSelectionOwner(destination, selection);
+                    if (owner == None || owner == fixture_owners[to]) goto done;
+                    break;
+                }
+                next_request = now + 100U;
+            }
+            if (!pending && now >= next_request) {
+                XConvertSelection(destination, selection, target, property, requestor, CurrentTime);
+                XFlush(destination);
+                pending = 1;
+            }
+            if (sleep_millis(10U) != 0) goto done;
+        }
+        now = monotonic_millis();
+        if (!matched || now < start || now - start >= TRANSFER_LIMIT_MS) goto done;
+        phase = "connection-and-resources";
+        if (read_connection_identity(&after) != 0 || !same_connection(connection, &after) ||
+            find_viewer_window(display, viewer->pid, &current) != 0 ||
+            current.window != viewer->window ||
+            read_process_resources(viewer->pid, &resources) != 0 ||
+            !resources_are_bounded(baseline, &resources)) goto done;
+        print_resources("clipboard", sequence, &resources);
+        printf("FLUTTER_PEER_CLIPBOARD_CASE_OK sequence=%u direction=%s kind=%s bytes=%zu "
+               "elapsed_ms=%llu exact_utf8=true destination_owner=external\n",
+               sequence, from == 1U ? "viewer-to-controlled" : "controlled-to-viewer", kind,
+               length, (unsigned long long)(now - start));
+        fflush(stdout);
+        XDestroyWindow(destination, requestor);
+        requestor = None;
+    }
+    status = 0;
+done:
+    if (status != 0)
+        fprintf(stderr, "FLUTTER_PEER_CLIPBOARD_FAIL sequence=%u phase=%s\n", sequence, phase);
+    if (requestor != None) XDestroyWindow(destination, requestor);
+    for (unsigned int side = 0U; side < 2U; ++side)
+        if (gtk_displays[side] != NULL) gdk_display_close(gtk_displays[side]);
+    return status;
+}
+
 /* The stage owns the child and supplies its creation identity. Keep both a
  * procfs directory and a pidfd; never reacquire a numeric PID to resume the viewer. */
 static int viewer_process_state(int process, unsigned long pid, const char *start,
@@ -2218,10 +2361,11 @@ int main(int argc, char **argv) {
     AtspiAccessible *previous_caption = NULL;
 
     if (argc != 5 && (argc != 6 || (strcmp(argv[5], "--viewer-suspend") != 0 &&
+                                    strcmp(argv[5], "--clipboard-text") != 0 &&
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss]\n",
+              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text]\n",
               stderr);
         return 2;
     }
@@ -2376,15 +2520,18 @@ int main(int argc, char **argv) {
     print_resources("initial", 0U, &baseline_resources);
 
     if (argc == 6) {
+        int clipboard_text = strcmp(argv[5], "--clipboard-text") == 0;
         int partial_loss = strcmp(argv[5], "--network-loss") == 0;
         int network = partial_loss || strcmp(argv[5], "--network-impairment") == 0;
-        int suspension_status = network ? exercise_network_impairment(
+        int suspension_status = clipboard_text ? exercise_clipboard_text(
+            source, display, &viewer, &current_connection, &baseline_resources) :
+            network ? exercise_network_impairment(
             source, display, &viewer, &history, viewer_pid,
             &current_connection, &baseline_resources, partial_loss) : exercise_viewer_suspension(
             source, display, &viewer, &history, viewer_pid, argv[4],
             &current_connection, &baseline_resources);
         if (suspension_status != 0) {
-            fputs("FLUTTER_PEER_X11_FAIL selected recovery scenario\n", stderr);
+            fputs("FLUTTER_PEER_X11_FAIL selected peer scenario\n", stderr);
             exit_atspi_after_failure();
         } else if (atspi_exit() != 0) {
             fputs("FLUTTER_PEER_X11_FAIL private AT-SPI teardown\n", stderr);
@@ -2394,7 +2541,11 @@ int main(int argc, char **argv) {
         XCloseDisplay(display);
         XCloseDisplay(source);
         if (suspension_status != 0) return 1;
-        if (partial_loss) {
+        if (clipboard_text) {
+            puts("FLUTTER_PEER_CLIPBOARD_TEXT_OK cases=6 directions=both kinds=ascii,unicode,16k "
+                 "limit_ms=5000 actual_peer=true native_readback=true same_window=true "
+                 "stable_connection=true resources=bounded");
+        } else if (partial_loss) {
             puts("FLUTTER_PEER_NETWORK_LOSS_PRESENTATION_OK cycles=3 "
                  "profiles=random3,random8,burst holds_ms=20000,20000,20000 "
                  "recovery_limit_ms=2500 freshness_limit_ms=1000 healthy_ms=3000 "

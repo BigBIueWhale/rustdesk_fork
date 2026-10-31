@@ -7,6 +7,7 @@ FLUTTER_APP_BUILD_ONLY=0
 FLUTTER_APP_BUILD_CONTEXT=
 FLUTTER_APP_REPLAY=0
 FLUTTER_VIEWER_SUSPEND=0
+FLUTTER_CLIPBOARD_TEXT=0
 FLUTTER_NETWORK_IMPAIRMENT=0
 FLUTTER_APP_COMMIT=
 FLUTTER_APP_TREE=
@@ -243,6 +244,7 @@ case "$#:${8:-}" in
                 --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
                 --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
                 --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
+                --clipboard-text) FLUTTER_CLIPBOARD_TEXT=1 ;;
                 *) exit 2 ;;
             esac
         fi
@@ -324,6 +326,7 @@ fi
 readonly FLUTTER_APP_REPLAY FLUTTER_APP_COMMIT FLUTTER_APP_TREE \
     FLUTTER_APP_RECIPE_SHA256 FLUTTER_APP_MANIFEST_SHA256 FLUTTER_VIEWER_SUSPEND
 readonly FLUTTER_NETWORK_IMPAIRMENT
+readonly FLUTTER_CLIPBOARD_TEXT
 readonly RUST_TEST_SOURCE_ARCHIVE=${9:-}
 readonly RUST_TEST_SOURCE_COMMIT=${10:-}
 readonly RUST_TEST_SOURCE_TREE=${11:-}
@@ -13713,6 +13716,7 @@ run_flutter_peer_presentation() {
     fi
     peer_args+=(--engine-context "$FLUTTER_APP_ENGINE_CONTEXT")
     [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || peer_args+=(--viewer-suspend)
+    [ "$FLUTTER_CLIPBOARD_TEXT" -eq 0 ] || peer_args+=(--clipboard-text)
     local -a impairment_supervisor=()
     if [ "$FLUTTER_NETWORK_IMPAIRMENT" -ne 0 ]; then
         case "$FLUTTER_NETWORK_IMPAIRMENT" in
@@ -13754,7 +13758,10 @@ run_flutter_peer_presentation() {
         fail 'Linux replay unexpectedly built an app'
     fi
     local peer_scenario=focus-reconnect-resource peer_cycles=6
-    if [ "$FLUTTER_VIEWER_SUSPEND" -eq 1 ]; then
+    if [ "$FLUTTER_CLIPBOARD_TEXT" -eq 1 ]; then
+        peer_scenario=clipboard-text
+        peer_cycles=1
+    elif [ "$FLUTTER_VIEWER_SUSPEND" -eq 1 ]; then
         peer_scenario=viewer-suspend
         peer_cycles=1
     elif [ "$FLUTTER_NETWORK_IMPAIRMENT" -ne 0 ]; then

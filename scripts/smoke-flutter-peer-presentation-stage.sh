@@ -16,7 +16,7 @@ fail() {
 readonly PEER_SCENARIO=${FLUTTER_PEER_SCENARIO:-focus-reconnect-resource}
 case "$PEER_SCENARIO" in
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
-  viewer-suspend|network-impairment|network-loss) EXPECTED_RESTARTS=0 ;;
+  viewer-suspend|network-impairment|network-loss|clipboard-text) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
 esac
 readonly EXPECTED_RESTARTS
@@ -507,7 +507,7 @@ PY
         $(pkg-config --cflags --libs x11) -o "/tmp/drivers.$pass/flutter-peer-source-x11"
       /usr/bin/cc -std=c11 -O2 -Wall -Wextra -Werror \
         /source/scripts/flutter-peer-presentation-x11.c \
-        $(pkg-config --cflags --libs x11 xtst atspi-2 gobject-2.0) \
+        $(pkg-config --cflags --libs x11 xtst atspi-2 gobject-2.0 gtk+-3.0) \
         -o "/tmp/drivers.$pass/flutter-peer-presentation-x11"
       /usr/bin/cc -std=c11 -shared -fPIC -O2 -Wall -Wextra -Werror \
         /source/scripts/smoke-bind-loopback.c \
@@ -1244,6 +1244,7 @@ PY
     [ "$PEER_SCENARIO" != viewer-suspend ] || controller_args+=(--viewer-suspend)
     [ "$PEER_SCENARIO" != network-impairment ] || controller_args+=(--network-impairment)
     [ "$PEER_SCENARIO" != network-loss ] || controller_args+=(--network-loss)
+    [ "$PEER_SCENARIO" != clipboard-text ] || controller_args+=(--clipboard-text)
     set +e
     controller_output="$(timeout --signal=TERM --kill-after=3s 180s \
       "$CONTROLLER" "${controller_args[@]}" 2>&1)"
@@ -1260,7 +1261,15 @@ PY
       <<<"$controller_output" || fail 'complete count-only password input verdict is missing'
     grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false$' \
       <<<"$controller_output" || fail 'real password prompt verdict is missing'
-    if [ "$PEER_SCENARIO" = network-loss ]; then
+    if [ "$PEER_SCENARIO" = clipboard-text ]; then
+      for sequence in 1 2 3 4 5 6; do
+        [ "$(grep -Ec "^FLUTTER_PEER_CLIPBOARD_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
+          || fail "clipboard case $sequence is absent or duplicated"
+      done
+      grep -Fxq 'FLUTTER_PEER_CLIPBOARD_TEXT_OK cases=6 directions=both kinds=ascii,unicode,16k limit_ms=5000 actual_peer=true native_readback=true same_window=true stable_connection=true resources=bounded' \
+        <<<"$controller_output" || fail 'native clipboard text verdict is missing'
+      viewer_result='viewer=joined xvfb=joined clipboard_cases=6 stable_connection=true resources=bounded'
+    elif [ "$PEER_SCENARIO" = network-loss ]; then
       [ "$(grep -Ec '^FLUTTER_PEER_NETWORK_IMPAIRED_OK cycle=[123] ' <<<"$controller_output")" -eq 3 ] \
         && [ "$(grep -Ec '^FLUTTER_PEER_NETWORK_PARTIAL_OK cycle=[123] ' <<<"$controller_output")" -eq 3 ] \
         && [ "$(grep -Ec '^FLUTTER_PEER_NETWORK_RECOVERY_OK cycle=[123] ' <<<"$controller_output")" -eq 3 ] \

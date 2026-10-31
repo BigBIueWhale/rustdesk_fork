@@ -77,6 +77,7 @@ case "$#:${1:-}" in
         --viewer-suspend) PEER_SCENARIO=viewer-suspend ;;
         --network-impairment) PEER_SCENARIO=network-impairment ;;
         --network-loss) PEER_SCENARIO=network-loss ;;
+        --clipboard-text) PEER_SCENARIO=clipboard-text ;;
         *) die 'unknown app replay scenario' ;;
       esac
     fi
@@ -131,6 +132,11 @@ if [ "$PEER_SCENARIO" = network-impairment ] || [ "$PEER_SCENARIO" = network-los
   if [ "$PEER_SCENARIO" = network-loss ]; then
     VIEWER_RESULT='viewer=joined xvfb=joined impairment_cycles=3 stable_connection=true resources=bounded'
   fi
+elif [ "$PEER_SCENARIO" = clipboard-text ]; then
+  RUNTIME_CYCLES=1
+  SERVER_GENERATIONS='1'
+  SERVER_REPLACEMENTS=0
+  VIEWER_RESULT='viewer=joined xvfb=joined clipboard_cases=6 stable_connection=true resources=bounded'
 elif [ "$PEER_SCENARIO" = viewer-suspend ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

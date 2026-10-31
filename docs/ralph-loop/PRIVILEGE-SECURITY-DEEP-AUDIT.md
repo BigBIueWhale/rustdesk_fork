@@ -123316,3 +123316,40 @@ changes to already-saved bytes, terminal retry refusal and hash-owner retirement
 The existing worker cancellation test adds one-byte-prefix cases and observes the
 retained descriptor's native read position beyond that prefix before TCP control,
 cancellation, exact joining and capacity recovery. No runtime result is claimed yet.
+
+**Accepted library checkpoint, `efc78f464d57621fa1b888463cb2ca4a41ce9601`.**
+TUF `51fQwfS867`, `--file-send-digest-tests`, passes all 47 named tests. Both
+original mutation interleavings now report `resume source content changed after
+confirmation`, preserve the prior final and satisfy their exact partial-retirement
+rules. The four stable/static-mismatch controls and six new compression/multi-block
+cases pass. Both confirmation-operation modes retain TCP ping/pong within one
+second, exact cancellation joins and all 32 permits at offsets one and u32::MAX;
+the one-byte cases observe native suffix reads before cancellation. Prefix mismatch
+is rejected before reading the remaining source.
+
+Unit artifact SHA-256
+`dbfe2bab5f21949a31cca801fb356a1120f1607823252ae27245cb716cb8adf0`;
+serial 28,906 bytes, SHA-256
+`63a5a763540345441e0fa9883d1692712529bb0cde563cf67ae88e3e4731d886`.
+QEMU 3138951 joins after 149.308 seconds; wrapper 3138482 and RAM
+`run.wz34nlen` retire. All four listener deltas are zero.
+
+The same source/artifact in `sIm0fFPets`, `--file-metadata-tests`, completes the
+151-test/35-group library aggregate. The unchanged 4,294,967,295-byte offset
+test passes in 64.268 seconds, within its existing 120-second budget. Full individual
+unit/outer acceptance is not exported on this failure path. All 21 root authority/
+crash cases, twenty actors, 25 filesystem observations and four filesystem-full
+controls retain their passes. The three known layout cases fail unchanged: 31
+records / 126,976 allocated bytes, zero added locks; the canonical command exits one.
+Root artifact SHA-256
+`f519cd770dce8b1f7b7b0faaea1ea391f156ed8440c72b1285575e74f3856e81`,
+unchanged driver source
+`4d80c077973f4e61ebd08d845a3aef45de7ec793187876d29a0fb6b1119f44c8`.
+Serial 42,870 bytes, SHA-256
+`6c40b10de23fbf89efba3ccf5b4f4c03219b4daca8768c1c92e416bd200503e8`.
+QEMU 3139865 joins after 277.439 seconds; wrapper 3139394 and RAM
+`run.d3cnu125` retire. All four listener deltas are zero. Fourteen raw files /
+215,348 bytes per host are hash-verified before exact diagnostic cleanup reclaims
+3,510,272 allocated bytes. Preparation-time concurrent writers, fresh-transfer
+mutation and complete app/CM/installed/cross-platform acceptance remain open;
+no atomic-snapshot or complete receive acceptance is claimed.

@@ -16387,11 +16387,11 @@ prove application retry, checkpoint effects or final retirement. Actual handler
 keepalive/cancellation/checkpoint validation remains required. The independently
 reproduced staging-layout lifecycle regression remains actionable while the full
 application lane is parked.
-The measured 62.764-second hash exceeds the loops' 30-second receive deadline;
+The latest maximum-offset preparation takes 64.268 seconds, exceeding the loops' 30-second receive deadline;
 no installed disconnect has been measured. Large/slow-source resume and the
 staging-layout lifecycle failures remain OPEN/STOP-SHIP.
 
-**Concurrent source mutation — reproduced; correction OPEN/STOP-SHIP.** At
+**Concurrent source mutation — resumed-content correction accepted in the library.** At
 `652c83c3`, TUF `eDljAufR5T` extends the existing paired-file regression without
 changing production. In both confirmation directions, the source changes from
 `abcdef` through `XYZdef` to `XYZ123` after both prefix proofs complete. Its retained
@@ -16400,11 +16400,28 @@ the prior destination with `abc123`, which never existed in the source. The four
 original stable/prefix-mismatch controls pass; the aggregate test fails and the
 focused command exits one. All six fixtures retire before the verdict. This is a
 Linux library correctness failure, not an installed-flow observation or demonstrated
-privilege escalation. Correction must connect source-content validity across proof,
-suffix reads and publication without restricting full-filesystem access or adding
-unbounded snapshots. Merely comparing size/mtime cannot distinguish this case.
-The audit retains source/artifact/raw identities and joined RAM/diagnostic cleanup.
-Full application and layout decisions remain pending; other parks are unchanged.
+privilege escalation.
+
+`efc78f46` prepares a complete source-content commitment together with the prefix
+proof, using one 64 KiB buffer and retained hash states. Saved-prefix plus emitted
+suffix bytes must match before the final data block or successful EOF; mismatch
+closes the stream, preserves counters and prevents same-job retry. No disk snapshot,
+filesystem restriction or new wire action is added. TUF `51fQwfS867` passes all
+**47 focused tests**: both reproductions now refuse and preserve prior destinations,
+the four original controls remain correct, and six multi-block/compression cases
+cover remaining-byte changes, prepared-byte preservation and terminal refusal.
+Four worker cases retain TCP control and joined cancellation, including observed
+reads beyond a one-byte prefix into the added source-preparation work.
+
+At the same source, `sIm0fFPets` completes the 151-test/35-group library aggregate
+and the maximum-offset case in 64.268 seconds. The 21 root authority/crash cases
+and four filesystem-full controls retain their passes; the three known layout
+cases still fail, so the canonical command exits one. This binds output to the
+preparation read, not an atomic snapshot against arbitrary concurrent writers.
+Fresh-transfer mutation, preparation-time source consistency, slow-source/app/CM
+integration, installed and other-platform acceptance remain OPEN. The audit retains
+artifact/raw identities and joined RAM/diagnostic cleanup. Pending decisions and
+other parks are unchanged.
 
 **Generation-lock retirement (`edddaf7b`) — component accepted.** Completed claims
 release their shared membership under the private enrollment gate. Only exclusive

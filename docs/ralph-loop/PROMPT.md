@@ -89,7 +89,9 @@ focused tests are already authorized. Independently parked, unrelated topics rem
 A direct answer to an assistant's question, including a selected reply such as "Resume this
 file-receive fix", is a user instruction. It does not need to be repeated in a standalone message
 or another `/goal` command. Assistant-written plans, checkpoints, audit notes, and pending questions
-cannot create additional approval requirements.
+cannot create additional approval requirements. An assistant's own permission question is not a user
+instruction to pause or park the task. Continue already-authorized work that does not depend on
+genuinely missing information or approval; do not treat the existence of the question as a stop rule.
 
 Choose and verify implementations that satisfy the existing requirements. Ordinary engineering
 choices, compilation failures, test failures, and unresolved design problems are work to perform;

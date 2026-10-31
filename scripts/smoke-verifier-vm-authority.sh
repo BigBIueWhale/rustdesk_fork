@@ -993,9 +993,9 @@ elif [ "$MODE" = debian-systemd-lifecycle ]; then
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=2048
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
-    if [[ "$RUST_TEST_PROFILE" = viewer-video || "$RUST_TEST_PROFILE" = video-qos || "$RUST_TEST_PROFILE" = option-ack || "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller ]]; then
+    if [[ "$RUST_TEST_PROFILE" = viewer-video || "$RUST_TEST_PROFILE" = video-qos || "$RUST_TEST_PROFILE" = option-ack || "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-resume ]]; then
         readonly VM_TIMEOUT_SECONDS=900
-    elif [[ "$RUST_TEST_PROFILE" = recording-output || "$RUST_TEST_PROFILE" = video-vpx || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
+    elif [[ "$RUST_TEST_PROFILE" = recording-output || "$RUST_TEST_PROFILE" = video-vpx || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick ]]; then
         readonly VM_TIMEOUT_SECONDS=600
     elif [ "$RUST_TEST_PROFILE" != integration ]; then
         readonly VM_TIMEOUT_SECONDS=300

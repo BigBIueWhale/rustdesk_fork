@@ -6,7 +6,7 @@ use hbb_common::{
 };
 use std::{
     io::{Read, Seek, SeekFrom, Write},
-    os::unix::fs::MetadataExt,
+    os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt},
 };
 
 type TestRemote = Remote<crate::flutter::FlutterHandler>;
@@ -49,7 +49,9 @@ fn remote() -> TestRemote {
     }
     let (sender, receiver) = client::viewer_command_channel();
     let (_, refresh) = viewer_video_refresh_channel();
-    Remote::new(handler, receiver, sender, refresh)
+    let mut remote = Remote::new(handler, receiver, sender, refresh);
+    remote.is_connected = true;
+    remote
 }
 
 async fn keyed_pair() -> (Stream, Stream) {
@@ -89,6 +91,10 @@ async fn confirmation(peer: &mut Stream, expected: u64) {
         panic!("wrong viewer action");
     };
     assert_eq!((confirm.id, confirm.file_num), (371, 0));
+    let forwarded = ipc::CmFileConfirmation::try_from(confirm.union.as_ref().unwrap()).unwrap();
+    let forwarded: ipc::CmFileConfirmation =
+        serde_json::from_slice(&serde_json::to_vec(&forwarded).unwrap()).unwrap();
+    assert_eq!(Some(forwarded.into()), confirm.union);
     let Some(file_transfer_send_confirm_request::Union::Resume(resume)) = confirm.union else {
         panic!("missing content-bound resume action");
     };
@@ -123,10 +129,42 @@ fn receiver(fixture: &Fixture, size: u64) -> fs::TransferJob {
     job
 }
 
-fn stage_partial(fixture: &Fixture, offset: u64, size: u64) {
-    fixture.sparse("incoming.download", offset);
-    std::fs::write(fixture.0.join("incoming.digest"),
-        serde_json::to_vec(&fs::FileDigest { size, modified: 19 }).unwrap()).unwrap();
+async fn stage_partial(fixture: &Fixture, offset: u64, size: u64) -> PathBuf {
+    use hbb_common::sha2::{Digest, Sha256};
+
+    // Establish the namespace through production inspection, then seed the saved
+    // bytes whose admission is the subject of the caller tests below.
+    let mut job = receiver(fixture, size);
+    job.inspect_receive_digest(&FileTransferDigest {
+        id: 371, file_num: 0, file_size: size, last_modified: 19,
+        ..Default::default()
+    }, false).await.unwrap();
+    job.retire_current_file_state().unwrap();
+    let directories: Vec<_> = std::fs::read_dir(&fixture.0).unwrap()
+        .map(|entry| entry.unwrap())
+        .filter(|entry| entry.file_name().as_encoded_bytes().starts_with(b".rustdesk-receive-"))
+        .map(|entry| entry.path()).collect();
+    assert_eq!(directories.len(), 1);
+    let metadata = std::fs::symlink_metadata(&directories[0]).unwrap();
+    assert!(metadata.is_dir());
+    assert_eq!((metadata.uid(), metadata.mode() & 0o7777),
+        (unsafe { libc::geteuid() }, 0o700));
+    let mut hash = Sha256::new();
+    hash.update(b"rustdesk.receive.file.v1\0");
+    hash.update(b"incoming");
+    let artifacts = directories[0].join(format!("{:x}", hash.finalize()));
+    std::fs::DirBuilder::new().mode(0o700).create(&artifacts).unwrap();
+    let payload = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600)
+        .open(artifacts.join("payload.download")).unwrap();
+    payload.set_len(offset).unwrap();
+    payload.sync_all().unwrap();
+    assert!(payload.metadata().unwrap().blocks() * 512 <= 128 * 1024);
+    let mut digest = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600)
+        .open(artifacts.join("resume.digest")).unwrap();
+    digest.write_all(&serde_json::to_vec(&fs::FileDigest { size, modified: 19 }).unwrap()).unwrap();
+    digest.sync_all().unwrap();
+    std::fs::File::open(&artifacts).unwrap().sync_all().unwrap();
+    artifacts
 }
 
 #[tokio::test]
@@ -146,7 +184,13 @@ async fn upload_refuses_unrepresentable_resume_before_wire_confirmation() {
         let (context, error) = remote.file_flow_failure.as_ref().unwrap();
         assert_eq!((context.job_id, context.file_num), (Some(371), 0));
         assert!(error.contains("exceeds the protocol limit"));
-        assert!(remote.read_jobs.is_empty());
+        assert_eq!(remote.read_jobs.len(), 1);
+        assert!(!remote.file_confirmation_pending(371));
+        let job = &remote.read_jobs[0];
+        assert_eq!((job.id(), job.file_num(), job.transferred(), job.finished_size()), (371, 0, 0, 0));
+        assert!(!job.file_confirmed());
+        assert_eq!(remote.transfer_checkpoint().unwrap().unwrap().read_jobs,
+            vec![serde_json::to_string(&job.gen_meta()).unwrap()]);
         assert!(remote.file_writes.is_empty());
         assert_eq!(std::fs::read(fixture.0.join("source")).unwrap(), b"partial");
         no_confirmation(&mut viewer, &mut peer).await;
@@ -159,14 +203,14 @@ async fn download_refuses_large_partial_without_adopting_or_removing_it() {
     let fixture = Fixture::new();
     let offset = (1u64 << 32) + 2;
     let size = offset + 4;
-    stage_partial(&fixture, offset, size);
-    let path = fixture.0.join("incoming.download");
+    let artifacts = stage_partial(&fixture, offset, size).await;
+    let path = artifacts.join("payload.download");
     let mut partial = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
     partial.seek(SeekFrom::Start(offset - 8)).unwrap();
     partial.write_all(b"retained").unwrap();
     drop(partial);
     let before = std::fs::metadata(&path).unwrap();
-    let digest_before = std::fs::read(fixture.0.join("incoming.digest")).unwrap();
+    let digest_before = std::fs::read(artifacts.join("resume.digest")).unwrap();
     let mut remote = remote();
     remote.write_jobs.push(receiver(&fixture, size));
     let (mut viewer, mut peer) = keyed_pair().await;
@@ -176,7 +220,13 @@ async fn download_refuses_large_partial_without_adopting_or_removing_it() {
     let (context, error) = remote.file_flow_failure.as_ref().unwrap();
     assert_eq!((context.job_id, context.file_num), (Some(371), 0));
     assert!(error.contains("exceeds the protocol limit"));
-    assert!(remote.write_jobs.is_empty());
+    assert_eq!(remote.write_jobs.len(), 1);
+    assert!(!remote.file_confirmation_pending(371));
+    let job = &remote.write_jobs[0];
+    assert_eq!((job.id(), job.file_num(), job.transferred(), job.finished_size()), (371, 0, 0, 0));
+    assert!(!job.file_confirmed());
+    assert_eq!(remote.transfer_checkpoint().unwrap().unwrap().write_jobs,
+        vec![serde_json::to_string(&job.gen_meta()).unwrap()]);
     assert!(remote.file_writes.is_empty());
     let after = std::fs::metadata(&path).unwrap();
     assert_eq!((before.dev(), before.ino(), before.len()),
@@ -186,8 +236,8 @@ async fn download_refuses_large_partial_without_adopting_or_removing_it() {
     let mut retained = [0; 8];
     partial.read_exact(&mut retained).unwrap();
     assert_eq!(&retained, b"retained");
-    assert_eq!(std::fs::read(fixture.0.join("incoming.digest")).unwrap(), digest_before);
-    assert!(!fixture.0.join("incoming.download.lock").exists());
+    assert_eq!(std::fs::read(artifacts.join("resume.digest")).unwrap(), digest_before);
+    assert!(!artifacts.join("claim.download.lock").exists());
     assert!(!fixture.0.join("incoming").exists());
     no_confirmation(&mut viewer, &mut peer).await;
     remote.audio_thread.close_and_join().await;
@@ -203,12 +253,13 @@ async fn valid_resume_offsets_reach_the_wire_and_exact_file_tail() {
             source.seek(SeekFrom::Start(offset)).unwrap();
             source.write_all(b"tail").unwrap();
             let mut remote = remote();
+            let mut artifacts = None;
             if upload {
                 let mut job = sender(&fixture);
                 job.init_data_stream_for_cm().await.unwrap();
                 remote.read_jobs.push(job);
             } else {
-                stage_partial(&fixture, offset, size);
+                artifacts = Some(stage_partial(&fixture, offset, size).await);
                 remote.write_jobs.push(receiver(&fixture, size));
             }
             let (mut viewer, mut peer) = keyed_pair().await;
@@ -217,6 +268,19 @@ async fn valid_resume_offsets_reach_the_wire_and_exact_file_tail() {
                 is_upload: upload, is_identical: upload, transferred_size: offset,
                 ..Default::default()
             }).await);
+            assert!(remote.read_jobs.is_empty() && remote.write_jobs.is_empty());
+            assert!(remote.file_confirmation_pending(371));
+            let checkpoint = remote.transfer_checkpoint().unwrap().unwrap();
+            assert_eq!((checkpoint.read_jobs.len(), checkpoint.write_jobs.len()),
+                if upload { (1, 0) } else { (0, 1) });
+            no_confirmation(&mut viewer, &mut peer).await;
+            let completion = if upload {
+                time::timeout(Duration::from_secs(120), remote.read_confirmations.next()).await.unwrap()
+            } else {
+                time::timeout(Duration::from_secs(120), remote.write_confirmations.next()).await.unwrap()
+            };
+            assert!(remote.complete_file_confirmation(completion, !upload, &mut viewer).await);
+            assert!(!remote.file_confirmation_pending(371));
             viewer.flush_writer().await.unwrap();
             confirmation(&mut peer, offset).await;
             assert!(remote.file_flow_failure.is_none());
@@ -236,9 +300,7 @@ async fn valid_resume_offsets_reach_the_wire_and_exact_file_tail() {
                 let mut tail = Vec::new();
                 published.read_to_end(&mut tail).unwrap();
                 assert_eq!(tail, b"tail");
-                for suffix in [".download", ".digest", ".download.lock"] {
-                    assert!(!fixture.0.join(format!("incoming{suffix}")).exists());
-                }
+                assert!(!artifacts.unwrap().exists());
             }
             remote.audio_thread.close_and_join().await;
         }

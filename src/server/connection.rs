@@ -9850,6 +9850,16 @@ impl Connection {
                                 }
                             }
                             Some(file_action::Union::SendConfirm(r)) => {
+                                let confirmation = match r.union.as_ref()
+                                    .map(ipc::CmFileConfirmation::try_from)
+                                    .transpose()
+                                {
+                                    Ok(confirmation) => confirmation,
+                                    Err(error) => {
+                                        self.send(fs::new_error(r.id, error, r.file_num)).await;
+                                        return true;
+                                    }
+                                };
                                 if self.file_confirmations.contains(r.id) {
                                     self.file_confirmations.cancel(r.id);
                                     self.send(fs::new_error(r.id,
@@ -9866,7 +9876,7 @@ impl Connection {
                                     if let Err(error) = self.send_fs(ipc::FS::SendConfirmForRead {
                                         id: r.id,
                                         file_num: r.file_num,
-                                        confirmation: r.union.clone().map(Into::into),
+                                        confirmation,
                                         conn_id: self.inner.id(),
                                         generation,
                                     })
@@ -9883,7 +9893,7 @@ impl Connection {
                                     if let Err(error) = self.send_fs(ipc::FS::SendConfirm {
                                         id: r.id,
                                         file_num: r.file_num,
-                                        confirmation: r.union.clone().map(Into::into),
+                                        confirmation,
                                         conn_id: self.inner.id(),
                                         generation,
                                     })

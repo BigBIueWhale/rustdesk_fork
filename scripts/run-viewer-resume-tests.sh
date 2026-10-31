@@ -11,7 +11,8 @@ export CARGO_BUILD_JOBS=4 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PR
 source /source/scripts/linux-parent-test-build.sh
 build_linux_parent_test "$WORK" VIEWER_RESUME
 execution_started=$SECONDS
-timeout --signal=TERM --kill-after=5s 30s \
+# The maximum wire-offset case reads the real 4 GiB prefix in both directions.
+timeout --signal=TERM --kill-after=5s 240s \
     "$test_executable" client::io_loop::file_resume_tests:: --color never --test-threads=1
 timeout --signal=TERM --kill-after=5s 30s \
     "$test_executable" port_forward::tests:: --color never --test-threads=1

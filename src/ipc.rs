@@ -2163,17 +2163,24 @@ pub enum CmFileConfirmation {
     Resume { offset: u32, prefix_sha256: Bytes },
 }
 
-impl From<hbb_common::message_proto::file_transfer_send_confirm_request::Union> for CmFileConfirmation {
-    fn from(value: hbb_common::message_proto::file_transfer_send_confirm_request::Union) -> Self {
+impl TryFrom<&hbb_common::message_proto::file_transfer_send_confirm_request::Union>
+    for CmFileConfirmation
+{
+    type Error = &'static str;
+
+    fn try_from(
+        value: &hbb_common::message_proto::file_transfer_send_confirm_request::Union,
+    ) -> Result<Self, Self::Error> {
         use hbb_common::message_proto::file_transfer_send_confirm_request::Union;
-        match value {
-            Union::Skip(skip) => Self::Skip(skip),
-            Union::OffsetBlk(offset) => Self::Offset(offset),
+        Ok(match value {
+            Union::Skip(skip) => Self::Skip(*skip),
+            Union::OffsetBlk(offset) => Self::Offset(*offset),
             Union::Resume(resume) => Self::Resume {
                 offset: resume.offset,
-                prefix_sha256: resume.prefix_sha256,
+                prefix_sha256: resume.prefix_sha256.clone(),
             },
-        }
+            _ => return Err("unsupported file confirmation action"),
+        })
     }
 }
 

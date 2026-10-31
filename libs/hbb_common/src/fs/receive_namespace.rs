@@ -347,6 +347,74 @@ mod tests {
         assert!(failures.is_empty(), "fresh receive failures: {failures:?}");
     }
 
+    #[tokio::test]
+    async fn fresh_confirmation_preserves_refused_artifacts() {
+        use super::super::{file_transfer_send_confirm_request::Union, FileEntry,
+            FileTransferBlock, FileTransferSendConfirmRequest, JobType,
+            ReceiveClaimCleanup, TransferJob};
+        use std::os::unix::fs::FileExt;
+
+        let snapshot = |file: &File| {
+            let metadata = file.metadata().unwrap();
+            assert!(metadata.len() < 128);
+            let mut bytes = vec![0; metadata.len() as usize];
+            file.read_exact_at(&mut bytes, 0).unwrap();
+            (metadata.dev(), metadata.ino(), metadata.mode(), metadata.nlink(), bytes)
+        };
+        for case in ["active", "payload-shared", "payload-linked", "digest-linked", "digest-invalid"] {
+            for producer in [false, true] {
+                let root = std::env::temp_dir().join(format!(
+                    "receive-fresh-refusal-{}", crate::uuid::Uuid::new_v4()));
+                std::fs::create_dir(&root).unwrap();
+                let destination = root.join("incoming");
+                std::fs::write(&destination, b"original").unwrap();
+                let (mut stream, mut claim) = ReceiveWriteClaim::start_new(
+                    destination.clone(), FileDigest { size: 3, modified: 17 }).unwrap();
+                stream.write_all(b"ol").unwrap();
+                stream.sync_all().unwrap();
+                let payload = claim.download_file.try_clone().unwrap();
+                let resume = claim.digest_file.try_clone().unwrap();
+                if case == "payload-shared" {
+                    payload.set_permissions(std::fs::Permissions::from_mode(0o644)).unwrap();
+                } else if case.ends_with("-linked") {
+                    let suffix = if case == "payload-linked" { ".download" } else { ".digest" };
+                    let selected = ReceiveNamespace::artifact_name(suffix).unwrap();
+                    let held = cstring_from_os_str(root.join("held").as_os_str(), "fixture link").unwrap();
+                    assert_eq!(unsafe { libc::linkat(claim._lease.parent.as_raw_fd(), selected.as_ptr(),
+                        libc::AT_FDCWD, held.as_ptr(), 0) }, 0);
+                } else if case == "digest-invalid" {
+                    resume.set_len(8).unwrap();
+                    resume.write_all_at(b"not-json", 0).unwrap();
+                }
+                claim.cleanup_on_drop = ReceiveClaimCleanup::None;
+                drop(stream);
+                let active = if case == "active" { Some(claim) } else { drop(claim); None };
+                let before = (snapshot(&payload), snapshot(&resume));
+                let mut receiver = TransferJob::new_write(582, JobType::Generic,
+                    String::new(), root.clone(), 0, false, true, true);
+                receiver.set_files(vec![FileEntry { name: "incoming".into(),
+                    size: 3, modified_time: 17, ..Default::default() }]).unwrap();
+                let refused = if producer {
+                    receiver.confirm_with_offset(0, 0).await.map(|_| ())
+                } else {
+                    receiver.confirm(&FileTransferSendConfirmRequest { id: 582, file_num: 0,
+                        union: Some(Union::OffsetBlk(0)), ..Default::default() }).await
+                };
+                assert!(refused.is_err(), "restart admitted {case}");
+                assert!(!receiver.file_confirmed());
+                assert_eq!((receiver.finished_size(), receiver.transferred()), (0, 0));
+                assert!(receiver.write(FileTransferBlock { id: 582, file_num: 0,
+                    data: b"new".to_vec().into(), ..Default::default() }).await.is_err());
+                receiver.retire_current_file_state().unwrap();
+                assert_eq!((snapshot(&payload), snapshot(&resume)), before);
+                assert_eq!(std::fs::read(&destination).unwrap(), b"original");
+                drop((receiver, active, payload, resume));
+                std::fs::remove_dir_all(&root).unwrap();
+                println!("RECEIVE_FRESH_CONFIRMATION_REFUSAL=observed case={case} producer={producer} confirmation=refused later_write=refused state=preserved fixture=retired");
+            }
+        }
+    }
+
     #[test]
     fn retirement_retries_the_containing_directory_barrier() {
         use std::io::{Seek, SeekFrom};

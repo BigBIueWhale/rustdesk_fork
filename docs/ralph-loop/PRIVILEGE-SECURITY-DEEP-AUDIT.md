@@ -122988,3 +122988,36 @@ storage-fault scenario. Product code and both pending acceptance decisions remai
 unchanged. The current TUF lock is idle, the clean source matches origin, and
 47.1 GB available memory / 32.2 GB free shared memory precede normal bounded-RAM
 admission; no host product or test execution is authorized.
+
+**Reproduced at unchanged production `8eca613c`, TUF `sRvpjMdcs9`.** All eight
+saved-partial scenarios return EEXIST at the first write after successful explicit
+fresh confirmation. All four absent-partial controls publish exact bytes. Both
+confirmation APIs, matching/nonmatching metadata and absent/present prior finals
+are exercised; inspection and the prior final are preserved. All twelve fixtures
+retire before the failing aggregate. Six earlier focused tests pass; execution
+stops at this regression and claims no complete suite pass. Artifact SHA-256
+`5fb803d4fce931b664b83f6ab495e78941b981703467becdf6791c97b73178f4`;
+serial SHA-256 `eb48fe3719899744e44e3a2a34339c6c1fe05236a8a04ad32e929366e4b4ba5c`.
+QEMU 3121753 joins after 139.195 seconds, RAM `run.05njomdc` retires and all four
+listener deltas are zero. Seven raw files / 84,953 bytes are hash-verified on both
+hosts; exact diagnostic retirement reclaims 3,448,832 allocated bytes.
+
+**Correction model.** On Linux, explicit fresh receive confirmation acquires the
+destination lease, validates both saved artifacts before any removal, refuses
+malformed stored digests, retires only exact artifacts inside the private staging
+directory, persists removals, and exclusively creates the new pair under that same
+lease. The returned stream/claim remains owned before any first block. Raw new
+writes retain their existing no-adoption behavior. Active receive state cannot be
+reset; failed/interrupted preparation makes that job unusable. Native preparation
+runs on the existing blocking pool, with its returned claim owning abandonment
+cleanup. Sender confirmation and nonzero prefix verification are unchanged.
+This relies on Linux's existing private namespace; other-platform restart
+correction and complete application scheduling/installed acceptance remain open.
+No public-parent unlink fallback or persistent-staging exception is introduced.
+
+Retain the identical twelve-case regression. Add ten refusal controls covering
+active ownership, shared/linked payloads, linked digests and malformed metadata
+through both confirmation APIs, including refusal of a later write and unchanged
+sidecar identity/bytes/modes/link counts and final output. Add the existing raw
+new-write collision test to this focused lane. These new refusal controls are
+candidate acceptance, not additional baseline observations.

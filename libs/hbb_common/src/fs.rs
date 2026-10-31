@@ -3516,9 +3516,64 @@ enum ReceiveClaimCleanup {
 
 impl ReceiveWriteClaim {
     fn start_new(final_path: PathBuf, digest: FileDigest) -> ResultType<(std::fs::File, Self)> {
-        use std::io::Write;
+        let lease = ReceivePathLease::acquire(&final_path, true)?;
+        Self::create_in_lease(final_path, digest, lease)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn restart(final_path: PathBuf, digest: FileDigest) -> ResultType<(std::fs::File, Self)> {
+        use std::io::Read;
 
         let mut lease = ReceivePathLease::acquire(&final_path, true)?;
+        let download_path = recv_sidecar_path(&final_path, ".download");
+        let digest_path = recv_sidecar_path(&final_path, ".digest");
+        let admitted = (|| -> ResultType<_> {
+            let open = |path: &Path, artifact| {
+                match lease.open_inspection_file(path, Some(artifact)) {
+                    Ok(file) => Ok(Some(file)),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                    Err(error) => Err(error),
+                }
+            };
+            let payload = open(&download_path, ReceiveOwnedArtifact::Payload)?;
+            let mut resume = open(&digest_path, ReceiveOwnedArtifact::Digest)?;
+            if let Some(file) = resume.as_mut() {
+                let mut content = String::new();
+                file.take(4097).read_to_string(&mut content)?;
+                if content.len() > 4096 { bail!("resume digest is too large"); }
+                let _: FileDigest = serde_json::from_str(&content)?;
+            }
+            Ok((payload, resume))
+        })();
+        let (payload, resume) = match admitted {
+            Ok(artifacts) => artifacts,
+            Err(error) => return match lease.retire() {
+                Ok(()) => Err(error),
+                Err(cleanup) => Err(anyhow!("{error}; receive restart lease cleanup failed: {cleanup}")),
+            },
+        };
+        // Explicit restart owns the destination lease throughout old-generation
+        // retirement and new exclusive creation. Linux's private namespace keeps
+        // these names out of the destination owner's mutation authority.
+        match (payload.as_ref(), resume.as_ref()) {
+            (Some(payload), Some(resume)) => remove_receive_artifacts_and_sync_parent(
+                &lease, &[(&digest_path, resume), (&download_path, payload)]),
+            (Some(payload), None) => remove_receive_artifacts_and_sync_parent(
+                &lease, &[(&download_path, payload)]),
+            (None, Some(resume)) => remove_receive_artifacts_and_sync_parent(
+                &lease, &[(&digest_path, resume)]),
+            (None, None) => Ok(()),
+        }?;
+        Self::create_in_lease(final_path, digest, lease)
+    }
+
+    fn create_in_lease(
+        final_path: PathBuf,
+        digest: FileDigest,
+        mut lease: ReceivePathLease,
+    ) -> ResultType<(std::fs::File, Self)> {
+        use std::io::Write;
+
         let download_path = recv_sidecar_path(&final_path, ".download");
         let digest_path = recv_sidecar_path(&final_path, ".digest");
         let download_file =
@@ -4739,6 +4794,29 @@ impl TransferJob {
         Ok(prefix)
     }
 
+    #[cfg(target_os = "linux")]
+    async fn confirm_fresh_receive(&mut self) -> ResultType<()> {
+        if self.role != TransferRole::Receive { return Ok(()); }
+        if self.data_stream.is_some() || self.receive_write_claim.is_some()
+            || self.receive_file_offset != 0 {
+            bail!("cannot restart an active receive file");
+        }
+        let entry = self.files.get(self.file_num as usize)
+            .ok_or_else(|| anyhow!("fresh confirmation has no admitted file"))?;
+        let path = join_validated_path(&self.path, &entry.name)?;
+        let digest = self.digest;
+        // Failed or interrupted preparation cannot reuse this job. The native
+        // result owns cleanup if the awaiting confirmation disappears.
+        self.resume_preparing = true;
+        let (stream, claim) = tokio::task::spawn_blocking(move || {
+            ReceiveWriteClaim::restart(path, digest)
+        }).await??;
+        self.data_stream = Some(File::from_std(stream));
+        self.receive_write_claim = Some(claim);
+        self.resume_preparing = false;
+        Ok(())
+    }
+
     /// Admit the exact byte offset before publishing a protocol confirmation.
     pub async fn confirm_with_offset(
         &mut self,
@@ -4760,6 +4838,8 @@ impl TransferJob {
                 ..Default::default()
             })
         } else {
+            #[cfg(target_os = "linux")]
+            self.confirm_fresh_receive().await?;
             file_transfer_send_confirm_request::Union::OffsetBlk(0)
         };
         let request = FileTransferSendConfirmRequest {
@@ -4807,6 +4887,8 @@ impl TransferJob {
                 if *s {
                     self.set_file_skipped()?;
                 } else {
+                    #[cfg(target_os = "linux")]
+                    self.confirm_fresh_receive().await?;
                     self.set_file_confirmed(true);
                 }
             }
@@ -4817,6 +4899,8 @@ impl TransferJob {
                 self.set_file_confirmed(true);
             }
             Some(file_transfer_send_confirm_request::Union::OffsetBlk(_)) => {
+                #[cfg(target_os = "linux")]
+                self.confirm_fresh_receive().await?;
                 self.set_file_confirmed(true);
             }
             None => bail!("confirmation has no action"),

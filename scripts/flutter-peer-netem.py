@@ -32,6 +32,7 @@ class Impairment:
         self.image = image
         self.namespace = self.process = None
         self.interface = self.ingress = False
+        self.current_profile = None
 
     def run(self, *args):
         require(self.namespace is not None, 'namespace is not attached')
@@ -81,10 +82,14 @@ class Impairment:
     def profile(self, name):
         require(self.process is not None and alive(self.process), 'server is no longer live')
         options = {'healthy': ['delay', '0ms'], 'delay': ['delay', '125ms'],
-                   'loss': ['loss', '100%']}
+                   'loss': ['loss', '100%'],
+                   'random3': ['loss', 'random', '3%'],
+                   'random8': ['loss', 'random', '8%'],
+                   'burst': ['loss', 'gemodel', '2%', '25%', '90%', '0.1%']}
         require(name in options, 'unknown impairment profile')
         self.run('tc', 'qdisc', 'replace', 'dev', 'rd-netem', 'root', 'handle', '1:',
                  'netem', 'limit', '64', *options[name])
+        self.current_profile = name
 
     def snapshot(self, request):
         queues = json.loads(self.run('tc', '-s', '-j', 'qdisc', 'show', 'dev', 'rd-netem'))
@@ -92,6 +97,19 @@ class Impairment:
         require(len(queues) == 1 and queues[0]['options']['limit'] == 64,
                 'netem queue differs')
         queue = queues[0]
+        options = queue['options']
+        random_loss = {'random3': 0.03, 'random8': 0.08}
+        if self.current_profile in random_loss:
+            observed = options.get('loss-random', {})
+            require(abs(observed.get('loss', -1) - random_loss[self.current_profile]) < 1e-6
+                    and observed.get('correlation') == 0,
+                    'random loss profile readback differs')
+        elif self.current_profile == 'burst':
+            observed = options.get('loss-gemodel', {})
+            require(all(abs(observed.get(key, -1) - value) < 1e-6
+                        for key, value in {'p': 0.02, 'r': 0.25, '1-h': 0.9,
+                                           '1-k': 0.001}.items()),
+                    'burst loss profile readback differs')
         now = time.monotonic_ns() // 1000
         print('FLUTTER_PEER_NETEM=' + json.dumps(
             dict(request=request, monotonic_us=now, namespace=os.fstat(self.namespace).st_ino,

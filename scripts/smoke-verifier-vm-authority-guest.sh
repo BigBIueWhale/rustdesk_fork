@@ -242,6 +242,7 @@ case "$#:${8:-}" in
             case "${19}" in
                 --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
                 --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
+                --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
                 *) exit 2 ;;
             esac
         fi
@@ -13713,8 +13714,11 @@ run_flutter_peer_presentation() {
     peer_args+=(--engine-context "$FLUTTER_APP_ENGINE_CONTEXT")
     [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || peer_args+=(--viewer-suspend)
     local -a impairment_supervisor=()
-    if [ "$FLUTTER_NETWORK_IMPAIRMENT" -eq 1 ]; then
-        peer_args+=(--network-impairment)
+    if [ "$FLUTTER_NETWORK_IMPAIRMENT" -ne 0 ]; then
+        case "$FLUTTER_NETWORK_IMPAIRMENT" in
+            1) peer_args+=(--network-impairment) ;;
+            2) peer_args+=(--network-loss) ;;
+        esac
         impairment_supervisor=(/usr/bin/python3 -I -S "$source_root/scripts/flutter-peer-netem.py"
             "$DEV_CHECK_IMAGE_CONFIG_ID" --)
     fi
@@ -13753,8 +13757,9 @@ run_flutter_peer_presentation() {
     if [ "$FLUTTER_VIEWER_SUSPEND" -eq 1 ]; then
         peer_scenario=viewer-suspend
         peer_cycles=1
-    elif [ "$FLUTTER_NETWORK_IMPAIRMENT" -eq 1 ]; then
+    elif [ "$FLUTTER_NETWORK_IMPAIRMENT" -ne 0 ]; then
         peer_scenario=network-impairment
+        [ "$FLUTTER_NETWORK_IMPAIRMENT" -ne 2 ] || peer_scenario=network-loss
         peer_cycles=1
         [ "$(grep -Fxc 'FLUTTER_PEER_NETEM_JOINED status=0 namespace=retired socket=removed' "$output")" -eq 1 ] \
             || fail 'packet impairment supervisor did not join cleanly'

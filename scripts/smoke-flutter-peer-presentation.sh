@@ -76,6 +76,7 @@ case "$#:${1:-}" in
       case "${21}" in
         --viewer-suspend) PEER_SCENARIO=viewer-suspend ;;
         --network-impairment) PEER_SCENARIO=network-impairment ;;
+        --network-loss) PEER_SCENARIO=network-loss ;;
         *) die 'unknown app replay scenario' ;;
       esac
     fi
@@ -122,11 +123,14 @@ readonly SUPPLIED_SOURCE_ARCHIVE SUPPLIED_SOURCE_COMMIT \
   FLUTTER_PRESENTATION_CANDIDATE SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE \
   BUILD_APP_ONLY APP_BUILD_CONTEXT APP_MANIFEST_SHA256 APP_ENGINE_CONTEXT
 readonly PEER_SCENARIO
-if [ "$PEER_SCENARIO" = network-impairment ]; then
+if [ "$PEER_SCENARIO" = network-impairment ] || [ "$PEER_SCENARIO" = network-loss ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined impairment_cycles=9 stable_connection=true resources=bounded'
+  if [ "$PEER_SCENARIO" = network-loss ]; then
+    VIEWER_RESULT='viewer=joined xvfb=joined impairment_cycles=3 stable_connection=true resources=bounded'
+  fi
 elif [ "$PEER_SCENARIO" = viewer-suspend ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
@@ -541,7 +545,8 @@ inspect_container_contract() {
   local atspi_root_mounts=0 atspi_launcher_mounts=0 atspi_registry_mounts=0
   local atspi_defaults_mounts=0 atspi_services_mounts=0
   local input_provider_mounts=0 impairment_mounts=0 expected_impairment_mounts=0
-  if [ "$label:$PEER_SCENARIO" = viewer:network-impairment ]; then
+  if [ "$label:$PEER_SCENARIO" = viewer:network-impairment ] \
+    || [ "$label:$PEER_SCENARIO" = viewer:network-loss ]; then
     expected_impairment_mounts=1
   fi
   local receipt_ends=0
@@ -1104,7 +1109,7 @@ fi
 
 echo '== authenticate through the real prompt and observe current pixels across focus loss =='
 impairment_mount=()
-if [ "$PEER_SCENARIO" = network-impairment ]; then
+if [ "$PEER_SCENARIO" = network-impairment ] || [ "$PEER_SCENARIO" = network-loss ]; then
   /usr/bin/python3 -I -S "$SOURCE_SNAPSHOT/scripts/flutter-peer-netem.py" --attach "$SERVER_CID"
   impairment_mount=(--mount 'type=bind,source=/run/rustdesk-verifier-vm/netem.sock,target=/netem.sock,readonly,bind-recursive=disabled')
 fi

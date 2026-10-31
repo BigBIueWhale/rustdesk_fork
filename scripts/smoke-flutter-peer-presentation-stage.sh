@@ -16,7 +16,7 @@ fail() {
 readonly PEER_SCENARIO=${FLUTTER_PEER_SCENARIO:-focus-reconnect-resource}
 case "$PEER_SCENARIO" in
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
-  viewer-suspend|network-impairment) EXPECTED_RESTARTS=0 ;;
+  viewer-suspend|network-impairment|network-loss) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
 esac
 readonly EXPECTED_RESTARTS
@@ -218,7 +218,8 @@ verify_runtime_bundle() {
 
 assert_loopback_only_interface() {
   local interfaces expected=lo
-  if [ "$PEER_SCENARIO:${1:-}" = network-impairment:viewer ]; then
+  if [ "$PEER_SCENARIO:${1:-}" = network-impairment:viewer ] \
+    || [ "$PEER_SCENARIO:${1:-}" = network-loss:viewer ]; then
     expected=$'lo\nrd-netem'
   fi
   interfaces="$(find /sys/class/net -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)" \
@@ -1242,6 +1243,7 @@ PY
     controller_args=(:98 :99 "$VIEWER_PID" "$VIEWER_START")
     [ "$PEER_SCENARIO" != viewer-suspend ] || controller_args+=(--viewer-suspend)
     [ "$PEER_SCENARIO" != network-impairment ] || controller_args+=(--network-impairment)
+    [ "$PEER_SCENARIO" != network-loss ] || controller_args+=(--network-loss)
     set +e
     controller_output="$(timeout --signal=TERM --kill-after=3s 180s \
       "$CONTROLLER" "${controller_args[@]}" 2>&1)"
@@ -1258,7 +1260,15 @@ PY
       <<<"$controller_output" || fail 'complete count-only password input verdict is missing'
     grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false$' \
       <<<"$controller_output" || fail 'real password prompt verdict is missing'
-    if [ "$PEER_SCENARIO" = network-impairment ]; then
+    if [ "$PEER_SCENARIO" = network-loss ]; then
+      [ "$(grep -Ec '^FLUTTER_PEER_NETWORK_IMPAIRED_OK cycle=[123] ' <<<"$controller_output")" -eq 3 ] \
+        && [ "$(grep -Ec '^FLUTTER_PEER_NETWORK_PARTIAL_OK cycle=[123] ' <<<"$controller_output")" -eq 3 ] \
+        && [ "$(grep -Ec '^FLUTTER_PEER_NETWORK_RECOVERY_OK cycle=[123] ' <<<"$controller_output")" -eq 3 ] \
+        || fail 'three partial packet loss/recovery cycles are missing'
+      grep -Fxq 'FLUTTER_PEER_NETWORK_LOSS_PRESENTATION_OK cycles=3 profiles=random3,random8,burst holds_ms=20000,20000,20000 recovery_limit_ms=2500 freshness_limit_ms=1000 healthy_ms=3000 actual_peer=true x11_pixels=true same_window=true stable_connection=true resources=bounded seed=kernel-uncontrolled' \
+        <<<"$controller_output" || fail 'partial packet loss pixel verdict is missing'
+      viewer_result='viewer=joined xvfb=joined impairment_cycles=3 stable_connection=true resources=bounded'
+    elif [ "$PEER_SCENARIO" = network-impairment ]; then
       [ "$(grep -Ec '^FLUTTER_PEER_NETWORK_IMPAIRED_OK cycle=[1-9] ' <<<"$controller_output")" -eq 9 ] \
         && [ "$(grep -Ec '^FLUTTER_PEER_NETWORK_RECOVERY_OK cycle=[1-9] ' <<<"$controller_output")" -eq 9 ] \
         || fail 'nine actual packet impairment/recovery cycles are missing'

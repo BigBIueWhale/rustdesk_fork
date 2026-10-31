@@ -618,6 +618,7 @@ case "$#:${1:-}" in
             case "${12}" in
                 --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
                 --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
+                --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
                 *) exit 2 ;;
             esac
         fi
@@ -666,7 +667,7 @@ case "$#:${1:-}" in
         printf 'Original offline engine setup: %s --linux-flutter-engine-prepare\n' "${0##*/}" >&2
         printf 'Explicit offline engine integration build: %s --linux-flutter-engine-build\n' "${0##*/}" >&2
         printf 'Source-bound Linux app producer: %s --linux-flutter-app-build --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256\n' "${0##*/}" >&2
-        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend|--network-impairment]\n' "${0##*/}" >&2
+        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend|--network-impairment|--network-loss]\n' "${0##*/}" >&2
         printf 'Focused native Docker log-lifetime check: %s --android-runtime-log-tests\n' "${0##*/}" >&2
         printf 'Windows service-result file checks: %s --windows-service-result-tests\n' "${0##*/}" >&2
         printf 'Focused archive transaction fixtures: %s --fixed-archive-tests\n' "${0##*/}" >&2
@@ -5021,7 +5022,10 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     else
         guest_invocation+=" --linux-flutter-app-replay /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 $FLUTTER_APP_COMMIT $FLUTTER_APP_TREE $FLUTTER_APP_RECIPE_SHA256 $FLUTTER_APP_EXPECTED_MANIFEST_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
         [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || guest_invocation+=' --viewer-suspend'
-        [ "$FLUTTER_NETWORK_IMPAIRMENT" -eq 0 ] || guest_invocation+=' --network-impairment'
+        case "$FLUTTER_NETWORK_IMPAIRMENT" in
+            1) guest_invocation+=' --network-impairment' ;;
+            2) guest_invocation+=' --network-loss' ;;
+        esac
     fi
 elif [ "$MODE" = dart-audit ]; then
     guest_invocation+=" --dart-audit /mnt/rustdesk-verifier-inputs/source.tar $DART_SOURCE_COMMIT $DART_SOURCE_TREE $DART_SOURCE_ARCHIVE_SHA256 /mnt/rustdesk-verifier-inputs/dart-audit.docker.tar.gz"
@@ -8316,7 +8320,10 @@ elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
 elif [ "$MODE" = flutter-peer-presentation ]; then
     peer_scenario=focus-reconnect-resource
     [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || peer_scenario=viewer-suspend
-    [ "$FLUTTER_NETWORK_IMPAIRMENT" -eq 0 ] || peer_scenario=network-impairment
+    case "$FLUTTER_NETWORK_IMPAIRMENT" in
+        1) peer_scenario=network-impairment ;;
+        2) peer_scenario=network-loss ;;
+    esac
     require_exact_fixed_receipt \
         "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive_sha256=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 flutter=$FLUTTER_PEER_FLUTTER_VERSION tools=$FLUTTER_PEER_TOOLS_MODE scope=linux-x11-full-peer-$peer_scenario network=owned-none-namespace app_commit=$FLUTTER_APP_COMMIT app_tree=$FLUTTER_APP_TREE manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 build=absent" \
         'focused Flutter full-peer product verdict'

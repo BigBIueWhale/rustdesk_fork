@@ -59,8 +59,9 @@ finish does not by itself make it the next task.
   must have a demonstrated connection to the selected release requirement or an explicit current
   user request. Keep required status/evidence maintenance proportionate. Do not substitute these
   activities for available work that would resolve a more consequential release blocker.
-- Respect explicit user pivots and parked items. A generic continue or goal resume does not reopen
-  them. Select the next highest-value permitted release task; if no such task or feasible prerequisite
+- Respect explicit user pivots and parked items, applying the authorization clarification below.
+  A generic continue or goal resume does not reopen independently parked topics.
+  Select the next highest-value permitted release task; if no such task or feasible prerequisite
   remains, report the concrete constraint and what would unlock progress instead of filling time
   with unrelated work. Follow the goal lifecycle rules when reporting a blocked objective.
 - Release priority does not relax the host isolation, network/listener, acquisition, or storage rules
@@ -74,6 +75,33 @@ finish does not by itself make it the next task.
   specified functionality, platforms, security requirements, and evidence standards; do not shrink
   scope, relabel an unresolved requirement, or weaken a check to manufacture release readiness.
   Keep optional future improvements separate from the binding release requirements.
+
+### Authorization and task resumption (user clarification, 2026-10-31)
+
+User authorization persists across turns, compactions, and goal resumptions. A specific instruction
+to resume a task also authorizes the necessary research, implementation decisions, builds, focused
+tests, fixture/harness repairs, and cleanup needed to complete and verify that task on already-authorized
+hosts. It supersedes older pivots within that scope, including an older park on a build/test lane
+needed by the resumed task. Do not require the user to separately reopen each prerequisite.
+For the explicitly resumed file-receive fix, TUF and the necessary full-application builds and
+focused tests are already authorized. Independently parked, unrelated topics remain parked.
+
+Choose and verify implementations that satisfy the existing requirements. Ordinary engineering
+choices, compilation failures, test failures, and unresolved design problems are work to perform;
+they are not permission dependencies. Do not ask the user to choose an implementation before
+doing the authorized research and making the alternatives concrete and reviewable.
+
+Before asking for permission or treating the goal as blocked, reconcile the latest direct user
+instructions with the exact action and any still-applicable restriction. An old ledger label,
+historical audit entry, or unanswered assistant question does not override later user authorization.
+Correct stale current-status wording instead of carrying that barrier forward. If an action truly
+requires new authorization, identify the exact action, the controlling restriction, and why the
+existing authorization does not cover it; continue other authorized work where possible. Follow
+the goal lifecycle rules, and never mark the goal blocked merely because an obsolete permission
+question remains unanswered.
+
+Existing host isolation, network, storage, publication, and product acceptance requirements remain
+binding. Task resumption does not authorize weakening them or rewriting unrelated live instructions.
 
 Loop discipline for every invocation:
 

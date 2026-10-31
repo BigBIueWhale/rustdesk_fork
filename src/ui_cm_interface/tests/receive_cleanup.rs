@@ -286,3 +286,67 @@ fn stalled_retirement_retains_owner_and_keeps_other_connection_responsive() {
     drop(observer);
     assert_eq!(observations, vec![true; 6]);
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn saturated_pool_preserves_admitted_transfer_and_teardown() {
+    for abort in [false, true] {
+        let id = 2_000_200_090 + i32::from(abort);
+        let temp = CmFileTestDir::new("receive_cleanup_capacity");
+        fs::write(temp.join("incoming"), b"original").unwrap();
+        let (mut task, mut peer, _socket, ui) = admitted_cm_native_output_test(id).await;
+        command(&mut peer, ipc::FS::NewWrite { path: get_string(&temp.path), id: 17,
+            file_num: 0, files: vec![ipc::CmReceiveFile { name: "incoming".to_owned(), size: 8, modified_time: 19 }],
+            overwrite_detection: false, total_size: 8, conn_id: id, generation: 4 }).await;
+        command(&mut peer, ipc::FS::WriteBlock { id: 17, file_num: 0, conn_id: id,
+            data: bytes::Bytes::new(), compressed: false, generation: 4 }).await;
+        peer.send_raw(bytes::Bytes::from_static(b"abc")).await.unwrap();
+        listing(&mut peer, id, &temp.path).await;
+        let [partial, _, _] = crate::receive_test::artifact_paths(&temp.path, "incoming");
+        assert_eq!(fs::read(&partial).unwrap(), b"abc");
+        assert_eq!(CM_FILE_OPERATION_LIMIT.available_permits(), CM_FILE_OPERATION_DRAIN_CAPACITY - 1);
+        let reserved = CM_FILE_OPERATION_LIMIT.clone()
+            .try_acquire_many_owned((CM_FILE_OPERATION_DRAIN_CAPACITY - 1) as u32).unwrap();
+        assert_eq!(CM_FILE_OPERATION_LIMIT.available_permits(), 0);
+
+        let (mut refused, mut refused_peer, _socket, refused_ui) = admitted_cm_native_output_test(id + 10).await;
+        let forbidden = temp.join("must-not-be-created");
+        command(&mut refused_peer, ipc::FS::CreateDir { path: get_string(&forbidden), id: 1, request_id: 902 }).await;
+        tokio::time::timeout(Duration::from_secs(2), &mut refused).await.unwrap().unwrap();
+        assert_eq!(lock_cm_egress_test(&refused_ui.removed).len(), 1);
+        assert!(!forbidden.exists());
+        assert_eq!(fs::read(&partial).unwrap(), b"abc");
+
+        // Existing work reuses its reservation even with no free pool capacity.
+        let allowed = temp.join("admitted-operation");
+        command(&mut peer, ipc::FS::CreateDir { path: get_string(&allowed), id: 2, request_id: 903 }).await;
+        assert!(matches!(reply(&mut peer, id).await,
+            ipc::CmFileResponseKind::Operation { request_id: 903, result: Ok(()), .. }));
+        assert!(allowed.is_dir());
+        assert_eq!(CM_FILE_OPERATION_LIMIT.available_permits(), 0);
+        if abort {
+            task.abort();
+            assert!(tokio::time::timeout(Duration::from_secs(2), &mut task).await.unwrap().unwrap_err().is_cancelled());
+        } else {
+            peer.send(&Data::Close).await.unwrap();
+            tokio::time::timeout(Duration::from_secs(2), &mut task).await.unwrap().unwrap();
+        }
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while CM_FILE_OPERATION_LIMIT.available_permits() != 1 {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        }).await.unwrap();
+        assert_eq!(lock_cm_egress_test(&ui.removed).len(), 1);
+        assert!(!CLIENTS.read().unwrap().in_flight_file_operations.contains_key(&id));
+        assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
+        assert!(!partial.exists());
+        assert_eq!(fs::read(temp.join("incoming")).unwrap(), b"original");
+        drop(reserved);
+        assert_eq!(CM_FILE_OPERATION_LIMIT.available_permits(), CM_FILE_OPERATION_DRAIN_CAPACITY);
+        let (mut successor, mut peer, _socket, successor_ui) = admitted_cm_native_output_test(id).await;
+        listing(&mut peer, id, &temp.path).await;
+        peer.send(&Data::Close).await.unwrap();
+        tokio::time::timeout(Duration::from_secs(2), &mut successor).await.unwrap().unwrap();
+        assert_eq!(lock_cm_egress_test(&successor_ui.removed).len(), 1);
+        println!("CM_RECEIVE_CAPACITY=pass abort={abort} saturated=32 new_effect=refused admitted_effect=completed cleanup=joined original=preserved successor=usable");
+    }
+}

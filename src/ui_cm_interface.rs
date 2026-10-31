@@ -802,24 +802,13 @@ struct IpcTaskRunner<T: InvokeUiCM, S> {
     rx: CmEgressReceiver,
     close: bool,
     conn_id: i32,
-    client_owner: Option<CmClientOwner>,
+    client_owner: Option<CmClientTaskOwner<T>>,
     file_authority: CmFileAuthority,
     cm_auth_token: String,
     #[cfg(target_os = "windows")]
     file_transfer_enabled: bool,
     #[cfg(target_os = "windows")]
     file_transfer_enabled_peer: bool,
-    /// Read jobs for CM-side file reading (server to client transfers)
-    read_jobs: Vec<CmTransferJob>,
-}
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-impl<T: InvokeUiCM, S> Drop for IpcTaskRunner<T, S> {
-    fn drop(&mut self) {
-        if let Some(owner) = self.client_owner.take() {
-            self.cm.remove_connection(owner, true);
-        }
-    }
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -988,7 +977,7 @@ struct CmFileOperationReaper {
 #[cfg(not(target_os = "ios"))]
 struct CmFileOperationJoin {
     task: tokio::task::JoinHandle<()>,
-    _permit: OwnedSemaphorePermit,
+    _permit: Arc<OwnedSemaphorePermit>,
 }
 
 #[cfg(not(target_os = "ios"))]
@@ -1001,8 +990,11 @@ fn cm_file_operation_reaper(
 ) -> Result<&'static std_mpsc::SyncSender<CmFileOperationJoin>, &'static str> {
     CM_FILE_OPERATION_REAPER
         .get_or_init(|| {
+            // One reservation can retain a selected-operation join and, if its
+            // result is abandoned, one receive-retirement join. Both keep the
+            // same permit; neither creates another admissible connection slot.
             let (sender, receiver) =
-                std_mpsc::sync_channel::<CmFileOperationJoin>(CM_FILE_OPERATION_DRAIN_CAPACITY);
+                std_mpsc::sync_channel::<CmFileOperationJoin>(2 * CM_FILE_OPERATION_DRAIN_CAPACITY);
             std::thread::Builder::new()
                 .name("rustdesk-cm-file-drain".to_owned())
                 .spawn(move || {
@@ -1503,8 +1495,6 @@ where
         const MILLI5: Duration = Duration::from_millis(5);
         const SEC30: Duration = Duration::from_secs(30);
 
-        // for tmp use, without real conn id
-        let mut write_jobs: Vec<CmTransferJob> = Vec::new();
         // File timer for processing read_jobs
         let mut file_timer =
             crate::rustdesk_interval(time::interval_at(Instant::now() + SEC30, SEC30));
@@ -1514,8 +1504,6 @@ where
             let (sender, receiver) = clipboard::clipboard_file_egress_channel();
             (Some(sender), receiver)
         };
-        #[cfg(target_os = "windows")]
-        let mut _cliprdr_route = None;
         #[cfg(not(target_os = "windows"))]
         let (_tx_clip, mut rx_clip) = clipboard::clipboard_file_egress_channel();
         loop {
@@ -1634,6 +1622,13 @@ where
                                         }
                                     };
                                     self.conn_id = id;
+                                    let client_owner = CmClientTaskOwner::new(self.cm.clone(), client_owner);
+                                    #[cfg(target_os = "windows")]
+                                    let client_owner = {
+                                        let mut client_owner = client_owner;
+                                        client_owner.cliprdr_route = Some(controlled_clip_route);
+                                        client_owner
+                                    };
                                     self.client_owner = Some(client_owner);
                                     self.file_authority = file_authority;
                                     self.cm_auth_token = cm_auth_token;
@@ -1642,7 +1637,6 @@ where
                                         self.file_transfer_enabled = _file_transfer_enabled;
                                         _idle_clip_sender = None;
                                         rx_clip = controlled_clip_receiver;
-                                        _cliprdr_route = Some(controlled_clip_route);
                                     }
                                     continue;
                                 }
@@ -1712,7 +1706,7 @@ where
                                     break;
                                 }
                                 Data::ChatMessage { text } => {
-                                    let Some(owner) = self.client_owner else {
+                                    let Some(owner) = self.client_owner.as_ref().map(CmClientTaskOwner::owner) else {
                                         log::warn!("Rejected CM chat before client-registry admission");
                                         break;
                                     };
@@ -1726,7 +1720,7 @@ where
                                         );
                                         break;
                                     }
-                                    let Some(owner) = self.client_owner else {
+                                    let Some(owner) = self.client_owner.as_ref().map(CmClientTaskOwner::owner) else {
                                         log::warn!(
                                             "Rejected CM filesystem work before client-registry admission"
                                         );
@@ -1762,28 +1756,19 @@ where
                                             .set_max_packet_length(ipc::CM_IPC_MAX_FRAME_BYTES);
                                         fs = ipc::FS::WriteBlock{id, file_num, conn_id, data:bytes.into(), compressed, generation};
                                     }
-                                    if cm_file_operation_reaper().is_err() {
-                                        break;
-                                    }
-                                    let permit = match CM_FILE_OPERATION_LIMIT.clone().try_acquire_owned() {
-                                        Ok(permit) => permit,
-                                        Err(error) => {
-                                            log::warn!("Rejected desktop CM file operation without drain capacity: {error}");
-                                            break;
-                                        }
-                                    };
-                                    let Some(owner_key) = self.client_owner.take() else {
+                                    let Some(mut owner) = self.client_owner.take() else {
                                         log::warn!("Rejected desktop CM file operation without its registry owner");
                                         break;
                                     };
-                                    let mut owner = CmClientTaskOwner::new(self.cm.clone(), owner_key);
-                                    if !self.cm.begin_file_operation(owner_key) {
-                                        log::warn!("Rejected desktop CM file operation from a stale or busy registry owner");
-                                        break;
-                                    }
-                                    owner.begin_selected_file_operation();
-                                    let mut selected_write_jobs = std::mem::take(&mut write_jobs);
-                                    let mut selected_read_jobs = std::mem::take(&mut self.read_jobs);
+                                    let owner_key = owner.owner();
+                                    let permit = match owner.begin_selected_file_operation() {
+                                        Ok(permit) => permit,
+                                        Err(error) => {
+                                            self.client_owner = Some(owner);
+                                            log::warn!("Rejected desktop CM file operation: {error}");
+                                            break;
+                                        }
+                                    };
                                     let operation_tx = self.tx.clone();
                                     let operation_token = self.cm_auth_token.clone();
                                     let operation_id = self.conn_id;
@@ -1791,8 +1776,8 @@ where
                                     let task = tokio::spawn(async move {
                                         let result = handle_fs(
                                             fs,
-                                            &mut selected_write_jobs,
-                                            &mut selected_read_jobs,
+                                            &mut owner.write_jobs,
+                                            &mut owner.read_jobs,
                                             CmFileResponder {
                                                 tx: &operation_tx,
                                                 conn_id: operation_id,
@@ -1802,7 +1787,7 @@ where
                                         )
                                         .await;
                                         owner.finish_selected_file_operation();
-                                        let _ = result_tx.send((selected_write_jobs, selected_read_jobs, owner, result));
+                                        let _ = result_tx.send((owner, result));
                                     });
                                     #[cfg(test)]
                                     publish_cm_test_selected_file_abort_handle(
@@ -1817,7 +1802,7 @@ where
                                     };
                                     let outcome = result_rx.await;
                                     let joined = operation.join().await;
-                                    let (jobs, read_jobs, owner, result) = match (outcome, joined) {
+                                    let (owner, result) = match (outcome, joined) {
                                         (Ok(outcome), Ok(())) => outcome,
                                         (outcome, joined) => {
                                             log::error!(
@@ -1827,11 +1812,9 @@ where
                                             break;
                                         }
                                     };
-                                    write_jobs = jobs;
-                                    self.read_jobs = read_jobs;
-                                    let owner = owner.into_owner();
+                                    let has_read_jobs = !owner.read_jobs.is_empty();
+                                    let log = serialize_cm_transfer_jobs(&owner.write_jobs);
                                     self.client_owner = Some(owner);
-                                    self.cm.finish_file_operation(owner_key);
                                     let job_log = match result {
                                         Ok(job_log) => job_log,
                                         Err(error) => {
@@ -1840,18 +1823,17 @@ where
                                         }
                                     };
                                     if let Some(job_log) = job_log {
-                                        if !self.cm.file_transfer_log(owner, "transfer", &job_log) {
+                                        if !self.cm.file_transfer_log(owner_key, "transfer", &job_log) {
                                             break;
                                         }
                                     }
                                     // Activate fast timer immediately when read jobs exist.
                                     // This ensures new jobs start processing without waiting for the slow 30s timer.
                                     // Deactivation (back to 30s) happens in tick handler when jobs are exhausted.
-                                    if !self.read_jobs.is_empty() {
+                                    if has_read_jobs {
                                         file_timer = crate::rustdesk_interval(time::interval(MILLI5));
                                     }
-                                    let log = serialize_cm_transfer_jobs(&write_jobs);
-                                    if !self.cm.file_transfer_log(owner, "transfer", &log) {
+                                    if !self.cm.file_transfer_log(owner_key, "transfer", &log) {
                                         break;
                                     }
                                 }
@@ -1863,7 +1845,7 @@ where
                                     break;
                                 }
                                 Data::FileTransferLog((action, log)) => {
-                                    let Some(owner) = self.client_owner else {
+                                    let Some(owner) = self.client_owner.as_ref().map(CmClientTaskOwner::owner) else {
                                         log::warn!(
                                             "Rejected CM file log before client-registry admission"
                                         );
@@ -1907,7 +1889,7 @@ where
                                     }
                                 }
                                 Data::VoiceCallEvent(event) => {
-                                    let Some(owner) = self.client_owner else {
+                                    let Some(owner) = self.client_owner.as_ref().map(CmClientTaskOwner::owner) else {
                                         log::warn!("Rejected CM voice event before client-registry admission");
                                         break;
                                     };
@@ -2072,8 +2054,8 @@ where
                     }
                 },
                 _ = file_timer.tick() => {
-                    if !self.read_jobs.is_empty() {
-                        let Some(owner) = self.client_owner else {
+                    if self.client_owner.as_ref().map(|owner| !owner.read_jobs.is_empty()).unwrap_or(false) {
+                        let Some(owner) = self.client_owner.as_ref().map(CmClientTaskOwner::owner) else {
                             log::warn!(
                                 "Rejected CM read-job tick before client-registry admission"
                             );
@@ -2085,35 +2067,26 @@ where
                             );
                             break;
                         }
-                        if cm_file_operation_reaper().is_err() {
-                            break;
-                        }
-                        let permit = match CM_FILE_OPERATION_LIMIT.clone().try_acquire_owned() {
-                            Ok(permit) => permit,
-                            Err(error) => {
-                                log::warn!("Rejected CM read-job tick without drain capacity: {error}");
-                                break;
-                            }
-                        };
-                        let Some(owner_key) = self.client_owner.take() else {
+                        let Some(mut owner) = self.client_owner.take() else {
                             log::warn!("Rejected CM read-job tick without its registry owner");
                             break;
                         };
-                        if !self.cm.begin_file_operation(owner_key) {
-                            self.client_owner = Some(owner_key);
-                            log::warn!("Rejected CM read-job tick from a stale or busy registry owner");
-                            break;
-                        }
-                        let mut owner = CmClientTaskOwner::new(self.cm.clone(), owner_key);
-                        owner.begin_selected_file_operation();
-                        let mut read_jobs = std::mem::take(&mut self.read_jobs);
+                        let owner_key = owner.owner();
+                        let permit = match owner.begin_selected_file_operation() {
+                            Ok(permit) => permit,
+                            Err(error) => {
+                                self.client_owner = Some(owner);
+                                log::warn!("Rejected CM read-job tick: {error}");
+                                break;
+                            }
+                        };
                         let tx = self.tx.clone();
                         let token = self.cm_auth_token.clone();
                         let conn_id = self.conn_id;
                         let (result_tx, result_rx) = tokio::sync::oneshot::channel();
                         let task = tokio::spawn(async move {
                             let result = handle_read_jobs_tick(
-                                &mut read_jobs,
+                                &mut owner.read_jobs,
                                 CmFileResponder {
                                     tx: &tx,
                                     conn_id,
@@ -2122,7 +2095,7 @@ where
                             )
                             .await;
                             owner.finish_selected_file_operation();
-                            let _ = result_tx.send((read_jobs, owner, result));
+                            let _ = result_tx.send((owner, result));
                         });
                         let mut operation = CmFileOperationTask {
                             join: Some(CmFileOperationJoin {
@@ -2132,7 +2105,7 @@ where
                         };
                         let outcome = result_rx.await;
                         let joined = operation.join().await;
-                        let (jobs, owner, result) = match (outcome, joined) {
+                        let (owner, result) = match (outcome, joined) {
                             (Ok(outcome), Ok(())) => outcome,
                             (outcome, joined) => {
                                 log::error!(
@@ -2142,14 +2115,12 @@ where
                                 break;
                             }
                         };
-                        self.read_jobs = jobs;
-                        self.client_owner = Some(owner.into_owner());
-                        self.cm.finish_file_operation(owner_key);
+                        let log = serialize_cm_transfer_jobs(&owner.read_jobs);
+                        self.client_owner = Some(owner);
                         if let Err(error) = result {
                             log::error!("failed to publish CM read-job response: {error}");
                             break;
                         }
-                        let log = serialize_cm_transfer_jobs(&self.read_jobs);
                         if !self.cm.file_transfer_log(owner_key, "transfer", &log) {
                             break;
                         }
@@ -2160,10 +2131,8 @@ where
             }
         }
         if let Some(owner) = self.client_owner.take() {
-            self.cm.remove_connection(owner, self.close);
+            owner.retire(self.close).await;
         }
-        #[cfg(target_os = "windows")]
-        drop(_cliprdr_route);
     }
 }
 
@@ -2185,7 +2154,6 @@ async fn ipc_task<T: InvokeUiCM>(stream: Connection, cm: ConnectionManager<T>) {
         file_transfer_enabled: false,
         #[cfg(target_os = "windows")]
         file_transfer_enabled_peer: false,
-        read_jobs: Vec::new(),
     };
 
     task_runner.run().await;
@@ -2256,45 +2224,120 @@ struct CmClientTaskOwner<T: InvokeUiCM> {
     cm: ConnectionManager<T>,
     owner: CmClientOwner,
     armed: bool,
+    close: bool,
     file_operation_complete: bool,
+    file_operation_registered: bool,
+    permit: Option<Arc<OwnedSemaphorePermit>>,
+    write_jobs: Vec<CmTransferJob>,
+    read_jobs: Vec<CmTransferJob>,
+    #[cfg(target_os = "windows")]
+    cliprdr_route: Option<clipboard::ClipboardFileRouteLease>,
 }
 
 #[cfg(not(target_os = "ios"))]
 impl<T: InvokeUiCM> CmClientTaskOwner<T> {
     fn new(cm: ConnectionManager<T>, owner: CmClientOwner) -> Self {
-        Self { cm, owner, armed: true, file_operation_complete: true }
+        Self {
+            cm, owner, armed: true, close: true, file_operation_complete: true,
+            file_operation_registered: false, permit: None,
+            write_jobs: Vec::new(), read_jobs: Vec::new(),
+            #[cfg(target_os = "windows")]
+            cliprdr_route: None,
+        }
     }
 
     fn owner(&self) -> CmClientOwner {
         self.owner
     }
 
-    fn begin_selected_file_operation(&mut self) {
+    fn begin_selected_file_operation(&mut self) -> Result<Arc<OwnedSemaphorePermit>, String> {
+        cm_file_operation_reaper().map_err(str::to_owned)?;
+        let permit = match &self.permit {
+            Some(permit) => Arc::clone(permit),
+            None => Arc::new(CM_FILE_OPERATION_LIMIT.clone().try_acquire_owned()
+                .map_err(|error| format!("CM file drain capacity unavailable: {error}"))?),
+        };
+        if !self.file_operation_registered {
+            if !self.cm.begin_file_operation(self.owner) {
+                return Err("CM file owner is stale or busy".to_owned());
+            }
+            self.file_operation_registered = true;
+        }
+        self.permit = Some(Arc::clone(&permit));
         self.file_operation_complete = false;
+        Ok(permit)
     }
 
     fn finish_selected_file_operation(&mut self) {
         self.file_operation_complete = true;
+        if self.write_jobs.is_empty() && self.read_jobs.is_empty() {
+            self.cm.finish_file_operation(self.owner);
+            self.file_operation_registered = false;
+            self.permit = None;
+        }
     }
 
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn into_owner(mut self) -> CmClientOwner {
+    async fn retire(mut self, close: bool) {
+        self.close = close;
+        if let Some(mut retirement) = self.start_retirement() {
+            if retirement.join().await.is_err() {
+                std::process::abort();
+            }
+        }
+    }
+
+    fn start_retirement(&mut self) -> Option<CmFileOperationTask> {
+        if !self.armed {
+            return None;
+        }
+        if !self.file_operation_complete {
+            log::error!("CM file-operation owner was dropped before its selected work completed");
+            std::process::abort();
+        }
         self.armed = false;
-        self.owner
+        if self.write_jobs.is_empty() && self.read_jobs.is_empty() {
+            self.cm.remove_connection(self.owner, self.close);
+            if self.file_operation_registered {
+                self.cm.finish_file_operation(self.owner);
+            }
+            return None;
+        }
+        let Some(permit) = self.permit.take() else {
+            log::error!("CM receive jobs lost their admitted cleanup capacity");
+            std::process::abort();
+        };
+        let mut final_owner = Self::new(self.cm.clone(), self.owner);
+        final_owner.close = self.close;
+        final_owner.file_operation_complete = false;
+        final_owner.file_operation_registered = self.file_operation_registered;
+        #[cfg(target_os = "windows")]
+        {
+            final_owner.cliprdr_route = self.cliprdr_route.take();
+        }
+        let writes = std::mem::take(&mut self.write_jobs);
+        let reads = std::mem::take(&mut self.read_jobs);
+        let native = spawn_blocking(move || {
+            drop(writes);
+            drop(reads);
+        });
+        let task = tokio::spawn(async move {
+            if let Err(error) = native.await {
+                log::error!("CM connection retirement lost its native cleanup: {error}");
+                std::process::abort();
+            }
+            final_owner.file_operation_complete = true;
+            drop(final_owner);
+        });
+        Some(CmFileOperationTask {
+            join: Some(CmFileOperationJoin { task, _permit: permit }),
+        })
     }
 }
 
 #[cfg(not(target_os = "ios"))]
 impl<T: InvokeUiCM> Drop for CmClientTaskOwner<T> {
     fn drop(&mut self) {
-        if self.armed {
-            if !self.file_operation_complete {
-                log::error!("CM file-operation owner was dropped before its selected work completed");
-                std::process::abort();
-            }
-            self.cm.remove_connection(self.owner, true);
-            self.cm.finish_file_operation(self.owner);
-        }
+        drop(self.start_retirement());
     }
 }
 
@@ -2340,7 +2383,6 @@ pub async fn start_listen<T: InvokeUiCM>(
     let mut current_owner = None;
     let mut current_cm_auth_token = String::new();
     let mut file_authority = CmFileAuthority::absent();
-    let mut write_jobs: Vec<CmTransferJob> = Vec::new();
     loop {
         let command = tokio::select! {
             biased;
@@ -2465,36 +2507,24 @@ pub async fn start_listen<T: InvokeUiCM>(
                     log::warn!("Rejected Android CM file command without a registry owner");
                     break;
                 };
-                let owner_key = owner.owner();
-                if cm_file_operation_reaper().is_err() {
-                    current_owner = Some(owner);
-                    break;
-                }
-                let permit = match CM_FILE_OPERATION_LIMIT.clone().try_acquire_owned() {
+                let permit = match owner.begin_selected_file_operation() {
                     Ok(permit) => permit,
                     Err(error) => {
-                        log::warn!("Rejected Android CM file operation without drain capacity: {error}");
+                        log::warn!("Rejected Android CM file operation: {error}");
                         current_owner = Some(owner);
                         break;
                     }
                 };
-                if !cm.begin_file_operation(owner_key) {
-                    log::warn!("Rejected Android CM file operation from a stale or busy registry owner");
-                    current_owner = Some(owner);
-                    break;
-                }
-                owner.begin_selected_file_operation();
-                let mut jobs = std::mem::take(&mut write_jobs);
                 let operation_tx = tx.clone();
                 let operation_token = current_cm_auth_token.clone();
                 let operation_id = current_id;
                 let (result_tx, result_rx) = tokio::sync::oneshot::channel();
                 let task = tokio::spawn(async move {
-                    // Android doesn't need CM-side file reading (no need_validate_file_read_access).
-                    let mut read_jobs_placeholder: Vec<CmTransferJob> = Vec::new();
+                    // CM-side read jobs are driven by the desktop timer only.
+                    let mut read_jobs_placeholder = Vec::new();
                     let result = handle_fs(
                         fs,
-                        &mut jobs,
+                        &mut owner.write_jobs,
                         &mut read_jobs_placeholder,
                         CmFileResponder {
                             tx: &operation_tx,
@@ -2505,7 +2535,7 @@ pub async fn start_listen<T: InvokeUiCM>(
                     )
                     .await;
                     owner.finish_selected_file_operation();
-                    let _ = result_tx.send((jobs, owner, result));
+                    let _ = result_tx.send((owner, result));
                 });
                 let mut operation = CmFileOperationTask {
                     join: Some(CmFileOperationJoin {
@@ -2515,7 +2545,7 @@ pub async fn start_listen<T: InvokeUiCM>(
                 };
                 let outcome = result_rx.await;
                 let joined = operation.join().await;
-                let (jobs, owner, result) = match (outcome, joined) {
+                let (owner, result) = match (outcome, joined) {
                     (Ok(outcome), Ok(())) => outcome,
                     (outcome, joined) => {
                         log::error!(
@@ -2525,9 +2555,7 @@ pub async fn start_listen<T: InvokeUiCM>(
                         break;
                     }
                 };
-                write_jobs = jobs;
                 current_owner = Some(owner);
-                cm.finish_file_operation(owner_key);
                 if let Err(error) = result {
                     log::error!("failed to publish Android CM file response: {error}");
                     break;
@@ -2552,8 +2580,9 @@ pub async fn start_listen<T: InvokeUiCM>(
             _ => {}
         }
     }
-    drop(write_jobs);
-    drop(current_owner);
+    if let Some(owner) = current_owner {
+        owner.retire(true).await;
+    }
 }
 
 #[cfg(not(any(target_os = "ios")))]
@@ -3939,7 +3968,6 @@ mod tests {
             file_transfer_enabled: false,
             #[cfg(target_os = "windows")]
             file_transfer_enabled_peer: false,
-            read_jobs: Vec::new(),
         };
         peer.send(&cm_test_login_with_conn_type(id, conn_type))
             .await
@@ -4888,7 +4916,6 @@ mod tests {
                 cm_auth_token: String::new(),
                 file_transfer_enabled: false,
                 file_transfer_enabled_peer: false,
-                read_jobs: Vec::new(),
             },
             peer_stream,
         )

@@ -122957,3 +122957,34 @@ The count command exits zero; QEMU 3120325 joins after 31.018 seconds, RAM
 Serial SHA-256 `aa16085b58117230c11816bdbdb7b0c7a5cdabd10240dcd19610bade317f3c3c`.
 Thirteen raw files / 217,079 bytes for both runs are hash-verified per host.
 This audit-only receipt leaves the counted ledger and tested fixture unchanged.
+
+### 2026-10-31 — fresh receive after saved partial: reproduction preparation
+
+The preceding goal turn made no progress: it revalidated the pending staging
+exception and full-parent/viewer execution permission without changing the next
+action. Source review now identifies a separate R-S0/R-S11fj workflow gap.
+`inspect_write_destination` preserves a valid nonmatching saved pair and offers
+no resumable offset, while both zero-offset confirmation APIs only mark the job
+confirmed. `TransferJob::write` subsequently calls `ReceiveWriteClaim::start_new`,
+whose exclusive creation refuses the still-existing payload. The Linux open(2)
+contract requires EEXIST for O_CREAT|O_EXCL at an occupied name:
+https://man7.org/linux/man-pages/man2/open.2.html . This is a source finding until
+the complete sequence executes; neither a new escalation nor a fix is claimed.
+
+Add one focused real-file regression with twelve scenarios: absent, matching and
+nonmatching saved partials; absent/present prior final; and confirmation producer
+versus decoded confirmation receiver. The saved pair comes from the production
+claim constructor, with no live owner remaining. This models retained interruption
+state, not a fresh process-death experiment. Require read-only inspection to
+preserve it, explicit zero-offset confirmation, successful first write and exact
+three-byte publication/counters, and preservation of the prior final until commit.
+All fixtures retire before the aggregate assertion. Keep the existing exclusive
+creation and refusal tests; a correction must distinguish an explicitly authorized
+restart from blind adoption or truncation of an occupied sidecar.
+
+Use the existing isolated `--file-send-digest-tests` lane. This is an independent
+functional prerequisite for the receive fix and takes priority over another
+storage-fault scenario. Product code and both pending acceptance decisions remain
+unchanged. The current TUF lock is idle, the clean source matches origin, and
+47.1 GB available memory / 32.2 GB free shared memory precede normal bounded-RAM
+admission; no host product or test execution is authorized.

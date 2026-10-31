@@ -3562,6 +3562,7 @@ run_focused_rust_tests() {
                 fs::receive_namespace::tests::generation_lock_retires_only_after_last_owner
                 fs::receive_namespace::tests::generation_retirement_error_releases_exclusion
                 fs::receive_namespace::tests::retirement_retries_the_containing_directory_barrier
+                fs::receive_namespace::tests::fresh_confirmation_replaces_saved_partial
                 fs::tests::transfer_resume_send_is_once_and_preserves_live_progress
                 fs::tests::transfer_resume_receive_is_once_and_preserves_owned_output
                 fs::tests::send_digest_refuses_changed_lengths_before_cm_wait
@@ -3674,6 +3675,7 @@ run_focused_rust_tests() {
                 fs::receive_namespace::tests::generation_lock_retires_only_after_last_owner
                 fs::receive_namespace::tests::generation_retirement_error_releases_exclusion
                 fs::receive_namespace::tests::retirement_retries_the_containing_directory_barrier
+                fs::receive_namespace::tests::fresh_confirmation_replaces_saved_partial
                 fs::tests::file_metadata_digest_mismatched_seconds_and_sizes_stay_distinct
                 fs::tests::recursive_owner_files_retain_the_listed_parent
                 fs::tests::recursive_owner_empty_dirs_retain_the_listed_parent
@@ -6367,6 +6369,7 @@ run_focused_rust_tests() {
                                 fs::receive_namespace::tests::generation_lock_retires_only_after_last_owner \
                                 fs::receive_namespace::tests::generation_retirement_error_releases_exclusion \
                                 fs::receive_namespace::tests::retirement_retries_the_containing_directory_barrier \
+                                fs::receive_namespace::tests::fresh_confirmation_replaces_saved_partial \
                                 fs::file_block::tests::allocation_refusal_returns_error_and_preserves_retry \
                                 fs::tests::send_read_buffer_refusal_preserves_job_and_retry \
                                 fs::tests::read_step_error_retires_selected_entry_with_a_repeated_id \
@@ -8416,7 +8419,7 @@ PY
             grep -E '^test fs::(tests::(send_(digest_|read_buffer_)|read_step_|transfer_resume_)|file_block::tests::allocation_refusal_).* \.\.\. ok$|^test tcp::writer_lifetime_tests::read_jobs_retire_before_native_writer_pressure_errors \.\.\. ok$|^SEND_DIGEST_SIZE=|^SEND_READ_ALLOCATION(_CASE)?=|^FILE_COMPRESSION_(ALLOCATION|CASE)=|^READ_TERMINAL_RETIREMENT(_CASE)?=|^READ_NONTERMINAL_RETIREMENT=|^READ_JOB_BACKPRESSURE(_CASE)?=|^READ_ROUND_ROBIN(_CASE)?=.*|^READ_CONFIRMATION_READY=|^TRANSFER_RESUME_' "$output"
             grep -E '^test fs::tests::(send_resume_[a-z_]+|send_read_preserves_exact_lengths_and_resumed_eof|confirmation_rejects_wrong_job_and_duplicate_progress|resume_counter_overflow_does_not_publish_stream_ownership) [.][.][.] ok$' "$output"
             grep -E '^test fs::confirmation::tests::(slow_sync::)?[a-z_]+ [.][.][.] ok$|^FILE_CONFIRMATION_' "$output"
-            grep -E '^test fs::receive_namespace::tests::[a-z_]+ [.][.][.] ok$|^RECEIVE_(GENERATION_(RETIREMENT|ERROR)|RETIREMENT_SYNC)=' "$output"
+            grep -E '^test fs::receive_namespace::tests::[a-z_]+ [.][.][.] ok$|^RECEIVE_(GENERATION_(RETIREMENT|ERROR)|RETIREMENT_SYNC|FRESH_CONFIRMATION)=' "$output"
             grep -E '^test fs::tests::file_metadata_(resume_|pending_resume_)[a-z_]+ [.][.][.] ok$|^FILE_METADATA_(RESUME_|PENDING_RESUME)' "$output"
         else
         grep -E '^test platform::linux::tests::r_s11at_loginctl_output_.* \.\.\. ok$|^LOGINCTL_(WAIT_AUTHORITY|LOST_WAIT)=' "$output"

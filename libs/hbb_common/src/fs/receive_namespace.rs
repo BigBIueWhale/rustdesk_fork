@@ -259,6 +259,94 @@ mod tests {
     use super::super::{FileDigest, ReceiveWriteClaim};
     use std::os::unix::fs::{symlink, PermissionsExt};
 
+    #[tokio::test]
+    async fn fresh_confirmation_replaces_saved_partial() {
+        use super::super::{file_transfer_send_confirm_request::Union, DigestCheckResult,
+            FileEntry, FileTransferBlock, FileTransferDigest, FileTransferSendConfirmRequest,
+            JobType, ReceiveClaimCleanup, TransferJob};
+        use crate::protobuf::Message as _;
+        use std::os::unix::fs::FileExt;
+
+        let mut failures = Vec::new();
+        for saved in ["none", "matching", "nonmatching"] {
+            for prior_final in [false, true] {
+                for producer in [false, true] {
+                    let root = std::env::temp_dir().join(format!(
+                        "receive-fresh-confirmation-{}", crate::uuid::Uuid::new_v4()));
+                    std::fs::create_dir(&root).unwrap();
+                    let destination = root.join("incoming");
+                    if prior_final { std::fs::write(&destination, b"original").unwrap(); }
+                    let original = std::fs::read(&destination).ok();
+                    let saved_payload = if saved == "none" { None } else {
+                        let digest = FileDigest { size: 3,
+                            modified: if saved == "matching" { 17 } else { 16 } };
+                        let (mut stream, mut claim) =
+                            ReceiveWriteClaim::start_new(destination.clone(), digest).unwrap();
+                        stream.write_all(b"ol").unwrap();
+                        stream.sync_all().unwrap();
+                        let payload = claim.download_file.try_clone().unwrap();
+                        // Retain the same durable files that abrupt owner loss leaves.
+                        // No lease or active transfer survives into the new job.
+                        claim.cleanup_on_drop = ReceiveClaimCleanup::None;
+                        drop((stream, claim));
+                        Some(payload)
+                    };
+                    let mut receiver = TransferJob::new_write(581, JobType::Generic,
+                        String::new(), root.clone(), 0, false, true, true);
+                    receiver.set_files(vec![FileEntry { name: "incoming".into(),
+                        size: 3, modified_time: 17, ..Default::default() }]).unwrap();
+                    let (inspection, path) = receiver.inspect_receive_digest(&FileTransferDigest {
+                        id: 581, file_num: 0, file_size: 3, last_modified: 17,
+                        ..Default::default()
+                    }, true).await.unwrap();
+                    assert_eq!(path, destination);
+                    match inspection {
+                        DigestCheckResult::NeedConfirm(digest) =>
+                            assert_eq!(digest.transferred_size, if saved == "matching" { 2 } else { 0 }),
+                        DigestCheckResult::NoSuchFile => assert!(!prior_final && saved != "matching"),
+                    }
+                    if let Some(payload) = &saved_payload {
+                        let mut bytes = [0; 2];
+                        payload.read_exact_at(&mut bytes, 0).unwrap();
+                        assert_eq!(&bytes, b"ol");
+                        assert_eq!(payload.metadata().unwrap().nlink(), 1);
+                    }
+                    assert_eq!(std::fs::read(&destination).ok(), original);
+                    let request = FileTransferSendConfirmRequest { id: 581, file_num: 0,
+                        union: Some(Union::OffsetBlk(0)), ..Default::default() };
+                    let wire = request.write_to_bytes().unwrap();
+                    let decoded = FileTransferSendConfirmRequest::parse_from_bytes(&wire).unwrap();
+                    if producer {
+                        assert_eq!(receiver.confirm_with_offset(0, 0).await.unwrap(), decoded);
+                    } else {
+                        receiver.confirm(&decoded).await.unwrap();
+                    }
+                    assert_eq!(std::fs::read(&destination).ok(), original);
+                    let written = receiver.write(FileTransferBlock { id: 581, file_num: 0,
+                        data: b"new".to_vec().into(), ..Default::default() }).await;
+                    assert_eq!(std::fs::read(&destination).ok(), original);
+                    let result = match written {
+                        Ok(()) => receiver.finalize_write(1).await,
+                        Err(error) => Err(error),
+                    };
+                    let completed = result.is_ok();
+                    if completed {
+                        assert_eq!(std::fs::read(&destination).unwrap(), b"new");
+                        assert_eq!((receiver.finished_size(), receiver.transferred()), (3, 3));
+                    } else {
+                        assert_eq!(std::fs::read(&destination).ok(), original);
+                        failures.push(format!("{saved}/{prior_final}/{producer}: {result:?}"));
+                    }
+                    receiver.retire_current_file_state().unwrap();
+                    drop((receiver, saved_payload));
+                    std::fs::remove_dir_all(&root).unwrap();
+                    println!("RECEIVE_FRESH_CONFIRMATION=observed saved={saved} prior_final={prior_final} producer={producer} completed={completed} inspection=preserved final_before_commit=preserved result={result:?} fixture=retired");
+                }
+            }
+        }
+        assert!(failures.is_empty(), "fresh receive failures: {failures:?}");
+    }
+
     #[test]
     fn retirement_retries_the_containing_directory_barrier() {
         use std::io::{Seek, SeekFrom};

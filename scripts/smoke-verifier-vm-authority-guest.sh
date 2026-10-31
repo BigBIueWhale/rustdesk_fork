@@ -1039,6 +1039,7 @@ for profile, memory, scratch, overlay in (
         ('x11-focus', 4096, 9, 8),
         ('x11-key-input', 4096, 9, 8),
         ('linux-parent-libtest', 6144, 7, 6),
+        ('linux-flutter-build', 20480, 16, 8),
         ('linux-flutter-replay', 10240, 7, 6),
         ('linux-flutter-suspend', 10240, 6, 5),
         ('android-storage-key', 10240, 7, 6),
@@ -1075,6 +1076,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
                         ('x11-focus', 4095), ('x11-focus', 8192),
                         ('x11-key-input', 4095), ('x11-key-input', 8192),
                         ('linux-parent-libtest', 4096), ('linux-parent-libtest', 8192),
+                        ('linux-flutter-build', 20479), ('linux-flutter-build', 24576),
                         ('linux-flutter-replay', 10239), ('linux-flutter-replay', 24576),
                         ('linux-flutter-suspend', 10239), ('linux-flutter-suspend', 16384),
                         ('android-storage-key', 10239), ('android-storage-key', 16384),
@@ -1186,6 +1188,7 @@ cases.extend([('hbb-common-fs', {'HBB_LOGIND_NATIVE': '1'}, 'linux-logind'),
               ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'clipboard-response'}, 'clipboard-response'),
               ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'clipboard-filetime'}, 'linux-parent-libtest'),
               ('hbb-common-fs', {'HBB_FUSE_READ_TESTS': '1'}, 'standard'),
+              ('flutter-peer-presentation', {'FLUTTER_APP_BUILD_ONLY': '1'}, 'linux-flutter-build'),
               ('flutter-peer-presentation', {'FLUTTER_APP_REPLAY': '1'}, 'linux-flutter-replay'),
               ('flutter-peer-presentation', {'FLUTTER_APP_REPLAY': '1',
                                              'FLUTTER_VIEWER_SUSPEND': '1'}, 'linux-flutter-suspend'),
@@ -1219,9 +1222,9 @@ printf '%s\\n' "$VM_STORAGE_PROFILE"
         'pass': passed}, sort_keys=True), flush=True)
 print('VM_TRANSIENT_WORKLOAD_OBSERVED=' + json.dumps({
     'modes': len(modes), 'controls': controls, 'refusals': refusals}, sort_keys=True), flush=True)
-if (controls, refusals) != (77, 5):
+if (controls, refusals) != (78, 5):
     raise SystemExit('VM workload resource admission cases failed')
-print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=40 controls=77 refusals=5 allocation=not-entered')
+print('VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=40 controls=78 refusals=5 allocation=not-entered')
 PY
     for operation in preflight reserve check watch run; do
         root_status=0

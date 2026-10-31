@@ -124801,3 +124801,36 @@ limits are in `.harness-state/verifier-vm/viewer-capture-cadence-108f40d2.json`
 This slice performs read-only analysis plus evidence/ledger edits; no product,
 test or instruction source changes, build, VM or new runtime result. Historical
 failure, current-artifact R-F5 acceptance and every independent user park remain.
+
+## 2026-10-31 — current display-recovery artifact prerequisite
+
+The next R-F5 step needs a current application: the retained six-second failure
+predates substantial capture/viewer changes. Selected prerequisite: admit and
+build one source-bound Linux app for the unchanged suspension scenario. The
+2026-10-30 prompt explicitly authorizes necessary isolated candidate builds;
+the older option-ack/parent-build pivot does not prohibit this separately selected
+release-validation prerequisite. Option-ack, recording, receive and other
+independent product topics remain parked. No new permission is required.
+
+Read-only TUF admission finds 46,983,872,512 bytes MemAvailable and an idle shared
+run lock. The existing 24 GiB guest + 16 GiB scratch + 6 GiB headroom + 1 GiB
+overhead requires 47 GiB. The app producer's sequential build container already
+has a 16 GiB memory/no-swap cap. A dedicated 20 GiB guest leaves 4 GiB for the
+guest outside that container and admits 43 GiB total. Scratch remains 16 GiB,
+the QEMU file ceiling 8 GiB, host headroom 6 GiB and overhead 1 GiB; monitor,
+private RAM storage, isolation and joined cleanup are unchanged. This is a
+candidate resource envelope until actual execution accepts it. The existing
+profile checks gain its exact-memory and wrong-memory cases and shell selection.
+[Docker's resource documentation](https://docs.docker.com/engine/containers/resource_constraints/)
+confirms that equal memory and memory-swap limits forbid container swap; the
+existing container limits are unchanged. No host swap setting is changed.
+
+The two preceding ledger updates lacked their required fresh count. Completed
+that check on exact `3f010adb` before editing source: TUF `N3oolr95yV` exits 0,
+**375,603 tokens**, 1,721,561 bytes, SHA-256
+`4fede213929f8a43a6eb9b1279f69386730e5b0adcab1579fca4b203cfb09059`,
+using the pinned whole-file method, seven controls and byte round trip.
+Supervisor time 30.403 seconds; RAM scratch peak 402,513,920 bytes. QEMU 3272709
+joins exit 0; its PID, wrapper 3271286, RAM workspace and active run roots are
+absent. All three listener deltas are zero. Six raw files (104,210 bytes) are
+hash-verified on CTE and TUF. This audit entry leaves the counted ledger unchanged.

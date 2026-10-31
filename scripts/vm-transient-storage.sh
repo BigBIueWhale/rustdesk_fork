@@ -89,6 +89,8 @@ elif [ "${MODE:-}:${PEER_BUILD_PROFILE:-}" = android-peer-build:bounded ]; then
     readonly VM_STORAGE_PROFILE=linux-service-build
 elif [ "${MODE:-}:${LINUX_RECEIVER_PROFILE:-}" = linux-service-receiver-tests:authorization-timeout ]; then
     readonly VM_STORAGE_PROFILE=linux-service-receiver
+elif [ "${MODE:-}:${FLUTTER_APP_BUILD_ONLY:-0}" = flutter-peer-presentation:1 ]; then
+    readonly VM_STORAGE_PROFILE=linux-flutter-build
 elif [ "${MODE:-}:${FLUTTER_APP_REPLAY:-0}" = flutter-peer-presentation:1 ]; then
     case "${FLUTTER_VIEWER_SUSPEND:-0}" in
         0) readonly VM_STORAGE_PROFILE=linux-flutter-replay ;;

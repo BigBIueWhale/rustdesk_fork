@@ -2921,6 +2921,25 @@ cleanup. Current full-app, actual recovery/soak and all user-parked work stay OP
 The automatic-FPS cache lifetime review across reconnect and settings changes is
 OPEN/PARKED at the user's pivot; no reconnect defect or correction was established.
 
+**Missing display estimates (`e169354f`) — shared FPS recovery corrected.**
+The viewer takes the minimum of available active-display decode measurements.
+Previously, one eligible display with no estimate made the optional minimum
+`None`, skipping both shared rate adaptation and proactive backlog refresh for
+measured displays. New workers start without an estimate; the decoder publishes
+one only after its warmup and measurement interval.
+At unchanged-product preparation `1d77e753`, six two-display cases fail while
+103 existing tests pass: initial publication is absent, congested 20 FPS stays
+20 without a refresh, and healthy recovery stays at 2 FPS. With the identical
+fixture, corrected TUF run `8B3lYa3Kcp` passes all 104 tests: initial 20 FPS,
+congested 2 FPS with the exact display refresh, and recovery to 20 FPS after four
+healthy decisions. Both display-ID assignments, unknown-only behavior and the
+slowest measured-display limit are covered. The actual production method runs
+with controlled decoder/mailbox observations and a real local message channel;
+no live decoder, peer or presentation is claimed. Both VMs join, RAM scratch
+retires and all eight listener deltas are zero. The audit's 2026-10-31 missing-
+estimate entry binds A/B artifacts and raw evidence. Complete application,
+target-native R-F5 recovery/soak and independently parked work remain OPEN.
+
 **Shared R-F5 acceptance remains OPEN.** Execute exact current peer artifacts through
 capture, encode, transport, decode and actual presentation; measure frame age and
 input-to-visible response with clock uncertainty, healthy/recovered envelopes,

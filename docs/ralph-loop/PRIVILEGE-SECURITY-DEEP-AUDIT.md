@@ -124696,3 +124696,59 @@ accepted checkpoint. The draft targets the mkdir-to-open boundary and remains
 unverified; it establishes no new runtime defect or escalation. No VM was launched
 for it. File-receive layout and its remaining acceptance stay OPEN. Work now moves
 to connection/display recovery, respecting the independently parked runtime lanes.
+
+## 2026-10-31 — missing display estimates suppressed viewer FPS recovery
+
+After the user pivot, selected R-F5's shared viewer FPS decision: a concrete
+two-display interference could be decided in the existing focused component lane,
+without repeating accepted QoS checks or reopening the parked parent-build lane.
+`Remote::fps_control` took a minimum over `Option<usize>` and flattened afterward.
+One eligible `None` therefore skipped all shared rate adjustment and proactive
+backlog refresh. `new_video_thread` initializes the estimate to `None`;
+`fps_calculate` skips three initial frames and first publishes after ten measured
+frames with nonzero elapsed milliseconds. This is a reachable startup state,
+not a fabricated numeric overflow. No end-to-end latency failure is inferred.
+
+Primary research: Rust's [Option ordering](https://doc.rust-lang.org/std/option/index.html#comparison-operators)
+places `None` below every `Some`; [filter_map](https://doc.rust-lang.org/std/iter/trait.Iterator.html#method.filter_map)
+yields only available values. Correction `e169354fe6dd4fbc9ccc4344c77a4b75d7712981`
+filters absent estimates before taking the minimum. Inactivity eligibility,
+the slowest measured limit, unknown-only behavior, message admission and existing
+queue/freshness ownership retain their existing rules.
+
+Preparation `1d77e7530446ca0f63b39f5b1e89c96013a8c2a9`, TUF `Vpco56fMUq`,
+reproduces all six new cases failing, with 103 existing tests passing. For both
+display-ID assignments, no initial 20-FPS request is sent; congested 20 FPS stays
+20 without refreshing eight queued frames; a healthy measured display stays at
+2 FPS through four decisions. Unknown-only and two-measured-display controls pass.
+Corrected `8B3lYa3Kcp` passes all 104 tests with the identical fixture: initial
+20 FPS, congested 2 FPS with only the affected display refreshed, and healthy
+20 FPS after four decisions. Both executions use canonical
+`bash scripts/smoke-verifier-vm-authority.sh --control-egress-tests`, offline
+Rust 1.75.0, the actual extracted production method/state/queue limit, controlled
+decoder/mailbox/UI observations and a real local protobuf-message channel.
+
+The unchanged fixture SHA-256 is
+`eae696b952299fcc656a7c01c6f4b31d50d978b8c959be640f538152ff1e8f47`.
+Baseline/corrected executable SHA-256 values are respectively
+`8b3a5b8fce6deec88c8e2ce6d70a963fe4c7bf6c0728bbfb4c0a75f64287ff8b` and
+`a396d59c3d6927f97c47e16386fbe2f24b55a94cfac83bf98fe11221356346db`;
+each remains unchanged through execution. Raw serial evidence is retained under
+`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.{Vpco56fMUq,8B3lYa3Kcp}.serial.log`,
+alongside console, storage and four listener receipts per run. Serial hashes are
+`1d497155478386b658b2b27d5c99a81ef21f40e753f1e55531a97421e7f2b213` and
+`cfd7f505efabd529fa2cfbb278863e4e99cd0a840b241d3e165df635aef9c665`.
+
+Both QEMU children join with exit zero (3264414/3266118), both wrappers are
+absent, and both bounded RAM workspaces retire. VM elapsed times are
+126.673/127.345 seconds; scratch peaks are 3,597,312,000/3,599,015,936 bytes
+under the unchanged 6-GiB capacity. All eight endpoint comparisons are unchanged.
+Fourteen raw files totaling 290,705 bytes are SHA-256-verified on CTE and TUF;
+the failed baseline's exact owned diagnostic directory is removed after that
+verification, reclaiming 3,555,328 allocated bytes. No host product ran.
+
+This closes the component correction, not R-F5 acceptance. Actual decoders,
+complete connection-loop/peer behavior, presented-pixel recovery, impairment and
+multi-hour soaks remain unexecuted here. Those require exact peer artifacts and
+predefined latency/resource budgets. The user's file-receive pivot and all
+independent parks remain in force; the saved receive probe remains unexecuted.

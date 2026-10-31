@@ -43889,7 +43889,7 @@ Counted confined proof on the final byte state:
   throughput/latency/writer-depth/memory/deadline budgets, exact older operational-artifact identity,
   clean committed cold R-B2/R-B10 artifacts, independent reproduction, and external review remain
   release blockers. No display-delay fix, operational end-to-end validation, or release readiness
-  is claimed.
+is claimed.
 
 ### Publication
 
@@ -123665,3 +123665,15 @@ product change. The next caller checkpoint must preserve all four accepted
 resume cases and the independently parked admission oracle; a prior application
 pass cannot establish this new artifact. No cleanup waiver, unrelated resumption
 or release-readiness claim is introduced.
+
+Fresh ledger count at `7feec569`, TUF `14ELI8lmUG`: **373,179 tokens /
+1,709,553 bytes**, SHA-256
+`72a733db045f0065a406aa2e756bb1baafff34494acea4e6d7ea1771e06d02b9`.
+Pinned whole-file tiktoken 0.12.0/cl100k_base/encode_ordinary passes seven
+controls and exact round trip. QEMU 3173659 joins after 30.614 seconds;
+wrapper 3172231 and RAM `run.w9yxia5p` retire, with three zero listener deltas.
+Serial SHA-256:
+`f35d331fa24bd45ae7879f91ef151834c34892204afdbd78dacb91dbfce015fa`.
+All **55 retained raw files / 1,211,104 bytes per host** for this retirement
+checkpoint and its count are hash-verified. This audit-only receipt changes
+neither the tested product nor the counted ledger.

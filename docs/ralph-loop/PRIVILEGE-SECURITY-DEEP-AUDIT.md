@@ -125702,3 +125702,74 @@ admission passes 79 controls and five refusals. QEMU 3409109 joins exit 0 after
 30.407 seconds, 402,673,664 bytes peak RAM scratch retires and three listener
 deltas are zero. All fourteen checkpoint files, 208,077 bytes, are hash-verified
 on CTE/TUF. This audit-only receipt preserves the counted ledger bytes.
+
+## 2026-10-31 — user pivot; production directory download
+
+The user directs work to another aspect. Park the read-only two-Remote shared-key
+ownership preparation; no second-viewer fixture or execution was added. Preserve
+the completed keyboard evidence and all independently parked work. Select
+R-S8/R-S11fj's production directory-download acceptance: next-file digest behavior
+had library evidence, while the existing production Session replay covered only
+one file. This required workflow takes priority over another input-owner test.
+
+`c005443c` adds one container-gated production Session test and the focused
+`--cm-file-replay --directory-download` option. It downloads four files: two empty
+files, 150,001 binary bytes and a nested Hebrew text/name containing a space.
+The observer checks the complete manifest, exactly one completion at index four,
+source preservation, exact destination bytes, regular-file type, UID, one link,
+mode 0600 and exact directory inventories without sidecars. It joins the viewer
+before assertions; the runtime joins the actual controlled server. The
+[Rust directory API](https://doc.rust-lang.org/std/fs/fn.read_dir.html) does not
+guarantee enumeration order, so the observer compares sorted complete inventories.
+[Native metadata](https://doc.rust-lang.org/std/os/unix/fs/trait.MetadataExt.html)
+supplies ownership, mode and link count. The production TCP/CPace, Session,
+filesystem and peer paths execute; the UI callback is a test observer.
+
+Two preflight attempts (`XAxArwUZq7`, `y7ghxw3C5i`) end before QEMU starts. The
+second captures the missing unrelated PulseAudio archive refusal; the first
+retains only its storage/control records. `21f39c38` removes audio input and
+runtime dependencies from this focused option. Run `b1HId06c03` compiles both
+artifacts but fills the existing 8 GiB overlay ceiling before creating the peer
+container; native transfer never runs. `c99599fb` fixes the build's scratch use
+with four compiler jobs and dev/test debug information disabled. This leaves
+assertions, overflow checks and storage limits intact, following
+[Cargo's separate profile controls](https://doc.rust-lang.org/cargo/reference/profiles.html#debug).
+
+Run `AUCSSjUTaW` then reaches authentication but refuses receive confirmation:
+the numeric container UID has no account home. `receive_namespace::coordinator`
+correctly requires the effective principal's trusted home. `024ceb78` supplies a
+private, read-only two-entry passwd fixture and checks its identity, mount and
+unchanged contents; it preserves the product's refusal. The
+[NSS account API](https://man7.org/linux/man-pages/man3/getpwnam.3.html) resolves
+UID and account home independently of the HOME environment variable. Both failed
+VMs join exit 0 after the guest failures, retire RAM and record four zero listener
+deltas; neither is accepted as a passing directory transfer.
+
+Final run **`O6Ia6tWkZu` at `024ceb78db02bf9d43eb6886a01d109a8c8bbb70` passes**.
+The actual test takes 0.42 seconds, and the build/run takes 263.498 seconds.
+Viewer artifact SHA-256 is
+`1b0b60092b716fafea360008f85c58cc442e1fabdce07266564e9743e7eb3480`,
+identical to the missing-account attempt; server SHA-256 is
+`f5bcf41ca90e81ccee68997f06cb8ce075a98d5d46fc861a7f025eb630d8c54e`.
+The build manifest is `c56c1e9bb06fec568be49c2ce5a40395918b4146c248f9b925c7b3d895245f32`.
+QEMU 3417372 joins exit 0, all four listener deltas are zero, and the RAM workspace
+and active run root disappear. Peak overlay allocation falls from 8,562,085,888
+to 6,064,836,608 bytes; final peak total scratch is 6,264,135,680 bytes. No product
+correction, failing old-product comparison or new LPE finding is claimed.
+
+Capsule `.harness-state/verifier-vm/directory-download-024ceb78.json` is 70,939 bytes,
+SHA-256 `d76e3d5efabe8f25b89bea91ca7362e92cf558337ea75ad3fcda9b2fd74fee47`.
+Twenty-four capsule/raw files, 1,282,160 bytes, are hash-verified on CTE/TUF before
+retiring the four failed diagnostic roots. Their exact inventories and small
+unique records are preserved in the capsule; output/console copies match retained
+logs, combined logs equal their concatenation, and both extracted virtiofsd copies
+match the pinned original. Exact-root cleanup unlinks 8,245,248 allocated bytes;
+`directory-download-024ceb78-cleanup.json` records the result. Canonical inputs
+and retained application artifacts are preserved.
+
+This accepts one unprivileged Linux native directory-download transaction.
+Flutter UI, installed/root and wrong-principal behavior, upload/resume/failure
+paths, other platforms, resource/latency soak and release acceptance remain OPEN.
+The next decisive file-transfer step is an authorized failure/overwrite scenario
+through a production viewer or the rendered file-manager workflow. All existing
+parks, including the three receive pre-I/O cases, remain in force.

@@ -43,6 +43,12 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-10-31):** Two-Remote shared-key ownership validation remains
+OPEN/PARKED after read-only preparation. No second-viewer fixture or run follows
+that investigation. Completed Ctrl+A and abrupt-viewer-exit evidence remains.
+Work moved to production directory downloads; do not resume the ownership
+follow-up automatically.
+
 **User pivot (2026-10-31):** Clipboard reconnect validation remains OPEN/PARKED.
 The five-file draft is unrun and preserved in stash
 `b2bf714fa3f115d67ae0740d8581c0be456adeff`; no product correction or reconnect
@@ -5118,7 +5124,24 @@ and inspected objects; blanket rejection of every non-current digest is removed.
 | `05c1a5e4`; `receive-next-digest-14f24f57.json` | API preparation `6d54a854` preserves the old equality rule and role/size body: all three next-file sequences reject file 1’s digest, with 45 controls passing. The identical two new tests then pass with all 126 required names/33 groups in 190 seconds. They cover different/equal lengths, empty files, exact publication/accounting/cleanup and eleven wrong-job/index/size/short-predecessor refusals. Successful individual diagnostics were filtered; exact names, summaries, source-bound assertions and artifact identity are retained. |
 | `9ed8e979`, harness `f7ab8afa`; `receive-inspection-cache-9a4ff02e.json` | Preparation `575104af` centralizes the old operation order: two regressions fail with 46 tests passing. Malformed resume JSON, a linked destination, pre-epoch metadata and failed next-file inspection all change the cache despite returning errors; three healthy controls pass. The identical new tests pass after correction, with all 129 required names/34 groups in 190 seconds. Failure preserves cached fields, inspected objects and unconfirmed state; next-file failure preserves the completed predecessor and unrelated partial/digest. Missing/existing/resume controls commit exact bytes and retire sidecars. The existing cross-process lease control also proves contender refusal, joined abrupt-owner termination and exact resume. Seven individual observations, every required name and stable common/socket-policy/descriptor artifact receipts are retained. |
 
-The first corrected attempt is rejected: the newly added lease group produced 34 summaries
+**Production viewer directory download (`024ceb78`) — named Linux peer case accepted.**
+TUF `O6Ia6tWkZu`, `--cm-file-replay --directory-download`, passes one production
+Rust `Session` download from the production peer after CPace authentication.
+Four files include two empty files, binary bytes and nested Hebrew text/name with
+a space. The observer requires the exact manifest, one completion at index four,
+exact destination/source bytes, owner-only single-link regular files, no extra
+entries or sidecars, and joined viewer/server retirement. The case takes 0.42 seconds;
+the build/run takes 263.498 seconds. QEMU joins, RAM scratch retires and four
+listener deltas are zero. The headless callback is a test observer; Flutter UI,
+installed/root/wrong-principal, upload/resume/failure, other-platform and soak
+acceptance remain OPEN. No product correction or new LPE finding is claimed.
+The runner now supplies a private read-only receiver account and omits debug
+symbols to stay within its unchanged 8 GiB overlay ceiling. Earlier missing-input,
+overlay-limit and missing-account attempts are excluded from transfer acceptance.
+Source/artifact identities, diagnostics and cleanup are retained in
+`directory-download-024ceb78.json` and the corresponding audit entry.
+
+The first corrected library attempt was rejected: the newly added lease group produced 34 summaries
 while the harness still expected 33. Its bounded failure tail retains later controls and
 artifact receipts, not complete scenario output. `f7ab8afa` corrects the count and exports
 the lease test name; the accepted rerun uses the identical common executable digest.
@@ -5126,9 +5149,9 @@ The capsule binds all sources, rejected/accepted results, exact failed-root reco
 complete endpoint observations and joined bounded-RAM/private-root cleanup. Evidence paths
 above are relative to `.harness-state/verifier-vm/`.
 
-This executes the Linux shared library and real files, not complete CM/viewer applications,
-native peer/IPC or an installed privileged service. Full parent/caller compilation and
-integration, authorized/refused installed principals, other target OS, cancellation/worker
+The library rows execute the Linux shared library and real files; the directory case adds
+one headless production viewer/peer transaction. Wider parent/caller and UI integration,
+authorized/refused installed principals, other target OS, cancellation/worker
 drain, further namespace/ACL/mount races, power-loss durability, UI, resource/latency soaks,
 R-S0/R-F5 and release/independent/external acceptance remain OPEN. All user parks, including
 the three generic receive pre-I/O cases, remain in force. No complete LPE-immunity claim follows.

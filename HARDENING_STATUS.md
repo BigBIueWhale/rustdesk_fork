@@ -3015,7 +3015,7 @@ Retained exact commands, source/artifacts, samples and cleanup:
 `viewer-pacing-5d8cf83a.json`. Earlier capture-only evidence remains in
 `viewer-capture-cadence-108f40d2.json`; independent parks remain.
 
-**Actual packet impairment — real-peer recovery failure; R-F5 OPEN.**
+**Actual packet impairment — bounded probe recovery passes; broader R-F5 OPEN.**
 `39dbed34` adds a small isolated network prerequisite check. The existing
 6.1.0-50-cloud-amd64 guest already contains netem, IFB, ingress classification
 and iproute2 6.1.0; no package acquisition or new image is needed. Native run
@@ -3042,7 +3042,7 @@ in 854/1,603 ms; three-second follow-up maxima are 379/487 ms. Window/TCP
 identity and resource bounds pass for both cycles. Kernel counters establish
 79 delayed packets and four outage drops.
 
-The six-second outage records eight additional drops, then fails the unchanged
+That baseline's six-second outage records eight additional drops, then fails the unchanged
 2,500-ms recovery deadline: only three of four fresh states arrive. The first
 fresh frame appears 1,236 ms into the 2,491-ms pixel-wait budget; the preceding
 stale image reaches 7,137 ms old. After the fresh keyframe, acknowledgement is
@@ -3055,12 +3055,37 @@ of permanent lag; kernel retransmission timing was not measured.
 The VM joins QEMU, retires 3,008,126,976 bytes peak RAM scratch and leaves four
 zero listener deltas. Ten evidence files (451,218 bytes) are verified on CTE/TUF
 before removing 62,259,200 allocated bytes of failed-run duplicate artifacts.
-No product change or app rebuild occurs. Capsule: `peer-network-bedd34b9.json`.
-Next: investigate bounded fresh-probe scheduling after outage against continued
-congestion and multiple viewers, then replay the unchanged pixel deadline.
-The third healthy follow-up/resource check, phase coverage, random/burst loss,
-bandwidth/jitter, MTU/offload, input-visible timing, multi-hour sessions and other
-roles/platforms remain OPEN; independent parks remain.
+Baseline capsule: `peer-network-bedd34b9.json`.
+
+`b43ee76c` replaces the fixed probe interval with connection-owned absolute
+deadlines and one outstanding sequence. After a video round trip exceeds two
+seconds, two serial probes spaced at least 100 ms after each reply supply fresh
+measurements, then ordinary one-second sampling resumes. Matching replies alone
+complete a measurement; cancelled waits preserve its deadline. Failed sends and
+sequence exhaustion close the connection. The two-sample QoS filter, congestion
+response, TCP behavior and existing connection stay intact.
+
+At `e57678d3`, component run `XfCYw1cFq4` passes all 32 cases, including continued
+congestion, another viewer's pending delay/rate limit, stale replies and actual
+Tokio cancellation. The full Rust/Flutter build passes. New app manifest
+`d5202b3c0b5cb9f72c8cba427df3abdd55c2a2a7bd5c127f02f31fec111ece3c`
+is reused in native replay `0aphXxgDRM` with the unchanged observer and deadlines.
+Its baseline maximum displayed age is 325 ms. Delay and two-/six-second total
+outages recover four distinct fresh frames in **740/2,351/1,794 ms**; three-second
+healthy follow-up maxima are **416/371/342 ms**. The kernel records 75 delayed
+packets and six/seven outage drops. All three cycles retain window/TCP identity
+and bounded viewer resources. The previously failing six-second scenario passes.
+
+All four VMs, including an initial test-macro compilation failure, join and retire
+their bounded RAM scratch with zero listener deltas. The app contains 74 files
+(70,291,394 bytes); the baseline remains an intentional comparison artifact.
+Twenty-nine evidence files (680,010 bytes) match on CTE/TUF. Commands, source,
+artifact identities, observations and cleanup: `probe-recovery-e57678d3.json`.
+This is one Linux sequence; the two-second recovery has only 149 ms deadline
+margin. Phase coverage, random/burst loss, bandwidth/jitter, MTU/offload,
+input-visible timing, multi-hour sessions and other roles/platforms remain OPEN;
+independent parks remain. Next decisive validation is recovery across outage
+phases on this retained app, before extending the impairment profiles.
 
 **Current app build and replay prerequisites — accepted Linux artifact.**
 `6b703f35` reconciles the candidate lock with the repository-owned xterm path;

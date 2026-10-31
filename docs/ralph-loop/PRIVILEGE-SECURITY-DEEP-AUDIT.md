@@ -125235,3 +125235,89 @@ joins exit 0; 30.507 seconds, 402,530,304 bytes peak scratch, RAM/run roots gone
 and three zero listener deltas. The combined checkpoint's seventeen files total
 588,074 bytes and match by hash on CTE/TUF. This audit-only receipt preserves
 the counted ledger bytes.
+
+## 2026-10-31 — bounded latency probes recover the failing packet-outage scenario
+
+R-F5 remains selected after the real six-second outage failed at the preceding
+checkpoint. `b43ee76c` changes `src/server/connection/latency_probe.rs` and its
+connection-loop integration; `e57678d3` corrects the test module's Tokio import.
+The source investigation identified one-second sampling after restoration while
+the unchanged QoS filter still retained the outage in its two-sample window.
+The earlier capture wakeup correction was already active. Receive and unrelated
+parked work remain untouched.
+
+The pinned [Tokio 1.44.2 sleep implementation](https://raw.githubusercontent.com/tokio-rs/tokio/tokio-1.44.2/tokio/src/time/sleep.rs)
+supports retained absolute deadlines across cancelled select waits; its
+[interval implementation](https://raw.githubusercontent.com/tokio-rs/tokio/tokio-1.44.2/tokio/src/time/interval.rs)
+documents default missed-tick bursts. The new connection-owned scheduler sends
+only one outstanding measurement, with a checked positive sequence echoed in
+the existing `TestDelay.time` field. Current viewer code echoes the full message.
+Wrong, stale, duplicate and absent replies cannot complete another measurement.
+After a Remote/ViewCamera round trip exceeds two seconds, exactly two new serial
+measurements are scheduled at least 100 ms after replies; a newly stalled reply
+can start another bounded recovery sequence. Ordinary one-second cadence returns
+after the two measurements. Pending-age/idle checks continue without duplicate
+probes. Send failure or sequence exhaustion closes the connection, and completed
+delay saturates before conversion to u32. No new task, runtime or dependency is
+introduced. [RFC 5681](https://www.rfc-editor.org/rfc/rfc5681.html) informs retaining
+transport congestion behavior: these are application measurements over the same
+transport, with the existing QoS algorithm and TCP control unchanged.
+
+The two-second threshold matches the existing pending-congestion threshold; two
+fresh samples replace the filter's two retained completed samples. The 100-ms
+spacing bounds accelerated traffic and leaves time for visible recovery. These
+choices are exercised through the actual production scheduler and QoS controller.
+`--video-qos-controller-tests` run `JmFM3fCllA` first fails test compilation because
+Tokio's test macro needs a lexical `tokio` alias; no product scenario runs there.
+After the test-only correction, `XfCYw1cFq4` passes all **32 tests** in 1.50 seconds
+of libtest execution (115.939 supervisor seconds). The controlled timeline proves
+healthy 20-ms replies restore 10 FPS in 240 ms; continued 420-ms congestion stays
+at 1 FPS; another viewer's pending delay/custom limit retain 2/5 FPS. Closing that
+other viewer preserves the healthy viewer's estimate. Three cancelled real Tokio
+waits still complete the retained 100-ms deadline at 102 ms. Component artifact:
+`ad47b429ffd41f9bcc79eff12d76298050f455ccaab9182781e757f813541444`.
+
+Full app build `qTauUXWtHo` succeeds at source
+`e57678d3940e7a412c5c4fd5dd1d7c2f6b4b460b`, tree
+`5559ea562ee43d9c09d3c1736360de1906d4f098`, using the unchanged pinned engine and
+authenticated offline inputs. All 74 app files (70,291,394 bytes) are independently
+checked against manifest
+`d5202b3c0b5cb9f72c8cba427df3abdd55c2a2a7bd5c127f02f31fec111ece3c`.
+Rust core SHA-256:
+`5d8914f66ce85cc7cbc6fa787c8144f620cb5ff0d58fa8f09981ef5ba3ca468d`.
+The source-bound app is reused by `--linux-flutter-app-replay --network-impairment`;
+the capsule retains complete engine/app flags, build inputs and commands.
+
+Native run `0aphXxgDRM` passes the same three-cycle pixel observer and unchanged
+2,500-ms recovery/1,000-ms freshness limits. Healthy baseline maximum age is
+325 ms. A 125-ms delay per direction lasts 6,014 ms and affects 75 packets;
+recovery takes 740 ms. Total outages last 2,017/6,040 ms, record six/seven kernel
+drops and recover four distinct fresh displayed states in **2,351/1,794 ms**.
+Three-second healthy follow-up maxima are 416/371/342 ms, with 13 distinct states
+each. Every cycle retains the viewer window and TCP identity. Viewer RSS changes
+from 369,656 to at most 371,572 KiB, threads from 59 to at most 55 after impairment,
+and descriptors remain 44. The netem queue/namespace/socket retire and its exact
+orchestration child joins. Successful execution does not retain a server QoS
+trace; the component timing and actual native pixel result establish the scoped
+correction without claiming an unobserved production timing trace.
+
+The previous app failed the six-second scenario with only three fresh frames in
+the deadline; the corrected app passes. This is one phase per profile, and the
+two-second outage leaves only 149 ms margin. It does not establish phase coverage,
+random/burst loss, bandwidth/jitter, input-to-visible response, multi-hour sessions,
+other roles/platforms or independent reproduction. R-F5 and the broad goal remain
+OPEN; the next decisive check is varied outage phases with the retained artifact.
+
+All four VM wrappers terminate (initial component failure 1; subsequent runs 0).
+QEMU PIDs 3345555/3346917/3348428/3353163 are joined with exit 0; RAM workspaces
+and owned run roots are absent, with four zero listener deltas per VM. Build
+duration is 710.517 seconds and peak RAM scratch 10,601,631,744 bytes within 16 GiB;
+native replay is 140.655 seconds and 3,007,983,616 bytes within 7 GiB. Their guest
+reservations remain 20/10 GiB, file ceilings 12/6 GiB and host headroom 6 GiB.
+The failed component's exact retired directory releases 3,440,640 allocated bytes
+after evidence verification. The old 74-file app is intentionally preserved at
+`probe-recovery-baseline-5d8cf83a`; the new app is the reusable build artifact.
+No compiler/product/test runs directly on either host and no release is published.
+Twenty-nine evidence files total 680,010 bytes and match by hash on CTE/TUF.
+Capsule `probe-recovery-e57678d3.json`: 96,169 bytes, SHA-256
+`28ac8cd63560e9da291292615dd64c499173cd9846b16c3802c006fa6140a152`.

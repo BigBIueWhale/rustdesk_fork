@@ -126039,3 +126039,34 @@ through joined completion. This follows Docker's explicit
 with submount inclusion disabled and the actual mount inspected. Product loader
 policy, APK/peer bytes, lifecycle workload and freshness deadlines are unchanged.
 Shell syntax and whitespace checks pass; integrated replay remains pending.
+
+Integrated replay at `1c4293481df4d13d0114ce37ee6bf63c716e2f6a`, tree
+`b0096d928bab2305976bc347197ba1a73ef42c85`, now passes: TUF `wrGfi9VIw1`,
+outer exit 0, 1,340.166 seconds. The two provider builds are 25,576 bytes each,
+SHA-256 `7a0c269da5e9eae802046130ce0b524b012de97008f8d76cbc1ddf84275f3397`;
+the owned peer maps that exact executable inode and the protected installation
+remains unchanged. Correct Remote login succeeds in 250 ms, where the preceding
+same-artifact replay refused input initialization. No application binary changed.
+
+All 22 actual-pixel phases pass: three 2/6/120-second background cycles, six
+20-second-spaced connected samples, six ordinary reconnects and six task
+replacements. The connected hold lasts 140,890 ms; the first task is absent
+120,400 ms with the same process/service and no peer connection. Thirteen stage
+records preserve one warm client owner and distinct task-successor owners.
+Maximum sampled image age is 1,138 ms, capture age 202 ms, background recovery
+540 ms, ordinary reconnect recovery 1,150 ms and task recovery 1,170 ms. The
+1920×1080 textured source publishes 17,255 identities at mean 41,064 us, maximum
+52,725 us; this is source cadence, not delivered FPS. Thirteen resource samples
+show RSS growth 1,768 KiB and thread growth six; handles remain unobserved.
+Force Stop is only the final destructive baseline. No framework ANR is observed.
+
+QEMU 3499065 joins exit 0; the wrapper is absent and the 4,497,100,800-byte peak
+RAM workspace retires. All five host-listener deltas are zero. Full captured VM
+serial is 51,392 bytes, SHA-256
+`655d4387f8960bbe4c6a0d0f057ce2f6f3efb31ccb2e4c7048bdb41a70cdcdf8`.
+Twenty-four failure/success/count raw files (433,220 bytes) are hash-verified on
+CTE/TUF, with their identities and exact command in
+`android-presentation-1c429348.json`. The accepted named APK/peer schedule closes
+this replay prerequisite, not original symptom causation, current-release or
+physical-device behavior, sustained resource/freshness, R-S0/R-F5 or independent
+review. Next obtain a current-source artifact comparison; all user parks remain.

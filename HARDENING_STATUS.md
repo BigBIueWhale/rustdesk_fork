@@ -6346,6 +6346,33 @@ snapshot, whole-app behavior or native privilege acceptance.
 
 ### Android runtime — intermittent presentation remains OPEN
 
+**Retained app/task-relaunch acceptance (`1c429348`, TUF `wrGfi9VIw1`).**
+The retained `1ee23828` app/test pair and `b30f4811` Linux peer pass the complete
+1,340.166-second Android 14/API-34 replay. All 22 pixel phases, six ordinary
+reconnects, six Recents task replacements, 120-second background interval,
+140.89-second connected hold and 120.4-second task-absent hold pass. Ordinary
+reconnects preserve the client owner; task replacements obtain distinct owners
+while the process, foreground service and MediaProjection survive. Maximum
+sampled image age is 1,138 ms, background recovery 540 ms, warm reconnect recovery
+1,150 ms, task recovery 1,170 ms and observer capture age 202 ms. Thirteen samples
+show RSS growth at most 1,768 KiB and thread growth six; handles remain unobserved.
+
+This restores replay deployment after `lvlrR7CAZH` authenticated successfully but
+refused Remote login because its required private input library was missing.
+The harness now builds two byte-equal, source-bound provider copies, installs the
+library under guest-root authority, mounts it read-only and proves the owned
+server's executable mapping and unchanged bytes through cleanup. No product
+artifact or loader policy changed. The dedicated 18-GiB guest preserves runtime
+container limits and the bounded RAM storage controls. All five host-listener
+deltas are zero; QEMU and the 4,497,100,800-byte peak RAM workspace retire.
+Capsule `android-presentation-1c429348.json` retains exact artifacts, command,
+failure/success logs, storage and listener identities on CTE/TUF. This is one
+test-signed emulator schedule, not current-release/device/soak acceptance or a
+reproduction or correction of the original intermittent failure. Those remain
+OPEN. Next obtain the corresponding current-source artifact comparison; repeating
+this unchanged successful schedule would not resolve that gap. Camera and the
+independent Android CM Stop/admission race remain parked.
+
 **Shared Flutter canvas and software-image behavior — historical component A/B
 evidence; current installed/native acceptance OPEN.** These seven checkpoints
 exercise production Flutter models, widgets and engine images with controlled

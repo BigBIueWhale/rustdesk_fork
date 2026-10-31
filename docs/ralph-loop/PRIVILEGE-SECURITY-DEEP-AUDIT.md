@@ -124752,3 +124752,52 @@ complete connection-loop/peer behavior, presented-pixel recovery, impairment and
 multi-hour soaks remain unexecuted here. Those require exact peer artifacts and
 predefined latency/resource budgets. The user's file-receive pivot and all
 independent parks remain in force; the saved receive probe remains unexecuted.
+
+## 2026-10-31 — retained viewer suspension cadence localized to capture/encode
+
+The preceding turn made verified product progress (`e169354f`, evidence
+`108f40d2`). Continued R-F5 investigation first reviewed codec-speed-estimate
+lifetime without establishing a new correction. The stronger actionable evidence
+was the existing real-peer six-second suspension failure. Reusing its complete
+logs can locate the sparse cadence more directly than another synthetic FPS case.
+
+Verified the original `JhJMozgrvo` serial (289,014 bytes, SHA-256
+`f70cc0bb1bdea83ac607fee98a88162f32c44083f19ebf97724c35fafffdeaae`)
+and viewer log (56,586 bytes,
+`54d93fdc56881e9cd4e06bb2b7f98d3ec94c506fb781390709a5fe1fdd5be540`).
+Their admitted app is `31f8e5ef`, harness `14c3389c`, engine `63493887`.
+The final monitor0 refresh epoch has exactly three capture/encoded-decode records
+at service times/PTS 0/1000/2000 ms. Exact encoded RGBA witness pairs uniquely
+match texture submissions and copies 35/36/37; the independent full-counter
+readbacks report 125/129/133. Source frames continue about every 252 ms.
+
+| Presented counter | Texture submission (monotonic microseconds) | Copy after submit | Next draw callback after submit | First pixel readback after submit |
+| --- | ---: | ---: | ---: | ---: |
+| 125 | 99,821,568 | 10,907 us | 20,468 us | 35,966 us |
+| 129 | 100,819,125 | 13,726 us | 25,111 us | 70,567 us |
+| 133 | 101,819,422 | 12,951 us | 21,258 us | 48,829 us |
+
+Reviewed the actual app's texture submit/copy and GTK trace functions, its
+monotonic capture-loop service clock, and the harness's X11 full-counter observer.
+[GLib's clock API](https://docs.gtk.org/glib/func.get_monotonic_time.html) and
+[Unix implementation](https://raw.githubusercontent.com/GNOME/glib/2.74.6/glib/gmain.c)
+support the viewer monotonic-time comparison; server wall-clock values are never
+subtracted from viewer monotonic values. The draw callback is only scheduling
+evidence; the separate X11 readback supplies the observed pixel identity. RGBA
+witnesses match these bounded traces, not arbitrary full-frame identities.
+
+The roughly one-second cadence already exists at capture/encode, before the
+matching viewer texture submissions. This narrows the next investigation to
+capture pacing, acknowledgement waits or other upstream scheduling. Selected
+FPS and receipt/probe/wait timing are absent, so no specific QoS defect or broad
+renderer exoneration is claimed. Current source differs substantially from this
+artifact. The next decisive integration must use an admitted current app and
+observe those upstream decisions under the same unchanged recovery threshold.
+
+Bounded reproducible correlation, raw hashes, source bindings, numeric joins and
+limits are in `.harness-state/verifier-vm/viewer-capture-cadence-108f40d2.json`
+(6,385 bytes, SHA-256
+`2f631dd83be1f58fbf8da057a15ebdf8537359eba22a777d45624b14df30ef33`).
+This slice performs read-only analysis plus evidence/ledger edits; no product,
+test or instruction source changes, build, VM or new runtime result. Historical
+failure, current-artifact R-F5 acceptance and every independent user park remain.

@@ -123353,3 +123353,14 @@ QEMU 3139865 joins after 277.439 seconds; wrapper 3139394 and RAM
 3,510,272 allocated bytes. Preparation-time concurrent writers, fresh-transfer
 mutation and complete app/CM/installed/cross-platform acceptance remain open;
 no atomic-snapshot or complete receive acceptance is claimed.
+
+Fresh ledger count at `ebf2c1f6`, TUF `aiuOZtHdI7`: **372,121 tokens /
+1,704,364 bytes**, input SHA-256
+`8c198c500eaf4852dc06b41e82a3edcda13d8f4c1dd1b7b74088712ea42fac23`.
+All seven tokenizer controls and whole-input round trip pass. QEMU 3141865 joins
+after 30.710 seconds; wrapper 3140443 and RAM `run.i7a4hafu` retire, and all
+three listener deltas are zero. Serial SHA-256
+`d9c28ff3f178211ae77911238a7cbac96ec06f9bb688572f94bd5e324c5bdf16`.
+All **20 raw files / 320,132 bytes per host** are hash-verified on both hosts;
+all six exact wrapper/QEMU PIDs, RAM workspaces and diagnostic scratch are absent.
+This audit-only receipt preserves the tested source and counted ledger.

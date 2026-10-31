@@ -397,7 +397,7 @@ case "$#:${1:-}" in
             || { echo 'focused Android owner-state input/run overrides are forbidden' >&2; exit 2; }
         MODE=android-owner-tests
         ;;
-    1:--network-impairment-probe)
+    1:--network-impairment-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'network impairment-probe input/run overrides are forbidden' >&2; exit 2; }
         MODE=network-impairment-probe
@@ -2628,6 +2628,9 @@ if [ "$MODE" = network-impairment-probe ] || [ "$MODE" = windows-service-result-
     fi
 fi
 debian_polkit_sources_before=
+if [ "$MODE" = network-impairment-probe ]; then
+    verify_committed_test_source "$SCRIPT_DIR/test-network-impairment-native.py"
+fi
 debian_package_inputs_before=
 debian_maintainer_sources=()
 debian_maintainer_sources_before=
@@ -4430,7 +4433,11 @@ fi
 
 payload_identity=()
 lifecycle_payload_grafts=()
-if [ "$MODE" = authority-smoke ]; then
+if [ "$MODE" = network-impairment-probe ]; then
+    lifecycle_payload_grafts=(
+        "repo/scripts/test-network-impairment-native.py=$SCRIPT_DIR/test-network-impairment-native.py"
+    )
+elif [ "$MODE" = authority-smoke ]; then
     for source in "${AUTHORITY_GATE_SOURCES[@]}"; do
         lifecycle_payload_grafts+=("repo/${source#"$REPO_ROOT/"}=$source")
     done
@@ -4868,7 +4875,7 @@ elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-eng
 elif [ "$MODE" = debian-systemd-lifecycle ]; then
     guest_invocation+=" --debian-systemd-lifecycle /mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz /mnt/rustdesk-verifier-inputs/artifact/rustdesk-x86_64.deb $LIFECYCLE_ARTIFACT_SHA256 $LIFECYCLE_COMMIT"
 elif [ "$MODE" = network-impairment-probe ]; then
-    guest_invocation+=' --network-impairment-probe'
+    guest_invocation+=' --network-impairment-tests'
 elif [ "$MODE" = android-execution-probe ]; then
     guest_invocation+=' --android-execution-probe'
 elif [ "$MODE" = android-runtime-log-tests ]; then
@@ -5454,8 +5461,11 @@ elif [ "$MODE" = network-impairment-probe ]; then
     [ "$(/usr/bin/grep -c '^NETWORK_IMPAIRMENT_PREREQUISITES=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'network prerequisite observation is absent or duplicated'
     require_exact_fixed_receipt \
-        'NETWORK_IMPAIRMENT_PROBE_FINALITY=pass observation=readonly workload=unexecuted docker=retired cleanup=joined' \
-        'network impairment prerequisites observation'
+        'NETWORK_IMPAIRMENT_NATIVE_OK delay=observed bypass=observed loss=observed recovery=same-tcp sockets=closed interface=removed queue=removed product=unexecuted' \
+        'actual receiver-ingress impairment and TCP recovery'
+    require_exact_fixed_receipt \
+        'NETWORK_IMPAIRMENT_PROBE_FINALITY=pass namespace=joined initial_network=preserved product=unexecuted docker=retired cleanup=joined' \
+        'network impairment fixture finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' \
         'network impairment-probe cloud-init completion marker'
 elif [ "$MODE" = android-execution-probe ]; then
@@ -8961,7 +8971,7 @@ if [ "$BASE_READONLY_TEST" -eq 1 ]; then
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
 fi
 if [ "$MODE" = network-impairment-probe ]; then
-    printf 'NETWORK_IMPAIRMENT_PROBE_OUTER=pass host_uid=%s commit=%s tree=%s network=none observation=readonly product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
+    printf 'NETWORK_IMPAIRMENT_PROBE_OUTER=pass host_uid=%s commit=%s tree=%s network=none fixture=receiver-ingress product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = authority-smoke ]; then
     printf 'VERIFIER_VM_OUTER_AUTHORITY=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=no-harness-addition base=sha512 docker=sha256 output_bound=%s cleanup=joined elapsed_seconds=%s\n' \

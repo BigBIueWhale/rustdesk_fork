@@ -33,7 +33,7 @@ case "$#:${8:-}" in
     7:)
         MODE=authority-smoke
         ;;
-    8:--network-impairment-probe)
+    8:--network-impairment-tests)
         MODE=network-impairment-probe
         ;;
     8:--android-execution-probe)
@@ -1143,7 +1143,7 @@ for caller in ('smoke-verifier-vm-authority.sh', 'online-fetch-vm.sh'):
     modes.update(re.findall(r'\bMODE=([a-z][a-z0-9-]*)', shell.with_name(caller).read_text()))
 # This closed CLI arm derives MODE from its argument instead of a literal assignment.
 modes.add('android-frame-tests')
-if len(modes) != 40:
+if len(modes) != 41:
     raise SystemExit('VM workload control inventory differs')
 special = {mode: mode for mode in ('ledger-token-count', 'cpace-recovery-tests',
                                   'linux-service-uid-tests', 'hbb-common-fs', 'media-kernel-tests',
@@ -14297,8 +14297,17 @@ print('NETWORK_IMPAIRMENT_PREREQUISITES=' + json.dumps({
 PY
     setpriv --reuid=4000 --regid=4000 --clear-groups \
         /bin/bash "$ENTRY_PREFLIGHT"
+    # Prevent IFB's optional legacy devices from appearing in the initial guest namespace.
+    initial_network="$(/usr/sbin/ip -j link show)"
+    /usr/sbin/modprobe ifb numifbs=0
+    /usr/bin/timeout --signal=TERM --kill-after=2s 30s \
+        /usr/bin/unshare --net --fork --kill-child=KILL -- \
+        /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C \
+        /usr/bin/python3 -I -S "$VERIFY_REPO/scripts/test-network-impairment-native.py"
+    [ "$(/usr/sbin/ip -j link show)" = "$initial_network" ] \
+        || fail 'impairment fixture changed the initial guest network'
     stop_docker_authority
-    printf 'NETWORK_IMPAIRMENT_PROBE_FINALITY=pass observation=readonly workload=unexecuted docker=retired cleanup=joined\n'
+    printf 'NETWORK_IMPAIRMENT_PROBE_FINALITY=pass namespace=joined initial_network=preserved product=unexecuted docker=retired cleanup=joined\n'
     exit 0
 fi
 

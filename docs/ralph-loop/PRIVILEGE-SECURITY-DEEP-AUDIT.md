@@ -122740,3 +122740,14 @@ hosts. The baseline's exact diagnostic directory is removed afterward, reclaimin
 3,448,832 allocated bytes. This closes the demonstrated skipped-barrier retry,
 not actual hardware error/power-loss recovery, installed callers, or the three
 completed-destination layout regressions. All separate parks remain unchanged.
+
+Fresh ledger count at `f5d28360`, TUF `VBiY3tpjWI`: **370,204 tokens /
+1,694,872 bytes**, input SHA-256
+`875ac0031f062abb3c5f08e537043b7a4dc9607a5dd85ac0cdfc711c90a6df70`.
+The pinned tokenizer passes all seven controls and the whole-input round trip.
+The canonical command exits zero; QEMU 3110983 joins after 30.874 seconds,
+RAM `run.a00ybbfy` retires and all three listener comparisons have zero changes.
+Serial SHA-256 `40f6208e8deadf06965d310b0a524d78d8d190a9b680603c7f00299f37e72885`.
+All twenty raw files for the three runs total 279,743 bytes per host and are
+hash-verified. This audit-only receipt leaves the counted ledger and tested
+product/fixture bytes unchanged.

@@ -125651,3 +125651,45 @@ storage admission passes 79 controls and five refusals. QEMU 3403009 joins exit 
 after 30.414 seconds, 402,477,056 bytes peak RAM scratch retires and all three
 listener deltas are zero. All 28 checkpoint files, 649,067 bytes, are hash-verified
 on CTE/TUF. This audit-only receipt preserves the counted ledger bytes.
+
+## 2026-10-31 — complete-peer key cleanup after abrupt viewer exit
+
+The previous turn made progress: Ctrl+A's actual disconnect was corrected and
+passed the identical full-app observer. Select R-S19a/R-T4 connection-owned key
+retirement next. Earlier native cleanup-function evidence did not exercise an
+actual viewer's death through the live server worker. This lifetime check takes
+priority over another character-layout case and reuses the verified app; all
+independently parked topics remain parked.
+
+`abcd9116767f1978df00e3bd164e707dcf6b6899` adds `--keyboard-retirement` to the
+existing source-bound replay. It first observes real remote left-Control and
+left-Shift presses and the complete expected native keymaps on both displays.
+It then presses source-local right Control and requires exactly those three keys.
+The [pidfd signal API](https://man7.org/linux/man-pages/man2/pidfd_send_signal.2.html)
+provides an exact-process signal target after retained UID/start-time checks;
+SIGKILL prevents client key-up cleanup. The controller requires both distinct
+remote releases within five seconds, no extra key events for 100 ms, confirmed
+viewer exit and a final source keymap containing only the local right Control.
+Only then does it release fixture-owned keys. [XQueryKeymap](https://xorg.freedesktop.org/archive/X11R7.5/doc/man/man3/XQueryKeymap.3.html)
+observes logical server state; no hardware acknowledgment is claimed. The parent
+joins the exact viewer with expected status 137 and checks the server listener.
+
+Run `tpdKJh3ieM` passes against unchanged app `cf437894`, manifest SHA-256
+`94941c425a12844e424c7ac903f8a84b93b19628f3ed391f29e77548e15f6d93`.
+Observed presses are codes 37/50; retirement releases 50 then 37, preserving the
+source-local right Control. Completion is 20 ms from signal submission. Both
+fixture displays are fully released afterward. The controller's two builds are
+identical, SHA-256 `6ae8364ee4b2afd724ebe5fc270b33653be1fedaa8f2fbeb6eca788caf5074a5`.
+The current private input provider is unchanged and observed in the live server.
+The complete transaction takes 110.121 seconds; QEMU 3406164 joins exit 0,
+3,008,524,288 bytes peak bounded RAM scratch retires and four listener deltas
+are zero. No owned run root remains. No product edit, old failing baseline or
+new privilege-escalation finding is claimed.
+
+Eight evidence files, 102,478 bytes, are hash-verified on CTE/TUF. The capsule
+`keyboard-retirement-abcd9116.json` is 13,238 bytes, SHA-256
+`dd62c6fc152e544bf80f9e313e644535dbb8eeac9e08575489ebef23781bab52`.
+It binds command, source, retained app, native events/state, timings and cleanup.
+This accepts one ordinary-user Linux X11/US-layout abrupt-exit schedule. Exact
+worker-thread join timing, another Remote owner, same-key overlap, native failure,
+installed privilege boundaries, other platforms and soak remain OPEN.

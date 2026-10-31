@@ -2145,6 +2145,26 @@ path. Other layouts/IME/modes/shortcut families, installed privilege boundaries,
 non-Remote refusal, physical devices/other platforms and soak remain OPEN. This
 corrects a demonstrated functionality failure; it establishes no new LPE closure.
 
+**Linux input retirement — abrupt viewer-exit native effects passed.**
+At harness `abcd9116`, `--keyboard-retirement` reuses the complete `cf437894` app.
+After real password authentication, the viewer holds left Control and left Shift;
+the observer requires both native presses and exact held-key maps. A separate
+source-local right Control is then pressed and independently observed. The driver
+terminates only the exact retained viewer via pidfd, with no client key releases.
+Both remote keys release in **20 ms**, within the five-second limit, while the
+local right Control remains held. Two distinct native releases and a quiet interval
+exclude extra key effects; fixture-owned keys release only after those observations.
+The parent joins viewer exit 137 and rechecks the existing server listener.
+
+Run `tpdKJh3ieM` passes in 110.121 seconds. Small drivers compile twice identically;
+the app is reused unchanged. QEMU joins, 3,008,524,288 bytes peak RAM scratch
+retires, and all four host listener deltas are zero. Source, exact artifacts,
+command, event/state observations and cleanup: `keyboard-retirement-abcd9116.json`.
+No defect or product correction is claimed. This is one ordinary-user Linux X11
+schedule; worker-thread join timing, concurrent Remote owners/same-key overlap,
+native failure paths, installed privilege boundaries, other platforms and soak
+remain OPEN under R-S19a/R-T4.
+
 **Linux clipboard text — six full-app positive cases passed; broader acceptance OPEN.**
 At harness `021c1b6c`, run `2Z9piTfyo6` uses the retained `e57678d3` app on both
 ends of one authenticated Remote connection. ASCII/multiline text, Unicode

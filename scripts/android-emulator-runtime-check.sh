@@ -67,6 +67,54 @@ readonly RUNTIME_FAILURE_ROOT=/mnt/rustdesk-android-runtime-failure
 readonly DOCKER_SOCKET=$VM_ROOT/docker.sock
 readonly DOCKER_CONFIG_ROOT=$VM_ROOT/docker-config
 readonly DOCKER_CLIENT=/usr/bin/docker
+readonly INPUT_PROVIDER=/var/tmp/rustdesk-verifier-authority/android-peer-input-provider-installed
+input_provider_binding() {
+  /usr/bin/python3 -I -S - "$INPUT_PROVIDER" <<'PY'
+import hashlib
+import os
+from pathlib import Path
+import stat
+import sys
+path = Path(sys.argv[1])
+if path.resolve(strict=True) != path:
+    raise RuntimeError("input-provider installation is not canonical")
+fields = lambda s: (s.st_dev, s.st_ino, s.st_uid, s.st_gid, s.st_mode,
+                    s.st_nlink, s.st_size, s.st_mtime_ns, s.st_ctime_ns)
+directory = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+try:
+    parent = os.fstat(directory)
+    if (parent.st_uid, parent.st_gid, stat.S_IMODE(parent.st_mode)) != (0, 0, 0o555) \
+            or os.listxattr(directory) or os.listdir(directory) != ["libxdo.so.3"]:
+        raise RuntimeError("input-provider directory authority differs")
+    library = os.open("libxdo.so.3", os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=directory)
+    try:
+        before = os.fstat(library)
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 \
+                or (before.st_uid, before.st_gid, stat.S_IMODE(before.st_mode)) != (0, 0, 0o444) \
+                or not 0 < before.st_size <= 1048576 or os.listxattr(library):
+            raise RuntimeError("input-provider file authority differs")
+        digest = hashlib.sha256()
+        while True:
+            block = os.read(library, 65536)
+            if not block:
+                break
+            digest.update(block)
+        if fields(os.fstat(library)) != fields(before) or fields(os.fstat(directory)) != fields(parent):
+            raise RuntimeError("input-provider identity changed during admission")
+        print(digest.hexdigest(), ":".join(map(str, fields(parent))), ":".join(map(str, fields(before))))
+    finally:
+        os.close(library)
+finally:
+    os.close(directory)
+PY
+}
+INPUT_PROVIDER_BINDING=
+INPUT_PROVIDER_SHA256=
+if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
+  INPUT_PROVIDER_BINDING="$(input_provider_binding)" || die 'protected input-provider admission failed'
+  read -r INPUT_PROVIDER_SHA256 _ <<<"$INPUT_PROVIDER_BINDING"
+fi
+readonly INPUT_PROVIDER_BINDING INPUT_PROVIDER_SHA256
 readonly CANDIDATE_ROOT=$REPO_ROOT/online/candidates/android-emulator
 readonly EMULATOR_ZIP=$CANDIDATE_ROOT/emulator-linux_x64-${ANDROID_EMULATOR_ARCHIVE_BUILD}.zip
 readonly SYSTEM_IMAGE_ZIP=$CANDIDATE_ROOT/x86_64-${ANDROID_EMULATOR_SYSTEM_IMAGE_API}_r${ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE_REVISION}.zip
@@ -733,6 +781,7 @@ if [ "$RUNTIME_SCENARIO" = peer-lifecycle ] \
 fi
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
     runtime_mounts+=(
+        --mount "type=bind,source=$INPUT_PROVIDER,target=/usr/lib/rustdesk-fork,readonly,bind-recursive=disabled"
         --mount "type=bind,source=$FRAME_SOURCE,target=/inputs/frame-source,readonly,bind-recursive=disabled"
         --mount "type=bind,source=$XVFB_ROOT,target=/xvfb-root,readonly,bind-recursive=disabled"
         --mount "type=bind,source=$XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly,bind-recursive=disabled"
@@ -742,6 +791,7 @@ if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
     runtime_environment+=(
         --env "ANDROID_FRAME_SOURCE_SHA256=$FRAME_SOURCE_SHA256"
         --env "ANDROID_FRAME_SOURCE_BYTES=$FRAME_SOURCE_BYTES"
+        --env "ANDROID_PEER_INPUT_PROVIDER_SHA256=$INPUT_PROVIDER_SHA256"
     )
 fi
 readonly -a runtime_mounts runtime_environment
@@ -803,6 +853,11 @@ if [ "$RUNTIME_SCENARIO" = controlled-cm ]; then
         || die 'Android controlled-CM peer execution mount is not the admitted read-only copy'
 fi
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
+    runtime_provider_mounts="$(vm_docker inspect --format \
+        '{{range .Mounts}}{{printf "%s|%s|%s|%t\n" .Type .Source .Destination .RW}}{{end}}' \
+        "$RUNTIME_CONTAINER" | awk -F '|' '$3 == "/usr/lib/rustdesk-fork" { print }')"
+    [ "$runtime_provider_mounts" = "bind|$INPUT_PROVIDER|/usr/lib/rustdesk-fork|false" ] \
+        || die 'Android peer input-provider mount authority differs'
     runtime_machine_id_mounts="$(vm_docker inspect --format \
         '{{range .Mounts}}{{printf "%s\t%s\t%s\t%t\n" .Type .Source .Destination .RW}}{{end}}' \
         "$RUNTIME_CONTAINER" | awk -F '\t' '$3 == "/etc/machine-id" { print }')"
@@ -1476,6 +1531,12 @@ RUNTIME_CONTAINER=
     || die 'Android emulator runtime check left a container'
 
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
+    [ "$(input_provider_binding)" = "$INPUT_PROVIDER_BINDING" ] \
+        || die 'Android peer input-provider changed during replay'
+    [ "$(grep -Fxc "ANDROID_PEER_INPUT_PROVIDER_MAPPED=pass sha256=$INPUT_PROVIDER_SHA256 path=/usr/lib/rustdesk-fork/libxdo.so.3 server=owned-generation" "$RUNTIME_LOG")" -eq 1 ] \
+        && [ "$(grep -c '^ANDROID_PEER_INPUT_PROVIDER_MAPPED=' "$RUNTIME_LOG")" -eq 1 ] \
+        || die 'Android peer input-provider live mapping is absent or duplicated'
+    printf 'ANDROID_PEER_INPUT_PROVIDER_OBSERVED=pass sha256=%s unchanged=before-after mapping=owned-server cleanup=joined\n' "$INPUT_PROVIDER_SHA256"
     [ "$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$FRAME_SOURCE")" = "$FRAME_SOURCE_ID" ] \
         && [ "$(sha256sum "$FRAME_SOURCE" | awk '{ print $1 }')" = "$FRAME_SOURCE_SHA256" ] \
         && [ "$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$FRAME_SOURCE_C")" = "$FRAME_SOURCE_C_ID" ] \

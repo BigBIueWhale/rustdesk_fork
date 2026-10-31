@@ -3827,6 +3827,33 @@ open_peer_connection() {
         "$connection_wait_limit_ms"
     if [ "$expect_password" -eq 1 ]; then
         PEER_CORRECT_CREDENTIAL_CONNECTION_MS=$PEER_LAST_CONNECTION_WAIT_MS
+        is_exact_peer_process "$SERVER_PID" "$SERVER_START" \
+            || fail 'Android input-provider observer lost the owned server'
+        python3 -I -S - "$SERVER_PID" "${ANDROID_PEER_INPUT_PROVIDER_SHA256:-}" <<'PY' \
+            || fail 'Android peer did not map the admitted input provider'
+import hashlib
+import os
+from pathlib import Path
+import sys
+library = Path('/usr/lib/rustdesk-fork/libxdo.so.3')
+expected = sys.argv[2]
+if len(expected) != 64 or hashlib.sha256(library.read_bytes()).hexdigest() != expected:
+    raise RuntimeError('input-provider content differs')
+metadata = library.stat()
+device = (os.major(metadata.st_dev), os.minor(metadata.st_dev))
+for line in Path('/proc', sys.argv[1], 'maps').read_text().splitlines():
+    fields = line.split()
+    if len(fields) == 6 and fields[1] == 'r-xp' and fields[5] == str(library) \
+            and int(fields[4]) == metadata.st_ino \
+            and tuple(int(part, 16) for part in fields[3].split(':')) == device:
+        break
+else:
+    raise RuntimeError('input-provider executable mapping is absent')
+PY
+        is_exact_peer_process "$SERVER_PID" "$SERVER_START" \
+            || fail 'Android input-provider observer lost the owned server'
+        printf 'ANDROID_PEER_INPUT_PROVIDER_MAPPED=pass sha256=%s path=/usr/lib/rustdesk-fork/libxdo.so.3 server=owned-generation\n' \
+            "$ANDROID_PEER_INPUT_PROVIDER_SHA256"
     elif [ "$PEER_LAST_CONNECTION_WAIT_MS" -gt "$PEER_CACHED_CONNECTION_MAX_MS" ]; then
         PEER_CACHED_CONNECTION_MAX_MS=$PEER_LAST_CONNECTION_WAIT_MS
     fi

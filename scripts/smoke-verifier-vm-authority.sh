@@ -2799,6 +2799,20 @@ if [ "$MODE" = fixed-archive-tests ]; then
         "$FIXED_ARCHIVE_WIX_RETIRE")"
 fi
 FLUTTER_REPLAY_INPUT_SOURCE=
+if [ "$MODE" = android-emulator-runtime ] && [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
+    android_provider_source=$ANDROID_EMULATOR_SOURCE_COMMIT
+    for contract in libs/libxdo-sys-stub/src/lib.rs \
+        libs/libxdo-sys-stub/native/xdo.h libs/libxdo-sys-stub/native/xdo_version.h; do
+        peer_blob="$(git_closed -C "$REPO_ROOT" rev-parse --verify "$ANDROID_RUNTIME_PEER_COMMIT:$contract")" \
+            || fail 'selected Android peer lacks its input-provider contract'
+        provider_blob="$(git_closed -C "$REPO_ROOT" rev-parse --verify "$android_provider_source:$contract")" \
+            || fail 'Android input provider lacks its contract'
+        [ "$peer_blob" = "$provider_blob" ] \
+            || fail "Android peer and provider input contract differ: $contract"
+    done
+    printf 'ANDROID_PEER_INPUT_CONTRACT=pass peer_commit=%s provider_commit=%s files=3 equality=git-blob\n' \
+        "$ANDROID_RUNTIME_PEER_COMMIT" "$android_provider_source"
+fi
 if [ "$FLUTTER_APP_REPLAY" -eq 1 ]; then
     FLUTTER_REPLAY_INPUT_SOURCE="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')" \
         || fail 'cannot resolve the replay input-provider source'
@@ -8115,6 +8129,17 @@ elif [ "$MODE" = android-emulator-runtime ]; then
             'source-bound production peer admission receipt'
     fi
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
+        mapfile -t android_provider_receipts < <(/usr/bin/grep -Eo \
+            "ANDROID_PEER_INPUT_PROVIDER_PREPARED=pass sha256=[0-9a-f]{64} bytes=[1-9][0-9]* source_commit=$ANDROID_EMULATOR_SOURCE_COMMIT source_sha256=[0-9a-f]{64} builds=2 equality=bytes root=disposable-guest-only" \
+            "$SERIAL_LOG" || true)
+        [ "${#android_provider_receipts[@]}" -eq 1 ] \
+            || fail 'Android peer input-provider preparation is absent or duplicated'
+        android_provider_sha=${android_provider_receipts[0]#*sha256=}
+        android_provider_sha=${android_provider_sha%% *}
+        require_exact_fixed_receipt \
+            "ANDROID_PEER_INPUT_PROVIDER_OBSERVED=pass sha256=$android_provider_sha unchanged=before-after mapping=owned-server cleanup=joined" \
+            'Android peer protected input-provider execution'
+        printf '%s\n' "${android_provider_receipts[0]}"
         android_frame_source_sha="$(git_closed -C "$REPO_ROOT" cat-file blob \
             "$ANDROID_EMULATOR_SOURCE_COMMIT:scripts/flutter-peer-source-x11.c" \
             | /usr/bin/sha256sum | /usr/bin/awk '{ print $1 }')" \

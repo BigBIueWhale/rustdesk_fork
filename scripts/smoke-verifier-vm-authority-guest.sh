@@ -10595,6 +10595,69 @@ forward_android_runtime_progress() {
     done
 }
 
+prepare_android_peer_input_provider() {
+    local source_root=$1 build=$ROOT/android-peer-input-provider-build
+    local installed=$ROOT/android-peer-input-provider-installed
+    local copy output metadata digest bytes source_sha
+    [ ! -e "$build" ] && [ ! -L "$build" ] \
+        && [ ! -e "$installed" ] && [ ! -L "$installed" ] \
+        || fail 'Android peer input-provider preparation is already occupied'
+    source_sha="$(cd "$source_root" && sha256sum \
+        libs/libxdo-sys-stub/native/build.py libs/libxdo-sys-stub/native/xdo.c \
+        libs/libxdo-sys-stub/native/xdo.h libs/libxdo-sys-stub/native/xdo_version.h \
+        | sha256sum | awk '{print $1}')"
+    install -d -o 1000 -g 1000 -m 0700 "$build"
+    for copy in first second; do
+        install -d -o 1000 -g 1000 -m 0700 "$build/$copy"
+        CONTAINER_ID="$(flutter_peer_provider_docker create \
+            --pull=never --network=none --read-only --user 1000:1000 \
+            --cap-drop=ALL --security-opt=no-new-privileges \
+            --security-opt=apparmor=docker-default --pids-limit=128 \
+            --memory=512m --memory-swap=512m --cpus=2 --ulimit core=0:0 \
+            --mount "type=bind,source=$source_root,target=/source,readonly,bind-recursive=disabled" \
+            --mount "type=bind,source=$build/$copy,target=/provider-build,bind-recursive=disabled" \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m,mode=700,uid=1000,gid=1000 \
+            "$DEV_CHECK_IMAGE_CONFIG_ID" /usr/bin/python3 -I -S \
+            /source/libs/libxdo-sys-stub/native/build.py --output /provider-build/libxdo.so.3)" \
+            || fail 'cannot create the Android peer input-provider compiler'
+        [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || fail 'input-provider compiler identity differs'
+        metadata="$(flutter_peer_provider_docker inspect --format \
+            '{{.Image}}|{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.CgroupnsMode}}|{{json .HostConfig.Devices}}|{{json .HostConfig.PortBindings}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}' "$CONTAINER_ID")"
+        [ "$metadata" = "$DEV_CHECK_IMAGE_CONFIG_ID|none|true|1000:1000|false||private|private|[]|{}|[\"ALL\"]|[\"no-new-privileges\",\"apparmor=docker-default\"]" ] \
+            || fail 'Android peer input-provider compiler authority differs'
+        metadata="$(flutter_peer_provider_docker inspect --format \
+            '{{range $i, $m := .Mounts}}{{if $i}}{{println}}{{end}}{{$m.Type}}|{{$m.Source}}|{{$m.Destination}}|{{$m.RW}}{{end}}' "$CONTAINER_ID" | LC_ALL=C sort)"
+        [ "$metadata" = "$(printf '%s\n' "bind|$source_root|/source|false" \
+            "bind|$build/$copy|/provider-build|true" | LC_ALL=C sort)" ] \
+            || fail 'Android peer input-provider compiler mounts differ'
+        output=$ROOT/android-peer-input-provider-$copy.out
+        flutter_peer_provider_docker start --attach "$CONTAINER_ID" >"$output" 2>&1 \
+            || { cat "$output" >&2; fail 'Android peer input-provider compilation failed'; }
+        [ "$(flutter_peer_provider_docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
+            || fail 'Android peer input-provider compiler did not join cleanly'
+        flutter_peer_provider_docker rm "$CONTAINER_ID" >/dev/null
+        CONTAINER_ID=
+        [ -f "$build/$copy/libxdo.so.3" ] && [ ! -L "$build/$copy/libxdo.so.3" ] \
+            && [ "$(stat -c '%u:%g:%a:%h' "$build/$copy/libxdo.so.3")" = 1000:1000:644:1 ] \
+            || fail 'compiled Android peer input-provider metadata differs'
+        bytes="$(stat -c '%s' "$build/$copy/libxdo.so.3")"
+        [ "$bytes" -gt 0 ] && [ "$bytes" -le 1048576 ] || fail 'input-provider size differs'
+        digest="$(sha256sum <"$build/$copy/libxdo.so.3" | awk '{print $1}')"
+        [ "$(grep -Fxc "NATIVE_XDO_BUILD=pass sha256=$digest bytes=$bytes version=3.20160805.1-rustdesk24 source=checked-in" "$output")" -eq 1 ] \
+            || fail 'Android peer input-provider build receipt differs'
+        cat "$output"
+    done
+    cmp -s "$build/first/libxdo.so.3" "$build/second/libxdo.so.3" \
+        || fail 'Android peer input-provider builds differ'
+    install -d -o 0 -g 0 -m 0555 "$installed"
+    install -o 0 -g 0 -m 0444 "$build/first/libxdo.so.3" "$installed/libxdo.so.3"
+    [ "$(stat -c '%u:%g:%a:%h:%s' "$installed/libxdo.so.3")" = "0:0:444:1:$bytes" ] \
+        && [ "$(sha256sum <"$installed/libxdo.so.3" | awk '{print $1}')" = "$digest" ] \
+        || fail 'protected Android peer input-provider installation differs'
+    printf 'ANDROID_PEER_INPUT_PROVIDER_PREPARED=pass sha256=%s bytes=%s source_commit=%s source_sha256=%s builds=2 equality=bytes root=disposable-guest-only\n' \
+        "$digest" "$bytes" "$ANDROID_EMULATOR_SOURCE_COMMIT" "$source_sha"
+}
+
 run_android_emulator_runtime() {
     local inputs=/mnt/rustdesk-sealed-inputs
     local artifact_input=/mnt/rustdesk-android-artifact-input
@@ -10618,7 +10681,7 @@ run_android_emulator_runtime() {
     local source_archive_sha input_mount_options artifact_mount_options online_mount_options
     local builder_load runtime_load workload_status=0 source_before inputs_before artifact_before
     local staged_apk_before
-    local entry_receipt apk_receipt instrumentation_receipt renderer_receipt runtime_receipt peer_artifact_receipt frame_source_receipt
+    local entry_receipt apk_receipt instrumentation_receipt renderer_receipt runtime_receipt peer_artifact_receipt frame_source_receipt input_provider_receipt
     local -a runtime_arguments=()
     local lifecycle_receipt task_park_receipt peer_receipt focused_recents_receipt check_receipt
     local resource_bound_receipt
@@ -10963,6 +11026,9 @@ run_android_emulator_runtime() {
     [ "$runtime_load" = "loaded and verified devcheck $DEV_CHECK_IMAGE_ID" ] \
         || fail "Android runtime image receipt differs for runtime replay: $runtime_load"
 
+    if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
+        prepare_android_peer_input_provider "$source_root"
+    fi
     mount_android_runtime_failure_output
     set +e
     setpriv --reuid=1000 --regid=1000 --clear-groups \
@@ -11065,6 +11131,11 @@ run_android_emulator_runtime() {
             || fail 'Android peer artifact admission receipt is duplicated'
     fi
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
+        input_provider_receipt="$(grep -Fx \
+            "ANDROID_PEER_INPUT_PROVIDER_OBSERVED=pass sha256=$(sha256sum <"$ROOT/android-peer-input-provider-installed/libxdo.so.3" | awk '{print $1}') unchanged=before-after mapping=owned-server cleanup=joined" \
+            "$output")" || fail 'Android peer input-provider runtime observation differs'
+        [ "$(grep -c '^ANDROID_PEER_INPUT_PROVIDER_OBSERVED=' "$output")" -eq 1 ] \
+            || fail 'Android peer input-provider observation is duplicated'
         frame_source_receipt="$(grep -E \
             "^X11_FRAME_SOURCE_BUILD=pass source_sha256=$(sha256sum "$source_root/scripts/flutter-peer-source-x11.c" | awk '{ print $1 }') sha256=[0-9a-f]{64} bytes=[1-9][0-9]* copies=2 equality=byte-identical network=none output=private$" \
             "$output")" || fail 'independent Android display fixture build receipt differs'
@@ -11443,7 +11514,7 @@ run_android_emulator_runtime() {
         printf '%s\n' "$peer_artifact_receipt"
     fi
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
-        printf '%s\n' "$frame_source_receipt"
+        printf '%s\n' "$frame_source_receipt" "$input_provider_receipt"
         printf '%s\n' "$frame_endpoint_receipt" "$frame_parser_receipt" \
             "$frame_observer_self_test_receipt" "$frame_observer_build_receipt" \
             "$frame_observer_receipt" "$lifecycle_receipt" "$task_park_receipt" \

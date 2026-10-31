@@ -126006,3 +126006,36 @@ does not establish support for nested acceleration. The existing exact guest-KVM
 proof and fail-closed hardware requirement remain; successful execution would
 establish this pinned test topology only. No host device/permission change,
 application rebuild or download is needed for the retained-artifact comparison.
+
+TUF now retains the selected authenticated CTE Android inputs and artifact pair
+(7,035,604,651 input bytes); no disposable disk cache is introduced. The new
+18-GiB replay admission passes its native resource controls at `4be6c5e6`, run
+`M0UsqcXkLq`: 80 workload controls, five refusals and seven token controls.
+The unchanged ledger is 380,735 tokens, 1,743,121 bytes, SHA-256
+`df5f60cfd3dd7c3461c7a709b98844edda857c50d034004f4a4f80998415438a`.
+QEMU 3453638 joins exit 0; 402,493,440 bytes peak RAM scratch retires and all
+three listener deltas are zero.
+
+Replay `lvlrR7CAZH` at that source fails before presentation. Retained APK pair
+`1ee23828` and production peer `b30f4811` pass artifact admission and the missing/
+wrong credential observations. The correct credential establishes CPace keys,
+then the peer reports `libxdo is unavailable` and refuses Remote login with
+`Remote input service is unavailable`. This is a missing test deployment input,
+not a demonstrated Android presentation defect. Complete 50,460-byte failure log
+SHA-256 is `5a90c758e20971453e7e121774437a50e7e22008180e7d0a3f1b415b1c40c16f`;
+it remains under `android-presentation-diagnostic.lvlrR7CAZH/` alongside canonical
+raw serials. QEMU 3455087 joins exit 0 after 768.953 seconds, the 4,495,691,776-byte
+peak RAM workspace retires and all five listener deltas are zero. Fifteen native/
+ledger evidence files are hash-verified on CTE and TUF.
+
+The replay now prepares the required fork-owned input provider using the existing
+nonroot, networkless compiler recipe inside the disposable guest. Two byte-equal
+builds are installed in a guest-root-owned immutable directory and mounted only
+read-only into the peer runtime. The retained peer's loader/header/version blobs
+must equal the selected provider contract. The runtime checks the actual server's
+executable mapping, exact library bytes and unchanged file/directory identities
+through joined completion. This follows Docker's explicit
+[read-only bind-mount contract](https://docs.docker.com/engine/storage/bind-mounts/),
+with submount inclusion disabled and the actual mount inspected. Product loader
+policy, APK/peer bytes, lifecycle workload and freshness deadlines are unchanged.
+Shell syntax and whitespace checks pass; integrated replay remains pending.

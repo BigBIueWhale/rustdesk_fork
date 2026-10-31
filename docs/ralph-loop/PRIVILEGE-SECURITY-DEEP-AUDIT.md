@@ -124329,3 +124329,17 @@ wrapper 3222486 and RAM workspace `run.4s6k49le` are absent. Peak scratch is
 4,224,016,384 bytes within 6 GiB; minimum available memory is 36,292,935,680 bytes.
 All four listener deltas are zero. After retaining verified evidence, exact owned
 diagnostic cleanup removes 3,518,464 allocated bytes. No VM remains live.
+
+Ledger count at `9b68b210`, TUF `KBNbfIixa9`, exits zero: **373,970 tokens /
+1,713,749 bytes**, input SHA-256
+`66c04a60c3f1b6243ab329eff5c224324c1eac471402bd994e11346739a5d5f4`.
+The tiktoken 0.12.0 / cl100k_base / encode_ordinary method, seven controls and
+strict whole-file UTF-8 round trip pass. Serial
+`ledger-token-count-run.KBNbfIixa9.serial.log` is 35,831 bytes, SHA-256
+`530c4be86c60015dfac3afb3d8249ff3b9ca25b0d7bda86963059d87cfd5e692`.
+QEMU 3225049 joins zero after 33.702 seconds; wrapper 3223628 and RAM workspace
+`run.t33hn_4j` are absent. Peak scratch is 402,440,192 bytes within 4 GiB, minimum
+available memory is 45,809,795,072 bytes, and all three listener deltas are zero.
+Six count files / 104,568 bytes and seven reproduction files total thirteen files /
+223,706 bytes per host, hash-verified on CTE and TUF. Both ledger copies match the
+counted hash; this audit-only receipt leaves that input unchanged.

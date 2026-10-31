@@ -124095,3 +124095,18 @@ performs synchronous retirement, and normal desktop exit removes its registry
 owner before local receive jobs drop. Prove exact ownership and bounded cleanup
 through native slow IO and abrupt loss before correcting that lifetime boundary.
 All independently parked topics remain parked; authorization is not a blocker.
+
+The post-update ledger count at `b20db92f`, TUF `NRVFcDjiTz`, exits zero:
+**373,558 tokens / 1,711,619 bytes**, SHA-256
+`7d840a3494d6c816cf14d095ef37e8fad125b9482eee4b3177bca5f0b6d9b7ad`.
+Method: tiktoken 0.12.0 / cl100k_base / encode_ordinary, seven known controls,
+whole-file strict UTF-8 with round-trip verification and no normalization.
+Serial `ledger-token-count-run.NRVFcDjiTz.serial.log` is 35,832 bytes, SHA-256
+`a61a7e1e38ae251283c7f3fd028d0856d97921a0adb9daf3729a2fb0042b01a4`.
+QEMU 3207510 joins with zero status after 33.539 seconds; wrapper 3206085 and
+RAM workspace `run.85ki3vd2` are absent. Peak scratch is 402,436,096 bytes within
+4 GiB, minimum available host memory is 45,641,658,368 bytes, and all three
+listener deltas are zero. Six count files / 104,870 bytes and all four caller
+runs' evidence are hash-verified on both hosts: 34 files / 427,037 bytes per host.
+Both counted ledger copies match the input hash. This audit-only receipt leaves
+the counted ledger unchanged; the goal remains active with no permission dependency.

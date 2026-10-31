@@ -99,11 +99,16 @@ doing the authorized research and making the alternatives concrete and reviewabl
 Before asking for permission or treating the goal as blocked, reconcile the latest direct user
 instructions with the exact action and any still-applicable restriction. An old ledger label,
 historical audit entry, or unanswered assistant question does not override later user authorization.
-Correct stale current-status wording instead of carrying that barrier forward. If an action truly
-requires new authorization, identify the exact action, the controlling restriction, and why the
-existing authorization does not cover it; continue other authorized work where possible. Follow
-the goal lifecycle rules, and never mark the goal blocked merely because an obsolete permission
-question remains unanswered.
+If the user has already granted the needed permission, resolve that permission dependency in the
+current status and proceed with the authorized next step in the same turn. Do not ask for a second
+confirmation, wait for another `/goal` command, or carry the answered question forward as a blocker.
+Preserve historical records as history; correct stale current-status wording. On resumption after
+a checkpoint or compaction, check the actual user reply before inheriting any permission blocker.
+Report technical failures, unavailable resources, and missing evidence as those specific conditions,
+not as missing authorization. If an action truly requires new authorization, identify the exact
+action, the controlling restriction, and why the existing authorization does not cover it;
+continue other authorized work where possible. Follow the goal lifecycle rules, and never mark
+the goal blocked merely because an obsolete permission question remains unanswered.
 A blocked subtask does not block the whole objective while useful authorized work or a feasible
 prerequisite remains available.
 

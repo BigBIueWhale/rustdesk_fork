@@ -122321,3 +122321,19 @@ Its filesystem work must leave the message loop under slow storage as well. The
 current fast local-file tests establish ownership/preservation, not a bounded
 cleanup latency or full handler responsiveness. This remains part of the next
 ownership correction alongside CM scheduling and parked application verification.
+
+**Producer library checkpoint accepted.** Source
+`c655e0fbfddf73de05f877430604d0b47b70b93b`, tree
+`fecb348beb7b1ed13f98be0543feb579a6a4495e`, TUF `sGF9IR6sNX`, passes all 31
+required cases in 29 groups. Both proof-producing roles preserve exact final bytes;
+all five receive interruption phases preserve saved data and permit lease
+reacquisition. Simultaneous close, closed-admission refusal, checkpoint selection
+and both native-read/TCP control modes pass. Artifact SHA-256
+`1e6ab005814a5415f186952b91e7fc834ae8107267db013893b4b416e4cc21aa`.
+Serial 12,930 bytes, SHA-256
+`b69a5151bb0049ffb5e3bd9d203a66e49751e663259214e4c71f4a7edb0620bd`.
+QEMU 3080602 joins after 142.600 seconds; RAM `run.4sdf692c` retires and all
+four listener deltas are zero. The command exits zero. No product/test bytes
+change after this run. Full controlled/viewer compilation, authenticated handlers,
+persisted checkpoint effects, CM scheduling and slow cleanup remain unaccepted;
+the staging lifecycle failures remain open. No parked test is executed.

@@ -16223,25 +16223,36 @@ counter refusal. That run's summary still prints its old literal `tests=15`; the
 individual records establish 23 passes. The summary now uses the already-checked
 aggregate and the outer duplicate literal is removed; the raw evidence is preserved.
 
-**Resume worker — library accepted; application integration incomplete.**
-`891ea81e`/`dc2ed418` give confirmations owned asynchronous jobs, cooperative
-cancellation and exact completion/drain. A shared 32-worker limit remains charged
-through collection, including completed or cancelled work. The controlled direct
-sender now uses this owner, counts pending jobs and rejects cancelled completions;
-its cancellation log is returned only after retirement. At `dc2ed418`, TUF
-`iv5usTd4OM`, all 28 focused sender/ownership tests pass in 26 groups. The five
-new cases cover exact proof outcomes, TCP control during a kernel-observed prefix
-read, cancelled waits, late cancellation, owner-drop handle cleanup and bounded
-capacity/retry. These are real-file/socket library tests, not application handlers.
+**Resume workers — library accepted; application integration incomplete.**
+`891ea81e`/`dc2ed418` own confirmation application; `d7b5f69f`/`10d436d7` also own
+proof preparation and retain pending reconnect metadata. The shared 32-worker limit
+stays charged through collection, including completed/cancelled work. Only a joined,
+noncancelled result returns a job/proof. Close seals admission, and owner drop retains
+exact drain responsibility. Controlled direct sending uses this owner; viewer source
+now queues both digest producers and incoming confirmations, snapshots eligible
+checkpoint metadata, and closes both directions before awaiting cleanup. Cancelled
+jobs cannot reappear through completion or checkpoint metadata.
 
-The changed controlled loop remains uncompiled/unexecuted in the full application;
-viewer proof production and CM scheduling remain incomplete. Their required control
-responsiveness follows from the measured 62.764-second hash and the connection
-loops' 30-second receive deadline; no installed disconnect has been measured.
-Full-parent/viewer execution parks remain in force pending the specific resumption
-question. Next verify real-handler keepalive/cancellation and complete viewer/CM
-ownership before accepting large/slow-source resume. Content proof does not freeze
-source bytes against later mutation or resolve the staging-layout failures above.
+At `c655e0fb`, TUF `sGF9IR6sNX`, all **31 focused tests in 29 groups** pass. The
+eight ownership tests cover proof outcomes, TCP control during observed native
+prefix reads in both operation modes, late cancellation, owner-drop handle cleanup,
+capacity/retry, both proof-producing roles through wire serialization and exact
+resumed output, five receive interruption phases, checkpoint selection and closed
+admission. The receive cases preserve original final/partial/digest bytes and permit
+lease reacquisition; close also exercises both directions together. Two preceding
+fresh-control fixture ordering failures and their listener observations remain in
+the audit. These are real-file/socket library results, not application handlers.
+
+The changed controlled/viewer loops remain uncompiled/unexecuted in the full
+application. Full-parent/viewer execution parks remain in force pending the specific
+resumption question; their fixtures also need adaptation to the owned completion
+path. CM scheduling remains incomplete. Normal collection/admission refusal still
+performs synchronous receive-claim retirement, so cleanup must also leave the
+message loop before slow-storage responsiveness is accepted. Next correct that
+ownership and obtain actual handler keepalive/cancellation/checkpoint evidence.
+The measured 62.764-second hash exceeds the loops' 30-second receive deadline;
+no installed disconnect has been measured. Large/slow-source resume, concurrent
+source mutation and the staging-layout lifecycle failures remain OPEN/STOP-SHIP.
 
 **Generation-lock retirement (`edddaf7b`) — component accepted.** Completed claims
 release their shared membership under the private enrollment gate. Only exclusive

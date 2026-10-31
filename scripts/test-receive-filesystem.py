@@ -352,7 +352,6 @@ def shared_mount_case(root, receiver_uid):
         def receive(path):
             final = path / f"final-{receiver_uid}"
             final.write_bytes(b"authorized-output")
-            final.unlink()
             container = path / stage
             container.mkdir(mode=0o700)
             (container / "identity").write_bytes(b"private-marker")
@@ -361,8 +360,52 @@ def shared_mount_case(root, receiver_uid):
             source.write_bytes(b"protected-source")
             result = failure(lambda: source.rename(path / f"published-{receiver_uid}"))
             assert result == errno.EXDEV and source.read_bytes() == b"protected-source"
-            source.unlink()
-            return {"ordinary_write": True, "protected_publication_errno": result}
+            flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+            source_fd = os.open(protected, flags)
+            mount_fd = os.open(path, flags)
+            payload_fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+            original_fd = os.open(final, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+            try:
+                external, handle = observe(source_fd)
+                destination, _ = observe(mount_fd)
+                assert external["handle"] is not None
+                assert external["device"] == destination["device"]
+                assert external["mount_id"] != destination["mount_id"]
+                # Decode the protected directory using the destination's mount.
+                # Merely retaining its original descriptor still gives EXDEV.
+                opened = LIBC.open_by_handle_at(mount_fd, ctypes.byref(handle), flags)
+                reopen_errno = ctypes.get_errno() if opened < 0 else 0
+                assert reopen_errno == (0 if receiver_uid == 0 else errno.EPERM)
+                if opened >= 0:
+                    try:
+                        rebound, _ = observe(opened)
+                        assert (rebound["device"], rebound["inode"], rebound["handle"]) == (
+                            external["device"], external["inode"], external["handle"])
+                        assert rebound["mount_id"] == destination["mount_id"]
+                        os.replace("payload", final.name, src_dir_fd=opened, dst_dir_fd=mount_fd)
+                        os.fsync(opened)
+                        os.fsync(mount_fd)
+                    finally:
+                        os.close(opened)
+                    assert final.read_bytes() == b"protected-source" and not source.exists()
+                    assert final.stat().st_ino == os.fstat(payload_fd).st_ino
+                    assert os.fstat(payload_fd).st_nlink == 1
+                    assert os.fstat(original_fd).st_nlink == 0
+                else:
+                    assert source.read_bytes() == b"protected-source"
+                    assert final.read_bytes() == b"authorized-output"
+                    assert final.stat().st_ino == os.fstat(original_fd).st_ino
+                    assert os.fstat(original_fd).st_nlink == 1
+                    source.unlink()
+                assert os.read(original_fd, 64) == b"authorized-output"
+                final.unlink()
+                assert list(protected.iterdir()) == []
+            finally:
+                for fd in (original_fd, payload_fd, mount_fd, source_fd):
+                    os.close(fd)
+            return {"ordinary_write": True, "protected_publication_errno": result,
+                    "handle_reopen_errno": reopen_errno,
+                    "handle_publication": "exact-replacement" if reopen_errno == 0 else "refused-preserved"}
         receiver = joined_principal(base, receiver_uid, receive)
 
         def move(path):

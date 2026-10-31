@@ -125330,3 +125330,58 @@ round trip pass, alongside 79 workload controls and five refusals. QEMU 3356389
 joins exit 0; 30.292 seconds, 402,595,840 bytes peak RAM scratch, RAM/run roots
 gone and three zero listener deltas. All 35 checkpoint files (784,852 bytes)
 match by hash on CTE/TUF. This audit-only receipt leaves the counted ledger unchanged.
+
+## 2026-10-31 — packet-outage duration coverage on the retained corrected app
+
+Previous turn: progress, with the failing R-F5 scenario corrected and natively
+replayed. The next highest-value check varied restoration timing because the
+two-second outage had only 149 ms recovery margin. `c3b243f4` extends the existing
+sequence from three to nine cycles; product source, retained app `e57678d3`,
+observer admission, 2,500-ms deadline, 1,000-ms freshness and resource limits remain
+unchanged. [RFC 6298 section 5](https://www.rfc-editor.org/rfc/rfc6298.html#section-5)
+makes retransmission backoff relevant to restoration timing. The
+[netem manual](https://man7.org/linux/man-pages/man8/tc-netem.8.html) informs retaining
+receiver-ingress injection and measuring actual durations/counters. No TCP setting
+is changed. Quarter-second duration variation is not synchronization to every
+kernel/application timer phase.
+
+The bounded supervisor now allows 20 requests: attachment, nine impairment/restore
+pairs and one failure restore. All 19 ordinary requests execute in native run
+`KwbkGWc0CM`; queue/namespace/requester ownership and fixed profiles are unchanged.
+The three drivers compile twice byte-identically; the changed pixel controller's
+SHA-256 is `40ad93a57bcb55aaa395de074f5662454dc6f056504247c9a20cee0b91bebe10`.
+The original first three cycles remain controls before the six new durations.
+All nine recover four distinct fresh states within the same deadline, preserve
+window/TCP identity and pass their three-second healthy/resource observations:
+
+| Cycle | Profile/requested duration (ms) | Actual hold (ms) | Recovery (ms) | Healthy maximum age (ms) | Kernel impairment |
+| --- | --- | ---: | ---: | ---: | --- |
+| 1 | 125-ms delay each way / 6,000 | 6,024 | 749 | 447 | 78 delayed packets |
+| 2 | Total loss / 2,000 | 2,007 | 2,395 | 335 | 6 drops |
+| 3 | Total loss / 6,000 | 6,016 | 1,729 | 347 | 8 drops |
+| 4 | Total loss / 1,750 | 1,756 | 2,332 | 371 | 6 drops |
+| 5 | Total loss / 5,750 | 5,769 | 2,096 | 338 | 7 drops |
+| 6 | Total loss / 2,250 | 2,285 | 1,728 | 367 | 6 drops |
+| 7 | Total loss / 6,250 | 6,295 | 1,585 | 384 | 7 drops |
+| 8 | Total loss / 2,500 | 2,545 | 1,508 | 384 | 6 drops |
+| 9 | Total loss / 6,500 | 6,519 | 1,634 | 331 | 7 drops |
+
+Baseline maximum age is 323 ms. Initial viewer RSS is 349,032 KiB, peak sampled
+RSS 358,684 KiB and final 349,792 KiB; threads start at 56 and end at 47, while
+descriptors remain 44. Actual source pixels advance during every impairment.
+Source/tree/archive, exact command and unchanged app/engine manifest are retained
+in `outage-timing-c3b243f4.json`. The command remains the established
+`--linux-flutter-app-replay` with the pinned app/engine arguments and
+`--network-impairment`; no application build or component-suite rerun is needed.
+
+The wrapper exits 0 and QEMU 3358671 joins exit 0 after 194.209 supervisor seconds.
+Peak RAM scratch is 3,008,786,432 bytes within 7 GiB; guest/file/headroom reservations
+remain 10/6/6 GiB. RAM and owned run roots are absent; four listener comparisons
+have zero deltas. Eight files total 203,853 bytes, hash-verified on CTE/TUF.
+Capsule: 25,980 bytes, SHA-256
+`c6d466b9ef0466d7de16901a8d7ed2d9ca26dee300c9ee649fb515487532e6a6`.
+No host runtime, new app/cache copy or release publication occurs. R-F5 stays OPEN
+for the remaining realistic random/burst loss, bandwidth/jitter, input-visible,
+multi-hour and other-platform acceptance. The two-second case has 105 ms margin;
+these nine passes do not prove all timer phases. Next extend realistic loss
+profiles with actual kernel/presentation observations. Independent parks remain.

@@ -3069,23 +3069,31 @@ At `e57678d3`, component run `XfCYw1cFq4` passes all 32 cases, including continu
 congestion, another viewer's pending delay/rate limit, stale replies and actual
 Tokio cancellation. The full Rust/Flutter build passes. New app manifest
 `d5202b3c0b5cb9f72c8cba427df3abdd55c2a2a7bd5c127f02f31fec111ece3c`
-is reused in native replay `0aphXxgDRM` with the unchanged observer and deadlines.
-Its baseline maximum displayed age is 325 ms. Delay and two-/six-second total
-outages recover four distinct fresh frames in **740/2,351/1,794 ms**; three-second
-healthy follow-up maxima are **416/371/342 ms**. The kernel records 75 delayed
-packets and six/seven outage drops. All three cycles retain window/TCP identity
-and bounded viewer resources. The previously failing six-second scenario passes.
+passes the original native sequence `0aphXxgDRM`, including the previously failing
+six-second case. Build/component/initial replay identities and joined cleanup:
+`probe-recovery-e57678d3.json`. The app contains 74 files (70,291,394 bytes);
+the baseline remains an intentional comparison artifact.
 
-All four VMs, including an initial test-macro compilation failure, join and retire
-their bounded RAM scratch with zero listener deltas. The app contains 74 files
-(70,291,394 bytes); the baseline remains an intentional comparison artifact.
-Twenty-nine evidence files (680,010 bytes) match on CTE/TUF. Commands, source,
-artifact identities, observations and cleanup: `probe-recovery-e57678d3.json`.
-This is one Linux sequence; the two-second recovery has only 149 ms deadline
-margin. Phase coverage, random/burst loss, bandwidth/jitter, MTU/offload,
-input-visible timing, multi-hour sessions and other roles/platforms remain OPEN;
-independent parks remain. Next decisive validation is recovery across outage
-phases on this retained app, before extending the impairment profiles.
+`c3b243f4` extends the same replay to nine cycles, varying total-outage restoration
+in quarter-second steps around two/six seconds. No product change or app rebuild
+occurs. Run `KwbkGWc0CM` passes all nine with the unchanged 2,500-ms recovery and
+1,000-ms freshness limits. The 125-ms-per-direction delay affects 78 packets and
+recovers four fresh frames in 749 ms. Eight total outages, requested at
+1,750/2,000/2,250/2,500 and 5,750/6,000/6,250/6,500 ms, record 53 kernel drops and
+recover in **1,508–2,395 ms**. The baseline maximum age is 323 ms; three-second
+healthy follow-up maxima are **331–447 ms**. Every cycle retains window/TCP
+identity; viewer RSS grows at most 9,652 KiB, threads decrease and descriptors
+remain 44. The supervisor admits only 20 requests (attachment, nine profile/restore
+pairs and one failure restore); 19 execute on success.
+
+The 194.209-second VM joins QEMU, retires 3,008,786,432 bytes peak RAM scratch and
+leaves four zero listener deltas. Eight evidence files (203,853 bytes) match on
+CTE/TUF; commands, per-cycle results and cleanup: `outage-timing-c3b243f4.json`.
+This is one ordered Linux sequence, not exhaustive synchronization with application
+or TCP timer phases; minimum recovery margin is 105 ms. Random/burst loss,
+bandwidth/jitter, MTU/offload, input-visible timing, multi-hour sessions and other
+roles/platforms remain OPEN; independent parks remain. Next: exercise realistic
+loss profiles on the retained artifact with recorded impairment and pixel outcomes.
 
 **Current app build and replay prerequisites — accepted Linux artifact.**
 `6b703f35` reconciles the candidate lock with the repository-owned xterm path;

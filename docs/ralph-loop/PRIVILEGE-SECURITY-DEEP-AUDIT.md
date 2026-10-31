@@ -123220,3 +123220,31 @@ All **27 raw files / 435,394 bytes per host** across the three behavioral runs a
 count are hash-verified on both hosts; all eight exact wrapper/QEMU PIDs and both
 diagnostic directories are absent. This audit-only receipt preserves the tested
 source, counted ledger, requirements and live instructions.
+
+## 2026-10-31 — resumed-source mutation investigation
+
+Selected R-S0/R-S8 file-transfer correctness follow-up: decide the existing open
+concurrent-source-mutation item with the paired real-file regression. The sender's
+retained inode protects against pathname replacement, while prefix proof finishes
+before subsequent suffix reads (`fs.rs::set_stream_offset`, `read`). No content
+snapshot or later prefix check currently connects those phases. This is source
+evidence, not yet an observed failure or a demonstrated privilege escalation.
+
+The existing prefix test now adds one interleaving per confirmation direction.
+After both proofs accept staged `abc` from `abcdef`, an independent writable handle
+changes the prefix first (`XYZdef`), then the suffix (`XYZ123`), retaining inode,
+length and advertised mtime. The observation requires real mutation and exact source
+identity. Success may publish coherent bytes, or refusal must preserve the prior
+destination; successful `abc123` is forbidden because it never existed in the source.
+The four original stable/mismatching-prefix controls remain. All jobs and fixtures
+retire before the aggregate verdict. No product or harness change is made.
+
+Research implications: [file leases](https://man7.org/linux/man-pages/man2/F_SETLEASE.2const.html)
+have owner/capability and filesystem restrictions, conflict with existing writers
+and require break handling. They cannot be assumed a transparent general read API.
+[FICLONE](https://man7.org/linux/man-pages/man2/ioctl_ficlonerange.2.html) supplies an
+atomic copy against concurrent writes only on supporting, same-filesystem objects.
+[stat](https://man7.org/linux/man-pages/man2/stat.2.html) does not establish an atomic
+content snapshot. The experiment precedes any design choice; preserving full
+filesystem functionality and bounded resources remains binding. Full application,
+staging exception and other pending decisions/parks are unchanged.

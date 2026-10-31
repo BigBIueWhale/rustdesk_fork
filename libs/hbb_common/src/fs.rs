@@ -6281,7 +6281,7 @@ mod tests {
         let mut observations = Vec::new();
         let mut all_safe = true;
         for sender_initiates in [false, true] {
-            for matches in [true, false] {
+            for (matches, mutate_after_confirmation) in [(true, false), (false, false), (true, true)] {
                 let root = TestTempDir::new("rustdesk_resume_content");
                 let source = root.join("source");
                 let destination = root.join("destination");
@@ -6312,6 +6312,7 @@ mod tests {
                     panic!("the real staged prefix must be inspected");
                 };
                 assert_eq!(inspected.transferred_size, 3);
+                let mut mutation_observed = false;
                 let result: ResultType<()> = async {
                     let request = if sender_initiates {
                         sender.confirm_with_offset(0, inspected.transferred_size).await?
@@ -6321,6 +6322,36 @@ mod tests {
                     let request = FileTransferSendConfirmRequest::parse_from_bytes(&request.write_to_bytes()?)?;
                     if sender_initiates { receiver.confirm(&request).await?; }
                     else { sender.confirm(&request).await?; }
+                    if mutate_after_confirmation {
+                        use std::io::{Seek, SeekFrom, Write};
+                        let mut writer = std::fs::OpenOptions::new().write(true).open(&source_path)?;
+                        let before = writer.metadata()?;
+                        // Both prefix proofs have completed. An independent writer first
+                        // changes the prefix, then the suffix, without replacing the inode.
+                        // The source is never abc123, even between the two writes.
+                        writer.write_all(b"XYZ")?;
+                        writer.sync_all()?;
+                        crate::anyhow::ensure!(std::fs::read(&source_path)? == b"XYZdef");
+                        writer.seek(SeekFrom::Start(3))?;
+                        writer.write_all(b"123")?;
+                        filetime::set_file_handle_times(&writer, None,
+                            Some(filetime::FileTime::from_unix_time(31, 0)))?;
+                        writer.sync_all()?;
+                        let after = writer.metadata()?;
+                        crate::anyhow::ensure!(before.len() == after.len()
+                            && before.modified()? == after.modified()?);
+                        #[cfg(unix)]
+                        {
+                            use std::os::unix::fs::MetadataExt;
+                            crate::anyhow::ensure!((before.dev(), before.ino())
+                                == (after.dev(), after.ino()));
+                            let retained = sender.data_stream.as_ref().unwrap().metadata().await?;
+                            crate::anyhow::ensure!((retained.dev(), retained.ino())
+                                == (after.dev(), after.ino()));
+                        }
+                        crate::anyhow::ensure!(std::fs::read(&source_path)? == b"XYZ123");
+                        mutation_observed = true;
+                    }
                     let mut eof = false;
                     for _ in 0..4 {
                         match sender.read().await? {
@@ -6333,11 +6364,16 @@ mod tests {
                     Ok(())
                 }.await;
                 let actual = std::fs::read(&final_path).unwrap();
-                let source_preserved = std::fs::read(&source_path).unwrap() == current;
+                let source_preserved = std::fs::read(&source_path).unwrap()
+                    == if mutate_after_confirmation { b"XYZ123" } else { current };
                 let verifier = if sender_initiates { &receiver } else { &sender };
                 let refusal_before_confirmation = !verifier.file_confirmed()
                     && verifier.finished_size() == 0 && verifier.transferred() == 0;
-                let safe = if matches { result.is_ok() && actual == current }
+                let safe = if mutate_after_confirmation {
+                    mutation_observed && if result.is_ok() {
+                        actual == b"abcdef" || actual == b"XYZ123"
+                    } else { actual == b"prior destination" }
+                } else if matches { result.is_ok() && actual == current }
                     else { result.as_ref().err().is_some_and(|e|
                         e.to_string().contains("resume prefix differs"))
                         && actual == b"prior destination" && refusal_before_confirmation };
@@ -6352,6 +6388,8 @@ mod tests {
                 assert!(!fixture.exists());
                 observations.push(json!({"sender_initiates":sender_initiates,
                     "prefix_matches":matches, "same_size_and_mtime":true,
+                    "mutate_after_confirmation":mutate_after_confirmation,
+                    "mutation_observed":mutation_observed,
                     "transfer_ok":result.is_ok(), "error":result.err().map(|e|e.to_string()),
                     "final_bytes":actual, "source_preserved":source_preserved,
                     "partial_correct":partial_correct, "refusal_before_confirmation":refusal_before_confirmation,
@@ -6362,7 +6400,7 @@ mod tests {
         for observation in observations {
             println!("FILE_METADATA_RESUME_CONTENT={observation}");
         }
-        assert!(all_safe, "resume must verify the saved prefix against the current source before publication");
+        assert!(all_safe, "resume must not publish mismatched prefix or mixed-version content as success");
     }
 
     #[tokio::test]

@@ -125321,3 +125321,12 @@ No compiler/product/test runs directly on either host and no release is publishe
 Twenty-nine evidence files total 680,010 bytes and match by hash on CTE/TUF.
 Capsule `probe-recovery-e57678d3.json`: 96,169 bytes, SHA-256
 `28ac8cd63560e9da291292615dd64c499173cd9846b16c3802c006fa6140a152`.
+
+Ledger validation at `a6850ac1`, run `l17sw1orUe`, passes: **377,561 tokens**,
+1,729,535 bytes, SHA-256
+`32cd6993632d6bb06cacfce396e6f7650089739874f6c32ff596c2449945c24e`.
+Pinned tiktoken 0.12.0/cl100k_base/encode_ordinary, seven controls and whole-file
+round trip pass, alongside 79 workload controls and five refusals. QEMU 3356389
+joins exit 0; 30.292 seconds, 402,595,840 bytes peak RAM scratch, RAM/run roots
+gone and three zero listener deltas. All 35 checkpoint files (784,852 bytes)
+match by hash on CTE/TUF. This audit-only receipt leaves the counted ledger unchanged.

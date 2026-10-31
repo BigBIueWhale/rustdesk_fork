@@ -125829,3 +125829,12 @@ layouts, application drop/scroll effects, input-to-visible latency, wrong-sessio
 refusal, installed authority, other platforms and soak remain OPEN. A next useful
 mouse checkpoint is native held-button release when leaving the remote image;
 all independently parked topics remain parked.
+
+Ledger count at `18e659bc`, run `GE4Bg6czUm`, passes: **380,123 tokens**,
+1,740,692 bytes, SHA-256
+`187b9e255035169f7f07ca578ce7dd853c8285805c097465c7784184f7529e45`.
+The pinned method passes seven controls and whole-input byte round trip; storage
+admission passes 79 controls and five refusals. QEMU 3427781 joins exit 0 after
+30.211 seconds; 402,550,784 bytes peak RAM scratch retires and three listener
+deltas are zero. Fourteen native/capsule/count evidence files are hash-verified
+on CTE/TUF. This audit-only receipt leaves the counted ledger bytes unchanged.

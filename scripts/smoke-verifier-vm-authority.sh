@@ -397,6 +397,11 @@ case "$#:${1:-}" in
             || { echo 'focused Android owner-state input/run overrides are forbidden' >&2; exit 2; }
         MODE=android-owner-tests
         ;;
+    1:--network-impairment-probe)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'network impairment-probe input/run overrides are forbidden' >&2; exit 2; }
+        MODE=network-impairment-probe
+        ;;
     1:--android-execution-probe)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -1082,6 +1087,10 @@ elif [ "$MODE" = flutter-model-tests ]; then
         readonly OVERLAY_SIZE=24G
         readonly VM_MEMORY=8192
     fi
+elif [ "$MODE" = network-impairment-probe ]; then
+    readonly VM_TIMEOUT_SECONDS=150
+    readonly OVERLAY_SIZE=6G
+    readonly VM_MEMORY=2048
 elif [ "$MODE" = android-owner-tests ]; then
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=8G
@@ -2600,7 +2609,7 @@ fi
 frame_inputs_before=
 FOCUSED_TEST_COMMIT=
 FOCUSED_TEST_TREE=
-if [ "$MODE" = windows-service-result-tests ] || [ "$MODE" = debian-maintainer-tests ] || [ "$MODE" = media-kernel-tests ] || [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
+if [ "$MODE" = network-impairment-probe ] || [ "$MODE" = windows-service-result-tests ] || [ "$MODE" = debian-maintainer-tests ] || [ "$MODE" = media-kernel-tests ] || [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
    || [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ] || [ "$MODE" = debian-package-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = host-network-tests ] || [ "$MODE" = dependency-inventory ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
    || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ] \
    || { [ "$MODE" = android-rust-lifecycle-tests ] \
@@ -3465,7 +3474,7 @@ for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT
     "$LIB_SOURCE" "$PIN_SOURCE"; do
     [ -f "$source" ] && [ ! -L "$source" ] \
         || fail "verifier-VM source is absent or symlinked: $source"
-    if [ "$MODE" = windows-service-result-tests ] || [ "$MODE" = debian-maintainer-tests ] || [ "$MODE" = media-kernel-tests ] || [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
+    if [ "$MODE" = network-impairment-probe ] || [ "$MODE" = windows-service-result-tests ] || [ "$MODE" = debian-maintainer-tests ] || [ "$MODE" = media-kernel-tests ] || [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
        || [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ] || [ "$MODE" = debian-package-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = dependency-inventory ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
        || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
         verify_committed_test_source "$source"
@@ -4858,6 +4867,8 @@ elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-eng
     guest_invocation+=" --$MODE $FOCUSED_TEST_COMMIT $FOCUSED_TEST_TREE"
 elif [ "$MODE" = debian-systemd-lifecycle ]; then
     guest_invocation+=" --debian-systemd-lifecycle /mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz /mnt/rustdesk-verifier-inputs/artifact/rustdesk-x86_64.deb $LIFECYCLE_ARTIFACT_SHA256 $LIFECYCLE_COMMIT"
+elif [ "$MODE" = network-impairment-probe ]; then
+    guest_invocation+=' --network-impairment-probe'
 elif [ "$MODE" = android-execution-probe ]; then
     guest_invocation+=' --android-execution-probe'
 elif [ "$MODE" = android-runtime-log-tests ]; then
@@ -5439,6 +5450,14 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     require_exact_fixed_receipt \
         "VERIFIER_VM_AUTHORITY_SMOKE=pass guest=debian-12 kernel=$VERIFIER_VM_KERNEL_RELEASE direct_boot=on boot_masks=on docker=$VERIFIER_VM_DOCKER_VERSION vm_network=none daemon_bridge=none daemon_forwarding=off daemon_firewall=off lifecycle=installed-debian-artifact" \
         'lifecycle guest authority marker'
+elif [ "$MODE" = network-impairment-probe ]; then
+    [ "$(/usr/bin/grep -c '^NETWORK_IMPAIRMENT_PREREQUISITES=' "$SERIAL_LOG")" -eq 1 ] \
+        || fail 'network prerequisite observation is absent or duplicated'
+    require_exact_fixed_receipt \
+        'NETWORK_IMPAIRMENT_PROBE_FINALITY=pass observation=readonly workload=unexecuted docker=retired cleanup=joined' \
+        'network impairment prerequisites observation'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' \
+        'network impairment-probe cloud-init completion marker'
 elif [ "$MODE" = android-execution-probe ]; then
     mapfile -t android_execution_receipts < <(
         /usr/bin/grep -Eo \
@@ -6163,7 +6182,10 @@ printf 'ANDROID_RUNTIME_PROGRESS_TEST=pass old=buffered new=before-eof diagnosti
     "VERIFIER_VM_MAIN_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused nofile=524544 workspace_fixtures=actual workspace_cleanup=joined" \
     "$SERIAL_LOG" \
     || { tail -n 240 "$SERIAL_LOG" >&2; fail 'main verifier exact-entry result marker is absent'; }
-if [ "$MODE" = authority-smoke ]; then
+if [ "$MODE" = network-impairment-probe ]; then
+    printf 'NETWORK_IMPAIRMENT_PROBE_OUTER=pass host_uid=%s commit=%s tree=%s network=none observation=readonly product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
+elif [ "$MODE" = authority-smoke ]; then
     require_exact_fixed_receipt \
         'WINDOWS_PRESENTATION_ENTRY=pass root=refused foreign=refused nofile=refused workload=unexecuted' \
         'Windows presentation entry refusals'

@@ -33,6 +33,9 @@ case "$#:${8:-}" in
     7:)
         MODE=authority-smoke
         ;;
+    8:--network-impairment-probe)
+        MODE=network-impairment-probe
+        ;;
     8:--android-execution-probe)
         MODE=android-execution-probe
         ;;
@@ -1150,6 +1153,7 @@ special.update({'authority-smoke': 'authority-smoke', 'dependency-inventory': 'a
                 'windows-service-result-tests': 'fixed-archive-tests',
                 'debian-maintainer-tests': 'authority-smoke',
                 'android-runtime-log-tests': 'authority-smoke',
+                'network-impairment-probe': 'authority-smoke',
                 'linux-pa-authority-tests': 'linux-parent-libtest',
                 'android-frame-tests': 'x11-focus'})
 cases = [(mode, {}, special.get(mode, 'standard')) for mode in sorted(modes)]
@@ -14219,6 +14223,82 @@ fi
 
 if [ "$MODE" = android-runtime-log-tests ]; then
     run_android_runtime_log_tests
+    exit 0
+fi
+
+if [ "$MODE" = network-impairment-probe ]; then
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /bin/bash "$ENTRY_PREFLIGHT"
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C \
+        /usr/bin/timeout --signal=TERM --kill-after=2s 10s \
+        /usr/bin/python3 -I -S - "$EXPECTED_KERNEL_RELEASE" <<'PY'
+import hashlib
+import json
+import os
+from pathlib import Path
+import stat
+import subprocess
+import sys
+
+if (os.geteuid(), os.getegid()) != (4000, 4000) or os.uname().release != sys.argv[1]:
+    raise SystemExit('network prerequisite probe principal/kernel differs')
+release = os.uname().release
+path = Path('/boot', 'config-' + release)
+with path.open('rb') as source:
+    before = os.fstat(source.fileno())
+    if (not stat.S_ISREG(before.st_mode) or before.st_uid != 0 or before.st_gid != 0
+            or before.st_nlink != 1 or stat.S_IMODE(before.st_mode) != 0o644
+            or not 0 < before.st_size <= 1048576 or path.is_symlink()):
+        raise SystemExit('network prerequisite kernel config authority differs')
+    data = source.read(1048577)
+    identity = lambda s: (s.st_dev, s.st_ino, s.st_uid, s.st_gid, s.st_mode, s.st_nlink,
+                          s.st_size, s.st_mtime_ns, s.st_ctime_ns)
+    if len(data) != before.st_size or identity(os.fstat(source.fileno())) != identity(before):
+        raise SystemExit('network prerequisite kernel config changed')
+config = data.decode('ascii').splitlines()
+features = {}
+for option, module in (
+        ('NET_NS', None), ('VETH', 'drivers/net/veth'), ('IFB', 'drivers/net/ifb'),
+        ('NET_SCH_NETEM', 'net/sched/sch_netem'), ('NET_SCH_INGRESS', 'net/sched/sch_ingress'),
+        ('NET_CLS_MATCHALL', 'net/sched/cls_matchall'), ('NET_ACT_MIRRED', 'net/sched/act_mirred')):
+    values = [value for value in ('y', 'm') if f'CONFIG_{option}={value}' in config]
+    if f'# CONFIG_{option} is not set' in config:
+        values.append('n')
+    if len(values) != 1:
+        raise SystemExit('missing or ambiguous kernel setting: ' + option)
+    modules = []
+    if module is not None:
+        for suffix in ('.ko', '.ko.xz', '.ko.zst'):
+            candidate = Path('/lib/modules', release, 'kernel', module + suffix)
+            if not candidate.exists():
+                continue
+            metadata = candidate.lstat()
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != 0 or metadata.st_mode & 0o022:
+                raise SystemExit('network module metadata differs: ' + str(candidate))
+            modules.append(str(candidate))
+    features[option] = {'config': values[0], 'module_files': modules}
+tools = {}
+for name, version_arg in (('ip', '-Version'), ('tc', '-Version'), ('unshare', '--version')):
+    try:
+        result = subprocess.run([name, version_arg], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, check=True, timeout=2)
+    except FileNotFoundError:
+        tools[name] = None
+        continue
+    if not 0 < len(result.stdout) <= 4096:
+        raise SystemExit('tool version output differs: ' + name)
+    tools[name] = result.stdout.strip()
+print('NETWORK_IMPAIRMENT_PREREQUISITES=' + json.dumps({
+    'kernel': release, 'config_sha256': hashlib.sha256(data).hexdigest(),
+    'features': features, 'tools': tools, 'uid': os.geteuid(), 'gid': os.getegid(),
+    'interfaces': sorted(os.listdir('/sys/class/net')),
+    'module_loads': 'none', 'network_changes': 'none', 'product': 'unexecuted'}, sort_keys=True))
+PY
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /bin/bash "$ENTRY_PREFLIGHT"
+    stop_docker_authority
+    printf 'NETWORK_IMPAIRMENT_PROBE_FINALITY=pass observation=readonly workload=unexecuted docker=retired cleanup=joined\n'
     exit 0
 fi
 

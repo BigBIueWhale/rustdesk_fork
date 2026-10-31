@@ -13,7 +13,8 @@ elif [ "${MODE:-}" = debian-package-tests ]; then
 elif [ "${MODE:-}" = media-kernel-tests ]; then
     readonly VM_STORAGE_PROFILE=media-kernel-tests
 elif [ "${MODE:-}" = authority-smoke ] || [ "${MODE:-}" = dependency-inventory ] \
-    || [ "${MODE:-}" = debian-maintainer-tests ] || [ "${MODE:-}" = android-runtime-log-tests ]; then
+    || [ "${MODE:-}" = debian-maintainer-tests ] || [ "${MODE:-}" = android-runtime-log-tests ] \
+    || [ "${MODE:-}" = network-impairment-probe ]; then
     readonly VM_STORAGE_PROFILE=authority-smoke
 elif [ "${MODE:-}:${REQUEST:-}" = transaction:--maintenance-stage-xrandr-runtime-candidate ]; then
     readonly VM_STORAGE_PROFILE=xrandr-acquisition

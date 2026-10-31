@@ -3594,6 +3594,7 @@ run_focused_rust_tests() {
                 fs::tests::file_metadata_pending_resume_retirement_preserves_saved_bytes
                 fs::tests::file_metadata_resume_cancellation_preserves_partial_and_refuses_reuse
                 fs::confirmation::tests::slow_sync::stalled_receive_retirement_keeps_control_and_exact_cleanup_ownership
+                fs::confirmation::tests::slow_sync::admission_refusal_preserves_the_original_receive_owner
             )
         fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
@@ -6387,7 +6388,8 @@ run_focused_rust_tests() {
                                 fs::tests::file_metadata_resume_proof_shape_and_content_precede_confirmation \
                                 fs::tests::file_metadata_pending_resume_retirement_preserves_saved_bytes \
                                 fs::tests::file_metadata_resume_cancellation_preserves_partial_and_refuses_reuse \
-                                fs::confirmation::tests::slow_sync::stalled_receive_retirement_keeps_control_and_exact_cleanup_ownership; do
+                                fs::confirmation::tests::slow_sync::stalled_receive_retirement_keeps_control_and_exact_cleanup_ownership \
+                                fs::confirmation::tests::slow_sync::admission_refusal_preserves_the_original_receive_owner; do
                                 group_status=0
                                 timeout --signal=TERM --kill-after=5s 20s \
                                     "$test_executable" --exact "$test_name" --color never --test-threads=1 --show-output \

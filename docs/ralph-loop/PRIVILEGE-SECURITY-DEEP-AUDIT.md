@@ -122496,3 +122496,24 @@ actual handler/checkpoint behavior remain unaccepted under the existing parks;
 the specific resumption question remains unanswered. The completed-destination
 staging regressions remain OPEN/STOP-SHIP. This is shared-library/native syscall
 evidence, not installed/authenticated-peer or complete receive acceptance.
+
+### 2026-10-31 — transactional confirmation admission; native baseline preparation
+
+The preceding turn corrected hash-error cleanup. Admission still consumes a job
+before validating the request or acquiring bounded worker capacity, then retires it
+inline on refusal. The correct transfer point is after admission: the caller's job
+collection must retain the exact job, stream, counters and claim if admission fails.
+No extra cleanup thread or unbudgeted rejection queue is introduced. Successful
+admission transfers the selected job to the existing bounded, joined worker owner.
+
+The native baseline adds closed-owner, wrong-file and exhausted-global-capacity
+cases using an actual partially written receive job. The fsync observer distinguishes
+refusal without cleanup from inline retirement; its bounded release lets a blocking
+baseline finish. Oracles require prompt refusal, unchanged job/claim ownership and
+continuation of the original receive to exact final bytes. The observer can now be
+explicitly disarmed before that valid continuation; the six earlier sync oracles
+remain. This preparation claims no execution result. The existing Tokio 1.44.2
+lifetime research remains applicable: moving a job without securing a drain owner
+cannot be repaired by detaching another task. Full application/viewer execution
+remains parked, and caller shutdown/CM scheduling plus staging lifecycle acceptance
+remain separate open obligations.

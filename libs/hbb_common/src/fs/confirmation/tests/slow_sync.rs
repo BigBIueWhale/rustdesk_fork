@@ -22,14 +22,14 @@ struct Gate {
 }
 
 struct Observer {
-    commands: mpsc::SyncSender<(Gate, oneshot::Sender<()>)>,
+    commands: mpsc::SyncSender<(Option<Gate>, oneshot::Sender<bool>)>,
     stop: Arc<AtomicBool>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl Observer {
     fn new() -> Self {
-        let (commands, receiver) = mpsc::sync_channel::<(Gate, oneshot::Sender<()>)>(1);
+        let (commands, receiver) = mpsc::sync_channel::<(Option<Gate>, oneshot::Sender<bool>)>(1);
         let (send_fd, receive_fd) = mpsc::sync_channel::<std::fs::File>(1);
         let stop = Arc::new(AtomicBool::new(false));
         let stopped = stop.clone();
@@ -39,9 +39,12 @@ impl Observer {
             let mut gate: Option<Gate> = None;
             while !stopped.load(Ordering::Acquire) {
                 if let Ok((next, armed)) = receiver.try_recv() {
-                    assert!(gate.is_none());
-                    gate = Some(next);
-                    armed.send(()).unwrap();
+                    let unchanged = if let Some(next) = next {
+                        assert!(gate.is_none());
+                        gate = Some(next);
+                        true
+                    } else { gate.take().is_some() };
+                    armed.send(unchanged).unwrap();
                 }
                 let mut poll = libc::pollfd { fd: fd.as_raw_fd(), events: libc::POLLIN, revents: 0 };
                 let ready = unsafe { libc::poll(&mut poll, 1, 10) };
@@ -147,8 +150,8 @@ fn stalled_receive_retirement_keeps_control_and_exact_cleanup_ownership() {
                 Some((job, watch)) => (Some(job), Some(watch)),
                 None => (None, None),
             };
-            observer.commands.send((Gate { identity: (meta.dev(), meta.ino()), after_read: watch, held,
-                release: released, finished }, armed)).unwrap();
+            observer.commands.send((Some(Gate { identity: (meta.dev(), meta.ino()), after_read: watch, held,
+                release: released, finished }), armed)).unwrap();
             ready.await.unwrap();
             if let Some(job) = job {
                 if phase == "cancel" {
@@ -226,4 +229,101 @@ fn stalled_receive_retirement_keeps_control_and_exact_cleanup_ownership() {
     drop(runtime);
     drop(observer);
     assert_eq!(observations, vec![true; 6]);
+}
+
+#[test]
+fn admission_refusal_preserves_the_original_receive_owner() {
+    use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::{TcpListener, TcpStream}};
+    drain().unwrap();
+    let observer = Observer::new();
+    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+    let observations = runtime.block_on(async {
+        let mut observations = Vec::new();
+        for reason in ["closed", "file", "capacity"] {
+            let fixture = Fixture::new();
+            let target = fixture.0.join("received.zip");
+            std::fs::write(&target, b"original").unwrap();
+            let mut job = TransferJob::new_write(730, JobType::Generic, String::new(),
+                fixture.0.clone(), 0, false, false, false)
+                .with_files(vec![FileEntry { name: "received.zip".into(), size: 6,
+                    modified_time: 31, ..Default::default() }]).unwrap();
+            job.write(FileTransferBlock { id: 730, file_num: 0,
+                data: b"abc".to_vec().into(), ..Default::default() }).await.unwrap();
+            assert!(!job.file_confirmed());
+            let path = |file: &std::fs::File| std::fs::read_link(format!("/proc/thread-self/fd/{}", file.as_raw_fd())).unwrap();
+            let claim = job.receive_write_claim.as_ref().unwrap();
+            let (payload, digest, lease) = (path(&claim.download_file), path(&claim.digest_file), path(&claim._lease.file));
+            let digest_before = std::fs::read(&digest).unwrap();
+            let parent = std::fs::metadata(lease.parent().unwrap()).unwrap();
+            let expected_meta = serde_json::to_value(job.gen_meta()).unwrap();
+            let mut jobs = vec![job];
+            let mut owner = FileConfirmations::default();
+            let mut other = FileConfirmations::default();
+            if reason == "closed" { owner.close(); }
+            if reason == "capacity" {
+                for id in 800..800 + DRAIN_CAPACITY as i32 {
+                    other.prepare(fixture.job(id), 0, 3).unwrap();
+                }
+                tokio::time::timeout(Duration::from_secs(3), async {
+                    while other.pending.iter().any(|p| !p.join.as_ref().unwrap().task.is_finished()) {
+                        tokio::task::yield_now().await;
+                    }
+                }).await.unwrap();
+                assert_eq!(drain().unwrap().capacity.available_permits(), 0);
+            }
+            let (armed, ready) = oneshot::channel();
+            let (held, _notification) = oneshot::channel();
+            let (_release, released) = mpsc::sync_channel(1);
+            let (finished, continued) = oneshot::channel();
+            observer.commands.send((Some(Gate { identity: (parent.dev(), parent.ino()),
+                after_read: None, held, release: released, finished }), armed)).unwrap();
+            assert!(ready.await.unwrap());
+            let started = Instant::now();
+            let file_num = if reason == "file" { 1 } else { 0 };
+            let result = owner.prepare(jobs.remove(0), file_num, 0);
+            let responsive = started.elapsed() < Duration::from_millis(250);
+            let error = result.unwrap_err().to_string();
+            assert!(error.contains(match reason {
+                "closed" => "admission is closed", "file" => "does not match active file",
+                _ => "drain capacity",
+            }), "{error}");
+            let (disarm, disarmed) = oneshot::channel();
+            observer.commands.send((None, disarm)).unwrap();
+            let no_sync = disarmed.await.unwrap();
+            if !no_sync { assert!(!continued.await.unwrap()); }
+            assert!(owner.is_empty());
+            let retained = jobs.len() == 1
+                && serde_json::to_value(jobs[0].gen_meta()).unwrap() == expected_meta
+                && std::fs::read(&payload).ok().as_deref() == Some(b"abc")
+                && std::fs::read(&digest).ok().as_deref() == Some(digest_before.as_slice())
+                && lease.exists();
+            assert_eq!(std::fs::read(&target).unwrap(), b"original");
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let (outgoing, incoming) = tokio::join!(TcpStream::connect(listener.local_addr().unwrap()), listener.accept());
+            let (mut outgoing, mut incoming) = (outgoing.unwrap(), incoming.unwrap().0);
+            tokio::time::timeout(Duration::from_secs(1), async {
+                outgoing.write_all(b"ping").await.unwrap();
+                let mut bytes = [0; 4];
+                incoming.read_exact(&mut bytes).await.unwrap();
+                assert_eq!(&bytes, b"ping");
+            }).await.unwrap();
+            other.close_and_wait().await.unwrap();
+            if retained {
+                let mut job = jobs.remove(0);
+                job.write(FileTransferBlock { id: 730, file_num: 0,
+                    data: b"def".to_vec().into(), ..Default::default() }).await.unwrap();
+                job.finalize_write(1).await.unwrap();
+                assert_eq!(std::fs::read(&target).unwrap(), b"abcdef");
+                assert!(!payload.exists() && !digest.exists() && !lease.exists());
+            }
+            drop((jobs, owner, other, outgoing, incoming, listener, fixture));
+            assert_eq!(drain().unwrap().capacity.available_permits(), DRAIN_CAPACITY);
+            println!("FILE_CONFIRMATION_ADMISSION=observed reason={reason} responsive={responsive} no_sync={no_sync} original_job_retained={retained} original_transfer_completed={retained} permits=returned");
+            observations.push(responsive && no_sync && retained);
+        }
+        observations
+    });
+    drop(runtime);
+    drop(observer);
+    assert_eq!(observations, vec![true; 3]);
 }

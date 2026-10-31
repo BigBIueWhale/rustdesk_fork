@@ -3586,6 +3586,9 @@ run_focused_rust_tests() {
                 fs::confirmation::tests::cancellation_after_worker_completion_cannot_restore_job
                 fs::confirmation::tests::owner_drop_drains_the_exact_native_reader
                 fs::confirmation::tests::completed_and_cancelled_jobs_remain_charged_until_joined
+                fs::confirmation::tests::prepared_proofs_roundtrip_both_transfer_roles
+                fs::confirmation::tests::prepared_receive_cancellation_preserves_partial_and_checkpoint_rules
+                fs::confirmation::tests::prepare_refuses_invalid_targets_before_worker_admission
             )
         fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
@@ -6371,7 +6374,10 @@ run_focused_rust_tests() {
                                 fs::confirmation::tests::pending_hash_allows_tcp_control_and_cancelled_wait_keeps_ownership \
                                 fs::confirmation::tests::cancellation_after_worker_completion_cannot_restore_job \
                                 fs::confirmation::tests::owner_drop_drains_the_exact_native_reader \
-                                fs::confirmation::tests::completed_and_cancelled_jobs_remain_charged_until_joined; do
+                                fs::confirmation::tests::completed_and_cancelled_jobs_remain_charged_until_joined \
+                                fs::confirmation::tests::prepared_proofs_roundtrip_both_transfer_roles \
+                                fs::confirmation::tests::prepared_receive_cancellation_preserves_partial_and_checkpoint_rules \
+                                fs::confirmation::tests::prepare_refuses_invalid_targets_before_worker_admission; do
                                 group_status=0
                                 timeout --signal=TERM --kill-after=5s 20s \
                                     "$test_executable" --exact "$test_name" --color never --test-threads=1 --show-output \

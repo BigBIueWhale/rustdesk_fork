@@ -122236,3 +122236,42 @@ retires and all three listener deltas are zero. Serial 35,833 bytes, SHA-256
 `87fc7144699662c6f4f806afa1b97041ae58790dece8c2a41f52a143d09b810f`.
 The twenty raw files across this checkpoint total 274,653 bytes per host. This
 audit-only receipt preserves the counted ledger and accepted product/test source.
+
+### 2026-10-31 — resume proof producer ownership and viewer handoff; preparation
+
+The previous turn made progress: confirmation application has source-bound library
+ownership evidence. This continuation targets local proof production, the remaining
+long prefix reads in viewer upload/download digest handling. It is part of the same
+R-S8/R-S0 correction and precedes accepting large resumes; unrelated work and the
+completed-destination layout replacement do not remove this integration dependency.
+The separate full-parent/viewer execution permission question remains unanswered.
+
+The shared owner now prepares a confirmation as well as applying one. Only a joined,
+noncancelled completion returns the prepared protocol action and job. Pending owners
+retain immutable reconnect metadata while the worker owns the file; explicit
+cancellation removes that metadata from checkpoint eligibility. The same bounded
+capacity, cooperative native-IO cancellation and exact drain remain. New tests cover
+both proof-producing roles through serialized protocol actions and actual resumed
+bytes, receive cancellation before/during/after hashing and on close/drop, original
+final/partial/digest preservation, lease reacquisition and checkpoint selection.
+The existing TCP-control case also exercises production rather than only application.
+
+Source review of `src/ui_session_interface.rs` shows that `transfer_checkpoint()`
+runs after `Remote::io_loop()`. The viewer therefore snapshots eligible pending
+metadata before close/drain, preserving it for that existing persistence path.
+The two digest producers and incoming proof application now enqueue owned jobs;
+main-loop completion restores only live jobs and then publishes prepared actions.
+Pending IDs cannot be readmitted, and unexpected file lists/digests/data/completion
+or repeated confirmations revoke pending work. Peer/local cancellation revokes it
+before later task collection. Short zero-offset/skip application still uses the
+same checked `TransferJob` operations and performs no prefix hash.
+
+The ownership design retains the previously reviewed Tokio JoinHandle/File contract
+(https://docs.rs/tokio/latest/tokio/task/struct.JoinHandle.html,
+https://docs.rs/tokio/latest/tokio/fs/struct.File.html): dropping a future is not a
+native-IO completion proof, so request publication and retirement depend on the
+exact worker result. No new runtime or dependency is introduced. This preparation
+claims no compile/pass; the library lane will run 31 cases in 29 groups. Full viewer
+compilation, real-handler control/checkpoint behavior and fixture adaptation remain
+unexecuted under the existing park. CM scheduling and the staging lifecycle failures
+remain open; no installed or complete receive acceptance is claimed.

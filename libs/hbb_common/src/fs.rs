@@ -26,7 +26,7 @@ pub(crate) use file_block::tests::{
 mod atomic_write;
 pub use atomic_write::write_user_file_atomically;
 mod confirmation;
-pub use confirmation::FileConfirmations;
+pub use confirmation::{Completion as FileConfirmationCompletion, FileConfirmations};
 #[cfg(target_os = "linux")]
 mod receive_namespace;
 use file_block::SIZE as FILE_TRANSFER_BLOCK_SIZE;

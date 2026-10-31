@@ -1,4 +1,4 @@
-use super::{FileTransferSendConfirmRequest, TransferJob, MAX_ACTIVE_FILE_TRANSFER_READ_JOBS_PER_CONN};
+use super::{FileTransferSendConfirmRequest, TransferJob, TransferJobMeta, MAX_ACTIVE_FILE_TRANSFER_READ_JOBS_PER_CONN};
 use crate::{anyhow::anyhow, bail, log, ResultType};
 use std::{
     future::Future,
@@ -13,7 +13,7 @@ use tokio::{sync::{OwnedSemaphorePermit, Semaphore}, task::JoinHandle};
 const DRAIN_CAPACITY: usize = 32;
 
 struct Join {
-    task: JoinHandle<(TransferJob, ResultType<()>)>,
+    task: JoinHandle<(TransferJob, ResultType<Option<FileTransferSendConfirmRequest>>)>,
     _permit: OwnedSemaphorePermit,
 }
 
@@ -55,6 +55,7 @@ fn drain() -> ResultType<&'static Drain> {
 struct Pending {
     id: i32,
     file_num: i32,
+    meta: TransferJobMeta,
     cancelled: Arc<AtomicBool>,
     join: Option<Join>,
 }
@@ -85,6 +86,12 @@ pub struct Completion {
     pub file_num: i32,
     pub job: ResultType<Option<TransferJob>>,
     pub cancelled_log: Option<String>,
+    pub confirmation: Option<FileTransferSendConfirmRequest>,
+}
+
+enum Operation {
+    Apply(FileTransferSendConfirmRequest),
+    Prepare { file_num: i32, offset: u64 },
 }
 
 impl FileConfirmations {
@@ -96,14 +103,40 @@ impl FileConfirmations {
         self.pending.iter().any(|pending| pending.id == id)
     }
 
-    pub fn start(&mut self, mut job: TransferJob, request: FileTransferSendConfirmRequest) -> ResultType<()> {
+    /// Snapshot metadata is available while the worker exclusively owns the file.
+    /// Explicitly cancelled transfers must not reappear in a reconnect checkpoint.
+    pub fn metas(&self) -> impl Iterator<Item = &TransferJobMeta> {
+        self.pending.iter()
+            .filter(|pending| !pending.cancelled.load(Ordering::Acquire))
+            .map(|pending| &pending.meta)
+    }
+
+    pub fn start(&mut self, job: TransferJob, request: FileTransferSendConfirmRequest) -> ResultType<()> {
+        self.start_operation(job, Operation::Apply(request))
+    }
+
+    pub fn prepare(&mut self, job: TransferJob, file_num: i32, offset: u64) -> ResultType<()> {
+        self.start_operation(job, Operation::Prepare { file_num, offset })
+    }
+
+    fn start_operation(&mut self, mut job: TransferJob, operation: Operation) -> ResultType<()> {
         let admission = (|| {
             if self.contains(job.id()) { bail!("file confirmation is already pending"); }
             if self.len() >= MAX_ACTIVE_FILE_TRANSFER_READ_JOBS_PER_CONN {
                 bail!("too many pending file confirmations");
             }
-            job.validate_confirmation_target(request.id, request.file_num)?;
-            super::receive_confirmation_prefix(&request)?;
+            match &operation {
+                Operation::Apply(request) => {
+                    job.validate_confirmation_target(request.id, request.file_num)?;
+                    super::receive_confirmation_prefix(request)?;
+                }
+                Operation::Prepare { file_num, offset } => {
+                    job.validate_confirmation_target(job.id(), *file_num)?;
+                    if *offset > u32::MAX as u64 {
+                        bail!("resume byte offset exceeds the protocol limit");
+                    }
+                }
+            }
             self.pending.try_reserve(1)
                 .map_err(|_| std::io::Error::from(std::io::ErrorKind::OutOfMemory))?;
             let runtime = tokio::runtime::Handle::try_current()?;
@@ -122,16 +155,23 @@ impl FileConfirmations {
         };
         let id = job.id();
         let file_num = job.file_num();
+        let meta = job.gen_meta();
         let cancelled = Arc::new(AtomicBool::new(false));
         job.resume_cancelled = Some(cancelled.clone());
         let worker_cancelled = cancelled.clone();
         let task = runtime.spawn(async move {
             let result = if worker_cancelled.load(Ordering::Acquire) {
                 Err(anyhow!("file confirmation cancelled before admission"))
-            } else { job.confirm(&request).await };
+            } else {
+                match operation {
+                    Operation::Apply(request) => job.confirm(&request).await.map(|()| None),
+                    Operation::Prepare { file_num, offset } =>
+                        job.confirm_with_offset(file_num, offset).await.map(Some),
+                }
+            };
             (job, result)
         });
-        self.pending.push(Pending { id, file_num, cancelled,
+        self.pending.push(Pending { id, file_num, meta, cancelled,
             join: Some(Join { task, _permit: permit }) });
         Ok(())
     }
@@ -163,19 +203,21 @@ impl FileConfirmations {
         // Keep the permit through disposal of a cancelled/failed returned job.
         let _joined = pending.join.take();
         let mut cancelled_log = None;
+        let mut confirmation = None;
         let job = match result {
             Ok((mut job, result)) if !cancelled && result.is_ok() => {
                 job.resume_cancelled = None;
+                confirmation = result.ok().flatten();
                 Ok(Some(job))
             }
             Ok((mut job, result)) => {
                 match job.retire_current_file_state() {
-                    Err(cleanup) => Err(anyhow!("file confirmation cleanup failed: {cleanup}; operation: {result:?}")),
+                    Err(cleanup) => Err(anyhow!("file confirmation cleanup failed: {cleanup}; operation error: {:?}", result.err())),
                     Ok(()) if cancelled => {
                         cancelled_log = Some(super::serialize_transfer_job(&job, false, true, ""));
                         Ok(None)
                     }
-                    Ok(()) => result.map(|()| None),
+                    Ok(()) => result.map(|_| None),
                 }
             }
             Err(error) => {
@@ -183,7 +225,7 @@ impl FileConfirmations {
                 std::process::abort();
             }
         };
-        Completion { id: pending.id, file_num: pending.file_num, job, cancelled_log }
+        Completion { id: pending.id, file_num: pending.file_num, job, cancelled_log, confirmation }
     }
 
     pub async fn close_and_wait(&mut self) -> ResultType<()> {
@@ -205,7 +247,8 @@ impl FileConfirmations {
 mod tests {
     use super::*;
     use crate::{fs::JobType, message_proto::*};
-    use std::{io::{Read, Seek, Write}, os::{fd::FromRawFd, unix::{ffi::OsStrExt, fs::MetadataExt}},
+    use crate::protobuf::Message as _;
+    use std::{io::{Read, Seek, Write}, os::{fd::{AsRawFd, FromRawFd}, unix::{ffi::OsStrExt, fs::MetadataExt}},
         path::PathBuf, time::Duration};
 
     struct Fixture(PathBuf);
@@ -253,6 +296,70 @@ mod tests {
         fn drop(&mut self) { std::fs::remove_dir_all(&self.0).unwrap(); }
     }
 
+    struct ReceiveFixture {
+        directory: Fixture,
+        target: PathBuf,
+        payload: PathBuf,
+        digest: PathBuf,
+        lease: PathBuf,
+        size: u64,
+        offset: u64,
+    }
+
+    impl ReceiveFixture {
+        fn new(large: bool) -> Self {
+            use super::super::{FileDigest, ReceiveClaimCleanup, ReceiveWriteClaim};
+            let directory = Fixture::new();
+            let (size, offset) = if large { (u32::MAX as u64 + 4, u32::MAX as u64) } else { (6, 3) };
+            let target = directory.0.join("received.zip");
+            std::fs::write(&target, b"original").unwrap();
+            let (mut stream, mut claim) = ReceiveWriteClaim::start_new(
+                target.clone(), FileDigest { size, modified: 31 },
+            ).unwrap();
+            if large { stream.set_len(offset).unwrap(); }
+            else { stream.write_all(b"abc").unwrap(); }
+            stream.sync_all().unwrap();
+            let path = |file: &std::fs::File| std::fs::read_link(format!("/proc/thread-self/fd/{}", file.as_raw_fd())).unwrap();
+            let (payload, digest, lease) = (path(&claim.download_file), path(&claim.digest_file), path(&claim._lease.file));
+            drop(stream);
+            claim.cleanup_on_drop = ReceiveClaimCleanup::Lease;
+            claim.cleanup().unwrap();
+            Self { directory, target, payload, digest, lease, size, offset }
+        }
+
+        async fn job(&self, id: i32) -> TransferJob {
+            let mut job = TransferJob::new_write(id, JobType::Generic, "source.zip".to_owned(),
+                self.directory.0.clone(), 0, false, true, true)
+                .with_files(vec![FileEntry { name: "received.zip".into(), size: self.size,
+                    modified_time: 31, ..Default::default() }]).unwrap();
+            job.is_resume = true;
+            let result = job.inspect_receive_digest(&FileTransferDigest {
+                id, file_num: 0, file_size: self.size, last_modified: 31, ..Default::default()
+            }, true).await.unwrap();
+            let super::super::DigestCheckResult::NeedConfirm(digest) = result.0 else {
+                panic!("saved prefix must be resumable");
+            };
+            assert_eq!(digest.transferred_size, self.offset);
+            job
+        }
+
+        fn assert_preserved(&self, digest: &[u8]) {
+            assert_eq!(std::fs::read(&self.target).unwrap(), b"original");
+            assert_eq!(std::fs::metadata(&self.payload).unwrap().len(), self.offset);
+            if self.offset == 3 { assert_eq!(std::fs::read(&self.payload).unwrap(), b"abc"); }
+            assert_eq!(std::fs::read(&self.digest).unwrap(), digest);
+            assert!(!self.lease.exists());
+            let expected = std::fs::metadata(&self.payload).unwrap();
+            for entry in std::fs::read_dir("/proc/thread-self/fd").unwrap() {
+                match std::fs::metadata(entry.unwrap().path()) {
+                    Ok(meta) => assert_ne!((meta.dev(), meta.ino()), (expected.dev(), expected.ino())),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => panic!("cannot inspect receive handle retirement: {error}"),
+                }
+            }
+        }
+    }
+
     struct AccessWatch(std::fs::File);
     impl AccessWatch {
         fn new(path: &std::path::Path) -> Self {
@@ -293,6 +400,7 @@ mod tests {
             let result = owner.next().await;
             assert_eq!((result.id, result.file_num, owner.len()), (700, 0, 0));
             assert!(result.cancelled_log.is_none());
+            assert!(result.confirmation.is_none());
             if valid {
                 let mut job = result.job.unwrap().unwrap();
                 assert!(job.file_confirmed());
@@ -312,11 +420,13 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn pending_hash_allows_tcp_control_and_cancelled_wait_keeps_ownership() {
         use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::{TcpListener, TcpStream}};
+        for prepare in [false, true] {
         let fixture = Fixture::new();
         let request = fixture.large_source();
         let mut watch = AccessWatch::new(&fixture.source());
         let mut owner = FileConfirmations::default();
-        owner.start(fixture.job(701), request).unwrap();
+        if prepare { owner.prepare(fixture.job(701), 0, u32::MAX as u64).unwrap(); }
+        else { owner.start(fixture.job(701), request).unwrap(); }
         let mut wait = Box::pin(owner.next());
         let first = std::future::poll_fn(|cx| Poll::Ready(wait.as_mut().poll(cx))).await;
         assert!(first.is_pending());
@@ -344,6 +454,7 @@ mod tests {
         assert_eq!(drain().unwrap().capacity.available_permits(), DRAIN_CAPACITY - 1);
         let completion = tokio::time::timeout(Duration::from_secs(3), owner.next()).await.unwrap();
         assert!(completion.job.unwrap().is_none());
+        assert!(completion.confirmation.is_none());
         let log: serde_json::Value = serde_json::from_str(&completion.cancelled_log.unwrap()).unwrap();
         assert_eq!(log["id"], 701);
         assert_eq!(log["cancel"], true);
@@ -351,7 +462,113 @@ mod tests {
         assert_eq!((owner.len(), fixture.source_handles()), (0, 0));
         assert_eq!(drain().unwrap().capacity.available_permits(), DRAIN_CAPACITY);
         drop((outgoing, incoming, listener, watch, fixture));
-        println!("FILE_CONFIRMATION_CONTROL=pass native_read=observed tcp=ping-pong worker=pending cancellation=joined source_handles=retired");
+        println!("FILE_CONFIRMATION_CONTROL=pass prepare={prepare} native_read=observed tcp=ping-pong worker=pending cancellation=joined source_handles=retired");
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn prepared_proofs_roundtrip_both_transfer_roles() {
+        for receiving in [false, true] {
+            let fixture = ReceiveFixture::new(false);
+            let sender = fixture.directory.job(720);
+            let receiver = fixture.job(720).await;
+            let (producer, peer) = if receiving { (receiver, sender) } else { (sender, receiver) };
+            let expected_meta = serde_json::to_value(producer.gen_meta()).unwrap();
+            let mut owner = FileConfirmations::default();
+            owner.prepare(producer, 0, 3).unwrap();
+            assert_eq!(serde_json::to_value(owner.metas().next().unwrap()).unwrap(), expected_meta);
+            let completion = owner.next().await;
+            assert_eq!(owner.metas().count(), 0);
+            let producer = completion.job.unwrap().unwrap();
+            let request = completion.confirmation.unwrap();
+            let request = FileTransferSendConfirmRequest::parse_from_bytes(&request.write_to_bytes().unwrap()).unwrap();
+            assert!(matches!(request.union.as_ref(), Some(file_transfer_send_confirm_request::Union::Resume(resume))
+                if resume.offset == 3 && resume.prefix_sha256.len() == 32));
+            owner.start(peer, request).unwrap();
+            let completion = owner.next().await;
+            assert!(completion.confirmation.is_none());
+            let peer = completion.job.unwrap().unwrap();
+            let (mut sender, mut receiver) = if receiving { (peer, producer) } else { (producer, peer) };
+            assert_eq!(std::fs::read(&fixture.target).unwrap(), b"original");
+            while let Some(block) = sender.read().await.unwrap() {
+                receiver.write(block).await.unwrap();
+            }
+            receiver.finalize_write(sender.file_num()).await.unwrap();
+            assert_eq!(std::fs::read(&fixture.target).unwrap(), b"abcdef");
+            assert_eq!((sender.finished_size(), receiver.finished_size()), (6, 6));
+            assert!(!fixture.payload.exists() && !fixture.digest.exists() && !fixture.lease.exists());
+            assert_eq!(fixture.directory.source_handles(), 0);
+            drop((sender, receiver, fixture));
+            println!("FILE_CONFIRMATION_PREPARE=pass receiving={receiving} wire=roundtripped peer=verified final=exact handles=retired");
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn prepared_receive_cancellation_preserves_partial_and_checkpoint_rules() {
+        for phase in ["before", "during", "completed", "close", "drop"] {
+            let large = matches!(phase, "during" | "close" | "drop");
+            let fixture = ReceiveFixture::new(large);
+            let digest = std::fs::read(&fixture.digest).unwrap();
+            let job = fixture.job(721).await;
+            let expected_meta = serde_json::to_value(job.gen_meta()).unwrap();
+            let mut watch = AccessWatch::new(&fixture.payload);
+            let mut owner = FileConfirmations::default();
+            owner.prepare(job, 0, fixture.offset).unwrap();
+            if large { watch.wait().await; }
+            if phase == "completed" {
+                tokio::time::timeout(Duration::from_secs(3), async {
+                    while !owner.pending[0].join.as_ref().unwrap().task.is_finished() {
+                        tokio::task::yield_now().await;
+                    }
+                }).await.unwrap();
+            }
+            let checkpoint = owner.metas().cloned().collect::<Vec<_>>();
+            assert_eq!(checkpoint.len(), 1);
+            assert_eq!(serde_json::to_value(&checkpoint[0]).unwrap(), expected_meta);
+            if phase == "drop" {
+                drop(owner);
+                tokio::time::timeout(Duration::from_secs(3), async {
+                    while drain().unwrap().capacity.available_permits() != DRAIN_CAPACITY {
+                        tokio::time::sleep(Duration::from_millis(1)).await;
+                    }
+                }).await.unwrap();
+            } else if phase == "close" {
+                tokio::time::timeout(Duration::from_secs(3), owner.close_and_wait()).await.unwrap().unwrap();
+                assert_eq!(owner.metas().count(), 0);
+            } else {
+                assert!(owner.cancel(721));
+                assert_eq!(owner.metas().count(), 0);
+                assert_eq!(owner.len(), 1);
+                let result = tokio::time::timeout(Duration::from_secs(3), owner.next()).await.unwrap();
+                assert!(result.job.unwrap().is_none() && result.confirmation.is_none());
+                assert!(result.cancelled_log.is_some());
+            }
+            fixture.assert_preserved(&digest);
+            let mut lease = super::super::ReceivePathLease::acquire(&fixture.target, false).unwrap();
+            lease.retire().unwrap();
+            drop((lease, watch, fixture));
+            println!("FILE_CONFIRMATION_RECEIVE_CANCEL=pass phase={phase} partial=preserved final=preserved proof=unpublished lease=reacquired checkpoint=exact");
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn prepare_refuses_invalid_targets_before_worker_admission() {
+        let fixture = Fixture::new();
+        let mut owner = FileConfirmations::default();
+        for (file_num, offset) in [(-1, 1), (1, 1), (0, u32::MAX as u64 + 1)] {
+            assert!(owner.prepare(fixture.job(722), file_num, offset).is_err());
+            assert_eq!((owner.len(), owner.metas().count(), fixture.source_handles()), (0, 0, 0));
+        }
+        owner.prepare(fixture.job(722), 0, 0).unwrap();
+        let completion = owner.next().await;
+        assert!(matches!(completion.confirmation.unwrap().union,
+            Some(file_transfer_send_confirm_request::Union::OffsetBlk(0))));
+        let mut job = completion.job.unwrap().unwrap();
+        assert_eq!(job.read().await.unwrap().unwrap().data.as_ref(), b"abcdef");
+        job.retire_current_file_state().unwrap();
+        assert_eq!(fixture.source_handles(), 0);
+        drop((job, fixture));
+        println!("FILE_CONFIRMATION_PREPARE_ADMISSION=pass invalid=refused fresh=exact handles=retired");
     }
 
     #[tokio::test(flavor = "current_thread")]

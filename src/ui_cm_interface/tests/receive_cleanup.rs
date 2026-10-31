@@ -117,8 +117,10 @@ async fn reply(peer: &mut ipc::ConnectionTmpl<tokio::net::UnixStream>, id: i32) 
 
 async fn listing(peer: &mut ipc::ConnectionTmpl<tokio::net::UnixStream>, id: i32, path: &std::path::Path) {
     command(peer, ipc::FS::ReadDir { dir: get_string(path), include_hidden: true, request_id: 901 }).await;
-    assert!(matches!(reply(peer, id).await,
-        ipc::CmFileResponseKind::ReadDirectory { request_id: 901, result: Ok(_), .. }));
+    let response = reply(peer, id).await;
+    assert!(matches!(response,
+        ipc::CmFileResponseKind::ReadDirectory { request_id: 901, result: Ok(_), .. }),
+        "expected successful directory response, received {response:?}");
 }
 
 #[test]

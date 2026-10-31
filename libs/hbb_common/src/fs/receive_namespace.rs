@@ -385,6 +385,64 @@ mod tests {
     use super::super::{FileDigest, ReceiveWriteClaim};
     use std::os::unix::fs::{symlink, PermissionsExt};
 
+    #[test]
+    fn inspection_without_saved_state_preserves_destination_layout() {
+        use super::super::{DigestCheckResult, FileTransferDigest, ReceivePathLease};
+        let mut failures = Vec::new();
+        for mode in [0o777, 0o555] {
+            for present in [false, true] {
+                for resume in [false, true] {
+                    let root = std::env::temp_dir().join(format!(
+                        "receive-inspection-layout-{}", crate::uuid::Uuid::new_v4()));
+                    std::fs::create_dir(&root).unwrap();
+                    let destination = root.join("incoming");
+                    if present { std::fs::write(&destination, b"original").unwrap(); }
+                    // Exclude stale lookup records from an earlier fixture whose
+                    // deleted destination inode was reused by this fresh directory.
+                    let mut initial = ReceivePathLease::acquire(&destination, false).unwrap();
+                    initial.retire().unwrap();
+                    drop(initial);
+                    let coordinator = coordinator().unwrap();
+                    let inventory = || {
+                        let scan = directory_at(&coordinator, &name(".").unwrap()).unwrap();
+                        let mut names = unix_directory_entry_names(&scan,
+                            &mut EmptyDirectoryRemovalState::default()).unwrap();
+                        names.sort();
+                        names
+                    };
+                    let before = inventory();
+                    let original = std::fs::metadata(&destination).ok().map(|m|
+                        (m.dev(), m.ino(), m.uid(), m.gid(), m.mode(), m.nlink(), m.len(), m.mtime(), m.mtime_nsec()));
+                    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(mode)).unwrap();
+                    let result = super::super::inspect_write_destination(resume, &destination,
+                        &FileTransferDigest { id: 881, file_num: 0, file_size: 8,
+                            last_modified: 31, ..Default::default() });
+                    let metadata = std::fs::metadata(&destination).ok().map(|m|
+                        (m.dev(), m.ino(), m.uid(), m.gid(), m.mode(), m.nlink(), m.len(), m.mtime(), m.mtime_nsec()));
+                    let preserved = metadata == original
+                        && (!present || std::fs::read(&destination).unwrap() == b"original");
+                    let correct = match &result {
+                        Ok(DigestCheckResult::NoSuchFile) => !present,
+                        Ok(DigestCheckResult::NeedConfirm(digest)) => present
+                            && digest.file_size == 8 && digest.transferred_size == 0,
+                        Err(_) => false,
+                    };
+                    let entries = std::fs::read_dir(&root).unwrap().collect::<Result<Vec<_>, _>>().unwrap().len();
+                    let clean = entries == usize::from(present) && inventory() == before;
+                    let parent_preserved = std::fs::metadata(&root).unwrap().mode() & 0o7777 == mode;
+                    println!("RECEIVE_INSPECTION_LAYOUT=observed mode={mode:o} present={present} resume={resume} correct={correct} preserved={preserved} namespace_absent={clean} parent_preserved={parent_preserved} error={:?}",
+                        result.err().map(|e| e.to_string()));
+                    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+                    std::fs::remove_dir_all(&root).unwrap();
+                    if !(correct && preserved && clean && parent_preserved) {
+                        failures.push((mode, present, resume));
+                    }
+                }
+            }
+        }
+        assert!(failures.is_empty(), "read-only inspection changed layout or failed: {failures:?}");
+    }
+
     #[tokio::test]
     async fn fresh_confirmation_replaces_saved_partial() {
         use super::super::{file_transfer_send_confirm_request::Union, DigestCheckResult,

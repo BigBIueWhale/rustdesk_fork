@@ -3559,6 +3559,7 @@ run_focused_rust_tests() {
             source_fingerprints+=(libs/hbb_common/src/fs/file_block.rs libs/hbb_common/src/fs/confirmation.rs libs/hbb_common/src/fs/confirmation/tests/slow_sync.rs)
             required_tests=(
                 fs::receive_namespace::tests::setup_recovers_only_private_identity_prefixes
+                fs::receive_namespace::tests::inspection_without_saved_state_preserves_destination_layout
                 fs::receive_namespace::tests::generation_lock_retires_only_after_last_owner
                 fs::receive_namespace::tests::generation_retirement_error_releases_exclusion
                 fs::receive_namespace::tests::retirement_retries_the_containing_directory_barrier
@@ -3678,6 +3679,7 @@ run_focused_rust_tests() {
                 fs::tests::file_metadata_pending_resume_retirement_preserves_saved_bytes
                 fs::tests::file_metadata_resume_cancellation_preserves_partial_and_refuses_reuse
                 fs::receive_namespace::tests::setup_recovers_only_private_identity_prefixes
+                fs::receive_namespace::tests::inspection_without_saved_state_preserves_destination_layout
                 fs::receive_namespace::tests::generation_lock_retires_only_after_last_owner
                 fs::receive_namespace::tests::generation_retirement_error_releases_exclusion
                 fs::receive_namespace::tests::retirement_retries_the_containing_directory_barrier
@@ -6384,6 +6386,7 @@ run_focused_rust_tests() {
                             [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
                             for test_name in \
                                 fs::receive_namespace::tests::setup_recovers_only_private_identity_prefixes \
+                                fs::receive_namespace::tests::inspection_without_saved_state_preserves_destination_layout \
                                 fs::receive_namespace::tests::generation_lock_retires_only_after_last_owner \
                                 fs::receive_namespace::tests::generation_retirement_error_releases_exclusion \
                                 fs::receive_namespace::tests::retirement_retries_the_containing_directory_barrier \

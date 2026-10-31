@@ -123773,3 +123773,15 @@ long-hash/cancellation/reconnect and full receive acceptance. The next design
 step remains same-mount protected placement with resumable identity and complete
 cleanup across required destinations. This is an engineering problem within
 the resumed scope, not a permission dependency. Independent parks remain intact.
+
+Fresh ledger count at `fe24a4ed`, TUF `lJgxT22WkF`: **373,295 tokens /
+1,710,137 bytes**, SHA-256
+`8c0dc025594a579ec7b6d99a08f5d6d9697e9dd25916c9d066c1024ec9908f49`.
+Pinned tiktoken 0.12.0/cl100k_base/encode_ordinary passes all seven controls and
+the exact whole-file UTF-8 round trip. QEMU 3178188 joins after 30.819 seconds;
+wrapper 3176765 and RAM `run.vamk_iuq` are absent, with three zero listener deltas.
+Count serial SHA-256:
+`abdcae216b5fc9f95ba0cd28444ee748d4c3cfe217ea43f7cf4c8ce925d1ba95`.
+The six count files add 104,749 bytes: all twenty retained raw files /
+396,871 bytes per host for these two behavior runs and the count are hash-verified.
+This audit-only receipt leaves the counted ledger and tested sources unchanged.

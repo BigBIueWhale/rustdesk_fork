@@ -341,6 +341,69 @@ def retirement_cases(root):
     return observations
 
 
+def shared_mount_case(root, receiver_uid):
+    base = root / "shared-mount"
+    protected = root / f"protected-{receiver_uid}"
+    protected.mkdir(mode=0o700)
+    os.chown(protected, receiver_uid, receiver_uid)
+    stage = f"stage-{receiver_uid}"
+    held = f"held-{receiver_uid}"
+    try:
+        def receive(path):
+            final = path / f"final-{receiver_uid}"
+            final.write_bytes(b"authorized-output")
+            final.unlink()
+            container = path / stage
+            container.mkdir(mode=0o700)
+            (container / "identity").write_bytes(b"private-marker")
+            (path / f"empty-{receiver_uid}").mkdir(mode=0o700)
+            source = protected / "payload"
+            source.write_bytes(b"protected-source")
+            result = failure(lambda: source.rename(path / f"published-{receiver_uid}"))
+            assert result == errno.EXDEV and source.read_bytes() == b"protected-source"
+            source.unlink()
+            return {"ordinary_write": True, "protected_publication_errno": result}
+        receiver = joined_principal(base, receiver_uid, receive)
+
+        def move(path):
+            same = failure(lambda: (path / stage).rename(path / held))
+            cross = failure(lambda: (path / held).rename(path / "other" / held))
+            read = failure(lambda: (path / held / "identity").read_bytes())
+            nonempty = failure(lambda: (path / held).rmdir())
+            empty = failure(lambda: (path / f"empty-{receiver_uid}").rmdir())
+            control = path / f"actor-control-{receiver_uid}"
+            control.mkdir(mode=0o700)
+            control.rename(path / "other" / control.name)
+            (path / "other" / control.name).rmdir()
+            return {"same_parent_errno": same, "cross_parent_errno": cross,
+                    "read_errno": read, "nonempty_rmdir_errno": nonempty,
+                    "empty_rmdir_errno": empty, "own_cross_parent_control": True}
+        actor = joined_principal(base, 4001, move)
+        assert actor["result"] == {"same_parent_errno": 0, "cross_parent_errno": errno.EACCES,
+                                   "read_errno": errno.EACCES, "nonempty_rmdir_errno": errno.ENOTEMPTY,
+                                   "empty_rmdir_errno": 0, "own_cross_parent_control": True}
+        assert (base / held / "identity").read_bytes() == b"private-marker"
+        assert (base / held).stat().st_uid == receiver_uid
+        assert not (base / "other" / held).exists()
+        inside, outside = directory(base), directory(protected)
+        try:
+            admitted, _ = observe(inside)
+            external, _ = observe(outside)
+            assert admitted["device"] == external["device"]
+            assert admitted["mount_id"] != external["mount_id"]
+        finally:
+            os.close(inside)
+            os.close(outside)
+        return {"case": "shared-mount-root", "mount_owner": 4001, "mount_mode": "0o777",
+                "same_device": True, "distinct_mounts": True, "receiver": receiver,
+                "actor": actor, "private_marker_preserved": True}
+    finally:
+        for candidate in (base / held, base / stage):
+            if candidate.exists():
+                shutil.rmtree(candidate)
+        shutil.rmtree(protected)
+
+
 def main():
     assert os.geteuid() == 0 and platform.machine() == "x86_64"
     assert "rustdesk.verifier_vm=1" in Path("/proc/cmdline").read_text().split()
@@ -360,7 +423,8 @@ def main():
         observations.extend(retirement_cases(root))
         assert (guard / "data").read_bytes() == b"unchanged-guard"
         shutil.rmtree(guard)
-        for name in ("native", "tmpfs", "bind", "readonly", "lower", "upper", "work", "overlay"):
+        for name in ("native", "tmpfs", "bind", "readonly", "lower", "upper", "work", "overlay",
+                     "shared-source", "shared-mount"):
             (root / name).mkdir(mode=0o755)
             (root / name).chmod(0o755)
         def mount(source, target, kind, flags=0, data=None):
@@ -373,6 +437,14 @@ def main():
         checked(LIBC.mount(None, os.fsencode(root / "readonly"), None, 4096 | 32 | 1, None))
         overlay_options = f"lowerdir={root}/lower,upperdir={root}/upper,workdir={root}/work"
         mount("overlay", "overlay", b"overlay", data=overlay_options.encode())
+        os.chown(root / "shared-source", 4001, 4001)
+        (root / "shared-source").chmod(0o777)
+        mount(root / "shared-source", "shared-mount", None, 4096)
+        (root / "shared-mount" / "other").mkdir(mode=0o700)
+        os.chown(root / "shared-mount" / "other", 4001, 4001)
+        for receiver_uid in (0, 4002):
+            observations.append(shared_mount_case(root, receiver_uid))
+        (root / "shared-mount" / "other").rmdir()
         for kind in ("native", "tmpfs", "bind", "overlay"):
             for uid in (0, 4001):
                 base = root / kind / f"principal-{kind}-{uid}"
@@ -407,10 +479,10 @@ def main():
             mounted.pop()
         shutil.rmtree(root)
         assert not root.exists()
-    assert len(observations) == 23
+    assert len(observations) == 25
     for observation in observations:
         print("RECEIVE_FILESYSTEM_CASE=" + json.dumps(observation, sort_keys=True))
-    print("RECEIVE_FILESYSTEM=observed cases=23 principals=0,4001 children=joined mounts=retired "
+    print("RECEIVE_FILESYSTEM=observed cases=25 principals=0,4001,4002 children=joined mounts=retired "
           "fixture=retired product=unexecuted kernel=" + platform.release()
           + " source_sha256=" + hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
 

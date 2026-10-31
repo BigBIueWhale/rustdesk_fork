@@ -122751,3 +122751,25 @@ Serial SHA-256 `40f6208e8deadf06965d310b0a524d78d8d190a9b680603c7f00299f37e72885
 All twenty raw files for the three runs total 279,743 bytes per host and are
 hash-verified. This audit-only receipt leaves the counted ledger and tested
 product/fixture bytes unchanged.
+
+### 2026-10-31 — shared mount-root staging: topology experiment
+
+The prior turn made the skipped-barrier retry pass its unchanged counterexample.
+Continue the larger layout decision. Linux v6.1 `vfs_rename` checks MAY_WRITE on
+a moved directory when its parent changes, including the directory target of
+RENAME_EXCHANGE; same-parent renaming lacks that additional check. Sources:
+https://raw.githubusercontent.com/torvalds/linux/v6.1/fs/namei.c and
+https://man7.org/linux/man-pages/man2/rename.2.html . Thus the earlier same-parent
+substitution results do not establish cross-parent transplantation authority.
+
+Extend the existing isolated primitive experiment with a writable bind-mount root
+owned by UID 4001. Receivers UID 0 and UID 4002 each create legitimate output and
+private nonempty staging. The joined UID-4001 actor tries same-parent renaming,
+cross-parent movement, private reads and empty/nonempty removal; its own private
+directory supplies a successful cross-parent control. A receiver-owned protected
+location outside the bind mount tests whether its exact source can publish through
+that mount alias. Retain device/mount identity and exact private bytes. This probes
+the difficult placement case before choosing whether persistent per-filesystem
+staging is needed; it does not approve such a design, waive exact cleanup or change
+product source. Existing 23 observations and receive authority/lifecycle controls
+remain. No new runtime result is claimed at preparation.

@@ -122337,3 +122337,13 @@ four listener deltas are zero. The command exits zero. No product/test bytes
 change after this run. Full controlled/viewer compilation, authenticated handlers,
 persisted checkpoint effects, CM scheduling and slow cleanup remain unaccepted;
 the staging lifecycle failures remain open. No parked test is executed.
+
+Ledger count at `d19c94cdb63540d236576f0381066c31654965a4`, TUF `kIFDDSOaYw`:
+369,200 tokens / 1,689,835 bytes, SHA-256
+`375d41e92f6fc901c60b971547cc54cb2f14a7371c85951537b8eadb947c96e1`.
+Pinned `tiktoken-0.12.0/cl100k_base/encode_ordinary`, seven controls and strict UTF8
+round trip pass. QEMU 3094015 joins after 30.814 seconds; RAM `run.0f2u7mzo`
+retires and all three listener deltas are zero. Serial 35,832 bytes, SHA-256
+`b134a955d22b254f5c1828d18fc3ee36a94a09ce9f412b8686e9b7e1725596cd`.
+The twenty-seven raw files across this checkpoint total 359,112 bytes per host.
+This audit-only receipt preserves the counted ledger and tested product/test source.

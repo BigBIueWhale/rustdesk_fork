@@ -122093,3 +122093,53 @@ oneof member appears unset to an older decoder
 (https://protobuf.dev/programming-guides/proto3/#backwards-compatibility-issues).
 This motivates preserving the action rather than inferring zero/false from getters;
 it does not establish complete older-version application behavior.
+
+**Library checkpoint accepted, overall receive still open.** Source
+`846cccc3d016010bc4948209e7b033170baaebaa`, tree
+`964dacb72764762139ada9f86ba768d355f3ec2f`, TUF `286VlEcwtY`, passes all 146 required
+tests in 35 groups before the native driver. The four paired-prefix cases, fourteen
+proof-shape/content cases, two pending-claim retirements and both kernel-observed
+cancellations pass. The exact 4,294,967,295-byte boundary completes in 62.764 seconds;
+it is not skipped or replaced with a synthetic offset. Unit artifact SHA-256:
+`4d683fe83fb4843f28da9d1215e5a509ad32faa2c2c594a31dde6f3efede3173`.
+The existing nineteen native root/UID-4001 cases/twenty actors pass, including three
+syscall-window refusals and three crash recoveries. Native artifact SHA-256
+`779d23e5373ea8d362436c8ffc8629c40dea345192b22332eeacdde16a5a425b`, unchanged driver
+`d2195f7c607d69de02e25f989269a4514b7b64ffa1d9f32e9473a5c1a0bc1dbe`.
+The three completed-destination cases still fail: hidden listing exposes staging,
+both empty-directory removal APIs fail, and 32 retained destinations add 31 records /
+126,976 allocated bytes with zero added generation locks. The command exits one.
+
+Serial 34,213 bytes, SHA-256
+`f7eeec80da357c145b2c4f55cbc6c4594e5853be1542fda9d57ab1c24fb0cc87`.
+QEMU 3040888 joins after 277.331 seconds; RAM `run.1fdwuo2j` retires and all four
+listener deltas are zero. Fourteen raw files across the two metadata runs total
+308,962 bytes per host, hash-verified on both hosts before exact scratch removal.
+
+The full-size timing identifies a necessary integration follow-up: viewer digest
+branches (`src/client/io_loop.rs`) and direct sender confirmation
+(`src/server/connection.rs`) await prefix work inside message dispatch. Their outer
+loops enforce 30-second receive deadlines. Per-chunk yielding schedules other tasks,
+but cannot make the awaiting loop process keepalives/cancellation. Correct that owned
+asynchronous lifetime and obtain real-peer long/slow-prefix evidence before claiming
+functional integration. No installed timeout has been executed. Full-parent/viewer
+execution remains separately parked. CM action forwarding is source-reviewed only;
+cross-version behavior, concurrent source mutation and namespace layout remain open.
+
+**Sender controls pass.** TUF `xT0ci0hKB4` executes the same `846cccc3` source and
+unit artifact in the focused send-digest lane: all 23 named cases pass and the
+command exits zero. Eight added existing cases cover exact retained-source reads,
+replacement, admitted/live length bounds, resumed EOF, wrong/duplicate confirmations
+and counter overflow. The guest enforces 21 successful invocation groups and all
+23 required names. Its guest/outer summary still carries the old literal `tests=15`;
+the retained individual records are the evidence for 23. The guest summary is
+corrected to use its already-checked aggregate and the outer duplicate count is
+removed. This label-only correction does not warrant rerunning passed behavior.
+
+Serial 9,724 bytes, SHA-256
+`3a5f30d0df5cdfcb12431a6923d0d60ea8303fd9963fac0c34eb15d5ec428fa6`.
+QEMU 3043005 joins after 142.949 seconds; RAM `run.nw2pj0du` retires and all four
+listener deltas are zero. No product/test bytes change after this run. The complete
+diff preserves the instruction file and prior parked work. Next correct message-loop
+ownership during hashing, then validate the real CM/peer flow when its execution
+park is specifically lifted; the staging lifecycle correction remains incomplete.

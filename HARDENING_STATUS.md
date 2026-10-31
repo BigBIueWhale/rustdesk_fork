@@ -16197,15 +16197,42 @@ Next resolve same-mount protected placement and resumable destination identity
 together, including these ordinary-user and unsupported-handle cases, before
 replacing the retained per-destination layout. Existing receive oracles remain binding.
 
-**Resume content binding — reproduced prerequisite, OPEN/STOP-SHIP.** At unchanged
-production source in `640a9680`, TUF `ZoWbc47wT7`, both confirmation directions
-accept a staged `abc` prefix against current source `XYZdef` with the same size and
-mtime, publish `abcdef`, and report success. Matching-prefix controls pass. These
-are actual paired library jobs and encoded protocol messages under UID 1000, with
-fixture partials; authenticated transport, process death and installed CM do not run.
-Before relocating resumable data, bind the confirmed prefix to the current source
-and enforce it at both receiving roles, including CM's field-by-field confirmation
-forwarding. Size/mtime and namespace lookup keys cannot serve as content proof.
+**Resume content binding — library correction accepted; caller acceptance OPEN/STOP-SHIP.**
+Baseline `640a9680`, TUF `ZoWbc47wT7`, accepts staged `abc` against source `XYZdef`
+with equal size/mtime in both confirmation directions, publishes `abcdef` and reports
+success. `a942f5f5` requires a distinct resume action with SHA-256 over the exact
+prefix, total size and offset. Both roles verify before admitting the resumed
+stream/counters; missing/malformed proof and old nonzero offset actions fail.
+CM now preserves that complete action. Hashing uses a 64 KiB buffer and owned stream;
+interruption prevents job reuse and preserves the saved receive bytes/previous final.
+
+At `846cccc3`, TUF `286VlEcwtY`, all 146 focused tests in 35 groups pass. The actual
+paired-job/wire-message cases refuse both mismatches, preserve both prior destinations
+and saved partials, and retain both exact successful controls. Fourteen proof cases,
+two pending-claim retirements and two kernel-observed hash cancellations pass. The
+maximum wire offset hashes 4,294,967,295 sparse bytes in 62.764 seconds in this test
+build; its earlier 20-second timeout and separate 120-second budget are retained in
+the audit. The nineteen existing root/UID-4001 scenarios and twenty actors retain
+their passes. The three known completed-destination lifecycle cases still fail;
+the canonical command exits one. Authenticated peers, CM/installed callers and
+cross-version/other-platform acceptance remain unexecuted.
+
+The same source/artifact passes all 23 named send-digest/retirement/resume cases in
+TUF `xT0ci0hKB4`, including retained-source replacement, length/offset bounds and
+counter refusal. That run's summary still prints its old literal `tests=15`; the
+individual records establish 23 passes. The summary now uses the already-checked
+aggregate and the outer duplicate literal is removed; the raw evidence is preserved.
+
+**Next integration requirement:** prefix work must leave connection control/cancellation
+responsive. Viewer digest handling and direct sender confirmation currently await the
+hash inside the message handler, while both connection loops enforce a 30-second
+receive deadline. The measured library hash exceeds that interval; yielding between
+chunks does not let the awaiting message loop process keepalives. This is a source
+integration finding plus component timing, not a measured installed disconnect.
+Correct and verify that lifetime before accepting large/slow-source resume. Existing
+full-parent/viewer execution parks remain in force. Resume content proof also does
+not freeze source bytes against later concurrent mutation or establish a complete
+replacement staging layout.
 
 **Generation-lock retirement (`edddaf7b`) — component accepted.** Completed claims
 release their shared membership under the private enrollment gate. Only exclusive

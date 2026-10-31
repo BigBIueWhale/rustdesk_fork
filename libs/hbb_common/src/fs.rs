@@ -25,6 +25,8 @@ pub(crate) use file_block::tests::{
 };
 mod atomic_write;
 pub use atomic_write::write_user_file_atomically;
+mod confirmation;
+pub use confirmation::FileConfirmations;
 #[cfg(target_os = "linux")]
 mod receive_namespace;
 use file_block::SIZE as FILE_TRANSFER_BLOCK_SIZE;
@@ -825,6 +827,8 @@ pub struct TransferJob {
     receive_file_offset: u64,
     #[serde(skip_serializing)]
     resume_preparing: bool,
+    #[serde(skip_serializing)]
+    resume_cancelled: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     #[serde(skip)]
     send_file_offset: u64,
     pub total_size: u64,
@@ -3754,7 +3758,12 @@ fn receive_confirmation_prefix(r: &FileTransferSendConfirmRequest) -> ResultType
     }
 }
 
-async fn transfer_prefix_sha256(file: &mut File, size: u64, offset: u64) -> ResultType<[u8; 32]> {
+async fn transfer_prefix_sha256(
+    file: &mut File,
+    size: u64,
+    offset: u64,
+    cancelled: Option<&std::sync::atomic::AtomicBool>,
+) -> ResultType<[u8; 32]> {
     use crate::sha2::{Digest, Sha256};
     let mut buffer = Vec::new();
     buffer.try_reserve_exact(64 * 1024)
@@ -3767,6 +3776,9 @@ async fn transfer_prefix_sha256(file: &mut File, size: u64, offset: u64) -> Resu
     file.seek(std::io::SeekFrom::Start(0)).await?;
     let mut remaining = offset;
     while remaining > 0 {
+        if cancelled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
+            bail!("resume verification cancelled");
+        }
         let limit = remaining.min(buffer.len() as u64) as usize;
         let read = file.read(&mut buffer[..limit]).await?;
         if read == 0 {
@@ -3775,6 +3787,9 @@ async fn transfer_prefix_sha256(file: &mut File, size: u64, offset: u64) -> Resu
         hash.update(&buffer[..read]);
         remaining -= read as u64;
         tokio::task::yield_now().await;
+    }
+    if cancelled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
+        bail!("resume verification cancelled");
     }
     Ok(hash.finalize().into())
 }
@@ -4697,7 +4712,9 @@ impl TransferJob {
         // A cancelled or failed hash is terminal for this job. Its caller retires
         // the job; a fresh request may inspect the preserved partial again.
         self.resume_preparing = true;
-        let result = transfer_prefix_sha256(&mut file, expected_size, offset).await
+        let result = transfer_prefix_sha256(
+            &mut file, expected_size, offset, self.resume_cancelled.as_deref(),
+        ).await
             .and_then(|prefix| {
                 if expected_prefix.is_some_and(|expected| expected != prefix) {
                     bail!("resume prefix differs from the current source");

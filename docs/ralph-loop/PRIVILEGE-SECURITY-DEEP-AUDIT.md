@@ -122153,3 +122153,39 @@ and all three listener deltas are zero. Serial 35,834 bytes, SHA-256
 `145e1af3a68185b1f48208b25498c7ed42d17703106956157701bb0e3642f498`.
 The twenty-seven raw files for this checkpoint total 494,869 bytes per host. This
 audit-only receipt preserves the counted ledger and tested product/test source.
+
+### 2026-10-31 — owned resume confirmation; preparation, no acceptance yet
+
+The selected R-S8/R-S0 prerequisite is connection responsiveness during the newly
+required prefix verification. The preceding 62.764-second real-file hash exceeds
+the message loops' 30-second receive deadline. Correcting that integration takes
+priority over unrelated checks and is necessary before accepting large resumes.
+The pending full-parent/viewer execution permission question does not reopen those
+parks; this candidate first targets the shared library and controlled direct sender.
+
+`fs::FileConfirmations` owns each removed job and its exact task through result
+collection or cooperative cancellation. Prefix reads check cancellation between
+completed 64 KiB IO operations. A process-wide 32-permit drain bounds pending,
+completed-but-uncollected and abandoned workers together. Normal close joins them;
+owner drop transfers the same join and permit to one fixed drain thread. Failed
+task ownership cannot release capacity and continue. Workers cannot send messages
+or restore themselves; the connection accepts only its own noncancelled completion.
+Pending jobs remain in its capacity and duplicate-ID accounting. Cancellation,
+peer error and a repeated confirmation revoke that pending result.
+
+Primary references: Tokio JoinHandle documents that dropping a handle detaches
+the task and that awaiting its mutable reference is cancellation-safe
+(https://docs.rs/tokio/latest/tokio/task/struct.JoinHandle.html); JoinSet drop aborts
+its tasks (https://docs.rs/tokio/latest/tokio/task/struct.JoinSet.html). Neither
+operation establishes completion of Tokio File's native IO. The selected model
+retains and joins a cooperatively cancelled worker instead of aborting it; its
+drain thread creates no runtime. This follows the existing CM exact-task ownership
+pattern, with separate bounded confirmation capacity.
+
+Five focused Linux component tests cover valid/invalid proof, real native-read
+observation followed by TCP control traffic, cancelled wait ownership, cancellation
+after task completion, owner-drop drain and capacity/retry. They use real files and
+sockets but are not authenticated RustDesk handlers. The narrow sender lane retains
+its 23 existing controls. No compile or pass is claimed by this preparation.
+Viewer proof production and CM scheduling remain separate incomplete integration;
+the three completed-destination lifecycle failures remain OPEN/STOP-SHIP.

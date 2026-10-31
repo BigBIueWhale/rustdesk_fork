@@ -5050,6 +5050,7 @@ pub struct Connection {
     stream: super::Stream,
     server: super::ServerPtrWeak,
     read_jobs: Vec<fs::TransferJob>,
+    file_confirmations: fs::FileConfirmations,
     file_timer: crate::RustDeskInterval,
     file_transfer: Option<(String, bool)>,
     view_camera: bool,
@@ -6491,6 +6492,7 @@ impl Connection {
             stream,
             server,
             read_jobs: Vec::new(),
+            file_confirmations: fs::FileConfirmations::default(),
             file_timer: crate::rustdesk_interval(time::interval(SEC30)),
             file_transfer: None,
             view_camera: false,
@@ -6696,6 +6698,18 @@ impl Connection {
             tokio::select! {
                 // biased; // video has higher priority // causing test_delay_timer failed while transferring big file
 
+                completion = conn.file_confirmations.next() => {
+                    match completion.job {
+                        Ok(Some(job)) => {
+                            conn.read_jobs.push(job);
+                            conn.file_timer = crate::rustdesk_interval(time::interval(MILLI1));
+                        }
+                        Ok(None) => {}
+                        Err(error) => {
+                            conn.send(fs::new_error(completion.id, error, completion.file_num)).await;
+                        }
+                    }
+                }
                 cm_result = async {
                     match cm_channel.as_mut() {
                         Some(channel) => channel.await,
@@ -9787,6 +9801,7 @@ impl Connection {
                                 .await;
                             }
                             Some(file_action::Union::Cancel(c)) => {
+                                self.file_confirmations.cancel(c.id);
                                 if let Some(generation) =
                                     self.begin_cm_write_cancellation(c.id)
                                 {
@@ -9829,10 +9844,14 @@ impl Connection {
                                 }
                             }
                             Some(file_action::Union::SendConfirm(r)) => {
-                                if let Some(job) = fs::get_job(r.id, &mut self.read_jobs) {
-                                    if let Err(error) = job.confirm(&r).await {
-                                        let _ = fs::remove_job(r.id, &mut self.read_jobs);
-                                        self.send(fs::new_error(r.id, error, r.file_num)).await;
+                                if self.file_confirmations.contains(r.id) {
+                                    self.file_confirmations.cancel(r.id);
+                                    self.send(fs::new_error(r.id,
+                                        "file confirmation is already pending", r.file_num)).await;
+                                } else if let Some(job) = fs::remove_job(r.id, &mut self.read_jobs) {
+                                    let (id, file_num) = (r.id, r.file_num);
+                                    if let Err(error) = self.file_confirmations.start(job, r) {
+                                        self.send(fs::new_error(id, error, file_num)).await;
                                     }
                                 } else if let Some(generation) =
                                     self.consume_cm_read_confirmation(r.id, r.file_num, r.skip())
@@ -9996,6 +10015,9 @@ impl Connection {
                         }
                     }
                     Some(file_response::Union::Error(e)) => {
+                        if self.file_confirmations.cancel(e.id) {
+                            return true;
+                        }
                         let peer_error = if e.error.len() <= MAX_CM_FILE_ERROR_BYTES {
                             e.error
                         } else {
@@ -11584,6 +11606,9 @@ impl Connection {
         if self.closed {
             return;
         }
+        if let Err(error) = self.file_confirmations.close_and_wait().await {
+            log::error!("Controlled file confirmation retirement failed: {error}");
+        }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         if let Err(error) = self.clipboard_writes.close_and_wait().await {
             log::error!("Controlled clipboard write retirement failed: {error}");
@@ -12402,11 +12427,13 @@ impl Connection {
     }
 
     fn active_read_job_count(&self) -> usize {
-        self.cm_read_jobs.len() + self.read_jobs.iter().filter(|job| !job.is_last_job).count()
+        self.cm_read_jobs.len() + self.file_confirmations.len()
+            + self.read_jobs.iter().filter(|job| !job.is_last_job).count()
     }
 
     fn has_read_job_id(&self, id: i32) -> bool {
-        self.cm_read_jobs.contains_key(&id) || self.read_jobs.iter().any(|job| job.id() == id)
+        self.cm_read_jobs.contains_key(&id) || self.file_confirmations.contains(id)
+            || self.read_jobs.iter().any(|job| job.id() == id)
     }
 
     fn ensure_can_start_read_job(&self, id: i32) -> Result<(), String> {

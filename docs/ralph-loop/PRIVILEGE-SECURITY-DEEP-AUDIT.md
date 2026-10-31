@@ -123364,3 +123364,25 @@ three listener deltas are zero. Serial SHA-256
 All **20 raw files / 320,132 bytes per host** are hash-verified on both hosts;
 all six exact wrapper/QEMU PIDs, RAM workspaces and diagnostic scratch are absent.
 This audit-only receipt preserves the tested source and counted ledger.
+
+## 2026-10-31 — skip-confirmation reachability checkpoint
+
+Read-only review at `a4cd4a7f` does not establish a reachable skip-cleanup stall.
+`TransferJob::confirm` calls synchronous retirement for `Skip(true)`, but
+`validate_confirmation_target` rejects already-confirmed files. Normal receive
+digest inspection retires its temporary lease before returning a skip decision
+(`inspect_receive_digest` / `inspect_write_destination` in `fs.rs`). The viewer
+applies that decision before opening the receive stream; the controlled caller
+admits a write confirmation only in its matching `AwaitingPeerConfirm` phase
+(`consume_cm_write_confirmation` in `connection.rs`). A library-only sequence
+of writing an unconfirmed job followed by skip is insufficient evidence of the
+application failure. This review neither proves all malformed sequences harmless
+nor closes generic cleanup/CM scheduling, which remain separately parked.
+
+No product/test change or VM run follows this hypothesis. The meaningful next
+steps for the selected receive blocker remain the application/CM resume validation
+and completed-destination layout correction. The existing full-parent resumption
+and shared-mount staging-exception questions are unanswered; their dependent work
+remains unstarted. No new permission question, acceptance exception, repeated
+green check or release-readiness claim is introduced. The counted ledger and
+accepted product source are unchanged.

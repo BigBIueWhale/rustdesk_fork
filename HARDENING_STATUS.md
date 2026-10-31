@@ -16388,8 +16388,23 @@ keepalive/cancellation/checkpoint validation remains required. The independently
 reproduced staging-layout lifecycle regression remains actionable while the full
 application lane is parked.
 The measured 62.764-second hash exceeds the loops' 30-second receive deadline;
-no installed disconnect has been measured. Large/slow-source resume, concurrent
-source mutation and the staging-layout lifecycle failures remain OPEN/STOP-SHIP.
+no installed disconnect has been measured. Large/slow-source resume and the
+staging-layout lifecycle failures remain OPEN/STOP-SHIP.
+
+**Concurrent source mutation — reproduced; correction OPEN/STOP-SHIP.** At
+`652c83c3`, TUF `eDljAufR5T` extends the existing paired-file regression without
+changing production. In both confirmation directions, the source changes from
+`abcdef` through `XYZdef` to `XYZ123` after both prefix proofs complete. Its retained
+inode, length and advertised mtime remain equal. Both transfers successfully replace
+the prior destination with `abc123`, which never existed in the source. The four
+original stable/prefix-mismatch controls pass; the aggregate test fails and the
+focused command exits one. All six fixtures retire before the verdict. This is a
+Linux library correctness failure, not an installed-flow observation or demonstrated
+privilege escalation. Correction must connect source-content validity across proof,
+suffix reads and publication without restricting full-filesystem access or adding
+unbounded snapshots. Merely comparing size/mtime cannot distinguish this case.
+The audit retains source/artifact/raw identities and joined RAM/diagnostic cleanup.
+Full application and layout decisions remain pending; other parks are unchanged.
 
 **Generation-lock retirement (`edddaf7b`) — component accepted.** Completed claims
 release their shared membership under the private enrollment gate. Only exclusive

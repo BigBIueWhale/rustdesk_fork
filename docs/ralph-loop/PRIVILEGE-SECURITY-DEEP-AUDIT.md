@@ -123248,3 +123248,26 @@ atomic copy against concurrent writes only on supporting, same-filesystem object
 content snapshot. The experiment precedes any design choice; preserving full
 filesystem functionality and bounded resources remains binding. Full application,
 staging exception and other pending decisions/parks are unchanged.
+
+**Baseline reproduced at `652c83c3c0c6b077890fee005e5d73f33d1da4fa`.** TUF
+`eDljAufR5T`, command `bash scripts/smoke-verifier-vm-authority.sh
+--file-send-digest-tests`, runs production library jobs as UID/GID 1000 in the
+admitted no-NIC guest. Both mutation cases reach successful finalization with
+`abc123` and replace the prior final; the source remains `XYZ123`. Both stable
+controls publish exact `abcdef`, and both static prefix mismatches retain their
+correct refusal/preservation. All six fixtures retire before the failing aggregate.
+Repeated case lines in the failure output are duplicate logging, not extra cases.
+The command exits one at this test; no complete focused-suite pass is claimed.
+
+Unit artifact SHA-256
+`37ededba2c5bc6cadda06cbcbd7c8c7c4fb262a4b50d7183353d22e08ee4b200`;
+serial 15,335 bytes, SHA-256
+`a422d83f4fcf98191fd1c919441e7f8c9fcdaec1437308b7c54ba0c5ea413ab8`.
+QEMU 3136008 joins after 145.328 seconds, wrapper 3135538 is absent and RAM
+`run.lb76nq_6` retires. All four listener deltas are zero. Seven raw files /
+87,295 bytes per host are hash-verified on both hosts before exact diagnostic
+scratch retirement. Production remains unchanged; this is a reproduced Linux
+library content-consistency defect, not LPE, full-application or installed evidence.
+The next correction must preserve source-content validity through completion;
+size/mtime equality and retained inode alone are disproved by this case. Arbitrary
+concurrent-writer snapshot guarantees are not established by this finite experiment.

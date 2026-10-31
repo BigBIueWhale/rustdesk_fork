@@ -6024,7 +6024,8 @@ run_focused_rust_tests() {
     if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-resource-limits ]; then
         focused_nofile=16384:32768
     fi
-    if [ "$MODE" = hbb-common-fs ]; then
+    if [ "$MODE" = hbb-common-fs ] \
+       || { [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-resume ]; }; then
         # The production receive coordinator obtains its owner home from NSS, not HOME.
         # Give the unprivileged container an explicit account backed by its private tmpfs.
         printf 'root:x:0:0:root:/root:/bin/sh\nreceive:x:1000:1000:receive:/tmp/home:/bin/sh\n' >"$ROOT/receive-passwd"

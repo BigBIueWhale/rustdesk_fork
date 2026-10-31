@@ -3564,6 +3564,7 @@ run_focused_rust_tests() {
                 fs::receive_namespace::tests::retirement_retries_the_containing_directory_barrier
                 fs::receive_namespace::tests::fresh_confirmation_replaces_saved_partial
                 fs::receive_namespace::tests::fresh_confirmation_preserves_refused_artifacts
+                fs::receive_namespace::tests::interrupted_digest_preparation_requires_private_file_and_exclusive_lease
                 fs::tests::new_receive_refuses_existing_sidecars_without_changing_their_bytes
                 fs::tests::transfer_resume_send_is_once_and_preserves_live_progress
                 fs::tests::transfer_resume_receive_is_once_and_preserves_owned_output
@@ -6375,6 +6376,7 @@ run_focused_rust_tests() {
                                 fs::receive_namespace::tests::retirement_retries_the_containing_directory_barrier \
                                 fs::receive_namespace::tests::fresh_confirmation_replaces_saved_partial \
                                 fs::receive_namespace::tests::fresh_confirmation_preserves_refused_artifacts \
+                                fs::receive_namespace::tests::interrupted_digest_preparation_requires_private_file_and_exclusive_lease \
                                 fs::tests::new_receive_refuses_existing_sidecars_without_changing_their_bytes \
                                 fs::file_block::tests::allocation_refusal_returns_error_and_preserves_retry \
                                 fs::tests::send_read_buffer_refusal_preserves_job_and_retry \
@@ -8427,7 +8429,7 @@ PY
             grep -E '^test fs::(tests::(send_(digest_|read_buffer_)|read_step_|transfer_resume_)|file_block::tests::allocation_refusal_).* \.\.\. ok$|^test tcp::writer_lifetime_tests::read_jobs_retire_before_native_writer_pressure_errors \.\.\. ok$|^SEND_DIGEST_SIZE=|^SEND_READ_ALLOCATION(_CASE)?=|^FILE_COMPRESSION_(ALLOCATION|CASE)=|^READ_TERMINAL_RETIREMENT(_CASE)?=|^READ_NONTERMINAL_RETIREMENT=|^READ_JOB_BACKPRESSURE(_CASE)?=|^READ_ROUND_ROBIN(_CASE)?=.*|^READ_CONFIRMATION_READY=|^TRANSFER_RESUME_' "$output"
             grep -E '^test fs::tests::(send_resume_[a-z_]+|send_read_preserves_exact_lengths_and_resumed_eof|confirmation_rejects_wrong_job_and_duplicate_progress|resume_counter_overflow_does_not_publish_stream_ownership) [.][.][.] ok$' "$output"
             grep -E '^test fs::confirmation::tests::(slow_sync::)?[a-z_]+ [.][.][.] ok$|^FILE_CONFIRMATION_' "$output"
-            grep -E '^test fs::receive_namespace::tests::[a-z_]+ [.][.][.] ok$|^test fs::tests::new_receive_refuses_existing_sidecars_without_changing_their_bytes [.][.][.] ok$|^RECEIVE_(GENERATION_(RETIREMENT|ERROR)|RETIREMENT_SYNC|FRESH_CONFIRMATION(_REFUSAL)?)=' "$output"
+            grep -E '^test fs::receive_namespace::tests::[a-z_]+ [.][.][.] ok$|^test fs::tests::new_receive_refuses_existing_sidecars_without_changing_their_bytes [.][.][.] ok$|^RECEIVE_(GENERATION_(RETIREMENT|ERROR)|RETIREMENT_SYNC|FRESH_CONFIRMATION(_REFUSAL)?|DIGEST_PREPARATION)=' "$output"
             grep -E '^test fs::tests::file_metadata_(resume_|pending_resume_)[a-z_]+ [.][.][.] ok$|^FILE_METADATA_(RESUME_|PENDING_RESUME)' "$output"
         else
         grep -E '^test platform::linux::tests::r_s11at_loginctl_output_.* \.\.\. ok$|^LOGINCTL_(WAIT_AUTHORITY|LOST_WAIT)=' "$output"

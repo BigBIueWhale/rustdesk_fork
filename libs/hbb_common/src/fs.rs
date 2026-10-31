@@ -3327,7 +3327,11 @@ impl ReceivePathLease {
         #[cfg(any(target_os = "macos", target_os = "ios"))]
         sync_recv_regular_file(&file)?;
         #[cfg(target_os = "linux")]
-        namespace.complete_enrollment()?;
+        {
+            // Only the exclusive per-file lease may retire interrupted preparation.
+            namespace.retire_digest_preparation()?;
+            namespace.complete_enrollment()?;
+        }
         Ok(Self {
             path, file, retired: false,
             #[cfg(unix)]
@@ -3576,7 +3580,14 @@ impl ReceiveWriteClaim {
         use std::io::Write;
 
         let download_path = recv_sidecar_path(&final_path, ".download");
+        #[cfg(target_os = "linux")]
+        let mut digest_path = recv_sidecar_path(&final_path, ".digest.tmp");
+        #[cfg(not(target_os = "linux"))]
         let digest_path = recv_sidecar_path(&final_path, ".digest");
+        #[cfg(target_os = "linux")]
+        let digest_artifact = ReceiveOwnedArtifact::Payload;
+        #[cfg(not(target_os = "linux"))]
+        let digest_artifact = ReceiveOwnedArtifact::Digest;
         let download_file =
             match lease.open_receive_file(&download_path, ReceiveFileCreation::CreateNew, ReceiveOwnedArtifact::Payload) {
                 Ok(file) => file,
@@ -3590,7 +3601,7 @@ impl ReceiveWriteClaim {
                 }
             };
         let mut digest_file =
-            match lease.open_receive_file(&digest_path, ReceiveFileCreation::CreateNew, ReceiveOwnedArtifact::Digest) {
+            match lease.open_receive_file(&digest_path, ReceiveFileCreation::CreateNew, digest_artifact) {
                 Ok(file) => file,
                 Err(err) => {
                     let cleanup_result = remove_receive_artifacts_and_sync_parent(
@@ -3612,6 +3623,18 @@ impl ReceiveWriteClaim {
             sync_recv_regular_file(&download_file)?;
             digest_file.write_all(json!(digest).to_string().as_bytes())?;
             sync_recv_regular_file(&digest_file)?;
+            #[cfg(target_os = "linux")]
+            {
+                // A published digest always contains complete, synchronized metadata.
+                // Track its actual name immediately after rename for exact error cleanup.
+                let temporary = lease.child_name(&digest_path)?;
+                let published_path = recv_sidecar_path(&final_path, ".digest");
+                let published = lease.child_name(&published_path)?;
+                ensure_recv_child_matches_open_file(&lease.parent, &temporary, &digest_file)?;
+                unix_rename_no_replace(&lease.parent, &temporary, &published)?;
+                digest_path = published_path;
+                ensure_recv_child_matches_open_file(&lease.parent, &published, &digest_file)?;
+            }
             #[cfg(unix)]
             sync_recv_directory(&lease.parent)?;
             #[cfg(any(target_os = "macos", target_os = "ios"))]

@@ -174,16 +174,16 @@ fn record_directory(destination: &File, record: &DirectoryRecord) -> io::Result<
     Ok(directory)
 }
 
-fn retire_record_temporary(coordinator: &File, temporary: &CStr) -> io::Result<()> {
-    let file = match open_regular_child_no_follow(coordinator, temporary,
+fn retire_private_temporary(parent: &File, temporary: &CStr) -> io::Result<()> {
+    let file = match open_regular_child_no_follow(parent, temporary,
         RegularFileAccess::Read, ReceiveFileCreation::Existing) {
         Ok(file) => file,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(error),
     };
     ReceiveOwnedArtifact::Payload.validate(&file)?;
-    remove_recv_child_at(coordinator, temporary, &file)?;
-    sync_recv_directory(coordinator)
+    remove_recv_child_at(parent, temporary, &file)?;
+    sync_recv_directory(parent)
 }
 
 fn write_record(coordinator: &File, record_name: &CStr, temporary: &CStr,
@@ -416,6 +416,71 @@ mod tests {
     }
 
     #[test]
+    fn interrupted_digest_preparation_requires_private_file_and_exclusive_lease() {
+        use super::super::{ReceiveClaimCleanup, ReceivePathLease};
+        for case in ["empty", "partial", "complete", "shared", "linked", "symlink", "directory"] {
+            let root = std::env::temp_dir().join(format!(
+                "receive-digest-preparation-{}", crate::uuid::Uuid::new_v4()));
+            std::fs::create_dir(&root).unwrap();
+            let target = root.join("incoming");
+            std::fs::write(&target, b"original").unwrap();
+            let (mut stream, mut claim) = ReceiveWriteClaim::start_new(
+                target.clone(), FileDigest { size: 6, modified: 31 }).unwrap();
+            stream.write_all(b"abc").unwrap();
+            stream.sync_all().unwrap();
+            let parent = std::fs::read_link(format!("/proc/thread-self/fd/{}", claim._lease.parent.as_raw_fd())).unwrap();
+            let temporary = parent.join("resume.digest.tmp");
+            let payload = parent.join("payload.download");
+            let digest = parent.join("resume.digest");
+            let digest_before = std::fs::read(&digest).unwrap();
+            let bytes: &[u8] = match case {
+                "empty" => b"", "partial" => b"{", "complete" => &digest_before,
+                _ => b"uncommitted",
+            };
+            let content = if case == "symlink" { root.join("held") }
+                else if case == "directory" {
+                    std::fs::create_dir(&temporary).unwrap();
+                    temporary.join("held")
+                } else { temporary.clone() };
+            let mut file = OpenOptions::new().write(true).create_new(true).mode(0o600).open(&content).unwrap();
+            file.write_all(bytes).unwrap();
+            drop(file);
+            if case == "shared" {
+                std::fs::set_permissions(&temporary, std::fs::Permissions::from_mode(0o644)).unwrap();
+            } else if case == "linked" {
+                std::fs::hard_link(&temporary, root.join("held")).unwrap();
+            } else if case == "symlink" { symlink(&content, &temporary).unwrap(); }
+            let identity = |path: &Path| {
+                let m = std::fs::symlink_metadata(path).unwrap();
+                (m.dev(), m.ino(), m.mode(), m.nlink())
+            };
+            let before = identity(&temporary);
+            assert_eq!(ReceivePathLease::acquire(&target, false).unwrap_err().kind(), io::ErrorKind::WouldBlock);
+            assert_eq!(identity(&temporary), before);
+            assert_eq!(std::fs::read(&content).unwrap(), bytes);
+            drop(stream);
+            claim.cleanup_on_drop = ReceiveClaimCleanup::Lease;
+            claim.cleanup().unwrap();
+            let acquired = ReceivePathLease::acquire(&target, false);
+            let accepted = matches!(case, "empty" | "partial" | "complete");
+            if accepted {
+                let mut lease = acquired.unwrap();
+                assert!(!temporary.exists());
+                lease.retire().unwrap();
+            } else {
+                assert!(acquired.is_err(), "unsafe temporary admitted: {case}");
+                assert_eq!(identity(&temporary), before);
+                assert_eq!(std::fs::read(&content).unwrap(), bytes);
+            }
+            assert_eq!(std::fs::read(&target).unwrap(), b"original");
+            assert_eq!(std::fs::read(&payload).unwrap(), b"abc");
+            assert_eq!(std::fs::read(&digest).unwrap(), digest_before);
+            std::fs::remove_dir_all(&root).unwrap();
+            println!("RECEIVE_DIGEST_PREPARATION=pass case={case} retired={accepted} active_lease=preserved saved_pair=preserved final=preserved fixture=retired");
+        }
+    }
+
+    #[test]
     fn retirement_retries_the_containing_directory_barrier() {
         use std::io::{Seek, SeekFrom};
         let root = std::env::temp_dir().join(format!("receive-retirement-sync-{}", crate::uuid::Uuid::new_v4()));
@@ -634,7 +699,7 @@ impl ReceiveNamespace {
         let temporary = name(&format!("{key}.tmp"))?;
         // The enrollment gate excludes every record writer. A killed writer's
         // bounded temporary file is not committed authority and can be retired.
-        retire_record_temporary(&coordinator, &temporary)?;
+        retire_private_temporary(&coordinator, &temporary)?;
         let record = read_record(&coordinator, &record_name)?;
         let existing = record.as_ref().filter(|r| r.inode.is_some())
             .map(|r| record_directory(&destination, r));
@@ -689,6 +754,10 @@ impl ReceiveNamespace {
 
     pub(super) fn complete_enrollment(&self) -> io::Result<()> {
         lock(&self.coordinator, libc::LOCK_UN)
+    }
+
+    pub(super) fn retire_digest_preparation(&self) -> io::Result<()> {
+        retire_private_temporary(&self.artifacts, &Self::artifact_name(".digest.tmp")?)
     }
 
     fn retire_generation(&self) -> io::Result<()> {
@@ -748,6 +817,7 @@ impl ReceiveNamespace {
         match suffix {
             ".download" => name("payload.download"),
             ".digest" => name("resume.digest"),
+            ".digest.tmp" => name("resume.digest.tmp"),
             ".download.lock" => name("claim.download.lock"),
             _ => Err(io_invalid_input("unknown receive artifact role")),
         }

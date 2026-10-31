@@ -649,12 +649,17 @@ mod linux {
                 "crash-identity" => (libc::SYS_fsync, "identity"),
                 "crash-record" => (libc::SYS_renameat, ".tmp"),
                 "crash-payload-sync" => (libc::SYS_fsync, "payload.download"),
+                "crash-retire-intent" => (libc::SYS_renameat2, ".json"),
+                "crash-retire-identity" => (libc::SYS_unlinkat, "identity"),
+                "crash-retire-directory" => (libc::SYS_unlinkat, ""),
+                "crash-retire-record" => (libc::SYS_unlinkat, ".json.retiring"),
                 _ => return Err(anyhow!("unknown syscall window")),
             };
             let crash = operation.starts_with("crash-");
+            let retirement = operation.starts_with("crash-retire-");
             let mut killed = false;
             let mut command = Command::new(std::env::current_exe()?);
-            command.arg(if crash { "crash-receiver" } else { "window-receiver" }).arg(&base)
+            command.arg(if crash && !retirement { "crash-receiver" } else { "window-receiver" }).arg(&base)
                 .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
             unsafe {
                 command.pre_exec(|| {
@@ -745,21 +750,33 @@ mod linux {
                             let path = if number == libc::SYS_fsync {
                                 fs::read_link(format!("/proc/{pid}/fd/{}", info.data[1]))?
                             } else { source_path(pid, &info)? };
-                            let selected = if operation == "crash-directory" {
+                            let selected = if operation == "crash-directory" || operation == "crash-retire-directory" {
                                 path.parent() == Some(base.as_path()) && path.file_name()
                                     .is_some_and(|n| n.as_encoded_bytes().starts_with(b".rustdesk-receive-"))
+                                    && (operation == "crash-directory" || info.data[3] == libc::AT_REMOVEDIR as u64)
                             } else if operation == "crash-record" {
                                 path.parent() == Some(coordinator()?.as_path())
                                     && path.extension().is_some_and(|s| s == "tmp")
                                     && fs::metadata(&path)?.len() <= 256
                                     && hbb_common::serde_json::from_slice::<Value>(&fs::read(&path)?)?
                                         ["inode"].as_u64().is_some()
+                            } else if operation == "crash-retire-intent" || operation == "crash-retire-record" {
+                                path.parent() == Some(coordinator()?.as_path())
+                                    && path.file_name().is_some_and(|n| n.as_encoded_bytes().ends_with(suffix.as_bytes()))
+                                    && (operation != "crash-retire-intent"
+                                        || (info.data[1] == info.data[3] && info.data[5] == libc::RENAME_NOREPLACE as u64))
+                            } else if operation == "crash-retire-identity" {
+                                path.parent().and_then(Path::parent) == Some(base.as_path())
+                                    && path.file_name().is_some_and(|n| n == "identity")
+                                    && info.data[3] == 0
                             } else {
                                 path.file_name().is_some_and(|n| n.as_encoded_bytes().ends_with(suffix.as_bytes()))
                             };
                             if selected && crash {
-                                ensure!(path.starts_with(&base) || operation == "crash-record");
-                                observation = Some(json!({"source":path,"tid":pid,"syscall":number}));
+                                ensure!(path.starts_with(&base) || path.parent() == Some(coordinator()?.as_path()));
+                                let published = if retirement { private_final(&base)? } else { Value::Null };
+                                observation = Some(json!({"source":path,"tid":pid,"syscall":number,
+                                    "published_before_kill":published}));
                                 selected_task = Some(pid);
                                 if operation == "crash-record" {
                                     owner.child.kill()?;
@@ -784,7 +801,7 @@ mod linux {
                             "is_error":info.data[1] & 255 != 0}));
                         if crash {
                             ensure!(info.data[0] == 0 && info.data[1] & 255 == 0,
-                                "selected enrollment syscall did not succeed");
+                                "selected receive syscall did not succeed");
                             owner.child.kill()?;
                             killed = true;
                             continue;
@@ -1144,7 +1161,67 @@ mod linux {
         fs::remove_dir_all(&base)?;
         println!("RECEIVE_NATIVE_RETIREMENT_SUMMARY=observed cases=3 retired={retired} children=joined fixture=retired");
         ensure!(retired == 3, "receive completed-destination cases failed: {retired}/3 retired");
-        println!("RECEIVE_NATIVE_AUTHORITY=pass cases=28 actors={actors} receiver_uid=0 actor_uid=4001 children=joined fixture=retired");
+        let mut recovered = 0;
+        for operation in ["crash-retire-intent", "crash-retire-identity",
+            "crash-retire-directory", "crash-retire-record"] {
+            let base = root.join(operation);
+            fs::create_dir(&base)?;
+            // Retire any old lookup record from earlier fixtures whose deleted
+            // destination inode was reused, before taking this case's baseline.
+            let mut initial = job(&base)?;
+            initial.inspect_receive_digest(&incoming(), false).await?;
+            initial.retire_current_file_state()?;
+            drop(initial);
+            let before = coordination_inventory()?;
+            let selected = base.clone();
+            let phase = operation.to_owned();
+            let crash = tokio::task::spawn_blocking(move || syscall_window::run(selected, phase)).await??;
+            let published = private_final(&base)?;
+            ensure!(published == crash["selected"]["published_before_kill"],
+                "receiver death changed the published file");
+            let after_crash = coordination_inventory()?;
+            let added: Vec<_> = after_crash.keys().filter(|path| !before.contains_key(*path)).collect();
+            let retiring_records = added.iter().filter(|path| path.extension().is_some_and(|s| s == "retiring")).count();
+            let generation_locks = added.iter().filter(|path| path.extension().is_some_and(|s| s == "lock")).count();
+            let record_remaining = operation != "crash-retire-record";
+            ensure!(retiring_records == usize::from(record_remaining) && generation_locks == 1
+                && added.len() == 1 + usize::from(record_remaining), "unexpected killed retirement records");
+            let mut containers = 0;
+            let mut markers = 0;
+            for entry in fs::read_dir(&base)? {
+                let entry = entry?;
+                if entry.file_name() == "incoming.bin" { continue; }
+                ensure!(entry.file_name().as_encoded_bytes().starts_with(b".rustdesk-receive-"));
+                containers += 1;
+                for marker in fs::read_dir(entry.path())? {
+                    ensure!(marker?.file_name() == "identity", "retirement retained transfer artifacts");
+                    markers += 1;
+                }
+            }
+            ensure!(containers == usize::from(matches!(operation, "crash-retire-intent" | "crash-retire-identity"))
+                && markers == usize::from(operation == "crash-retire-intent"), "unexpected killed retirement namespace");
+            let recovery = async {
+                let mut receiver = job(&base)?;
+                receiver.inspect_receive_digest(&incoming(), false).await?;
+                receiver.retire_current_file_state()?;
+                Ok::<_, hbb_common::anyhow::Error>(())
+            }.await;
+            let final_preserved = snapshot(&base.join("incoming.bin"))? == published;
+            let namespace_retired = fs::read_dir(&base)?.count() == 1;
+            let coordination_restored = coordination_inventory()? == before;
+            let safe = recovery.is_ok() && final_preserved && namespace_retired && coordination_restored;
+            recovered += usize::from(safe);
+            println!("RECEIVE_NATIVE_CASE={}", json!({"case":operation,"observed":{
+                "crash":crash,"containers_after_crash":containers,"markers_after_crash":markers,
+                "retiring_records_after_crash":retiring_records,"generation_locks_after_crash":generation_locks,
+                "recovery_ok":recovery.is_ok(),"recovery_error":recovery.err().map(|e|e.to_string()),
+                "published_preserved":final_preserved,"namespace_retired":namespace_retired,
+                "coordination_restored":coordination_restored,"safe":safe}}));
+            fs::remove_dir_all(&base)?;
+        }
+        println!("RECEIVE_NATIVE_RETIREMENT_CRASH_SUMMARY=observed cases=4 recovered={recovered} children=joined fixture=retired");
+        ensure!(recovered == 4, "receive retirement crash cases failed: {recovered}/4 recovered");
+        println!("RECEIVE_NATIVE_AUTHORITY=pass cases=32 actors={actors} receiver_uid=0 actor_uid=4001 children=joined fixture=retired");
         Ok(())
     }
 

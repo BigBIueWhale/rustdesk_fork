@@ -122822,3 +122822,15 @@ proof must reacquire current destination authority; historical path/inode/birth
 metadata cannot grant it. Those are proposed design obligations, not accepted
 behavior, and still need proof against R-S8/R-S11fi/R-S11fj plus the existing
 mount, ordinary-user, unsupported-handle, crash and lifecycle observations.
+
+Fresh ledger count at `8e5ce34c`, TUF `KREx3zEFLg`: **370,503 tokens /
+1,696,463 bytes**, input SHA-256
+`6679fac00333422901b0ceb3e446556e7feb58f3a650c92e7bde4dfa99bc2d0b`.
+The pinned tokenizer passes all seven controls and the whole-input byte round
+trip. The canonical count command exits zero; QEMU 3114368 joins after 31.523
+seconds, RAM `run.sbfxua62` retires and all three listener comparisons have zero
+changes. Serial SHA-256
+`3898e164f16cb6d69152055d91b4b7f5652c4cc373f9a1e06ebec4c173b9e1f9`.
+The two runs retain thirteen hash-verified raw files / 216,105 bytes per host.
+This audit-only receipt leaves the counted ledger, tested source and live
+instructions unchanged. The staging exception remains pending.

@@ -2793,9 +2793,8 @@ impl<T: InvokeUiSession> Remote<T> {
             .video_threads
             .iter()
             .filter(|v| v.1.fps_control.inactive_counter < inactive_threshold)
-            .map(|v| *v.1.decode_fps.read().unwrap())
-            .min()
-            .flatten();
+            .filter_map(|v| *v.1.decode_fps.read().unwrap())
+            .min();
         let Some(min_decode_fps) = min_decode_fps else {
             return true;
         };

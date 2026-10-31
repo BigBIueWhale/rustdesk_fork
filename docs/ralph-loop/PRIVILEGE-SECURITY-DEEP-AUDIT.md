@@ -125838,3 +125838,47 @@ admission passes 79 controls and five refusals. QEMU 3427781 joins exit 0 after
 30.211 seconds; 402,550,784 bytes peak RAM scratch retires and three listener
 deltas are zero. Fourteen native/capsule/count evidence files are hash-verified
 on CTE/TUF. This audit-only receipt leaves the counted ledger bytes unchanged.
+
+### 2026-11-01 — native mouse release beyond the viewer window
+
+The preceding turn made progress by establishing eight full-app mouse cases.
+This continuation selects R-F1/R-S0/R-S19 release finality: a lost release after
+leaving the image can retain a drag. The existing `25948e56` component evidence
+does not cover native window routing. This has priority over more ordinary-click
+cases; existing user parks remain parked.
+
+Source review follows `RawPointerMouseRegion`, `InputModel._endPhysicalMouseImage`,
+button transition/coordinate handling and the actual desktop leave callback.
+[Flutter's dispatch contract](https://api.flutter.dev/flutter/gestures/GestureBinding/handlePointerEvent.html)
+routes moves/up through the original down hit test; the
+[Xlib pointer contract](https://www.x.org/releases/current/doc/libX11/libX11/libX11.html)
+retains the automatic button grab until release. Harness `7ecdc2f0` therefore
+extends the real peer scenario, without changing production input: press inside,
+observe source-held state, move beyond actual viewer geometry, prove the local
+pointer remains held outside, release and require the native source release.
+A subsequent real motion must return to the original source center before the
+same button's next native click pair. Existing quiet intervals, event/state checks,
+window/TCP identity, resource bounds and eight controls remain.
+
+TUF `UliG8D89Ks` passes all fourteen cases / 28 button events with the unchanged
+`cf437894` app. Left/middle/right are held at viewer root (650,790), relative y=750
+beyond height 740; each releases at controlled y=479. All three subsequent clicks
+return to (320,226), with no held buttons at either end. Outside-release cases take
+72/21/22 ms including initial press and motion; reentries take 72/22/20 ms. Viewer
+RSS grows 1,964 KiB, threads at most one and descriptors zero. No product defect,
+correction, visible-response latency or privilege-boundary closure is claimed.
+The observer compiles twice identically to
+`5e4c52fb5b78d5c8e9b2e8c7447937683ee0f9a44e94256705012e31b4d0b5f2`.
+
+The 113.268-second transaction joins viewer/server/source/Xvfb/containers and
+QEMU 3430005 exit 0, retires 3,010,142,208 bytes peak RAM scratch, and leaves no
+active run root or listener delta in four snapshots. Capsule
+`mouse-outside-7ecdc2f0.json` is 36,307 bytes, SHA-256
+`c7d8f8e562959a92b1233f5d87caed65e41afc3b008a9e63ddd5136035ff27a0`;
+it and seven raw evidence files are hash-verified on CTE/TUF. Diff review and
+whitespace checks pass. This establishes one ordinary-user Linux X11 bottom-exit
+schedule for three buttons. Side buttons, relative mode, physical devices, other
+boundaries/scales/layouts, focus/cancel/reconnect and concurrent-owner behavior,
+installed authority, other platforms and soak remain OPEN. The next input
+checkpoint should address another missing ownership or capability boundary,
+rather than repeat ordinary click delivery.

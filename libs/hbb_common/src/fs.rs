@@ -6955,7 +6955,7 @@ mod tests {
                 && published.mode() & 0o7777 == if artifact == "download" { mode } else { 0o600 }
                 && published.mtime() == 31
                 && after[1..].iter().all(Option::is_none)
-                && std::fs::read_dir(&root.path).unwrap().count() == 2
+                && std::fs::read_dir(&root.path).unwrap().count() == 1
         };
         serde_json::json!({
             "action": action, "artifact": artifact, "mode": mode,
@@ -7542,7 +7542,7 @@ mod tests {
             }).await.unwrap();
             job.finalize_write(1).await.unwrap();
             assert_eq!(std::fs::read(&path).unwrap(), b"new");
-            assert_eq!(std::fs::read_dir(&tmp.path).unwrap().count(), 1 + usize::from(cfg!(target_os = "linux")));
+            assert_eq!(std::fs::read_dir(&tmp.path).unwrap().count(), 1);
             println!("FILE_METADATA_INSPECTION_CACHE=control case={case} cached=true committed=true exact_bytes=true sidecars_absent=true");
         }
         let tmp = TestTempDir::new("rustdesk_next_inspection_failure");
@@ -11160,7 +11160,7 @@ mod tests {
         assert_eq!(std::fs::read(tmp.join("first.bin")).expect("read first file"), payload);
         assert_eq!(std::fs::read(tmp.join("second.bin")).expect("read second file"), b"Z");
         assert_eq!(job.finished_size(), payload.len() as u64 + 1);
-        assert_eq!(std::fs::read_dir(&tmp.path).expect("read receive directory").count(), 2 + usize::from(cfg!(target_os = "linux")));
+        assert_eq!(std::fs::read_dir(&tmp.path).expect("read receive directory").count(), 2);
         assert!(job.data_stream.is_none());
         assert!(job.receive_write_claim.is_none());
     }
@@ -12825,7 +12825,7 @@ mod tests {
             std::fs::read_dir(&destination)
                 .expect("inspect cleanup")
                 .count(),
-            1 + usize::from(cfg!(target_os = "linux"))
+            1
         );
     }
 
@@ -13006,7 +13006,7 @@ mod tests {
         assert_eq!(std::fs::read(tmp.join("second.bin")).unwrap(), b"next");
         assert!(job.data_stream.is_none());
         assert!(job.receive_write_claim.is_none());
-        assert_eq!(std::fs::read_dir(&tmp.path).unwrap().count(), 2 + usize::from(cfg!(target_os = "linux")));
+        assert_eq!(std::fs::read_dir(&tmp.path).unwrap().count(), 2);
     }
 
     #[tokio::test]
@@ -13064,7 +13064,7 @@ mod tests {
         assert_eq!(std::fs::read(tmp.join("incoming.bin")).unwrap(), b"abcd");
         assert!(job.data_stream.is_none());
         assert!(job.receive_write_claim.is_none());
-        assert_eq!(std::fs::read_dir(&tmp.path).unwrap().count(), 1 + usize::from(cfg!(target_os = "linux")));
+        assert_eq!(std::fs::read_dir(&tmp.path).unwrap().count(), 1);
     }
 
     #[tokio::test]
@@ -13318,7 +13318,7 @@ mod tests {
                 std::fs::read_dir(directory)
                     .expect("inspect retired sidecars")
                     .count(),
-                1 + usize::from(cfg!(target_os = "linux"))
+                1
             );
         }
         assert!(

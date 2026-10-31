@@ -368,9 +368,18 @@ mod linux {
             let mut receiver = new_receiver()?;
             let mut digest = incoming();
             digest.file_size = expected_size;
+            if phase == "digest" {
+                // Retain the enrolled identity so exhaustion reaches digest setup.
+                // Restore the protected parent before admitting the write.
+                fs::set_permissions(base, fs::Permissions::from_mode(0o777))?;
+            }
             if phase != "identity" {
                 receiver.inspect_receive_digest(&digest, false).await?;
             }
+            let prepared_artifacts = if phase == "digest" {
+                fs::set_permissions(base, fs::Permissions::from_mode(0o700))?;
+                Some(staging(base)?)
+            } else { None };
             if phase == "block" {
                 receiver.confirm_with_offset(0, 0).await?;
                 write(&mut receiver, &vec![b'a'; PAGE]).await?;
@@ -407,7 +416,10 @@ mod linux {
             let error = failed.err().ok_or_else(|| anyhow!("full-filesystem operation reported success"))?;
             ensure!(error.downcast_ref::<io::Error>()
                 .is_some_and(|error| error.raw_os_error() == Some(libc::ENOSPC)));
-            let artifacts = staging(base)?;
+            let artifacts = match prepared_artifacts {
+                Some(artifacts) => artifacts,
+                None => staging(base)?,
+            };
             if phase == "block" {
                 let staged = fs::read(artifacts.join("payload.download"))?;
                 let mut expected_partial = vec![b'a'; PAGE];
@@ -456,7 +468,7 @@ mod linux {
             write(&mut fresh, &expected).await?;
             fresh.finalize_write(1).await?;
             fresh.retire_current_file_state()?;
-            ensure!(fs::read(&final_path)? == expected && !staging(base)?.try_exists()?);
+            ensure!(fs::read(&final_path)? == expected && fs::read_dir(base)?.count() == 1);
             Ok::<_, hbb_common::anyhow::Error>(json!({"filesystem":"tmpfs", "phase":phase,
                 "capacity_bytes":65536, "free_bytes_before_block":free_pages * PAGE as u64,
                 "block_bytes":if phase == "block" {2 * PAGE} else {0},
@@ -1016,7 +1028,7 @@ mod linux {
             let containers = fs::read_dir(&base)?.collect::<Result<Vec<_>, _>>()?.into_iter()
                 .filter(|e| e.file_name().as_encoded_bytes().starts_with(b".rustdesk-receive-")).count();
             let temporary = temporary_records()?.difference(&before).cloned().collect::<Vec<_>>();
-            let safe = recovery.is_ok() && containers == 1 && temporary.is_empty()
+            let safe = recovery.is_ok() && containers == 0 && temporary.is_empty()
                 && private_final(&base).is_ok();
             recovered += usize::from(safe);
             println!("RECEIVE_NATIVE_CASE={}", json!({"case":operation,"observed":{

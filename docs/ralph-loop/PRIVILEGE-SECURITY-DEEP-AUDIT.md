@@ -124618,3 +124618,17 @@ layout defect: preserve full authorized filesystem reach, protected publication 
 exact retirement together. No persistent-directory exception is accepted and no
 permission dependency is introduced. Other platforms, non-local/power-loss behavior
 and broader release acceptance remain OPEN.
+
+Ledger count at `001b7264`, TUF `mU1hGybxw6`, exits zero: **374,721 tokens /
+1,717,468 bytes**, input SHA-256
+`ab2c6cafd8e9a40ec89efd3104cff318238642fa2601d551b91012ca53435467`.
+The pinned tiktoken 0.12.0 / cl100k_base / encode_ordinary method, seven controls
+and strict whole-file UTF-8 round trip pass. Serial
+`ledger-token-count-run.mU1hGybxw6.serial.log` is 35,833 bytes, SHA-256
+`06cd310df74b829397833b58e686e1a3b611a58b3558d17fff54c5976246d434`.
+QEMU 3250593 joins zero after 30.800 seconds; wrapper 3249164 and RAM workspace
+`run.pz4x4wa7` are absent. Peak scratch is 402,509,824 bytes within 4 GiB, minimum
+available memory is 45,688,184,832 bytes, and all three listener deltas are zero.
+Six count files / 105,000 bytes and twenty-one behavioral-run files total twenty-seven /
+576,424 bytes per host, hash-verified on CTE and TUF. Both ledger copies match the
+counted hash; this audit-only receipt leaves that input unchanged.

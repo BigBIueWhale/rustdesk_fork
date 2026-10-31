@@ -3598,6 +3598,7 @@ run_focused_rust_tests() {
                 fs::confirmation::tests::prepared_receive_cancellation_preserves_partial_and_checkpoint_rules
                 fs::confirmation::tests::prepare_refuses_invalid_targets_before_worker_admission
                 fs::tests::file_metadata_resume_requires_matching_source_prefix
+                fs::tests::file_metadata_resume_content_covers_multiple_blocks_and_compression
                 fs::tests::file_metadata_resume_proof_shape_and_content_precede_confirmation
                 fs::tests::file_metadata_pending_resume_retirement_preserves_saved_bytes
                 fs::tests::file_metadata_resume_cancellation_preserves_partial_and_refuses_reuse
@@ -3672,6 +3673,7 @@ run_focused_rust_tests() {
                 fs::tests::file_metadata_receive_namespace_keeps_independent_file_claims
                 fs::tests::file_metadata_receive_namespace_accepts_maximum_native_filename
                 fs::tests::file_metadata_resume_requires_matching_source_prefix
+                fs::tests::file_metadata_resume_content_covers_multiple_blocks_and_compression
                 fs::tests::file_metadata_resume_proof_shape_and_content_precede_confirmation
                 fs::tests::file_metadata_pending_resume_retirement_preserves_saved_bytes
                 fs::tests::file_metadata_resume_cancellation_preserves_partial_and_refuses_reuse
@@ -6405,6 +6407,7 @@ run_focused_rust_tests() {
                                 fs::confirmation::tests::prepared_receive_cancellation_preserves_partial_and_checkpoint_rules \
                                 fs::confirmation::tests::prepare_refuses_invalid_targets_before_worker_admission \
                                 fs::tests::file_metadata_resume_requires_matching_source_prefix \
+                                fs::tests::file_metadata_resume_content_covers_multiple_blocks_and_compression \
                                 fs::tests::file_metadata_resume_proof_shape_and_content_precede_confirmation \
                                 fs::tests::file_metadata_pending_resume_retirement_preserves_saved_bytes \
                                 fs::tests::file_metadata_resume_cancellation_preserves_partial_and_refuses_reuse \

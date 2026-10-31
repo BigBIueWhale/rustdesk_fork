@@ -459,11 +459,22 @@ mod tests {
     async fn pending_hash_allows_tcp_control_and_cancelled_wait_keeps_ownership() {
         use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::{TcpListener, TcpStream}};
         for prepare in [false, true] {
+        for offset in [u32::MAX, 1] {
         let fixture = Fixture::new();
-        let request = fixture.large_source();
+        let mut request = fixture.large_source();
+        request.mut_resume().offset = offset;
+        if offset == 1 {
+            use crate::sha2::{Digest, Sha256};
+            let mut hash = Sha256::new();
+            hash.update(b"rustdesk.file-transfer.resume-prefix.v1\0");
+            hash.update((u64::from(u32::MAX) + 4).to_le_bytes());
+            hash.update(1u64.to_le_bytes());
+            hash.update([0]);
+            request.mut_resume().prefix_sha256 = hash.finalize().to_vec().into();
+        }
         let mut watch = AccessWatch::new(&fixture.source());
         let mut owner = FileConfirmations::default();
-        if prepare { owner.prepare(&mut vec![fixture.job(701)], 701, 0, u32::MAX as u64).unwrap(); }
+        if prepare { owner.prepare(&mut vec![fixture.job(701)], 701, 0, offset as u64).unwrap(); }
         else { owner.start(&mut vec![fixture.job(701)], request).unwrap(); }
         let mut wait = Box::pin(owner.next());
         let first = std::future::poll_fn(|cx| Poll::Ready(wait.as_mut().poll(cx))).await;
@@ -472,6 +483,28 @@ mod tests {
         assert_eq!(owner.len(), 1);
         watch.wait().await;
         assert!(fixture.source_handles() > 0);
+        if offset == 1 {
+            // Observe a real read beyond the prefix before measuring control or
+            // cancelling. This exercises the newly added complete-source pass.
+            let expected = std::fs::metadata(fixture.source()).unwrap();
+            tokio::time::timeout(Duration::from_secs(3), async {
+                loop {
+                    let mut suffix_read = false;
+                    for entry in std::fs::read_dir("/proc/thread-self/fd").unwrap() {
+                        let entry = entry.unwrap();
+                        let Ok(metadata) = std::fs::metadata(entry.path()) else { continue; };
+                        if (metadata.dev(), metadata.ino()) != (expected.dev(), expected.ino()) { continue; }
+                        let info = std::fs::read_to_string(
+                            PathBuf::from("/proc/thread-self/fdinfo").join(entry.file_name())).unwrap();
+                        let position: u64 = info.lines().find_map(|line| line.strip_prefix("pos:\t"))
+                            .unwrap().parse().unwrap();
+                        suffix_read |= position > 1;
+                    }
+                    if suffix_read { break; }
+                    tokio::time::sleep(Duration::from_millis(1)).await;
+                }
+            }).await.unwrap();
+        }
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let (outgoing, incoming) = tokio::join!(TcpStream::connect(address), listener.accept());
@@ -500,7 +533,8 @@ mod tests {
         assert_eq!((owner.len(), fixture.source_handles()), (0, 0));
         assert_eq!(drain().unwrap().capacity.available_permits(), DRAIN_CAPACITY);
         drop((outgoing, incoming, listener, watch, fixture));
-        println!("FILE_CONFIRMATION_CONTROL=pass prepare={prepare} native_read=observed tcp=ping-pong worker=pending cancellation=joined source_handles=retired");
+        println!("FILE_CONFIRMATION_CONTROL=pass prepare={prepare} offset={offset} native_read=observed tcp=ping-pong worker=pending cancellation=joined source_handles=retired");
+        }
         }
     }
 

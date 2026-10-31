@@ -831,6 +831,8 @@ pub struct TransferJob {
     resume_cancelled: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     #[serde(skip)]
     send_file_offset: u64,
+    #[serde(skip)]
+    send_resume_content: Option<SendResumeContent>,
     pub total_size: u64,
     finished_size: u64,
     transferred: u64,
@@ -3837,12 +3839,41 @@ fn receive_confirmation_prefix(r: &FileTransferSendConfirmRequest) -> ResultType
     }
 }
 
-async fn transfer_prefix_sha256(
+#[derive(Debug)]
+struct SendResumeContent {
+    expected: [u8; 32],
+    hash: Option<crate::sha2::Sha256>,
+}
+
+impl SendResumeContent {
+    fn ensure_active(&self) -> ResultType<()> {
+        if self.hash.is_none() {
+            bail!("resume source verification already failed");
+        }
+        Ok(())
+    }
+
+    fn advance(&mut self, bytes: &[u8], complete: bool) -> ResultType<()> {
+        use crate::sha2::Digest;
+        let mut hash = self.hash.take()
+            .ok_or_else(|| anyhow!("resume source verification already failed"))?;
+        hash.update(bytes);
+        if complete && <[u8; 32]>::from(hash.clone().finalize()) != self.expected {
+            bail!("resume source content changed after confirmation");
+        }
+        self.hash = Some(hash);
+        Ok(())
+    }
+}
+
+async fn prepare_resume_content(
     file: &mut File,
     size: u64,
     offset: u64,
+    role: TransferRole,
+    expected_prefix: Option<[u8; 32]>,
     cancelled: Option<&std::sync::atomic::AtomicBool>,
-) -> ResultType<[u8; 32]> {
+) -> ResultType<([u8; 32], Option<SendResumeContent>)> {
     use crate::sha2::{Digest, Sha256};
     let mut buffer = Vec::new();
     buffer.try_reserve_exact(64 * 1024)
@@ -3853,24 +3884,50 @@ async fn transfer_prefix_sha256(
     hash.update(size.to_le_bytes());
     hash.update(offset.to_le_bytes());
     file.seek(std::io::SeekFrom::Start(0)).await?;
-    let mut remaining = offset;
-    while remaining > 0 {
-        if cancelled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
-            bail!("resume verification cancelled");
+    // The prefix proof and the sender's complete content commitment share one
+    // read pass. Keep the prefix hash state to cover saved bytes plus every
+    // subsequently emitted block, without retaining a source copy.
+    let mut prefix = None;
+    let mut sent_hash = None;
+    for (length, is_prefix) in [(offset, true), (size - offset, false)] {
+        if !is_prefix && role == TransferRole::Receive { break; }
+        let mut remaining = length;
+        while remaining > 0 {
+            if cancelled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
+                bail!("resume verification cancelled");
+            }
+            let limit = remaining.min(buffer.len() as u64) as usize;
+            let read = file.read(&mut buffer[..limit]).await?;
+            if read == 0 {
+                bail!("resume source ended before the declared content boundary");
+            }
+            hash.update(&buffer[..read]);
+            remaining -= read as u64;
+            tokio::task::yield_now().await;
         }
-        let limit = remaining.min(buffer.len() as u64) as usize;
-        let read = file.read(&mut buffer[..limit]).await?;
-        if read == 0 {
-            bail!("resume prefix ended before the confirmed offset");
+        if is_prefix {
+            let proof: [u8; 32] = hash.clone().finalize().into();
+            if expected_prefix.is_some_and(|expected| expected != proof) {
+                bail!("resume prefix differs from the current source");
+            }
+            prefix = Some(proof);
+            if role == TransferRole::Send { sent_hash = Some(hash.clone()); }
         }
-        hash.update(&buffer[..read]);
-        remaining -= read as u64;
-        tokio::task::yield_now().await;
     }
     if cancelled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
         bail!("resume verification cancelled");
     }
-    Ok(hash.finalize().into())
+    let content = if role == TransferRole::Send {
+        if file.read(&mut buffer[..1]).await? != 0 {
+            bail!("resume source exceeds the declared file size");
+        }
+        file.seek(std::io::SeekFrom::Start(offset)).await?;
+        if cancelled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
+            bail!("resume verification cancelled");
+        }
+        Some(SendResumeContent { expected: hash.finalize().into(), hash: sent_hash })
+    } else { None };
+    Ok((prefix.ok_or_else(|| anyhow!("resume prefix was not prepared"))?, content))
 }
 
 impl TransferJob {
@@ -4217,6 +4274,7 @@ impl TransferJob {
         // Windows does not generally permit deletion while this job still owns the handle.
         drop(self.data_stream.take());
         self.send_file_offset = 0;
+        self.send_resume_content = None;
         if self.role != TransferRole::Receive {
             return Ok(());
         }
@@ -4419,6 +4477,7 @@ impl TransferJob {
         if self.role != TransferRole::Send {
             bail!("cannot initialize a send source for a receive job");
         }
+        if let Some(content) = &self.send_resume_content { content.ensure_active()?; }
         let file_num = self.file_num as usize;
         if file_num >= self.files.len() {
             self.data_stream.take();
@@ -4509,6 +4568,7 @@ impl TransferJob {
         if self.role != TransferRole::Send {
             bail!("cannot read an outgoing block from a receive job");
         }
+        if let Some(content) = &self.send_resume_content { content.ensure_active()?; }
         if self.r#type == JobType::Generic {
             if self.enable_overwrite_detection && !self.file_confirmed() {
                 return Ok(None);
@@ -4580,10 +4640,17 @@ impl TransferJob {
             );
         }
         buf.truncate(offset);
+        if let Some(content) = self.send_resume_content.as_mut() {
+            if let Err(error) = content.advance(&buf, next_send_offset == expected_size) {
+                self.data_stream = None;
+                return Err(error);
+            }
+        }
         if offset == 0 {
             self.file_num += 1;
             self.data_stream = None;
             self.send_file_offset = 0;
+            self.send_resume_content = None;
             self.file_confirmed = false;
             self.file_is_waiting = false;
         } else {
@@ -4793,21 +4860,17 @@ impl TransferJob {
         // Lease-only cleanup preserves the partial until proof acceptance.
         self.receive_write_claim = claim;
         self.resume_preparing = true;
-        let prefix = transfer_prefix_sha256(
-            &mut file, expected_size, offset, self.resume_cancelled.as_deref(),
-        ).await
-            .and_then(|prefix| {
-                if expected_prefix.is_some_and(|expected| expected != prefix) {
-                    bail!("resume prefix differs from the current source");
-                }
-                Ok(prefix)
-            })?;
+        let (prefix, content) = prepare_resume_content(
+            &mut file, expected_size, offset, self.role, expected_prefix,
+            self.resume_cancelled.as_deref(),
+        ).await?;
         if expected_prefix.is_some() {
             if let Some(claim) = self.receive_write_claim.as_mut() {
                 claim.cleanup_on_drop = ReceiveClaimCleanup::Artifacts;
             }
         }
         self.data_stream = Some(file);
+        self.send_resume_content = content;
         self.resume_preparing = false;
         self.transferred = transferred;
         self.finished_size = finished_size;
@@ -6379,9 +6442,14 @@ mod tests {
                         && actual == b"prior destination" && refusal_before_confirmation };
                 receiver.retire_current_file_state().unwrap();
                 sender.retire_current_file_state().unwrap();
-                let partial_correct = if matches { !partial_path.exists() && !digest_path.exists() }
-                    else { std::fs::read(&partial_path).unwrap() == b"abc"
-                        && std::fs::read(&digest_path).unwrap() == br#"{"size":6,"modified":31}"# };
+                // A receive-side proof producer preserves the saved pair until
+                // its first block arrives. A sender refusal can precede that edge.
+                let preserve_partial = !matches
+                    || (mutate_after_confirmation && result.is_err() && !sender_initiates);
+                let partial_correct = if preserve_partial {
+                    std::fs::read(&partial_path).unwrap() == b"abc"
+                        && std::fs::read(&digest_path).unwrap() == br#"{"size":6,"modified":31}"#
+                } else { !partial_path.exists() && !digest_path.exists() };
                 drop((receiver, sender));
                 let fixture = root.path.clone();
                 drop(root);
@@ -6401,6 +6469,70 @@ mod tests {
             println!("FILE_METADATA_RESUME_CONTENT={observation}");
         }
         assert!(all_safe, "resume must not publish mismatched prefix or mixed-version content as success");
+    }
+
+    #[tokio::test]
+    async fn file_metadata_resume_content_covers_multiple_blocks_and_compression() {
+        use std::io::{Seek, SeekFrom, Write};
+        for compressed in [false, true] {
+            for mutation in ["none", "already-saved", "remaining"] {
+                let root = TestTempDir::new("rustdesk_resume_complete_content");
+                std::fs::create_dir_all(&root.path).unwrap();
+                let source = root.join(if compressed { "source.bin" } else { "source.zip" });
+                let original = vec![0x5a; 2 * FILE_TRANSFER_BLOCK_SIZE + 11];
+                std::fs::write(&source, &original).unwrap();
+                let mut sender = TransferJob::new_read(492, JobType::Generic, String::new(),
+                    source.clone(), 0, false, false, true).unwrap();
+                let request = sender.confirm_with_offset(0, 3).await.unwrap();
+                assert_eq!(request.resume().prefix_sha256.as_ref(),
+                    fixture_resume_prefix(original.len() as u64, &original[..3]).as_ref());
+                let mut delivered = original[..3].to_vec();
+                let first = sender.read().await.unwrap().unwrap();
+                assert_eq!(first.compressed, compressed);
+                delivered.extend_from_slice(&file_block::decode(&first.data, first.compressed).unwrap());
+                assert_eq!(delivered, original[..3 + FILE_TRANSFER_BLOCK_SIZE]);
+                if mutation != "none" {
+                    let mut writer = std::fs::OpenOptions::new().write(true).open(&source).unwrap();
+                    writer.write_all(b"new").unwrap();
+                    if mutation == "remaining" {
+                        writer.seek(SeekFrom::End(-1)).unwrap();
+                        writer.write_all(b"!").unwrap();
+                    }
+                    writer.sync_all().unwrap();
+                }
+                let mut rejected = false;
+                for _ in 0..5 {
+                    let before = (sender.file_num(), sender.finished_size(), sender.transferred());
+                    match sender.read().await {
+                        Ok(Some(block)) => delivered.extend_from_slice(
+                            &file_block::decode(&block.data, block.compressed).unwrap()),
+                        Ok(None) => break,
+                        Err(error) => {
+                            assert_eq!(mutation, "remaining");
+                            assert!(error.to_string().contains("content changed after confirmation"));
+                            assert_eq!((sender.file_num(), sender.finished_size(), sender.transferred()), before);
+                            assert!(sender.data_stream.is_none());
+                            assert!(sender.read().await.unwrap_err().to_string().contains("already failed"));
+                            assert!(sender.init_data_stream_for_cm().await.unwrap_err()
+                                .to_string().contains("already failed"));
+                            rejected = true;
+                            break;
+                        }
+                    }
+                }
+                assert_eq!(rejected, mutation == "remaining");
+                if !rejected {
+                    assert_eq!(delivered, original);
+                    assert_eq!(sender.file_num(), 1);
+                    assert!(sender.send_resume_content.is_none());
+                    assert!(sender.job_completed());
+                }
+                sender.retire_current_file_state().unwrap();
+                assert!(sender.send_resume_content.is_none());
+                drop(sender);
+                println!("FILE_METADATA_RESUME_COMMITMENT=pass compressed={compressed} mutation={mutation} rejected={rejected} handles=retired");
+            }
+        }
     }
 
     #[tokio::test]

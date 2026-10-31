@@ -123283,3 +123283,36 @@ The two runs retain **13 raw files / 191,489 bytes per host**, hash-verified on
 both hosts. All four exact wrapper/QEMU PIDs, RAM workspaces and the diagnostic
 directory are absent; diagnostic removal reclaimed 3,452,928 allocated bytes.
 This audit-only receipt leaves the tested source and counted ledger unchanged.
+
+## 2026-10-31 — resumed send content commitment
+
+Continue the reproduced source-mutation defect. Intended model: a resumed sender
+prepares one full-content commitment while generating/verifying its prefix proof,
+retains the prefix hash state and checks saved-prefix plus emitted-suffix bytes
+against that commitment before emitting the last data block or successful EOF.
+One bounded 64 KiB buffer reads the retained source once during preparation; a
+fixed-size hash state covers later blocks before compression. A mismatch closes
+the stream, preserves counters/file number and makes the send state terminal until
+explicit retirement. There is no disk copy, lock-based access restriction, new wire
+action or receiver publication path. Complete-source preparation adds suffix I/O
+and hashing to the existing owned, capacity-limited confirmation task; cancellation
+must remain responsive through that additional work.
+
+This binds transfer output to the preparation read's content, not to an atomic
+filesystem snapshot against arbitrary concurrent writers. Already-consumed source
+bytes may change later while the prepared content still transfers correctly.
+Fresh transfers, authenticated application/CM integration and native platform
+acceptance are not closed by this resumed-transfer change. The rsync project's
+[manual](https://www.samba.org/ftp/rsync/rsync.1) distinguishes transfer-content
+verification from pre-transfer file selection; its checksum does not establish an
+atomic source snapshot either. Lease/clone restrictions from the preceding entry
+remain reasons to avoid silently narrowing supported file access.
+
+The original six-case reproduction keeps its file/wire interleaving and byte
+oracle. Its cleanup expectation is corrected for a refusal before the first block:
+a receive-side proof producer still owns only a lease and preserves the saved pair.
+New controls cover multiple blocks, compression, changed remaining bytes, harmless
+changes to already-saved bytes, terminal retry refusal and hash-owner retirement.
+The existing worker cancellation test adds one-byte-prefix cases and observes the
+retained descriptor's native read position beyond that prefix before TCP control,
+cancellation, exact joining and capacity recovery. No runtime result is claimed yet.

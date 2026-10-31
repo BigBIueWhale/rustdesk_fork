@@ -124170,3 +124170,17 @@ diagnostics. Serial `android-rust-lifecycle-tests-run.W5buT2IeLm.serial.log`,
 10,355 bytes, SHA-256 `cedc9f864255daec25c6da6beecb18b961864956f04a078fa04146f273b26f04`.
 This checkpoint establishes four concrete failures, not their correction.
 The receive fix remains active and authorized; unrelated parks remain unchanged.
+
+Ledger count at `ebac2fa6`, TUF `XdW473ggkc`, exits zero: **373,704 tokens /
+1,712,307 bytes**, input SHA-256
+`e7ad8f0c947ae13e11951db3c90cf86f645fa35c802d0c41cb780a16dd1fac7a`.
+The same tiktoken 0.12.0 / cl100k_base / encode_ordinary method, seven controls
+and strict whole-file UTF-8 round trip pass. Serial
+`ledger-token-count-run.XdW473ggkc.serial.log` is 35,833 bytes, SHA-256
+`2fc61b67f3210c4e4529b428f18d12b873544511200695f954fbdb56d36b5220`.
+QEMU 3216382 joins zero after 33.536 seconds; wrapper 3214961 and RAM workspace
+`run.c2abcl1h` are absent. Peak scratch is 402,370,560 bytes within 4 GiB;
+all three listener deltas are zero. The six count files / 104,219 bytes and seven
+baseline files total 13 files / 186,136 bytes per host, hash-verified on CTE and
+TUF. Both ledger copies match the counted hash; this audit-only receipt leaves
+that input unchanged.

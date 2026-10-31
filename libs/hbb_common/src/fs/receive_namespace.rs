@@ -417,6 +417,35 @@ fn retire_directory(coordinator: &File, record_name: &CStr,
     Ok(true)
 }
 
+fn retire_enrolled_directory(coordinator: &File, record_name: &CStr,
+    destination: &File, directory: &File, directory_name: &CStr) -> io::Result<()> {
+    if let Some(mut record) = read_record(coordinator, record_name)? {
+        // A retry through a retired claim must preserve a later namespace.
+        if record.name.as_bytes() == directory_name.to_bytes()
+            && record.inode == Some(directory.metadata()?.ino()) {
+            retire_directory(coordinator, record_name, destination, &mut record)?;
+        }
+    }
+    Ok(())
+}
+
+fn retire_file_directory(directory: &File, child: &CStr, artifacts: &File) -> io::Result<()> {
+    // Removal may have succeeded before its parent barrier failed. Retry
+    // that retained parent without touching a successor at the old name.
+    if artifacts.metadata()?.nlink() == 0 {
+        return sync_recv_directory(directory);
+    }
+    private_directory(artifacts)?;
+    // Saved payloads, digests and another owner's lease remain untouched.
+    if !is_empty(artifacts)? { return Ok(()); }
+    unix_require_same_object(&unix_fstat(artifacts)?,
+        &unix_fstatat_no_follow(directory.as_raw_fd(), child)?, "receive file namespace")?;
+    if unsafe { libc::unlinkat(directory.as_raw_fd(), child.as_ptr(), libc::AT_REMOVEDIR) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    sync_recv_directory(directory)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -677,7 +706,10 @@ mod tests {
                 (m.dev(), m.ino(), m.mode(), m.nlink())
             };
             let before = identity(&temporary);
+            let lease_path = parent.join("claim.download.lock");
+            let active_lease = identity(&lease_path);
             assert_eq!(ReceivePathLease::acquire(&target, false).unwrap_err().kind(), io::ErrorKind::WouldBlock);
+            assert_eq!(identity(&lease_path), active_lease);
             assert_eq!(identity(&temporary), before);
             assert_eq!(std::fs::read(&content).unwrap(), bytes);
             drop(stream);
@@ -691,6 +723,7 @@ mod tests {
                 lease.retire().unwrap();
             } else {
                 assert!(acquired.is_err(), "unsafe temporary admitted: {case}");
+                assert!(!lease_path.exists(), "refused preparation retained its own lease: {case}");
                 assert_eq!(identity(&temporary), before);
                 assert_eq!(std::fs::read(&content).unwrap(), bytes);
             }
@@ -1103,6 +1136,10 @@ impl ReceiveNamespace {
 
     fn acquire_locked(destination: File, final_name: &CStr, coordinator: File) -> io::Result<Self> {
         let key = directory_key(&destination)?;
+        let mut digest = Sha256::new();
+        digest.update(b"rustdesk.receive.file.v1\0");
+        digest.update(final_name.to_bytes());
+        let child = name(&format!("{:x}", digest.finalize()))?;
         let generation_name = name(&format!("{key}.lock"))?;
         let generation = open_regular_child_no_follow(&coordinator, &generation_name,
             RegularFileAccess::Write, ReceiveFileCreation::OpenOrCreate)?;
@@ -1113,16 +1150,9 @@ impl ReceiveNamespace {
             sync_recv_regular_file(&generation)?;
             sync_recv_directory(&coordinator)?;
             lock(&generation, libc::LOCK_SH)?;
-            let (directory, directory_name) = Self::enroll_directory(&destination,
-                &coordinator, &generation, &record_name, &temporary)?;
-            let mut digest = Sha256::new();
-            digest.update(b"rustdesk.receive.file.v1\0");
-            digest.update(final_name.to_bytes());
-            let child = name(&format!("{:x}", digest.finalize()))?;
-            let artifacts = private_child(&directory, &child)?;
-            Ok((directory, directory_name, child, artifacts))
+            Self::enroll_directory(&destination, &coordinator, &generation, &record_name, &temporary)
         })();
-        let (directory, directory_name, child, artifacts) = match admitted {
+        let (directory, directory_name) = match admitted {
             Ok(admitted) => admitted,
             Err(error) => {
                 let cleanup = retire_unused_generation(&coordinator, &generation,
@@ -1131,6 +1161,32 @@ impl ReceiveNamespace {
                     Ok(()) => Err(error),
                     Err(cleanup) => Err(io::Error::new(error.kind(),
                         format!("{error}; receive enrollment cleanup failed: {cleanup}"))),
+                };
+            }
+        };
+        let artifacts = match private_child(&directory, &child) {
+            Ok(artifacts) => artifacts,
+            Err(error) => {
+                let cleanup = (|| {
+                    // Creation may have succeeded before open or synchronization
+                    // failed. Only a private, empty child in this retained private
+                    // container can retire; enrollment still excludes new owners.
+                    match directory_at(&directory, &child) {
+                        Ok(artifacts) => retire_file_directory(&directory, &child, &artifacts)?,
+                        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                            sync_recv_directory(&directory)?;
+                        }
+                        Err(error) => return Err(error),
+                    }
+                    retire_unused_generation(&coordinator, &generation, &generation_name, || {
+                        retire_enrolled_directory(&coordinator, &record_name,
+                            &destination, &directory, &directory_name)
+                    })
+                })();
+                return match cleanup {
+                    Ok(()) => Err(error),
+                    Err(cleanup) => Err(io::Error::new(error.kind(),
+                        format!("{error}; receive file namespace cleanup failed: {cleanup}"))),
                 };
             }
         };
@@ -1229,15 +1285,8 @@ impl ReceiveNamespace {
 
     fn retire_generation(&self) -> io::Result<()> {
         retire_unused_generation(&self.coordinator, &self.generation, &self.generation_name, || {
-            if let Some(mut record) = read_record(&self.coordinator, &self.record_name)? {
-                // A retry through a retired claim must preserve a later namespace.
-                if record.name.as_bytes() == self.directory_name.as_bytes()
-                    && record.inode == Some(self.directory.metadata()?.ino()) {
-                    retire_directory(&self.coordinator, &self.record_name,
-                        &self.destination, &mut record)?;
-                }
-            }
-            Ok(())
+            retire_enrolled_directory(&self.coordinator, &self.record_name,
+                &self.destination, &self.directory, &self.directory_name)
         })
     }
 
@@ -1245,21 +1294,7 @@ impl ReceiveNamespace {
         lock(&self.coordinator, libc::LOCK_EX)?;
         let result = (|| {
             remove_lease()?;
-            // Removal may have succeeded before its parent barrier failed. Retry
-            // that retained parent without touching a successor at the old name.
-            if self.artifacts.metadata()?.nlink() == 0 {
-                return sync_recv_directory(&self.directory);
-            }
-            // Resume inspection deliberately leaves a payload/digest pair in this directory.
-            if !is_empty(&self.artifacts)? {
-                return Ok(());
-            }
-            unix_require_same_object(&unix_fstat(&self.artifacts)?,
-                &unix_fstatat_no_follow(self.directory.as_raw_fd(), &self.child)?, "receive file namespace")?;
-            if unsafe { libc::unlinkat(self.directory.as_raw_fd(), self.child.as_ptr(), libc::AT_REMOVEDIR) } != 0 {
-                return Err(io::Error::last_os_error());
-            }
-            sync_recv_directory(&self.directory)
+            retire_file_directory(&self.directory, &self.child, &self.artifacts)
         })().and_then(|()| self.retire_generation());
         let released = lock(&self.coordinator, libc::LOCK_UN);
         match (result, released) {

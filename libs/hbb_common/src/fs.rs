@@ -3313,13 +3313,33 @@ impl ReceivePathLease {
     ) -> std::io::Result<Self> {
         let path = recv_sidecar_path(final_path, ".download.lock");
         #[cfg(target_os = "linux")]
-        let parent = namespace.artifacts.try_clone()?;
-        #[cfg(unix)]
+        let (parent, file) = {
+            let admitted = (|| -> std::io::Result<_> {
+                let parent = namespace.artifacts.try_clone()?;
+                let name = receive_namespace::ReceiveNamespace::artifact_name(".download.lock")?;
+                let file = open_regular_child_no_follow(
+                    &parent, &name, RegularFileAccess::Write, ReceiveFileCreation::OpenOrCreate,
+                )?;
+                validate_recv_file_authority(&file)?;
+                acquire_receive_path_lock(&file)?;
+                Ok((parent, file))
+            })();
+            match admitted {
+                Ok(admitted) => admitted,
+                Err(error) => {
+                    // No exclusive lease was acquired. Retire only empty namespace
+                    // state, preserving any existing lease and resumable artifacts.
+                    return match namespace.retire(|| Ok(())) {
+                        Ok(()) => Err(error),
+                        Err(cleanup) => Err(std::io::Error::new(error.kind(),
+                            format!("{error}; receive lease admission cleanup failed: {cleanup}"))),
+                    };
+                }
+            }
+        };
+        #[cfg(all(unix, not(target_os = "linux")))]
         let file = {
-            #[cfg(not(target_os = "linux"))]
             let name = cstring_file_name(&path)?;
-            #[cfg(target_os = "linux")]
-            let name = receive_namespace::ReceiveNamespace::artifact_name(".download.lock")?;
             let file = open_regular_child_no_follow(
                 &parent, &name, RegularFileAccess::Write, ReceiveFileCreation::OpenOrCreate,
             )?;
@@ -3330,32 +3350,43 @@ impl ReceivePathLease {
         let file = open_recv_file_no_follow_std(
             &path, false, ReceiveFileCreation::OpenOrCreate, create_parent, false,
         )?;
+        #[cfg(not(target_os = "linux"))]
         acquire_receive_path_lock(&file)?;
-        #[cfg(all(unix, not(target_os = "linux")))]
-        ensure_recv_child_matches_open_file(&parent, &cstring_file_name(&path)?, &file)?;
-        #[cfg(target_os = "linux")]
-        ensure_recv_child_matches_open_file(&parent,
-            &receive_namespace::ReceiveNamespace::artifact_name(".download.lock")?, &file)?;
-        #[cfg(windows)]
-        ensure_recv_path_matches_open_file(&path, &file)?;
-        sync_recv_regular_file(&file)?;
-        #[cfg(unix)]
-        sync_recv_directory(&parent)?;
-        #[cfg(any(target_os = "macos", target_os = "ios"))]
-        sync_recv_regular_file(&file)?;
-        #[cfg(target_os = "linux")]
-        {
-            // Only the exclusive per-file lease may retire interrupted preparation.
-            namespace.retire_digest_preparation()?;
-            namespace.complete_enrollment()?;
-        }
-        Ok(Self {
+        let mut lease = Self {
             path, file, retired: false,
             #[cfg(unix)]
             parent,
             #[cfg(target_os = "linux")]
             namespace,
-        })
+        };
+        let prepared = (|| -> std::io::Result<()> {
+            #[cfg(unix)]
+            ensure_recv_child_matches_open_file(&lease.parent,
+                &lease.child_name(&lease.path)?, &lease.file)?;
+            #[cfg(windows)]
+            ensure_recv_path_matches_open_file(&lease.path, &lease.file)?;
+            sync_recv_regular_file(&lease.file)?;
+            #[cfg(unix)]
+            sync_recv_directory(&lease.parent)?;
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            sync_recv_regular_file(&lease.file)?;
+            #[cfg(target_os = "linux")]
+            {
+                // Only the exclusive per-file lease may retire interrupted preparation.
+                lease.namespace.retire_digest_preparation()?;
+                lease.namespace.complete_enrollment()?;
+            }
+            Ok(())
+        })();
+        if let Err(error) = prepared {
+            #[cfg(target_os = "linux")]
+            if let Err(cleanup) = lease.retire() {
+                return Err(std::io::Error::new(error.kind(),
+                    format!("{error}; receive lease preparation cleanup failed: {cleanup}")));
+            }
+            return Err(error);
+        }
+        Ok(lease)
     }
 
     #[cfg(unix)]

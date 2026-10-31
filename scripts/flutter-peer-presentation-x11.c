@@ -2069,6 +2069,134 @@ static int close_viewer(Display *display, Window window) {
     return 0;
 }
 
+static int keyboard_is_released(Display *display) {
+    char keys[32];
+    XQueryKeymap(display, keys);
+    for (size_t i = 0U; i < sizeof(keys); ++i) {
+        if (keys[i] != 0) return 0;
+    }
+    return 1;
+}
+
+static int exercise_keyboard_input(Display *source, Display *display,
+                                   const ViewerWindow *viewer,
+                                   const ConnectionIdentity *connection,
+                                   const ProcessResources *baseline) {
+    static const struct {
+        const char *name;
+        KeySym input, modifier, output;
+        unsigned int mask;
+        const char *text;
+    } cases[] = {
+        {"letter", XK_a, NoSymbol, XK_a, 0U, "a"},
+        {"shift-letter", XK_a, XK_Shift_L, XK_A, ShiftMask, "A"},
+        {"digit", XK_1, NoSymbol, XK_1, 0U, "1"},
+        {"shift-punctuation", XK_1, XK_Shift_L, XK_exclam, ShiftMask, "!"},
+        {"space", XK_space, NoSymbol, XK_space, 0U, " "},
+        {"return", XK_Return, NoSymbol, XK_Return, 0U, "\r"},
+        {"backspace", XK_BackSpace, NoSymbol, XK_BackSpace, 0U, "\b"},
+        {"left", XK_Left, NoSymbol, XK_Left, 0U, ""},
+        {"right", XK_Right, NoSymbol, XK_Right, 0U, ""},
+        {"control-letter", XK_a, XK_Control_L, XK_a, ControlMask, "\001"},
+        {"after-control", XK_z, NoSymbol, XK_z, 0U, "z"},
+    };
+    Window root = RootWindow(source, DefaultScreen(source));
+    /* The source fixture selects no keys, so native events propagate to this root sink. */
+    XSelectInput(source, root, KeyPressMask | KeyReleaseMask);
+    XSetInputFocus(source, root, RevertToParent, CurrentTime);
+    XSync(source, False);
+    if (return_focus_with_pointer(display, viewer) != 0 ||
+        !keyboard_is_released(source) || !keyboard_is_released(display)) return -1;
+
+    for (unsigned int i = 0U; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+        KeyCode modifier = cases[i].modifier == NoSymbol ? 0U :
+                           XKeysymToKeycode(display, cases[i].modifier);
+        KeyCode key = XKeysymToKeycode(display, cases[i].input);
+        unsigned int expected = modifier == 0U ? 2U : 4U, received = 0U, events = 0U;
+        unsigned int native_key = 0U, native_modifier = 0U;
+        uint64_t start = monotonic_millis(), complete = 0U;
+        ConnectionIdentity after = {{0}, {0}, 0UL};
+        ProcessResources resources;
+        ViewerWindow current = {0};
+        Window focus;
+        int revert;
+        if (key == 0U || (cases[i].modifier != NoSymbol && modifier == 0U)) return -1;
+        if (modifier != 0U) {
+            if (XTestFakeKeyEvent(display, modifier, True, CurrentTime) == 0) return -1;
+            XSync(display, False);
+            if (sleep_millis(30U) != 0) return -1;
+        }
+        int sent = XTestFakeKeyEvent(display, key, True, CurrentTime) != 0 &&
+                   XTestFakeKeyEvent(display, key, False, CurrentTime) != 0;
+        XSync(display, False);
+        if (modifier != 0U) {
+            if (sleep_millis(30U) != 0) sent = 0;
+            if (XTestFakeKeyEvent(display, modifier, False, CurrentTime) == 0) sent = 0;
+            XSync(display, False);
+        }
+        if (!sent) return -1;
+        while (monotonic_millis() - start < 5000U) {
+            while (XPending(source) != 0) {
+                XEvent event;
+                if (++events > 128U) return -1;
+                XNextEvent(source, &event);
+                if (event.type == MappingNotify) {
+                    XRefreshKeyboardMapping(&event.xmapping);
+                    continue;
+                }
+                if (event.type != KeyPress && event.type != KeyRelease) continue;
+                KeySym symbol = NoSymbol;
+                char text[16];
+                int size = XLookupString(&event.xkey, text, sizeof(text), &symbol, NULL);
+                int modifier_event = modifier != 0U && (received == 0U || received == 3U);
+                unsigned int position = received - (modifier != 0U ? 1U : 0U);
+                int type = modifier_event ? (received == 0U ? KeyPress : KeyRelease) :
+                                           (position == 0U ? KeyPress : KeyRelease);
+                KeySym wanted = modifier_event ? cases[i].modifier : cases[i].output;
+                unsigned int mask = modifier_event && received == 0U ? 0U : cases[i].mask;
+                const char *wanted_text = modifier_event ? "" : cases[i].text;
+                printf("FLUTTER_PEER_KEY_EVENT case=%u event=%u type=%d code=%u symbol=%lu "
+                       "state=%u bytes=%d synthetic=%d\n", i + 1U, received + 1U,
+                       event.type, event.xkey.keycode, (unsigned long)symbol,
+                       event.xkey.state, size, event.xkey.send_event);
+                if (received >= expected || event.xkey.window != root || event.xkey.send_event ||
+                    event.type != type || symbol != wanted ||
+                    (event.xkey.state & 255U) != mask || size < 0 ||
+                    (size_t)size != strlen(wanted_text) ||
+                    memcmp(text, wanted_text, (size_t)size) != 0) return -1;
+                unsigned int *native_code = modifier_event ? &native_modifier : &native_key;
+                if (type == KeyPress) *native_code = event.xkey.keycode;
+                else if (*native_code == 0U || *native_code != event.xkey.keycode) return -1;
+                received += 1U;
+                if (received == expected) complete = monotonic_millis();
+            }
+            /* A quiet interval also rejects a duplicate pair after the expected release. */
+            if (complete != 0U && monotonic_millis() - complete >= 100U) break;
+            if (sleep_millis(10U) != 0) return -1;
+        }
+        XGetInputFocus(source, &focus, &revert);
+        if (received != expected || complete == 0U || monotonic_millis() - start >= 5000U ||
+            focus != root || !keyboard_is_released(source) || !keyboard_is_released(display) ||
+            find_viewer_window(display, viewer->pid, &current) != 0 ||
+            current.window != viewer->window || read_connection_identity(&after) != 0 ||
+            !same_connection(connection, &after) ||
+            read_process_resources(viewer->pid, &resources) != 0 ||
+            !resources_are_bounded(baseline, &resources)) {
+            fprintf(stderr, "FLUTTER_PEER_X11_FAIL keyboard case=%u name=%s received=%u expected=%u\n",
+                    i + 1U, cases[i].name, received, expected);
+            return -1;
+        }
+        print_resources("keyboard", i + 1U, &resources);
+        printf("FLUTTER_PEER_KEYBOARD_CASE_OK sequence=%u name=%s events=%u elapsed_ms=%llu "
+               "native_pair=true exact_text=true released=both stable_connection=true\n",
+               i + 1U, cases[i].name, received, (unsigned long long)(complete - start));
+        fflush(stdout);
+    }
+    XSelectInput(source, root, NoEventMask);
+    XSync(source, False);
+    return 0;
+}
+
 static int find_main_window(Display *display, unsigned long expected_pid, Window *window) {
     Window root = RootWindow(display, DefaultScreen(display));
     Atom net_name = XInternAtom(display, "_NET_WM_NAME", False);
@@ -2418,11 +2546,12 @@ int main(int argc, char **argv) {
     AtspiAccessible *previous_caption = NULL;
 
     if (argc != 5 && (argc != 6 || (strcmp(argv[5], "--viewer-suspend") != 0 &&
+                                    strcmp(argv[5], "--keyboard-input") != 0 &&
                                     strcmp(argv[5], "--clipboard-text") != 0 &&
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text]\n",
+              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--keyboard-input]\n",
               stderr);
         return 2;
     }
@@ -2577,10 +2706,13 @@ int main(int argc, char **argv) {
     print_resources("initial", 0U, &baseline_resources);
 
     if (argc == 6) {
+        int keyboard_input = strcmp(argv[5], "--keyboard-input") == 0;
         int clipboard_text = strcmp(argv[5], "--clipboard-text") == 0;
         int partial_loss = strcmp(argv[5], "--network-loss") == 0;
         int network = partial_loss || strcmp(argv[5], "--network-impairment") == 0;
-        int suspension_status = clipboard_text ? exercise_clipboard_text(
+        int suspension_status = keyboard_input ? exercise_keyboard_input(
+            source, display, &viewer, &current_connection, &baseline_resources) :
+            clipboard_text ? exercise_clipboard_text(
             source, display, &viewer, &current_connection, &baseline_resources) :
             network ? exercise_network_impairment(
             source, display, &viewer, &history, viewer_pid,
@@ -2598,7 +2730,11 @@ int main(int argc, char **argv) {
         XCloseDisplay(display);
         XCloseDisplay(source);
         if (suspension_status != 0) return 1;
-        if (clipboard_text) {
+        if (keyboard_input) {
+            puts("FLUTTER_PEER_KEYBOARD_INPUT_OK cases=11 events=28 actual_peer=true "
+                 "native_key_events=true exact_text=true released=both same_window=true "
+                 "stable_connection=true resources=bounded");
+        } else if (clipboard_text) {
             puts("FLUTTER_PEER_CLIPBOARD_TEXT_OK cases=6 directions=both kinds=ascii,unicode,16k "
                  "limit_ms=5000 actual_peer=true native_readback=true same_window=true "
                  "stable_connection=true resources=bounded");

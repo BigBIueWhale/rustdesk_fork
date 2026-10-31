@@ -16,7 +16,7 @@ fail() {
 readonly PEER_SCENARIO=${FLUTTER_PEER_SCENARIO:-focus-reconnect-resource}
 case "$PEER_SCENARIO" in
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
-  viewer-suspend|network-impairment|network-loss|clipboard-text) EXPECTED_RESTARTS=0 ;;
+  viewer-suspend|network-impairment|network-loss|clipboard-text|keyboard-input) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
 esac
 readonly EXPECTED_RESTARTS
@@ -1245,6 +1245,7 @@ PY
     [ "$PEER_SCENARIO" != network-impairment ] || controller_args+=(--network-impairment)
     [ "$PEER_SCENARIO" != network-loss ] || controller_args+=(--network-loss)
     [ "$PEER_SCENARIO" != clipboard-text ] || controller_args+=(--clipboard-text)
+    [ "$PEER_SCENARIO" != keyboard-input ] || controller_args+=(--keyboard-input)
     set +e
     controller_output="$(timeout --signal=TERM --kill-after=3s 180s \
       "$CONTROLLER" "${controller_args[@]}" 2>&1)"
@@ -1261,7 +1262,15 @@ PY
       <<<"$controller_output" || fail 'complete count-only password input verdict is missing'
     grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false$' \
       <<<"$controller_output" || fail 'real password prompt verdict is missing'
-    if [ "$PEER_SCENARIO" = clipboard-text ]; then
+    if [ "$PEER_SCENARIO" = keyboard-input ]; then
+      for sequence in {1..11}; do
+        [ "$(grep -Ec "^FLUTTER_PEER_KEYBOARD_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
+          || fail "keyboard case $sequence is absent or duplicated"
+      done
+      grep -Fxq 'FLUTTER_PEER_KEYBOARD_INPUT_OK cases=11 events=28 actual_peer=true native_key_events=true exact_text=true released=both same_window=true stable_connection=true resources=bounded' \
+        <<<"$controller_output" || fail 'native keyboard input verdict is missing'
+      viewer_result='viewer=joined xvfb=joined keyboard_cases=11 stable_connection=true resources=bounded'
+    elif [ "$PEER_SCENARIO" = clipboard-text ]; then
       for sequence in 1 2 3 4 5 6; do
         [ "$(grep -Ec "^FLUTTER_PEER_CLIPBOARD_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
           || fail "clipboard case $sequence is absent or duplicated"

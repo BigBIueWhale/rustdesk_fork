@@ -123946,3 +123946,15 @@ host listener deltas are zero. Seven raw files / 83,961 bytes per host are
 hash-verified before removing 3,448,832 allocated bytes of exact diagnostics.
 Serial: `android-rust-lifecycle-tests-run.1epyE9D598.serial.log`, SHA-256
 `94d690889e8826e01f9fe12dec468f8270a6dc4da14443a9113969b0367304fd`.
+
+Fresh ledger count at `99e50bd7`, TUF `YNt8OzKZWC`: **373,621 tokens /
+1,711,750 bytes**, SHA-256
+`006f2b77749111041e91d56d925b8792ad00de1bd8b79306ae101ef475c37c0f`.
+Pinned tiktoken 0.12.0/cl100k_base/encode_ordinary passes seven controls and the
+whole-file strict UTF-8 round trip. QEMU 3188575 joins after 35.495 seconds;
+wrapper 3187154 and RAM `run.a_qxme3n` are absent. Peak scratch is 402,436,096
+bytes within 4 GiB, and all three listener deltas are zero. Count serial SHA-256:
+`a621334ba9613fa884e9bba5ba1bac1c674d24c42396eed39fa89dabdab73f87`.
+The six count files add 107,563 bytes. All thirteen new raw files / 191,524 bytes
+per host and the exact counted ledger hash are verified on both hosts; both run
+wrappers are absent. This audit-only receipt leaves the counted ledger unchanged.

@@ -3761,6 +3761,10 @@ run_focused_rust_tests() {
                 fs::tests::recv_finish_reports_visible_but_uncertain_after_parent_sync_failure
                 fs::tests::recv_digest_read_no_follow_refuses_symlink_sidecar
                 fs::tests::receive_file_list_replacement_cannot_authorize_early_done
+                fs::tests::receive_file_list_replacement_cannot_expand_the_active_file
+                fs::tests::receive_refused_next_block_preserves_the_unpublished_current_file
+                fs::tests::confirmation_refuses_a_receive_job_after_publication
+                fs::tests::file_block_limit_preserves_real_sender_receiver_roundtrips
             )
         fi
         if [ "$RUST_TEST_PROFILE" = config-options ]; then
@@ -8402,7 +8406,7 @@ PY
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'file metadata test total differs'
             grep -E '^test fs::receive_namespace::tests::[a-z_]+ [.][.][.] ok$' "$output"
             grep -E '^test (policy_[a-z0-9_]+|r_f4_pinned_port_constant) [.][.][.] ok$|^SOCKET_DESCRIPTOR=|^SOCKET_POLICY_ARTIFACT' "$output"
-            grep -E '^test fs::tests::(abandoned_blocking_|new_receive_|receive_write_|receive_next_|receive_done_|receive_destination_lease_|resume_confirmation_|recv_finish_|recv_digest_|receive_file_list_replacement_cannot_authorize_early_done)[[:alnum:]_]* [.][.][.] ok$' "$output"
+            grep -E '^test fs::tests::(abandoned_blocking_|new_receive_|receive_write_|receive_next_|receive_done_|receive_destination_lease_|resume_confirmation_|recv_finish_|recv_digest_|receive_file_list_replacement_cannot_|receive_refused_next_block_|confirmation_refuses_a_receive_job_after_publication|file_block_limit_preserves_real_sender_receiver_roundtrips)[[:alnum:]_]* [.][.][.] ok$' "$output"
             grep -E '^test fs::(tests::(file_metadata_[a-z_]+|rename_[a-z_]+|directory_entry_[a-z_]+|directory_enumeration_[a-z_]+|recursive_enumeration_[a-z_]+|empty_directory_enumeration_[a-z_]+|default_local_[a-z_]+|default_send_job_[a-z_]+|recursive_owner_[a-z_]+|enumeration_string_budget_matches_json_and_preserves_state|file_enumeration_refuses_unrepresentable_modification_times|budgeted_read_dir_rejects_too_many_entries_before_returning_vector|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[a-z_]+) [.][.][.] ok$|^FILE_METADATA_|^RECEIVE_DIGEST_ADMISSION=|^SOCKET_DESCRIPTOR_LIFETIME=|^DIRECTORY_ENTRY_|^RECURSIVE_OWNER=|^test socket_surface::tests::[a-z0-9_]+ [.][.][.] ok$|^SOCKET_SURFACE_IO=' "$output"
         elif [ "$RUST_TEST_PROFILE" = config-options ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'option persistence total differs'

@@ -125073,3 +125073,12 @@ latency, multi-hour soaks, other supported roles/platforms and full R-F5/release
 acceptance remain OPEN. The next decisive work should reuse this artifact to
 exercise the remaining recovery conditions; no repeat full build is needed merely
 to rerun a scenario.
+
+Fresh ledger count at `fd3dbe92`, no-NIC run `jVFD8OiVJD`: **376,411 tokens**,
+1,724,691 bytes, SHA-256
+`65f684278a7af5ca79c4a3149611f6084a6ce5e4de0a54d15a25cc8b1bc0ba4d`.
+Pinned tiktoken 0.12.0/cl100k_base/encode_ordinary, seven controls and exact
+whole-file round trip pass. Supervisor time is 30.821 seconds, scratch peak
+402,452,480 bytes; QEMU 3325288 joins exit 0, RAM/run roots retire and all three
+listener deltas are zero. Six raw files totaling 104,740 bytes match on CTE/TUF,
+as does the checkpoint capsule. This audit-only receipt preserves the counted ledger.

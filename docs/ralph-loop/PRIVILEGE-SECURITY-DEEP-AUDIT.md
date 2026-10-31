@@ -123543,3 +123543,14 @@ CM/installed/root-service behavior and other platforms. This checkpoint establis
 normal-storage live-thread responsiveness and joined shutdown while hashing only.
 Next decisive receive work remains the reproduced staging lifecycle failures and
 the missing full-duration/slow-storage integration evidence; unrelated parks remain.
+
+Fresh ledger count at `f75479e4`, TUF `FdnePjr3NK`: **372,746 tokens /
+1,707,298 bytes**, SHA-256
+`65615def37589c9d2ecc47f895f992e0650321550846fe7af97919ddd4908fb2`.
+Pinned whole-file tiktoken 0.12.0/cl100k_base/encode_ordinary passes all seven
+controls and exact round trip. QEMU 3163469 joins after 30.405 seconds; wrapper
+3162048 and RAM `run.9aj1fyr3` retire, with three zero listener deltas. Serial:
+`2b7ab2a17820f5635d095026eac6567a595de1f475f7d143d4fc9175eb2e30b1`.
+All **54 retained raw files / 699,811 bytes per host** across the application
+checkpoints and their counts are hash-verified. This audit-only receipt changes
+neither the tested application source nor the counted ledger.

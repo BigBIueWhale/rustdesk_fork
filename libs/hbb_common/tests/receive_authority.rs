@@ -103,8 +103,11 @@ mod linux {
         let permissions = fs::metadata(base)?.permissions();
         fs::set_permissions(base, fs::Permissions::from_mode(0o777))?;
         let mut receiver = job(base)?;
-        let prepared = receiver.inspect_receive_digest(&incoming(), false).await
-            .and_then(|_| receiver.retire_current_file_state());
+        let prepared = async {
+            receiver.inspect_receive_digest(&incoming(), false).await?;
+            receiver.confirm_with_offset(0, 0).await?;
+            receiver.retire_current_file_state()
+        }.await;
         fs::set_permissions(base, permissions)?;
         prepared?;
         let path = staging(base)?;
@@ -377,6 +380,10 @@ mod linux {
                 receiver.inspect_receive_digest(&digest, false).await?;
             }
             let prepared_artifacts = if phase == "digest" {
+                receiver.confirm_with_offset(0, 0).await?;
+                receiver.retire_current_file_state()?;
+                receiver = new_receiver()?;
+                receiver.inspect_receive_digest(&digest, false).await?;
                 fs::set_permissions(base, fs::Permissions::from_mode(0o700))?;
                 Some(staging(base)?)
             } else { None };

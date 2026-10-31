@@ -3282,6 +3282,7 @@ struct ReceivePathLease {
 
 impl ReceivePathLease {
     fn acquire(final_path: &Path, create_parent: bool) -> std::io::Result<Self> {
+        #[cfg(unix)]
         let path = recv_sidecar_path(final_path, ".download.lock");
         #[cfg(unix)]
         let parent = open_parent_dir_no_follow(
@@ -3297,6 +3298,20 @@ impl ReceivePathLease {
                         format!("receive staging namespace disappeared during admission: {error}"))
                 } else { error }
             })?;
+        Self::from_admission(final_path,
+            #[cfg(target_os = "linux")] namespace,
+            #[cfg(all(unix, not(target_os = "linux")))] parent,
+            #[cfg(not(unix))] create_parent,
+        )
+    }
+
+    fn from_admission(
+        final_path: &Path,
+        #[cfg(target_os = "linux")] namespace: receive_namespace::ReceiveNamespace,
+        #[cfg(all(unix, not(target_os = "linux")))] parent: std::fs::File,
+        #[cfg(not(unix))] create_parent: bool,
+    ) -> std::io::Result<Self> {
+        let path = recv_sidecar_path(final_path, ".download.lock");
         #[cfg(target_os = "linux")]
         let parent = namespace.artifacts.try_clone()?;
         #[cfg(unix)]
@@ -5273,6 +5288,28 @@ pub enum DigestCheckResult {
     NoSuchFile,
 }
 
+fn inspect_final_destination(
+    destination: Option<std::fs::File>,
+    digest: &FileTransferDigest,
+) -> ResultType<DigestCheckResult> {
+    let Some(destination) = destination else {
+        return Ok(DigestCheckResult::NoSuchFile);
+    };
+    let metadata = destination.metadata()?;
+    let modified_time = metadata.modified()?;
+    let local_mt = modified_time.duration_since(UNIX_EPOCH)?.as_secs();
+    // The receiving user decides whether an existing destination may be replaced.
+    let is_identical = digest.last_modified == local_mt && digest.file_size == metadata.len();
+    Ok(DigestCheckResult::NeedConfirm(FileTransferDigest {
+        id: digest.id,
+        file_num: digest.file_num,
+        last_modified: local_mt,
+        file_size: metadata.len(),
+        is_identical,
+        ..Default::default()
+    }))
+}
+
 #[inline]
 pub fn inspect_write_destination<P: AsRef<Path>>(
     is_resume: bool,
@@ -5280,9 +5317,27 @@ pub fn inspect_write_destination<P: AsRef<Path>>(
     digest: &FileTransferDigest,
 ) -> ResultType<DigestCheckResult> {
     let path = file_path.as_ref();
-    // Inspection and receive mutation serialize on the same destination lease name. This makes the
-    // observed digest and partial length one coherent snapshot; the later resume/open reacquires the
-    // lease and validates the digest again before publishing stream ownership.
+    #[cfg(target_os = "linux")]
+    let mut lease = {
+        let parent = match open_parent_dir_no_follow(path.parent().unwrap_or_else(|| Path::new(".")), false) {
+            Ok(parent) => parent,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(DigestCheckResult::NoSuchFile)
+            }
+            Err(error) => return Err(error.into()),
+        };
+        // An unstaged destination needs only a read under the enrollment gate.
+        // Existing state transfers that gate directly into per-file admission.
+        match receive_namespace::ReceiveNamespace::inspect(parent, &cstring_file_name(path)?)? {
+            receive_namespace::ReceiveInspection::Destination(file) => {
+                return inspect_final_destination(file, digest)
+            }
+            receive_namespace::ReceiveInspection::Namespace(namespace) => {
+                ReceivePathLease::from_admission(path, namespace)?
+            }
+        }
+    };
+    #[cfg(not(target_os = "linux"))]
     let mut lease = match ReceivePathLease::acquire(path, false) {
         Ok(lease) => lease,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
@@ -5290,6 +5345,8 @@ pub fn inspect_write_destination<P: AsRef<Path>>(
         }
         Err(err) => return Err(err.into()),
     };
+    // The lease makes the saved digest and partial length one coherent snapshot.
+    // Resume/open reacquires it and validates again before publishing stream ownership.
     let result = (|| -> ResultType<_> {
         if is_resume {
             let digest_path = recv_sidecar_path(path, ".digest");
@@ -5324,25 +5381,11 @@ pub fn inspect_write_destination<P: AsRef<Path>>(
         }
 
         let destination = match lease.open_inspection_file(path, None) {
-            Ok(file) => file,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(DigestCheckResult::NoSuchFile)
-            }
+            Ok(file) => Some(file),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
             Err(error) => return Err(error.into()),
         };
-        let metadata = destination.metadata()?;
-        let modified_time = metadata.modified()?;
-        let local_mt = modified_time.duration_since(UNIX_EPOCH)?.as_secs();
-        // The receiving user decides whether an existing destination may be replaced.
-        let is_identical = digest.last_modified == local_mt && digest.file_size == metadata.len();
-        Ok(DigestCheckResult::NeedConfirm(FileTransferDigest {
-            id: digest.id,
-            file_num: digest.file_num,
-            last_modified: local_mt,
-            file_size: metadata.len(),
-            is_identical,
-            ..Default::default()
-        }))
+        inspect_final_destination(destination, digest)
     })();
     match (result, lease.retire()) {
         (Ok(result), Ok(())) => Ok(result),

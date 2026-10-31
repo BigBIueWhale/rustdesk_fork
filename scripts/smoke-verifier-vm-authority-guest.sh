@@ -8409,7 +8409,7 @@ PY
         else
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'file metadata test total differs'
-            grep -E '^test fs::receive_namespace::tests::[a-z_]+ [.][.][.] ok$' "$output"
+            grep -E '^test fs::receive_namespace::tests::[a-z_]+ [.][.][.] ok$|^RECEIVE_INSPECTION_LAYOUT=' "$output"
             grep -E '^test (policy_[a-z0-9_]+|r_f4_pinned_port_constant) [.][.][.] ok$|^SOCKET_DESCRIPTOR=|^SOCKET_POLICY_ARTIFACT' "$output"
             grep -E '^test fs::tests::(abandoned_blocking_|new_receive_|receive_write_|receive_next_|receive_done_|receive_destination_lease_|resume_confirmation_|recv_finish_|recv_digest_|receive_file_list_replacement_cannot_|receive_refused_next_block_|confirmation_refuses_a_receive_job_after_publication|file_block_limit_preserves_real_sender_receiver_roundtrips)[[:alnum:]_]* [.][.][.] ok$' "$output"
             grep -E '^test fs::(tests::(file_metadata_[a-z_]+|rename_[a-z_]+|directory_entry_[a-z_]+|directory_enumeration_[a-z_]+|recursive_enumeration_[a-z_]+|empty_directory_enumeration_[a-z_]+|default_local_[a-z_]+|default_send_job_[a-z_]+|recursive_owner_[a-z_]+|enumeration_string_budget_matches_json_and_preserves_state|file_enumeration_refuses_unrepresentable_modification_times|budgeted_read_dir_rejects_too_many_entries_before_returning_vector|receive_post_publish_sync_failure_never_deletes_visible_file)|atomic_write::unix::tests::[a-z_]+) [.][.][.] ok$|^FILE_METADATA_|^RECEIVE_DIGEST_ADMISSION=|^SOCKET_DESCRIPTOR_LIFETIME=|^DIRECTORY_ENTRY_|^RECURSIVE_OWNER=|^test socket_surface::tests::[a-z0-9_]+ [.][.][.] ok$|^SOCKET_SURFACE_IO=' "$output"
@@ -8447,7 +8447,7 @@ PY
             grep -E '^test fs::(tests::(send_(digest_|read_buffer_)|read_step_|transfer_resume_)|file_block::tests::allocation_refusal_).* \.\.\. ok$|^test tcp::writer_lifetime_tests::read_jobs_retire_before_native_writer_pressure_errors \.\.\. ok$|^SEND_DIGEST_SIZE=|^SEND_READ_ALLOCATION(_CASE)?=|^FILE_COMPRESSION_(ALLOCATION|CASE)=|^READ_TERMINAL_RETIREMENT(_CASE)?=|^READ_NONTERMINAL_RETIREMENT=|^READ_JOB_BACKPRESSURE(_CASE)?=|^READ_ROUND_ROBIN(_CASE)?=.*|^READ_CONFIRMATION_READY=|^TRANSFER_RESUME_' "$output"
             grep -E '^test fs::tests::(send_resume_[a-z_]+|send_read_preserves_exact_lengths_and_resumed_eof|confirmation_rejects_wrong_job_and_duplicate_progress|resume_counter_overflow_does_not_publish_stream_ownership) [.][.][.] ok$' "$output"
             grep -E '^test fs::confirmation::tests::(slow_sync::)?[a-z_]+ [.][.][.] ok$|^FILE_CONFIRMATION_' "$output"
-            grep -E '^test fs::receive_namespace::tests::[a-z_]+ [.][.][.] ok$|^test fs::tests::new_receive_refuses_existing_sidecars_without_changing_their_bytes [.][.][.] ok$|^RECEIVE_(GENERATION_(RETIREMENT|ERROR)|RETIREMENT_SYNC|FRESH_CONFIRMATION(_REFUSAL)?|DIGEST_PREPARATION)=' "$output"
+            grep -E '^test fs::receive_namespace::tests::[a-z_]+ [.][.][.] ok$|^test fs::tests::new_receive_refuses_existing_sidecars_without_changing_their_bytes [.][.][.] ok$|^RECEIVE_(INSPECTION_LAYOUT|GENERATION_(RETIREMENT|ERROR)|RETIREMENT_SYNC|FRESH_CONFIRMATION(_REFUSAL)?|DIGEST_PREPARATION)=' "$output"
             grep -E '^test fs::tests::file_metadata_(resume_|pending_resume_)[a-z_]+ [.][.][.] ok$|^FILE_METADATA_(RESUME_|PENDING_RESUME)' "$output"
         else
         grep -E '^test platform::linux::tests::r_s11at_loginctl_output_.* \.\.\. ok$|^LOGINCTL_(WAIT_AUTHORITY|LOST_WAIT)=' "$output"

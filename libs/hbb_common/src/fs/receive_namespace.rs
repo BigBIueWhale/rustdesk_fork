@@ -916,6 +916,12 @@ mod tests {
 }
 
 #[derive(Debug)]
+pub(super) enum ReceiveInspection {
+    Destination(Option<File>),
+    Namespace(ReceiveNamespace),
+}
+
+#[derive(Debug)]
 pub(super) struct ReceiveNamespace {
     pub(super) destination: File,
     pub(super) artifacts: File,
@@ -933,6 +939,45 @@ impl ReceiveNamespace {
         let coordinator = coordinator()?;
         // Serialize enrollment/retirement only. An active transfer never holds this gate.
         lock(&coordinator, libc::LOCK_EX)?;
+        Self::acquire_locked(destination, final_name, coordinator)
+    }
+
+    pub(super) fn inspect(destination: File, final_name: &CStr) -> io::Result<ReceiveInspection> {
+        let coordinator = coordinator()?;
+        lock(&coordinator, libc::LOCK_EX)?;
+        let key = directory_key(&destination)?;
+        let mut has_state = read_record(&coordinator, &name(&format!("{key}.json"))?)?.is_some();
+        // Owner death can leave preparation or a generation lock without a record.
+        // Such state still requires the ordinary admission/recovery path.
+        for suffix in [".lock", ".tmp"] {
+            match unix_fstatat_no_follow(coordinator.as_raw_fd(), &name(&format!("{key}{suffix}"))?) {
+                Ok(_) => has_state = true,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error),
+            }
+        }
+        if has_state {
+            return Self::acquire_locked(destination, final_name, coordinator)
+                .map(ReceiveInspection::Namespace);
+        }
+        // No transfer owns this destination. Keep enrollment excluded through the
+        // no-follow open, so a writer cannot enter between lookup and observation.
+        // The retained final handle survives any later atomic publication.
+        let result = match open_regular_child_no_follow(&destination, final_name,
+            RegularFileAccess::Read, ReceiveFileCreation::Existing) {
+            Ok(file) => Ok(Some(file)),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error),
+        };
+        match (result, lock(&coordinator, libc::LOCK_UN)) {
+            (Ok(file), Ok(())) => Ok(ReceiveInspection::Destination(file)),
+            (Err(error), Ok(())) | (Ok(_), Err(error)) => Err(error),
+            (Err(error), Err(release)) => Err(io::Error::new(error.kind(),
+                format!("{error}; receive inspection gate release failed: {release}"))),
+        }
+    }
+
+    fn acquire_locked(destination: File, final_name: &CStr, coordinator: File) -> io::Result<Self> {
         let key = directory_key(&destination)?;
         let generation_name = name(&format!("{key}.lock"))?;
         let generation = open_regular_child_no_follow(&coordinator, &generation_name,

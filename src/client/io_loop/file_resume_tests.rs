@@ -139,13 +139,16 @@ async fn stage_partial(fixture: &Fixture, offset: u64, size: u64) -> PathBuf {
     let permissions = std::fs::metadata(&fixture.0).unwrap().permissions();
     std::fs::set_permissions(&fixture.0, std::fs::Permissions::from_mode(0o777)).unwrap();
     let mut job = receiver(fixture, size);
-    let prepared = job.inspect_receive_digest(&FileTransferDigest {
-        id: 371, file_num: 0, file_size: size, last_modified: 19,
-        ..Default::default()
-    }, false).await;
+    let prepared = async {
+        job.inspect_receive_digest(&FileTransferDigest {
+            id: 371, file_num: 0, file_size: size, last_modified: 19,
+            ..Default::default()
+        }, false).await?;
+        job.confirm_with_offset(0, 0).await?;
+        job.retire_current_file_state()
+    }.await;
     std::fs::set_permissions(&fixture.0, permissions).unwrap();
     prepared.unwrap();
-    job.retire_current_file_state().unwrap();
     let directories: Vec<_> = std::fs::read_dir(&fixture.0).unwrap()
         .map(|entry| entry.unwrap())
         .filter(|entry| entry.file_name().as_encoded_bytes().starts_with(b".rustdesk-receive-"))

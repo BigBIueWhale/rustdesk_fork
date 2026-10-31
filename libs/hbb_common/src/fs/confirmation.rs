@@ -13,8 +13,13 @@ use tokio::{sync::{OwnedSemaphorePermit, Semaphore}, task::JoinHandle};
 const DRAIN_CAPACITY: usize = 32;
 
 struct Join {
-    task: JoinHandle<(TransferJob, ResultType<Option<FileTransferSendConfirmRequest>>)>,
+    task: JoinHandle<WorkerResult>,
     _permit: OwnedSemaphorePermit,
+}
+
+enum WorkerResult {
+    Confirmed(TransferJob, ResultType<Option<FileTransferSendConfirmRequest>>),
+    Retired { result: ResultType<()>, cancelled_log: Option<String> },
 }
 
 struct Drain {
@@ -33,11 +38,15 @@ fn drain() -> ResultType<&'static Drain> {
             .spawn(move || {
                 while let Ok(join) = receiver.recv() {
                     match crate::futures::executor::block_on(join.task) {
-                        Ok((mut job, _)) => {
+                        Ok(WorkerResult::Confirmed(mut job, _)) => {
                             if let Err(error) = job.retire_current_file_state() {
                                 log::error!("abandoned file confirmation cleanup failed: {error}");
                             }
                         }
+                        Ok(WorkerResult::Retired { result: Err(error), .. }) => {
+                            log::error!("abandoned file confirmation failed: {error}");
+                        }
+                        Ok(WorkerResult::Retired { result: Ok(()), .. }) => {}
                         Err(error) => {
                             log::error!("file confirmation worker failed during drain: {error}");
                             // A task failure does not prove its native IO has retired.
@@ -171,7 +180,7 @@ impl FileConfirmations {
                         job.confirm_with_offset(file_num, offset).await.map(Some),
                 }
             };
-            (job, result)
+            WorkerResult::Confirmed(job, result)
         });
         self.pending.push(Pending { id, file_num, meta, cancelled,
             join: Some(Join { task, _permit: permit }) });
@@ -193,34 +202,52 @@ impl FileConfirmations {
         let (index, result) = std::future::poll_fn(|cx| {
             for (index, pending) in self.pending.iter_mut().enumerate() {
                 if let Some(join) = pending.join.as_mut() {
-                    if let Poll::Ready(result) = Pin::new(&mut join.task).poll(cx) {
-                        return Poll::Ready((index, result));
+                    loop {
+                        let result = match Pin::new(&mut join.task).poll(cx) {
+                            Poll::Ready(result) => result,
+                            Poll::Pending => break,
+                        };
+                        match result {
+                            Ok(WorkerResult::Confirmed(mut job, result))
+                                if pending.cancelled.load(Ordering::Acquire) || result.is_err() => {
+                                let cancelled = pending.cancelled.clone();
+                                // Replace only a joined task. Pending retains the same permit
+                                // and owns cleanup even if this wait or its connection disappears.
+                                join.task = tokio::task::spawn_blocking(move || {
+                                    let mut cancelled_log = None;
+                                    let result = match job.retire_current_file_state() {
+                                        Err(cleanup) => Err(anyhow!("file confirmation cleanup failed: {cleanup}; operation error: {:?}", result.err())),
+                                        Ok(()) if cancelled.load(Ordering::Acquire) => {
+                                            cancelled_log = Some(super::serialize_transfer_job(&job, false, true, ""));
+                                            Ok(())
+                                        }
+                                        Ok(()) => result.map(|_| ()),
+                                    };
+                                    WorkerResult::Retired { result, cancelled_log }
+                                });
+                                // Poll the replacement to register this waiter's waker.
+                            }
+                            result => return Poll::Ready((index, result)),
+                        }
                     }
                 }
             }
             Poll::Pending
         }).await;
         let mut pending = self.pending.remove(index);
-        let cancelled = pending.cancelled.load(Ordering::Acquire);
-        // Keep the permit through disposal of a cancelled/failed returned job.
+        // Native retirement has completed before its permit can be returned.
         let _joined = pending.join.take();
         let mut cancelled_log = None;
         let mut confirmation = None;
         let job = match result {
-            Ok((mut job, result)) if !cancelled && result.is_ok() => {
+            Ok(WorkerResult::Confirmed(mut job, result)) => {
                 job.resume_cancelled = None;
                 confirmation = result.ok().flatten();
                 Ok(Some(job))
             }
-            Ok((mut job, result)) => {
-                match job.retire_current_file_state() {
-                    Err(cleanup) => Err(anyhow!("file confirmation cleanup failed: {cleanup}; operation error: {:?}", result.err())),
-                    Ok(()) if cancelled => {
-                        cancelled_log = Some(super::serialize_transfer_job(&job, false, true, ""));
-                        Ok(None)
-                    }
-                    Ok(()) => result.map(|_| None),
-                }
+            Ok(WorkerResult::Retired { result, cancelled_log: retired_log }) => {
+                cancelled_log = retired_log;
+                result.map(|()| None)
             }
             Err(error) => {
                 log::error!("file confirmation worker lost its exact owner: {error}");

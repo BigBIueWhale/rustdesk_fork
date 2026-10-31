@@ -122368,3 +122368,20 @@ collector transition must retain its existing permit and exact join through clea
 This preparation changes no product behavior and claims no execution. Admission
 refusal and inner hash-failure retirement require separate ownership work; full
 application/viewer validation and the other user parks remain unchanged.
+
+At unchanged product baseline `8a99e14fac98e31b5b8f9b6a482461580e833ad5`, TUF
+`tjJEphPx00`, both native-sync phases report `responsive=false` and require the
+observer's three-second release. Both retire their fixtures, return capacity,
+preserve saved bytes and reacquire the lease before the expected failing verdict.
+Artifact SHA-256 `3fdcbcf2a05d9692fe4916d7036e7b0cb7d5a538dce3ab5530990ef3a8dab630`.
+Serial 10,880 bytes, SHA-256
+`5fe741a058af8bf09f2e8d7426e4367bdf9d6c494e67bd623f157433ca3ee3a6`.
+QEMU 3095434 joins after 148.266 seconds; RAM `run.fow57ynw` retires and all four
+listener deltas are zero. Seven raw files / 83,492 bytes are verified on both hosts
+before deleting 3,444,736 allocated bytes of exact failed-run diagnostic scratch.
+
+The candidate replaces a joined failed/cancelled worker with an owned blocking
+retirement task in the same pending entry. Its original permit survives cleanup,
+cancelled waits and owner-drop handoff to the drain thread. Only joined retirement
+returns capacity; cleanup errors remain errors. The native observer is unchanged.
+This is candidate preparation, not a corrected execution claim.

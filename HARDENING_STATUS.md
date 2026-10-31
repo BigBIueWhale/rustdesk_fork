@@ -459,7 +459,7 @@ Do not resume automatically. Work moved to the R-S11hj current-state ledger clea
 | CM read-block payload ownership (`fecb67ed`) | The admitted `Bytes` moves into the outgoing protobuf without a forwarding allocation/copy; earlier fallible admission still releases unrelated backing. Session/job/generation, size and wire checks stay intact. The 38-case Linux component covers six storage forms under selective allocation refusal, exact bytes/pointers and backing lifetime. Complete authenticated handlers, CM IPC, filesystem/peer effects and root execution remain OPEN. | `cm-read-block-move-a6599f3a.json` |
 | File timestamp representation (`534488f3`) | Desktop/mobile rows share bounded seconds-to-date formatting; unsupported dates show `—`, and sorting uses original seconds. Sixteen Dart cases cover range/overflow, pre-epoch/2038, drive rows and metadata retention; mobile delegation is source-reviewed. Success retains a strict result summary, not per-case JSON or a compiled image. Rendered rows, native filesystem/mobile behavior and directory-ordering/Home parks remain OPEN. | `file-timestamps-fe769b80.json` |
 | File-list numeric sorting — user-PARKED (`05f0b473`) | Preparation only; product unchanged. Run `G1V3ouRCT7` completed with 105 passing and five failing cases: four direction/work failures and one invalid drive-selection fixture. Numeric comparisons rescan metadata; type/size drive retention remains source-observed only because the fixture stopped early. Fix the fixture before claiming drive/selection evidence. Do not resume automatically. Exact QEMU joined, RAM workspace gone, all listener snapshots unchanged; bounded failed diagnostics retained. | `dart-catalogue-removal-05f0b473.json` |
-| Focused viewer suspension — current-app recovery failure; R-F5 OPEN | Current Linux X11 app `c01865d0`, replayed at `6b9e5acc`, authenticates through the real password prompt and retains the same window/TCP connection through pidfd-owned STOP/CONT. Its 2-second pause recovers in 2,371 ms, followed by a healthy 354-ms maximum displayed age. After the 6-second pause, first freshness takes 559 ms but only two distinct fresh frames arrive within the unchanged four-frame/2,500-ms gate. All 55 observations are retained; maximum age including stale recovery is 6,614 ms. The 12-second cycle is unreached. The last refresh produces encoded frames at 0/1,000/2,000 ms; capture pacing versus acknowledgement/probe timing still needs direct observation. Build and readiness/title prerequisites are corrected below. Actual network impairment, input-visible timing, multi-hour and other-platform R-F5 acceptance remain OPEN; independent parks remain. | `viewer-current-build-6b9e5acc.json`; historical `viewer-suspend-runtime-e1ae606d.json`, `viewer-recovery-observation-c90e4afb.json`, `viewer-capture-cadence-108f40d2.json` |
+| Focused viewer suspension — capture pacing corrected; R-F5 OPEN | `5d8cf83a` replaces capture's fixed sleep with a wait that follows the current shared rate and original frame deadline. The instrumented baseline reaches 10 FPS but sleeps another 703 ms, then fails the 12-second pause with two of four required fresh frames. After correction, all 28 controller cases pass, including recovery, lower-rate, last-peer and notification-only waits. Exact Linux X11 app replay `WNthvLmv9r` passes the unchanged 2/6/12-second pauses in 2,069/1,854/1,666 ms, with healthy maximum displayed ages 341/321/369 ms. The same window/TCP connection survives; resources remain bounded and all owned processes join. This is one native suspension sequence, not phase-exhaustive, realistic network impairment, input-visible latency, multi-hour or other-platform acceptance; those remain OPEN. Independent parks remain. | `viewer-pacing-5d8cf83a.json`; earlier `viewer-current-build-6b9e5acc.json` and `viewer-capture-cadence-108f40d2.json` |
 | Frame observer progress and full-window coverage | The observer counts advancing identities, excludes deadline-late samples and includes both preceding gaps and the unobserved tail, capped at the window end. Twenty-nine synthetic C cases distinguish healthy 80/1,000-ms tails from a 1,040-ms refusal; real-X11 oracle/geometry/identity controls and controller compilation pass. No RustDesk app/device runs. Diagnostic/clock/history/sleep/identity/cancellation faults, current-app latency and the retained-app recovery failure remain OPEN; thresholds and resource policy are unchanged. | `observer-window-overrun-19daee8b.json`, `observer-window-tail-dd55ee9d.json`, `observer-window-deadline-d1f2f826.json`, `observer-fresh-gap-25c024aa.json`, `frame-progress-7f5e0497.json` |
 | VM workload admission (`744cd77f`) | Only explicitly configured workloads may select `standard`; missing/unconfigured classes refuse before allocation. Native Bash A/B retains legitimate profiles and rejects the four former fallthroughs, with profile, filesystem, supervisor/startup, root-entry and child-wait controls. Specialized limits and cleanup are unchanged. Full Windows/media RAM admission and product/installed acceptance remain OPEN. | `closed-vm-workloads-6ad50b54.json` |
 | Capture PCM storage (`660429dd`) | Linux/Android capture converts native float bytes into reusable typed storage and refuses incomplete samples without changing output; unsafe byte-to-float casts and the generic aligned allocator are removed. Twenty-two selected Linux tests include exact bits at four offsets, replacement/empty behavior and zero warmed allocations. The old fallback is forced by a probe, not shown naturally reachable. Native device/Opus/IPC, Android, full-parent compilation and performance/soak remain OPEN; audio cancellation stays parked. | `audio-capture-storage-bab1aca9.json` |
@@ -2959,8 +2959,7 @@ evidence and resource/context limitations.
 Replay now has its own 10 GiB guest, 7 GiB RAM scratch and 6 GiB hard overlay/file ceiling,
 with 6 GiB host headroom and 1 GiB overhead (24 GiB admission), a 12 GiB logical disk and
 1,200-second integration budget. Both peers retain their 4 GiB container limits.
-The separate app producer's admission/setup evidence and current lockfile blocker
-are recorded below; complete app-build acceptance remains OPEN.
+The current app producer's accepted build and exact artifacts are recorded below.
 Replay derives app build-context roles from the exact committed producer pins; current
 harness pins still govern replay tools. The guest checks source/tree/recipe/engine and the
 existing materializer still requires the exact manifest, complete inventory and payload bytes.
@@ -2984,23 +2983,37 @@ exact artifacts/sources, storage and cleanup. This is partial retained-app integ
 not current QoS execution, network-impairment/soak, installed/LPE or release acceptance.
 R-F5 remains OPEN. All user-parked consumer/allocator/libyuv/X11 work remains OPEN/PARKED.
 
-**Six-second suspension — retained capture cadence localized.** Read-only correlation
-of the hash-verified `JhJMozgrvo` logs finds three post-refresh capture/encode
-records at service times 0/1000/2000 ms. Their unique encoded RGBA witness pairs
-match viewer texture submissions 35/36/37, spaced 997.557/1000.297 ms apart.
-Each matching texture copy follows submission within 10.907–13.726 ms; the next
-draw callback follows within 20.468–25.111 ms. Separate full-counter X11 readbacks
-observe frames 125/129/133 within 35.966–70.567 ms of those submissions.
-Source publications continue about every 252 ms. Thus this retained failure's
-sparse delivery is already present at capture/encode; the three submitted frames
-show no additional second-long renderer wait. Draw callbacks alone are not pixel
-proof, and this is no general renderer bound. Selected FPS, probe/receipt timing
-and capture waits were not logged, so pacing versus acknowledgement/scheduling
-remains unresolved. The app is the older `31f8e5ef`; current native acceptance
-requires the same scenario on an admitted current artifact with those upstream
-observations. No product change, new VM or runtime is claimed. Exact inputs,
-joins, clocks, timestamps and limitations: `viewer-capture-cadence-108f40d2.json`.
-Current-artifact R-F5, all other release obligations and independent parks remain.
+**Viewer suspension — capture pacing corrected; broader R-F5 OPEN.**
+The earlier capture-cadence correlation is confirmed by instrumented current app
+`fc0c43f1`, run `qjDNiscBZx`. Its 2/6-second pauses recover, but its 12-second
+pause supplies only two of four fresh frames within 2,500 ms. Post-refresh frame
+acknowledgements take 421–457 µs and capture/encode work 2.2–3.5 ms; the sender
+chooses nearly one second of pacing. Two fresh probe replies retire the outage
+sample and restore 10 FPS at 17:58:40.139226 UTC, but capture remains asleep until
+17:58:40.841996. The earlier six-second failure and this twelve-second failure
+show timing sensitivity; a passed shorter cycle is not general recovery proof.
+
+`5d8cf83a` waits on the QoS mutex/condition variable, rechecking the current frame
+interval against the original frame start after notifications and timeouts.
+Rate changes wake capture, and final-viewer reset preserves the notification owner.
+Congestion estimation and acknowledgement ownership are unchanged.
+Isolated run `1fNJeGegpU` passes all 28 production-controller/application cases.
+The four new real-thread observations cover recovery (100 ms), a lower limit
+(1,000 ms), final-peer retirement (34 ms) and notification-only pacing (200 ms).
+
+Exact corrected app `5d8cf83a`, manifest
+`2b0e3a6a80f3cc34c636ba060f716852f280c98983b6ff22ef92687164c01ad8`,
+passes native run `WNthvLmv9r`: the unchanged 2/6/12-second pauses recover four
+distinct fresh displayed frames in 2,069/1,854/1,666 ms. Three-second healthy
+follow-ups have maximum ages 341/321/369 ms against a 338-ms baseline maximum.
+Window/TCP identity survives; RSS, threads and descriptors stay within their
+predeclared bounds. Both full app builds and all three test/replay VMs join,
+retire bounded RAM and leave zero listener deltas. This closes the observed
+stale pacing interval; phase coverage, realistic impairment, input-visible timing,
+multi-hour sessions, other roles/platforms and full R-F5 acceptance remain OPEN.
+Retained exact commands, source/artifacts, samples and cleanup:
+`viewer-pacing-5d8cf83a.json`. Earlier capture-only evidence remains in
+`viewer-capture-cadence-108f40d2.json`; independent parks remain.
 
 **Current app build and replay prerequisites — accepted Linux artifact.**
 `6b703f35` reconciles the candidate lock with the repository-owned xterm path;
@@ -3023,11 +3036,11 @@ process-generation, metadata, socket-surface and typed-state checks. Native dire
 and closed-directory-descriptor listeners pass; wrong/dead processes and absent
 typed state remain refused. `6b9e5acc` updates the controller to the current
 localized remote-window title. The resulting real-peer run `zpyA5bGiHo` reaches
-the current six-second recovery failure recorded above. All build/replay VMs join
+the six-second recovery failure investigated and corrected above. All build/replay VMs join
 and retire bounded RAM with zero listener deltas. Failed-run duplicate binaries
 are verified against the retained capsule and removed after bounded logs are
-verified on both hosts. Next: observe capture-rate selection, probe completion and
-frame-acknowledgement waits during this same current-artifact failure. Independent
+verified on both hosts. The subsequent capture-rate/probe/wait observations and
+pacing correction are recorded above. Independent
 release reproducibility, installed/native other-platform, network-impairment and
 multi-hour R-F5 acceptance remain OPEN. Exact runs, artifacts and limits:
 `viewer-current-build-6b9e5acc.json`; earlier setup in

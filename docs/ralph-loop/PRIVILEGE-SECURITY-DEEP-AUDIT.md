@@ -124987,3 +124987,89 @@ whole-file byte round trip. Supervisor time 30.214 seconds; scratch peak
 402,583,552 bytes. QEMU 3305387 joins exit 0, RAM/run roots retire, and all three
 listener deltas are zero. Six raw files totaling 105,094 bytes and the checkpoint
 capsule match on CTE/TUF. This audit-only receipt leaves the counted ledger unchanged.
+
+## 2026-10-31 — capture pacing wakes on recovered rate; native suspension passes
+
+Continued the user-selected R-F5 work with receive and independently parked topics
+untouched. `fc0c43f1` adds delay-probe decisions and gated capture work/ack/pacing
+timings; the replay enables only the QoS debug target. No rate or acceptance
+threshold changes occur in that diagnostic baseline. The app cache initially
+refuses a second build before starting a VM. After all 74 existing artifact files
+are verified, the c01865d0 source directory is renamed without copying to
+`viewer-pacing-baseline-c01865d0` under the private verifier evidence root. The
+diagnostic app is later retained as `viewer-pacing-baseline-fc0c43f1`; these are
+intentional comparison artifacts, not disposable VM disks.
+
+Build `sPbUv3rtCg` passes at fc0c43f1 in 704.216 supervisor seconds; its manifest
+is `e613afa56af7f653db66d624c53b1d8a40b8f73fc7e6f0322da63ea298cae1c3`.
+Replay `qjDNiscBZx` passes 2/6-second pauses in 2,137/2,042 ms but fails the
+12-second pause: first fresh pixels at 512 ms, two of four required distinct fresh
+frames within 2,500 ms, 54 retained observations and no drops. The previous
+six-second failure and this run establish timing sensitivity, not reliable recovery.
+After the last refresh, capture/encode work is 3,549/2,220 µs and acknowledgement
+waits 457/421 µs; planned pacing is 995,993/997,358 µs. The completed outage probe
+reports 12,224 ms. One healthy reply retains that value in the two-entry average;
+the second restores 10 FPS at 17:58:40.139226 UTC. The next encode occurs at
+17:58:40.841996, 702.770 ms later, because the existing sleep cannot wake.
+Serial: 266,331 bytes, SHA-256
+`240936d200408c4b5800029155dd956839a289cbd5682f358ce0585481234df2`.
+
+Research: [Rust thread sleep](https://doc.rust-lang.org/std/thread/fn.sleep.html)
+cannot return before its requested duration; the documented
+[condition-variable contract](https://doc.rust-lang.org/std/sync/struct.Condvar.html#method.wait_timeout)
+requires predicate rechecks and elapsed-deadline accounting after notifications.
+The pinned [Tokio 1.44.2 interval source](https://github.com/tokio-rs/tokio/blob/tokio-1.44.2/tokio/src/time/interval.rs)
+and local `ThrottledInterval` explain the one-second probe cadence; the client
+echoes the probe in its actual network loop. Informational
+[RFC 8836 §2](https://datatracker.ietf.org/doc/html/rfc8836#section-2) supports
+minimizing self-induced latency and promptly recovering after transient congestion;
+it is design guidance, not acceptance evidence for this TCP implementation.
+
+`5d8cf83a` replaces the final capture sleep with `VideoQoS::wait_for_next_frame`.
+It waits on the QoS mutex and condition variable, recalculates the interval against
+the original frame start, and releases the mutex during each wait. Changes to the
+selected FPS notify all waiters. Final-peer reset preserves the notification
+object and wakes capture. Congestion estimation, peer authority, frame-acknowledgement
+ownership and refresh/reconnect decisions are unchanged. The diagnostic field is
+renamed `planned_pace_us` to distinguish the initial estimate from an interruptible
+wait. Existing test receipt counts gain the one new four-case regression.
+
+Focused no-NIC run `1fNJeGegpU` passes all 28 production-controller/application
+tests in 115.535 supervisor seconds. Real pacing threads join after recovery
+(100,268 µs), lower requested rate (1,000,225 µs), final-peer retirement
+(33,543 µs) and notification without rate change (200,196 µs). Test executable
+SHA-256: `e3ebed04f9de3ac6116201b6cdd8686e9eb7faa7236a9d4091145aff41274e2c`.
+
+Corrected full build `tDFKA9GXIX` passes in 700.991 seconds. Its independently
+verified 74 files total 70,291,394 bytes; manifest SHA-256
+`2b0e3a6a80f3cc34c636ba060f716852f280c98983b6ff22ef92687164c01ad8`.
+Rust core SHA-256: `5dc63a995c4177740b6d976e253ef7a0d0273800a7f1929fe9ea74697f92d36e`.
+Both candidate builds use the same recipe, compiler/dependencies and selected
+63493887 engine. The current artifact remains in the source-bound app cache.
+
+Native replay `WNthvLmv9r` passes the unchanged controller, whose bytes match
+the diagnostic baseline. Actual holds are 2,036/6,003/12,028 ms; four fresh frames
+recover in 2,069/1,854/1,666 ms, first freshness in 642/1,022/1,066 ms. Healthy
+three-second follow-ups have maximum displayed ages 341/321/369 ms against a
+338-ms baseline maximum. Same window/TCP identity survives. RSS starts at
+366,532 KiB, peaks among the recorded samples at 372,560 KiB and ends at
+370,840 KiB; threads 63→52 and descriptors 44→44. Serial: 49,367 bytes, SHA-256
+`0fc32e8ddd00da201e45586adb38fd6d6787236ace00705e549ab128f70daf25`.
+
+All five VMs join QEMU, retire RAM/run roots and report zero listener deltas.
+Build scratch peaks at 10,601,738,240/10,601,934,848 bytes within 16 GiB;
+replays peak at 3,009,261,568/3,008,278,528 bytes within 6 GiB. Failed replay
+copies match the retained app; after bounded logs are verified on both hosts,
+their exact tree is removed, reclaiming 62,197,760 allocated bytes. No product,
+compiler or test runs on either host, and no release is published.
+
+Capsule `.harness-state/verifier-vm/viewer-pacing-5d8cf83a.json` is 74,513 bytes,
+SHA-256 `b03a7c8f5efc4980c153950c346c34bce02679608da87c7e1e2b6154dce2d1ba`.
+It binds the five runs, commands, sources, app manifests, timing observations,
+cleanup and 38 raw files totaling 1,167,344 bytes, hash-verified on CTE/TUF.
+The observed obsolete pacing delay is corrected and one complete native suspension
+sequence passes. Phase coverage, realistic network impairment, input-to-visible
+latency, multi-hour soaks, other supported roles/platforms and full R-F5/release
+acceptance remain OPEN. The next decisive work should reuse this artifact to
+exercise the remaining recovery conditions; no repeat full build is needed merely
+to rerun a scenario.

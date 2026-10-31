@@ -1259,12 +1259,12 @@ PY
     grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false$' \
       <<<"$controller_output" || fail 'real password prompt verdict is missing'
     if [ "$PEER_SCENARIO" = network-impairment ]; then
-      [ "$(grep -Ec '^FLUTTER_PEER_NETWORK_IMPAIRED_OK cycle=[123] ' <<<"$controller_output")" -eq 3 ] \
-        && [ "$(grep -Ec '^FLUTTER_PEER_NETWORK_RECOVERY_OK cycle=[123] ' <<<"$controller_output")" -eq 3 ] \
-        || fail 'three actual packet impairment/recovery cycles are missing'
-      grep -Fxq 'FLUTTER_PEER_NETWORK_PRESENTATION_OK cycles=3 delay_ms=125 loss_percent=100 holds_ms=6000,2000,6000 recovery_limit_ms=2500 freshness_limit_ms=1000 healthy_ms=3000 actual_peer=true x11_pixels=true same_window=true stable_connection=true resources=bounded' \
+      [ "$(grep -Ec '^FLUTTER_PEER_NETWORK_IMPAIRED_OK cycle=[1-9] ' <<<"$controller_output")" -eq 9 ] \
+        && [ "$(grep -Ec '^FLUTTER_PEER_NETWORK_RECOVERY_OK cycle=[1-9] ' <<<"$controller_output")" -eq 9 ] \
+        || fail 'nine actual packet impairment/recovery cycles are missing'
+      grep -Fxq 'FLUTTER_PEER_NETWORK_PRESENTATION_OK cycles=9 delay_ms=125 loss_percent=100 holds_ms=6000,2000,6000,1750,5750,2250,6250,2500,6500 recovery_limit_ms=2500 freshness_limit_ms=1000 healthy_ms=3000 actual_peer=true x11_pixels=true same_window=true stable_connection=true resources=bounded' \
         <<<"$controller_output" || fail 'network impairment pixel verdict is missing'
-      viewer_result='viewer=joined xvfb=joined impairment_cycles=3 stable_connection=true resources=bounded'
+      viewer_result='viewer=joined xvfb=joined impairment_cycles=9 stable_connection=true resources=bounded'
     elif [ "$PEER_SCENARIO" = viewer-suspend ]; then
       [ "$(grep -Ec '^FLUTTER_PEER_SUSPENDED_OK cycle=[123] ' <<<"$controller_output")" -eq 3 ] \
         && [ "$(grep -Ec '^FLUTTER_PEER_SUSPEND_RECOVERY_OK cycle=[123] ' <<<"$controller_output")" -eq 3 ] \

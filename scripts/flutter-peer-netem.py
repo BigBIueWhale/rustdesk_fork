@@ -164,7 +164,8 @@ def supervise(image, argv):
                         require(not flags and data and len(data) < 128, 'invalid request frame')
                         request = data.decode('ascii')
                         requests += 1
-                        require(requests <= 16, 'request budget exceeded')
+                        # One attachment, nine profile/restore pairs, one failure restore.
+                        require(requests <= 20, 'request budget exceeded')
                         if request.startswith('attach '):
                             require(peer_namespace == os.stat('/proc/self/ns/net').st_ino,
                                     'attachment requires the guest orchestrator')

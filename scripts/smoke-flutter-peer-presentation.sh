@@ -126,7 +126,7 @@ if [ "$PEER_SCENARIO" = network-impairment ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
-  VIEWER_RESULT='viewer=joined xvfb=joined impairment_cycles=3 stable_connection=true resources=bounded'
+  VIEWER_RESULT='viewer=joined xvfb=joined impairment_cycles=9 stable_connection=true resources=bounded'
 elif [ "$PEER_SCENARIO" = viewer-suspend ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

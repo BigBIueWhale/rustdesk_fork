@@ -16346,6 +16346,20 @@ lookup key was reused. The unchanged three overall lifecycle oracles still fail.
 The audit retains the failing baseline and exact candidate receipts; the failure
 path does not export a new complete unit-suite acceptance receipt.
 
+**Filesystem exhaustion (`9f47d5b0`) — native library cases accepted.** TUF
+`RSZVl0ijfC` exercises the root receiver on a real 64-KiB tmpfs with zero or one
+free page. An 8-KiB block returns ENOSPC after writing exactly zero or 4 KiB;
+progress counters stay unchanged, finalization refuses and the prior final's
+identity/bytes survive. Per-file retirement succeeds before the filler is removed.
+After space returns, a fresh job reacquires the same destination and publishes
+exact bytes. Both mounts and fixtures retire before their receipt. This adds
+actual filesystem-full evidence alongside the existing RLIMIT_FSIZE/EFBIG case;
+product code is unchanged. All nineteen prior authority/crash cases and twenty
+actors retain their outcomes. The three layout regressions still fail, so the
+canonical command exits one. Exact source/artifact/raw identities and joined
+cleanup are retained in the audit. Initial-enrollment exhaustion, quota/device
+writeback/power-loss faults, installed callers and other platforms remain OPEN.
+
 **Retirement sync retry (`6835e68f`) — component accepted.** An already-unlinked
 per-file directory still requires synchronization of its retained containing
 directory before lease retirement can succeed. Baseline `9a60b101` reports success

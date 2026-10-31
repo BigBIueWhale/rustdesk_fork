@@ -122857,3 +122857,32 @@ successful output after capacity returns. Every handle closes before normal
 unmount and fixture retirement. Preserve the existing race/crash/lifecycle cases;
 do not claim installed callers, generic cancellation, disk-device writeback or
 power-loss acceptance. This is test preparation; product code remains unchanged.
+
+**Accepted on the first native execution.** At
+`9f47d5b08c7193de4b9368a253577fc3b6c6decb`, TUF `RSZVl0ijfC`, both filesystem-full
+cases pass. The actual 8,192-byte block returns ENOSPC with exactly zero or 4,096
+bytes appended to the earlier successful block. Counters remain unchanged,
+finalization refuses, and the prior final's complete snapshot remains equal.
+Per-file cleanup succeeds before releasing the filler; fresh-job reacquisition
+then completes with exact 12,288-byte output. Normal unmount and fixture removal
+precede both records and the storage summary. This is root production-library
+execution on bounded tmpfs, not disk-device writeback, quota, physical power loss,
+initial enrollment failure, authenticated peers or installed callers.
+
+The nineteen earlier authority/crash cases and twenty actors retain their outcomes,
+and all 25 primitive filesystem observations complete. The three completed-
+destination lifecycle cases still fail with the same listing/removal behavior and
+31 records / 126,976 allocated bytes, zero added locks. The canonical
+`--file-metadata-tests` command exits one. Its emitted library aggregate reports
+147 tests in 35 groups, but this failure path exports neither all individual test
+records nor complete outer unit-suite acceptance. No new product correction is
+needed for the two observed storage cases. All parks and pending decisions remain.
+
+Native artifact SHA-256:
+`b75a160b0e134248c651230ceb70e9c9cbd57fb0edc93a546e9ef7fdcebe2627`;
+driver SHA-256 `c07412de59656425eae7a89e4b68ea786b0c5b605e28063449f3e6e3958b8b80`;
+serial SHA-256 `46df32cf674b1458919842da7cd2db98f233d0dedbb422b8159728ab94ddaa8b`.
+QEMU 3115375 joins after 277.244 seconds; RAM `run.mcuwv86v` retires, and all four
+listener comparisons have zero changes. Seven raw files / 111,331 bytes are
+hash-verified on both hosts before exact diagnostic retirement. Live instructions,
+requirements and production source remain unchanged.

@@ -125385,3 +125385,13 @@ for the remaining realistic random/burst loss, bandwidth/jitter, input-visible,
 multi-hour and other-platform acceptance. The two-second case has 105 ms margin;
 these nine passes do not prove all timer phases. Next extend realistic loss
 profiles with actual kernel/presentation observations. Independent parks remain.
+
+Ledger validation at `72df2af4`, run `3ot6WB4JtF`, passes: **377,736 tokens**,
+1,730,083 bytes, SHA-256
+`a70adc0cbb58d85d682805d3c8603ee94f34c6a457abe9d3d9467ec1b2fba65c`.
+Pinned tiktoken 0.12.0/cl100k_base/encode_ordinary passes its seven controls and
+whole-file round trip; workload admission passes 79 controls and five refusals.
+QEMU 3363015 joins exit 0; 30.407 seconds, 402,530,304 bytes peak RAM scratch,
+RAM/run roots absent and three zero listener deltas. All fourteen checkpoint
+files (308,594 bytes) match on CTE/TUF. This audit-only receipt preserves the
+counted ledger bytes.

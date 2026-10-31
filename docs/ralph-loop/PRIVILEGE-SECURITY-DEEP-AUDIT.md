@@ -125143,3 +125143,20 @@ This completes the mechanism prerequisite. Next integrate exact namespace-owned
 impairment with the retained app and unchanged actual-pixel oracle. R-F5 remains
 OPEN for real-peer impairment, input-visible timing, multi-hour sessions and
 other supported roles/platforms; the broad goal remains active.
+
+Ledger validation first stops in run `hR8QHR0y76`: all 79 workload controls and
+five refusals pass, but the expected total still says 78 after admitting the
+new mode. `ce32e3fd` updates that total and the paired completion receipt to
+41 modes/79 controls; no control or refusal is removed. QEMU 3333538 joins,
+RAM retires and endpoint deltas are zero. Six diagnostic files (86,731 bytes)
+are verified on both hosts before the exact failed-run directory is removed,
+reclaiming 233,472 allocated bytes.
+
+Fresh count at ce32e3fd, run `oDicyoCKbT`: **376,756 tokens**, 1,726,121 bytes,
+SHA-256 `be150fe27237f40e1039d985bbf9c7468e424f8d3e7073f742d0a7f8d1e8ec4c`.
+Pinned tiktoken 0.12.0/cl100k_base/encode_ordinary, all seven controls and the
+whole-file round trip pass, as do 79 workload controls and five refusals.
+Supervisor time is 30.201 seconds; scratch peaks at 402,526,208 bytes. QEMU
+3335417 joins exit 0, RAM/run roots retire and three listener deltas are zero.
+Both hosts retain matching raw files and the checkpoint capsule. This audit-only
+receipt leaves the freshly counted ledger unchanged.

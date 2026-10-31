@@ -122143,3 +122143,13 @@ listener deltas are zero. No product/test bytes change after this run. The compl
 diff preserves the instruction file and prior parked work. Next correct message-loop
 ownership during hashing, then validate the real CM/peer flow when its execution
 park is specifically lifted; the staging lifecycle correction remains incomplete.
+
+Ledger verification at `e8ae581ebba65bc58746401f40f8f926b9692971`, TUF
+`LyQK4xze49`, exits zero: 368,889 tokens / 1,688,348 bytes, SHA-256
+`487dce81465d1b4b17827fa8009da2f72139972ba96d5bd7df87c0b2e7c9992a`.
+Pinned `tiktoken-0.12.0/cl100k_base/encode_ordinary`, seven controls and strict UTF8
+round trip pass. QEMU 3044752 joins after 30.298 seconds; RAM `run.3l4aw9fr` retires
+and all three listener deltas are zero. Serial 35,834 bytes, SHA-256
+`145e1af3a68185b1f48208b25498c7ed42d17703106956157701bb0e3642f498`.
+The twenty-seven raw files for this checkpoint total 494,869 bytes per host. This
+audit-only receipt preserves the counted ledger and tested product/test source.

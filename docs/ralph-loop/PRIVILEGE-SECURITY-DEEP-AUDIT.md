@@ -122545,3 +122545,28 @@ source preparation only: the full-parent/viewer build remains parked. Their fina
 shutdown/cleanup scheduling, user-visible refusal/retry behavior and real message
 handlers require execution; transactional library admission does not establish those
 broader lifecycle properties. No corrected native pass is yet claimed.
+
+**Transactional admission checkpoint accepted.** Source
+`b91dc917e98cd135f52398833d308fff6c260d22`, tree
+`720f440c4a7c69562164614e88ab6d5d36e43b23`, TUF `ycHJhsXjCT`, passes all 37
+focused tests in 35 groups. Each of the three unchanged refusal oracles now reports
+response below 250 ms, no cleanup sync, retained original job/claim and successful
+continuation to exact `abcdef` output. The six prior held-sync phases remain
+responsive with exact ownership/preservation. Ambiguous/missing IDs and neighboring
+job preservation pass as well. The API call adapter changes with the ownership
+signature; the native refusal, sync and continuation checks are not weakened.
+
+Artifact SHA-256 `0e1e94c91f74144f0d5729a7e66c916c00ac56626f61b7a645835bfb3f29dc71`.
+Serial 18,286 bytes, SHA-256
+`a89a58b88d8594461250421d953134773a7f760a50eb6f11a3d77067d45a71ac`.
+QEMU 3101915 joins after 145.752 seconds; RAM `run.gmx0lua7` retires and all four
+listener deltas are zero. `--file-send-digest-tests` exits zero under UID/GID 1000
+with guest/container networking disabled. Fourteen raw files total 179,604 bytes
+per host. Tested library/fixture and prepared caller source are unchanged afterward.
+
+The complete application remains uncompiled under the existing park. Caller
+shutdown, ordinary transfer cancellation/drop, CM scheduling, user-visible refusal
+and retry/checkpoint effects remain unaccepted; transactional admission does not
+substitute for those paths. The three completed-destination staging failures remain
+OPEN/STOP-SHIP and provide the next independent receive-layout work. No parked test,
+live instruction or unrelated host state was changed.

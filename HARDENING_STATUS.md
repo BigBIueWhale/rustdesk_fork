@@ -16233,8 +16233,8 @@ now queues both digest producers and incoming confirmations, snapshots eligible
 checkpoint metadata, and closes both directions before awaiting cleanup. Cancelled
 jobs cannot reappear through completion or checkpoint metadata.
 
-At `53ea8607`, TUF `Lr8qwpHXzQ`, all **36 focused tests in 34 groups** pass. The
-nine ownership tests cover proof outcomes, TCP control during observed native
+At `b91dc917`, TUF `ycHJhsXjCT`, all **37 focused tests in 35 groups** pass. The
+ten ownership tests cover proof outcomes, TCP control during observed native
 prefix reads in both operation modes, late cancellation, owner-drop handle cleanup,
 capacity/retry, both proof-producing roles through wire serialization and exact
 resumed output, five receive interruption phases, checkpoint selection and closed
@@ -16257,15 +16257,29 @@ second while sync remains held, retain cleanup capacity through joining, preserv
 saved partial/digest/final bytes and reacquire the lease. The observer changes no
 syscall arguments/results and excludes acquisition syncs. All four host listener
 deltas are zero; QEMU and bounded RAM scratch retire. Raw receipt:
-`hbb-common-fs-run.Lr8qwpHXzQ.serial.log`.
+`hbb-common-fs-run.ycHJhsXjCT.serial.log`.
+
+**Transactional confirmation admission (`b91dc917`).** Both APIs borrow the caller's
+job collection and transfer one unambiguous job only after validation and bounded
+capacity acquisition. Refusal performs no retirement and preserves the original
+owner. At baseline `75ae49f8`, closed admission, wrong-file and global-capacity
+refusals all stall at native sync and consume the partially written receive job.
+All three now return within 250 ms without that sync, retain exact metadata and
+partial/digest/lease state, and let the original transfer finish with exact final
+bytes. Missing/ambiguous IDs are refused, and successful selection preserves its
+neighbors. No rejected-work queue or extra worker budget is introduced. Caller
+source is adapted: the viewer keeps refused jobs in its existing failure/checkpoint
+flow; the controlled caller still removes its failed send job before reporting error.
 
 The changed controlled/viewer loops remain uncompiled/unexecuted in the full
 application. Full-parent/viewer execution parks remain in force pending the specific
 resumption question; their fixtures also need adaptation to the owned completion
-path. CM scheduling remains incomplete. Confirmation admission refusal still performs
-synchronous receive-claim retirement and needs bounded cleanup ownership before
-complete slow-storage responsiveness is accepted. Next correct that ownership and
-obtain actual handler keepalive/cancellation/checkpoint evidence.
+path. CM scheduling, ordinary job cancellation/drop and caller shutdown still need
+bounded lifetime and slow-storage evidence. Library refusal preservation does not
+prove application retry, checkpoint effects or final retirement. Actual handler
+keepalive/cancellation/checkpoint validation remains required. The independently
+reproduced staging-layout lifecycle regression remains actionable while the full
+application lane is parked.
 The measured 62.764-second hash exceeds the loops' 30-second receive deadline;
 no installed disconnect has been measured. Large/slow-source resume, concurrent
 source mutation and the staging-layout lifecycle failures remain OPEN/STOP-SHIP.

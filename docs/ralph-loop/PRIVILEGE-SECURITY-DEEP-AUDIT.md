@@ -122434,8 +122434,8 @@ proof acceptance. Its existing bounded confirmation owner must join native reads
 and cleanup before releasing capacity; failed confirmation cannot advance counters,
 publish proof or authorize payload writes.
 
-Reviewed [Tokio File lifetime](https://docs.rs/tokio/latest/tokio/fs/struct.File.html)
-and [JoinHandle ownership](https://docs.rs/tokio/latest/tokio/task/struct.JoinHandle.html):
+Reviewed the pinned Tokio 1.44.2 [File lifetime](https://raw.githubusercontent.com/tokio-rs/tokio/tokio-1.44.2/tokio/src/fs/file.rs)
+and [JoinHandle ownership](https://raw.githubusercontent.com/tokio-rs/tokio/tokio-1.44.2/tokio/src/runtime/task/join.rs):
 dropping a future/file does not establish native IO completion. The existing worker
 therefore remains cooperatively cancelled and exactly joined; no detached inner
 cleanup task is introduced. The native sync observer now waits for a real payload
@@ -122468,3 +122468,31 @@ explicit retirement, preserve unconfirmed state/counters and require fresh recov
 CM's direct error handler already removes the failed write job and calls its cleanup
 helper; that path still requires scheduling/integration work. No candidate pass is
 claimed yet, and the six native sync oracles remain unchanged.
+
+**Hash-failure cleanup checkpoint accepted.** Source
+`53ea8607ef9b2b7ff0b52745ad713f84f13adfa1`, tree
+`e31ab2f811eab5da004fbb4c89e5fdb751fbf121`, TUF `Lr8qwpHXzQ`, passes all 36
+focused tests in 34 groups. All six unchanged native sync phases complete TCP control
+within one second while sync is held, with explicit observer release. Cancelled waits
+and owner destruction retain cleanup capacity until joining. Mismatch remains an
+error; cancellation publishes no proof/job; saved bytes survive and leases can be
+reacquired. The four prefix regressions preserve successful transfers, refusal before
+confirmation/counter changes, pending-claim retirement and fresh recovery after a
+dropped hash future. The updated claim checks also prove a competing receiver cannot
+acquire the lease before explicit retirement.
+
+Artifact SHA-256 `f75e71dd0df75afad12e1707d68f68ae035f117e7ef54bb20b18151563ba95d0`.
+Serial 17,616 bytes, SHA-256
+`06d83249dccab7bc6b8a48ba3cf68be8b6cd92a7f8baaf0c5b663dbf913eefd9`.
+QEMU 3099716 joins after 143.056 seconds; RAM `run.t3qzae42` retires and all four
+listener deltas are zero. The canonical `--file-send-digest-tests` command exits zero
+under UID/GID 1000 in the networkless disposable guest/container. Fourteen raw files
+total 180,914 bytes per host, hash-verified before final reporting. No product/test
+source changes follow this run.
+
+Confirmation admission refusal still retires synchronously and is the next bounded
+ownership correction. CM scheduling, complete controlled/viewer compilation and
+actual handler/checkpoint behavior remain unaccepted under the existing parks;
+the specific resumption question remains unanswered. The completed-destination
+staging regressions remain OPEN/STOP-SHIP. This is shared-library/native syscall
+evidence, not installed/authenticated-peer or complete receive acceptance.

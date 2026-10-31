@@ -16233,7 +16233,7 @@ now queues both digest producers and incoming confirmations, snapshots eligible
 checkpoint metadata, and closes both directions before awaiting cleanup. Cancelled
 jobs cannot reappear through completion or checkpoint metadata.
 
-At `d8aaf937`, TUF `YqT0QiSSuj`, all **32 focused tests in 30 groups** pass. The
+At `53ea8607`, TUF `Lr8qwpHXzQ`, all **36 focused tests in 34 groups** pass. The
 nine ownership tests cover proof outcomes, TCP control during observed native
 prefix reads in both operation modes, late cancellation, owner-drop handle cleanup,
 capacity/retry, both proof-producing roles through wire serialization and exact
@@ -16244,22 +16244,28 @@ failures and listener observations remain in the audit. These are real-file/sock
 library results, not application handlers.
 
 `a0bdf36e` moves failed/cancelled accepted-job retirement off the connection executor
-while retaining its original capacity permit and exact join. The native baseline
-stalls that executor for both held-directory-fsync cases; the same observers now
-complete TCP ping/pong within one second while sync remains held. Cancelling the
-wait or dropping its owner retains cleanup responsibility and capacity until joining;
-saved partial/digest/final bytes survive and the lease is reacquired. The final
-fixture keeps the shared drain outside its temporary syscall observer. All four
-host listener deltas are zero; QEMU and bounded RAM scratch retire. Raw receipt:
-`hbb-common-fs-run.YqT0QiSSuj.serial.log`.
+while retaining its original capacity permit and exact join. `53ea8607` also keeps
+the pending receive claim on the job throughout hashing, removing inline hash-error
+retirement. Failed or dropped hashing remains terminal and cannot authorize writes;
+lease-only retirement preserves the saved partial. Direct-API checks prove competing
+lease refusal until retirement, unchanged counters and successful fresh recovery.
+Six native held-directory-fsync cases cover completed-worker cancellation, cancellation
+during an observed read and proof mismatch, each with recollection or owner drop.
+The first baseline stalls the completed-worker cases; the next preserves those fixes
+but stalls all four inner-hash cases. All six now complete TCP ping/pong within one
+second while sync remains held, retain cleanup capacity through joining, preserve
+saved partial/digest/final bytes and reacquire the lease. The observer changes no
+syscall arguments/results and excludes acquisition syncs. All four host listener
+deltas are zero; QEMU and bounded RAM scratch retire. Raw receipt:
+`hbb-common-fs-run.Lr8qwpHXzQ.serial.log`.
 
 The changed controlled/viewer loops remain uncompiled/unexecuted in the full
 application. Full-parent/viewer execution parks remain in force pending the specific
 resumption question; their fixtures also need adaptation to the owned completion
-path. CM scheduling remains incomplete. Admission refusal and the inner prefix-hash
-failure path still perform synchronous receive-claim retirement. Those paths need
-bounded cleanup ownership before complete slow-storage responsiveness is accepted.
-Next correct them and obtain actual handler keepalive/cancellation/checkpoint evidence.
+path. CM scheduling remains incomplete. Confirmation admission refusal still performs
+synchronous receive-claim retirement and needs bounded cleanup ownership before
+complete slow-storage responsiveness is accepted. Next correct that ownership and
+obtain actual handler keepalive/cancellation/checkpoint evidence.
 The measured 62.764-second hash exceeds the loops' 30-second receive deadline;
 no installed disconnect has been measured. Large/slow-source resume, concurrent
 source mutation and the staging-layout lifecycle failures remain OPEN/STOP-SHIP.

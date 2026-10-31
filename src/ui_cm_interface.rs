@@ -7075,7 +7075,14 @@ mod tests {
                 {
                     let artifacts = replaced.parent().unwrap();
                     assert_eq!(std::fs::read_dir(artifacts).unwrap().count(), 2);
-                    assert_eq!(std::fs::read_dir(artifacts.parent().unwrap()).unwrap().count(), 1);
+                    let namespace = artifacts.parent().unwrap();
+                    let entries: std::collections::BTreeSet<_> = std::fs::read_dir(namespace).unwrap()
+                        .map(|entry| entry.unwrap().file_name()).collect();
+                    assert_eq!(entries, std::collections::BTreeSet::from([
+                        std::ffi::OsString::from("identity"), artifacts.file_name().unwrap().to_owned(),
+                    ]));
+                    assert_eq!(std::fs::read(namespace.join("identity")).unwrap(),
+                        namespace.file_name().unwrap().as_encoded_bytes());
                 }
                 assert_eq!(std::fs::read_dir(&temp.path).unwrap().count(),
                     if cfg!(target_os = "linux") { 3 } else { 4 });

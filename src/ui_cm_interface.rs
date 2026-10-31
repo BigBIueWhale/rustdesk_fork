@@ -2622,8 +2622,26 @@ fn reject_write_job(
 }
 
 #[cfg(not(any(target_os = "ios")))]
-fn append_cm_receive_cleanup_failure(error: &mut String, job: &mut fs::TransferJob) -> bool {
-    let Err(cleanup_error) = job.retire_current_file_state() else {
+async fn retire_cm_receive_job(mut job: CmTransferJob) -> (CmTransferJob, ResultType<()>) {
+    // The selected CM operation retains its registry owner and capacity permit
+    // while awaiting this exact native cleanup, including after outer-task loss.
+    match spawn_blocking(move || {
+        let result = job.job.retire_current_file_state();
+        (job, result)
+    })
+    .await
+    {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            log::error!("CM receive retirement lost its exact task: {error}");
+            std::process::abort();
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "ios")))]
+fn append_cm_receive_cleanup_failure(error: &mut String, cleanup: ResultType<()>) -> bool {
+    let Err(cleanup_error) = cleanup else {
         return false;
     };
     error.push_str(&format!(
@@ -2773,13 +2791,12 @@ async fn handle_fs(
             conn_id,
             generation,
         } => {
-            let (file_num, result) = if let Some(mut job) =
+            let (file_num, result) = if let Some(job) =
                 remove_transfer_job_for_connection(write_jobs, id, conn_id, generation)
             {
                 let file_num = job.job.file_num();
-                let result = job
-                    .job
-                    .retire_current_file_state()
+                let (job, result) = retire_cm_receive_job(job).await;
+                let result = result
                     .map_err(|error| format!("partial receive cleanup failed: {error}"));
                 if return_job_log {
                     let error = result.as_ref().err().map(String::as_str).unwrap_or("");
@@ -2817,7 +2834,9 @@ async fn handle_fs(
                     .await
                     .map_err(|error| error.to_string());
                 if let Err(error) = result.as_mut() {
-                    append_cm_receive_cleanup_failure(error, &mut job.job);
+                    let (retired, cleanup) = retire_cm_receive_job(job).await;
+                    job = retired;
+                    append_cm_receive_cleanup_failure(error, cleanup);
                 }
                 if return_job_log {
                     let error = result.as_ref().err().map(String::as_str).unwrap_or("");
@@ -2848,12 +2867,13 @@ async fn handle_fs(
             err,
             generation,
         } => {
-            let result = if let Some(mut job) =
+            let result = if let Some(job) =
                 remove_transfer_job_for_connection(write_jobs, id, conn_id, generation)
             {
+                let (job, cleanup) = retire_cm_receive_job(job).await;
                 let mut terminal_error = format!("peer file transfer failed: {err}");
                 let cleanup_failed =
-                    append_cm_receive_cleanup_failure(&mut terminal_error, &mut job.job);
+                    append_cm_receive_cleanup_failure(&mut terminal_error, cleanup);
                 if return_job_log {
                     job_log = Some(serialize_transfer_job(
                         &job.job,
@@ -2907,10 +2927,11 @@ async fn handle_fs(
                 ))
             };
             if let Err(mut error) = write_result {
-                if let Some(mut job) =
+                if let Some(job) =
                     remove_transfer_job_for_connection(write_jobs, id, conn_id, generation)
                 {
-                    append_cm_receive_cleanup_failure(&mut error, &mut job.job);
+                    let (_retired, cleanup) = retire_cm_receive_job(job).await;
+                    append_cm_receive_cleanup_failure(&mut error, cleanup);
                 }
                 reject_write_job(responder, id, generation, file_num, error)?;
             }
@@ -3000,10 +3021,11 @@ async fn handle_fs(
                 ))
             };
             if let Err(mut error) = result {
-                if let Some(mut job) =
+                if let Some(job) =
                     remove_transfer_job_for_connection(write_jobs, id, conn_id, generation)
                 {
-                    append_cm_receive_cleanup_failure(&mut error, &mut job.job);
+                    let (_retired, cleanup) = retire_cm_receive_job(job).await;
+                    append_cm_receive_cleanup_failure(&mut error, cleanup);
                 }
                 reject_write_job(responder, id, generation, file_num, error)?;
             }

@@ -122708,3 +122708,35 @@ and succeed after restoring the original sync-capable descriptor. Exact final an
 successor bytes and fixture cleanup precede the verdict. No production change or
 new runtime result is claimed at preparation. Reuse the existing isolated
 file-send-digest lane, adding the new case and its three existing namespace controls.
+
+**Reproduced and corrected.** Baseline `9a60b101eddead7a16e664598dcd59c19c14c072`,
+TUF `qZa2kC40BS`, reaches the intended kernel EBADF after publication and private
+child unlink. Retry incorrectly reports success and marks the lease retired:
+`repeated_failure=false still_pending=false`. Successor and published bytes survive;
+fixture cleanup precedes the failing assertion. The three existing namespace
+controls and two send-digest cases pass before the focused command exits one.
+Artifact SHA-256 `fc931780fd9cbd84c0017dfa62c8180c692830ba8302ebc1a030de26ba1b807b`;
+serial SHA-256 `1ab10a108e22d3f1a9bf0c470092e50d1eef83bb15b6dfc6de468305aff92ea5`.
+
+Product `6835e68fd04850960418adbc67ce018513ff2bbe` repeats the retained parent
+barrier when the old child has zero links; it never selects a successor by name.
+TUF `CVWwb8XCqe` passes all **41 tests in 39 groups** with the identical fixture,
+including persistent-error refusal, pending lease state, successor preservation
+and restored-descriptor recovery. Artifact SHA-256:
+`bab315b43a7935386f45c02efddc59c643625b85857f502bc600d0a0dd3aafa9`;
+serial SHA-256 `2a8d90d9bc638ae9cfcb6764ac2de2ca3c99f4e2cfc13a1279d1ed3ae10caaba`.
+The guest verifies every required test by exact passing name and the complete
+group/test totals before its success receipt. Its export filter nevertheless omits
+the four namespace names and their detailed stdout from this successful serial.
+The filter now exports those observations in both relevant lanes; product and
+test code remain byte-identical to the accepted run. No rerun or retroactively
+reconstructed stdout is claimed for that presentation-only correction.
+
+Both runs use the admitted zero-NIC Linux VM and UID/GID-1000 confined test
+container. QEMU 3108234/3109053 join after 136.108/145.956 seconds; RAM
+`run.vv4ehfln`/`run.0iezb36k` retire, and all four listener comparisons per run
+have zero changes. Fourteen raw files / 175,281 bytes are hash-verified on both
+hosts. The baseline's exact diagnostic directory is removed afterward, reclaiming
+3,448,832 allocated bytes. This closes the demonstrated skipped-barrier retry,
+not actual hardware error/power-loss recovery, installed callers, or the three
+completed-destination layout regressions. All separate parks remain unchanged.

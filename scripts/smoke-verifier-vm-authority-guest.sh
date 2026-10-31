@@ -8203,7 +8203,7 @@ PY
     "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
     CONTAINER_ID=
     if [ "$MODE" = hbb-common-fs ] && [ "$RUST_TEST_PROFILE" = file-metadata ]; then
-        grep -E '^RECEIVE_GENERATION_(RETIREMENT|ERROR)=observed ' "$output"
+        grep -E '^RECEIVE_(GENERATION_(RETIREMENT|ERROR)|RETIREMENT_SYNC)=observed ' "$output"
         printf 'RECEIVE_GENERATION_RETIREMENT_ARTIFACT=observed sha256=%s\n' "$hbb_test_artifact_sha"
         grep -E '^FILE_METADATA_(RESUME_CONTENT|RESUME_PROOF|PENDING_RESUME|RESUME_CANCEL|MAX_OFFSET)=' "$output"
         printf 'FILE_METADATA_RESUME_ARTIFACT=observed sha256=%s tests=%s groups=%s\n' \
@@ -8415,6 +8415,7 @@ PY
             grep -E '^test fs::(tests::(send_(digest_|read_buffer_)|read_step_|transfer_resume_)|file_block::tests::allocation_refusal_).* \.\.\. ok$|^test tcp::writer_lifetime_tests::read_jobs_retire_before_native_writer_pressure_errors \.\.\. ok$|^SEND_DIGEST_SIZE=|^SEND_READ_ALLOCATION(_CASE)?=|^FILE_COMPRESSION_(ALLOCATION|CASE)=|^READ_TERMINAL_RETIREMENT(_CASE)?=|^READ_NONTERMINAL_RETIREMENT=|^READ_JOB_BACKPRESSURE(_CASE)?=|^READ_ROUND_ROBIN(_CASE)?=.*|^READ_CONFIRMATION_READY=|^TRANSFER_RESUME_' "$output"
             grep -E '^test fs::tests::(send_resume_[a-z_]+|send_read_preserves_exact_lengths_and_resumed_eof|confirmation_rejects_wrong_job_and_duplicate_progress|resume_counter_overflow_does_not_publish_stream_ownership) [.][.][.] ok$' "$output"
             grep -E '^test fs::confirmation::tests::(slow_sync::)?[a-z_]+ [.][.][.] ok$|^FILE_CONFIRMATION_' "$output"
+            grep -E '^test fs::receive_namespace::tests::[a-z_]+ [.][.][.] ok$|^RECEIVE_(GENERATION_(RETIREMENT|ERROR)|RETIREMENT_SYNC)=' "$output"
             grep -E '^test fs::tests::file_metadata_(resume_|pending_resume_)[a-z_]+ [.][.][.] ok$|^FILE_METADATA_(RESUME_|PENDING_RESUME)' "$output"
         else
         grep -E '^test platform::linux::tests::r_s11at_loginctl_output_.* \.\.\. ok$|^LOGINCTL_(WAIT_AUTHORITY|LOST_WAIT)=' "$output"

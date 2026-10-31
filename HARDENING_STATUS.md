@@ -16324,6 +16324,18 @@ lookup key was reused. The unchanged three overall lifecycle oracles still fail.
 The audit retains the failing baseline and exact candidate receipts; the failure
 path does not export a new complete unit-suite acceptance receipt.
 
+**Retirement sync retry (`6835e68f`) — component accepted.** An already-unlinked
+per-file directory still requires synchronization of its retained containing
+directory before lease retirement can succeed. Baseline `9a60b101` reports success
+on retry despite a persistent kernel-reported sync failure; the unchanged test now
+retains failure, preserves a successor using the old child name, and recovers after
+restoring the sync-capable descriptor. Exact successor and published bytes remain.
+TUF `CVWwb8XCqe` passes all 41 focused tests in 39 groups. This O_PATH/EBADF fixture
+tests real namespace operations and error propagation, not hardware writeback or
+power-loss recovery. The audit retains source/artifact identities and the success
+log's namespace-detail omission; its export filter is corrected afterward. The
+three completed-destination layout failures and installed acceptance remain OPEN.
+
 Successful per-file retirement also removes the final generation lock. Interrupted
 or failed admission before lease construction can still leave a lock for recovery.
 One container, its small identity file and one directory record persist per

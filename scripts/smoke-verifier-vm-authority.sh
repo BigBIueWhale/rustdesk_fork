@@ -2383,6 +2383,9 @@ android_peer_input_inventory() {
 cm_pa_input_inventory() {
     local name size digest url extra count=0 file
     android_peer_input_inventory
+    if [ "$CM_DIRECTORY_DOWNLOAD" -eq 1 ]; then
+        return 0
+    fi
     [ -d "$ONLINE_INPUTS/xvfb-debs" ] && [ ! -L "$ONLINE_INPUTS/xvfb-debs" ] \
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ONLINE_INPUTS/xvfb-debs")" = \
              "$HOST_UID:$HOST_GID:700" ] \
@@ -4749,14 +4752,16 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
     fi
 elif [ "$MODE" = cm-file-replay ]; then
     payload_identity=(-uid 4000 -gid 4000)
-    lifecycle_payload_grafts=(
-        "source.tar=$ANDROID_EMULATOR_SOURCE_ARCHIVE"
+    lifecycle_payload_grafts=("source.tar=$ANDROID_EMULATOR_SOURCE_ARCHIVE")
+    if [ "$CM_DIRECTORY_DOWNLOAD" -eq 0 ]; then
+    lifecycle_payload_grafts+=(
         "pa-runtime-candidate.tar.gz=$PA_RUNTIME_CANDIDATE"
         "xvfb-debs=$ONLINE_INPUTS/xvfb-debs"
         "repo/scripts/smoke-xvfb-prepare.sh=$SCRIPT_DIR/smoke-xvfb-prepare.sh"
         "repo/scripts/smoke-xvfb-packages.tsv=$SCRIPT_DIR/smoke-xvfb-packages.tsv"
         "repo/scripts/smoke-xvfb-files.tsv=$SCRIPT_DIR/smoke-xvfb-files.tsv"
     )
+    fi
 elif [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ] \
    || [ "$MODE" = android-emulator-runtime ] || [ "$MODE" = android-peer-build ]; then
     payload_identity=(-uid 4000 -gid 4000)

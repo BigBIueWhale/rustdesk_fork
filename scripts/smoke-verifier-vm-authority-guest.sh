@@ -9434,6 +9434,7 @@ run_cm_file_replay() {
         || fail 'CM file replay devcheck image verification/load failed'
     [ "$load_output" = "loaded and verified devcheck $DEV_CHECK_IMAGE_ID" ] \
         || fail 'CM file replay devcheck load receipt differs'
+    if [ "$CM_DIRECTORY_DOWNLOAD" -eq 0 ]; then
     [ -f "$pa_candidate" ] && [ ! -L "$pa_candidate" ] \
         && [ "$(stat -c '%u:%g:%a:%h:%s' -- "$pa_candidate")" = \
              "4000:4000:400:1:$PA_RUNTIME_CANDIDATE_ARCHIVE_SIZE" ] \
@@ -9458,6 +9459,7 @@ run_cm_file_replay() {
     done <"$source_root/scripts/smoke-xvfb-packages.tsv"
     [ "$count" -eq 7 ] || fail 'CM product-pair Xvfb package count differs'
     prepare_engine_xvfb "$xvfb_inputs" "$source_root/scripts"
+    fi
 
     install -d -o 1000 -g 1000 -m 0700 "$work" "$target"
     printf 'CM_FILE_BUILD_STAGE=begin commit=%s tree=%s builder=%s\n' \
@@ -9475,6 +9477,7 @@ run_cm_file_replay() {
         --env "SMOKE_EXPECTED_RUSTUP_TOOLCHAIN=${RUST_VERSION}.0-x86_64-unknown-linux-gnu" \
         --env "SMOKE_EXPECTED_VENDOR_CLOSURE_SHA256=$SHA256_CARGO_VENDOR_CLOSURE_V1" \
         --env "SMOKE_EXPECTED_VENDOR_CONFIG_SHA256=$SHA256_CARGO_VENDOR_CONFIG" \
+        --env "CM_DIRECTORY_DOWNLOAD=$CM_DIRECTORY_DOWNLOAD" \
         --mount "type=bind,source=$source_root,target=/work,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$inputs,target=/online,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$target,target=/smoke-target,bind-recursive=disabled" \

@@ -98,8 +98,10 @@ case "$1" in
     if [ "$1" = cm-file-build ]; then
       cargo build --locked --offline --features linux-pkg-config \
         --example video_pipeline_probe --color never
-      cargo test --locked --offline --features linux-pkg-config \
-        --example video_pipeline_probe --color never
+      if [ "${CM_DIRECTORY_DOWNLOAD:-0}" -eq 0 ]; then
+        cargo test --locked --offline --features linux-pkg-config \
+          --example video_pipeline_probe --color never
+      fi
       cargo test --locked --offline --features linux-pkg-config --lib --no-run --color never
       mapfile -t viewer_file_test_artifacts < <(
         find /smoke-target/debug/deps -maxdepth 1 -type f -name 'librustdesk-*' -perm -u+x -print

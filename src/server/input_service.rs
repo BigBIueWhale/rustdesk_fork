@@ -2747,23 +2747,21 @@ fn legacy_keyboard_mode(
         Some(key_event::Union::ControlKey(ck)) => process_control_key(&ck, evt.down),
         Some(key_event::Union::Chr(chr)) => {
             if !evt.down {
-                Ok(())
-            } else if has_hotkey_modifiers(evt) {
-                #[cfg(target_os = "windows")]
-                {
-                    windows_semantic_keys(semantic_keys, state, preserve_modifiers)
-                }
-                #[cfg(not(target_os = "windows"))]
-                {
-                    bail!("Legacy character hotkeys require a physical keyboard mode")
-                }
-            } else {
-                #[cfg(target_os = "linux")]
-                release_shift_for_char_input(state, preserve_modifiers)?;
-                let chr = char::try_from(chr)
-                    .map_err(|_| hbb_common::anyhow::anyhow!("invalid Legacy character"))?;
-                process_seq(en, &chr.to_string())
+                return Ok(());
             }
+            #[cfg(target_os = "windows")]
+            if has_hotkey_modifiers(evt) {
+                return windows_semantic_keys(semantic_keys, state, preserve_modifiers);
+            }
+            #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+            if has_hotkey_modifiers(evt) {
+                bail!("Legacy character hotkeys require a physical keyboard mode");
+            }
+            #[cfg(target_os = "linux")]
+            release_shift_for_char_input(state, preserve_modifiers)?;
+            let chr = char::try_from(chr)
+                .map_err(|_| hbb_common::anyhow::anyhow!("invalid Legacy character"))?;
+            process_seq(en, &chr.to_string())
         }
         Some(key_event::Union::Unicode(chr)) => {
             if evt.down {

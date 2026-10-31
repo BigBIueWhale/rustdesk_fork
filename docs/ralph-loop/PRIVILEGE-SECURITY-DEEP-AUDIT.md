@@ -123021,3 +123021,22 @@ through both confirmation APIs, including refusal of a later write and unchanged
 sidecar identity/bytes/modes/link counts and final output. Add the existing raw
 new-write collision test to this focused lane. These new refusal controls are
 candidate acceptance, not additional baseline observations.
+
+**Focused candidate accepted at `df25069a`, TUF `ppGgI0xuON`.** All 44 tests
+pass, including all twelve unchanged fresh-receive scenarios, ten new refusal
+controls and the existing unconfirmed-write collision test. Exact received bytes,
+counters, prior-final preservation and refusal-state snapshots pass. The native
+library runs as UID/GID 1000; this is not installed or privileged receiver
+acceptance. Artifact SHA-256
+`8b41685d763e0a8917e8ea6241363bb58a345d1a8ee113d0d1a189a56a4d4532`;
+serial SHA-256 `c125cc3ad280c77da72f34de08242bd2eb69f245e7e7996aa97d961ec8f3d992`.
+QEMU 3122846 joins after 145.818 seconds, RAM `run.xdq226gc` retires and all four
+listener deltas are zero. Seven raw files / 98,183 bytes are verified on both hosts.
+
+Final review closes the retired payload/digest handles before exclusive creation,
+so those local descriptors do not retain deleted storage while preparing the new
+generation. The disk-full native fixture moves its digest-setup exhaustion point
+before explicit confirmation, where creation now occurs; that case submits no
+payload block and retains all refusal/recovery oracles. Broader root/UID-4001
+authority, crash and storage execution and the focused lane must bind this final
+source. The existing three completed-layout failures remain expected OPEN results.

@@ -3564,6 +3564,7 @@ impl ReceiveWriteClaim {
                 &lease, &[(&digest_path, resume)]),
             (None, None) => Ok(()),
         }?;
+        drop((payload, resume));
         Self::create_in_lease(final_path, digest, lease)
     }
 

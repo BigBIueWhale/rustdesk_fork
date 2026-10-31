@@ -360,9 +360,11 @@ mod linux {
             digest.file_size = expected_size;
             if phase != "identity" {
                 receiver.inspect_receive_digest(&digest, false).await?;
-                receiver.confirm_with_offset(0, 0).await?;
             }
-            if phase == "block" { write(&mut receiver, &vec![b'a'; PAGE]).await?; }
+            if phase == "block" {
+                receiver.confirm_with_offset(0, 0).await?;
+                write(&mut receiver, &vec![b'a'; PAGE]).await?;
+            }
             let counters = (receiver.finished_size(), receiver.transferred());
             let filler_path = base.join("space-filler");
             let mut filler = OpenOptions::new().write(true).create_new(true)
@@ -389,6 +391,8 @@ mod linux {
 
             let failed = if phase == "identity" {
                 receiver.inspect_receive_digest(&digest, false).await.map(|_| ())
+            } else if phase == "digest" {
+                receiver.confirm_with_offset(0, 0).await.map(|_| ())
             } else { write(&mut receiver, &vec![b'b'; 2 * PAGE]).await };
             let error = failed.err().ok_or_else(|| anyhow!("full-filesystem operation reported success"))?;
             ensure!(error.downcast_ref::<io::Error>()
@@ -445,7 +449,7 @@ mod linux {
             ensure!(fs::read(&final_path)? == expected && !staging(base)?.try_exists()?);
             Ok::<_, hbb_common::anyhow::Error>(json!({"filesystem":"tmpfs", "phase":phase,
                 "capacity_bytes":65536, "free_bytes_before_block":free_pages * PAGE as u64,
-                "block_bytes":if phase == "identity" {0} else {2 * PAGE},
+                "block_bytes":if phase == "block" {2 * PAGE} else {0},
                 "partial_block_bytes":free_pages * PAGE as u64,
                 "error":"ENOSPC", "counters_unchanged":true, "publication_refused":true,
                 "prior_final_preserved":true, "cleanup_before_space_release":true,

@@ -125570,3 +125570,12 @@ app files match the retained manifest, and its protected input provider matches
 the pinned digest; removal releases 61,845,504 allocated bytes. No VM remains.
 Installed-service, denied session/principal, other-platform/device, layout/IME,
 long-session and release acceptance remain OPEN.
+
+Ledger count at `8fa601ac`, run `GhGSl5nk14`, passes: **378,968 tokens**,
+1,735,508 bytes, SHA-256
+`b68b8aa2e04d078ebc0795bc77265339fcc4008749fd5b989486bf525f3b6454`.
+The pinned tiktoken method passes seven controls and the complete byte round trip;
+storage admission passes 79 controls and five refusals. QEMU 3388048 joins exit 0
+after 30.266 seconds, 402,542,592 bytes peak RAM scratch retires and all three
+listener deltas are zero. All 17 checkpoint files, 341,088 bytes, are hash-verified
+on CTE/TUF. This audit-only receipt preserves the counted ledger bytes.

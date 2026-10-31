@@ -122603,3 +122603,48 @@ experiments, not production acceptance or a waiver of exact retirement. Reuse th
 canonical file-metadata lane so the same run retains the current authority/crash
 and failing lifecycle controls; the three separately parked FIFO cases and full
 application lane remain excluded. No new runtime result is claimed in preparation.
+
+**Primitive checkpoint completed.** Source
+`e8d3123dae6305771141a6495183c18c08873b0a`, tree
+`f4826776bd6eca7685c7dfb3107edb2fa0ddd3dd`, TUF `ewqpXFgR8j`, completes all
+23 observations. The nine new cases distinguish the exact effects: protected and
+root-owned sticky parents refuse the UID-4001 actor; nonsticky writable and
+actor-owned sticky parents permit its rename and empty-root-directory removal
+despite the observer's exclusive flock. Root then removes a substituted empty
+directory while the original retained inode remains linked. Regular, symlink and
+nonempty replacements survive with their exact guarded contents. Empty-path/dot
+removal yields `EINVAL`; creation through an already unlinked directory yields
+`ENOENT`. Actors, mount fixtures and retained descriptors retire before reporting.
+Probe SHA-256 `3b922fe9cff2666b79e4b5d5581ff42a3287ab6976834be485629ec56307c0c8`.
+
+Do not infer a universal lack of privilege amplification from the DAC control.
+Linux v6.1 SELinux `may_rename` checks `FILE__RENAME` on the source object, while
+`may_link(..., MAY_RMDIR)` checks `DIR__RMDIR`. The permissions are distinct:
+https://raw.githubusercontent.com/torvalds/linux/v6.1/security/selinux/hooks.c and
+https://raw.githubusercontent.com/torvalds/linux/v6.1/security/selinux/include/classmap.h .
+Inference: a policy can permit moving an empty directory yet deny deleting it,
+so actor rename ability does not prove equivalent deletion authority. This is
+kernel-source reasoning, not an executed SELinux policy or a reproduced product
+escalation. It rules out the proposed generic empty-container exception; preserve
+the exact-object requirement and pursue protected placement/publication/retirement
+together. Neither removing first and populating an unlinked directory nor adding
+an advisory/timed lock provides the missing primitive.
+
+The unchanged production source also executes all nineteen earlier authority/crash
+scenarios with twenty joined actors. The three lifecycle controls still fail:
+hidden listing residue, `ENOTEMPTY` on both removal APIs, and 31 added coordinator
+records / 126,976 allocated bytes across 32 retained destinations (zero added
+generation locks). Native receive artifact SHA-256
+`fca914a4b753742f42d1a518ea0eb4f992aba3858ddd9ad3e5f56529ffe16164`;
+driver SHA-256 `d2195f7c607d69de02e25f989269a4514b7b64ffa1d9f32e9473a5c1a0bc1dbe`.
+The canonical file-metadata command exits one at those known lifecycle failures;
+its failure path does not export complete unit logs or an acceptance receipt.
+
+Serial 36,950 bytes, SHA-256
+`411c769774f6bd7d55f4153371140c2ff80d6689103b337bddea90b0504f52c6`.
+QEMU 3104275 joins after 280.533 seconds; RAM `run.eio6572h` retires and all four
+listener deltas are zero. Seven raw files / 109,127 bytes are hash-verified on both
+hosts before removing 3,502,080 allocated bytes of exact failed-run diagnostic
+scratch. Product source, live instructions, stashed work and all other parks remain
+unchanged. This turn advances the layout decision with native negative evidence;
+the receive layout and release acceptance remain OPEN/STOP-SHIP.

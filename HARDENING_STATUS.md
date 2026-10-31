@@ -16197,6 +16197,33 @@ Next resolve same-mount protected placement and resumable destination identity
 together, including these ordinary-user and unsupported-handle cases, before
 replacing the retained per-destination layout. Existing receive oracles remain binding.
 
+**Final-container retirement — primitive checkpoint; layout still OPEN.** At
+`e8d3123d`, TUF `ewqpXFgR8j`, the guest-only experiment completes 23 observations,
+including nine new removal/authority controls. UID 4001 can rename/remove root-owned
+empty directories in a writable nonsticky parent or its own sticky parent, even
+while root holds an exclusive directory flock. Root-owned protected/sticky parents
+refuse both operations. After an ordered substitution, root `rmdir` removes the
+replacement empty directory and leaves the retained original linked; regular,
+symlink and nonempty replacements survive. Empty-path and dot removal return
+`EINVAL`; an unlinked directory descriptor cannot create new children (`ENOENT`).
+These observations rule out treating successful named removal as exact retirement.
+
+The actor's empty-directory removal control establishes ordinary DAC authority in
+this fixture only. Linux SELinux has distinct rename and rmdir permission checks;
+that source-reviewed distinction prevents generalizing the control into authority
+to remove replacements. No SELinux policy scenario or new product escalation was
+executed. Timed delegations also do not provide indefinite namespace ownership.
+The audit retains primary references. No cleanup exception or product change is
+accepted. The nineteen existing authority/crash cases and twenty actors retain
+their outcomes; all three lifecycle cases still fail, with zero added locks but
+31 retained records / 126,976 allocated bytes. The command exits one; no complete
+unit-suite acceptance receipt is exported. Raw receipt:
+`hbb-common-fs-run.ewqpXFgR8j.serial.log`. QEMU and bounded RAM scratch retire,
+all four host listener deltas are zero, and diagnostic scratch is removed after
+evidence verification. The next layout must resolve protected publication and
+exact retirement across the already-observed mount/principal cases; a public
+empty-container deletion is not a substitute.
+
 **Resume content binding — library correction accepted; caller acceptance OPEN/STOP-SHIP.**
 Baseline `640a9680`, TUF `ZoWbc47wT7`, accepts staged `abc` against source `XYZdef`
 with equal size/mtime in both confirmation directions, publishes `abcdef` and reports

@@ -33,10 +33,11 @@ def require(condition, message):
         raise ValueError(message)
 
 
-def record(path):
+def record(path, links=1):
     info = path.lstat()
-    require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1
-            and 0 < info.st_size <= 1024 * 1024 * 1024, 'component file authority differs')
+    require(stat.S_ISREG(info.st_mode) and info.st_nlink == links
+            and 0 < info.st_size <= 1024 * 1024 * 1024,
+            f'component file authority differs: {path} links={info.st_nlink} bytes={info.st_size}')
     with path.open('rb') as source:
         digest = hashlib.file_digest(source, 'sha256').hexdigest()
     return {'bytes': info.st_size, 'sha256': digest}
@@ -278,7 +279,9 @@ def compile_probe(pins):
         require(not final['State']['Running'] and final['State']['ExitCode'] == 0,
                 'compiler container did not terminate successfully')
         source = build / 'target/release/rustdesk-camera-native-probe'
-        artifact = record(source)
+        # Cargo 1.75 hard-links the named output to its deps artifact. The
+        # stopped compiler's output is copied into a separate single-link ELF.
+        artifact = record(source, links=2)
         require(source.read_bytes()[:4] == b'\x7fELF', 'native compiler did not produce an ELF')
         native_root = WORK / 'native'
         native_root.mkdir(mode=0o755)
@@ -324,8 +327,11 @@ def native_scenarios(artifact):
                 'native root/foreign principal refusal differs')
     for count in (1, 2):
         require(not list(Path('/dev').glob('video*')), 'native scenario starts with a camera')
-        root_command(['/usr/sbin/modprobe', 'vivid', 'n_devs=' + str(count), 'node_types=1',
-                      'vid_cap_nr=' + ('2' if count == 1 else '2,3'), 'num_inputs=1', 'input_types=0'])
+        root_command(['/usr/sbin/modprobe', 'vivid', 'n_devs=' + str(count),
+                      'node_types=' + ','.join(['1'] * count),
+                      'vid_cap_nr=' + ('2' if count == 1 else '2,3'),
+                      'num_inputs=' + ','.join(['1'] * count),
+                      'input_types=' + ','.join(['0'] * count)])
         try:
             root_command(['/usr/bin/udevadm', 'settle', '--timeout=10'])
             expected = ['video2'] if count == 1 else ['video2', 'video3']

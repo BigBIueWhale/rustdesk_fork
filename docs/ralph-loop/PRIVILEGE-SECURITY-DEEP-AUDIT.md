@@ -124002,3 +124002,96 @@ Seven raw files / 80,765 bytes per host are hash-verified before removing
 `be593c0ee2dce67ba9ca070c53fb23d3e98214661901a8050e0394b22498723c`.
 HARDENING_STATUS.md's slow-storage and caller-lifetime gaps remain OPEN and its
 previously counted contents are unchanged.
+
+## 2026-10-31 — CM terminal receive retirement remains owned without blocking the executor
+
+This continues the selected R-S8/R-S11fi/R-S11is slow-storage prerequisite after
+the preceding setup failure. `6a709c1a` provides the file-receive-caller container
+the same private UID-1000 account already used by the library/viewer profiles,
+and prints an unexpected typed response on directory-assertion failure. The
+production coordinator still uses the effective owner's NSS home. The
+[getpwuid contract](https://man7.org/linux/man-pages/man3/getpwnam.3.html) defines
+that account lookup; setting HOME does not create the missing account record.
+
+With unchanged product, TUF `ZMWapod1wL` reaches both cancellation cases. Each
+blocks the current-thread executor until the observer's independent three-second
+watchdog releases native directory fsync: 3,003,105 / 3,003,048 microseconds,
+responsive=false and explicit_release=false. Cleanup, original-file preservation,
+permit return and successor usability complete before the final failing verdict.
+This establishes a CM executor stall, not a new demonstrated privilege escalation.
+
+`be7d0a21` consumes the selected CmTransferJob into one blocking retirement task
+and awaits its exact join before response publication. Cancel, failed finalization,
+peer error, failed block and failed confirmation share it. The existing selected
+operation retains its registry owner and one of the same 32 permits throughout,
+including outer-task abandonment. Error composition and terminal response types
+remain. Native task loss uses the existing fatal owner-loss semantics.
+[Tokio 1.44.2](https://docs.rs/tokio/1.44.2/tokio/task/fn.spawn_blocking.html)
+documents why blocking work must leave the executor and why a started blocking
+task cannot simply be aborted: its exact join and capacity must remain owned.
+The [seccomp notification observer](https://man7.org/linux/man-pages/man2/seccomp_unotify.2.html)
+uses CONTINUE only to release the original syscall; it changes no arguments or
+result and is not an authorization mechanism.
+
+The native regression is byte-identical from baseline through final acceptance:
+SHA-256 `5553386554f8625f785144e417e0fb9b0fceb09da5bf31c86751540a22c47fc8`.
+At the first correction run both cases pass. Three subsequent viewer fixtures
+fail because they target retired public sidecars; another passes with vacuous
+old-path absence checks. `55d95bd9` changes only tests and their fingerprint
+inventory. Its shared observer finds the admitted private namespace and actual
+per-file artifacts, with presence checks before cleanup. An independently held
+receive claim supplies the no-follow fixture's namespace and is explicitly retired.
+Foreign digest/replacement fixtures retain their original error, byte, identity,
+uncertainty-marker, late-work refusal and independent-completion assertions.
+That run passes eight of nine executed tests. The CM replacement test reaches its
+first case's final inventory assertion, where a new expected count omitted the
+required identity marker. `597023fe` corrects it to the exact two names and checks
+the marker's bytes. The remaining thirteen profile tests were unexecuted until
+the final run; neither intermediate failure is a whole-profile acceptance.
+
+At `597023fe`, TUF `n69MMkcO1o`, the command
+`bash scripts/smoke-verifier-vm-authority.sh --linux-file-receive-caller-tests`
+exits zero. Fresh bridge generation and the full Linux Flutter-feature library
+build pass; the build takes 179 seconds and all **22 tests / five groups** pass
+in 12 execution seconds. The ten CM replacement scenes exercise all five terminal
+operations with either artifact replaced. Four viewer cases, two native CM output
+stalls, job-ID and startup controls retain their passes. The held-sync cases
+retain the exact registry generation and charged permit, refuse same-ID admission,
+show no early terminal reply, and complete another Unix-CM directory request
+within one second. Outer-task cancellation preserves those owners. Explicit
+release is observed after 52,421 / 52,831 microseconds, including the deliberate
+50 ms no-early-reply wait; these are held-barrier durations, not separately measured
+directory latencies. Both cases then retire staging, preserve the original file,
+return capacity, remove the UI owner once and admit a usable successor.
+
+All four runs use the same isolated caller profile. Serials below have prefix
+`android-rust-lifecycle-tests-run.` and suffix `.serial.log`; complete console,
+storage and listener captures accompany each. Artifact digests identify the
+executed full-parent libtest binaries, not installed release artifacts.
+
+| Source / run | Artifact SHA-256 | Serial SHA-256 | Result |
+| --- | --- | --- | --- |
+| `6a709c1a` / `ZMWapod1wL` | `cdf62a26e87bafef19c30a3bae40d76eeff0b679ee80004be409210b36d5f0a7` | `fb2a19f6502ba8642090d277f9d29901543290d32d3a0e8e1713a761e1a5ce08` | Both native stall cases fail after cleanup; outer 1. |
+| `be7d0a21` / `0UUN1AoDmm` | `3ae13923d3e80cfb85314485d8892915affa5c06e22c0f3b9f4a6c4a91a2271f` | `b5ede734968a5097dd49283c24c05507151a4146206b2622f8d6f27bdf4f1785` | Native cancellation passes; three stale viewer fixtures fail; outer 1. |
+| `55d95bd9` / `Q1Xlioyti7` | `4ac47093d6869286900678ad38aaca607c9bfa29fd7e20dd652252530aab5934` | `4b914630aa4d557b585f5a4d34eb3ab8548de225b59d293e02eceb8743c219db` | Eight pass; one new inventory assertion fails; outer 1. |
+| `597023fe` / `n69MMkcO1o` | `cf423d1afebe33d7e1eea51c4dc4f1905895c26e273f1a94a73021138a4e5180` | `5720242e94b7d71e3e51af03614116c013b5a1345bf6ae3f0290634bd0a72302` | All 22 pass; outer 0. |
+
+QEMU PIDs 3197276 / 3198457 / 3199748 / 3200948 join with zero status after
+431.888 / 425.876 / 435.186 / 462.968 seconds. Their wrappers 3196776 / 3197966 /
+3199253 / 3200458 and RAM workspaces `run.nyok8j9t` / `run.05qr7crx` /
+`run.md7smjy1` / `run.2n6wwyro` are absent. Every run has four zero host-listener
+deltas. Maximum scratch across the runs is 6,291,410,944 bytes within 7 GiB;
+minimum available host memory is 34,314,080,256 bytes. All 28 raw files / 322,167
+bytes per host are hash-verified. Each failed run's exact diagnostics removes
+3,444,736 allocated bytes after evidence verification; the successful harness
+retires its own run root. No host product or privileged host action is used.
+
+This is the full Linux library's real CM runner and Unix transport with a fixture
+authority validator and test UI. Installed privileged-peer authentication, other
+platforms/devices, complete confirmation/skip/disconnect/reconnect, resource/soak,
+shared mutable-parent/mount-root layout and release acceptance remain OPEN.
+The next decisive receive work is ordinary CM teardown: CmTransferJob Drop still
+performs synchronous retirement, and normal desktop exit removes its registry
+owner before local receive jobs drop. Prove exact ownership and bounded cleanup
+through native slow IO and abrupt loss before correcting that lifetime boundary.
+All independently parked topics remain parked; authorization is not a blocker.

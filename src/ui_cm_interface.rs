@@ -3709,6 +3709,9 @@ pub fn quit_cm() {
 mod tests {
     use super::*;
 
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    mod receive_cleanup;
+
     use crate::ipc::Data;
     use hbb_common::tokio::runtime::Runtime;
     use std::fs;

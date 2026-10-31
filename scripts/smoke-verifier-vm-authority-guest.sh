@@ -5075,6 +5075,7 @@ run_focused_rust_tests() {
             memory_bytes=5368709120
             source_fingerprints=(
                 Cargo.lock Cargo.toml src/lib.rs src/client/io_loop.rs src/ui_cm_interface.rs
+                src/ui_cm_interface/tests/receive_cleanup.rs
                 src/ipc.rs libs/hbb_common/src/fs.rs libs/hbb_common/src/fs/file_block.rs
                 src/flutter_ffi.rs src/client/file_trait.rs
                 src/server/connection.rs scripts/fixtures/cm-owner-before-cancel.rs
@@ -5082,6 +5083,7 @@ run_focused_rust_tests() {
                 scripts/run-file-receive-caller-tests.sh scripts/linux-parent-test-build.sh
             )
             required_tests=(
+                ui_cm_interface::tests::receive_cleanup::stalled_cancel_retains_owner_and_keeps_other_connection_responsive
                 client::io_loop::tests::r_s11fi_incoming_write_failure_retires_exact_job_and_partial_artifacts
                 client::io_loop::tests::r_s11fi_receive_cleanup_identity_failure_is_terminal_and_visible
                 client::io_loop::tests::r_s11fi_incoming_nofollow_open_failure_preserves_older_sidecars
@@ -7761,8 +7763,8 @@ PY
             && [ "$(grep -Fc 'RESOLUTION_RESTORATION_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'resolution-restoration artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file-receive-caller ]; then
-        [ "${#result_lines[@]}" -eq 4 ] || fail 'file-receive parent summary count differs'
-        [ "$(grep -Ec '^FILE_RECEIVE_PARENT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=21 groups=4 unchanged=before-between-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "${#result_lines[@]}" -eq 5 ] || fail 'file-receive parent summary count differs'
+        [ "$(grep -Ec '^FILE_RECEIVE_PARENT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=22 groups=5 unchanged=before-between-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'FILE_RECEIVE_PARENT_ARTIFACT=' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^test (client::io_loop|ui_cm_interface)::tests::r_s11fi_.* \.\.\. ok$' "$output")" -eq 8 ] \
             || fail 'file-receive parent artifact or named outcomes differ'
@@ -8612,11 +8614,11 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = file-receive-caller ]; then
-            [ "$tests_passed" -eq 21 ] || fail 'file-receive parent total differs'
+            [ "$tests_passed" -eq 22 ] || fail 'file-receive parent total differs'
             grep -Fxq 'CM_OWNER_BEFORE=pass source=c16ec444530f001145395c3d4974d2d5d57df960 function_sha256=a1973487bd83eed992b357615b7024bf4e96fe243250e668e15dd1c0f355be53 fixture_sha256=20420e74f04c3f443d6930651b6bf37a592a730c16d87caa01c5ec5a4dc3d71d' "$output" \
                 || fail 'CM owner counterexample receipt differs'
-            grep -E '^test ((client::io_loop|ui_cm_interface)::tests::r_s11fi_.*|flutter_ffi::file_job_id_tests::.*|server::connection::cm_startup_lifecycle_tests::.*) \.\.\. ok$|^FILE_RECEIVE_PARENT_BUILD=pass |^FILE_RECEIVE_PARENT_ARTIFACT=|^CM_OWNER_BEFORE=' "$output"
-            printf 'FILE_RECEIVE_PARENT_VM=pass commit=%s tree=%s tests=21 target=linux-x86_64 scope=complete-parent-file-receive-callers rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            grep -E '^test ((client::io_loop|ui_cm_interface)::tests::r_s11fi_.*|ui_cm_interface::tests::receive_cleanup::.*|flutter_ffi::file_job_id_tests::.*|server::connection::cm_startup_lifecycle_tests::.*) \.\.\. ok$|^FILE_RECEIVE_PARENT_BUILD=pass |^FILE_RECEIVE_PARENT_ARTIFACT=|^CM_OWNER_BEFORE=|^CM_RECEIVE_SYNC=' "$output"
+            printf 'FILE_RECEIVE_PARENT_VM=pass commit=%s tree=%s tests=22 target=linux-x86_64 scope=complete-parent-file-receive-callers rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = cm-read-tick ]; then

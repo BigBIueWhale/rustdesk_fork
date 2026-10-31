@@ -125693,3 +125693,12 @@ It binds command, source, retained app, native events/state, timings and cleanup
 This accepts one ordinary-user Linux X11/US-layout abrupt-exit schedule. Exact
 worker-thread join timing, another Remote owner, same-key overlap, native failure,
 installed privilege boundaries, other platforms and soak remain OPEN.
+
+Ledger count at `6230ff76`, run `UvYLVM5Ddl`, passes: **379,337 tokens**,
+1,737,100 bytes, SHA-256
+`cc37d6ab970828cac605a7794f323d365e1f86c843bf243f08213d6fe98fac0d`.
+The pinned method passes seven controls and the full byte round trip; storage
+admission passes 79 controls and five refusals. QEMU 3409109 joins exit 0 after
+30.407 seconds, 402,673,664 bytes peak RAM scratch retires and three listener
+deltas are zero. All fourteen checkpoint files, 208,077 bytes, are hash-verified
+on CTE/TUF. This audit-only receipt preserves the counted ledger bytes.

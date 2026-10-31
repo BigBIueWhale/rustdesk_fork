@@ -9478,6 +9478,7 @@ run_cm_file_replay() {
         --env "SMOKE_EXPECTED_VENDOR_CLOSURE_SHA256=$SHA256_CARGO_VENDOR_CLOSURE_V1" \
         --env "SMOKE_EXPECTED_VENDOR_CONFIG_SHA256=$SHA256_CARGO_VENDOR_CONFIG" \
         --env "CM_DIRECTORY_DOWNLOAD=$CM_DIRECTORY_DOWNLOAD" \
+        --env CARGO_BUILD_JOBS=4 --env CARGO_PROFILE_DEV_DEBUG=0 --env CARGO_PROFILE_TEST_DEBUG=0 \
         --mount "type=bind,source=$source_root,target=/work,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$inputs,target=/online,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$target,target=/smoke-target,bind-recursive=disabled" \

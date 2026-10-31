@@ -312,12 +312,16 @@ struct DirectoryOpenWatch(std::fs::File);
 
 impl DirectoryOpenWatch {
     fn new(path: &std::path::Path) -> Self {
+        Self::with_mask(path, libc::IN_OPEN)
+    }
+
+    fn with_mask(path: &std::path::Path, mask: u32) -> Self {
         use std::os::{fd::FromRawFd, unix::ffi::OsStrExt};
         let path = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
         let fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
         assert!(fd >= 0, "{}", std::io::Error::last_os_error());
         let file = unsafe { std::fs::File::from_raw_fd(fd) };
-        assert!(unsafe { libc::inotify_add_watch(fd, path.as_ptr(), libc::IN_OPEN) } >= 0,
+        assert!(unsafe { libc::inotify_add_watch(fd, path.as_ptr(), mask) } >= 0,
             "{}", std::io::Error::last_os_error());
         Self(file)
     }
@@ -329,6 +333,184 @@ impl DirectoryOpenWatch {
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => false,
             Err(error) => panic!("inotify observation failed: {error}"),
         }
+    }
+}
+
+struct LiveResumeViewer(Session<crate::viewer_pipeline_smoke_tests::ViewerPipelineUi>);
+
+impl Drop for LiveResumeViewer {
+    fn drop(&mut self) {
+        // On an assertion failure the viewer still owns its runtime and must join.
+        // The normal path below performs this blocking join off the test executor.
+        self.0.close_and_join();
+    }
+}
+
+async fn live_message(peer: &mut Stream) -> Message {
+    let bytes = peer.next_timeout(2000).await.expect("viewer response deadline")
+        .expect("viewer transport");
+    Message::parse_from_bytes(&bytes).unwrap()
+}
+
+async fn live_keepalive(peer: &mut Stream, sequence: i64) {
+    let mut barrier = Message::new();
+    barrier.set_test_delay(TestDelay { time: sequence, ..Default::default() });
+    peer.send(&barrier).await.unwrap();
+    peer.flush_writer().await.unwrap();
+    time::timeout(Duration::from_secs(1), async {
+        loop {
+            let message = live_message(peer).await;
+            if message == barrier { break; }
+            // The sender may publish its initial source digest before our reply.
+            // Confirmation or transfer data while hashing is still pending fails.
+            assert!(matches!(message.union,
+                Some(message::Union::FileResponse(FileResponse {
+                    union: Some(file_response::Union::Digest(FileTransferDigest {
+                        id: 371, file_num: 0, ..
+                    })), ..
+                }))), "unexpected message before keepalive: {message:?}");
+        }
+    }).await.expect("live viewer keepalive stalled during resume hashing");
+}
+
+#[tokio::test]
+async fn live_resume_round_keeps_control_and_joins_pending_hashes() {
+    for upload in [true, false] {
+        let fixture = Fixture::new();
+        let offset = u64::from(u32::MAX);
+        let size = offset + 4;
+        let artifacts = if upload {
+            fixture.sparse("source", size);
+            None
+        } else {
+            Some(stage_partial(&fixture, offset, size).await)
+        };
+        let observed = artifacts.as_ref().map(|path| path.join("payload.download"))
+            .unwrap_or_else(|| fixture.0.join("source"));
+        let mut saved_bytes = std::fs::OpenOptions::new().write(true).open(&observed).unwrap();
+        saved_bytes.seek(SeekFrom::Start(offset - 8)).unwrap();
+        saved_bytes.write_all(b"retained").unwrap();
+        drop(saved_bytes);
+        let before = std::fs::metadata(&observed).unwrap();
+        let digest_before = artifacts.as_ref()
+            .map(|path| std::fs::read(path.join("resume.digest")).unwrap());
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let ui = crate::viewer_pipeline_smoke_tests::ViewerPipelineUi::file_transfer();
+        let session = Session { ui_handler: ui.clone(), ..Default::default() };
+        {
+            let mut login = session.lc.write().unwrap();
+            login.initialize(address.to_string(), ConnType::FILE_TRANSFER, None);
+            login.password_prs = b"viewer-resume-test".to_vec();
+        }
+        let live = LiveResumeViewer(session.clone());
+        assert!(session.start_io_thread().unwrap());
+        let (socket, remote_address) = time::timeout(Duration::from_secs(5), listener.accept())
+            .await.unwrap().unwrap();
+        drop(listener);
+        let mut peer = Stream::from(socket, remote_address);
+        let keys = run_responder(peer.as_framed_tcp_mut().unwrap(), "viewer-resume-test")
+            .await.unwrap();
+        peer.set_session_keys(keys);
+        assert!(matches!(live_message(&mut peer).await.union,
+            Some(message::Union::LoginRequest(LoginRequest {
+                union: Some(login_request::Union::FileTransfer(_)), ..
+            }))));
+        let mut login = LoginResponse::new();
+        login.set_peer_info(PeerInfo { version: "1.4.7".to_owned(),
+            platform: "Linux".to_owned(), ..Default::default() });
+        let mut message = Message::new();
+        message.set_login_response(login);
+        peer.send(&message).await.unwrap();
+        live_keepalive(&mut peer, 1).await;
+        assert!(ui.take_errors().is_empty());
+
+        session.send(Data::AddJob((371, fs::JobType::Generic,
+            if upload { fixture.0.join("source").to_str().unwrap().to_owned() }
+                else { "remote".to_owned() },
+            if upload { "remote".to_owned() } else { fixture.0.to_str().unwrap().to_owned() },
+            0, false, !upload)));
+        session.send(Data::ResumeJob((371, !upload)));
+        let request = live_message(&mut peer).await;
+        assert!(matches!(&request.union,
+            Some(message::Union::FileAction(action)) if matches!(&action.union,
+                Some(file_action::Union::Receive(value)) if upload && value.id == 371)
+                || matches!(&action.union,
+                Some(file_action::Union::Send(value)) if !upload && value.id == 371)),
+            "unexpected resume request: {request:?}");
+        if !upload {
+            let mut response = FileResponse::new();
+            response.set_dir(FileDirectory { id: 371,
+                entries: vec![FileEntry { name: "incoming".to_owned(), size,
+                    entry_type: FileType::File.into(), ..Default::default() }],
+                ..Default::default() });
+            let mut message = Message::new();
+            message.set_file_response(response);
+            peer.send(&message).await.unwrap();
+        }
+        let watch = DirectoryOpenWatch::with_mask(&observed, libc::IN_ACCESS);
+        let mut response = FileResponse::new();
+        response.set_digest(FileTransferDigest { id: 371, file_num: 0,
+            file_size: size, last_modified: 19, is_upload: upload,
+            is_identical: upload, transferred_size: offset, ..Default::default() });
+        let mut message = Message::new();
+        message.set_file_response(response);
+        peer.send(&message).await.unwrap();
+        peer.flush_writer().await.unwrap();
+        time::timeout(Duration::from_secs(2), async {
+            while !watch.take_opened() { time::sleep(Duration::from_millis(10)).await; }
+        }).await.expect("resume hashing never read its actual file");
+        let started = Instant::now();
+        let mut worst_ping = Duration::ZERO;
+        for sequence in 2..22 {
+            let ping = Instant::now();
+            live_keepalive(&mut peer, sequence).await;
+            worst_ping = worst_ping.max(ping.elapsed());
+            time::sleep(Duration::from_millis(100)).await;
+        }
+        assert!(watch.take_opened(), "hashing stopped before the observed keepalive interval");
+        live_keepalive(&mut peer, 22).await;
+        let join_started = Instant::now();
+        let joined_session = session.clone();
+        let mut join = tokio::task::spawn_blocking(move || joined_session.close_and_join());
+        // Retain and collect the exact join even on a missed deadline.
+        let prompt = time::timeout(Duration::from_secs(3), &mut join).await;
+        let (within_deadline, joined) = match prompt {
+            Ok(result) => (true, result.unwrap()),
+            Err(_) => (false, join.await.unwrap()),
+        };
+        let join_elapsed = join_started.elapsed();
+        assert!(joined && within_deadline, "viewer did not join promptly: {:?}", join_started.elapsed());
+        assert!(session.thread.lock().unwrap().is_none());
+        assert!(ui.take_errors().is_empty());
+        let config = session.lc.read().unwrap();
+        let checkpoint = &config.config.transfer;
+        assert_eq!((checkpoint.read_jobs.len(), checkpoint.write_jobs.len()),
+            if upload { (1, 0) } else { (0, 1) });
+        let jobs = if upload { &checkpoint.read_jobs } else { &checkpoint.write_jobs };
+        let saved: fs::TransferJobMeta = serde_json::from_str(&jobs[0]).unwrap();
+        assert_eq!((saved.id, saved.file_num, saved.is_remote), (371, 0, !upload));
+        drop(config);
+        let after = std::fs::metadata(&observed).unwrap();
+        assert_eq!((before.dev(), before.ino(), before.len()),
+            (after.dev(), after.ino(), after.len()));
+        let mut saved_bytes = std::fs::File::open(&observed).unwrap();
+        saved_bytes.seek(SeekFrom::Start(offset - 8)).unwrap();
+        let mut retained = [0; 8];
+        saved_bytes.read_exact(&mut retained).unwrap();
+        assert_eq!(&retained, b"retained");
+        if let Some(artifacts) = artifacts {
+            assert_eq!(std::fs::read(artifacts.join("resume.digest")).unwrap(), digest_before.unwrap());
+            assert!(!artifacts.join("claim.download.lock").exists());
+            assert!(!fixture.0.join("incoming").exists());
+            let mut recovered = receiver(&fixture, size);
+            recovered.inspect_receive_digest(&FileTransferDigest { id: 371, file_num: 0,
+                file_size: size, last_modified: 19, ..Default::default() }, true).await.unwrap();
+            recovered.retire_current_file_state().unwrap();
+        }
+        println!("VIEWER_RESUME_LIVE=pass upload={upload} observed_ms={} keepalives=21 worst_ping_us={} join_ms={} checkpoint=retained",
+            started.elapsed().as_millis(), worst_ping.as_micros(), join_elapsed.as_millis());
+        drop(live);
     }
 }
 

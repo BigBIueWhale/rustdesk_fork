@@ -13,7 +13,7 @@ build_linux_parent_test "$WORK" VIEWER_RESUME
 execution_started=$SECONDS
 # The maximum wire-offset case reads the real 4 GiB prefix in both directions.
 timeout --signal=TERM --kill-after=5s 240s \
-    "$test_executable" client::io_loop::file_resume_tests:: --color never --test-threads=1
+    "$test_executable" client::io_loop::file_resume_tests:: --color never --test-threads=1 --show-output
 timeout --signal=TERM --kill-after=5s 30s \
     "$test_executable" port_forward::tests:: --color never --test-threads=1
 timeout --signal=TERM --kill-after=5s 30s \
@@ -24,7 +24,7 @@ timeout --signal=TERM --kill-after=5s 30s \
     "$test_executable" common::tests::retired_server_key_option_remains_pinned_empty \
     --exact --color never --test-threads=1
 [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
-printf 'VIEWER_RESUME_ARTIFACT=pass sha256=%s executable=%s tests=23 unchanged=before-after execution_seconds=%s\n' \
+printf 'VIEWER_RESUME_ARTIFACT=pass sha256=%s executable=%s tests=24 unchanged=before-after execution_seconds=%s\n' \
     "$artifact_sha" "$test_executable" "$((SECONDS - execution_started))"
 printf 'VIEWER_RESUME_CLI_CHECK=started target=rustdesk features=linux-pkg-config,cli budget_seconds=120\n'
 if ! timeout --signal=TERM --kill-after=5s 120s \

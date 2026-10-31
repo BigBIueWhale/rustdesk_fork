@@ -115,6 +115,10 @@ pub(crate) struct ViewerPipelineUi {
 }
 
 impl ViewerPipelineUi {
+    pub(crate) fn file_transfer() -> Self {
+        Self { file_transfer: true, ..Default::default() }
+    }
+
     pub(crate) fn recording_observation(&self) -> (Option<bool>, usize, bool) {
         let state = self.state.0.lock().unwrap();
         (state.recording_status, state.published_frames, state.stall_released.is_some())

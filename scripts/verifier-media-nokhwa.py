@@ -16,6 +16,7 @@ import time
 
 
 MEDIA = Path('/mnt/rustdesk-verifier-inputs/media')
+SCRIPTS = MEDIA.parent / 'repo/scripts'
 STATE = Path('/var/tmp/rustdesk-verifier-authority')
 AUTHORITY = Path('/run/rustdesk-verifier-vm')
 SOCKET = AUTHORITY / 'docker.sock'
@@ -53,7 +54,7 @@ def nonroot(argv):
 
 def preflight():
     output = subprocess.check_output(nonroot([
-        '/bin/bash', str(MEDIA / 'scripts/verify-vm-entry-preflight.sh')]),
+        '/bin/bash', str(SCRIPTS / 'verify-vm-entry-preflight.sh')]),
         env=CLIENT_ENV, timeout=10)
     require(output == b'VERIFIER_VM_ENTRY_AUTHORITY=pass uid=1000 gid=1000 network=none '
             b'docker=27.5.1 channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root\n',
@@ -183,7 +184,7 @@ def start_daemon(pins):
 
 
 def load_image(pins):
-    args = ['/usr/bin/python3', '-I', '-S', str(MEDIA / 'scripts/offline-image-provenance.py'),
+    args = ['/usr/bin/python3', '-I', '-S', str(SCRIPTS / 'offline-image-provenance.py'),
             'verify-load', '--role', 'devcheck', '--archive', str(MEDIA / 'devcheck.docker.tar.gz'),
             '--base', 'rust:1.75-slim@' + pins['DEV_CHECK_BASE_IMAGE_ID']]
     for option, key in (
@@ -200,7 +201,7 @@ def load_image(pins):
 
 
 def compile_probe(pins):
-    validator = ['/usr/bin/python3', '-I', '-S', str(MEDIA / 'scripts/online-input-provenance.py'),
+    validator = ['/usr/bin/python3', '-I', '-S', str(SCRIPTS / 'online-input-provenance.py'),
                  'verify-subtree', '--tree', str(MEDIA / 'cargo-vendor'),
                  '--expected', pins['SHA256_CARGO_VENDOR_CLOSURE_V1']]
     expected = 'verified subtree ' + pins['SHA256_CARGO_VENDOR_CLOSURE_V1']

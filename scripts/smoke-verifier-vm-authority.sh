@@ -4609,7 +4609,7 @@ if nokhwa:
     for name,path in [('nokhwa.py',scripts/'verifier-media-nokhwa.py'),
                       *((f'probe/{name}',scripts/'camera-native-probe'/name)
                         for name in ('Cargo.toml','Cargo.lock','build.rs','src/main.rs')),
-                      *((f'scripts/{name}',scripts/name) for name in
+                      *((f'../repo/scripts/{name}',scripts/name) for name in
                         ('verify-vm-entry-preflight.sh','offline-image-provenance.py','online-input-provenance.py'))]:
         data=path.read_bytes()
         sources[name]={'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()}
@@ -4636,9 +4636,7 @@ PY
         lifecycle_payload_grafts+=(
             "media/nokhwa.py=$SCRIPT_DIR/verifier-media-nokhwa.py"
             "media/probe=$SCRIPT_DIR/camera-native-probe"
-            "media/scripts/verify-vm-entry-preflight.sh=$ENTRY_PREFLIGHT"
-            "media/scripts/offline-image-provenance.py=$OFFLINE_IMAGE_PROVENANCE_SOURCE"
-            "media/scripts/online-input-provenance.py=$SCRIPT_DIR/online-input-provenance.py"
+            "repo/scripts/online-input-provenance.py=$SCRIPT_DIR/online-input-provenance.py"
             "media/devcheck.docker.tar.gz=$DEV_CHECK_IMAGE_ARCHIVE"
             "media/cargo-vendor=$CARGO_VENDOR_ROOT"
             "media/cargo-vendor-config.toml=$CARGO_VENDOR_CONFIG"

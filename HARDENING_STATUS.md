@@ -7330,25 +7330,42 @@ ViewCamera logins replace that process-wide catalog while `src/server.rs` keys c
 The correction must bind advertised metadata, the selected native handle, connection and service to one
 owned catalog/capture generation. An index cache alone cannot establish that lifetime.
 
-**Additional supplier source findings; native reproduction OPEN.** The locked nokhwa revision
+**Pinned supplier failures reproduced natively; correction OPEN.** The locked nokhwa revision
 `c2f74662b6ce117f7f94301693fdfadc0b1ec91a` uses a process-global weak device cache keyed only by numeric
 index (`nokhwa-bindings-linux/src/lib.rs::new_shared_device`, lines 143–205). An existing live entry is
 returned without reopening the current node; a catalog refresh cannot establish fresh native identity.
 Its `devices.len() > 1` assertion compares a count from `windows(2)` with the full list length: that count
 is at most `len - 1`, so a successful second distinct retained-device open reaches an impossible assertion.
-This is an availability finding from source, not a demonstrated privilege escalation or native crash.
+The native probe now reproduces that assertion abort and stale-handle reuse; RustDesk application
+reachability and correction remain OPEN. Neither observation establishes a privilege escalation.
 The [pinned supplier source](https://github.com/rustdesk-org/nokhwa/blob/c2f74662b6ce117f7f94301693fdfadc0b1ec91a/nokhwa-bindings-linux/src/lib.rs)
 contains both paths; the retained vendor file matches its Cargo checksum entry, SHA-256
 `9fb446f29bcc50a20e786704f9c91bcf404a744208a361264a7e4e0fc1573da4`.
-Native acceptance must cover two distinct retained opens and node-index reuse with an old handle still
-live, as well as nonzero discovery, matching metadata, failed discovery, hotplug and overlapping logins.
+Application acceptance must cover retained opens and node-index reuse with an old handle still live,
+as well as nonzero discovery, matching metadata, failed discovery, hotplug and overlapping logins.
 
-The retained `scripts/verifier-media-nokhwa.py` and `scripts/camera-native-probe` define offline
-compilation with the pinned devcheck image, exact Cargo vendor closure and projected product lock.
-They target nonzero capture, two retained devices and native node-number reuse, with root/foreign
-refusal, decoded frames, live device identities and joined retirement. They are not yet admitted by
-the shared bounded-RAM media profile; supplier execution acceptance is pending. Node rename is a
-lifetime fixture, not physical hotplug or RustDesk login evidence.
+`--media-kernel-tests --nokhwa` at `6c228547`, TUF `v6Y4XjNZWY`, executes the pinned
+supplier through `scripts/verifier-media-nokhwa.py` and `scripts/camera-native-probe`.
+It discovers only native index 2, rejects absent index 0, and decodes four advancing
+640×360 RGBA frames from the exact `/dev/video2` device. With that handle retained,
+opening native index 3 reaches the supplier assertion and exits with **SIGABRT**.
+In a fresh process, replacing the `video2` node with the distinct `video3` node while
+retaining the original handle makes another index-2 open reuse device 81:0 while
+the current node is 81:1. Final device-handle and module/node retirement pass.
+Root/foreign probe refusal is fixture admission, not a product authorization claim;
+node rename is a lifetime fixture, not physical hotplug or RustDesk login evidence.
+
+The offline compiler image/vendor closure is authenticated. Cargo prunes the old
+product-lock projection to 136 packages without changing any package version,
+source or checksum, then compiles with `--locked`; the normalized lock is 32,022
+bytes, SHA-256 `7b51697942c12e47677fec1b5eda93d2f9a4c8fdfc20610117c3c1c7f99ff142`.
+The executed 5,051,256-byte ELF is
+`6514ce2fbc3c630ee9a514144241c7c879c5c7bb6c1e613f2020c5e1e676d293`.
+The shared profile admits a 4 GiB guest, 12 GiB RAM scratch and 8 GiB file ceiling;
+its 117.467-second transaction joins QEMU and compiler ownership, retires
+6,650,687,488 bytes peak scratch and leaves three zero listener deltas.
+Capsule `camera-native-6c228547.json` binds the source, native observations,
+preparation failures and complete raw evidence. No camera product API is changed.
 
 **Fixture evidence retained.** The authenticated cloud base lacks `CONFIG_MEDIA_SUPPORT`; its complete
 config and observations remain in `.harness-state/verifier-vm/camera-kernel-inspection-61d8cb61-complete`.
@@ -7386,8 +7403,9 @@ The handoff follows [systemd 252 kernel loading](https://github.com/systemd/syst
 and its [shutdown path](https://github.com/systemd/systemd/blob/v252/src/shutdown/shutdown.c);
 failure to reach the new kernel or complete capture cannot satisfy the outer receipt.
 
-Both fixture paths ran the guest kernel/Python probe, with `product_executed: false`; no camera product API is corrected.
-Production nokhwa/RustDesk discovery, capture/catalog generation ownership, supplier failure reproduction,
+The kernel-only paths ran the guest kernel/Python probe; the new supplier path additionally executes nokhwa,
+with `rustdesk_product_executed: false`. No camera product API is corrected.
+RustDesk discovery/capture, catalog generation ownership, supplier correction,
 stale-open/hotplug/overlapping logins, physical and Windows cameras, canonical reusable media boot-cache
 promotion, independent reproduction, cold R-B2/R-B10 and broader native/installed/release acceptance remain OPEN.
 

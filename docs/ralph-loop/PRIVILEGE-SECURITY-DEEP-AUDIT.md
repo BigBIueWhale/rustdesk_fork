@@ -125919,3 +125919,49 @@ overlay instead of a separate raw scratch disk. Pinned compiler/vendor inputs ar
 read-only media, with locked offline compilation inside the guest's unprivileged,
 networkless container; native capture uses UID/GID 4000. No new persistent cache
 or separate VM launcher is introduced. Runtime acceptance is pending.
+
+Native supplier checkpoint at `6c2285474fa9a9e8c4341211a796e35c3bff0ce7`, tree
+`378316fd81b428caa8c3934a6d74104bb5396a4e`: TUF `v6Y4XjNZWY` completes with outer
+exit 0. Nonzero discovery/capture passes: only index 2, absent index 0 refused,
+four advancing 640×360 RGBA frames, matching metadata and native device handle.
+Retaining that handle while opening index 3 reproduces the locked supplier's
+line-193 assertion (left 0, right 2), observed as SIGABRT. A fresh process retains
+device 81:0 while the fixture replaces the `video2` node with device 81:1; another
+index-2 open still returns only the original device handle. Both findings are now
+native supplier evidence. RustDesk's ordinal/catalog flaw remains source-only;
+application login/capture, physical hotplug and the eventual correction are OPEN.
+
+The probe builds offline in the pinned devcheck image. The inherited 156-record
+product-lock projection needed Cargo feature-graph normalization; all 136 resulting
+package identities are checked unchanged before `--locked` compilation. Normalized
+lock SHA-256 is `7b51697942c12e47677fec1b5eda93d2f9a4c8fdfc20610117c3c1c7f99ff142`.
+This follows [Cargo metadata](https://doc.rust-lang.org/cargo/commands/cargo-metadata.html),
+not an update to supplier versions. Executed ELF: 5,051,256 bytes, SHA-256
+`6514ce2fbc3c630ee9a514144241c7c879c5c7bb6c1e613f2020c5e1e676d293`.
+The source-independent native assertions observe real devices, decoded frames,
+process termination and `/proc/self/fd` identities; fixture principal refusals
+do not establish product authorization.
+
+Preparation failures remain excluded: initial TUF admission lacked the canonical
+media-kernel package (no VM launched); copying the existing authenticated CTE
+70,305,560-byte package resolved it. `4Vz7i8OzIm` refused duplicate ISO helper
+links before handoff; `P4zTsLASgZ` refused the old projected lock before compilation;
+`v7H78aEsDk` compiled but refused Cargo's linked output before native execution.
+The final recipe uses one canonical helper path and copies the stopped compiler's
+expected two-link output into a separate single-link executable. Per-device vivid
+arrays are explicit, as required by the
+[kernel driver](https://raw.githubusercontent.com/torvalds/linux/v6.1/drivers/media/test-drivers/vivid/vivid-core.c).
+All three failed QEMUs joined and their RAM workspaces retired.
+
+The accepted transaction takes 117.467 seconds, joins QEMU 3444372 exit 0, retires
+6,650,687,488 bytes peak RAM scratch and records zero changes in all three host
+listener snapshots. Compiler container/daemon, native processes, device handles
+and module/nodes retire. Capsule `camera-native-6c228547.json` is 56,413 bytes,
+SHA-256 `f4711a9657aaabc2fc04a0c4489d5323c31b3998e6fe49f3d3ae7aeb21a4c9f5`;
+it and 24 raw files (533,134 bytes total) are hash-verified on CTE/TUF. Exact seed/
+receipt metadata is retained in the capsule. After validating duplicate logs
+against canonical raw evidence, three failed diagnostic roots retire, freeing
+851,968 allocated bytes. No disposable disk or compiled-image cache remains.
+The next step is an owned camera catalog/capture design covering concurrent logins
+and replacement, followed by actual RustDesk acceptance. An ordinal index cache
+alone cannot satisfy the observed lifetime problem. Other parked topics stay parked.

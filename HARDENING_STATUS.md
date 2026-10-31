@@ -43,6 +43,12 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-01):** Camera supplier/device-ownership correction remains
+OPEN/PARKED. The two reproduced supplier failures and successful native capture
+are retained; no product correction followed the read-only design review.
+Work moved to Android task-relaunch presentation. Do not resume camera work
+automatically.
+
 **User pivot (2026-11-01):** Native session-type input-confinement validation
 remains OPEN/PARKED after read-only preparation. No fixture, product change or
 native refusal run followed that investigation. Work moved to ViewCamera native

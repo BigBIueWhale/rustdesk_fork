@@ -1190,7 +1190,7 @@ elif [ "$MODE" = android-emulator-app ]; then
 elif [ "$MODE" = android-emulator-runtime ]; then
     readonly VM_TIMEOUT_SECONDS=7200
     readonly OVERLAY_SIZE=48G
-    readonly VM_MEMORY=24576
+    readonly VM_MEMORY=18432
 elif [ "$MODE" = apple-conform ]; then
     if [ "$APPLE_CURSOR_ONLY" -eq 1 ] || [ "$APPLE_FILE_MODE_ONLY" -eq 1 ]; then
         readonly VM_TIMEOUT_SECONDS=300

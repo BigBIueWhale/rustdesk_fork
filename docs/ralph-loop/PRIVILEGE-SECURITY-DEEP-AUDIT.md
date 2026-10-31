@@ -125978,3 +125978,31 @@ The accepted 30.472-second count joins QEMU 3449358 exit 0, retires 402,624,512
 bytes peak RAM scratch and records three zero listener deltas. All 37 camera,
 capsule and ledger evidence files are hash-verified on CTE/TUF. This audit-only
 receipt preserves the counted ledger bytes. The broad release goal remains open.
+
+### 2026-11-01 — pivot to Android task-relaunch presentation
+
+The user redirected work from camera ownership. Its two native supplier failures
+remain OPEN/PARKED; the subsequent device-ownership review made no product edit.
+Selected R-F1/R-S0 prerequisite: restore an admitted Android peer replay on TUF,
+then observe actual pixels through ordinary reconnect and task replacement using
+the retained app/test pair. The intermittent presentation failure remains a
+release blocker. This takes priority over another ordinary Linux input control;
+the independent Android CM Stop/admission race and all other user parks stay parked.
+
+Read-only inventory found the authenticated Android inputs and APKs on CTE, not
+TUF. TUF has approximately 43.8 GiB MemAvailable. The inherited 24 GiB guest plus
+16 GiB scratch and 7 GiB headroom/overhead needs 47 GiB. Replay runs the existing
+12 GiB runtime and 3 GiB observer containers concurrently; APK verification is a
+sequential 4 GiB container. A dedicated 18 GiB guest preserves those exact limits
+and reserves 3 GiB for the guest OS/orchestration. The shared 16 GiB scratch,
+8 GiB file ceiling, monitor, admission and joined cleanup remain mandatory.
+The existing workload-selection case now requires that profile; positive and
+wrong-memory cases cover its limits. Native replay acceptance is pending.
+
+[Docker's memory contract](https://docs.docker.com/engine/containers/resource_constraints/)
+defines equal memory/swap values as no container swap; the replay retains that
+configuration. [Android's acceleration guidance](https://developer.android.com/studio/run/emulator-acceleration)
+does not establish support for nested acceleration. The existing exact guest-KVM
+proof and fail-closed hardware requirement remain; successful execution would
+establish this pinned test topology only. No host device/permission change,
+application rebuild or download is needed for the retained-artifact comparison.

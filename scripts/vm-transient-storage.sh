@@ -102,6 +102,8 @@ elif [ "${MODE:-}:${FLUTTER_APP_REPLAY:-0}" = flutter-peer-presentation:1 ]; the
     esac
 elif [ "${MODE:-}:${ANDROID_STORAGE_TESTS:-0}" = android-emulator-boot:1 ]; then
     readonly VM_STORAGE_PROFILE=android-storage-key
+elif [ "${MODE:-}" = android-emulator-runtime ]; then
+    readonly VM_STORAGE_PROFILE=android-replay
 elif [ "${MODE:-}" = android-frame-tests ] \
     || [ "${MODE:-}:${X11_FOCUS_ONLY:-0}" = x11-display-tests:1 ]; then
     readonly VM_STORAGE_PROFILE=x11-focus

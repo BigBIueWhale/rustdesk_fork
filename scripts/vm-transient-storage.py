@@ -22,6 +22,10 @@ OVERHEAD = GIB
 
 
 def storage_limits(profile, memory_mib):
+    if profile == 'android-replay':
+        require(memory_mib == 18432, 'Android replay requires its 18 GiB guest')
+        # Concurrent runtime/observer caps total 15 GiB; retain 3 GiB for the guest.
+        return 16 * GIB, 8 * GIB
     if profile == 'media-nokhwa':
         require(memory_mib == 4096, 'native camera supplier requires its 4 GiB guest')
         # Sealed vendor/image media and the single compiler/kernel overlay share RAM.
@@ -483,7 +487,7 @@ def main():
                                  'pake-timing', 'pake-allocation', 'main-config-key', 'language-selection', 'windows-pointer', 'linux-resource-limits', 'linux-resolution-lifetime', 'fusermount-process', 'xrandr-acquisition',
                                  'linux-service-uid-tests', 'audio-buffer', 'audio-mailbox', 'file-block', 'control-egress', 'clipboard-response',
                                  'linux-service-receiver', 'linux-flutter-build', 'linux-flutter-replay', 'installer-package',
-                                 'android-storage-key', 'linux-flutter-suspend', 'media-kernel-tests', 'media-nokhwa',
+                                 'android-storage-key', 'android-replay', 'linux-flutter-suspend', 'media-kernel-tests', 'media-nokhwa',
                                  'debian-package-tests', 'protobuf-parser', 'tcp-key-transition'),
                         default='standard')
     parser.add_argument('--workspace')

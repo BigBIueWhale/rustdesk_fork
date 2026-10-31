@@ -1492,9 +1492,14 @@ static int exercise_clipboard_text(Display *source, Display *display,
                 next_request = now + 100U;
             }
             if (!pending && now >= next_request) {
-                XConvertSelection(destination, selection, target, property, requestor, CurrentTime);
-                XFlush(destination);
-                pending = 1;
+                Window owner = XGetSelectionOwner(destination, selection);
+                /* A read of our preceding source owner cannot prove remote delivery
+                 * and may remain unanswered as that selection is replaced. */
+                if (owner != None && owner != fixture_owners[to]) {
+                    XConvertSelection(destination, selection, target, property, requestor, CurrentTime);
+                    XFlush(destination);
+                    pending = 1;
+                }
             }
             if (sleep_millis(10U) != 0) goto done;
         }

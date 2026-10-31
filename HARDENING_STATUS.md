@@ -2959,7 +2959,8 @@ evidence and resource/context limitations.
 Replay now has its own 10 GiB guest, 7 GiB RAM scratch and 6 GiB hard overlay/file ceiling,
 with 6 GiB host headroom and 1 GiB overhead (24 GiB admission), a 12 GiB logical disk and
 1,200-second integration budget. Both peers retain their 4 GiB container limits.
-The separate app build envelope is unchanged and remains unaccepted for execution.
+The separate app producer's admission/setup evidence and current lockfile blocker
+are recorded below; complete app-build acceptance remains OPEN.
 Replay derives app build-context roles from the exact committed producer pins; current
 harness pins still govern replay tools. The guest checks source/tree/recipe/engine and the
 existing materializer still requires the exact manifest, complete inventory and payload bytes.
@@ -3000,6 +3001,24 @@ requires the same scenario on an admitted current artifact with those upstream
 observations. No product change, new VM or runtime is claimed. Exact inputs,
 joins, clocks, timestamps and limitations: `viewer-capture-cadence-108f40d2.json`.
 Current-artifact R-F5, all other release obligations and independent parks remain.
+
+**Current app build prerequisite (`9995a77e`, `c87cf4b4`).** The producer now reserves
+a 20 GiB guest around its unchanged 16 GiB build-container cap, reducing total
+admission from 47 to 43 GiB. RAM scratch remains 16 GiB, the QEMU file ceiling
+8 GiB, host headroom 6 GiB and overhead 1 GiB. It extracts only required Rust
+components and libclang/headers and retires Rust installer staging. The full LLVM
+archive alone contains 5,767,005,638 regular-file bytes; no full extraction remains.
+Existing isolated checks pass all 46 profiles/86 memory refusals and 78 workload
+controls/five refusals. TUF input-copy omissions were corrected without repinning.
+Run `n0rD9khidR` then passes authenticated inputs, SDK and compiler setup before
+strict project resolution rejects the candidate lock: `af0d691f` vendored xterm,
+but this lock still selects its hosted package. No application compilation or
+publication occurred. Peak scratch is 8,074,301,440 bytes; all three attempted
+builds join and retire RAM/run roots with zero listener deltas. Next: reconcile
+the candidate lock and discovery provenance, verify strict offline resolution,
+then complete the app and unchanged suspension replay. Complete build-resource,
+current R-F5 and release acceptance remain OPEN. Exact runs and limits:
+`flutter-build-prerequisite-c87cf4b4.json`; audit's current-artifact prerequisite entry.
 
 **Observer age maximum (`b197ec9b`).** Both controller observation loops now retain every
 valid measured age, including stale samples, in `maximum_age_ms`. First-fresh timing,

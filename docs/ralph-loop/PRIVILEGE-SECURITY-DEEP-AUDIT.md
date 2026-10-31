@@ -124834,3 +124834,41 @@ Supervisor time 30.403 seconds; RAM scratch peak 402,513,920 bytes. QEMU 3272709
 joins exit 0; its PID, wrapper 3271286, RAM workspace and active run roots are
 absent. All three listener deltas are zero. Six raw files (104,210 bytes) are
 hash-verified on CTE and TUF. This audit entry leaves the counted ledger unchanged.
+
+Profile `9995a77e` passes isolated run `5GQLA0GZih`: 46 profile cases, 86
+profile/memory refusals, 78 workload controls and five workload refusals. The
+unchanged ledger count again matches exactly. QEMU 3275620 joins; RAM scratch
+and run roots retire with zero listener deltas. Six raw files total 104,334 bytes.
+`c87cf4b4` additionally selects the same Rust/libclang members already used by
+other isolated lanes and removes only the completed private Rust installer.
+Read-only archive inventory found 1,371,017,008 Rust and 5,767,005,638 LLVM
+regular-file bytes in the previous full extractions. Full archive authentication
+and compiler versions remain unchanged; this is not an output-equivalence claim.
+
+TUF lacked the reusable candidate SDK/Pub cache (~2.0 GiB), selected engine,
+vcpkg and AT-SPI inputs (~128 MiB). Copied canonical CTE inputs under the idle
+run lock. First run `dhhA2JOAhW` stops before compilation because the earlier
+TUF bridge-generator copy lacks its two Cargo metadata files; copied those exact
+files. Second `0XVppG1kWE` reveals that my first cache copy omitted rsync `-H`,
+changing its authenticated hardlink identity. Corrected with `-aHcR`; all six
+groups/twelve paths match CTE. No pin or admission check was weakened.
+
+Third run `n0rD9khidR`, on exact `c87cf4b4`, accepts every pinned input and the
+original Pub-cache digest `bc88ce71103a762d6faa04506946ebbadbe844323145b9fd3fb6c200a66b9f48`.
+SDK preparation, selective compiler setup and offline Flutter-tools resolution
+complete. Strict project resolution then exits 65: the candidate lock still has
+hosted xterm, while `af0d691f` changed the application and default lock to the
+repository path. All other application-manifest bytes are unchanged since that
+dependency migration. No application compilation or artifact publication follows.
+Next prerequisite is the candidate lock/discovery-provenance correction and strict
+offline acceptance, followed by the current build and suspension replay.
+
+The three outer runs exit 1; their QEMU processes join exit 0 after guest shutdown.
+Supervisor times are 93.2/119.925/228.309 seconds. Final scratch peak is
+8,074,301,440 bytes and overlay peak 7,875,399,680 bytes, below unchanged ceilings.
+All twelve listener deltas are zero; QEMU/wrapper PIDs and RAM workspaces are absent.
+After all 21 raw files (231,445 bytes) match on CTE/TUF, the three exact inactive
+diagnostic roots are removed, reclaiming 10,534,912 allocated bytes. Complete
+profile and build evidence is `flutter-build-prerequisite-c87cf4b4.json`, SHA-256
+`bb8861f08b8352e0fcd649f3800b5db4519afde05a4246b144317799cb838c16`.
+This is progress on the current-artifact prerequisite, not R-F5 or release closure.

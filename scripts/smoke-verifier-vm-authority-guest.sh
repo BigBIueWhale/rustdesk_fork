@@ -32,6 +32,7 @@ X11_CAPTURE_MAPPING_ONLY=0
 X11_CONTEXTS_ONLY=0
 LINUX_RECEIVER_PROFILE=focused
 PEER_BUILD_PROFILE=default
+CM_DIRECTORY_DOWNLOAD=0
 case "$#:${8:-}" in
     7:)
         MODE=authority-smoke
@@ -207,6 +208,11 @@ case "$#:${8:-}" in
         ;;
     12:--cm-file-replay)
         MODE=cm-file-replay
+        ;;
+    13:--cm-file-replay)
+        [ "${13}" = --directory-download ] || exit 2
+        MODE=cm-file-replay
+        CM_DIRECTORY_DOWNLOAD=1
         ;;
     12:--android-emulator-boot)
         MODE=android-emulator-boot
@@ -9354,6 +9360,10 @@ run_cm_file_replay() {
     local machine_id_value=727573746465736b2d73657276657231
     local build_output=$ROOT/cm-file-build.out
     local output=$ROOT/cm-file-replay.out
+    local replay_stage=cm-file-replay
+    if [ "$CM_DIRECTORY_DOWNLOAD" -eq 1 ]; then
+        replay_stage=directory-download
+    fi
     local pa_output=$ROOT/cm-pa-product-pair.out
     local pa_candidate=/mnt/rustdesk-verifier-inputs/pa-runtime-candidate.tar.gz
     local pa_copy=$ROOT/cm-pa-runtime.tar.gz
@@ -9539,7 +9549,7 @@ LAYOUT
         --mount "type=bind,source=$flat,target=/smoke-target,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$machine_id,target=/etc/machine-id,readonly,bind-recursive=disabled" \
         --workdir /work "$DEV_CHECK_IMAGE_CONFIG_ID" \
-        /bin/bash --noprofile --norc /work/scripts/smoke-server-stage.sh cm-file-replay)"
+        /bin/bash --noprofile --norc /work/scripts/smoke-server-stage.sh "$replay_stage")"
     [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || fail 'CM file replay container identity is malformed'
     inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
         '{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}|{{json .HostConfig.PortBindings}}|{{json .HostConfig.Devices}}' "$CONTAINER_ID")"
@@ -9562,16 +9572,22 @@ LAYOUT
     set -e
     [ "$status" -eq 0 ] && [ "$(stat -c '%s' -- "$output")" -le 4194304 ] \
         || { tail -n 160 "$output" >&2; fail "CM file replay failed: $status"; }
+    if [ "$CM_DIRECTORY_DOWNLOAD" -eq 1 ]; then
+        [ "$(grep -Fxc 'DIRECTORY_DOWNLOAD_REPLAY=pass auth=cpace viewer=production-session files=4 network=container-loopback cleanup=server-joined' "$output")" -eq 1 ] \
+            || fail 'directory download receipt is absent or duplicated'
+    else
     [ "$(grep -Fxc 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned short-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes live-owner=contender-refused-first-commit same-peer-overlap=successor-serves-after-predecessor-retire sidecar-collision=refused-preserved cleanup-failure=reported-replacement-preserved digest-cleanup-failure=reported-replacement-preserved direct-read-open-error=terminal-once direct-read-after-error=digest-confirmed-150001-bytes-done-once viewer-download=production-session-exact-bytes viewer-digest-symlink=terminal-preserved viewer-after-refusal=new-connection-exact-bytes network=container-loopback cleanup=server-joined' "$output")" -eq 1 ] \
         || fail 'CM file replay product receipt is absent or duplicated'
     [ "$(grep -Fxc 'PA_PRODUCTION_CM_REFUSAL=pass principal=same-uid-unrelated-process action=silent-connect result=eof-before-750ms endpoint=cm-owned-pa server=production network=container-loopback' "$output")" -eq 1 ] \
         || fail 'production CM _pa wrong-peer refusal receipt is absent or duplicated'
+    fi
     [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
         || fail 'CM file replay container did not exit cleanly'
     "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
     CONTAINER_ID=
     [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
         || fail 'CM file replay left a container'
+    if [ "$CM_DIRECTORY_DOWNLOAD" -eq 0 ]; then
     CONTAINER_ID="$("$CLIENT" --host "unix://$SOCK" create \
         --name rustdesk-cm-pa-product-pair --pull=never --network=none --read-only \
         --user 1000:1000 --pids-limit=1024 --memory=4g --memory-swap=4g --cpus=2 \
@@ -9642,6 +9658,7 @@ LAYOUT
     CONTAINER_ID=
     [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
         || fail 'CM PulseAudio product-pair left a container'
+    fi
     [ "$(sha256sum "$ANDROID_EMULATOR_SOURCE_ARCHIVE" | awk '{ print $1 }')" = "$source_sha" ] \
         && [ "$(sha256sum "$target/android-peer-manifest.sha256" | awk '{ print $1 }')" = "$manifest_sha" ] \
         && (cd "$target" && sha256sum --check --status android-peer-manifest.sha256) \

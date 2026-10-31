@@ -758,6 +758,49 @@ EOS
     $READY --terminate-server "$SRV" "$SRV_START" /tmp/srv.log
     wait "$SRV"
     ;;
+  directory-download)
+    export HOME=/tmp/rd-cm-file-replay
+    mkdir -m 0700 "$HOME"
+    cleanup_directory_download() {
+      local status=$?
+      trap - EXIT HUP INT TERM
+      if [ -n "$SRV" ] && [ -n "$SRV_START" ]; then
+        "$READY" --stop "$SRV" "$SRV_START" || status=1
+        wait "$SRV" 2>/dev/null || true
+      fi
+      exit "$status"
+    }
+    trap cleanup_directory_download EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    /smoke-target/debug/examples/seed_password 'Str0ng-Test-Pw-123' \
+      >"$HOME/seed.log" 2>&1
+    grep -Fxq 'seed_password: set_permanent_password ok=true, prs_empty=false, prs_is_plaintext=false' \
+      "$HOME/seed.log"
+    start_server /smoke-target/debug/rustdesk "$HOME/server.log"
+    "$READY" --wait-user-server "$SRV" "$SRV_START" "$HOME/server.log" \
+      /smoke-target/debug/examples/smoke_readiness "$(id -u)"
+    directory_status=0
+    RUSTDESK_PRODUCTION_VIEWER_FILE_SMOKE=1 \
+      timeout --signal=TERM --kill-after=5s 55s \
+      /smoke-target/production-viewer-file-tests --exact --ignored --nocapture --test-threads=1 \
+      viewer_pipeline_smoke_tests::production_viewer_downloads_a_directory_with_empty_and_unicode_files \
+      >"$HOME/viewer.log" 2>&1 || directory_status=$?
+    cat "$HOME/viewer.log"
+    if [ "$directory_status" -ne 0 ]; then
+      tail -n 120 "$HOME/server.log" >&2
+      exit "$directory_status"
+    fi
+    [ "$(grep -Fxc 'PRODUCTION_VIEWER_DIRECTORY_OK files=4 empty=2 nested=true unicode=true listing=exact done=once destination=exact-bytes source=preserved sidecars=absent teardown=joined' "$HOME/viewer.log")" -eq 1 ]
+    [ "$(grep -Ec '^test result: ok\. 1 passed; 0 failed; 0 ignored;' "$HOME/viewer.log")" -eq 1 ]
+    "$READY" --terminate-server "$SRV" "$SRV_START" "$HOME/server.log"
+    wait "$SRV"
+    SRV=
+    SRV_START=
+    printf 'DIRECTORY_DOWNLOAD_REPLAY=pass auth=cpace viewer=production-session files=4 network=container-loopback cleanup=server-joined\n'
+    trap - EXIT HUP INT TERM
+    ;;
   cm-file-replay)
     export HOME=/tmp/rd-cm-file-replay
     mkdir -m 0700 "$HOME"

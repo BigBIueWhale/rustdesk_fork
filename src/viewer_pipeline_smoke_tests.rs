@@ -67,6 +67,7 @@ struct ViewerPipelineState {
     stall_timed_out: bool,
     errors: Vec<String>,
     file_listing_seen: bool,
+    file_listing_count: usize,
     file_done_count: usize,
     file_refusal_errors: usize,
     file_refusal_job_errors: usize,
@@ -112,6 +113,7 @@ pub(crate) struct ViewerPipelineUi {
     state: Arc<(Mutex<ViewerPipelineState>, Condvar)>,
     file_transfer: bool,
     file_size: Option<u64>,
+    file_manifest: Option<Arc<Vec<(String, u64)>>>,
     expect_file_inspection_refusal: bool,
 }
 
@@ -313,7 +315,8 @@ impl InvokeUiSession for ViewerPipelineUi {
 
     fn job_done(&self, id: i32, file_num: i32) {
         self.update(|state| {
-            if self.file_transfer && id == FILE_JOB_ID && file_num == 1 {
+            let expected_files = self.file_manifest.as_ref().map_or(1, |files| files.len());
+            if self.file_transfer && id == FILE_JOB_ID && file_num == expected_files as i32 {
                 state.file_done_count += 1;
             } else {
                 state.record_error(format!("unexpected file job completion {id}/{file_num}"));
@@ -329,13 +332,24 @@ impl InvokeUiSession for ViewerPipelineUi {
         &self,
         id: i32,
         entries: &Vec<FileEntry>,
-        _path: String,
+        path: String,
         is_local: bool,
         only_count: bool,
     ) {
         if self.file_transfer && id == FILE_JOB_ID && !is_local && !only_count {
             self.update(|state| {
-                if entries.len() != 1 || entries[0].size != self.file_size.unwrap_or(FILE_LENGTH as u64) {
+                state.file_listing_count += 1;
+                let matches = if let Some(expected) = &self.file_manifest {
+                    let mut actual: Vec<_> = entries.iter()
+                        .map(|entry| (entry.name.clone(), entry.size)).collect();
+                    actual.sort();
+                    path == format!("{EXACT_FILE_HOME}/directory-source")
+                        && actual == **expected
+                        && entries.iter().all(|entry| entry.entry_type.enum_value() == Ok(FileType::File))
+                } else {
+                    entries.len() == 1 && entries[0].size == self.file_size.unwrap_or(FILE_LENGTH as u64)
+                };
+                if !matches {
                     state.record_error("remote file listing did not match the fixture".to_owned());
                 } else {
                     state.file_listing_seen = true;
@@ -701,6 +715,109 @@ fn production_viewer_download_commits_the_exact_file_after_digest_confirmation()
     println!(
         "\nPRODUCTION_VIEWER_FILE_OK bytes={FILE_LENGTH} listing=exact digest=confirmed done=once destination=exact-bytes sidecars=absent teardown=joined"
     );
+}
+
+#[test]
+#[ignore = "runs only in the exact no-NIC CM file replay container"]
+fn production_viewer_downloads_a_directory_with_empty_and_unicode_files() {
+    use std::os::unix::fs::MetadataExt;
+
+    assert_eq!(std::env::var("RUSTDESK_PRODUCTION_VIEWER_FILE_SMOKE").as_deref(), Ok("1"));
+    assert_eq!(std::env::current_exe().unwrap(), Path::new(EXACT_FILE_TEST_EXECUTABLE));
+    assert_eq!(std::env::current_dir().unwrap(), Path::new(EXACT_WORKING_DIRECTORY));
+    assert_eq!(std::env::var("HOME").as_deref(), Ok(EXACT_FILE_HOME));
+    assert_ne!(unsafe { hbb_common::libc::geteuid() }, 0);
+
+    let source = format!("{EXACT_FILE_HOME}/directory-source");
+    let destination = format!("{EXACT_FILE_HOME}/directory-download");
+    assert_file_absent(&source);
+    assert_file_absent(&destination);
+    let files = vec![
+        ("0-empty.txt", Vec::new()),
+        ("1-binary.bin", (0..FILE_LENGTH).map(|i| ((i * 37 + 11) % 251) as u8).collect()),
+        ("nested/2-עברית space.txt", "שלום RustDesk\n".repeat(1024).into_bytes()),
+        ("nested/3-empty.bin", Vec::new()),
+    ];
+    std::fs::create_dir(&source).unwrap();
+    std::fs::create_dir(Path::new(&source).join("nested")).unwrap();
+    for (name, bytes) in &files {
+        std::fs::write(Path::new(&source).join(name), bytes).unwrap();
+    }
+    let mut manifest: Vec<_> = files.iter()
+        .map(|(name, bytes)| ((*name).to_owned(), bytes.len() as u64)).collect();
+    manifest.sort();
+    let ui = ViewerPipelineUi {
+        file_transfer: true,
+        file_manifest: Some(Arc::new(manifest)),
+        ..Default::default()
+    };
+    let session = Session {
+        password: FIXTURE_PASSWORD.to_owned(),
+        ui_handler: ui.clone(),
+        ..Default::default()
+    };
+    session.lc.write().unwrap()
+        .initialize(EXACT_PEER.to_owned(), ConnType::FILE_TRANSFER, None);
+    let panic_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let observed_panics = Arc::clone(&panic_count);
+    let previous_panic_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        observed_panics.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        eprintln!("PRODUCTION_VIEWER_DIRECTORY_PANIC {info}");
+    }));
+    let start = session.start_io_thread();
+    let started = matches!(&start, Ok(true));
+    let ready = if started { ui.wait_for_file_ready(Duration::from_secs(20)) }
+        else { ViewerPipelineState::default() };
+    let request = if ready.connected && ready.peer_info && ready.errors.is_empty() {
+        Some(session.send_files(FILE_JOB_ID, JobType::Generic.into(), source.clone(),
+            destination.clone(), 0, false, true))
+    } else { None };
+    let snapshot = if matches!(&request, Some(Ok(()))) {
+        ui.wait_for_file_done(Duration::from_secs(30))
+    } else { ready };
+    let joined = started && session.close_and_join();
+    let final_state = ui.snapshot();
+    drop(std::panic::take_hook());
+    std::panic::set_hook(previous_panic_hook);
+
+    assert!(started && joined, "viewer start={start:?} joined={joined}");
+    assert_eq!(panic_count.load(std::sync::atomic::Ordering::SeqCst), 0);
+    assert!(matches!(&request, Some(Ok(()))), "directory request: {request:?}");
+    assert!(snapshot.errors.is_empty(), "viewer errors: {:?}", snapshot.errors);
+    assert!(snapshot.connected && snapshot.peer_info && snapshot.file_listing_seen);
+    assert_eq!(snapshot.file_listing_count, 1);
+    assert_eq!(snapshot.file_done_count, 1);
+    assert!(final_state.errors.is_empty(), "teardown errors: {:?}", final_state.errors);
+    assert_eq!(final_state.file_done_count, 1);
+    assert_eq!(final_state.file_listing_count, 1);
+
+    let mut expected_inventory: Vec<String> = files.iter().map(|(name, _)| (*name).to_owned()).collect();
+    expected_inventory.push("nested".to_owned());
+    expected_inventory.sort();
+    for root in [&source, &destination] {
+        let mut actual = Vec::new();
+        for parent in ["", "nested"] {
+            let directory = Path::new(root).join(parent);
+            assert!(std::fs::symlink_metadata(&directory).unwrap().file_type().is_dir());
+            for entry in std::fs::read_dir(directory).unwrap() {
+                let entry = entry.unwrap();
+                actual.push(entry.path().strip_prefix(root).unwrap().to_str().unwrap().to_owned());
+            }
+        }
+        actual.sort();
+        assert_eq!(actual, expected_inventory, "unexpected files or sidecars in {root}");
+        for (name, bytes) in &files {
+            let path = Path::new(root).join(name);
+            let metadata = std::fs::symlink_metadata(&path).unwrap();
+            assert!(metadata.file_type().is_file());
+            assert_eq!(metadata.nlink(), 1);
+            assert_eq!(metadata.uid(), unsafe { hbb_common::libc::geteuid() });
+            assert_eq!(metadata.mode() & 0o7777, 0o600);
+            assert_eq!(std::fs::read(path).unwrap(), *bytes);
+        }
+    }
+    println!("\nPRODUCTION_VIEWER_DIRECTORY_OK files=4 empty=2 nested=true unicode=true listing=exact done=once destination=exact-bytes source=preserved sidecars=absent teardown=joined");
 }
 
 #[test]

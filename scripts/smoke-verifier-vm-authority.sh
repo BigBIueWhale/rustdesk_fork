@@ -37,6 +37,7 @@ X11_CAPTURE_MAPPING_ONLY=0
 X11_CONTEXTS_ONLY=0
 LINUX_RECEIVER_PROFILE=focused
 PEER_BUILD_PROFILE=default
+CM_DIRECTORY_DOWNLOAD=0
 LIFECYCLE_ARTIFACT=
 LIFECYCLE_ARTIFACT_SHA256=
 LIFECYCLE_COMMIT=
@@ -530,10 +531,14 @@ case "$#:${1:-}" in
             PEER_BUILD_PROFILE=bounded
         fi
         ;;
-    1:--cm-file-replay)
+    1:--cm-file-replay|2:--cm-file-replay)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'CM file replay input/run overrides are forbidden' >&2; exit 2; }
         MODE=cm-file-replay
+        if [ "$#" -eq 2 ]; then
+            [ "$2" = --directory-download ] || exit 2
+            CM_DIRECTORY_DOWNLOAD=1
+        fi
         ;;
     1:--android-emulator-boot)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
@@ -685,7 +690,7 @@ case "$#:${1:-}" in
         printf 'Focused production X11 enumeration/capture check: %s --x11-display-tests\n' "${0##*/}" >&2
         printf 'Focused macOS cursor adapter compilation: %s --apple-conform --cursor-compile\n' "${0##*/}" >&2
         printf 'Focused macOS file-mode compilation: %s --apple-conform --file-mode-compile\n' "${0##*/}" >&2
-        printf 'Current-source CM file replay: %s --cm-file-replay\n' "${0##*/}" >&2
+        printf 'Current-source CM file replay: %s --cm-file-replay [--directory-download]\n' "${0##*/}" >&2
         printf 'Focused production frame-queue runtime: %s --flutter-model-tests --frame-queue\n' "${0##*/}" >&2
         printf 'Focused direct-address validation: %s --flutter-model-tests --direct-address\n' "${0##*/}" >&2
         printf 'Focused password keyboard policy: %s --flutter-model-tests --password-fields\n' "${0##*/}" >&2
@@ -5010,6 +5015,9 @@ elif [ "$MODE" = android-peer-build ]; then
     fi
 elif [ "$MODE" = cm-file-replay ]; then
     guest_invocation+=" --cm-file-replay /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_EMULATOR_SOURCE_COMMIT $ANDROID_EMULATOR_SOURCE_TREE $ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256"
+    if [ "$CM_DIRECTORY_DOWNLOAD" -eq 1 ]; then
+        guest_invocation+=' --directory-download'
+    fi
 elif [ "$MODE" = android-emulator-boot ]; then
     guest_invocation+=" --android-emulator-boot /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_EMULATOR_SOURCE_COMMIT $ANDROID_EMULATOR_SOURCE_TREE $ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256"
     if [ "$ANDROID_STORAGE_TESTS" -eq 1 ]; then
@@ -7940,6 +7948,14 @@ elif [ "$MODE" = cm-file-replay ]; then
     require_exact_fixed_receipt \
         "CM_FILE_PEER_BUILD=pass commit=$ANDROID_EMULATOR_SOURCE_COMMIT tree=$ANDROID_EMULATOR_SOURCE_TREE builder=$DEV_CHECK_IMAGE_CONFIG_ID files=10 network=none" \
         'CM file current-source peer build'
+    if [ "$CM_DIRECTORY_DOWNLOAD" -eq 1 ]; then
+        require_exact_fixed_receipt \
+            'PRODUCTION_VIEWER_DIRECTORY_OK files=4 empty=2 nested=true unicode=true listing=exact done=once destination=exact-bytes source=preserved sidecars=absent teardown=joined' \
+            'production viewer directory contents and finality'
+        require_exact_fixed_receipt \
+            'DIRECTORY_DOWNLOAD_REPLAY=pass auth=cpace viewer=production-session files=4 network=container-loopback cleanup=server-joined' \
+            'directory download exact peer retirement'
+    else
     require_exact_fixed_receipt \
         'PA_PRODUCTION_CM_REFUSAL=pass principal=same-uid-unrelated-process action=silent-connect result=eof-before-750ms endpoint=cm-owned-pa server=production network=container-loopback' \
         'production CM _pa wrong-peer refusal'
@@ -7952,6 +7968,7 @@ elif [ "$MODE" = cm-file-replay ]; then
     require_exact_fixed_receipt \
         'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned short-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes live-owner=contender-refused-first-commit same-peer-overlap=successor-serves-after-predecessor-retire sidecar-collision=refused-preserved cleanup-failure=reported-replacement-preserved digest-cleanup-failure=reported-replacement-preserved direct-read-open-error=terminal-once direct-read-after-error=digest-confirmed-150001-bytes-done-once viewer-download=production-session-exact-bytes viewer-digest-symlink=terminal-preserved viewer-after-refusal=new-connection-exact-bytes network=container-loopback cleanup=server-joined' \
         'CM file production transaction'
+    fi
     require_exact_fixed_receipt \
         "CM_FILE_REPLAY_VM=pass commit=$ANDROID_EMULATOR_SOURCE_COMMIT tree=$ANDROID_EMULATOR_SOURCE_TREE builder=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none build=guest-disposable cleanup=joined" \
         'CM file replay guest finality'

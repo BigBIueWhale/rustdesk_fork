@@ -6218,6 +6218,10 @@ run_focused_rust_tests() {
                                 fs::tests::recv_finish_reports_visible_but_uncertain_after_parent_sync_failure \
                                 fs::tests::recv_digest_read_no_follow_refuses_symlink_sidecar \
                                 fs::tests::receive_file_list_replacement_cannot_authorize_early_done \
+                                fs::tests::receive_file_list_replacement_cannot_expand_the_active_file \
+                                fs::tests::receive_refused_next_block_preserves_the_unpublished_current_file \
+                                fs::tests::confirmation_refuses_a_receive_job_after_publication \
+                                fs::tests::file_block_limit_preserves_real_sender_receiver_roundtrips \
                                 fs::tests::receive_destination_lease_is_cross_process_and_crash_resumable; do
                                 receive_status=0
                                 receive_budget=20s
@@ -7320,7 +7324,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         expected_groups=9
         # The digest pair and resume pair each share one invocation.
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=$(( ${#required_tests[@]} - 2 )); fi
-        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=35; fi
+        if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=39; fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=12; fi
         if [ "$RUST_TEST_PROFILE" = guess-limiter ]; then expected_groups=1; fi
         if [ "$RUST_TEST_PROFILE" = compression ]; then expected_groups=2; fi

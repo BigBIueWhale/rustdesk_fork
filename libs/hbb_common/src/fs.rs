@@ -9728,7 +9728,7 @@ mod tests {
             std::fs::read_dir(&tmp.path)
                 .expect("read receive directory")
                 .count(),
-            2 + usize::from(cfg!(target_os = "linux"))
+            2
         );
     }
 
@@ -11026,7 +11026,7 @@ mod tests {
                 assert_eq!(std::fs::read(destination.join(&name)).expect("read published bytes"), content);
             }
         }
-        assert_eq!(std::fs::read_dir(destination).expect("inspect committed files").count(), 6 + usize::from(cfg!(target_os = "linux")));
+        assert_eq!(std::fs::read_dir(destination).expect("inspect committed files").count(), 6);
     }
 
     #[test]

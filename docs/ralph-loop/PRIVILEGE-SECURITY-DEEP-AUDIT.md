@@ -123554,3 +123554,114 @@ controls and exact round trip. QEMU 3163469 joins after 30.405 seconds; wrapper
 All **54 retained raw files / 699,811 bytes per host** across the application
 checkpoints and their counts are hash-verified. This audit-only receipt changes
 neither the tested application source nor the counted ledger.
+
+## 2026-10-31 — protected-destination receive retirement
+
+The reproduced completed-destination failures take priority over extending the
+short live-viewer keepalive observation. `1907f250` adds last-owner retirement
+of empty receive containers and their protected records where the retained
+destination parent is protected from other users. Shared mutable parents retain
+the old namespace; this is an incremental correction, not acceptance of that
+layout or a cleanup exception. Saved partials and live generation members exclude
+retirement. Replacement objects and changed parent protection are refused.
+
+[Linux unlink](https://man7.org/linux/man-pages/man2/unlink.2.html) operates on a
+name, so a descriptor comparison alone cannot authorize removal from a mutable
+parent. The protected-parent predicate also accounts for the
+[POSIX ACL mask](https://man7.org/linux/man-pages/man5/acl.5.html) and trusted-owner
+sticky directories. These source-derived predicates still need broader
+filesystem/ACL and native outer-container race evidence.
+
+The initial focused TUF run `ed6tCvxqpp` passes 47 tests at `1907f250`.
+Its unit artifact is
+`20af8c63c7a507a016ab13625b4a65290256a85bebc99068db485811d318cc18`.
+Five constructed interruption states cover intent, marker removal, directory
+removal, lost parent protection and replacement preservation/recovery. These are
+persistent-state fixtures, not real process kills during retirement.
+
+Canonical metadata integration then exposes obsolete completion counts and a
+real cleanup regression: under the unchanged three-byte RLIMIT_FSIZE, rewriting
+retirement intent returns EFBIG after the partial write is correctly refused.
+`8353da7f` replaces that data write with a non-replacing rename of the existing
+protected record. Its name carries the lifecycle state; both ready and retiring
+records together are refused. Intent is synchronized before namespace removal,
+including on recovery after an earlier failed barrier. The
+[resource-limit contract](https://man7.org/linux/man-pages/man2/getrlimit.2.html),
+[rename contract](https://man7.org/linux/man-pages/man2/rename.2.html) and
+[directory-sync requirement](https://man7.org/linux/man-pages/man2/fsync.2.html)
+support that change. This removes the file-extension requirement, not every
+possible metadata-allocation or writeback failure.
+
+Fixtures now require only completed output files in protected destinations.
+The partial-write observer enumerates the destination without recreating staging.
+Digest-exhaustion setup retains its enrolled identity before restoring parent
+protection, so the failure remains at digest creation. Enrollment crash recovery
+requires zero surviving containers after successful publication. All content,
+ownership, exact-object preservation, partial-write and recovery checks remain.
+Four already-existing neighboring tests join the canonical profile. The harness
+now requires all 155 distinct tests in 39 groups and the existing 28 native cases;
+its old 26-case outer receipt and missing interrupted-digest inventory entry are
+corrected.
+
+Execution history (all `--file-metadata-tests` except the initial focused run):
+- `llRrKon3PZ` / `1907f250`: 61 distinct tests pass, two old count assertions
+  fail; no root driver runs.
+- `0L4ZP3vNln` / `45e3a57c`: 130 distinct tests pass; the EFBIG cleanup
+  regression fails.
+- `96BmU3KMLO` / `8353da7f`: EFBIG cleanup passes; 133 distinct tests pass
+  before another old completion count fails.
+- `xKrBRP7Q7a` / `15171cf5`: all 155 tests and 28 native cases pass, but
+  the aggregate inventory gate correctly exits one.
+- `aAyc8rNIPn` / `de1610dc`: intentionally stopped after the remaining
+  inventory mismatch is identified; exact harness PID 3170335 receives SIGTERM,
+  wrapper exits 143, QEMU 3170806 joins with zero status, and no test acceptance
+  is claimed.
+
+**Accepted checkpoint, `1961046a`, TUF `tawtINZ14p`.** The complete
+`bash scripts/smoke-verifier-vm-authority.sh --file-metadata-tests` command exits
+zero. All **155 library tests in 39 groups and 28 native root/UID-4001 cases
+with 20 joined actors pass**. Both listing modes contain only `incoming.bin`;
+both empty-directory removal APIs succeed; 32 retained distinct completed
+destinations add zero records, locks or allocated coordination bytes. The 21
+prior authority/crash cases and four filesystem-full controls retain their passes.
+Partial-write cleanup succeeds with the three-byte limit unchanged.
+
+The unit artifact remains
+`430d94bcfffc5bf04387793d40ce8d37629952658f3c6e8bcec3520c6d579e76`;
+the native driver remains
+`1284a3ac173eeb80fc353da363fa64caa0cc970ff5264b748b615de9cffb0d2f`.
+Both equal the earlier all-behavior-passing run. Native driver source SHA-256:
+`ba325c7c676a60eec29d8ed26872a964ec98fdd8acb4da44913762d74d651c93`.
+
+Final QEMU 3171598 joins with zero status after 280.955 seconds; wrapper 3171131
+and RAM `run.18zke062` are absent. Peak scratch is 4,219,846,656 bytes within
+6 GiB; minimum available host memory is 36,358,967,296 bytes. All four listener
+deltas are zero. All seven runs have joined QEMU, retired RAM workspaces and zero
+listener deltas. Their **49 raw files / 1,105,284 bytes per host** are hash-verified.
+Five exact failed/stopped diagnostic directories are removed after evidence
+verification; successful harness runs retire their diagnostics automatically.
+No host product or installed service is executed.
+
+Raw serial provenance (`hbb-common-fs-run.<run>.serial.log` in the retained
+verifier evidence directory on CTE and TUF):
+
+| Run | Source | QEMU PID / joined seconds | Serial SHA-256 |
+| --- | --- | --- | --- |
+| ed6tCvxqpp | 1907f250 | 3165472 / 145.906 | `934736318a43c16449b15f0d4278d7914cc031720a83cca4458040587ea4e024` |
+| llRrKon3PZ | 1907f250 | 3166806 / 136.149 | `52ab8c8eb6a99b885c3f822a1343ed18fe572b7004f57562cf88aaf97f81c4b9` |
+| 0L4ZP3vNln | 45e3a57c | 3167770 / 141.903 | `a1add17ed6c710b1a8495bfa9fdf4ca6fa57581e6bd7480af6f26e9a1c801d84` |
+| 96BmU3KMLO | 8353da7f | 3168809 / 139.119 | `9020eb4bc0179c3b54d373c7037b92d6af703d11acdf7e6a25b54edb910f2449` |
+| xKrBRP7Q7a | 15171cf5 | 3169736 / 280.432 | `c6b900c26a2e399d449c8cab002e028a18150bd14c19a38543100471fd37d1d6` |
+| aAyc8rNIPn | de1610dc | 3170806 / 66.216 | `c9d45913b822050082541753abeeae3b16a1bdbc41d3c24da3ee72d37539950d` |
+| tawtINZ14p | 1961046a | 3171598 / 280.955 | `a544aa41c7c42a416d80c4ed1bf4c69b9ceca550605a1e23840a31c23419775b` |
+
+
+OPEN: shared mutable destination/mount-root placement and historical retained
+records; real process death during the new retirement boundaries, coordinator
+exhaustion and physical power loss; ACL/non-local filesystems, remount identity,
+other platforms, installed/authenticated-peer operation and full receive
+acceptance. The full viewer/Flutter integration has not been rerun after this
+product change. The next caller checkpoint must preserve all four accepted
+resume cases and the independently parked admission oracle; a prior application
+pass cannot establish this new artifact. No cleanup waiver, unrelated resumption
+or release-readiness claim is introduced.

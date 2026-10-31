@@ -16109,7 +16109,7 @@ replacement, ACL/non-local filesystems, other platforms, R-S0/R-F5 and release
 acceptance remain OPEN. The native cases provide controls for that next correction;
 they do not establish immunity to the remaining namespace race.
 
-**Receive namespace — race/crash checkpoints accepted; completed-destination regression STOP-SHIP.**
+**Receive namespace — protected-parent lifecycle checkpoint accepted; shared-parent layout OPEN.**
 `bc81bb84` extends that native driver with three syscall-entry cases. A root
 receiver uses the unchanged production `TransferJob` API; a separate UID/GID 4001
 actor, with zero capabilities, no-new-privileges and no inherited fixture
@@ -16164,7 +16164,7 @@ eight setup controls cover missing/empty/partial/complete markers and wrong,
 unrelated, symlinked and read-shared contents. This establishes process-death
 recovery at the three selected boundaries, not physical power-loss durability.
 
-**Completed-destination lifecycle — reproduced regression, OPEN/STOP-SHIP.**
+**Completed-destination lifecycle — protected-directory checkpoint; full layout OPEN/STOP-SHIP.**
 At unchanged product `fe9c5667`, TUF `x3PR4RTdN0`, the nineteen earlier native
 scenarios still pass, but all three new lifecycle cases fail. After a completed
 transfer, hidden-file listing exposes the internal staging directory. After the
@@ -16177,6 +16177,34 @@ completed destinations must support ordinary listing/deletion, and coordination
 must track live/resumable work rather than completed destination history. Preserve
 the accepted race/crash controls and full authorized access across mounts; hiding
 the directory or unlinking it from an attacker-mutable parent is not a correction.
+
+`1907f250` / `8353da7f` retire an empty receive container and its protected
+record under the enrollment gate after the last generation owner releases it,
+only when the retained destination parent is protected from other users. Saved
+partials and live claims preserve their namespaces. Retirement intent uses a
+non-replacing rename of the existing record, followed by directory synchronization;
+recovery repeats that barrier before destructive cleanup. This replaces the first
+candidate's record rewrite, which caused EFBIG during cleanup under an existing
+three-byte file-size limit. Replacement objects and lost parent protection refuse.
+
+At `1961046a`, TUF `tawtINZ14p`, the canonical `--file-metadata-tests` command
+exits zero: **155 library tests in 39 groups and 28 native root/UID-4001 cases
+with 20 joined actors pass**. The three original lifecycle observers now pass:
+hidden and ordinary listings contain only the received file, both empty-directory
+removal APIs succeed, and 32 retained completed destinations add zero records,
+locks or allocated coordination bytes. The prior 21 authority/crash cases and
+four filesystem-full controls retain their passes. Cleanup after the real partial
+write succeeds while the three-byte limit remains active. Four existing neighboring
+tests join the profile; old leftover-directory counts and stale harness inventories
+are corrected without weakening content, ownership or failure checks.
+
+Five constructed retirement states recover or refuse/preserve as required; they
+do not establish real process-kill recovery at the new retirement boundaries.
+The shared mutable-parent/mount-root layout still retains containers and records,
+and full viewer/CM/installed integration has not been rerun after this change.
+ACL/non-local filesystems, coordinator exhaustion, physical power loss and other
+platforms remain OPEN. No cleanup exception is accepted. The audit retains the
+failed attempts, exact artifacts, raw logs and joined RAM/listener cleanup.
 
 **Replacement prerequisite — native mount/object observations.** The guest-only
 probe at `44030710`, TUF `O0tIK6FXlb`, exercises ext4, tmpfs, a bind alias and
@@ -16224,7 +16252,7 @@ evidence verification. The next layout must resolve protected publication and
 exact retirement across the already-observed mount/principal cases; a public
 empty-container deletion is not a substitute.
 
-**Shared mount-root placement — native prerequisite; decision pending.** At
+**Shared mount-root placement — native prerequisite; design remains OPEN.** At
 `ca323a35`, TUF `krOdmzaMOJ`, the primitive experiment completes 25 observations.
 Both root and UID 4002 can write legitimate output in a UID-4001-owned writable
 bind-mount root. UID 4001 can rename their private containers within that root,
@@ -16238,11 +16266,12 @@ A proposed exception would allow one persistent private staging directory per
 effective OS user and shared mount root lacking a protected parent, while retiring
 completed data and per-destination records. Ordinary destination folders, full
 filesystem reach and the existing race protections would remain required. This
-changes the cleanup acceptance condition above and awaits the user's decision;
-no exception is accepted or implemented. The nineteen prior native authority/crash
-cases and twenty actors retain their outcomes; all three lifecycle cases still
-fail with 31 retained records / 126,976 allocated bytes. The fresh serial also
-exports the accepted retirement-sync retry observation. The command exits one
+would change the cleanup acceptance condition above; no exception is accepted or
+implemented. Continue the authorized design work under the existing requirements;
+the historical proposal is not a permission barrier to that work. At that earlier
+source, the nineteen authority/crash cases and twenty actors retained their outcomes;
+all three lifecycle cases failed with 31 retained records / 126,976 allocated bytes.
+Its serial also exports the accepted retirement-sync retry observation. That command exited one
 without a complete unit-suite acceptance receipt. Raw evidence and joined cleanup
 are recorded in the audit; all other parks remain unchanged.
 
@@ -16509,8 +16538,9 @@ three completed-destination layout failures and installed acceptance remain OPEN
 
 Successful per-file retirement also removes the final generation lock. Interrupted
 or failed admission before lease construction can still leave a lock for recovery.
-One container, its small identity file and one directory record persist per
-destination. Broader crash/fault
+The protected-parent correction above retires empty completed namespaces and
+records. Shared mutable destinations still retain a container, identity file and
+record; saved resumable work also retains its namespace. Broader crash/fault
 boundaries, long-term coordination retention/cleanup, remount/filesystem identity,
 ACL/non-local filesystems, other platforms, installed/authenticated-peer
 integration, physical power-loss durability, R-S0/R-F5 and release acceptance

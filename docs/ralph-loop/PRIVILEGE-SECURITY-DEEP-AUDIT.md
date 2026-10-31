@@ -123139,3 +123139,72 @@ is absent and all three listener deltas are zero. Serial SHA-256
 The behavioral and count runs retain **13 raw files / 201,915 bytes per host**,
 hash-verified on both hosts with all four exact wrapper/QEMU PIDs absent. This
 audit-only receipt preserves the counted ledger and tested source.
+
+## 2026-10-31 — receive setup publishes only complete resume metadata
+
+Selected R-S8/R-S11fi recovery: source review found that receive setup created the
+published digest name before writing JSON. This was a concrete interruption path
+to investigate after fresh-confirmation cancellation acceptance, independently of
+the pending staging-layout and full-parent decisions. Generic cancellation work
+and every other park remain unchanged.
+
+**Reproduced at `5b831c60`, TUF `SAjDpj3oh5`.** The existing guest-only ptrace
+controller kills the exact root receiver after successful payload fsync, before
+digest writing, then joins its entire traced process. Both fresh and saved-partial
+restart cases leave a root-owned, mode-0600, single-link zero-byte digest. Resume
+inspection and explicit fresh recovery both fail with JSON EOF; inspection
+preserves the objects and the original destination survives. Nineteen prior
+authority/crash scenarios and twenty actors pass. The command stops at `0/2`
+recovery, before storage/layout cases; no complete unit-suite acceptance is claimed.
+Root driver SHA-256 `0d271b902d4677675583da3c4293c3daacc63398124f80c518c9370b41901170`;
+serial `6d5da440312ad93c175142afa8971e8986aa009ded9241a0a3afda09a29b6995`.
+QEMU 3130779 joins after 280.750 seconds; RAM `run.8vn539cc` and wrapper 3130305
+retire. Verified diagnostic retirement reclaims 3,506,176 allocated bytes.
+
+**Correction `18836642fbe11bc5de305ce8ea8deaba921cfc92`.** Linux receive setup
+creates one private `resume.digest.tmp`, writes and synchronizes its complete
+content, then uses the existing non-replacing rename primitive and directory
+barrier to publish `resume.digest`. Cleanup tracks the actual name immediately
+after rename and preserves its exact retained handle. The exclusive per-file
+lease reuses private-temporary validation/removal to recover interrupted
+preparation; no malformed published digest is reclassified as temporary state.
+Raw unconfirmed collision refusal and other-platform implementations remain.
+
+The design uses [atomic non-replacing rename](https://man7.org/linux/man-pages/man2/rename.2.html)
+and separate [file/directory synchronization](https://man7.org/linux/man-pages/man2/fsync.2.html).
+A named temporary within the existing protected namespace avoids adding an
+[O_TMPFILE filesystem-support requirement](https://man7.org/linux/man-pages/man2/open.2.html).
+It adds no persistent staging-layout exception. Native evidence below is process
+death/recovery, not physical power-loss or corrupt-old-state migration acceptance.
+
+**Accepted focused/native checkpoint.** TUF `d2O6NpGVMW` passes all 46 individual
+focused tests. Seven new cases retire empty/partial/complete private temporaries,
+refuse shared/linked/symlink/directory replacements unchanged, preserve active-lease
+ownership and retain the original destination and saved payload/digest pair.
+The existing fresh restart, malformed-artifact and cancellation tests pass.
+Library SHA-256 `d96b4ed802d736c6be8196c03c91f3660e3f06f2e2dcf1bb1f48fb3b4b14d5f9`;
+serial `fc512c9e61f20ef03a0e5d26cddc6a0e72310df433f098d53e62739bd3eb2201`.
+QEMU 3131860 joins after 149.324 seconds; RAM `run.lrwlnmu_` and wrapper 3131393
+retire. This lane runs the production library as UID/GID 1000.
+
+At the same source, root/UID-4001 run `n3m2DzsqZW` passes both unchanged crash
+cases: no incomplete published digest remains, inspection preserves the partial,
+and recovery publishes exact bytes with per-file cleanup. All nineteen prior
+authority/crash scenarios, twenty actors, 25 filesystem observations and four
+filesystem-full controls retain their passes. The three known layout cases still
+fail with 31 records / 126,976 allocated bytes and zero added locks; the canonical
+command exits one. Its 150-test/35-group library aggregate uses the same library
+SHA above, but this failure path does not export complete individual/outer unit
+acceptance. The root driver is
+`5f95c89bd419c6f6fb4f5a05cb35f257c8d6e5682ee78909c38e6cf32c20fc47`;
+its source SHA `4d80c077973f4e61ebd08d845a3aef45de7ec793187876d29a0fb6b1119f44c8`
+is identical to the failing baseline. Serial SHA-256
+`42a5f7bd4733a490617b7973ac7e6576fde209e56fe031266a48843f0b8e72a4`.
+QEMU 3132719 joins after 279.973 seconds; RAM `run.y20v866p` and wrapper 3132252
+retire. Verified diagnostic cleanup reclaims 3,510,272 allocated bytes.
+
+Commands are `bash scripts/smoke-verifier-vm-authority.sh --file-send-digest-tests`
+and `--file-metadata-tests`. All three runs use the admitted networkless guest,
+all four listener deltas per run are zero, and **21 raw files / 329,084 bytes per
+host** are hash-verified. Overall receive acceptance, physical power-loss,
+application/CM integration, installed and other-platform evidence remain OPEN.

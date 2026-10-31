@@ -16284,6 +16284,26 @@ These are Linux library observations, not generic file-job cancellation, full
 application/CM or installed acceptance. QEMU and bounded RAM scratch retire; all
 four listener deltas are zero. Exact raw and artifact identities are in the audit.
 
+**Receive metadata setup recovery (`18836642`) — Linux library accepted.**
+At unchanged-product baseline `5b831c60`, two root SIGKILL cases interrupt setup
+after successful payload fsync, with and without an earlier saved partial. Both
+leave an empty published digest: resume inspection and fresh restart fail parsing
+it, while the prior final remains intact. Metadata now writes and synchronizes
+under one private temporary name, then publishes by non-replacing atomic rename
+and directory synchronization. Only an exclusive per-file lease may retire an
+interrupted private, single-link regular temporary. Existing malformed published
+digests remain refused unchanged; this does not migrate already-corrupt metadata.
+
+TUF `d2O6NpGVMW` passes all **46 focused tests**, including seven temporary-file
+recovery/refusal cases and the prior restart/cancellation controls. On the same
+product, `n3m2DzsqZW` passes both unchanged root crash/recovery cases, all nineteen
+prior authority/crash scenarios and four filesystem-full controls, with twenty
+joined actors. All three known layout cases still fail with 31 retained records /
+126,976 allocated bytes and zero added locks; the canonical metadata command exits
+one. Raw identities and joined RAM/diagnostic cleanup are in the audit. Physical
+power-loss durability, full application/CM, installed and other-platform acceptance
+remain OPEN. Pending layout/full-parent decisions and other parks are unchanged.
+
 **Resume content binding — library correction accepted; caller acceptance OPEN/STOP-SHIP.**
 Baseline `640a9680`, TUF `ZoWbc47wT7`, accepts staged `abc` against source `XYZdef`
 with equal size/mtime in both confirmation directions, publishes `abcdef` and reports

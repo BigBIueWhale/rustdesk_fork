@@ -124882,3 +124882,99 @@ and all three listener deltas are zero. Six raw files (105,034 bytes) and the
 14,929-byte build capsule match on both hosts. This audit-only receipt leaves
 the counted ledger unchanged. No active build remains; the selected blocker
 continues at the candidate xterm lock/discovery-provenance mismatch.
+
+## 2026-10-31 — current app built; six-second display recovery failure reproduced
+
+Continued the selected R-F5 artifact prerequisite, with receive and independent
+topics parked. `6b703f35` changes only the candidate lock's xterm source to the
+repository path and its lock digest pin. Its 196 versions and every other entry
+are byte-identical. The original discovery lock (46,246 bytes, SHA-256
+`4141a1c73514291d733f34e83b01bdd96375df37145d2f56ab4185048ad63448`)
+is preserved on CTE/TUF as `flutter-candidate-lock-before-6b703f35.lock` under
+the verifier evidence root. Under idle shared/directory locks, exact identity
+checks, exclusive staging and fsync/replace, the reviewed 46,169-byte lock replaces
+that cache input. New SHA-256:
+`98a4c11ed4edf1a53fd72ca3b0999b130cbf125d1a55c2e5f99f16e6a8eeab53`.
+This is a reviewed-source transformation, not a new online discovery acquisition.
+[Dart's lock enforcement](https://dart.dev/tools/pub/cmd/pub-get) and
+[path dependencies](https://dart.dev/tools/pub/dependencies#path-packages) support
+keeping strict offline resolution and the unchanged package-cache digest.
+
+At `6b703f35`, `cqTElME8Fq` passes that strict resolution, plugin injection and
+bridge generation, then encounters guest block I/O/readonly-filesystem errors
+during Rust compilation. Overlay allocation reaches 8,564,969,472 bytes near the
+8-GiB hard file ceiling. Ceiling exhaustion is the supported inference; no explicit
+EFBIG diagnostic was retained. [RLIMIT_FSIZE](https://man7.org/linux/man-pages/man2/getrlimit.2.html)
+bounds logical file extension. `c01865d0` changes only this profile and its expected
+test row to a 12-GiB file ceiling within the unchanged 16-GiB RAM workspace; total
+admission remains 43 GiB, including 6 GiB host headroom. `Z7j0TLuQo6` accepts all
+46 profile cases/86 refusals and 78 workload controls/five refusals. Its unchanged
+ledger count remains 375,939 tokens. The actual next QEMU's proc limits and
+pre-execution supervisor receipt both establish the 12-GiB ceiling.
+
+Full build `FHoInjAkFv` at exact `c01865d09f6cc9499c257f9e77a7241713dfd3db`
+exits 0: strict offline project resolution, bridge, Rust release core/readiness
+probe, Flutter 3.47.5 runner and exact selected engine all pass. Manifest SHA-256
+`5865dbbe6983e8932b0567568091677ce1525e98cb509425c54e26e2e338bfa1` binds
+74 files totaling 70,287,298 bytes, independently hash-verified after publication
+to TUF's private source-bound artifact cache. This is an inert reusable test app,
+not a published release. Supervisor time is 725.629 seconds, scratch peak
+10,600,996,864 bytes, overlay peak 10,402,074,624 bytes and minimum host available
+memory 21,369,643,008 bytes. QEMU 3292626 joins, RAM/run roots retire, and all four
+listener deltas are zero. Serial is 178,386 bytes, SHA-256
+`9c7b651601c43c1631742f92d6434ad5e085d25e41b1a1d68121e73e3df8c037`.
+
+The same app is reused for three isolated replays. `SIZBSpCu7l` stops at readiness:
+the kernel-attested typed probe says parked, but the helper searches `/proc/net/unix`
+for the public pathname even though current production binds through
+`/proc/thread-self/fd/<fd>/ipc...`. `fb81c84a` removes that textual join and checks
+the connected endpoint's kernel peer PID/UID, without sending payload bytes.
+Nonblocking connection failures refuse readiness. Process/start identity, parent
+and socket metadata, TCP/UDP observations and typed transaction checks remain.
+[Linux peer credentials](https://man7.org/linux/man-pages/man7/unix.7.html) are
+recorded at connect/listen time; this supplies endpoint identity, not privileged
+action authorization or proof against descriptor delegation. Extended native
+fixtures accept direct and closed-directory-descriptor paths and retain wrong/dead
+process, missing typed state and deadline refusals. `fTIVJQOs7h` passes them and real
+parked/passworded readiness, then cannot match the viewer window: `77eba211` changed
+the English title to "Control Remote Desktop". `6b9e5acc` updates that single expected
+substring. PID/class/geometry checks and latency/resource thresholds are unchanged.
+
+At harness `6b9e5acc`, replay `zpyA5bGiHo` finds the exact current window, types all
+22 password characters through XTEST, observes the accessible prompt retire, and
+displays actual source pixels. Its three-second healthy baseline has 12 distinct
+frames and maximum age 336 ms. The 2,002-ms suspension recovers in 2,371 ms with
+first freshness at 143 ms, then 12 healthy frames/max age 354 ms and bounded
+resources on the same window/TCP connection. The 6,037-ms suspension fails:
+first freshness 559 ms, only two distinct fresh frames versus four required in
+2,500 ms. All 55 samples are retained without drops; maximum age including stale
+recovery is 6,614 ms. The 12-second cycle is unreached. The last refresh's encoded
+frames occur at service times 0/1,000/2,000 ms; the viewer's only advertised FPS
+update is 30. Selected capture FPS, delay-probe completion and acknowledgement
+wait timing are absent, so the precise upstream cause remains unproved. Next work
+must distinguish those paths, retaining this exact artifact and unchanged gates.
+Viewer suspension is not realistic packet-loss/outage or multi-hour R-F5 acceptance.
+The run also logs missing documents-directory and ScreenSaver-service errors;
+neither is established as the cause of the observed recovery failure.
+
+The three replay VMs exit workload status 1 but join QEMU with exit 0; supervisor
+times are 138.401/156.256/126.894 seconds and all twelve listener deltas are zero.
+The final server, source fixture and Xvfb join; the private input provider is
+observed mapped and unchanged. RAM/workspaces and exact wrappers retire. Complete
+final serial: 185,440 bytes, SHA-256
+`a7abdddd3f852a21fcb7237857e97c1adb2aac98fdd4b4665e48e078842987b0`.
+The 58,713-byte viewer log has SHA-256
+`8b3f1c4ce3cd8761a91c1ffd57fede78d00ac883668ca00650003dba321e462e`.
+Failed-run binary copies match the retained app; bounded logs/identity receipts are
+copied and verified on both hosts before the exact diagnostic trees are removed.
+The first removal needed owner-mode restoration on sealed copied directories;
+after descriptor/owner/device checks it completes, as does the final cleanup.
+No host product ran, and no release or live instruction changed.
+
+Checkpoint capsule `.harness-state/verifier-vm/viewer-current-build-6b9e5acc.json`
+is 85,886 bytes, SHA-256
+`62e9930e9017d94ac55df317969809efb1511af49da05f4cfa5fb37134fdcab2`.
+It binds all six VM runs, source/artifact identities, commands, 47 raw files totaling
+7,220,189 bytes, publication provenance, actual failure samples and cleanup.
+The current-artifact build prerequisite is complete; the demonstrated recovery
+defect and broader R-F5/release requirements remain OPEN.

@@ -459,7 +459,7 @@ Do not resume automatically. Work moved to the R-S11hj current-state ledger clea
 | CM read-block payload ownership (`fecb67ed`) | The admitted `Bytes` moves into the outgoing protobuf without a forwarding allocation/copy; earlier fallible admission still releases unrelated backing. Session/job/generation, size and wire checks stay intact. The 38-case Linux component covers six storage forms under selective allocation refusal, exact bytes/pointers and backing lifetime. Complete authenticated handlers, CM IPC, filesystem/peer effects and root execution remain OPEN. | `cm-read-block-move-a6599f3a.json` |
 | File timestamp representation (`534488f3`) | Desktop/mobile rows share bounded seconds-to-date formatting; unsupported dates show `—`, and sorting uses original seconds. Sixteen Dart cases cover range/overflow, pre-epoch/2038, drive rows and metadata retention; mobile delegation is source-reviewed. Success retains a strict result summary, not per-case JSON or a compiled image. Rendered rows, native filesystem/mobile behavior and directory-ordering/Home parks remain OPEN. | `file-timestamps-fe769b80.json` |
 | File-list numeric sorting — user-PARKED (`05f0b473`) | Preparation only; product unchanged. Run `G1V3ouRCT7` completed with 105 passing and five failing cases: four direction/work failures and one invalid drive-selection fixture. Numeric comparisons rescan metadata; type/size drive retention remains source-observed only because the fixture stopped early. Fix the fixture before claiming drive/selection evidence. Do not resume automatically. Exact QEMU joined, RAM workspace gone, all listener snapshots unchanged; bounded failed diagnostics retained. | `dart-catalogue-removal-05f0b473.json` |
-| Focused viewer suspension — retained-app recovery failure; current-app acceptance OPEN | The retained `31f8e5ef` Linux X11 app stays on the same window/TCP connection through pidfd-owned STOP/CONT. With the corrected four-FPS fixture, its 2-second pause recovers, but the 6-second pause fails the four-fresh-frames/2.5-second gate despite prompt first freshness; the 12-second cycle is unreached. The controller retains 64 bounded samples without changing thresholds; the 6,614-ms maximum includes stale recovery. Retained capture/texture correlation below finds the sparse cadence already present at capture/encode; its upstream cause and current-app behavior remain unproved. Ring-wrap/clock/history/sleep/identity/cancellation faults, network impairment, input-visible timing and multi-hour R-F5 acceptance remain OPEN; prior dialog failure and all parks remain. | `viewer-suspend-runtime-e1ae606d.json`, `viewer-recovery-observation-c90e4afb.json`, `viewer-capture-cadence-108f40d2.json` |
+| Focused viewer suspension — current-app recovery failure; R-F5 OPEN | Current Linux X11 app `c01865d0`, replayed at `6b9e5acc`, authenticates through the real password prompt and retains the same window/TCP connection through pidfd-owned STOP/CONT. Its 2-second pause recovers in 2,371 ms, followed by a healthy 354-ms maximum displayed age. After the 6-second pause, first freshness takes 559 ms but only two distinct fresh frames arrive within the unchanged four-frame/2,500-ms gate. All 55 observations are retained; maximum age including stale recovery is 6,614 ms. The 12-second cycle is unreached. The last refresh produces encoded frames at 0/1,000/2,000 ms; capture pacing versus acknowledgement/probe timing still needs direct observation. Build and readiness/title prerequisites are corrected below. Actual network impairment, input-visible timing, multi-hour and other-platform R-F5 acceptance remain OPEN; independent parks remain. | `viewer-current-build-6b9e5acc.json`; historical `viewer-suspend-runtime-e1ae606d.json`, `viewer-recovery-observation-c90e4afb.json`, `viewer-capture-cadence-108f40d2.json` |
 | Frame observer progress and full-window coverage | The observer counts advancing identities, excludes deadline-late samples and includes both preceding gaps and the unobserved tail, capped at the window end. Twenty-nine synthetic C cases distinguish healthy 80/1,000-ms tails from a 1,040-ms refusal; real-X11 oracle/geometry/identity controls and controller compilation pass. No RustDesk app/device runs. Diagnostic/clock/history/sleep/identity/cancellation faults, current-app latency and the retained-app recovery failure remain OPEN; thresholds and resource policy are unchanged. | `observer-window-overrun-19daee8b.json`, `observer-window-tail-dd55ee9d.json`, `observer-window-deadline-d1f2f826.json`, `observer-fresh-gap-25c024aa.json`, `frame-progress-7f5e0497.json` |
 | VM workload admission (`744cd77f`) | Only explicitly configured workloads may select `standard`; missing/unconfigured classes refuse before allocation. Native Bash A/B retains legitimate profiles and rejects the four former fallthroughs, with profile, filesystem, supervisor/startup, root-entry and child-wait controls. Specialized limits and cleanup are unchanged. Full Windows/media RAM admission and product/installed acceptance remain OPEN. | `closed-vm-workloads-6ad50b54.json` |
 | Capture PCM storage (`660429dd`) | Linux/Android capture converts native float bytes into reusable typed storage and refuses incomplete samples without changing output; unsafe byte-to-float casts and the generic aligned allocator are removed. Twenty-two selected Linux tests include exact bits at four offsets, replacement/empty behavior and zero warmed allocations. The old fallback is forced by a probe, not shown naturally reachable. Native device/Opus/IPC, Android, full-parent compilation and performance/soak remain OPEN; audio cancellation stays parked. | `audio-capture-storage-bab1aca9.json` |
@@ -3002,23 +3002,36 @@ observations. No product change, new VM or runtime is claimed. Exact inputs,
 joins, clocks, timestamps and limitations: `viewer-capture-cadence-108f40d2.json`.
 Current-artifact R-F5, all other release obligations and independent parks remain.
 
-**Current app build prerequisite (`9995a77e`, `c87cf4b4`).** The producer now reserves
-a 20 GiB guest around its unchanged 16 GiB build-container cap, reducing total
-admission from 47 to 43 GiB. RAM scratch remains 16 GiB, the QEMU file ceiling
-8 GiB, host headroom 6 GiB and overhead 1 GiB. It extracts only required Rust
-components and libclang/headers and retires Rust installer staging. The full LLVM
-archive alone contains 5,767,005,638 regular-file bytes; no full extraction remains.
-Existing isolated checks pass all 46 profiles/86 memory refusals and 78 workload
-controls/five refusals. TUF input-copy omissions were corrected without repinning.
-Run `n0rD9khidR` then passes authenticated inputs, SDK and compiler setup before
-strict project resolution rejects the candidate lock: `af0d691f` vendored xterm,
-but this lock still selects its hosted package. No application compilation or
-publication occurred. Peak scratch is 8,074,301,440 bytes; all three attempted
-builds join and retire RAM/run roots with zero listener deltas. Next: reconcile
-the candidate lock and discovery provenance, verify strict offline resolution,
-then complete the app and unchanged suspension replay. Complete build-resource,
-current R-F5 and release acceptance remain OPEN. Exact runs and limits:
-`flutter-build-prerequisite-c87cf4b4.json`; audit's current-artifact prerequisite entry.
+**Current app build and replay prerequisites — accepted Linux artifact.**
+`6b703f35` reconciles the candidate lock with the repository-owned xterm path;
+all 196 package versions and every other lock entry remain unchanged. The old
+discovery lock is preserved on both hosts before the reviewed-source transformation;
+this is not a fresh online acquisition. Strict offline resolution, unchanged-lock
+plugin generation and full compilation pass. `c01865d0` raises this build's file
+ceiling from 8 to 12 GiB within the existing 16 GiB RAM scratch reservation after
+`cqTElME8Fq` encounters guest block I/O failure near the old ceiling. Admission
+remains 20 GiB guest + 16 GiB scratch + 6 GiB headroom + 1 GiB overhead. Existing
+isolated checks pass 46 profiles/86 refusals and 78 workload controls/five refusals.
+Build `FHoInjAkFv` succeeds in 725.629 supervisor seconds with 10,600,996,864 bytes
+peak scratch, producing a reusable 74-file, 70,287,298-byte app with manifest
+`5865dbbe6983e8932b0567568091677ce1525e98cb509425c54e26e2e338bfa1`.
+The exact Rust core, Flutter 3.47.5 runner and engine are verified; no release is published.
+
+Replays reuse that artifact. `fb81c84a` replaces the readiness helper's obsolete
+literal bind-path lookup with connected kernel peer PID/UID proof, retaining
+process-generation, metadata, socket-surface and typed-state checks. Native direct
+and closed-directory-descriptor listeners pass; wrong/dead processes and absent
+typed state remain refused. `6b9e5acc` updates the controller to the current
+localized remote-window title. The resulting real-peer run `zpyA5bGiHo` reaches
+the current six-second recovery failure recorded above. All build/replay VMs join
+and retire bounded RAM with zero listener deltas. Failed-run duplicate binaries
+are verified against the retained capsule and removed after bounded logs are
+verified on both hosts. Next: observe capture-rate selection, probe completion and
+frame-acknowledgement waits during this same current-artifact failure. Independent
+release reproducibility, installed/native other-platform, network-impairment and
+multi-hour R-F5 acceptance remain OPEN. Exact runs, artifacts and limits:
+`viewer-current-build-6b9e5acc.json`; earlier setup in
+`flutter-build-prerequisite-c87cf4b4.json` and the audit.
 
 **Observer age maximum (`b197ec9b`).** Both controller observation loops now retain every
 valid measured age, including stale samples, in `maximum_age_ms`. First-fresh timing,

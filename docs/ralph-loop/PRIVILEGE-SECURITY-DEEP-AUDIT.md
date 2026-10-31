@@ -122773,3 +122773,52 @@ the difficult placement case before choosing whether persistent per-filesystem
 staging is needed; it does not approve such a design, waive exact cleanup or change
 product source. Existing 23 observations and receive authority/lifecycle controls
 remain. No new runtime result is claimed at preparation.
+
+**Native result.** Source `ca323a3571646e01569635622769d5bb5eb2fedf`, TUF
+`krOdmzaMOJ`, completes all 25 primitive observations on its first execution.
+Both receivers write ordinary output. The joined UID-4001 actor succeeds at
+same-parent rename and empty-directory removal, receives EACCES for cross-parent
+movement and private reads, and ENOTEMPTY for nonempty removal. Its own-directory
+cross-parent control succeeds. Both exact private markers survive. Each receiver's
+protected source outside the bind mount receives EXDEV with its bytes preserved;
+the fixture confirms equal device IDs and distinct mount IDs. Probe SHA-256:
+`bf0598d63eb25dcf8e7008500035ca194c5fd5c17514b3abb6e598b53a59d162`.
+
+The nineteen earlier native authority/crash cases and twenty actors retain their
+outcomes. All three completed-destination lifecycle cases still fail: hidden
+staging appears in listing, both empty-directory removal APIs return ENOTEMPTY,
+and 32 completed destinations add 31 records / 126,976 allocated bytes, with no
+added generation locks. The canonical `--file-metadata-tests` command exits one;
+its failure path exports no complete unit-suite acceptance receipt. Its fresh
+`RECEIVE_RETIREMENT_SYNC` observation now explicitly shows repeated EBADF,
+pending retirement, successor preservation and recovery, closing the earlier
+success-output omission without claiming a new hardware-failure test. Native
+artifact SHA-256 `e31a27d2febe617a809e5c91bd6024adc9436ec7583dd0b6e4616e2634c1c103`;
+driver SHA-256 `d2195f7c607d69de02e25f989269a4514b7b64ffa1d9f32e9473a5c1a0bc1dbe`;
+serial SHA-256 `e10ced4891f352bc345c99a2e7a6674be6573bc558998ba50a9fa324cd264bca`.
+QEMU 3112166 joins after 280.822 seconds; RAM `run.14763c06` retires and all four
+listener comparisons have zero changes. Seven raw files / 111,676 bytes are
+hash-verified on both hosts. Exact diagnostic directory
+`receive-shared-mount.krOdmzaMOJ`, inode 78688401, is removed afterward, reclaiming
+3,502,080 allocated bytes. No product source changes or new LPE are claimed.
+
+**Concrete design decision requested, still unanswered.** Prefer a protected
+writable ancestor within the destination's actual mount view where available.
+For a writable shared mount root with no protected parent, the proposed exception
+is one persistent private infrastructure directory per effective OS user and
+mount root, rather than one per destination. Different bind roots can require
+separate placement; "one per filesystem" would be inaccurate. Completed data and
+per-destination records would retire; only bounded anchor/coordinator identity
+would remain. This would change the current completed-destination cleanup
+acceptance condition, so implementation awaits an explicit user answer. Full
+authorized filesystem reach, exact replacement preservation and ordinary
+destination listing/deletion remain required. No hiding filter or named-removal
+waiver is proposed. Other user parks remain intact.
+
+If approved, derive recovery and nonproliferation before implementation: a renamed
+anchor must be recovered by exact identity or refused, never silently replaced
+with another generation. Reusing saved content under a fresh authenticated prefix
+proof must reacquire current destination authority; historical path/inode/birth
+metadata cannot grant it. Those are proposed design obligations, not accepted
+behavior, and still need proof against R-S8/R-S11fi/R-S11fj plus the existing
+mount, ordinary-user, unsupported-handle, crash and lifecycle observations.

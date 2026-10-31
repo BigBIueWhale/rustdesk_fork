@@ -16224,6 +16224,28 @@ evidence verification. The next layout must resolve protected publication and
 exact retirement across the already-observed mount/principal cases; a public
 empty-container deletion is not a substitute.
 
+**Shared mount-root placement — native prerequisite; decision pending.** At
+`ca323a35`, TUF `krOdmzaMOJ`, the primitive experiment completes 25 observations.
+Both root and UID 4002 can write legitimate output in a UID-4001-owned writable
+bind-mount root. UID 4001 can rename their private containers within that root,
+but cannot read them or move them to another parent; exact private bytes survive.
+Its own-directory cross-parent control succeeds. Publication from each receiver's
+protected location outside the bind mount returns `EXDEV`, despite equal devices.
+These observations distinguish directory movement authority and demonstrate the
+remaining protected-placement problem; they do not implement a replacement layout.
+
+A proposed exception would allow one persistent private staging directory per
+effective OS user and shared mount root lacking a protected parent, while retiring
+completed data and per-destination records. Ordinary destination folders, full
+filesystem reach and the existing race protections would remain required. This
+changes the cleanup acceptance condition above and awaits the user's decision;
+no exception is accepted or implemented. The nineteen prior native authority/crash
+cases and twenty actors retain their outcomes; all three lifecycle cases still
+fail with 31 retained records / 126,976 allocated bytes. The fresh serial also
+exports the accepted retirement-sync retry observation. The command exits one
+without a complete unit-suite acceptance receipt. Raw evidence and joined cleanup
+are recorded in the audit; all other parks remain unchanged.
+
 **Resume content binding — library correction accepted; caller acceptance OPEN/STOP-SHIP.**
 Baseline `640a9680`, TUF `ZoWbc47wT7`, accepts staged `abc` against source `XYZdef`
 with equal size/mtime in both confirmation directions, publishes `abcdef` and reports

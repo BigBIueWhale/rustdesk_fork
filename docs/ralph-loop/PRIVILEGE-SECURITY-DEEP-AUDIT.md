@@ -123128,3 +123128,14 @@ QEMU 3127940 joins after 149.057 seconds, RAM `run.c2ymmsch` retires and wrapper
 bytes per host are hash-verified, including complete console, serial, storage and
 listener evidence. No diagnostic directory remains. Overall receive/layout and
 release acceptance remain OPEN; the existing pending decisions and parks persist.
+
+Fresh ledger count at `597ee5ea`, TUF `aVcEUu8YjV`: **371,361 tokens /
+1,700,653 bytes**, input SHA-256
+`4c193b0e98ba8b251729db5a85636f20ebe2f9a8e83d8dfd2b7501834739393f`.
+All seven pinned-tokenizer controls and the whole-input round trip pass. QEMU
+3129819 joins after 30.303 seconds, RAM `run.civztxn3` retires, wrapper 3128398
+is absent and all three listener deltas are zero. Serial SHA-256
+`3d8bcfb446408bd16ada27fe013701e7d7ad1bf077181f8cc231943dec2ea6ca`.
+The behavioral and count runs retain **13 raw files / 201,915 bytes per host**,
+hash-verified on both hosts with all four exact wrapper/QEMU PIDs absent. This
+audit-only receipt preserves the counted ledger and tested source.

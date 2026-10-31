@@ -376,8 +376,9 @@ mod linux {
                 // Restore the protected parent before admitting the write.
                 fs::set_permissions(base, fs::Permissions::from_mode(0o777))?;
             }
-            if phase != "identity" {
-                receiver.inspect_receive_digest(&digest, false).await?;
+            receiver.inspect_receive_digest(&digest, false).await?;
+            if phase == "identity" {
+                ensure!(fs::read_dir(base)?.count() == 1, "inspection created staging before exhaustion");
             }
             let prepared_artifacts = if phase == "digest" {
                 receiver.confirm_with_offset(0, 0).await?;
@@ -415,9 +416,7 @@ mod linux {
             ensure!(space.f_blocks * space.f_frsize == 65536
                 && space.f_bavail * space.f_frsize == free_pages * PAGE as u64);
 
-            let failed = if phase == "identity" {
-                receiver.inspect_receive_digest(&digest, false).await.map(|_| ())
-            } else if phase == "digest" {
+            let failed = if phase == "identity" || phase == "digest" {
                 receiver.confirm_with_offset(0, 0).await.map(|_| ())
             } else { write(&mut receiver, &vec![b'b'; 2 * PAGE]).await };
             let error = failed.err().ok_or_else(|| anyhow!("full-filesystem operation reported success"))?;

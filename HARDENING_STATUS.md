@@ -16255,8 +16255,8 @@ ordinary-user test covers EACCES with fresh/prior intent and refusal while an ol
 generation is active, followed by exact successful retries. Existing crash,
 partial-setup, disk-full and replacement controls retain their passes. The first
 candidate's test-only compile error and exact artifacts/cleanup are retained in
-the audit. The inode-exhaustion handoff correction follows; descriptor exhaustion,
-shared-parent/mount-root layout, non-local filesystems and installed acceptance remain OPEN.
+the audit. The inode and descriptor handoff evidence follows; shared-parent/mount-root
+layout, non-local filesystems and installed acceptance remain OPEN.
 
 **Namespace-to-lease enrollment — inode-pressure correction accepted.** At test-only
 `7b6280da`, TUF `fx9VTUKTgw`, bounded tmpfs inode limits reproduce two later leaks:
@@ -16278,10 +16278,31 @@ is increased. All four subsequent transfers complete exactly. **157 library test
 39 groups and 37 native cases / 20 actors pass**; the existing malformed-preparation
 test additionally proves its own lease retires while a competing live lease remains.
 Both VMs, children, fixtures and bounded RAM workspaces retire with zero host-listener
-deltas. Exact artifacts, failing comparison and cleanup are in the audit. Descriptor
-pressure and synchronization-failure coverage at this handoff remain OPEN; next
-observe real `EMFILE` at the acquisition boundaries, including failure of cleanup
-itself and recovery after capacity returns. This is Linux library acceptance only.
+deltas. Exact artifacts, failing comparison and cleanup are in the audit. The
+descriptor-pressure cases below extend this Linux library acceptance; actual
+synchronization-failure coverage at the admission handoff remains OPEN.
+
+**Descriptor-pressure admission — six Linux cases accepted; product unchanged.**
+At test-only `e424d8ea`, TUF `W9z03m71BV`, the real per-file directory open,
+parent-descriptor duplication and lease-file open each return kernel `EMFILE`.
+The exact disposable receiver's soft limit is lowered from 128 to 4 after proving
+descriptors 0–3 occupied; its hard limit stays 128. In three cases capacity returns
+at syscall exit; all staging and coordination state retires. In three others the
+limit remains through admission failure and cleanup: both errors are returned,
+one record and generation marker remain with an empty per-file directory, and
+no false completion is reported. All six preserve originals/counters, restore the
+receiver's descriptor count from 10 to 10, and complete exact fresh transfers with
+restored coordination inventory after capacity returns.
+
+The canonical run passes **157 library tests / 39 groups and 43 native cases /
+20 actors**. The library artifact remains byte-identical to `8f725796`. Two rejected
+fixture attempts and their corrections, exact artifacts, primary references and
+joined RAM/listener cleanup are retained in the audit. This establishes the named
+admission/failure/retry boundaries, not installed-peer outcomes, automatic recovery
+of every abandoned marker, general resource-pressure immunity or release readiness.
+The next substantive correction remains protected staging and exact retirement in
+shared destination parents and mount roots, under the existing full-filesystem and
+cleanup requirements; no persistent-directory exception is accepted.
 
 **Replacement prerequisite — native mount/object observations.** The guest-only
 probe at `44030710`, TUF `O0tIK6FXlb`, exercises ext4, tmpfs, a bind alias and

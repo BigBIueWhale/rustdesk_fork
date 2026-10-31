@@ -124533,3 +124533,88 @@ available memory is 45,694,365,696 bytes, and all three listener deltas are zero
 Six count files / 104,147 bytes and fourteen behavioral-run files total twenty /
 441,172 bytes per host, hash-verified on CTE and TUF. Both ledger copies match the
 counted hash; this audit-only receipt leaves that input unchanged.
+
+## 2026-10-31 — receive admission under transient and sustained descriptor pressure
+
+The prior turn corrected two reproduced inode-pressure leaks. This continuation
+tests the remaining descriptor acquisition handoff before further product changes.
+The existing exact-child syscall observer now locates per-file-directory `openat`,
+parent `fcntl(F_DUPFD_CLOEXEC)` and lease-file `openat`. It lowers only the disposable
+receiver's soft RLIMIT_NOFILE from 128 to 4 after proving descriptors 0–3 occupied;
+the hard ceiling stays 128. It observes the real `-EMFILE` syscall result without
+altering arguments, registers, return values or product code. Three cases restore
+capacity at syscall exit; three hold the limit until production admission failure,
+job retirement and drop have returned. The controller then restores the exact old
+limit, joins every traced task, checks original files and coordination state, and
+requires a successful fresh transfer and complete cleanup. The receiver measures
+its descriptor count before admission and after restoration, with its Tokio blocking
+worker warmed first. All six remain inside the existing bounded VM/root driver.
+
+The [resource-limit contract](https://man7.org/linux/man-pages/man2/getrlimit.2.html)
+allows lowering the soft limit below current consumption and shares limits across
+the process's threads. [F_DUPFD](https://man7.org/linux/man-pages/man2/F_DUPFD.2const.html)
+distinguishes an invalid minimum-descriptor argument from descriptor exhaustion.
+The [pinned Rust 1.75 implementation](https://raw.githubusercontent.com/rust-lang/rust/1.75.0/library/std/src/os/fd/owned.rs)
+uses minimum descriptor 3, so a limit of 4 keeps that request valid while refusing
+allocation. [ptrace syscall information](https://man7.org/linux/man-pages/man2/ptrace.2.html)
+supplies the observed entry and exit; tracing and exact joins remain on one blocking
+controller thread.
+
+Two attempts are rejected fixture evidence, not product failures. At `319d4a65`,
+TUF `gOaqQufY5i`, the two directory-open cases demonstrate transient cleanup and
+sustained combined error/recovery. The sustained verdict is false because the
+fixture uses `Path::ends_with(".lock")` as a string-suffix test. The next duplication
+case fails its errno assertion: soft limit zero makes the minimum argument invalid;
+the actual return value was not exported in that first diagnostic. `e0bcdfc7`
+corrects path extension checks and adds exact errno diagnostics, but incorrectly
+selects minimum descriptor zero. TUF `uQkqOLDnDh` passes both directory-open cases
+then rejects a returned receiver without the required duplication observation.
+`e424d8ea` uses the pinned minimum 3 and occupied-descriptor/limit-4 calibration.
+Those repairs change only the test fixture. Production and library-test bytes are
+unchanged throughout all three runs.
+
+At `e424d8ea`, TUF `W9z03m71BV`, the canonical
+`bash scripts/smoke-verifier-vm-authority.sh --file-metadata-tests` exits zero:
+**157 library tests / 39 groups and 43 native receive cases / 20 actors pass**.
+Every selected syscall returns `-24` with its error flag. Transient failures return
+the original EMFILE with zero coordination residue and only the original file in
+the destination. Sustained failures report the primary and cleanup errors, preserve
+one `.json` record and one `.lock` generation marker with an empty private per-file
+directory, and refuse finalization. All six leave counters and original bytes/
+metadata unchanged and restore the receiver's descriptor count from 10 to 10.
+Every capacity-restored fresh transfer produces exact six-byte root-owned 0600
+single-link output with mtime 31 and restores the pre-case coordination inventory.
+Existing inode, read-only, crash, substitution, concurrent-owner and retirement
+controls retain their passes. No product correction is justified by these results.
+
+The library artifact remains
+`4d21e48e122b3866424184c6eda14900dfe2c232e0dc4c836bf5d35013fbb08e`.
+Final root artifact SHA-256:
+`ca2bf46ffc22948fde96e6d2d34962b44aa429e4d330ed6a9949a0b9bb93a8ff`;
+driver source:
+`3c5a9a39f591b60aeadca5453b1eb197cd59b06079139be335c7d89c2d22c9ec`.
+Raw serial names use `hbb-common-fs-run.<run>.serial.log`:
+
+| Run / source | Bytes | Serial SHA-256 | Exit |
+| --- | ---: | --- | ---: |
+| `gOaqQufY5i` / `319d4a65` | 52,272 | `9718e21b6f4520945f7c7537d63394328e836711ea09e491b66ed97d29c8695f` | 1 |
+| `uQkqOLDnDh` / `e0bcdfc7` | 52,285 | `d6ba123da2a3f7fa9c43d76af2b04dd730a739f9240d35700f126eba7f230f8d` | 1 |
+| `W9z03m71BV` / `e424d8ea` | 148,488 | `176793e73b453f0927da86bf9a6e8e3954ac07f9ce8bd54436d6d978b16eee58` | 0 |
+
+Twenty-one raw files / 471,424 bytes per host are hash-verified on CTE and TUF.
+QEMU 3241124 / 3243995 / 3246636 joins zero after 280.979 / 277.411 / 284.193
+seconds. Wrappers 3240650 / 3243497 / 3246145 and RAM workspaces `run.4f3ihaeh` /
+`run.dr2ad6cj` / `run.uwtdner1` are absent. All four listener deltas for every run
+are zero. Maximum scratch is 4,229,230,592 bytes within 6 GiB; minimum available
+host memory is 36,173,152,256 bytes. Exact failed-run diagnostics retire after raw
+evidence verification, reclaiming 3,530,752 + 3,526,656 = 7,057,408 allocated bytes.
+The successful harness retires its own run root.
+
+The named acquisition/failure/fresh-retry behavior is accepted. This does not prove
+automatic cleanup of all abandoned uncertainty markers, global descriptor-pressure
+immunity, native admission synchronization failures, installed-peer outcomes or
+release readiness. Next return to the demonstrated shared-parent/mount-root staging
+layout defect: preserve full authorized filesystem reach, protected publication and
+exact retirement together. No persistent-directory exception is accepted and no
+permission dependency is introduced. Other platforms, non-local/power-loss behavior
+and broader release acceptance remain OPEN.

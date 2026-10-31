@@ -3556,7 +3556,7 @@ run_focused_rust_tests() {
             )
         fi
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
-            source_fingerprints+=(libs/hbb_common/src/fs/file_block.rs libs/hbb_common/src/fs/confirmation.rs)
+            source_fingerprints+=(libs/hbb_common/src/fs/file_block.rs libs/hbb_common/src/fs/confirmation.rs libs/hbb_common/src/fs/confirmation/tests/slow_sync.rs)
             required_tests=(
                 fs::tests::transfer_resume_send_is_once_and_preserves_live_progress
                 fs::tests::transfer_resume_receive_is_once_and_preserves_owned_output
@@ -3589,6 +3589,7 @@ run_focused_rust_tests() {
                 fs::confirmation::tests::prepared_proofs_roundtrip_both_transfer_roles
                 fs::confirmation::tests::prepared_receive_cancellation_preserves_partial_and_checkpoint_rules
                 fs::confirmation::tests::prepare_refuses_invalid_targets_before_worker_admission
+                fs::confirmation::tests::slow_sync::stalled_receive_retirement_keeps_control_and_exact_cleanup_ownership
             )
         fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
@@ -6377,7 +6378,8 @@ run_focused_rust_tests() {
                                 fs::confirmation::tests::completed_and_cancelled_jobs_remain_charged_until_joined \
                                 fs::confirmation::tests::prepared_proofs_roundtrip_both_transfer_roles \
                                 fs::confirmation::tests::prepared_receive_cancellation_preserves_partial_and_checkpoint_rules \
-                                fs::confirmation::tests::prepare_refuses_invalid_targets_before_worker_admission; do
+                                fs::confirmation::tests::prepare_refuses_invalid_targets_before_worker_admission \
+                                fs::confirmation::tests::slow_sync::stalled_receive_retirement_keeps_control_and_exact_cleanup_ownership; do
                                 group_status=0
                                 timeout --signal=TERM --kill-after=5s 20s \
                                     "$test_executable" --exact "$test_name" --color never --test-threads=1 --show-output \
@@ -8393,7 +8395,7 @@ PY
                 || fail 'native backpressure send-job retirement differs'
             grep -E '^test fs::(tests::(send_(digest_|read_buffer_)|read_step_|transfer_resume_)|file_block::tests::allocation_refusal_).* \.\.\. ok$|^test tcp::writer_lifetime_tests::read_jobs_retire_before_native_writer_pressure_errors \.\.\. ok$|^SEND_DIGEST_SIZE=|^SEND_READ_ALLOCATION(_CASE)?=|^FILE_COMPRESSION_(ALLOCATION|CASE)=|^READ_TERMINAL_RETIREMENT(_CASE)?=|^READ_NONTERMINAL_RETIREMENT=|^READ_JOB_BACKPRESSURE(_CASE)?=|^READ_ROUND_ROBIN(_CASE)?=.*|^READ_CONFIRMATION_READY=|^TRANSFER_RESUME_' "$output"
             grep -E '^test fs::tests::(send_resume_[a-z_]+|send_read_preserves_exact_lengths_and_resumed_eof|confirmation_rejects_wrong_job_and_duplicate_progress|resume_counter_overflow_does_not_publish_stream_ownership) [.][.][.] ok$' "$output"
-            grep -E '^test fs::confirmation::tests::[a-z_]+ [.][.][.] ok$|^FILE_CONFIRMATION_' "$output"
+            grep -E '^test fs::confirmation::tests::(slow_sync::)?[a-z_]+ [.][.][.] ok$|^FILE_CONFIRMATION_' "$output"
         else
         grep -E '^test platform::linux::tests::r_s11at_loginctl_output_.* \.\.\. ok$|^LOGINCTL_(WAIT_AUTHORITY|LOST_WAIT)=' "$output"
         if [ "$HBB_LOGIND_NATIVE" -eq 0 ]; then

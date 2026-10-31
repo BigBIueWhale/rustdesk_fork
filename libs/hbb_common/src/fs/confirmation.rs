@@ -252,6 +252,9 @@ impl FileConfirmations {
 
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
+    #[cfg(target_arch = "x86_64")]
+    mod slow_sync;
+
     use super::*;
     use crate::{fs::JobType, message_proto::*};
     use crate::protobuf::Message as _;

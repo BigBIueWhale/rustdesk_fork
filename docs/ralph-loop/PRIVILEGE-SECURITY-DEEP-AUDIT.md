@@ -122347,3 +122347,24 @@ retires and all three listener deltas are zero. Serial 35,832 bytes, SHA-256
 `b134a955d22b254f5c1828d18fc3ee36a94a09ce9f412b8686e9b7e1725596cd`.
 The twenty-seven raw files across this checkpoint total 359,112 bytes per host.
 This audit-only receipt preserves the counted ledger and tested product/test source.
+
+### 2026-10-31 — receive confirmation cleanup responsiveness; native baseline preparation
+
+The selected R-S8/R-S0 prerequisite is retirement of accepted resume workers without
+blocking the connection executor. `FileConfirmations::next()` currently retires a
+cancelled/failed receive claim synchronously, including directory fsync. The focused
+Linux fixture holds the actual staging-directory fsync at syscall entry, exchanges
+TCP control on a current-thread runtime, cancels the collection future and either
+recollects or drops the owner. It checks capacity retention, exact cleanup, saved
+bytes and lease reacquisition before its verdict. A three-second observer release
+lets the unchanged blocking baseline finish cleanup before failing.
+
+The observer uses Linux seccomp user notification and CONTINUE without changing
+syscall arguments or results; it is a timing fixture, not an authority policy.
+Primary references: Linux userspace-api/seccomp_filter.html and installed Linux
+UAPI seccomp.h; Tokio task/spawn_blocking and task/JoinHandle documentation at
+docs.rs/tokio. Blocking tasks cannot be aborted once running, so the proposed
+collector transition must retain its existing permit and exact join through cleanup.
+This preparation changes no product behavior and claims no execution. Admission
+refusal and inner hash-failure retirement require separate ownership work; full
+application/viewer validation and the other user parks remain unchanged.

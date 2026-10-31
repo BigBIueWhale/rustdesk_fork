@@ -9358,6 +9358,7 @@ run_cm_file_replay() {
     local work=$ROOT/cm-file-replay-work
     local machine_id=$work/server.machine-id
     local machine_id_value=727573746465736b2d73657276657231
+    local passwd=$work/peer.passwd passwd_identity passwd_sha
     local build_output=$ROOT/cm-file-build.out
     local output=$ROOT/cm-file-replay.out
     local replay_stage=cm-file-replay
@@ -9543,6 +9544,15 @@ LAYOUT
     [ "$(stat -c '%u:%g:%a:%h:%s' -- "$machine_id")" = 1000:1000:400:1:33 ] \
         && [ "$(<"$machine_id")" = "$machine_id_value" ] \
         || fail 'CM file replay private machine identity differs'
+    printf '%s\n%s\n' 'root:x:0:0:root:/root:/usr/sbin/nologin' \
+        'rustdesk-evidence:x:1000:1000:RustDesk file evidence:/tmp/rd-cm-file-replay:/usr/sbin/nologin' >"$passwd"
+    chown 1000:1000 "$passwd"
+    chmod 0400 "$passwd"
+    [ -f "$passwd" ] && [ ! -L "$passwd" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' -- "$passwd")" = 1000:1000:400:1 ] \
+        || fail 'CM file peer passwd identity differs'
+    passwd_identity="$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$passwd")"
+    passwd_sha="$(sha256sum "$passwd" | awk '{ print $1 }')"
     CONTAINER_ID="$("$CLIENT" --host "unix://$SOCK" create \
         --name rustdesk-cm-file-replay --pull=never --network=none --read-only \
         --user 1000:1000 --pids-limit=256 --memory=2g --memory-swap=2g --cpus=2 \
@@ -9551,6 +9561,7 @@ LAYOUT
         --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=256m \
         --mount "type=bind,source=$source_root,target=/work,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$flat,target=/smoke-target,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$passwd,target=/etc/passwd,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$machine_id,target=/etc/machine-id,readonly,bind-recursive=disabled" \
         --workdir /work "$DEV_CHECK_IMAGE_CONFIG_ID" \
         /bin/bash --noprofile --norc /work/scripts/smoke-server-stage.sh "$replay_stage")"
@@ -9568,6 +9579,10 @@ LAYOUT
         "$CONTAINER_ID" | awk -F '\t' '$3 == "/etc/machine-id" { print }')"
     [ "$machine_mount" = "bind	$machine_id	/etc/machine-id	false" ] \
         || fail 'CM file replay private machine identity mount differs'
+    inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+        '{{range .Mounts}}{{if eq .Destination "/etc/passwd"}}{{printf "%s|%s|%t" .Type .Source .RW}}{{end}}{{end}}' "$CONTAINER_ID")"
+    [ "$inspect" = "bind|$passwd|false" ] \
+        || fail 'CM file replay private passwd mount differs'
     printf 'CM_FILE_REPLAY_STAGE=begin commit=%s manifest_sha256=%s\n' \
         "$ANDROID_EMULATOR_SOURCE_COMMIT" "$manifest_sha"
     set +e
@@ -9591,6 +9606,9 @@ LAYOUT
     CONTAINER_ID=
     [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
         || fail 'CM file replay left a container'
+    [ "$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$passwd")" = "$passwd_identity" ] \
+        && [ "$(sha256sum "$passwd" | awk '{ print $1 }')" = "$passwd_sha" ] \
+        || fail 'CM file peer passwd changed during execution'
     if [ "$CM_DIRECTORY_DOWNLOAD" -eq 0 ]; then
     CONTAINER_ID="$("$CLIENT" --host "unix://$SOCK" create \
         --name rustdesk-cm-pa-product-pair --pull=never --network=none --read-only \

@@ -763,6 +763,9 @@ EOS
   directory-download)
     export HOME=/tmp/rd-cm-file-replay
     mkdir -m 0700 "$HOME"
+    [ "$(getent passwd 1000)" = 'rustdesk-evidence:x:1000:1000:RustDesk file evidence:/tmp/rd-cm-file-replay:/usr/sbin/nologin' ] \
+      && [ "$(stat -c '%u:%g:%a:%h' /etc/passwd)" = 1000:1000:400:1 ] \
+      || { echo 'directory replay lacks its private receiver account' >&2; exit 1; }
     cleanup_directory_download() {
       local status=$?
       trap - EXIT HUP INT TERM

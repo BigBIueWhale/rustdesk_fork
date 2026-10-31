@@ -626,6 +626,7 @@ mod linux {
                 "crash-directory" => (libc::SYS_mkdirat, ""),
                 "crash-identity" => (libc::SYS_fsync, "identity"),
                 "crash-record" => (libc::SYS_renameat, ".tmp"),
+                "crash-payload-sync" => (libc::SYS_fsync, "payload.download"),
                 _ => return Err(anyhow!("unknown syscall window")),
             };
             let crash = operation.starts_with("crash-");
@@ -1015,6 +1016,45 @@ mod linux {
         }
         println!("RECEIVE_NATIVE_ENROLLMENT_SUMMARY=observed cases=3 recovered={recovered} children=joined fixture=retired");
         ensure!(recovered == 3, "receive enrollment crash cases failed: {recovered}/3 recovered");
+        let mut recovered = 0;
+        for saved in [false, true] {
+            let case = format!("crash-receive-setup-{saved}");
+            let base = root.join(&case);
+            fs::create_dir(&base)?;
+            create(&base.join("incoming.bin"), b"original", 0o600)?;
+            let original = snapshot(&base.join("incoming.bin"))?;
+            if saved {
+                let artifacts = prepare_staging(&base).await?;
+                create(&artifacts.join("payload.download"), b"abc", 0o600)?;
+                create(&artifacts.join("resume.digest"), DIGEST, 0o600)?;
+            }
+            let selected = base.clone();
+            let crash = tokio::task::spawn_blocking(move ||
+                syscall_window::run(selected, "crash-payload-sync".to_owned())).await??;
+            let artifacts = staging(&base)?;
+            let payload = snapshot(&artifacts.join("payload.download"))?;
+            let digest = snapshot(&artifacts.join("resume.digest"))?;
+            ensure!(snapshot(&base.join("incoming.bin"))? == original);
+            let mut inspection = job(&base)?;
+            let inspected = inspection.inspect_receive_digest(&incoming(), true).await;
+            inspection.retire_current_file_state()?;
+            ensure!(snapshot(&artifacts.join("payload.download"))? == payload
+                && snapshot(&artifacts.join("resume.digest"))? == digest
+                && snapshot(&base.join("incoming.bin"))? == original);
+            let recovery = complete_transfer(&base).await;
+            let safe = inspected.is_ok() && recovery.is_ok() && private_final(&base).is_ok();
+            if recovery.is_err() { ensure!(snapshot(&base.join("incoming.bin"))? == original); }
+            recovered += usize::from(safe);
+            println!("RECEIVE_NATIVE_CASE={}", json!({"case":case,"observed":{
+                "saved_partial":saved,"crash":crash,"payload_after_crash":payload,
+                "digest_after_crash":digest,"inspection_ok":inspected.is_ok(),
+                "inspection_error":inspected.err().map(|e|e.to_string()),
+                "inspection_preserved":true,"recovery_ok":recovery.is_ok(),
+                "recovery_error":recovery.err().map(|e|e.to_string()),"safe":safe}}));
+            fs::remove_dir_all(&base)?;
+        }
+        println!("RECEIVE_NATIVE_SETUP_SUMMARY=observed cases=2 recovered={recovered} children=joined fixture=retired");
+        ensure!(recovered == 2, "receive setup crash cases failed: {recovered}/2 recovered");
         for (phase, free_pages) in [("block", 0), ("block", 1), ("identity", 0), ("digest", 0)] {
             let case = if phase == "block" { format!("full-filesystem-{free_pages}") }
                 else { format!("full-filesystem-{phase}") };
@@ -1082,7 +1122,7 @@ mod linux {
         fs::remove_dir_all(&base)?;
         println!("RECEIVE_NATIVE_RETIREMENT_SUMMARY=observed cases=3 retired={retired} children=joined fixture=retired");
         ensure!(retired == 3, "receive completed-destination cases failed: {retired}/3 retired");
-        println!("RECEIVE_NATIVE_AUTHORITY=pass cases=26 actors={actors} receiver_uid=0 actor_uid=4001 children=joined fixture=retired");
+        println!("RECEIVE_NATIVE_AUTHORITY=pass cases=28 actors={actors} receiver_uid=0 actor_uid=4001 children=joined fixture=retired");
         Ok(())
     }
 

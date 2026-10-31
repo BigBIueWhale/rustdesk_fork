@@ -123785,3 +123785,87 @@ Count serial SHA-256:
 The six count files add 104,749 bytes: all twenty retained raw files /
 396,871 bytes per host for these two behavior runs and the count are hash-verified.
 This audit-only receipt leaves the counted ledger and tested sources unchanged.
+
+## 2026-10-31 — inspect receive destinations without creating staging
+
+The previous turn produced a failing baseline and retired its exact VM/scratch.
+Continue R-S8/R-S11fi/R-S11fj: a read-only overwrite/resume query must preserve
+ordinary destination layout and remain usable without destination write permission.
+
+At unchanged-product test commit `f90e03cf`, TUF `0zQlULqVIi`, all eight
+cases fail. Shared mode-0777 parents return the correct absent/existing result
+but gain namespace/coordinator residue. Readable mode-0555 parents return EACCES
+and gain coordinator residue. Existing-file bytes and metadata and parent modes
+survive in every case. Ordinary/resume queries and absent/present finals are
+covered. Three preceding tests pass; the focused command then exits one.
+Baseline artifact: `ca8db2733e76f985b28b01e8d8654d442829d99549a62a7155f1688a2b265665`.
+
+`9d6bcbb8` separates inspection from write enrollment. Under the existing
+effective-owner enrollment gate, it checks ready/retiring records and generation/
+preparation remnants. With no state, it opens the final regular file relative to
+the retained no-follow destination parent before explicitly releasing the gate.
+Only actual parent/final absence returns NoSuchFile. Existing state transfers the
+still-held gate into ordinary namespace/per-file admission, recovery and explicit
+retirement. Saved-artifact checks and incoming-digest cache publication remain.
+
+The design uses [flock's open-description ownership](https://man7.org/linux/man-pages/man2/flock.2.html)
+to exclude cooperating enrollment and [retained open handles](https://man7.org/linux/man-pages/man2/open.2.html)
+to survive later atomic publication. This is not a claim that flock excludes
+another principal's directory renames; the [kernel directory-locking model](https://docs.kernel.org/filesystems/directory-locking.html)
+and the previous substitution observations still constrain shared-parent cleanup.
+Saved-partial fixtures explicitly confirm and retire a write to establish staging.
+`47d36d7e` also makes the filesystem-full identity test trigger write admission;
+the same ENOSPC, exact preparing-state, prior-final, cleanup and recovery checks remain.
+
+TUF `T2xAoQUQ4K` passes all 48 focused tests, including the unchanged eight-case
+regression. At `47d36d7e`, TUF `MQFP7oQdzo`, the canonical metadata command
+passes 156 library tests in 39 groups and all 32 root/UID-4001 native cases with
+20 joined actors. All four retirement SIGKILL and four filesystem-full cases pass.
+Library artifact (both runs):
+`960f5271046faebc10c9106d51c2070284b212dfc75dd86ae7d12c78abf98a5b`.
+Native driver: `575a7858cce618ad2e829cfe4a535af160891d3736549e397fa462e40d3f0039`;
+driver source: `d45b5e0a58045b36cf2923d553b8a53af637ba2de587a25e55746e580177ff3b`.
+Maximum-offset preparation takes 64.668 seconds; full inactivity-window acceptance
+remains open and no installed disconnect is inferred.
+
+The three QEMU children (3179529, 3180699, 3181527) join with zero status after
+136.139, 149.150 and 290.243 seconds. Their wrappers and RAM workspaces
+`run.kdyr_j03`, `run.zgii0b4a`, `run.fbt3736s` are absent; all four listener
+deltas per run are zero. Peak RAM scratch is 3,504,521,216 / 3,505,766,400 /
+4,222,271,488 bytes within each 6-GiB bound. Minimum available host memory is
+37,052,186,624 / 37,042,987,008 / 36,367,986,688 bytes. The exact failing-baseline
+diagnostics reclaim 3,448,832 allocated bytes after evidence verification; both
+successful runs retire automatically. All 21 raw files / 400,128 bytes per host
+are hash-verified. Serial SHA-256 values:
+
+- `0zQlULqVIi`: `658bd69384dc2196b9afcc6944839c7925b45b413a7d6eae8d338c0b7ed6e90b`
+- `T2xAoQUQ4K`: `0dda205519268ea06124c3ab1b1132839f5a93d752e94115c45eec983d80190e`
+- `MQFP7oQdzo`: `5859df825ffd383941180f2ed79b7b9c261a9673e9ffedd3480f584b6917ff70`
+
+OPEN: shared mutable-parent/mount-root write placement and cleanup; ACL/non-local
+filesystems, remount identity, coordinator exhaustion, physical power loss and
+other platforms; controlled-side CM, installed/artifact, long-hash, cancellation
+and reconnect acceptance. The inspection correction does not close these gaps
+or require a new permission answer. Independently parked topics remain parked.
+
+The same source's full-application checkpoint, TUF `L3LM4uGAy8`, regenerates
+the bridge and builds the Linux Flutter library in 118 seconds. All four resume
+tests pass, including the changed saved-partial fixture and the live connection
+loop. Upload/download observations last 2,038 / 2,044 ms and answer 21 keepalives;
+worst timed replies are 1.169 / 1.362 ms and exact worker joins take 2 / 3 ms.
+Checkpoint metadata, saved bytes and lease reacquisition remain correct.
+Application artifact:
+`1f5e5090aa1f7192429c5cb87e17af740845f55fd0e32582be0a6fc9ead0275e`.
+The independently parked viewer-admission regression still fails all eight cases.
+The group takes 138.51 seconds; the command exits one, leaving nineteen later
+tests and the CLI check unexecuted. This is not complete-suite, CM IPC, installed
+or long-session acceptance.
+
+QEMU 3182506 joins with zero status after 509.706 seconds; wrapper 3182014 and
+RAM `run.ydqn05h3` are absent. Peak scratch is 6,289,932,288 bytes within 7 GiB;
+minimum available host memory is 34,451,906,560 bytes. All four listener deltas
+are zero. Seven raw files / 82,736 bytes per host are hash-verified before removing
+3,444,736 allocated bytes of exact diagnostics. All four completed-run wrappers
+are verified absent. Application serial SHA-256:
+`21d2d62a081d60c76a025566f9affbd2fa3007b629f5547039144c7bd634b2f9`.
+Together these four behavior runs retain 28 raw files / 482,864 bytes per host.

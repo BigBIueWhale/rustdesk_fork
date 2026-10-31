@@ -16187,8 +16187,8 @@ recovery repeats that barrier before destructive cleanup. This replaces the firs
 candidate's record rewrite, which caused EFBIG during cleanup under an existing
 three-byte file-size limit. Replacement objects and lost parent protection refuse.
 
-At `1828f840`, TUF `L2yg9hfYYf`, the canonical `--file-metadata-tests` command
-exits zero: **155 library tests in 39 groups and 32 native root/UID-4001 cases
+At `47d36d7e`, TUF `MQFP7oQdzo`, the canonical `--file-metadata-tests` command
+exits zero: **156 library tests in 39 groups and 32 native root/UID-4001 cases
 with 20 joined actors pass**. The three original lifecycle observers now pass:
 hidden and ordinary listings contain only the received file, both empty-directory
 removal APIs succeed, and 32 retained completed destinations add zero records,
@@ -16205,12 +16205,25 @@ link count and mtime survive, and coordination returns to its pre-case inventory
 These complement five constructed recovery/refusal states; they prove process-death
 recovery on the tested Linux filesystem, not physical power-loss durability.
 The shared mutable-parent/mount-root layout still retains containers and records,
-while all four full-application resume cases pass at `dfd59fa2` / `Ma7eWhOqDW`
+while all four full-application resume cases pass at `47d36d7e` / `L3LM4uGAy8`
 after this change. The separate admission regression remains failing; complete
 viewer/CM/installed acceptance remains OPEN.
 ACL/non-local filesystems, coordinator exhaustion, physical power loss and other
 platforms remain OPEN. No cleanup exception is accepted. The audit retains the
 failed attempts, exact artifacts, raw logs and joined RAM/listener cleanup.
+
+**Read-only destination inspection — Linux correction accepted.** `9d6bcbb8`
+does not create staging when the retained destination has no coordination state.
+The enrollment gate excludes writers through the no-follow final-file open;
+existing records and preparation/generation remnants retain ordinary lease
+admission, recovery, saved-partial validation and explicit retirement. At baseline
+`f90e03cf` / `0zQlULqVIi`, all eight ordinary/resume, absent/existing cases fail:
+mode-0777 directories gain residue, and readable mode-0555 directories return
+EACCES with coordination residue. The unchanged regression now passes without
+changing final bytes/metadata, parent modes or either directory inventory.
+TUF `T2xAoQUQ4K` passes all 48 focused tests; the canonical run above retains
+all crash, concurrent-authority and disk-full controls. Fixtures create staging
+through explicit write admission. Shared-parent write cleanup remains OPEN.
 
 **Replacement prerequisite — native mount/object observations.** The guest-only
 probe at `44030710`, TUF `O0tIK6FXlb`, exercises ext4, tmpfs, a bind alias and
@@ -16427,7 +16440,7 @@ joined shutdown during active hashing; complete slow-storage/reconnect validatio
 and the independently reproduced staging-layout lifecycle correction remain required.
 
 **Resume application checkpoint — Linux handlers and live thread; complete flow OPEN.**
-At `dfd59fa2`, TUF `Ma7eWhOqDW`, the full Linux application library
+At `47d36d7e`, TUF `L3LM4uGAy8`, the full Linux application library
 compiles with Flutter features and freshly generated bridge bindings in 118 seconds.
 All three existing resume tests pass: oversized upload/download refusal preserves owner metadata,
 counters and saved bytes; valid offsets 2 and u32::MAX complete in both directions
@@ -16443,16 +16456,16 @@ production ownership checks. The new test also passes: the real viewer I/O threa
 connects through CPace and login, accepts resumed upload/download commands, and
 answers 21 ordered keepalive probes while native file access is observed during
 about two seconds of hashing. Among the 20 timed probes, worst replies are
-1.242 ms / 1.241 ms; both exact worker joins take 2 ms. Pending metadata remains
+1.169 ms / 1.362 ms; exact worker joins take 2 ms / 3 ms. Pending metadata remains
 checkpointed. File inode, size and sentinel bytes survive; download digest bytes
 remain equal, no final file appears, and fresh inspection reacquires the lease.
 This is normal-storage shutdown during hashing, without a stalled-syscall injection.
 
-The five-test group takes 138.27 seconds: four pass, and the separate
+The five-test group takes 138.51 seconds: four pass, and the separate
 viewer-admission regression still fails all eight scenarios. The command exits one.
 The nineteen later tests and CLI check remain unexecuted; this is not a full-suite
 pass. Artifact SHA-256:
-`9bc155f131d7282c7c792827a1d02cc7127aca6e6f2f65be4334d34a35bc228b`.
+`1f5e5090aa1f7192429c5cb87e17af740845f55fd0e32582be0a6fc9ead0275e`.
 QEMU and bounded RAM scratch retire, and all four listener deltas are zero.
 
 The first three tests execute digest/completion handlers; the new test executes
@@ -16463,7 +16476,7 @@ reconnect, installed/root-service behavior, shared-parent/mount-root staging cle
 and release acceptance remain OPEN. The audit retains failed builds, environment
 failures and exact raw/cleanup identities.
 
-In the latest library run, maximum-offset preparation takes 64.389 seconds,
+In the latest library run, maximum-offset preparation takes 64.668 seconds,
 exceeding the loops' 30-second receive deadline;
 no installed disconnect has been measured. Large/slow-source resume and the
 shared-parent/mount-root staging-layout lifecycle failures remain OPEN/STOP-SHIP.

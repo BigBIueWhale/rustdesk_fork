@@ -124184,3 +124184,79 @@ all three listener deltas are zero. The six count files / 104,219 bytes and seve
 baseline files total 13 files / 186,136 bytes per host, hash-verified on CTE and
 TUF. Both ledger copies match the counted hash; this audit-only receipt leaves
 that input unchanged.
+
+## 2026-10-31 — CM teardown retains jobs and authority through native cleanup
+
+`3c84e8ff` replaces separately owned runner/job vectors with one connection owner.
+It reserves the existing 32-slot drain capacity before filesystem work and retains
+that reservation while read or receive jobs survive. Subsequent admitted work reuses
+its own slot. An abandoned selected result drops the aggregate owner, so receive
+jobs cannot synchronously retire ahead of their registry owner. Ordinary desktop
+and Android exits await exact native retirement; cancellation hands its join to the
+existing bounded drain. The Windows clipboard route remains owned through registry
+retirement. There can be a selected-operation join and a retirement join per permit,
+so the queue holds at most 64 records while admission still has only 32 permits.
+
+`e8c40e09` removes the candidate's additional async finishing task. Its join record
+retains the native handle, capacity and a completion callback owning registry/UI
+retirement. Both the caller and independent drain invoke that callback only after
+a successful native join. Callback unwind is process-fatal, preserving the previous
+task-loss behavior; its panic payload stays retained until abort. The
+[pinned Tokio join contract](https://github.com/tokio-rs/tokio/blob/tokio-1.44.2/tokio/src/runtime/task/join.rs)
+permits cancellation of the wait while retaining the handle; dropping it would
+detach the work. [Blocking-task semantics](https://docs.rs/tokio/1.44.2/tokio/task/fn.spawn_blocking.html)
+require ownership through completion rather than treating abort as native cleanup.
+The completion no longer needs another runtime-scheduled future. This is a design
+property; runtime shutdown and target-device acceptance are not established by
+the current Linux cases. The Android JNI callback attaches its calling thread;
+Windows and Android native behavior remain open.
+
+The original six-case regression from `ca314289` remains byte-identical as the
+prefix of `receive_cleanup.rs`. Its four formerly failing exit cases now pass
+alongside both explicit-cancellation controls. While directory fsync is held, the
+exact registry generation, in-flight marker, charged permit and pending UI owner
+remain; newer-source admission is refused. Another real Unix-CM connection answers
+a directory request within one second. No normal close returns early and neither
+cancellation emits an early terminal response. After explicit release, original
+bytes survive, staging disappears, capacity returns, UI retirement occurs once
+and a same-ID successor works. Final held durations are 52,240 / 52,700 microseconds
+for cancellation, including the deliberate 50 ms reply observation, and
+1,155 / 1,095 / 415 / 720 microseconds for close/disconnect/EOF/abort. These are
+barrier durations, not independently measured request-latency benchmarks.
+
+The appended saturation regression holds the other 31 permits after a real partial
+receive. With all 32 occupied, a new connection cannot create a directory, the
+admitted connection can, and normal close or task abort completes cleanup without
+acquiring another slot. Both cases preserve the original, return capacity, remove
+the owner and admit a usable successor. The profile also executes the existing
+selected-operation/read-tick cancellation, child-loss, response refusal, raw-frame,
+generation, Android CM lifecycle, voice, job-ID and startup controls.
+
+Both runs use `bash scripts/smoke-verifier-vm-authority.sh
+--linux-file-receive-caller-tests` with fresh Flutter bridge generation and a full
+Linux Flutter-feature parent build. All **44 tests / seven groups** pass in both
+runs. The first outer run fails because its required inventory still names the old
+cancellation-only test; the final inventory names all selected tests. No behavioral
+assertion is weakened. Final build/execution times are 180 / 16 seconds.
+
+| Source / TUF run | Artifact SHA-256 | Serial SHA-256 | Outer result |
+| --- | --- | --- | --- |
+| `3c84e8ff` / `C3YJBt9rJs` | `6aaf32ad40188f6f54a10e4d9aa887e0aba3b1ade74afee343350655de9707df` | `c25a4d315a5b5947abc0656c9b2ce3328fe456ce7e388457d189019c66ad46e5` | 1, stale required test name |
+| `e8c40e09` / `Zrb3ZK9x4P` | `807801e623506bfa252bb3b33674bea433bb33a1013ec1c741da9a0f6dc79464` | `0b0f5c2b227dc67709baa26939da67f1f80879adf6b1016ad6f0fb43dab9b409` | 0 |
+
+Raw serials have prefix `android-rust-lifecycle-tests-run.` and suffix
+`.serial.log`, with 15,487 / 9,615 bytes respectively. All fourteen serial,
+console, storage and listener files total 169,718 bytes per host and are
+hash-verified on CTE and TUF. QEMU 3217988 / 3219430 joins with zero status after
+452.687 / 469.110 seconds. Wrappers 3217498 / 3218940 and RAM workspaces
+`run._iixmylf` / `run.3x10rje8` are absent. Each run has four zero listener deltas.
+Maximum scratch is 6,291,648,512 bytes within 7 GiB; minimum available host memory
+is 34,391,781,376 bytes. After evidence verification, exact first-run diagnostics
+remove 3,457,024 allocated bytes; the successful harness retires its own run root.
+
+This accepts the named Linux CM teardown correction using the actual runner and
+Unix transport with fixture authority and UI. Android branches run on Linux.
+Installed privileged authentication, device/cross-OS behavior, full peer flows,
+runtime-shutdown/long-session stress, shared-parent/mount-root staging and release
+acceptance remain OPEN. The shared-parent layout remains the next substantive
+receive design obligation; its earlier proposal creates no permission dependency.

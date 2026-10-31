@@ -3527,29 +3527,34 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   early terminal reply, owner removal or same-ID admission. After release, exact cleanup,
   permit return, preserved original bytes and a usable successor all pass.
 
-  At `597023fe`, TUF `n69MMkcO1o`, `--linux-file-receive-caller-tests` exits zero:
-  **22 tests in five groups pass**, with a 179-second full Linux Flutter-feature parent
-  build and 12-second execution. Caller fixtures now observe actual private staging and
-  require pre-failure artifact presence. The ten CM replacement scenes retain both error
-  halves, original/replacement bytes and identities, the uncertainty marker, deletion of
-  the other exact artifact, late block/Done refusal and independent completion. Viewer
-  no-follow/cleanup/next-file cases, native CM output stalls, job IDs and startup controls pass.
-  Artifact SHA-256: `cf423d1afebe33d7e1eea51c4dc4f1905895c26e273f1a94a73021138a4e5180`.
+  **Ordinary CM teardown (`3c84e8ff`, `e8c40e09`) — Linux correction accepted.**
+  One connection owner retains its jobs, registry generation and reserved cleanup capacity.
+  Jobs keep that reservation between operations; abandoned outcomes transfer the whole owner.
+  Native retirement runs off the executor, and its exact join precedes registry/UI retirement
+  and permit release. The existing bounded drain completes abandoned joins directly.
+  At baseline `ca314289`, close, disconnect, socket shutdown and task abort block the executor
+  until a three-second watchdog releases fsync; all four permit newer-source replacement.
+  The unchanged six-case regression now retains ownership and capacity, refuses replacement,
+  and completes another connection's directory request within one second while fsync is held.
+  Original bytes, exact staging cleanup, one UI retirement and usable successors all pass.
+  Two saturation cases prove new work is refused before effects while an admitted transfer
+  continues and can retire through normal close or abort with all 32 slots occupied.
+
+  At `e8c40e09`, TUF `Zrb3ZK9x4P`, `--linux-file-receive-caller-tests` exits zero:
+  **44 tests in seven groups pass**, with a 180-second full Linux Flutter-feature parent
+  build and 16-second execution. The ten CM replacement scenes retain both error halves,
+  exact/foreign artifacts, uncertainty markers and late-work refusal. Viewer failure cases,
+  native output stalls, selected-operation/read-tick cancellation, generation and Android CM
+  lifecycle branches, job IDs and startup controls pass. Artifact SHA-256:
+  `807801e623506bfa252bb3b33674bea433bb33a1013ec1c741da9a0f6dc79464`.
   All four host listener deltas are zero; QEMU and bounded RAM scratch retire. Raw receipt:
-  `android-rust-lifecycle-tests-run.n69MMkcO1o.serial.log`. The audit retains exact baseline,
-  fixture failures, source/artifact identities and cleanup. Historical caller evidence remains
+  `android-rust-lifecycle-tests-run.Zrb3ZK9x4P.serial.log`. The audit retains the failing
+  baselines, intermediate inventory failure, source/artifact identities and cleanup.
+  Historical caller evidence remains
   in `file-receive-callers-native-9a7f04b1.json` and `cm-sidecar-cleanup-native-b57c4071.json`.
 
-  The live CM runner uses a fixture authority validator and test UI. Ordinary connection
-  teardown is now a reproduced failure at `ca314289` / TUF `W5buT2IeLm`: close,
-  disconnect, socket shutdown and task abort all block the executor until the native-fsync
-  observer's three-second watchdog releases it. The first three publish registry/UI retirement
-  before cleanup; abort retains that owner but has no in-flight reservation or charged drain
-  capacity. A newer-source registry reservation succeeds during all four held barriers and is
-  rolled back without publication. Both explicit-cancellation controls still pass. Original
-  bytes, final cleanup and usable successors pass after release. The expanded test fails;
-  the other 21 profile tests are unexecuted. Job, registry and bounded cleanup ownership must
-  remain together through ordinary exit and cancellation; correction and acceptance remain OPEN.
+  The live Unix CM runner uses a fixture authority validator and test UI. Android Rust
+  branches execute on Linux; no Android device, Windows or installed authentication ran.
   Complete confirmation/skip/disconnect/reconnect,
   installed privileged-peer authentication, cross-OS/device behavior, resource/latency soak,
   artifacts/reproduction/review and shared-parent/mount-root staging acceptance remain OPEN.

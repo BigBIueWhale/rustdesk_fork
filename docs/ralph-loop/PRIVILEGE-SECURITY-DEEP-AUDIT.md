@@ -122570,3 +122570,36 @@ and retry/checkpoint effects remain unaccepted; transactional admission does not
 substitute for those paths. The three completed-destination staging failures remain
 OPEN/STOP-SHIP and provide the next independent receive-layout work. No parked test,
 live instruction or unrelated host state was changed.
+
+### 2026-10-31 — final staging-directory retirement: authority experiment
+
+The preceding turn made transactional confirmation admission pass its native
+counterexamples. Return to the reproduced completed-destination listing/removal
+regression. No production layout change is selected yet. The question is whether
+empty-container retirement can satisfy the required ownership model without a
+universal protected sibling or filesystem-handle requirement; neither is available
+at every authorized destination in the earlier mount/principal observations.
+
+Primary research: Linux v6.1 `fs/namei.c::do_rmdir` looks up the final name under
+the parent inode lock; `unlinkat` rejects flags other than `AT_REMOVEDIR`, and `.`
+is not descriptor-target removal. A retained handle plus a preceding identity
+check therefore does not select the removed object atomically. Newer
+`F_SETDELEG` (documented since Linux 6.19) can defer conflicting namespace work,
+but the kernel forcibly breaks it after the lease deadline. It is neither present
+on the pinned 6.1 guest nor an indefinite ownership lock. Sources:
+https://raw.githubusercontent.com/torvalds/linux/v6.1/fs/namei.c and
+https://man7.org/linux/man-pages/man2/F_GETDELEG.2const.html .
+
+Extend the existing guest-only filesystem experiment with nine observations:
+four parent ownership/sticky-mode controls under an exclusive directory flock;
+four ordered final-name substitutions, followed by root `rmdir` and exact retained
+object/content observations; and descriptor-empty-path/dot/pre-unlinked-directory
+checks. UID 4001 actors have no capabilities, supplementary groups or inherited
+observer handles and are joined. A separate root-owned empty-directory control
+calibrates their own removal authority. Empty-directory substitution must be
+reported as replacement removal, never misreported as exact cleanup. File,
+symlink and nonempty-directory replacements must survive. These are primitive
+experiments, not production acceptance or a waiver of exact retirement. Reuse the
+canonical file-metadata lane so the same run retains the current authority/crash
+and failing lifecycle controls; the three separately parked FIFO cases and full
+application lane remain excluded. No new runtime result is claimed in preparation.

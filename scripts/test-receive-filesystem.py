@@ -3,6 +3,7 @@
 
 import ctypes
 import errno
+import fcntl
 import hashlib
 import json
 import os
@@ -26,6 +27,7 @@ LIBC.statx.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int,
 LIBC.name_to_handle_at.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_void_p,
                                    ctypes.POINTER(ctypes.c_int), ctypes.c_int]
 LIBC.open_by_handle_at.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_int]
+LIBC.unlinkat.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
 
 
 class Handle(ctypes.Structure):
@@ -145,7 +147,7 @@ def identity_case(base):
             "inode_reuse": reused, "reuse_attempt_bound": 64}
 
 
-def principal_case(base, uid, parent_pid):
+def principal_case(base, uid, parent_pid, operation=None):
     if uid:
         os.setgroups([])
         os.setresgid(uid, uid, uid)
@@ -160,6 +162,9 @@ def principal_case(base, uid, parent_pid):
     if uid:
         assert not fields["Groups"]
         assert all(int(fields[key], 16) == 0 for key in ("CapEff", "CapPrm", "CapInh", "CapAmb"))
+    if operation is not None:
+        return {"uid": uid, "no_new_privileges": True,
+                "effective_capabilities": fields["CapEff"], "result": operation(base)}
     result = identity_case(base)
     anchor = base.parent / f"anchor-{uid}"
     try:
@@ -173,14 +178,23 @@ def principal_case(base, uid, parent_pid):
             "identity": result, "staging_parent_mkdir_errno": anchor_errno}
 
 
-def joined_principal(base, uid):
+def joined_principal(base, uid, operation=None):
     read_fd, write_fd = os.pipe2(os.O_CLOEXEC)
     parent_pid = os.getpid()
     pid = os.fork()
     if pid == 0:
         os.close(read_fd)
         try:
-            message = {"result": principal_case(base, uid, parent_pid)}
+            # A foreign actor must not inherit the observer's retained directory handles.
+            for entry in os.listdir("/proc/self/fd"):
+                fd = int(entry)
+                if fd > 2 and fd != write_fd:
+                    try:
+                        os.close(fd)
+                    except OSError as error:
+                        if error.errno != errno.EBADF:
+                            raise
+            message = {"result": principal_case(base, uid, parent_pid, operation)}
         except BaseException as error:
             message = {"error": repr(error)}
         encoded = json.dumps(message, sort_keys=True).encode()
@@ -219,6 +233,114 @@ def joined_principal(base, uid):
         os.close(read_fd)
 
 
+def failure(operation):
+    try:
+        operation()
+    except OSError as error:
+        return error.errno
+    return 0
+
+
+def retirement_cases(root):
+    observations = []
+    for label, owner, mode, admitted in (("protected", 0, 0o755, False),
+            ("public", 0, 0o777, True), ("sticky-root", 0, 0o1777, False),
+            ("sticky-actor", 4001, 0o1777, True)):
+        base = root / label
+        base.mkdir()
+        os.chown(base, owner, owner)
+        base.chmod(mode)
+        (base / "stage").mkdir(mode=0o700)
+        (base / "root-empty").mkdir(mode=0o700)
+        fd = os.open(base, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            def actor(path):
+                return {"rename_errno": failure(lambda: (path / "stage").rename(path / "held")),
+                        "rmdir_errno": failure(lambda: (path / "root-empty").rmdir())}
+            result = joined_principal(base, 4001, actor)
+            errors = result["result"]
+            assert all(value == 0 if admitted else value in (errno.EACCES, errno.EPERM)
+                       for value in errors.values()), errors
+            assert (base / "held").exists() == admitted
+            assert (base / "root-empty").exists() != admitted
+            observations.append({"case": "directory-parent-authority", "layout": label,
+                                 "parent_owner": owner, "parent_mode": oct(mode),
+                                 "parent_flock": "exclusive", **result})
+        finally:
+            os.close(fd)
+            shutil.rmtree(base)
+
+    for kind in ("empty", "nonempty", "regular", "symlink"):
+        base = root / ("replacement-" + kind)
+        base.mkdir()
+        base.chmod(0o777)
+        stage = base / "stage"
+        replacement = base / "replacement"
+        stage.mkdir(mode=0o700)
+        if kind in ("empty", "nonempty"):
+            replacement.mkdir(mode=0o700)
+            if kind == "nonempty":
+                (replacement / "guard").write_bytes(b"root-private-guard")
+        elif kind == "regular":
+            replacement.write_bytes(b"root-private-file")
+            replacement.chmod(0o600)
+        else:
+            replacement.symlink_to("../symlink-guard")
+        (base / "root-empty-control").mkdir(mode=0o700)
+        original = directory(stage)
+        substituted = os.open(replacement, os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC)
+        try:
+            def substitute(path):
+                (path / "stage").rename(path / "held")
+                (path / "replacement").rename(path / "stage")
+                # Calibrate the actor's existing removal authority on an equivalent
+                # root-owned empty directory, before the receiver uses root authority.
+                (path / "root-empty-control").rmdir()
+                return {"substitution": True, "empty_root_control_removed": True}
+            actor = joined_principal(base, 4001, substitute)
+            result = failure(stage.rmdir)
+            assert result == {"empty": 0, "nonempty": errno.ENOTEMPTY,
+                              "regular": errno.ENOTDIR, "symlink": errno.ENOTDIR}[kind]
+            assert os.fstat(original).st_ino == (base / "held").stat().st_ino
+            assert os.fstat(original).st_nlink > 0
+            assert (os.fstat(substituted).st_nlink == 0) == (kind == "empty")
+            if kind == "nonempty":
+                assert (stage / "guard").read_bytes() == b"root-private-guard"
+            elif kind == "regular":
+                assert stage.read_bytes() == b"root-private-file"
+            elif kind == "symlink":
+                assert stage.is_symlink() and os.readlink(stage) == "../symlink-guard"
+            observations.append({"case": "directory-removal-substitution", "replacement": kind,
+                                 "receiver_uid": 0, "rmdir_errno": result,
+                                 "original_retained": True, "replacement_removed": kind == "empty",
+                                 "actor": actor})
+        finally:
+            os.close(substituted)
+            os.close(original)
+            shutil.rmtree(base)
+
+    base = root / "descriptor-removal"
+    base.mkdir()
+    fd = directory(base)
+    try:
+        empty_path = failure(lambda: checked(LIBC.unlinkat(fd, b"", 0x1000 | 0x200)))
+        dot = failure(lambda: checked(LIBC.unlinkat(fd, b".", 0x200)))
+        assert empty_path == errno.EINVAL and dot == errno.EINVAL and base.is_dir()
+        base.rmdir()
+        assert os.fstat(fd).st_nlink == 0
+        def create_after_removal():
+            created = os.open("payload", os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600, dir_fd=fd)
+            os.close(created)
+        create = failure(create_after_removal)
+        assert create == errno.ENOENT
+        observations.append({"case": "directory-descriptor-removal", "empty_path_errno": empty_path,
+                             "dot_errno": dot, "create_after_removal_errno": create})
+    finally:
+        os.close(fd)
+    return observations
+
+
 def main():
     assert os.geteuid() == 0 and platform.machine() == "x86_64"
     assert "rustdesk.verifier_vm=1" in Path("/proc/cmdline").read_text().split()
@@ -232,6 +354,12 @@ def main():
     mounted = []
     observations = []
     try:
+        guard = root / "symlink-guard"
+        guard.mkdir(mode=0o700)
+        (guard / "data").write_bytes(b"unchanged-guard")
+        observations.extend(retirement_cases(root))
+        assert (guard / "data").read_bytes() == b"unchanged-guard"
+        shutil.rmtree(guard)
         for name in ("native", "tmpfs", "bind", "readonly", "lower", "upper", "work", "overlay"):
             (root / name).mkdir(mode=0o755)
             (root / name).chmod(0o755)
@@ -279,10 +407,10 @@ def main():
             mounted.pop()
         shutil.rmtree(root)
         assert not root.exists()
-    assert len(observations) == 14
+    assert len(observations) == 23
     for observation in observations:
         print("RECEIVE_FILESYSTEM_CASE=" + json.dumps(observation, sort_keys=True))
-    print("RECEIVE_FILESYSTEM=observed cases=14 principals=0,4001 children=joined mounts=retired "
+    print("RECEIVE_FILESYSTEM=observed cases=23 principals=0,4001 children=joined mounts=retired "
           "fixture=retired product=unexecuted kernel=" + platform.release()
           + " source_sha256=" + hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
 

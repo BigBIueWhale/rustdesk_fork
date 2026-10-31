@@ -3601,6 +3601,7 @@ run_focused_rust_tests() {
                 fs::tests::file_metadata_pending_resume_retirement_preserves_saved_bytes
                 fs::tests::file_metadata_resume_cancellation_preserves_partial_and_refuses_reuse
                 fs::confirmation::tests::slow_sync::stalled_receive_retirement_keeps_control_and_exact_cleanup_ownership
+                fs::confirmation::tests::slow_sync::fresh_receive_cancellation_joins_native_preparation_and_retirement
                 fs::confirmation::tests::slow_sync::admission_refusal_preserves_the_original_receive_owner
             )
         fi
@@ -6406,6 +6407,7 @@ run_focused_rust_tests() {
                                 fs::tests::file_metadata_pending_resume_retirement_preserves_saved_bytes \
                                 fs::tests::file_metadata_resume_cancellation_preserves_partial_and_refuses_reuse \
                                 fs::confirmation::tests::slow_sync::stalled_receive_retirement_keeps_control_and_exact_cleanup_ownership \
+                                fs::confirmation::tests::slow_sync::fresh_receive_cancellation_joins_native_preparation_and_retirement \
                                 fs::confirmation::tests::slow_sync::admission_refusal_preserves_the_original_receive_owner; do
                                 group_status=0
                                 timeout --signal=TERM --kill-after=5s 20s \

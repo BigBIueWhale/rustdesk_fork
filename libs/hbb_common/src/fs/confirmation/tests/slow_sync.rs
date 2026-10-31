@@ -232,6 +232,115 @@ fn stalled_receive_retirement_keeps_control_and_exact_cleanup_ownership() {
 }
 
 #[test]
+fn fresh_receive_cancellation_joins_native_preparation_and_retirement() {
+    use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::{TcpListener, TcpStream}};
+    drain().unwrap();
+    let observer = Observer::new();
+    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+    let main_tid = unsafe { libc::syscall(libc::SYS_gettid) } as u32;
+    runtime.block_on(async {
+        for (retired, prepare, abandon) in [(false, false, false), (false, false, true),
+            (false, true, false), (false, true, true), (true, false, false), (true, false, true),
+            (true, true, false), (true, true, true)] {
+            let fixture = ReceiveFixture::new(false);
+            let digest = std::fs::read(&fixture.digest).unwrap();
+            let mut jobs = vec![fixture.job(732).await];
+            let parent = fixture.lease.parent().unwrap();
+            let meta = std::fs::metadata(parent).unwrap();
+            let (armed, ready) = oneshot::channel();
+            let (held, notification) = oneshot::channel();
+            let (release, released) = mpsc::sync_channel(1);
+            let (finished, continued) = oneshot::channel();
+            // A digest read distinguishes old-pair retirement from earlier
+            // enrollment barriers without depending on a syscall ordinal.
+            let after_read = retired.then(|| AccessWatch::new(&fixture.digest));
+            observer.commands.send((Some(Gate { identity: (meta.dev(), meta.ino()),
+                after_read, held, release: released, finished }), armed)).unwrap();
+            assert!(ready.await.unwrap());
+            let mut owner = FileConfirmations::default();
+            if prepare { owner.prepare(&mut jobs, 732, 0, 0).unwrap(); }
+            else {
+                owner.start(&mut jobs, FileTransferSendConfirmRequest { id: 732, file_num: 0,
+                    union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(0)),
+                    ..Default::default() }).unwrap();
+            }
+            assert!(jobs.is_empty());
+            let tid = tokio::time::timeout(Duration::from_secs(3), notification).await.unwrap().unwrap();
+            assert_ne!(tid, main_tid);
+            assert!(!owner.pending[0].join.as_ref().unwrap().task.is_finished());
+            assert_eq!(owner.metas().count(), 1);
+            if retired {
+                assert!(!fixture.payload.exists() && !fixture.digest.exists());
+                assert!(fixture.lease.exists());
+            } else {
+                assert_eq!(std::fs::read(&fixture.payload).unwrap(), b"abc");
+                assert_eq!(std::fs::read(&fixture.digest).unwrap(), digest);
+            }
+            assert_eq!(std::fs::read(&fixture.target).unwrap(), b"original");
+            if !abandon {
+                assert!(owner.cancel(732));
+                assert_eq!(owner.metas().count(), 0);
+            }
+            // Cancelling the wait must leave the accepted native work owned.
+            assert!(tokio::time::timeout(Duration::from_millis(50), owner.next()).await.is_err());
+            assert_eq!(owner.len(), 1);
+            assert_eq!(drain().unwrap().capacity.available_permits(), DRAIN_CAPACITY - 1);
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let (outgoing, incoming) = tokio::join!(TcpStream::connect(listener.local_addr().unwrap()), listener.accept());
+            let (mut outgoing, mut incoming) = (outgoing.unwrap(), incoming.unwrap().0);
+            let started = Instant::now();
+            tokio::time::timeout(Duration::from_secs(1), async {
+                outgoing.write_all(b"ping").await.unwrap();
+                let mut bytes = [0; 4];
+                incoming.read_exact(&mut bytes).await.unwrap();
+                assert_eq!(&bytes, b"ping");
+                incoming.write_all(b"pong").await.unwrap();
+                outgoing.read_exact(&mut bytes).await.unwrap();
+                assert_eq!(&bytes, b"pong");
+            }).await.unwrap();
+            let control_us = started.elapsed().as_micros();
+            assert!(control_us < 1_000_000);
+            if abandon {
+                drop(owner);
+                assert_eq!(drain().unwrap().capacity.available_permits(), DRAIN_CAPACITY - 1);
+                release.send(()).unwrap();
+            } else {
+                release.send(()).unwrap();
+                let completion = tokio::time::timeout(Duration::from_secs(3), owner.next()).await.unwrap();
+                assert!(owner.is_empty());
+                assert!(completion.job.unwrap().is_none());
+                assert!(completion.confirmation.is_none());
+                let log: serde_json::Value = serde_json::from_str(&completion.cancelled_log.unwrap()).unwrap();
+                assert_eq!(log["id"], 732);
+                assert_eq!(log["cancel"], true);
+                assert_eq!(log["done"], false);
+            }
+            assert!(continued.await.unwrap());
+            tokio::time::timeout(Duration::from_secs(3), async {
+                while drain().unwrap().capacity.available_permits() != DRAIN_CAPACITY {
+                    tokio::time::sleep(Duration::from_millis(1)).await;
+                }
+            }).await.unwrap();
+            assert_eq!(std::fs::read(&fixture.target).unwrap(), b"original");
+            assert!(!fixture.payload.exists() && !fixture.digest.exists() && !fixture.lease.exists());
+            for entry in std::fs::read_dir("/proc/thread-self/fd").unwrap() {
+                match std::fs::read_link(entry.unwrap().path()) {
+                    Ok(path) => assert!(!path.starts_with(parent), "retained receive handle: {path:?}"),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => panic!("cannot inspect fresh receive handles: {error}"),
+                }
+            }
+            let mut lease = super::super::super::ReceivePathLease::acquire(&fixture.target, false).unwrap();
+            lease.retire().unwrap();
+            drop((lease, outgoing, incoming, listener, fixture));
+            println!("FILE_CONFIRMATION_FRESH_CANCEL=pass retired={retired} prepare={prepare} abandon={abandon} control_us={control_us} wait=cancelled native=joined permits=returned artifacts=retired final=preserved lease=reacquired");
+        }
+    });
+    drop(runtime);
+    drop(observer);
+}
+
+#[test]
 fn admission_refusal_preserves_the_original_receive_owner() {
     use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::{TcpListener, TcpStream}};
     drain().unwrap();

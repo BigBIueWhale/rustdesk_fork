@@ -122210,3 +122210,19 @@ forwards that log without recovering the job or stream. The focused control test
 also checks its exact ID and cancel/done fields; successful/error completions must
 not fabricate that log. This follow-up changes source after the preceding run and
 requires its own focused pass before final acceptance.
+
+**Final library candidate accepted.** Source
+`dc2ed418158c4dbee59156c9ee9ad90d0685f4be`, tree
+`1fc50c672ede2a8618089235f201a44aff1e4586`, TUF `iv5usTd4OM`, passes all 28
+required tests in 26 groups, including the added cancellation-log assertions.
+Artifact SHA-256
+`262c8da172b05e2972f7fe3c10d2073828973b7ecefb4ff1a8d525f64a84205a`.
+Serial 11,211 bytes, SHA-256
+`34497cd50fca15c94aa44f5fb0bfd1689b5792be5405f8fe1a468b69e8bb5158`.
+QEMU 3046734 joins after 142.930 seconds, RAM `run.3kdw6wma` retires, and all
+four listener deltas are zero. Both commands exit zero; their fourteen raw files
+are retained on both hosts. No full-parent build, viewer/CM execution or parked
+pre-IO test ran. The controlled integration remains source-prepared, and complete
+viewer/CM ownership plus real authenticated long-prefix behavior remain open.
+The existing receive namespace lifecycle failures are unchanged. Product/test
+source is unchanged after this accepted candidate; the ledger records these limits.

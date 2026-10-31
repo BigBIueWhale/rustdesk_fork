@@ -16223,16 +16223,25 @@ counter refusal. That run's summary still prints its old literal `tests=15`; the
 individual records establish 23 passes. The summary now uses the already-checked
 aggregate and the outer duplicate literal is removed; the raw evidence is preserved.
 
-**Next integration requirement:** prefix work must leave connection control/cancellation
-responsive. Viewer digest handling and direct sender confirmation currently await the
-hash inside the message handler, while both connection loops enforce a 30-second
-receive deadline. The measured library hash exceeds that interval; yielding between
-chunks does not let the awaiting message loop process keepalives. This is a source
-integration finding plus component timing, not a measured installed disconnect.
-Correct and verify that lifetime before accepting large/slow-source resume. Existing
-full-parent/viewer execution parks remain in force. Resume content proof also does
-not freeze source bytes against later concurrent mutation or establish a complete
-replacement staging layout.
+**Resume worker — library accepted; application integration incomplete.**
+`891ea81e`/`dc2ed418` give confirmations owned asynchronous jobs, cooperative
+cancellation and exact completion/drain. A shared 32-worker limit remains charged
+through collection, including completed or cancelled work. The controlled direct
+sender now uses this owner, counts pending jobs and rejects cancelled completions;
+its cancellation log is returned only after retirement. At `dc2ed418`, TUF
+`iv5usTd4OM`, all 28 focused sender/ownership tests pass in 26 groups. The five
+new cases cover exact proof outcomes, TCP control during a kernel-observed prefix
+read, cancelled waits, late cancellation, owner-drop handle cleanup and bounded
+capacity/retry. These are real-file/socket library tests, not application handlers.
+
+The changed controlled loop remains uncompiled/unexecuted in the full application;
+viewer proof production and CM scheduling remain incomplete. Their required control
+responsiveness follows from the measured 62.764-second hash and the connection
+loops' 30-second receive deadline; no installed disconnect has been measured.
+Full-parent/viewer execution parks remain in force pending the specific resumption
+question. Next verify real-handler keepalive/cancellation and complete viewer/CM
+ownership before accepting large/slow-source resume. Content proof does not freeze
+source bytes against later mutation or resolve the staging-layout failures above.
 
 **Generation-lock retirement (`edddaf7b`) — component accepted.** Completed claims
 release their shared membership under the private enrollment gate. Only exclusive

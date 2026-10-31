@@ -122517,3 +122517,31 @@ lifetime research remains applicable: moving a job without securing a drain owne
 cannot be repaired by detaching another task. Full application/viewer execution
 remains parked, and caller shutdown/CM scheduling plus staging lifecycle acceptance
 remain separate open obligations.
+
+Baseline `75ae49f83ed3d8feacbeb3c10cfcd6935e1aac74`, TUF `O2TuHjGfrX`, passes
+the six preceding cleanup controls but fails all three admission cases. Each calls
+native sync, blocks until the observer's three-second release, consumes the original
+job and prevents its continuation. Fixtures and permits retire before the 9.09-second
+failing verdict. Artifact SHA-256
+`55783aaa6e1589d4ce7550ce5c463e79b9ebfe25e68d92d972284f1fd97096b1`.
+Serial 17,284 bytes, SHA-256
+`2b42642bbea39142e8f58390a1ffddda74fc69efe159ea657e02925e56a2f785`.
+QEMU 3101007 joins after 154.086 seconds; RAM `run.qebe1ax5` retires and all four
+listener deltas are zero. Seven raw files / 89,330 bytes are verified on both hosts
+before removing 3,461,120 allocated bytes of exact failed-run diagnostic scratch.
+
+The candidate API borrows the caller's job collection, resolves one unambiguous ID,
+validates the operation and acquires capacity before removing the selected job.
+All ordinary refusal paths leave the collection untouched; no synchronous retirement
+or unbounded rejected-work queue remains inside admission. Accepted work retains the
+existing worker/cleanup ownership. The native test changes only its call to the new
+API; the refusal, sync, preservation and valid-continuation oracles are unchanged.
+Additional checks cover ambiguous/missing IDs and unchanged neighboring jobs.
+
+Viewer call sites now retain their jobs until admission succeeds and keep refusals
+under the existing connection-failure/checkpoint flow. The controlled caller still
+retires its failed send job before reporting the file error. These caller changes are
+source preparation only: the full-parent/viewer build remains parked. Their final
+shutdown/cleanup scheduling, user-visible refusal/retry behavior and real message
+handlers require execution; transactional library admission does not establish those
+broader lifecycle properties. No corrected native pass is yet claimed.

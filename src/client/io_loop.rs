@@ -2609,21 +2609,21 @@ impl<T: InvokeUiSession> Remote<T> {
 
     fn prepare_file_confirmation(
         &mut self,
-        mut job: fs::TransferJob,
+        id: i32,
         receiving: bool,
         file_num: i32,
         offset: u64,
     ) -> bool {
-        let context = ViewerFileWriteContext::control(Some(job.id()), file_num, "prepare file confirmation");
-        if self.file_confirmation_pending(job.id())
-            || self.read_jobs.iter().chain(&self.write_jobs).any(|current| current.id() == job.id())
+        let context = ViewerFileWriteContext::control(Some(id), file_num, "prepare file confirmation");
+        let opposite = if receiving { &self.read_jobs } else { &self.write_jobs };
+        if self.file_confirmation_pending(id)
+            || opposite.iter().any(|current| current.id() == id)
         {
-            let mut error = "duplicate file job during confirmation".to_owned();
-            append_receive_cleanup_failure(&mut error, &mut job);
-            return self.record_file_flow_failure(context, error);
+            return self.record_file_flow_failure(context, "duplicate file job during confirmation");
         }
-        let owner = if receiving { &mut self.write_confirmations } else { &mut self.read_confirmations };
-        match owner.prepare(job, file_num, offset) {
+        let (owner, jobs) = if receiving { (&mut self.write_confirmations, &mut self.write_jobs) }
+            else { (&mut self.read_confirmations, &mut self.read_jobs) };
+        match owner.prepare(jobs, id, file_num, offset) {
             Ok(()) => true,
             Err(error) => self.record_file_flow_failure(context, error.to_string()),
         }
@@ -3328,13 +3328,7 @@ impl<T: InvokeUiSession> Remote<T> {
                                         }
                                         if let Some(overwrite) = overwrite_strategy {
                                             if overwrite {
-                                                let Some(job) = fs::remove_job(digest.id, &mut self.read_jobs) else {
-                                                    return self.record_file_flow_failure(
-                                                        ViewerFileWriteContext::control(Some(digest.id), digest.file_num, "prepare upload confirmation"),
-                                                        "upload job disappeared before confirmation",
-                                                    );
-                                                };
-                                                return self.prepare_file_confirmation(job, false, digest.file_num, offset);
+                                                return self.prepare_file_confirmation(digest.id, false, digest.file_num, offset);
                                             }
                                             let request = FileTransferSendConfirmRequest {
                                                 id: digest.id,
@@ -3429,13 +3423,7 @@ impl<T: InvokeUiSession> Remote<T> {
                                         }
                                         if let Some(overwrite) = overwrite_strategy {
                                             if overwrite {
-                                                let Some(job) = fs::remove_job(digest.id, &mut self.write_jobs) else {
-                                                    return self.record_file_flow_failure(
-                                                        ViewerFileWriteContext::control(Some(digest.id), digest.file_num, "prepare download confirmation"),
-                                                        "download job disappeared before confirmation",
-                                                    );
-                                                };
-                                                return self.prepare_file_confirmation(job, true, digest.file_num, offset);
+                                                return self.prepare_file_confirmation(digest.id, true, digest.file_num, offset);
                                             }
                                             let request = FileTransferSendConfirmRequest {
                                                 id: digest.id,
@@ -3857,9 +3845,9 @@ impl<T: InvokeUiSession> Remote<T> {
                                 "file confirmation is already pending",
                             );
                         }
-                        if let Some(job) = fs::remove_job(c.id, &mut self.read_jobs) {
+                        if self.read_jobs.iter().any(|job| job.id() == c.id) {
                             let (id, file_num) = (c.id, c.file_num);
-                            if let Err(error) = self.read_confirmations.start(job, c) {
+                            if let Err(error) = self.read_confirmations.start(&mut self.read_jobs, c) {
                                 return self.record_file_flow_failure(
                                     ViewerFileWriteContext::control(
                                         Some(id),

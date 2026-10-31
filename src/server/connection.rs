@@ -9854,9 +9854,10 @@ impl Connection {
                                     self.file_confirmations.cancel(r.id);
                                     self.send(fs::new_error(r.id,
                                         "file confirmation is already pending", r.file_num)).await;
-                                } else if let Some(job) = fs::remove_job(r.id, &mut self.read_jobs) {
+                                } else if self.read_jobs.iter().any(|job| job.id() == r.id) {
                                     let (id, file_num) = (r.id, r.file_num);
-                                    if let Err(error) = self.file_confirmations.start(job, r) {
+                                    if let Err(error) = self.file_confirmations.start(&mut self.read_jobs, r) {
+                                        let _ = fs::remove_job(id, &mut self.read_jobs);
                                         self.send(fs::new_error(id, error, file_num)).await;
                                     }
                                 } else if let Some(generation) =

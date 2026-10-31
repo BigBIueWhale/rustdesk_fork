@@ -133,7 +133,7 @@ fn stalled_receive_retirement_keeps_control_and_exact_cleanup_ownership() {
             let job = fixture.job(724).await;
             let mut owner = FileConfirmations::default();
             let after_read = if phase == "completed" {
-                owner.prepare(job, 0, 3).unwrap();
+                owner.prepare(&mut vec![job], 724, 0, 3).unwrap();
                 tokio::time::timeout(Duration::from_secs(3), async {
                     while !owner.pending[0].join.as_ref().unwrap().task.is_finished() {
                         tokio::task::yield_now().await;
@@ -156,11 +156,11 @@ fn stalled_receive_retirement_keeps_control_and_exact_cleanup_ownership() {
             if let Some(job) = job {
                 if phase == "cancel" {
                     let mut watch = AccessWatch::new(&fixture.payload);
-                    owner.prepare(job, 0, fixture.offset).unwrap();
+                    owner.prepare(&mut vec![job], 724, 0, fixture.offset).unwrap();
                     watch.wait().await;
                     assert!(!owner.pending[0].join.as_ref().unwrap().task.is_finished());
                 } else {
-                    owner.start(job, FileTransferSendConfirmRequest { id: 724, file_num: 0,
+                    owner.start(&mut vec![job], FileTransferSendConfirmRequest { id: 724, file_num: 0,
                         union: Some(file_transfer_send_confirm_request::Union::Resume(FileTransferResume {
                             offset: 3, prefix_sha256: vec![0; 32].into(), ..Default::default()
                         })), ..Default::default() }).unwrap();
@@ -262,7 +262,7 @@ fn admission_refusal_preserves_the_original_receive_owner() {
             if reason == "closed" { owner.close(); }
             if reason == "capacity" {
                 for id in 800..800 + DRAIN_CAPACITY as i32 {
-                    other.prepare(fixture.job(id), 0, 3).unwrap();
+                    other.prepare(&mut vec![fixture.job(id)], id, 0, 3).unwrap();
                 }
                 tokio::time::timeout(Duration::from_secs(3), async {
                     while other.pending.iter().any(|p| !p.join.as_ref().unwrap().task.is_finished()) {
@@ -280,7 +280,7 @@ fn admission_refusal_preserves_the_original_receive_owner() {
             assert!(ready.await.unwrap());
             let started = Instant::now();
             let file_num = if reason == "file" { 1 } else { 0 };
-            let result = owner.prepare(jobs.remove(0), file_num, 0);
+            let result = owner.prepare(&mut jobs, 730, file_num, 0);
             let responsive = started.elapsed() < Duration::from_millis(250);
             let error = result.unwrap_err().to_string();
             assert!(error.contains(match reason {

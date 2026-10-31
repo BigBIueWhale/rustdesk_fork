@@ -121,53 +121,49 @@ impl FileConfirmations {
             .map(|pending| &pending.meta)
     }
 
-    pub fn start(&mut self, job: TransferJob, request: FileTransferSendConfirmRequest) -> ResultType<()> {
-        self.start_operation(job, Operation::Apply(request))
+    /// Transfer the selected job only after admission succeeds. Refusal leaves
+    /// the caller's collection and every job's resources unchanged.
+    pub fn start(&mut self, jobs: &mut Vec<TransferJob>, request: FileTransferSendConfirmRequest) -> ResultType<()> {
+        self.start_operation(jobs, request.id, Operation::Apply(request))
     }
 
-    pub fn prepare(&mut self, job: TransferJob, file_num: i32, offset: u64) -> ResultType<()> {
-        self.start_operation(job, Operation::Prepare { file_num, offset })
+    pub fn prepare(&mut self, jobs: &mut Vec<TransferJob>, id: i32, file_num: i32, offset: u64) -> ResultType<()> {
+        self.start_operation(jobs, id, Operation::Prepare { file_num, offset })
     }
 
-    fn start_operation(&mut self, mut job: TransferJob, operation: Operation) -> ResultType<()> {
-        let admission = (|| {
-            if self.closed { bail!("file confirmation admission is closed"); }
-            if self.contains(job.id()) { bail!("file confirmation is already pending"); }
-            if self.len() >= MAX_ACTIVE_FILE_TRANSFER_READ_JOBS_PER_CONN {
-                bail!("too many pending file confirmations");
+    fn start_operation(&mut self, jobs: &mut Vec<TransferJob>, id: i32, operation: Operation) -> ResultType<()> {
+        if self.closed { bail!("file confirmation admission is closed"); }
+        if self.contains(id) { bail!("file confirmation is already pending"); }
+        if self.len() >= MAX_ACTIVE_FILE_TRANSFER_READ_JOBS_PER_CONN {
+            bail!("too many pending file confirmations");
+        }
+        let index = jobs.iter().position(|job| job.id() == id)
+            .ok_or_else(|| anyhow!("unknown file confirmation job {id}"))?;
+        if jobs[index + 1..].iter().any(|job| job.id() == id) {
+            bail!("ambiguous file confirmation job {id}");
+        }
+        let job = &jobs[index];
+        match &operation {
+            Operation::Apply(request) => {
+                job.validate_confirmation_target(request.id, request.file_num)?;
+                super::receive_confirmation_prefix(request)?;
             }
-            match &operation {
-                Operation::Apply(request) => {
-                    job.validate_confirmation_target(request.id, request.file_num)?;
-                    super::receive_confirmation_prefix(request)?;
+            Operation::Prepare { file_num, offset } => {
+                job.validate_confirmation_target(id, *file_num)?;
+                if *offset > u32::MAX as u64 {
+                    bail!("resume byte offset exceeds the protocol limit");
                 }
-                Operation::Prepare { file_num, offset } => {
-                    job.validate_confirmation_target(job.id(), *file_num)?;
-                    if *offset > u32::MAX as u64 {
-                        bail!("resume byte offset exceeds the protocol limit");
-                    }
-                }
             }
-            self.pending.try_reserve(1)
-                .map_err(|_| std::io::Error::from(std::io::ErrorKind::OutOfMemory))?;
-            let runtime = tokio::runtime::Handle::try_current()?;
-            let permit = drain()?.capacity.clone().try_acquire_owned()
-                .map_err(|_| anyhow!("file confirmation drain capacity reached"))?;
-            Ok((runtime, permit))
-        })();
-        let (runtime, permit) = match admission {
-            Ok(admission) => admission,
-            Err(error) => {
-                return match job.retire_current_file_state() {
-                    Ok(()) => Err(error),
-                    Err(cleanup) => Err(anyhow!("{error}; file confirmation cleanup failed: {cleanup}")),
-                };
-            }
-        };
-        let id = job.id();
+        }
+        self.pending.try_reserve(1)
+            .map_err(|_| std::io::Error::from(std::io::ErrorKind::OutOfMemory))?;
+        let runtime = tokio::runtime::Handle::try_current()?;
+        let permit = drain()?.capacity.clone().try_acquire_owned()
+            .map_err(|_| anyhow!("file confirmation drain capacity reached"))?;
         let file_num = job.file_num();
         let meta = job.gen_meta();
         let cancelled = Arc::new(AtomicBool::new(false));
+        let mut job = jobs.remove(index);
         job.resume_cancelled = Some(cancelled.clone());
         let worker_cancelled = cancelled.clone();
         let task = runtime.spawn(async move {
@@ -433,7 +429,12 @@ mod tests {
                 }
             }
             let mut owner = FileConfirmations::default();
-            owner.start(fixture.job(700), request).unwrap();
+            let mut jobs = vec![fixture.job(699), fixture.job(700), fixture.job(701)];
+            let survivors = vec![serde_json::to_value(jobs[0].gen_meta()).unwrap(),
+                serde_json::to_value(jobs[2].gen_meta()).unwrap()];
+            owner.start(&mut jobs, request).unwrap();
+            assert_eq!(jobs.iter().map(|job| serde_json::to_value(job.gen_meta()).unwrap())
+                .collect::<Vec<_>>(), survivors);
             let result = owner.next().await;
             assert_eq!((result.id, result.file_num, owner.len()), (700, 0, 0));
             assert!(result.cancelled_log.is_none());
@@ -462,8 +463,8 @@ mod tests {
         let request = fixture.large_source();
         let mut watch = AccessWatch::new(&fixture.source());
         let mut owner = FileConfirmations::default();
-        if prepare { owner.prepare(fixture.job(701), 0, u32::MAX as u64).unwrap(); }
-        else { owner.start(fixture.job(701), request).unwrap(); }
+        if prepare { owner.prepare(&mut vec![fixture.job(701)], 701, 0, u32::MAX as u64).unwrap(); }
+        else { owner.start(&mut vec![fixture.job(701)], request).unwrap(); }
         let mut wait = Box::pin(owner.next());
         let first = std::future::poll_fn(|cx| Poll::Ready(wait.as_mut().poll(cx))).await;
         assert!(first.is_pending());
@@ -512,7 +513,7 @@ mod tests {
             let (producer, peer) = if receiving { (receiver, sender) } else { (sender, receiver) };
             let expected_meta = serde_json::to_value(producer.gen_meta()).unwrap();
             let mut owner = FileConfirmations::default();
-            owner.prepare(producer, 0, 3).unwrap();
+            owner.prepare(&mut vec![producer], 720, 0, 3).unwrap();
             assert_eq!(serde_json::to_value(owner.metas().next().unwrap()).unwrap(), expected_meta);
             let completion = owner.next().await;
             assert_eq!(owner.metas().count(), 0);
@@ -521,7 +522,7 @@ mod tests {
             let request = FileTransferSendConfirmRequest::parse_from_bytes(&request.write_to_bytes().unwrap()).unwrap();
             assert!(matches!(request.union.as_ref(), Some(file_transfer_send_confirm_request::Union::Resume(resume))
                 if resume.offset == 3 && resume.prefix_sha256.len() == 32));
-            owner.start(peer, request).unwrap();
+            owner.start(&mut vec![peer], request).unwrap();
             let completion = owner.next().await;
             assert!(completion.confirmation.is_none());
             let peer = completion.job.unwrap().unwrap();
@@ -550,7 +551,7 @@ mod tests {
             let expected_meta = serde_json::to_value(job.gen_meta()).unwrap();
             let mut watch = AccessWatch::new(&fixture.payload);
             let mut owner = FileConfirmations::default();
-            owner.prepare(job, 0, fixture.offset).unwrap();
+            owner.prepare(&mut vec![job], 721, 0, fixture.offset).unwrap();
             if large { watch.wait().await; }
             if phase == "completed" {
                 tokio::time::timeout(Duration::from_secs(3), async {
@@ -574,7 +575,7 @@ mod tests {
                 other_fixture.large_source();
                 let mut other_watch = AccessWatch::new(&other_fixture.source());
                 let mut other = FileConfirmations::default();
-                other.prepare(other_fixture.job(723), 0, u32::MAX as u64).unwrap();
+                other.prepare(&mut vec![other_fixture.job(723)], 723, 0, u32::MAX as u64).unwrap();
                 other_watch.wait().await;
                 owner.close();
                 other.close();
@@ -606,12 +607,19 @@ mod tests {
         let fixture = Fixture::new();
         let mut owner = FileConfirmations::default();
         for (file_num, offset) in [(-1, 1), (1, 1), (0, u32::MAX as u64 + 1)] {
-            assert!(owner.prepare(fixture.job(722), file_num, offset).is_err());
+            let mut jobs = vec![fixture.job(722)];
+            assert!(owner.prepare(&mut jobs, 722, file_num, offset).is_err());
+            assert_eq!(jobs.len(), 1);
             assert_eq!((owner.len(), owner.metas().count(), fixture.source_handles()), (0, 0, 0));
         }
         let mut fresh = fixture.job(722);
         assert!(fresh.init_data_stream_for_cm().await.unwrap().is_some());
-        owner.prepare(fresh, 0, 0).unwrap();
+        let mut jobs = vec![fixture.job(722), fixture.job(722)];
+        assert!(owner.prepare(&mut jobs, 722, 0, 0).unwrap_err().to_string().contains("ambiguous"));
+        assert_eq!(jobs.len(), 2);
+        assert!(owner.prepare(&mut jobs, 999, 0, 0).unwrap_err().to_string().contains("unknown"));
+        assert_eq!(jobs.len(), 2);
+        owner.prepare(&mut vec![fresh], 722, 0, 0).unwrap();
         let completion = owner.next().await;
         assert!(matches!(completion.confirmation.unwrap().union,
             Some(file_transfer_send_confirm_request::Union::OffsetBlk(0))));
@@ -619,7 +627,7 @@ mod tests {
         assert_eq!(job.read().await.unwrap().unwrap().data.as_ref(), b"abcdef");
         job.retire_current_file_state().unwrap();
         owner.close_and_wait().await.unwrap();
-        assert!(owner.prepare(fixture.job(722), 0, 0).unwrap_err().to_string().contains("admission is closed"));
+        assert!(owner.prepare(&mut vec![fixture.job(722)], 722, 0, 0).unwrap_err().to_string().contains("admission is closed"));
         assert_eq!(fixture.source_handles(), 0);
         drop((job, fixture));
         println!("FILE_CONFIRMATION_PREPARE_ADMISSION=pass invalid=refused fresh=exact closed=refused handles=retired");
@@ -629,7 +637,7 @@ mod tests {
     async fn cancellation_after_worker_completion_cannot_restore_job() {
         let fixture = Fixture::new();
         let mut owner = FileConfirmations::default();
-        owner.start(fixture.job(702), fixture.request(702).await).unwrap();
+        owner.start(&mut vec![fixture.job(702)], fixture.request(702).await).unwrap();
         tokio::time::timeout(Duration::from_secs(3), async {
             while !owner.pending[0].join.as_ref().unwrap().task.is_finished() {
                 tokio::task::yield_now().await;
@@ -648,7 +656,7 @@ mod tests {
         let request = fixture.large_source();
         let mut watch = AccessWatch::new(&fixture.source());
         let mut owner = FileConfirmations::default();
-        owner.start(fixture.job(701), request).unwrap();
+        owner.start(&mut vec![fixture.job(701)], request).unwrap();
         watch.wait().await;
         assert!(fixture.source_handles() > 0);
         drop(owner);
@@ -671,7 +679,7 @@ mod tests {
         for index in 0..DRAIN_CAPACITY {
             let id = 710 + index as i32;
             let mut request = request.clone(); request.id = id;
-            owner.start(fixture.job(id), request).unwrap();
+            owner.start(&mut vec![fixture.job(id)], request).unwrap();
         }
         tokio::time::timeout(Duration::from_secs(3), async {
             while owner.pending.iter().any(|pending| !pending.join.as_ref().unwrap().task.is_finished()) {
@@ -679,14 +687,14 @@ mod tests {
             }
         }).await.unwrap();
         assert_eq!(owner.len(), DRAIN_CAPACITY);
-        assert!(owner.start(fixture.job(710), request.clone()).is_err());
-        assert!(other.start(fixture.job(710), request.clone()).unwrap_err()
+        assert!(owner.start(&mut vec![fixture.job(710)], request.clone()).is_err());
+        assert!(other.start(&mut vec![fixture.job(710)], request.clone()).unwrap_err()
             .to_string().contains("drain capacity"));
         owner.cancel(710);
         assert_eq!(owner.len(), DRAIN_CAPACITY);
         owner.close_and_wait().await.unwrap();
         assert_eq!((owner.len(), fixture.source_handles()), (0, 0));
-        other.start(fixture.job(710), request).unwrap();
+        other.start(&mut vec![fixture.job(710)], request).unwrap();
         let mut job = other.next().await.job.unwrap().unwrap();
         job.retire_current_file_state().unwrap();
         assert_eq!(fixture.source_handles(), 0);

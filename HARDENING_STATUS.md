@@ -43,6 +43,12 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-10-31):** Production directory-download follow-ups, including
+the proposed overwrite-decision scenario, remain OPEN/PARKED. The completed
+absent-destination download evidence remains valid; no overwrite fixture or run
+preceded this pivot. Work moved to native remote mouse delivery. Do not resume
+the file-transfer follow-up automatically.
+
 **User pivot (2026-10-31):** Two-Remote shared-key ownership validation remains
 OPEN/PARKED after read-only preparation. No second-viewer fixture or run follows
 that investigation. Completed Ctrl+A and abrupt-viewer-exit evidence remains.
@@ -2120,6 +2126,29 @@ host identity, host proof, known-hosts store, fingerprint UI, or pin CLI. The co
 cold R-B2/R-B10, independent-reproduction, or external-review obligations.
 
 **R-S19 — `AuthConnType` capability confinement (CWE-863).**
+
+**Linux remote mouse — eight full-app positive cases passed.**
+Harness `dcae70c7`, run `QGq70fVSbv`, reuses the complete `cf437894` app through
+`--mouse-input`. After real password authentication, native viewer input produces
+the expected controlled-side left/middle/right clicks, a left-button drag and all
+four wheel directions. All sixteen button events have exact identity, order and
+pre-event state. Two separately observed drag movements retain the held button;
+both displays finish each case with no held buttons. Quiet intervals reject extra
+pairs, and the viewer window and authenticated TCP connection remain unchanged.
+Click/wheel delivery takes 10–11 ms; the two-movement drag takes 42 ms. These are
+native event observations, not input-to-visible-response or application drop/scroll
+outcomes. Viewer RSS grows at most 548 KiB, with no thread or descriptor growth.
+
+The app is unmodified; the only intervening `src`/`libs`/`flutter` change is in a
+test-only module. Small drivers compile twice identically. The 110.316-second
+transaction joins viewer/server/Xvfb/containers and QEMU, retires 3,009,073,152 bytes
+peak RAM scratch and leaves all four host listener deltas zero. Exact command,
+artifact identities, native events, primary references and cleanup are retained in
+`mouse-input-dcae70c7.json` under `.harness-state/verifier-vm/` on CTE/TUF.
+No product defect or correction is claimed. Physical devices, other coordinate
+scales/layouts, application-specific outcomes, non-Remote refusal, installed
+privilege boundaries, other platforms and sustained-use acceptance remain OPEN
+under R-F1/R-S0/R-S19.
 
 **Linux remote keyboard — Ctrl+A corrected; eleven full-app cases passed.**
 `cf437894` routes Linux Legacy character shortcuts through the existing native

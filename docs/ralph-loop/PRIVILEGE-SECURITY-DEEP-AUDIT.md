@@ -125783,3 +125783,49 @@ exit 0 after 30.511 seconds, 402,546,688 bytes peak RAM scratch retires and
 three listener deltas are zero. Capsule, cleanup, three native attempts,
 preflight receipts and the count are hash-verified on CTE/TUF. This audit-only
 receipt preserves the counted ledger bytes.
+
+### 2026-10-31 — user pivot; native mouse delivery through the full Flutter peer
+
+The user directed work to another aspect. Production directory-download follow-ups,
+including the planned overwrite-decision case, remain OPEN/PARKED; no overwrite
+fixture or run preceded this pivot. The completed download pass remains. Selection
+is R-F1/R-S0/R-S19 authorized Remote mouse functionality: three ordinary buttons,
+held-button movement and both scroll axes are core workflows with missing full-app
+evidence. This advances native acceptance ahead of further component-only UI work.
+
+Harness `dcae70c76c982f0259516bdc48dcb69fe29cd668` adds `--mouse-input` to the existing
+source-bound app replay. The real Flutter password prompt authenticates the
+unchanged `cf437894` viewer/server pair. Only viewer XTEST input is injected;
+the controlled X server independently supplies actual button/motion events and
+held-state queries. The [XTEST contract](https://www.x.org/releases/current/doc/libXtst/xtestlib.html)
+supports server-mediated logical input. The
+[Xlib contract](https://www.x.org/releases/current/doc/libX11/libX11/libX11.html)
+defines pre-event button masks and live pointer state, so the observer checks both.
+It requires exact button/order/state, two individually observed held movements,
+100-ms quiet intervals, released state at both ends, unchanged window/TCP identity
+and the existing resource limits. Limits are five seconds per case and 128 polled
+events. The fixture never supplies controlled-side input or recovery releases.
+
+TUF `QGq70fVSbv` passes all eight cases and sixteen button transitions: left/middle/
+right click, left drag, wheel up/down/left/right. The drag moves from (320,226) to
+(400,286), with two held motion events. Delivery observations are 11/10/11/42/10/
+11/10/10 ms; these do not measure visible application response. Viewer RSS rises
+from 360,724 to at most 361,272 KiB; threads remain 58 and descriptors 44. The app
+manifest is `94941c425a12844e424c7ac903f8a84b93b19628f3ed391f29e77548e15f6d93`;
+production input source is unchanged since that build. Only the test-only
+`viewer_pipeline_smoke_tests.rs` differs in the intervening product directories.
+The observer compiles twice identically to
+`e1087ccad8cc45dccc90e627e85891388816cf76e3a8a55473cdf7c74d59992b`.
+
+The transaction completes in 110.316 seconds. Viewer, server, source, Xvfb and
+containers join; QEMU 3424456 joins exit 0. Peak RAM scratch 3,009,073,152 bytes
+retires, no active run root remains, and all four listener deltas are zero.
+The bounded capsule `mouse-input-dcae70c7.json` is 32,448 bytes, SHA-256
+`40e9f86fee28d97c40938695b3528208d287911d35b5e45863d6a291e4e330c8`.
+It and seven raw evidence files are hash-verified on CTE/TUF. Source review and
+`git diff --check` pass. No product defect, correction or LPE closure is claimed.
+This is one ordinary-user Linux X11 schedule; physical devices, coordinate scales/
+layouts, application drop/scroll effects, input-to-visible latency, wrong-session
+refusal, installed authority, other platforms and soak remain OPEN. A next useful
+mouse checkpoint is native held-button release when leaving the remote image;
+all independently parked topics remain parked.

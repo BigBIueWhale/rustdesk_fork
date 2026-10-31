@@ -133,13 +133,18 @@ fn receiver(fixture: &Fixture, size: u64) -> fs::TransferJob {
 async fn stage_partial(fixture: &Fixture, offset: u64, size: u64) -> PathBuf {
     use hbb_common::sha2::{Digest, Sha256};
 
-    // Establish the namespace through production inspection, then seed the saved
-    // bytes whose admission is the subject of the caller tests below.
+    // Establish retained staging in a shared fixture parent, then protect the
+    // parent again before seeding the saved bytes tested by the callers below.
+    use std::os::unix::fs::PermissionsExt;
+    let permissions = std::fs::metadata(&fixture.0).unwrap().permissions();
+    std::fs::set_permissions(&fixture.0, std::fs::Permissions::from_mode(0o777)).unwrap();
     let mut job = receiver(fixture, size);
-    job.inspect_receive_digest(&FileTransferDigest {
+    let prepared = job.inspect_receive_digest(&FileTransferDigest {
         id: 371, file_num: 0, file_size: size, last_modified: 19,
         ..Default::default()
-    }, false).await.unwrap();
+    }, false).await;
+    std::fs::set_permissions(&fixture.0, permissions).unwrap();
+    prepared.unwrap();
     job.retire_current_file_state().unwrap();
     let directories: Vec<_> = std::fs::read_dir(&fixture.0).unwrap()
         .map(|entry| entry.unwrap())

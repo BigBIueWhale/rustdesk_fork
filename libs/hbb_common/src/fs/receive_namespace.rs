@@ -133,6 +133,8 @@ struct DirectoryRecord {
     name: String,
     // None records durable setup intent; only Some admits transfer artifacts.
     inode: Option<u64>,
+    #[serde(default)]
+    retiring: bool,
 }
 
 fn read_record(coordinator: &File, record_name: &CStr) -> io::Result<Option<DirectoryRecord>> {
@@ -150,7 +152,8 @@ fn read_record(coordinator: &File, record_name: &CStr) -> io::Result<Option<Dire
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
     let suffix = record.name.strip_prefix(".rustdesk-receive-")
         .ok_or_else(|| io_invalid_input("invalid receive directory record name"))?;
-    if record.version != 1 || suffix.len() != 32 || !suffix.bytes().all(|b| b.is_ascii_hexdigit()) {
+    if record.version != 1 || suffix.len() != 32 || !suffix.bytes().all(|b| b.is_ascii_hexdigit())
+        || (record.retiring && record.inode.is_none()) {
         return Err(io_invalid_input("invalid receive directory record"));
     }
     Ok(Some(record))
@@ -251,6 +254,87 @@ fn prepare_directory(destination: &File, record: &DirectoryRecord) -> io::Result
     sync_recv_directory(&directory)?;
     sync_recv_directory(destination)?;
     Ok(directory)
+}
+
+fn retirement_parent_is_protected(destination: &File) -> io::Result<bool> {
+    let metadata = destination.metadata()?;
+    let owner = unsafe { libc::geteuid() };
+    // The group class includes the POSIX ACL mask. A sticky parent protects
+    // this effective-owner child only when the parent owner is also trusted.
+    Ok([0, owner].contains(&metadata.uid())
+        && (metadata.mode() & 0o022 == 0 || metadata.mode() & 0o1000 != 0))
+}
+
+fn retire_directory(coordinator: &File, record_name: &CStr, temporary: &CStr,
+    destination: &File, record: &mut DirectoryRecord) -> io::Result<bool> {
+    if !retirement_parent_is_protected(destination)? {
+        if record.retiring {
+            return Err(refused("receive retirement parent is no longer protected"));
+        }
+        return Ok(false);
+    }
+    let container = name(&record.name)?;
+    let directory = match directory_at(destination, &container) {
+        Ok(directory) => Some(directory),
+        Err(error) if record.retiring && error.kind() == io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error),
+    };
+    if let Some(directory) = directory {
+        private_directory(&directory)?;
+        let metadata = directory.metadata()?;
+        if Some(metadata.ino()) != record.inode || metadata.dev() != destination.metadata()?.dev() {
+            return Err(refused("receive retirement directory identity changed"));
+        }
+        let identity_name = name("identity")?;
+        let scan = directory_at(&directory, &name(".")?)?;
+        if unix_directory_entry_names(&scan, &mut EmptyDirectoryRemovalState::default())?
+            .iter().any(|entry| entry != &identity_name) {
+            if record.retiring {
+                return Err(refused("retiring receive directory contains unexpected entries"));
+            }
+            // An inactive saved transfer still owns its resumable artifacts.
+            return Ok(false);
+        }
+        let identity = match open_regular_child_no_follow(&directory, &identity_name,
+            RegularFileAccess::Read, ReceiveFileCreation::Existing) {
+            Ok(mut identity) => {
+                ReceiveOwnedArtifact::Payload.validate(&identity)?;
+                let mut bytes = Vec::new();
+                (&mut identity).take(65).read_to_end(&mut bytes)?;
+                if bytes != record.name.as_bytes() {
+                    return Err(refused("receive retirement marker identity changed"));
+                }
+                Some(identity)
+            }
+            Err(error) if record.retiring && error.kind() == io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error),
+        };
+        if !record.retiring {
+            record.retiring = true;
+            // Recovery must distinguish intentional marker removal from an
+            // incomplete or substituted ready namespace before anything is unlinked.
+            write_record(coordinator, record_name, temporary, record)?;
+        }
+        if let Some(identity) = identity {
+            remove_recv_child_at(&directory, &identity_name, &identity)?;
+        }
+        sync_recv_directory(&directory)?;
+        if !retirement_parent_is_protected(destination)? {
+            return Err(refused("receive retirement parent lost protection"));
+        }
+        unix_require_same_object(&unix_fstat(&directory)?,
+            &unix_fstatat_no_follow(destination.as_raw_fd(), &container)?, "retiring receive namespace")?;
+        if unsafe { libc::unlinkat(destination.as_raw_fd(), container.as_ptr(), libc::AT_REMOVEDIR) } != 0 {
+            return Err(io::Error::last_os_error());
+        }
+    }
+    sync_recv_directory(destination)?;
+    let record_file = open_regular_child_no_follow(coordinator, record_name,
+        RegularFileAccess::Read, ReceiveFileCreation::Existing)?;
+    ReceiveOwnedArtifact::Payload.validate(&record_file)?;
+    remove_recv_child_at(coordinator, record_name, &record_file)?;
+    sync_recv_directory(coordinator)?;
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -565,6 +649,9 @@ mod tests {
         four.write_all(b"four").unwrap();
         fourth.finish(4, 34).unwrap();
         let next_retired = replacement.metadata().unwrap().nlink() == 0;
+        assert!(read_record(&fourth._lease.namespace.coordinator,
+            &fourth._lease.namespace.record_name).unwrap().is_none());
+        assert_eq!(std::fs::read_dir(&root).unwrap().count(), 4);
         for (file, bytes) in [("one", b"one".as_slice()), ("two", b"two"),
             ("three", b"three"), ("four", b"four")] {
             assert_eq!(std::fs::read(root.join(file)).unwrap(), bytes);
@@ -608,6 +695,64 @@ mod tests {
         std::fs::remove_dir_all(&root).unwrap();
         println!("RECEIVE_GENERATION_ERROR=observed refusal={refusal} replacement_preserved={replacement_preserved} exclusion_released={released} retry_retired={recovered} final_bytes=exact fixture=retired");
         assert!(refusal && replacement_preserved && released && recovered);
+
+        for phase in ["intent", "marker", "directory", "lost-protection", "replacement"] {
+            let root = std::env::temp_dir().join(format!("receive-retire-recovery-{}", crate::uuid::Uuid::new_v4()));
+            std::fs::create_dir(&root).unwrap();
+            let namespace = ReceiveNamespace::acquire(File::open(&root).unwrap(), &name("incoming").unwrap()).unwrap();
+            let old_path = root.join(namespace.directory_name.to_str().unwrap());
+            let record_name = namespace.record_name.clone();
+            let mut record = read_record(&namespace.coordinator, &record_name).unwrap().unwrap();
+            let temporary = name(&format!("{}.tmp", directory_key(&namespace.destination).unwrap())).unwrap();
+            assert_eq!(unsafe { libc::unlinkat(namespace.directory.as_raw_fd(),
+                namespace.child.as_ptr(), libc::AT_REMOVEDIR) }, 0);
+            sync_recv_directory(&namespace.directory).unwrap();
+            record.retiring = true;
+            write_record(&namespace.coordinator, &record_name, &temporary, &record).unwrap();
+            if phase != "intent" {
+                std::fs::remove_file(old_path.join("identity")).unwrap();
+                sync_recv_directory(&namespace.directory).unwrap();
+            }
+            if phase == "directory" {
+                std::fs::remove_dir(&old_path).unwrap();
+                sync_recv_directory(&namespace.destination).unwrap();
+            }
+            let coordinator = namespace.coordinator.try_clone().unwrap();
+            namespace.complete_enrollment().unwrap();
+            drop(namespace);
+            let record_path = name(record_name.to_str().unwrap()).unwrap();
+            let held = root.join("held");
+            if phase == "lost-protection" {
+                std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o777)).unwrap();
+            } else if phase == "replacement" {
+                std::fs::rename(&old_path, &held).unwrap();
+                std::fs::create_dir(&old_path).unwrap();
+                std::fs::set_permissions(&old_path, std::fs::Permissions::from_mode(0o700)).unwrap();
+            }
+            if matches!(phase, "lost-protection" | "replacement") {
+                let before = std::fs::metadata(&old_path).unwrap().ino();
+                assert!(ReceiveNamespace::acquire(File::open(&root).unwrap(), &name("next").unwrap()).is_err());
+                assert_eq!(std::fs::metadata(&old_path).unwrap().ino(), before);
+                assert!(read_record(&coordinator, &record_path).unwrap().unwrap().retiring);
+                assert_eq!(std::fs::read_dir(&old_path).unwrap().count(), 0);
+                if phase == "lost-protection" {
+                    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+                } else {
+                    std::fs::remove_dir(&old_path).unwrap();
+                    std::fs::rename(&held, &old_path).unwrap();
+                }
+            }
+            let next = ReceiveNamespace::acquire(File::open(&root).unwrap(), &name("next").unwrap()).unwrap();
+            next.complete_enrollment().unwrap();
+            assert!(!old_path.exists());
+            assert!(!read_record(&coordinator, &record_path).unwrap().unwrap().retiring);
+            next.retire(|| Ok(())).unwrap();
+            assert!(read_record(&coordinator, &record_path).unwrap().is_none());
+            assert_eq!(std::fs::read_dir(&root).unwrap().count(), 0);
+            drop((next, coordinator));
+            std::fs::remove_dir(&root).unwrap();
+            println!("RECEIVE_GENERATION_ERROR=observed retirement_phase={phase} recovery=completed record=retired fixture=retired");
+        }
     }
 
     #[test]
@@ -617,7 +762,8 @@ mod tests {
         let destination = File::open(&root).unwrap();
         for case in ["absent", "empty", "partial", "complete", "wrong", "unexpected", "symlink", "shared"] {
             let record = DirectoryRecord { version: 1,
-                name: format!(".rustdesk-receive-{}", crate::uuid::Uuid::new_v4().simple()), inode: None };
+                name: format!(".rustdesk-receive-{}", crate::uuid::Uuid::new_v4().simple()),
+                inode: None, retiring: false };
             let path = root.join(&record.name);
             let marker = path.join("identity");
             let allowed = matches!(case, "absent" | "empty" | "partial" | "complete");
@@ -680,6 +826,8 @@ pub(super) struct ReceiveNamespace {
     child: CString,
     generation: File,
     generation_name: CString,
+    record_name: CString,
+    directory_name: CString,
 }
 
 impl ReceiveNamespace {
@@ -701,10 +849,14 @@ impl ReceiveNamespace {
         // bounded temporary file is not committed authority and can be retired.
         retire_private_temporary(&coordinator, &temporary)?;
         let record = read_record(&coordinator, &record_name)?;
-        let existing = record.as_ref().filter(|r| r.inode.is_some())
+        let existing = record.as_ref().filter(|r| r.inode.is_some() && !r.retiring)
             .map(|r| record_directory(&destination, r));
-        let directory = match existing {
-            Some(Ok(directory)) => directory,
+        let (directory, directory_name) = match existing {
+            Some(Ok(directory)) => {
+                let record = record.as_ref()
+                    .ok_or_else(|| io_invalid_input("receive namespace record is absent"))?;
+                (directory, name(&record.name)?)
+            }
             missing => {
                 // A named container can be moved by the destination's owner. Never adopt a
                 // replacement or create a parallel namespace while any old claim is live.
@@ -720,12 +872,21 @@ impl ReceiveNamespace {
                         return Err(error);
                     }
                 }
+                let record = match record {
+                    Some(mut record) if record.retiring => {
+                        if !retire_directory(&coordinator, &record_name, &temporary, &destination, &mut record)? {
+                            return Err(refused("receive namespace retirement did not complete"));
+                        }
+                        None
+                    }
+                    record => record,
+                };
                 let mut record = match record {
                     Some(record) if record.inode.is_none() => record,
                     _ => {
                         let record = DirectoryRecord { version: 1,
                             name: format!(".rustdesk-receive-{}", crate::uuid::Uuid::new_v4().simple()),
-                            inode: None };
+                            inode: None, retiring: false };
                         // Publish and sync intent before creating any public entry.
                         write_record(&coordinator, &record_name, &temporary, &record)?;
                         record
@@ -740,7 +901,7 @@ impl ReceiveNamespace {
                 lock(&generation, libc::LOCK_SH)?;
                 let replay = record_directory(&destination, &record)?;
                 unix_require_same_object(&opened, &unix_fstat(&replay)?, "receive namespace replay")?;
-                directory
+                (directory, name(&record.name)?)
             }
         };
         let mut digest = Sha256::new();
@@ -749,7 +910,8 @@ impl ReceiveNamespace {
         let child = name(&format!("{:x}", digest.finalize()))?;
         let artifacts = private_child(&directory, &child)?;
         // The caller keeps enrollment locked until its exact per-file lease is acquired.
-        Ok(Self { destination, artifacts, coordinator, directory, child, generation, generation_name })
+        Ok(Self { destination, artifacts, coordinator, directory, child, generation, generation_name,
+            record_name, directory_name })
     }
 
     pub(super) fn complete_enrollment(&self) -> io::Result<()> {
@@ -773,8 +935,21 @@ impl ReceiveNamespace {
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => return Ok(()),
             Err(error) => return Err(error),
         }
-        let result = remove_recv_child_at(&self.coordinator, &self.generation_name, &self.generation)
-            .and_then(|()| sync_recv_directory(&self.coordinator));
+        let result = (|| {
+            ensure_recv_child_matches_open_file(&self.coordinator, &self.generation_name, &self.generation)?;
+            if let Some(mut record) = read_record(&self.coordinator, &self.record_name)? {
+                // A retry through a retired claim must preserve a later namespace.
+                if record.name.as_bytes() == self.directory_name.as_bytes()
+                    && record.inode == Some(self.directory.metadata()?.ino()) {
+                    let key = self.record_name.to_str().map_err(|_| io_invalid_input("receive record name is not UTF-8"))?
+                        .strip_suffix(".json").ok_or_else(|| io_invalid_input("invalid receive record name"))?;
+                    retire_directory(&self.coordinator, &self.record_name, &name(&format!("{key}.tmp"))?,
+                        &self.destination, &mut record)?;
+                }
+            }
+            remove_recv_child_at(&self.coordinator, &self.generation_name, &self.generation)?;
+            sync_recv_directory(&self.coordinator)
+        })();
         // A failed removal must not strand an exclusive lock in a completed claim
         // while a later enrollment holds the gate and waits for shared membership.
         let released = lock(&self.generation, libc::LOCK_UN);

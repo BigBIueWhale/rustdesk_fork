@@ -98,11 +98,15 @@ mod linux {
     }
 
     async fn prepare_staging(base: &Path) -> ResultType<PathBuf> {
-        // Production inspection establishes the namespace, then releases its lease.
-        // Only the test fixtures below inject malformed artifacts into that private directory.
+        // Establish a retained namespace in a shared fixture parent, then restore
+        // its intended test permissions before injecting saved/malformed artifacts.
+        let permissions = fs::metadata(base)?.permissions();
+        fs::set_permissions(base, fs::Permissions::from_mode(0o777))?;
         let mut receiver = job(base)?;
-        receiver.inspect_receive_digest(&incoming(), false).await?;
-        receiver.retire_current_file_state()?;
+        let prepared = receiver.inspect_receive_digest(&incoming(), false).await
+            .and_then(|_| receiver.retire_current_file_state());
+        fs::set_permissions(base, permissions)?;
+        prepared?;
         let path = staging(base)?;
         fs::create_dir(&path)?;
         fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;
@@ -269,7 +273,13 @@ mod linux {
         let m = fs::metadata(&path)?;
         ensure!(m.uid() == 0 && m.mode() & 0o7777 == 0o600 && m.nlink() == 1);
         ensure!(m.mtime() == 31 && fs::read(&path)? == b"abcdef");
-        ensure!(!staging(base)?.exists(), "completed receive retained its per-file namespace");
+        let mut namespace_present = false;
+        for entry in fs::read_dir(base)? {
+            namespace_present |= entry?.file_name().as_encoded_bytes().starts_with(b".rustdesk-receive-");
+        }
+        if namespace_present {
+            ensure!(!staging(base)?.exists(), "completed receive retained its per-file namespace");
+        }
         snapshot(&path)
     }
 

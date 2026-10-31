@@ -133,23 +133,42 @@ struct DirectoryRecord {
     name: String,
     // None records durable setup intent; only Some admits transfer artifacts.
     inode: Option<u64>,
-    #[serde(default)]
+    // The protected record name carries retirement state without a new data write.
+    #[serde(skip)]
     retiring: bool,
 }
 
+fn retirement_record_name(record_name: &CStr) -> io::Result<CString> {
+    let record = record_name.to_str()
+        .map_err(|_| io_invalid_input("receive record name is not UTF-8"))?;
+    name(&format!("{record}.retiring"))
+}
+
 fn read_record(coordinator: &File, record_name: &CStr) -> io::Result<Option<DirectoryRecord>> {
-    let file = match open_regular_child_no_follow(coordinator, record_name,
-        RegularFileAccess::Read, ReceiveFileCreation::Existing) {
-        Ok(file) => file,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(error),
+    let retirement_name = retirement_record_name(record_name)?;
+    let mut selected = None;
+    for (candidate, retiring) in [(record_name, false), (retirement_name.as_c_str(), true)] {
+        let file = match open_regular_child_no_follow(coordinator, candidate,
+            RegularFileAccess::Read, ReceiveFileCreation::Existing) {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error),
+        };
+        ReceiveOwnedArtifact::Payload.validate(&file)?;
+        if selected.is_some() {
+            return Err(refused("receive directory has conflicting lifecycle records"));
+        }
+        selected = Some((file, retiring));
+    }
+    let Some((file, retiring)) = selected else {
+        return Ok(None);
     };
-    ReceiveOwnedArtifact::Payload.validate(&file)?;
     let mut bytes = Vec::new();
     file.take(257).read_to_end(&mut bytes)?;
     if bytes.len() > 256 { return Err(io_invalid_input("receive directory record is too large")); }
-    let record: DirectoryRecord = serde_json::from_slice(&bytes)
+    let mut record: DirectoryRecord = serde_json::from_slice(&bytes)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    record.retiring = retiring;
     let suffix = record.name.strip_prefix(".rustdesk-receive-")
         .ok_or_else(|| io_invalid_input("invalid receive directory record name"))?;
     if record.version != 1 || suffix.len() != 32 || !suffix.bytes().all(|b| b.is_ascii_hexdigit())
@@ -191,6 +210,9 @@ fn retire_private_temporary(parent: &File, temporary: &CStr) -> io::Result<()> {
 
 fn write_record(coordinator: &File, record_name: &CStr, temporary: &CStr,
     record: &DirectoryRecord) -> io::Result<()> {
+    if record.retiring {
+        return Err(io_invalid_input("cannot rewrite a retiring receive record"));
+    }
     let mut file = open_regular_child_no_follow(coordinator, &temporary,
         RegularFileAccess::Write, ReceiveFileCreation::CreateNew)?;
     let mut published = false;
@@ -265,13 +287,33 @@ fn retirement_parent_is_protected(destination: &File) -> io::Result<bool> {
         && (metadata.mode() & 0o022 == 0 || metadata.mode() & 0o1000 != 0))
 }
 
-fn retire_directory(coordinator: &File, record_name: &CStr, temporary: &CStr,
+fn begin_retirement(coordinator: &File, record_name: &CStr,
+    record: &mut DirectoryRecord) -> io::Result<()> {
+    let file = open_regular_child_no_follow(coordinator, record_name,
+        RegularFileAccess::Read, ReceiveFileCreation::Existing)?;
+    ReceiveOwnedArtifact::Payload.validate(&file)?;
+    ensure_recv_child_matches_open_file(coordinator, record_name, &file)?;
+    let retirement_name = retirement_record_name(record_name)?;
+    if unsafe { libc::syscall(libc::SYS_renameat2, coordinator.as_raw_fd(), record_name.as_ptr(),
+        coordinator.as_raw_fd(), retirement_name.as_ptr(), libc::RENAME_NOREPLACE) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    record.retiring = true;
+    sync_recv_directory(coordinator)
+}
+
+fn retire_directory(coordinator: &File, record_name: &CStr,
     destination: &File, record: &mut DirectoryRecord) -> io::Result<bool> {
     if !retirement_parent_is_protected(destination)? {
         if record.retiring {
             return Err(refused("receive retirement parent is no longer protected"));
         }
         return Ok(false);
+    }
+    if record.retiring {
+        // A previous owner may have renamed intent before its directory sync
+        // failed. Reestablish that barrier before continuing destructive cleanup.
+        sync_recv_directory(coordinator)?;
     }
     let container = name(&record.name)?;
     let directory = match directory_at(destination, &container) {
@@ -310,10 +352,9 @@ fn retire_directory(coordinator: &File, record_name: &CStr, temporary: &CStr,
             Err(error) => return Err(error),
         };
         if !record.retiring {
-            record.retiring = true;
             // Recovery must distinguish intentional marker removal from an
             // incomplete or substituted ready namespace before anything is unlinked.
-            write_record(coordinator, record_name, temporary, record)?;
+            begin_retirement(coordinator, record_name, record)?;
         }
         if let Some(identity) = identity {
             remove_recv_child_at(&directory, &identity_name, &identity)?;
@@ -329,10 +370,11 @@ fn retire_directory(coordinator: &File, record_name: &CStr, temporary: &CStr,
         }
     }
     sync_recv_directory(destination)?;
-    let record_file = open_regular_child_no_follow(coordinator, record_name,
+    let retirement_name = retirement_record_name(record_name)?;
+    let record_file = open_regular_child_no_follow(coordinator, &retirement_name,
         RegularFileAccess::Read, ReceiveFileCreation::Existing)?;
     ReceiveOwnedArtifact::Payload.validate(&record_file)?;
-    remove_recv_child_at(coordinator, record_name, &record_file)?;
+    remove_recv_child_at(coordinator, &retirement_name, &record_file)?;
     sync_recv_directory(coordinator)?;
     Ok(true)
 }
@@ -703,12 +745,10 @@ mod tests {
             let old_path = root.join(namespace.directory_name.to_str().unwrap());
             let record_name = namespace.record_name.clone();
             let mut record = read_record(&namespace.coordinator, &record_name).unwrap().unwrap();
-            let temporary = name(&format!("{}.tmp", directory_key(&namespace.destination).unwrap())).unwrap();
             assert_eq!(unsafe { libc::unlinkat(namespace.directory.as_raw_fd(),
                 namespace.child.as_ptr(), libc::AT_REMOVEDIR) }, 0);
             sync_recv_directory(&namespace.directory).unwrap();
-            record.retiring = true;
-            write_record(&namespace.coordinator, &record_name, &temporary, &record).unwrap();
+            begin_retirement(&namespace.coordinator, &record_name, &mut record).unwrap();
             if phase != "intent" {
                 std::fs::remove_file(old_path.join("identity")).unwrap();
                 sync_recv_directory(&namespace.directory).unwrap();
@@ -874,7 +914,7 @@ impl ReceiveNamespace {
                 }
                 let record = match record {
                     Some(mut record) if record.retiring => {
-                        if !retire_directory(&coordinator, &record_name, &temporary, &destination, &mut record)? {
+                        if !retire_directory(&coordinator, &record_name, &destination, &mut record)? {
                             return Err(refused("receive namespace retirement did not complete"));
                         }
                         None
@@ -941,9 +981,7 @@ impl ReceiveNamespace {
                 // A retry through a retired claim must preserve a later namespace.
                 if record.name.as_bytes() == self.directory_name.as_bytes()
                     && record.inode == Some(self.directory.metadata()?.ino()) {
-                    let key = self.record_name.to_str().map_err(|_| io_invalid_input("receive record name is not UTF-8"))?
-                        .strip_suffix(".json").ok_or_else(|| io_invalid_input("invalid receive record name"))?;
-                    retire_directory(&self.coordinator, &self.record_name, &name(&format!("{key}.tmp"))?,
+                    retire_directory(&self.coordinator, &self.record_name,
                         &self.destination, &mut record)?;
                 }
             }

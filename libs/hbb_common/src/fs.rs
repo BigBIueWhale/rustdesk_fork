@@ -10168,9 +10168,7 @@ mod tests {
         assert!(completion_error.to_string().contains("has 1 bytes, expected 4"));
         job.retire_current_file_state()
             .expect("retire the failed exact receive generation");
-        for suffix in [".download", ".digest", ".download.lock"] {
-            assert!(!receive_fixture_path(&tmp.join("incoming.bin"), suffix).exists());
-        }
+        assert_eq!(std::fs::read_dir(&tmp.path).expect("inspect retired receive namespace").count(), 0);
         assert!(!final_path.exists());
         println!("\n{}", RECEIPT);
     }

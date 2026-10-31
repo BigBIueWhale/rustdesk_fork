@@ -79,6 +79,7 @@ impl Drop for Pending {
 #[derive(Default)]
 pub struct FileConfirmations {
     pending: Vec<Pending>,
+    closed: bool,
 }
 
 pub struct Completion {
@@ -121,6 +122,7 @@ impl FileConfirmations {
 
     fn start_operation(&mut self, mut job: TransferJob, operation: Operation) -> ResultType<()> {
         let admission = (|| {
+            if self.closed { bail!("file confirmation admission is closed"); }
             if self.contains(job.id()) { bail!("file confirmation is already pending"); }
             if self.len() >= MAX_ACTIVE_FILE_TRANSFER_READ_JOBS_PER_CONN {
                 bail!("too many pending file confirmations");
@@ -228,10 +230,15 @@ impl FileConfirmations {
         Completion { id: pending.id, file_num: pending.file_num, job, cancelled_log, confirmation }
     }
 
-    pub async fn close_and_wait(&mut self) -> ResultType<()> {
+    pub fn close(&mut self) {
+        self.closed = true;
         for pending in &self.pending {
             pending.cancelled.store(true, Ordering::Release);
         }
+    }
+
+    pub async fn close_and_wait(&mut self) -> ResultType<()> {
+        self.close();
         let mut failure = None;
         while !self.is_empty() {
             if let Err(error) = self.next().await.job {
@@ -533,7 +540,20 @@ mod tests {
                     }
                 }).await.unwrap();
             } else if phase == "close" {
+                let other_fixture = Fixture::new();
+                other_fixture.large_source();
+                let mut other_watch = AccessWatch::new(&other_fixture.source());
+                let mut other = FileConfirmations::default();
+                other.prepare(other_fixture.job(723), 0, u32::MAX as u64).unwrap();
+                other_watch.wait().await;
+                owner.close();
+                other.close();
+                assert_eq!((owner.len(), other.len()), (1, 1));
+                assert_eq!((owner.metas().count(), other.metas().count()), (0, 0));
                 tokio::time::timeout(Duration::from_secs(3), owner.close_and_wait()).await.unwrap().unwrap();
+                tokio::time::timeout(Duration::from_secs(3), other.close_and_wait()).await.unwrap().unwrap();
+                assert_eq!(other_fixture.source_handles(), 0);
+                drop((other_watch, other, other_fixture));
                 assert_eq!(owner.metas().count(), 0);
             } else {
                 assert!(owner.cancel(721));
@@ -564,11 +584,14 @@ mod tests {
         assert!(matches!(completion.confirmation.unwrap().union,
             Some(file_transfer_send_confirm_request::Union::OffsetBlk(0))));
         let mut job = completion.job.unwrap().unwrap();
+        assert!(job.init_data_stream_for_cm().await.unwrap().is_none());
         assert_eq!(job.read().await.unwrap().unwrap().data.as_ref(), b"abcdef");
         job.retire_current_file_state().unwrap();
+        owner.close_and_wait().await.unwrap();
+        assert!(owner.prepare(fixture.job(722), 0, 0).unwrap_err().to_string().contains("admission is closed"));
         assert_eq!(fixture.source_handles(), 0);
         drop((job, fixture));
-        println!("FILE_CONFIRMATION_PREPARE_ADMISSION=pass invalid=refused fresh=exact handles=retired");
+        println!("FILE_CONFIRMATION_PREPARE_ADMISSION=pass invalid=refused fresh=exact closed=refused handles=retired");
     }
 
     #[tokio::test(flavor = "current_thread")]

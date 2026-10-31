@@ -1678,6 +1678,10 @@ impl<T: InvokeUiSession> Remote<T> {
                     );
             }
         }
+        self.read_confirmation_checkpoint.extend(self.read_confirmations.metas().cloned());
+        self.write_confirmation_checkpoint.extend(self.write_confirmations.metas().cloned());
+        self.read_confirmations.close();
+        self.write_confirmations.close();
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         {
             if let Err(error) = clipboard_writes.close_and_wait().await {
@@ -1685,8 +1689,6 @@ impl<T: InvokeUiSession> Remote<T> {
             }
             self.clipboard_writer.take();
         }
-        self.read_confirmation_checkpoint.extend(self.read_confirmations.metas().cloned());
-        self.write_confirmation_checkpoint.extend(self.write_confirmations.metas().cloned());
         for result in [self.read_confirmations.close_and_wait().await,
             self.write_confirmations.close_and_wait().await]
         {

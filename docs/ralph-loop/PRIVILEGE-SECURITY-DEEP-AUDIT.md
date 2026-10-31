@@ -122275,3 +122275,26 @@ claims no compile/pass; the library lane will run 31 cases in 29 groups. Full vi
 compilation, real-handler control/checkpoint behavior and fixture adaptation remain
 unexecuted under the existing park. CM scheduling and the staging lifecycle failures
 remain open; no installed or complete receive acceptance is claimed.
+
+At `d7b5f69f017d9858250f46374e18eebbc6e1d768`, TUF `KNU1pIeM1r`, both
+prepared-proof roundtrips, all five receive cancellation/close/drop phases and the
+extended native-read/TCP control pass. The new fresh-transfer control then fails
+with `data stream is None`: the fixture omitted normal `init_data_stream_for_cm`
+before its first zero-offset read. That fixture is corrected; no complete lane
+pass is claimed. Artifact SHA-256
+`2996cecc9725f382c9abc6f8b84c19c2026dcb261339ce9e8e132f129515e36c`.
+Serial 10,332 bytes, SHA-256
+`b82faa06ed3aeadc669fb5b77f4b9026a1213463ef0b314286221e9265f6538d`.
+QEMU 3049520 joins after 142.382 seconds and RAM `run.sg8kjtzn` retires. No
+listener is added; the final inventory records disappearance of the pre-existing
+`tcp 127.0.0.1:8091`. Its cause is not attributed to this work and no baseline
+service is inspected or changed. This failed run is not a zero-delta acceptance.
+Raw evidence is retained on both hosts before exact diagnostic scratch removal.
+
+Review also identifies a close-ordering correction: revoke both viewer owners
+before awaiting either owner or clipboard drain. `close()` seals further admission
+and requests cooperative cancellation; `close_and_wait()` then joins. The receiver
+close case now exercises simultaneous producer reads in both directions, and the
+fresh-transfer control checks that closed admission cannot start a new job. These
+product/test changes require a new focused run; full-parent/viewer execution remains
+parked and is not replaced by these component cases.

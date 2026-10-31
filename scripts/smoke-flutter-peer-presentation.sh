@@ -80,6 +80,7 @@ case "$#:${1:-}" in
         --clipboard-text) PEER_SCENARIO=clipboard-text ;;
         --keyboard-input) PEER_SCENARIO=keyboard-input ;;
         --keyboard-retirement) PEER_SCENARIO=keyboard-retirement ;;
+        --mouse-input) PEER_SCENARIO=mouse-input ;;
         *) die 'unknown app replay scenario' ;;
       esac
     fi
@@ -134,6 +135,11 @@ if [ "$PEER_SCENARIO" = network-impairment ] || [ "$PEER_SCENARIO" = network-los
   if [ "$PEER_SCENARIO" = network-loss ]; then
     VIEWER_RESULT='viewer=joined xvfb=joined impairment_cycles=3 stable_connection=true resources=bounded'
   fi
+elif [ "$PEER_SCENARIO" = mouse-input ]; then
+  RUNTIME_CYCLES=1
+  SERVER_GENERATIONS='1'
+  SERVER_REPLACEMENTS=0
+  VIEWER_RESULT='viewer=joined xvfb=joined mouse_cases=8 stable_connection=true resources=bounded'
 elif [ "$PEER_SCENARIO" = keyboard-retirement ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

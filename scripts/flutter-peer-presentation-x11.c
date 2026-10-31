@@ -2212,6 +2212,141 @@ finished:
     return result;
 }
 
+static int mouse_snapshot(Display *display, int *x, int *y, unsigned int *mask) {
+    Window root, child;
+    int local_x, local_y;
+    return XQueryPointer(display, RootWindow(display, DefaultScreen(display)),
+                         &root, &child, x, y, &local_x, &local_y, mask) ? 0 : -1;
+}
+
+static int wait_mouse_drag(Display *source, unsigned int held, int previous_x, int previous_y,
+                           int moved, int *x, int *y) {
+    uint64_t deadline = monotonic_millis() + 5000U;
+    do {
+        unsigned int mask;
+        if (mouse_snapshot(source, x, y, &mask) != 0) return -1;
+        if (mask == held && (!moved || (*x >= previous_x + 10 && *y >= previous_y + 10))) {
+            return 0;
+        }
+        if (sleep_millis(10U) != 0) return -1;
+    } while (monotonic_millis() < deadline);
+    fprintf(stderr, "FLUTTER_PEER_X11_FAIL mouse drag held=%u previous=%d,%d actual=%d,%d\n",
+            held, previous_x, previous_y, *x, *y);
+    return -1;
+}
+
+static int exercise_mouse_input(Display *source, Display *display,
+                                const ViewerWindow *viewer,
+                                const ConnectionIdentity *connection,
+                                const ProcessResources *baseline) {
+    static const struct { const char *name; unsigned int button; int drag; } cases[] = {
+        {"left-click", 1U, 0}, {"middle-click", 2U, 0}, {"right-click", 3U, 0},
+        {"left-drag", 1U, 1}, {"wheel-up", 4U, 0}, {"wheel-down", 5U, 0},
+        {"wheel-left", 6U, 0}, {"wheel-right", 7U, 0},
+    };
+    Window root = RootWindow(source, DefaultScreen(source)), child;
+    unsigned char mapping[32];
+    int origin_x, origin_y, result = -1;
+    unsigned int injected_held = 0U;
+    /* Admit identity button maps on both independent X servers. */
+    if (XGetPointerMapping(source, mapping, sizeof(mapping)) < 7) return -1;
+    for (unsigned int i = 0U; i < 7U; ++i) if (mapping[i] != i + 1U) return -1;
+    if (XGetPointerMapping(display, mapping, sizeof(mapping)) < 7) return -1;
+    for (unsigned int i = 0U; i < 7U; ++i) if (mapping[i] != i + 1U) return -1;
+    if (return_focus_with_pointer(display, viewer) != 0 || sleep_millis(250U) != 0 ||
+        !XTranslateCoordinates(display, viewer->window,
+            RootWindow(display, DefaultScreen(display)),
+            (int)viewer->width / 2, (int)viewer->height / 2,
+            &origin_x, &origin_y, &child)) return -1;
+    XSelectInput(source, root, ButtonPressMask | ButtonReleaseMask | PointerMotionMask);
+    XSync(source, False);
+
+    for (unsigned int i = 0U; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+        unsigned int button = cases[i].button;
+        unsigned int bit = button <= 5U ? 1U << (button + 7U) : 0U;
+        unsigned int mask, received = 0U, events = 0U, held_moves = 0U;
+        int start_x, start_y, end_x, end_y, local_x, local_y;
+        uint64_t start = monotonic_millis(), complete = 0U;
+        ConnectionIdentity after = {{0}, {0}, 0UL};
+        ProcessResources resources;
+        ViewerWindow current = {0};
+        if (mouse_snapshot(source, &start_x, &start_y, &mask) != 0 || mask != 0U ||
+            mouse_snapshot(display, &local_x, &local_y, &mask) != 0 || mask != 0U) goto finished;
+        if (XTestFakeButtonEvent(display, button, True, CurrentTime) == 0) goto finished;
+        injected_held = button;
+        XSync(display, False);
+        if (cases[i].drag) {
+            if (wait_mouse_drag(source, bit, start_x, start_y, 0, &end_x, &end_y) != 0) goto finished;
+            for (int step = 1; step <= 2; ++step) {
+                int previous_x = end_x, previous_y = end_y;
+                if (XTestFakeMotionEvent(display, DefaultScreen(display),
+                        origin_x + step * 40, origin_y + step * 30, CurrentTime) == 0) goto finished;
+                XSync(display, False);
+                if (wait_mouse_drag(source, bit, previous_x, previous_y, 1, &end_x, &end_y) != 0) goto finished;
+            }
+        }
+        if (XTestFakeButtonEvent(display, button, False, CurrentTime) == 0) goto finished;
+        injected_held = 0U;
+        XSync(display, False);
+        while (monotonic_millis() - start < 5000U) {
+            while (XPending(source) != 0) {
+                XEvent event;
+                if (++events > 128U) goto finished;
+                XNextEvent(source, &event);
+                if (event.type == MotionNotify) {
+                    unsigned int expected = received == 1U ? bit : 0U;
+                    if (event.xmotion.window != root || event.xmotion.send_event ||
+                        event.xmotion.state != expected) goto finished;
+                    if (received == 1U) ++held_moves;
+                    continue;
+                }
+                if (event.type != ButtonPress && event.type != ButtonRelease) continue;
+                printf("FLUTTER_PEER_MOUSE_EVENT case=%u event=%u type=%d button=%u "
+                       "state=%u x=%d y=%d synthetic=%d\n", i + 1U, received + 1U,
+                       event.type, event.xbutton.button, event.xbutton.state,
+                       event.xbutton.x_root, event.xbutton.y_root, event.xbutton.send_event);
+                if (received >= 2U || event.xbutton.window != root || event.xbutton.send_event ||
+                    event.xbutton.button != button ||
+                    event.type != (received == 0U ? ButtonPress : ButtonRelease) ||
+                    event.xbutton.state != (received == 0U ? 0U : bit)) goto finished;
+                if (received == 0U || !cases[i].drag) {
+                    if (event.xbutton.x_root != start_x || event.xbutton.y_root != start_y) goto finished;
+                } else if (event.xbutton.x_root != end_x || event.xbutton.y_root != end_y) goto finished;
+                if (++received == 2U) complete = monotonic_millis();
+            }
+            if (complete != 0U && monotonic_millis() - complete >= 100U) break;
+            if (sleep_millis(10U) != 0) goto finished;
+        }
+        if (received != 2U || complete == 0U || monotonic_millis() - start >= 5000U ||
+            (cases[i].drag && held_moves < 2U) ||
+            mouse_snapshot(source, &end_x, &end_y, &mask) != 0 || mask != 0U ||
+            mouse_snapshot(display, &local_x, &local_y, &mask) != 0 || mask != 0U ||
+            find_viewer_window(display, viewer->pid, &current) != 0 || current.window != viewer->window ||
+            read_connection_identity(&after) != 0 || !same_connection(connection, &after) ||
+            read_process_resources(viewer->pid, &resources) != 0 ||
+            !resources_are_bounded(baseline, &resources)) {
+            fprintf(stderr, "FLUTTER_PEER_X11_FAIL mouse case=%u name=%s received=%u held_moves=%u\n",
+                    i + 1U, cases[i].name, received, held_moves);
+            goto finished;
+        }
+        print_resources("mouse", i + 1U, &resources);
+        printf("FLUTTER_PEER_MOUSE_CASE_OK sequence=%u name=%s events=%u held_moves=%u "
+               "elapsed_ms=%llu released=both stable_connection=true\n", i + 1U,
+               cases[i].name, received, held_moves, (unsigned long long)(complete - start));
+        fflush(stdout);
+    }
+    result = 0;
+finished:
+    /* Retire only fixture-injected viewer input; never manufacture controlled-side releases. */
+    if (injected_held != 0U) {
+        if (XTestFakeButtonEvent(display, injected_held, False, CurrentTime) == 0) result = -1;
+        XSync(display, False);
+    }
+    XSelectInput(source, root, NoEventMask);
+    XSync(source, False);
+    return result;
+}
+
 static int exercise_keyboard_input(Display *source, Display *display,
                                    const ViewerWindow *viewer,
                                    const ConnectionIdentity *connection,
@@ -2682,11 +2817,12 @@ int main(int argc, char **argv) {
     if (argc != 5 && (argc != 6 || (strcmp(argv[5], "--viewer-suspend") != 0 &&
                                     strcmp(argv[5], "--keyboard-retirement") != 0 &&
                                     strcmp(argv[5], "--keyboard-input") != 0 &&
+                                    strcmp(argv[5], "--mouse-input") != 0 &&
                                     strcmp(argv[5], "--clipboard-text") != 0 &&
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--keyboard-input|--keyboard-retirement]\n",
+              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--keyboard-input|--keyboard-retirement|--mouse-input]\n",
               stderr);
         return 2;
     }
@@ -2843,10 +2979,13 @@ int main(int argc, char **argv) {
     if (argc == 6) {
         int keyboard_retirement = strcmp(argv[5], "--keyboard-retirement") == 0;
         int keyboard_input = strcmp(argv[5], "--keyboard-input") == 0;
+        int mouse_input = strcmp(argv[5], "--mouse-input") == 0;
         int clipboard_text = strcmp(argv[5], "--clipboard-text") == 0;
         int partial_loss = strcmp(argv[5], "--network-loss") == 0;
         int network = partial_loss || strcmp(argv[5], "--network-impairment") == 0;
-        int suspension_status = keyboard_retirement ? exercise_keyboard_retirement(
+        int suspension_status = mouse_input ? exercise_mouse_input(
+            source, display, &viewer, &current_connection, &baseline_resources) :
+            keyboard_retirement ? exercise_keyboard_retirement(
             source, display, &viewer, argv[4], &current_connection) : keyboard_input ? exercise_keyboard_input(
             source, display, &viewer, &current_connection, &baseline_resources) :
             clipboard_text ? exercise_clipboard_text(
@@ -2867,7 +3006,11 @@ int main(int argc, char **argv) {
         XCloseDisplay(display);
         XCloseDisplay(source);
         if (suspension_status != 0) return 1;
-        if (keyboard_retirement) {
+        if (mouse_input) {
+            puts("FLUTTER_PEER_MOUSE_INPUT_OK cases=8 button_events=16 drag_moves=2 "
+                 "wheel_directions=4 actual_peer=true native_events=true released=both "
+                 "same_window=true stable_connection=true resources=bounded");
+        } else if (keyboard_retirement) {
             puts("FLUTTER_PEER_KEYBOARD_RETIREMENT_OK remote_keys=2 local_key=preserved "
                  "viewer_exit=abrupt native_releases=true fixture_keys_released=true");
         } else if (keyboard_input) {

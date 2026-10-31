@@ -124274,3 +124274,58 @@ available host memory is 45,796,065,280 bytes, and all three listener deltas are
 The six count files / 104,390 bytes and fourteen correction-run files total twenty
 files / 274,108 bytes per host, hash-verified on CTE and TUF. Both ledger copies
 match the counted hash; this audit-only receipt leaves the counted input unchanged.
+
+## 2026-10-31 — refused receive enrollment retains coordination without a transfer
+
+Selected prerequisite for the open receive-storage lifecycle requirement: distinguish
+failed admission from live/resumable work before changing the shared-parent layout.
+`729bebe0b6487dcf912e37b31e02ec6d6f314123` adds one native regression and its
+required harness inventory; production code is unchanged. The existing root
+production-library driver mounts a bounded 64-KiB/128-inode tmpfs inside the
+disposable VM, prepares eight distinct destinations and remounts it read-only.
+A real mkdir calibrates EROFS before two receive attempts per destination.
+
+TUF `FzrnRFqFOi`, `bash scripts/smoke-verifier-vm-authority.sh
+--file-metadata-tests`, reproduces the failure. All sixteen admissions return
+EROFS and leave final files, directory entries and counters unchanged; finalization
+refuses. After explicit retirement and receiver drop, added coordinator entry
+counts are `2,2,4,4,6,6,8,8,10,10,12,12,14,14,16,16`, using 32,768 allocated bytes.
+There is no admitted or saved transfer to justify that per-destination history.
+Writable remount allows all eight exact transfers, and their completed cleanup
+restores the original coordination inventory. Mount and fixture retire before
+the observer reports `safe=false`; the command correctly exits one.
+
+The preceding 32 native cases retain their outcomes, including all selected
+substitution, crash, full-filesystem and completed-destination controls. The serial
+reports the 156-test/39-group library execution and its artifact, but the failing
+native stage does not export a complete metadata-suite acceptance receipt.
+This is Linux production-library evidence, not installed application or other-OS
+acceptance. The read-only inspection correction remains valid; write enrollment
+is the failing operation. No new privilege-escalation outcome is claimed.
+
+`ReceiveNamespace::acquire_locked` validates and publishes a generation lock,
+then writes preparing intent before `prepare_directory` attempts mkdir. Its
+early error path drops handles without retiring that unused state. The next
+correction must own enrollment failure explicitly under the coordinator gate:
+retain pre-existing crash intent and partially created namespaces, preserve other
+live generation owners and foreign objects, and return cleanup errors with the
+original failure. A read-only preflight alone would neither cover other admission
+errors nor close the check/use window. The existing identity-ENOSPC and killed
+enrollment controls remain required. The general shared-parent/mount-root layout
+is still OPEN/STOP-SHIP; this reproduction does not resolve it or accept a cleanup
+exception. Authorization is already established in the durable prompt.
+
+Native artifact SHA-256:
+`c10b03b808c3ce0f8d5b8d8c0b70bfedf5b9e01d272b083b77d4fa756e05c502`;
+driver source SHA-256:
+`24f5facc7be40f5cd72c7c43180735904bf3521fdb8b76268d734bbf6068d25f`.
+Library artifact:
+`960f5271046faebc10c9106d51c2070284b212dfc75dd86ae7d12c78abf98a5b`.
+Raw serial `hbb-common-fs-run.FzrnRFqFOi.serial.log` is 47,241 bytes, SHA-256
+`33f2ad419ef1d27abefbbb9b6e7c5b02c3bd693c002daf87f32620dbb4651ebc`.
+The seven serial/console/storage/listener files total 119,138 bytes per host and
+are hash-verified on CTE and TUF. QEMU 3222953 joins zero after 286.386 seconds;
+wrapper 3222486 and RAM workspace `run.4s6k49le` are absent. Peak scratch is
+4,224,016,384 bytes within 6 GiB; minimum available memory is 36,292,935,680 bytes.
+All four listener deltas are zero. After retaining verified evidence, exact owned
+diagnostic cleanup removes 3,518,464 allocated bytes. No VM remains live.

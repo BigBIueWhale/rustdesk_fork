@@ -16236,6 +16236,22 @@ TUF `T2xAoQUQ4K` passes all 48 focused tests; the canonical run above retains
 all crash, concurrent-authority and disk-full controls. Fixtures create staging
 through explicit write admission. Shared-parent write cleanup remains OPEN.
 
+**Refused write enrollment — reproduced coordination retention; OPEN.** At
+test-only source `729bebe0`, TUF `FzrnRFqFOi`, sixteen production receive attempts
+across eight distinct read-only tmpfs destinations correctly return EROFS but
+leave sixteen coordination files / 32,768 allocated bytes. Repeated attempts at
+one destination reuse its two entries; growth follows distinct destinations.
+Original files, destination entries and progress counters remain unchanged;
+publication is refused. After writable remount, all eight transfers succeed and
+coordination returns to its pre-case inventory. The new native regression makes
+the canonical metadata command fail; the prior 32 native cases retain their
+outcomes, but this run exports no complete suite acceptance receipt. Enrollment
+currently publishes its generation lock and preparing intent before mkdir can
+succeed. Next give failed enrollment explicit cleanup ownership, retiring only
+unused state while preserving prior crash intent, partial setup and other live
+owners. Product code is unchanged; the broader shared-parent layout remains OPEN.
+Exact artifacts, raw observations and joined VM/storage cleanup are in the audit.
+
 **Replacement prerequisite — native mount/object observations.** The guest-only
 probe at `44030710`, TUF `O0tIK6FXlb`, exercises ext4, tmpfs, a bind alias and
 default overlayfs under root and UID 4001 on Linux 6.1.0-50. Same-mount publication

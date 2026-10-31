@@ -122896,3 +122896,24 @@ The count command exits zero; QEMU 3117343 joins after 30.503 seconds, RAM
 Serial SHA-256 `df44a30a62ad7797fc2a0735b2d11d195c00db832eab439142c77b02848ccc6b`.
 Thirteen raw files / 216,098 bytes for both runs are hash-verified per host.
 This audit-only receipt leaves the counted ledger and tested fixture unchanged.
+
+### 2026-10-31 — receive setup exhaustion: preparation
+
+The prior turn is progress: two actual filesystem-full write cases now have
+native library evidence. Continue the same R-S11fi storage-failure requirement
+at initial setup, independent of the still-pending staging exception and full-app
+permission. Reuse the bounded 64-KiB tmpfs fixture to exhaust data capacity before
+identity enrollment and, separately, after inspection but before resume-digest
+creation. Linux documents ENOSPC on file creation/writing and bounded tmpfs data
+and inode limits: https://man7.org/linux/man-pages/man2/open.2.html and
+https://man7.org/linux/man-pages/man5/tmpfs.5.html . The existing EFBIG, write-full,
+race and crash observations do not prove these setup transitions.
+
+Require exact ENOSPC, unchanged progress and prior final-file identity/bytes,
+no per-file payload/digest/lease residue, and successful fresh transfer after
+space returns. Identity-write failure must leave only its recoverable preparing
+state; a fresh owner retry while still full must preserve that same marker,
+namespace and coordination inventory. This does not waive the completed-layout
+failures or approve new persistent staging. The selected fixture changes no
+production behavior, uses the existing admitted VM resource profile, and retains normal
+unmount/join/retirement requirements. No new runtime result is claimed yet.

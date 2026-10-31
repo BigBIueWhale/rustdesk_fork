@@ -330,10 +330,12 @@ mod linux {
         Ok(())
     }
 
-    async fn full_filesystem(base: &Path, free_pages: u64) -> ResultType<Value> {
+    async fn full_filesystem(base: &Path, phase: &str, free_pages: u64) -> ResultType<Value> {
         use std::{ffi::CString, os::unix::{ffi::OsStrExt, io::AsRawFd}};
         const PAGE: usize = 4096;
         ensure!(free_pages <= 1 && unsafe { libc::sysconf(libc::_SC_PAGESIZE) } == PAGE as i64);
+        ensure!(matches!(phase, "block" | "identity" | "digest")
+            && (phase == "block" || free_pages == 0));
         fs::create_dir(base)?;
         let target = CString::new(base.as_os_str().as_bytes())?;
         if unsafe { libc::mount(b"tmpfs\0".as_ptr().cast(), target.as_ptr(),
@@ -356,10 +358,11 @@ mod linux {
             let mut receiver = new_receiver()?;
             let mut digest = incoming();
             digest.file_size = expected_size;
-            receiver.inspect_receive_digest(&digest, false).await?;
-            receiver.confirm_with_offset(0, 0).await?;
-            write(&mut receiver, &vec![b'a'; PAGE]).await?;
-            let artifacts = staging(base)?;
+            if phase != "identity" {
+                receiver.inspect_receive_digest(&digest, false).await?;
+                receiver.confirm_with_offset(0, 0).await?;
+            }
+            if phase == "block" { write(&mut receiver, &vec![b'a'; PAGE]).await?; }
             let counters = (receiver.finished_size(), receiver.transferred());
             let filler_path = base.join("space-filler");
             let mut filler = OpenOptions::new().write(true).create_new(true)
@@ -384,14 +387,43 @@ mod linux {
             ensure!(space.f_blocks * space.f_frsize == 65536
                 && space.f_bavail * space.f_frsize == free_pages * PAGE as u64);
 
-            let failed = write(&mut receiver, &vec![b'b'; 2 * PAGE]).await;
-            let error = failed.err().ok_or_else(|| anyhow!("full-filesystem block reported success"))?;
+            let failed = if phase == "identity" {
+                receiver.inspect_receive_digest(&digest, false).await.map(|_| ())
+            } else { write(&mut receiver, &vec![b'b'; 2 * PAGE]).await };
+            let error = failed.err().ok_or_else(|| anyhow!("full-filesystem operation reported success"))?;
             ensure!(error.downcast_ref::<io::Error>()
                 .is_some_and(|error| error.raw_os_error() == Some(libc::ENOSPC)));
-            let staged = fs::read(artifacts.join("payload.download"))?;
-            let mut expected_partial = vec![b'a'; PAGE];
-            expected_partial.extend(vec![b'b'; free_pages as usize * PAGE]);
-            ensure!(staged == expected_partial, "unexpected native partial-block bytes");
+            let artifacts = staging(base)?;
+            if phase == "block" {
+                let staged = fs::read(artifacts.join("payload.download"))?;
+                let mut expected_partial = vec![b'a'; PAGE];
+                expected_partial.extend(vec![b'b'; free_pages as usize * PAGE]);
+                ensure!(staged == expected_partial, "unexpected native partial-block bytes");
+            } else {
+                ensure!(!artifacts.try_exists()?, "failed setup retained per-file artifacts");
+                if phase == "identity" {
+                    let container = artifacts.parent().ok_or_else(|| anyhow!("namespace parent absent"))?;
+                    let marker = container.join("identity");
+                    let before_marker = snapshot(&marker)?;
+                    ensure!(before_marker["length"] == 0 && before_marker["uid"] == 0
+                        && before_marker["mode"] == 0o600 && before_marker["links"] == 1);
+                    let before_records = coordination_inventory()?;
+                    // A fresh owner must reuse the same preparing intent after failure.
+                    receiver.retire_current_file_state()?;
+                    drop(receiver);
+                    receiver = new_receiver()?;
+                    let repeated = receiver.inspect_receive_digest(&digest, false).await
+                        .err().ok_or_else(|| anyhow!("repeated full-filesystem setup succeeded"))?;
+                    ensure!(repeated.downcast_ref::<io::Error>()
+                        .is_some_and(|error| error.raw_os_error() == Some(libc::ENOSPC)));
+                    let after_marker = snapshot(&marker)?;
+                    let same_marker = ["device", "inode", "uid", "gid", "mode", "links", "length", "bytes"]
+                        .iter().all(|key| after_marker[*key] == before_marker[*key]);
+                    ensure!(staging(base)? == artifacts && same_marker
+                        && coordination_inventory()? == before_records,
+                        "repeated setup failure changed its preparing namespace or records");
+                }
+            }
             ensure!((receiver.finished_size(), receiver.transferred()) == counters);
             ensure!(receiver.file_num() == 0 && snapshot(&final_path)? == original);
             ensure!(receiver.finalize_write(1).await.is_err(), "failed block was published");
@@ -411,11 +443,13 @@ mod linux {
             fresh.finalize_write(1).await?;
             fresh.retire_current_file_state()?;
             ensure!(fs::read(&final_path)? == expected && !staging(base)?.try_exists()?);
-            Ok::<_, hbb_common::anyhow::Error>(json!({"filesystem":"tmpfs",
+            Ok::<_, hbb_common::anyhow::Error>(json!({"filesystem":"tmpfs", "phase":phase,
                 "capacity_bytes":65536, "free_bytes_before_block":free_pages * PAGE as u64,
-                "block_bytes":2 * PAGE, "partial_block_bytes":free_pages * PAGE as u64,
+                "block_bytes":if phase == "identity" {0} else {2 * PAGE},
+                "partial_block_bytes":free_pages * PAGE as u64,
                 "error":"ENOSPC", "counters_unchanged":true, "publication_refused":true,
                 "prior_final_preserved":true, "cleanup_before_space_release":true,
+                "repeated_preparing_state_preserved":phase == "identity",
                 "fresh_transfer_exact":true}))
         }.await;
         if unsafe { libc::umount2(target.as_ptr(), 0) } != 0 {
@@ -977,12 +1011,13 @@ mod linux {
         }
         println!("RECEIVE_NATIVE_ENROLLMENT_SUMMARY=observed cases=3 recovered={recovered} children=joined fixture=retired");
         ensure!(recovered == 3, "receive enrollment crash cases failed: {recovered}/3 recovered");
-        for free_pages in [0, 1] {
-            let case = format!("full-filesystem-{free_pages}");
-            let observed = full_filesystem(&root.join(&case), free_pages).await?;
+        for (phase, free_pages) in [("block", 0), ("block", 1), ("identity", 0), ("digest", 0)] {
+            let case = if phase == "block" { format!("full-filesystem-{free_pages}") }
+                else { format!("full-filesystem-{phase}") };
+            let observed = full_filesystem(&root.join(&case), phase, free_pages).await?;
             println!("RECEIVE_NATIVE_CASE={}", json!({"case":case,"observed":observed}));
         }
-        println!("RECEIVE_NATIVE_STORAGE_SUMMARY=observed cases=2 safe=2 mounts=retired fixture=retired");
+        println!("RECEIVE_NATIVE_STORAGE_SUMMARY=observed cases=4 safe=4 mounts=retired fixture=retired");
         let mut retired = 0;
         let base = root.join("completed-listing");
         fs::create_dir(&base)?;
@@ -1043,7 +1078,7 @@ mod linux {
         fs::remove_dir_all(&base)?;
         println!("RECEIVE_NATIVE_RETIREMENT_SUMMARY=observed cases=3 retired={retired} children=joined fixture=retired");
         ensure!(retired == 3, "receive completed-destination cases failed: {retired}/3 retired");
-        println!("RECEIVE_NATIVE_AUTHORITY=pass cases=24 actors={actors} receiver_uid=0 actor_uid=4001 children=joined fixture=retired");
+        println!("RECEIVE_NATIVE_AUTHORITY=pass cases=26 actors={actors} receiver_uid=0 actor_uid=4001 children=joined fixture=retired");
         Ok(())
     }
 

@@ -6381,7 +6381,7 @@ elif [ "$MODE" = hbb-common-fs ]; then
     if [ "$RUST_TEST_PROFILE" = file-metadata ]; then
         mapfile -t receive_native_receipts < <(
             /usr/bin/grep -Eo \
-                "RECEIVE_NATIVE_AUTHORITY_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE artifact_sha256=[0-9a-f]{64} source_sha256=[0-9a-f]{64} cases=24 actors=20 receiver_uid=0 actor_uid=4001 scope=production-library installed=unexecuted vm_network=none children=joined fixture=retired" \
+                "RECEIVE_NATIVE_AUTHORITY_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE artifact_sha256=[0-9a-f]{64} source_sha256=[0-9a-f]{64} cases=26 actors=20 receiver_uid=0 actor_uid=4001 scope=production-library installed=unexecuted vm_network=none children=joined fixture=retired" \
                 "$SERIAL_LOG" || true
         )
         [ "${#receive_native_receipts[@]}" -eq 1 ] \

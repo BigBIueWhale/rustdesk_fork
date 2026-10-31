@@ -6182,10 +6182,7 @@ printf 'ANDROID_RUNTIME_PROGRESS_TEST=pass old=buffered new=before-eof diagnosti
     "VERIFIER_VM_MAIN_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused nofile=524544 workspace_fixtures=actual workspace_cleanup=joined" \
     "$SERIAL_LOG" \
     || { tail -n 240 "$SERIAL_LOG" >&2; fail 'main verifier exact-entry result marker is absent'; }
-if [ "$MODE" = network-impairment-probe ]; then
-    printf 'NETWORK_IMPAIRMENT_PROBE_OUTER=pass host_uid=%s commit=%s tree=%s network=none observation=readonly product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
-        "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
-elif [ "$MODE" = authority-smoke ]; then
+if [ "$MODE" = authority-smoke ]; then
     require_exact_fixed_receipt \
         'WINDOWS_PRESENTATION_ENTRY=pass root=refused foreign=refused nofile=refused workload=unexecuted' \
         'Windows presentation entry refusals'
@@ -8963,7 +8960,10 @@ if [ "$BASE_READONLY_TEST" -eq 1 ]; then
     printf 'VERIFIER_VM_BASE_READONLY=pass host_uid=%s commit=%s tree=%s profile=444 source=private-copy boot=actual assets=cold-derived scratch=ram canonical=unchanged overrides=forbidden network=none cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
 fi
-if [ "$MODE" = authority-smoke ]; then
+if [ "$MODE" = network-impairment-probe ]; then
+    printf 'NETWORK_IMPAIRMENT_PROBE_OUTER=pass host_uid=%s commit=%s tree=%s network=none observation=readonly product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
+elif [ "$MODE" = authority-smoke ]; then
     printf 'VERIFIER_VM_OUTER_AUTHORITY=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=no-harness-addition base=sha512 docker=sha256 output_bound=%s cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$SERIAL_LIMIT" "$vm_elapsed_seconds"
 elif [ "$MODE" = android-execution-probe ]; then

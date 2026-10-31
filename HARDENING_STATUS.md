@@ -3015,6 +3015,27 @@ Retained exact commands, source/artifacts, samples and cleanup:
 `viewer-pacing-5d8cf83a.json`. Earlier capture-only evidence remains in
 `viewer-capture-cadence-108f40d2.json`; independent parks remain.
 
+**Actual packet impairment — fixture ready; app acceptance OPEN.**
+`39dbed34` adds a small isolated network prerequisite check. The existing
+6.1.0-50-cloud-amd64 guest already contains netem, IFB, ingress classification
+and iproute2 6.1.0; no package acquisition or new image is needed. Native run
+`0mRwjastCG` redirects a disposable namespace's loopback ingress through a
+64-packet netem queue. A 125-ms delay in each direction yields 250.35–250.48 ms
+TCP exchanges; removing the classifier restores sub-0.05-ms exchanges even
+while the delayed queue remains configured. A 2,002-ms total outage records
+seven kernel drops. The same socket objects and TCP endpoints receive the
+pending payload 1,872 ms after restoration; five subsequent exchanges remain
+inside the predeclared 100-ms fixture envelope (maximum 44.03 ms).
+
+Sockets close, the queue/interface retire, the namespace child joins and the
+initial guest network is preserved. The VM uses 400,461,824 bytes peak RAM
+scratch, joins QEMU and leaves zero listener deltas. This proves the impairment
+mechanism, not RustDesk presentation recovery or realistic random/burst loss,
+bandwidth/jitter, MTU/offload, input-visible or soak behavior. Next: connect this
+mechanism to the existing exact `5d8cf83a` app and pixel observer; no repeat app
+build is needed. Commands, observations and cleanup:
+`network-impairment-39dbed34.json`. R-F5 and independent parks remain OPEN.
+
 **Current app build and replay prerequisites — accepted Linux artifact.**
 `6b703f35` reconciles the candidate lock with the repository-owned xterm path;
 all 196 package versions and every other lock entry remain unchanged. The old

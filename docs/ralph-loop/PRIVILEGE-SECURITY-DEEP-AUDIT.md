@@ -125082,3 +125082,64 @@ whole-file round trip pass. Supervisor time is 30.821 seconds, scratch peak
 402,452,480 bytes; QEMU 3325288 joins exit 0, RAM/run roots retire and all three
 listener deltas are zero. Six raw files totaling 104,740 bytes match on CTE/TUF,
 as does the checkpoint capsule. This audit-only receipt preserves the counted ledger.
+
+## 2026-10-31 — receiver-ingress impairment prerequisite for R-F5
+
+The previous goal turn made progress: the capture-pacing correction and exact-app
+suspension evidence are committed and pushed. At this checkpoint, actual packet
+impairment takes priority over another timing-phase replay because it exercises
+a distinct mandatory R-F5 failure condition. The selected prerequisite is a
+working impairment mechanism for the retained 5d8cf83a app. Receive and all
+independent user parks remain untouched; no new product change or build occurs.
+
+Primary research: [netem](https://man7.org/linux/man-pages/man8/tc-netem.8.html)
+requires receive-side placement for realistic TCP testing because sender-side
+small queues can distort results. [mirred](https://man7.org/linux/man-pages/man8/tc-mirred.8.html)
+documents ingress redirection through IFB. The
+[Linux 6.1 IFB source](https://raw.githubusercontent.com/torvalds/linux/v6.1/drivers/net/ifb.c)
+reinjects ingress packets while avoiding repeated classification; `numifbs=0`
+avoids optional legacy devices in the initial namespace. The
+[unshare contract](https://man7.org/linux/man-pages/man1/unshare.1.html)
+provides an anonymous namespace whose launcher waits for its child. These sources
+inform the fixture; none establishes application latency acceptance.
+
+Read-only run `i8zUoDWDyY` at b8832bff finds all seven inspected kernel features
+and the expected module files in the existing cloud kernel; ip/tc are 6.1.0 and
+unshare is 2.38.1. No acquisition is needed. Command at that source:
+`bash scripts/smoke-verifier-vm-authority.sh --network-impairment-probe`.
+The completed fixture's command is
+`bash scripts/smoke-verifier-vm-authority.sh --network-impairment-tests`.
+
+Native run `0mRwjastCG` at 39dbed34 executes the fixture under guest-local root
+in a fresh network namespace, refusing the initial guest namespace. It uses only
+loopback and an owned IFB, with a 64-packet netem limit. Before execution its
+TCP exchange bounds are healthy/recovered <100 ms, delayed 200–1,000 ms with
+125 ms per direction, a two-second 100% outage and recovery within three seconds.
+Observed baseline maximum is 0.016817 ms; three delayed exchanges are
+250.347798/250.454318/250.478317 ms. Removing the classifier while retaining the
+delayed queue restores exchanges to at most 0.040346 ms. The 2,002.125179-ms
+outage records seven kernel drops; the original pending payload arrives
+1,871.847026 ms after restoration. Five further exchanges peak at 44.027933 ms.
+Socket inode and local/peer address identity remain equal throughout. Queue
+statistics are retained; these small-payload checks do not establish realistic
+segmentation/offload, random/burst loss, bandwidth/jitter or sustained bounds.
+
+The sockets close and the exact ingress queue and IFB are deleted. The anonymous
+namespace child joins, and the initial guest link inventory is unchanged. Both
+VMs finish and join QEMU (3328953/3331280), retire RAM/run roots and leave three
+zero-delta listener observations each. Supervisor durations are 12.817/18.762
+seconds; peak scratch 400,388,096/400,461,824 bytes within the existing 4 GiB
+reservation, with 2 GiB guest, 6 GiB host headroom and a 1 GiB file ceiling.
+The storage workload inventory gains the one explicit admitted mode; existing
+refusal and profile checks remain. Product, compiler and tests never run on CTE
+or TUF directly. No release is published.
+
+Capsule `.harness-state/verifier-vm/network-impairment-39dbed34.json` is 18,250
+bytes, SHA-256 `37ef0379bc86c53688537c4de9af7bd418964bb79128bdfac8a51d11df835e40`.
+It binds both source commits, commands, prerequisites, raw results, cleanup and
+twelve raw files totaling 143,301 bytes, hash-verified on CTE/TUF. Native serial
+SHA-256: `32d2399bc0ff9c98e024ea230a58563b14066cc3f5a9418c14ee2d2e309c6737`.
+This completes the mechanism prerequisite. Next integrate exact namespace-owned
+impairment with the retained app and unchanged actual-pixel oracle. R-F5 remains
+OPEN for real-peer impairment, input-visible timing, multi-hour sessions and
+other supported roles/platforms; the broad goal remains active.

@@ -86,6 +86,11 @@ needed by the resumed task. Do not require the user to separately reopen each pr
 For the explicitly resumed file-receive fix, TUF and the necessary full-application builds and
 focused tests are already authorized. Independently parked, unrelated topics remain parked.
 
+A direct answer to an assistant's question, including a selected reply such as "Resume this
+file-receive fix", is a user instruction. It does not need to be repeated in a standalone message
+or another `/goal` command. Assistant-written plans, checkpoints, audit notes, and pending questions
+cannot create additional approval requirements.
+
 Choose and verify implementations that satisfy the existing requirements. Ordinary engineering
 choices, compilation failures, test failures, and unresolved design problems are work to perform;
 they are not permission dependencies. Do not ask the user to choose an implementation before
@@ -99,6 +104,8 @@ requires new authorization, identify the exact action, the controlling restricti
 existing authorization does not cover it; continue other authorized work where possible. Follow
 the goal lifecycle rules, and never mark the goal blocked merely because an obsolete permission
 question remains unanswered.
+A blocked subtask does not block the whole objective while useful authorized work or a feasible
+prerequisite remains available.
 
 Existing host isolation, network, storage, publication, and product acceptance requirements remain
 binding. Task resumption does not authorize weakening them or rewriting unrelated live instructions.

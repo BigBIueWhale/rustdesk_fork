@@ -16267,8 +16267,9 @@ where setup moved; refusal, cleanup and later recovery still pass. Its three kno
 completed-layout cases fail unchanged, so the canonical metadata command exits one.
 The audit retains exact source/artifact/raw identities and joined bounded-RAM cleanup.
 Full application/CM scheduling, interrupted fresh-confirmation integration, other
-platforms and installed/release acceptance remain OPEN; the staging exception and
-full-parent/viewer resumption decisions remain pending.
+platforms and installed/release acceptance remain OPEN. The user-authorized receive
+resumption includes necessary full-parent/viewer verification; staging acceptance
+still requires correction without a cleanup exception.
 
 At `6a2ef48e`, TUF `JDWctIBQpW` passes all **45 focused tests** without another
 product change. Eight fresh-confirmation interruption cases cover both confirmation
@@ -16302,7 +16303,8 @@ joined actors. All three known layout cases still fail with 31 retained records 
 126,976 allocated bytes and zero added locks; the canonical metadata command exits
 one. Raw identities and joined RAM/diagnostic cleanup are in the audit. Physical
 power-loss durability, full application/CM, installed and other-platform acceptance
-remain OPEN. Pending layout/full-parent decisions and other parks are unchanged.
+remain OPEN. Necessary full-parent receive verification is resumed; the layout
+correction and unrelated parks remain open.
 
 **Resume content binding — library correction accepted; caller acceptance OPEN/STOP-SHIP.**
 Baseline `640a9680`, TUF `ZoWbc47wT7`, accepts staged `abc` against source `XYZdef`
@@ -16378,15 +16380,41 @@ neighbors. No rejected-work queue or extra worker budget is introduced. Caller
 source is adapted: the viewer keeps refused jobs in its existing failure/checkpoint
 flow; the controlled caller still removes its failed send job before reporting error.
 
-The changed controlled/viewer loops remain uncompiled/unexecuted in the full
-application. Full-parent/viewer execution parks remain in force pending the specific
-resumption question; their fixtures also need adaptation to the owned completion
-path. CM scheduling, ordinary job cancellation/drop and caller shutdown still need
-bounded lifetime and slow-storage evidence. Library refusal preservation does not
-prove application retry, checkpoint effects or final retirement. Actual handler
-keepalive/cancellation/checkpoint validation remains required. The independently
-reproduced staging-layout lifecycle regression remains actionable while the full
-application lane is parked.
+The user's specific receive resumption includes the necessary full-parent build
+and focused caller tests. The full Linux application library now compiles with
+Flutter features; its caller fixtures use owned completion and private staging.
+Current runtime results and their limits are recorded below. CM scheduling,
+ordinary job cancellation/drop and caller shutdown still need bounded lifetime and
+slow-storage evidence. Library refusal preservation does not prove full application
+retry or final retirement. Actual round-level keepalive/cancellation validation and
+the independently reproduced staging-layout lifecycle correction remain required.
+
+**Resume application checkpoint — Linux handlers accepted; complete flow OPEN.**
+At `2b74a1b8`, TUF `xh5jx41g7Y`, the full Linux application library
+compiles with Flutter features and freshly generated bridge bindings. All three
+resume tests pass: oversized upload/download refusal preserves owner metadata,
+counters and saved bytes; valid offsets 2 and u32::MAX complete in both directions
+with exact wire proofs and file tails. Pending work remains checkpointed, no
+confirmation precedes owned collection, and the actual emitted proof survives
+CM conversion and serde round-trip. Private per-file artifacts retire on success.
+
+`59cfa632` corrects the non-exhaustive protobuf-to-CM conversion using fallible
+admission and explicit unsupported-action errors. The fixtures now use private
+staging and asynchronous completion; `7284df9d`/`d752a4b6` fix test imports,
+and `2b74a1b8` supplies the isolated UID's missing OS account without changing
+production ownership checks. The four-test group takes 132.37 seconds and exits
+one because the separate viewer-admission regression fails all eight scenarios.
+The nineteen later tests and CLI check remain unexecuted; this is not a full-suite
+pass. Artifact SHA-256:
+`f7700f6de1ffe11f94a4a006ef0224a7af648a9febeb18c377f6e47a807f7785`.
+QEMU and bounded RAM scratch retire, and all four listener deltas are zero.
+
+This executes actual viewer digest/completion handlers over keyed TCP, not the
+whole connection loop or a CM IPC transaction. Round-level liveness during slow
+hashing, cancellation/reconnect, installed/root-service behavior, staging-layout
+cleanup, other platforms and release acceptance remain OPEN. The audit retains
+all failed builds, environment failures and exact raw/cleanup identities.
+
 The latest maximum-offset preparation takes 64.268 seconds, exceeding the loops' 30-second receive deadline;
 no installed disconnect has been measured. Large/slow-source resume and the
 staging-layout lifecycle failures remain OPEN/STOP-SHIP.
@@ -16420,8 +16448,8 @@ cases still fail, so the canonical command exits one. This binds output to the
 preparation read, not an atomic snapshot against arbitrary concurrent writers.
 Fresh-transfer mutation, preparation-time source consistency, slow-source/app/CM
 integration, installed and other-platform acceptance remain OPEN. The audit retains
-artifact/raw identities and joined RAM/diagnostic cleanup. Pending decisions and
-other parks are unchanged.
+artifact/raw identities and joined RAM/diagnostic cleanup. Necessary receive
+application verification is resumed; unrelated parks remain unchanged.
 
 **Generation-lock retirement (`edddaf7b`) — component accepted.** Completed claims
 release their shared membership under the private enrollment gate. Only exclusive
@@ -17371,18 +17399,17 @@ enumeration tests and historical observations below remain, with their stated li
 `file-budget-wording-aea763d9.json` retains the classification, unchanged-source
 bindings and fresh isolated ledger count.
 
-**OPEN source finding — viewer transfer-job admission.** In
+**Viewer transfer-job admission — reproduced, OPEN.** In
 `src/client/io_loop.rs::handle_msg_from_ui`, both `SendFiles` and `AddJob` append
 read/write jobs without a retained-job count check; `AddJob` also retains paused
 jobs. The connection-manager/controlled-side checks do not bound those viewer
 vectors. The viewer mailbox bounds queued commands, not accumulated jobs. Required
 follow-up is owner-level admission before enumeration or peer dispatch, explicit
 refusal with legitimate retry, and native saturation/recovery tests covering live
-and paused jobs in both directions. This is source inspection, not a demonstrated
-memory-exhaustion or privilege-escalation result. No product change was made here;
-full-parent and file-metadata execution parks remain in force, as do all other parks.
+and paused jobs in both directions. The native-handler reproduction below confirms
+the missing limit; it does not establish memory exhaustion or privilege escalation.
 
-**Viewer admission regression — prepared; NOT COMPILED OR EXECUTED.**
+**Viewer admission regression — eight scenarios fail.**
 `src/client/io_loop/file_resume_tests.rs::viewer_job_limit_precedes_scan_dispatch_and_recovers`
 adds eight native-handler scenarios: read/write direction, active/paused retained jobs,
 and `SendFiles`/`AddJob`. The fixture seeds 31 real jobs, admits the 32nd through the
@@ -17390,13 +17417,17 @@ production handler, then requires refusal of the 33rd before a directory-open ob
 or keyed TCP action. It also checks exact retained-job snapshots, UI error delivery,
 independent opposite-direction admission, real cancellation and retry after capacity is freed.
 Linux inotify has a successful-enumeration control; an ordered encrypted message barrier
-observes preceding peer actions without treating a timeout as absence. The existing native
-viewer lane now requires this case (23 total), but no pass, reproduction or product correction
-is claimed. The user pivoted again after preparation commit `cfdb94b6`; this work,
-the full-parent build and `--viewer-resume-tests` remain user-PARKED. Do not resume
-automatically. The planned `viewer-job-fixture-b6494444.json` capsule was not finalized;
-its earlier ledger reference was premature and is not evidence of a completed count or run.
-The admission defect and all broader native/installed/release obligations remain OPEN.
+observes preceding peer actions without treating a timeout as absence. During the
+user-authorized receive verification, TUF `AV1yU9t6vu` and `xh5jx41g7Y` execute
+all eight scenarios. Every 33rd job is retained without the required refusal;
+all upload cases enumerate, and all `SendFiles` cases emit a peer action.
+The subsequent cancellation/retry controls are not reached. The canonical viewer
+command exits one; its nineteen later tests and CLI check do not execute.
+The separate admission implementation remains parked; no correction is claimed.
+The old planned `viewer-job-fixture-b6494444.json` capsule was never finalized;
+current evidence is the two raw runs and the audit's application-integration entry.
+Full application builds needed by the resumed receive work are authorized.
+The admission defect and broader native/installed/release obligations remain OPEN.
 
 **Named A/B evidence.** Each accepted correction ran
 `/bin/bash scripts/smoke-verifier-vm-authority.sh --hbb-common-fs`; its filesystem count below

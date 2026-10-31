@@ -123386,3 +123386,104 @@ and shared-mount staging-exception questions are unanswered; their dependent wor
 remains unstarted. No new permission question, acceptance exception, repeated
 green check or release-readiness claim is introduced. The counted ledger and
 accepted product source are unchanged.
+
+## 2026-10-31 — resume application integration and authorization correction
+
+The user's explicit file-receive resumption authorizes the necessary full-parent
+builds and focused caller verification on already-authorized TUF. Treating older
+build parks as a new permission dependency was incorrect. The user reiterated
+that correction in this turn. Necessary work proceeds under that authorization;
+other unrelated pivots remain. The completed-destination staging defect still
+requires a correct implementation; no acceptance exception was granted or inferred.
+
+At unchanged product `4ecac719`, full-parent TUF `DqvAyQBYPG` regenerates
+the Flutter bridge, then fails compilation on the fixture's missing `libc`
+import. `7284df9d` imports the existing hbb_common reexport. The next run
+`LhwNO5tC7l` regenerates the bridge, then exposes E0004 in the production
+CM confirmation conversion: the protobuf action enum is non-exhaustive outside
+hbb_common. Neither attempt produced a libtest artifact or executed behavior.
+
+`59cfa632` replaces the infallible conversion with borrowed `TryFrom`.
+Known skip, offset and complete resume proofs retain their exact values;
+an unsupported future action returns an explicit file error before caller state
+advances. Rust's [non-exhaustive enum contract](https://doc.rust-lang.org/reference/attributes/type_system.html#the-non_exhaustive-attribute)
+requires that external match arm, while [TryFrom](https://doc.rust-lang.org/std/convert/trait.TryFrom.html)
+expresses a conversion that can refuse unsupported input. This is a compile
+integration correction, not evidence of an exploitable unknown wire variant.
+
+The three resume fixtures now seed private artifacts, collect the actual owned
+confirmation completion, and inspect real pending/refused checkpoint metadata.
+Oversized refusal retains exact saved bytes, inode and counters; valid cases
+observe no premature confirmation, exact encrypted wire action, CM conversion/
+serde round-trip, resumed tail and private per-file retirement. The separate
+viewer admission regression and all remaining runner checks are retained.
+Real maximum-offset hashing needs a 240-second group budget and a 900-second
+integration VM envelope; storage/resource limits and product deadlines are unchanged.
+
+Prior attempts joined QEMU 3149507 / 3150684 after 350.463 / 359.540 seconds.
+Both wrappers and RAM workspaces are absent. Each has four zero listener deltas
+and no reported OOM events. Fourteen raw files / 160,931 bytes per host were
+hash-verified before removing only their exact diagnostics (6,885,376 allocated
+bytes total). Serial SHA-256s: DqvAyQBYPG
+`dc112898544c9a36bb8aa4ab2a3679be6e0bb6b5aae285a399b5d113679a12ab`;
+LhwNO5tC7l
+`df6d1b79580cb2ff9b1047405032855f4e42262718e2bf972f1891a84e302ea3`.
+
+The third full-parent run `mRptgJIK4Z` confirms the E0004 conversion error
+is gone but catches the newly added test's missing `crate::ipc` import.
+`d752a4b6` adds that import; production is unchanged from `59cfa632`.
+No runtime acceptance is assigned to the failed build. Its QEMU 3152213 joins
+after 359.687 seconds; wrapper 3151721 and RAM `run.pmm4l82k` retire,
+with four zero listener deltas and no OOM events. Serial SHA-256:
+`3ccbb576a0b54460bf9f6a12756b24f456a902f28d4a7c0715a7473f38ecee13`.
+Its exact 3,444,736-byte diagnostic directory was removed after TUF raw-log
+verification. A failed rsync path argument was corrected; all 21 raw files /
+243,675 bytes are subsequently hash-verified on both hosts.
+
+At `d752a4b6`, TUF `AV1yU9t6vu` builds the full Linux application
+library with Flutter features in 118 seconds. Artifact SHA-256:
+`7f1afc3b44bc6369598ebc96ed8c67130445dec17b650d407927923d3cbf86ff`.
+The oversized upload refusal passes. Both receive-dependent tests stop during
+fixture setup because UID 1000 has no NSS account/home in this container.
+The previously prepared viewer admission test runs all eight scenarios and
+reproduces unbounded retained jobs with no explicit refusal: all upload cases
+enumerate, and all SendFiles cases emit a peer action. Cancellation/retry controls
+are not reached after these failures. This is actual handler behavior, not a
+measured memory-exhaustion result. Aggregate: one pass, three failures; subsequent
+nineteen neighboring tests and CLI check do not run.
+
+`2b74a1b8` extends the existing hbb_common-only account fixture to this
+viewer-resume profile: a fixed read-only passwd entry points UID 1000 to the
+container's private /tmp/home. The production coordinator's NSS lookup and
+ownership checks are unchanged. [getpwuid_r](https://man7.org/linux/man-pages/man3/getpwuid.3.html)
+obtains the UID's account record and reports absence when none exists; merely
+setting HOME cannot supply that record. No host account or filesystem is changed.
+
+AV1yU9t6vu QEMU 3153357 joins after 371.674 seconds; wrapper 3152861 and
+RAM `run.i3latqek` retire, and four listener deltas are zero. Serial SHA-256:
+`c0ba5439963e42e730d08ef56096a06279e849af6c8178d2186a99fc08d804b3`.
+All 28 raw files / 326,432 bytes per host are hash-verified before its exact
+3,444,736-byte diagnostic directory is removed.
+
+**Accepted Linux caller checkpoint, `2b74a1b8`, TUF `xh5jx41g7Y`.**
+Full-parent compilation and fresh Flutter/Rust bridge generation pass. The
+application libtest artifact is
+`f7700f6de1ffe11f94a4a006ef0224a7af648a9febeb18c377f6e47a807f7785`.
+All three resume tests pass, including upload/download offsets 2 and u32::MAX,
+oversized refusal, exact saved-byte/counter/checkpoint preservation, absence of
+premature confirmation, owned completion, keyed wire proof, CM conversion/serde
+preservation, exact resumed tail and private per-file retirement. The fourth
+viewer-admission test still fails all eight scenarios. Group time 132.37 seconds;
+canonical exit one. Nineteen later tests and the CLI check remain unexecuted.
+
+QEMU 3154502 joins after 506.800 seconds; wrapper 3154014 and RAM
+`run.vd37ihf9` retire. Four listener deltas are zero. Scratch peaks at
+6,291,243,008 bytes within 7 GiB; minimum available host memory is
+34,498,416,640 bytes. Serial 9,973 bytes, SHA-256
+`b36cf7904880c2443810e59d326e651cec90dd85555d59e8fdb223a20d923950`.
+All **35 raw files / 408,122 bytes per host** are hash-verified; the fifth exact
+diagnostic directory is removed (3,444,736 allocated bytes).
+No full-loop keepalive, cancellation/reconnect, CM IPC authority, installed service,
+other-platform or release acceptance is claimed. The remaining staging lifecycle
+defect still requires correction under the existing requirements and authorization.
+Unrelated topic parks remain.

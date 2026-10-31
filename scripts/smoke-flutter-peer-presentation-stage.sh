@@ -1265,13 +1265,17 @@ PY
     grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false$' \
       <<<"$controller_output" || fail 'real password prompt verdict is missing'
     if [ "$PEER_SCENARIO" = mouse-input ]; then
-      for sequence in {1..8}; do
+      for sequence in {1..14}; do
         [ "$(grep -Ec "^FLUTTER_PEER_MOUSE_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
           || fail "mouse case $sequence is absent or duplicated"
       done
-      grep -Fxq 'FLUTTER_PEER_MOUSE_INPUT_OK cases=8 button_events=16 drag_moves=2 wheel_directions=4 actual_peer=true native_events=true released=both same_window=true stable_connection=true resources=bounded' \
+      for sequence in 9 11 13; do
+        [ "$(grep -Ec "^FLUTTER_PEER_MOUSE_OUTSIDE_HELD sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
+          || fail "mouse outside-held observation $sequence is absent or duplicated"
+      done
+      grep -Fxq 'FLUTTER_PEER_MOUSE_INPUT_OK cases=14 button_events=28 drag_moves=2 wheel_directions=4 outside_releases=3 reentries=3 actual_peer=true native_events=true released=both same_window=true stable_connection=true resources=bounded' \
         <<<"$controller_output" || fail 'native mouse input verdict is missing'
-      viewer_result='viewer=joined xvfb=joined mouse_cases=8 stable_connection=true resources=bounded'
+      viewer_result='viewer=joined xvfb=joined mouse_cases=14 stable_connection=true resources=bounded'
     elif [ "$PEER_SCENARIO" = keyboard-retirement ]; then
       grep -Fxq 'FLUTTER_PEER_KEYBOARD_RETIREMENT_OK remote_keys=2 local_key=preserved viewer_exit=abrupt native_releases=true fixture_keys_released=true' \
         <<<"$controller_output" || fail 'native keyboard retirement verdict is missing'

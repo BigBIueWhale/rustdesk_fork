@@ -2239,14 +2239,20 @@ static int exercise_mouse_input(Display *source, Display *display,
                                 const ViewerWindow *viewer,
                                 const ConnectionIdentity *connection,
                                 const ProcessResources *baseline) {
-    static const struct { const char *name; unsigned int button; int drag; } cases[] = {
-        {"left-click", 1U, 0}, {"middle-click", 2U, 0}, {"right-click", 3U, 0},
-        {"left-drag", 1U, 1}, {"wheel-up", 4U, 0}, {"wheel-down", 5U, 0},
-        {"wheel-left", 6U, 0}, {"wheel-right", 7U, 0},
+    enum { MOUSE_CLICK, MOUSE_DRAG, MOUSE_EXIT, MOUSE_REENTER };
+    static const struct { const char *name; unsigned int button; int action; } cases[] = {
+        {"left-click", 1U, MOUSE_CLICK}, {"middle-click", 2U, MOUSE_CLICK},
+        {"right-click", 3U, MOUSE_CLICK}, {"left-drag", 1U, MOUSE_DRAG},
+        {"wheel-up", 4U, MOUSE_CLICK}, {"wheel-down", 5U, MOUSE_CLICK},
+        {"wheel-left", 6U, MOUSE_CLICK}, {"wheel-right", 7U, MOUSE_CLICK},
+        {"left-release-outside", 1U, MOUSE_EXIT}, {"left-reentry", 1U, MOUSE_REENTER},
+        {"middle-release-outside", 2U, MOUSE_EXIT}, {"middle-reentry", 2U, MOUSE_REENTER},
+        {"right-release-outside", 3U, MOUSE_EXIT}, {"right-reentry", 3U, MOUSE_REENTER},
     };
     Window root = RootWindow(source, DefaultScreen(source)), child;
     unsigned char mapping[32];
     int origin_x, origin_y, result = -1;
+    int center_x, center_y;
     unsigned int injected_held = 0U;
     /* Admit identity button maps on both independent X servers. */
     if (XGetPointerMapping(source, mapping, sizeof(mapping)) < 7) return -1;
@@ -2257,7 +2263,9 @@ static int exercise_mouse_input(Display *source, Display *display,
         !XTranslateCoordinates(display, viewer->window,
             RootWindow(display, DefaultScreen(display)),
             (int)viewer->width / 2, (int)viewer->height / 2,
-            &origin_x, &origin_y, &child)) return -1;
+            &origin_x, &origin_y, &child) ||
+        mouse_snapshot(source, &center_x, &center_y, &injected_held) != 0 ||
+        injected_held != 0U) return -1;
     XSelectInput(source, root, ButtonPressMask | ButtonReleaseMask | PointerMotionMask);
     XSync(source, False);
 
@@ -2266,16 +2274,28 @@ static int exercise_mouse_input(Display *source, Display *display,
         unsigned int bit = button <= 5U ? 1U << (button + 7U) : 0U;
         unsigned int mask, received = 0U, events = 0U, held_moves = 0U;
         int start_x, start_y, end_x, end_y, local_x, local_y;
+        int outside_x = 0, outside_y = 0;
         uint64_t start = monotonic_millis(), complete = 0U;
         ConnectionIdentity after = {{0}, {0}, 0UL};
         ProcessResources resources;
         ViewerWindow current = {0};
+        if (cases[i].action == MOUSE_REENTER) {
+            if (XTestFakeMotionEvent(display, DefaultScreen(display),
+                                    origin_x, origin_y, CurrentTime) == 0) goto finished;
+            XSync(display, False);
+            do {
+                if (mouse_snapshot(source, &end_x, &end_y, &mask) != 0 || mask != 0U) goto finished;
+                if (end_x == center_x && end_y == center_y) break;
+                if (sleep_millis(10U) != 0) goto finished;
+            } while (monotonic_millis() - start < 5000U);
+            if (end_x != center_x || end_y != center_y) goto finished;
+        }
         if (mouse_snapshot(source, &start_x, &start_y, &mask) != 0 || mask != 0U ||
             mouse_snapshot(display, &local_x, &local_y, &mask) != 0 || mask != 0U) goto finished;
         if (XTestFakeButtonEvent(display, button, True, CurrentTime) == 0) goto finished;
         injected_held = button;
         XSync(display, False);
-        if (cases[i].drag) {
+        if (cases[i].action == MOUSE_DRAG) {
             if (wait_mouse_drag(source, bit, start_x, start_y, 0, &end_x, &end_y) != 0) goto finished;
             for (int step = 1; step <= 2; ++step) {
                 int previous_x = end_x, previous_y = end_y;
@@ -2284,6 +2304,29 @@ static int exercise_mouse_input(Display *source, Display *display,
                 XSync(display, False);
                 if (wait_mouse_drag(source, bit, previous_x, previous_y, 1, &end_x, &end_y) != 0) goto finished;
             }
+        } else if (cases[i].action == MOUSE_EXIT) {
+            XWindowAttributes attributes, root_attributes;
+            int window_x, window_y;
+            Window actual_root, actual_child;
+            if (wait_mouse_drag(source, bit, start_x, start_y, 0, &end_x, &end_y) != 0 ||
+                XGetWindowAttributes(display, viewer->window, &attributes) == 0 ||
+                XGetWindowAttributes(display, attributes.root, &root_attributes) == 0 ||
+                !XTranslateCoordinates(display, viewer->window, attributes.root, 0, 0,
+                                       &window_x, &window_y, &child)) goto finished;
+            outside_x = window_x + attributes.width / 2;
+            outside_y = window_y + attributes.height + 10;
+            if (outside_x < 0 || outside_x >= root_attributes.width || outside_y < 0 ||
+                outside_y >= root_attributes.height ||
+                XTestFakeMotionEvent(display, DefaultScreen(display),
+                                    outside_x, outside_y, CurrentTime) == 0) goto finished;
+            XSync(display, False);
+            if (!XQueryPointer(display, viewer->window, &actual_root, &actual_child,
+                               &local_x, &local_y, &window_x, &window_y, &mask) ||
+                local_x != outside_x || local_y != outside_y ||
+                window_y < attributes.height || mask != bit) goto finished;
+            printf("FLUTTER_PEER_MOUSE_OUTSIDE_HELD sequence=%u button=%u viewer_x=%d viewer_y=%d "
+                   "relative_y=%d window_height=%d held=%u\n", i + 1U, button,
+                   outside_x, outside_y, window_y, attributes.height, mask);
         }
         if (XTestFakeButtonEvent(display, button, False, CurrentTime) == 0) goto finished;
         injected_held = 0U;
@@ -2309,18 +2352,20 @@ static int exercise_mouse_input(Display *source, Display *display,
                     event.xbutton.button != button ||
                     event.type != (received == 0U ? ButtonPress : ButtonRelease) ||
                     event.xbutton.state != (received == 0U ? 0U : bit)) goto finished;
-                if (received == 0U || !cases[i].drag) {
+                if (received == 0U || cases[i].action == MOUSE_CLICK || cases[i].action == MOUSE_REENTER) {
                     if (event.xbutton.x_root != start_x || event.xbutton.y_root != start_y) goto finished;
-                } else if (event.xbutton.x_root != end_x || event.xbutton.y_root != end_y) goto finished;
+                } else if (cases[i].action == MOUSE_DRAG &&
+                           (event.xbutton.x_root != end_x || event.xbutton.y_root != end_y)) goto finished;
                 if (++received == 2U) complete = monotonic_millis();
             }
             if (complete != 0U && monotonic_millis() - complete >= 100U) break;
             if (sleep_millis(10U) != 0) goto finished;
         }
         if (received != 2U || complete == 0U || monotonic_millis() - start >= 5000U ||
-            (cases[i].drag && held_moves < 2U) ||
+            (cases[i].action == MOUSE_DRAG && held_moves < 2U) ||
             mouse_snapshot(source, &end_x, &end_y, &mask) != 0 || mask != 0U ||
             mouse_snapshot(display, &local_x, &local_y, &mask) != 0 || mask != 0U ||
+            (cases[i].action == MOUSE_EXIT && (local_x != outside_x || local_y != outside_y)) ||
             find_viewer_window(display, viewer->pid, &current) != 0 || current.window != viewer->window ||
             read_connection_identity(&after) != 0 || !same_connection(connection, &after) ||
             read_process_resources(viewer->pid, &resources) != 0 ||
@@ -3007,8 +3052,8 @@ int main(int argc, char **argv) {
         XCloseDisplay(source);
         if (suspension_status != 0) return 1;
         if (mouse_input) {
-            puts("FLUTTER_PEER_MOUSE_INPUT_OK cases=8 button_events=16 drag_moves=2 "
-                 "wheel_directions=4 actual_peer=true native_events=true released=both "
+            puts("FLUTTER_PEER_MOUSE_INPUT_OK cases=14 button_events=28 drag_moves=2 "
+                 "wheel_directions=4 outside_releases=3 reentries=3 actual_peer=true native_events=true released=both "
                  "same_window=true stable_connection=true resources=bounded");
         } else if (keyboard_retirement) {
             puts("FLUTTER_PEER_KEYBOARD_RETIREMENT_OK remote_keys=2 local_key=preserved "

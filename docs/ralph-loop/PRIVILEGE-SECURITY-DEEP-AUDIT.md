@@ -122682,3 +122682,29 @@ listener comparisons have zero additions/removals, and the command exits zero.
 Six raw evidence files / 104,977 bytes are hash-verified on both hosts. Product,
 fixtures, live instructions and parked work remain unchanged. This measurement
 adds no product acceptance; the three completed-destination failures remain open.
+
+### 2026-10-31 — receive-directory retirement retries: preparation
+
+The prior caller review changed selection by excluding a worker-only Skip patch;
+the current turn returns to receive namespace ownership. Reading the actual
+retirement transition identifies a concrete R-S11fi durability gap: after
+`unlinkat(AT_REMOVEDIR)` succeeds but synchronization of the containing private
+directory fails, retry observes the old child with zero links and returns without
+repeating that containing-directory barrier. The lease can then report retirement.
+This merits a focused correction while the complete staging-layout design remains
+unresolved; it does not resume generic file-job cancellation or parked application
+execution.
+
+Linux fsync documentation requires synchronizing the containing directory separately
+from the unlinked child: https://man7.org/linux/man-pages/man2/fsync.2.html .
+The focused fixture retains the same containing directory through an O_PATH
+descriptor, which supports relative namespace operations but makes fsync return
+kernel EBADF: https://man7.org/linux/man-pages/man2/open.2.html . This is deliberate
+descriptor fault injection, not a simulated disk power failure or observed hardware
+I/O error. The first finish must publish exact bytes, unlink its private child and
+report EBADF. An independently admitted successor then reuses that child name.
+Retry must remain failed while the barrier cannot execute, preserve the successor,
+and succeed after restoring the original sync-capable descriptor. Exact final and
+successor bytes and fixture cleanup precede the verdict. No production change or
+new runtime result is claimed at preparation. Reuse the existing isolated
+file-send-digest lane, adding the new case and its three existing namespace controls.

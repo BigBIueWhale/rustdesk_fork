@@ -260,6 +260,59 @@ mod tests {
     use std::os::unix::fs::{symlink, PermissionsExt};
 
     #[test]
+    fn retirement_retries_the_containing_directory_barrier() {
+        use std::io::{Seek, SeekFrom};
+        let root = std::env::temp_dir().join(format!("receive-retirement-sync-{}", crate::uuid::Uuid::new_v4()));
+        std::fs::create_dir(&root).unwrap();
+        let target = root.join("incoming");
+        let digest = FileDigest { size: 9, modified: 31 };
+        let (mut stream, mut claim) = ReceiveWriteClaim::start_new(target.clone(), digest).unwrap();
+        stream.write_all(b"published").unwrap();
+        // Keep the exact directory and working namespace operations, but make
+        // fsync fail in the kernel. O_PATH cannot provide a durability barrier.
+        let fd = unsafe { libc::openat(claim._lease.namespace.directory.as_raw_fd(),
+            name(".").unwrap().as_ptr(), libc::O_PATH | libc::O_DIRECTORY | libc::O_CLOEXEC) };
+        assert!(fd >= 0);
+        let path_only = unsafe { File::from_raw_fd(fd) };
+        unix_require_same_object(&unix_fstat(&path_only).unwrap(),
+            &unix_fstat(&claim._lease.namespace.directory).unwrap(), "faulted directory").unwrap();
+        let original = std::mem::replace(&mut claim._lease.namespace.directory, path_only);
+        let first = claim.finish(9, 31);
+        assert_eq!(first.unwrap_err().raw_os_error(), Some(libc::EBADF));
+        assert!(claim.published);
+        assert_eq!(claim._lease.namespace.artifacts.metadata().unwrap().nlink(), 0);
+        assert!(!claim._lease.retired);
+
+        // A new transfer may already own the old child name. Retrying the
+        // predecessor must sync its parent without unlinking that successor.
+        let (mut next_stream, next) = ReceiveWriteClaim::start_new(target.clone(), digest).unwrap();
+        next_stream.write_all(b"successor").unwrap();
+        let next_identity = unix_fstat(&next._lease.namespace.artifacts).unwrap();
+        let retry = claim.retire();
+        let repeated_failure = retry.as_ref().err().and_then(|error| error.raw_os_error()) == Some(libc::EBADF);
+        let still_pending = !claim._lease.retired;
+        let successor_preserved = unix_require_same_object(&next_identity,
+            &unix_fstatat_no_follow(original.as_raw_fd(), &next._lease.namespace.child).unwrap(),
+            "successor namespace").is_ok() && next.download_file.metadata().unwrap().len() == 9;
+        let failed_descriptor = std::mem::replace(&mut claim._lease.namespace.directory, original);
+        drop(failed_descriptor);
+        claim.retire().unwrap();
+        let recovered = claim._lease.retired;
+        claim.cleanup().unwrap();
+        let mut successor_bytes = Vec::new();
+        let mut successor = next.download_file.try_clone().unwrap();
+        successor.seek(SeekFrom::Start(0)).unwrap();
+        successor.read_to_end(&mut successor_bytes).unwrap();
+        assert_eq!(successor_bytes, b"successor");
+        drop((stream, next_stream, successor));
+        next.cleanup().unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"published");
+        std::fs::remove_dir_all(&root).unwrap();
+        println!("RECEIVE_RETIREMENT_SYNC=observed first_failure=EBADF child=unlinked repeated_failure={repeated_failure} still_pending={still_pending} successor_preserved={successor_preserved} recovered={recovered} final_bytes=exact fixture=retired");
+        assert!(repeated_failure && still_pending && successor_preserved && recovered);
+    }
+
+    #[test]
     fn generation_lock_retires_only_after_last_owner() {
         let root = std::env::temp_dir().join(format!("receive-generation-{}", crate::uuid::Uuid::new_v4()));
         std::fs::create_dir(&root).unwrap();

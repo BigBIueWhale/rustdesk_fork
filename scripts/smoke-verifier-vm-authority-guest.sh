@@ -3558,6 +3558,10 @@ run_focused_rust_tests() {
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then
             source_fingerprints+=(libs/hbb_common/src/fs/file_block.rs libs/hbb_common/src/fs/confirmation.rs libs/hbb_common/src/fs/confirmation/tests/slow_sync.rs)
             required_tests=(
+                fs::receive_namespace::tests::setup_recovers_only_private_identity_prefixes
+                fs::receive_namespace::tests::generation_lock_retires_only_after_last_owner
+                fs::receive_namespace::tests::generation_retirement_error_releases_exclusion
+                fs::receive_namespace::tests::retirement_retries_the_containing_directory_barrier
                 fs::tests::transfer_resume_send_is_once_and_preserves_live_progress
                 fs::tests::transfer_resume_receive_is_once_and_preserves_owned_output
                 fs::tests::send_digest_refuses_changed_lengths_before_cm_wait
@@ -3669,6 +3673,7 @@ run_focused_rust_tests() {
                 fs::receive_namespace::tests::setup_recovers_only_private_identity_prefixes
                 fs::receive_namespace::tests::generation_lock_retires_only_after_last_owner
                 fs::receive_namespace::tests::generation_retirement_error_releases_exclusion
+                fs::receive_namespace::tests::retirement_retries_the_containing_directory_barrier
                 fs::tests::file_metadata_digest_mismatched_seconds_and_sizes_stay_distinct
                 fs::tests::recursive_owner_files_retain_the_listed_parent
                 fs::tests::recursive_owner_empty_dirs_retain_the_listed_parent
@@ -6358,6 +6363,10 @@ run_focused_rust_tests() {
                                 "$test_executable" fs::tests::send_digest_ --color never --test-threads=1 --show-output
                             [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
                             for test_name in \
+                                fs::receive_namespace::tests::setup_recovers_only_private_identity_prefixes \
+                                fs::receive_namespace::tests::generation_lock_retires_only_after_last_owner \
+                                fs::receive_namespace::tests::generation_retirement_error_releases_exclusion \
+                                fs::receive_namespace::tests::retirement_retries_the_containing_directory_barrier \
                                 fs::file_block::tests::allocation_refusal_returns_error_and_preserves_retry \
                                 fs::tests::send_read_buffer_refusal_preserves_job_and_retry \
                                 fs::tests::read_step_error_retires_selected_entry_with_a_repeated_id \

@@ -124344,6 +124344,90 @@ Six count files / 104,568 bytes and seven reproduction files total thirteen file
 223,706 bytes per host, hash-verified on CTE and TUF. Both ledger copies match the
 counted hash; this audit-only receipt leaves that input unchanged.
 
+## 2026-10-31 — receive handoff owns cleanup under inode exhaustion
+
+The selected R-S8/R-S11fi continuation addresses failure after namespace enrollment
+but before lease ownership. A bounded native reproduction can decide this known
+source gap before the larger shared-parent layout redesign. Test-only `7b6280da`
+adds four guest-only tmpfs cases with 65,536-byte capacity and inode limits 4–7.
+Each calibrates actual inode exhaustion independently, attempts production
+`TransferJob` admission twice, observes cleanup before increasing capacity, then
+requires an exact successful transfer. Original bytes/metadata, counters, refused
+finalization, coordinator inventory and free inodes are observed. No syscall return
+or product branch is injected. All mounts and fixtures retire before the verdict.
+
+At TUF `fx9VTUKTgw`, the baseline exits 1 with `safe=2/4`. Limit 4 reaches the
+private container and identity but cannot create the per-file directory; both
+attempts retain one coordinator record / 4,096 allocated bytes and two destination
+entries. Limit 5 also creates the per-file directory but cannot create its lease;
+both attempts retain two coordinator entries / 4,096 bytes and the empty per-file
+directory. Both cases have zero free inodes. Limits 6 and 7 fail at payload/digest
+creation and already restore all resources. Every original and counter remains
+unchanged; all four capacity-restored retries succeed. The exported library receipt
+records 157 tests / 39 groups; the outer failure correctly rejects native acceptance.
+
+`8f725796` separates ready-directory enrollment from per-file creation so failure
+still owns the admitted directory. Under the enrollment gate it retires only an
+empty private per-file directory, then asks the existing last-owner operation to
+retire the exact container/record and generation. The same result-bearing directory
+retirement helpers serve normal cleanup. Failed lease acquisition explicitly retires
+empty namespace state without removing an unowned lease. Once the per-file lock is
+acquired, the lease object exists before identity replay, synchronization or digest
+preparation; a later error invokes its exact retirement and combines cleanup failure
+with the original error. Nonempty saved artifacts and conflicting live owners are
+preserved. No new dependency, fallback, permission preflight or asynchronous cleanup
+is introduced.
+
+The [kernel tmpfs documentation](https://docs.kernel.org/filesystems/tmpfs.html)
+defines separate inode/data bounds and remount resizing, supporting the calibrated
+failure/recovery fixture. [flock](https://man7.org/linux/man-pages/man2/flock.2.html)
+ties exclusion to retained open descriptions: the coordinator gate remains held
+through ownership transitions, and cleanup never removes another live lease.
+[fsync](https://man7.org/linux/man-pages/man2/fsync.2.html) requires containing-directory
+barriers, so rollback uses the normal durable retirement operation.
+
+At `8f725796`, TUF `zrWxyYlVEj`, the canonical
+`bash scripts/smoke-verifier-vm-authority.sh --file-metadata-tests` exits zero:
+**157 library tests / 39 groups and 37 root native cases / 20 actors pass**.
+The root driver is unchanged, SHA-256
+`e13000aaabb649577e0a95e497a336660005431998ca2b9c021c3fa5e006bda8`.
+All eight limited-inode attempts return ENOSPC with zero coordination entries/bytes,
+only the original destination, and restored free-inode counts 2/3/4/5. All four
+expanded-capacity retries publish exact six-byte root-owned 0600 single-link output
+with mtime 31. The strengthened existing malformed-digest-preparation test also
+passes: refusal preserves the malformed object and saved pair, removes its newly
+acquired lease and preserves a competing live lease's exact identity. Existing
+read-only refusal, authority substitution, abrupt owner loss, disk-full/partial-write,
+concurrent generation and retirement-error controls remain green.
+
+| Artifact | Baseline `7b6280da` | Corrected `8f725796` |
+| --- | --- | --- |
+| Library SHA-256 | `9f8ac593662d6fc3e774bd21d4479cdc9d88119a9f8c2d985d8a522d0803206d` | `4d21e48e122b3866424184c6eda14900dfe2c232e0dc4c836bf5d35013fbb08e` |
+| Root driver SHA-256 | `31da6d36a114161bc84e74553a2dc96e8c48a608ee0061800afbb3abd76cee56` | `017f0f0a9a210a76f311eaa0fe1274d1e86fc0aad5ea2ebf6ebd8989214666e9` |
+| Raw serial bytes | 50,454 | 142,277 |
+| Raw serial SHA-256 | `ec438f448428cbb765e561e8c5671f157b20f131924c0e257e9c2edc3ad2e2f5` | `16ed7643f421b892fa34263477fcd6568dc42a5b39075f7011dc35d4408446f9` |
+
+Serial names are `hbb-common-fs-run.<run>.serial.log`. Fourteen raw files /
+337,025 bytes per host are hash-verified on CTE and TUF. QEMU 3230092 / 3235206
+joins zero after 280.068 / 277.850 seconds; wrappers 3229623 / 3234684 and RAM
+workspaces `run.x6r799et` / `run.cefm24oj` are absent. Both runs have four zero
+listener deltas. Peak scratch is 4,226,437,120 bytes within 6 GiB; minimum available
+host memory is 36,171,894,784 bytes. Exact failed-baseline diagnostics retire after
+evidence verification, removing 3,526,656 allocated bytes. The successful harness
+retires its own run root.
+
+This closes the reproduced inode-pressure leaks, not every resource or durability
+failure. Cleanup still needs descriptor acquisition and synchronization; unavailable
+resources can preserve uncertainty markers and must return the cleanup failure.
+Next exercise real EMFILE at the directory-open/parent-clone/lease-open handoff,
+including sustained exhaustion through cleanup and recovery after resource return.
+The existing exact-child syscall observer can locate the boundary; the
+[resource-limit contract](https://man7.org/linux/man-pages/man2/getrlimit.2.html)
+permits bounded soft-limit restoration without changing the hard ceiling. That
+descriptor test is not yet implemented or executed. Shared-parent/mount-root layout,
+non-local/power-loss behavior, installed workflows, other platforms and release
+acceptance remain OPEN. No permission dependency is introduced.
+
 ## 2026-10-31 — initial receive enrollment refusal retires unused coordination
 
 The preceding turn was progress: it reproduced the leak on unchanged product and

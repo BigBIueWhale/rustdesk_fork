@@ -16217,7 +16217,7 @@ These complement five constructed recovery/refusal states; they prove process-de
 recovery on the tested Linux filesystem, not physical power-loss durability.
 The shared mutable-parent/mount-root layout still retains containers and records,
 while all four full-application resume tests pass at `fbcfa5b8` / `1epyE9D598`
-after this change. The separate admission regression remains failing; complete
+after this change. The admission corrections are recorded below; complete
 viewer/CM/installed acceptance remains OPEN.
 ACL/non-local filesystems, coordinator exhaustion, physical power loss and other
 platforms remain OPEN. No cleanup exception is accepted. The audit retains the
@@ -16255,9 +16255,33 @@ ordinary-user test covers EACCES with fresh/prior intent and refusal while an ol
 generation is active, followed by exact successful retries. Existing crash,
 partial-setup, disk-full and replacement controls retain their passes. The first
 candidate's test-only compile error and exact artifacts/cleanup are retained in
-the audit. Later namespace-to-lease enrollment failures, shared-parent/mount-root
-layout, non-local filesystems and installed acceptance remain OPEN. Next exercise
-inode/descriptor exhaustion at the remaining handoff before claiming full cleanup.
+the audit. The inode-exhaustion handoff correction follows; descriptor exhaustion,
+shared-parent/mount-root layout, non-local filesystems and installed acceptance remain OPEN.
+
+**Namespace-to-lease enrollment — inode-pressure correction accepted.** At test-only
+`7b6280da`, TUF `fx9VTUKTgw`, bounded tmpfs inode limits reproduce two later leaks:
+failed per-file-directory creation retains the empty container and one record;
+failed lease creation retains the per-file directory and two coordination entries.
+Each retains 4,096 coordination bytes after both attempts. Payload/digest creation
+failures already clean up. Originals and counters survive every case.
+
+`8f725796` retains namespace cleanup ownership through per-file admission and
+constructs the exclusive lease owner before fallible preparation. Failed admission
+retires only empty private directories; failed preparation explicitly retires its
+owned lease. Normal and failed paths share identity checks, last-owner exclusion
+and directory barriers. Saved artifacts, malformed objects and other live leases
+remain protected; cleanup errors accompany the primary failure.
+
+The unchanged root driver at TUF `zrWxyYlVEj` now passes all four inode limits /
+eight attempts with zero residue and exact free-inode restoration before capacity
+is increased. All four subsequent transfers complete exactly. **157 library tests /
+39 groups and 37 native cases / 20 actors pass**; the existing malformed-preparation
+test additionally proves its own lease retires while a competing live lease remains.
+Both VMs, children, fixtures and bounded RAM workspaces retire with zero host-listener
+deltas. Exact artifacts, failing comparison and cleanup are in the audit. Descriptor
+pressure and synchronization-failure coverage at this handoff remain OPEN; next
+observe real `EMFILE` at the acquisition boundaries, including failure of cleanup
+itself and recovery after capacity returns. This is Linux library acceptance only.
 
 **Replacement prerequisite — native mount/object observations.** The guest-only
 probe at `44030710`, TUF `O0tIK6FXlb`, exercises ext4, tmpfs, a bind alias and

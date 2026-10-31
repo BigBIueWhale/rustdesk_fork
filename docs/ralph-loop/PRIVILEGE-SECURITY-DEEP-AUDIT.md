@@ -124872,3 +124872,13 @@ diagnostic roots are removed, reclaiming 10,534,912 allocated bytes. Complete
 profile and build evidence is `flutter-build-prerequisite-c87cf4b4.json`, SHA-256
 `bb8861f08b8352e0fcd649f3800b5db4519afde05a4246b144317799cb838c16`.
 This is progress on the current-artifact prerequisite, not R-F5 or release closure.
+
+Fresh ledger count at `0357c7e8`, run `BETSz6dcwA`, exits 0: **375,939 tokens**,
+1,722,998 bytes, SHA-256
+`463c10134816b02f4dbcf92f749bb2ef6e8b97c96a6d0964a77ca23a9fd997a8`.
+Seven controls and the whole-file round trip pass. Supervisor time 30.809 seconds;
+scratch peak 402,452,480 bytes. QEMU 3284329 joins; RAM and run roots retire,
+and all three listener deltas are zero. Six raw files (105,034 bytes) and the
+14,929-byte build capsule match on both hosts. This audit-only receipt leaves
+the counted ledger unchanged. No active build remains; the selected blocker
+continues at the candidate xterm lock/discovery-provenance mismatch.

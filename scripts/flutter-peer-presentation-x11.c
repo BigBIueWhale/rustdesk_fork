@@ -1343,6 +1343,27 @@ static void print_resources(const char *phase, unsigned int sequence,
 
 /* GTK owns the synthetic source selection. A separate Xlib connection reads the
  * destination selection; only the two real applications can transfer between them. */
+typedef struct {
+    char text[16385];
+    unsigned int requests;
+    int released;
+    int failed;
+} ClipboardFixture;
+
+static void clipboard_fixture_get(GtkClipboard *clipboard, GtkSelectionData *selection,
+                                   guint info, gpointer user_data) {
+    ClipboardFixture *fixture = user_data;
+    (void)clipboard;
+    (void)info;
+    fixture->requests += 1U;
+    if (!gtk_selection_data_set_text(selection, fixture->text, -1)) fixture->failed = 1;
+}
+
+static void clipboard_fixture_clear(GtkClipboard *clipboard, gpointer user_data) {
+    (void)clipboard;
+    ((ClipboardFixture *)user_data)->released = 1;
+}
+
 static int exercise_clipboard_text(Display *source, Display *display,
                                    const ViewerWindow *viewer,
                                    const ConnectionIdentity *connection,
@@ -1357,7 +1378,7 @@ static int exercise_clipboard_text(Display *source, Display *display,
     int status = -1;
     const char *phase = "gtk-init";
     unsigned int sequence = 0U;
-    char text[TEXT_LIMIT + 1U];
+    ClipboardFixture fixtures[CASES] = {0};
 
     if (!gtk_init_check(NULL, NULL)) goto done;
     gtk_displays[0] = gdk_display_open(DisplayString(source));
@@ -1371,6 +1392,8 @@ static int exercise_clipboard_text(Display *source, Display *display,
         if (clipboards[side] == NULL) goto done;
     }
     for (sequence = 1U; sequence <= CASES; ++sequence) {
+        ClipboardFixture *fixture = &fixtures[sequence - 1U];
+        char *text = fixture->text;
         unsigned int from = sequence % 2U;
         unsigned int to = 1U - from;
         Atom selection = XInternAtom(displays[from], "CLIPBOARD", False);
@@ -1383,15 +1406,15 @@ static int exercise_clipboard_text(Display *source, Display *display,
         ConnectionIdentity after = {{0}, {0}, 0UL};
         ProcessResources resources = {0};
         ViewerWindow current = {0};
-        int prefix = snprintf(text, sizeof(text), "clipboard-%u-%s\n", sequence, kind);
-        if (prefix <= 0 || (size_t)prefix >= sizeof(text)) goto done;
+        int prefix = snprintf(text, sizeof(fixture->text), "clipboard-%u-%s\n", sequence, kind);
+        if (prefix <= 0 || (size_t)prefix >= sizeof(fixture->text)) goto done;
         length = (size_t)prefix;
         if (sequence <= 4U) {
             const char *body = sequence <= 2U ? "line one\nline two\tend" :
                 "caf\xc3\xa9 e\xcc\x81 \xd7\xa9\xd7\x9c\xd7\x95\xd7\x9d "
                 "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e \xf0\x9f\x99\x82\nlast line";
             size_t body_length = strlen(body);
-            if (length + body_length >= sizeof(text)) goto done;
+            if (length + body_length >= sizeof(fixture->text)) goto done;
             memcpy(text + length, body, body_length + 1U);
             length += body_length;
         } else {
@@ -1409,10 +1432,20 @@ static int exercise_clipboard_text(Display *source, Display *display,
         phase = "source-ownership";
         start = monotonic_millis();
         if (start == 0U) goto done;
-        gtk_clipboard_set_text(clipboards[from], text, (gint)length);
+        GtkTargetList *targets = gtk_target_list_new(NULL, 0U);
+        gtk_target_list_add_text_targets(targets, 0U);
+        gint target_count = 0;
+        GtkTargetEntry *entries = gtk_target_table_new_from_list(targets, &target_count);
+        gboolean owned = gtk_clipboard_set_with_data(clipboards[from], entries, target_count,
+            clipboard_fixture_get, clipboard_fixture_clear, fixture);
+        gtk_target_table_free(entries, target_count);
+        gtk_target_list_unref(targets);
+        if (!owned) goto done;
         gdk_display_sync(gtk_displays[from]);
         fixture_owners[from] = XGetSelectionOwner(displays[from], selection);
         if (fixture_owners[from] == None) goto done;
+        printf("FLUTTER_PEER_CLIPBOARD_SOURCE sequence=%u owner=%lu\n", sequence,
+               fixture_owners[from]);
         selection = XInternAtom(destination, "CLIPBOARD", False);
         phase = "destination-readback";
         while ((now = monotonic_millis()) >= start && now - start < TRANSFER_LIMIT_MS) {
@@ -1457,7 +1490,13 @@ static int exercise_clipboard_text(Display *source, Display *display,
             if (sleep_millis(10U) != 0) goto done;
         }
         now = monotonic_millis();
-        if (!matched || now < start || now - start >= TRANSFER_LIMIT_MS) goto done;
+        printf("FLUTTER_PEER_CLIPBOARD_OBSERVED sequence=%u requests=%u released=%d "
+               "conversion_failed=%d matched=%d source_owner=%lu destination_owner=%lu\n",
+               sequence, fixture->requests, fixture->released, fixture->failed, matched,
+               XGetSelectionOwner(displays[from], XInternAtom(displays[from], "CLIPBOARD", False)),
+               XGetSelectionOwner(destination, selection));
+        if (!matched || fixture->failed || fixture->requests == 0U ||
+            now < start || now - start >= TRANSFER_LIMIT_MS) goto done;
         phase = "connection-and-resources";
         if (read_connection_identity(&after) != 0 || !same_connection(connection, &after) ||
             find_viewer_window(display, viewer->pid, &current) != 0 ||

@@ -1036,7 +1036,7 @@ PY
       [ -z "$SERVER_PID" ] && [ -z "$SERVER_START" ] \
         || fail 'cannot overlap controlled-server generations'
       SERVER_LOG="/tmp/server.$generation.log"
-      (cd /app/bundle && LD_PRELOAD="$BIND_SHIM" RUST_LOG=info,rustdesk::video_qos=debug exec "$APP" --server) \
+      (cd /app/bundle && LD_PRELOAD="$BIND_SHIM" RUST_LOG=info,rustdesk::video_qos=debug,rustdesk::clipboard=debug exec "$APP" --server) \
         >"$SERVER_LOG" 2>&1 &
       SERVER_PID=$!
       SERVER_START=$("$READY" --identity "$SERVER_PID")
@@ -1236,7 +1236,7 @@ PY
     start_xvfb :99 1280x800x24 /tmp/viewer-xvfb.log
     listener_is_exact || fail 'shared namespace lost the exact loopback server listener'
     [ "$(udp_socket_count)" -eq 0 ] || fail 'shared namespace has a UDP socket before connect'
-    (cd /app/bundle && exec env RUST_LOG=info "$APP" --connect 127.0.0.1) \
+    (cd /app/bundle && exec env RUST_LOG=info,rustdesk::clipboard=debug "$APP" --connect 127.0.0.1) \
       >/tmp/viewer.log 2>&1 &
     VIEWER_PID=$!
     VIEWER_START=$("$READY" --identity "$VIEWER_PID")

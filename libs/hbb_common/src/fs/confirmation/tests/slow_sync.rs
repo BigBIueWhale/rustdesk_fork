@@ -104,6 +104,8 @@ impl Drop for Observer {
 #[test]
 fn stalled_receive_retirement_keeps_control_and_exact_cleanup_ownership() {
     use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::{TcpListener, TcpStream}};
+    // The process-wide drain outlives this test and must not inherit its filter.
+    drain().unwrap();
     let observer = Observer::new();
     let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
     let main_tid = unsafe { libc::syscall(libc::SYS_gettid) } as u32;

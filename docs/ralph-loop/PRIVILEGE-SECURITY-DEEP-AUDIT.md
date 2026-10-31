@@ -122385,3 +122385,17 @@ retirement task in the same pending entry. Its original permit survives cleanup,
 cancelled waits and owner-drop handoff to the drain thread. Only joined retirement
 returns capacity; cleanup errors remain errors. The native observer is unchanged.
 This is candidate preparation, not a corrected execution claim.
+
+At `a0bdf36ef1ac7533baf3630d7b066162bb556df2`, TUF `HjFaDWtvDT`, all 32 tests
+pass. Both unchanged native-sync phases report responsiveness and explicit release;
+TCP ping/pong completes inside the one-second limit while fsync remains held, and
+wait cancellation/owner drop retain capacity until cleanup joins. Saved partial,
+digest and final bytes survive, and the lease is reacquired. Artifact SHA-256
+`53ea58c37c96109d77c0c5c03f0007cd96407928264698739957b828a905fda9`.
+Serial 13,414 bytes, SHA-256
+`424fe23cc39fa3645b95d2ca2f75bedf981a8eaaa0f76cf19bea8346c7473ed3`.
+QEMU 3096305 joins after 143.033 seconds; RAM `run.h7vtdxr9` retires and all four
+listener deltas are zero. A test-only follow-up initializes the process-wide drain
+before installing the observer filter so that the shared thread cannot retain a
+closed test notification endpoint. Product code and native oracles are unchanged;
+the final fixture requires its focused execution before acceptance.

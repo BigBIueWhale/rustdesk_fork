@@ -678,6 +678,39 @@ mod linux {
         Err(anyhow!("required enrollment crash point was not reached"))
     }
 
+    async fn descriptor_receiver(base: &Path) -> ResultType<()> {
+        identity(0)?;
+        // Warm the blocking worker before measuring descriptors or arming the fault.
+        tokio::task::spawn_blocking(|| ()).await?;
+        let descriptors = || -> ResultType<usize> {
+            Ok(fs::read_dir("/proc/self/fd")?.collect::<io::Result<Vec<_>>>()?.len())
+        };
+        let before = descriptors()?;
+        let original = snapshot(&base.join("incoming.bin"))?;
+        let mut receiver = job(base)?;
+        io::stdout().write_all(syscall_window::ARMED)?;
+        let result = admit(&mut receiver, false, 0).await;
+        let unchanged = (receiver.finished_size(), receiver.transferred()) == (0, 0)
+            && !receiver.file_confirmed();
+        let finalize_refused = receiver.finalize_write(1).await.is_err();
+        let retired = receiver.retire_current_file_state();
+        drop(receiver);
+        // The controller restores a sustained limit only after every admission
+        // error/cleanup path has returned. Existing stdout needs no new descriptor.
+        io::stdout().write_all(syscall_window::RETURNED)?;
+        let after = descriptors()?;
+        let error = result.err().ok_or_else(|| anyhow!("descriptor-limited admission succeeded"))?;
+        let raw_errno = error.downcast_ref::<io::Error>().and_then(io::Error::raw_os_error);
+        let cleanup_failed = error.to_string().contains("cleanup failed:");
+        ensure!(unchanged && finalize_refused && retired.is_ok() && before == after);
+        ensure!(snapshot(&base.join("incoming.bin"))? == original);
+        println!("RECEIVE_NATIVE_DESCRIPTOR_RECEIVER={}", json!({"error":error.to_string(),
+            "raw_errno":raw_errno, "cleanup_failed":cleanup_failed, "counters_unchanged":unchanged,
+            "publication_refused":finalize_refused, "original_preserved":true,
+            "descriptors_before":before, "descriptors_after":after, "job_retired":true}));
+        Ok(())
+    }
+
     mod syscall_window {
         use super::{actor_command, coordinator, private_final, report_actor, snapshot, ACTOR_UID};
         use hbb_common::{anyhow::{anyhow, ensure}, serde_json::{json, Value}, ResultType};
@@ -693,6 +726,16 @@ mod linux {
         };
 
         pub const ARMED: &[u8] = b"RECEIVE_NATIVE_WINDOW_ARMED\n";
+        pub const RETURNED: &[u8] = b"RECEIVE_NATIVE_DESCRIPTOR_RETURNED\n";
+
+        fn descriptor_limit(pid: i32, limit: Option<&libc::rlimit>) -> io::Result<libc::rlimit> {
+            let mut previous = unsafe { std::mem::zeroed() };
+            if unsafe { libc::prlimit(pid, libc::RLIMIT_NOFILE,
+                limit.map_or(std::ptr::null(), |value| value as *const _), &mut previous) } != 0 {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(previous)
+        }
 
         // Linux UAPI ptrace_syscall_info, including its largest (64-byte) union member.
         #[repr(C)]
@@ -786,7 +829,8 @@ mod linux {
                 name.push(byte);
             }
             ensure!(!name.is_empty() && name.len() <= 255 && !name.contains(&b'/')
-                && name != b"." && name != b"..", "unexpected syscall source name");
+                && name != b".." && (name != b"." || info.data[0] as i64 == libc::SYS_openat),
+                "unexpected syscall source name");
             let fd = info.data[1] as i32;
             ensure!(fd >= 0, "retained source directory descriptor required");
             let parent = fs::read_link(format!("/proc/{pid}/fd/{fd}"))?;
@@ -825,7 +869,10 @@ mod linux {
         pub fn run(base: PathBuf, operation: String) -> ResultType<Value> {
             // This whole controller runs on one blocking thread: ptrace ownership is per thread.
             ensure!(cfg!(target_arch = "x86_64"), "canonical x86_64 verifier required");
-            let (number, suffix) = match operation.as_str() {
+            let descriptor = operation.starts_with("fd-");
+            let sustained = descriptor && operation.ends_with("-held");
+            let boundary = operation.strip_suffix("-held").unwrap_or(&operation);
+            let (number, suffix) = match boundary {
                 "payload-rename" => (libc::SYS_renameat, ".download"),
                 "digest-unlink" => (libc::SYS_unlinkat, ".digest"),
                 "lease-unlink" => (libc::SYS_unlinkat, ".download.lock"),
@@ -837,13 +884,16 @@ mod linux {
                 "crash-retire-identity" => (libc::SYS_unlinkat, "identity"),
                 "crash-retire-directory" => (libc::SYS_unlinkat, ""),
                 "crash-retire-record" => (libc::SYS_unlinkat, ".json.retiring"),
+                "fd-directory-open" | "fd-lease-open" => (libc::SYS_openat, ""),
+                "fd-parent-clone" => (libc::SYS_fcntl, ""),
                 _ => return Err(anyhow!("unknown syscall window")),
             };
             let crash = operation.starts_with("crash-");
             let retirement = operation.starts_with("crash-retire-");
             let mut killed = false;
             let mut command = Command::new(std::env::current_exe()?);
-            command.arg(if crash && !retirement { "crash-receiver" } else { "window-receiver" }).arg(&base)
+            command.arg(if descriptor { "descriptor-receiver" }
+                else if crash && !retirement { "crash-receiver" } else { "window-receiver" }).arg(&base)
                 .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
             unsafe {
                 command.pre_exec(|| {
@@ -866,6 +916,9 @@ mod linux {
             let mut selected_task = None;
             let mut main_status = None;
             let mut events = 0usize;
+            let mut original_limit: Option<libc::rlimit> = None;
+            let mut limit_restored = false;
+            let mut returned = false;
             while !owner.tasks.is_empty() {
                 ensure!(Instant::now() < deadline, "receiver trace deadline exceeded");
                 let mut status = 0;
@@ -930,11 +983,39 @@ mod linux {
                             ensure!(!armed);
                             armed = true;
                         }
-                        if armed && observation.is_none() && info.data[0] as i64 == number {
-                            let path = if number == libc::SYS_fsync {
+                        if descriptor && info.data[0] as i64 == libc::SYS_write && info.data[1] == 1
+                            && info.data[3] == RETURNED.len() as u64
+                            && read_memory(pid, usize::try_from(info.data[2])?, RETURNED.len())? == RETURNED {
+                            ensure!(!returned && syscall_result.is_some());
+                            returned = true;
+                            if sustained {
+                                let original = original_limit.as_ref().ok_or_else(|| anyhow!("limit absent"))?;
+                                let limited = descriptor_limit(root, Some(original))?;
+                                ensure!(limited.rlim_cur == 0 && limited.rlim_max == original.rlim_max);
+                                limit_restored = true;
+                            }
+                        }
+                        if armed && observation.is_none() && info.data[0] as i64 == number
+                            && (!descriptor || info.data[1] as i32 >= 0) {
+                            let path = if number == libc::SYS_fsync || number == libc::SYS_fcntl {
                                 fs::read_link(format!("/proc/{pid}/fd/{}", info.data[1]))?
                             } else { source_path(pid, &info)? };
-                            let selected = if operation == "crash-directory" || operation == "crash-retire-directory" {
+                            let selected = if descriptor {
+                                let artifact_directory = if boundary == "fd-lease-open" { path.parent() }
+                                    else { Some(path.as_path()) };
+                                let matches_directory = artifact_directory.is_some_and(|directory|
+                                    directory.parent().and_then(Path::parent) == Some(base.as_path())
+                                        && directory.file_name().is_some_and(|name|
+                                            name.as_encoded_bytes().len() == 64
+                                                && name.as_encoded_bytes().iter().all(u8::is_ascii_hexdigit)));
+                                matches_directory && match boundary {
+                                    "fd-parent-clone" => info.data[2] == libc::F_DUPFD_CLOEXEC as u64,
+                                    "fd-directory-open" => info.data[3] & libc::O_DIRECTORY as u64 != 0,
+                                    "fd-lease-open" => path.file_name().is_some_and(|name| name == "claim.download.lock")
+                                        && info.data[3] & libc::O_CREAT as u64 != 0,
+                                    _ => false,
+                                }
+                            } else if operation == "crash-directory" || operation == "crash-retire-directory" {
                                 path.parent() == Some(base.as_path()) && path.file_name()
                                     .is_some_and(|n| n.as_encoded_bytes().starts_with(b".rustdesk-receive-"))
                                     && (operation == "crash-directory" || info.data[3] == libc::AT_REMOVEDIR as u64)
@@ -956,7 +1037,20 @@ mod linux {
                             } else {
                                 path.file_name().is_some_and(|n| n.as_encoded_bytes().ends_with(suffix.as_bytes()))
                             };
-                            if selected && crash {
+                            if selected && descriptor {
+                                let original = descriptor_limit(root, None)?;
+                                ensure!(original.rlim_cur > 0 && original.rlim_cur <= original.rlim_max
+                                    && original.rlim_max == 128);
+                                let limited = libc::rlimit { rlim_cur: 0, rlim_max: original.rlim_max };
+                                descriptor_limit(root, Some(&limited))?;
+                                let observed = descriptor_limit(root, None)?;
+                                ensure!(observed.rlim_cur == 0 && observed.rlim_max == original.rlim_max);
+                                original_limit = Some(original);
+                                observation = Some(json!({"source":path,"tid":pid,"syscall":number,
+                                    "soft_limit_before":original.rlim_cur,"soft_limit_during":0,
+                                    "hard_limit":original.rlim_max,"sustained_through_cleanup":sustained}));
+                                selected_task = Some(pid);
+                            } else if selected && crash {
                                 ensure!(path.starts_with(&base) || path.parent() == Some(coordinator()?.as_path()));
                                 let published = if retirement { private_final(&base)? } else { Value::Null };
                                 observation = Some(json!({"source":path,"tid":pid,"syscall":number,
@@ -983,7 +1077,16 @@ mod linux {
                         ensure!(size >= 33, "incomplete syscall exit");
                         syscall_result = Some(json!({"return":info.data[0] as i64,
                             "is_error":info.data[1] & 255 != 0}));
-                        if crash {
+                        if descriptor {
+                            ensure!(info.data[0] as i64 == -(libc::EMFILE as i64)
+                                && info.data[1] & 255 != 0, "selected allocation did not return EMFILE");
+                            if !sustained {
+                                let original = original_limit.as_ref().ok_or_else(|| anyhow!("limit absent"))?;
+                                let limited = descriptor_limit(root, Some(original))?;
+                                ensure!(limited.rlim_cur == 0 && limited.rlim_max == original.rlim_max);
+                                limit_restored = true;
+                            }
+                        } else if crash {
                             ensure!(info.data[0] == 0 && info.data[1] & 255 == 0,
                                 "selected receive syscall did not succeed");
                             owner.child.kill()?;
@@ -1010,6 +1113,17 @@ mod linux {
             }
             ensure!(main_status.is_some_and(|s| s.success()), "receiver failed: {}", String::from_utf8_lossy(&err));
             let text = std::str::from_utf8(&out)?;
+            if descriptor {
+                ensure!(returned && limit_restored && err.is_empty());
+                let reports: Vec<_> = text.lines().filter_map(|line|
+                    line.strip_prefix("RECEIVE_NATIVE_DESCRIPTOR_RECEIVER=")).collect();
+                ensure!(reports.len() == 1 && text.lines().count() == 3);
+                let receiver: Value = hbb_common::serde_json::from_str(reports[0])?;
+                let observation = observation.ok_or_else(|| anyhow!("descriptor boundary absent"))?;
+                return Ok(json!({"operation":operation,"selected":observation,"syscall_exit":syscall_result,
+                    "receiver":receiver,"limit_restored":limit_restored,"children_joined":true,
+                    "trace_events":events}));
+            }
             let reports: Vec<_> = text.lines().filter_map(|l| l.strip_prefix("RECEIVE_NATIVE_WINDOW_RECEIVER=")).collect();
             ensure!(reports.len() == 1 && text.lines().filter(|l| l.as_bytes() == &ARMED[..ARMED.len()-1]).count() == 1);
             let receiver: Value = hbb_common::serde_json::from_str(reports[0])?;
@@ -1417,7 +1531,48 @@ mod linux {
         }
         println!("RECEIVE_NATIVE_INODE_SUMMARY=observed cases=4 attempts=8 safe={safe} mounts=retired fixture=retired");
         ensure!(safe == 4, "inode-limited receive attempts retained unused state: {safe}/4 safe");
-        println!("RECEIVE_NATIVE_AUTHORITY=pass cases=37 actors={actors} receiver_uid=0 actor_uid=4001 children=joined fixture=retired");
+        let mut safe = 0;
+        for boundary in ["fd-directory-open", "fd-parent-clone", "fd-lease-open"] {
+            for sustained in [false, true] {
+                let operation = format!("{boundary}{}", if sustained { "-held" } else { "" });
+                let base = root.join(&operation);
+                fs::create_dir(&base)?;
+                fs::set_permissions(&base, fs::Permissions::from_mode(0o700))?;
+                create(&base.join("incoming.bin"), b"original", 0o600)?;
+                let original = snapshot(&base.join("incoming.bin"))?;
+                let before = coordination_inventory()?;
+                let selected = base.clone();
+                let name = operation.clone();
+                let traced = tokio::task::spawn_blocking(move || syscall_window::run(selected, name)).await??;
+                ensure!(snapshot(&base.join("incoming.bin"))? == original);
+                let after = coordination_inventory()?;
+                let added: Vec<_> = after.keys().filter(|key| !before.contains_key(*key)).collect();
+                let entries = fs::read_dir(&base)?.count();
+                let namespace_clean = after == before && entries == 1;
+                let uncertain = traced["receiver"]["cleanup_failed"] == true;
+                let observed_safe = if sustained {
+                    let artifacts = staging(&base)?;
+                    uncertain && added.len() == 2 && entries == 2
+                        && fs::read_dir(&artifacts)?.count() == 0
+                        && added.iter().filter(|key| key.ends_with(".lock")).count() == 1
+                        && added.iter().filter(|key| key.ends_with(".json")).count() == 1
+                } else {
+                    namespace_clean && !uncertain && traced["receiver"]["raw_errno"] == libc::EMFILE
+                };
+                complete_transfer(&base).await?;
+                ensure!(coordination_inventory()? == before && fs::read_dir(&base)?.count() == 1);
+                safe += usize::from(observed_safe);
+                println!("RECEIVE_NATIVE_CASE={}", json!({"case":operation,"observed":{
+                    "trace":traced,"coordination_entries_after_failure":added.len(),
+                    "destination_entries_after_failure":entries,"namespace_clean":namespace_clean,
+                    "original_preserved":true,"retry_exact":true,"coordination_restored":true,
+                    "safe":observed_safe}}));
+                fs::remove_dir_all(&base)?;
+            }
+        }
+        println!("RECEIVE_NATIVE_DESCRIPTOR_SUMMARY=observed cases=6 safe={safe} children=joined limits=restored fixture=retired");
+        ensure!(safe == 6, "descriptor-limited receive ownership failed: {safe}/6 safe");
+        println!("RECEIVE_NATIVE_AUTHORITY=pass cases=43 actors={actors} receiver_uid=0 actor_uid=4001 children=joined fixture=retired");
         Ok(())
     }
 
@@ -1435,6 +1590,10 @@ mod linux {
             let base = Path::new(&args[2]);
             ensure!(base.starts_with(&owned) && base != owned);
             window_receiver(base).await
+        } else if args.len() == 3 && args[1] == "descriptor-receiver" {
+            let base = Path::new(&args[2]);
+            ensure!(base.starts_with(&owned) && base != owned);
+            descriptor_receiver(base).await
         } else if args.len() == 3 && args[1] == "crash-receiver" {
             let base = Path::new(&args[2]);
             ensure!(base.starts_with(&owned) && base != owned);

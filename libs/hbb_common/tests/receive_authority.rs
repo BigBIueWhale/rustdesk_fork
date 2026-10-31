@@ -330,6 +330,102 @@ mod linux {
         Ok(())
     }
 
+    async fn full_filesystem(base: &Path, free_pages: u64) -> ResultType<Value> {
+        use std::{ffi::CString, os::unix::{ffi::OsStrExt, io::AsRawFd}};
+        const PAGE: usize = 4096;
+        ensure!(free_pages <= 1 && unsafe { libc::sysconf(libc::_SC_PAGESIZE) } == PAGE as i64);
+        fs::create_dir(base)?;
+        let target = CString::new(base.as_os_str().as_bytes())?;
+        if unsafe { libc::mount(b"tmpfs\0".as_ptr().cast(), target.as_ptr(),
+            b"tmpfs\0".as_ptr().cast(), libc::MS_NODEV | libc::MS_NOSUID | libc::MS_NOEXEC,
+            b"size=65536,nr_inodes=128,mode=0700,huge=never\0".as_ptr().cast()) } != 0 {
+            let error = io::Error::last_os_error();
+            fs::remove_dir(base)?;
+            return Err(error.into());
+        }
+        // The result-bearing scope drops every receive/filler handle before unmount.
+        let result = async {
+            let final_path = base.join("incoming.bin");
+            create(&final_path, b"original", 0o600)?;
+            let original = snapshot(&final_path)?;
+            let expected_size = (3 * PAGE) as u64;
+            let new_receiver = || TransferJob::new_write(807, JobType::Generic,
+                String::new(), base.to_owned(), 0, false, false, true)
+                .with_files(vec![FileEntry { name:"incoming.bin".into(),
+                    size:expected_size, modified_time:31, ..Default::default() }]);
+            let mut receiver = new_receiver()?;
+            let mut digest = incoming();
+            digest.file_size = expected_size;
+            receiver.inspect_receive_digest(&digest, false).await?;
+            receiver.confirm_with_offset(0, 0).await?;
+            write(&mut receiver, &vec![b'a'; PAGE]).await?;
+            let artifacts = staging(base)?;
+            let counters = (receiver.finished_size(), receiver.transferred());
+            let filler_path = base.join("space-filler");
+            let mut filler = OpenOptions::new().write(true).create_new(true)
+                .mode(0o600).open(&filler_path)?;
+            let mut exhausted = false;
+            for _ in 0..=16 {
+                match filler.write_all(&[0; PAGE]) {
+                    Ok(()) => {}
+                    Err(error) if error.raw_os_error() == Some(libc::ENOSPC) => {
+                        exhausted = true;
+                        break;
+                    }
+                    Err(error) => return Err(error.into()),
+                }
+            }
+            ensure!(exhausted, "bounded fixture did not exhaust its filesystem");
+            let filled = filler.metadata()?.len();
+            ensure!(filled >= PAGE as u64 && filled <= 65536 && filled % PAGE as u64 == 0);
+            filler.set_len(filled - free_pages * PAGE as u64)?;
+            let mut space: libc::statvfs = unsafe { std::mem::zeroed() };
+            ensure!(unsafe { libc::fstatvfs(filler.as_raw_fd(), &mut space) } == 0);
+            ensure!(space.f_blocks * space.f_frsize == 65536
+                && space.f_bavail * space.f_frsize == free_pages * PAGE as u64);
+
+            let failed = write(&mut receiver, &vec![b'b'; 2 * PAGE]).await;
+            let error = failed.err().ok_or_else(|| anyhow!("full-filesystem block reported success"))?;
+            ensure!(error.downcast_ref::<io::Error>()
+                .is_some_and(|error| error.raw_os_error() == Some(libc::ENOSPC)));
+            let staged = fs::read(artifacts.join("payload.download"))?;
+            let mut expected_partial = vec![b'a'; PAGE];
+            expected_partial.extend(vec![b'b'; free_pages as usize * PAGE]);
+            ensure!(staged == expected_partial, "unexpected native partial-block bytes");
+            ensure!((receiver.finished_size(), receiver.transferred()) == counters);
+            ensure!(receiver.file_num() == 0 && snapshot(&final_path)? == original);
+            ensure!(receiver.finalize_write(1).await.is_err(), "failed block was published");
+            receiver.retire_current_file_state()?;
+            ensure!(!artifacts.try_exists()? && snapshot(&final_path)? == original);
+            drop(receiver);
+
+            // Cleanup must succeed before releasing the unrelated filler. A fresh
+            // job then reacquires the destination and completes after space returns.
+            drop(filler);
+            fs::remove_file(&filler_path)?;
+            let mut fresh = new_receiver()?;
+            fresh.inspect_receive_digest(&digest, false).await?;
+            fresh.confirm_with_offset(0, 0).await?;
+            let expected = vec![b'c'; expected_size as usize];
+            write(&mut fresh, &expected).await?;
+            fresh.finalize_write(1).await?;
+            fresh.retire_current_file_state()?;
+            ensure!(fs::read(&final_path)? == expected && !staging(base)?.try_exists()?);
+            Ok::<_, hbb_common::anyhow::Error>(json!({"filesystem":"tmpfs",
+                "capacity_bytes":65536, "free_bytes_before_block":free_pages * PAGE as u64,
+                "block_bytes":2 * PAGE, "partial_block_bytes":free_pages * PAGE as u64,
+                "error":"ENOSPC", "counters_unchanged":true, "publication_refused":true,
+                "prior_final_preserved":true, "cleanup_before_space_release":true,
+                "fresh_transfer_exact":true}))
+        }.await;
+        if unsafe { libc::umount2(target.as_ptr(), 0) } != 0 {
+            return Err(anyhow!("receive storage fixture unmount failed: {}; operation: {result:?}",
+                io::Error::last_os_error()));
+        }
+        fs::remove_dir(base)?;
+        result
+    }
+
     async fn crash_receiver(base: &Path) -> ResultType<()> {
         identity(0)?;
         io::stdout().write_all(syscall_window::ARMED)?;
@@ -881,6 +977,12 @@ mod linux {
         }
         println!("RECEIVE_NATIVE_ENROLLMENT_SUMMARY=observed cases=3 recovered={recovered} children=joined fixture=retired");
         ensure!(recovered == 3, "receive enrollment crash cases failed: {recovered}/3 recovered");
+        for free_pages in [0, 1] {
+            let case = format!("full-filesystem-{free_pages}");
+            let observed = full_filesystem(&root.join(&case), free_pages).await?;
+            println!("RECEIVE_NATIVE_CASE={}", json!({"case":case,"observed":observed}));
+        }
+        println!("RECEIVE_NATIVE_STORAGE_SUMMARY=observed cases=2 safe=2 mounts=retired fixture=retired");
         let mut retired = 0;
         let base = root.join("completed-listing");
         fs::create_dir(&base)?;
@@ -941,7 +1043,7 @@ mod linux {
         fs::remove_dir_all(&base)?;
         println!("RECEIVE_NATIVE_RETIREMENT_SUMMARY=observed cases=3 retired={retired} children=joined fixture=retired");
         ensure!(retired == 3, "receive completed-destination cases failed: {retired}/3 retired");
-        println!("RECEIVE_NATIVE_AUTHORITY=pass cases=22 actors={actors} receiver_uid=0 actor_uid=4001 children=joined fixture=retired");
+        println!("RECEIVE_NATIVE_AUTHORITY=pass cases=24 actors={actors} receiver_uid=0 actor_uid=4001 children=joined fixture=retired");
         Ok(())
     }
 

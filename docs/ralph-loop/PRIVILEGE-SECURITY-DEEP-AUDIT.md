@@ -122834,3 +122834,26 @@ changes. Serial SHA-256
 The two runs retain thirteen hash-verified raw files / 216,105 bytes per host.
 This audit-only receipt leaves the counted ledger, tested source and live
 instructions unchanged. The staging exception remains pending.
+
+### 2026-10-31 — receive filesystem exhaustion: preparation
+
+The previous turn made progress by distinguishing shared mount-root placement
+and cross-parent authority in the native kernel. Its staging exception and the
+older full-application question remain unanswered; neither is inferred approved.
+Continue R-S11fi through an independent missing storage-failure observation.
+The existing child-only RLIMIT_FSIZE/EFBIG test already proves one partial-write
+path. It does not establish actual filesystem ENOSPC. Primary references:
+https://man7.org/linux/man-pages/man2/write.2.html and
+https://man7.org/linux/man-pages/man5/tmpfs.5.html . Partial writes can precede
+ENOSPC, and an explicitly sized tmpfs provides bounded real filesystem exhaustion.
+
+Extend the existing native receive driver with two 64-KiB, 128-inode tmpfs cases
+inside the disposable VM. After a successful 4-KiB block, fill the filesystem,
+then leave zero or one free page for an incoming 8-KiB block. Require kernel
+ENOSPC, exact zero/4-KiB partial-block bytes, unchanged progress counters, refused
+finalization and unchanged prior final-file identity/bytes. Require exact per-file
+retirement before releasing the filler, then fresh-job reacquisition and exact
+successful output after capacity returns. Every handle closes before normal
+unmount and fixture retirement. Preserve the existing race/crash/lifecycle cases;
+do not claim installed callers, generic cancellation, disk-device writeback or
+power-loss acceptance. This is test preparation; product code remains unchanged.

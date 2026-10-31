@@ -2078,6 +2078,140 @@ static int keyboard_is_released(Display *display) {
     return 1;
 }
 
+static int keyboard_matches(Display *display, const KeyCode *codes, size_t count) {
+    unsigned char expected[32] = {0};
+    char actual[32];
+    for (size_t i = 0U; i < count; ++i) {
+        if (codes[i] < 8U) return 0;
+        expected[codes[i] / 8U] |= (unsigned char)(1U << (codes[i] % 8U));
+    }
+    return XQueryKeymap(display, actual) != 0 && memcmp(actual, expected, sizeof(actual)) == 0;
+}
+
+static int exercise_keyboard_retirement(Display *source, Display *display,
+                                        const ViewerWindow *viewer, const char *start,
+                                        const ConnectionIdentity *connection) {
+    const KeySym symbols[] = {XK_Control_L, XK_Shift_L};
+    KeyCode remote[3] = {0}, local[2] = {0};
+    Window root = RootWindow(source, DefaultScreen(source));
+    char path[64], state = '\0';
+    int process = -1, pidfd = -1, result = -1, foreign_held = 0;
+    unsigned int local_held = 0U;
+    struct stat metadata;
+    uint64_t killed_at = 0U, released_at = 0U;
+    const char *phase = "identity";
+    if (start[0] < '1' || start[0] > '9' || strspn(start, "0123456789") != strlen(start) ||
+        strlen(start) > 20U || viewer->pid > INT_MAX ||
+        snprintf(path, sizeof(path), "/proc/%lu", viewer->pid) <= 0) goto finished;
+    process = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (process < 0 || fstat(process, &metadata) != 0 || metadata.st_uid != geteuid() ||
+        viewer_process_state(process, viewer->pid, start, &state) != 0) goto finished;
+    pidfd = (int)syscall(SYS_pidfd_open, (pid_t)viewer->pid, 0U);
+    if (pidfd < 0 || !viewer_pidfd_alive(pidfd) ||
+        viewer_process_state(process, viewer->pid, start, &state) != 0) goto finished;
+    for (size_t i = 0U; i < 2U; ++i) {
+        remote[i] = XKeysymToKeycode(source, symbols[i]);
+        local[i] = XKeysymToKeycode(display, symbols[i]);
+        if (remote[i] == 0U || local[i] == 0U) goto finished;
+    }
+    remote[2] = XKeysymToKeycode(source, XK_Control_R);
+    if (remote[2] == 0U || remote[0] == remote[1] || remote[2] == remote[0] ||
+        remote[2] == remote[1] || local[0] == local[1]) goto finished;
+    phase = "remote-hold";
+    XSelectInput(source, root, KeyPressMask | KeyReleaseMask);
+    XSetInputFocus(source, root, RevertToParent, CurrentTime);
+    XSync(source, False);
+    if (return_focus_with_pointer(display, viewer) != 0 ||
+        !keyboard_is_released(source) || !keyboard_is_released(display)) goto finished;
+    for (size_t i = 0U; i < 2U; ++i) {
+        if (XTestFakeKeyEvent(display, local[i], True, CurrentTime) == 0) goto finished;
+        local_held += 1U;
+        XSync(display, False);
+        if (sleep_millis(30U) != 0) goto finished;
+    }
+    for (unsigned int pass = 0U; pass < 2U; ++pass) {
+        unsigned int seen = 0U, events = 0U;
+        uint64_t deadline = monotonic_millis() + 5000U, complete = 0U;
+        while (monotonic_millis() < deadline) {
+            while (XPending(source) != 0) {
+                XEvent event;
+                if (++events > 128U) goto finished;
+                XNextEvent(source, &event);
+                if (event.type == MappingNotify) {
+                    XRefreshKeyboardMapping(&event.xmapping);
+                    continue;
+                }
+                if (event.type != KeyPress && event.type != KeyRelease) continue;
+                unsigned int bit = event.xkey.keycode == remote[0] ? 1U :
+                                   event.xkey.keycode == remote[1] ? 2U : 0U;
+                printf("FLUTTER_PEER_KEY_RETIRE_EVENT phase=%s type=%d code=%u state=%u synthetic=%d\n",
+                       phase, event.type, event.xkey.keycode, event.xkey.state, event.xkey.send_event);
+                if (event.xkey.window != root || event.xkey.send_event || bit == 0U ||
+                    (seen & bit) != 0U || event.type != (pass == 0U ? KeyPress : KeyRelease) ||
+                    (pass == 0U && bit != (seen == 0U ? 1U : 2U))) goto finished;
+                seen |= bit;
+                if (seen == 3U) complete = monotonic_millis();
+            }
+            if (complete != 0U && monotonic_millis() - complete >= 100U) break;
+            if (sleep_millis(10U) != 0) goto finished;
+        }
+        if (seen != 3U || complete == 0U || monotonic_millis() >= deadline) goto finished;
+        if (pass == 1U) {
+            struct pollfd exited = {.fd = pidfd, .events = POLLIN};
+            int status;
+            do { status = poll(&exited, 1U, 0); } while (status < 0 && errno == EINTR);
+            if (status != 1 || (exited.revents & POLLIN) == 0 ||
+                (exited.revents & (POLLERR | POLLNVAL)) != 0 ||
+                !keyboard_matches(source, remote + 2, 1U)) goto finished;
+            released_at = complete;
+            break;
+        }
+        ConnectionIdentity current = {{0}, {0}, 0UL};
+        if (!keyboard_matches(source, remote, 2U) || !keyboard_matches(display, local, 2U) ||
+            read_connection_identity(&current) != 0 || !same_connection(connection, &current))
+            goto finished;
+        phase = "local-hold";
+        if (XTestFakeKeyEvent(source, remote[2], True, CurrentTime) == 0) goto finished;
+        foreign_held = 1;
+        XSync(source, False);
+        unsigned int foreign_events = 0U;
+        events = 0U;
+        while (XPending(source) != 0) {
+            XEvent event;
+            if (++events > 128U) goto finished;
+            XNextEvent(source, &event);
+            if (event.type != KeyPress && event.type != KeyRelease) continue;
+            if (++foreign_events != 1U || event.type != KeyPress || event.xkey.window != root ||
+                event.xkey.send_event || event.xkey.keycode != remote[2]) goto finished;
+        }
+        if (foreign_events != 1U || !keyboard_matches(source, remote, 3U)) goto finished;
+        puts("FLUTTER_PEER_KEY_RETIRE_HELD_OK remote_keys=2 local_keys=1 exact_native_state=true");
+        phase = "abrupt-retirement";
+        if (!viewer_pidfd_alive(pidfd) ||
+            viewer_process_state(process, viewer->pid, start, &state) != 0) goto finished;
+        killed_at = monotonic_millis();
+        if (syscall(SYS_pidfd_send_signal, pidfd, SIGKILL, NULL, 0U) != 0) goto finished;
+    }
+    if (released_at < killed_at || released_at - killed_at >= 5000U) goto finished;
+    printf("FLUTTER_PEER_KEY_RETIRE_RELEASED_OK remote_keys=2 local_keys=1 elapsed_ms=%llu "
+           "limit_ms=5000 native_releases=true local_preserved=true viewer_exited=true\n",
+           (unsigned long long)(released_at - killed_at));
+    result = 0;
+finished:
+    /* These fixture-owned releases occur only after the product observations above. */
+    if (foreign_held && XTestFakeKeyEvent(source, remote[2], False, CurrentTime) == 0) result = -1;
+    while (local_held != 0U) {
+        if (XTestFakeKeyEvent(display, local[--local_held], False, CurrentTime) == 0) result = -1;
+    }
+    XSync(source, False);
+    XSync(display, False);
+    if (result == 0 && (!keyboard_is_released(source) || !keyboard_is_released(display))) result = -1;
+    if (pidfd >= 0 && close(pidfd) != 0) result = -1;
+    if (process >= 0 && close(process) != 0) result = -1;
+    if (result != 0) fprintf(stderr, "FLUTTER_PEER_X11_FAIL key-retirement phase=%s errno=%d\n", phase, errno);
+    return result;
+}
+
 static int exercise_keyboard_input(Display *source, Display *display,
                                    const ViewerWindow *viewer,
                                    const ConnectionIdentity *connection,
@@ -2546,12 +2680,13 @@ int main(int argc, char **argv) {
     AtspiAccessible *previous_caption = NULL;
 
     if (argc != 5 && (argc != 6 || (strcmp(argv[5], "--viewer-suspend") != 0 &&
+                                    strcmp(argv[5], "--keyboard-retirement") != 0 &&
                                     strcmp(argv[5], "--keyboard-input") != 0 &&
                                     strcmp(argv[5], "--clipboard-text") != 0 &&
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--keyboard-input]\n",
+              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--keyboard-input|--keyboard-retirement]\n",
               stderr);
         return 2;
     }
@@ -2706,11 +2841,13 @@ int main(int argc, char **argv) {
     print_resources("initial", 0U, &baseline_resources);
 
     if (argc == 6) {
+        int keyboard_retirement = strcmp(argv[5], "--keyboard-retirement") == 0;
         int keyboard_input = strcmp(argv[5], "--keyboard-input") == 0;
         int clipboard_text = strcmp(argv[5], "--clipboard-text") == 0;
         int partial_loss = strcmp(argv[5], "--network-loss") == 0;
         int network = partial_loss || strcmp(argv[5], "--network-impairment") == 0;
-        int suspension_status = keyboard_input ? exercise_keyboard_input(
+        int suspension_status = keyboard_retirement ? exercise_keyboard_retirement(
+            source, display, &viewer, argv[4], &current_connection) : keyboard_input ? exercise_keyboard_input(
             source, display, &viewer, &current_connection, &baseline_resources) :
             clipboard_text ? exercise_clipboard_text(
             source, display, &viewer, &current_connection, &baseline_resources) :
@@ -2726,11 +2863,14 @@ int main(int argc, char **argv) {
             fputs("FLUTTER_PEER_X11_FAIL private AT-SPI teardown\n", stderr);
             suspension_status = -1;
         }
-        if (close_viewer(display, viewer.window) != 0) suspension_status = -1;
+        if (!keyboard_retirement && close_viewer(display, viewer.window) != 0) suspension_status = -1;
         XCloseDisplay(display);
         XCloseDisplay(source);
         if (suspension_status != 0) return 1;
-        if (keyboard_input) {
+        if (keyboard_retirement) {
+            puts("FLUTTER_PEER_KEYBOARD_RETIREMENT_OK remote_keys=2 local_key=preserved "
+                 "viewer_exit=abrupt native_releases=true fixture_keys_released=true");
+        } else if (keyboard_input) {
             puts("FLUTTER_PEER_KEYBOARD_INPUT_OK cases=11 events=28 actual_peer=true "
                  "native_key_events=true exact_text=true released=both same_window=true "
                  "stable_connection=true resources=bounded");

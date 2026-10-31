@@ -16,7 +16,7 @@ fail() {
 readonly PEER_SCENARIO=${FLUTTER_PEER_SCENARIO:-focus-reconnect-resource}
 case "$PEER_SCENARIO" in
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
-  viewer-suspend|network-impairment|network-loss|clipboard-text|keyboard-input) EXPECTED_RESTARTS=0 ;;
+  viewer-suspend|network-impairment|network-loss|clipboard-text|keyboard-input|keyboard-retirement) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
 esac
 readonly EXPECTED_RESTARTS
@@ -1246,6 +1246,7 @@ PY
     [ "$PEER_SCENARIO" != network-loss ] || controller_args+=(--network-loss)
     [ "$PEER_SCENARIO" != clipboard-text ] || controller_args+=(--clipboard-text)
     [ "$PEER_SCENARIO" != keyboard-input ] || controller_args+=(--keyboard-input)
+    [ "$PEER_SCENARIO" != keyboard-retirement ] || controller_args+=(--keyboard-retirement)
     set +e
     controller_output="$(timeout --signal=TERM --kill-after=3s 180s \
       "$CONTROLLER" "${controller_args[@]}" 2>&1)"
@@ -1262,7 +1263,11 @@ PY
       <<<"$controller_output" || fail 'complete count-only password input verdict is missing'
     grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false$' \
       <<<"$controller_output" || fail 'real password prompt verdict is missing'
-    if [ "$PEER_SCENARIO" = keyboard-input ]; then
+    if [ "$PEER_SCENARIO" = keyboard-retirement ]; then
+      grep -Fxq 'FLUTTER_PEER_KEYBOARD_RETIREMENT_OK remote_keys=2 local_key=preserved viewer_exit=abrupt native_releases=true fixture_keys_released=true' \
+        <<<"$controller_output" || fail 'native keyboard retirement verdict is missing'
+      viewer_result='viewer=joined xvfb=joined keyboard_retirement=abrupt owned_keys=2 foreign_key=preserved'
+    elif [ "$PEER_SCENARIO" = keyboard-input ]; then
       for sequence in {1..11}; do
         [ "$(grep -Ec "^FLUTTER_PEER_KEYBOARD_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
           || fail "keyboard case $sequence is absent or duplicated"
@@ -1331,7 +1336,9 @@ PY
     viewer_status=$?
     set -e
     VIEWER_PID= VIEWER_START=
-    [ "$viewer_status" -eq 0 ] \
+    expected_viewer_status=0
+    [ "$PEER_SCENARIO" != keyboard-retirement ] || expected_viewer_status=137
+    [ "$viewer_status" -eq "$expected_viewer_status" ] \
       || { cat /tmp/viewer.log >&2; fail "viewer exited $viewer_status"; }
     if grep -qF 'FlBinaryMessenger without an engine' /tmp/viewer.log; then
       cat /tmp/viewer.log >&2

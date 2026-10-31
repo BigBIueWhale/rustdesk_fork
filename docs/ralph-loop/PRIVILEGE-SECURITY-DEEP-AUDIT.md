@@ -123271,3 +123271,15 @@ library content-consistency defect, not LPE, full-application or installed evide
 The next correction must preserve source-content validity through completion;
 size/mtime equality and retained inode alone are disproved by this case. Arbitrary
 concurrent-writer snapshot guarantees are not established by this finite experiment.
+
+Fresh ledger count at `c9ada028`, TUF `8dgexhAD0t`: **371,885 tokens /
+1,703,227 bytes**, SHA-256
+`3b594b94d7a0ad33bbb385c62412606808a16148cf4b6371d6673e65896561b8`.
+All seven tokenizer controls and whole-input round trip pass. QEMU 3137838 joins
+after 30.917 seconds, wrapper 3136412 is absent, RAM `run.oygajkkm` retires and
+all three listener deltas are zero. Serial SHA-256
+`dcbaac5055738a7b56df7f0d54df7836a375d21ffda8595317013f9db6763feb`.
+The two runs retain **13 raw files / 191,489 bytes per host**, hash-verified on
+both hosts. All four exact wrapper/QEMU PIDs, RAM workspaces and the diagnostic
+directory are absent; diagnostic removal reclaimed 3,452,928 allocated bytes.
+This audit-only receipt leaves the tested source and counted ledger unchanged.

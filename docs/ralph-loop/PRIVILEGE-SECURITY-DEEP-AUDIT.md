@@ -123076,3 +123076,14 @@ and every exact wrapper/QEMU/bookkeeping PID is absent. This closes the reproduc
 Linux library fresh-restart failure, not application/CM scheduling, interrupted
 fresh-confirmation integration, other platforms, the three staging-layout failures
 or overall release acceptance. Both pending decisions and all parks are unchanged.
+
+Fresh ledger count at `0d8ffb7b`, TUF `eULLQcfWAv`: **371,158 tokens /
+1,699,604 bytes**, input SHA-256
+`2aa1689b87a73907f9c4efc25d87a05fdfd7061379dd4af35dede27189f736d2`.
+The pinned tokenizer passes seven controls and the whole-input round trip. QEMU
+3126805 joins after 30.577 seconds, RAM `run.6z_qqrd0` retires and all three
+listener deltas are zero. Serial SHA-256
+`e1cba3f42061f725e8e4ffba3f75a2cb8976a5305698870bed84f13e12aff3de`.
+All **34 raw files / 495,705 bytes per host** are hash-verified across this slice's
+four behavioral runs and one count. This audit-only receipt leaves the counted
+ledger, tested source, requirements and live instructions unchanged.

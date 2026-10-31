@@ -124632,3 +124632,56 @@ available memory is 45,688,184,832 bytes, and all three listener deltas are zero
 Six count files / 105,000 bytes and twenty-one behavioral-run files total twenty-seven /
 576,424 bytes per host, hash-verified on CTE and TUF. Both ledger copies match the
 counted hash; this audit-only receipt leaves that input unchanged.
+
+## 2026-10-31 — protected receive staging through the destination's mount
+
+Continue the selected shared-parent/mount-root layout investigation after the
+user-requested authorization clarification. The existing EXDEV observations used
+the protected source's original mount. Linux 6.1's
+[handle decoding implementation](https://raw.githubusercontent.com/torvalds/linux/v6.1/fs/fhandle.c)
+instead combines the supplied mount descriptor with the decoded filesystem dentry;
+it requires CAP_DAC_READ_SEARCH. That suggests a concrete privileged placement
+primitive, without implying ordinary-user or filesystem-wide availability.
+
+`e929feab` extends the existing two shared-mount observations. Each receiver creates
+legitimate output and protected staged bytes. The original rename returns EXDEV.
+The observer then opens the protected directory by its opaque handle using the
+destination's readable mount descriptor. Root obtains the same device, inode and
+opaque handle with the destination mount ID. Descriptor-relative replacement
+publishes the exact staged inode, with one link and exact bytes; the retained old
+final has zero links and unchanged bytes. Both directory synchronization calls
+succeed. UID 4002, with zero capabilities, receives EPERM; both original files and
+their intended final identity survive. Both publication-test files retire before
+the existing independent actor movement/refusal controls run against the private
+container. The existing disposable VM contains every privileged operation.
+
+TUF `yvY8C7QqzY` exits zero from the canonical `--file-metadata-tests` command:
+**25 filesystem observations, 157 library tests in 39 groups, and 43 native receive
+cases with 20 actors pass**. Probe SHA-256:
+`5a3b20ae583cb083178d4724b3b2ae94dbd8d85d76a7601bf05989145fdb6f76`.
+The unchanged library and root-driver artifact hashes are respectively
+`4d21e48e122b3866424184c6eda14900dfe2c232e0dc4c836bf5d35013fbb08e`
+and `ca2bf46ffc22948fde96e6d2d34962b44aa429e4d330ed6a9949a0b9bb93a8ff`.
+Serial `hbb-common-fs-run.yvY8C7QqzY.serial.log` is 148,637 bytes, SHA-256
+`176729c03f8a93abf65eb64e375d1aba7f64f39534e29d329f1811052863ae27`.
+Seven raw files / 220,805 bytes per host are hash-verified on CTE and TUF.
+QEMU 3255087 joins zero after 286.767 seconds; wrapper 3254592 and RAM workspace
+`run.h4ou36jf` are absent. All four host-listener deltas are zero. Peak scratch
+is 4,230,303,744 bytes within 6 GiB; minimum available memory is 36,198,916,096
+bytes. The harness retires its run directory. No additional token-count run is
+needed for this evidence update; no new current-ledger budget claim is made.
+
+**Design implication.** A bind alias is not intrinsically an obstacle to protected
+publication when the receiver has the required capability, decodable handles and
+an accessible protected location on that filesystem. This is a primitive result,
+not an accepted replacement layout. The existing ordinary-user and overlay
+counterexamples remain. Newer kernel behavior must also be stated precisely:
+[Linux 6.12](https://raw.githubusercontent.com/torvalds/linux/v6.12/fs/fhandle.c)
+adds a directory-only namespace-capability path with mapped-ancestor and, in the
+bind case, subtree checks; it is not unrestricted ordinary-user handle access.
+That newer path was source-reviewed, not executed. Next resolve protected placement
+and resumable destination identity for ordinary users and filesystems without
+decodable handles before selecting a complete layout. Keep shared-parent cleanup,
+installed/other-platform acceptance and release readiness OPEN. Do not repeat the
+accepted root primitive absent a relevant change, and do not introduce a universal
+handle requirement or persistent-directory exception.

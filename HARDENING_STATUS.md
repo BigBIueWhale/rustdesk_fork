@@ -16374,6 +16374,22 @@ Its serial also exports the accepted retirement-sync retry observation. That com
 without a complete unit-suite acceptance receipt. Raw evidence and joined cleanup
 are recorded in the audit; all other parks remain unchanged.
 
+**Protected staging through a bind mount — privileged primitive accepted; layout OPEN.**
+At `e929feab`, TUF `yvY8C7QqzY`, the existing shared-mount experiment now decodes
+the protected staging directory's opaque handle using the destination mount.
+On the tested ext4/Linux 6.1 mount, root obtains the same directory inode in that
+mount view and replaces the final file with the exact staged inode; both directory
+syncs succeed. The retained old final preserves its bytes with zero links.
+UID 4002 receives EPERM and preserves both files. Both principals' ordinary writes
+still succeed, and the original cross-mount rename still returns EXDEV.
+All 25 primitive observations, 157 library tests and 43 native receive cases pass;
+product and library/native-driver artifacts are unchanged. This removes the bind
+alias obstacle for this privileged, handle-capable case only. Ordinary users,
+unsupported filesystems, protected placement, durable resume identity and complete
+shared-parent retirement still require a coherent design. Do not make export
+handles a universal prerequisite or accept persistent residue. Exact source,
+primary references, raw evidence and joined cleanup are retained in the audit.
+
 **Explicit fresh receive (`df25069a` / `ddab13c9`) — Linux library accepted; application OPEN.**
 At unchanged-product baseline `8eca613c`, all eight saved-partial cases fail with
 EEXIST after successful zero-offset confirmation; four absent-partial controls pass.

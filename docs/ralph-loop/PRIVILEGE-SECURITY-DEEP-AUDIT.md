@@ -125965,3 +125965,16 @@ against canonical raw evidence, three failed diagnostic roots retire, freeing
 The next step is an owned camera catalog/capture design covering concurrent logins
 and replacement, followed by actual RustDesk acceptance. An ordinal index cache
 alone cannot satisfy the observed lifetime problem. Other parked topics stay parked.
+
+Final ledger/resource checkpoint at `9d919b29`, run `dgP6BM3WkR`, passes:
+**380,669 tokens**, 1,742,794 bytes, SHA-256
+`1c3e9f3973cfd3c8b59fe316048bd20a228d0d136301c2b1425ccf7c44f0ce96`.
+Seven token controls and the whole-input round trip pass, along with all 80
+workload-admission controls and five refusals, including the new camera profile.
+The preceding `9W0eqJoYC9` run passed those 80 cases but rejected the old expected
+total of 79; the guest/outer totals now include the added case. Its QEMU joined
+and RAM retired; bounded diagnostics remain in `camera-native-ledger.9W0eqJoYC9`.
+The accepted 30.472-second count joins QEMU 3449358 exit 0, retires 402,624,512
+bytes peak RAM scratch and records three zero listener deltas. All 37 camera,
+capsule and ledger evidence files are hash-verified on CTE/TUF. This audit-only
+receipt preserves the counted ledger bytes. The broad release goal remains open.

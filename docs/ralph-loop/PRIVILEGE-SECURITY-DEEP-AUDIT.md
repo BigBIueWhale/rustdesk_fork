@@ -122648,3 +122648,37 @@ hosts before removing 3,502,080 allocated bytes of exact failed-run diagnostic
 scratch. Product source, live instructions, stashed work and all other parks remain
 unchanged. This turn advances the layout decision with native negative evidence;
 the receive layout and release acceptance remain OPEN/STOP-SHIP.
+
+### 2026-10-31 — receive caller review and current ledger measurement
+
+Continue from `f75f9fad2d1048c5894952d035cf30b4b770b7d2`. The final-container
+experiment is a layout-research checkpoint, not a corrected layout. No alternative
+protected placement/publication/retirement model is accepted in this review.
+
+The candidate follow-up was synchronous cleanup during successful Skip confirmation.
+`TransferJob::confirm` calls `set_file_skipped`, which calls synchronous
+`retire_current_file_state`; a live receive claim can therefore perform filesystem
+cleanup in that future's polling thread. However, the production application sites
+that call `FileConfirmations::start` currently select **send** jobs. Receive-side
+skip handling still calls the borrowed `confirm` API directly in the viewer and CM.
+Adding a blocking Skip branch only to `FileConfirmations` would not correct those
+receive callers. No such patch or synthetic-worker regression is added. This is
+source review, not a newly reproduced application stall or privilege escalation.
+Any correction must follow the actual receive owner through accepted work, exact
+joining and truthful completion. The full-parent/viewer test resumption question
+remains unanswered; generic file-job cancellation remains separately parked.
+
+The ledger requires a fresh complete-file count after edits. TUF
+`vUEUrUuM0F`, command `bash scripts/smoke-verifier-vm-authority.sh --ledger-token-count`,
+counts the unchanged current ledger as **370,019 tokens / 1,693,969 bytes**, within
+the approximate 400,000-token budget. Input SHA-256:
+`329d9c315937cb9a85b4984f0799805881e4794bb4689c8afe6657e80af7c753`.
+The pinned `tiktoken-0.12.0/cl100k_base/encode_ordinary` method passes all seven
+controls and the whole-input byte round trip. This audit-only addition leaves the
+counted ledger unchanged. Raw serial SHA-256:
+`07aee9faeb573c59e975f5b338ce163d49bec67e738f4b8c30f36f68509a9453`.
+QEMU 3107137 joins after 30.809 seconds; RAM `run.lmwcyxc3` retires, all three
+listener comparisons have zero additions/removals, and the command exits zero.
+Six raw evidence files / 104,977 bytes are hash-verified on both hosts. Product,
+fixtures, live instructions and parked work remain unchanged. This measurement
+adds no product acceptance; the three completed-destination failures remain open.

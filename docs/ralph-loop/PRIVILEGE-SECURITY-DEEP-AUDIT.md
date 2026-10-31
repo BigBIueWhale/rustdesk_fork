@@ -125773,3 +125773,13 @@ paths, other platforms, resource/latency soak and release acceptance remain OPEN
 The next decisive file-transfer step is an authorized failure/overwrite scenario
 through a production viewer or the rendered file-manager workflow. All existing
 parks, including the three receive pre-I/O cases, remain in force.
+
+Ledger count at `81be0b5a`, run `LwuINPEkbV`, passes: **379,679 tokens**,
+1,738,707 bytes, SHA-256
+`00e10680f13244fbd5568542c71e8e3fe41176bb047a5b936adfc83fcd07df90`.
+The pinned method passes seven controls and the whole-input byte round trip;
+storage admission passes 79 controls and five refusals. QEMU 3421295 joins
+exit 0 after 30.511 seconds, 402,546,688 bytes peak RAM scratch retires and
+three listener deltas are zero. Capsule, cleanup, three native attempts,
+preflight receipts and the count are hash-verified on CTE/TUF. This audit-only
+receipt preserves the counted ledger bytes.

@@ -991,7 +991,7 @@ mod linux {
                             if sustained {
                                 let original = original_limit.as_ref().ok_or_else(|| anyhow!("limit absent"))?;
                                 let limited = descriptor_limit(root, Some(original))?;
-                                ensure!(limited.rlim_cur == 0 && limited.rlim_max == original.rlim_max);
+                                ensure!(limited.rlim_cur == 1 && limited.rlim_max == original.rlim_max);
                                 limit_restored = true;
                             }
                         }
@@ -1009,7 +1009,8 @@ mod linux {
                                             name.as_encoded_bytes().len() == 64
                                                 && name.as_encoded_bytes().iter().all(u8::is_ascii_hexdigit)));
                                 matches_directory && match boundary {
-                                    "fd-parent-clone" => info.data[2] == libc::F_DUPFD_CLOEXEC as u64,
+                                    "fd-parent-clone" => info.data[2] == libc::F_DUPFD_CLOEXEC as u64
+                                        && info.data[3] == 0,
                                     "fd-directory-open" => info.data[3] & libc::O_DIRECTORY as u64 != 0,
                                     "fd-lease-open" => path.file_name().is_some_and(|name| name == "claim.download.lock")
                                         && info.data[3] & libc::O_CREAT as u64 != 0,
@@ -1041,13 +1042,17 @@ mod linux {
                                 let original = descriptor_limit(root, None)?;
                                 ensure!(original.rlim_cur > 0 && original.rlim_cur <= original.rlim_max
                                     && original.rlim_max == 128);
-                                let limited = libc::rlimit { rlim_cur: 0, rlim_max: original.rlim_max };
+                                // fd 0 is already occupied. Keep the duplicate's
+                                // minimum fd (0) below the limit; a zero limit
+                                // would cause EINVAL instead of exhaustion.
+                                ensure!(fs::read_link(format!("/proc/{root}/fd/0"))? == Path::new("/dev/null"));
+                                let limited = libc::rlimit { rlim_cur: 1, rlim_max: original.rlim_max };
                                 descriptor_limit(root, Some(&limited))?;
                                 let observed = descriptor_limit(root, None)?;
-                                ensure!(observed.rlim_cur == 0 && observed.rlim_max == original.rlim_max);
+                                ensure!(observed.rlim_cur == 1 && observed.rlim_max == original.rlim_max);
                                 original_limit = Some(original);
                                 observation = Some(json!({"source":path,"tid":pid,"syscall":number,
-                                    "soft_limit_before":original.rlim_cur,"soft_limit_during":0,
+                                    "soft_limit_before":original.rlim_cur,"soft_limit_during":1,
                                     "hard_limit":original.rlim_max,"sustained_through_cleanup":sustained}));
                                 selected_task = Some(pid);
                             } else if selected && crash {
@@ -1079,11 +1084,13 @@ mod linux {
                             "is_error":info.data[1] & 255 != 0}));
                         if descriptor {
                             ensure!(info.data[0] as i64 == -(libc::EMFILE as i64)
-                                && info.data[1] & 255 != 0, "selected allocation did not return EMFILE");
+                                && info.data[1] & 255 != 0,
+                                "selected allocation did not return EMFILE: boundary={boundary} return={} is_error={}",
+                                info.data[0] as i64, info.data[1] & 255);
                             if !sustained {
                                 let original = original_limit.as_ref().ok_or_else(|| anyhow!("limit absent"))?;
                                 let limited = descriptor_limit(root, Some(original))?;
-                                ensure!(limited.rlim_cur == 0 && limited.rlim_max == original.rlim_max);
+                                ensure!(limited.rlim_cur == 1 && limited.rlim_max == original.rlim_max);
                                 limit_restored = true;
                             }
                         } else if crash {
@@ -1554,8 +1561,8 @@ mod linux {
                     let artifacts = staging(&base)?;
                     uncertain && added.len() == 2 && entries == 2
                         && fs::read_dir(&artifacts)?.count() == 0
-                        && added.iter().filter(|key| key.ends_with(".lock")).count() == 1
-                        && added.iter().filter(|key| key.ends_with(".json")).count() == 1
+                        && added.iter().filter(|key| key.extension().is_some_and(|e| e == "lock")).count() == 1
+                        && added.iter().filter(|key| key.extension().is_some_and(|e| e == "json")).count() == 1
                 } else {
                     namespace_clean && !uncertain && traced["receiver"]["raw_errno"] == libc::EMFILE
                 };

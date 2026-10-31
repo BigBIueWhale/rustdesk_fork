@@ -124978,3 +124978,12 @@ It binds all six VM runs, source/artifact identities, commands, 47 raw files tot
 7,220,189 bytes, publication provenance, actual failure samples and cleanup.
 The current-artifact build prerequisite is complete; the demonstrated recovery
 defect and broader R-F5/release requirements remain OPEN.
+
+Fresh ledger check at `d9faf0b2`, TUF `gF0bwvIV13`, exits 0: **376,208 tokens**,
+1,724,037 bytes, SHA-256
+`8f7aa1ac17652b663301c413f995b5753757aac858f60e20184fe4cee3a6435e`,
+using pinned tiktoken 0.12.0/cl100k_base/encode_ordinary, seven controls and the
+whole-file byte round trip. Supervisor time 30.214 seconds; scratch peak
+402,583,552 bytes. QEMU 3305387 joins exit 0, RAM/run roots retire, and all three
+listener deltas are zero. Six raw files totaling 105,094 bytes and the checkpoint
+capsule match on CTE/TUF. This audit-only receipt leaves the counted ledger unchanged.

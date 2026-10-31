@@ -1,4 +1,5 @@
 use super::*;
+use crate::ipc;
 use hbb_common::{
     cpace::{run_initiator, run_responder},
     libc,

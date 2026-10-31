@@ -567,6 +567,109 @@ mod linux {
         result
     }
 
+    async fn inode_limited_enrollment(base: &Path, limit: u64) -> ResultType<Value> {
+        use std::{ffi::CString, os::unix::{ffi::OsStrExt, io::AsRawFd}};
+        ensure!((4..=7).contains(&limit));
+        fs::create_dir(base)?;
+        let target = CString::new(base.as_os_str().as_bytes())?;
+        let options = CString::new(format!("size=65536,nr_inodes={limit},mode=0700,huge=never"))?;
+        let flags = libc::MS_NODEV | libc::MS_NOSUID | libc::MS_NOEXEC;
+        if unsafe { libc::mount(b"tmpfs\0".as_ptr().cast(), target.as_ptr(),
+            b"tmpfs\0".as_ptr().cast(), flags, options.as_ptr().cast()) } != 0 {
+            let error = io::Error::last_os_error();
+            fs::remove_dir(base)?;
+            return Err(error.into());
+        }
+        let result = async {
+            let directory = fs::File::open(base)?;
+            let space = || -> ResultType<libc::statvfs> {
+                let mut value = unsafe { std::mem::zeroed() };
+                ensure!(unsafe { libc::fstatvfs(directory.as_raw_fd(), &mut value) } == 0,
+                    "inode fixture statvfs failed: {}", io::Error::last_os_error());
+                Ok(value)
+            };
+            create(&base.join("incoming.bin"), b"original", 0o600)?;
+            let original = snapshot(&base.join("incoming.bin"))?;
+            let initial = space()?;
+            ensure!(initial.f_files == limit && initial.f_ffree == limit - 2
+                && initial.f_bavail * initial.f_frsize >= 32768);
+            // Calibrate actual inode exhaustion independently of receive setup.
+            for index in 0..initial.f_ffree {
+                create(&base.join(format!("calibration-{index}")), b"", 0o600)?;
+            }
+            ensure!(space()?.f_ffree == 0);
+            let calibration = fs::create_dir(base.join("must-refuse"))
+                .err().ok_or_else(|| anyhow!("inode-exhausted mount allowed mkdir"))?;
+            ensure!(calibration.raw_os_error() == Some(libc::ENOSPC));
+            for index in 0..initial.f_ffree {
+                fs::remove_file(base.join(format!("calibration-{index}")))?;
+            }
+            ensure!(space()?.f_ffree == initial.f_ffree);
+            let before = coordination_inventory()?;
+            let mut attempts = Vec::new();
+            let mut safe = true;
+            for _ in 0..2 {
+                let mut receiver = job(base)?;
+                let counters = (receiver.finished_size(), receiver.transferred());
+                let error = admit(&mut receiver, false, 0).await.err()
+                    .ok_or_else(|| anyhow!("inode-limited receive admission succeeded"))?;
+                ensure!(error.downcast_ref::<io::Error>()
+                    .is_some_and(|error| error.raw_os_error() == Some(libc::ENOSPC)),
+                    "unexpected inode-limited admission error: {error}");
+                ensure!((receiver.finished_size(), receiver.transferred()) == counters);
+                ensure!(receiver.finalize_write(1).await.is_err());
+                receiver.retire_current_file_state()?;
+                drop(receiver);
+                ensure!(snapshot(&base.join("incoming.bin"))? == original);
+                let after = coordination_inventory()?;
+                let retained_records = after.keys().filter(|key| !before.contains_key(*key)).count();
+                let retained_bytes: u64 = after.iter().filter(|(key, _)| !before.contains_key(*key))
+                    .map(|(_, bytes)| *bytes).sum();
+                let entries = fs::read_dir(base)?.count();
+                let free = space()?;
+                let mut container_entries = Vec::new();
+                let mut file_entries = Vec::new();
+                if entries != 1 {
+                    let artifacts = staging(base)?;
+                    let container = artifacts.parent().ok_or_else(|| anyhow!("staging parent absent"))?;
+                    for entry in fs::read_dir(container)? {
+                        container_entries.push(entry?.file_name().to_string_lossy().into_owned());
+                    }
+                    if artifacts.try_exists()? {
+                        for entry in fs::read_dir(artifacts)? {
+                            file_entries.push(entry?.file_name().to_string_lossy().into_owned());
+                        }
+                    }
+                    container_entries.sort();
+                    file_entries.sort();
+                }
+                let clean = entries == 1 && after == before && free.f_ffree == initial.f_ffree;
+                safe &= clean;
+                attempts.push(json!({"clean":clean, "destination_entries":entries,
+                    "coordination_entries_added":retained_records,
+                    "coordination_allocated_bytes_added":retained_bytes,
+                    "free_inodes":free.f_ffree, "free_bytes":free.f_bavail * free.f_frsize,
+                    "container_entries":container_entries, "file_entries":file_entries}));
+            }
+            ensure!(unsafe { libc::mount(std::ptr::null(), target.as_ptr(), std::ptr::null(),
+                flags | libc::MS_REMOUNT, b"nr_inodes=128\0".as_ptr().cast()) } == 0,
+                "inode fixture expansion failed: {}", io::Error::last_os_error());
+            complete_transfer(base).await?;
+            ensure!(coordination_inventory()? == before && fs::read_dir(base)?.count() == 1);
+            Ok::<_, hbb_common::anyhow::Error>(json!({"filesystem":"tmpfs", "inode_limit":limit,
+                "capacity_bytes":65536, "calibrated_mkdir_errno":libc::ENOSPC,
+                "admission_error":"ENOSPC", "attempts":attempts, "safe":safe,
+                "original_preserved":true, "counters_unchanged":true, "publication_refused":true,
+                "expanded_retry_exact":true, "coordination_restored_after_retry":true}))
+        }.await;
+        if unsafe { libc::umount2(target.as_ptr(), 0) } != 0 {
+            return Err(anyhow!("inode fixture unmount failed: {}; operation: {result:?}",
+                io::Error::last_os_error()));
+        }
+        fs::remove_dir(base)?;
+        result
+    }
+
     async fn crash_receiver(base: &Path) -> ResultType<()> {
         identity(0)?;
         io::stdout().write_all(syscall_window::ARMED)?;
@@ -1306,7 +1409,15 @@ mod linux {
         println!("RECEIVE_NATIVE_CASE={}", json!({"case":"readonly-enrollment","observed":observed}));
         println!("RECEIVE_NATIVE_ADMISSION_SUMMARY=observed destinations=8 attempts=16 safe={} mounts=retired fixture=retired", observed["safe"]);
         ensure!(observed["safe"] == true, "read-only receive attempts retained coordination state");
-        println!("RECEIVE_NATIVE_AUTHORITY=pass cases=33 actors={actors} receiver_uid=0 actor_uid=4001 children=joined fixture=retired");
+        let mut safe = 0;
+        for limit in 4..=7 {
+            let observed = inode_limited_enrollment(&root.join(format!("inode-enrollment-{limit}")), limit).await?;
+            safe += usize::from(observed["safe"] == true);
+            println!("RECEIVE_NATIVE_CASE={}", json!({"case":format!("inode-enrollment-{limit}"), "observed":observed}));
+        }
+        println!("RECEIVE_NATIVE_INODE_SUMMARY=observed cases=4 attempts=8 safe={safe} mounts=retired fixture=retired");
+        ensure!(safe == 4, "inode-limited receive attempts retained unused state: {safe}/4 safe");
+        println!("RECEIVE_NATIVE_AUTHORITY=pass cases=37 actors={actors} receiver_uid=0 actor_uid=4001 children=joined fixture=retired");
         Ok(())
     }
 

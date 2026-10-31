@@ -125642,3 +125642,12 @@ This corrects the reproduced ordinary-user Linux X11/US-layout Legacy-character
 failure. Other layouts, IME, modes, shortcut families, physical devices, installed
 privilege boundaries/non-Remote refusal, other platforms and soak remain OPEN.
 These event-delivery times do not establish display latency or hardware receipt.
+
+Ledger count at `16fc4bdd`, run `CgXWT4WB5a`, passes: **379,037 tokens**,
+1,735,699 bytes, SHA-256
+`8177e4f0e461a39e179dfaf13ce888dd1facf632995f02e1ffa1a93dcc962e05`.
+The pinned tiktoken method passes seven controls and the complete byte round trip;
+storage admission passes 79 controls and five refusals. QEMU 3403009 joins exit 0
+after 30.414 seconds, 402,477,056 bytes peak RAM scratch retires and all three
+listener deltas are zero. All 28 checkpoint files, 649,067 bytes, are hash-verified
+on CTE/TUF. This audit-only receipt preserves the counted ledger bytes.

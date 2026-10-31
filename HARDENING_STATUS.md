@@ -16233,23 +16233,33 @@ now queues both digest producers and incoming confirmations, snapshots eligible
 checkpoint metadata, and closes both directions before awaiting cleanup. Cancelled
 jobs cannot reappear through completion or checkpoint metadata.
 
-At `c655e0fb`, TUF `sGF9IR6sNX`, all **31 focused tests in 29 groups** pass. The
-eight ownership tests cover proof outcomes, TCP control during observed native
+At `d8aaf937`, TUF `YqT0QiSSuj`, all **32 focused tests in 30 groups** pass. The
+nine ownership tests cover proof outcomes, TCP control during observed native
 prefix reads in both operation modes, late cancellation, owner-drop handle cleanup,
 capacity/retry, both proof-producing roles through wire serialization and exact
 resumed output, five receive interruption phases, checkpoint selection and closed
 admission. The receive cases preserve original final/partial/digest bytes and permit
-lease reacquisition; close also exercises both directions together. Two preceding
-fresh-control fixture ordering failures and their listener observations remain in
-the audit. These are real-file/socket library results, not application handlers.
+lease reacquisition; close also exercises both directions together. Prior fixture
+failures and listener observations remain in the audit. These are real-file/socket
+library results, not application handlers.
+
+`a0bdf36e` moves failed/cancelled accepted-job retirement off the connection executor
+while retaining its original capacity permit and exact join. The native baseline
+stalls that executor for both held-directory-fsync cases; the same observers now
+complete TCP ping/pong within one second while sync remains held. Cancelling the
+wait or dropping its owner retains cleanup responsibility and capacity until joining;
+saved partial/digest/final bytes survive and the lease is reacquired. The final
+fixture keeps the shared drain outside its temporary syscall observer. All four
+host listener deltas are zero; QEMU and bounded RAM scratch retire. Raw receipt:
+`hbb-common-fs-run.YqT0QiSSuj.serial.log`.
 
 The changed controlled/viewer loops remain uncompiled/unexecuted in the full
 application. Full-parent/viewer execution parks remain in force pending the specific
 resumption question; their fixtures also need adaptation to the owned completion
-path. CM scheduling remains incomplete. Normal collection/admission refusal still
-performs synchronous receive-claim retirement, so cleanup must also leave the
-message loop before slow-storage responsiveness is accepted. Next correct that
-ownership and obtain actual handler keepalive/cancellation/checkpoint evidence.
+path. CM scheduling remains incomplete. Admission refusal and the inner prefix-hash
+failure path still perform synchronous receive-claim retirement. Those paths need
+bounded cleanup ownership before complete slow-storage responsiveness is accepted.
+Next correct them and obtain actual handler keepalive/cancellation/checkpoint evidence.
 The measured 62.764-second hash exceeds the loops' 30-second receive deadline;
 no installed disconnect has been measured. Large/slow-source resume, concurrent
 source mutation and the staging-layout lifecycle failures remain OPEN/STOP-SHIP.

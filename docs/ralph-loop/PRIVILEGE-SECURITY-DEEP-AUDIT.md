@@ -122361,9 +122361,10 @@ lets the unchanged blocking baseline finish cleanup before failing.
 
 The observer uses Linux seccomp user notification and CONTINUE without changing
 syscall arguments or results; it is a timing fixture, not an authority policy.
-Primary references: Linux userspace-api/seccomp_filter.html and installed Linux
-UAPI seccomp.h; Tokio task/spawn_blocking and task/JoinHandle documentation at
-docs.rs/tokio. Blocking tasks cannot be aborted once running, so the proposed
+Primary references: [Linux seccomp](https://www.kernel.org/doc/html/latest/userspace-api/seccomp_filter.html),
+installed Linux UAPI seccomp.h, [Tokio blocking tasks](https://docs.rs/tokio/latest/tokio/task/fn.spawn_blocking.html)
+and [join ownership](https://docs.rs/tokio/latest/tokio/task/struct.JoinHandle.html).
+Blocking tasks cannot be aborted once running, so the proposed
 collector transition must retain its existing permit and exact join through cleanup.
 This preparation changes no product behavior and claims no execution. Admission
 refusal and inner hash-failure retirement require separate ownership work; full
@@ -122399,3 +122400,26 @@ listener deltas are zero. A test-only follow-up initializes the process-wide dra
 before installing the observer filter so that the shared thread cannot retain a
 closed test notification endpoint. Product code and native oracles are unchanged;
 the final fixture requires its focused execution before acceptance.
+
+**Accepted collection checkpoint.** Final source
+`d8aaf9372cb71049856fed7c1f3734cbb6af556b`, tree
+`b4513cfc0d6ee3391399fc218c10744af4e20547`, TUF `YqT0QiSSuj`, passes all 32
+tests in 30 groups, including both held-sync observations with explicit release,
+TCP control, cancellation/drop ownership, capacity restoration, preserved bytes
+and lease reacquisition. Artifact SHA-256
+`5ea94d7af22356a2804064dc7adcc2d8ef4aa3efdb36d0ee3688f7c68ab047f2`.
+Serial 13,414 bytes, SHA-256
+`587769bc800e08c5d484f38e2cf50313c0a2a01942a4958997cbd2a670ba36f5`.
+QEMU 3097771 joins after 142.879 seconds; RAM `run.8zobp1u_` retires and all four
+listener deltas are zero. The command exits zero under UID/GID 1000, with guest
+and container networking disabled. Twenty-one raw files total 253,223 bytes per
+host. Product/test source remains unchanged after this execution.
+
+This closes accepted-job collection's demonstrated synchronous cleanup stall.
+Admission refusal and the inner hash-error lease cleanup remain synchronous and
+need their own bounded ownership correction. Full controlled/viewer compilation,
+actual handler keepalive/checkpoint behavior and CM scheduling remain unaccepted;
+the completed-destination staging regressions are still OPEN/STOP-SHIP. The
+specific application-validation resumption question remains unanswered; no parked
+test or unrelated work was resumed. The live instruction file and old stash remain
+unchanged. This checkpoint does not claim complete receive or release acceptance.

@@ -4616,8 +4616,6 @@ mod tests {
         )
         .with_files(vec![entry])
         .expect("create exact viewer receive job");
-        let download = temp.path.join("incoming.bin.download");
-        let digest = temp.path.join("incoming.bin.digest");
         let mut jobs = vec![job];
 
         let written = write_viewer_file_block(
@@ -4638,6 +4636,10 @@ mod tests {
             }
         );
         assert_eq!(jobs.len(), 1);
+        let [download, digest, lock] = crate::receive_test::artifact_paths(&temp.path, "incoming.bin");
+        assert_eq!(std::fs::read(&download).unwrap(), [0x40]);
+        assert!(digest.exists());
+        assert!(lock.exists());
 
         let failure = write_viewer_file_block(
             &mut jobs,
@@ -4657,6 +4659,7 @@ mod tests {
         assert!(jobs.is_empty(), "the failed exact receive job must retire");
         assert!(!download.exists(), "the partial download must be removed");
         assert!(!digest.exists(), "the partial digest must be removed");
+        assert!(!lock.exists(), "the exact destination lease must retire");
     }
 
     #[cfg(unix)]
@@ -4665,10 +4668,6 @@ mod tests {
         use std::os::unix::fs::MetadataExt;
 
         let temp = ViewerFileTestDir::new();
-        let foreign = temp.path.join("second.bin.digest");
-        std::fs::write(&foreign, b"foreign digest").expect("stage foreign digest");
-        let metadata = std::fs::metadata(&foreign).expect("inspect foreign digest");
-        let identity = (metadata.dev(), metadata.ino());
         let mut entries = Vec::new();
         for name in ["first.bin", "second.bin"] {
             let mut entry = FileEntry::new();
@@ -4726,6 +4725,11 @@ mod tests {
         )
         .await
         .expect("persist the first viewer file");
+        let [_, foreign, _] = crate::receive_test::prepare_artifact_paths(&temp.path, "second.bin");
+        std::fs::write(&foreign, b"foreign digest").expect("stage foreign digest");
+        let metadata = std::fs::metadata(&foreign).expect("inspect foreign digest");
+        let identity = (metadata.dev(), metadata.ino());
+        let survivor_artifacts = crate::receive_test::artifact_paths(&temp.path, "survivor.bin");
         let failure = write_viewer_file_block(
             &mut jobs,
             FileTransferBlock {
@@ -4743,8 +4747,8 @@ mod tests {
         assert_eq!(jobs[0].id(), 77);
         assert_eq!(jobs[0].finished_size(), 1);
         assert_eq!(jobs[0].transferred(), 1);
-        for suffix in [".download", ".digest", ".download.lock"] {
-            assert!(temp.path.join(format!("survivor.bin{suffix}")).exists());
+        for path in &survivor_artifacts {
+            assert!(path.exists());
         }
         assert_eq!(
             write_viewer_file_block(
@@ -4774,6 +4778,7 @@ mod tests {
         let mut survivor = fs::remove_job(77, &mut jobs).expect("take the surviving job");
         survivor.finalize_write(1).await.expect("commit the surviving job");
         assert_eq!(std::fs::read(temp.path.join("survivor.bin")).unwrap(), b"DE");
+        assert!(survivor_artifacts.iter().all(|path| !path.exists()));
         assert!(jobs.is_empty());
         assert_eq!(std::fs::read(temp.path.join("first.bin")).unwrap(), b"A");
         assert_eq!(std::fs::read(&foreign).unwrap(), b"foreign digest");
@@ -4802,10 +4807,7 @@ mod tests {
         )
         .with_files(vec![entry])
         .expect("create exact viewer receive job");
-        let download = temp.path.join("incoming.bin.download");
         let displaced = temp.path.join("displaced.download");
-        let digest = temp.path.join("incoming.bin.digest");
-        let lock = temp.path.join("incoming.bin.download.lock");
         let mut jobs = vec![job];
 
         write_viewer_file_block(
@@ -4819,6 +4821,7 @@ mod tests {
         )
         .await
         .expect("admit the exact receive generation");
+        let [download, digest, lock] = crate::receive_test::artifact_paths(&temp.path, "incoming.bin");
         std::fs::rename(&download, &displaced).expect("displace the admitted staging inode");
         std::fs::write(&download, b"replacement-must-survive")
             .expect("install a different staging generation");
@@ -4874,8 +4877,16 @@ mod tests {
         )
         .with_files(vec![entry])
         .expect("create exact viewer receive job");
-        let download = temp.path.join("incoming.bin.download");
-        let digest = temp.path.join("incoming.bin.digest");
+        let mut anchor = fs::TransferJob::new_write(
+            700, fs::JobType::Generic, String::new(), temp.path.clone(), 0, false, true, false,
+        ).with_files(vec![FileEntry {
+            name: "anchor.bin".to_owned(), size: 1, ..Default::default()
+        }]).unwrap();
+        anchor.write(FileTransferBlock {
+            id: 700, file_num: 0, data: b"A".to_vec().into(), ..Default::default()
+        }).await.unwrap();
+        let anchor_artifacts = crate::receive_test::artifact_paths(&temp.path, "anchor.bin");
+        let [download, digest, _] = crate::receive_test::prepare_artifact_paths(&temp.path, "incoming.bin");
         std::os::unix::fs::symlink("forbidden-target", &download)
             .expect("stage a no-follow receive target");
         std::fs::write(&digest, b"{}").expect("stage partial digest");
@@ -4897,6 +4908,8 @@ mod tests {
         assert_eq!(failure.file_num, 0);
         assert!(!failure.error.is_empty());
         assert!(jobs.is_empty(), "the failed exact receive job must retire");
+        anchor.retire_current_file_state().unwrap();
+        assert!(anchor_artifacts.iter().all(|path| !path.exists()));
         assert!(
             std::fs::symlink_metadata(&download)
                 .expect("preserve pre-existing symlink")
@@ -4910,7 +4923,7 @@ mod tests {
             "a refused job does not own the pre-existing digest"
         );
         assert!(
-            !temp.path.join("forbidden-target").exists(),
+            !download.parent().unwrap().join("forbidden-target").exists(),
             "cleanup must not follow the rejected target"
         );
     }

@@ -69,6 +69,8 @@ mod whiteboard;
 mod ui_cm_interface;
 mod ui_interface;
 mod ui_session_interface;
+#[cfg(test)]
+mod receive_test;
 #[cfg(all(test, target_os = "linux"))]
 mod viewer_pipeline_smoke_tests;
 

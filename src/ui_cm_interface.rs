@@ -6461,10 +6461,6 @@ mod tests {
         }
 
         let temp = CmFileTestDir::new("next_setup_failure");
-        let foreign = temp.join("second.bin.digest");
-        std::fs::write(&foreign, b"foreign digest").expect("stage foreign digest");
-        let metadata = std::fs::metadata(&foreign).expect("inspect foreign digest");
-        let identity = (metadata.dev(), metadata.ino());
         let (tx, mut rx) = cm_egress_channel();
         let responder = CmFileResponder {
             tx: &tx,
@@ -6498,6 +6494,7 @@ mod tests {
         )
         .await
         .expect("admit both CM files");
+        let mut collision = None;
         for (file_num, data) in [(0, b"A".as_slice()), (1, b"B".as_slice())] {
             handle_fs(
                 ipc::FS::WriteBlock {
@@ -6515,7 +6512,14 @@ mod tests {
             )
             .await
             .expect("CM must publish a result for refused filesystem work");
+            if file_num == 0 {
+                let [_, foreign, _] = crate::receive_test::prepare_artifact_paths(&temp.path, "second.bin");
+                std::fs::write(&foreign, b"foreign digest").expect("stage foreign digest");
+                let metadata = std::fs::metadata(&foreign).expect("inspect foreign digest");
+                collision = Some((foreign, (metadata.dev(), metadata.ino())));
+            }
         }
+        let (foreign, identity) = collision.expect("first write established the collision fixture");
         assert!(write_jobs.is_empty());
         match next_response(&mut rx).await {
             ipc::CmFileResponseKind::WriteFailed {
@@ -6839,9 +6843,15 @@ mod tests {
                     .expect("persist the admitted CM file generation");
                 }
 
-                let replaced = temp.join(&format!("target.bin{suffix}"));
+                let [download, digest, lock] = crate::receive_test::artifact_paths(&temp.path, "target.bin");
+                let (replaced, exact) = if suffix == ".download" {
+                    (download, digest)
+                } else {
+                    (digest, download)
+                };
+                let survivor_artifacts = crate::receive_test::artifact_paths(&temp.path, "survivor.bin");
+                assert!(survivor_artifacts.iter().all(|path| path.exists()));
                 let displaced = temp.join("displaced");
-                let lock = temp.join("target.bin.download.lock");
                 let admitted_identity = identity(&replaced);
                 let admitted_bytes = std::fs::read(&replaced).expect("read admitted artifact");
                 let lock_identity = identity(&lock);
@@ -7057,18 +7067,18 @@ mod tests {
                 assert_eq!(std::fs::read(&displaced).unwrap(), admitted_bytes);
                 assert_eq!(identity(&displaced), admitted_identity);
                 assert_eq!(identity(&lock), lock_identity);
-                let exact_suffix = if suffix == ".download" {
-                    ".digest"
-                } else {
-                    ".download"
-                };
-                assert!(!temp.join(&format!("target.bin{exact_suffix}")).exists());
+                assert!(!exact.exists());
                 assert!(!temp.join("target.bin").exists());
                 assert_eq!(std::fs::read(temp.join("survivor.bin")).unwrap(), b"DE");
-                for suffix in [".download", ".digest", ".download.lock"] {
-                    assert!(!temp.join(&format!("survivor.bin{suffix}")).exists());
+                assert!(survivor_artifacts.iter().all(|path| !path.exists()));
+                #[cfg(target_os = "linux")]
+                {
+                    let artifacts = replaced.parent().unwrap();
+                    assert_eq!(std::fs::read_dir(artifacts).unwrap().count(), 2);
+                    assert_eq!(std::fs::read_dir(artifacts.parent().unwrap()).unwrap().count(), 1);
                 }
-                assert_eq!(std::fs::read_dir(&temp.path).unwrap().count(), 4);
+                assert_eq!(std::fs::read_dir(&temp.path).unwrap().count(),
+                    if cfg!(target_os = "linux") { 3 } else { 4 });
                 assert!(matches!(rx.take_next(), Ok(None)));
             }
         }

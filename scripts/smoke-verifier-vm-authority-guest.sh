@@ -5075,7 +5075,7 @@ run_focused_rust_tests() {
             memory_bytes=5368709120
             source_fingerprints=(
                 Cargo.lock Cargo.toml src/lib.rs src/client/io_loop.rs src/ui_cm_interface.rs
-                src/ui_cm_interface/tests/receive_cleanup.rs
+                src/ui_cm_interface/tests/receive_cleanup.rs src/receive_test.rs
                 src/ipc.rs libs/hbb_common/src/fs.rs libs/hbb_common/src/fs/file_block.rs
                 src/flutter_ffi.rs src/client/file_trait.rs
                 src/server/connection.rs scripts/fixtures/cm-owner-before-cancel.rs

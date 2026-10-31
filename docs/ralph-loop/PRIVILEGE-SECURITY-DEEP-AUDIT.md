@@ -124260,3 +124260,17 @@ Installed privileged authentication, device/cross-OS behavior, full peer flows,
 runtime-shutdown/long-session stress, shared-parent/mount-root staging and release
 acceptance remain OPEN. The shared-parent layout remains the next substantive
 receive design obligation; its earlier proposal creates no permission dependency.
+
+Ledger count at `e916b8c4`, TUF `1SvNRWLmKi`, exits zero: **373,744 tokens /
+1,712,561 bytes**, input SHA-256
+`600eb01ba55e8f61aefca67403a11778b3d084c91fa7fe5955c6ab63240e302f`.
+The tiktoken 0.12.0 / cl100k_base / encode_ordinary method, seven controls and
+strict whole-file UTF-8 round trip pass. Serial
+`ledger-token-count-run.1SvNRWLmKi.serial.log` is 35,832 bytes, SHA-256
+`e06182a832ba990d45b0d542d352ecc337cc2577ea53f365e2a725ac81d09fb2`.
+QEMU 3221620 joins zero after 33.935 seconds; wrapper 3220195 and RAM workspace
+`run.6tbr8l_g` are absent. Peak scratch is 402,440,192 bytes within 4 GiB, minimum
+available host memory is 45,796,065,280 bytes, and all three listener deltas are zero.
+The six count files / 104,390 bytes and fourteen correction-run files total twenty
+files / 274,108 bytes per host, hash-verified on CTE and TUF. Both ledger copies
+match the counted hash; this audit-only receipt leaves the counted input unchanged.

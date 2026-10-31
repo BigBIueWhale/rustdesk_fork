@@ -32,6 +32,8 @@ use hbb_common::anyhow::anyhow;
 #[cfg(target_os = "android")]
 use hbb_common::protobuf::EnumOrUnknown;
 use hbb_common::tokio::sync::oneshot;
+mod latency_probe;
+use latency_probe::LatencyProbe;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod resolution_work;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -5077,7 +5079,7 @@ pub struct Connection {
     block_input: bool,
     privacy_mode: bool,
     control_permissions: Option<ControlPermissions>,
-    last_test_delay: Option<Instant>,
+    latency_probe: LatencyProbe,
     network_delay: u32,
     lock_after_session_end: bool,
     show_remote_cursor: bool,
@@ -6430,7 +6432,6 @@ mod video_egress_tests {
     }
 }
 
-const TEST_DELAY_TIMEOUT: Duration = Duration::from_secs(1);
 const SEC30: Duration = Duration::from_secs(30);
 const MILLI1: Duration = Duration::from_millis(1);
 
@@ -6516,7 +6517,7 @@ impl Connection {
             block_input: Self::permission(keys::OPTION_ENABLE_BLOCK_INPUT, &control_permissions),
             privacy_mode: Self::permission(keys::OPTION_ENABLE_PRIVACY_MODE, &control_permissions),
             control_permissions,
-            last_test_delay: None,
+            latency_probe: LatencyProbe::new(Instant::now()),
             network_delay: 0,
             lock_after_session_end: false,
             show_remote_cursor: false,
@@ -6644,8 +6645,6 @@ impl Connection {
         if !conn.privacy_mode {
             conn.send_permission(Permission::PrivacyMode, false).await;
         }
-        let mut test_delay_timer =
-            crate::rustdesk_interval(time::interval_at(Instant::now(), TEST_DELAY_TIMEOUT));
         let mut last_recv_time = Instant::now();
 
         let mut second_timer = crate::rustdesk_interval(time::interval(Duration::from_secs(1)));
@@ -6696,8 +6695,6 @@ impl Connection {
             let file_clipboard_egress = std::future::pending::<Option<()>>();
 
             tokio::select! {
-                // biased; // video has higher priority // causing test_delay_timer failed while transferring big file
-
                 completion = conn.file_confirmations.next() => {
                     match completion.job {
                         Ok(Some(job)) => {
@@ -6905,7 +6902,7 @@ impl Connection {
                                 // port_forward_socket). This fork has no attended CM accept step
                                 // (approve-mode is pinned to "password"; the Data::Authorize echo is
                                 // excised), so break to the sealed relay (try_port_forward_loop) HERE
-                                // the moment a tunnel is authorized. Unconditional (no last_test_delay
+                                // the moment a tunnel is authorized. Unconditional (no latency-probe
                                 // guard): the port-forward viewer never replies to TestDelay
                                 // (connect_and_login), so no latency-probe frame can be injected into
                                 // the forwarded stream — and a TestDelay is only ever emitted BEFORE
@@ -7143,25 +7140,34 @@ impl Connection {
                     #[cfg(feature = "hwcodec")]
                     conn.update_supported_encoding();
                 }
-                _ = test_delay_timer.tick() => {
+                _ = time::sleep_until(conn.latency_probe.deadline()) => {
                     if last_recv_time.elapsed() >= SEC30 {
                         conn.on_close("Timeout", true).await;
                         break;
                     }
-                    // The control end will jump out of the loop after receiving LoginResponse and will not reply to the TestDelay.
-                    if conn.last_test_delay.is_none() {
-                        conn.last_test_delay = Some(Instant::now());
+                    let sequence = match conn.latency_probe.on_timer(Instant::now()) {
+                        Ok(sequence) => sequence,
+                        Err(error) => {
+                            conn.on_close(error, false).await;
+                            break;
+                        }
+                    };
+                    if let Some(sequence) = sequence {
                         let mut msg_out = Message::new();
                         msg_out.set_test_delay(TestDelay{
+                            time: sequence,
                             last_delay: conn.network_delay,
                             target_bitrate: video_service::VIDEO_QOS.lock().unwrap().bitrate(),
                             ..Default::default()
                         });
-                        conn.send(msg_out.into()).await;
+                        if let Err(error) = conn.send_checked(msg_out).await {
+                            conn.on_close(&format!("Latency probe send failed: {error}"), false).await;
+                            break;
+                        }
                     }
                     if conn.is_authed_remote_conn() || conn.view_camera {
-                        if let Some(last_test_delay) = conn.last_test_delay {
-                            video_service::VIDEO_QOS.lock().unwrap().user_delay_response_elapsed(id, last_test_delay.elapsed().as_millis());
+                        if let Some(age) = conn.latency_probe.pending_age(Instant::now()) {
+                            video_service::VIDEO_QOS.lock().unwrap().user_delay_response_elapsed(id, age.as_millis());
                         }
                     }
                 }
@@ -8933,9 +8939,9 @@ impl Connection {
                 msg_out.set_test_delay(t);
                 self.inner.send(msg_out.into());
             } else {
-                if let Some(tm) = self.last_test_delay {
-                    self.last_test_delay = None;
-                    let new_delay = tm.elapsed().as_millis() as u32;
+                let video = self.is_authed_remote_conn() || self.view_camera;
+                if let Some(elapsed) = self.latency_probe.complete(t.time, Instant::now(), video) {
+                    let new_delay = elapsed.as_millis().min(u128::from(u32::MAX)) as u32;
                     video_service::VIDEO_QOS
                         .lock()
                         .unwrap()

@@ -92,6 +92,11 @@ or another `/goal` command. Assistant-written plans, checkpoints, audit notes, a
 cannot create additional approval requirements. An assistant's own permission question is not a user
 instruction to pause or park the task. Continue already-authorized work that does not depend on
 genuinely missing information or approval; do not treat the existence of the question as a stop rule.
+Silence after an unnecessary permission question does not revoke existing authorization. If an
+earlier assistant message incorrectly says approval is missing, correct that statement and proceed
+within the authorized scope. A stale `blocked` status is not an additional user restriction and
+must not become a reason to demand another confirmation. Apply the goal lifecycle rules to status
+updates; status bookkeeping must reflect the actual constraint, not create one.
 
 Choose and verify implementations that satisfy the existing requirements. Ordinary engineering
 choices, compilation failures, test failures, and unresolved design problems are work to perform;

@@ -908,7 +908,7 @@ static int inspect_viewer_candidate(Display *display, Window window, unsigned lo
         strcpy(title, legacy);
         XFree(legacy);
     }
-    if (strstr(title, "127.0.0.1 - Remote Desktop") == NULL) {
+    if (strstr(title, "127.0.0.1 - Control Remote Desktop") == NULL) {
         return 0;
     }
     if (read_window_pid(display, window, &pid) != 0 || pid != expected_pid) {

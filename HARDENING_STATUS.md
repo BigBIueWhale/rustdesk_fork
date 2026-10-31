@@ -43,6 +43,13 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-10-31):** Clipboard reconnect validation remains OPEN/PARKED.
+The five-file draft is unrun and preserved in stash
+`b2bf714fa3f115d67ae0740d8581c0be456adeff`; no product correction or reconnect
+result is claimed. Work moved to native remote keyboard delivery. Its first run
+reproduces a Ctrl+A disconnect, recorded under R-S19 below. Do not resume the
+clipboard reconnect work automatically; the earlier connected-session passes remain.
+
 **User pivot (2026-10-31):** Network-impairment/recovery follow-ups remain
 OPEN/PARKED. The completed three-profile packet-loss run and its unresolved
 12,226-ms sampled image age during burst loss are retained below; no transport
@@ -2106,6 +2113,33 @@ host identity, host proof, known-hosts store, fingerprint UI, or pin CLI. The co
 cold R-B2/R-B10, independent-reproduction, or external-review obligations.
 
 **R-S19 — `AuthConnType` capability confinement (CWE-863).**
+
+**Linux remote keyboard — Ctrl+A disconnect reproduced; correction OPEN.**
+Harness `128f954b`, run `qhNyBHZ8kL`, drives the retained `e57678d3` application
+through its real password prompt into one Remote session. Nine native X11 cases
+pass: lowercase, Shift+letter, digit, Shift+punctuation, Space, Return, Backspace,
+Left and Right. The controlled display receives the exact ordered key events,
+translated bytes and modifier states; both displays have no held keys afterward.
+The window/TCP identity and viewer resource bounds hold through those nine cases.
+
+Case ten, Ctrl+A, delivers Control down/up without the A pair. The controlled
+app reports `Legacy character hotkeys require a physical keyboard mode`, stops
+its input worker and closes the connection when subsequent key admission fails.
+The final unmodified-letter case does not execute. The current producer can emit
+a Legacy character with shortcut modifiers (`src/keyboard.rs::legacy_keyboard_mode`);
+the non-Windows receiver rejects that form (`src/server/input_service.rs`), and
+`src/server/connection.rs` retires the failed worker and connection. This is a
+full-app functionality failure, not an accepted eleven-case result or a new LPE.
+No product correction has been made. Next: reconcile the shortcut representation
+while preserving layout semantics and exact key ownership, then run the unchanged
+`--keyboard-input` scenario against a freshly built source-bound app.
+
+Scope is ordinary-user Linux X11 with the fixture's US layout. Other layouts,
+IME, installed privilege boundaries, non-Remote refusal, devices/other platforms
+and soak remain OPEN. Exact command, artifact identities, events and cleanup are
+in `keyboard-input-128f954b.json`. QEMU joins, 3,008,155,648 bytes peak RAM scratch
+retires and all four listener deltas are zero. Preserved diagnostics and twelve
+manifest-matched app copies precede removal of 61,845,504 allocated scratch bytes.
 
 **Linux clipboard text — six full-app positive cases passed; broader acceptance OPEN.**
 At harness `021c1b6c`, run `2Z9piTfyo6` uses the retained `e57678d3` app on both

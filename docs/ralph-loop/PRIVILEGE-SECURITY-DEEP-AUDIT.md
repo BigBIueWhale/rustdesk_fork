@@ -125496,3 +125496,77 @@ QEMU 3380546 joins exit 0 after 30.384 seconds; 402,472,960 bytes peak RAM scrat
 retires, owned run roots are absent and all three listener deltas are zero.
 This audit-only receipt preserves the counted ledger bytes. All 52 checkpoint
 files are hash-verified on CTE/TUF; no VM remains live.
+
+## 2026-10-31 — user pivot; native keyboard input exposes Ctrl+A disconnect
+
+The user requests another aspect. Clipboard reconnect validation is OPEN/PARKED;
+the five-file unrun draft from `072bad0c` is retained in stash
+`b2bf714fa3f115d67ae0740d8581c0be456adeff`. No reconnect run or product correction
+precedes the pivot. Network impairment and independently parked work remain parked.
+
+Selected requirement: R-S0/R-S16 authorized keyboard functionality through an
+authenticated R-S19 Remote session. This core workflow lacks full-application
+evidence and can reuse the retained app; it takes priority over another isolated
+input helper check. The test observes controlled-side native events, rather than
+inferring delivery from viewer dispatch. It changes no production code.
+
+The observer design follows X.Org's [event selection](https://xorg.freedesktop.org/archive/X11R6.8.1/doc/XSelectInput.3.html),
+[XTEST injection](https://xorg.freedesktop.org/archive/X11R7.5/doc/man/man3/XTestFakeKeyEvent.3.html),
+[key translation](https://xorg.freedesktop.org/archive/X11R7.5/doc/man/man3/XLookupString.3.html)
+and [logical key state](https://xorg.freedesktop.org/archive/X11R7.5/doc/man/man3/XQueryKeymap.3.html).
+Only the viewer receives injected keys. On the controlled display an independent
+X connection selects root key events; the source fixture selects none, allowing
+propagation to that sink. Each case requires ordered press/release pairs with the
+same native keycode, exact keysym/bytes/modifiers, no SendEvent flag, a five-second
+deadline and 100 ms without duplicate events. Both logical keymaps must be empty;
+the same viewer window/TCP connection and existing resource bounds must hold.
+This does not observe editing in an application, physical devices or other layouts.
+
+Preparation `128f954b3c1c782afeffa45b880afd84189caeb9` adds `--keyboard-input`
+through the existing replay launcher. An initial host preflight refuses the
+edited entry script's mode 0775 before admitting a VM; correcting owned repository
+file modes to 0755/0644 and resyncing permits the same source to run. No policy
+check is weakened. The actual run is `qhNyBHZ8kL`, control task
+`keyboard-input-128f954b-native`, launched at epoch 1793478341.0568998,
+wrapper PID 3383978. Harness tree is `257f7272e8b80c31898f8d555b5882cee4253a32`.
+
+Nine cases pass with exact native evidence: `a`, Shift+`a`, `1`, Shift+`1`, Space,
+Return, Backspace, Left and Right. Observed completion times are respectively
+11/71/17/71/10/10/10/10/10 ms, including any modifier injection spacing and observer
+polling. These are keyboard-delivery observations, not input-to-visible-response
+latency measurements. Case ten, Ctrl+A, observes Control press then release,
+without the A pair. The eleventh case (`z` after Control) does not run.
+
+At 20:27:08.532969 UTC the controlled application reports
+`remote input dispatch failed; stopping worker for cleanup: Legacy character hotkeys require a physical keyboard mode`.
+At 20:27:08.562237 UTC it reports closed worker admission and closes the connection.
+The current viewer's `src/keyboard.rs::legacy_keyboard_mode` can emit a character
+with Control/Alt/Meta modifiers. The non-Windows branch of the receiver's
+`src/server/input_service.rs::legacy_keyboard_mode` rejects that representation.
+`src/server/connection.rs` stops the input worker on dispatch failure, then ends
+the connection on subsequent queue admission failure. The fresh full-app run
+therefore demonstrates a required-workflow failure. No new LPE or fix is claimed.
+Next work must reconcile supported shortcut semantics and retained key ownership,
+then compare the unchanged scenario against a fresh app. Changing the fixture's
+keyboard mode simply to avoid the default-path failure would not close it.
+
+The retained app's production sources remain byte-identical to the current tree.
+App manifest SHA-256 is
+`d5202b3c0b5cb9f72c8cba427df3abdd55c2a2a7bd5c127f02f31fec111ece3c`.
+The observer's two builds are identical, SHA-256
+`4d9bd4cc0f629ca50e6b2eabc9173db1ba93c3997e0fd4c855503af1285bdfd7`.
+The 116,807-byte serial log has SHA-256
+`abf4f4284834585c6d5a52004e54f3366a53d3f62e1ef720351bfd81ed505dc3`.
+Exact command, engine/app identities, all event records and raw-file hashes are
+retained in `keyboard-input-128f954b.json` (21,875 bytes, SHA-256
+`07fb77883e0074e86d8efe689e1588c0890784b1dba6683e646a9ffe811fa55a`).
+
+The workload exits 1. QEMU 3385066 joins exit 0 after 108.477 supervisor seconds;
+3,008,155,648 bytes peak RAM scratch retires within the unchanged 7 GiB bound,
+with 10 GiB guest, 6 GiB file ceiling and 6 GiB host headroom. All four host
+listener deltas are zero. Ten raw/diagnostic files, 214,611 bytes, are hash-verified
+on CTE and TUF before removing the exact failed run root. Its twelve duplicate
+app files match the retained manifest, and its protected input provider matches
+the pinned digest; removal releases 61,845,504 allocated bytes. No VM remains.
+Installed-service, denied session/principal, other-platform/device, layout/IME,
+long-session and release acceptance remain OPEN.

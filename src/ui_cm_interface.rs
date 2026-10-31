@@ -978,6 +978,19 @@ struct CmFileOperationReaper {
 struct CmFileOperationJoin {
     task: tokio::task::JoinHandle<()>,
     _permit: Arc<OwnedSemaphorePermit>,
+    completion: Option<Box<dyn FnOnce() + Send>>,
+}
+
+#[cfg(not(target_os = "ios"))]
+impl CmFileOperationJoin {
+    fn complete(mut self) {
+        if let Some(completion) = self.completion.take() {
+            if let Err(_panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(completion)) {
+                log::error!("CM file operation failed while retiring its joined owner");
+                std::process::abort();
+            }
+        }
+    }
 }
 
 #[cfg(not(target_os = "ios"))]
@@ -998,11 +1011,12 @@ fn cm_file_operation_reaper(
             std::thread::Builder::new()
                 .name("rustdesk-cm-file-drain".to_owned())
                 .spawn(move || {
-                    while let Ok(join) = receiver.recv() {
-                        if let Err(error) = hbb_common::futures::executor::block_on(join.task) {
+                    while let Ok(mut join) = receiver.recv() {
+                        if let Err(error) = hbb_common::futures::executor::block_on(&mut join.task) {
                             log::error!("CM file operation failed during cancellation drain: {error}");
                             std::process::abort();
                         }
+                        join.complete();
                     }
                 })
                 .map(|thread| CmFileOperationReaper {
@@ -1031,10 +1045,12 @@ impl CmFileOperationTask {
             Some(join) => (&mut join.task).await,
             None => return Ok(()),
         };
-        self.join.take();
         if let Err(error) = &result {
             log::error!("CM file operation lost its exact task: {error}");
             std::process::abort();
+        }
+        if let Some(join) = self.join.take() {
+            join.complete();
         }
         result
     }
@@ -1798,6 +1814,7 @@ where
                                         join: Some(CmFileOperationJoin {
                                             task,
                                             _permit: permit,
+                                            completion: None,
                                         }),
                                     };
                                     let outcome = result_rx.await;
@@ -2101,6 +2118,7 @@ where
                             join: Some(CmFileOperationJoin {
                                 task,
                                 _permit: permit,
+                                completion: None,
                             }),
                         };
                         let outcome = result_rx.await;
@@ -2316,20 +2334,19 @@ impl<T: InvokeUiCM> CmClientTaskOwner<T> {
         }
         let writes = std::mem::take(&mut self.write_jobs);
         let reads = std::mem::take(&mut self.read_jobs);
-        let native = spawn_blocking(move || {
+        let task = spawn_blocking(move || {
             drop(writes);
             drop(reads);
         });
-        let task = tokio::spawn(async move {
-            if let Err(error) = native.await {
-                log::error!("CM connection retirement lost its native cleanup: {error}");
-                std::process::abort();
-            }
-            final_owner.file_operation_complete = true;
-            drop(final_owner);
-        });
         Some(CmFileOperationTask {
-            join: Some(CmFileOperationJoin { task, _permit: permit }),
+            join: Some(CmFileOperationJoin {
+                task,
+                _permit: permit,
+                completion: Some(Box::new(move || {
+                    final_owner.file_operation_complete = true;
+                    drop(final_owner);
+                })),
+            }),
         })
     }
 }
@@ -2541,6 +2558,7 @@ pub async fn start_listen<T: InvokeUiCM>(
                     join: Some(CmFileOperationJoin {
                         task,
                         _permit: permit,
+                        completion: None,
                     }),
                 };
                 let outcome = result_rx.await;

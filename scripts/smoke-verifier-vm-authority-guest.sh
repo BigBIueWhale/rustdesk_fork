@@ -5083,7 +5083,8 @@ run_focused_rust_tests() {
                 scripts/run-file-receive-caller-tests.sh scripts/linux-parent-test-build.sh
             )
             required_tests=(
-                ui_cm_interface::tests::receive_cleanup::stalled_cancel_retains_owner_and_keeps_other_connection_responsive
+                ui_cm_interface::tests::receive_cleanup::stalled_retirement_retains_owner_and_keeps_other_connection_responsive
+                ui_cm_interface::tests::receive_cleanup::saturated_pool_preserves_admitted_transfer_and_teardown
                 client::io_loop::tests::r_s11fi_incoming_write_failure_retires_exact_job_and_partial_artifacts
                 client::io_loop::tests::r_s11fi_receive_cleanup_identity_failure_is_terminal_and_visible
                 client::io_loop::tests::r_s11fi_incoming_nofollow_open_failure_preserves_older_sidecars
@@ -5092,6 +5093,27 @@ run_focused_rust_tests() {
                 ui_cm_interface::tests::r_s11fi_cm_replaced_sidecars_preserve_foreign_files_and_report_cleanup
                 ui_cm_interface::tests::r_s11fi_cm_stalled_directory_response_retires_native_socket_owner
                 ui_cm_interface::tests::r_s11fi_cm_stalled_read_block_retires_native_source_and_recovers
+                ui_cm_interface::tests::r_s11is_cm_file_raw_ceiling_rejects_oversize_after_accepting_exact_limit
+                ui_cm_interface::tests::r_s11is_cm_file_raw_timeout_retires_authenticated_runner
+                ui_cm_interface::tests::r_s11is_cm_file_response_refusal_is_returned_to_the_command_owner
+                ui_cm_interface::tests::r_s11is_cm_receive_rejects_an_inconsistent_aggregate_size
+                ui_cm_interface::tests::r_s11is_desktop_cm_cancellation_drains_selected_file_operation
+                ui_cm_interface::tests::r_s11is_desktop_read_tick_cancellation_drains_exact_owner
+                ui_cm_interface::tests::r_s11is_desktop_selected_file_child_loss_is_process_fatal
+                ui_cm_interface::tests::r_s11is_read_job_commits_only_after_initial_response_admission
+                ui_cm_interface::tests::r_s11iu_android_cm_future_cancellation_retires_its_registry_owner
+                ui_cm_interface::tests::r_s11iu_android_cm_future_terminally_retires_its_registry_owner
+                ui_cm_interface::tests::r_s11iu_android_terminal_preempts_queued_file_work
+                ui_cm_interface::tests::r_s11iu_cm_voice_state_requires_current_voice_capable_android_owner
+                ui_cm_interface::tests::r_s11iu_cm_voice_state_requires_current_voice_capable_desktop_owner
+                ui_cm_interface::tests::r_s11iu_disconnected_owner_can_be_replaced_but_cannot_retire_replacement
+                ui_cm_interface::tests::r_s11iu_file_log_publication_requires_exact_current_owner
+                ui_cm_interface::tests::r_s11iu_generation_exhaustion_does_not_commit_a_client
+                ui_cm_interface::tests::r_s11iu_refused_android_callback_preserves_the_existing_cm_owner
+                ui_cm_interface::tests::r_s11iu_registry_rejects_stale_and_same_source_active_collisions
+                ui_cm_interface::tests::r_s11iu_service_stop_waits_for_callback_admission_publication
+                ui_cm_interface::tests::r_s11iu_stale_owner_cannot_mutate_or_retire_a_reused_client_id
+                ui_cm_interface::tests::r_s11iu_superseded_android_cm_owner_cannot_dispatch_filesystem_work
                 flutter_ffi::file_job_id_tests::typed_file_job_ids_use_the_process_allocator
                 server::connection::cm_startup_lifecycle_tests::closed_desktop_readiness_is_terminal
                 server::connection::cm_startup_lifecycle_tests::desktop_readiness_signal_remains_a_wake_only

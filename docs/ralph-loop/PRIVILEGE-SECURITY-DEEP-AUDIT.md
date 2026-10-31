@@ -43889,7 +43889,7 @@ Counted confined proof on the final byte state:
   throughput/latency/writer-depth/memory/deadline budgets, exact older operational-artifact identity,
   clean committed cold R-B2/R-B10 artifacts, independent reproduction, and external review remain
   release blockers. No display-delay fix, operational end-to-end validation, or release readiness
-is claimed.
+  is claimed.
 
 ### Publication
 

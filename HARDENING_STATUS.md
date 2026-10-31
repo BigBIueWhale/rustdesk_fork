@@ -16205,7 +16205,7 @@ link count and mtime survive, and coordination returns to its pre-case inventory
 These complement five constructed recovery/refusal states; they prove process-death
 recovery on the tested Linux filesystem, not physical power-loss durability.
 The shared mutable-parent/mount-root layout still retains containers and records,
-while all four full-application resume cases pass at `47d36d7e` / `L3LM4uGAy8`
+while all four full-application resume tests pass at `fbcfa5b8` / `1epyE9D598`
 after this change. The separate admission regression remains failing; complete
 viewer/CM/installed acceptance remains OPEN.
 ACL/non-local filesystems, coordinator exhaustion, physical power loss and other
@@ -16435,51 +16435,60 @@ Flutter features; its caller fixtures use owned completion and private staging.
 Current runtime results and their limits are recorded below. CM scheduling,
 ordinary job cancellation/drop and caller shutdown still need bounded lifetime and
 slow-storage evidence. Library refusal preservation does not prove full application
-retry or final retirement. The live-thread checkpoint below covers keepalives and
-joined shutdown during active hashing; complete slow-storage/reconnect validation
+retry or final retirement. The live-thread checkpoint below covers completion across
+the inactivity window and joined shutdown during active hashing; stalled-storage/reconnect validation
 and the independently reproduced staging-layout lifecycle correction remain required.
 
-**Resume application checkpoint — Linux handlers and live thread; complete flow OPEN.**
-At `47d36d7e`, TUF `L3LM4uGAy8`, the full Linux application library
-compiles with Flutter features and freshly generated bridge bindings in 118 seconds.
-All three existing resume tests pass: oversized upload/download refusal preserves owner metadata,
-counters and saved bytes; valid offsets 2 and u32::MAX complete in both directions
-with exact wire proofs and file tails. Pending work remains checkpointed, no
-confirmation precedes owned collection, and the actual emitted proof survives
-CM conversion and serde round-trip. Private per-file artifacts retire on success.
+**Resume application checkpoint — Linux live completion and shutdown; broader flow OPEN.**
+At `fbcfa5b8`, TUF `1epyE9D598`, the full Linux application library
+compiles with Flutter features and freshly generated bridge bindings in 119 seconds.
+All four resume tests pass. The two oversized-offset refusal tests preserve owner
+metadata, counters and saved bytes. The existing valid-offset test now executes
+the real viewer I/O thread through CPace, login, resume preparation and transfer
+completion at offsets 2 and u32::MAX in both directions. The emitted proof retains
+its exact offset and survives CM conversion/serde round-trip; only the four-byte
+tail follows confirmation. Downloads publish the expected size/tail, retire private
+per-file artifacts and report one UI completion. Both directions have an empty
+reconnect checkpoint after the exact viewer thread joins.
+
+Maximum-offset upload/download preparation takes **65.732 / 65.769 seconds**.
+Native file access is observed beyond the 30-second inactivity window, and each
+direction answers 66 keepalives; worst replies are **41.934 / 44.206 ms**.
+This establishes completion while hashing exceeds that window under normal storage
+and healthy controlled-peer traffic. Product timeouts and hashing are unchanged;
+the fixture introduces no artificial stall or reconnect.
 
 `59cfa632` corrects the non-exhaustive protobuf-to-CM conversion using fallible
 admission and explicit unsupported-action errors. The fixtures now use private
 staging and asynchronous completion; `7284df9d`/`d752a4b6` fix test imports,
 and `2b74a1b8` supplies the isolated UID's missing OS account without changing
-production ownership checks. The new test also passes: the real viewer I/O thread
+production ownership checks. The separate shutdown test also passes: the real viewer I/O thread
 connects through CPace and login, accepts resumed upload/download commands, and
 answers 21 ordered keepalive probes while native file access is observed during
 about two seconds of hashing. Among the 20 timed probes, worst replies are
-1.169 ms / 1.362 ms; exact worker joins take 2 ms / 3 ms. Pending metadata remains
+30.963 ms / 1.155 ms; exact worker joins take 2 ms in both directions. Pending metadata remains
 checkpointed. File inode, size and sentinel bytes survive; download digest bytes
 remain equal, no final file appears, and fresh inspection reacquires the lease.
 This is normal-storage shutdown during hashing, without a stalled-syscall injection.
 
-The five-test group takes 138.51 seconds: four pass, and the separate
+The five-test group takes 137.41 seconds: four pass, and the separate
 viewer-admission regression still fails all eight scenarios. The command exits one.
 The nineteen later tests and CLI check remain unexecuted; this is not a full-suite
 pass. Artifact SHA-256:
-`1f5e5090aa1f7192429c5cb87e17af740845f55fd0e32582be0a6fc9ead0275e`.
+`d1c8d1a9634e851a50cdcf17677c37f69530842df25f845262a7b56fec549ce4`.
 QEMU and bounded RAM scratch retire, and all four listener deltas are zero.
 
-The first three tests execute digest/completion handlers; the new test executes
-the production connection loop and thread owner against a controlled peer with a
-test UI. It does not execute a controlled-side CM IPC transaction. Hash completion
-across the full 30-second inactivity window, stalled storage, explicit job cancel,
+Two tests execute refusal handlers; two execute the production connection loop
+and thread owner against a controlled peer with a test UI. Neither live scenario
+executes a controlled-side CM IPC transaction. Stalled storage, explicit job cancel,
 reconnect, installed/root-service behavior, shared-parent/mount-root staging cleanup, other platforms
 and release acceptance remain OPEN. The audit retains failed builds, environment
 failures and exact raw/cleanup identities.
 
-In the latest library run, maximum-offset preparation takes 64.668 seconds,
-exceeding the loops' 30-second receive deadline;
-no installed disconnect has been measured. Large/slow-source resume and the
-shared-parent/mount-root staging-layout lifecycle failures remain OPEN/STOP-SHIP.
+The earlier 64.668-second library preparation motivated this live test; exceeding
+30 seconds alone does not establish a disconnect when keepalives continue.
+Slow/stalled-storage and complete-peer resume acceptance, together with the
+shared-parent/mount-root staging-layout lifecycle failures, remain OPEN/STOP-SHIP.
 
 **Concurrent source mutation — resumed-content correction accepted in the library.** At
 `652c83c3`, TUF `eDljAufR5T` extends the existing paired-file regression without

@@ -123881,3 +123881,68 @@ Count serial SHA-256:
 The six count files add 104,294 bytes. All 34 raw files / 587,158 bytes per host
 and the exact counted ledger hash are verified on both hosts. This audit-only
 receipt leaves the counted ledger and tested sources unchanged.
+
+## 2026-10-31 — complete maximum-offset resumes through the live viewer
+
+The previous goal turn made the user-requested authorization clarification in
+the persistent prompt (b9b4b808). This turn resumes the existing R-S8/R-S11fg/fi/fj
+validation gap: the largest legal prefix takes longer than the viewer's 30-second
+inactivity window, while the old completion fixture invoked handlers directly.
+The separate live-thread test stopped after two seconds of active hashing.
+
+At fbcfa5b8, the existing valid-offset test now starts the actual viewer I/O
+thread, authenticates through CPace and login, submits AddJob/ResumeJob, and
+receives the emitted confirmation, resumed tail and terminal flow over the keyed
+connection. Offsets 2 and u32::MAX run in both directions. The controlled peer
+sends one keepalive per second with at most one outstanding reply and a one-second
+reply deadline. An inotify access observer and elapsed preparation time report
+whether native reads actually span the inactivity window. No artificial delay
+or weakened product deadline is introduced. Downloads require exact final size
+and tail, retired per-file staging, one UI completion, and an empty reconnect
+checkpoint after the exact viewer thread joins. Uploads require confirmation
+before the exact four-byte tail and terminal response. The actual proof still
+round-trips through CM conversion/serde; no CM receiver is executed.
+
+The existing live shutdown fixture shares connection setup and retains its
+original active-read, ping, join, checkpoint, saved-byte and lease checks. The
+test UI accepts an explicit expected file size while preserving its prior default.
+The group inventory is unchanged; the independent admission regression remains
+visible and is not weakened or skipped.
+
+The source resets the viewer's last-received timestamp for each incoming frame
+and the controlled connection sends keepalives every second. Tokio's
+[versioned interval documentation](https://docs.rs/tokio/1.44.2/tokio/time/fn.interval.html)
+establishes its immediate first tick and configurable missed-tick behavior;
+the fixture chooses Delay. The [select cancellation semantics](https://tokio.rs/tokio/tutorial/select)
+require retained reader state across a losing wait; the existing keyed Stream
+owns that state. These explain the scenario, not an installed-peer acceptance claim.
+
+TUF `1epyE9D598`, command `--viewer-resume-tests`, builds the full Linux
+Flutter library and fresh bridge successfully in 119 seconds. Artifact SHA-256:
+`d1c8d1a9634e851a50cdcf17677c37f69530842df25f845262a7b56fec549ce4`.
+The four resume tests pass. At maximum offset, upload/download preparation takes
+65,732 / 65,769 ms, with observed native reads at 65,733 / 65,002 ms.
+Each answers 66 keepalives; worst replies are 41,934 / 44,206 microseconds.
+Both complete with exact tails, empty checkpoints and joined workers. Offset-two
+controls complete in 2 / 47 ms. The shutdown cases retain 21 keepalives over
+2,072 / 2,042 ms; worst timed replies are 30,963 / 1,155 microseconds and both
+joins take 2 ms, with saved metadata/bytes and lease reacquisition preserved.
+
+The independent viewer-admission regression still fails all eight scenarios.
+The five-test group takes 137.41 seconds; aggregate command exit is one.
+Nineteen later tests and the CLI check remain unexecuted. No full-suite,
+controlled-side CM, installed/root-service, stalled-storage, explicit job-cancel,
+reconnect, other-platform or release acceptance is claimed. Shared mutable-parent/
+mount-root staging cleanup remains OPEN/STOP-SHIP. Normal-storage completion
+across the inactivity window is now observed; a long prefix alone is not evidence
+of a disconnect when healthy keepalives continue. The next decisive receive
+validation is CM/caller lifetime under slow storage, while the shared-parent
+layout still requires a correct replacement. Independently parked work stays parked.
+
+QEMU 3186400 joins with zero status after 512.732 seconds; wrapper 3185912 and
+RAM workspace `run.wm6pa666` are absent. Peak scratch is 6,291,611,648 bytes
+within 7 GiB, with minimum available host memory 34,456,621,056 bytes. All four
+host listener deltas are zero. Seven raw files / 83,961 bytes per host are
+hash-verified before removing 3,448,832 allocated bytes of exact diagnostics.
+Serial: `android-rust-lifecycle-tests-run.1epyE9D598.serial.log`, SHA-256
+`94d690889e8826e01f9fe12dec468f8270a6dc4da14443a9113969b0367304fd`.

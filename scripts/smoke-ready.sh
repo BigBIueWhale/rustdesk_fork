@@ -160,17 +160,6 @@ listener_inode() {
   ' "${TCP_TABLES[@]}"
 }
 
-unix_listener_inode() {
-  local path=$1
-  awk -v path="$path" '
-    $1 != "Num" && NF >= 8 && $8 == path && $4 == "00010000" && $5 == "0001" && $6 == "01" {
-      count++
-      inode=$7
-    }
-    END { if (count == 1) print inode; else exit 1 }
-  ' /proc/net/unix
-}
-
 pid_owns_socket_inode() {
   local pid=$1 inode=$2 fd target
   for fd in "/proc/$pid/fd/"*; do
@@ -187,10 +176,27 @@ pid_owns_listener() {
   pid_owns_socket_inode "$pid" "$inode"
 }
 
-pid_owns_unix_listener() {
-  local pid=$1 path=$2 inode
-  inode=$(unix_listener_inode "$path") || return 1
-  pid_owns_socket_inode "$pid" "$inode"
+unix_peer_is_process() {
+  # The bind address may be a now-closed directory descriptor alias. Prove the
+  # endpoint reached through the public name, not the spelling saved at bind.
+  python3 -I -S - "$1" "$2" <<'PY'
+import os
+import socket
+import struct
+import sys
+
+try:
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+        peer.setblocking(False)
+        peer.connect(sys.argv[2])
+        pid, uid, _gid = struct.unpack(
+            "3i", peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i"))
+        )
+        ready = pid == int(sys.argv[1]) and uid == os.geteuid()
+except OSError:
+    ready = False
+sys.exit(0 if ready else 1)
+PY
 }
 
 ipc_surface_ready() {
@@ -201,7 +207,7 @@ ipc_surface_ready() {
   for socket in "$parent/ipc" "$parent/ipc_password"; do
     [ -S "$socket" ] && [ ! -L "$socket" ] || return 1
     [ "$(stat -c %u:%a -- "$socket")" = "$uid:600" ] || return 1
-    pid_owns_unix_listener "$pid" "$socket" || return 1
+    unix_peer_is_process "$pid" "$socket" || return 1
   done
 }
 
@@ -702,6 +708,7 @@ PY
   remove_tmp_file "$signal_log"
   python3 - "$log" "$SELF_TEST_UID" "$SELF_TEST_IPC_MARKER" <<'PY' &
 import os
+import select
 import socket
 import sys
 import time
@@ -732,7 +739,11 @@ with open(log, "a", encoding="utf-8") as stream:
     stream.write("socket surface verified — exactly one TCP v4:21118, zero UDP\n")
     stream.flush()
     os.fsync(stream.fileno())
-time.sleep(30)
+deadline = time.monotonic() + 30
+while time.monotonic() < deadline:
+    for ready in select.select(sockets, [], [], 0.1)[0]:
+        connection, _ = ready.accept()
+        connection.close()
 PY
   SELF_TEST_SERVER_PID=$!
   SELF_TEST_SERVER_START=$(capture_pid_start "$SELF_TEST_SERVER_PID")
@@ -767,6 +778,7 @@ PY
 
   python3 - "$parked_log" "$SELF_TEST_UID" "$SELF_TEST_IPC_MARKER" <<'PY' &
 import os
+import select
 import socket
 import sys
 import time
@@ -777,13 +789,15 @@ parent = f"/tmp/RustDesk-{uid}"
 os.mkdir(parent, 0o700)
 os.chmod(parent, 0o700)
 sockets = []
+parent_fd = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
 for name in ("ipc", "ipc_password"):
     path = os.path.join(parent, name)
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    sock.bind(path)
+    sock.bind(f"/proc/thread-self/fd/{parent_fd}/{name}")
     os.chmod(path, 0o600)
     sock.listen(1)
     sockets.append(sock)
+os.close(parent_fd)
 fd = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
 with os.fdopen(fd, "w", encoding="utf-8") as stream:
     stream.write("owned\n")
@@ -793,7 +807,11 @@ with open(log, "a", encoding="utf-8") as stream:
     stream.write("the direct listener is PARKED\n")
     stream.flush()
     os.fsync(stream.fileno())
-time.sleep(30)
+deadline = time.monotonic() + 30
+while time.monotonic() < deadline:
+    for ready in select.select(sockets, [], [], 0.1)[0]:
+        connection, _ = ready.accept()
+        connection.close()
 PY
   SELF_TEST_PARKED_PID=$!
   SELF_TEST_PARKED_START=$(capture_pid_start "$SELF_TEST_PARKED_PID")
@@ -825,6 +843,7 @@ PY
   SELF_TEST_PARKED_START=
   remove_self_test_ipc
   remove_tmp_file "$typed_ready"
+  printf 'SMOKE_IPC_PATHS=pass direct=accepted closed_descriptor_alias=accepted foreign_process=refused dead_process=refused typed_state=required\n'
   trap - EXIT
   remove_self_test_tmp
   SELF_TEST_TMP=

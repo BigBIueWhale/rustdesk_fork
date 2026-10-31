@@ -639,8 +639,19 @@ PY
     mkdir -m 0700 "$BUILD_SOURCE" "$HOME" "$CARGO_HOME"
     cp -a /source/. "$BUILD_SOURCE/"
     chmod -R u+rwX "$BUILD_SOURCE"
-    tar -C "$TOOLCHAIN" -xf "/online/rust-${RUSTDESK_RUST_VERSION}.tar.xz"
-    tar -C "$TOOLCHAIN" -xf "/online/llvm-${RUSTDESK_LLVM_VERSION}.tar.xz"
+    readonly RUST_ARCHIVE_ROOT=rust-1.75.0-x86_64-unknown-linux-gnu
+    readonly LLVM_ARCHIVE_ROOT=clang+llvm-15.0.6-x86_64-linux-gnu-ubuntu-18.04
+    tar -C "$TOOLCHAIN" -xf "/online/rust-${RUSTDESK_RUST_VERSION}.tar.xz" \
+      "$RUST_ARCHIVE_ROOT/install.sh" "$RUST_ARCHIVE_ROOT/components" \
+      "$RUST_ARCHIVE_ROOT/rust-installer-version" \
+      "$RUST_ARCHIVE_ROOT/rustc" "$RUST_ARCHIVE_ROOT/cargo" \
+      "$RUST_ARCHIVE_ROOT/rust-std-x86_64-unknown-linux-gnu" \
+      "$RUST_ARCHIVE_ROOT/rustfmt-preview"
+    tar -C "$TOOLCHAIN" -xf "/online/llvm-${RUSTDESK_LLVM_VERSION}.tar.xz" \
+      "$LLVM_ARCHIVE_ROOT/lib/libclang.so" \
+      "$LLVM_ARCHIVE_ROOT/lib/libclang.so.15" \
+      "$LLVM_ARCHIVE_ROOT/lib/libclang.so.15.0.6" \
+      "$LLVM_ARCHIVE_ROOT/lib/clang/15.0.6/include"
     [ "$(stat -c %s /online/frb-tool/bin/flutter_rust_bridge_codegen)" = \
       "$RUSTDESK_FRB_SIZE" ] \
       || fail 'FRB codegen size differs before executable projection'
@@ -653,12 +664,15 @@ PY
       || fail 'private FRB executable projection metadata differs'
     [ "$(sha256sum "$FRB_CODEGEN" | awk '{print $1}')" = "$RUSTDESK_FRB_SHA256" ] \
       || fail 'private FRB executable projection digest differs'
-    "$TOOLCHAIN"/rust-1.*/install.sh --prefix="$TOOLCHAIN/rustinstall" \
+    "$TOOLCHAIN/$RUST_ARCHIVE_ROOT/install.sh" --prefix="$TOOLCHAIN/rustinstall" \
       --disable-ldconfig \
       --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview \
       >/dev/null
+    rm -rf -- "$TOOLCHAIN/$RUST_ARCHIVE_ROOT"
+    [ ! -e "$TOOLCHAIN/$RUST_ARCHIVE_ROOT" ] && [ ! -L "$TOOLCHAIN/$RUST_ARCHIVE_ROOT" ] \
+      || fail 'Rust installer staging did not retire'
     readonly FLUTTER_ROOT=$TOOLCHAIN/flutter
-    LLVM_ROOT="$(echo "$TOOLCHAIN"/clang+llvm-*)"
+    readonly LLVM_ROOT=$TOOLCHAIN/$LLVM_ARCHIVE_ROOT
     [ -x "$FLUTTER_ROOT/bin/flutter" ] || fail 'Flutter SDK extracted at an unexpected path'
     [ "$(sha256sum "$FLUTTER_ROOT/packages/flutter_tools/pubspec.lock" | awk '{print $1}')" = \
       "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256" ] \

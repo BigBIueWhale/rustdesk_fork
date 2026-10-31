@@ -123208,3 +123208,15 @@ and `--file-metadata-tests`. All three runs use the admitted networkless guest,
 all four listener deltas per run are zero, and **21 raw files / 329,084 bytes per
 host** are hash-verified. Overall receive acceptance, physical power-loss,
 application/CM integration, installed and other-platform evidence remain OPEN.
+
+Fresh ledger count at `f497341b`, TUF `BCvuVKkTUx`: **371,660 tokens /
+1,702,110 bytes**, input SHA-256
+`6d23c9b0afe00f5297016405d02ad5f0eb0cd5d80d9693fc93536abb72634d1c`.
+All seven tokenizer controls and the whole-input round trip pass. QEMU 3134868
+joins after 30.466 seconds, RAM `run.52l98lga` retires, wrapper 3133445 is absent
+and all three listener deltas are zero. Serial SHA-256
+`32f656a37cb79e8893f01b138590b73daafe509bd2fff135e933d142c0314480`.
+All **27 raw files / 435,394 bytes per host** across the three behavioral runs and
+count are hash-verified on both hosts; all eight exact wrapper/QEMU PIDs and both
+diagnostic directories are absent. This audit-only receipt preserves the tested
+source, counted ledger, requirements and live instructions.

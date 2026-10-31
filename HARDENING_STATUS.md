@@ -3015,7 +3015,7 @@ Retained exact commands, source/artifacts, samples and cleanup:
 `viewer-pacing-5d8cf83a.json`. Earlier capture-only evidence remains in
 `viewer-capture-cadence-108f40d2.json`; independent parks remain.
 
-**Actual packet impairment — fixture ready; app acceptance OPEN.**
+**Actual packet impairment — real-peer recovery failure; R-F5 OPEN.**
 `39dbed34` adds a small isolated network prerequisite check. The existing
 6.1.0-50-cloud-amd64 guest already contains netem, IFB, ingress classification
 and iproute2 6.1.0; no package acquisition or new image is needed. Native run
@@ -3030,11 +3030,37 @@ inside the predeclared 100-ms fixture envelope (maximum 44.03 ms).
 Sockets close, the queue/interface retire, the namespace child joins and the
 initial guest network is preserved. The VM uses 400,461,824 bytes peak RAM
 scratch, joins QEMU and leaves zero listener deltas. This proves the impairment
-mechanism, not RustDesk presentation recovery or realistic random/burst loss,
-bandwidth/jitter, MTU/offload, input-visible or soak behavior. Next: connect this
-mechanism to the existing exact `5d8cf83a` app and pixel observer; no repeat app
-build is needed. Commands, observations and cleanup:
-`network-impairment-39dbed34.json`. R-F5 and independent parks remain OPEN.
+mechanism. Its command, observations and cleanup remain in
+`network-impairment-39dbed34.json`.
+
+`bedd34b9` integrates the receiver-ingress impairment with the exact retained
+`5d8cf83a` app and existing pixel observer. The guest-only supervisor retains
+the server pidfd/network-namespace descriptor; peers remain unprivileged.
+Run `z1ixEri62j` has a 319-ms baseline maximum displayed age. After 125-ms
+one-way delay and a two-second total outage, four distinct fresh frames arrive
+in 854/1,603 ms; three-second follow-up maxima are 379/487 ms. Window/TCP
+identity and resource bounds pass for both cycles. Kernel counters establish
+79 delayed packets and four outage drops.
+
+The six-second outage records eight additional drops, then fails the unchanged
+2,500-ms recovery deadline: only three of four fresh states arrive. The first
+fresh frame appears 1,236 ms into the 2,491-ms pixel-wait budget; the preceding
+stale image reaches 7,137 ms old. After the fresh keyframe, acknowledgement is
+579 µs, but the sender selects nearly one second of pacing. The first fresh
+10-ms probe retains the outage average and 1 FPS; the second, one second later,
+restores 10 FPS. Capture wakes within 3 ms of that update, confirming the prior
+pacing correction is active. This is a bounded recovery failure, not evidence
+of permanent lag; kernel retransmission timing was not measured.
+
+The VM joins QEMU, retires 3,008,126,976 bytes peak RAM scratch and leaves four
+zero listener deltas. Ten evidence files (451,218 bytes) are verified on CTE/TUF
+before removing 62,259,200 allocated bytes of failed-run duplicate artifacts.
+No product change or app rebuild occurs. Capsule: `peer-network-bedd34b9.json`.
+Next: investigate bounded fresh-probe scheduling after outage against continued
+congestion and multiple viewers, then replay the unchanged pixel deadline.
+The third healthy follow-up/resource check, phase coverage, random/burst loss,
+bandwidth/jitter, MTU/offload, input-visible timing, multi-hour sessions and other
+roles/platforms remain OPEN; independent parks remain.
 
 **Current app build and replay prerequisites — accepted Linux artifact.**
 `6b703f35` reconciles the candidate lock with the repository-owned xterm path;

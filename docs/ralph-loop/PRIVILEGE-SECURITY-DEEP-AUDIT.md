@@ -125160,3 +125160,68 @@ Supervisor time is 30.201 seconds; scratch peaks at 402,526,208 bytes. QEMU
 3335417 joins exit 0, RAM/run roots retire and three listener deltas are zero.
 Both hosts retain matching raw files and the checkpoint capsule. This audit-only
 receipt leaves the freshly counted ledger unchanged.
+
+## 2026-10-31 — real RustDesk packet-impairment recovery checkpoint
+
+R-F5 remains the selected release blocker. The completed impairment prerequisite
+now exercises the retained full app rather than another mechanism-only replay.
+Receive and independently parked topics remain untouched. `bedd34b9` adds the
+guest-only netem supervisor and a three-cycle scenario to the existing pixel
+controller/launchers. No product edit or application rebuild is needed.
+
+The [setns](https://man7.org/linux/man-pages/man2/setns.2.html) and
+[nsenter](https://man7.org/linux/man-pages/man1/nsenter.1.html) contracts inform
+retained-descriptor namespace ownership; the
+[Unix socket contract](https://man7.org/linux/man-pages/man7/unix.7.html) provides
+sequence-packet framing and kernel peer credentials. The guest supervisor owns
+the exact Docker child pidfd and network namespace, refuses the initial guest
+namespace, and exposes only fixed profiles through a bounded socket. Peers keep
+UID/GID 1000, dropped capabilities, read-only roots and no published ports.
+The supervisor removes its IFB/queue/socket, joins the orchestration child and
+checks preservation of the initial guest links. These paths executed; adversarial
+requester/namespace refusal cases have not yet received dedicated runtime tests.
+
+Command and all pinned identities are retained in `peer-network-bedd34b9.json`:
+`bash scripts/smoke-verifier-vm-authority.sh --linux-flutter-app-replay` with app
+`5d8cf83aefd69df674625885b6369e836b384857`, manifest
+`2b0e3a6a80f3cc34c636ba060f716852f280c98983b6ff22ef92687164c01ad8`, the
+existing authenticated engine flags and `--network-impairment`.
+The three driver outputs compile twice byte-identically; the app is reused.
+
+Native run `z1ixEri62j` passes its healthy baseline (319-ms maximum age), the
+125-ms-per-direction delay and the two-second total outage. Recovery to four
+distinct fresh frames takes 854/1,603 ms, with three-second healthy maxima
+379/487 ms, equal window/TCP identity and bounded resources. The kernel records
+79 packets during delay and four drops during the first outage.
+The six-second outage records eight further drops and fails: three fresh states
+instead of four within the unchanged 2,500-ms overall deadline. Its 2,491-ms
+remaining pixel budget first observes freshness at 1,236 ms. The preceding stale
+image reaches 7,137 ms old; the first fresh state later reaches 1,025 ms before
+the next distinct frame appears. The final healthy follow-up is not reached.
+
+The completed outage probe is 6,630 ms. At 18:51:25.505376 UTC the first fresh
+10-ms probe still leaves averaged excess 3,310 ms and 1 FPS. At 18:51:26.504633
+the second fresh probe restores 10 FPS; capture starts at 18:51:26.507467.
+The earlier fresh keyframe's work/acknowledgement is 4,657/579 µs, followed by
+994,763 µs planned pacing. `connection.rs` samples through its one-second
+TestDelay timer; `video_qos.rs` retains two completed samples. This localizes
+application recovery timing and demonstrates the prior wakeup correction works.
+It does not measure kernel retransmission timing or establish permanent lag.
+[RFC 6298 section 5](https://www.rfc-editor.org/rfc/rfc6298.html#section-5)
+requires retransmission backoff, so restored packet delivery cannot be assumed
+instantaneous; changing TCP timers is not justified by these application traces.
+Next investigate bounded fresh-probe scheduling while retaining congestion
+response, exact connection ownership and the same native pixel deadline.
+
+The wrapper exits 1 on the application assertion. QEMU 3339194 joins exit 0;
+supervisor duration is 135.295 seconds. Peak RAM scratch is 3,008,126,976 bytes
+within 7 GiB, with 10 GiB guest, 6 GiB host headroom and a 6 GiB file ceiling.
+RAM and owned run roots retire, with four zero-delta listener observations.
+Ten raw/diagnostic files (451,218 bytes) are hash-verified on CTE/TUF. Twelve
+failed-run binary copies match the intentional app manifest before their exact
+directory (inode 77896228) is deleted, reclaiming 62,259,200 allocated bytes.
+Capsule: 30,497 bytes, SHA-256
+`bbf7fa00eb6ff3a3c9861b73d2b002d5de6710ac299dfaa3f7b3b0bbfc57c235`.
+No product/compiler/test executes on either host directly; no release is published.
+R-F5 stays OPEN for this failure and the remaining realistic-loss, input-visible,
+multi-hour and platform acceptance. The broad goal remains active.

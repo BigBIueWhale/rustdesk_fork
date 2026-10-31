@@ -422,6 +422,10 @@ impl VideoQoS {
             // first network delay message
             adjust_ratio = user.delay.fps.is_none();
             user.delay.fps = Some(fps);
+            hbb_common::log::debug!(
+                target: "rustdesk::video_qos",
+                "completed_probe id={id} delay_ms={delay} previous_avg_ms={old_avg_delay} avg_ms={avg_delay} previous_fps={previous_fps} sending_fps={sending_fps} user_fps={fps} requested_fps={highest_fps}"
+            );
         }
         self.adjust_fps();
         if adjust_ratio && !cfg!(target_os = "linux") {
@@ -434,6 +438,11 @@ impl VideoQoS {
         if let Some(user) = self.users.get_mut(&id) {
             user.delay.pending_delay = (elapsed > 2000)
                 .then(|| elapsed.min(u32::MAX as u128) as u32);
+            hbb_common::log::debug!(
+                target: "rustdesk::video_qos",
+                "pending_probe id={id} elapsed_ms={elapsed} pending_ms={:?}",
+                user.delay.pending_delay
+            );
             self.adjust_fps();
         }
     }

@@ -1032,7 +1032,7 @@ PY
       [ -z "$SERVER_PID" ] && [ -z "$SERVER_START" ] \
         || fail 'cannot overlap controlled-server generations'
       SERVER_LOG="/tmp/server.$generation.log"
-      (cd /app/bundle && LD_PRELOAD="$BIND_SHIM" RUST_LOG=info exec "$APP" --server) \
+      (cd /app/bundle && LD_PRELOAD="$BIND_SHIM" RUST_LOG=info,rustdesk::video_qos=debug exec "$APP" --server) \
         >"$SERVER_LOG" 2>&1 &
       SERVER_PID=$!
       SERVER_START=$("$READY" --identity "$SERVER_PID")

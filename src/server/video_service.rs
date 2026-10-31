@@ -1500,6 +1500,16 @@ fn run(vs: VideoService) -> ResultType<()> {
         }
 
         let elapsed = now.elapsed();
+        if presentation_trace_enabled() {
+            let ack_wait = wait_begin.elapsed();
+            log::info!(
+                "RUSTDESK_PRESENTATION_TRACE stage=server-pacing display={display_idx} service_ms={ms} spf_us={} work_us={} ack_wait_us={} pace_us={}",
+                spf.as_micros(),
+                wait_begin.duration_since(now).as_micros(),
+                ack_wait.as_micros(),
+                spf.saturating_sub(elapsed).as_micros()
+            );
+        }
         // may need to enable frame(timeout)
         log::trace!("{:?} {:?}", time::Instant::now(), elapsed);
         if elapsed < spf {

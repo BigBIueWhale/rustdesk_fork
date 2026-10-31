@@ -43,6 +43,13 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-10-31):** Network-impairment/recovery follow-ups remain
+OPEN/PARKED. The completed three-profile packet-loss run and its unresolved
+12,226-ms sampled image age during burst loss are retained below; no transport
+diagnostic extension or further impairment run follows this pivot. Work moved
+to native Linux clipboard text transfer. Do not resume the parked investigation
+automatically.
+
 **User pivot (2026-10-30):** Saved-peer rename remains OPEN/PARKED. Unrun
 fixture and partial profile preparation is preserved in stash
 `c2ad6e9ae594c0d0aaf0dc5c96851f13b362204e`; no product change or VM run
@@ -2100,6 +2107,31 @@ cold R-B2/R-B10, independent-reproduction, or external-review obligations.
 
 **R-S19 — `AuthConnType` capability confinement (CWE-863).**
 
+**Linux clipboard text — six full-app positive cases passed; broader acceptance OPEN.**
+At harness `021c1b6c`, run `2Z9piTfyo6` uses the retained `e57678d3` app on both
+ends of one authenticated Remote connection. ASCII/multiline text, Unicode
+(accented/combining, Hebrew, Japanese and emoji), and 16 KiB text each transfer
+in both directions with exact UTF-8 readback from the destination X11 clipboard.
+The six times are **510/493/481/520/490/509 ms**, within the unchanged five-second
+limit. Each source serves an actual native selection request; destination
+ownership is external to the fixture. Window/TCP identity remains stable.
+Viewer RSS grows at most 4,660 KiB, threads at most one and descriptors one.
+
+The new `--clipboard-text` scenario reuses the authenticated no-NIC VM and
+source-bound app; only the small drivers compile, twice byte-identically. Three
+preliminary whole-scenario failures are observer evidence: an immediate read can
+remain pending across replacement of the fixture's preceding selection owner.
+The final observer waits for external destination ownership before requesting
+bytes, preserving the deadline and content checks. The unchanged app passes;
+these failures do not establish a product transfer defect. The final VM completes
+in 113.468 seconds, joins QEMU, retires 3,008,176,128 bytes peak RAM scratch and
+leaves four zero listener deltas. Earlier VMs also join; their duplicate app
+copies are compared with the retained manifest before removal. Commands, exact
+artifacts, raw logs and cleanup: `clipboard-text-021c1b6c.json`, verified on CTE/TUF.
+This covers ordinary-user Linux X11 text transfer only. Installed service,
+unauthorized/non-Remote refusal, reconnect/concurrency, images/files/HTML,
+large incremental selections, other platforms and soak remain OPEN.
+
 **Source disposition: implemented; exact-current native/product evidence remains open.** After CPace
 authentication, the connection's validated `AuthConnType`—not broad `self.authorized` state or an
 independent permission Boolean—is the authority for every peer-triggerable capability. The server derives
@@ -3090,10 +3122,22 @@ The 194.209-second VM joins QEMU, retires 3,008,786,432 bytes peak RAM scratch a
 leaves four zero listener deltas. Eight evidence files (203,853 bytes) match on
 CTE/TUF; commands, per-cycle results and cleanup: `outage-timing-c3b243f4.json`.
 This is one ordered Linux sequence, not exhaustive synchronization with application
-or TCP timer phases; minimum recovery margin is 105 ms. Random/burst loss,
-bandwidth/jitter, MTU/offload, input-visible timing, multi-hour sessions and other
-roles/platforms remain OPEN; independent parks remain. Next: exercise realistic
-loss profiles on the retained artifact with recorded impairment and pixel outcomes.
+or TCP timer phases; minimum recovery margin is 105 ms.
+
+Before the user pivot, `af86725f` adds `--network-loss`; run `xNgVfkqmo5` exercises
+20 seconds each of random 3%, random 8%, and Gilbert–Elliott burst loss on the
+same retained app. Kernel readback verifies the fixed parameters; counters record
+14/35/11 drops and 311/310/117 delivered packets. Four distinct fresh states
+recover in **617/663/2,269 ms**, and healthy follow-up maximum ages are
+304/301/351 ms against a 319-ms baseline maximum. Window/TCP and resource checks
+pass. During impairment, sampled maximum ages are 390/520/**12,226 ms**; the
+burst stall's cause remains unresolved. The kernel chooses the loss sequence;
+fixed profiles do not establish exact sequence reproduction or exhaustive tails.
+QEMU joins after 185.108 seconds, 3,009,855,488 bytes peak RAM scratch retires,
+and four listener deltas are zero. Evidence: `packet-loss-af86725f.json` on CTE/TUF.
+Further impairment/recovery investigation is OPEN/PARKED by the user pivot.
+Bandwidth/jitter, MTU/offload, input-visible timing, multi-hour sessions and other
+roles/platforms remain OPEN; independent parks remain.
 
 **Current app build and replay prerequisites — accepted Linux artifact.**
 `6b703f35` reconciles the candidate lock with the repository-owned xterm path;

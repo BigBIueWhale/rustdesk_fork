@@ -125395,3 +125395,94 @@ QEMU 3363015 joins exit 0; 30.407 seconds, 402,530,304 bytes peak RAM scratch,
 RAM/run roots absent and three zero listener deltas. All fourteen checkpoint
 files (308,594 bytes) match on CTE/TUF. This audit-only receipt preserves the
 counted ledger bytes.
+
+## 2026-10-31 — user pivot; native Linux clipboard text transfer
+
+The user directs work to another aspect. Network-impairment/recovery diagnostics
+remain OPEN/PARKED; no follow-up instrumentation or additional impairment run is
+performed. The already-completed `af86725f` / `xNgVfkqmo5` result is preserved in
+`packet-loss-af86725f.json` (19,877 bytes, SHA-256
+`ae50c2dc514d1d59abd3ff8aa21998bac9a163554e1f847bcd7e4de9dbf9da6b`).
+Random 3%, random 8% and burst profiles all meet the 2,500-ms restored recovery
+deadline. The burst profile has a 12,226-ms sampled image age during impairment
+and 2,269-ms recovery after restoration. Its cause remains unknown; no transport
+or application attribution is made. Fixed profiles have uncontrolled kernel loss
+sequences. The existing source/artifact/queue/cleanup evidence remains in the
+capsule and seven raw files, all verified on CTE/TUF.
+
+The next permitted release requirement is functional text clipboard transfer
+under R-S0/R-S16, through an authenticated R-S19 Remote connection. Positive
+whole-application behavior was missing from the current clipboard evidence.
+This provides more decisive evidence than another source-only helper check and
+can reuse the retained Linux app without a rebuild. Other parked topics remain
+parked. The scope is ordinary-user Linux X11, not installed privilege closure.
+
+Research and observer design use the
+[X Consortium selection protocol](https://www.x.org/releases/X11R7.7/doc/xorg-docs/icccm/icccm.html),
+[GTK source-selection callbacks](https://docs.gtk.org/gtk3/method.Clipboard.set_with_data.html)
+and [GTK text targets](https://docs.gtk.org/gtk3/method.TargetList.add_text_targets.html).
+GTK, already in the pinned toolchain, supplies the source clipboard and counts
+actual text requests. A separate Xlib connection requests UTF8_STRING from the
+destination and checks type, format, complete length and every byte. Each payload
+is distinct; the fixture writes only that case's source clipboard. Its previous
+source owner is excluded from destination acceptance. Storage, reads, event
+pumping and output are bounded. The five-second limit includes publication and
+destination observation; window/TCP identity and existing resource bounds apply
+to each case. No product dependency or clipboard implementation changes.
+
+Preparation `c9ff57d0` adds the six-case scenario. `q6fqLGr6eH` passes the first
+39-byte viewer-to-controlled case in 582 ms and fails reverse readback.
+`049d96fb` adds native source-request/ownership observations; `NnUGVT5O4W` repeats
+the first pass in 583 ms and the reverse timeout despite an actual source read
+and changed destination owner. `3d1620e7` records reply state: `LuyZdZchXV` passes
+the first case in 362 ms, then observes zero replies and one pending request
+through the reverse timeout, while source text has been requested and destination
+ownership has changed. These are not accepted full-scenario runs or demonstrated
+product transfer failures. `021c1b6c` admits a destination request only after
+ownership is external to the fixture; exact bytes and the deadline remain required.
+
+Final run `2Z9piTfyo6` passes every case on the unchanged `e57678d3` app:
+
+| Sequence | Direction | Payload | Bytes | Transfer/readback (ms) |
+| --- | --- | --- | ---: | ---: |
+| 1 | Viewer to controlled | ASCII and line breaks | 39 | 510 |
+| 2 | Controlled to viewer | ASCII and line breaks | 39 | 493 |
+| 3 | Viewer to controlled | Unicode and line breaks | 63 | 481 |
+| 4 | Controlled to viewer | Unicode and line breaks | 63 | 520 |
+| 5 | Viewer to controlled | 16 KiB text | 16,384 | 490 |
+| 6 | Controlled to viewer | 16 KiB text | 16,384 | 509 |
+
+Unicode covers precomposed and combining accents, Hebrew, Japanese and emoji.
+Each case records one actual source request, one destination reply, UTF8_STRING
+format 8, exact bytes, no remaining property bytes and external destination
+ownership. Initial viewer RSS is 359,468 KiB and peak/final 364,128 KiB; threads
+start at 63, peak at 64 and end at 61; descriptors go from 44 to 45. The real
+password dialog and initial current pixels establish the authenticated session;
+all cases retain its window and TCP identity. This does not measure paste into
+an editor, clipboard synchronization under reconnect/concurrency or long sessions.
+
+The app manifest remains
+`d5202b3c0b5cb9f72c8cba427df3abdd55c2a2a7bd5c127f02f31fec111ece3c`;
+production source is unchanged from its build. The final observer's two builds
+are byte-identical, SHA-256
+`65d6231e399a16c2cf057125ff036c1cb50c03d297a59b2134eb964ddf9630d9`.
+The exact replay command, app/engine identities, four source-bound runs and raw
+file hashes are in `clipboard-text-021c1b6c.json` (58,128 bytes, SHA-256
+`a0d195d1442f121c87dc483cfa6e6cf13d69d21026e0680539a39e30464fcad1`).
+The command uses the established pinned `--linux-flutter-app-replay` arguments
+with `--clipboard-text`. No app or engine is rebuilt or published.
+
+Final QEMU 3377327 joins exit 0 after 113.468 supervisor seconds; peak RAM scratch
+is 3,008,176,128 bytes within 7 GiB, with 10 GiB guest, 6 GiB file ceiling and
+6 GiB host headroom. The wrapper exits 0, RAM/run roots are absent and all four
+listener deltas are zero. The three preliminary VMs also join with retired RAM
+and zero deltas. Each failed run's twelve duplicate app files match the retained
+manifest before removal; 185,892,864 allocated bytes are removed after diagnostic
+preservation. All 46 checkpoint files, including the preceding packet-loss
+evidence and both capsules, total 1,120,083 bytes and are hash-verified on CTE/TUF.
+
+This advances positive full-app clipboard acceptance without a product patch.
+Installed service, denied principals/session types, reconnect/concurrency,
+images/files/HTML, large incremental selections, other platforms/devices and
+soak remain OPEN. Next clipboard work should exercise an unproved native
+boundary, such as ownership across reconnect, rather than repeat these six passes.

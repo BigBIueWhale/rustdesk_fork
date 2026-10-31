@@ -90,7 +90,7 @@ def storage_limits(profile, memory_mib):
     if profile == 'linux-flutter-build':
         require(memory_mib == 20480, 'Flutter app build requires its 20 GiB guest')
         # The sequential build container is capped at 16 GiB; retain 4 GiB for the guest.
-        return 16 * GIB, 8 * GIB
+        return 16 * GIB, 12 * GIB
     if profile in ('linux-flutter-replay', 'android-storage-key'):
         require(memory_mib == 10240, f'{profile} requires its 10 GiB guest')
         return 7 * GIB, 6 * GIB

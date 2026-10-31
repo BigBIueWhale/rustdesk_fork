@@ -1039,7 +1039,7 @@ for profile, memory, scratch, overlay in (
         ('x11-focus', 4096, 9, 8),
         ('x11-key-input', 4096, 9, 8),
         ('linux-parent-libtest', 6144, 7, 6),
-        ('linux-flutter-build', 20480, 16, 8),
+        ('linux-flutter-build', 20480, 16, 12),
         ('linux-flutter-replay', 10240, 7, 6),
         ('linux-flutter-suspend', 10240, 6, 5),
         ('android-storage-key', 10240, 7, 6),

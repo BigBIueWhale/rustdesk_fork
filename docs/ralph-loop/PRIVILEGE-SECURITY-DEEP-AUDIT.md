@@ -122226,3 +122226,13 @@ pre-IO test ran. The controlled integration remains source-prepared, and complet
 viewer/CM ownership plus real authenticated long-prefix behavior remain open.
 The existing receive namespace lifecycle failures are unchanged. Product/test
 source is unchanged after this accepted candidate; the ledger records these limits.
+
+Ledger count at `04a26f2a846578af88cdcaf01dd47734768c6760`, TUF `dq7SWsKZ3c`:
+369,043 tokens / 1,689,022 bytes, SHA-256
+`b1cbb8d64fe0324bd4da43b2a80da40f1c2a963466a96ed7c58b6a2f1233310a`.
+Pinned `tiktoken-0.12.0/cl100k_base/encode_ordinary`, seven controls and strict UTF8
+round trip pass. QEMU 3048488 joins after 30.509 seconds, RAM `run.ocvq_feq`
+retires and all three listener deltas are zero. Serial 35,833 bytes, SHA-256
+`87fc7144699662c6f4f806afa1b97041ae58790dece8c2a41f52a143d09b810f`.
+The twenty raw files across this checkpoint total 274,653 bytes per host. This
+audit-only receipt preserves the counted ledger and accepted product/test source.

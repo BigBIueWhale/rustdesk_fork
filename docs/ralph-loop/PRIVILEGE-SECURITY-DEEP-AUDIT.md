@@ -126070,3 +126070,14 @@ CTE/TUF, with their identities and exact command in
 this replay prerequisite, not original symptom causation, current-release or
 physical-device behavior, sustained resource/freshness, R-S0/R-F5 or independent
 review. Next obtain a current-source artifact comparison; all user parks remain.
+
+Final ledger checkpoint at `a5fe3ad8`, TUF `bADMCJTyxw`, passes in 31.386 seconds:
+**381,174 tokens**, 1,745,073 bytes, SHA-256
+`03192653228b2b1c211fc740d04c8b301c6fecaf3af657ac6ce16a9633ab2884`.
+Seven token controls and the whole-input round trip pass, alongside 80 workload
+admission controls and five refusals. QEMU 3579081 joins exit 0; 402,505,728 bytes
+peak RAM scratch retire and all three listener deltas are zero. The 27,433-byte
+Android capsule SHA-256 is
+`e0959eacf1f3e43a7d0f922c63299304ab7887f975e2a63d85fbdf00bcac2914`.
+All 32 raw/capsule/count files are hash-verified on CTE/TUF. This audit-only receipt
+preserves the counted ledger bytes. The broad release goal remains open.

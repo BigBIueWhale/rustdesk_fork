@@ -7,6 +7,7 @@ FLUTTER_APP_BUILD_ONLY=0
 FLUTTER_APP_BUILD_CONTEXT=
 FLUTTER_APP_REPLAY=0
 FLUTTER_VIEWER_SUSPEND=0
+FLUTTER_NETWORK_IMPAIRMENT=0
 FLUTTER_APP_COMMIT=
 FLUTTER_APP_TREE=
 FLUTTER_APP_RECIPE_SHA256=
@@ -238,8 +239,11 @@ case "$#:${8:-}" in
         ;;
     18:--linux-flutter-app-replay|19:--linux-flutter-app-replay)
         if [ "$#" -eq 19 ]; then
-            [ "${19}" = --viewer-suspend ] || exit 2
-            FLUTTER_VIEWER_SUSPEND=1
+            case "${19}" in
+                --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
+                --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
+                *) exit 2 ;;
+            esac
         fi
         MODE=flutter-peer-presentation
         FLUTTER_PEER_CANDIDATE=1
@@ -318,6 +322,7 @@ if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ] || [ "$FLUTTER_APP_REPLAY" -eq 1 ]; then
 fi
 readonly FLUTTER_APP_REPLAY FLUTTER_APP_COMMIT FLUTTER_APP_TREE \
     FLUTTER_APP_RECIPE_SHA256 FLUTTER_APP_MANIFEST_SHA256 FLUTTER_VIEWER_SUSPEND
+readonly FLUTTER_NETWORK_IMPAIRMENT
 readonly RUST_TEST_SOURCE_ARCHIVE=${9:-}
 readonly RUST_TEST_SOURCE_COMMIT=${10:-}
 readonly RUST_TEST_SOURCE_TREE=${11:-}
@@ -13702,8 +13707,14 @@ run_flutter_peer_presentation() {
     fi
     peer_args+=(--engine-context "$FLUTTER_APP_ENGINE_CONTEXT")
     [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || peer_args+=(--viewer-suspend)
+    local -a impairment_supervisor=()
+    if [ "$FLUTTER_NETWORK_IMPAIRMENT" -eq 1 ]; then
+        peer_args+=(--network-impairment)
+        impairment_supervisor=(/usr/bin/python3 -I -S "$source_root/scripts/flutter-peer-netem.py"
+            "$DEV_CHECK_IMAGE_CONFIG_ID" --)
+    fi
     set +e
-    setpriv --reuid=1000 --regid=1000 --clear-groups \
+    "${impairment_supervisor[@]}" setpriv --reuid=1000 --regid=1000 --clear-groups \
         env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
         "${peer_environment[@]}" \
         /bin/bash "$peer_script" "${peer_args[@]}" \
@@ -13737,6 +13748,11 @@ run_flutter_peer_presentation() {
     if [ "$FLUTTER_VIEWER_SUSPEND" -eq 1 ]; then
         peer_scenario=viewer-suspend
         peer_cycles=1
+    elif [ "$FLUTTER_NETWORK_IMPAIRMENT" -eq 1 ]; then
+        peer_scenario=network-impairment
+        peer_cycles=1
+        [ "$(grep -Fxc 'FLUTTER_PEER_NETEM_JOINED status=0 namespace=retired socket=removed' "$output")" -eq 1 ] \
+            || fail 'packet impairment supervisor did not join cleanly'
     fi
     [ "$(grep -Fxc \
       "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive_sha256=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 flutter=$FLUTTER_PEER_RUNTIME_VERSION tools=$FLUTTER_PEER_TOOLS_MODE scope=linux-x11-full-peer-$peer_scenario network=owned-none-namespace app_commit=$FLUTTER_APP_COMMIT app_tree=$FLUTTER_APP_TREE manifest_sha256=$FLUTTER_APP_MANIFEST_SHA256 build=absent" \

@@ -73,8 +73,11 @@ case "$#:${1:-}" in
     ;;
   20:--source-archive|21:--source-archive)
     if [ "$#" -eq 21 ]; then
-      [ "${21}" = --viewer-suspend ] || die 'unknown app replay scenario'
-      PEER_SCENARIO=viewer-suspend
+      case "${21}" in
+        --viewer-suspend) PEER_SCENARIO=viewer-suspend ;;
+        --network-impairment) PEER_SCENARIO=network-impairment ;;
+        *) die 'unknown app replay scenario' ;;
+      esac
     fi
     [ "$3" = --commit ] && [ "$5" = --tree ] && [ "$7" = --archive-sha256 ] \
       && [ "$9" = --replay-app ] && [ "${11}" = --app-commit ] \
@@ -119,7 +122,12 @@ readonly SUPPLIED_SOURCE_ARCHIVE SUPPLIED_SOURCE_COMMIT \
   FLUTTER_PRESENTATION_CANDIDATE SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE \
   BUILD_APP_ONLY APP_BUILD_CONTEXT APP_MANIFEST_SHA256 APP_ENGINE_CONTEXT
 readonly PEER_SCENARIO
-if [ "$PEER_SCENARIO" = viewer-suspend ]; then
+if [ "$PEER_SCENARIO" = network-impairment ]; then
+  RUNTIME_CYCLES=1
+  SERVER_GENERATIONS='1'
+  SERVER_REPLACEMENTS=0
+  VIEWER_RESULT='viewer=joined xvfb=joined impairment_cycles=3 stable_connection=true resources=bounded'
+elif [ "$PEER_SCENARIO" = viewer-suspend ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
@@ -532,7 +540,10 @@ inspect_container_contract() {
   local passwd_mounts=0 machine_id_mounts=0 diagnostic_mounts=0
   local atspi_root_mounts=0 atspi_launcher_mounts=0 atspi_registry_mounts=0
   local atspi_defaults_mounts=0 atspi_services_mounts=0
-  local input_provider_mounts=0
+  local input_provider_mounts=0 impairment_mounts=0 expected_impairment_mounts=0
+  if [ "$label:$PEER_SCENARIO" = viewer:network-impairment ]; then
+    expected_impairment_mounts=1
+  fi
   local receipt_ends=0
   case "$label" in
     server) expected_machine_id_source=$SERVER_MACHINE_ID ;;
@@ -586,6 +597,12 @@ inspect_container_contract() {
     [[ "$source" != */docker.sock ]] && [[ "$source" != /dev/* ]] \
       || die "$label receives an unsafe mount: $source"
     case "$destination" in
+      /netem.sock)
+        [ "$expected_impairment_mounts" -eq 1 ] && [ "$writable" = false ] \
+          && [ "$source" = /run/rustdesk-verifier-vm/netem.sock ] \
+          || die 'viewer impairment endpoint mount differs'
+        impairment_mounts=$((impairment_mounts + 1))
+        ;;
       /source)
         [ "$source" = "$SOURCE_SNAPSHOT" ] && [ "$writable" = false ] \
           || die "$label source mount contract differs"
@@ -681,6 +698,7 @@ inspect_container_contract() {
     && [ "$xkbcomp_mounts" -eq 1 ] && [ "$coord_mounts" -eq 1 ] \
     && [ "$machine_id_mounts" -eq 1 ] \
     && [ "$input_provider_mounts" -eq 1 ] \
+    && [ "$impairment_mounts" -eq "$expected_impairment_mounts" ] \
     || die "$label runtime mount cardinality differs"
   if [ -n "$expected_passwd_source" ]; then
     [ "$passwd_mounts" -eq 1 ] && [ "$diagnostic_mounts" -eq 1 ] \
@@ -1085,9 +1103,15 @@ if [ "$server_ready" -ne 1 ]; then
 fi
 
 echo '== authenticate through the real prompt and observe current pixels across focus loss =='
+impairment_mount=()
+if [ "$PEER_SCENARIO" = network-impairment ]; then
+  /usr/bin/python3 -I -S "$SOURCE_SNAPSHOT/scripts/flutter-peer-netem.py" --attach "$SERVER_CID"
+  impairment_mount=(--mount 'type=bind,source=/run/rustdesk-verifier-vm/netem.sock,target=/netem.sock,readonly,bind-recursive=disabled')
+fi
 CID_FILES+=("$VIEWER_CID_FILE")
 set +e
 peer_vm_docker run --cidfile "$VIEWER_CID_FILE" \
+  "${impairment_mount[@]}" \
   --pull=never --network="container:$SERVER_CID" --read-only \
   --user "$HOST_UID:$HOST_GID" \
   --cap-drop=ALL --security-opt=no-new-privileges \

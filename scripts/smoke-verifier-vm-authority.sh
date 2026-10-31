@@ -45,6 +45,7 @@ FLUTTER_PEER_CANDIDATE=0
 FLUTTER_APP_BUILD_ONLY=0
 FLUTTER_APP_REPLAY=0
 FLUTTER_VIEWER_SUSPEND=0
+FLUTTER_NETWORK_IMPAIRMENT=0
 FLUTTER_APP_COMMIT=
 FLUTTER_APP_EXPECTED_MANIFEST_SHA256=
 FLUTTER_APP_ENGINE_COMMIT=
@@ -614,8 +615,11 @@ case "$#:${1:-}" in
         ;;
     11:--linux-flutter-app-replay|12:--linux-flutter-app-replay)
         if [ "$#" -eq 12 ]; then
-            [ "${12}" = --viewer-suspend ] || exit 2
-            FLUTTER_VIEWER_SUSPEND=1
+            case "${12}" in
+                --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
+                --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
+                *) exit 2 ;;
+            esac
         fi
         [ "$2" = --app-commit ] && [ "$4" = --app-manifest-sha256 ] \
             && [[ "$3" =~ ^[0-9a-f]{40}$ ]] && [[ "$5" =~ ^[0-9a-f]{64}$ ]] \
@@ -662,7 +666,7 @@ case "$#:${1:-}" in
         printf 'Original offline engine setup: %s --linux-flutter-engine-prepare\n' "${0##*/}" >&2
         printf 'Explicit offline engine integration build: %s --linux-flutter-engine-build\n' "${0##*/}" >&2
         printf 'Source-bound Linux app producer: %s --linux-flutter-app-build --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256\n' "${0##*/}" >&2
-        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend]\n' "${0##*/}" >&2
+        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend|--network-impairment]\n' "${0##*/}" >&2
         printf 'Focused native Docker log-lifetime check: %s --android-runtime-log-tests\n' "${0##*/}" >&2
         printf 'Windows service-result file checks: %s --windows-service-result-tests\n' "${0##*/}" >&2
         printf 'Focused archive transaction fixtures: %s --fixed-archive-tests\n' "${0##*/}" >&2
@@ -748,6 +752,7 @@ case "$#:${1:-}" in
         ;;
 esac
 readonly FLUTTER_APP_REPLAY FLUTTER_APP_COMMIT FLUTTER_APP_EXPECTED_MANIFEST_SHA256 FLUTTER_VIEWER_SUSPEND
+readonly FLUTTER_NETWORK_IMPAIRMENT
 readonly FLUTTER_TEST_PROFILE
 readonly RUST_TEST_PROFILE
 readonly FLUTTER_APP_ENGINE_COMMIT FLUTTER_APP_ENGINE_ARCHIVE_SHA256 FLUTTER_APP_ENGINE_MANIFEST_SHA256
@@ -5016,6 +5021,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     else
         guest_invocation+=" --linux-flutter-app-replay /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 $FLUTTER_APP_COMMIT $FLUTTER_APP_TREE $FLUTTER_APP_RECIPE_SHA256 $FLUTTER_APP_EXPECTED_MANIFEST_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
         [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || guest_invocation+=' --viewer-suspend'
+        [ "$FLUTTER_NETWORK_IMPAIRMENT" -eq 0 ] || guest_invocation+=' --network-impairment'
     fi
 elif [ "$MODE" = dart-audit ]; then
     guest_invocation+=" --dart-audit /mnt/rustdesk-verifier-inputs/source.tar $DART_SOURCE_COMMIT $DART_SOURCE_TREE $DART_SOURCE_ARCHIVE_SHA256 /mnt/rustdesk-verifier-inputs/dart-audit.docker.tar.gz"
@@ -8310,6 +8316,7 @@ elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
 elif [ "$MODE" = flutter-peer-presentation ]; then
     peer_scenario=focus-reconnect-resource
     [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || peer_scenario=viewer-suspend
+    [ "$FLUTTER_NETWORK_IMPAIRMENT" -eq 0 ] || peer_scenario=network-impairment
     require_exact_fixed_receipt \
         "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive_sha256=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 flutter=$FLUTTER_PEER_FLUTTER_VERSION tools=$FLUTTER_PEER_TOOLS_MODE scope=linux-x11-full-peer-$peer_scenario network=owned-none-namespace app_commit=$FLUTTER_APP_COMMIT app_tree=$FLUTTER_APP_TREE manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 build=absent" \
         'focused Flutter full-peer product verdict'

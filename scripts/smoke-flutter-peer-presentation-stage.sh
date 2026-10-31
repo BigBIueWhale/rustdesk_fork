@@ -16,7 +16,7 @@ fail() {
 readonly PEER_SCENARIO=${FLUTTER_PEER_SCENARIO:-focus-reconnect-resource}
 case "$PEER_SCENARIO" in
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
-  viewer-suspend) EXPECTED_RESTARTS=0 ;;
+  viewer-suspend|network-impairment) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
 esac
 readonly EXPECTED_RESTARTS
@@ -217,10 +217,13 @@ verify_runtime_bundle() {
 }
 
 assert_loopback_only_interface() {
-  local interfaces
+  local interfaces expected=lo
+  if [ "$PEER_SCENARIO:${1:-}" = network-impairment:viewer ]; then
+    expected=$'lo\nrd-netem'
+  fi
   interfaces="$(find /sys/class/net -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)" \
     || fail 'cannot inspect runtime network interfaces'
-  [ "$interfaces" = lo ] || fail "runtime has a non-loopback interface: $interfaces"
+  [ "$interfaces" = "$expected" ] || fail "runtime interface inventory differs: $interfaces"
 }
 
 tcp_listener_count() {
@@ -1169,7 +1172,7 @@ PY
     verify_runtime_bundle
     verify_machine_identity
     verify_atspi_closure
-    assert_loopback_only_interface
+    assert_loopback_only_interface viewer
     readonly EXPECTED_PASSWD_ROOT_ENTRY="root:x:0:0:root:/root:/usr/sbin/nologin"
     readonly EXPECTED_PASSWD_ENTRY="rustdesk-evidence:x:$(id -u):$(id -g):RustDesk peer evidence:/tmp/viewer-home:/usr/sbin/nologin"
     command -v getent >/dev/null \
@@ -1238,6 +1241,7 @@ PY
     VIEWER_START=$("$READY" --identity "$VIEWER_PID")
     controller_args=(:98 :99 "$VIEWER_PID" "$VIEWER_START")
     [ "$PEER_SCENARIO" != viewer-suspend ] || controller_args+=(--viewer-suspend)
+    [ "$PEER_SCENARIO" != network-impairment ] || controller_args+=(--network-impairment)
     set +e
     controller_output="$(timeout --signal=TERM --kill-after=3s 180s \
       "$CONTROLLER" "${controller_args[@]}" 2>&1)"
@@ -1254,7 +1258,14 @@ PY
       <<<"$controller_output" || fail 'complete count-only password input verdict is missing'
     grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false$' \
       <<<"$controller_output" || fail 'real password prompt verdict is missing'
-    if [ "$PEER_SCENARIO" = viewer-suspend ]; then
+    if [ "$PEER_SCENARIO" = network-impairment ]; then
+      [ "$(grep -Ec '^FLUTTER_PEER_NETWORK_IMPAIRED_OK cycle=[123] ' <<<"$controller_output")" -eq 3 ] \
+        && [ "$(grep -Ec '^FLUTTER_PEER_NETWORK_RECOVERY_OK cycle=[123] ' <<<"$controller_output")" -eq 3 ] \
+        || fail 'three actual packet impairment/recovery cycles are missing'
+      grep -Fxq 'FLUTTER_PEER_NETWORK_PRESENTATION_OK cycles=3 delay_ms=125 loss_percent=100 holds_ms=6000,2000,6000 recovery_limit_ms=2500 freshness_limit_ms=1000 healthy_ms=3000 actual_peer=true x11_pixels=true same_window=true stable_connection=true resources=bounded' \
+        <<<"$controller_output" || fail 'network impairment pixel verdict is missing'
+      viewer_result='viewer=joined xvfb=joined impairment_cycles=3 stable_connection=true resources=bounded'
+    elif [ "$PEER_SCENARIO" = viewer-suspend ]; then
       [ "$(grep -Ec '^FLUTTER_PEER_SUSPENDED_OK cycle=[123] ' <<<"$controller_output")" -eq 3 ] \
         && [ "$(grep -Ec '^FLUTTER_PEER_SUSPEND_RECOVERY_OK cycle=[123] ' <<<"$controller_output")" -eq 3 ] \
         || fail 'three actual suspension/recovery cycles are missing'

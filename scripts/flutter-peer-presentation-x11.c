@@ -25,7 +25,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
 #include <sys/syscall.h>
+#include <sys/time.h>
+#include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
 #include "x11-frame-oracle.h"
@@ -1386,6 +1389,121 @@ static int viewer_pidfd_alive(int pidfd) {
     return result == 0;
 }
 
+static int network_profile(const char *profile, unsigned long long *drops,
+                           unsigned long long *packets) {
+    struct sockaddr_un address = {.sun_family = AF_UNIX, .sun_path = "/netem.sock"};
+    struct timeval timeout = {.tv_sec = 5};
+    struct ucred peer = {0};
+    socklen_t peer_size = sizeof(peer);
+    char reply[128];
+    unsigned long long applied_us, queued;
+    int consumed = 0, result = -1;
+    int descriptor = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
+    ssize_t count;
+    if (descriptor < 0) return -1;
+    if (setsockopt(descriptor, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0 ||
+        setsockopt(descriptor, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) != 0 ||
+        connect(descriptor, (struct sockaddr *)&address, sizeof(address)) != 0 ||
+        getsockopt(descriptor, SOL_SOCKET, SO_PEERCRED, &peer, &peer_size) != 0 ||
+        peer_size != sizeof(peer) || peer.uid != 0 || peer.gid != 0 ||
+        send(descriptor, profile, strlen(profile), MSG_NOSIGNAL) != (ssize_t)strlen(profile))
+        goto finished;
+    count = recv(descriptor, reply, sizeof(reply) - 1U, MSG_TRUNC);
+    if (count <= 0 || count >= (ssize_t)sizeof(reply)) goto finished;
+    reply[count] = '\0';
+    if (sscanf(reply, "OK %llu %llu %llu %llu%n", &applied_us, drops, packets, &queued,
+               &consumed) != 4 || reply[consumed] != '\0' || queued > 64ULL ||
+        applied_us == 0ULL || applied_us / 1000ULL > monotonic_millis()) goto finished;
+    result = 0;
+finished:
+    if (close(descriptor) != 0) result = -1;
+    return result;
+}
+
+static int exercise_network_impairment(Display *source, Display *display,
+                                      ViewerWindow *viewer, SourceHistory *history,
+                                      unsigned long pid, const ConnectionIdentity *connection,
+                                      const ProcessResources *baseline) {
+    const char *profiles[] = {"delay", "loss", "loss"};
+    const unsigned int holds[] = {6000U, 2000U, 6000U};
+    uint64_t max_gap = 0U, max_age = 0U;
+    unsigned int distinct = 0U, cycle = 0U;
+    unsigned long long before_drops = 0ULL, before_packets = 0ULL;
+    unsigned long long after_drops = 0ULL, after_packets = 0ULL;
+    const char *phase = "healthy-baseline";
+    if (observe_current_frames_for_duration(source, display, viewer, history, 3000U,
+                                            &max_gap, &max_age, &distinct) != 0 ||
+        max_age > FRESH_LIMIT_MS) goto failed;
+    printf("FLUTTER_PEER_NETWORK_BASELINE_OK duration_ms=3000 maximum_age_ms=%llu distinct=%u\n",
+           (unsigned long long)max_age, distinct);
+    for (; cycle < 3U; ++cycle) {
+        uint64_t held_from, progress_at, resumed_at, first_fresh, recovery_age, recovery_ms;
+        int64_t previous_source, initial_source;
+        ConnectionIdentity after = {{0}, {0}, 0UL};
+        ViewerWindow same_viewer = {0};
+        ProcessResources resources = {0};
+        phase = "apply-impairment";
+        if (network_profile(profiles[cycle], &before_drops, &before_packets) != 0) goto failed;
+        initial_source = previous_source = source_state(source);
+        held_from = progress_at = monotonic_millis();
+        phase = "impaired-source-progress";
+        if (initial_source < 0) goto failed;
+        while (monotonic_millis() - held_from < holds[cycle]) {
+            int64_t current = source_state(source);
+            uint64_t now = monotonic_millis();
+            if (current < previous_source || now - progress_at > FRESH_LIMIT_MS) goto failed;
+            if (current > previous_source) {
+                previous_source = current;
+                progress_at = now;
+            }
+            if (sleep_millis(SAMPLE_INTERVAL_MS) != 0) goto failed;
+        }
+        if (previous_source <= initial_source || read_connection_identity(&after) != 0 ||
+            !same_connection(connection, &after)) goto failed;
+        resumed_at = monotonic_millis();
+        phase = "restore-network";
+        if (network_profile("healthy", &after_drops, &after_packets) != 0 ||
+            (cycle == 0U ? after_packets <= before_packets : after_drops <= before_drops))
+            goto failed;
+        printf("FLUTTER_PEER_NETWORK_IMPAIRED_OK cycle=%u profile=%s requested_ms=%u "
+               "held_ms=%llu packets=%llu drops=%llu source_advanced=true stable_connection=true\n",
+               cycle + 1U, profiles[cycle], holds[cycle],
+               (unsigned long long)(resumed_at - held_from),
+               after_packets - before_packets, after_drops - before_drops);
+        fflush(stdout);
+        recovery_ms = monotonic_millis() - resumed_at;
+        phase = "fresh-frame-recovery";
+        if (recovery_ms >= RECOVERY_LIMIT_MS ||
+            wait_for_current_frames(display, viewer, history, RECOVERY_LIMIT_MS - recovery_ms,
+                                    4U, &first_fresh, &recovery_age) != 0) goto failed;
+        recovery_ms = monotonic_millis() - resumed_at;
+        phase = "healthy-follow-up";
+        if (recovery_ms > RECOVERY_LIMIT_MS ||
+            inspect_viewer_candidate(display, viewer->window, pid, &same_viewer) != 1 ||
+            same_viewer.window != viewer->window ||
+            observe_current_frames_for_duration(source, display, viewer, history, 3000U,
+                                                &max_gap, &max_age, &distinct) != 0 ||
+            max_age > FRESH_LIMIT_MS || read_connection_identity(&after) != 0 ||
+            !same_connection(connection, &after) ||
+            read_process_resources(pid, &resources) != 0 ||
+            !resources_are_bounded(baseline, &resources)) goto failed;
+        print_resources("network", cycle + 1U, &resources);
+        printf("FLUTTER_PEER_NETWORK_RECOVERY_OK cycle=%u recovery_ms=%llu "
+               "first_fresh_ms=%llu healthy_maximum_age_ms=%llu distinct=%u "
+               "same_window=true stable_connection=true resources=bounded\n", cycle + 1U,
+               (unsigned long long)recovery_ms, (unsigned long long)first_fresh,
+               (unsigned long long)max_age, distinct);
+        fflush(stdout);
+    }
+    return 0;
+failed:
+    fprintf(stderr, "FLUTTER_PEER_X11_FAIL network phase=%s cycle=%u errno=%d\n",
+            phase, cycle + 1U, errno);
+    if (network_profile("healthy", &after_drops, &after_packets) != 0)
+        fputs("FLUTTER_PEER_X11_FAIL network restoration; supervisor retains cleanup\n", stderr);
+    return -1;
+}
+
 static int exercise_viewer_suspension(Display *source, Display *display,
                                       ViewerWindow *viewer, SourceHistory *history,
                                       unsigned long pid, const char *start,
@@ -2065,9 +2183,10 @@ int main(int argc, char **argv) {
     PasswordPromptScan prompt_scan = {0};
     AtspiAccessible *previous_caption = NULL;
 
-    if (argc != 5 && (argc != 6 || strcmp(argv[5], "--viewer-suspend") != 0)) {
+    if (argc != 5 && (argc != 6 || (strcmp(argv[5], "--viewer-suspend") != 0 &&
+                                    strcmp(argv[5], "--network-impairment") != 0))) {
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend]\n",
+              "VIEWER_START [--viewer-suspend|--network-impairment]\n",
               stderr);
         return 2;
     }
@@ -2222,11 +2341,14 @@ int main(int argc, char **argv) {
     print_resources("initial", 0U, &baseline_resources);
 
     if (argc == 6) {
-        int suspension_status = exercise_viewer_suspension(
+        int network = strcmp(argv[5], "--network-impairment") == 0;
+        int suspension_status = network ? exercise_network_impairment(
+            source, display, &viewer, &history, viewer_pid,
+            &current_connection, &baseline_resources) : exercise_viewer_suspension(
             source, display, &viewer, &history, viewer_pid, argv[4],
             &current_connection, &baseline_resources);
         if (suspension_status != 0) {
-            fputs("FLUTTER_PEER_X11_FAIL viewer suspension/recovery\n", stderr);
+            fputs("FLUTTER_PEER_X11_FAIL selected recovery scenario\n", stderr);
             exit_atspi_after_failure();
         } else if (atspi_exit() != 0) {
             fputs("FLUTTER_PEER_X11_FAIL private AT-SPI teardown\n", stderr);
@@ -2236,7 +2358,12 @@ int main(int argc, char **argv) {
         XCloseDisplay(display);
         XCloseDisplay(source);
         if (suspension_status != 0) return 1;
-        puts("FLUTTER_PEER_SUSPEND_PRESENTATION_OK cycles=3 holds_ms=2000,6000,12000 "
+        if (network) {
+            puts("FLUTTER_PEER_NETWORK_PRESENTATION_OK cycles=3 delay_ms=125 loss_percent=100 "
+                 "holds_ms=6000,2000,6000 recovery_limit_ms=2500 freshness_limit_ms=1000 "
+                 "healthy_ms=3000 actual_peer=true x11_pixels=true same_window=true "
+                 "stable_connection=true resources=bounded");
+        } else puts("FLUTTER_PEER_SUSPEND_PRESENTATION_OK cycles=3 holds_ms=2000,6000,12000 "
              "recovery_limit_ms=2500 freshness_limit_ms=1000 healthy_ms=3000 "
              "actual_peer=true x11_pixels=true same_window=true stable_connection=true "
              "resources=bounded threads_growth_max=8 fds_growth_max=16 rss_growth_kib_max=131072");

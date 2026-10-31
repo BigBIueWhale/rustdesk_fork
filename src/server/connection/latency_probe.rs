@@ -70,6 +70,7 @@ impl LatencyProbe {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hbb_common::tokio;
 
     #[test]
     fn stalled_probe_recovers_with_two_serial_samples_and_no_catchup() {
@@ -129,7 +130,7 @@ mod tests {
         println!("LATENCY_PROBE_REPLY=pass absent=refused wrong=refused stale=refused duplicate=refused nonvideo=normal exhaustion=refused");
     }
 
-    #[hbb_common::tokio::test]
+    #[tokio::test]
     async fn cancelled_waits_preserve_the_recovery_deadline() {
         let mut probe = LatencyProbe::new(Instant::now());
         let first = probe.on_timer(Instant::now()).unwrap().unwrap();

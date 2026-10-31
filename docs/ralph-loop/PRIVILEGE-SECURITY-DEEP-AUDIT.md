@@ -125486,3 +125486,13 @@ Installed service, denied principals/session types, reconnect/concurrency,
 images/files/HTML, large incremental selections, other platforms/devices and
 soak remain OPEN. Next clipboard work should exercise an unproved native
 boundary, such as ownership across reconnect, rather than repeat these six passes.
+
+Ledger count at `3c46b8f0`, run `ssZKNLEjlt`, passes: **378,449 tokens**,
+1,733,123 bytes, SHA-256
+`e482e5a6ba0358831740270fa82aaa81a0523bfa056b27e847d6540a3630de9e`.
+Pinned tiktoken 0.12.0/cl100k_base/encode_ordinary passes all seven controls and
+the whole-file round trip; admission passes 79 controls and five refusals.
+QEMU 3380546 joins exit 0 after 30.384 seconds; 402,472,960 bytes peak RAM scratch
+retires, owned run roots are absent and all three listener deltas are zero.
+This audit-only receipt preserves the counted ledger bytes. All 52 checkpoint
+files are hash-verified on CTE/TUF; no VM remains live.

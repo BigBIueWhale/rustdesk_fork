@@ -125225,3 +125225,13 @@ Capsule: 30,497 bytes, SHA-256
 No product/compiler/test executes on either host directly; no release is published.
 R-F5 stays OPEN for this failure and the remaining realistic-loss, input-visible,
 multi-hour and platform acceptance. The broad goal remains active.
+
+Ledger validation at `3539f5df`, run `vj2Cd6H8ZC`, passes: **377,148 tokens**,
+1,727,816 bytes, SHA-256
+`5f3037aa666db40886b7e570b6087dd9f14aad1d1aeca91163917830ee7d32a7`.
+Pinned tiktoken 0.12.0/cl100k_base/encode_ordinary, seven controls and whole-file
+round trip pass, alongside 79 workload controls and five refusals. QEMU 3342846
+joins exit 0; 30.507 seconds, 402,530,304 bytes peak scratch, RAM/run roots gone
+and three zero listener deltas. The combined checkpoint's seventeen files total
+588,074 bytes and match by hash on CTE/TUF. This audit-only receipt preserves
+the counted ledger bytes.

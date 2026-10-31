@@ -124421,3 +124421,17 @@ executed failures. Next use bounded inode/descriptor exhaustion to observe their
 actual retained state and complete failure ownership through the handoff. The
 shared-parent/mount-root layout, installed application, other platforms and broader
 release requirements remain OPEN. No permission dependency is introduced.
+
+Ledger count at `9b951cab`, TUF `MlW4gXO2lP`, exits zero: **374,087 tokens /
+1,714,280 bytes**, input SHA-256
+`0895c64928fdb8fa095d05528a69474dddb07bda8c6cb2c48522fae6446b76d4`.
+The tiktoken 0.12.0 / cl100k_base / encode_ordinary method, seven controls and
+strict whole-file UTF-8 round trip pass. Serial
+`ledger-token-count-run.MlW4gXO2lP.serial.log` is 35,832 bytes, SHA-256
+`2ec8c6d568b3f7da37ec6f1e925b3d2e2dd37a06a945952a974819568125300e`.
+QEMU 3229071 joins zero after 33.523 seconds; wrapper 3227650 and RAM workspace
+`run._gpo4u3t` are absent. Peak scratch is 402,444,288 bytes within 4 GiB, minimum
+available memory is 45,771,255,808 bytes, and all three listener deltas are zero.
+Six count files / 104,305 bytes and fourteen correction-run files total twenty /
+395,463 bytes per host, hash-verified on CTE and TUF. Both ledger copies match the
+counted hash; this audit-only receipt leaves that input unchanged.

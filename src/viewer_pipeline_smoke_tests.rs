@@ -111,12 +111,21 @@ impl ViewerPipelineState {
 pub(crate) struct ViewerPipelineUi {
     state: Arc<(Mutex<ViewerPipelineState>, Condvar)>,
     file_transfer: bool,
+    file_size: Option<u64>,
     expect_file_inspection_refusal: bool,
 }
 
 impl ViewerPipelineUi {
     pub(crate) fn file_transfer() -> Self {
         Self { file_transfer: true, ..Default::default() }
+    }
+
+    pub(crate) fn file_transfer_with_size(size: u64) -> Self {
+        Self { file_size: Some(size), ..Self::file_transfer() }
+    }
+
+    pub(crate) fn file_completion_count(&self) -> usize {
+        self.state.0.lock().unwrap().file_done_count
     }
 
     pub(crate) fn recording_observation(&self) -> (Option<bool>, usize, bool) {
@@ -326,7 +335,7 @@ impl InvokeUiSession for ViewerPipelineUi {
     ) {
         if self.file_transfer && id == FILE_JOB_ID && !is_local && !only_count {
             self.update(|state| {
-                if entries.len() != 1 || entries[0].size != FILE_LENGTH as u64 {
+                if entries.len() != 1 || entries[0].size != self.file_size.unwrap_or(FILE_LENGTH as u64) {
                     state.record_error("remote file listing did not match the fixture".to_owned());
                 } else {
                     state.file_listing_seen = true;

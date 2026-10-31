@@ -209,7 +209,7 @@ fn retire_private_temporary(parent: &File, temporary: &CStr) -> io::Result<()> {
 }
 
 fn write_record(coordinator: &File, record_name: &CStr, temporary: &CStr,
-    record: &DirectoryRecord) -> io::Result<()> {
+    record: &DirectoryRecord) -> io::Result<File> {
     if record.retiring {
         return Err(io_invalid_input("cannot rewrite a retiring receive record"));
     }
@@ -238,16 +238,12 @@ fn write_record(coordinator: &File, record_name: &CStr, temporary: &CStr,
         (Ok(()), result) | (result, Ok(())) => result,
         (Err(error), Err(cleanup)) => Err(io::Error::new(error.kind(),
             format!("{error}; receive record cleanup failed: {cleanup}"))),
-    }
+    }?;
+    Ok(file)
 }
 
-fn prepare_directory(destination: &File, record: &DirectoryRecord) -> io::Result<File> {
+fn initialize_directory(destination: &File, record: &DirectoryRecord) -> io::Result<File> {
     let container_name = name(&record.name)?;
-    match mkdir_at(destination, &container_name) {
-        Ok(()) => {}
-        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
-        Err(error) => return Err(error),
-    }
     let directory = directory_at(destination, &container_name)?;
     private_directory(&directory)?;
     if directory.metadata()?.dev() != destination.metadata()?.dev() {
@@ -276,6 +272,48 @@ fn prepare_directory(destination: &File, record: &DirectoryRecord) -> io::Result
     sync_recv_directory(&directory)?;
     sync_recv_directory(destination)?;
     Ok(directory)
+}
+
+fn retire_unstarted_intent(destination: &File, container_name: &CStr,
+    coordinator: &File, record_name: &CStr, intent: &File) -> io::Result<()> {
+    // Only this enrollment's retained record is disposable. A failed mkdir
+    // alone cannot prove absence, particularly on a non-local filesystem.
+    match unix_fstatat_no_follow(destination.as_raw_fd(), container_name) {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            remove_recv_child_at(coordinator, record_name, intent)?;
+            sync_recv_directory(coordinator)
+        }
+        Ok(_) => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+fn retire_unused_generation(coordinator: &File, generation: &File, generation_name: &CStr,
+    retire_namespace: impl FnOnce() -> io::Result<()>) -> io::Result<()> {
+    // The enrollment gate remains held. Drop this owner's membership before
+    // asking whether any other live owner still needs the named generation.
+    if generation.metadata()?.nlink() == 0 {
+        return sync_recv_directory(coordinator);
+    }
+    lock(generation, libc::LOCK_UN)?;
+    match lock(generation, libc::LOCK_EX | libc::LOCK_NB) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::WouldBlock => return Ok(()),
+        Err(error) => return Err(error),
+    }
+    let result = (|| {
+        ensure_recv_child_matches_open_file(coordinator, generation_name, generation)?;
+        retire_namespace()?;
+        remove_recv_child_at(coordinator, generation_name, generation)?;
+        sync_recv_directory(coordinator)
+    })();
+    // A failed cleanup must not strand exclusive ownership in a retained claim.
+    let released = lock(generation, libc::LOCK_UN);
+    match (result, released) {
+        (Ok(()), result) | (result, Ok(())) => result,
+        (Err(error), Err(release)) => Err(io::Error::new(error.kind(),
+            format!("{error}; receive generation lock release failed: {release}"))),
+    }
 }
 
 fn retirement_parent_is_protected(destination: &File) -> io::Result<bool> {
@@ -718,6 +756,89 @@ mod tests {
     }
 
     #[test]
+    fn refused_enrollment_preserves_preparation_and_live_owners() {
+        use super::super::ReceivePathLease;
+        assert_ne!(unsafe { libc::geteuid() }, 0, "permission refusal needs an ordinary principal");
+        for case in ["fresh", "preparing", "live"] {
+            let root = std::env::temp_dir().join(format!("receive-enrollment-{}", crate::uuid::Uuid::new_v4()));
+            std::fs::create_dir(&root).unwrap();
+            let mut initial = ReceivePathLease::acquire(&root.join("current"), false).unwrap();
+            initial.retire().unwrap();
+            drop(initial);
+            let destination = File::open(&root).unwrap();
+            let coordinator = coordinator().unwrap();
+            let key = directory_key(&destination).unwrap();
+            let record_name = name(&format!("{key}.json")).unwrap();
+            let generation_name = name(&format!("{key}.lock")).unwrap();
+            let intent = if case == "preparing" {
+                let record = DirectoryRecord { version: 1,
+                    name: format!(".rustdesk-receive-{}", crate::uuid::Uuid::new_v4().simple()),
+                    inode: None, retiring: false };
+                lock(&coordinator, libc::LOCK_EX).unwrap();
+                let file = write_record(&coordinator, &record_name,
+                    &name(&format!("{key}.tmp")).unwrap(), &record).unwrap();
+                lock(&coordinator, libc::LOCK_UN).unwrap();
+                Some((record, file))
+            } else { None };
+            let mut live = if case == "live" {
+                let (mut stream, claim) = ReceiveWriteClaim::start_new(
+                    root.join("current"), FileDigest::default()).unwrap();
+                stream.write_all(b"old").unwrap();
+                Some((stream, claim))
+            } else { None };
+            let denied_parent = match &live {
+                Some((_, claim)) => claim._lease.namespace.directory.try_clone().unwrap(),
+                None => destination.try_clone().unwrap(),
+            };
+            denied_parent.set_permissions(std::fs::Permissions::from_mode(0o555)).unwrap();
+            for _ in 0..2 {
+                let error = ReceiveNamespace::acquire(File::open(&root).unwrap(), &name("next").unwrap())
+                    .unwrap_err();
+                if case == "live" {
+                    assert_eq!(error.kind(), io::ErrorKind::WouldBlock);
+                } else {
+                    assert_eq!(error.raw_os_error(), Some(libc::EACCES));
+                }
+                if let Some((_, claim)) = &live {
+                    ensure_recv_child_matches_open_file(&coordinator, &generation_name,
+                        &claim._lease.namespace.generation).unwrap();
+                    assert_eq!(claim.download_file.metadata().unwrap().len(), 3);
+                } else {
+                    assert_eq!(unix_fstatat_no_follow(coordinator.as_raw_fd(), &generation_name)
+                        .unwrap_err().kind(), io::ErrorKind::NotFound);
+                }
+                if let Some((record, file)) = &intent {
+                    ensure_recv_child_matches_open_file(&coordinator, &record_name, file).unwrap();
+                    let retained = read_record(&coordinator, &record_name).unwrap().unwrap();
+                    assert_eq!(retained.name, record.name);
+                    assert!(retained.inode.is_none() && !retained.retiring);
+                } else if live.is_none() {
+                    assert!(read_record(&coordinator, &record_name).unwrap().is_none());
+                }
+            }
+            denied_parent.set_permissions(std::fs::Permissions::from_mode(0o700)).unwrap();
+            if let Some((stream, claim)) = &mut live {
+                stream.sync_all().unwrap();
+                claim.finish(3, 31).unwrap();
+                assert_eq!(std::fs::read(root.join("current")).unwrap(), b"old");
+            }
+            let (mut stream, mut claim) = ReceiveWriteClaim::start_new(
+                root.join("next"), FileDigest::default()).unwrap();
+            stream.write_all(b"new").unwrap();
+            claim.finish(3, 32).unwrap();
+            assert_eq!(std::fs::read(root.join("next")).unwrap(), b"new");
+            assert!(read_record(&coordinator, &record_name).unwrap().is_none());
+            assert_eq!(unix_fstatat_no_follow(coordinator.as_raw_fd(), &generation_name)
+                .unwrap_err().kind(), io::ErrorKind::NotFound);
+            assert_eq!(std::fs::read_dir(&root).unwrap().count(), if case == "live" { 2 } else { 1 });
+            drop((stream, claim, live, intent, denied_parent, destination, coordinator));
+            std::fs::remove_dir_all(&root).unwrap();
+            println!("RECEIVE_ENROLLMENT_REFUSAL=observed case={case} attempts=2 error={} inactive_generation=retired prior_owner=preserved retry=exact fixture=retired",
+                if case == "live" { "WouldBlock" } else { "EACCES" });
+        }
+    }
+
+    #[test]
     fn generation_lock_retires_only_after_last_owner() {
         let root = std::env::temp_dir().join(format!("receive-generation-{}", crate::uuid::Uuid::new_v4()));
         std::fs::create_dir(&root).unwrap();
@@ -898,7 +1019,10 @@ mod tests {
                 entries
             };
             let before = if allowed { Vec::new() } else { inventory() };
-            let result = prepare_directory(&destination, &record);
+            if case == "absent" {
+                mkdir_at(&destination, &name(&record.name).unwrap()).unwrap();
+            }
+            let result = initialize_directory(&destination, &record);
             if allowed {
                 let recovered = result.unwrap();
                 assert_eq!(std::fs::read(&marker).unwrap(), record.name.as_bytes());
@@ -983,28 +1107,57 @@ impl ReceiveNamespace {
         let generation = open_regular_child_no_follow(&coordinator, &generation_name,
             RegularFileAccess::Write, ReceiveFileCreation::OpenOrCreate)?;
         ReceiveOwnedArtifact::Payload.validate(&generation)?;
-        sync_recv_regular_file(&generation)?;
-        sync_recv_directory(&coordinator)?;
-        lock(&generation, libc::LOCK_SH)?;
         let record_name = name(&format!("{key}.json"))?;
         let temporary = name(&format!("{key}.tmp"))?;
+        let admitted: io::Result<_> = (|| {
+            sync_recv_regular_file(&generation)?;
+            sync_recv_directory(&coordinator)?;
+            lock(&generation, libc::LOCK_SH)?;
+            let (directory, directory_name) = Self::enroll_directory(&destination,
+                &coordinator, &generation, &record_name, &temporary)?;
+            let mut digest = Sha256::new();
+            digest.update(b"rustdesk.receive.file.v1\0");
+            digest.update(final_name.to_bytes());
+            let child = name(&format!("{:x}", digest.finalize()))?;
+            let artifacts = private_child(&directory, &child)?;
+            Ok((directory, directory_name, child, artifacts))
+        })();
+        let (directory, directory_name, child, artifacts) = match admitted {
+            Ok(admitted) => admitted,
+            Err(error) => {
+                let cleanup = retire_unused_generation(&coordinator, &generation,
+                    &generation_name, || Ok(()));
+                return match cleanup {
+                    Ok(()) => Err(error),
+                    Err(cleanup) => Err(io::Error::new(error.kind(),
+                        format!("{error}; receive enrollment cleanup failed: {cleanup}"))),
+                };
+            }
+        };
+        // The caller keeps enrollment locked until its exact per-file lease is acquired.
+        Ok(Self { destination, artifacts, coordinator, directory, child, generation, generation_name,
+            record_name, directory_name })
+    }
+
+    fn enroll_directory(destination: &File, coordinator: &File, generation: &File,
+        record_name: &CStr, temporary: &CStr) -> io::Result<(File, CString)> {
         // The enrollment gate excludes every record writer. A killed writer's
         // bounded temporary file is not committed authority and can be retired.
-        retire_private_temporary(&coordinator, &temporary)?;
-        let record = read_record(&coordinator, &record_name)?;
+        retire_private_temporary(coordinator, temporary)?;
+        let record = read_record(coordinator, record_name)?;
         let existing = record.as_ref().filter(|r| r.inode.is_some() && !r.retiring)
-            .map(|r| record_directory(&destination, r));
-        let (directory, directory_name) = match existing {
+            .map(|r| record_directory(destination, r));
+        match existing {
             Some(Ok(directory)) => {
                 let record = record.as_ref()
                     .ok_or_else(|| io_invalid_input("receive namespace record is absent"))?;
-                (directory, name(&record.name)?)
+                Ok((directory, name(&record.name)?))
             }
             missing => {
                 // A named container can be moved by the destination's owner. Never adopt a
                 // replacement or create a parallel namespace while any old claim is live.
-                lock(&generation, libc::LOCK_UN)?;
-                if let Err(error) = lock(&generation, libc::LOCK_EX | libc::LOCK_NB) {
+                lock(generation, libc::LOCK_UN)?;
+                if let Err(error) = lock(generation, libc::LOCK_EX | libc::LOCK_NB) {
                     return Err(io::Error::new(error.kind(),
                         "receive namespace is unavailable while an existing generation is active"));
                 }
@@ -1017,44 +1170,53 @@ impl ReceiveNamespace {
                 }
                 let record = match record {
                     Some(mut record) if record.retiring => {
-                        if !retire_directory(&coordinator, &record_name, &destination, &mut record)? {
+                        if !retire_directory(coordinator, record_name, destination, &mut record)? {
                             return Err(refused("receive namespace retirement did not complete"));
                         }
                         None
                     }
                     record => record,
                 };
-                let mut record = match record {
-                    Some(record) if record.inode.is_none() => record,
+                let (mut record, new_intent) = match record {
+                    Some(record) if record.inode.is_none() => (record, None),
                     _ => {
                         let record = DirectoryRecord { version: 1,
                             name: format!(".rustdesk-receive-{}", crate::uuid::Uuid::new_v4().simple()),
                             inode: None, retiring: false };
                         // Publish and sync intent before creating any public entry.
-                        write_record(&coordinator, &record_name, &temporary, &record)?;
-                        record
+                        let intent = write_record(coordinator, record_name, temporary, &record)?;
+                        (record, Some(intent))
                     }
                 };
-                let directory = prepare_directory(&destination, &record)?;
+                let container_name = name(&record.name)?;
+                match mkdir_at(destination, &container_name) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+                    Err(error) => {
+                        // Prior intent and successful/uncertain setup remain recoverable.
+                        // Refusal before a new namespace exists owns only this exact record.
+                        if let Some(intent) = new_intent {
+                            if let Err(cleanup) = retire_unstarted_intent(destination, &container_name,
+                                coordinator, record_name, &intent) {
+                                return Err(io::Error::new(error.kind(),
+                                    format!("{error}; receive intent cleanup failed: {cleanup}")));
+                            }
+                        }
+                        return Err(error);
+                    }
+                }
+                let directory = initialize_directory(destination, &record)?;
                 let opened = unix_fstat(&directory)?;
                 record.inode = Some(directory.metadata()?.ino());
-                write_record(&coordinator, &record_name, &temporary, &record)?;
+                write_record(coordinator, record_name, temporary, &record)?;
                 // LOCK_EX -> LOCK_SH is not atomic. The enrollment gate excludes another
                 // initializer throughout the conversion and the following identity replay.
-                lock(&generation, libc::LOCK_SH)?;
-                let replay = record_directory(&destination, &record)?;
+                lock(generation, libc::LOCK_SH)?;
+                let replay = record_directory(destination, &record)?;
                 unix_require_same_object(&opened, &unix_fstat(&replay)?, "receive namespace replay")?;
-                (directory, name(&record.name)?)
+                Ok((directory, container_name))
             }
-        };
-        let mut digest = Sha256::new();
-        digest.update(b"rustdesk.receive.file.v1\0");
-        digest.update(final_name.to_bytes());
-        let child = name(&format!("{:x}", digest.finalize()))?;
-        let artifacts = private_child(&directory, &child)?;
-        // The caller keeps enrollment locked until its exact per-file lease is acquired.
-        Ok(Self { destination, artifacts, coordinator, directory, child, generation, generation_name,
-            record_name, directory_name })
+        }
     }
 
     pub(super) fn complete_enrollment(&self) -> io::Result<()> {
@@ -1066,20 +1228,7 @@ impl ReceiveNamespace {
     }
 
     fn retire_generation(&self) -> io::Result<()> {
-        // The enrollment gate remains held. Retired claims release their shared
-        // membership even when another file still owns this namespace generation.
-        // A retry through an unlinked old inode can only repeat the durability barrier.
-        if self.generation.metadata()?.nlink() == 0 {
-            return sync_recv_directory(&self.coordinator);
-        }
-        lock(&self.generation, libc::LOCK_UN)?;
-        match lock(&self.generation, libc::LOCK_EX | libc::LOCK_NB) {
-            Ok(()) => {}
-            Err(error) if error.kind() == io::ErrorKind::WouldBlock => return Ok(()),
-            Err(error) => return Err(error),
-        }
-        let result = (|| {
-            ensure_recv_child_matches_open_file(&self.coordinator, &self.generation_name, &self.generation)?;
+        retire_unused_generation(&self.coordinator, &self.generation, &self.generation_name, || {
             if let Some(mut record) = read_record(&self.coordinator, &self.record_name)? {
                 // A retry through a retired claim must preserve a later namespace.
                 if record.name.as_bytes() == self.directory_name.as_bytes()
@@ -1088,17 +1237,8 @@ impl ReceiveNamespace {
                         &self.destination, &mut record)?;
                 }
             }
-            remove_recv_child_at(&self.coordinator, &self.generation_name, &self.generation)?;
-            sync_recv_directory(&self.coordinator)
-        })();
-        // A failed removal must not strand an exclusive lock in a completed claim
-        // while a later enrollment holds the gate and waits for shared membership.
-        let released = lock(&self.generation, libc::LOCK_UN);
-        match (result, released) {
-            (Ok(()), result) | (result, Ok(())) => result,
-            (Err(error), Err(release)) => Err(io::Error::new(error.kind(),
-                format!("{error}; receive generation lock release failed: {release}"))),
-        }
+            Ok(())
+        })
     }
 
     pub(super) fn retire(&self, remove_lease: impl FnOnce() -> io::Result<()>) -> io::Result<()> {

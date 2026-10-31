@@ -3678,6 +3678,7 @@ run_focused_rust_tests() {
                 fs::tests::file_metadata_resume_proof_shape_and_content_precede_confirmation
                 fs::tests::file_metadata_pending_resume_retirement_preserves_saved_bytes
                 fs::tests::file_metadata_resume_cancellation_preserves_partial_and_refuses_reuse
+                fs::receive_namespace::tests::refused_enrollment_preserves_preparation_and_live_owners
                 fs::receive_namespace::tests::setup_recovers_only_private_identity_prefixes
                 fs::receive_namespace::tests::inspection_without_saved_state_preserves_destination_layout
                 fs::receive_namespace::tests::generation_lock_retires_only_after_last_owner

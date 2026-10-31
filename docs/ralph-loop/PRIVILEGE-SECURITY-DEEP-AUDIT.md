@@ -125882,3 +125882,12 @@ boundaries/scales/layouts, focus/cancel/reconnect and concurrent-owner behavior,
 installed authority, other platforms and soak remain OPEN. The next input
 checkpoint should address another missing ownership or capability boundary,
 rather than repeat ordinary click delivery.
+
+Ledger count at `11ae40b5`, run `XQnsC4fwqp`, passes: **380,246 tokens**,
+1,741,267 bytes, SHA-256
+`53c17d23cbdc37acc0c712ed96fc5dec2880c89e15230c08e271141ee3b13e93`.
+Seven token controls and the whole-input round trip pass, along with 79 storage
+admission controls and five refusals. QEMU 3433041 joins exit 0 after 30.203
+seconds; 402,489,344 bytes peak RAM scratch retires and all three listener deltas
+are zero. Fourteen native/capsule/count files are hash-verified on CTE/TUF.
+This audit-only receipt preserves the counted ledger bytes.

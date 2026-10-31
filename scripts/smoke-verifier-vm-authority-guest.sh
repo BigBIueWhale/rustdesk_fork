@@ -3683,6 +3683,7 @@ run_focused_rust_tests() {
                 fs::receive_namespace::tests::retirement_retries_the_containing_directory_barrier
                 fs::receive_namespace::tests::fresh_confirmation_replaces_saved_partial
                 fs::receive_namespace::tests::fresh_confirmation_preserves_refused_artifacts
+                fs::receive_namespace::tests::interrupted_digest_preparation_requires_private_file_and_exclusive_lease
                 fs::tests::file_metadata_digest_mismatched_seconds_and_sizes_stay_distinct
                 fs::tests::recursive_owner_files_retain_the_listed_parent
                 fs::tests::recursive_owner_empty_dirs_retain_the_listed_parent

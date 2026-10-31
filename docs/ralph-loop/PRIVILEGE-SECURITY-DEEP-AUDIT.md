@@ -123087,3 +123087,44 @@ listener deltas are zero. Serial SHA-256
 All **34 raw files / 495,705 bytes per host** are hash-verified across this slice's
 four behavioral runs and one count. This audit-only receipt leaves the counted
 ledger, tested source, requirements and live instructions unchanged.
+
+## 2026-10-31 — fresh-confirmation cancellation owns native setup through retirement
+
+Selected R-S8/R-S11fi acceptance: validate interruption of the newly corrected
+Linux fresh-receive preparation before further layout work or unrelated cleanup.
+The staging exception and full-parent/viewer-build decisions remain pending; the
+generic file-job cancellation park is unchanged. No additional product correction
+was needed or claimed.
+
+Research: the pinned [Tokio 1.44.2 blocking-task contract](https://docs.rs/tokio/1.44.2/tokio/task/fn.spawn_blocking.html)
+requires ownership through native completion because a running blocking task cannot
+be aborted. The existing [seccomp notification observer](https://man7.org/linux/man-pages/man2/seccomp_unotify.2.html)
+uses CONTINUE to execute the original fsync. Its gate changes timing only; it does
+not supply success, replace arguments or enforce product authorization.
+
+`6a2ef48ee6d7260265dd1fbc5413a4564bfc3054` adds one focused executable regression
+and its existing-lane admission. Eight cases cross preparation/application,
+explicit cancellation/owner drop and native enrollment/old-pair retirement.
+The latter gate requires an observed saved-digest read, excluding acquisition
+barriers without a hardcoded syscall ordinal. Real filesystem state distinguishes
+the two phases. Cancelling a 50 ms collection wait retains the pending owner and
+one of 32 shared permits. TCP ping/pong remains responsive while sync is held.
+Explicit cancellation excludes checkpoint metadata and returns no job/confirmation;
+owner drop transfers drain responsibility. Original final bytes, artifact/handle
+retirement, complete permit return and lease reacquisition are checked after joining.
+
+TUF `JDWctIBQpW`, command `bash scripts/smoke-verifier-vm-authority.sh
+--file-send-digest-tests`, exits zero with **45 individually retained test passes**
+and all eight new cases passing. Control round trips are 94–143 microseconds.
+The production source is unchanged from the accepted fresh-receive correction.
+Library SHA-256 `19b2e35bdd153ba02d83bb3c0668817af64ecf94afc341b56da9e3c2c1f72d31`;
+serial SHA-256 `ce079ece9bfec9911a10bc4abe9a7693f91112dd359995cf6145c4a94be7b3dc`.
+The exact source-bound library runs as UID/GID 1000 in the networkless guest's
+unprivileged container. This is component acceptance, not full application,
+privileged installed receiver, other-platform or general cancellation acceptance.
+
+QEMU 3127940 joins after 149.057 seconds, RAM `run.c2ymmsch` retires and wrapper
+3127471 is absent. All four listener deltas are zero. Seven raw files / 97,665
+bytes per host are hash-verified, including complete console, serial, storage and
+listener evidence. No diagnostic directory remains. Overall receive/layout and
+release acceptance remain OPEN; the existing pending decisions and parks persist.

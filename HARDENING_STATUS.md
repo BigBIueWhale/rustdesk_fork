@@ -16270,6 +16270,20 @@ Full application/CM scheduling, interrupted fresh-confirmation integration, othe
 platforms and installed/release acceptance remain OPEN; the staging exception and
 full-parent/viewer resumption decisions remain pending.
 
+At `6a2ef48e`, TUF `JDWctIBQpW` passes all **45 focused tests** without another
+product change. Eight fresh-confirmation interruption cases cover both confirmation
+directions, explicit cancellation and owner drop, at native namespace enrollment
+and the old-pair retirement barrier. A held directory fsync remains on a worker;
+TCP ping/pong takes 94–143 microseconds. A cancelled collection wait preserves the
+owner and charged permit. Explicit cancellation excludes checkpoint metadata and
+returns neither job nor confirmation; owner drop retains drain responsibility.
+After native completion, all permits return, receive artifacts/handles retire,
+the previous final remains exact and destination-lease reacquisition succeeds.
+The observer continues original syscalls without changing arguments/results.
+These are Linux library observations, not generic file-job cancellation, full
+application/CM or installed acceptance. QEMU and bounded RAM scratch retire; all
+four listener deltas are zero. Exact raw and artifact identities are in the audit.
+
 **Resume content binding — library correction accepted; caller acceptance OPEN/STOP-SHIP.**
 Baseline `640a9680`, TUF `ZoWbc47wT7`, accepts staged `abc` against source `XYZdef`
 with equal size/mtime in both confirmation directions, publishes `abcdef` and reports

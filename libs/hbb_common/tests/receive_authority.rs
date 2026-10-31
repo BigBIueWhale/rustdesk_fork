@@ -492,6 +492,81 @@ mod linux {
         result
     }
 
+    async fn readonly_enrollment(base: &Path) -> ResultType<Value> {
+        use std::{ffi::CString, os::unix::ffi::OsStrExt};
+        fs::create_dir(base)?;
+        let target = CString::new(base.as_os_str().as_bytes())?;
+        let flags = libc::MS_NODEV | libc::MS_NOSUID | libc::MS_NOEXEC;
+        if unsafe { libc::mount(b"tmpfs\0".as_ptr().cast(), target.as_ptr(),
+            b"tmpfs\0".as_ptr().cast(), flags,
+            b"size=65536,nr_inodes=128,mode=0700,huge=never\0".as_ptr().cast()) } != 0 {
+            let error = io::Error::last_os_error();
+            fs::remove_dir(base)?;
+            return Err(error.into());
+        }
+        let result = async {
+            let mut destinations = Vec::new();
+            for index in 0..8 {
+                let path = base.join(index.to_string());
+                fs::create_dir(&path)?;
+                create(&path.join("incoming.bin"), b"original", 0o600)?;
+                destinations.push(path);
+            }
+            let before = coordination_inventory()?;
+            let originals = destinations.iter().map(|path| snapshot(&path.join("incoming.bin")))
+                .collect::<ResultType<Vec<_>>>()?;
+            ensure!(unsafe { libc::mount(std::ptr::null(), target.as_ptr(), std::ptr::null(),
+                flags | libc::MS_REMOUNT | libc::MS_RDONLY, std::ptr::null()) } == 0,
+                "read-only fixture remount failed: {}", io::Error::last_os_error());
+            let calibration = fs::create_dir(base.join("must-refuse"))
+                .err().ok_or_else(|| anyhow!("read-only mount allowed directory creation"))?;
+            ensure!(calibration.raw_os_error() == Some(libc::EROFS));
+            let mut retained_counts = Vec::new();
+            for (index, path) in destinations.iter().enumerate() {
+                for _ in 0..2 {
+                    let mut receiver = job(path)?;
+                    let counters = (receiver.finished_size(), receiver.transferred());
+                    let error = admit(&mut receiver, false, 0).await.err()
+                        .ok_or_else(|| anyhow!("read-only receive admission succeeded"))?;
+                    ensure!(error.downcast_ref::<io::Error>()
+                        .is_some_and(|error| error.raw_os_error() == Some(libc::EROFS)),
+                        "unexpected read-only admission error: {error}");
+                    ensure!((receiver.finished_size(), receiver.transferred()) == counters);
+                    ensure!(receiver.finalize_write(1).await.is_err());
+                    receiver.retire_current_file_state()?;
+                    drop(receiver);
+                    ensure!(snapshot(&path.join("incoming.bin"))? == originals[index]
+                        && fs::read_dir(path)?.count() == 1);
+                    let after = coordination_inventory()?;
+                    retained_counts.push(after.keys().filter(|key| !before.contains_key(*key)).count());
+                }
+            }
+            let after = coordination_inventory()?;
+            let retained_bytes: u64 = after.iter().filter(|(key, _)| !before.contains_key(*key))
+                .map(|(_, bytes)| *bytes).sum();
+            let safe = after == before && retained_counts.iter().all(|count| *count == 0);
+            ensure!(unsafe { libc::mount(std::ptr::null(), target.as_ptr(), std::ptr::null(),
+                flags | libc::MS_REMOUNT, std::ptr::null()) } == 0,
+                "writable fixture remount failed: {}", io::Error::last_os_error());
+            for path in &destinations {
+                complete_transfer(path).await?;
+            }
+            ensure!(coordination_inventory()? == before, "successful retries did not retire coordination");
+            Ok::<_, hbb_common::anyhow::Error>(json!({"filesystem":"tmpfs", "destinations":8,
+                "attempts":16, "admission_error":"EROFS", "calibrated_mkdir_errno":libc::EROFS,
+                "originals_preserved":true, "counters_unchanged":true, "publication_refused":true,
+                "destination_entries_unchanged":true, "retained_counts":retained_counts,
+                "coordination_allocated_bytes_added":retained_bytes, "safe":safe,
+                "writable_retries_exact":true, "coordination_restored_after_retries":true}))
+        }.await;
+        if unsafe { libc::umount2(target.as_ptr(), 0) } != 0 {
+            return Err(anyhow!("read-only fixture unmount failed: {}; operation: {result:?}",
+                io::Error::last_os_error()));
+        }
+        fs::remove_dir(base)?;
+        result
+    }
+
     async fn crash_receiver(base: &Path) -> ResultType<()> {
         identity(0)?;
         io::stdout().write_all(syscall_window::ARMED)?;
@@ -1227,7 +1302,11 @@ mod linux {
         }
         println!("RECEIVE_NATIVE_RETIREMENT_CRASH_SUMMARY=observed cases=4 recovered={recovered} children=joined fixture=retired");
         ensure!(recovered == 4, "receive retirement crash cases failed: {recovered}/4 recovered");
-        println!("RECEIVE_NATIVE_AUTHORITY=pass cases=32 actors={actors} receiver_uid=0 actor_uid=4001 children=joined fixture=retired");
+        let observed = readonly_enrollment(&root.join("readonly-enrollment")).await?;
+        println!("RECEIVE_NATIVE_CASE={}", json!({"case":"readonly-enrollment","observed":observed}));
+        println!("RECEIVE_NATIVE_ADMISSION_SUMMARY=observed destinations=8 attempts=16 safe={} mounts=retired fixture=retired", observed["safe"]);
+        ensure!(observed["safe"] == true, "read-only receive attempts retained coordination state");
+        println!("RECEIVE_NATIVE_AUTHORITY=pass cases=33 actors={actors} receiver_uid=0 actor_uid=4001 children=joined fixture=retired");
         Ok(())
     }
 

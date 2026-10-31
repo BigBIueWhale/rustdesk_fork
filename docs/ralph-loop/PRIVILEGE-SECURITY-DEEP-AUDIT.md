@@ -122917,3 +122917,33 @@ namespace and coordination inventory. This does not waive the completed-layout
 failures or approve new persistent staging. The selected fixture changes no
 production behavior, uses the existing admitted VM resource profile, and retains normal
 unmount/join/retirement requirements. No new runtime result is claimed yet.
+
+**Accepted on the first native execution.** Source
+`7cf00a0896d4efcf7a5c68a324c72ab9f03ec2f7`, TUF `XCJsv92Ll1`, passes both new
+setup cases and the two prior write cases. Identity enrollment leaves an empty,
+root-owned mode-0600 single-link marker; a fresh owner retry under the same ENOSPC
+preserves its device/inode, ownership/mode/link count, length/bytes, container path
+and coordination inventory. Timestamp equality is not an identity requirement
+for an attempted write. Failed digest setup leaves no per-file artifacts. Both
+cases keep zero progress and the prior final snapshot, refuse finalization and
+complete a fresh exact 12,288-byte transfer after space returns. All four normal
+unmounts and fixture removals precede the storage summary. No product patch is
+needed for these observations.
+
+The nineteen earlier authority/crash cases, twenty actors and 25 primitive
+filesystem observations retain their outcomes. Three completed-destination cases
+still fail with hidden staging, ENOTEMPTY and 31 retained records / 126,976 allocated
+bytes, zero added locks. The canonical `--file-metadata-tests` command exits one.
+Its library aggregate reports 147 tests/35 groups; complete individual/outer
+unit-suite acceptance is not exported on this failure path. Coordinator-filesystem
+or inode exhaustion, quota/device writeback, power loss and installed/other-platform
+behavior remain open, together with the pending staging decision and all parks.
+
+Native artifact SHA-256:
+`17c65c3ea57d0c892378aecd3d2bbe044b2a25cf5d48e768ac023d9272637f5f`;
+driver SHA-256 `a54f37a6aea7f4572b9f9c6a2ac4f357ae08cc0f3f3e696f7e1017cd9739cd97`;
+serial SHA-256 `7ba9307e34fb924a6e0fc5445400def216f7f3da75c5ef8005e8442eff2f5589`.
+QEMU 3118335 joins after 280.424 seconds; RAM `run.0sogkxdy` retires and all four
+listener comparisons have zero changes. Seven raw files / 112,608 bytes are
+hash-verified on both hosts before exact diagnostic removal. Product source,
+requirements and live instructions remain unchanged.

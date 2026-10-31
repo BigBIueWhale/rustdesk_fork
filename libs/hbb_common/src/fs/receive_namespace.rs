@@ -804,8 +804,8 @@ mod tests {
                         &claim._lease.namespace.generation).unwrap();
                     assert_eq!(claim.download_file.metadata().unwrap().len(), 3);
                 } else {
-                    assert_eq!(unix_fstatat_no_follow(coordinator.as_raw_fd(), &generation_name)
-                        .unwrap_err().kind(), io::ErrorKind::NotFound);
+                    assert!(matches!(unix_fstatat_no_follow(coordinator.as_raw_fd(), &generation_name),
+                        Err(error) if error.kind() == io::ErrorKind::NotFound));
                 }
                 if let Some((record, file)) = &intent {
                     ensure_recv_child_matches_open_file(&coordinator, &record_name, file).unwrap();
@@ -828,8 +828,8 @@ mod tests {
             claim.finish(3, 32).unwrap();
             assert_eq!(std::fs::read(root.join("next")).unwrap(), b"new");
             assert!(read_record(&coordinator, &record_name).unwrap().is_none());
-            assert_eq!(unix_fstatat_no_follow(coordinator.as_raw_fd(), &generation_name)
-                .unwrap_err().kind(), io::ErrorKind::NotFound);
+            assert!(matches!(unix_fstatat_no_follow(coordinator.as_raw_fd(), &generation_name),
+                Err(error) if error.kind() == io::ErrorKind::NotFound));
             assert_eq!(std::fs::read_dir(&root).unwrap().count(), if case == "live" { 2 } else { 1 });
             drop((stream, claim, live, intent, denied_parent, destination, coordinator));
             std::fs::remove_dir_all(&root).unwrap();

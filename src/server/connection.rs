@@ -6704,7 +6704,13 @@ impl Connection {
                             conn.read_jobs.push(job);
                             conn.file_timer = crate::rustdesk_interval(time::interval(MILLI1));
                         }
-                        Ok(None) => {}
+                        Ok(None) => {
+                            if let Some(log) = completion.cancelled_log {
+                                conn.send_to_cm(ipc::Data::FileTransferLog((
+                                    "transfer".to_owned(), log,
+                                ))).await;
+                            }
+                        }
                         Err(error) => {
                             conn.send(fs::new_error(completion.id, error, completion.file_num)).await;
                         }

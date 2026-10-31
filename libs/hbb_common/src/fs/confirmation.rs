@@ -84,6 +84,7 @@ pub struct Completion {
     pub id: i32,
     pub file_num: i32,
     pub job: ResultType<Option<TransferJob>>,
+    pub cancelled_log: Option<String>,
 }
 
 impl FileConfirmations {
@@ -161,6 +162,7 @@ impl FileConfirmations {
         let cancelled = pending.cancelled.load(Ordering::Acquire);
         // Keep the permit through disposal of a cancelled/failed returned job.
         let _joined = pending.join.take();
+        let mut cancelled_log = None;
         let job = match result {
             Ok((mut job, result)) if !cancelled && result.is_ok() => {
                 job.resume_cancelled = None;
@@ -169,7 +171,10 @@ impl FileConfirmations {
             Ok((mut job, result)) => {
                 match job.retire_current_file_state() {
                     Err(cleanup) => Err(anyhow!("file confirmation cleanup failed: {cleanup}; operation: {result:?}")),
-                    Ok(()) if cancelled => Ok(None),
+                    Ok(()) if cancelled => {
+                        cancelled_log = Some(super::serialize_transfer_job(&job, false, true, ""));
+                        Ok(None)
+                    }
                     Ok(()) => result.map(|()| None),
                 }
             }
@@ -178,7 +183,7 @@ impl FileConfirmations {
                 std::process::abort();
             }
         };
-        Completion { id: pending.id, file_num: pending.file_num, job }
+        Completion { id: pending.id, file_num: pending.file_num, job, cancelled_log }
     }
 
     pub async fn close_and_wait(&mut self) -> ResultType<()> {
@@ -287,6 +292,7 @@ mod tests {
             owner.start(fixture.job(700), request).unwrap();
             let result = owner.next().await;
             assert_eq!((result.id, result.file_num, owner.len()), (700, 0, 0));
+            assert!(result.cancelled_log.is_none());
             if valid {
                 let mut job = result.job.unwrap().unwrap();
                 assert!(job.file_confirmed());
@@ -338,6 +344,10 @@ mod tests {
         assert_eq!(drain().unwrap().capacity.available_permits(), DRAIN_CAPACITY - 1);
         let completion = tokio::time::timeout(Duration::from_secs(3), owner.next()).await.unwrap();
         assert!(completion.job.unwrap().is_none());
+        let log: serde_json::Value = serde_json::from_str(&completion.cancelled_log.unwrap()).unwrap();
+        assert_eq!(log["id"], 701);
+        assert_eq!(log["cancel"], true);
+        assert_eq!(log["done"], false);
         assert_eq!((owner.len(), fixture.source_handles()), (0, 0));
         assert_eq!(drain().unwrap().capacity.available_permits(), DRAIN_CAPACITY);
         drop((outgoing, incoming, listener, watch, fixture));

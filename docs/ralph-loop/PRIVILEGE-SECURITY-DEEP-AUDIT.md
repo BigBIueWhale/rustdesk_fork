@@ -122189,3 +122189,24 @@ sockets but are not authenticated RustDesk handlers. The narrow sender lane reta
 its 23 existing controls. No compile or pass is claimed by this preparation.
 Viewer proof production and CM scheduling remain separate incomplete integration;
 the three completed-destination lifecycle failures remain OPEN/STOP-SHIP.
+
+At `891ea81eb889d90fd26b40d966facb4db0d336a9`, tree
+`54ae75cc65cf2f6d4c08e97e913ee512b3f1423f`, TUF `7cQdOUK6B1`, the canonical
+`--file-send-digest-tests` lane passes all 28 tests in 26 groups. All five new
+ownership cases pass, including real prefix access, TCP ping/pong during the
+pending read, cancelled-wait preservation, late cancellation, owner-drop drain,
+handle retirement and capacity recovery. The source remains unchanged during the
+run. Artifact SHA-256:
+`f8c294fa39fcf64db49fe35ffe179b82e477337c247e7d675f447c5c5b377409`.
+Serial 11,211 bytes, SHA-256
+`8a7a8aac671bd425c03e7342def81b56b3a4dcb4e11cf993116370ee817bde63`.
+QEMU 3045962 joins after 142.897 seconds, RAM `run.novhwvcf` retires, and all
+four listener deltas are zero. This is library ownership evidence, not execution
+of the changed controlled message loop, CM forwarding or viewer handlers.
+
+Caller review then preserves the existing cancellation log: a successfully
+retired cancelled job returns its terminal metadata to its connection, which
+forwards that log without recovering the job or stream. The focused control test
+also checks its exact ID and cancel/done fields; successful/error completions must
+not fabricate that log. This follow-up changes source after the preceding run and
+requires its own focused pass before final acceptance.

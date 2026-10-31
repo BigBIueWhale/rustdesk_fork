@@ -3541,8 +3541,16 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   in `file-receive-callers-native-9a7f04b1.json` and `cm-sidecar-cleanup-native-b57c4071.json`.
 
   The live CM runner uses a fixture authority validator and test UI. Ordinary connection
-  teardown and remaining-job Drop still perform synchronous cleanup; their exact ownership,
-  bounded drain and responsiveness remain OPEN. Complete confirmation/skip/disconnect/reconnect,
+  teardown is now a reproduced failure at `ca314289` / TUF `W5buT2IeLm`: close,
+  disconnect, socket shutdown and task abort all block the executor until the native-fsync
+  observer's three-second watchdog releases it. The first three publish registry/UI retirement
+  before cleanup; abort retains that owner but has no in-flight reservation or charged drain
+  capacity. A newer-source registry reservation succeeds during all four held barriers and is
+  rolled back without publication. Both explicit-cancellation controls still pass. Original
+  bytes, final cleanup and usable successors pass after release. The expanded test fails;
+  the other 21 profile tests are unexecuted. Job, registry and bounded cleanup ownership must
+  remain together through ordinary exit and cancellation; correction and acceptance remain OPEN.
+  Complete confirmation/skip/disconnect/reconnect,
   installed privileged-peer authentication, cross-OS/device behavior, resource/latency soak,
   artifacts/reproduction/review and shared-parent/mount-root staging acceptance remain OPEN.
 - **R-S11fj/R-S11e-197 viewer download digest inspection failure** — **SOURCE CORRECTED; EXACT-CURRENT EXECUTION

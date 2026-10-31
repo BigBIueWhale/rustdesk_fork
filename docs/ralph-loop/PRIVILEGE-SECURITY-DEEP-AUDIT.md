@@ -124110,3 +124110,63 @@ listener deltas are zero. Six count files / 104,870 bytes and all four caller
 runs' evidence are hash-verified on both hosts: 34 files / 427,037 bytes per host.
 Both counted ledger copies match the input hash. This audit-only receipt leaves
 the counted ledger unchanged; the goal remains active with no permission dependency.
+
+## 2026-10-31 — Native CM teardown reproduces synchronous cleanup and early retirement
+
+`ca314289` extends the existing held-fsync regression to Close, Disconnected,
+Unix-socket shutdown and task abort while retaining both explicit-cancellation
+controls. Product code is unchanged. The observer records the exact registry
+generation, in-flight reservation, charged capacity and UI retirement before
+releasing the original native syscall. It tries a source-generation-1 reservation
+against the generation-0 desktop owner and aborts any accepted reservation without
+publishing it. This exercises the shared registry's newer-source exclusion;
+it is not a new desktop login, an installed authority test or a demonstrated LPE.
+The transport fixture now preserves a disconnected entry so successor login
+exercises its real replacement rather than deleting it during setup.
+
+TUF `W5buT2IeLm`, `bash scripts/smoke-verifier-vm-authority.sh
+--linux-file-receive-caller-tests`, builds the full Linux Flutter-feature library
+with fresh bridge bindings in 177 seconds. Artifact SHA-256:
+`b895c98972b4555f1b3cc85a3e0da13a6d756bfaf585057c13a9898b77e3dc9f`.
+The single expanded test finishes all six scenarios and fails after 12.22 seconds;
+the other 21 tests are unexecuted and outer status is 1.
+
+| Exit | Held fsync (microseconds) | Registry/UI owner retained | In-flight/capacity/replacement refusal |
+| --- | ---: | --- | --- |
+| Cancel | 52,462 | Yes | All three pass |
+| Cancel, then caller abort | 52,880 | Yes | All three pass |
+| Close | 3,002,672 | No | All three fail |
+| Disconnected | 3,002,800 | No | All three fail |
+| Socket shutdown | 3,002,474 | No | All three fail |
+| Task abort | 3,002,130 | Yes | All three fail |
+
+The last four execute fsync on the current-thread executor and resume only when
+the independent watchdog releases it. The first two use explicit release and
+retain another Unix-CM connection's directory response within one second; their
+held durations include the deliberate 50 ms no-early-reply observation. Every
+case then preserves original bytes, removes staging, returns all permits, retires
+the exact UI owner once and admits a usable successor. No cleanup failure or
+data replacement is observed after release.
+
+Next correct the connection-owned lifetime, including ordinary and abandoned
+outcomes: jobs must retain their registry owner and admitted cleanup capacity
+through exact native retirement and joining. Acquiring capacity only on Drop
+cannot cover an already-admitted job when the pool is full. Passing vectors and
+owner separately through an abandoned oneshot also permits inline job drops.
+Preserve normal disconnected-entry behavior, platform cleanup ordering and
+selected-operation cancellation. Do not simply spawn detached cleanup or enqueue
+a join that depends on work queued behind the same sequential reaper. The
+[Rust destructor rules](https://doc.rust-lang.org/reference/destructors.html)
+make aggregate ownership and drop order relevant; the pinned
+[Tokio join contract](https://github.com/tokio-rs/tokio/blob/tokio-1.44.2/tokio/src/runtime/task/join.rs)
+requires retaining a join handle rather than dropping it to imply completion.
+
+QEMU 3212658 joins with status zero after 437.976 seconds; wrapper 3212169 and
+RAM workspace `run.44b_6q7u` are absent. Peak scratch is 6,291,628,032 bytes
+within 7 GiB, minimum available host memory is 34,103,279,616 bytes, and all four
+host-listener deltas are zero. Seven raw files / 81,917 bytes per host are
+hash-verified before deleting 3,444,736 allocated bytes of exact disposable
+diagnostics. Serial `android-rust-lifecycle-tests-run.W5buT2IeLm.serial.log`,
+10,355 bytes, SHA-256 `cedc9f864255daec25c6da6beecb18b961864956f04a078fa04146f273b26f04`.
+This checkpoint establishes four concrete failures, not their correction.
+The receive fix remains active and authorized; unrelated parks remain unchanged.

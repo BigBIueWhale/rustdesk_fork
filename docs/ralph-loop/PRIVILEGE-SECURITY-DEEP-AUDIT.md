@@ -123487,3 +123487,13 @@ No full-loop keepalive, cancellation/reconnect, CM IPC authority, installed serv
 other-platform or release acceptance is claimed. The remaining staging lifecycle
 defect still requires correction under the existing requirements and authorization.
 Unrelated topic parks remain.
+
+Fresh ledger count at `685b590c`, TUF `3BAXYCbG1q`: **372,557 tokens /
+1,706,401 bytes**, input SHA-256
+`706011662089b3362046bcb20768164fbc0eca99e4cc7a90e09dd8120a3bdf45`.
+The pinned whole-file tokenizer passes seven controls and exact round trip.
+QEMU 3156778 joins after 30.608 seconds; wrapper 3155352 and RAM
+`run.1wke_4ns` retire, with three zero listener deltas. Serial SHA-256:
+`43b2fa0c440126a07170c8a922d145bc38fb6776003a3ee6a3d55f1beb0ceb4c`.
+All **41 raw files / 513,112 bytes per host** are hash-verified. This audit-only
+receipt leaves the tested product and counted ledger unchanged.

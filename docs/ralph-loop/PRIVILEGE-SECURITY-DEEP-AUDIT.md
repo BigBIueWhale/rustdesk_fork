@@ -125891,3 +125891,31 @@ admission controls and five refusals. QEMU 3433041 joins exit 0 after 30.203
 seconds; 402,489,344 bytes peak RAM scratch retires and all three listener deltas
 are zero. Fourteen native/capsule/count files are hash-verified on CTE/TUF.
 This audit-only receipt preserves the counted ledger bytes.
+
+### 2026-11-01 — pivot to native camera identity
+
+The user redirected work after read-only session-type input-confinement research.
+That follow-up remains OPEN/PARKED; no fixture or refusal run preceded the pivot.
+Selected R-F1/R-S0 prerequisite: execute the pinned nokhwa camera supplier against
+the existing native V4L2 fixture. The ledger's ordinal/native-index mismatch and
+supplier cache/assertion findings make this more useful than further ordinary
+mouse controls. A correct catalog design needs observed retained-handle behavior,
+not only an index mapping. No product correction is claimed by this preparation.
+
+The kernel's V4L2 device-naming contract explicitly permits changing node numbers
+([device opening](https://docs.kernel.org/userspace-api/media/v4l/open.html));
+the [vivid driver](https://docs.kernel.org/admin-guide/media/vivid.html) supplies
+real V4L2 capture devices within the no-NIC VM. The locked
+[nokhwa source](https://github.com/rustdesk-org/nokhwa/blob/c2f74662b6ce117f7f94301693fdfadc0b1ec91a/nokhwa-bindings-linux/src/lib.rs)
+reuses handles by numeric index and has an impossible second-device assertion.
+The retained probe must demonstrate decoded nonzero-device capture, the second
+retained open, and native node replacement while the old handle lives. These are
+supplier observations; RustDesk login/capture and physical hotplug remain separate.
+
+`--media-kernel-tests --nokhwa` admits the existing compiler/probe through the
+shared RAM launcher: 4 GiB guest, 12 GiB scratch, 8 GiB QEMU file ceiling, normal
+headroom/monitor/lock/join requirements. The compiler now uses the same disposable
+overlay instead of a separate raw scratch disk. Pinned compiler/vendor inputs are
+read-only media, with locked offline compilation inside the guest's unprivileged,
+networkless container; native capture uses UID/GID 4000. No new persistent cache
+or separate VM launcher is introduced. Runtime acceptance is pending.

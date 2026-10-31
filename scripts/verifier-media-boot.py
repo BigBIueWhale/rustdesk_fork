@@ -41,6 +41,7 @@ def main():
                     for line in Path('/proc/mounts').read_text().splitlines()),
             'media boot forbids filesystem shares')
     contract = json.loads((MEDIA / 'contract.json').read_text())
+    require(type(contract['nokhwa']) is bool, 'closed media workload required')
     require(re.fullmatch('[0-9a-f]{40}', contract['source_commit']) is not None,
             'media source commit differs')
     spec = importlib.util.spec_from_file_location('media_guest', MEDIA / 'guest.py')
@@ -75,7 +76,7 @@ def main():
         create(STATE, json.dumps(result, sort_keys=True).encode() + b'\n')
         unit = ('[Unit]\nDescription=Disposable native media fixture\n'
                 'After=local-fs.target\nConditionKernelCommandLine=rustdesk.media_vm=1\n'
-                '[Service]\nType=oneshot\nTimeoutStartSec=60\n'
+                '[Service]\nType=oneshot\nTimeoutStartSec=' + ('300' if contract['nokhwa'] else '60') + '\n'
                 'ExecStartPre=/usr/bin/mount -L RD_VERIFIER_INPUTS -o ro,nodev,nosuid,noexec'
                 ' /mnt/rustdesk-verifier-inputs\n'
                 'ExecStart=/usr/bin/python3 -I -S /mnt/rustdesk-verifier-inputs/media/boot.py --fixture\n'
@@ -107,13 +108,17 @@ def main():
         require(guest.file_record(kernel, guest.LIMIT) == previous['kernel']
                 and guest.file_record(initrd, guest.LIMIT) == previous['initrd'],
                 'media handoff assets changed')
-        result = guest.capture_fixture(pins)
+        result = guest.fixture(pins, contract) if contract['nokhwa'] else guest.capture_fixture(pins)
         result.update(source_commit=contract['source_commit'], boot_id=boot_id,
                       previous_boot_id=previous['boot_id'], sources=contract['sources'])
         print('MEDIA_KERNEL_RESULT=' + json.dumps(result, sort_keys=True), flush=True)
         print('MEDIA_KERNEL_FIXTURE=pass source=' + contract['source_commit']
               + ' generations=2 principal=4000:4000 root-foreign=refused'
               + ' module=retired product=unexecuted', flush=True)
+        if contract['nokhwa']:
+            print('MEDIA_NOKHWA_FIXTURE=pass source=' + contract['source_commit']
+                  + ' capture=decoded two-retained=SIGABRT node-reuse=stale-handle'
+                  + ' supplier=executed product=unexecuted cleanup=joined', flush=True)
 
 
 if __name__ == '__main__':

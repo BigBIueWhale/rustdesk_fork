@@ -27,6 +27,7 @@ HBB_CONFIG_NATIVE=0
 HBB_FUSE_READ_TESTS=0
 HBB_SEND_DIGEST_TESTS=0
 COUNT_REQUIREMENTS=0
+MEDIA_NOKHWA=0
 LINUX_PA_PLAYBACK=0
 APPLE_CURSOR_ONLY=0
 APPLE_FILE_MODE_ONLY=0
@@ -462,10 +463,14 @@ case "$#:${1:-}" in
         fi
         MODE=ledger-token-count
         ;;
-    1:--media-kernel-tests)
+    1:--media-kernel-tests|2:--media-kernel-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'media kernel input/run overrides are forbidden' >&2; exit 2; }
         MODE=media-kernel-tests
+        if [ "$#" -eq 2 ]; then
+            [ "$2" = --nokhwa ] || { echo 'unknown media workload' >&2; exit 2; }
+            MEDIA_NOKHWA=1
+        fi
         ;;
     1:--host-network-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -1010,7 +1015,11 @@ if [ "$MODE" = android-emulator-boot ] \
 else
     readonly VM_CPUS=4
 fi
-if [ "$MODE" = media-kernel-tests ]; then
+if [ "$MODE:$MEDIA_NOKHWA" = media-kernel-tests:1 ]; then
+    readonly VM_TIMEOUT_SECONDS=360
+    readonly OVERLAY_SIZE=16G
+    readonly VM_MEMORY=4096
+elif [ "$MODE" = media-kernel-tests ]; then
     readonly VM_TIMEOUT_SECONDS=240
     readonly OVERLAY_SIZE=6G
     readonly VM_MEMORY=2048
@@ -2672,6 +2681,12 @@ fi
 ledger_token_inputs_before=
 if [ "$MODE" = media-kernel-tests ]; then
     media_sources=("$MEDIA_BOOT_SOURCE" "$MEDIA_GUEST_SOURCE" "$PIN_SOURCE" "$VM_STORAGE_SOURCE" "$SCRIPT_DIR/vm-transient-storage.sh")
+    if [ "$MEDIA_NOKHWA" -eq 1 ]; then
+        media_sources+=("$SCRIPT_DIR/verifier-media-nokhwa.py"
+            "$SCRIPT_DIR/camera-native-probe/Cargo.toml" "$SCRIPT_DIR/camera-native-probe/Cargo.lock"
+            "$SCRIPT_DIR/camera-native-probe/build.rs" "$SCRIPT_DIR/camera-native-probe/src/main.rs"
+            "$SCRIPT_DIR/online-input-provenance.py")
+    fi
     for source in "${media_sources[@]}"; do
         [ -f "$source" ] && [ ! -L "$source" ] || fail 'media source is absent or ambiguous'
         verify_committed_test_source "$source"
@@ -2682,6 +2697,20 @@ if [ "$MODE" = media-kernel-tests ]; then
         || fail 'media kernel package authority differs'
     verify_sha256 "$MEDIA_KERNEL_PACKAGE" "$SHA256_VERIFIER_MEDIA_KERNEL_PACKAGE"
     media_sources+=("$MEDIA_KERNEL_PACKAGE")
+    if [ "$MEDIA_NOKHWA" -eq 1 ]; then
+        [ -d "$CARGO_VENDOR_ROOT" ] && [ ! -L "$CARGO_VENDOR_ROOT" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' "$CARGO_VENDOR_ROOT")" = "$HOST_UID:$HOST_GID:500" ] \
+            || fail 'camera vendor directory authority differs'
+        for input in "$DEV_CHECK_IMAGE_ARCHIVE:$SIZE_DEV_CHECK_IMAGE_ARCHIVE:$SHA256_DEV_CHECK_IMAGE_ARCHIVE" \
+                     "$CARGO_VENDOR_CONFIG:$SIZE_CARGO_VENDOR_CONFIG:$SHA256_CARGO_VENDOR_CONFIG"; do
+            path=${input%%:*}; remainder=${input#*:}; size=${remainder%%:*}; digest=${remainder#*:}
+            [ -f "$path" ] && [ ! -L "$path" ] \
+                && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' "$path")" = "$HOST_UID:$HOST_GID:400:1:$size" ] \
+                || fail 'camera compiler input authority differs'
+            verify_sha256 "$path" "$digest"
+            media_sources+=("$path")
+        done
+    fi
     media_inputs_before="$(/usr/bin/sha256sum "${media_sources[@]}")"
 fi
 for source in "$VM_HOST_NETWORK_SOURCE" "$VM_HOST_NETWORK_TEST"; do
@@ -4562,8 +4591,8 @@ elif [ "$MODE" = media-kernel-tests ]; then
         "$VERIFIER_VM_KERNEL_RELEASE" "$VERIFIER_VM_ROOT_FILESYSTEM_UUID" \
         "$SIZE_VERIFIER_MEDIA_KERNEL_PACKAGE" "$SHA256_VERIFIER_MEDIA_KERNEL_PACKAGE" \
         "$SIZE_VERIFIER_MEDIA_KERNEL" "$SHA256_VERIFIER_MEDIA_KERNEL" \
-        "$SHA256_VERIFIER_MEDIA_KERNEL_CONFIG" "$SOURCE_DATE_EPOCH_PIN" <<'PY'
-import hashlib,json,os,sys
+        "$SHA256_VERIFIER_MEDIA_KERNEL_CONFIG" "$SOURCE_DATE_EPOCH_PIN" "$MEDIA_NOKHWA" "$PIN_SOURCE" <<'PY'
+import hashlib,json,os,re,sys
 from pathlib import Path
 sources={}
 for name,path in zip(('boot.py','guest.py'),sys.argv[3:5]):
@@ -4573,8 +4602,26 @@ keys=('VERIFIER_VM_KERNEL_RELEASE','VERIFIER_VM_ROOT_FILESYSTEM_UUID',
       'SIZE_VERIFIER_MEDIA_KERNEL_PACKAGE','SHA256_VERIFIER_MEDIA_KERNEL_PACKAGE',
       'SIZE_VERIFIER_MEDIA_KERNEL','SHA256_VERIFIER_MEDIA_KERNEL',
       'SHA256_VERIFIER_MEDIA_KERNEL_CONFIG','SOURCE_DATE_EPOCH_PIN')
+pins=dict(zip(keys,sys.argv[5:13]))
+nokhwa=sys.argv[13]=='1'
+if nokhwa:
+    scripts=Path(sys.argv[3]).parent
+    for name,path in [('nokhwa.py',scripts/'verifier-media-nokhwa.py'),
+                      *((f'probe/{name}',scripts/'camera-native-probe'/name)
+                        for name in ('Cargo.toml','Cargo.lock','build.rs','src/main.rs')),
+                      *((f'scripts/{name}',scripts/name) for name in
+                        ('verify-vm-entry-preflight.sh','offline-image-provenance.py','online-input-provenance.py'))]:
+        data=path.read_bytes()
+        sources[name]={'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()}
+    selected=('DEV_CHECK_', 'SHA256_DEV_CHECK_', 'SIZE_DEV_CHECK_',
+              'SIZE_VERIFIER_VM_DOCKER_STATIC', 'SHA256_VERIFIER_VM_DOCKER_STATIC',
+              'SHA256_CARGO_VENDOR_CLOSURE_V1')
+    for line in Path(sys.argv[14]).read_text().splitlines():
+        match=re.fullmatch(r'([A-Z0-9_]+)="([^"\n]*)"(?:\s*#.*)?',line)
+        if match and match[1].startswith(selected):
+            pins[match[1]]=match[2]
 with open(sys.argv[1],'x') as output:
-    json.dump({'source_commit':sys.argv[2],'sources':sources,'pins':dict(zip(keys,sys.argv[5:]))},output,sort_keys=True)
+    json.dump({'source_commit':sys.argv[2],'sources':sources,'pins':pins,'nokhwa':nokhwa},output,sort_keys=True)
     output.write('\n')
     os.fchmod(output.fileno(),0o400)
 PY
@@ -4584,6 +4631,19 @@ PY
         "media/guest.py=$MEDIA_GUEST_SOURCE"
         "media/linux-image-6.1.0-50-amd64_6.1.176-1_amd64.deb=$MEDIA_KERNEL_PACKAGE"
     )
+    if [ "$MEDIA_NOKHWA" -eq 1 ]; then
+        payload_identity=(-uid 1000 -gid 1000)
+        lifecycle_payload_grafts+=(
+            "media/nokhwa.py=$SCRIPT_DIR/verifier-media-nokhwa.py"
+            "media/probe=$SCRIPT_DIR/camera-native-probe"
+            "media/scripts/verify-vm-entry-preflight.sh=$ENTRY_PREFLIGHT"
+            "media/scripts/offline-image-provenance.py=$OFFLINE_IMAGE_PROVENANCE_SOURCE"
+            "media/scripts/online-input-provenance.py=$SCRIPT_DIR/online-input-provenance.py"
+            "media/devcheck.docker.tar.gz=$DEV_CHECK_IMAGE_ARCHIVE"
+            "media/cargo-vendor=$CARGO_VENDOR_ROOT"
+            "media/cargo-vendor-config.toml=$CARGO_VENDOR_CONFIG"
+        )
+    fi
 elif [ "$MODE" = ledger-token-count ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=(
@@ -5687,7 +5747,7 @@ elif [ "$MODE" = media-kernel-tests ]; then
     require_exact_fixed_receipt "MEDIA_KERNEL_FIXTURE=pass source=$FOCUSED_TEST_COMMIT generations=2 principal=4000:4000 root-foreign=refused module=retired product=unexecuted" 'native media kernel lifecycle'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'media kernel preparation'
     /usr/bin/python3 -I -S - "$SERIAL_LOG" "$FOCUSED_TEST_COMMIT" "$MEDIA_BOOT_SOURCE" "$MEDIA_GUEST_SOURCE" \
-        "$SHA256_VERIFIER_MEDIA_KERNEL" "$SIZE_VERIFIER_MEDIA_KERNEL" <<'PY'
+        "$SHA256_VERIFIER_MEDIA_KERNEL" "$SIZE_VERIFIER_MEDIA_KERNEL" "$MEDIA_NOKHWA" <<'PY'
 import hashlib,json,re,sys
 from pathlib import Path
 raw=Path(sys.argv[1]).read_bytes()
@@ -5704,6 +5764,21 @@ assert prepared['boot_id']==result['previous_boot_id'] and prepared['boot_id']!=
 assert prepared['kernel_release']==result['kernel_release']=='6.1.0-50-amd64'
 assert result['module_retired'] is True and result['root_foreign_probe_refused'] is True
 assert result['product_executed'] is False and len(result['captures'])==2
+if sys.argv[7]=='1':
+    supplier=result['nokhwa']
+    assert supplier['supplier_executed'] is True and supplier['rustdesk_product_executed'] is False
+    for key in ('root_foreign_probe_refused','compiler_container_retired','daemon_joined','compile_network_canary_refused'):
+        assert supplier[key] is True
+    capture,retained,reuse=supplier['scenarios']
+    assert capture['scenario']=='capture' and capture['indices']==[2]
+    assert capture['device_handles_retired'] is True and len(set(capture['sample']['frame_sha256']))>=2
+    assert retained['scenario']=='two-retained-baseline' and retained['signal']=='SIGABRT'
+    assert reuse['result']['scenario']=='reuse-baseline' and reuse['result']['device_handles_retired'] is True
+    assert reuse['result']['retained_rdevs']==[reuse['readiness']['original_rdev']]
+    assert reuse['result']['current_node_rdev']==reuse['readiness']['replacement_rdev']
+    assert reuse['readiness']['original_rdev']!=reuse['readiness']['replacement_rdev']
+else:
+    assert 'nokhwa' not in result
 for name,path in zip(('boot.py','guest.py'),sys.argv[3:5]):
     data=Path(path).read_bytes()
     assert result['sources'][name]=={'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()}
@@ -5715,6 +5790,9 @@ for capture in result['captures']:
     assert len(set(capture['frame_sha256']))>=2 and min(capture['pixel_color_counts'])>=8
 print('MEDIA_KERNEL_OBSERVATION='+json.dumps({'prepared':prepared,'fixture':result},sort_keys=True))
 PY
+    if [ "$MEDIA_NOKHWA" -eq 1 ]; then
+        require_exact_fixed_receipt "MEDIA_NOKHWA_FIXTURE=pass source=$FOCUSED_TEST_COMMIT capture=decoded two-retained=SIGABRT node-reuse=stale-handle supplier=executed product=unexecuted cleanup=joined" 'native camera supplier failure reproduction'
+    fi
 elif [ "$MODE" = host-network-tests ]; then
     require_exact_fixed_receipt \
         'VM_HOST_NETWORK_TESTS=pass controls=4 restrictions=native inheritance=fork-exec unix=roundtrip netlink=socket-diag ip=denied x32=SIGSYS descriptors=closed-or-refused' \

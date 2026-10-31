@@ -22,6 +22,10 @@ OVERHEAD = GIB
 
 
 def storage_limits(profile, memory_mib):
+    if profile == 'media-nokhwa':
+        require(memory_mib == 4096, 'native camera supplier requires its 4 GiB guest')
+        # Sealed vendor/image media and the single compiler/kernel overlay share RAM.
+        return 12 * GIB, 8 * GIB
     if profile in ('media-kernel-tests', 'protobuf-parser'):
         require(memory_mib == 2048, f'{profile} requires its 2 GiB guest')
         return 4 * GIB, 3 * GIB
@@ -479,7 +483,7 @@ def main():
                                  'pake-timing', 'pake-allocation', 'main-config-key', 'language-selection', 'windows-pointer', 'linux-resource-limits', 'linux-resolution-lifetime', 'fusermount-process', 'xrandr-acquisition',
                                  'linux-service-uid-tests', 'audio-buffer', 'audio-mailbox', 'file-block', 'control-egress', 'clipboard-response',
                                  'linux-service-receiver', 'linux-flutter-build', 'linux-flutter-replay', 'installer-package',
-                                 'android-storage-key', 'linux-flutter-suspend', 'media-kernel-tests',
+                                 'android-storage-key', 'linux-flutter-suspend', 'media-kernel-tests', 'media-nokhwa',
                                  'debian-package-tests', 'protobuf-parser', 'tcp-key-transition'),
                         default='standard')
     parser.add_argument('--workspace')

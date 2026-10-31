@@ -1087,6 +1087,7 @@ for profile, memory, scratch, overlay in (
         ('authority-smoke', 2048, 4, 1),
         ('fixed-archive-tests', 2048, 4, 1),
         ('media-kernel-tests', 2048, 4, 3),
+        ('media-nokhwa', 4096, 12, 8),
         ('ledger-token-count', 2048, 4, 1)):
     if limits(profile, memory) != (scratch * gib, overlay * gib):
         raise SystemExit('VM storage profile limits differ')
@@ -1111,6 +1112,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
                         ('authority-smoke', 2047), ('authority-smoke', 4096),
                         ('fixed-archive-tests', 2047), ('fixed-archive-tests', 4096),
                         ('media-kernel-tests', 2047), ('media-kernel-tests', 4096),
+                        ('media-nokhwa', 2048), ('media-nokhwa', 8192),
                         ('protobuf-parser', 2047), ('protobuf-parser', 4096),
                         ('flutter-locales', 2047), ('flutter-locales', 4096),
                         ('flutter-divider', 2047), ('flutter-divider', 4096),
@@ -1180,6 +1182,7 @@ special.update({'authority-smoke': 'authority-smoke', 'dependency-inventory': 'a
                 'android-frame-tests': 'x11-focus'})
 cases = [(mode, {}, special.get(mode, 'standard')) for mode in sorted(modes)]
 cases.extend([('hbb-common-fs', {'HBB_LOGIND_NATIVE': '1'}, 'linux-logind'),
+              ('media-kernel-tests', {'MEDIA_NOKHWA': '1'}, 'media-nokhwa'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'credential-dialog'}, 'flutter-dialog-tests'),
               ('x11-display-tests', {'X11_KEY_INPUT_ONLY': '1'}, 'x11-key-input'),
               ('x11-display-tests', {'X11_FOCUS_ONLY': '1'}, 'x11-focus'),

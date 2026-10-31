@@ -15,7 +15,7 @@ import tarfile
 import time
 
 
-MEDIA = Path('/mnt/rustdesk-media')
+MEDIA = Path('/mnt/rustdesk-verifier-inputs/media')
 STATE = Path('/var/tmp/rustdesk-verifier-authority')
 AUTHORITY = Path('/run/rustdesk-verifier-vm')
 SOCKET = AUTHORITY / 'docker.sock'
@@ -108,7 +108,7 @@ def start_daemon(pins):
     CONFIG.mkdir(mode=0o755)
     for name in ('data', 'exec'):
         (WORK / name).mkdir(mode=0o700)
-    bundle = MEDIA / 'docker-27.5.1.tgz'
+    bundle = MEDIA.parent / 'docker.tgz'
     require(record(bundle) == {'bytes': int(pins['SIZE_VERIFIER_VM_DOCKER_STATIC']),
                               'sha256': pins['SHA256_VERIFIER_VM_DOCKER_STATIC']},
             'guest Docker bundle pin differs')
@@ -397,13 +397,10 @@ def verify(pins):
             and 'rustdesk.verifier_vm=1' in Path('/proc/cmdline').read_text().split()
             and sorted(p.name for p in Path('/sys/class/net').iterdir()) == ['lo'],
             'native compiler requires the exact no-NIC media guest')
-    require(root_command(['/usr/sbin/blockdev', '--getsize64', '/dev/disk/by-id/virtio-rd-media-tools']).strip()
-            == b'17179869184', 'guest compiler scratch disk size differs')
-    with Path('/dev/disk/by-id/virtio-rd-media-tools').open('rb') as blank:
-        require(blank.read(8192) == bytes(8192), 'guest compiler scratch disk is not blank')
+    require(not WORK.exists(), 'guest compiler workspace occupied')
     WORK.mkdir(mode=0o755)
-    root_command(['/usr/sbin/mkfs.ext4', '-q', '/dev/disk/by-id/virtio-rd-media-tools'], timeout=30)
-    root_command(['/usr/bin/mount', '-o', 'nodev,nosuid', '/dev/disk/by-id/virtio-rd-media-tools', str(WORK)])
+    require(WORK.stat().st_dev == Path('/').stat().st_dev,
+            'guest compiler workspace must use the bounded VM overlay')
     os.chmod(WORK, 0o755)
     baseline = network()
     daemon = start_daemon(pins)

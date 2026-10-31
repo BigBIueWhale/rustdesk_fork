@@ -222,6 +222,7 @@ def fixture(pins, contract):
     module = importlib.util.module_from_spec(module_spec)
     sys.dont_write_bytecode = True
     module_spec.loader.exec_module(module)
+    module.MEDIA = MEDIA
     result['nokhwa'] = module.verify(pins)
     return result
 

@@ -43,6 +43,11 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-01):** Native session-type input-confinement validation
+remains OPEN/PARKED after read-only preparation. No fixture, product change or
+native refusal run followed that investigation. Work moved to ViewCamera native
+device identity; do not resume the confinement follow-up automatically.
+
 **User pivot (2026-10-31):** Production directory-download follow-ups, including
 the proposed overwrite-decision scenario, remain OPEN/PARKED. The completed
 absent-destination download evidence remains valid; no overwrite fixture or run

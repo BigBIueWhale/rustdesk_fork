@@ -10,6 +10,8 @@ elif [ "${MODE:-}" = fixed-archive-tests ] || [ "${MODE:-}" = windows-service-re
     readonly VM_STORAGE_PROFILE=fixed-archive-tests
 elif [ "${MODE:-}" = debian-package-tests ]; then
     readonly VM_STORAGE_PROFILE=debian-package-tests
+elif [ "${MODE:-}:${MEDIA_NOKHWA:-0}" = media-kernel-tests:1 ]; then
+    readonly VM_STORAGE_PROFILE=media-nokhwa
 elif [ "${MODE:-}" = media-kernel-tests ]; then
     readonly VM_STORAGE_PROFILE=media-kernel-tests
 elif [ "${MODE:-}" = authority-smoke ] || [ "${MODE:-}" = dependency-inventory ] \

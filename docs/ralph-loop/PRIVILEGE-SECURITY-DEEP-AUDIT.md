@@ -124685,3 +124685,14 @@ decodable handles before selecting a complete layout. Keep shared-parent cleanup
 installed/other-platform acceptance and release readiness OPEN. Do not repeat the
 accepted root primitive absent a relevant change, and do not introduce a universal
 handle requirement or persistent-directory exception.
+
+## 2026-10-31 — user pivot away from file-receive work
+
+The user directed "focus on another aspect now" before the proposed creation-time
+substitution probe was compiled or executed. Its sole changed file,
+`libs/hbb_common/tests/receive_authority.rs`, is preserved in stash
+`09c0a917ab4548e463f0f2268b18f8837bce2c0b`; the working source is restored to the
+accepted checkpoint. The draft targets the mkdir-to-open boundary and remains
+unverified; it establishes no new runtime defect or escalation. No VM was launched
+for it. File-receive layout and its remaining acceptance stay OPEN. Work now moves
+to connection/display recovery, respecting the independently parked runtime lanes.

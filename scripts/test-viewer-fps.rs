@@ -101,3 +101,61 @@ fn congested_viewer_limits_never_increase_and_healthy_feedback_recovers() {
     assert!(failures == 0 && first && failed_send && closed,
         "congestion feedback must not raise an admitted rate or falsely confirm a failed update");
 }
+
+#[test]
+fn displays_without_decode_estimates_do_not_suppress_measured_display_recovery() {
+    let mut failures = 0;
+    for measured_display in [0, 1] {
+        for (previous, decoded, queued, expected) in [
+            (None, 100, 0, 20),
+            (Some(20), 5, 8, 2),
+            (Some(2), 100, 0, 20),
+        ] {
+            let (mut viewer, receiver) = fixture(previous, decoded, queued);
+            let measured = viewer.video_threads.remove(&0).unwrap();
+            viewer.video_threads.insert(measured_display, measured);
+            let unmeasured_display = 1 - measured_display;
+            viewer.video_threads.insert(unmeasured_display, VideoThread {
+                fps_control: FpsControl::default(),
+                media_thread: MediaThread { pending: RefCell::new(Some(0)) },
+                decode_fps: RwLock::new(None),
+            });
+            let observations = HashMap::from([(measured_display, 1), (unmeasured_display, 0)]);
+            let ticks = if previous == Some(2) { 4 } else { 1 };
+            for _ in 0..ticks {
+                assert!(viewer.fps_control(observations.clone()));
+            }
+            let actual = viewer.handler.lc.read().unwrap().last_auto_fps;
+            let sent = sent_rates(&receiver);
+            let refreshes = viewer.handler.refreshes.borrow().clone();
+            let expected_refreshes = if queued == 0 { vec![] } else { vec![measured_display as i32] };
+            let correct = actual == Some(expected) && sent == [expected as i32]
+                && refreshes == expected_refreshes
+                && viewer.video_threads[&measured_display].media_thread.pending_frames() == Some(0)
+                && viewer.video_threads[&unmeasured_display].decode_fps.read().unwrap().is_none()
+                && viewer.handler.errors.borrow().is_empty();
+            println!("VIEWER_FPS_UNMEASURED=observed measured_display={measured_display} previous={previous:?} decoded={decoded} queued={queued} actual={actual:?} sent={sent:?} refreshes={refreshes:?} correct={correct}");
+            failures += usize::from(!correct);
+        }
+    }
+
+    let (mut viewer, receiver) = fixture(Some(20), 100, 0);
+    *viewer.video_threads[&0].decode_fps.write().unwrap() = None;
+    assert!(viewer.fps_control(HashMap::from([(0, 1)])));
+    let unknown_only = viewer.handler.lc.read().unwrap().last_auto_fps == Some(20)
+        && sent_rates(&receiver).is_empty() && viewer.handler.refreshes.borrow().is_empty();
+
+    // A second measured, slower display still supplies the shared rate bound.
+    viewer.video_threads.insert(1, VideoThread {
+        fps_control: FpsControl::default(),
+        media_thread: MediaThread { pending: RefCell::new(Some(8)) },
+        decode_fps: RwLock::new(Some(5)),
+    });
+    *viewer.video_threads[&0].decode_fps.write().unwrap() = Some(100);
+    assert!(viewer.fps_control(HashMap::from([(0, 1), (1, 1)])));
+    let slow_measured = viewer.handler.lc.read().unwrap().last_auto_fps == Some(2)
+        && sent_rates(&receiver) == [2] && *viewer.handler.refreshes.borrow() == [1];
+    println!("VIEWER_FPS_UNMEASURED_RESULT=observed cases=6 failures={failures} unknown_only={unknown_only} slow_measured={slow_measured}");
+    assert!(failures == 0 && unknown_only && slow_measured,
+        "an absent estimate must not hide measured congestion or healthy recovery");
+}

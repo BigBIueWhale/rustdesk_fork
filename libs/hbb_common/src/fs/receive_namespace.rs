@@ -564,7 +564,11 @@ impl ReceiveNamespace {
         lock(&self.coordinator, libc::LOCK_EX)?;
         let result = (|| {
             remove_lease()?;
-            if self.artifacts.metadata()?.nlink() == 0 { return Ok(()); }
+            // Removal may have succeeded before its parent barrier failed. Retry
+            // that retained parent without touching a successor at the old name.
+            if self.artifacts.metadata()?.nlink() == 0 {
+                return sync_recv_directory(&self.directory);
+            }
             // Resume inspection deliberately leaves a payload/digest pair in this directory.
             if !is_empty(&self.artifacts)? {
                 return Ok(());

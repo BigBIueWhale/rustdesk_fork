@@ -16386,13 +16386,14 @@ Flutter features; its caller fixtures use owned completion and private staging.
 Current runtime results and their limits are recorded below. CM scheduling,
 ordinary job cancellation/drop and caller shutdown still need bounded lifetime and
 slow-storage evidence. Library refusal preservation does not prove full application
-retry or final retirement. Actual round-level keepalive/cancellation validation and
-the independently reproduced staging-layout lifecycle correction remain required.
+retry or final retirement. The live-thread checkpoint below covers keepalives and
+joined shutdown during active hashing; complete slow-storage/reconnect validation
+and the independently reproduced staging-layout lifecycle correction remain required.
 
-**Resume application checkpoint — Linux handlers accepted; complete flow OPEN.**
-At `2b74a1b8`, TUF `xh5jx41g7Y`, the full Linux application library
-compiles with Flutter features and freshly generated bridge bindings. All three
-resume tests pass: oversized upload/download refusal preserves owner metadata,
+**Resume application checkpoint — Linux handlers and live thread; complete flow OPEN.**
+At `1b16d7a1`, TUF `wqquru9qxZ`, the full Linux application library
+compiles with Flutter features and freshly generated bridge bindings in 118 seconds.
+All three existing resume tests pass: oversized upload/download refusal preserves owner metadata,
 counters and saved bytes; valid offsets 2 and u32::MAX complete in both directions
 with exact wire proofs and file tails. Pending work remains checkpointed, no
 confirmation precedes owned collection, and the actual emitted proof survives
@@ -16402,18 +16403,29 @@ CM conversion and serde round-trip. Private per-file artifacts retire on success
 admission and explicit unsupported-action errors. The fixtures now use private
 staging and asynchronous completion; `7284df9d`/`d752a4b6` fix test imports,
 and `2b74a1b8` supplies the isolated UID's missing OS account without changing
-production ownership checks. The four-test group takes 132.37 seconds and exits
-one because the separate viewer-admission regression fails all eight scenarios.
+production ownership checks. The new test also passes: the real viewer I/O thread
+connects through CPace and login, accepts resumed upload/download commands, and
+answers 21 ordered keepalive probes while native file access is observed during
+about two seconds of hashing. Among the 20 timed probes, worst replies are
+31.825 ms / 1.297 ms; both exact worker joins take 2 ms. Pending metadata remains
+checkpointed. File inode, size and sentinel bytes survive; download digest bytes
+remain equal, no final file appears, and fresh inspection reacquires the lease.
+This is normal-storage shutdown during hashing, without a stalled-syscall injection.
+
+The five-test group takes 143.42 seconds: four pass, and the separate
+viewer-admission regression still fails all eight scenarios. The command exits one.
 The nineteen later tests and CLI check remain unexecuted; this is not a full-suite
 pass. Artifact SHA-256:
-`f7700f6de1ffe11f94a4a006ef0224a7af648a9febeb18c377f6e47a807f7785`.
+`fe19f6bd2e4ed1a323f3f6edee05ed59342e40cfb361f4482d35bf02c9dabb57`.
 QEMU and bounded RAM scratch retire, and all four listener deltas are zero.
 
-This executes actual viewer digest/completion handlers over keyed TCP, not the
-whole connection loop or a CM IPC transaction. Round-level liveness during slow
-hashing, cancellation/reconnect, installed/root-service behavior, staging-layout
-cleanup, other platforms and release acceptance remain OPEN. The audit retains
-all failed builds, environment failures and exact raw/cleanup identities.
+The first three tests execute digest/completion handlers; the new test executes
+the production connection loop and thread owner against a controlled peer with a
+test UI. It does not execute a controlled-side CM IPC transaction. Hash completion
+across the full 30-second inactivity window, stalled storage, explicit job cancel,
+reconnect, installed/root-service behavior, staging-layout cleanup, other platforms
+and release acceptance remain OPEN. The audit retains failed builds, environment
+failures and exact raw/cleanup identities.
 
 The latest maximum-offset preparation takes 64.268 seconds, exceeding the loops' 30-second receive deadline;
 no installed disconnect has been measured. Large/slow-source resume and the

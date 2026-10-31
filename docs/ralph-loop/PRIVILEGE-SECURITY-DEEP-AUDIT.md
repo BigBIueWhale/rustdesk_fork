@@ -123497,3 +123497,49 @@ QEMU 3156778 joins after 30.608 seconds; wrapper 3155352 and RAM
 `43b2fa0c440126a07170c8a922d145bc38fb6776003a3ee6a3d55f1beb0ceb4c`.
 All **41 raw files / 513,112 bytes per host** are hash-verified. This audit-only
 receipt leaves the tested product and counted ledger unchanged.
+
+## 2026-10-31 — live viewer resume keepalive and shutdown checkpoint
+
+The resumed receive task's missing caller evidence takes priority over additional
+helper tests: the accepted handler cases never ran the connection loop. At
+`1b16d7a12ee800e1b5391fbff8906ac17f145e1b`, the new regression drives the
+production viewer thread, CPace initiator, login, AddJob/ResumeJob, digest dispatch,
+keepalive handling, shutdown and checkpoint persistence against an isolated peer.
+The peer supplies controlled PRS/metadata; the UI is a test observer. Product code
+is unchanged. No installed service or controlled-side CM transaction is claimed.
+
+[Tokio's blocking-task contract](https://docs.rs/tokio/latest/tokio/task/fn.spawn_blocking.html)
+means a timeout cannot establish worker retirement. The fixture retains the exact
+join even on a missed deadline. [Linux inotify](https://man7.org/linux/man-pages/man7/inotify.7.html)
+provides file-access observations, not byte counts or proof of a stalled syscall.
+The test requires native access and ordered keepalive responses before closing;
+it cannot pass merely because a resume request was queued without a file read.
+
+TUF `wqquru9qxZ`, `bash scripts/smoke-verifier-vm-authority.sh --viewer-resume-tests`:
+fresh bridge generation and the full Linux/Flutter libtest build pass (118 seconds).
+Artifact SHA-256:
+`fe19f6bd2e4ed1a323f3f6edee05ed59342e40cfb361f4482d35bf02c9dabb57`.
+Upload/download observation intervals are 2,072 / 2,041 ms, with 21 ordered
+one-second-bounded keepalive responses per direction. The 20 timed probes have
+worst replies of 31,825 / 1,297 microseconds. Both exact I/O-worker joins take
+2 ms. Checkpoint job ID/file/direction survive, as do file inode/length/sentinel
+bytes and download digest bytes. No download final file appears; fresh inspection
+reacquires the retired lease. The three earlier resume tests also pass.
+The separate admission oracle still fails all eight cases: aggregate four pass,
+one fail in 143.42 seconds, wrapper exit one. Nineteen later tests and the CLI
+check remain unexecuted. Their acceptance is not inferred from compilation.
+
+QEMU 3161202 joins with status zero after 515.757 seconds; wrapper 3160711 and
+RAM `run.pyx48e6y` are absent. Scratch peaks at 6,291,156,992 bytes within 7 GiB;
+minimum available host memory is 34,451,038,208 bytes. Four listener deltas are zero.
+Serial SHA-256:
+`f5cb811572501c5b42508e8831a6c5926fdc035f51890607a624f2f536f61a27`.
+Seven raw files / 82,463 bytes per host are hash-verified before removal of the
+exact 3,444,736-byte diagnostic directory. Source trees remain clean at execution.
+
+OPEN: hash completion across the full 30-second inactivity window, stalled native
+I/O, explicit job cancellation and reconnect, staging-layout lifecycle correction,
+CM/installed/root-service behavior and other platforms. This checkpoint establishes
+normal-storage live-thread responsiveness and joined shutdown while hashing only.
+Next decisive receive work remains the reproduced staging lifecycle failures and
+the missing full-duration/slow-storage integration evidence; unrelated parks remain.

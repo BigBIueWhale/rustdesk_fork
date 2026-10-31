@@ -1400,6 +1400,10 @@ static int exercise_clipboard_text(Display *source, Display *display,
         Atom target, property;
         uint64_t start, now, next_request = 0U;
         int pending = 0, matched = 0;
+        unsigned int replies = 0U;
+        unsigned long last_count = 0UL, last_remaining = 0UL;
+        Atom last_type = None;
+        int last_format = 0;
         size_t length;
         const char *kind = sequence <= 2U ? "ascii" :
                            sequence <= 4U ? "unicode" : "16k";
@@ -1460,6 +1464,7 @@ static int exercise_clipboard_text(Display *source, Display *display,
                 int format = 0;
                 unsigned long count = 0UL, remaining = 0UL;
                 pending = 0;
+                replies += 1U;
                 if (event.xselection.selection != selection ||
                     event.xselection.target != target) goto done;
                 if (event.xselection.property != None) {
@@ -1472,6 +1477,10 @@ static int exercise_clipboard_text(Display *source, Display *display,
                     }
                     matched = actual_type == target && format == 8 && remaining == 0UL &&
                               count == length && data != NULL && memcmp(data, text, length) == 0;
+                    last_type = actual_type;
+                    last_format = format;
+                    last_count = count;
+                    last_remaining = remaining;
                     if (data != NULL) XFree(data);
                     XDeleteProperty(destination, requestor, property);
                 }
@@ -1490,6 +1499,10 @@ static int exercise_clipboard_text(Display *source, Display *display,
             if (sleep_millis(10U) != 0) goto done;
         }
         now = monotonic_millis();
+        printf("FLUTTER_PEER_CLIPBOARD_READ sequence=%u pending=%d replies=%u "
+               "type=%lu expected_type=%lu format=%d bytes=%lu remaining=%lu\n",
+               sequence, pending, replies, last_type, target, last_format,
+               last_count, last_remaining);
         printf("FLUTTER_PEER_CLIPBOARD_OBSERVED sequence=%u requests=%u released=%d "
                "conversion_failed=%d matched=%d source_owner=%lu destination_owner=%lu\n",
                sequence, fixture->requests, fixture->released, fixture->failed, matched,

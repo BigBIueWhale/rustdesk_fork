@@ -5890,6 +5890,8 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
         'checked native state queries retire replies and refuse without publishing state or input effects'
     [ "$(/usr/bin/grep -Fc 'XDO_ENIGO_STATE=pass contexts=8 modifiers=8 locks=2 exact_sides=distinct family=union state=server-observed source=complete-linux-crate' "$SERIAL_LOG")" -eq 2 ] \
         || fail 'exact modifier and lock states are absent from complete or staged Enigo execution'
+    [ "$(/usr/bin/grep -Fc 'XDO_ENIGO_SHORTCUTS=pass contexts=8 chords=4 control_sides=both shift=both native_text=ctrl_a native_pairs=32 held_keys=preserved released=confirmed' "$SERIAL_LOG")" -eq 2 ] \
+        || fail 'native character shortcuts are absent from complete or staged Enigo execution'
     for key_scenario in no-xtest missing-key-input missing-mouse-up wrong-version writable absent reject-text; do
         require_exact_fixed_receipt \
             "XDO_LOADER_NATIVE=pass scenario=$key_scenario source=production network=none uid=4000 cleanup=joined" \

@@ -28,6 +28,64 @@ unsafe fn observe(display: *mut Display, check: impl Fn((i32, i32, u32)) -> bool
         thread::sleep(Duration::from_millis(1));
     }
 }
+
+unsafe fn character_shortcuts(enigo: &mut Enigo, display: *mut Display, window: Window) {
+    for (right, shifted) in [(false, false), (true, false), (false, true), (true, true)] {
+        let control = if right { ModifierKey::RightControl } else { ModifierKey::Control };
+        let mut modifiers = vec![control];
+        if shifted { modifiers.push(ModifierKey::Shift); }
+        let codes: Vec<_> = modifiers.iter().map(|key|
+            rdev::linux_keycode_from_key(key.rdev_key()).unwrap()).collect();
+        for code in &codes {
+            assert_ne!(XTestFakeKeyEvent(display, *code, 1, 0), 0);
+        }
+        XSync(display, 0);
+        let mut before = [0i8; 32];
+        assert_ne!(XQueryKeymap(display, before.as_mut_ptr()), 0);
+        let mut event: XEvent = std::mem::zeroed();
+        while XPending(display) > 0 { XNextEvent(display, &mut event); }
+        enigo.key_sequence_result(if shifted { "A" } else { "a" }).unwrap();
+        XSync(display, 0);
+        let until = Instant::now() + Duration::from_millis(250);
+        let mut pairs = Vec::new();
+        while pairs.len() < 2 {
+            while XPending(display) > 0 {
+                XNextEvent(display, &mut event);
+                if event.get_type() == MappingNotify { XRefreshKeyboardMapping(&mut event.mapping); }
+                if !matches!(event.get_type(), KeyPress | KeyRelease) { continue; }
+                assert_eq!(event.key.window, window);
+                assert_eq!(event.key.send_event, 0);
+                let mut text = [0i8; 8];
+                let mut symbol = 0;
+                assert_eq!(XLookupString(&mut event.key, text.as_mut_ptr(), 8,
+                                         &mut symbol, ptr::null_mut()), 1);
+                assert_eq!(text[0], 1, "native Ctrl+A character");
+                assert_eq!(symbol, if shifted { b'A' } else { b'a' } as libc::c_ulong);
+                assert_eq!(event.key.state & 255, ControlMask | if shifted { ShiftMask } else { 0 });
+                pairs.push((event.get_type(), event.key.keycode));
+                assert!(pairs.len() <= 2, "extra shortcut or modifier event");
+            }
+            assert!(Instant::now() < until, "native shortcut receipt expired");
+            if pairs.len() < 2 { thread::sleep(Duration::from_millis(1)); }
+        }
+        assert_eq!(pairs[0].0, KeyPress);
+        assert_eq!(pairs[1], (KeyRelease, pairs[0].1));
+        let mut after = [0i8; 32];
+        assert_ne!(XQueryKeymap(display, after.as_mut_ptr()), 0);
+        assert_eq!(after, before, "shortcut must preserve pre-existing holds");
+        for key in ModifierKey::ALL {
+            assert_eq!(enigo.keyboard_state().unwrap().modifier_down(key), modifiers.contains(&key));
+        }
+        for code in codes.iter().rev() {
+            assert_ne!(XTestFakeKeyEvent(display, *code, 0, 0), 0);
+        }
+        XSync(display, 0);
+        assert_ne!(XQueryKeymap(display, after.as_mut_ptr()), 0);
+        assert_eq!(after, [0; 32]);
+        while XPending(display) > 0 { XNextEvent(display, &mut event); }
+    }
+}
+
 fn main() {
     assert_eq!(unsafe { libc::geteuid() }, 4000);
     let scenario = std::env::args().nth(1).unwrap();
@@ -157,6 +215,7 @@ fn main() {
                 (KeyPress, 0xff0d, 0), (KeyRelease, 0xff0d, 0),
                 (KeyPress, 0xff09, 0), (KeyRelease, 0xff09, 0),
             ]);
+            character_shortcuts(&mut enigo, display.0, window);
             drop(enigo);
             assert_eq!(descriptors(), connected);
         }
@@ -167,6 +226,7 @@ fn main() {
     assert_eq!(descriptors(), baseline);
     assert_eq!(std::fs::read_dir("/proc/self/task").unwrap().count(), 1);
     if scenario == "complete" {
+        println!("XDO_ENIGO_SHORTCUTS=pass contexts=8 chords=4 control_sides=both shift=both native_text=ctrl_a native_pairs=32 held_keys=preserved released=confirmed");
         println!("XDO_ENIGO_STATE=pass contexts=8 modifiers=8 locks=2 exact_sides=distinct family=union state=server-observed source=complete-linux-crate");
     }
     println!("XDO_ENIGO_COMPONENT=pass scenario={scenario} attempts=8 text={} pointer=actual descriptors=retired",

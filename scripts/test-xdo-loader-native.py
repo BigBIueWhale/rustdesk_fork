@@ -316,6 +316,9 @@ def run(scenario):
                 expected_lines.insert(0, 'XDO_ENIGO_STATE=pass contexts=8 modifiers=8 locks=2 '
                                       'exact_sides=distinct family=union state=server-observed '
                                       'source=complete-linux-crate')
+                expected_lines.insert(0, 'XDO_ENIGO_SHORTCUTS=pass contexts=8 chords=4 '
+                                      'control_sides=both shift=both native_text=ctrl_a '
+                                      'native_pairs=32 held_keys=preserved released=confirmed')
             require(result.stdout.splitlines() == expected_lines and diagnostics,
                     'complete Enigo/private-loader result differs')
             print(result.stdout, end='', flush=True)

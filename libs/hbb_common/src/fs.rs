@@ -4674,7 +4674,7 @@ impl TransferJob {
             .checked_add(offset)
             .ok_or_else(|| anyhow!("finished byte counter overflow"))?;
         let expected_size = entry.size;
-        let (mut file, mut claim) = match self.role {
+        let (mut file, claim) = match self.role {
             TransferRole::Receive => {
                 if self.receive_write_claim.is_some() {
                     bail!("receive write job already owns a destination claim");
@@ -4687,8 +4687,8 @@ impl TransferJob {
                 (File::from_std(stream_file), Some(claim))
             }
             TransferRole::Send => {
-                // Own the cursor throughout hashing. Failure/cancellation closes this
-                // stream instead of leaving a partially repositioned stream in the job.
+                // Own the cursor throughout hashing. A failed/cancelled job cannot
+                // reuse a partially repositioned stream.
                 let opened_file = if self.data_stream.is_none() {
                     Some(Self::open_send_file(path).await?)
                 } else {
@@ -4709,10 +4709,12 @@ impl TransferJob {
                 (file, None)
             }
         };
-        // A cancelled or failed hash is terminal for this job. Its caller retires
-        // the job; a fresh request may inspect the preserved partial again.
+        // The job retains the pending claim across errors and dropped hash futures.
+        // The confirmation owner can then join native IO and retire it off-loop.
+        // Lease-only cleanup preserves the partial until proof acceptance.
+        self.receive_write_claim = claim;
         self.resume_preparing = true;
-        let result = transfer_prefix_sha256(
+        let prefix = transfer_prefix_sha256(
             &mut file, expected_size, offset, self.resume_cancelled.as_deref(),
         ).await
             .and_then(|prefix| {
@@ -4720,27 +4722,13 @@ impl TransferJob {
                     bail!("resume prefix differs from the current source");
                 }
                 Ok(prefix)
-            });
-        let prefix = match result {
-            Ok(prefix) => prefix,
-            Err(error) => {
-                drop(file);
-                if let Some(mut claim) = claim {
-                    claim.cleanup_on_drop = ReceiveClaimCleanup::None;
-                    if let Err(cleanup) = claim._lease.retire() {
-                        return Err(anyhow!("{error}; pending resume lease cleanup failed: {cleanup}"));
-                    }
-                }
-                return Err(error);
-            }
-        };
+            })?;
         if expected_prefix.is_some() {
-            if let Some(claim) = claim.as_mut() {
+            if let Some(claim) = self.receive_write_claim.as_mut() {
                 claim.cleanup_on_drop = ReceiveClaimCleanup::Artifacts;
             }
         }
         self.data_stream = Some(file);
-        self.receive_write_claim = claim;
         self.resume_preparing = false;
         self.transferred = transferred;
         self.finished_size = finished_size;
@@ -6321,7 +6309,12 @@ mod tests {
                     assert!(result.is_err());
                     assert!(!job.file_confirmed());
                     assert_eq!((job.finished_size(), job.transferred()), (0, 0));
-                    assert!(job.receive_write_claim.is_none());
+                    let pending = receive && matches!(case, "wrong" | "wrong-size" | "wrong-offset");
+                    assert_eq!(job.receive_write_claim.is_some(), pending);
+                    if pending {
+                        let error = ReceivePathLease::acquire(&target, false).unwrap_err();
+                        assert_eq!(error.kind(), std::io::ErrorKind::WouldBlock);
+                    }
                 }
                 job.retire_current_file_state().unwrap();
                 if case != "valid" || !receive {
@@ -6433,7 +6426,12 @@ mod tests {
             assert!(cancelled_after_read, "confirmation must still be pending after its first read");
             assert!(job.resume_preparing);
             assert!(!job.file_confirmed());
-            assert!(job.data_stream.is_none() && job.receive_write_claim.is_none());
+            assert!(job.data_stream.is_none());
+            assert_eq!(job.receive_write_claim.is_some(), receive);
+            if receive {
+                let error = ReceivePathLease::acquire(&target, false).unwrap_err();
+                assert_eq!(error.kind(), std::io::ErrorKind::WouldBlock);
+            }
             assert_eq!((job.finished_size(), job.transferred()), (0, 0));
             assert_err_contains(job.confirm_with_offset(0, prefix.len() as u64).await.unwrap_err(),
                 "previous resume preparation did not complete");

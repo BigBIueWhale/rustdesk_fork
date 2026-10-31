@@ -122445,3 +122445,26 @@ the two accepted completed-worker controls. Four existing prefix/content/cancell
 tests join the focused lane. This is unchanged-product baseline preparation; no
 new failure or pass is yet claimed. Admission refusal, CM/full application work,
 staging lifecycle failures and all other user parks remain open.
+
+Baseline `97998c9ab495a415c880b4b845ee32615fe9011c`, TUF `piaX8AeKiq`, preserves
+both completed-worker controls but fails all four new hash-cancel/mismatch phases:
+each blocks the connection executor and needs the observer's three-second release.
+All six phases restore capacity, preserve saved bytes and reacquire the lease before
+the verdict; all four added existing prefix regressions pass. The native case exits
+101 after 12.15 seconds. Artifact SHA-256
+`2072aaac2c5d6f9a84e63a106ca2e496ec9a13a82c8a36292c6d6382950ee972`.
+Serial 16,914 bytes, SHA-256
+`d86df630254e941cedf4afcea1c25aa7b5d78979f249c01ce4e4701a1775c144`.
+QEMU 3098849 joins after 154.179 seconds; RAM `run.ri8p36q5` retires and all four
+listener deltas are zero. Seven raw files / 89,861 bytes are hash-verified on both
+hosts before removing 3,461,120 allocated bytes of exact failed-run diagnostic scratch.
+
+The candidate installs the pending receive claim on the job before hashing and
+removes inner synchronous retirement. Failed/dropped hashing leaves the job terminal
+and the claim lease-only; successful proof application alone enables artifact
+cleanup. The existing confirmation owner joins the worker and retires that claim
+off-loop. Updated direct-API checks require competing lease acquisition to fail until
+explicit retirement, preserve unconfirmed state/counters and require fresh recovery.
+CM's direct error handler already removes the failed write job and calls its cleanup
+helper; that path still requires scheduling/integration work. No candidate pass is
+claimed yet, and the six native sync oracles remain unchanged.

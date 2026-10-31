@@ -2,7 +2,7 @@ use super::*;
 use scrap::codec::{Quality, BR_BALANCED, BR_BEST, BR_SPEED};
 use std::{
     collections::VecDeque,
-    sync::Arc,
+    sync::{Arc, Condvar, MutexGuard},
     time::{Duration, Instant},
 };
 
@@ -143,6 +143,7 @@ struct DisplayData {
 // Main QoS controller structure
 pub struct VideoQoS {
     fps: u32,
+    rate_changed: Arc<Condvar>,
     ratio: f32,
     users: HashMap<i32, UserData>,
     // One current choice per live viewer, ordered by its latest request.
@@ -158,6 +159,7 @@ impl Default for VideoQoS {
     fn default() -> Self {
         VideoQoS {
             fps: FPS,
+            rate_changed: Arc::new(Condvar::new()),
             ratio: BR_BALANCED,
             users: Default::default(),
             qualities: Default::default(),
@@ -180,6 +182,17 @@ impl VideoQoS {
     // Calculate seconds per frame based on current FPS
     pub fn spf(&self) -> Duration {
         Duration::from_secs_f32(1. / (self.fps() as f32))
+    }
+
+    pub(super) fn wait_for_next_frame(mut qos: MutexGuard<'_, Self>, frame_start: Instant) {
+        let changed = qos.rate_changed.clone();
+        loop {
+            let remaining = qos.spf().saturating_sub(frame_start.elapsed());
+            if remaining.is_zero() {
+                return;
+            }
+            qos = changed.wait_timeout(qos, remaining).unwrap().0;
+        }
     }
 
     // Get current FPS within valid range
@@ -266,7 +279,9 @@ impl VideoQoS {
         self.users.remove(&id);
         self.retire_quality(id);
         if self.users.is_empty() {
-            *self = Default::default();
+            // Capture waiters still belong to the same controller across a reset.
+            *self = Self { rate_changed: self.rate_changed.clone(), ..Default::default() };
+            self.rate_changed.notify_all();
         } else {
             self.adjust_fps();
         }
@@ -707,7 +722,11 @@ impl VideoQoS {
         }
 
         // Ensure fps stays within valid range
-        self.fps = fps.clamp(MIN_FPS, highest_fps);
+        let fps = fps.clamp(MIN_FPS, highest_fps);
+        if self.fps != fps {
+            self.fps = fps;
+            self.rate_changed.notify_all();
+        }
     }
 }
 
@@ -810,6 +829,57 @@ mod tests {
         }
         assert_eq!(qos.fps(), FPS);
         qos
+    }
+
+    #[test]
+    fn capture_pacing_tracks_rate_changes_and_rechecks_notifications() {
+        use std::sync::{mpsc, Mutex};
+        use std::thread;
+
+        for case in ["recovered", "lower-limit", "last-peer", "notification-only"] {
+            let mut qos = healthy_controller();
+            if matches!(case, "recovered" | "last-peer") {
+                qos.user_network_delay(7, 4020);
+                qos.user_network_delay(7, 4020);
+                assert_eq!(qos.fps(), 1);
+            } else {
+                qos.user_custom_fps(7, 5);
+                assert_eq!(qos.fps(), 5);
+            }
+            let qos = Arc::new(Mutex::new(qos));
+            let worker_qos = qos.clone();
+            let (ready_tx, ready_rx) = mpsc::sync_channel(1);
+            let worker = thread::spawn(move || {
+                let guard = worker_qos.lock().unwrap();
+                let start = Instant::now();
+                ready_tx.send(()).unwrap();
+                VideoQoS::wait_for_next_frame(guard, start);
+                start.elapsed()
+            });
+            ready_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+            // Acquiring the mutex proves that the worker entered its wait.
+            let mut guard = qos.lock().unwrap();
+            match case {
+                "recovered" => {
+                    guard.user_network_delay(7, 20);
+                    guard.user_network_delay(7, 20);
+                    assert_eq!(guard.fps(), 10);
+                }
+                "lower-limit" => guard.user_custom_fps(7, 1),
+                "last-peer" => guard.on_connection_close(7),
+                "notification-only" => guard.rate_changed.notify_all(),
+                _ => unreachable!(),
+            }
+            drop(guard);
+            let elapsed = worker.join().unwrap();
+            println!("VIDEO_QOS_PACING=observed case={case} elapsed_us={} worker=joined", elapsed.as_micros());
+            match case {
+                "recovered" | "last-peer" => assert!(elapsed < Duration::from_millis(600)),
+                "lower-limit" => assert!(elapsed >= Duration::from_secs(1)),
+                "notification-only" => assert!(elapsed >= Duration::from_millis(200)),
+                _ => unreachable!(),
+            }
+        }
     }
 
     fn write_test_display_support(

@@ -3917,7 +3917,8 @@ mod tests {
     where
         S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
     {
-        assert!(CLIENTS.write().unwrap().clients.remove(&id).is_none());
+        assert!(CLIENTS.read().unwrap().clients.get(&id)
+            .map(|client| client.disconnected).unwrap_or(true));
         let ui = CmTaskOwnerTestUi::default();
         let mut runner_stream = ipc::ConnectionTmpl::new(runner_io);
         runner_stream.set_max_packet_length(ipc::CM_IPC_MAX_FRAME_BYTES);

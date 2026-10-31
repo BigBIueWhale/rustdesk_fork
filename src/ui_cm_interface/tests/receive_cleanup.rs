@@ -19,10 +19,49 @@ struct Response { id: u64, value: i64, error: i32, flags: u32 }
 
 struct Gate {
     identity: (u64, u64),
-    held: oneshot::Sender<u32>,
+    owner: CmClientOwner,
+    ui: CmTaskOwnerTestUi,
+    held: oneshot::Sender<(u32, HeldOwnership)>,
     release: std_mpsc::Receiver<()>,
     finished: oneshot::Sender<bool>,
 }
+
+#[derive(Debug)]
+struct HeldOwnership {
+    current: bool,
+    in_flight: bool,
+    capacity: bool,
+    ui_pending: bool,
+    admission_refused: bool,
+}
+
+impl HeldOwnership {
+    fn observe(owner: CmClientOwner, ui: &CmTaskOwnerTestUi) -> Self {
+        let mut registry = CLIENTS.write().unwrap();
+        let current = registry.clients.get(&owner.id).map(|client|
+            client.registry_generation == owner.generation && !client.disconnected).unwrap_or(false);
+        let in_flight = registry.in_flight_file_operations.get(&owner.id) == Some(&owner.generation);
+        let mut successor = registry_test_client(owner.id, "same-peer");
+        // Try a newer source too: an unfinished cleanup must exclude replacement.
+        // Roll back an unexpectedly accepted reservation without publishing it.
+        let admission_refused = match registry.prepare_admission(&mut successor, 1) {
+            Err(CmClientAdmissionError::FileOperationInFlight) => true,
+            Ok(reservation) => { registry.abort_admission(reservation); false }
+            Err(_) => false,
+        };
+        drop(registry);
+        Self { current, in_flight, admission_refused,
+            capacity: CM_FILE_OPERATION_LIMIT.available_permits() == CM_FILE_OPERATION_DRAIN_CAPACITY - 1,
+            ui_pending: lock_cm_egress_test(&ui.removed).is_empty() }
+    }
+
+    fn retained(&self) -> bool {
+        self.current && self.in_flight && self.capacity && self.ui_pending && self.admission_refused
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Exit { Cancel, CancelAbandoned, Close, Disconnected, Eof, Abort }
 
 struct Observer {
     commands: std_mpsc::SyncSender<(Gate, oneshot::Sender<()>)>,
@@ -58,7 +97,9 @@ impl Observer {
                     let meta = fs::metadata(format!("/proc/thread-self/fd/{}", notification.data.args[0])).unwrap();
                     if (meta.dev(), meta.ino()) == active.identity {
                         let active = gate.take().unwrap();
-                        let _ = active.held.send(notification.pid);
+                        // Observe before releasing fsync even if the runtime is blocked.
+                        let ownership = HeldOwnership::observe(active.owner, &active.ui);
+                        let _ = active.held.send((notification.pid, ownership));
                         // Release a stalled baseline without depending on its executor.
                         let explicit = active.release.recv_timeout(Duration::from_secs(3)).is_ok();
                         report = Some((active.finished, explicit));
@@ -124,18 +165,21 @@ async fn listing(peer: &mut ipc::ConnectionTmpl<tokio::net::UnixStream>, id: i32
 }
 
 #[test]
-fn stalled_cancel_retains_owner_and_keeps_other_connection_responsive() {
+fn stalled_retirement_retains_owner_and_keeps_other_connection_responsive() {
     cm_file_operation_reaper().unwrap();
     let observer = Observer::new();
     let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
     let main_tid = unsafe { libc::syscall(libc::SYS_gettid) } as u32;
     let observations = runtime.block_on(async {
         let mut observations = Vec::new();
-        for abandon in [false, true] {
-            let id = 2_000_200_030 + i32::from(abandon);
+        for (offset, exit) in [Exit::Cancel, Exit::CancelAbandoned, Exit::Close,
+            Exit::Disconnected, Exit::Eof, Exit::Abort].into_iter().enumerate() {
+            let abandon = exit == Exit::CancelAbandoned;
+            let cancel = matches!(exit, Exit::Cancel | Exit::CancelAbandoned);
+            let id = 2_000_200_030 + offset as i32;
             let temp = CmFileTestDir::new("native_receive_cleanup");
             fs::write(temp.join("incoming"), b"original").unwrap();
-            let (mut task, mut peer, _socket, ui) = admitted_cm_native_output_test(id).await;
+            let (mut task, mut peer, socket, ui) = admitted_cm_native_output_test(id).await;
             let generation = CLIENTS.read().unwrap().clients[&id].registry_generation;
             let (mut other_task, mut other_peer, _other_socket, other_ui) = admitted_cm_native_output_test(id + 10).await;
             command(&mut peer, ipc::FS::NewWrite { path: get_string(&temp.path), id: 17,
@@ -158,22 +202,28 @@ fn stalled_cancel_retains_owner_and_keeps_other_connection_responsive() {
             let (release, released) = std_mpsc::sync_channel(1);
             let (finished, continued) = oneshot::channel();
             observer.commands.send((Gate { identity: (meta.dev(), meta.ino()), held,
+                owner: CmClientOwner { id, generation }, ui: ui.clone(),
                 release: released, finished }, armed)).unwrap();
             ready.await.unwrap();
             let started = Instant::now();
-            command(&mut peer, ipc::FS::CancelWrite { id: 17, conn_id: id, generation: 4 }).await;
-            let tid = tokio::time::timeout(Duration::from_secs(4), notification).await.unwrap().unwrap();
+            match exit {
+                Exit::Cancel | Exit::CancelAbandoned =>
+                    command(&mut peer, ipc::FS::CancelWrite { id: 17, conn_id: id, generation: 4 }).await,
+                Exit::Close => peer.send(&Data::Close).await.unwrap(),
+                Exit::Disconnected => peer.send(&Data::Disconnected).await.unwrap(),
+                Exit::Eof => socket.shutdown(std::net::Shutdown::Both).unwrap(),
+                Exit::Abort => task.abort(),
+            }
+            let (tid, ownership) = tokio::time::timeout(Duration::from_secs(4), notification).await.unwrap().unwrap();
             let responsive = tid != main_tid && started.elapsed() < Duration::from_secs(1);
             if responsive {
-                assert_eq!(CM_FILE_OPERATION_LIMIT.available_permits(), CM_FILE_OPERATION_DRAIN_CAPACITY - 1);
-                assert_eq!(CLIENTS.read().unwrap().clients[&id].registry_generation, generation);
-                assert!(lock_cm_egress_test(&ui.removed).is_empty());
-                let mut successor = registry_test_client(id, "same-peer");
-                assert!(matches!(CLIENTS.write().unwrap().admit(&mut successor, 1),
-                    Err(CmClientAdmissionError::FileOperationInFlight)));
                 tokio::time::timeout(Duration::from_secs(1), listing(&mut other_peer, id + 10, &temp.path)).await.unwrap();
-                assert!(tokio::time::timeout(Duration::from_millis(50), peer.next()).await.is_err(),
-                    "cleanup result preceded native retirement");
+                if cancel {
+                    assert!(tokio::time::timeout(Duration::from_millis(50), peer.next()).await.is_err(),
+                        "cleanup result preceded native retirement");
+                } else if exit != Exit::Abort {
+                    assert!(!task.is_finished(), "connection returned before native retirement");
+                }
             }
             let elapsed = started.elapsed();
             if abandon {
@@ -187,40 +237,52 @@ fn stalled_cancel_retains_owner_and_keeps_other_connection_responsive() {
             }
             let _ = release.send(());
             let explicit = continued.await.unwrap();
-            if !abandon {
+            if exit == Exit::Cancel {
                 assert!(matches!(reply(&mut peer, id).await,
                     ipc::CmFileResponseKind::WriteCancelled { id: 17, generation: 4, file_num: 0, result: Ok(()) }));
                 peer.send(&Data::Close).await.unwrap();
+                tokio::time::timeout(Duration::from_secs(3), &mut task).await.unwrap().unwrap();
+            } else if exit == Exit::Abort {
+                assert!(tokio::time::timeout(Duration::from_secs(3), &mut task).await.unwrap().unwrap_err().is_cancelled());
+            } else if !abandon {
                 tokio::time::timeout(Duration::from_secs(3), &mut task).await.unwrap().unwrap();
             }
             tokio::time::timeout(Duration::from_secs(3), async {
                 loop {
                     let registry = CLIENTS.read().unwrap();
-                    if !registry.clients.contains_key(&id) && !registry.in_flight_file_operations.contains_key(&id)
+                    let retired = registry.clients.get(&id).map(|client|
+                        exit == Exit::Disconnected && client.disconnected && client.registry_generation == generation).unwrap_or(true);
+                    if retired && !registry.in_flight_file_operations.contains_key(&id)
                         && CM_FILE_OPERATION_LIMIT.available_permits() == CM_FILE_OPERATION_DRAIN_CAPACITY { break; }
                     drop(registry);
                     tokio::time::sleep(Duration::from_millis(1)).await;
                 }
             }).await.unwrap();
-            assert_eq!(*lock_cm_egress_test(&ui.removed), vec![(id, generation, true)]);
+            assert_eq!(*lock_cm_egress_test(&ui.removed), vec![(id, generation, exit != Exit::Disconnected)]);
             assert_eq!(fs::read(temp.join("incoming")).unwrap(), b"original");
             assert!(!namespaces[0].exists());
             listing(&mut other_peer, id + 10, &temp.path).await;
             other_peer.send(&Data::Close).await.unwrap();
             tokio::time::timeout(Duration::from_secs(3), &mut other_task).await.unwrap().unwrap();
             assert_eq!(lock_cm_egress_test(&other_ui.removed).len(), 1);
+            if exit == Exit::Disconnected {
+                let registry = CLIENTS.read().unwrap();
+                let retired = registry.clients.get(&id).unwrap();
+                assert!(retired.disconnected);
+                assert_eq!(retired.registry_generation, generation);
+            }
             let (mut successor, mut successor_peer, _socket, successor_ui) = admitted_cm_native_output_test(id).await;
             assert!(CLIENTS.read().unwrap().clients[&id].registry_generation > generation);
             listing(&mut successor_peer, id, &temp.path).await;
             successor_peer.send(&Data::Close).await.unwrap();
             tokio::time::timeout(Duration::from_secs(3), &mut successor).await.unwrap().unwrap();
             assert_eq!(lock_cm_egress_test(&successor_ui.removed).len(), 1);
-            println!("CM_RECEIVE_SYNC=observed abandon={abandon} responsive={responsive} held_us={} explicit_release={explicit} owner=retired permits=returned original=preserved staging=absent successor=usable", elapsed.as_micros());
-            observations.push(responsive && explicit);
+            println!("CM_RECEIVE_SYNC=observed exit={exit:?} responsive={responsive} held_us={} explicit_release={explicit} held_owner={ownership:?} owner=retired permits=returned original=preserved staging=absent successor=usable", elapsed.as_micros());
+            observations.push(responsive && explicit && ownership.retained());
         }
         observations
     });
     drop(runtime);
     drop(observer);
-    assert_eq!(observations, vec![true; 2]);
+    assert_eq!(observations, vec![true; 6]);
 }

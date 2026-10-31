@@ -16246,6 +16246,30 @@ exports the accepted retirement-sync retry observation. The command exits one
 without a complete unit-suite acceptance receipt. Raw evidence and joined cleanup
 are recorded in the audit; all other parks remain unchanged.
 
+**Explicit fresh receive (`df25069a` / `ddab13c9`) — Linux library accepted; application OPEN.**
+At unchanged-product baseline `8eca613c`, all eight saved-partial cases fail with
+EEXIST after successful zero-offset confirmation; four absent-partial controls pass.
+Both confirmation directions, matching/nonmatching metadata and absent/present
+prior finals are covered. Linux fresh confirmation now owns one destination lease
+through saved-artifact validation, exact private-namespace retirement and its
+durability barrier, old-handle closure and exclusive new-pair creation. The job
+retains the new stream/claim before its first block. Raw writes without explicit
+confirmation still refuse occupied artifacts. Active receive state cannot be reset;
+failed/interrupted preparation prevents job reuse. Other-platform behavior is unchanged.
+
+At exact final product `ddab13c9`, TUF `JbC6jf3LD9` passes all **44 focused tests**:
+the twelve unchanged restart scenarios now succeed, ten active-owner/shared/linked/
+malformed-artifact controls refuse without changing saved state or prior output,
+and the existing unconfirmed-write collision test passes. The root/UID-4001 run
+`qRipXM9q1J` preserves all nineteen authority/crash scenarios, twenty joined actors
+and four filesystem-full controls. Digest exhaustion now occurs before confirmation,
+where setup moved; refusal, cleanup and later recovery still pass. Its three known
+completed-layout cases fail unchanged, so the canonical metadata command exits one.
+The audit retains exact source/artifact/raw identities and joined bounded-RAM cleanup.
+Full application/CM scheduling, interrupted fresh-confirmation integration, other
+platforms and installed/release acceptance remain OPEN; the staging exception and
+full-parent/viewer resumption decisions remain pending.
+
 **Resume content binding — library correction accepted; caller acceptance OPEN/STOP-SHIP.**
 Baseline `640a9680`, TUF `ZoWbc47wT7`, accepts staged `abc` against source `XYZdef`
 with equal size/mtime in both confirmation directions, publishes `abcdef` and reports

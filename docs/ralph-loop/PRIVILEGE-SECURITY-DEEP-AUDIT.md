@@ -123040,3 +123040,39 @@ before explicit confirmation, where creation now occurs; that case submits no
 payload block and retains all refusal/recovery oracles. Broader root/UID-4001
 authority, crash and storage execution and the focused lane must bind this final
 source. The existing three completed-layout failures remain expected OPEN results.
+
+**Final native/component checkpoint at `ddab13c9`.** TUF `qRipXM9q1J` preserves
+all nineteen root/UID-4001 authority/crash scenarios, twenty joined actors, 25
+filesystem observations and four full-filesystem controls. Digest setup now refuses
+ENOSPC during confirmation before any payload block; the prior final, zero counters,
+exact retirement and fresh recovery all pass. The three completed-layout cases still
+fail with hidden staging, ENOTEMPTY and 31 records / 126,976 allocated bytes, zero
+added locks. The canonical command exits one; its 149-test/35-group library
+aggregate is emitted, but complete individual/outer unit acceptance is not exported
+on this failure path. Root-driver SHA-256
+`54dab4bee8aea61c372e12d935baecf3e947a28b9d1cb7f0c9102c6450b4ee9f`;
+driver source `2404f6327a0e38c5e66e471c6ba117bf3b66af3494a87392ce75bd2a40b6aeef`;
+serial `d415c936a058e0cfb4711bba1db3aad099b9d72b67184f3055eae9c46be4c948`.
+QEMU 3123839 joins after 274.231 seconds, RAM `run.ths27b8p` retires and all four
+listener deltas are zero. Seven raw files / 112,303 bytes are verified on both hosts;
+exact diagnostic cleanup reclaims 3,502,080 allocated bytes.
+
+The initial diagnostic-retirement attempt correctly refused while wrapper 3123367
+remained a zombie under the existing tmux server, despite terminal exit 1 and
+already-joined QEMU/RAM cleanup. A dedicated `/bin/true` bookkeeping session let
+tmux's normal child handling reap it; both wrapper and bookkeeping PID 3124425
+were proved absent before retirement or another VM. No parent signal, manager
+restart, host service change or product/test payload execution was used.
+
+Final focused run `JbC6jf3LD9` passes all 44 individually retained tests and the
+complete outer acceptance receipt. All twelve restart scenarios and ten refusal
+controls pass on final library SHA-256
+`3e03d1aa862ec13378499d97702f965457567c300f0506ba7a388ea13702d35c`, identical to
+the broader run's library artifact. QEMU 3124953 joins after 149.155 seconds, RAM
+`run.lsoghoxw` retires and all four listener deltas are zero. Serial SHA-256
+`c43430d503d5bcd0aeac6b367c77d4a3f8b72753ecbb62ea84aea229fd8b5bb8`.
+All 28 raw files across the four behavioral runs are verified on both hosts,
+and every exact wrapper/QEMU/bookkeeping PID is absent. This closes the reproduced
+Linux library fresh-restart failure, not application/CM scheduling, interrupted
+fresh-confirmation integration, other platforms, the three staging-layout failures
+or overall release acceptance. Both pending decisions and all parks are unchanged.

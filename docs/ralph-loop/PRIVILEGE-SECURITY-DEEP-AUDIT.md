@@ -122947,3 +122947,13 @@ QEMU 3118335 joins after 280.424 seconds; RAM `run.0sogkxdy` retires and all fou
 listener comparisons have zero changes. Seven raw files / 112,608 bytes are
 hash-verified on both hosts before exact diagnostic removal. Product source,
 requirements and live instructions remain unchanged.
+
+Exact diagnostic retirement reclaims 3,506,176 allocated bytes. Fresh ledger
+count at `929fcd09`, TUF `cFCOpi1AYZ`: **370,795 tokens / 1,697,790 bytes**,
+input SHA-256 `83587e088719d0df9efc9d997039374e5a415f77db76bacc80da33d2a83f27c6`.
+The pinned tokenizer passes all seven controls and the whole-input round trip.
+The count command exits zero; QEMU 3120325 joins after 31.018 seconds, RAM
+`run.jlfp47ar` retires and all three listener comparisons have zero changes.
+Serial SHA-256 `aa16085b58117230c11816bdbdb7b0c7a5cdabd10240dcd19610bade317f3c3c`.
+Thirteen raw files / 217,079 bytes for both runs are hash-verified per host.
+This audit-only receipt leaves the counted ledger and tested fixture unchanged.

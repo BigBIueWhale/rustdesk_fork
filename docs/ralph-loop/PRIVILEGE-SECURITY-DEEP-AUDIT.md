@@ -122298,3 +122298,26 @@ close case now exercises simultaneous producer reads in both directions, and the
 fresh-transfer control checks that closed admission cannot start a new job. These
 product/test changes require a new focused run; full-parent/viewer execution remains
 parked and is not replaced by these component cases.
+
+At `10d436d73e56572a96d1cd83d882279d5173b74e`, TUF `WCGRHPBRsD`, the producer
+roundtrips and receive lifecycle cases pass again, including simultaneous close of
+both directions. The fresh control still has the wrong order: initial source opening
+resets confirmation, so it must precede the zero-offset confirmation, as in the real
+digest/confirmation flow. The fixture now opens and announces its digest first;
+production source is unchanged by this second fixture correction. No full lane pass
+is claimed. Artifact SHA-256
+`d7ddf8557669e1280157d2e2f5f29f39ebfaa5503e31a084b855a6ba2b53193d`.
+Serial 10,339 bytes, SHA-256
+`ee056784f8e8b2308cd542faa2db34142af91bbe39e6ebabf2bf06ed7fb01f93`.
+QEMU 3055819 joins after 142.296 seconds and RAM `run.8vguj0k5` retires. The final
+inventory observes `tcp 127.0.0.1:8091` returning; it was present before the prior
+run and absent at this run's start. Cause remains unattributed; no baseline service
+is inspected or modified. Both failed runs' fourteen raw files total 170,161 bytes
+per host, hash-verified before exact diagnostic scratch retirement.
+
+One remaining responsiveness obligation is source-identified: normal confirmation
+collection/admission refusal still calls synchronous receive-claim retirement.
+Its filesystem work must leave the message loop under slow storage as well. The
+current fast local-file tests establish ownership/preservation, not a bounded
+cleanup latency or full handler responsiveness. This remains part of the next
+ownership correction alongside CM scheduling and parked application verification.

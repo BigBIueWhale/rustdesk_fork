@@ -579,12 +579,13 @@ mod tests {
             assert!(owner.prepare(fixture.job(722), file_num, offset).is_err());
             assert_eq!((owner.len(), owner.metas().count(), fixture.source_handles()), (0, 0, 0));
         }
-        owner.prepare(fixture.job(722), 0, 0).unwrap();
+        let mut fresh = fixture.job(722);
+        assert!(fresh.init_data_stream_for_cm().await.unwrap().is_some());
+        owner.prepare(fresh, 0, 0).unwrap();
         let completion = owner.next().await;
         assert!(matches!(completion.confirmation.unwrap().union,
             Some(file_transfer_send_confirm_request::Union::OffsetBlk(0))));
         let mut job = completion.job.unwrap().unwrap();
-        assert!(job.init_data_stream_for_cm().await.unwrap().is_none());
         assert_eq!(job.read().await.unwrap().unwrap().data.as_ref(), b"abcdef");
         job.retire_current_file_state().unwrap();
         owner.close_and_wait().await.unwrap();

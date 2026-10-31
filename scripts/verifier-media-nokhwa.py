@@ -214,6 +214,22 @@ def compile_probe(pins):
               'cp /config.toml /tmp/cargo-home/config.toml\n'
               'test "$(cargo --version)" = "cargo 1.75.0 (1d8b05cdd 2023-11-20)"\n'
               'test "$(rustc --version)" = "rustc 1.75.0 (82e1608df 2023-12-21)"\n'
+              'cp -R /probe /work/probe\n'
+              'chmod -R u+w /work/probe\n'
+              'cd /work/probe\n'
+              # The product lock projection includes edges enabled by other consumers.
+              # Let Cargo prune those edges, then reject any changed supplier identity.
+              'cargo metadata --offline --format-version=1 > /work/metadata.json\n'
+              "python3 - <<'PY'\n"
+              'import hashlib,json,tomllib\n'
+              'from pathlib import Path\n'
+              "key=lambda p:(p['name'],p['version'],p.get('source'),p.get('checksum'))\n"
+              "approved={key(p) for p in tomllib.loads(Path('/probe/Cargo.lock').read_text())['package']}\n"
+              "raw=Path('Cargo.lock').read_bytes(); selected=tomllib.loads(raw.decode())['package']\n"
+              "assert all(key(p) in approved for p in selected), 'camera resolution changed a pinned package'\n"
+              "print('CAMERA_NATIVE_LOCK='+json.dumps({'sha256':hashlib.sha256(raw).hexdigest(),"
+              "'bytes':len(raw),'packages':len(selected),'identities_unchanged':True},sort_keys=True))\n"
+              'PY\n'
               'cargo build --offline --locked --release --jobs 2 --target-dir /work/target\n')
     argv = ['create', '--pull=never', '--network=none', '--user=1000:1000',
             '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges',

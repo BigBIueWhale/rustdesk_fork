@@ -123958,3 +123958,47 @@ bytes within 4 GiB, and all three listener deltas are zero. Count serial SHA-256
 The six count files add 107,563 bytes. All thirteen new raw files / 191,524 bytes
 per host and the exact counted ledger hash are verified on both hosts; both run
 wrappers are absent. This audit-only receipt leaves the counted ledger unchanged.
+
+## 2026-10-31 — CM receive-cleanup observer reaches an environment prerequisite
+
+The selected R-S8/R-S11fi/R-S11is checkpoint is real CM cancellation while a
+receive-directory fsync is held, including outer-task abandonment. At `c8d1a734`,
+the new Linux test uses the production CM runner and Unix sockets with a fixture
+authority validator. A seccomp notification observer continues original fsync
+calls after explicit release or an independent three-second watchdog; it changes
+neither arguments nor results. The intended checks retain registry generation,
+bounded operation capacity and cleanup finality while another connection responds.
+This adds one test before the existing 21 caller tests, without a product change.
+
+TUF `xJWlNSEoqX`, `--linux-file-receive-caller-tests`, successfully generates
+the bridge and builds the full Linux Flutter-feature library in 179 seconds.
+Artifact SHA-256:
+`d8b30adc4d7b5a4ccf7799738131b80bb4ea66c043993e90bb321ab5f2ec35b5`.
+The new test fails after 0.01 seconds at its first directory-response assertion,
+before arming the held-sync observer. The assertion does not print the unexpected
+response; this is not a reproduced executor stall or evidence of cleanup failure.
+The other 21 tests remain unexecuted and the outer command exits one.
+
+Source inspection identifies an environment prerequisite to repair: the guest's
+explicit UID-1000 NSS account is provided to library and viewer-resume profiles,
+but not file-receive-caller. Production receive coordination requires the OS
+account's home, rather than accepting HOME as authority. Extend that same isolated
+account setup to this profile and retain the unexpected typed reply in the test's
+diagnostic, then rerun the unchanged cleanup acceptance conditions. Confirm the
+actual cause from execution before attributing the failed setup to that omission.
+No product, installed-authority or complete caller acceptance is claimed. This
+work and its necessary TUF builds remain authorized under PROMPT.md:79–116;
+the active goal has no outstanding permission dependency.
+
+QEMU 3195054 joins with zero status after 428.342 seconds; wrapper 3194546 and
+RAM workspace `run.n02nz_k3` are absent. Peak scratch is 6,291,128,320 bytes
+within 7 GiB, with minimum available host memory 34,457,866,240 bytes. The first
+three listener deltas are zero; the final snapshot adds loopback TCP 127.0.0.1:8091.
+Read-only socket inspection identifies `sysengadk-hostd`, PID 3195657. That host
+process is not used or changed; no clean listener-delta acceptance is claimed.
+Seven raw files / 80,765 bytes per host are hash-verified before removing
+3,448,832 allocated bytes of exact disposable diagnostics. Serial:
+`android-rust-lifecycle-tests-run.xJWlNSEoqX.serial.log`, SHA-256
+`be593c0ee2dce67ba9ca070c53fb23d3e98214661901a8050e0394b22498723c`.
+HARDENING_STATUS.md's slow-storage and caller-lifetime gaps remain OPEN and its
+previously counted contents are unchanged.

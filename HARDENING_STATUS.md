@@ -43,6 +43,12 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**Linux suspended-viewer isolation verified (2026-11-01):** Two complete Flutter
+viewers retain their connections while one is stopped for ten seconds. The other
+continues presenting current pixels; the stopped viewer recovers after resume.
+R-S11fl below records exact measurements and artifacts. This is one Linux X11
+cycle; other platforms, installed artifacts, packet loss, queues and soaks remain OPEN.
+
 **Native Linux theme correction verified (2026-11-01):** Patch `42dbfc74`
 requires a usable settings read before selecting the portal, restoring the GNOME
 provider when the portal is absent or unusable. The native comparison reproduces
@@ -4089,8 +4095,17 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   focused Rust state regressions cover real blocked-wait wakeup, acknowledging-peer retirement, all-disconnected
   release, refresh interruption, retired-receipt refusal, and successor progress. The global source-name,
   documentation-wiring, and mutation duplicates are deleted while both focused Rust execution lanes remain. A
-  historical portable Linux two-viewer run reached RGBA publication without reconnect while a second viewer
-  withheld receipt, but it did not exercise Flutter/compositor presentation or current packaged artifacts.
+  historical portable Linux two-viewer run reached RGBA publication while a second viewer withheld receipt.
+  Complete-app TUF `Rc15AW6lIC` at harness `1bb6b8ea`, reusing app `16ba2033` and engine `ddb1541d`, now
+  verifies actual X11 pixels: one viewer remains kernel-stopped with frozen pixels for 10,010 ms while the
+  healthy viewer presents 21 distinct states over eight seconds, maximum sampled age 771 ms and maximum
+  gap between fresh observations 54 ms (not an inter-frame timing claim). After resume, the stopped viewer
+  presents four fresh frames within 1,113 ms; its initial old image reaches 10,623 ms during recovery.
+  Both retain their exact TCP identities and satisfy the predefined thread/FD/RSS growth bounds. Both
+  viewers, the server and their owned processes join; VM/RAM retire with four zero listener deltas.
+  Receipt: `viewer-isolation-1bb6b8ea.json`. This one-cycle process-suspension result does not establish
+  queue depths, all-stalled capture/encode bounds, input latency, packet-loss recovery, soak, installed
+  packages, other platforms, cross-version behavior or complete release acceptance; those remain OPEN.
 - **R-S11fm/R-S11e-200 desktop texture activation finality** — Source closed. A display slot publishes a new
   current texture only after that exact candidate’s asynchronous native activation/pointer acquisition succeeds;
   failure retires the candidate without displacing the prior live texture.
@@ -4165,11 +4180,11 @@ exist; it does not upgrade those checks into target-native, package, latency, so
 The narrow native/runtime facts still worth carrying are deliberately few. R-S11fk’s networkless container
 regression used a real kernel TCP connection and demonstrated that a successful local writer receipt can precede
 the peer’s first read; this justifies the distinct authenticated peer-receipt state but proves nothing about
-presentation. R-S11fl’s historical 2026-08-11 portable Linux run exercised a real server plus two keyed viewers,
-withheld one viewer’s exact receipt, and allowed the healthy viewer to recover at the RGBA callback without
-reconnect; it was based on an unpushed candidate, stopped before Flutter/compositor presentation, and is not
-current-master or release evidence. The later tracked R-S11gc full-peer Linux receipt is retained in its dedicated
-entry and is the stronger presentation result. Historical Linux/Android compilation, deterministic behavior tests,
+presentation. R-S11fl's complete-app suspended-viewer result above advances the historical 2026-08-11
+portable run, which stopped at the RGBA callback on an unpushed candidate. The newer receipt observes
+both Flutter viewers' actual pixels on explicit retained artifacts; it does not close the native release matrix.
+The tracked R-S11gc full-peer Linux receipt remains in its dedicated entry. Historical Linux/Android
+compilation, deterministic behavior tests,
 portable Windows callback-core tests, and macOS cfg/parser/child checks establish only the layers they actually ran.
 
 Presentation evidence consists of executable Dart/Rust state-machine tests and isolated Windows/Linux native runners.

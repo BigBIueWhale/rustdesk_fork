@@ -128939,3 +128939,33 @@ binds signalling to the retained process; its
 [signal contract](https://man7.org/linux/man-pages/man7/signal.7.html)
 defines stop/continue behavior. The controller resumes its owned process on
 failure as well. Shell parsing and diff checks pass; native execution is pending.
+
+Acceptance: first replay TUF `Rc15AW6lIC` at `1bb6b8ea` / tree
+`095d15e1213624a58a4780bcd799ede8183e6b5a` exits zero on unchanged app
+`16ba2033` / engine `ddb1541d`. The suspended viewer remains kernel-stopped
+with unchanged actual pixels for 10,010 ms. During eight seconds within that
+hold, the healthy viewer presents 21 distinct states with maximum sampled age
+771 ms. Its maximum gap between fresh observations is 54 ms, not a bound on
+inter-frame intervals. Three-second healthy observations before and after also
+pass. Resume presents four fresh frames within 1,113 ms; the recovery receipt's
+10,623-ms maximum includes the expected initially frozen image, not recovered
+steady-state latency. Each admitted fresh frame meets the existing 1,000-ms oracle.
+
+Both exact TCP connections survive. Slow-viewer RSS changes 364,856 to
+363,080 KiB, threads 60 to 53 and FDs remain 45; healthy-viewer RSS changes
+357,528 to 360,972 KiB, threads 65 to 56 and FDs remain 45. These are endpoint
+samples against the predefined growth limits, not queue or sustained resource
+proof. Both real viewers, Xvfb instances, server and source join. The UI driver
+builds twice identically, SHA-256
+`9c1e4a6538893bd4b9626f7c3afd6573d4ce3c5e291d6c6302d04e0ede3f2fdd`.
+
+QEMU 4185907/wrapper 4184845 are absent; the private run and exact RAM workspace
+retire after 155.021 supervisor seconds, with 3,016,425,472 peak allocated bytes.
+All four independently decoded listener deltas are zero. Capsule
+`viewer-isolation-1bb6b8ea.json` (7,481 bytes, SHA-256
+`bc5a21bc6445a0ce373ae99b67367f92771d64ddec47b47d18caf4968884420c`)
+and its seven raw files verify on both hosts. No production change was needed.
+This closes one Linux complete-app suspension scenario; all-stalled capture,
+queue depths, input latency, network impairment, soaks, installed packages,
+other platforms, cross-version and complete release acceptance remain OPEN.
+A fresh ledger count follows the status update.

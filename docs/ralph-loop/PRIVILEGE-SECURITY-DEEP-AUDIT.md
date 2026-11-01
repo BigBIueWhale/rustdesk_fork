@@ -128075,3 +128075,14 @@ scope repair leaves unrelated parked checks open. Bash/Python syntax and whitesp
 checks pass. Physical calibration, current full-app/peer input and displayed effects,
 other platforms, installed authority and release acceptance remain OPEN. A fresh
 ledger count follows; the broad goal remains active and incomplete.
+
+Fresh count at `f07d0635`, TUF `onMfjp13BQ`, passes at 387,514 tokens /
+1,774,365 bytes, input SHA-256
+`59488322b0188ebbfc211ce577e636bf56cad9ef0d20271dfccdfd549eb53ec1`.
+Seven controls and the complete-input round trip pass. QEMU 3957206 and wrapper
+3955785 are absent; 402,575,360 peak RAM bytes retire after 30.260 supervisor
+seconds, with three zero listener deltas. Serial SHA-256:
+`a03fd4f26a121021e6fcae83d2bdedc5d3f2814be5ec0ef9f6523b9697cd4abe`.
+The four input attempts and count retain 39 raw files (745,452 bytes), hash-verified
+on both hosts. This audit-only receipt preserves the counted ledger. No owned VM
+remains; the scrolling correction reaches a component-validation checkpoint.

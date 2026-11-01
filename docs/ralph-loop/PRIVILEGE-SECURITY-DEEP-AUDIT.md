@@ -127498,3 +127498,20 @@ test or broad ELF/package investigation is added. Positive real-chooser saving,
 PNG readback and fresh installed-artifact acceptance remain OPEN. The next
 decisive step needs an authenticated native chooser in the isolated runtime,
 then the real Save As dialog and independently checked saved image.
+
+Correction `d83cd87c5cfdecac04314a45872f90af876eb2f0`, tree
+`aecc729370511321ca29f67fa53e2340d6e82816`, passes the unchanged focused
+`bash scripts/smoke-verifier-vm-authority.sh --debian-polkit-tests` in TUF
+`xF0NG9ncLj`: seven existing dependency cases, seven desktop-resource cases and
+three package-CLI cases. The production generator executes and native dpkg
+archives are constructed/read. This validates its existing archive contracts;
+it does not execute apt dependency installation or a chooser. Generator SHA-256
+is `38417d3638ad74f1387f4e536185c87964e77459f4e95c5b3a283d8cbb124800`;
+the production control fixture's `.deb` SHA-256 is
+`200edce0252ffd60f9a903c6493ccfd6a4f06c66c7a8ccc0754079d4f3a196e0`.
+QEMU 3892590 and wrapper 3891200 are absent, all three listener deltas are zero
+and 401,235,968 peak RAM bytes retire after 12.508 supervisor seconds (nine outer
+seconds). Serial SHA-256:
+`aad00415f8eafd9e3aa05b7ea458e52828bd6bd2d0c5d039ba2278a32bf31909`.
+The current ledger now records the omission, correction, actual negative-path
+evidence and remaining positive-save acceptance; its fresh count follows.

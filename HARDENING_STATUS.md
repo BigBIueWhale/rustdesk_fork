@@ -2624,6 +2624,24 @@ The final transaction takes 142 seconds. Harness, oracle, test bodies, compiler,
 inputs and resource budgets are identical across A/B. Exact sources, PNG/RGBA
 hashes and cleanup are retained in `screenshot-x11-f539fc01.json`.
 
+**Screenshot Save As provider — dependency corrected; positive native save OPEN.**
+`d83cd87c` adds `zenity | kdialog` to the Debian package's required dependencies,
+matching the existing Linux file-picker providers. In the full application replay
+at `2fcfa1ed`, the real screenshot request produces its action dialog, but Save As
+displays the exact missing-zenity error when all three supported providers are
+absent. The original authenticated TCP connection remains, sampled RSS grows
+3,484 KiB, threads grow by one and descriptors remain unchanged. The retained
+`cf437894` app and its screenshot path are unmodified; native accessibility reads
+observe the selectable error text. Three earlier fixture-observation failures
+are retained without completed scenario claims. The focused package-generation
+run at `d83cd87c` passes its existing 7 dependency, 7 resource and 3 CLI checks
+using the corrected generator and actual control archives. All five VMs join,
+RAM scratch retires and all 19 listener deltas are zero. Exact identities and
+receipts are in the audit's screenshot runtime-prerequisite entry. This closes
+the declared dependency omission, not successful saving: a real authenticated
+chooser input, saved PNG readback and fresh installed-artifact acceptance remain
+OPEN. Screenshot Copy/Cancel and picker-cancellation work remains parked.
+
 **Presentation YUV sampling — Linux component accepted; application tracing OPEN.**
 `6714a3a1` samples planar U and V with their independent strides and checked
 offsets. The former private server helper moves to `scrap::yuv_samples`, and

@@ -126308,3 +126308,16 @@ product or pixel-decoding failure. Require an unsigned state independently of
 monotonic ordering, and add the negative-first-state refusal to the existing
 scheduled-observation cases. Focused isolated execution of this correction is
 pending; the two-hour Android integration remains open.
+
+At `2a456e58`, TUF `efryKQ0COU` passes that focused correction in 65.599 seconds:
+all eleven scheduled refusals, the 7,201-sample synthetic two-hour schedule,
+freshness boundary controls and existing native cases pass. Actual X11 observation
+spans 3,123 ms/four samples, p50 134 ms, p95/max 151 ms, observer age 1 ms and
+maximum gap 1,005 ms. This remains observer evidence, not a two-hour Android run.
+QEMU 3675092 joins exit 0, wrapper 3673154 exits, and the 3,861,405,696-byte peak
+RAM workspace retires; three listener deltas are zero. Seven retained raw/closure
+files total 88,653 bytes and are hash-verified on CTE/TUF. Serial SHA-256:
+`5b2d53551cfa42f084f746ea0b40ae56384ed45e94702afb8debb4c6561d1ad9`.
+The scheduled-observer checkpoint is complete. The next selected work remains
+bounded-log/runtime integration and the actual uninterrupted two-hour app/peer
+control; product behavior, input-to-visible latency and full R-F5 stay open.

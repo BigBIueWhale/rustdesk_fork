@@ -126198,3 +126198,13 @@ source's 64-MiB ceiling while preserving any lower inherited limits. Checking
 [fflush](https://man7.org/linux/man-pages/man3/fflush.3.html) catches buffered output
 failures before success is reported. Correction and focused native replay follow;
 these bounds do not establish multi-hour Android behavior.
+
+First corrected run at `667bf62f`, TUF `upNq3BJajf`, passes the 500,000-record
+64-MiB reader exercise and builds two byte-identical source fixtures. It then
+stops compiling the unchanged current controller: the focused test's pkg-config
+list omits GTK, already required by that controller and included in the normal
+peer-stage build. Aligning this one compile command with the existing stage
+adds `gtk+-3.0`; no dependency or product change is needed. Native pixels and
+producer-limit checks have not run yet. The 59.048-second VM joins and retires
+3,740,790,784 peak RAM bytes with three zero listener deltas. Serial SHA-256:
+`0f852bf0a5ef621d0a16eb3a6330c087affe1a6b1d7284b953163d8b47df7be4`.

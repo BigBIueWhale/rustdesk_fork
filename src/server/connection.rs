@@ -5134,7 +5134,7 @@ pub struct Connection {
     cm_command_failure: Option<String>,
     cm_auth_token: String,
     cm_file_login_published: bool,
-    auto_disconnect_timer: Option<(Instant, u64)>,
+    auto_disconnect_timer: Option<(Instant, u16)>,
     authed_conn_id: Option<self::raii::AuthedConnID>,
     file_remove_log_control: FileRemoveLogControl,
     last_supported_encoding: Option<SupportedEncoding>,
@@ -7130,7 +7130,7 @@ impl Connection {
                     }
                     raii::AuthedConnID::check_wake_lock_on_setting_changed();
                     if let Some((instant, minute)) = conn.auto_disconnect_timer.as_ref() {
-                        if instant.elapsed().as_secs() > minute * 60 {
+                        if instant.elapsed().as_secs() > u64::from(*minute) * 60 {
                             conn.send_close_reason_no_retry("Connection failed due to inactivity").await;
                             conn.on_close("auto disconnect", true).await;
                             break;
@@ -12739,9 +12739,9 @@ impl Connection {
         }
     }
 
-    fn get_auto_disconenct_timer() -> Option<(Instant, u64)> {
+    fn get_auto_disconenct_timer() -> Option<(Instant, u16)> {
         if Config::get_option("allow-auto-disconnect") == "Y" {
-            let mut minute: u64 = Config::get_option("auto-disconnect-timeout")
+            let mut minute: u16 = Config::get_option("auto-disconnect-timeout")
                 .parse()
                 .unwrap_or(10);
             if minute == 0 {

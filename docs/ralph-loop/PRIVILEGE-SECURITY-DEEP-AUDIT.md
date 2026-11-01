@@ -126755,3 +126755,23 @@ listener deltas are zero. The admitted standard profile was bounded but larger
 than needed. Select the existing 7 GiB scratch / 6 GiB overlay parent profile,
 and register the exact compiler entry with Flutter and the existing 240-second
 build budget before the actual unchanged-product baseline.
+
+Unchanged-product baseline `5e3453e1`, TUF `sFYIiOwfxO`, compiles the complete
+Linux parent and executes all twenty timer values. Five oversized integers reach
+the timer unchanged; two have no representable u64 seconds conversion. The other
+fifteen values, forty disabled observations, fresh timestamps and no read-side
+configuration mutation pass before the final aggregate assertion fails. This
+observes unsafe timer admission, not an actual connection panic.
+Artifact SHA-256: `2fae83c9a851482f59edc19afc42954fac1442a8f212686ddf31be3475d9fa5c`.
+Serial SHA-256: `a6c2bb9d066e36a81168608b9ebfc0803ab605d0ca8fb36be2c0831207d4be4c`.
+QEMU 3815551 and wrapper 3815058 join after 347.858 seconds; 6,292,996,096 peak
+RAM bytes retire and all four listener deltas are zero. The marker is reconciled
+as `idle-timeout-baseline.sFYIiOwfxO` before any source mutation or another run.
+
+The four-line product correction changes stored/admitted minutes to u16 and
+widens to u64 before multiplying by 60 at expiry. The type now admits only the
+existing editor's supported range. Zero and invalid values keep the existing
+ten-minute default; disabled settings and activity-reset ordering are unchanged.
+No timer-saturation fallback, new dependency, API mode or settings-write mutation
+is introduced. Run the identical regression and full-parent build on this candidate;
+candidate acceptance is not yet claimed.

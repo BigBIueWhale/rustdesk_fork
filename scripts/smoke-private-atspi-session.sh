@@ -21,7 +21,11 @@ case "$1" in
       || fail 'AT-SPI preflight session paths differ'
     ;;
   viewer)
-    [ "${DISPLAY:-}" = :99 ] \
+    viewer_display=:99
+    if [ "${FLUTTER_PEER_SCENARIO:-}:${FLUTTER_PEER_ROLE:-main}" = viewer-isolation:slow ]; then
+      viewer_display=:97
+    fi
+    [ "${DISPLAY:-}" = "$viewer_display" ] \
       && [ "${HOME:-}" = /tmp/viewer-home ] \
       && [ "${XDG_RUNTIME_DIR:-}" = /tmp/viewer-runtime ] \
       || fail 'viewer session paths differ'

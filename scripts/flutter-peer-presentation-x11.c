@@ -61,6 +61,8 @@
 #define DIALOG_STABLE_SCANS 5U
 
 static const unsigned int blur_hold_ms[FOCUS_CYCLE_COUNT] = {2000U, 6000U, 12000U};
+/* Only the two-process scenario filters the shared network table by this viewer's FDs. */
+static int connection_fds = -1;
 
 static const char test_password[] = "rustdesk-peer-9f2a7c4e";
 static const char replacement_password[] = "rustdesk-peer-c7e49f2a";
@@ -1362,6 +1364,32 @@ static int observe_current_frames_for_duration(Display *source, Display *display
     return final_gap <= FRESH_LIMIT_MS && *distinct_states >= duration_ms / 1000U ? 0 : -1;
 }
 
+static int viewer_owns_socket(unsigned long inode) {
+    if (connection_fds < 0) return 1;
+    int fd = openat(connection_fds, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (fd < 0) return -1;
+    DIR *directory = fdopendir(fd);
+    if (directory == NULL) { close(fd); return -1; }
+    char expected[64], target[128];
+    snprintf(expected, sizeof(expected), "socket:[%lu]", inode);
+    unsigned int count = 0U;
+    int result = 0;
+    for (;;) {
+        errno = 0;
+        struct dirent *entry = readdir(directory);
+        if (entry == NULL) { if (errno != 0) result = -1; break; }
+        if (entry->d_name[0] == '.') continue;
+        if (++count > 4096U) { result = -1; break; }
+        ssize_t size = readlinkat(fd, entry->d_name, target, sizeof(target) - 1U);
+        if (size < 0 && errno == ENOENT) continue;
+        if (size < 0 || (size_t)size >= sizeof(target) - 1U) { result = -1; break; }
+        target[size] = '\0';
+        if (strcmp(target, expected) == 0) { result = 1; break; }
+    }
+    if (closedir(directory) != 0) result = -1;
+    return result;
+}
+
 static int read_connection_identity_excluding(ConnectionIdentity *identity,
                                                const ConnectionIdentity *exclude) {
     FILE *stream = fopen("/proc/net/tcp", "r");
@@ -1386,6 +1414,9 @@ static int read_connection_identity_excluding(ConnectionIdentity *identity,
         (void)slot;
         if (fields == 5 && strcmp(state, "01") == 0 &&
             strcmp(remote, "0100007F:527E") == 0) {
+            int owned = viewer_owns_socket(inode);
+            if (owned < 0) { fclose(stream); return -1; }
+            if (!owned) continue;
             if (exclude != NULL && strcmp(local, exclude->local) == 0 &&
                 strcmp(remote, exclude->remote) == 0 && inode == exclude->inode) continue;
             if (strlen(local) >= sizeof(identity->local) ||
@@ -3225,6 +3256,140 @@ out:
     return result;
 }
 
+static int isolation_marker(int coord, const char *name, int publish) {
+    char temporary[64], bytes[7];
+    struct stat metadata;
+    int fd, result = -1;
+    if (publish) {
+        int length = snprintf(temporary, sizeof(temporary), "%s.tmp", name);
+        if (length <= 0 || (size_t)length >= sizeof(temporary)) return -1;
+        fd = openat(coord, temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+        if (fd < 0) return -1;
+        result = write_all(fd, "ready\n", 6U);
+        if (close(fd) != 0) result = -1;
+        if (result == 0 && syscall(SYS_renameat2, coord, temporary, coord, name, 1U) != 0)
+            result = -1;
+        return result;
+    }
+    fd = openat(coord, name, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC);
+    if (fd < 0) return errno == ENOENT ? 0 : -1;
+    if (fstat(fd, &metadata) == 0 && S_ISREG(metadata.st_mode) &&
+        metadata.st_uid == geteuid() && metadata.st_gid == getegid() && metadata.st_nlink == 1 &&
+        (metadata.st_mode & 07777) == 0600 && metadata.st_size == 6 &&
+        read(fd, bytes, sizeof(bytes)) == 6 && memcmp(bytes, "ready\n", 6U) == 0) result = 1;
+    if (close(fd) != 0) result = -1;
+    return result;
+}
+
+static int wait_isolation_marker(int coord, const char *name, unsigned int budget) {
+    uint64_t deadline = monotonic_millis() + budget;
+    do {
+        int ready = isolation_marker(coord, name, 0);
+        if (ready != 0) return ready == 1 ? 0 : -1;
+        if (sleep_millis(40U) != 0) return -1;
+    } while (monotonic_millis() < deadline);
+    fprintf(stderr, "FLUTTER_PEER_X11_FAIL isolation marker=%s deadline_ms=%u\n", name, budget);
+    return -1;
+}
+
+static int exercise_viewer_isolation(Display *source, Display *display, ViewerWindow *viewer,
+                                    SourceHistory *history, const char *start,
+                                    const ConnectionIdentity *connection,
+                                    const ProcessResources *baseline, int slow) {
+    int coord = open_coord_root(), process = -1, pidfd = -1, resume = 0, result = -1;
+    char path[64], state = '\0';
+    const char *phase = "initial";
+    uint64_t gap = 0U, age = 0U, fresh = 0U;
+    unsigned int distinct = 0U, connected = 0U, listeners = 0U;
+    ConnectionIdentity after = {{0}, {0}, 0UL};
+    ProcessResources resources = {0};
+    if (coord < 0) goto out;
+    if (slow) {
+        snprintf(path, sizeof(path), "/proc/%lu", viewer->pid);
+        process = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+        pidfd = (int)syscall(SYS_pidfd_open, (pid_t)viewer->pid, 0U);
+        if (process < 0 || pidfd < 0 || !viewer_pidfd_alive(pidfd) ||
+            viewer_process_state(process, viewer->pid, start, &state) != 0 || state == 'T' ||
+            isolation_marker(coord, "slow.ready", 1) != 0 ||
+            wait_isolation_marker(coord, "healthy.ready", 60000U) != 0) goto out;
+        phase = "suspend";
+        if (syscall(SYS_pidfd_send_signal, pidfd, SIGSTOP, NULL, 0U) != 0) goto out;
+        resume = 1;
+        uint64_t deadline = monotonic_millis() + 1000U;
+        do {
+            if (!viewer_pidfd_alive(pidfd) ||
+                viewer_process_state(process, viewer->pid, start, &state) != 0) goto out;
+            if (state == 'T') break;
+            if (sleep_millis(10U) != 0) goto out;
+        } while (monotonic_millis() < deadline);
+        if (state != 'T' || sleep_millis(200U) != 0) goto out;
+        uint64_t captured = 0U, held = monotonic_millis();
+        int64_t frozen = viewer_state(display, viewer, &captured);
+        if (frozen < 0 || isolation_marker(coord, "slow.frozen", 1) != 0) goto out;
+        phase = "frozen-hold";
+        do {
+            if (!viewer_pidfd_alive(pidfd) ||
+                viewer_process_state(process, viewer->pid, start, &state) != 0 || state != 'T' ||
+                viewer_state(display, viewer, &captured) != frozen ||
+                sleep_millis(SAMPLE_INTERVAL_MS) != 0) goto out;
+        } while (monotonic_millis() - held < 10000U);
+        if (isolation_marker(coord, "healthy.observed", 0) != 1 ||
+            session_socket_counts(&connected, &listeners) != 0 || connected != 4U || listeners != 1U ||
+            read_connection_identity(&after) != 0 || !same_connection(connection, &after)) goto out;
+        printf("FLUTTER_PEER_ISOLATION_FROZEN held_ms=%llu kernel_state=T pixels=frozen connected_sockets=4\n",
+               (unsigned long long)(monotonic_millis() - held));
+        phase = "resume";
+        uint64_t resumed = monotonic_millis();
+        if (syscall(SYS_pidfd_send_signal, pidfd, SIGCONT, NULL, 0U) != 0) goto out;
+        resume = 0;
+        if (wait_for_current_frames(display, viewer, history, RECOVERY_LIMIT_MS, 4U, &fresh, &age) != 0 ||
+            monotonic_millis() - resumed > RECOVERY_LIMIT_MS) goto out;
+        printf("FLUTTER_PEER_ISOLATION_RECOVERED elapsed_ms=%llu maximum_age_ms=%llu distinct=4\n",
+               (unsigned long long)(monotonic_millis() - resumed), (unsigned long long)age);
+        if (isolation_marker(coord, "slow.recovered", 1) != 0 ||
+            wait_isolation_marker(coord, "healthy.done", 15000U) != 0) goto out;
+    } else {
+        phase = "healthy-baseline";
+        if (session_socket_counts(&connected, &listeners) != 0 || connected != 4U || listeners != 1U ||
+            observe_current_frames_for_duration(source, display, viewer, history, 3000U,
+                                                &gap, &age, &distinct) != 0 || age > FRESH_LIMIT_MS ||
+            isolation_marker(coord, "healthy.ready", 1) != 0 ||
+            wait_isolation_marker(coord, "slow.frozen", 5000U) != 0) goto out;
+        phase = "healthy-during-suspension";
+        if (observe_current_frames_for_duration(source, display, viewer, history, 8000U,
+                                                &gap, &age, &distinct) != 0 || age > FRESH_LIMIT_MS ||
+            read_connection_identity(&after) != 0 || !same_connection(connection, &after) ||
+            isolation_marker(coord, "healthy.observed", 1) != 0) goto out;
+        printf("FLUTTER_PEER_ISOLATION_HEALTHY duration_ms=8000 maximum_gap_ms=%llu "
+               "maximum_age_ms=%llu distinct=%u stable_connection=true\n",
+               (unsigned long long)gap, (unsigned long long)age, distinct);
+        phase = "healthy-after-resume";
+        if (wait_isolation_marker(coord, "slow.recovered", 10000U) != 0 ||
+            observe_current_frames_for_duration(source, display, viewer, history, 3000U,
+                                                &gap, &age, &distinct) != 0 || age > FRESH_LIMIT_MS ||
+            session_socket_counts(&connected, &listeners) != 0 || connected != 4U || listeners != 1U)
+            goto out;
+    }
+    phase = "connection-and-resources";
+    if (read_connection_identity(&after) != 0 || !same_connection(connection, &after) ||
+        read_process_resources(viewer->pid, &resources) != 0 ||
+        !resources_are_bounded(baseline, &resources)) goto out;
+    print_resources(slow ? "isolation-slow" : "isolation-healthy", 1U, &resources);
+    if (!slow && isolation_marker(coord, "healthy.done", 1) != 0) goto out;
+    result = 0;
+out:
+    if (resume && syscall(SYS_pidfd_send_signal, pidfd, SIGCONT, NULL, 0U) != 0) result = -1;
+    if (pidfd >= 0 && close(pidfd) != 0) result = -1;
+    if (process >= 0 && close(process) != 0) result = -1;
+    if (coord >= 0 && close(coord) != 0) result = -1;
+    if (result != 0)
+        fprintf(stderr, "FLUTTER_PEER_X11_FAIL isolation role=%s phase=%s age_ms=%llu gap_ms=%llu\n",
+                slow ? "slow" : "healthy", phase, (unsigned long long)age, (unsigned long long)gap);
+    else printf("FLUTTER_PEER_ISOLATION_OK role=%s stable_connection=true resources=bounded\n",
+                slow ? "slow" : "healthy");
+    return result;
+}
+
 /* Cumulative namespace counters retain brief attempts between socket samples.
  * The fixture has one loopback TCP listener; X11 and AT-SPI use Unix sockets. */
 static int read_tcp_open_counts(TcpOpenCounts *counts, const char *phase) {
@@ -4484,6 +4649,8 @@ int main(int argc, char **argv) {
     AtspiAccessible *previous_caption = NULL;
 
     if (argc != 5 && (argc != 6 || (strcmp(argv[5], "--viewer-suspend") != 0 &&
+                                    strcmp(argv[5], "--isolation-slow") != 0 &&
+                                    strcmp(argv[5], "--isolation-healthy") != 0 &&
                                     strcmp(argv[5], "--keyboard-retirement") != 0 &&
                                     strcmp(argv[5], "--keyboard-input") != 0 &&
                                     strcmp(argv[5], "--mouse-input") != 0 &&
@@ -4511,7 +4678,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
+              "VIEWER_START [--viewer-suspend|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
         return 2;
     }
@@ -4540,6 +4707,14 @@ int main(int argc, char **argv) {
         viewer_pid > UINT_MAX) {
         fputs("FLUTTER_PEER_X11_FAIL invalid viewer pid\n", stderr);
         return 2;
+    }
+    int isolation = argc == 6 && (strcmp(argv[5], "--isolation-slow") == 0 ||
+                                  strcmp(argv[5], "--isolation-healthy") == 0);
+    if (isolation) {
+        char path[64];
+        snprintf(path, sizeof(path), "/proc/%lu/fd", viewer_pid);
+        connection_fds = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+        if (connection_fds < 0) return 1;
     }
     source = XOpenDisplay(source_name);
     display = XOpenDisplay(viewer_name);
@@ -4716,6 +4891,19 @@ int main(int argc, char **argv) {
         return 1;
     }
     print_resources("initial", 0U, &baseline_resources);
+
+    if (isolation) {
+        int result = exercise_viewer_isolation(source, display, &viewer, &history, argv[4],
+                                               &current_connection, &baseline_resources,
+                                               strcmp(argv[5], "--isolation-slow") == 0);
+        if (close(connection_fds) != 0) result = -1;
+        connection_fds = -1;
+        if (atspi_exit() != 0) result = -1;
+        if (close_viewer(display, viewer.window) != 0) result = -1;
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return result == 0 ? 0 : 1;
+    }
 
     if (argc == 6 && strcmp(argv[5], "--theme-save-failure") == 0) {
         int result = exercise_theme_save_failure(display, &viewer, &history, &current_connection);

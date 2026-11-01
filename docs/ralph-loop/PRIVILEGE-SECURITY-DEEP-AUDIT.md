@@ -128903,3 +128903,39 @@ QEMU 650720/wrapper 649229 are absent; 402,661,376 peak RAM bytes retire in
 `theme-save-ledger-d84397b9.json`. This audit-only completion preserves the
 counted ledger. No owned VM or RAM workspace remains; the broader goal is active
 and incomplete.
+
+### 2026-11-01 — complete-app suspended-viewer isolation
+
+Previous turn: progress; native Linux theme save refusal/retry passed. Select
+R-S11fl's shared-capture isolation and R-F5 actual presentation ahead of further
+theme cases. The August two-viewer result ends at RGBA publication, leaving this
+complete-app boundary unproved. This is not resumption of parked packet-loss,
+Android lifecycle, concurrent-key ownership or background-tab Close work.
+
+`ServiceTmpl::send_video_frame_with_targets` prepares the exact target/generation
+round before dispatch; `handle_one_frame` supplies the shared controller. The
+source and older component evidence do not establish a healthy Flutter window's
+pixels while another real viewer stops consuming. Reuse app `16ba2033` and engine
+`ddb1541d` for both viewers and server; no production change or rebuild is planned.
+
+The `--viewer-isolation` scenario creates two private capability-free viewer
+containers, separate machine IDs/profiles and X11 displays, sharing only the
+controlled server's closed network namespace and bounded coordination directory.
+Each viewer has a 2-GiB memory cap; with the 4-GiB server this preserves the
+existing 10-GiB guest admission. Both authenticate through actual password prompts.
+The observer binds each connection to socket FDs in that viewer's retained procfs
+FD directory rather than assuming one connection in the shared network table.
+
+After both present current pixels, the slow controller uses an exact pidfd to
+send SIGSTOP and repeatedly observes kernel T state and frozen X11 pixels for
+ten seconds. The healthy viewer must maintain at most 1,000-ms displayed age and
+fresh-frame gaps for eight seconds within that interval, plus three-second
+healthy observations before and after. SIGCONT recovery must present four fresh
+frames within 2,500 ms. Both retain their original TCP identity and existing
+resource-growth limits (8 threads, 16 FDs, 128 MiB RSS); both processes and their
+containers must join before the server is retired. Linux's
+[pidfd signal contract](https://man7.org/linux/man-pages/man2/pidfd_send_signal.2.html)
+binds signalling to the retained process; its
+[signal contract](https://man7.org/linux/man-pages/man7/signal.7.html)
+defines stop/continue behavior. The controller resumes its owned process on
+failure as well. Shell parsing and diff checks pass; native execution is pending.

@@ -75,6 +75,7 @@ case "$#:${1:-}" in
     if [ "$#" -eq 21 ]; then
       case "${21}" in
         --viewer-suspend) PEER_SCENARIO=viewer-suspend ;;
+        --viewer-isolation) PEER_SCENARIO=viewer-isolation ;;
         --network-impairment) PEER_SCENARIO=network-impairment ;;
         --network-loss) PEER_SCENARIO=network-loss ;;
         --clipboard-text) PEER_SCENARIO=clipboard-text ;;
@@ -240,6 +241,11 @@ elif [ "$PEER_SCENARIO" = clipboard-text ]; then
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined clipboard_cases=6 stable_connection=true resources=bounded'
+elif [ "$PEER_SCENARIO" = viewer-isolation ]; then
+  RUNTIME_CYCLES=1
+  SERVER_GENERATIONS='1'
+  SERVER_REPLACEMENTS=0
+  VIEWER_RESULT='viewer=joined xvfb=joined isolation=healthy stable_connection=true resources=bounded'
 elif [ "$PEER_SCENARIO" = viewer-suspend ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
@@ -344,6 +350,7 @@ WORKSPACE_ID=
 BUILD_WORK=
 SERVER_CID=
 declare -a CID_FILES=()
+SLOW_JOB=
 
 cleanup_container() {
   local cid_file=$1 cid
@@ -362,6 +369,10 @@ cleanup() {
   for cid_file in "${CID_FILES[@]}"; do
     cleanup_container "$cid_file" || cleanup_status=$?
   done
+  if [ -n "$SLOW_JOB" ]; then
+    wait "$SLOW_JOB" 2>/dev/null || true
+    SLOW_JOB=
+  fi
   if [ -n "$WORKSPACE" ]; then
     if [ -z "$WORKSPACE_ID" ] || [ ! -d "$WORKSPACE" ] || [ -L "$WORKSPACE" ] \
       || [ "$(stat -c '%d:%i:%u:%g:%a' "$WORKSPACE" 2>/dev/null)" != "$WORKSPACE_ID" ]; then
@@ -525,6 +536,8 @@ readonly SERVER_MACHINE_ID="$WORKSPACE/server.machine-id"
 readonly SERVER_MACHINE_ID_VALUE=727573746465736b2d73657276657231
 readonly VIEWER_MACHINE_ID="$WORKSPACE/viewer.machine-id"
 readonly VIEWER_MACHINE_ID_VALUE=727573746465736b2d76696577657231
+readonly SLOW_MACHINE_ID="$WORKSPACE/slow.machine-id"
+readonly SLOW_MACHINE_ID_VALUE=727573746465736b2d76696577657232
 [[ "$SERVER_MACHINE_ID_VALUE" =~ ^[0-9a-f]{32}$ ]] \
   && [[ "$VIEWER_MACHINE_ID_VALUE" =~ ^[0-9a-f]{32}$ ]] \
   && [ "$SERVER_MACHINE_ID_VALUE" != "$VIEWER_MACHINE_ID_VALUE" ] \
@@ -556,10 +569,12 @@ mv "$VIEWER_PASSWD.tmp" "$VIEWER_PASSWD"
 readonly VIEWER_PASSWD_ID="$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$VIEWER_PASSWD")"
 printf '%s\n' "$SERVER_MACHINE_ID_VALUE" > "$SERVER_MACHINE_ID.tmp"
 printf '%s\n' "$VIEWER_MACHINE_ID_VALUE" > "$VIEWER_MACHINE_ID.tmp"
-chmod 0400 "$SERVER_MACHINE_ID.tmp" "$VIEWER_MACHINE_ID.tmp"
+printf '%s\n' "$SLOW_MACHINE_ID_VALUE" > "$SLOW_MACHINE_ID.tmp"
+chmod 0400 "$SERVER_MACHINE_ID.tmp" "$VIEWER_MACHINE_ID.tmp" "$SLOW_MACHINE_ID.tmp"
 mv "$SERVER_MACHINE_ID.tmp" "$SERVER_MACHINE_ID"
 mv "$VIEWER_MACHINE_ID.tmp" "$VIEWER_MACHINE_ID"
-for endpoint in SERVER VIEWER; do
+mv "$SLOW_MACHINE_ID.tmp" "$SLOW_MACHINE_ID"
+for endpoint in SERVER VIEWER SLOW; do
   identity_path="${endpoint}_MACHINE_ID"
   identity_value="${endpoint}_MACHINE_ID_VALUE"
   [ -f "${!identity_path}" ] && [ ! -L "${!identity_path}" ] \
@@ -570,6 +585,7 @@ for endpoint in SERVER VIEWER; do
 done
 readonly SERVER_MACHINE_ID_ID="$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$SERVER_MACHINE_ID")"
 readonly VIEWER_MACHINE_ID_ID="$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$VIEWER_MACHINE_ID")"
+readonly SLOW_MACHINE_ID_ID="$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$SLOW_MACHINE_ID")"
 SOURCE_ARCHIVE=$SUPPLIED_SOURCE_ARCHIVE
 readonly SOURCE_ARCHIVE
 readonly SOURCE_ARCHIVE_SHA256="$(sha256sum "$SOURCE_ARCHIVE" | awk '{print $1}')"
@@ -661,9 +677,10 @@ inspect_container_contract() {
   local receipt_ends=0
   case "$label" in
     server) expected_machine_id_source=$SERVER_MACHINE_ID ;;
-    viewer)
+    viewer|slow-viewer)
       expected_passwd_source=$VIEWER_PASSWD
       expected_machine_id_source=$VIEWER_MACHINE_ID
+      [ "$label" != slow-viewer ] || expected_machine_id_source=$SLOW_MACHINE_ID
       expected_atspi_mounts=1
       ;;
     *) die "unknown inspected runtime label: $label" ;;
@@ -758,7 +775,8 @@ inspect_container_contract() {
         coord_mounts=$((coord_mounts + 1))
         ;;
       /diagnostic)
-        [ "$label" = viewer ] && [ "$source" = "$FAILURE_ARTIFACT_DIR" ] \
+        { [ "$label" = viewer ] || [ "$label" = slow-viewer ]; } \
+          && [ "$source" = "$FAILURE_ARTIFACT_DIR" ] \
           && [ "$writable" = true ] \
           || die "$label failure-diagnostic mount contract differs"
         diagnostic_mounts=$((diagnostic_mounts + 1))
@@ -1222,16 +1240,19 @@ if [ "$PEER_SCENARIO" = network-impairment ] || [ "$PEER_SCENARIO" = network-los
   /usr/bin/python3 -I -S "$SOURCE_SNAPSHOT/scripts/flutter-peer-netem.py" --attach "$SERVER_CID"
   impairment_mount=(--mount 'type=bind,source=/run/rustdesk-verifier-vm/netem.sock,target=/netem.sock,readonly,bind-recursive=disabled')
 fi
-CID_FILES+=("$VIEWER_CID_FILE")
-set +e
-peer_vm_docker run --cidfile "$VIEWER_CID_FILE" \
+run_viewer_container() {
+  local cid_file=$1 role=$2 display=$3 machine_id=$VIEWER_MACHINE_ID
+  local memory=4g core=1073741824
+  [ "$PEER_SCENARIO" != viewer-isolation ] || memory=2g
+  if [ "$role" = slow ]; then machine_id=$SLOW_MACHINE_ID; core=0; fi
+  peer_vm_docker run --cidfile "$cid_file" \
   "${impairment_mount[@]}" \
   --pull=never --network="container:$SERVER_CID" --read-only \
   --user "$HOST_UID:$HOST_GID" \
   --cap-drop=ALL --security-opt=no-new-privileges \
-  --pids-limit=384 --memory=4g --memory-swap=4g --cpus=2 \
+  --pids-limit=384 --memory="$memory" --memory-swap="$memory" --cpus=2 \
   --ulimit nofile=4096:4096 --ulimit fsize=1073741824:1073741824 \
-  --ulimit core=1073741824:1073741824 \
+  --ulimit "core=$core:$core" \
   --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=1g \
   --mount "type=bind,source=$SOURCE_SNAPSHOT,target=/source,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$BUILD_OUTPUT,target=/out,readonly,bind-recursive=disabled" \
@@ -1248,18 +1269,56 @@ peer_vm_docker run --cidfile "$VIEWER_CID_FILE" \
   --mount "type=bind,source=$ATSPI_ROOT/usr/share/defaults/at-spi2,target=/usr/share/defaults/at-spi2,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$ATSPI_ROOT/usr/share/dbus-1/accessibility-services,target=/usr/share/dbus-1/accessibility-services,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$VIEWER_PASSWD,target=/etc/passwd,readonly,bind-recursive=disabled" \
-  --mount "type=bind,source=$VIEWER_MACHINE_ID,target=/etc/machine-id,readonly,bind-recursive=disabled" \
-  --env DISPLAY=:99 \
+  --mount "type=bind,source=$machine_id,target=/etc/machine-id,readonly,bind-recursive=disabled" \
+  --env "DISPLAY=$display" \
   --env HOME=/tmp/viewer-home \
   --env XDG_RUNTIME_DIR=/tmp/viewer-runtime \
   --env XDG_DATA_DIRS=/atspi-root/usr/share:/usr/local/share:/usr/share \
   --env RUSTDESK_PRESENTATION_TRACE=1 \
   --env "FLUTTER_PEER_SCENARIO=$PEER_SCENARIO" \
+  --env "FLUTTER_PEER_ROLE=$role" \
   "$DEV_CHECK_IMAGE_CONFIG_ID" \
-  bash --noprofile --norc /source/scripts/smoke-private-atspi-session.sh viewer \
-  > "$VIEWER_LOG" 2>&1
+  bash --noprofile --norc /source/scripts/smoke-private-atspi-session.sh viewer
+}
+if [ "$PEER_SCENARIO" = viewer-isolation ]; then
+  SLOW_CID_FILE="$WORKSPACE/slow.$cycle.cid"
+  SLOW_LOG="$WORKSPACE/slow.$cycle.log"
+  CID_FILES+=("$SLOW_CID_FILE")
+  (trap - EXIT HUP INT TERM
+   run_viewer_container "$SLOW_CID_FILE" slow :97) >"$SLOW_LOG" 2>&1 &
+  SLOW_JOB=$!
+  for _ in $(seq 1 900); do
+    [ ! -e "$COORD/slow.ready" ] || break
+    sleep 0.1
+  done
+  if [ ! -f "$COORD/slow.ready" ] || [ -L "$COORD/slow.ready" ] \
+    || [ "$(stat -c '%u:%g:%a:%h:%s' "$COORD/slow.ready")" != "$HOST_UID:$HOST_GID:600:1:6" ] \
+    || [ "$(<"$COORD/slow.ready")" != ready ]; then
+    cat "$SLOW_LOG" >&2
+    die 'second viewer did not authenticate and present initial pixels'
+  fi
+  SLOW_CID=$(<"$SLOW_CID_FILE")
+  inspect_container_contract "$SLOW_CID" "container:$SERVER_CID" slow-viewer
+fi
+CID_FILES+=("$VIEWER_CID_FILE")
+set +e
+run_viewer_container "$VIEWER_CID_FILE" main :99 >"$VIEWER_LOG" 2>&1
 viewer_status=$?
+slow_status=0
+if [ -n "$SLOW_JOB" ]; then
+  wait "$SLOW_JOB"
+  slow_status=$?
+  SLOW_JOB=
+fi
 set -e
+if [ "$PEER_SCENARIO" = viewer-isolation ]; then
+  cat "$SLOW_LOG"
+  inspect_container_contract "$SLOW_CID" "container:$SERVER_CID" slow-viewer
+  [ "$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$SLOW_MACHINE_ID")" = "$SLOW_MACHINE_ID_ID" ] \
+    && [ "$(<"$SLOW_MACHINE_ID")" = "$SLOW_MACHINE_ID_VALUE" ] \
+    || die 'second viewer machine identity changed'
+  if [ "$slow_status" -ne 0 ]; then viewer_status=$slow_status; fi
+fi
 VIEWER_CID=$(<"$VIEWER_CID_FILE")
 [[ "$VIEWER_CID" =~ ^[0-9a-f]{64}$ ]] || die 'viewer container identity is malformed'
 inspect_container_contract "$VIEWER_CID" "container:$SERVER_CID" viewer
@@ -1319,6 +1378,11 @@ grep -Fxq "FLUTTER_PEER_SERVER_RUNTIME_OK server=joined source=joined xvfb=joine
   "$SERVER_LOG" || die 'server terminal verdict is missing'
 [ "$(<"$COORD/viewer.result")" = "$VIEWER_RESULT" ] \
   || die 'viewer result receipt differs'
+if [ "$PEER_SCENARIO" = viewer-isolation ]; then
+  [ "$(<"$COORD/slow.result")" = 'viewer=joined xvfb=joined isolation=slow stable_connection=true resources=bounded' ] \
+    || die 'suspended viewer result receipt differs'
+  cleanup_container "$SLOW_CID_FILE"
+fi
 [ "$(<"$COORD/server.result")" = \
   "server=joined source=joined xvfb=joined listener=closed replacements=$SERVER_REPLACEMENTS" ] \
   || die 'server result receipt differs'

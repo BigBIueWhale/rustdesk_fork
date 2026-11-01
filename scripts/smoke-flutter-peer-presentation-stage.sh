@@ -14,11 +14,19 @@ fail() {
 [ "$#" -eq 1 ] \
   || fail 'expected one stage: input-check, atspi-check, pub-cache, pub-cache-check, build-drivers, prepare-sdk, build-app, server, or viewer'
 readonly PEER_SCENARIO=${FLUTTER_PEER_SCENARIO:-focus-reconnect-resource}
+readonly PEER_ROLE=${FLUTTER_PEER_ROLE:-main}
+VIEWER_DISPLAY=:99
+case "$PEER_SCENARIO:$PEER_ROLE" in
+  viewer-isolation:slow) VIEWER_DISPLAY=:97 ;;
+  *:main) ;;
+  *) fail 'unknown viewer role' ;;
+esac
+readonly VIEWER_DISPLAY
 MENU_ACTION=pointer
 [ "$PEER_SCENARIO" != credential-menu-accessible ] || MENU_ACTION=accessible
 readonly MENU_ACTION
 case "$PEER_SCENARIO" in
-  session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure) EXPECTED_RESTARTS=0 ;;
+  session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|viewer-isolation) EXPECTED_RESTARTS=0 ;;
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
   viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation|credential-forget|credential-menu|credential-menu-accessible) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
@@ -1236,7 +1244,7 @@ PY
       || fail 'viewer passwd identity witness differs'
     [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] \
       || fail 'viewer lacks its private D-Bus accessibility session'
-    [ "${DISPLAY:-}" = :99 ] \
+    [ "${DISPLAY:-}" = "$VIEWER_DISPLAY" ] \
       && [ "${HOME:-}" = /tmp/viewer-home ] \
       && [ "${XDG_RUNTIME_DIR:-}" = /tmp/viewer-runtime ] \
       && [ "${XDG_DATA_DIRS:-}" = \
@@ -1287,7 +1295,7 @@ PY
     trap 'exit 129' HUP
     trap 'exit 130' INT
     trap 'exit 143' TERM
-    start_xvfb :99 1280x800x24 /tmp/viewer-xvfb.log
+    start_xvfb "$VIEWER_DISPLAY" 1280x800x24 /tmp/viewer-xvfb.log
     listener_is_exact || fail 'shared namespace lost the exact loopback server listener'
     [ "$(udp_socket_count)" -eq 0 ] || fail 'shared namespace has a UDP socket before connect'
     viewer_generations=1
@@ -1322,7 +1330,14 @@ PY
       >/tmp/viewer.log 2>&1 &
     VIEWER_PID=$!
     VIEWER_START=$("$READY" --identity "$VIEWER_PID")
-    controller_args=(:98 :99 "$VIEWER_PID" "$VIEWER_START")
+    controller_args=(:98 "$VIEWER_DISPLAY" "$VIEWER_PID" "$VIEWER_START")
+    if [ "$PEER_SCENARIO" = viewer-isolation ]; then
+      if [ "$PEER_ROLE" = slow ]; then
+        controller_args+=(--isolation-slow)
+      else
+        controller_args+=(--isolation-healthy)
+      fi
+    fi
     if [ "$PEER_SCENARIO" = theme-restart ]; then
       theme_phases=(light dark system restore)
       controller_args+=("--theme-${theme_phases[viewer_generation - 1]}")
@@ -1479,6 +1494,12 @@ PY
       elif [ "$PEER_SCENARIO" = credential-menu ] || [ "$PEER_SCENARIO" = credential-menu-accessible ]; then
         viewer_result='viewer=joined xvfb=joined credential_menu=passed generations=3 password_entries=1 saved_credential=empty next_prompt=required'
       fi
+    elif [ "$PEER_SCENARIO" = viewer-isolation ]; then
+      isolation_role=healthy
+      [ "$PEER_ROLE" != slow ] || isolation_role=slow
+      grep -Fxq "FLUTTER_PEER_ISOLATION_OK role=$isolation_role stable_connection=true resources=bounded" \
+        <<<"$controller_output" || fail 'native two-viewer isolation result is absent'
+      viewer_result="viewer=joined xvfb=joined isolation=$isolation_role stable_connection=true resources=bounded"
     elif [ "$PEER_SCENARIO" = theme-save-failure ]; then
       grep -Fxq 'FLUTTER_PEER_THEME_SAVE_REFUSED error=visible pixels=light radio=light file=unchanged kernel=EACCES' \
         <<<"$controller_output" \
@@ -1718,11 +1739,14 @@ PY
     "$READY" --stop "$XVFB_PID" "$XVFB_START"
     wait "$XVFB_PID" 2>/dev/null || true
     XVFB_PID= XVFB_START=
-    printf '%s\n' "$viewer_result" \
-      > "$COORD/viewer.result.tmp"
-    mv "$COORD/viewer.result.tmp" "$COORD/viewer.result"
-    printf 'viewer-complete\n' > "$COORD/stop.tmp"
-    mv "$COORD/stop.tmp" "$COORD/stop"
+    result_name=viewer.result
+    [ "$PEER_ROLE" != slow ] || result_name=slow.result
+    printf '%s\n' "$viewer_result" > "$COORD/$result_name.tmp"
+    mv "$COORD/$result_name.tmp" "$COORD/$result_name"
+    if [ "$PEER_SCENARIO" != viewer-isolation ]; then
+      printf 'viewer-complete\n' > "$COORD/stop.tmp"
+      mv "$COORD/stop.tmp" "$COORD/stop"
+    fi
     printf 'FLUTTER_PEER_VIEWER_RUNTIME_OK %s\n' "$viewer_result"
     trap - EXIT HUP INT TERM
     ;;

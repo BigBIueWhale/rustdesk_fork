@@ -126148,3 +126148,13 @@ intermittent failure's cause or correction, ARM64 release/device acceptance,
 multi-hour resources/freshness, R-S0/R-F5 or independent review. Do not rerun this
 unchanged successful schedule; further reproduction needs a justified untested
 lifetime/workload. The broad release goal remains open.
+
+Final ledger checkpoint at `1804bd4a`, TUF `BmJ4mHJ0BZ`, passes in 31.092 seconds:
+**381,392 tokens**, 1,745,619 bytes, SHA-256
+`b85d9d1cfc5c7355ec3e492388702355cec50dcaae4f6375ac4eb7295c6fae0a`.
+The pinned `tiktoken-0.12.0/cl100k_base/encode_ordinary` method passes seven
+controls and the whole-input round trip; all 80 workload-admission controls and
+five refusals pass. QEMU 3597387 joins exit 0, its 402,571,264-byte peak RAM
+workspace retires, and all three listener deltas are zero. All 29 artifact,
+capsule and raw/count files (48,819,027 bytes) are hash-verified on CTE/TUF.
+This audit-only receipt preserves the counted ledger bytes.

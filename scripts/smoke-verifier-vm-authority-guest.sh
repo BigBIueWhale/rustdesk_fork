@@ -9891,6 +9891,12 @@ run_android_peer_build() {
         "$source_root/scripts/smoke-server-stage.sh" "$source_root/scripts/android-peer-artifact.py" \
         "$source_root/scripts/publish-artifact-result.py" "$source_root/Cargo.lock")"
 
+    if [ "$SERVER_GUESS_LIMITER" -eq 1 ]; then
+        setpriv --reuid=1000 --regid=1000 --clear-groups \
+            env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+            /bin/bash "$source_root/scripts/test-verifier-vm-run-admission.sh"
+    fi
+
     mkdir "$inputs" "$artifact_output"
     mount -t virtiofs -o ro,nodev,nosuid rustdesk-sealed-inputs "$inputs" \
         || fail 'cannot mount sealed Android peer inputs'

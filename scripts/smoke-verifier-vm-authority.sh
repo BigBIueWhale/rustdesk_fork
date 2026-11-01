@@ -8107,6 +8107,9 @@ elif [ "$MODE" = android-owner-tests ]; then
 elif [ "$MODE" = android-peer-build ]; then
     if [ "$SERVER_GUESS_LIMITER" -eq 1 ]; then
         require_exact_fixed_receipt \
+            'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cross_root_marker=refused active_lock=retained app_capsule=refused cleanup=joined' \
+            'native run-admission and cache-preservation regression'
+        require_exact_fixed_receipt \
             'SERVER_GUESS_LIMITER=pass auth=cpace eof=12 threshold=10 unrelated=keyed checkpoints=0,20,40 recovered=64s server=same listener=same cleanup=server-joined' \
             'native server limiter threshold, source isolation and real-window recovery'
     elif [ "$PEER_BUILD_PROFILE" = bounded ]; then

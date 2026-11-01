@@ -129295,3 +129295,28 @@ directory `66306:105155213` is inventoried and retired under the shared lock.
 Receipts: `input-response-diagnostic-failure-349b66c9.json` and
 `input-response-diagnostic-failure-retired.json`. No response-latency acceptance
 is claimed from these prerequisite compilation failures.
+
+The corrected CTE lane `hJ8ozsijJ2` at `94db4103` passes the four actual-X11
+no-input/held/partial/complete request cases and duplicate refusal, with exact
+source/Xvfb joins. All retained age/deadline/clock, stale-frame, geometry and
+full-HD controls pass. The source builds twice identically, SHA-256
+`3291bdeaf2f08d3bd33223b7bc844b033eef73004c40138ce2c95fb38a4205ba`.
+Wrapper 1787897/QEMU 1790867 retire with three zero decoded listener deltas,
+67.180 supervisor seconds and 3,844,403,200 peak RAM bytes. Capsule:
+`input-response-fixture-94db4103.json` (6,337 bytes, SHA-256
+`87314842f477d015dbc02cdca343461113b0a7d62d00f73f1cccca5805fefd00`).
+
+For complete-peer measurement, copy only the immutable app `0243c010` and
+engine `ddb1541d` to CTE, verifying the same manifest and every file/archive
+digest (159,433,640 retained bytes). This read-only TUF operation does not
+change its repository or live soak. CTE replay `73Jj0ZUjYT` authenticates and
+presents four fresh states (first 281 ms, maximum sampled age 319 ms), then
+fails input-measurement setup before any trial. The existing failure message
+does not distinguish focus/admission from bootstrap delivery; add bounded
+phase and focus diagnostics before changing behavior. Native input latency
+remains unmeasured. Wrapper 1822230/QEMU 1826708 are absent, four decoded
+listener deltas are zero and RAM retires after 116.156 seconds with
+3,012,136,960 peak bytes. The twelve retained failure-bundle files match the
+authenticated app; preserve their hashes and the small viewer log, then retire
+the exact duplicate bundle/private directory under the shared lock. Receipts:
+`input-latency-setup-failure-94db4103.json` and its retirement capsule.

@@ -3366,22 +3366,30 @@ static int exercise_input_latency(Display *source, Display *display, ViewerWindo
     int coord = open_coord_root(), result = -1;
     int64_t expected = -1;
     unsigned int histogram[FRESH_LIMIT_MS + 1U] = {0}, maximum = 0U, trial = 0U;
+    const char *phase = "setup";
     Window focus;
     int revert;
     uint64_t began = monotonic_millis();
     XGetInputFocus(source, &focus, &revert);
+    printf("FLUTTER_PEER_INPUT_LATENCY_SETUP source_focus=%lu source_root=%lu "
+           "source_released=%s viewer_released=%s\n", focus,
+           RootWindow(source, DefaultScreen(source)),
+           keyboard_is_released(source) ? "true" : "false",
+           keyboard_is_released(display) ? "true" : "false");
     if (coord < 0 || began == 0U ||
         focus != RootWindow(source, DefaultScreen(source)) ||
         return_focus_with_pointer(display, viewer) != 0 ||
         !keyboard_is_released(source) || !keyboard_is_released(display) ||
         send_response_request(display, 0U) != 0) goto out;
     /* Request zero switches the source from animation to event-driven updates. */
+    phase = "bootstrap-ready";
     for (;;) {
         int ready = input_response_ready(coord, &expected);
         if (ready < 0 || monotonic_millis() - began > 5000U) goto out;
         if (ready == 1) break;
         if (sleep_millis(10U) != 0) goto out;
     }
+    phase = "bootstrap-pixels";
     for (;;) {
         uint64_t captured = 0U;
         int64_t identity = viewer_state(display, viewer, &captured);
@@ -3391,6 +3399,7 @@ static int exercise_input_latency(Display *source, Display *display, ViewerWindo
         if (sleep_millis(10U) != 0) goto out;
     }
     for (trial = 0U; trial < SAMPLES; ++trial) {
+        phase = "quiet";
         uint64_t quiet = monotonic_millis(), previous = quiet, start_us, elapsed_us = 0U;
         unsigned int quiet_samples = 0U;
         ConnectionIdentity current = {{0}, {0}, 0UL};
@@ -3411,8 +3420,10 @@ static int exercise_input_latency(Display *source, Display *display, ViewerWindo
         if (quiet_samples < 4U || monotonic_millis() - quiet > QUIET_MS + 100U ||
             !keyboard_is_released(source) || !keyboard_is_released(display)) goto out;
         ++expected;
+        phase = "request";
         start_us = x11_frame_monotonic_us();
         if (start_us == 0U || send_response_request(display, trial + 1U) != 0) goto out;
+        phase = "response";
         for (;;) {
             uint64_t captured = 0U, now_us, age = 0U;
             int64_t identity = viewer_state(display, viewer, &captured);
@@ -3432,6 +3443,7 @@ static int exercise_input_latency(Display *source, Display *display, ViewerWindo
             if (sleep_millis(10U) != 0) goto out;
         }
         unsigned int latency = (unsigned int)((elapsed_us + 999U) / 1000U);
+        phase = "resources";
         if (!keyboard_is_released(source) || !keyboard_is_released(display) ||
             read_connection_identity(&current) != 0 || !same_connection(connection, &current) ||
             read_process_resources(viewer->pid, &resources) != 0 ||
@@ -3449,8 +3461,8 @@ static int exercise_input_latency(Display *source, Display *display, ViewerWindo
     result = 0;
 out:
     if (result != 0)
-        fprintf(stderr, "FLUTTER_PEER_X11_FAIL input-latency trial=%u identity=%lld errno=%d\n",
-                trial, (long long)expected, errno);
+        fprintf(stderr, "FLUTTER_PEER_X11_FAIL input-latency phase=%s trial=%u identity=%lld errno=%d\n",
+                phase, trial, (long long)expected, errno);
     if (coord >= 0 && close(coord) != 0) result = -1;
     return result;
 }

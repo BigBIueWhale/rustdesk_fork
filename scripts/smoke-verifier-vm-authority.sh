@@ -496,7 +496,7 @@ case "$#:${1:-}" in
             || { echo 'host network test input/run overrides are forbidden' >&2; exit 2; }
         MODE=host-network-tests
         ;;
-    5:--linux-service-receiver-tests|5:--linux-service-convergence-failure-tests|5:--linux-service-notification-failure-tests|5:--linux-service-network-drain-tests|5:--linux-service-authorization-timeout-tests)
+    5:--linux-service-receiver-tests|5:--linux-service-convergence-failure-tests|5:--linux-service-notification-failure-tests|5:--linux-service-network-drain-tests|5:--linux-service-authorization-timeout-tests|5:--linux-service-startup-tests)
         [ "$2" = --peer-commit ] && [ "$4" = --peer-manifest-sha256 ] \
             && [[ "$3" =~ ^[0-9a-f]{40}$ ]] && [[ "$5" =~ ^[0-9a-f]{64}$ ]] \
             && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -510,6 +510,8 @@ case "$#:${1:-}" in
             LINUX_RECEIVER_PROFILE=network-drain
         elif [ "$1" = --linux-service-authorization-timeout-tests ]; then
             LINUX_RECEIVER_PROFILE=authorization-timeout
+        elif [ "$1" = --linux-service-startup-tests ]; then
+            LINUX_RECEIVER_PROFILE=startup
         fi
         ANDROID_RUNTIME_PEER_COMMIT=$3
         ANDROID_RUNTIME_PEER_MANIFEST_SHA256=$5
@@ -772,6 +774,7 @@ case "$#:${1:-}" in
         printf 'Focused modifier release bookkeeping: %s --flutter-model-tests --modifier-release\n' "${0##*/}" >&2
         printf 'Focused directory-ordering publication and home correlation: %s --flutter-model-tests --directory-ordering\n' "${0##*/}" >&2
         printf 'Installed Linux authorization deadline: %s --linux-service-authorization-timeout-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
+        printf 'Installed Linux IPC startup: %s --linux-service-startup-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Exact CM read-tick ownership: %s --cm-read-tick-tests\n' "${0##*/}" >&2
         printf 'Native CM transfer outcome logs: %s --cm-file-log-tests\n' "${0##*/}" >&2
         printf 'Native inactivity timeout bounds: %s --idle-timeout-tests\n' "${0##*/}" >&2
@@ -5053,6 +5056,8 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
         linux_receiver_guest_flag=--linux-service-network-drain-tests
     elif [ "$LINUX_RECEIVER_PROFILE" = authorization-timeout ]; then
         linux_receiver_guest_flag=--linux-service-authorization-timeout-tests
+    elif [ "$LINUX_RECEIVER_PROFILE" = startup ]; then
+        linux_receiver_guest_flag=--linux-service-startup-tests
     fi
     guest_invocation+=" $linux_receiver_guest_flag $ANDROID_RUNTIME_PEER_COMMIT $ANDROID_RUNTIME_PEER_TREE $ANDROID_RUNTIME_PEER_MANIFEST_SHA256 $FOCUSED_TEST_COMMIT"
 elif [ "$MODE" = linux-flutter-artifact-tests ]; then
@@ -5732,7 +5737,12 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
     linux_receiver_binary_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/rustdesk" | /usr/bin/awk '{print $1}')
     linux_receiver_probe_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/probe_client" | /usr/bin/awk '{print $1}')
     require_exact_fixed_receipt 'verify-linux-service-password-ipc: source checks passed' 'supplementary password IPC source checks'
-    if [ "$LINUX_RECEIVER_PROFILE" = authorization-timeout ]; then
+    if [ "$LINUX_RECEIVER_PROFILE" = startup ]; then
+        for phase in foreign-owner symlink fresh restart; do
+            require_exact_fixed_receipt "LINUX_SERVICE_STARTUP_CASE=pass phase=$phase" 'installed Linux service namespace startup'
+        done
+        require_exact_fixed_receipt "LINUX_SERVICE_STARTUP_NATIVE=pass cases=4 refusals=2 starts=2 source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha fixture=installed-layout unit=shipped legacy=unchanged cleanup=joined" 'installed Linux startup finality'
+    elif [ "$LINUX_RECEIVER_PROFILE" = authorization-timeout ]; then
         for phase in root-applied authorization-pending-root authorization-timeout-recovery admin-applied; do
             require_exact_fixed_receipt "LINUX_RECEIVER_CPACE=pass phase=$phase uid=4002 server=supervised-child listener=owned key_confirmation=mutual probe_sha256=$linux_receiver_probe_sha" 'installed Linux authorization-timeout credential use'
         done

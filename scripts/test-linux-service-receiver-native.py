@@ -2071,7 +2071,149 @@ def network_shutdown(value, record, probe_sha):
             os.close(fd)
 
 
-def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False):
+def startup_namespace(commit, binary_sha):
+    parent = Path("/run/RustDesk-service")
+    legacy = Path("/tmp/RustDesk-service")
+    target = WORK / "startup-link-target"
+    unit = Path("/etc/systemd/system/rustdesk.service")
+    if any(os.path.lexists(p) for p in (parent, legacy, target, unit)):
+        raise RuntimeError("startup fixture requires absent owned paths")
+
+    def fixture(path):
+        path.mkdir(mode=0o755)
+        sentinel = path / "preserve"
+        sentinel.write_bytes(b"service-startup-preserve\n")
+        sentinel.chmod(0o644)
+        os.chown(sentinel, 4002, 4002)
+        os.chown(path, 4002, 4002)
+
+    def snapshot(path):
+        result = {}
+        for entry in [path, *sorted(path.iterdir())]:
+            st = entry.lstat()
+            result[entry.name] = [st.st_dev, st.st_ino, st.st_uid, st.st_gid,
+                                  st.st_mode, st.st_nlink, st.st_size, st.st_mtime_ns,
+                                  st.st_ctime_ns, digest(entry) if stat.S_ISREG(st.st_mode) else None]
+        return result
+
+    def link_identity():
+        st = parent.lstat()
+        return (st.st_dev, st.st_ino, st.st_uid, st.st_gid, st.st_mode,
+                st.st_nlink, st.st_size, st.st_mtime_ns, st.st_ctime_ns, os.readlink(parent))
+
+    def properties():
+        return dict(line.split("=", 1) for line in run(
+            ["/usr/bin/systemctl", "show", "rustdesk.service",
+             "--property=ActiveState,SubState,Result,MainPID,ExecMainCode,ExecMainStatus,NRestarts,ActiveEnterTimestampMonotonic,InvocationID"]).stdout.splitlines())
+
+    def stop():
+        run(["/usr/bin/systemctl", "stop", "rustdesk.service"], timeout=40)
+        deadline = time.monotonic() + 5
+        cgroup = Path("/sys/fs/cgroup/system.slice/rustdesk.service")
+        while cgroup.exists():
+            if time.monotonic() >= deadline:
+                raise RuntimeError("startup service cgroup survived stop")
+            time.sleep(0.02)
+        if properties()["MainPID"] != "0" or Path("/run/rustdesk/service-child.record").exists():
+            raise RuntimeError("startup service retained a process or child record")
+
+    fixture(legacy)
+    legacy_before = snapshot(legacy)
+    shutil.copyfile(MEDIA / "repo/res/rustdesk.service", unit)
+    run(["/usr/bin/systemctl", "daemon-reload"])
+    previous = None
+    try:
+        for phase in ("foreign-owner", "symlink", "fresh", "restart"):
+            refused = phase in ("foreign-owner", "symlink")
+            if phase == "foreign-owner":
+                fixture(parent)
+                before = snapshot(parent)
+            elif phase == "symlink":
+                fixture(target)
+                parent.symlink_to(target, target_is_directory=True)
+                link_before = link_identity()
+                before = snapshot(target)
+            reference = ServiceUnitResultReference()
+            pidfd = None
+            try:
+                began = time.monotonic()
+                started = run(["/usr/bin/systemctl", "start", "rustdesk.service"], allowed=(0, 1))
+                observed = properties()
+                if refused:
+                    if (started.returncode != 1 or observed["Result"] != "exit-code"
+                            or observed["ExecMainCode"] != "1" or observed["ExecMainStatus"] != "1"
+                            or observed["ActiveEnterTimestampMonotonic"] != "0"
+                            or observed["MainPID"] != "0"):
+                        raise RuntimeError(f"unsafe namespace reached service readiness: {observed}")
+                else:
+                    pid = int(observed["MainPID"])
+                    if (started.returncode or pid <= 1 or observed["ActiveState"] != "active"
+                            or observed["SubState"] != "running" or observed["Result"] != "success"
+                            or observed["NRestarts"] != "0"):
+                        raise RuntimeError(f"protected namespace did not become ready: {observed}")
+                    pidfd = os.pidfd_open(pid)
+                    proc = Path("/proc") / str(pid)
+                    identity = [pid, int((proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()[19])]
+                    if (identity == previous or digest(proc / "exe") != binary_sha
+                            or (proc / "cmdline").read_bytes() != b"/usr/bin/rustdesk\x00--service\x00"):
+                        raise RuntimeError("startup process identity differs")
+                    previous = identity
+                    st = parent.lstat()
+                    if (not stat.S_ISDIR(st.st_mode) or (st.st_uid, st.st_gid, stat.S_IMODE(st.st_mode)) != (0, 0, 0o711)):
+                        raise RuntimeError("ready service parent authority differs")
+                    for postfix in ("_service", "_service_password", "_service_credential"):
+                        endpoint = parent / ("ipc" + postfix)
+                        st = endpoint.lstat()
+                        if (not stat.S_ISSOCK(st.st_mode) or (st.st_uid, st.st_gid, stat.S_IMODE(st.st_mode)) != (0, 0, 0o666)):
+                            raise RuntimeError("ready service socket authority differs")
+                        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+                            peer.settimeout(5)
+                            peer.connect(str(endpoint))
+                            credentials = struct.unpack("3i", peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+                            if credentials != (pid, 0, 0):
+                                raise RuntimeError("ready endpoint belongs to a different principal or process")
+                    if Path("/run/rustdesk/service-child.record").exists():
+                        raise RuntimeError("sessionless startup unexpectedly launched a desktop child")
+                stop()
+                terminal = properties()
+                if not refused and (not select.select([pidfd], [], [], 0)[0]
+                                    or terminal["Result"] != "success" or terminal["ExecMainStatus"] != "0"):
+                    raise RuntimeError("ready service did not stop cleanly")
+                if not refused and proc.exists():
+                    fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+                    if int(fields[19]) == identity[1]:
+                        raise RuntimeError("stopped service process was not reaped")
+                if snapshot(legacy) != legacy_before:
+                    raise RuntimeError("service changed the abandoned public namespace")
+                if refused:
+                    actual = snapshot(target if phase == "symlink" else parent)
+                    if actual != before or (phase == "symlink" and link_identity() != link_before):
+                        raise RuntimeError("refused service mutated a foreign namespace")
+                print("LINUX_SERVICE_STARTUP_OBSERVED=" + json.dumps(
+                    {"phase": phase, "start_exit": started.returncode, "ready": observed,
+                     "terminal": terminal, "elapsed_seconds": time.monotonic() - began,
+                     "legacy_unchanged": True, "namespace_unchanged": refused,
+                     "supervisor": previous if not refused else None}, sort_keys=True), flush=True)
+            finally:
+                reference.close()
+                if pidfd is not None:
+                    os.close(pidfd)
+            if phase == "foreign-owner":
+                (parent / "preserve").unlink()
+                parent.rmdir()
+            elif phase == "symlink":
+                parent.unlink()
+                (target / "preserve").unlink()
+                target.rmdir()
+            run(["/usr/bin/systemctl", "reset-failed", "rustdesk.service"])
+            print(f"LINUX_SERVICE_STARTUP_CASE=pass phase={phase}", flush=True)
+    finally:
+        stop()
+    print(f"LINUX_SERVICE_STARTUP_NATIVE=pass cases=4 refusals=2 starts=2 source={commit} "
+          f"binary_sha256={binary_sha} fixture=installed-layout unit=shipped legacy=unchanged cleanup=joined", flush=True)
+
+
+def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False):
     guard()
     checked = run(["/usr/bin/setpriv", "--reuid=1000", "--regid=1000", "--clear-groups",
                    "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
@@ -2100,6 +2242,9 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
     if "not found" in run(["/usr/bin/ldd", str(PROBE)]).stdout:
         raise RuntimeError("network probe runtime dependency is missing")
     run(["/usr/bin/systemctl", "is-active", "systemd-logind.service", "polkit.service"])
+    if startup:
+        startup_namespace(commit, spec["sha256"])
+        return
     pam = pam_module()
     confdir = WORK / "pam"
     confdir.mkdir(mode=0o700)
@@ -2400,6 +2545,8 @@ if __name__ == "__main__":
         tests(sys.argv[1:6], network_drain=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--authorization-timeout":
         tests(sys.argv[1:6], authorization_timeout=True)
+    elif len(sys.argv) == 7 and sys.argv[-1] == "--startup":
+        tests(sys.argv[1:6], startup=True)
     elif len(sys.argv) == 6:
         tests(sys.argv[1:])
     else:

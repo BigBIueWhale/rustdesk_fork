@@ -17266,6 +17266,23 @@ remain OPEN. Runs `TaZ36KpKoN` / `zxrZD3VMzI` join and retire RAM scratch with
 zero listener deltas; exact evidence is in the audit entry
 “2026-11-01 — user pivot; connection-manager transfer-rate reporting”.
 
+**CM read terminal logs (`2867abfe`) — Linux parent/Unix IPC A/B verified.**
+The selected read tick returns its completed/failed job log to its exact joined
+owner, which publishes it through the existing registry-generation check before
+the remaining-job snapshot. Response admission and job-removal ordering stay
+unchanged. The unchanged-product regression observes native Done/Error responses
+but zero terminal UI logs for a 15-byte success, empty-file success and denied
+source open. The identical candidate test observes exactly one matching log in
+each case, with exact bytes, retired owners and closed source descriptors.
+The complete Linux parent library compiles with fresh bindings; actual files and
+Unix IPC run, while login authority and the UI callback receiver are fixtures.
+Runs `Kf90bm2SUB` / `y6mWjLeFRf` join, retire bounded RAM and retain zero listener
+deltas. Exact source/artifact and cleanup evidence is in the audit entry
+“2026-11-01 — CM transfer terminal-outcome reporting”. Dart's byte-count completion
+inference, direct-send initial-open logging, CM confirmation errors, actual UI,
+remote durable receipt and native Windows/installed acceptance remain OPEN.
+The CM scheduling and other user parks are unchanged.
+
 **Folder-summary admission (`513aa1b5`) — Dart model/widget A/B verified; native integration OPEN.**
 `JobController.updateFolderFiles` admits a bounded three-field JSON object, positive
 native action ID, nonnegative integer file count and finite whole-byte total that

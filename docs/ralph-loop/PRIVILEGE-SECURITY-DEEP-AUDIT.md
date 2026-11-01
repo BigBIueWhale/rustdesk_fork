@@ -126515,3 +126515,24 @@ regression will exercise the candidate. Dart's byte-count completion inference,
 direct-send initial-open logging, CM confirmation errors and end-to-end/native
 Windows/installed acceptance remain OPEN; no global transfer-completion closure
 is claimed by this producer correction.
+
+Candidate `2867abfe35e90c45510e18ccce6dc5e54371ad13`, TUF `y6mWjLeFRf`,
+passes the unchanged three-scenario regression: each native outcome has exactly
+one matching UI log, with exact owner, job, path, done/error fields and byte
+count. Actual source/Unix response handling, owner retirement and descriptor
+closure pass. Fresh bindings and the complete Linux parent compile in 108 seconds;
+the test executes in 0.03 seconds. Artifact SHA-256:
+`461caf0e9ab75f98eb078e486633a734b5e097d7dd26622a0b8b94e3fe1747b6`.
+Command: `bash scripts/smoke-verifier-vm-authority.sh --cm-file-log-tests`.
+These are native component results with controlled login authority and a test
+UI callback receiver, not Windows/installed/Flutter presentation or remote
+durability acceptance. Other reporting gaps above remain open.
+
+The 366.931-second candidate run joins QEMU 3788436 and wrapper 3787938,
+retires 6,293,209,088 peak RAM bytes and records zero deltas in four listener
+snapshots. Source-copy and generated-bridge postconditions pass. Baseline and
+candidate retain sixteen raw/closure files totaling 174,779 bytes, hash-verified
+on CTE and TUF. Candidate serial SHA-256:
+`10d9a0b93af2f0509003f059d6e07a35b7f5280766de120b6158b499208f50fc`.
+No owned VM remains live. This is a verified CM producer checkpoint; the next
+decisive reporting check is the Dart model's premature byte-count completion.

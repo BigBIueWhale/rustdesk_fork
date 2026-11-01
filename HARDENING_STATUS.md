@@ -6346,32 +6346,41 @@ snapshot, whole-app behavior or native privilege acceptance.
 
 ### Android runtime — intermittent presentation remains OPEN
 
-**Retained app/task-relaunch acceptance (`1c429348`, TUF `wrGfi9VIw1`).**
-The retained `1ee23828` app/test pair and `b30f4811` Linux peer pass the complete
-1,340.166-second Android 14/API-34 replay. All 22 pixel phases, six ordinary
-reconnects, six Recents task replacements, 120-second background interval,
-140.89-second connected hold and 120.4-second task-absent hold pass. Ordinary
-reconnects preserve the client owner; task replacements obtain distinct owners
-while the process, foreground service and MediaProjection survive. Maximum
-sampled image age is 1,138 ms, background recovery 540 ms, warm reconnect recovery
-1,150 ms, task recovery 1,170 ms and observer capture age 202 ms. Thirteen samples
-show RSS growth at most 1,768 KiB and thread growth six; handles remain unobserved.
+**Current-source app/task-relaunch comparison (`f372aacf`).** TUF `k8M8wgR5WF`
+builds, inspects, installs and launches the exact-source app/test pair in
+1,012.981 seconds. The test-only x86_64 APK is 48,291,544 bytes, SHA-256
+`a2f3dc3403b50c8e9d42d309a76938f87c1e89060fd7f8064405757bca375f16`.
+Replay `SwFv2D21aX` then passes the unchanged Android 14/API-34 schedule with
+the retained `b30f4811` Linux peer. Both app generations pass all 22 pixel phases,
+six ordinary reconnects and six Recents task replacements; ordinary reconnects
+preserve the client owner, while task replacements obtain distinct owners with
+the process, foreground service and MediaProjection preserved.
 
-This restores replay deployment after `lvlrR7CAZH` authenticated successfully but
-refused Remote login because its required private input library was missing.
-The harness now builds two byte-equal, source-bound provider copies, installs the
-library under guest-root authority, mounts it read-only and proves the owned
-server's executable mapping and unchanged bytes through cleanup. No product
-artifact or loader policy changed. The dedicated 18-GiB guest preserves runtime
-container limits and the bounded RAM storage controls. All five host-listener
-deltas are zero; QEMU and the 4,497,100,800-byte peak RAM workspace retire.
-Capsule `android-presentation-1c429348.json` retains exact artifacts, command,
-failure/success logs, storage and listener identities on CTE/TUF. This is one
-test-signed emulator schedule, not current-release/device/soak acceptance or a
-reproduction or correction of the original intermittent failure. Those remain
-OPEN. Next obtain the corresponding current-source artifact comparison; repeating
-this unchanged successful schedule would not resolve that gap. Camera and the
-independent Android CM Stop/admission race remain parked.
+| App source / replay | Duration | Maximum sampled frame age | Background / reconnect / task recovery | RSS / thread growth |
+| --- | --- | --- | --- | --- |
+| `1ee23828` / `wrGfi9VIw1` | 1,340.166 s | 1,138 ms | 540 / 1,150 / 1,170 ms | 1,768 KiB / 6 |
+| `f372aacf` / `SwFv2D21aX` | 1,344.360 s | 968 ms | 550 / 1,320 / 1,200 ms | 856 KiB / 4 |
+
+The new replay retains the 120-second background interval, 140.73-second connected
+hold and 120.38-second task-absent hold. Thirteen resource samples pass; handles
+remain unobserved. Observer capture age is at most 213 ms. Missing/wrong/correct
+credential behavior and the ordinary controlled-side directory request also pass.
+The previously missing private input provider is built twice with byte equality,
+mounted read-only and verified against the owned server's actual mapping and final
+bytes. No product correction, workload change or limit relaxation was needed.
+
+Both VMs join and their RAM workspaces retire: build peak 7,319,494,656 bytes,
+replay peak 4,498,497,536 bytes. Build listener deltas are zero; replay's final
+snapshot adds one unattributed endpoint. Owned host IP socket creation remains
+kernel-denied; no zero-drift claim is made for that replay. Exact artifacts,
+commands and raw evidence are hash-verified on CTE/TUF in
+`android-current-f372aacf.json` and `android-presentation-1c429348.json`.
+This closes the current-source emulator comparison prerequisite. The original
+intermittent failure was not reproduced; its cause, ARM64 release/device behavior,
+multi-hour freshness/resources and R-S0/R-F5 acceptance remain OPEN. Repeating this
+unchanged successful schedule would not resolve those gaps; a further reproduction
+must choose a justified untested lifetime or workload. Camera and the independent
+Android CM Stop/admission race remain parked.
 
 **Shared Flutter canvas and software-image behavior — historical component A/B
 evidence; current installed/native acceptance OPEN.** These seven checkpoints

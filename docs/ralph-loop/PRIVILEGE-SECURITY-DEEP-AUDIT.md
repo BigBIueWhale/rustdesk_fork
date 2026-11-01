@@ -126081,3 +126081,70 @@ Android capsule SHA-256 is
 `e0959eacf1f3e43a7d0f922c63299304ab7887f975e2a63d85fbdf00bcac2914`.
 All 32 raw/capsule/count files are hash-verified on CTE/TUF. This audit-only receipt
 preserves the counted ledger bytes. The broad release goal remains open.
+
+### 2026-11-01 — current-source Android build and task-relaunch comparison
+
+The selected prerequisite is the current-source comparison left by the preceding
+Android checkpoint. The retained app predates substantial shared/mobile changes;
+another identical old-app run would not establish their integration. Preserve the
+Linux peer, workload and all acceptance limits while replacing only the app/test
+pair. Camera, the independent Android CM Stop/admission race and other user parks
+remain parked. No product or harness change is needed in this slice.
+
+Read-only inventory found the NDK archive/tree and cargo-ndk tool absent on TUF.
+The exact canonical CTE inputs are copied under both idle verifier locks, with
+checksum comparison afterward: 3,022,496,159 logical bytes including symlink text,
+3,044,368,384 allocated bytes, no deletions. These authenticated reusable inputs
+are intentional retained build dependencies; CTE originals remain. No pin, host
+device, permission, service, network or disposable-storage limit changes.
+[Android's ABI contract](https://developer.android.com/ndk/guides/abis) keeps this
+x86_64 emulator artifact distinct from the required ARM64 release. Existing
+equal container memory/swap limits retain
+[Docker's no-swap configuration](https://docs.docker.com/engine/containers/resource_constraints/).
+
+Exact pushed source `f372aacf461df2e30f27f4ca7636166fde2e7b24`, tree
+`111c7c5e35854e4941ae16b509da71dcb5079eff`, passes the offline build, APK/manifest
+inspection, instrumentation-process smoke and real install/launch/render checks:
+TUF `k8M8wgR5WF`, outer exit 0, 1,012.981 seconds. Published test-only app is
+48,291,544 bytes, SHA-256
+`a2f3dc3403b50c8e9d42d309a76938f87c1e89060fd7f8064405757bca375f16`;
+matching instrumentation is 110,287 bytes, SHA-256
+`cbeb07f2b7b2967e69b5503e084165d152d9bf2e4893bb3be152e315ddf56442`.
+QEMU 3581168 joins exit 0; the wrapper and run root are absent, the
+7,319,494,656-byte peak RAM workspace retires, and four listener deltas are zero.
+
+The unchanged peer-lifecycle schedule then passes at the same source with that
+exact pair and retained `b30f4811` peer: TUF `SwFv2D21aX`, outer exit 0,
+1,344.360 seconds. All 22 pixel phases and 44 distinct observed frames pass.
+Initial recovery is 1,090 ms; maximum background/reconnect/task recovery is
+550/1,320/1,200 ms, sampled frame age 968 ms and capture age 213 ms. The three
+2/6/120-second background intervals, 140.73-second connected hold, 120.38-second
+task-absent hold, six warm reconnects and six task replacements pass. Thirteen
+stage records prove one warm client owner and distinct task-successor owners;
+process, foreground service and MediaProjection survive. Thirteen resource
+samples show maximum RSS growth 856 KiB and thread growth four; handles remain
+unobserved. Force Stop is only the final destructive baseline; no ANR is observed.
+Correct/wrong controlled-side CPace, an authorized directory response, missing
+viewer credentials, wrong-password refusal without automatic retry for 140 seconds,
+and deliberate correct-password recovery also pass. The protected input-provider
+bytes and actual owned-server mapping match the preceding accepted replay.
+
+The source publishes 17,186 frame identities at mean 41,210 us, maximum 61,397 us;
+this is source cadence, not delivered FPS. QEMU 3587947 joins exit 0; its wrapper,
+run root and 4,498,497,536-byte peak RAM workspace are absent. Four listener
+comparisons are unchanged; the final snapshot adds one unattributed 17-byte
+endpoint record. The outer retains its kernel-enforced host IP-socket denial and
+accepts joined cleanup; do not describe this as zero host drift or attribute the
+external endpoint to a process. No foreign process or service is inspected or changed.
+
+Full captured replay serial is 51,380 bytes, SHA-256
+`31ec6225615854454c1cd38f5c8de5c00978dda49b7177057558f7ebf0a0c669`.
+Build/replay commands, exact artifacts, all 22 pixel records, source and cleanup
+identities are retained in `android-current-f372aacf.json` (81,871 bytes, SHA-256
+`f53180290870a51be97ec892a4db14dd4209f73d7b60cf98a1764c91c01c5ff1`).
+All 22 raw/artifact/capsule files (48,708,938 bytes) are hash-verified on CTE/TUF.
+This closes the current-source emulator comparison prerequisite, not the original
+intermittent failure's cause or correction, ARM64 release/device acceptance,
+multi-hour resources/freshness, R-S0/R-F5 or independent review. Do not rerun this
+unchanged successful schedule; further reproduction needs a justified untested
+lifetime/workload. The broad release goal remains open.

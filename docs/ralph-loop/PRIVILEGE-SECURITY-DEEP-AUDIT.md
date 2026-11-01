@@ -128719,3 +128719,19 @@ ledger/profile VM, also counting the updated truthful status. CTE edits do not
 change TUF's frozen checkout, source inputs or locally cached origin reference.
 Neither the profile result nor the previously observed component pass closes
 the full application theme requirement.
+
+CTE `XaH4DgjxyJ` at `67234f27` completes with outer exit 0: all 50 profile
+cases/94 refusals and 80 workload-selection controls/five refusals pass. Both
+engine CLI entries reach real RAM admission and refuse the 2 GiB guest before
+allocation, requiring 27/39 GiB respectively. QEMU 79781 and wrapper 78287 are
+absent; the 402,722,816-byte peak RAM workspace retires in 31.228 supervisor
+seconds, with all three listener deltas zero. This validates profile selection,
+limit values and insufficient-memory refusal; it does not rerun the engine or
+establish TUF's final state. The immutable 4,442-byte receipt is
+`engine-settings-profiles-67234f27.json`, SHA-256
+`736b7ffb34534585aa2d3fdff69dfbb76f5237383f86a98755e6e1a799497d93`.
+The updated ledger counts 389,335 tokens / 1,783,043 bytes, SHA-256
+`08ca6fb1adca53f63e9d06ecbe5f2ca5d4684748f82299b4f19456726c8c35aa`,
+using the established method, seven controls and whole-input round trip.
+This audit-only completion preserves that counted ledger. TUF access and the
+original engine build's final artifact/cleanup observation remain pending.

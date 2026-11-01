@@ -128305,3 +128305,15 @@ X11 Close path. Concurrent tabs, injected native cleanup failure, repeated-use
 resource behavior, Windows/macOS/mobile, installed privileged authority and
 release acceptance remain OPEN. Fresh ledger count and evidence-copy completion
 follow; the broad goal remains active and incomplete.
+
+Checkpoint completion: the fresh `--ledger-token-count` run at `f5daa4fc`,
+TUF `Lp58ZpcjSA`, passes all seven controls and the complete-input round trip:
+388,478 tokens / 1,779,072 bytes, input SHA-256
+`791974e6104faff4d33179e0ac497f8d0019cd8cd7a9d6a664fa4f11c1e62742`.
+QEMU 4002184 and wrapper 4000736 are absent; 402,579,456 peak RAM bytes retire
+after 30.907 supervisor seconds with three zero listener deltas. Serial SHA-256:
+`533765f02e9021c765e6eeb975493e35f33bec0c1ea4628172b4f7d1d76517c0`.
+All 51 retained raw/evidence/retirement files total 944,274 bytes and match their
+recorded hashes on both CTE and TUF. This audit-only receipt preserves the counted
+ledger bytes. No owned VM or transient workspace remains. The normal Close
+scenario reaches its native Linux checkpoint; further menu work stays parked.

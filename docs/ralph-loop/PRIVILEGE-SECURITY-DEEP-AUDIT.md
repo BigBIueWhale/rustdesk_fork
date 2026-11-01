@@ -129572,3 +129572,26 @@ corrected complete-peer soak is the next decisive check, reusing the authenticat
 app/engine without rebuilding. CTE's independent input run remains untouched:
 5,250 requests observed so far, maximum 146 ms and fixed-baseline p95/p99 drift
 at most 5/6 ms. Fresh ledger count and corrected TUF replay are next.
+
+The updated ledger is counted on pushed `06aab2df` in TUF `4XqGAfgOQm`:
+390,988 tokens / 1,790,297 bytes, SHA-256
+`576785560e7c73fff12d844a9f8deaa1dd4cc11e1e770e008054ea751042f532`,
+with the pinned tokenizer, seven controls and exact round-trip. Exit zero,
+three zero decoded listener deltas, wrapper 421632/QEMU 423047 absent and RAM
+retired; duration 30.502 seconds, peak scratch 402,677,760 bytes. Receipt
+`soak-accounting-ledger-06aab2df.json` is 3,832 bytes, SHA-256
+`430f666a42afaeed3cdf0455441b1babb15035da457989ead5a42dd77cdfdfb0`.
+
+Corrected complete-peer display soak `0W1tTbkKQg` now runs on TUF from sealed
+`06aab2df`, control `.harness-state/viewer-soak-corrected-06aab2df`, CTE tmux
+`rd-viewer-soak-corrected`. Exact wrapper 423238/start-ticks 295153600 and QEMU
+424295/start-ticks 295154117 are live; RAM `run.azikj7dw` is `29:36980`.
+The unchanged authenticated app/engine are reused; all three driver artifacts
+build twice with exact byte equality. Presentation driver SHA-256 is
+`efffea66e2a272b13083614481992a14659f9b71eee81587baa098c8b25224f9`.
+The runtime cycle has started, with three zero decoded pre/during listener deltas;
+full-duration outcome and terminal cleanup remain pending. Preserve this job and
+the independent original CTE input soak rather than relaunching either. At the
+latest CTE checkpoint 5,340 requests complete, worst response remains 146 ms,
+44 complete windows retain maximum drift 5/6 ms and 46 viewer descriptors.
+These are live checkpoints, not terminal acceptance; R-F5 remains OPEN.

@@ -15216,6 +15216,23 @@ artifact/input hashes and timings belong there and in Git history.
 | Peer metadata (`730bb9b0`) | Recent/Favorite export omits the legacy password hash. Dart Peer has no credential/group fields or unused serializers/copy/equality/constructor; placeholders use its local-metadata parser. The unused account-specific recent-peer loader and web stub are deleted. Identical peer/credential tests pass eight suites/63 cases plus three parser controls after the old parser fails on a retired field. Fresh bridge/import checks establish the named API absence, not execution of the Rust mapper or full connection pages. | `peer-metadata-corrected-730bb9b0.json` |
 | Metadata diagnostics (`c4acc5ce`, `d5c61913`) | Peer-list/cached-session failures use fixed diagnostics; the original peer-list clearing/notification is superseded by the atomic snapshot correction below, while cached-session null refusal remains. PeerInfo full platform/resolution decoding preserves each refused field; valid/empty snapshots, both resolution formats, positive dimensions, ordering and recovery remain covered. Session/type checks stay at callers; incremental merging is separate. Ten corrected Dart cases and three parser controls pass. The live baseline exposes synthetic values in two failed cases but its whole transaction is unaccepted because of two unattributed endpoint additions. | `live-peer-baseline-6dfedef7.json`, `live-peer-corrected-c4acc5ce.json`, `cached-peer-baseline-110cc6d3.json`, `cached-peer-corrected-d5c61913.json` |
 
+**Remembered password across a Linux viewer restart — native workflow accepted.**
+At harness `5c4bad90`, TUF `61hrq3pLTo`, retained app `cf437894` and engine
+`63493887` pass the real unchecked-to-checked Remember password choice,
+authentication, four fresh frames and normal process exit. A fresh viewer
+using the same private home and machine identity then authenticates without
+password input or a password field, presents four fresh frames and exits zero.
+Maximum sampled frame ages are 329/301 ms; this is bounded workflow evidence,
+not a latency soak. The server remains unchanged. The relevant credential,
+storage, prompt and title source files match the artifact source exactly.
+The initial attempt exposed the observer's omission of saved `@hostname`
+decoration; its corrected lookup retains exact PID/class/address/role and
+independent pixel checks. No product edit was needed. Both attempts join,
+retire RAM scratch and leave zero listener deltas. Reproduce with retained-app
+replay option `--credential-restart`; exact identities and raw evidence are in
+the audit journal. Remember-off, rotation, other platforms, installed authority,
+at-rest confidentiality and current release-artifact acceptance remain OPEN.
+
 **Peer history snapshots (`6fc33995`) — Dart component A/B verified; full application/native integration OPEN.**
 `Peers.updatePeers` now prepares the peer rows and pending-address list before
 publishing either or notifying listeners. A refused decode is distinct from a

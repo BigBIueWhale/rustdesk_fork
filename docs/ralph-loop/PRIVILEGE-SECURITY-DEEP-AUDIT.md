@@ -127707,3 +127707,34 @@ listener deltas are zero. Serial SHA-256:
 `24ce6c76df3e0c4baecc615311d94ee14812eb31a2aadd36342a4ebb38d4906f`.
 The failed marker is classified as `credential-restart-observation.xkpDcM4KxR`
 under the exact shared lock after terminal and scratch-absence checks.
+
+Corrected observer `5c4bad90aaf9ca5d8b9c1fb0a280e04d27385eb0`, tree
+`7220c0bf78abd4c92016e11e2db0de5606f29085`, TUF `61hrq3pLTo`, passes the
+complete selected workflow. Viewer PID 234 explicitly changes Remember password
+from false to true, authenticates, presents four fresh frames (maximum age
+329 ms), closes and joins with exit zero. Only then PID 336 starts with the
+same direct-address argument, home and machine identity. Its actual title
+contains the saved hostname, confirming the acquisition mismatch. It supplies
+no password input, has no password field, presents four fresh frames (maximum
+age 301 ms), closes and joins with exit zero. The server's single generation
+and source remain live across the viewer replacement and join afterward.
+
+Command: the retained app replay recorded in the scaling entry above, replacing
+its scenario option with `--credential-restart`. The exact same application and
+engine run in both attempts. Complete `src/client.rs`, shared config/password
+security, prompt, common title, tab-label and multi-window source files are
+equal between the current tree and app `cf437894`. The three native drivers
+compile twice with identical bytes; corrected controller SHA-256:
+`0639ed65eef3eb72837f6fc64c2459da939db2bbd9c97b913a6db7c4984b7ffa`.
+No product build, mutation, replacement credential, or storage fixture supplies
+the second viewer's successful authentication. This closes this bounded Linux
+restart acceptance gap; it does not establish the separately open rotation,
+remember-off, confidentiality, installed-authority or cross-platform claims.
+
+QEMU 3913746 and wrapper 3912682 are absent; the VM retires 3,010,523,136 peak
+RAM bytes after 112.826 supervisor seconds (106-second outer workload). All
+four host listener deltas are zero and both runtime processes exit zero.
+Serial SHA-256:
+`0c5cba6876f5b41c60134218828216cbd34516f6e486db73323f6ba886954052`.
+The native restart scenario is a meaningful checkpoint. Scaling stays parked;
+the broad release goal remains incomplete. Fresh ledger count follows.

@@ -127299,3 +127299,28 @@ operation releases a remote-owned button on the controlled display. The guest
 then joins the expected status-137 viewer, controlled server, displays and
 containers before exact VM/RAM retirement. The existing mouse profile shares
 only the generalized button-set observer; its single-button API is retained.
+
+Preparation `ac6c8a9d93e7906918992b01484aa59ddaf5e203`, tree
+`1566696b1f54074df101d1004949c7524dcda9f2`, passes TUF `uhkIf2KOdA`.
+Exact command:
+`bash scripts/smoke-verifier-vm-authority.sh --linux-flutter-app-replay --app-commit cf43789491c88148650878052929eb76be28eaa4 --app-manifest-sha256 94941c425a12844e424c7ac903f8a84b93b19628f3ed391f29e77548e15f6d93 --engine-commit 63493887d7bf51c9ea7be8b03e7a4641dd40208f --engine-archive-sha256 e054196739ae571afafe532268dfffef958c1c69b708a25e09352770744a82d0 --engine-manifest-sha256 b78c72f5533657e6bce49ac89d289172aafcc925098651dc00e35537c0d30695 --mouse-retirement`.
+The native focus-click control completes and leaves both displays released.
+Remote presses arrive Left/Back/Forward with states 0/256/256. After the local
+Right press and confirmed four-button state, terminating only the proved viewer
+produces releases Left/Back/Forward with states 1280/1024/1024. All three are
+observed within 30 ms of the signal, and Right remains held through the 100-ms
+quiet interval and final state query. Only then does fixture cleanup release
+local Right and the three viewer-side injections. Viewer status 137 is joined;
+controlled server, both X servers and containers retire. All three native drivers
+compile twice identically; the application is unbuilt/unmodified. This is one
+Linux native schedule, not physical-device, overlapping-owner, cleanup-failure,
+reconnect, installed/other-platform, resource-soak or current-release acceptance.
+
+Outer acceptance takes 103 seconds; supervisor lifetime is 110.424 seconds.
+QEMU 3871762 and wrapper 3870698 are absent, the 3,011,108,864-byte peak RAM
+workspace retires, and all four listener deltas are zero. Serial SHA-256:
+`02ef20ea293325dd8a57af3f91c9214f050254e64e31b284972d1a660254d8ba`.
+Eight raw files are retained under the `flutter-peer-presentation-*run.uhkIf2KOdA`
+prefixes and `.harness-state/mouse-retirement-ac6c8a9d/outer.log`, hash-verified
+on CTE and TUF. The status ledger records this native checkpoint. No owned VM
+remains, and no parked topic is resumed; a fresh ledger count follows.

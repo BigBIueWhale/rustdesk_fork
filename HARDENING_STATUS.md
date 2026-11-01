@@ -593,7 +593,7 @@ Do not resume automatically. Work moved to the R-S11hj current-state ledger clea
 | File-conflict presentation (`2bb6d9de`) | The unsupported content-identity hint is removed from Rust/Flutter conflict presentation and typed dialogs; Resume's wire flag and overwrite decisions remain. Rendered framework cases preserve Cancel/Skip/Overwrite/Escape and per-opening remember state with fresh bindings. This is source/Flutter evidence, not fresh parent Rust, native peer or installed execution. | `file-conflict-presentation-2bb6d9de.json` |
 | File-conflict timestamp precision (`c3543d52`) | Destination inspection compares mtime at the sender digest's whole-second precision, retaining size checks and explicit overwrite decisions. Linux real-file cases execute source open/digest/protobuf/destination comparison and preserve contents, nanosecond times and sidecars. Metadata matching is not content equality. Native peer/UI, other-platform and installed behavior remain OPEN. | `file-digest-precision-c3543d52.json` |
 | Modifier callback retirement (`207c444a`) | Unused release-callback APIs and callback-only test machinery are removed; production modifier cache/reset/owned dispatch remains byte-identical. Direct nine-slot key identity checks and real releaseHeldModifiers cleanup remain with the other unchanged cases. The 93-case Flutter shard passes. This is retirement of obsolete machinery, not a demonstrated live vulnerability; native mouse/UI-owner dispatch and GTK/peer effects remain OPEN. | `modifier-callback-retirement-207c444a.json` |
-| Linux side-button routing (`27d447f3`) | The Linux back/forward channel admits only Down/Up from a current permitted non-view-only owner. Presses retain model/session; duplicate Down cannot replace them, Up uses their owner, exact teardown preserves successors and invalid input is inert. Twelve real Flutter channel cases and existing controls pass with observed bridge Futures. The full-app mouse workload below additionally passes native Back/Forward press/release and subsequent input on `cf437894`. Cross-window handoff, abrupt Rust/peer button retirement and resource/soak remain OPEN. | `side-button-owner-27d447f3.json`; native run `kWVIdHQCnI` |
+| Linux side-button routing (`27d447f3`) | The Linux back/forward channel admits only Down/Up from a current permitted non-view-only owner. Presses retain model/session; duplicate Down cannot replace them, Up uses their owner, exact teardown preserves successors and invalid input is inert. Twelve real Flutter channel cases and existing controls pass with observed bridge Futures. Full-app workloads below additionally pass native Back/Forward press/release, subsequent input and abrupt-viewer cleanup on `cf437894`. Cross-window handoff, overlapping native owners, cleanup failures and resource/soak remain OPEN. | `side-button-owner-27d447f3.json`; native runs `kWVIdHQCnI` / `uhkIf2KOdA` |
 | Linux recursive directory ownership (`a8cf3a42`) | Both recursive walkers retain each listed parent and open a validated directory-only child relative to it without following child symlinks. Only disappearance is skipped; other failures propagate. Controlled Linux namespace cases preserve aliases, hidden/single-file behavior, budgets and handle retirement. Selection occurs at the child open, not an atomic tree/content snapshot. Later file I/O, procfs/current-app, other-platform and installed behavior remain OPEN. | `recursive-directory-owner-a8cf3a42.json` |
 | Linux directory listing context (`ba8cfbe0`) | Linux enumeration and link-target classification retain one directory through the entry loop and use descriptor paths while preserving original presentation names. Native controlled-schedule cases cover aliases, hidden/broken links, non-directory/FIFO refusal and exact handle retirement on success/budget failure. Leaf/target mutation, recursive/later-open identity, missing procfs, full app and other-platform behavior remain OPEN. | `directory-context-ba8cfbe0.json` |
 | Directory-entry parent metadata (`f6a30550`) | Unix metadata uses the retained DirEntry parent; pinned Linux GNU cases cover parent rename/replacement/link substitution and refusal to revive vanished children. Windows keeps its fresh pathname query because its DirEntry metadata is cached. Scheduling is controlled before the entry loop. Symlink-target/recursive/later-open identity, Windows/other-platform execution and complete caller/peer behavior remain OPEN. | `directory-parent-f6a30550.json` |
@@ -2220,6 +2220,23 @@ relative mode, other boundaries/scales/layouts, focus/cancel/reconnect ownership
 application-specific outcomes, non-Remote refusal, installed privilege boundaries,
 current release artifacts, other platforms and sustained-use acceptance remain
 OPEN under R-F1/R-S0/R-S19.
+
+**Abrupt viewer exit — native owned-button release passed.** Harness `ac6c8a9d`,
+TUF `uhkIf2KOdA`, exercises `--mouse-retirement` on the same complete `cf437894`
+app. After an observed focus-click control, Left/Back/Forward are held through
+the viewer and Right is held independently on the controlled X server. Native
+events and XInput2 state prove all four are held before the exact viewer is
+terminated through its retained pidfd. The three remote-owned buttons release
+within 30 ms, with exact pre-event states; Right remains held through the final
+observation and quiet interval. Fixture releases occur afterward and cannot supply
+the accepted remote releases. Viewer status 137 and joined server/display/container
+cleanup pass. The 110.424-second supervisor lifetime joins QEMU, retires
+3,011,108,864 peak RAM bytes and leaves all four listener deltas zero. The audit
+entry “2026-11-01 — native mouse release after abrupt viewer exit” retains exact
+source/artifact identity and eight raw evidence files. This is one Linux native
+schedule, not physical-device, overlapping-owner, cleanup-failure, reconnect,
+installed/other-platform or sustained-use acceptance. No product change is needed
+for this scenario; current release and all independent parked work remain OPEN.
 
 **Linux remote keyboard — Ctrl+A corrected; eleven full-app cases passed.**
 `cf437894` routes Linux Legacy character shortcuts through the existing native

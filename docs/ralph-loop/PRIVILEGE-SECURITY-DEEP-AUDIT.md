@@ -128580,3 +128580,35 @@ Twelve app duplicates match the canonical manifest and byte hashes before remova
 (57,999,216 logical / 58,019,840 allocated bytes); raw diagnostics and the provider
 witness remain. Retirement receipt `theme-appearance-duplicate-bundles-retired.json`
 has SHA-256 `e926414741397897f64f22ab4afaf048559d54730e976f05ab3d1fd2c129c048`.
+
+Observer replay `61ea882f`, tree `72ad939ed8eb265a3c8b5ce8b980d8cfe12b1b9e`,
+TUF `NQ4PF4TRkh`, reproduces the same light pixels after dark appearance. The
+separately owned native `gsettings monitor` receives `gtk-theme: 'Adwaita-dark'`
+and joins. Initial authentication/four fresh frames pass (maximum age 317 ms).
+The driver’s write/readback and independent notification succeed; the first
+appearance assertion fails, so subsequent preference/frame/storage claims do not run.
+
+Source review identifies the missing admission condition in the pinned
+[fl_settings_portal_start](https://raw.githubusercontent.com/flutter/flutter/6a19cca56475dbfba1478ee68d7bd0c2ef891da1/engine/src/flutter/shell/platform/linux/fl_settings_portal.cc).
+It returns success after constructing a D-Bus proxy even when every `Read` fails.
+`fl_settings_new` therefore never selects GNOME on this available session bus
+with no portal. The earlier assumption that an absent portal automatically
+selects GNOME was incorrect. This is a concrete engine integration defect,
+not evidence that GNOME notification delivery itself failed. The next correction
+must admit only a usable portal and preserve the existing native GNOME path,
+then rebuild and run the same regression plus the complete preference sequence.
+No polling workaround, forced theme or product correction is introduced here.
+
+QEMU 4037713/wrapper 4036647 are absent; 3,011,620,864 peak RAM bytes retire in
+117.365 supervisor seconds, with four zero listener deltas. Serial SHA-256:
+`60dd3dc7317ce65f18bef40fa96fe643a974bef9d6d002226273f34ad80fe588`.
+The second failed root is reconciled as `theme-appearance-notification.NQ4PF4TRkh`;
+its twelve duplicate app binaries also match the canonical manifest before removal.
+Both runs together retire 115,998,432 logical / 116,039,680 allocated duplicate
+bytes, preserving raw evidence, provider witnesses and canonical artifacts.
+`theme-appearance-61ea882f.json` (18,157 bytes; SHA-256
+`73708898de69b828c365688220b707beccb3bb4cb6050c2dcd86ff4ed393d14b`) binds
+both runs, exact command/artifacts, cleanup and scope. All 19 evidence files total
+745,036 bytes and match their recorded hashes on CTE and TUF. Prior native theme
+restart evidence remains valid. Correction, later appearance assertions, other
+platforms and release acceptance remain OPEN; the broad goal is incomplete.

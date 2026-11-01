@@ -1298,7 +1298,7 @@ PY
     [ "$PEER_SCENARIO" != theme-restart ] || viewer_generations=4
     if [ "$PEER_SCENARIO" = theme-appearance ]; then
       # Use GLib's real shared file backend, read by the unmodified native engine.
-      # This private session must take the engine's GNOME settings route.
+      # An absent portal must leave the engine able to follow GNOME settings.
       for method in ListNames ListActivatableNames; do
         portal_names="$(gdbus call --session --dest org.freedesktop.DBus \
           --object-path /org/freedesktop/DBus --method "org.freedesktop.DBus.$method")"

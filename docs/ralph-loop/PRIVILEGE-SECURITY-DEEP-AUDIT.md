@@ -128873,3 +128873,23 @@ exits 1, joins QEMU 4182355 and wrapper 4181300, retires RAM in 123.473 seconds
 (3,011,530,752 peak bytes), and has four zero listener deltas. Its raw logs and
 private diagnostic output remain; another 57,644,400 authenticated duplicate
 library bytes retire. Receipt: `theme-save-failure-c55eff9b.json`.
+
+Acceptance: TUF `CD7hQlSdvD` at `67bb26bc` exits zero on unchanged app
+`16ba2033` / engine `ddb1541d`. The real EACCES refusal leaves the exact config
+inode, size and SHA-256 unchanged, keeps Light exclusively selected with header
+luminance 224 through 4,126 ms, and exposes the persistent failed card. Restored
+0700 access permits Dark retry (luminance 49), removes the error and leaves Dark
+in storage after the viewer joins. The same TCP connection presents four fresh
+frames afterward, maximum sampled age 373 ms; this is not soak/recovery evidence.
+The UI driver builds twice identically (SHA-256
+`256949be4904e0fec377ec183544a46dfded1b8fac03ba3f57b6a18ca76fa70f`).
+
+QEMU 4183708/wrapper 4182645 are absent; the private run and exact RAM workspace
+retire, with 3,014,938,624 peak allocated bytes over 122.61 supervisor seconds.
+Four decoded listener deltas are zero. `theme-save-failure-67bb26bc.json`
+(6,645 bytes, SHA-256 `b1e36c4669d5e19bf6998f9faedba8c25cca6c5632dde69cc0e570a40aafeaa8`)
+binds command, source, artifacts, observations and seven raw evidence files.
+This closes the Linux user-owned permission-denied save/retry acceptance gap;
+other save/crash failures, concurrent writers/windows, installed privileged
+settings, other platforms and full release acceptance remain OPEN. The product
+needed no change. A fresh ledger count follows this status update.

@@ -38,6 +38,10 @@ def test_observer_age(environment):
 typedef void Display;
 typedef struct { int unused; } ViewerWindow;
 typedef struct { int failed; unsigned int count; } SourceHistory;
+/* Native failure diagnostics do not participate in the aggregation verdict. */
+static void report_freshness_windows(Display *display, const ViewerWindow *viewer) {
+    (void)display; (void)viewer;
+}
 #define FRESH_LIMIT_MS 1000U
 #define SAMPLE_INTERVAL_MS 40U
 static uint64_t clock_ms, sample_age;

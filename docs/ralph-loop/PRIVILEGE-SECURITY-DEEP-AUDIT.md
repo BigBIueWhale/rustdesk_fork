@@ -129282,3 +129282,16 @@ pass is claimed. Wrapper 1661751/QEMU 1663708 are absent, three listener deltas
 are zero, and RAM retires after 47.585 seconds with 4,004,110,336 peak bytes.
 Exact private retirement and raw evidence are bound by
 `input-response-observer-failure-914b40cc.json` and its retirement capsule.
+
+CTE `1XTwqbAMzP` at `349b66c9` exposes the other stale fixture dependency:
+the observer's failure-only window/accessibility diagnostics require a real X11
+display. Extract that unchanged diagnostic block into one controller helper;
+the deterministic aggregation fixture supplies a no-op for reporting alone.
+Its actual timing/age loops and all boundary controls remain unchanged, and the
+complete native controller still compiles against the real libraries. Wrapper
+1710800/QEMU 1712643 are absent, three decoded listener deltas are zero, and
+RAM retires after 43.730 seconds with 3,882,676,224 peak bytes. Exact private
+directory `66306:105155213` is inventoried and retired under the shared lock.
+Receipts: `input-response-diagnostic-failure-349b66c9.json` and
+`input-response-diagnostic-failure-retired.json`. No response-latency acceptance
+is claimed from these prerequisite compilation failures.

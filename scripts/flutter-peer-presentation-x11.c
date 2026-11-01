@@ -1154,6 +1154,36 @@ static int type_password(Display *display, const char *password) {
     return 0;
 }
 
+static void report_freshness_windows(Display *display, const ViewerWindow *viewer) {
+    Window focus, root, parent, *children = NULL;
+    unsigned int count = 0U;
+    int revert;
+    PasswordPromptScan diagnostic;
+    XGetInputFocus(display, &focus, &revert);
+    fprintf(stderr, "FLUTTER_PEER_FRESHNESS_WINDOWS viewer=%lu focus=%lu\n",
+            viewer->window, focus);
+    if (XQueryTree(display, RootWindow(display, DefaultScreen(display)),
+                   &root, &parent, &children, &count) && count <= ACCESSIBLE_CHILD_LIMIT) {
+        for (unsigned int index = 0U; index < count; ++index) {
+            XWindowAttributes attributes;
+            unsigned long pid;
+            char title[512];
+            if (XGetWindowAttributes(display, children[index], &attributes) == 0 ||
+                attributes.map_state != IsViewable ||
+                read_window_pid(display, children[index], &pid) != 0) continue;
+            fprintf(stderr, "FLUTTER_PEER_FRESHNESS_WINDOW stack=%u window=%lu pid=%lu "
+                    "geometry=%dx%d%+d%+d\n", index, children[index], pid,
+                    attributes.width, attributes.height, attributes.x, attributes.y);
+            if (read_text_property(display, children[index], XInternAtom(display, "_NET_WM_NAME", False),
+                                   title, sizeof(title)) == 0)
+                print_sanitized_accessible_string("title", title);
+        }
+    }
+    if (children != NULL) XFree(children);
+    if (scan_password_prompt((unsigned int)viewer->pid, &diagnostic, 1) != 0)
+        fputs("FLUTTER_PEER_FRESHNESS_DIAGNOSTIC unavailable=true\n", stderr);
+}
+
 static int wait_for_current_frames(Display *display, const ViewerWindow *viewer,
                                    SourceHistory *history, unsigned int timeout_ms,
                                    unsigned int required_distinct, uint64_t *first_fresh_ms,
@@ -1237,35 +1267,7 @@ static int wait_for_current_frames(Display *display, const ViewerWindow *viewer,
     }
 failed:
     saved_errno = errno;
-    {
-        Window focus, root, parent, *children = NULL;
-        unsigned int count = 0U;
-        int revert;
-        PasswordPromptScan diagnostic;
-        XGetInputFocus(display, &focus, &revert);
-        fprintf(stderr, "FLUTTER_PEER_FRESHNESS_WINDOWS viewer=%lu focus=%lu\n",
-                viewer->window, focus);
-        if (XQueryTree(display, RootWindow(display, DefaultScreen(display)),
-                       &root, &parent, &children, &count) && count <= ACCESSIBLE_CHILD_LIMIT) {
-            for (unsigned int index = 0U; index < count; ++index) {
-                XWindowAttributes attributes;
-                unsigned long pid;
-                char title[512];
-                if (XGetWindowAttributes(display, children[index], &attributes) == 0 ||
-                    attributes.map_state != IsViewable ||
-                    read_window_pid(display, children[index], &pid) != 0) continue;
-                fprintf(stderr, "FLUTTER_PEER_FRESHNESS_WINDOW stack=%u window=%lu pid=%lu "
-                        "geometry=%dx%d%+d%+d\n", index, children[index], pid,
-                        attributes.width, attributes.height, attributes.x, attributes.y);
-                if (read_text_property(display, children[index], XInternAtom(display, "_NET_WM_NAME", False),
-                                       title, sizeof(title)) == 0)
-                    print_sanitized_accessible_string("title", title);
-            }
-        }
-        if (children != NULL) XFree(children);
-        if (scan_password_prompt((unsigned int)viewer->pid, &diagnostic, 1) != 0)
-            fputs("FLUTTER_PEER_FRESHNESS_DIAGNOSTIC unavailable=true\n", stderr);
-    }
+    report_freshness_windows(display, viewer);
     fprintf(stderr, "FLUTTER_PEER_FRESHNESS_WAIT_FAILED reason=%s timeout_ms=%u "
             "required=%u distinct=%u samples=%llu valid_age_samples=%llu "
             "saw_fresh=%s first_fresh_ms=%llu maximum_observed_age_ms=%llu "

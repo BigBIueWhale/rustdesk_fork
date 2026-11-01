@@ -129418,3 +129418,42 @@ cleanup. Only its controller budget becomes 14,900 seconds. Bounded minute progr
 and all individual measurements are retained. Native fixture execution and the
 new long-session acceptance are pending; shell syntax and source inspection alone
 do not establish them.
+
+At `23739a5e`, CTE native fixture `MQfx6RntQV` passes the four incomplete-input
+controls, all 256 unique visible responses, the 16/256 carries and duplicate
+refusal. Existing clock/deadline/history/geometry controls remain green; the
+complete controller compiles. Both source builds match `c2a23fcd40b5ad4f` and
+both oracle builds match `30f2b13946e6dfb8` (full hashes in the capsule).
+Wrapper 2111483/QEMU 2113158 are absent, three decoded listener deltas are zero,
+and RAM scratch retires after 69.001 seconds with 3,855,093,760 peak bytes.
+Receipt: `input-soak-fixture-23739a5e.json` (6,367 bytes, SHA-256
+`5f0da4c8f11dca79cd69598527174d3f95e918619e2573378e7b55bd3ef3185c`).
+This establishes the expanded fixture, not four-hour RustDesk acceptance.
+
+Before restoring the retained app/engine copies to CTE, validate and retire only
+the oldest October 11 app generation `59395c34` under the shared run lock:
+69,427,601 bytes, exact directory identity `66306:141484341`. Preserve its full
+manifest in `input-soak-obsolete-app-retirement-admitted.json`; the completed
+`input-soak-obsolete-app-retired.json` records the other three cache identities
+unchanged. It is an obsolete generation, not a byte-identical duplicate. The
+authenticated `0243c010` app and `ddb1541d` engine copies then add 159,433,640 bytes;
+CTE now retains four app and two engine generations, within admission limits.
+These live inputs must remain unchanged until the run retires.
+
+CTE full-peer input soak `xmA4oGPG17` is live on harness `23739a5e`, controlled by
+`.harness-state/input-soak-23739a5e` / tmux `rd-input-soak`. Exact wrapper
+2186453/start-ticks 1605534 and QEMU 2188072/start-ticks 1606089 remain live;
+RAM workspace `run.c1qisuqx` has identity `29:9906`. Its first 120 requests
+complete at 238,334 ms of the four-minute baseline window: p95 115 ms, p99 126 ms,
+maximum 131 ms, 46 viewer FDs. These quantiles remain fixed for all subsequent
+windows. Three pre/during listener deltas are zero; terminal cleanup and the
+remaining four hours are pending. Preserve this exact job rather than relaunching.
+
+The independent TUF animated-display soak `Agz8Yh9Qs1` remains live and untouched
+on `38d007eb`. At minute 81, p95 spans 291–304 ms, p99 308–319 ms, maximum sampled
+frame age is 351 ms, and viewer FDs remain 45; no failure is reported. Its exact
+wrapper 41960/QEMU 43021 and RAM identity `29:36881` remain live, with three zero
+pre/during listener deltas. Neither live checkpoint establishes terminal soak
+acceptance. Keep both jobs, bounded evidence and active inputs; defer TUF sync
+until its joined retirement. This audit-only checkpoint preserves the counted
+ledger and both sealed execution archives. R-F5 and the release goal remain OPEN.

@@ -126620,3 +126620,24 @@ Seven controls and the complete-input round trip pass. QEMU 3801159 and wrapper
 three listener deltas are zero. The complete 31-file evidence set totals
 535,712 bytes, hash-verified on both hosts. This audit-only receipt leaves the
 counted ledger unchanged; no owned VM remains live.
+
+### 2026-11-01 — direct sender initial-open outcome log
+
+The preceding CM-state correction is verified progress. Continue R-F1/R-S0
+reporting with the common sender's concrete initial-open gap: `handle_read_jobs`
+removes the failed entry and sends a native Error but returns an empty local log.
+The controlled server publishes its progress snapshot before the read step and
+forwards only nonempty returned logs, so this error has no terminal CM update.
+Other terminal branches already serialize their outcome. This demonstrated gap
+takes priority over another exploratory review; all independent parks remain.
+
+Extend the existing selected-entry retirement fixtures to compare exact error,
+job identity and terminal flags for initial-open failure, read failure and success.
+Preserve their same-ID paused sibling and response-admission refusal controls;
+join every owned writer and observe source-descriptor closure before the new
+verdict. The focused `--file-send-log-tests` profile executes only these four
+library tests using the existing bounded RAM/isolation infrastructure. Real files
+and keyed TCP run with fixture keys; PAKE, CM callbacks/rendering and installed
+authority are outside this component claim. First execute unchanged production
+code, then correct the omitted log without changing retirement/admission order.
+No behavioral verdict or product correction is claimed yet.

@@ -8531,6 +8531,7 @@ mod tests {
         assert_eq!(std::fs::read(&survivor_source).expect("read surviving source"), content);
     }
 
+    #[derive(Debug)]
     enum ReadJobRetirementCase {
         ReadError,
         Complete,
@@ -8596,7 +8597,9 @@ mod tests {
             ));
             assert_eq!(jobs.len(), 2);
         }
+        let mut terminal_log_matches = true;
         let retired = if reject_egress {
+            join_read_job_tcp_pair(&mut sender, &mut receiver).await;
             let rejected_pair = keyed_read_job_tcp_pair(sodiumoxide::crypto::secretbox::MACBYTES).await;
             sender = rejected_pair.0;
             receiver = rejected_pair.1;
@@ -8616,6 +8619,13 @@ mod tests {
                 assert_eq!(jobs[1].remote, "active");
                 drop(jobs.remove(1));
             }
+            assert!(crate::tcp::join_test_writer(
+                sender.as_framed_tcp_mut().expect("failed sender"), true,
+            ).await.is_none(), "fatal admission must already have joined the sender");
+            let joined = crate::tcp::join_test_writer(
+                receiver.as_framed_tcp_mut().expect("rejected-frame receiver"), true,
+            ).await.expect("owned receiver writer");
+            assert!(joined.is_ok() || joined.as_ref().is_err_and(|error| error.is_cancelled()));
             let healthy_pair = keyed_read_job_tcp_pair(8 * 1024).await;
             sender = healthy_pair.0;
             receiver = healthy_pair.1;
@@ -8623,23 +8633,26 @@ mod tests {
         } else {
             let (log, response) = read_job_tcp_step(&mut jobs, &mut sender, &mut receiver).await;
             let expected_done = matches!(case, ReadJobRetirementCase::Complete);
-            if expected_done {
+            let expected_error = if expected_done {
                 assert!(matches!(
                     response.union,
                     Some(file_response::Union::Done(done)) if done.id == 184 && done.file_num == 1
                 ));
+                String::new()
             } else {
-                assert!(matches!(
-                    response.union,
-                    Some(file_response::Union::Error(error))
-                        if error.id == 184 && error.file_num == 0 && !error.error.is_empty()
-                ));
-            }
-            if !matches!(case, ReadJobRetirementCase::OpenError) {
-                let log: serde_json::Value = serde_json::from_str(&log).expect("decode terminal log");
-                assert_eq!(log["remote"], "active");
-                assert_eq!(log["done"], expected_done);
-            }
+                let Some(file_response::Union::Error(error)) = response.union else {
+                    panic!("failed read must send the native error");
+                };
+                assert_eq!((error.id, error.file_num), (184, 0));
+                assert!(!error.error.is_empty());
+                error.error
+            };
+            terminal_log_matches = serde_json::from_str::<serde_json::Value>(&log)
+                .map(|log| log["id"] == 184 && log["remote"] == "active"
+                    && log["path"] == active_source.to_string_lossy().as_ref()
+                    && log["done"] == expected_done && log["cancel"] == false
+                    && log["error"] == expected_error)
+                .unwrap_or(false);
             true
         };
         assert_eq!(jobs.len(), 1);
@@ -8672,7 +8685,16 @@ mod tests {
             Some(file_response::Union::Done(done)) if done.id == 184 && done.file_num == 1
         ));
         assert!(jobs.is_empty());
-        retired
+        join_read_job_tcp_pair(&mut sender, &mut receiver).await;
+        drop((sender, receiver));
+        #[cfg(target_os = "linux")]
+        for entry in std::fs::read_dir("/proc/self/fd").expect("inspect source descriptor retirement") {
+            if let Ok(path) = std::fs::read_link(entry.expect("descriptor entry").path()) {
+                assert!(path != paused_source && path != active_source, "source handle remains open");
+            }
+        }
+        println!("READ_TERMINAL_LOG=observed case={case:?} egress_rejected={reject_egress} log_matches={terminal_log_matches} survivor=exact writers=joined sources=closed");
+        retired && terminal_log_matches
     }
 
     #[tokio::test]

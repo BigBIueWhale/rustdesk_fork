@@ -131,6 +131,7 @@ case "$#:${8:-}" in
             --native-logind) HBB_LOGIND_NATIVE=1 ;;
             --fuse-reads) HBB_FUSE_READ_TESTS=1 ;;
             --send-digest) HBB_SEND_DIGEST_TESTS=1 ;;
+            --file-send-log) RUST_TEST_PROFILE=file-send-log ;;
             --file-metadata) RUST_TEST_PROFILE=file-metadata ;;
             --writer-retirement) RUST_TEST_PROFILE=writer-retirement ;;
             --guess-limiter) RUST_TEST_PROFILE=guess-limiter ;;
@@ -4054,6 +4055,14 @@ run_focused_rust_tests() {
                 test::file_logging_retains_only_the_configured_archives
             )
         fi
+        if [ "$RUST_TEST_PROFILE" = file-send-log ]; then
+            required_tests=(
+                fs::tests::read_step_error_retires_selected_entry_with_a_repeated_id
+                fs::tests::read_step_completion_retires_selected_entry_with_a_repeated_id
+                fs::tests::read_step_open_error_preserves_paused_entry_with_a_repeated_id
+                fs::tests::read_step_terminal_retirement_precedes_egress_admission
+            )
+        fi
         if [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
             memory=1536m
             memory_bytes=1610612736
@@ -6394,6 +6403,23 @@ run_focused_rust_tests() {
                                     exit "$group_status"
                                 fi
                             done
+                        elif [ "$RUST_TEST_PROFILE" = file-send-log ]; then
+                            group_status=0
+                            for test_name in \
+                                fs::tests::read_step_error_retires_selected_entry_with_a_repeated_id \
+                                fs::tests::read_step_completion_retires_selected_entry_with_a_repeated_id \
+                                fs::tests::read_step_open_error_preserves_paused_entry_with_a_repeated_id \
+                                fs::tests::read_step_terminal_retirement_precedes_egress_admission; do
+                                timeout --signal=TERM --kill-after=5s 20s \
+                                    "$test_executable" --exact "$test_name" --color never --test-threads=1 --show-output \
+                                    || group_status=$?
+                                [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                            done
+                            if [ "$group_status" -ne 0 ]; then
+                                printf "FILE_SEND_LOG_ARTIFACT_STOP=observed sha256=%s status=%s unchanged=before-after\n" \
+                                    "$artifact_sha" "$group_status"
+                                exit "$group_status"
+                            fi
                         elif [ "$RUST_TEST_PROFILE" = file-logging ]; then
                             group_status=0
                             timeout --signal=TERM --kill-after=5s 20s \
@@ -7428,6 +7454,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         if [ "$RUST_TEST_PROFILE" = guess-limiter ]; then expected_groups=1; fi
         if [ "$RUST_TEST_PROFILE" = compression ]; then expected_groups=2; fi
         if [ "$RUST_TEST_PROFILE" = file-logging ]; then expected_groups=1; fi
+        if [ "$RUST_TEST_PROFILE" = file-send-log ]; then expected_groups=4; fi
         if [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then expected_groups=1; fi
         if [ "$RUST_TEST_PROFILE" = tcp-key-transition ]; then expected_groups=1; fi
         if [ "$RUST_TEST_PROFILE" = config-options ]; then expected_groups=7; fi
@@ -8531,6 +8558,9 @@ PY
         elif [ "$RUST_TEST_PROFILE" = file-logging ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'file logging test total differs'
             grep -E '^test test::file_logging_[[:alnum:]_]+ [.][.][.] ok$|^FILE_LOG_(ROTATION|RETENTION)' "$output"
+        elif [ "$RUST_TEST_PROFILE" = file-send-log ]; then
+            [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'sender log test total differs'
+            grep -E '^test fs::tests::read_step_[[:alnum:]_]+ [.][.][.] ok$|^READ_TERMINAL_(LOG|RETIREMENT)' "$output"
         elif [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'protobuf parser test total differs'
             grep -E '^test protobuf_tests::[[:alnum:]_]+ [.][.][.] ok$' "$output"
@@ -8593,6 +8623,10 @@ PY
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = file-logging ]; then
             printf 'FILE_LOGGING_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$hbb_test_artifact_sha" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = file-send-log ]; then
+            printf 'FILE_SEND_LOG_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$hbb_test_artifact_sha" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then

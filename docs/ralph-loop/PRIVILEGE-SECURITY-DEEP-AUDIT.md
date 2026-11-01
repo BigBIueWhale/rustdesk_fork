@@ -127885,3 +127885,14 @@ Eight bounded raw files (97,534 bytes) are retained and verified on CTE;
 their TUF originals were authenticated during collection. The selected
 Linux removal/relaunch/cancel acceptance gap is closed; the broader claims
 above remain open. Fresh ledger count follows.
+
+Fresh count at `ff4f3197`, TUF `MqrGJHibiH`, passes at 386,794 tokens /
+1,770,904 bytes, input SHA-256
+`5f50c1c3529abdd8664065d2854e7d743639c34acb220931cd1972ca015f5054`.
+Seven controls and the complete-input round trip pass. QEMU 3927379 and
+wrapper 3925931 are absent; 402,698,240 peak RAM bytes retire after 30.730
+supervisor seconds and all three listener deltas are zero. Serial SHA-256:
+`6afe2f189831a5aecf000f86f0b4a429b208e371f7b5bcf9f4267e0f2a847109`.
+The removal run and count retain 15 bounded raw files (208,093 bytes),
+hash-verified on both hosts. This audit-only receipt preserves the counted
+ledger. No owned VM remains; the overall release goal remains incomplete.

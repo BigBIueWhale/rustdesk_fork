@@ -2194,6 +2194,7 @@ def startup_namespace(commit, binary_sha):
                      "terminal": terminal, "elapsed_seconds": time.monotonic() - began,
                      "legacy_unchanged": True, "namespace_unchanged": refused,
                      "supervisor": previous if not refused else None}, sort_keys=True), flush=True)
+                run(["/usr/bin/systemctl", "reset-failed", "rustdesk.service"])
             finally:
                 reference.close()
                 if pidfd is not None:
@@ -2205,7 +2206,6 @@ def startup_namespace(commit, binary_sha):
                 parent.unlink()
                 (target / "preserve").unlink()
                 target.rmdir()
-            run(["/usr/bin/systemctl", "reset-failed", "rustdesk.service"])
             print(f"LINUX_SERVICE_STARTUP_CASE=pass phase={phase}", flush=True)
     finally:
         stop()

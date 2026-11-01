@@ -11,7 +11,6 @@ import 'file_model.dart';
 class _CmFileJobTable {
   final jobs = <CmFileLog>[];
   final stopwatch = Stopwatch();
-  int lastElapsed = 0;
 }
 
 class CmFileModel {
@@ -96,14 +95,9 @@ class CmFileModel {
       if (jobs.isNotEmpty && !table.stopwatch.isRunning) {
         table.stopwatch.start();
       }
-      final calcSpeed = table.stopwatch.elapsedMilliseconds -
-              table.lastElapsed >=
-          1000;
-      if (calcSpeed) {
-        table.lastElapsed = table.stopwatch.elapsedMilliseconds;
-      }
+      final elapsed = table.stopwatch.elapsedMicroseconds;
       for (final job in jobs) {
-        _dealOneJob(ffi, owner, table, job, calcSpeed);
+        _dealOneJob(ffi, owner, table, job, elapsed);
       }
       _publishSelected(owner, table);
     } catch (e) {
@@ -112,7 +106,7 @@ class CmFileModel {
   }
 
   void _dealOneJob(FFI ffi, CmFileOwner owner, _CmFileJobTable table,
-      TransferJobSerdeData data, bool calcSpeed) {
+      TransferJobSerdeData data, int elapsed) {
     CmFileLog? job = table.jobs.firstWhereOrNull((e) => e.id == data.id);
     if (job == null) {
       job = CmFileLog();
@@ -145,10 +139,19 @@ class CmFileModel {
       job.state = JobState.error;
       job.err = data.error;
     }
-    if (calcSpeed) {
-      job.speed = (data.transferred - job.lastTransferredSize) * 1.0;
-      job.lastTransferredSize = data.transferred;
+    final previousElapsed = job._lastTransferredElapsed;
+    if (previousElapsed == null ||
+        data.transferred < job._lastObservedTransferred) {
+      job.speed = 0;
+      job._lastTransferredSize = data.transferred;
+      job._lastTransferredElapsed = elapsed;
+    } else if (elapsed - previousElapsed >= Duration.microsecondsPerSecond) {
+      job.speed = (data.transferred - job._lastTransferredSize) *
+          Duration.microsecondsPerSecond / (elapsed - previousElapsed);
+      job._lastTransferredSize = data.transferred;
+      job._lastTransferredElapsed = elapsed;
     }
+    job._lastObservedTransferred = data.transferred;
   }
 
   void _onFileRemove(FFI ffi, CmFileOwner owner, String log) {
@@ -283,7 +286,9 @@ class CmFileLog {
   CmFileAction action = CmFileAction.none;
   var fileName = "";
   var err = "";
-  int lastTransferredSize = 0;
+  int _lastTransferredSize = 0;
+  int _lastObservedTransferred = 0;
+  int? _lastTransferredElapsed;
 
   String display() {
     if (state == JobState.done && err == "skipped") {

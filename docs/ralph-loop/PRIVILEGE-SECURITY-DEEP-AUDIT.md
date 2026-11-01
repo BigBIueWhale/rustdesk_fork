@@ -126414,3 +126414,21 @@ exercise delayed updates, interleaved directions/jobs, late first observations
 and reset, plus exact-owner rejection/replacement. Native transport and the
 complete CM page are not fixtures' claims. Product correction and execution
 are pending; terminal/cancellation semantics and other parked topics are untouched.
+
+Unchanged-product baseline `f3f55ed0`, TUF `TaZ36KpKoN`, runs all 47 cases:
+44 pass and three rate assertions fail. A measured 2,714.70 bytes/s reports
+6,000; an interleaved job's 998.33 reports 2,400; a late first observation
+reports 50,000 instead of having no measured rate. Exact-owner rejection and
+replacement pass. The real model compiled with fresh bindings; surrounding
+server/chat owners are doubles and event counters are controlled inputs.
+The 248.207-second run joins QEMU 3744964 and wrapper 3744296, retires
+4,417,560,576 peak RAM bytes and retains zero deltas in four listener snapshots.
+Its diagnostic directory is reconciled as `cm-rate-baseline.TaZ36KpKoN`.
+
+The correction removes the shared timing gate. Each job retains its sampled
+byte/time pair and most recent observed counter; rates divide the sampled
+delta by elapsed microseconds converted to seconds. First observations and
+any counter decrease reset that job's baseline and rate. Subsecond updates
+preserve the sample until the existing one-second cadence is reached. The
+same 47-case test source will now exercise the candidate; no completion or
+cancellation decision, native transfer operation or authority path is changed.

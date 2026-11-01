@@ -129538,3 +129538,37 @@ fixture VM with identical adapters and cases. Require the seven specific
 historical discrepancies, three passing controls and all ten candidate cases.
 Python/shell syntax and diff checks pass; native results remain pending. Future
 TUF checkouts use umask 077. CTE's original input soak remains live and untouched.
+
+### 2026-11-01 — native soak accounting comparison passes
+
+TUF `5fNNFMenGN`, control `.harness-state/soak-accounting-ab-bf2d1147`, executes
+the canonical `--android-frame-tests` job from pushed `bf2d1147`. The exact
+`f1b704e1` historical loop accepts both over-bound tails, both deadline-late
+required samples and failed/backward loop-entry clocks; its 1,000 ms tail is
+misreported as 40 ms. Three healthy controls pass. The corrected `540ba9ff`
+loop passes all ten unchanged cases: exact boundary accepted/reported, over-bound
+tails refused, only pre-deadline acquisitions admitted, invalid clocks refused.
+All 240 preceding windows are healthy in every case. Complete C loop/percentile
+bytes execute with deterministic clock/pixel and explicit process/resource/
+coordination doubles; this is controller-accounting evidence, not product latency
+or process-authority acceptance. Retained frame/history/geometry/input controls
+also pass, and the complete native presentation controller compiles.
+
+Historical/candidate binary SHA-256 values are
+`8815455727e024e24035507cf4a438d241fa430b10901c07b0ceeb6ae88642f9` /
+`b7858b6b86dcdd2ff9a1e7362b350cea5e932dba23b519a2da2fcb1ad5a8e57f`.
+Receipt `soak-accounting-ab-bf2d1147.json` is 10,808 bytes, SHA-256
+`f56de7ef2b2158556bb602a18666fe6703d9928220aaa2e686f2ed83243092bc`;
+it binds both complete controller files, extracted loops, fixture sources,
+unchanged binaries, all twenty outcomes and raw evidence. Outer exit is zero;
+wrapper 419685/QEMU 421210 are absent, exact RAM `run.3gfjy8d0` (`29:36923`)
+retires and all three decoded listener deltas are zero. Duration is 65.417 seconds,
+peak scratch 3,775,852,544 bytes within 9 GiB. No host product executes.
+
+Update the R-F5 ledger with the completed sampled display evidence and this
+accounting correction, preserving strict corrected full-duration acceptance as
+pending. The original logs cannot recover their omitted final intervals; a
+corrected complete-peer soak is the next decisive check, reusing the authenticated
+app/engine without rebuilding. CTE's independent input run remains untouched:
+5,250 requests observed so far, maximum 146 ms and fixed-baseline p95/p99 drift
+at most 5/6 ms. Fresh ledger count and corrected TUF replay are next.

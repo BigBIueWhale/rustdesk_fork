@@ -43,6 +43,14 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**Healthy Linux long-session observations (2026-11-01):** A four-hour full-peer
+display run reports 308,313 valid samples, maximum age 353 ms and fixed-baseline
+p95/p99 drift 9/7 ms, with bounded resources and joined cleanup. Its observer
+omitted final-window intervals; the R-F5 entry below retains that limitation.
+The exact historical/corrected observer comparison now reproduces seven accounting
+discrepancies and passes all ten corrected cases. Corrected full-duration display
+acceptance and the separately running input soak remain pending.
+
 **Linux shared-capture queues and recovery verified (2026-11-01):** Two complete
 Flutter viewers retain their connections through simultaneous suspension and
 staged resume. Exact delivery traces show one transmitted-unreceipted frame per
@@ -3283,6 +3291,32 @@ host listener deltas are zero. Receipt: `input-latency-b6a53664.json`; fixture
 controls: `input-response-fixture-94db4103.json`. This healthy Linux software-display
 baseline does not establish physical scanout, impaired/recovered or sustained input
 latency, installed acceptance or other platforms. Those R-F5 obligations remain OPEN.
+
+**Healthy Linux display soak and observer accounting.** TUF `Agz8Yh9Qs1` runs
+authenticated app `0243c010` / engine `ddb1541d` under harness `38d007eb` for
+241 one-minute windows: one baseline plus four hours. All 308,313 sampled ages
+are valid; reported p95 is 291–304 ms, p99 307–320 ms and maximum age 353 ms.
+Fixed baseline 295/313 ms gives maximum p95/p99 drift 9/7 ms. Viewer descriptors
+stay at 45, RSS spans 363,888–389,500 KiB and threads 51–53. Server CPU and
+resources remain within their predeclared limits. The same connection survives;
+all owned processes join, bounded RAM retires and four decoded listener deltas
+are zero. Receipt: `viewer-soak-38d007eb.json`.
+
+This original observer omits each final unobserved interval, admits acquisition
+completed at/after the window deadline and does not validate loop-entry clocks.
+Its sampled observations cannot close strict whole-window freshness acceptance.
+Correction `540ba9ff` validates clock progression, excludes deadline-late samples
+and includes the remaining interval in the existing 1,000 ms gap bound.
+TUF `5fNNFMenGN` on `bf2d1147` compiles and executes the exact historical and
+corrected complete loops with identical deterministic clock/pixel adapters and
+process/resource/coordination doubles. It reproduces seven historical accounting
+discrepancies and three passing controls; all ten corrected cases pass, including
+the 1,000/1,001 ms tail boundary and last required acquisition before/at/after
+the deadline. QEMU joins, RAM retires and three decoded listener deltas are zero.
+Receipt: `soak-accounting-ab-bf2d1147.json`. This is native controller accounting,
+not an additional full-peer run. Corrected full-duration display acceptance and
+the separately running input soak remain pending; physical scanout, impaired
+recovery, installed artifacts and other-platform obligations remain OPEN.
 
 **Shared R-F5 acceptance remains OPEN.** Execute exact current peer artifacts through
 capture, encode, transport, decode and actual presentation; measure frame age and

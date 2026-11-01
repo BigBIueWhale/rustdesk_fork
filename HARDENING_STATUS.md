@@ -43,6 +43,12 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-01):** Further shared-menu validation is OPEN/PARKED.
+The completed button-entry correction and the already-running native accessible
+Forget replay are retained below. No additional pointer replay or menu correction
+follows this pivot. Work moved to normal Remote-session Close and main-window
+usability; do not resume menu follow-ups automatically.
+
 **User pivot (2026-11-01):** Fractional-wheel native validation remains
 OPEN/PARKED after the completed component checkpoint. No wheel provider or
 native scrolling scenario followed. Work moved to saved-peer visibility and
@@ -3468,6 +3474,20 @@ native registrar failure, decoded/presented pixels, or latency. Concurrent move 
 during handoff still need target-native failure-finality tests; Linux, Windows, and macOS presentation and
 engine teardown remain OPEN. This is not an established cause of the reported Android or Windows delays
 or a demonstrated local privilege escalation.
+
+**Normal Remote Close — native Linux checkpoint (`df57c746`).** TUF
+`l8oCV9jezF` reuses full app `a630f880` and engine `63493887`, without rebuilding.
+After real password authentication and four fresh displayed frames, it opens the
+main window, clicks the actual remote Close control, observes the remote window
+retired and both connected socket inodes absent across ten 100-ms observations,
+and preserves the serving listener. The same process and main window then open
+Settings and expose its previously absent Theme section. This complete observation
+takes 2,452 ms; it is not an isolated teardown-latency measurement. Final viewer,
+server, Xvfb, container and VM joins pass, RAM scratch retires, and all four host
+listener deltas are zero. No product correction is needed. Source-bound command,
+artifacts and raw evidence: `session-close-df57c746.json` in the verifier evidence
+directory and the audit journal. Concurrent tabs, native cleanup failures, other
+platforms, installed authority and release acceptance remain OPEN.
 
 **X11 monitor reply ownership — SOURCE CORRECTED; NATIVE COMPONENT A/B ACCEPTED.**
 `libs/scrap/src/x11/iter.rs` previously returned a monitor cursor after freeing
@@ -8440,7 +8460,7 @@ The following artifacts retain distinct source and consumer roles.
 | Core engine `e5e5736a` | Immutable 28-file core baseline, archived under `.harness-state/flutter-linux-engine-artifact-archive/`. It predates the insertion/UTF-16 corrections and lacks the complete app toolkit. |
 | Toolkit `15cf93dd` | Immutable 325-file corrected-core/toolkit baseline in the same archive namespace. It lacks all sixteen shader includes; its successful build cannot supply shader-complete app input. |
 | Shader-complete toolkit `63493887` | 341 payload files under `.harness-state/flutter-linux-engine-artifacts/63493887d7bf51c9ea7be8b03e7a4641dd40208f/linux-x86_64-engine/`: matching core, 26 public headers, platform dills, ICU, generated sky_engine, host tools/frontend and sixteen original-GN shader includes. |
-| App `a3755044` | Schema-2 capsule under `.harness-state/linux-flutter-app-artifacts/a375504416e96b209f507436d8cf65f6f3047c7e/linux-x86_64-flutter-app/`, with 74 payload files and sixteen directories. Independent historical inspection binds its actual core/ICU to `63493887`; the named native replay uses this capsule without rebuilding it. |
+| App `a3755044` | Superseded payload retired on 2026-11-01 after complete manifest/hash verification; the current replay refuses its obsolete native-loader/input-provider contract. Historical source and native evidence remain, with the full manifest and `linux-flutter-app-retirement-a3755044.json` retained under `.harness-state/verifier-vm/`. Newer complete app generations remain available. |
 | Stock-engine app `eeaaa0ec` | Comparison baseline only. At `3d548adb`, inert byte comparison matches its core to the authenticated stock 3.47.5 SDK. Its schema-1 manifest carries no separate engine producer/archive/manifest/patch authority; replay cannot count as corrected-engine evidence. |
 
 Exact archive/manifest identities, the stock/core comparison hashes, fifteen raw
@@ -15322,8 +15342,21 @@ Forget absent, and the existing TCP connection survives the action. All three
 viewer processes exit zero. This proves normal removal and subsequent prompting,
 not forensic erasure or privileged credential authority.
 
-**OPEN:** the accessible Tap action closes this menu without executing its
-inner Forget callback; pointer success does not resolve that defect. One earlier
+**Button-entry action corrected (`f286b321`).** A passive `PopupMenuEntry`
+now leaves callback, enabled state and dismissal with the existing reactive
+TextButton. The unchanged component cases reproduce six failures before the
+correction and pass all 61 cases afterward, covering pointer/keyboard/semantics,
+both dismissal modes, live enablement and dialog routing. Full app `a630f880`
+builds successfully; its already-running accessible Forget replay `wtXXQV0Hf3`
+passes at the subsequent user pivot. It enrolls, restores, activates Forget
+through AT-SPI, verifies the empty joined peer record, and requires a blank
+unchecked prompt in the third viewer. All three processes exit zero; the VM
+joins, RAM scratch retires and four listener deltas are zero. The pivot parks
+further menu work, including pointer replay of this new bundle. Switch entries,
+secondary controls and other platforms are not covered by this correction.
+Exact comparison/build/native records: `menu-entry-action-f286b321.json`.
+
+**OPEN:** One earlier
 corrected-app replay authenticated/decoded but failed fresh-pixel observation;
 later runs of the same app pass, and causation remains unresolved. The final
 authenticated phases each present four fresh frames (maximum sampled ages
@@ -15332,7 +15365,7 @@ corrects actual card/translated labels and tolerates a candidate window retiring
 during discovery, with an executed destroyed-window control. Every run joins,
 retires RAM scratch and leaves zero listener deltas. Exact failures, artifacts,
 cleanup and reproduction command are in the audit and
-`desktop-peer-documents-7e9491ad.json`. Shared-menu accessibility, failure/concurrency,
+`desktop-peer-documents-7e9491ad.json`. Remaining menu surfaces, failure/concurrency,
 other platforms, installed authority and release acceptance remain OPEN.
 
 **Peer history snapshots (`6fc33995`) — Dart component A/B verified; full application/native integration OPEN.**

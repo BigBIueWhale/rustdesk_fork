@@ -128196,3 +128196,112 @@ The native attempts, build, cleanup receipts and count retain 78 raw files
 the counted ledger. No owned VM remains; the saved-peer correction and pointer
 Forget workflow reach a native Linux checkpoint. The broad goal remains active
 and incomplete, with the listed accessibility and other evidence gaps still open.
+
+### 2026-11-01 — button-entry checkpoint retained at user pivot
+
+The latest user instruction redirects work to another aspect. Further shared-menu
+work is OPEN/PARKED; no new pointer replay follows it. The already-running native
+accessible replay completed successfully and its cleanup is checked before the
+new session-close work starts. The following records the completed pre-pivot work.
+
+`MenuEntryButton` nested its real reactive TextButton inside an interactive
+PopupMenuItem. The outer merged action only closed the route; it did not invoke
+the callback and could advertise an enabled action for a disabled inner button.
+Flutter's [MergeSemantics contract](https://api.flutter.dev/flutter/widgets/MergeSemantics-class.html)
+explains the first-handler selection; [PopupMenuEntry](https://api.flutter.dev/flutter/material/PopupMenuEntry-class.html)
+supplies the layout/value contract without requiring a competing action.
+Product `f286b321bfed75f7c72fabff414c74670567ec76` uses a private passive entry
+wrapper, preserving the existing TextButton's callback, live enablement and
+dismissal behavior. Ordinary popup items, switches and secondary controls remain
+outside this correction.
+
+| Source / TUF run | Result |
+| --- | --- |
+| `fbfe4ec7` / `lpPsUReMZe` | Same 61 component cases: 55 pass, six fail. Semantic and keyboard activation fail in both dismissal modes; disabled semantics and dialog routing also fail. Both pointer controls and all 53 previous cases pass. |
+| `f286b321` / `5jd5JcajjJ` | All 61 cases / six suites and three parser controls pass. Actual production widgets/routes execute with configuration/connection doubles. |
+| `a630f880` / `0t48dk5Ax6` | Complete Rust/Flutter/FRB/plugin app builds: 74 payload files, 70,287,298 bytes. No runtime acceptance is inferred from compilation. |
+| `a630f880` / `wtXXQV0Hf3` | Actual accessible Forget passes across three joined viewer generations: enroll, restore without input, accessible removal with unchanged active connection, empty stored PRS, then blank unchecked password prompt and Cancel. |
+
+App manifest SHA-256 is
+`6e53448f073347e3fcc1ef6fc3204b938a33067df1451f3f336c8cf668756bf5`;
+source tree `8e728b5f1ac6a2cc9cacee87482e1dd33a13e641`. It reuses authenticated
+engine `63493887` / Flutter 3.47.5. The native result is not merely a successful
+AT-SPI call: the reopened menu, joined peer record and next process's prompt
+establish the application effect. Native serial SHA-256 is
+`b3ecc7f120c231d07729cdefd909f955b6139107a9599094c022b62c47b039bb`.
+Its QEMU 3995091 is absent, the outer wrapper records exit zero and its tmux
+session is absent; the exact wrapper PID was not retained. The run takes 116.291
+supervisor seconds, peaks at 3,012,296,704 RAM bytes and retires that workspace.
+All four runs join and all sixteen listener deltas are zero. Baseline failure
+state is reconciled only after joined cleanup. Reproduce component evidence with
+`--flutter-model-tests --menu-button` and native evidence with the canonical app
+replay and `--credential-menu-accessible` using the above artifact identity.
+
+Storage admission retains the existing bounded cache policy. The superseded CTE
+app `a3755044` is classified against its obsolete input-provider/loader contract,
+fully verified and retired: 69,157,201 logical / 69,439,488 allocated bytes,
+including its manifest. Its full manifest and retirement receipt remain. The
+previous app `7e9491ad` is copied to CTE and verified before only its TUF duplicate
+is retired (70,586,368 allocated bytes). CTE retains four app generations; TUF
+retains the new `a630f880` generation. Canonical offline inputs and engine
+artifacts remain. Historical a375 replay evidence is preserved; the current
+artifact-disposition row now accurately records payload retirement.
+
+`menu-entry-action-f286b321.json` binds the comparison, build, native receipts,
+artifact identities and scope. Pointer replay of the new bundle, other menu
+controls/platforms, the earlier unexplained fresh-pixel failure, installed
+authority and release acceptance remain OPEN. This pivot does not discard the
+completed product correction or authorize reopening independently parked items.
+
+### 2026-11-01 — normal Remote-session Close with a surviving main window
+
+Select R-S0 and R-S11ex/R-S11e-185's ordinary page/session cleanup path after the
+user pivot. Existing abrupt-viewer-exit and component tab-removal evidence does
+not establish that a real user Close both retires the connection and preserves
+the surrounding application. This is a directly testable native lifecycle gap
+using the already-built complete app, ahead of another component-only UI change.
+Read-only fullscreen preparation found no existing window-manager fixture; no
+fullscreen scenario, acquisition or product change was made.
+
+The actual Close handler calls `closeConnection` and the tab controller awaits
+`RemotePage._cleanupResources` before removal. That cleanup retires presentation,
+textures and the exact FFI session before engine-backed state is removed.
+No product patch is required by this slice. Harness
+`df57c746b0f9a8a745db60ed1816b5db71b75c79` adds `--session-close` to the existing
+source-bound Linux replay, using app `a630f880` and engine `63493887` above.
+No complete app rebuild or new acquired input is needed.
+
+The [AT-SPI action contract](https://docs.gtk.org/atspi2/method.Action.do_action.html)
+only establishes invocation; the observer instead clicks the uniquely named,
+bounded visible Close control and checks application effects. The
+[kernel TCP table contract](https://docs.kernel.org/networking/proc_net_tcp.html)
+identifies endpoints, state and inode. The isolated namespace starts with both
+connected socket inodes and the exact listener; after Close it must retain only
+the listener, across ten observations spaced 100 ms apart within five seconds.
+Unowned TIME_WAIT records do not count as application sockets. Parse/read errors
+cannot pass as absence. X11 observations use the existing scoped BadWindow trap
+under the [Xlib error contract](https://xorg.freedesktop.org/archive/current/doc/libX11/libX11/libX11.html#Using_the_Default_Error_Handlers);
+the original window must become unmapped or disappear. Its positive baseline
+must first be visible. Process creation identity and the main window are retained;
+opening Settings after Close must expose its previously absent Theme section.
+
+TUF `l8oCV9jezF` passes with unchanged app bytes. Real password entry authenticates
+and four current frames render (maximum sampled age 307 ms). Close retires both
+connected sockets and the remote view, ten observations pass, and the same
+process/main window opens Settings. The complete observation takes 2,452 ms,
+including the stable sampling and settings action; this is not teardown latency
+alone. The main window then receives normal WM_DELETE_WINDOW for final fixture
+cleanup. Viewer exit is zero with no retired-engine messenger diagnostic; server,
+source, Xvfb, containers and VM all join. Four host listener deltas are zero.
+QEMU 3998970 and wrapper 3997881 are absent; 3,010,744,320 peak RAM bytes retire
+after 113.449 supervisor seconds. Serial SHA-256:
+`d71682172d8a70332c137f5391cd579620bfc54750dcc806489ac289c7406ce7`.
+
+Reproduction command and exact artifacts/raw records are retained in
+`.harness-state/verifier-vm/session-close-df57c746.json`. The combined prior
+checkpoint and this scenario retain 40 bounded raw files, 769,176 bytes, copied
+from TUF for independent hash verification. This establishes one normal Linux
+X11 Close path. Concurrent tabs, injected native cleanup failure, repeated-use
+resource behavior, Windows/macOS/mobile, installed privileged authority and
+release acceptance remain OPEN. Fresh ledger count and evidence-copy completion
+follow; the broad goal remains active and incomplete.

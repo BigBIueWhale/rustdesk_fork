@@ -129362,3 +129362,17 @@ Receipts: `input-latency-cte-copy-retirement-admitted.json` and
 51 it has no reported failures, p95 292–301 ms, p99 308–318 ms, maximum sampled
 frame age 351 ms and exactly 45 viewer FDs. Its four-hour terminal acceptance is
 still pending. The updated ledger requires its fresh canonical count.
+
+Checkpoint count: CTE `0pKtImQzJg` at `c7520817` passes the established
+tokenizer, seven controls and whole-input round trip: 390,428 tokens /
+1,787,873 bytes, SHA-256
+`5b7f36f8a0b5182acd1d0696dad18a79e9d2d6e5a7b74b1c7025a29b7e8dee39`.
+Wrapper 1997553/QEMU 1999169 are absent, three decoded listener deltas are
+zero and bounded RAM scratch retires after 30.680 seconds (402,538,496 peak
+bytes). Receipt: `input-latency-ledger-c7520817.json`. This audit-only completion
+preserves the counted ledger. Keep the TUF `Agz8Yh9Qs1` soak running on its
+unchanged `38d007eb` source until terminal validation; do not sync that host or
+start another TUF VM while it owns the lock. CTE has no remaining private run
+or temporary app/engine copy from this slice. The new bounded evidence remains
+on CTE; synchronize it with the harness after the live TUF run retires. The
+release goal remains active and incomplete.

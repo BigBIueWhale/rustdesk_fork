@@ -128622,3 +128622,36 @@ SHA-256 `b6860e68876a35f867c9c52114c644f2dd2ee86910b444721e59221af127c4c2`.
 All 26 current evidence files total 854,771 bytes and match their recorded hashes
 on CTE and TUF. This audit-only receipt preserves the counted ledger. The selected
 appearance defect remains OPEN for correction; no owned VM/workspace remains.
+
+### 2026-11-01 — correct native settings-provider admission
+
+The previous turn made progress: two complete-app runs reproduce R-S0's live
+Follow System failure. Continue that selected defect ahead of unrelated work.
+Read the exact authenticated framework archive (`git-000.tar`, SHA-256
+`ec5faa7c7deff4d789de80e128dbf35c25466457b99985711238ce9391e4d72b`);
+its `fl_settings_portal.cc` SHA-256 is
+`78bbfd24c1f5b7f30d6224fb5f2321aef3a60969e6209f4f54a80e3fccbec6e3`.
+The actual source confirms proxy construction followed by six ignored read
+failures and unconditional success. The archive, rather than web-rendered
+source whitespace, is the patch baseline.
+
+The [portal contract](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Settings.html)
+standardizes appearance and permits implementation-specific keys; a working
+portal need not supply the GNOME-specific preferences. The correction therefore
+requires at least one supported settings read before selecting the portal.
+No usable settings reports an explicit initialization error and selects the
+existing GNOME provider. Valid partial portals retain their settings and signals.
+The patch joins the existing source-bound engine patch so artifact manifests
+continue to bind every engine change.
+
+A focused native comparison compiles the exact settings selector, portal and
+GNOME implementations before and after patching. A private real D-Bus transport
+serves three unavailable cases (absent name, absent interface, empty settings)
+and two working partial portals (standard color preference or GTK theme only).
+Native signals must preserve dark/light/no-preference behavior. The corrected
+unavailable cases must select GNOME and deliver two live settings transitions
+each. The portal service and minimal GNOME schema are explicit fixtures;
+the existing complete-app scenario supplies the separate real-desktop-API/pixel
+check after rebuilding. [GTestDBus](https://docs.gtk.org/gio/class.TestDBus.html)
+owns the private bus; the service thread and connection join before bus shutdown.
+No component result alone closes full application acceptance.

@@ -3027,3 +3027,28 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible_test.cc 
 
    FlutterSemanticsFlags flags = {};
    FlutterSemanticsNode2 root_node = {
+diff --git a/engine/src/flutter/shell/platform/linux/fl_settings_portal.cc b/engine/src/flutter/shell/platform/linux/fl_settings_portal.cc
+--- a/engine/src/flutter/shell/platform/linux/fl_settings_portal.cc
++++ b/engine/src/flutter/shell/platform/linux/fl_settings_portal.cc
+@@ -289,12 +289,20 @@
+     return FALSE;
+   }
+
++  gboolean has_settings = FALSE;
+   for (const FlSetting setting : kAllSettings) {
+     g_autoptr(GVariant) value = nullptr;
+     if (settings_portal_read(self->dbus_proxy, setting.ns, setting.key,
+                              &value)) {
+       set_value(self, &setting, value);
+-    }
++      has_settings = TRUE;
++    }
++  }
++  // A proxy alone does not establish that a settings provider is available.
++  if (!has_settings) {
++    g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
++                        "Settings portal returned no supported settings");
++    return FALSE;
+   }
+
+   g_signal_connect_object(self->dbus_proxy, "g-signal",

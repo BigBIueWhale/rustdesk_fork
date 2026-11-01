@@ -677,6 +677,7 @@ run_linux_flutter_engine_prepare() {
     local helper=$VERIFY_REPO/scripts/prepare-flutter-linux-engine.py
     local patch=$VERIFY_REPO/res/flutter/linux-accessibility-retirement.patch
     local test=$VERIFY_REPO/scripts/test-flutter-linux-accessible-retirement.cc
+    local settings_test=$VERIFY_REPO/scripts/test-flutter-linux-settings.cc
     local archive=/mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz
     local work=$ROOT/engine-prepare-work helper_before status=0
     local memory=2g memory_bytes=2147483648 cpus=2 nano_cpus=2000000000
@@ -700,7 +701,7 @@ run_linux_flutter_engine_prepare() {
             --mount "type=bind,source=$VERIFY_REPO/scripts/publish-artifact-result.py,target=/authority/publish.py,readonly"
         )
     fi
-    helper_before="$(sha256sum "$helper" "$patch" "$test" "$VERIFY_REPO/scripts/smoke-xvfb-prepare.sh" \
+    helper_before="$(sha256sum "$helper" "$patch" "$test" "$settings_test" "$VERIFY_REPO/scripts/smoke-xvfb-prepare.sh" \
         "$VERIFY_REPO/scripts/smoke-xvfb-packages.tsv" "$VERIFY_REPO/scripts/smoke-xvfb-files.tsv")"
     [ -f "$helper" ] && [ ! -L "$helper" ] || fail 'engine preparation source is absent'
     for principal in 0:0 4001:4001; do
@@ -742,6 +743,7 @@ run_linux_flutter_engine_prepare() {
         --mount "type=bind,source=$helper,target=/authority/prepare.py,readonly"
         --mount "type=bind,source=$patch,target=/authority/retirement.patch,readonly"
         --mount "type=bind,source=$test,target=/authority/node-test.cc,readonly"
+        --mount "type=bind,source=$settings_test,target=/authority/settings-test.cc,readonly"
         --mount "type=bind,source=$VERIFY_REPO/scripts/pins.env,target=/authority/pins.env,readonly"
         --mount "type=bind,source=$VERIFY_REPO/scripts/smoke-xvfb-files.tsv,target=/authority/xvfb-files.tsv,readonly"
         --mount "type=bind,source=$ROOT/engine-xvfb/root,target=/xvfb-root,readonly,bind-recursive=disabled"
@@ -789,6 +791,7 @@ run_linux_flutter_engine_prepare() {
         "bind|$helper|/authority/prepare.py|false" \
         "bind|$patch|/authority/retirement.patch|false" \
         "bind|$test|/authority/node-test.cc|false" \
+        "bind|$settings_test|/authority/settings-test.cc|false" \
         "bind|$VERIFY_REPO/scripts/pins.env|/authority/pins.env|false" \
         "bind|$VERIFY_REPO/scripts/smoke-xvfb-files.tsv|/authority/xvfb-files.tsv|false" \
         "bind|$ROOT/engine-xvfb/root|/xvfb-root|false" \
@@ -814,7 +817,7 @@ run_linux_flutter_engine_prepare() {
     [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
         && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
         || fail 'engine preparation left container/image state'
-    [ "$(sha256sum "$helper" "$patch" "$test" "$VERIFY_REPO/scripts/smoke-xvfb-prepare.sh" \
+    [ "$(sha256sum "$helper" "$patch" "$test" "$settings_test" "$VERIFY_REPO/scripts/smoke-xvfb-prepare.sh" \
         "$VERIFY_REPO/scripts/smoke-xvfb-packages.tsv" "$VERIFY_REPO/scripts/smoke-xvfb-files.tsv")" = "$helper_before" ] \
         || fail 'engine preparation source changed'
     setpriv --reuid=1000 --regid=1000 --clear-groups /bin/bash "$ENTRY_PREFLIGHT"

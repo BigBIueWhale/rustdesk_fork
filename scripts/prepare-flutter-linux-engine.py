@@ -706,6 +706,34 @@ raise SystemExit(subprocess.call([
         # Forward the common receipts once; the exact outer checker rejects duplicates.
         print(expected, flush=True)
 
+    schema_dir = Path("/work/settings-schema")
+    schema_dir.mkdir(mode=0o700)
+    (schema_dir / "settings.gschema.xml").write_text(
+        '<schemalist><schema id="org.gnome.desktop.interface" path="/org/gnome/desktop/interface/">'
+        '<key name="gtk-theme" type="s"><default>"Adwaita-dark"</default></key>'
+        '<key name="clock-format" type="s"><default>"24h"</default></key>'
+        '<key name="text-scaling-factor" type="d"><default>1.0</default></key>'
+        '</schema></schemalist>')
+    command(["/usr/bin/glib-compile-schemas", "--strict", str(schema_dir)], engine, env, deadline)
+
+    def settings_test(baseline):
+        binary = engine + "/out/host_release/settings-" + ("baseline" if baseline else "candidate")
+        command([clang, "-std=c++17", "-UG_DISABLE_ASSERT", "-I" + engine,
+                 *(["-DLEGACY_BASELINE"] if baseline else []), "/authority/settings-test.cc",
+                 *[engine + "/flutter/shell/platform/linux/" + name + ".cc" for name in
+                   ("fl_settings", "fl_settings_portal", "fl_gnome_settings")],
+                 "-pthread", *flags, "-o", binary], engine, env, deadline)
+        artifact_receipt(binary.rsplit("/", 1)[1], "settings-baseline" if baseline else "settings-candidate")
+        output = command([binary], engine,
+                         {**env, "GSETTINGS_SCHEMA_DIR": str(schema_dir), "GSETTINGS_BACKEND": "memory"},
+                         min(deadline, time.monotonic() + 45))
+        expected = (b"ENGINE_SETTINGS_NATIVE=baseline unavailable_wrong=3 portal_controls=2 bus=joined"
+                    if baseline else b"ENGINE_SETTINGS_NATIVE=pass unavailable=3 portal_controls=2 "
+                    b"gnome_transitions=6 bus=joined")
+        require(output.splitlines()[-1:] == [expected], "native settings admission result differs")
+        print(output.decode(), end="", flush=True)
+
+    settings_test(True)
     node_test(True)
     patch_path = Path("/authority/retirement.patch")
     patch_bytes = patch_path.read_bytes()
@@ -722,7 +750,7 @@ raise SystemExit(subprocess.call([
                        "fl_semantics_generation.cc", "fl_semantics_generation.h",
                        "fl_socket_accessible.cc", "fl_socket_accessible.h",
                        "fl_view.cc", "fl_view_accessible.cc", "fl_view_accessible.h",
-                       "fl_view_accessible_test.cc")]
+                       "fl_view_accessible_test.cc", "fl_settings_portal.cc")]
     changed = command(git + ["diff", "--name-only", "--", "engine/src/flutter/shell/platform/linux"],
                       framework, env, deadline).decode().splitlines()
     changed += command(git + ["ls-files", "--others", "--exclude-standard", "--",
@@ -731,7 +759,8 @@ raise SystemExit(subprocess.call([
     require(sorted(changed) == sorted(expected_paths), "retirement patch source scope differs")
     command(git + ["diff", "--check"], framework, env, deadline)
     print("ENGINE_ACCESSIBLE_RETIREMENT_PATCH=applied sha256="
-          + hashlib.sha256(patch_bytes).hexdigest() + " files=15 sdk_archive=unchanged", flush=True)
+          + hashlib.sha256(patch_bytes).hexdigest() + " files=16 sdk_archive=unchanged", flush=True)
+    settings_test(False)
     objects.append("obj/flutter/shell/platform/linux/flutter_linux_sources.fl_semantics_generation.o")
     upstream_tests = ["obj/flutter/shell/platform/linux/flutter_linux_unittests." + unit + ".o"
                       for unit in ("fl_accessible_node_test", "fl_accessible_text_field_test",

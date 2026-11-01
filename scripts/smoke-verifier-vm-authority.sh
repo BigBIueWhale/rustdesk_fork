@@ -1063,6 +1063,7 @@ readonly PIN_SOURCE="$SCRIPT_DIR/pins.env"
 readonly ENGINE_PREPARE_SOURCE="$SCRIPT_DIR/prepare-flutter-linux-engine.py"
 readonly ENGINE_RETIREMENT_PATCH="$REPO_ROOT/res/flutter/linux-accessibility-retirement.patch"
 readonly ENGINE_RETIREMENT_TEST="$SCRIPT_DIR/test-flutter-linux-accessible-retirement.cc"
+readonly ENGINE_SETTINGS_TEST="$SCRIPT_DIR/test-flutter-linux-settings.cc"
 readonly ENGINE_GRAPH_ROOT="$REPO_ROOT/online/candidates/flutter-linux-engine-graph"
 readonly ENGINE_METADATA_ROOT="$REPO_ROOT/online/candidates/flutter-linux-engine-git-metadata"
 readonly ENGINE_SYSROOTS_ROOT="$REPO_ROOT/online/candidates/flutter-linux-engine-sysroots"
@@ -2943,7 +2944,8 @@ if [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engin
     verify_committed_test_source "$ENGINE_PREPARE_SOURCE"
     verify_committed_test_source "$ENGINE_RETIREMENT_PATCH"
     verify_committed_test_source "$ENGINE_RETIREMENT_TEST"
-    engine_prepare_source_before="$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE" "$ENGINE_RETIREMENT_PATCH" "$ENGINE_RETIREMENT_TEST")"
+    verify_committed_test_source "$ENGINE_SETTINGS_TEST"
+    engine_prepare_source_before="$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE" "$ENGINE_RETIREMENT_PATCH" "$ENGINE_RETIREMENT_TEST" "$ENGINE_SETTINGS_TEST")"
     for input in \
         "$DEV_CHECK_IMAGE_ARCHIVE:$SIZE_DEV_CHECK_IMAGE_ARCHIVE:$SHA256_DEV_CHECK_IMAGE_ARCHIVE" \
         "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE" \
@@ -4577,6 +4579,7 @@ elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-eng
         "repo/scripts/prepare-flutter-linux-engine.py=$ENGINE_PREPARE_SOURCE"
         "repo/res/flutter/linux-accessibility-retirement.patch=$ENGINE_RETIREMENT_PATCH"
         "repo/scripts/test-flutter-linux-accessible-retirement.cc=$ENGINE_RETIREMENT_TEST"
+        "repo/scripts/test-flutter-linux-settings.cc=$ENGINE_SETTINGS_TEST"
         "xvfb-debs=$ONLINE_INPUTS/xvfb-debs"
         "repo/scripts/smoke-xvfb-prepare.sh=$SCRIPT_DIR/smoke-xvfb-prepare.sh"
         "repo/scripts/smoke-xvfb-packages.tsv=$SCRIPT_DIR/smoke-xvfb-packages.tsv"
@@ -5742,6 +5745,8 @@ elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-eng
     require_exact_fixed_receipt 'ENGINE_ACCESSIBLE_GTK_SCALE=pass scale=2 artifact=same scenarios=complete' 'native GTK geometry at scale 2'
     require_exact_fixed_receipt 'ENGINE_ACCESSIBLE_WIDGET_GEOMETRY=pass owner=gtk-bound early_binding=closed transforms=full parent_hit_test=consistent invalid=closed hidden=unavailable teardown=revoked' 'bound GTK semantics geometry and teardown'
     require_exact_fixed_receipt 'ENGINE_XVFB_OWNER=joined network=unix-only' 'native display-server ownership'
+    require_exact_fixed_receipt 'ENGINE_SETTINGS_NATIVE=baseline unavailable_wrong=3 portal_controls=2 bus=joined' 'original native settings admission failures and controls'
+    require_exact_fixed_receipt 'ENGINE_SETTINGS_NATIVE=pass unavailable=3 portal_controls=2 gnome_transitions=6 bus=joined' 'corrected native settings admission and notifications'
     require_exact_fixed_receipt "$engine_prepare_receipt" 'original engine setup hooks'
     require_exact_fixed_receipt "$engine_prepare_vm_receipt" 'engine preparation source/finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'engine preparation cloud-init completion'
@@ -9283,7 +9288,7 @@ if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
 fi
 if [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
     [ "$(engine_prepare_input_inventory)" = "$engine_prepare_inputs_before" ] \
-        && [ "$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE" "$ENGINE_RETIREMENT_PATCH" "$ENGINE_RETIREMENT_TEST")" = "$engine_prepare_source_before" ] \
+        && [ "$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE" "$ENGINE_RETIREMENT_PATCH" "$ENGINE_RETIREMENT_TEST" "$ENGINE_SETTINGS_TEST")" = "$engine_prepare_source_before" ] \
         || fail 'engine preparation input/source postcondition differs'
     [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')" = "$FOCUSED_TEST_TREE" ] \

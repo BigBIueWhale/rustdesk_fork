@@ -127858,3 +127858,30 @@ action invocation remain distinct observations. No test writes credential
 storage or substitutes a native bridge. This is normal Linux user-mode removal,
 not forensic erasure, a secret-storage confidentiality claim, installed service
 authorization, other platforms or release acceptance.
+
+At `9f42593211e20747633a30a1c887be8b6977d840`, tree
+`5407589bd1a4fe73229df9c3334ca367a51f03d5`, TUF `bl4sHxoBea` passes.
+PID 234 enrolls, presents four fresh frames (maximum sampled age 272 ms),
+joins zero and leaves the observed credential field present. After the same
+server's CLI rotation, PID 346 explicitly changes checked remember to unchecked,
+authenticates with replacement input, presents four fresh frames (maximum
+sampled age 316 ms), joins zero and leaves the field empty. PID 440 receives
+no input, exposes a blank password field and unchecked remember, accepts real
+Cancel, joins zero and leaves storage empty. The server records exactly one
+typed key-confirmation refusal with no rate limit or shedding. Required login
+functionality therefore survives the explicit no-retention choice.
+
+The complete prompt/dialog/model, client, server and shared config sources
+match retained app `cf437894`; no application rebuild or product edit occurs.
+The command is the same authenticated app/engine replay with
+`--credential-forget`. Three native drivers compile twice identically;
+controller SHA-256:
+`c712f4113c1b01d3768773fa8ff2c6a8be0a412f0dafb3709fe7c80d1fc96a8d`.
+QEMU 3924571 and wrapper 3923474 are absent, 3,010,699,264 peak RAM bytes
+retire after 113.020 supervisor seconds (106-second outer workload), and
+all four host listener deltas are zero. Serial SHA-256:
+`e453faf2367e0e923f5473a72024163eeefb81b26d0caaf7fdb8bb4578ca5f98`.
+Eight bounded raw files (97,534 bytes) are retained and verified on CTE;
+their TUF originals were authenticated during collection. The selected
+Linux removal/relaunch/cancel acceptance gap is closed; the broader claims
+above remain open. Fresh ledger count follows.

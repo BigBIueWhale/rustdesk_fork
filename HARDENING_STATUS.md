@@ -15230,7 +15230,7 @@ decoration; its corrected lookup retains exact PID/class/address/role and
 independent pixel checks. No product edit was needed. Both attempts join,
 retire RAM scratch and leave zero listener deltas. Reproduce with retained-app
 replay option `--credential-restart`; exact identities and raw evidence are in
-the audit journal. Remember-off, privileged rotation, other platforms, installed authority,
+the audit journal. Other-platform remember-off, privileged rotation, installed authority,
 at-rest confidentiality and current release-artifact acceptance remain OPEN.
 
 **Live password rotation — bounded Linux user-server workflow accepted.**
@@ -15247,7 +15247,23 @@ The single server generation, VM and RAM workspace join/retire with four zero
 listener deltas. Reproduce with retained-app option `--credential-rotation`.
 No product change was needed. This is a normal sequential user-owned Linux
 rotation; installed privileged authorization, in-flight/concurrent rotation,
-remember-off, other platforms and release-artifact acceptance remain OPEN.
+other platforms and release-artifact acceptance remain OPEN.
+
+**Remember-off removal — bounded native Linux workflow accepted.**
+Harness `9f425932`, TUF `bl4sHxoBea`, reuses app `cf437894`/engine `63493887`.
+The first viewer enrolls and leaves a nonempty credential field. After the live
+user-server rotation, the replacement prompt's checked Remember password is
+explicitly unchecked; login still succeeds with four fresh frames, and the
+joined viewer's peer record now has an empty credential array. A third fresh
+viewer receives no password input, shows a blank prompt with remember unchecked,
+and exits zero after real Cancel. Its record remains empty. All three processes
+join normally; both authenticated phases show four fresh frames, and the
+server retains the mandatory old-credential refusal. The bounded read-only
+storage observer emits only present/empty, never credential bytes. The VM and
+RAM workspace retire with four zero listener deltas. Reproduce with retained-app
+option `--credential-forget`; no product correction was needed. This establishes
+normal removal from the active peer record and subsequent prompting, not
+forensic erasure, confidentiality, other platforms or release acceptance.
 
 **Peer history snapshots (`6fc33995`) — Dart component A/B verified; full application/native integration OPEN.**
 `Peers.updatePeers` now prepares the peer rows and pending-address list before

@@ -18,7 +18,7 @@ MENU_ACTION=pointer
 [ "$PEER_SCENARIO" != credential-menu-accessible ] || MENU_ACTION=accessible
 readonly MENU_ACTION
 case "$PEER_SCENARIO" in
-  session-close) EXPECTED_RESTARTS=0 ;;
+  session-close|background-close) EXPECTED_RESTARTS=0 ;;
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
   viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation|credential-forget|credential-menu|credential-menu-accessible) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
@@ -1327,6 +1327,7 @@ PY
     [ "$PEER_SCENARIO" != viewer-suspend ] || controller_args+=(--viewer-suspend)
     [ "$PEER_SCENARIO" != view-scaling ] || controller_args+=(--view-scaling)
     [ "$PEER_SCENARIO" != session-close ] || controller_args+=(--session-close)
+    [ "$PEER_SCENARIO" != background-close ] || controller_args+=(--background-close)
     [ "$PEER_SCENARIO" != network-impairment ] || controller_args+=(--network-impairment)
     [ "$PEER_SCENARIO" != network-loss ] || controller_args+=(--network-loss)
     [ "$PEER_SCENARIO" != clipboard-text ] || controller_args+=(--clipboard-text)
@@ -1411,6 +1412,10 @@ PY
       elif [ "$PEER_SCENARIO" = credential-menu ] || [ "$PEER_SCENARIO" = credential-menu-accessible ]; then
         viewer_result='viewer=joined xvfb=joined credential_menu=passed generations=3 password_entries=1 saved_credential=empty next_prompt=required'
       fi
+    elif [ "$PEER_SCENARIO" = background-close ]; then
+      grep -Fxq 'FLUTTER_PEER_BACKGROUND_CLOSE_OK action=pointer first=retired second=preserved pixels=fresh final_close=passed main=usable' \
+        <<<"$controller_output" || fail 'native background-close result is absent'
+      viewer_result='viewer=joined xvfb=joined background_close=passed active_connection=preserved pixels=fresh final_close=passed'
     elif [ "$PEER_SCENARIO" = session-close ]; then
       grep -Fxq 'FLUTTER_PEER_SESSION_CLOSE_OK action=pointer remote=retired connected_sockets=0 listener=preserved main=usable process=preserved' \
         <<<"$controller_output" || fail 'native session-close result is absent'

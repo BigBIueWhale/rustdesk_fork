@@ -116,6 +116,7 @@ typedef struct {
     int text_content;
     uint64_t deadline;
     AtspiAccessible *match;
+    const AtspiRect *bounds;
 } NamedControlScan;
 
 static int sleep_millis(unsigned int millis) {
@@ -497,6 +498,25 @@ static int named_control_refusal(const NamedControlScan *scan, const char *reaso
     return -1;
 }
 
+static int accessible_within_bounds(AtspiAccessible *accessible, const AtspiRect *bounds) {
+    if (bounds == NULL) return 1;
+    GError *error = NULL;
+    AtspiComponent *component = atspi_accessible_get_component_iface(accessible);
+    if (component == NULL) return -1;
+    AtspiRect *rect = atspi_component_get_extents(component, ATSPI_COORD_TYPE_SCREEN, &error);
+    g_object_unref(component);
+    int result = -1;
+    if (error == NULL && rect != NULL) {
+        result = rect->width > 0 && rect->height > 0 && rect->x >= bounds->x &&
+                 rect->y >= bounds->y &&
+                 (int64_t)rect->x + rect->width <= (int64_t)bounds->x + bounds->width &&
+                 (int64_t)rect->y + rect->height <= (int64_t)bounds->y + bounds->height;
+    }
+    g_clear_error(&error);
+    if (rect != NULL) g_boxed_free(ATSPI_TYPE_RECT, rect);
+    return result;
+}
+
 static int scan_named_control_node(AtspiAccessible *accessible, unsigned int expected_pid,
                                     unsigned int depth, NamedControlScan *scan, int dialog_scope) {
     GError *error = NULL;
@@ -538,9 +558,15 @@ static int scan_named_control_node(AtspiAccessible *accessible, unsigned int exp
             }
             if (scan->text_content == 0 && strcmp(name, scan->name) == 0 &&
                 (scan->dialog_caption == 0 || dialog_scope != 0)) {
-                scan->matches += 1U;
-                if (scan->match == NULL) {
-                    scan->match = g_object_ref(accessible);
+                int inside = accessible_within_bounds(accessible, scan->bounds);
+                if (inside < 0) {
+                    g_free(name);
+                    g_object_unref(states);
+                    return named_control_refusal(scan, "bounds-query", depth, NULL);
+                }
+                if (inside) {
+                    scan->matches += 1U;
+                    if (scan->match == NULL) scan->match = g_object_ref(accessible);
                 }
             }
         }
@@ -593,9 +619,10 @@ static int scan_named_control_node(AtspiAccessible *accessible, unsigned int exp
 }
 
 static int query_accessible(unsigned int expected_pid, const char *name, uint64_t deadline,
-                              AtspiAccessible **match, int dialog_caption, int text_content) {
+                              AtspiAccessible **match, int dialog_caption, int text_content,
+                              const AtspiRect *bounds) {
     NamedControlScan scan = {.name = name, .deadline = deadline, .dialog_caption = dialog_caption,
-                            .text_content = text_content};
+                            .text_content = text_content, .bounds = bounds};
     AtspiAccessible *desktop;
     GError *error = NULL;
     gint children;
@@ -650,7 +677,7 @@ out:
 
 static int query_named_accessible(unsigned int expected_pid, const char *name, uint64_t deadline,
                                    AtspiAccessible **match, int dialog_caption) {
-    return query_accessible(expected_pid, name, deadline, match, dialog_caption, 0);
+    return query_accessible(expected_pid, name, deadline, match, dialog_caption, 0, NULL);
 }
 
 static int query_dialog_caption(unsigned int expected_pid, uint64_t deadline,
@@ -1311,7 +1338,8 @@ static int observe_current_frames_for_duration(Display *source, Display *display
     return final_gap <= FRESH_LIMIT_MS && *distinct_states >= duration_ms / 1000U ? 0 : -1;
 }
 
-static int read_connection_identity(ConnectionIdentity *identity) {
+static int read_connection_identity_excluding(ConnectionIdentity *identity,
+                                               const ConnectionIdentity *exclude) {
     FILE *stream = fopen("/proc/net/tcp", "r");
     char line[512];
     unsigned int matches = 0U;
@@ -1334,6 +1362,8 @@ static int read_connection_identity(ConnectionIdentity *identity) {
         (void)slot;
         if (fields == 5 && strcmp(state, "01") == 0 &&
             strcmp(remote, "0100007F:527E") == 0) {
+            if (exclude != NULL && strcmp(local, exclude->local) == 0 &&
+                strcmp(remote, exclude->remote) == 0 && inode == exclude->inode) continue;
             if (strlen(local) >= sizeof(identity->local) ||
                 strlen(remote) >= sizeof(identity->remote)) {
                 fclose(stream);
@@ -1349,6 +1379,10 @@ static int read_connection_identity(ConnectionIdentity *identity) {
         return -1;
     }
     return 0;
+}
+
+static int read_connection_identity(ConnectionIdentity *identity) {
+    return read_connection_identity_excluding(identity, NULL);
 }
 
 static int same_connection(const ConnectionIdentity *left, const ConnectionIdentity *right) {
@@ -3260,6 +3294,187 @@ out:
     return result;
 }
 
+static int read_accessible_rect(AtspiAccessible *control, AtspiRect *rect) {
+    GError *error = NULL;
+    AtspiComponent *component = atspi_accessible_get_component_iface(control);
+    if (component == NULL) return -1;
+    AtspiRect *value = atspi_component_get_extents(component, ATSPI_COORD_TYPE_SCREEN, &error);
+    g_object_unref(component);
+    int result = -1;
+    if (error == NULL && value != NULL && value->width > 0 && value->height > 0) {
+        *rect = *value;
+        result = 0;
+    }
+    g_clear_error(&error);
+    if (value != NULL) g_boxed_free(ATSPI_TYPE_RECT, value);
+    return result;
+}
+
+static int enter_second_address(Display *display, Window main, unsigned int pid) {
+    static const char address[] = "127.0.0.1:21118";
+    AtspiAccessible *field = NULL;
+    AtspiText *text = NULL;
+    GError *error = NULL;
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    int result = -1;
+    while (monotonic_millis() < deadline && field == NULL) {
+        if (query_named_accessible(pid, "Direct address", deadline, &field, 0) != 0) goto out;
+        if (field == NULL && sleep_millis(100U) != 0) goto out;
+    }
+    if (field == NULL || atspi_accessible_get_role(field, &error) == ATSPI_ROLE_PASSWORD_TEXT ||
+        error != NULL || (text = atspi_accessible_get_text_iface(field)) == NULL ||
+        click_main_control(display, main, pid, "Direct address") != 0) goto out;
+    KeyCode control = XKeysymToKeycode(display, XK_Control_L);
+    KeyCode shift = XKeysymToKeycode(display, XK_Shift_L);
+    if (control == 0U || shift == 0U) goto out;
+    if (XTestFakeKeyEvent(display, control, True, CurrentTime) == 0) goto out;
+    int selected = fake_key(display, XK_a);
+    if (XTestFakeKeyEvent(display, control, False, CurrentTime) == 0) selected = -1;
+    XSync(display, False);
+    if (selected != 0) goto out;
+    for (size_t i = 0U; i < sizeof(address) - 1U; ++i) {
+        int colon = address[i] == ':';
+        KeySym key = address[i] == '.' ? XK_period : colon ? XK_semicolon : (KeySym)address[i];
+        if (colon && XTestFakeKeyEvent(display, shift, True, CurrentTime) == 0) goto out;
+        int typed = fake_key(display, key);
+        if (colon && XTestFakeKeyEvent(display, shift, False, CurrentTime) == 0) typed = -1;
+        XSync(display, False);
+        if (typed != 0) goto out;
+    }
+    deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    while (monotonic_millis() < deadline) {
+        gint count = atspi_text_get_character_count(text, &error);
+        gchar *actual = NULL;
+        if (error != NULL || count < 0 || count > 260) goto out;
+        if (count == (gint)(sizeof(address) - 1U)) actual = atspi_text_get_text(text, 0, count, &error);
+        int matches = error == NULL && actual != NULL && strcmp(actual, address) == 0;
+        g_free(actual);
+        if (error != NULL) goto out;
+        if (matches) {
+            result = click_main_control(display, main, pid, "Connect");
+            break;
+        }
+        if (sleep_millis(100U) != 0) goto out;
+    }
+out:
+    g_clear_error(&error);
+    g_clear_object(&text);
+    g_clear_object(&field);
+    return result;
+}
+
+static int exercise_background_close(Display *source, Display *display, ViewerWindow *viewer,
+                                       SourceHistory *history, const char *start,
+                                       const ConnectionIdentity *first) {
+    const char suffix[] = " - Control Remote Desktop - RustDesk";
+    const char second_prefix[] = "127.0.0.1:21118";
+    Window main = None, child;
+    AtspiAccessible *label = NULL, *close_button = NULL;
+    AtspiRect header = {0}, label_rect = {0}, close_rect = {0};
+    PasswordPromptScan prompt = {0};
+    ConnectionIdentity second = {{0}, {0}, 0UL}, remaining = {{0}, {0}, 0UL};
+    char first_title[512], first_label[ACCESSIBLE_NAME_LIMIT + 1U], selected_title[512], after_title[512];
+    Atom name = XInternAtom(display, "_NET_WM_NAME", False);
+    unsigned int connected, listeners, distinct;
+    uint64_t deadline, fresh, age, gap;
+    int result = -1;
+    const char *phase = "open-second";
+    if (read_text_property(display, viewer->window, name, first_title, sizeof(first_title)) != 0)
+        goto out;
+    const char *end = strstr(first_title, suffix);
+    if (end == NULL || end == first_title || end - first_title > ACCESSIBLE_NAME_LIMIT ||
+        strcmp(end, suffix) != 0) goto out;
+    memcpy(first_label, first_title, (size_t)(end - first_title));
+    first_label[end - first_title] = '\0';
+    if (activate_header_control(display, viewer->window, (unsigned int)viewer->pid,
+                                "New connection") != 0 ||
+        find_main_window(display, viewer->pid, &main) != 0 ||
+        enter_second_address(display, main, (unsigned int)viewer->pid) != 0) goto out;
+    phase = "authenticate-second";
+    XRaiseWindow(display, viewer->window);
+    XSetInputFocus(display, viewer->window, RevertToParent, CurrentTime);
+    XSync(display, False);
+    if (wait_for_password_prompt((unsigned int)viewer->pid, &prompt) != 0 ||
+        type_password(display, test_password) != 0 ||
+        wait_for_password_character_count((unsigned int)viewer->pid, sizeof(test_password) - 1U,
+                                           &prompt) != 0 ||
+        activate_named_control((unsigned int)viewer->pid, "OK") != 0 ||
+        wait_for_password_prompt_retirement((unsigned int)viewer->pid, &prompt) != 0 ||
+        wait_for_current_frames(display, viewer, history, AUTH_WAIT_MS, 4U, &fresh, &age) != 0)
+        goto out;
+    phase = "two-tab-baseline";
+    if (read_text_property(display, viewer->window, name, selected_title, sizeof(selected_title)) != 0 ||
+        strncmp(selected_title, second_prefix, sizeof(second_prefix) - 1U) != 0 ||
+        strstr(selected_title, suffix) == NULL ||
+        read_connection_identity_excluding(&second, first) != 0 ||
+        session_socket_counts(&connected, &listeners) != 0 || connected != 4U || listeners != 1U)
+        goto out;
+    if (XTranslateCoordinates(display, viewer->window, RootWindow(display, DefaultScreen(display)),
+                              0, 0, &header.x, &header.y, &child) == 0) goto out;
+    header.width = (int)viewer->width;
+    header.height = 28;
+    deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    if (query_accessible((unsigned int)viewer->pid, first_label, deadline, &label, 0, 0, &header) != 0 ||
+        label == NULL || read_accessible_rect(label, &label_rect) != 0) goto out;
+    /* Hover reveals this tab's real close icon without selecting the background tab. */
+    if (XTestFakeMotionEvent(display, DefaultScreen(display), label_rect.x + label_rect.width / 2,
+                            label_rect.y + label_rect.height / 2, CurrentTime) == 0) goto out;
+    XSync(display, False);
+    phase = "close-background";
+    deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    while (monotonic_millis() < deadline && close_button == NULL) {
+        if (query_accessible((unsigned int)viewer->pid, "Close", deadline,
+                             &close_button, 0, 0, &header) != 0) goto out;
+        if (close_button == NULL && sleep_millis(100U) != 0) goto out;
+    }
+    if (close_button == NULL || read_accessible_rect(close_button, &close_rect) != 0 ||
+        close_rect.x < label_rect.x + label_rect.width ||
+        close_rect.x > label_rect.x + label_rect.width + 20 ||
+        close_rect.width > 24 || close_rect.height > 28 ||
+        read_text_property(display, viewer->window, name, after_title, sizeof(after_title)) != 0 ||
+        strcmp(after_title, selected_title) != 0) goto out;
+    puts("FLUTTER_PEER_BACKGROUND_CLOSE_BEGIN tabs=2 connected_sockets=4 active=second hovered=first");
+    fflush(stdout);
+    if (XTestFakeMotionEvent(display, DefaultScreen(display), close_rect.x + close_rect.width / 2,
+                            close_rect.y + close_rect.height / 2, CurrentTime) == 0 ||
+        XTestFakeButtonEvent(display, 1U, True, CurrentTime) == 0 ||
+        XTestFakeButtonEvent(display, 1U, False, CurrentTime) == 0) goto out;
+    XSync(display, False);
+    deadline = monotonic_millis() + 5000U;
+    while (monotonic_millis() < deadline) {
+        if (session_socket_counts(&connected, &listeners) != 0 || listeners != 1U) goto out;
+        if (connected == 2U && read_connection_identity(&remaining) == 0 &&
+            same_connection(&remaining, &second)) break;
+        if (sleep_millis(100U) != 0) goto out;
+    }
+    phase = "surviving-presentation";
+    g_clear_object(&label);
+    if (monotonic_millis() >= deadline ||
+        query_accessible((unsigned int)viewer->pid, first_label, deadline, &label, 0, 0, &header) != 0 ||
+        label != NULL ||
+        observe_current_frames_for_duration(source, display, viewer, history, 3000U,
+                                             &gap, &age, &distinct) != 0 ||
+        read_text_property(display, viewer->window, name, after_title, sizeof(after_title)) != 0 ||
+        strcmp(after_title, selected_title) != 0 ||
+        read_connection_identity(&remaining) != 0 || !same_connection(&remaining, &second) ||
+        session_socket_counts(&connected, &listeners) != 0 || connected != 2U || listeners != 1U)
+        goto out;
+    printf("FLUTTER_PEER_BACKGROUND_CLOSE_OBSERVED active=second connection=same first=absent "
+           "fresh_hold_ms=3000 distinct=%u maximum_age_ms=%llu maximum_gap_ms=%llu\n",
+           distinct, (unsigned long long)age, (unsigned long long)gap);
+    phase = "final-close";
+    result = exercise_session_close(display, viewer, start, &second);
+out:
+    if (result != 0) {
+        fprintf(stderr, "FLUTTER_PEER_X11_FAIL background close phase=%s\n", phase);
+        if (scan_password_prompt((unsigned int)viewer->pid, &prompt, 1) != 0)
+            fputs("FLUTTER_PEER_X11_FAIL background close accessibility diagnostic\n", stderr);
+    }
+    g_clear_object(&label);
+    g_clear_object(&close_button);
+    return result;
+}
+
 static int open_saved_peer_menu(Display *display, Window main, const ViewerWindow *viewer) {
     const char prefix[] = "127.0.0.1@";
     const char suffix[] = " - Control Remote Desktop - RustDesk";
@@ -3610,7 +3825,7 @@ static int exercise_screenshot_save_unavailable(const ViewerWindow *viewer,
     while (monotonic_millis() < deadline && error_text == NULL) {
         /* Replaced dialog nodes can invalidate a read; only a complete peer-bound scan counts. */
         if (query_accessible((unsigned int)viewer->pid, missing_picker,
-                             deadline, &error_text, 1, 1) != 0)
+                             deadline, &error_text, 1, 1, NULL) != 0)
             g_clear_object(&error_text);
         if (error_text == NULL && sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) goto out;
     }
@@ -3802,6 +4017,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--screenshot-save-unavailable") != 0 &&
                                     strcmp(argv[5], "--view-scaling") != 0 &&
                                     strcmp(argv[5], "--session-close") != 0 &&
+                                    strcmp(argv[5], "--background-close") != 0 &&
                                     strcmp(argv[5], "--credential-enroll") != 0 &&
                                     strcmp(argv[5], "--credential-replace") != 0 &&
                                     strcmp(argv[5], "--credential-forget") != 0 &&
@@ -3814,7 +4030,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
+              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
         return 2;
     }
@@ -4032,11 +4248,14 @@ int main(int argc, char **argv) {
         int screenshot_unavailable = strcmp(argv[5], "--screenshot-save-unavailable") == 0;
         int view_scaling = strcmp(argv[5], "--view-scaling") == 0;
         int session_close = strcmp(argv[5], "--session-close") == 0;
+        int background_close = strcmp(argv[5], "--background-close") == 0;
         int clipboard_text = strcmp(argv[5], "--clipboard-text") == 0;
         int clipboard_images = strcmp(argv[5], "--clipboard-images") == 0;
         int partial_loss = strcmp(argv[5], "--network-loss") == 0;
         int network = partial_loss || strcmp(argv[5], "--network-impairment") == 0;
-        int suspension_status = session_close ? exercise_session_close(
+        int suspension_status = background_close ? exercise_background_close(
+            source, display, &viewer, &history, argv[4], &current_connection) :
+            session_close ? exercise_session_close(
             display, &viewer, argv[4], &current_connection) : view_scaling ? exercise_view_scaling(
             display, &viewer, &history, &current_connection, &baseline_resources) :
             screenshot_unavailable ? exercise_screenshot_save_unavailable(
@@ -4060,12 +4279,15 @@ int main(int argc, char **argv) {
             fputs("FLUTTER_PEER_X11_FAIL private AT-SPI teardown\n", stderr);
             suspension_status = -1;
         }
-        if (!keyboard_retirement && !mouse_retirement && !session_close &&
+        if (!keyboard_retirement && !mouse_retirement && !session_close && !background_close &&
             close_viewer(display, viewer.window) != 0) suspension_status = -1;
         XCloseDisplay(display);
         XCloseDisplay(source);
         if (suspension_status != 0) return 1;
-        if (session_close) {
+        if (background_close) {
+            puts("FLUTTER_PEER_BACKGROUND_CLOSE_OK action=pointer first=retired second=preserved "
+                 "pixels=fresh final_close=passed main=usable");
+        } else if (session_close) {
             puts("FLUTTER_PEER_SESSION_CLOSE_OK action=pointer remote=retired connected_sockets=0 "
                  "listener=preserved main=usable process=preserved");
         } else if (view_scaling) {

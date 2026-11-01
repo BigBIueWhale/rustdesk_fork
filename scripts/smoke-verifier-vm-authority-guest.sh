@@ -278,6 +278,7 @@ case "$#:${8:-}" in
                 --screenshot-save-unavailable) FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE=1 ;;
                 --view-scaling) FLUTTER_VIEW_SCALING=1 ;;
                 --session-close) FLUTTER_SESSION_CLOSE=1 ;;
+                --background-close) FLUTTER_SESSION_CLOSE=2 ;;
                 --credential-restart) FLUTTER_CREDENTIAL_RESTART=1 ;;
                 --credential-rotation) FLUTTER_CREDENTIAL_RESTART=2 ;;
                 --credential-forget) FLUTTER_CREDENTIAL_RESTART=3 ;;
@@ -14035,7 +14036,8 @@ run_flutter_peer_presentation() {
     [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || peer_args+=(--viewer-suspend)
     [ "$FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE" -eq 0 ] || peer_args+=(--screenshot-save-unavailable)
     [ "$FLUTTER_VIEW_SCALING" -eq 0 ] || peer_args+=(--view-scaling)
-    [ "$FLUTTER_SESSION_CLOSE" -eq 0 ] || peer_args+=(--session-close)
+    [ "$FLUTTER_SESSION_CLOSE" -ne 1 ] || peer_args+=(--session-close)
+    [ "$FLUTTER_SESSION_CLOSE" -ne 2 ] || peer_args+=(--background-close)
     case "$FLUTTER_CREDENTIAL_RESTART" in
         1) peer_args+=(--credential-restart) ;;
         2) peer_args+=(--credential-rotation) ;;
@@ -14108,6 +14110,9 @@ run_flutter_peer_presentation() {
         peer_cycles=1
     elif [ "$FLUTTER_CREDENTIAL_RESTART" -eq 1 ]; then
         peer_scenario=credential-restart
+        peer_cycles=1
+    elif [ "$FLUTTER_SESSION_CLOSE" -eq 2 ]; then
+        peer_scenario=background-close
         peer_cycles=1
     elif [ "$FLUTTER_SESSION_CLOSE" -eq 1 ]; then
         peer_scenario=session-close

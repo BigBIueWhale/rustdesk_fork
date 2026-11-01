@@ -127738,3 +127738,14 @@ Serial SHA-256:
 `0c5cba6876f5b41c60134218828216cbd34516f6e486db73323f6ba886954052`.
 The native restart scenario is a meaningful checkpoint. Scaling stays parked;
 the broad release goal remains incomplete. Fresh ledger count follows.
+
+Fresh ledger count at `803ad438`, TUF `RNmwm4QXU6`, passes at 386,326 tokens /
+1,768,616 bytes, input SHA-256
+`6bb64b2e57a6685cb9db3c6ab0500ebbf6f5214ee0cc82b535cb73659e145f62`.
+All seven controls and the complete-input round trip pass. QEMU 3916521 and
+wrapper 3915098 are absent, 402,628,608 peak RAM bytes retire after 30.717
+supervisor seconds, and all three listener deltas are zero. Serial SHA-256:
+`77fd19391b2edc4f0930c897e0802112d12789f488a652768b84fa4cc40175b0`.
+The two restart attempts and count retain 23 bounded raw files (974,901 bytes),
+hash-verified on both CTE and TUF. This audit-only receipt preserves the counted
+ledger bytes. No owned VM remains running.

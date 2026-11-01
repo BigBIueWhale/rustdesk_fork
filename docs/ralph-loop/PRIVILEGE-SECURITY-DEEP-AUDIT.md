@@ -129334,3 +129334,31 @@ Wrapper 1898412/QEMU 1899712 retire with four zero decoded listener deltas,
 bundle is again hash-matched to the retained app, captured and retired under the
 shared lock. Receipts: `input-latency-focus-failure-f9b9bcbc.json` and its
 retirement capsule. Complete-peer input latency remains pending.
+
+Corrected complete-peer CTE replay `TTXmnRc78O` at
+`b6a536643d4c67462e4dcdd5c9b1d7801bd6c324` passes all 120 unique requests.
+The setup receipt observes focus 23068675 before selection and root 1293 afterward.
+Actual XTEST-to-Xvfb-visible response spans 54–151 ms; independently recomputed
+nearest-rank p95 is 118 ms and p99 is 140 ms. Every trial has eight or nine quiet
+samples over at least 200 ms, then exactly its next source counter, publication
+after timed input, the same TCP identity, released keys and bounded viewer
+resources. Controller builds match SHA-256
+`7caa6d18d12373808c27d75f92ae1f6b3ffb0a14e1d0249181e6c09cc9695c15`.
+The source fixture is unchanged from its successful native controls; no product
+change or rebuild was needed. This is the stated healthy Linux request workload,
+not physical scanout, impairment recovery, sustained input or other-platform
+acceptance. No broader R-F5 closure is claimed.
+
+Viewer/server/source/Xvfb joins pass; wrapper 1950398/QEMU 1951685 are absent.
+Four decoded listener deltas are zero, and the RAM workspace is absent after
+158.108 supervisor seconds with 3,011,088,384 peak bytes. Capsule
+`input-latency-b6a53664.json` (21,880 bytes, SHA-256
+`07dc8165cc24ecc587691af3b8077ae37da2a8b2635ae98f599c1ba5413ace47`)
+binds all 120 samples, recomputed statistics, exact inputs and seven raw files.
+After revalidating the copied app/engine hashes under the CTE shared lock, retire
+only those two temporary CTE copies (159,433,640 bytes); TUF originals remain.
+Receipts: `input-latency-cte-copy-retirement-admitted.json` and
+`input-latency-cte-copies-retired.json`. The live TUF soak is untouched; at minute
+51 it has no reported failures, p95 292–301 ms, p99 308–318 ms, maximum sampled
+frame age 351 ms and exactly 45 viewer FDs. Its four-hour terminal acceptance is
+still pending. The updated ledger requires its fresh canonical count.

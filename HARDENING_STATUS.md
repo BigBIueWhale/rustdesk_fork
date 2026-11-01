@@ -50,7 +50,8 @@ connection; sampled single-display mailboxes retain at most one frame or refresh
 marker. Capture/encode activity and CPU/resource use stay bounded, and both viewers
 recover current pixels. R-S11fk/R-S11fl below record the measurements and artifacts.
 This is one Linux X11 cycle; other queues/platforms, installed artifacts, packet
-loss, input latency and soaks remain OPEN.
+loss, recovered/sustained input latency and soaks remain OPEN. The healthy Linux
+input-to-visible baseline below now passes 120 complete-peer trials.
 
 **Native Linux theme correction verified (2026-11-01):** Patch `42dbfc74`
 requires a usable settings read before selecting the portal, restoring the GNOME
@@ -3264,6 +3265,24 @@ no live decoder, peer or presentation is claimed. Both VMs join, RAM scratch
 retires and all eight listener deltas are zero. The audit's 2026-10-31 missing-
 estimate entry binds A/B artifacts and raw evidence. Complete application,
 target-native R-F5 recovery/soak and independently parked work remain OPEN.
+
+**Healthy Linux input-to-visible baseline (`b6a53664`).** CTE complete-peer replay
+`TTXmnRc78O` reuses authenticated app `0243c010` and engine `ddb1541d` without
+rebuilding. All 120 unique three-key requests injected into the viewer produce
+the exact next controlled-fixture counter in actual viewer root pixels. Measured
+XTEST-to-Xvfb-visible response is 54–151 ms, p95 118 ms and p99 140 ms, within
+the predeclared 1,000 ms deadline. Each request follows at least 200 ms of unchanged
+pixels/publication count; source publication must follow the timed input. Shared
+time-namespace proof, conservative rounding and sampling/observer overhead apply.
+All trials retain the same TCP identity and pass released-key and viewer resource
+bounds. Native fixture controls separately prove held/partial requests cannot
+advance pixels and duplicate requests are refused. Initial integration failures
+identified a fixture-focus precondition; setup now selects its target once after
+authentication. All owned processes join, RAM scratch retires and four decoded
+host listener deltas are zero. Receipt: `input-latency-b6a53664.json`; fixture
+controls: `input-response-fixture-94db4103.json`. This healthy Linux software-display
+baseline does not establish physical scanout, impaired/recovered or sustained input
+latency, installed acceptance or other platforms. Those R-F5 obligations remain OPEN.
 
 **Shared R-F5 acceptance remains OPEN.** Execute exact current peer artifacts through
 capture, encode, transport, decode and actual presentation; measure frame age and

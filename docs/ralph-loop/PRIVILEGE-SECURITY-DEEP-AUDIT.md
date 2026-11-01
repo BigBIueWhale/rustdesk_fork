@@ -126158,3 +126158,23 @@ five refusals pass. QEMU 3597387 joins exit 0, its 402,571,264-byte peak RAM
 workspace retires, and all three listener deltas are zero. All 29 artifact,
 capsule and raw/count files (48,819,027 bytes) are hash-verified on CTE/TUF.
 This audit-only receipt preserves the counted ledger bytes.
+
+### 2026-11-01 — bounded publication history for Android lifetime validation
+
+The preceding goal turn made progress: current-source build and native lifecycle
+comparison passed. The next selected R-F5/Android prerequisite is an observer that
+can sustain an uninterrupted multi-hour session. Current publication admission
+stops at 2 MiB or 32,768 frames and reparses all prior records per observation;
+the fixed short hold does not establish sustained behavior. This prerequisite
+takes priority over another passed short replay or an unrelated component edit.
+No parked topic is reopened.
+
+The intended model retains a bounded append-only publication file, a fixed recent
+window for live identity/time lookup and a complete streaming finality check after
+source shutdown. Unknown or stale pixels receive no freshness, and the existing
+two-second freshness limit stays unchanged. The producer must enforce a hard file
+ceiling and report failed writes. The new isolated regression uses 500,000 synthetic
+publication records and a real 64-MiB address-space ceiling; it is observer-capacity
+evidence, not a multi-hour Android run. It also requires full-prefix corruption,
+missing completion and oversized-file refusal, plus the real X11 source's output
+limit and write-failure behavior. Baseline execution is pending.

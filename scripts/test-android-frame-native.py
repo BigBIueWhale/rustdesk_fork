@@ -8,6 +8,7 @@ import hashlib
 import importlib.util
 import os
 from pathlib import Path
+import resource
 import signal
 import subprocess
 import time
@@ -436,6 +437,90 @@ x5A9HzsPfFt9/EcstOJ2Xx/805BMKw6rJL/jvyIEQRAEuTvzf4V2zEsMGgEA"""
           f"bytes={len(data)} seq={record['sequence']} "
           f"candidates={len(analysis['candidates'])} full_span_runs={summary}", flush=True)
 
+def test_source_history():
+    # Large real file and constrained reader; clocks/publications are synthetic.
+    # This establishes observer capacity, not elapsed Android session lifetime.
+    source = Path("/tmp/long-source-history")
+    ready = (b"FLUTTER_PEER_SOURCE_READY display=:98 dimensions=1920x1080 interval_ms=33 "
+             b"identity=counter32 rows=4 bars=24 wrap=refused\n")
+    count = 500000
+    first_us = 1000000
+    last_us = first_us + (count - 1) * 33000
+    now_ns = (last_us + 100000) * 1000
+    descriptor = os.open(source, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(descriptor, "wb") as output:
+            output.write(ready)
+            for identity in range(count):
+                output.write((
+                    "RUSTDESK_PRESENTATION_TRACE stage=source-publish "
+                    f"monotonic_us={first_us + identity * 33000} state={identity} "
+                    f"low={identity & 15} high={(identity >> 4) & 15}\n"
+                ).encode())
+            output.write(f"FLUTTER_PEER_SOURCE_COMPLETE frames={count}\n".encode())
+        size = source.stat().st_size
+        require(32 * 1024 * 1024 < size < 64 * 1024 * 1024,
+                "long publication fixture does not exercise the intended file bound")
+        print(f"ANDROID_SOURCE_HISTORY_FIXTURE publications={count} bytes={size} "
+              "clock=synthetic address_space_limit=67108864", flush=True)
+        child = r'''
+import importlib.util, os, resource, sys
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("decoder", "/work/scripts/android-emulator-frame.py")
+decoder = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(decoder)
+resource.setrlimit(resource.RLIMIT_AS, (64 * 1024 * 1024, 64 * 1024 * 1024))
+path = Path(sys.argv[1])
+now_ns, header_size, original_size = map(int, sys.argv[2:])
+history = decoder.source_history(path, now_ns)
+assert 1 < len(history) < 10000 and min(history) > 400000 and max(history) == 499999
+assert history[499999] == 1000000 + 499999 * 33000
+summary = decoder.source_summary(path, now_ns)
+assert summary == dict(publications=500000, first_us=1000000,
+                       last_us=1000000 + 499999 * 33000,
+                       mean_interval_us=33000, max_interval_us=33000)
+record = decoder.fixture_record(120, 200, 499999, 0, 55, 120, 90, 10,
+                                2000000000000000, now_ns)
+assert decoder.classify(decoder.parse_record(record, now_ns), history, now_ns)["age"] == 100
+stale = decoder.fixture_record(120, 200, 0, 0, 55, 120, 90, 11,
+                               2000000000000000, now_ns)
+assert decoder.classify(decoder.parse_record(stale, now_ns), history, now_ns) is None
+def refused(operation):
+    try:
+        operation()
+    except decoder.InvalidFrame:
+        return
+    raise AssertionError("invalid publication history was accepted")
+# A recent window does not certify skipped history; finality must inspect it.
+with path.open("r+b") as output:
+    output.seek(header_size)
+    output.write(b"X")
+assert max(decoder.source_history(path, now_ns)) == 499999
+refused(lambda: decoder.source_summary(path, now_ns))
+with path.open("r+b") as output:
+    output.seek(header_size)
+    output.write(b"R")
+os.truncate(path, original_size - 1)
+assert max(decoder.source_history(path, now_ns)) == 499999
+refused(lambda: decoder.source_summary(path, now_ns))
+with path.open("ab") as output:
+    output.write(b"\n")
+os.truncate(path, 64 * 1024 * 1024 + 1)
+refused(lambda: decoder.source_history(path, now_ns))
+refused(lambda: decoder.source_summary(path, now_ns))
+os.truncate(path, original_size)
+assert decoder.source_summary(path, now_ns) == summary
+print("ANDROID_SOURCE_HISTORY=pass publications=500000 reader_as_bytes=67108864 "
+      "recent=bounded finality=complete corrupt_prefix=refused unfinished=refused "
+      "oversize=refused stale=refused fresh=accepted clock=synthetic", flush=True)
+'''
+        subprocess.run(["/usr/bin/python3", "-B", "-I", "-S", "-c", child,
+                        str(source), str(now_ns), str(len(ready)), str(size)],
+                       check=True, timeout=30)
+    finally:
+        source.unlink()
+
+
 def main():
     require(os.getuid() == 4000 and os.getgid() == 4000, "numeric nonroot principal differs")
     module_path = Path("/work/scripts/android-emulator-frame.py")
@@ -443,6 +528,7 @@ def main():
     decoder = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(decoder)
     decoder.self_test()
+    test_source_history()
     inspect_retained_android_frame(decoder)
     fixture = Path("/build/fixture")
     fixture.mkdir(mode=0o700)
@@ -555,6 +641,12 @@ def main():
         require(refusal.returncode != 0 and "usage:" in refusal.stderr
                 and "FLUTTER_PEER_SOURCE_READY" not in refusal.stdout,
                 "fixture admitted an unknown workload")
+        with open("/dev/full", "wb") as full:
+            refusal = subprocess.run([str(fixture / "frame-source"), "--full-hd"],
+                                     env=environment, stdout=full, stderr=subprocess.PIPE,
+                                     text=True, timeout=5)
+        require(refusal.returncode != 0 and "publication output" in refusal.stderr,
+                "source ignored an actual output-write failure")
         with source_path.open("wb") as source_log:
             children.append(subprocess.Popen([str(fixture / "frame-source"), "--full-hd"], env=environment,
                                              stdout=source_log, stderr=subprocess.STDOUT))
@@ -598,6 +690,9 @@ def main():
             if initial is not None:
                 break
         require(initial is not None, "fresh native source pixels were not decoded")
+        require(resource.prlimit(children[-1].pid, resource.RLIMIT_FSIZE)
+                == (64 * 1024 * 1024, 64 * 1024 * 1024),
+                "source publication output lacks its hard file ceiling")
         identity = initial["state"]
         print(f"ANDROID_FRAME_NATIVE_PROGRESS stage=initial identity={identity}", flush=True)
 

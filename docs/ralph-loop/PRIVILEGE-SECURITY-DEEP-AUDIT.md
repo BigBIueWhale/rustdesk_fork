@@ -126745,3 +126745,13 @@ its build is an integration prerequisite, not a full unrelated test catalogue.
 First run unchanged production behavior. Full authenticated idle disconnect,
 activity resets, settings changes during sessions and other-platform acceptance
 remain separate missing evidence; no parked work resumes.
+
+The first preparation run `b71a02d9` / `xcji8qnzJw` is stopped before compilation:
+review finds the new entry missing from the shared compiler allowlist/features and
+the specific storage-profile selector. No timer test ran. Exact QEMU 3814191
+(start ticks 289376285) receives pidfd-bound TERM; its supervisor and wrapper
+3813667 join, the 5,373,771,776-byte peak RAM workspace retires, and all four
+listener deltas are zero. The admitted standard profile was bounded but larger
+than needed. Select the existing 7 GiB scratch / 6 GiB overlay parent profile,
+and register the exact compiler entry with Flutter and the existing 240-second
+build budget before the actual unchanged-product baseline.

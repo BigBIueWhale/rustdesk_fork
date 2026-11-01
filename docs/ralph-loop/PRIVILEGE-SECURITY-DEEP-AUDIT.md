@@ -128969,3 +128969,12 @@ This closes one Linux complete-app suspension scenario; all-stalled capture,
 queue depths, input latency, network impairment, soaks, installed packages,
 other platforms, cross-version and complete release acceptance remain OPEN.
 A fresh ledger count follows the status update.
+
+Checkpoint completion: CTE `2R06uWl8r4` at `ffea308c` exits zero and counts
+389,838 tokens / 1,785,216 bytes, SHA-256
+`231fca6ba19184b788d8c1446013040d2cefe76f5183baaf50c6708178846f30`,
+with the established method, seven controls and complete-input round trip.
+QEMU 848188/wrapper 846620 are absent; 402,731,008 peak RAM bytes retire in
+30.468 supervisor seconds, and all three listener deltas are zero. Receipt:
+`viewer-isolation-ledger-ffea308c.json`. This audit-only completion preserves
+the counted ledger; the broader release goal remains active and incomplete.

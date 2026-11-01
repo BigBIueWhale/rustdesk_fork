@@ -127515,3 +127515,14 @@ seconds). Serial SHA-256:
 `aad00415f8eafd9e3aa05b7ea458e52828bd6bd2d0c5d039ba2278a32bf31909`.
 The current ledger now records the omission, correction, actual negative-path
 evidence and remaining positive-save acceptance; its fresh count follows.
+
+Fresh ledger count at `c0ad1194`, TUF `4jsDNfRTeW`, passes at 385,615 tokens /
+1,765,201 bytes, input SHA-256
+`253e46e8d6fd6ab29cde2ce5b718aaf6afaa821b1ec8a9a34f2824167a78239f`.
+Seven controls and the whole-input round trip pass. QEMU 3894604 and wrapper
+3893180 are absent after 30.516 supervisor seconds; 402,755,584 peak RAM bytes
+retire and all three listener deltas are zero. The six runs' 46 bounded raw
+evidence files total 1,096,895 bytes and are hash-verified on CTE and TUF.
+This audit-only receipt preserves the counted ledger. No owned VM remains.
+The dependency correction reaches its validation checkpoint; successful native
+Save As and installed acceptance remain the next work, with the broad goal open.

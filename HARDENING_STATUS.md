@@ -43,16 +43,16 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
-**Healthy Linux long-session observations (2026-11-01):** A four-hour full-peer
-display run reports 308,313 valid samples, maximum age 353 ms and fixed-baseline
-p95/p99 drift 9/7 ms, with bounded resources and joined cleanup. Its observer
-omitted final-window intervals; the R-F5 entry below retains that limitation.
-The exact historical/corrected observer comparison now reproduces seven accounting
-discrepancies and passes all ten corrected cases. Corrected full-duration display
-acceptance remains pending. The input guest completes 7,320 trials with 61–153 ms
-responses and maximum p95/p99 drift 8/9 ms, but outer exit is one: admitted host
-sources were edited during execution. Guest observations are retained; canonical
-input-soak acceptance remains OPEN pending a run with an unchanged host checkout.
+**Healthy Linux display soak passes (2026-11-01):** The corrected full-peer run
+completes a one-minute baseline and four additional hours: 303,735 valid sampled
+ages, maximum 338 ms, fixed-baseline p95/p99 drift 5/4 ms and maximum observation
+gap 62 ms, including final-window tails. Resources remain bounded, all processes
+join, RAM retires and outer exit is zero. This establishes the selected healthy
+Linux X11/Xvfb software-display condition; physical scanout, network recovery,
+installed artifacts and other platforms remain OPEN. The previous input guest
+completed 7,320 trials, but host-source edits invalidated outer acceptance.
+Its unchanged-checkout replacement is running on CTE; canonical input-soak
+acceptance remains OPEN until terminal evidence and cleanup are verified.
 
 **Linux shared-capture queues and recovery verified (2026-11-01):** Two complete
 Flutter viewers retain their connections through simultaneous suspension and
@@ -61,8 +61,9 @@ connection; sampled single-display mailboxes retain at most one frame or refresh
 marker. Capture/encode activity and CPU/resource use stay bounded, and both viewers
 recover current pixels. R-S11fk/R-S11fl below record the measurements and artifacts.
 This is one Linux X11 cycle; other queues/platforms, installed artifacts, packet
-loss, recovered/sustained input latency and soaks remain OPEN. The healthy Linux
-input-to-visible baseline below now passes 120 complete-peer trials.
+loss, recovered/sustained input latency and other-platform soaks remain OPEN.
+The healthy Linux input-to-visible baseline below now passes 120 complete-peer
+trials.
 
 **Native Linux theme correction verified (2026-11-01):** Patch `42dbfc74`
 requires a usable settings read before selecting the portal, restoring the GNOME
@@ -3295,31 +3296,33 @@ controls: `input-response-fixture-94db4103.json`. This healthy Linux software-di
 baseline does not establish physical scanout, impaired/recovered or sustained input
 latency, installed acceptance or other platforms. Those R-F5 obligations remain OPEN.
 
-**Healthy Linux display soak and observer accounting.** TUF `Agz8Yh9Qs1` runs
-authenticated app `0243c010` / engine `ddb1541d` under harness `38d007eb` for
-241 one-minute windows: one baseline plus four hours. All 308,313 sampled ages
-are valid; reported p95 is 291–304 ms, p99 307–320 ms and maximum age 353 ms.
-Fixed baseline 295/313 ms gives maximum p95/p99 drift 9/7 ms. Viewer descriptors
-stay at 45, RSS spans 363,888–389,500 KiB and threads 51–53. Server CPU and
-resources remain within their predeclared limits. The same connection survives;
-all owned processes join, bounded RAM retires and four decoded listener deltas
-are zero. Receipt: `viewer-soak-38d007eb.json`.
+**Healthy Linux display soak — corrected complete-peer acceptance.** TUF
+`0W1tTbkKQg`, sealed harness `06aab2df`, reuses authenticated app `0243c010`
+and engine `ddb1541d`. All 241 one-minute windows complete: one fixed baseline
+plus four additional hours on the same connection. All 303,735 sampled ages
+are valid, with maximum 338 ms. Reported p95 spans 293–303 ms and p99 308–320 ms;
+baseline 298/316 ms gives maximum upward drift 5/4 ms. Maximum observation gap,
+including each final-window tail, is 62 ms. Viewer FDs remain 45, RSS spans
+368,680–398,660 KiB and threads 51–53. All 241 server windows satisfy the declared
+CPU/resource bounds; maximum window CPU is 1,540 ms. Outer exit is zero, all
+owned processes join, RAM retires and four strictly decoded listener deltas
+are zero. Scratch peaks at 3,024,154,624 bytes within 7 GiB. Receipt:
+`viewer-soak-corrected-06aab2df.json`; its seven raw files and capsule have a
+digest-verified copy on CTE (252,115 bytes). This closes the selected healthy
+Linux X11/Xvfb software-display soak condition. Physical scanout, input latency,
+impairment recovery, installed release artifacts and other-platform acceptance
+remain OPEN. Quantiles are reported by the native observer, not independently
+recomputed from individual frame ages.
 
-This original observer omits each final unobserved interval, admits acquisition
-completed at/after the window deadline and does not validate loop-entry clocks.
-Its sampled observations cannot close strict whole-window freshness acceptance.
-Correction `540ba9ff` validates clock progression, excludes deadline-late samples
-and includes the remaining interval in the existing 1,000 ms gap bound.
-TUF `5fNNFMenGN` on `bf2d1147` compiles and executes the exact historical and
-corrected complete loops with identical deterministic clock/pixel adapters and
-process/resource/coordination doubles. It reproduces seven historical accounting
-discrepancies and three passing controls; all ten corrected cases pass, including
-the 1,000/1,001 ms tail boundary and last required acquisition before/at/after
-the deadline. QEMU joins, RAM retires and three decoded listener deltas are zero.
-Receipt: `soak-accounting-ab-bf2d1147.json`. This is native controller accounting,
-not an additional full-peer run. Corrected full-duration display acceptance
-remains pending; physical scanout, impaired recovery, installed artifacts and
-other-platform obligations remain OPEN.
+Historical receipt `viewer-soak-38d007eb.json` retains sampled observations only:
+its observer omitted final intervals, admitted deadline-late acquisitions and
+did not validate loop-entry clocks. Correction `540ba9ff` checks clock progression,
+excludes late samples and accounts for tails against the existing 1,000 ms bound.
+TUF `5fNNFMenGN` on `bf2d1147` executes the exact historical/corrected complete
+loops with deterministic clock/pixel adapters and process/resource doubles:
+seven historical discrepancies reproduce, three controls pass and all ten
+corrected cases pass. Receipt `soak-accounting-ab-bf2d1147.json` retains this native
+accounting comparison; the corrected full-duration capsule binds the same controller.
 
 **Healthy Linux input soak — guest observations; outer acceptance OPEN.** CTE
 `xmA4oGPG17`, harness `23739a5e`, reuses app `0243c010` / engine `ddb1541d`.

@@ -129655,3 +129655,31 @@ audit commit, launch the repeated input scenario with control directory
 `input-soak-frozen-<admitted-commit-prefix>` and retain its exact source, process
 identities and live observations there. Make no further checkout or Git-state
 changes on either running host until its terminal cleanup is reconciled.
+
+### 2026-11-01 — corrected healthy display soak completes and retires
+
+TUF `0W1tTbkKQg` exits zero under unchanged `06aab2df`: 241 complete windows,
+303,735 valid sampled ages, maximum 338 ms and maximum observation gap 62 ms,
+including final-window tails. Fixed baseline p95/p99 298/316 ms yields maximum
+upward drift 5/4 ms. Viewer FDs stay 45, RSS is 368,680–398,660 KiB and threads
+51–53; all 241 server windows satisfy the declared bounds, maximum CPU 1,540 ms.
+App `0243c010` and engine `ddb1541d` are reused without rebuilding. The corrected
+observer is bound to the completed native historical/candidate accounting fixture.
+This establishes the selected healthy Linux X11/Xvfb display soak; it does not
+close input, physical scanout, impairment recovery, installed or other-platform
+acceptance. Quantiles remain native-reported rather than independently recomputed.
+
+Receipt `viewer-soak-corrected-06aab2df.json` is 43,756 bytes, SHA-256
+`92acf174ff0731ef59aca7e231f2420164ff011f88456dd1f3da32f30ff98a6e`.
+It binds all seven raw files, fixed baseline/windows/resources, four strictly
+decoded zero listener deltas and terminal cleanup. Exact wrapper 423238 and
+QEMU 424295 are absent; private run and RAM `run.azikj7dw` (`29:36980`) retire.
+Duration is 14,577.065 seconds; scratch peaks at 3,024,154,624 bytes within 7 GiB.
+The capsule and raw files are copied with digest/inventory verification to CTE's
+separate `.harness-state/tuf-viewer-soak-corrected-06aab2df` (eight files,
+252,115 bytes), without entering its live input run's canonical evidence root.
+
+CTE's replacement input soak remains live on frozen `b5f70992`; terminal acceptance
+is still pending. TUF is now free for work. The source postcondition checks each
+host's admitted checkout and local Git refs, not the remote server: TUF can sync,
+edit and push after cleanup while CTE remains unchanged and does not fetch.

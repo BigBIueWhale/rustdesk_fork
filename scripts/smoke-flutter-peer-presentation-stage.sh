@@ -26,7 +26,7 @@ MENU_ACTION=pointer
 [ "$PEER_SCENARIO" != credential-menu-accessible ] || MENU_ACTION=accessible
 readonly MENU_ACTION
 case "$PEER_SCENARIO" in
-  session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|viewer-isolation) EXPECTED_RESTARTS=0 ;;
+  session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|viewer-isolation|viewer-soak) EXPECTED_RESTARTS=0 ;;
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
   viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation|credential-forget|credential-menu|credential-menu-accessible) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
@@ -514,9 +514,15 @@ PY
       && [ -z "$(find /out -mindepth 1 -print -quit)" ] \
       || fail 'driver output must be a fresh private directory'
     for input in flutter-peer-source-x11.c flutter-peer-presentation-x11.c \
-        x11-frame-oracle.h smoke-bind-loopback.c; do
+        x11-frame-oracle.h test-x11-frame-oracle.c smoke-bind-loopback.c; do
       verify_regular "/source/scripts/$input"
     done
+    /usr/bin/cc -std=c11 -O2 -Wall -Wextra -Werror \
+      -DX11_FRAME_HISTORY_LIMIT=65536U '-DX11_FRAME_LOG_LIMIT=(8U*1024U*1024U)' \
+      /source/scripts/test-x11-frame-oracle.c $(pkg-config --cflags --libs x11) \
+      -o /tmp/desktop-frame-oracle
+    /tmp/desktop-frame-oracle --unit
+    echo 'LINUX_FLUTTER_ORACLE_UNITS=pass history_limit=65536 log_bytes_limit=8388608 stale_age=preserved uncertainty=sticky'
     for pass in 1 2; do
       mkdir -m 0700 "/tmp/drivers.$pass"
       /usr/bin/cc -std=c11 -O2 -Wall -Wextra -Werror \
@@ -1053,7 +1059,9 @@ PY
       [ -z "$SERVER_PID" ] && [ -z "$SERVER_START" ] \
         || fail 'cannot overlap controlled-server generations'
       SERVER_LOG="/tmp/server.$generation.log"
-      (cd /app/bundle && LD_PRELOAD="$BIND_SHIM" RUST_LOG=info,rustdesk::video_qos=debug,rustdesk::clipboard=debug exec "$APP" --server) \
+      local rust_log=info,rustdesk::video_qos=debug,rustdesk::clipboard=debug
+      [ "$PEER_SCENARIO" != viewer-soak ] || rust_log=info
+      (cd /app/bundle && LD_PRELOAD="$BIND_SHIM" RUST_LOG="$rust_log" exec "$APP" --server) \
         >"$SERVER_LOG" 2>&1 &
       SERVER_PID=$!
       SERVER_START=$("$READY" --identity "$SERVER_PID")
@@ -1112,14 +1120,24 @@ PY
       "$SERVER_PID" "$SERVER_START" > "$COORD/server.ready.tmp"
     mv "$COORD/server.ready.tmp" "$COORD/server.ready"
     echo 'FLUTTER_PEER_SERVER_READY network=none interfaces=lo listener=127.0.0.1:21118 udp=0 parked_then_passworded=true'
+    if [ "$PEER_SCENARIO" = viewer-soak ]; then
+      readlink /proc/self/ns/time > "$COORD/soak.time"
+    fi
     stop_seen=0
     credential_rotated=0
     all_stalled_observed=0
+    soak_observed=0
     next_generation=2
     for _ in $(seq 1 3000); do
       if [ -f "$COORD/stop" ] && [ ! -L "$COORD/stop" ]; then
         stop_seen=1
         break
+      fi
+      if [ "$PEER_SCENARIO" = viewer-soak ] && [ "$soak_observed" -eq 0 ] \
+        && [ -e "$COORD/soak.begin" ]; then
+        /usr/bin/python3 -I -S /source/scripts/flutter-peer-soak.py \
+          "$SERVER_PID" "$SERVER_START" "$SOURCE_PID" "$SOURCE_START"
+        soak_observed=1
       fi
       if [ "$PEER_SCENARIO" = viewer-isolation ] && [ "$all_stalled_observed" -eq 0 ] \
         && [ -e "$COORD/both.frozen" ]; then
@@ -1395,6 +1413,8 @@ PY
         || fail "successful viewer completed only $completed_restarts server restarts"
       [ "$PEER_SCENARIO" != viewer-isolation ] || [ "$all_stalled_observed" -eq 1 ] \
         || fail 'both-viewer capture/encode/resource observation did not complete'
+      [ "$PEER_SCENARIO" != viewer-soak ] || [ "$soak_observed" -eq 1 ] \
+        || fail 'long-session server resource observation did not complete'
       if [ "$ROTATE_CREDENTIAL" -eq 1 ] || [ "$PEER_SCENARIO" = credential-retry ]; then
         [ "$ROTATE_CREDENTIAL" -eq 0 ] || [ "$credential_rotated" -eq 1 ] \
           || fail 'credential rotation did not execute'
@@ -1529,7 +1549,9 @@ PY
     for viewer_generation in $(seq 1 "$viewer_generations"); do
     viewer_environment=()
     [ "$PEER_SCENARIO" != theme-appearance ] || viewer_environment+=(G_MESSAGES_DEBUG=all)
-    (cd /app/bundle && exec env "${viewer_environment[@]}" RUST_LOG=info,rustdesk::clipboard=debug "$APP" --connect 127.0.0.1) \
+    viewer_rust_log=info,rustdesk::clipboard=debug
+    [ "$PEER_SCENARIO" != viewer-soak ] || viewer_rust_log=info
+    (cd /app/bundle && exec env "${viewer_environment[@]}" RUST_LOG="$viewer_rust_log" "$APP" --connect 127.0.0.1) \
       >/tmp/viewer.log 2>&1 &
     VIEWER_PID=$!
     VIEWER_START=$("$READY" --identity "$VIEWER_PID")
@@ -1579,6 +1601,7 @@ PY
       controller_args+=(--screenshot-save-unavailable)
     fi
     [ "$PEER_SCENARIO" != viewer-suspend ] || controller_args+=(--viewer-suspend)
+    [ "$PEER_SCENARIO" != viewer-soak ] || controller_args+=(--viewer-soak)
     [ "$PEER_SCENARIO" != view-scaling ] || controller_args+=(--view-scaling)
     [ "$PEER_SCENARIO" != session-close ] || controller_args+=(--session-close)
     [ "$PEER_SCENARIO" != background-close ] || controller_args+=(--background-close)
@@ -1593,11 +1616,21 @@ PY
     [ "$PEER_SCENARIO" != keyboard-retirement ] || controller_args+=(--keyboard-retirement)
     [ "$PEER_SCENARIO" != mouse-input ] || controller_args+=(--mouse-input)
     [ "$PEER_SCENARIO" != mouse-retirement ] || controller_args+=(--mouse-retirement)
+    controller_timeout=180s
+    if [ "$PEER_SCENARIO" = viewer-soak ]; then
+      [ -f "$COORD/soak.time" ] && [ ! -L "$COORD/soak.time" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' "$COORD/soak.time")" = "$(id -u):$(id -g):600:1" ] \
+        && [ "$(readlink /proc/self/ns/time)" = "$(<"$COORD/soak.time")" ] \
+        || fail 'source and observer monotonic clock namespaces differ'
+      controller_timeout=14700s
+      exec 3>&1
+    fi
     set +e
-    controller_output="$(timeout --signal=TERM --kill-after=3s 180s \
+    controller_output="$(timeout --signal=TERM --kill-after=3s "$controller_timeout" \
       "$CONTROLLER" "${controller_args[@]}" 2>&1)"
     controller_status=$?
     set -e
+    [ "$PEER_SCENARIO" != viewer-soak ] || exec 3>&-
     printf '%s\n' "$controller_output"
     if [ "$PEER_SCENARIO" = theme-appearance ]; then
       "$READY" --is-running "$APPEARANCE_PID" "$APPEARANCE_START" \
@@ -1697,6 +1730,11 @@ PY
       elif [ "$PEER_SCENARIO" = credential-menu ] || [ "$PEER_SCENARIO" = credential-menu-accessible ]; then
         viewer_result='viewer=joined xvfb=joined credential_menu=passed generations=3 password_entries=1 saved_credential=empty next_prompt=required'
       fi
+    elif [ "$PEER_SCENARIO" = viewer-soak ]; then
+      [ "$(grep -c '^FLUTTER_PEER_SOAK_WINDOW ' <<<"$controller_output")" -eq 241 ] \
+        && grep -Fxq 'FLUTTER_PEER_SOAK_OK baseline_ms=60000 duration_ms=14400000 windows=240 freshness_limit_ms=1000 p95_drift_ms=250 p99_drift_ms=250 stable_connection=true resources=bounded x11_pixels=true' \
+          <<<"$controller_output" || fail 'four-hour native presentation observation is incomplete'
+      viewer_result='viewer=joined xvfb=joined soak_hours=4 stable_connection=true resources=bounded'
     elif [ "$PEER_SCENARIO" = viewer-isolation ]; then
       isolation_role=healthy
       [ "$PEER_ROLE" != slow ] || isolation_role=slow

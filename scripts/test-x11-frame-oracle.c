@@ -271,6 +271,10 @@ finished:
 }
 
 int main(int argc, char **argv) {
+    if (argc == 2 && strcmp(argv[1], "--unit") == 0 && getuid() != 0 && getgid() != 0 &&
+        getuid() == geteuid() && getgid() == getegid()) {
+        return unit_cases() != 0;
+    }
     if (argc != 2 || getuid() != 4000 || geteuid() != 4000 || getgid() != 4000 || getegid() != 4000) {
         return 1;
     }

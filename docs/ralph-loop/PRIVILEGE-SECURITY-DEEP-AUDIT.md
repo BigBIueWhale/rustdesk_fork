@@ -129155,3 +129155,45 @@ QEMU 1271222/wrapper 1269248 are absent; 402,735,104 peak RAM bytes retire
 in 30.764 supervisor seconds with three zero listener deltas. Receipt:
 `video-mailbox-ledger-991743d6.json`. This audit-only completion preserves
 the counted ledger. The broader release goal remains active and incomplete.
+
+### 2026-11-01 — four-hour Linux presentation control
+
+Previous turn: progress; actual mailbox/delivery bounds and staged two-viewer
+recovery passed. Continue R-F5 at the missing unimpaired multi-hour control,
+ahead of another short settings case. Reuse app `0243c010` and engine
+`ddb1541d`; no product or build-input change is required. This run keeps one
+authenticated connection for a one-minute baseline plus four continuous hours.
+
+The source continues publishing its full non-wrapping frame identity at 250 ms.
+The existing root-image oracle measures visible pixels against original source
+publication times; it cannot rejuvenate an old picture by observing it later.
+Linux [CLOCK_MONOTONIC](https://man7.org/linux/man-pages/man2/clock_gettime.2.html)
+is system-wide and excludes host suspend; source and viewer must additionally
+have the same actual time-namespace identity. The
+[Xlib image contract](https://www.x.org/releases/X11R7.6/doc/libX11/specs/libX11/libX11.html)
+motivates retaining root-screen capture and visibility/geometry validation.
+These are Xvfb-presented pixels and conservatively rounded publication-to-read
+ages, not physical display scanout or input-to-visible latency.
+
+Predeclared limits: every valid age at most 1,000 ms, no gap between fresh
+observations over 1,000 ms, at least 1,000 samples and 60 distinct states per
+minute, and at least 95% valid samples. Each later minute's p95/p99 must stay
+within 250 ms of the first minute; that baseline never resets. Check the same
+TCP inode and retained process identity each minute. Viewer/server growth
+limits remain eight threads, sixteen FDs and 128 MiB RSS. The exact server and
+source are observed through procfs/pidfds each second; server CPU is limited
+to ten CPU seconds per minute. Application tracing/shadow decode and verbose
+QoS/clipboard logs are disabled for this sustained control; actual pixel
+sampling remains active. Queue occupancy was established separately and is
+not measured in this run.
+
+The desktop oracle uses a fixed 65,536-entry history and 8-MiB publication-log
+ceiling, sufficient for four hours plus setup; other consumers retain their
+existing limits. Its real file/age/refusal unit cases execute before the two
+reproducible driver compilations. A retained progress descriptor emits bounded
+minute summaries while the stage owns the full controller result. The canonical
+replay keeps its 10-GiB guest, 7-GiB RAM scratch, file ceilings, live resource
+monitor and joined cleanup; only this scenario admits a 15,120-second outer
+deadline. Server observation must complete before the viewer closes. Native
+execution is pending; the four-hour acceptance remains OPEN until terminal
+success and exact process/storage retirement are verified.

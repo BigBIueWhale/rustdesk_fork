@@ -33,6 +33,9 @@
 #include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
+/* Four hours at the fixture's maximum four publications/second, plus setup. */
+#define X11_FRAME_HISTORY_LIMIT 65536U
+#define X11_FRAME_LOG_LIMIT (8U * 1024U * 1024U)
 #include "x11-frame-oracle.h"
 
 #define WINDOW_WAIT_MS 45000U
@@ -3306,6 +3309,113 @@ static int stop_isolation_viewer(int process, int pidfd, unsigned long pid,
     return -1;
 }
 
+static unsigned int soak_percentile(const unsigned int *histogram, unsigned int samples,
+                                    unsigned int percent) {
+    unsigned int seen = 0U, target = (samples * percent + 99U) / 100U;
+    for (unsigned int age = 0U; age <= FRESH_LIMIT_MS; ++age) {
+        seen += histogram[age];
+        if (seen >= target) return age;
+    }
+    return FRESH_LIMIT_MS + 1U;
+}
+
+static int exercise_viewer_soak(Display *display, ViewerWindow *viewer, SourceHistory *history,
+                                const char *start, const ConnectionIdentity *connection,
+                                const ProcessResources *baseline) {
+    enum { WINDOWS = 241, WINDOW_MS = 60000, DRIFT_MS = 250 };
+    int coord = open_coord_root(), process = -1, pidfd = -1, result = -1;
+    char path[64], state = '\0';
+    unsigned int baseline_p95 = 0U, baseline_p99 = 0U, window = 0U;
+    uint64_t began = monotonic_millis(), last_fresh = began;
+    int64_t previous_state = -1;
+    snprintf(path, sizeof(path), "/proc/%lu", viewer->pid);
+    process = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    pidfd = (int)syscall(SYS_pidfd_open, (pid_t)viewer->pid, 0U);
+    if (coord < 0 || process < 0 || pidfd < 0 || began == 0U ||
+        isolation_marker(coord, "soak.begin", 1) != 0) goto out;
+    for (window = 0U; window < WINDOWS; ++window) {
+        unsigned int histogram[FRESH_LIMIT_MS + 1U] = {0};
+        unsigned int samples = 0U, valid = 0U, distinct = 0U, maximum_age = 0U;
+        uint64_t window_start = monotonic_millis(), previous = window_start, maximum_gap = 0U;
+        uint64_t deadline = window_start + WINDOW_MS;
+        ConnectionIdentity current = {{0}, {0}, 0UL};
+        ProcessResources resources = {0};
+        if (window_start == 0U || deadline < window_start) goto out;
+        while (monotonic_millis() < deadline) {
+            uint64_t captured = 0U, age = 0U;
+            int64_t identity = viewer_state(display, viewer, &captured);
+            int valid_age = x11_frame_age(history, "/coord", identity, captured, &age) == 0;
+            uint64_t now = monotonic_millis();
+            if (now == 0U || now < previous || history->failed || samples >= 10000U) goto out;
+            previous = now;
+            samples += 1U;
+            uint64_t gap = now - last_fresh;
+            if (gap > maximum_gap) maximum_gap = gap;
+            if (gap > FRESH_LIMIT_MS) {
+                fprintf(stderr, "FLUTTER_PEER_SOAK_SAMPLE_REFUSED gap_ms=%llu identity=%lld valid=%d\n",
+                        (unsigned long long)gap, (long long)identity, valid_age);
+                goto out;
+            }
+            if (valid_age) {
+                if (age > FRESH_LIMIT_MS || identity < previous_state) {
+                    fprintf(stderr, "FLUTTER_PEER_SOAK_SAMPLE_REFUSED age_ms=%llu identity=%lld previous=%lld\n",
+                            (unsigned long long)age, (long long)identity, (long long)previous_state);
+                    goto out;
+                }
+                histogram[age] += 1U;
+                valid += 1U;
+                if (age > maximum_age) maximum_age = (unsigned int)age;
+                if (identity > previous_state) distinct += 1U;
+                previous_state = identity;
+                last_fresh = now;
+            }
+            if (sleep_millis(SAMPLE_INTERVAL_MS) != 0) goto out;
+        }
+        uint64_t elapsed = monotonic_millis() - window_start;
+        if (elapsed < WINDOW_MS || elapsed > WINDOW_MS + 1000U ||
+            samples < 1000U || valid * 100U < samples * 95U || distinct < 60U ||
+            !viewer_pidfd_alive(pidfd) ||
+            viewer_process_state(process, viewer->pid, start, &state) != 0 || state == 'T' || state == 't' ||
+            read_connection_identity(&current) != 0 || !same_connection(connection, &current) ||
+            read_process_resources(viewer->pid, &resources) != 0 ||
+            !resources_are_bounded(baseline, &resources)) goto out;
+        unsigned int p95 = soak_percentile(histogram, valid, 95U);
+        unsigned int p99 = soak_percentile(histogram, valid, 99U);
+        if (window == 0U) { baseline_p95 = p95; baseline_p99 = p99; }
+        printf("FLUTTER_PEER_SOAK_WINDOW index=%u elapsed_ms=%llu samples=%u valid=%u "
+               "distinct=%u p95_ms=%u p99_ms=%u maximum_age_ms=%u maximum_gap_ms=%llu "
+               "rss_kib=%llu threads=%u fds=%u stable_connection=true\n", window,
+               (unsigned long long)elapsed, samples, valid, distinct, p95, p99, maximum_age,
+               (unsigned long long)maximum_gap, resources.rss_kib, resources.threads, resources.descriptors);
+        if (p95 > baseline_p95 + DRIFT_MS || p99 > baseline_p99 + DRIFT_MS) {
+            fprintf(stderr, "FLUTTER_PEER_SOAK_DRIFT_REFUSED baseline_p95_ms=%u baseline_p99_ms=%u\n",
+                    baseline_p95, baseline_p99);
+            goto out;
+        }
+        /* The stage retains stdout; its explicitly inherited progress descriptor is live. */
+        if (dprintf(3, "FLUTTER_PEER_SOAK_PROGRESS minute=%u of=241 p95_ms=%u p99_ms=%u "
+                    "maximum_age_ms=%u rss_kib=%llu threads=%u fds=%u\n", window + 1U,
+                    p95, p99, maximum_age, resources.rss_kib, resources.threads,
+                    resources.descriptors) < 0) goto out;
+        fflush(stdout);
+    }
+    if (monotonic_millis() - began < (uint64_t)WINDOWS * WINDOW_MS ||
+        isolation_marker(coord, "soak.done", 1) != 0 ||
+        wait_isolation_marker(coord, "soak.observed", 5000U) != 0) goto out;
+    puts("FLUTTER_PEER_SOAK_OK baseline_ms=60000 duration_ms=14400000 windows=240 "
+         "freshness_limit_ms=1000 p95_drift_ms=250 p99_drift_ms=250 "
+         "stable_connection=true resources=bounded x11_pixels=true");
+    result = 0;
+out:
+    if (result != 0)
+        fprintf(stderr, "FLUTTER_PEER_X11_FAIL soak window=%u elapsed_ms=%llu errno=%d\n",
+                window, (unsigned long long)(monotonic_millis() - began), errno);
+    if (pidfd >= 0 && close(pidfd) != 0) result = -1;
+    if (process >= 0 && close(process) != 0) result = -1;
+    if (coord >= 0 && close(coord) != 0) result = -1;
+    return result;
+}
+
 static int exercise_viewer_isolation(Display *source, Display *display, ViewerWindow *viewer,
                                     SourceHistory *history, const char *start,
                                     const ConnectionIdentity *connection,
@@ -4695,6 +4805,7 @@ int main(int argc, char **argv) {
     AtspiAccessible *previous_caption = NULL;
 
     if (argc != 5 && (argc != 6 || (strcmp(argv[5], "--viewer-suspend") != 0 &&
+                                    strcmp(argv[5], "--viewer-soak") != 0 &&
                                     strcmp(argv[5], "--isolation-slow") != 0 &&
                                     strcmp(argv[5], "--isolation-healthy") != 0 &&
                                     strcmp(argv[5], "--keyboard-retirement") != 0 &&
@@ -4724,7 +4835,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
+              "VIEWER_START [--viewer-suspend|--viewer-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
         return 2;
     }
@@ -4937,6 +5048,16 @@ int main(int argc, char **argv) {
         return 1;
     }
     print_resources("initial", 0U, &baseline_resources);
+
+    if (argc == 6 && strcmp(argv[5], "--viewer-soak") == 0) {
+        int result = exercise_viewer_soak(display, &viewer, &history, argv[4],
+                                          &current_connection, &baseline_resources);
+        if (atspi_exit() != 0) result = -1;
+        if (close_viewer(display, viewer.window) != 0) result = -1;
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return result == 0 ? 0 : 1;
+    }
 
     if (isolation) {
         int result = exercise_viewer_isolation(source, display, &viewer, &history, argv[4],

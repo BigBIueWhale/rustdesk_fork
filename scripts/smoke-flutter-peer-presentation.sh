@@ -76,6 +76,7 @@ case "$#:${1:-}" in
       case "${21}" in
         --viewer-suspend) PEER_SCENARIO=viewer-suspend ;;
         --viewer-isolation) PEER_SCENARIO=viewer-isolation ;;
+        --viewer-soak) PEER_SCENARIO=viewer-soak ;;
         --network-impairment) PEER_SCENARIO=network-impairment ;;
         --network-loss) PEER_SCENARIO=network-loss ;;
         --clipboard-text) PEER_SCENARIO=clipboard-text ;;
@@ -143,6 +144,9 @@ readonly SUPPLIED_SOURCE_ARCHIVE SUPPLIED_SOURCE_COMMIT \
   FLUTTER_PRESENTATION_CANDIDATE SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE \
   BUILD_APP_ONLY APP_BUILD_CONTEXT APP_MANIFEST_SHA256 APP_ENGINE_CONTEXT
 readonly PEER_SCENARIO
+PRESENTATION_TRACE=1
+[ "$PEER_SCENARIO" != viewer-soak ] || PRESENTATION_TRACE=0
+readonly PRESENTATION_TRACE
 if [ "$PEER_SCENARIO" = network-impairment ] || [ "$PEER_SCENARIO" = network-loss ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
@@ -241,6 +245,11 @@ elif [ "$PEER_SCENARIO" = clipboard-text ]; then
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined clipboard_cases=6 stable_connection=true resources=bounded'
+elif [ "$PEER_SCENARIO" = viewer-soak ]; then
+  RUNTIME_CYCLES=1
+  SERVER_GENERATIONS='1'
+  SERVER_REPLACEMENTS=0
+  VIEWER_RESULT='viewer=joined xvfb=joined soak_hours=4 stable_connection=true resources=bounded'
 elif [ "$PEER_SCENARIO" = viewer-isolation ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
@@ -1211,7 +1220,7 @@ peer_vm_docker run --detach --cidfile "$SERVER_CID_FILE" \
   --mount "type=bind,source=$XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$COORD,target=/coord,bind-recursive=disabled" \
   --mount "type=bind,source=$SERVER_MACHINE_ID,target=/etc/machine-id,readonly,bind-recursive=disabled" \
-  --env RUSTDESK_PRESENTATION_TRACE=1 \
+  --env "RUSTDESK_PRESENTATION_TRACE=$PRESENTATION_TRACE" \
   --env "FLUTTER_PEER_SCENARIO=$PEER_SCENARIO" \
   "$DEV_CHECK_IMAGE_CONFIG_ID" \
   bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh server \
@@ -1274,7 +1283,7 @@ run_viewer_container() {
   --env HOME=/tmp/viewer-home \
   --env XDG_RUNTIME_DIR=/tmp/viewer-runtime \
   --env XDG_DATA_DIRS=/atspi-root/usr/share:/usr/local/share:/usr/share \
-  --env RUSTDESK_PRESENTATION_TRACE=1 \
+  --env "RUSTDESK_PRESENTATION_TRACE=$PRESENTATION_TRACE" \
   --env "FLUTTER_PEER_SCENARIO=$PEER_SCENARIO" \
   --env "FLUTTER_PEER_ROLE=$role" \
   "$DEV_CHECK_IMAGE_CONFIG_ID" \
@@ -1302,8 +1311,14 @@ if [ "$PEER_SCENARIO" = viewer-isolation ]; then
 fi
 CID_FILES+=("$VIEWER_CID_FILE")
 set +e
-run_viewer_container "$VIEWER_CID_FILE" main :99 >"$VIEWER_LOG" 2>&1
-viewer_status=$?
+if [ "$PEER_SCENARIO" = viewer-soak ]; then
+  run_viewer_container "$VIEWER_CID_FILE" main :99
+  viewer_status=$?
+  peer_vm_docker logs "$(<"$VIEWER_CID_FILE")" >"$VIEWER_LOG" 2>&1 || viewer_status=125
+else
+  run_viewer_container "$VIEWER_CID_FILE" main :99 >"$VIEWER_LOG" 2>&1
+  viewer_status=$?
+fi
 slow_status=0
 if [ -n "$SLOW_JOB" ]; then
   wait "$SLOW_JOB"
@@ -1336,7 +1351,7 @@ inspect_container_contract "$VIEWER_CID" "container:$SERVER_CID" viewer
     sha256sum "$ATSPI_ROOT/closure.identity" | awk '{print $1}'
   )" = "$ATSPI_ROOT_ID" ] \
   || die 'sealed AT-SPI runtime identity changed during runtime'
-cat "$VIEWER_LOG"
+[ "$PEER_SCENARIO" = viewer-soak ] || cat "$VIEWER_LOG"
 if [ "$viewer_status" -ne 0 ]; then
   capture_viewer_failure "$cycle" "$viewer_status" "$VIEWER_LOG"
 fi

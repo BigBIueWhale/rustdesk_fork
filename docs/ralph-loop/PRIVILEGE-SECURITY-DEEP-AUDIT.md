@@ -126368,3 +126368,49 @@ peak RAM workspace retired after 98.354 seconds. All five listener deltas are ze
 The failed outer status is 1, notwithstanding QEMU's normal signal-exit status 0.
 Only after terminal/cleanup proof was its retained diagnostic directory renamed
 `android-soak-cancelled.G6QoUrjGzi`, releasing admission for the focused correction.
+
+At `24a8ad3e`, focused TUF run `RWJfstLFJO` passes in 62.443 seconds,
+including the real atomic-replacement descriptor case, eleven scheduled refusals
+and the synthetic two-hour observer controls. Actual X11 observation spans
+3,130 ms/four samples, with 163-ms maximum age. QEMU 3736465 and wrapper
+3734928 exit; the 3,843,780,608-byte peak RAM workspace retires, and all three
+listener deltas are zero. Seven raw/closure files total 88,794 bytes and are
+hash-verified on both hosts. Serial SHA-256:
+`f1f754af99555fc9f6ad0380de94b05014475b4b3f5dde520242520d34529bed`.
+
+### 2026-11-01 — user pivot; connection-manager transfer-rate reporting
+
+The user requests another aspect. Android long-session/presentation follow-ups
+are OPEN/PARKED. The exact live `mDJFQwJwGj` run was cancelled through its
+identity-checked QEMU pidfd; no further Android test is selected. Five one-minute
+windows passed before cancellation: 301 observations, maximum content age
+1,028 ms, maximum observer age 99 ms and maximum gap 1,024 ms. First-minute
+p95 was 939 ms; minute five was 977 ms. RSS rose from the warmed 263,668 KiB
+to 270,096 KiB and threads stayed at 60. Android shell accepted the three
+16-MiB log buffers. These are partial observations, not a completed soak or
+log-retention/lifecycle acceptance result.
+
+Outer exit is 1 after intentional cancellation; QEMU 3738330 and wrapper
+3737201 are absent, the 4,498,694,144-byte peak RAM workspace is gone, and
+all five listener deltas are zero. Runtime was 1,119.608 seconds. The retained
+run directory was renamed `android-soak-cancelled.mDJFQwJwGj` only after
+cleanup proof under the shared lock. Nine bounded raw/closure files total
+84,484 bytes and are hash-verified on CTE/TUF; serial SHA-256 is
+`0ac4070fe923d0d499b78a34bf8ed08b8d4f1a3cd4751339f72a69b0f9a2766e`.
+
+The new slice targets R-F1/R-S0's correct file-transfer reporting. In
+`CmFileModel._dealOneJob`, a byte delta is displayed as bytes/second without
+division by elapsed time; one table-wide timing gate also mixes independent
+job update intervals. `TransferJob.transferred` is a cumulative byte count,
+and the server page explicitly labels `item.speed` with `/s`. This concrete
+calculation defect takes priority over another exploratory UI review.
+
+Use the existing [Dart Stopwatch elapsed-time API](https://api.dart.dev/dart-core/Stopwatch-class.html)
+and retain a sample baseline per exact displayed job. A first observation has
+no measurable rate; subsequent samples divide byte growth by their actual
+elapsed seconds, and a counter reset starts a new baseline. Keep the existing
+one-second reporting cadence. Four real-clock production-model regressions
+exercise delayed updates, interleaved directions/jobs, late first observations
+and reset, plus exact-owner rejection/replacement. Native transport and the
+complete CM page are not fixtures' claims. Product correction and execution
+are pending; terminal/cancellation semantics and other parked topics are untouched.

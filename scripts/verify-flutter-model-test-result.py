@@ -966,6 +966,10 @@ FILE_COMMAND_TESTS = {
     "new file job owners share admission with listing owners",
 }
 FILE_PROGRESS_TESTS = {
+    "CM transfer speed uses elapsed seconds",
+    "CM transfer speeds keep independent sample windows",
+    "CM transfer speed starts with each job and rebases counters",
+    "CM transfer speed rejects stale owners and retires rate history",
     "folder summary accepts native whole-number totals",
     "folder summary accepts exact integer totals without rounding",
     "folder summary refuses malformed shapes and oversized input",

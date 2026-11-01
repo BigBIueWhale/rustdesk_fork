@@ -3,12 +3,98 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
+import 'package:flutter_hbb/models/chat_model.dart';
+import 'package:flutter_hbb/models/cm_file_model.dart';
 import 'package:flutter_hbb/models/file_model.dart';
+import 'package:flutter_hbb/models/model.dart';
+import 'package:flutter_hbb/models/server_model.dart';
 import 'package:flutter_hbb/mobile/widgets/file_job_status.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 import 'package:uuid/uuid.dart';
+
+class _CmServer implements ServerModel {
+  @override
+  final clients = <Client>[];
+  @override
+  final tabController = DesktopTabController(tabType: DesktopTabType.cm);
+
+  _CmServer() {
+    tabController.state.value.tabs.add(
+        TabInfo(key: '41', label: 'peer', page: const SizedBox.shrink()));
+  }
+
+  @override
+  bool ownsClientGeneration(int id, int generation) => clients.any(
+      (client) => client.id == id && client.registryGeneration == generation);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _CmChat implements ChatModel {
+  @override
+  bool get isShowCMSidePage => false;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _CmFfi implements FFI {
+  @override
+  final serverModel = _CmServer();
+  @override
+  final chatModel = _CmChat();
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _CmRateHarness {
+  final ffi = _CmFfi();
+  late final model = CmFileModel(WeakReference<FFI>(ffi));
+  int generation = 73;
+
+  Future<void> selectOwner() async {
+    final client = Client(41, true, true, false, 'owner', 'peer',
+        false, false, false)..registryGeneration = generation;
+    ffi.serverModel.clients
+      ..clear()
+      ..add(client);
+    model.reconcileClients([client]);
+    model.updateCurrentClient(client);
+    await Future<void>.delayed(Duration.zero);
+  }
+
+  void report(int id, int transferred, {int? owner}) {
+    model.onFileTransferLog({
+      'id': '41',
+      'registry_generation': '${owner ?? generation}',
+      'action': 'transfer',
+      'log': jsonEncode([{
+        'connId': 41, 'id': id, 'dataSource': '/file-$id',
+        'isRemote': id.isEven, 'totalSize': 1000000,
+        'finishedSize': transferred, 'transferred': transferred,
+      }]),
+    });
+  }
+
+  CmFileLog job(int id) => model.currentJobTable.singleWhere((job) => job.id == id);
+
+  void dispose() {
+    model.reconcileClients([]);
+    ffi.serverModel.tabController.state.value.scrollController.dispose();
+    ffi.serverModel.tabController.state.value.pageController.dispose();
+  }
+}
+
+void _expectMeasuredRate(CmFileLog job, int bytes, Stopwatch clock) {
+  final expected = bytes * Duration.microsecondsPerSecond /
+      clock.elapsedMicroseconds;
+  expect(job.speed, closeTo(expected, expected * 0.1));
+}
 
 class _ProgressHarness {
   final session = const Uuid().v4obj();
@@ -109,6 +195,79 @@ class _StatusHarness {
 
 
 void main() {
+
+  test('CM transfer speed uses elapsed seconds', () async {
+    final h = _CmRateHarness();
+    addTearDown(h.dispose);
+    await h.selectOwner();
+    final clock = Stopwatch()..start();
+    h.report(1, 0);
+    await Future<void>.delayed(const Duration(milliseconds: 2200));
+    h.report(1, 6000);
+    _expectMeasuredRate(h.job(1), 6000, clock);
+    expect(h.job(1).finishedSize, 6000);
+    expect(h.job(1).state, JobState.inProgress);
+  });
+
+  test('CM transfer speeds keep independent sample windows', () async {
+    final h = _CmRateHarness();
+    addTearDown(h.dispose);
+    await h.selectOwner();
+    h.report(1, 0);
+    final clock = Stopwatch()..start();
+    h.report(2, 0);
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    h.report(1, 1200);
+    final firstRate = h.job(1).speed;
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    h.report(2, 2400);
+    _expectMeasuredRate(h.job(2), 2400, clock);
+    expect(h.job(1).speed, firstRate);
+    expect(h.job(1).action, CmFileAction.localToRemote);
+    expect(h.job(2).action, CmFileAction.remoteToLocal);
+  });
+
+  test('CM transfer speed starts with each job and rebases counters', () async {
+    final h = _CmRateHarness();
+    addTearDown(h.dispose);
+    await h.selectOwner();
+    h.report(1, 0);
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    final clock = Stopwatch()..start();
+    h.report(2, 50000);
+    expect(h.job(2).speed, 0);
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    h.report(2, 51200);
+    _expectMeasuredRate(h.job(2), 1200, clock);
+    h.report(2, 100);
+    expect(h.job(2).speed, 0);
+    clock.reset();
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    h.report(2, 1300);
+    _expectMeasuredRate(h.job(2), 1200, clock);
+  });
+
+  test('CM transfer speed rejects stale owners and retires rate history', () async {
+    final h = _CmRateHarness();
+    addTearDown(h.dispose);
+    await h.selectOwner();
+    h.report(1, 0);
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    h.report(1, 1200);
+    final oldJob = h.job(1);
+    final rate = oldJob.speed;
+    h.report(1, 50000, owner: 72);
+    expect(h.job(1), same(oldJob));
+    expect(oldJob.speed, rate);
+    expect(oldJob.finishedSize, 1200);
+    h.generation = 74;
+    await h.selectOwner();
+    expect(h.model.currentJobTable, isEmpty);
+    h.report(1, 80000);
+    expect(h.job(1), isNot(same(oldJob)));
+    expect(h.job(1).speed, 0);
+    expect(h.job(1).finishedSize, 80000);
+  });
 
   test('folder summary accepts native whole-number totals', () {
     final h = _ProgressHarness();

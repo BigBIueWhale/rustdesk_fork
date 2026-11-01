@@ -129212,3 +129212,17 @@ Receipt: `viewer-soak-flag-failure-ef40c0f4.json` (13,508 bytes, SHA-256
 `0a02436a8d9101f7e8ea913eec27dc5c215ebcc8de0a4136dd8373a21260ec92`),
 with `viewer-soak-flag-failure-retired.json` recording exact retirement.
 The corrected replay reuses the same authenticated app and engine artifacts.
+
+Corrected harness `38d007eb636ed3303b2041578fe4fc389859dd83` is running on
+TUF as `Agz8Yh9Qs1`, wrapper 41960, QEMU 43021 (start tick 293616444),
+tmux `rd-viewer-soak-fixed` / `$723` / `%723`; capture and terminal status are
+in `.harness-state/viewer-soak-38d007eb`. Start: 2026-11-01 14:58 UTC.
+The guest accepts the scenario, the enlarged-history oracle unit cases pass,
+and both native controller builds match SHA-256
+`7764011c3b666d8128af1bae662d5b76a0f74b10bb49564ab9aebe436fca1b4c`.
+The first minute completes with p95 295 ms, p99 313 ms, maximum sampled age
+327 ms, viewer RSS 364,116 KiB, 53 threads and 45 FDs. The exact connection
+and per-minute bounds pass at this checkpoint. This establishes only the fixed
+baseline; four-hour acceptance, server summaries and joined cleanup remain
+pending. Preserve this live run, poll its exact handles, and do not launch a
+replacement or synchronize the TUF repository while it owns the shared lock.

@@ -78,6 +78,7 @@ case "$#:${1:-}" in
         --viewer-isolation) PEER_SCENARIO=viewer-isolation ;;
         --viewer-soak) PEER_SCENARIO=viewer-soak ;;
         --input-latency) PEER_SCENARIO=input-latency ;;
+        --input-soak) PEER_SCENARIO=input-soak ;;
         --network-impairment) PEER_SCENARIO=network-impairment ;;
         --network-loss) PEER_SCENARIO=network-loss ;;
         --clipboard-text) PEER_SCENARIO=clipboard-text ;;
@@ -145,8 +146,11 @@ readonly SUPPLIED_SOURCE_ARCHIVE SUPPLIED_SOURCE_COMMIT \
   FLUTTER_PRESENTATION_CANDIDATE SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE \
   BUILD_APP_ONLY APP_BUILD_CONTEXT APP_MANIFEST_SHA256 APP_ENGINE_CONTEXT
 readonly PEER_SCENARIO
+LONG_SOAK=0
+case "$PEER_SCENARIO" in viewer-soak|input-soak) LONG_SOAK=1 ;; esac
+readonly LONG_SOAK
 PRESENTATION_TRACE=1
-[ "$PEER_SCENARIO" != viewer-soak ] || PRESENTATION_TRACE=0
+[ "$LONG_SOAK" -eq 0 ] || PRESENTATION_TRACE=0
 [ "$PEER_SCENARIO" != input-latency ] || PRESENTATION_TRACE=0
 readonly PRESENTATION_TRACE
 if [ "$PEER_SCENARIO" = network-impairment ] || [ "$PEER_SCENARIO" = network-loss ]; then
@@ -252,6 +256,11 @@ elif [ "$PEER_SCENARIO" = input-latency ]; then
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined input_latency_samples=120 stable_connection=true resources=bounded'
+elif [ "$PEER_SCENARIO" = input-soak ]; then
+  RUNTIME_CYCLES=1
+  SERVER_GENERATIONS='1'
+  SERVER_REPLACEMENTS=0
+  VIEWER_RESULT='viewer=joined xvfb=joined input_soak_hours=4 input_latency_samples=7320 stable_connection=true resources=bounded'
 elif [ "$PEER_SCENARIO" = viewer-soak ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
@@ -1318,7 +1327,7 @@ if [ "$PEER_SCENARIO" = viewer-isolation ]; then
 fi
 CID_FILES+=("$VIEWER_CID_FILE")
 set +e
-if [ "$PEER_SCENARIO" = viewer-soak ]; then
+if [ "$LONG_SOAK" -eq 1 ]; then
   run_viewer_container "$VIEWER_CID_FILE" main :99
   viewer_status=$?
   peer_vm_docker logs "$(<"$VIEWER_CID_FILE")" >"$VIEWER_LOG" 2>&1 || viewer_status=125
@@ -1358,7 +1367,7 @@ inspect_container_contract "$VIEWER_CID" "container:$SERVER_CID" viewer
     sha256sum "$ATSPI_ROOT/closure.identity" | awk '{print $1}'
   )" = "$ATSPI_ROOT_ID" ] \
   || die 'sealed AT-SPI runtime identity changed during runtime'
-[ "$PEER_SCENARIO" = viewer-soak ] || cat "$VIEWER_LOG"
+[ "$LONG_SOAK" -eq 1 ] || cat "$VIEWER_LOG"
 if [ "$viewer_status" -ne 0 ]; then
   capture_viewer_failure "$cycle" "$viewer_status" "$VIEWER_LOG"
 fi

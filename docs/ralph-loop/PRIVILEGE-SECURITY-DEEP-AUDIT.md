@@ -129376,3 +129376,45 @@ start another TUF VM while it owns the lock. CTE has no remaining private run
 or temporary app/engine copy from this slice. The new bounded evidence remains
 on CTE; synchronize it with the harness after the live TUF run retires. The
 release goal remains active and incomplete.
+
+### 2026-11-01 — sustained native input-to-visible response
+
+Previous turn: progress, with the healthy complete-peer input baseline accepted.
+Continue R-F5 at its missing long-session input measurement while TUF's separate
+animated-display soak remains live. This requirement takes priority over another
+short settings scenario. Reuse app `0243c010`/engine `ddb1541d`; no product change
+or rebuild is needed. Independently parked impairment/platform work remains parked.
+
+Predeclare one request every 2,000 ms, 120 requests in a four-minute baseline,
+then sixty more four-minute windows (four hours, 7,320 total requests). Every
+request retains the 200 ms no-input control, exact next visible counter, source
+publication after timed viewer input, one-second response ceiling, released keys,
+same TCP identity and viewer resource bounds. Add retained pidfd/proc generation
+checks per request. Each later window's p95/p99 may exceed the first window by at
+most 250 ms; never reset that baseline. The controlled source changes only in
+response to input, so this is a sustained interactive workload, complementing
+the separate continuously animated frame-age control rather than claiming its
+capture workload. Physical scanout, impairment recovery and other platforms remain
+outside this result.
+
+Use absolute CLOCK_MONOTONIC request slots to avoid accumulating response/sleep
+time into scheduling drift; refuse more than 100 ms slot lateness. The
+[Linux absolute-sleep contract](https://man7.org/linux/man-pages/man2/clock_nanosleep.2.html)
+requires explicit EINTR handling and documents post-wake scheduling delay. The
+same clock/time-namespace checks remain, and the terminal verdict requires actual
+elapsed duration as well as every sample. Extend the source's unique request
+space to four hexadecimal letters plus Return, with no wrap or repeat; the
+previous two-letter range cannot represent this workload. The focused native
+fixture keeps its four incomplete-input controls and crosses request carries at
+16 and 256 before refusing a duplicate. This changes the test workload from the
+prior three-key short baseline to five keys; no cross-workload latency comparison
+is claimed.
+
+The shared server/source monitor retains exact process identities, per-second
+resource observations, minute CPU bounds and completion handshake. Both wrapper
+parsers forward the new `--input-soak` scenario; it uses the existing 10-GiB guest,
+7-GiB RAM scratch, file ceilings, 15,120-second integration limit and joined
+cleanup. Only its controller budget becomes 14,900 seconds. Bounded minute progress
+and all individual measurements are retained. Native fixture execution and the
+new long-session acceptance are pending; shell syntax and source inspection alone
+do not establish them.

@@ -3346,9 +3346,10 @@ static int input_response_ready(int coord, int64_t *identity) {
 }
 
 static int send_response_request(Display *display, unsigned int request) {
-    KeySym symbols[] = {XK_a + (request >> 4U), XK_a + (request & 15U), XK_Return};
-    if (request > 255U) return -1;
-    for (unsigned int i = 0U; i < 3U; ++i) {
+    KeySym symbols[] = {XK_a + ((request >> 12U) & 15U), XK_a + ((request >> 8U) & 15U),
+                        XK_a + ((request >> 4U) & 15U), XK_a + (request & 15U), XK_Return};
+    if (request > 65535U) return -1;
+    for (unsigned int i = 0U; i < 5U; ++i) {
         KeyCode key = XKeysymToKeycode(display, symbols[i]);
         if (key == 0U) return -1;
         int pressed = XTestFakeKeyEvent(display, key, True, CurrentTime);
@@ -3359,17 +3360,36 @@ static int send_response_request(Display *display, unsigned int request) {
     return 0;
 }
 
+static int wait_for_input_slot(uint64_t deadline) {
+    uint64_t previous = monotonic_millis();
+    struct timespec target = {(time_t)(deadline / 1000U), (long)(deadline % 1000U) * 1000000L};
+    int status;
+    if (previous == 0U) return -1;
+    do {
+        status = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &target, NULL);
+    } while (status == EINTR);
+    if (status != 0) { errno = status; return -1; }
+    uint64_t now = monotonic_millis();
+    return now >= previous && now >= deadline && now - deadline <= 100U ? 0 : -1;
+}
+
 static int exercise_input_latency(Display *source, Display *display, ViewerWindow *viewer,
                                    SourceHistory *history, const ConnectionIdentity *connection,
-                                   const ProcessResources *baseline) {
-    enum { SAMPLES = 120, QUIET_MS = 200 };
-    int coord = open_coord_root(), result = -1;
+                                   const ProcessResources *baseline, const char *start, int soak) {
+    enum { SAMPLES = 120, QUIET_MS = 200, SOAK_WINDOWS = 61, SLOT_MS = 2000, DRIFT_MS = 250 };
+    int coord = open_coord_root(), process = -1, pidfd = -1, result = -1;
     int64_t expected = -1;
     unsigned int histogram[FRESH_LIMIT_MS + 1U] = {0}, maximum = 0U, trial = 0U;
+    unsigned int baseline_p95 = 0U, baseline_p99 = 0U;
+    unsigned int trials = soak ? SOAK_WINDOWS * SAMPLES : SAMPLES;
+    char path[64], state = '\0';
     const char *phase = "setup";
     Window focus, initial_focus;
     int revert;
     uint64_t began = monotonic_millis();
+    snprintf(path, sizeof(path), "/proc/%lu", viewer->pid);
+    process = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    pidfd = (int)syscall(SYS_pidfd_open, (pid_t)viewer->pid, 0U);
     XGetInputFocus(source, &initial_focus, &revert);
     /* Server/CM startup may have focused another window since the source started. */
     XSetInputFocus(source, RootWindow(source, DefaultScreen(source)), RevertToParent, CurrentTime);
@@ -3380,7 +3400,7 @@ static int exercise_input_latency(Display *source, Display *display, ViewerWindo
            RootWindow(source, DefaultScreen(source)),
            keyboard_is_released(source) ? "true" : "false",
            keyboard_is_released(display) ? "true" : "false");
-    if (coord < 0 || began == 0U ||
+    if (coord < 0 || process < 0 || pidfd < 0 || began == 0U ||
         focus != RootWindow(source, DefaultScreen(source)) ||
         return_focus_with_pointer(display, viewer) != 0 ||
         !keyboard_is_released(source) || !keyboard_is_released(display) ||
@@ -3402,7 +3422,12 @@ static int exercise_input_latency(Display *source, Display *display, ViewerWindo
         if (identity == expected && history->count == (uint64_t)expected + 1U) break;
         if (sleep_millis(10U) != 0) goto out;
     }
-    for (trial = 0U; trial < SAMPLES; ++trial) {
+    uint64_t measurement_start = monotonic_millis();
+    if (measurement_start == 0U ||
+        (soak && isolation_marker(coord, "soak.begin", 1) != 0)) goto out;
+    for (trial = 0U; trial < trials; ++trial) {
+        phase = "cadence";
+        if (soak && wait_for_input_slot(measurement_start + (uint64_t)trial * SLOT_MS) != 0) goto out;
         phase = "quiet";
         uint64_t quiet = monotonic_millis(), previous = quiet, start_us, elapsed_us = 0U;
         unsigned int quiet_samples = 0U;
@@ -3448,7 +3473,10 @@ static int exercise_input_latency(Display *source, Display *display, ViewerWindo
         }
         unsigned int latency = (unsigned int)((elapsed_us + 999U) / 1000U);
         phase = "resources";
-        if (!keyboard_is_released(source) || !keyboard_is_released(display) ||
+        if (!viewer_pidfd_alive(pidfd) ||
+            viewer_process_state(process, viewer->pid, start, &state) != 0 ||
+            state == 'T' || state == 't' || state == 'Z' || state == 'X' ||
+            !keyboard_is_released(source) || !keyboard_is_released(display) ||
             read_connection_identity(&current) != 0 || !same_connection(connection, &current) ||
             read_process_resources(viewer->pid, &resources) != 0 ||
             !resources_are_bounded(baseline, &resources)) goto out;
@@ -3457,17 +3485,52 @@ static int exercise_input_latency(Display *source, Display *display, ViewerWindo
         printf("FLUTTER_PEER_INPUT_LATENCY_SAMPLE index=%u request=%u identity=%lld elapsed_us=%llu "
                "quiet_samples=%u input=native-request response=visible-pixels\n",
                trial, trial + 1U, (long long)expected, (unsigned long long)elapsed_us, quiet_samples);
+        if (soak && (trial + 1U) % 30U == 0U &&
+            dprintf(3, "FLUTTER_PEER_INPUT_SOAK_PROGRESS samples=%u of=7320 "
+                    "elapsed_ms=%llu window_maximum_ms=%u rss_kib=%llu threads=%u fds=%u\n",
+                    trial + 1U, (unsigned long long)(monotonic_millis() - measurement_start),
+                    maximum, resources.rss_kib, resources.threads, resources.descriptors) < 0) goto out;
+        if (soak && (trial + 1U) % SAMPLES == 0U) {
+            phase = "window";
+            unsigned int window = trial / SAMPLES;
+            unsigned int p95 = latency_percentile(histogram, SAMPLES, 95U);
+            unsigned int p99 = latency_percentile(histogram, SAMPLES, 99U);
+            if (window == 0U) { baseline_p95 = p95; baseline_p99 = p99; }
+            if (p95 > baseline_p95 + DRIFT_MS || p99 > baseline_p99 + DRIFT_MS ||
+                wait_for_input_slot(measurement_start + (uint64_t)(trial + 1U) * SLOT_MS) != 0) goto out;
+            printf("FLUTTER_PEER_INPUT_SOAK_WINDOW index=%u samples=120 p95_ms=%u p99_ms=%u "
+                   "maximum_ms=%u baseline_p95_ms=%u baseline_p99_ms=%u elapsed_ms=%llu\n",
+                   window, p95, p99, maximum, baseline_p95, baseline_p99,
+                   (unsigned long long)(monotonic_millis() - measurement_start));
+            if (dprintf(3, "FLUTTER_PEER_INPUT_SOAK_WINDOW_COMPLETE window=%u of=61 "
+                        "p95_ms=%u p99_ms=%u maximum_ms=%u baseline_p95_ms=%u baseline_p99_ms=%u\n",
+                        window + 1U, p95, p99, maximum, baseline_p95, baseline_p99) < 0 ||
+                fflush(stdout) != 0) goto out;
+            memset(histogram, 0, sizeof(histogram));
+            maximum = 0U;
+        }
     }
-    printf("FLUTTER_PEER_INPUT_LATENCY_OK samples=120 deadline_ms=1000 p95_ms=%u p99_ms=%u "
-           "maximum_ms=%u stable_connection=true resources=bounded input=viewer-xtest "
-           "response=controlled-native-request pixels=viewer-root\n",
-           latency_percentile(histogram, SAMPLES, 95U), latency_percentile(histogram, SAMPLES, 99U), maximum);
+    if (soak) {
+        if (monotonic_millis() - measurement_start < (uint64_t)trials * SLOT_MS ||
+            isolation_marker(coord, "soak.done", 1) != 0 ||
+            wait_isolation_marker(coord, "soak.observed", 5000U) != 0) goto out;
+        puts("FLUTTER_PEER_INPUT_SOAK_OK baseline_ms=240000 duration_ms=14400000 windows=60 "
+             "samples=7320 interval_ms=2000 deadline_ms=1000 p95_drift_ms=250 p99_drift_ms=250 "
+             "stable_connection=true resources=bounded input=viewer-xtest pixels=viewer-root");
+    } else {
+        printf("FLUTTER_PEER_INPUT_LATENCY_OK samples=120 deadline_ms=1000 p95_ms=%u p99_ms=%u "
+               "maximum_ms=%u stable_connection=true resources=bounded input=viewer-xtest "
+               "response=controlled-native-request pixels=viewer-root\n",
+               latency_percentile(histogram, SAMPLES, 95U), latency_percentile(histogram, SAMPLES, 99U), maximum);
+    }
     result = 0;
 out:
     if (result != 0)
         fprintf(stderr, "FLUTTER_PEER_X11_FAIL input-latency phase=%s trial=%u identity=%lld errno=%d\n",
                 phase, trial, (long long)expected, errno);
     if (coord >= 0 && close(coord) != 0) result = -1;
+    if (pidfd >= 0 && close(pidfd) != 0) result = -1;
+    if (process >= 0 && close(process) != 0) result = -1;
     return result;
 }
 
@@ -4959,6 +5022,7 @@ int main(int argc, char **argv) {
     if (argc != 5 && (argc != 6 || (strcmp(argv[5], "--viewer-suspend") != 0 &&
                                     strcmp(argv[5], "--viewer-soak") != 0 &&
                                     strcmp(argv[5], "--input-latency") != 0 &&
+                                    strcmp(argv[5], "--input-soak") != 0 &&
                                     strcmp(argv[5], "--isolation-slow") != 0 &&
                                     strcmp(argv[5], "--isolation-healthy") != 0 &&
                                     strcmp(argv[5], "--keyboard-retirement") != 0 &&
@@ -4988,7 +5052,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--viewer-soak|--input-latency|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
+              "VIEWER_START [--viewer-suspend|--viewer-soak|--input-latency|--input-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
         return 2;
     }
@@ -5202,9 +5266,11 @@ int main(int argc, char **argv) {
     }
     print_resources("initial", 0U, &baseline_resources);
 
-    if (argc == 6 && strcmp(argv[5], "--input-latency") == 0) {
+    if (argc == 6 && (strcmp(argv[5], "--input-latency") == 0 ||
+                      strcmp(argv[5], "--input-soak") == 0)) {
         int result = exercise_input_latency(source, display, &viewer, &history,
-                                           &current_connection, &baseline_resources);
+                                           &current_connection, &baseline_resources,
+                                           argv[4], strcmp(argv[5], "--input-soak") == 0);
         if (atspi_exit() != 0) result = -1;
         if (close_viewer(display, viewer.window) != 0) result = -1;
         XCloseDisplay(display);

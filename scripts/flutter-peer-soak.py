@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Guest-only resource observation for the four-hour Linux presentation control."""
+"""Guest-only resource observation for the four-hour Linux presentation/input controls."""
 import contextlib
 import ctypes
 import json
@@ -12,8 +12,11 @@ import time
 
 
 def main():
-    assert len(sys.argv) == 5 and os.getuid() != 0 and os.getgid() != 0
-    pid, start, source_pid, source_start = sys.argv[1:]
+    assert len(sys.argv) == 6 and os.getuid() != 0 and os.getgid() != 0
+    pid, start, source_pid, source_start, scenario = sys.argv[1:]
+    assert scenario in ('viewer-soak', 'input-soak')
+    minimum_seconds = 14639 if scenario == 'input-soak' else 14459
+    minimum_windows = 243 if scenario == 'input-soak' else 240
     pid, source_pid = int(pid), int(source_pid)
     coord = pathlib.Path('/coord')
 
@@ -87,7 +90,7 @@ def main():
             if done:
                 break
             time.sleep(1)
-        assert now - began >= 14459 and windows >= 240 and samples >= 14000
+        assert now - began >= minimum_seconds and windows >= minimum_windows and samples >= 14000
         print('FLUTTER_PEER_SOAK_SERVER_OK=' + json.dumps(dict(
             duration_ms=round((now - began) * 1000), samples=samples,
             baseline=baseline, peak=peak, final=current), sort_keys=True), flush=True)

@@ -273,8 +273,10 @@ finished:
 }
 
 static int response_request(Display *display, unsigned int request, unsigned int first) {
-    KeySym symbols[] = {XK_a + (request >> 4U), XK_a + (request & 15U), XK_Return};
-    for (unsigned int i = first; i < 3U; ++i) {
+    KeySym symbols[] = {XK_a + ((request >> 12U) & 15U), XK_a + ((request >> 8U) & 15U),
+                        XK_a + ((request >> 4U) & 15U), XK_a + (request & 15U), XK_Return};
+    if (request > 65535U) return -1;
+    for (unsigned int i = first; i < 5U; ++i) {
         KeyCode key = XKeysymToKeycode(display, symbols[i]);
         if (key == 0U || XTestFakeKeyEvent(display, key, True, CurrentTime) == 0 ||
             XTestFakeKeyEvent(display, key, False, CurrentTime) == 0) return -1;
@@ -343,9 +345,20 @@ static int input_response_case(const char *directory) {
                 x11_frame_monotonic_us() - sent > 1000000U || nanosleep(&pause, NULL) != 0) goto out;
         }
     }
-    if (response_request(display, 4U, 0U) != 0) goto out;
+    /* Cross both hexadecimal carries; the former one-byte request space is insufficient. */
+    for (unsigned int request = 5U; request <= 256U; ++request) {
+        if (response_request(display, request, 0U) != 0) goto out;
+        uint64_t sent = x11_frame_monotonic_us();
+        for (;;) {
+            int64_t identity = x11_frame_capture(display, DefaultRootWindow(display), pixels, &captured);
+            if (identity == (int64_t)initial + request) break;
+            if (identity > (int64_t)initial + request ||
+                x11_frame_monotonic_us() - sent > 1000000U || nanosleep(&pause, NULL) != 0) goto out;
+        }
+    }
+    if (response_request(display, 256U, 0U) != 0) goto out;
     puts("X11_INPUT_RESPONSE_FIXTURE=pass no_input=stable held_key=stable partial_request=stable native_request=advances "
-         "samples=4 pixels=actual scope=fixture-only");
+         "controls=4 requests=256 carries=16,256 pixels=actual scope=fixture-only");
     result = 0;
 out:
     if (held && XTestFakeKeyEvent(display, key, False, CurrentTime) == 0) result = -1;

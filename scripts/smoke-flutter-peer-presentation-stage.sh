@@ -26,12 +26,17 @@ MENU_ACTION=pointer
 [ "$PEER_SCENARIO" != credential-menu-accessible ] || MENU_ACTION=accessible
 readonly MENU_ACTION
 case "$PEER_SCENARIO" in
-  session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|viewer-isolation|viewer-soak|input-latency) EXPECTED_RESTARTS=0 ;;
+  session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|viewer-isolation|viewer-soak|input-latency|input-soak) EXPECTED_RESTARTS=0 ;;
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
   viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation|credential-forget|credential-menu|credential-menu-accessible) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
 esac
 readonly EXPECTED_RESTARTS
+LONG_SOAK=0
+INPUT_RESPONSE=0
+case "$PEER_SCENARIO" in viewer-soak|input-soak) LONG_SOAK=1 ;; esac
+case "$PEER_SCENARIO" in input-latency|input-soak) INPUT_RESPONSE=1 ;; esac
+readonly LONG_SOAK INPUT_RESPONSE
 case "$PEER_SCENARIO" in
   credential-rotation|credential-forget) ROTATE_CREDENTIAL=1 ;;
   *) ROTATE_CREDENTIAL=0 ;;
@@ -1060,7 +1065,7 @@ PY
         || fail 'cannot overlap controlled-server generations'
       SERVER_LOG="/tmp/server.$generation.log"
       local rust_log=info,rustdesk::video_qos=debug,rustdesk::clipboard=debug
-      if [ "$PEER_SCENARIO" = viewer-soak ] || [ "$PEER_SCENARIO" = input-latency ]; then
+      if [ "$LONG_SOAK" -eq 1 ] || [ "$INPUT_RESPONSE" -eq 1 ]; then
         rust_log=info
       fi
       (cd /app/bundle && LD_PRELOAD="$BIND_SHIM" RUST_LOG="$rust_log" exec "$APP" --server) \
@@ -1091,7 +1096,7 @@ PY
     }
     start_xvfb :98 640x480x24 /tmp/server-xvfb.log
     source_args=()
-    [ "$PEER_SCENARIO" != input-latency ] || source_args+=(--input-response "$COORD")
+    [ "$INPUT_RESPONSE" -eq 0 ] || source_args+=(--input-response "$COORD")
     set -o noclobber
     RUSTDESK_PRESENTATION_TRACE=1 "$SOURCE_FIXTURE" "${source_args[@]}" >"$COORD/frame-source.log" 2>&1 &
     SOURCE_PID=$!
@@ -1124,7 +1129,7 @@ PY
       "$SERVER_PID" "$SERVER_START" > "$COORD/server.ready.tmp"
     mv "$COORD/server.ready.tmp" "$COORD/server.ready"
     echo 'FLUTTER_PEER_SERVER_READY network=none interfaces=lo listener=127.0.0.1:21118 udp=0 parked_then_passworded=true'
-    if [ "$PEER_SCENARIO" = viewer-soak ] || [ "$PEER_SCENARIO" = input-latency ]; then
+    if [ "$LONG_SOAK" -eq 1 ] || [ "$INPUT_RESPONSE" -eq 1 ]; then
       readlink /proc/self/ns/time > "$COORD/soak.time"
     fi
     stop_seen=0
@@ -1137,10 +1142,10 @@ PY
         stop_seen=1
         break
       fi
-      if [ "$PEER_SCENARIO" = viewer-soak ] && [ "$soak_observed" -eq 0 ] \
+      if [ "$LONG_SOAK" -eq 1 ] && [ "$soak_observed" -eq 0 ] \
         && [ -e "$COORD/soak.begin" ]; then
         /usr/bin/python3 -I -S /source/scripts/flutter-peer-soak.py \
-          "$SERVER_PID" "$SERVER_START" "$SOURCE_PID" "$SOURCE_START"
+          "$SERVER_PID" "$SERVER_START" "$SOURCE_PID" "$SOURCE_START" "$PEER_SCENARIO"
         soak_observed=1
       fi
       if [ "$PEER_SCENARIO" = viewer-isolation ] && [ "$all_stalled_observed" -eq 0 ] \
@@ -1417,7 +1422,7 @@ PY
         || fail "successful viewer completed only $completed_restarts server restarts"
       [ "$PEER_SCENARIO" != viewer-isolation ] || [ "$all_stalled_observed" -eq 1 ] \
         || fail 'both-viewer capture/encode/resource observation did not complete'
-      [ "$PEER_SCENARIO" != viewer-soak ] || [ "$soak_observed" -eq 1 ] \
+      [ "$LONG_SOAK" -eq 0 ] || [ "$soak_observed" -eq 1 ] \
         || fail 'long-session server resource observation did not complete'
       if [ "$ROTATE_CREDENTIAL" -eq 1 ] || [ "$PEER_SCENARIO" = credential-retry ]; then
         [ "$ROTATE_CREDENTIAL" -eq 0 ] || [ "$credential_rotated" -eq 1 ] \
@@ -1554,7 +1559,7 @@ PY
     viewer_environment=()
     [ "$PEER_SCENARIO" != theme-appearance ] || viewer_environment+=(G_MESSAGES_DEBUG=all)
     viewer_rust_log=info,rustdesk::clipboard=debug
-    if [ "$PEER_SCENARIO" = viewer-soak ] || [ "$PEER_SCENARIO" = input-latency ]; then
+    if [ "$LONG_SOAK" -eq 1 ] || [ "$INPUT_RESPONSE" -eq 1 ]; then
       viewer_rust_log=info
     fi
     (cd /app/bundle && exec env "${viewer_environment[@]}" RUST_LOG="$viewer_rust_log" "$APP" --connect 127.0.0.1) \
@@ -1609,6 +1614,7 @@ PY
     [ "$PEER_SCENARIO" != viewer-suspend ] || controller_args+=(--viewer-suspend)
     [ "$PEER_SCENARIO" != viewer-soak ] || controller_args+=(--viewer-soak)
     [ "$PEER_SCENARIO" != input-latency ] || controller_args+=(--input-latency)
+    [ "$PEER_SCENARIO" != input-soak ] || controller_args+=(--input-soak)
     [ "$PEER_SCENARIO" != view-scaling ] || controller_args+=(--view-scaling)
     [ "$PEER_SCENARIO" != session-close ] || controller_args+=(--session-close)
     [ "$PEER_SCENARIO" != background-close ] || controller_args+=(--background-close)
@@ -1624,15 +1630,16 @@ PY
     [ "$PEER_SCENARIO" != mouse-input ] || controller_args+=(--mouse-input)
     [ "$PEER_SCENARIO" != mouse-retirement ] || controller_args+=(--mouse-retirement)
     controller_timeout=180s
-    if [ "$PEER_SCENARIO" = viewer-soak ] || [ "$PEER_SCENARIO" = input-latency ]; then
+    if [ "$LONG_SOAK" -eq 1 ] || [ "$INPUT_RESPONSE" -eq 1 ]; then
       [ -f "$COORD/soak.time" ] && [ ! -L "$COORD/soak.time" ] \
         && [ "$(stat -c '%u:%g:%a:%h' "$COORD/soak.time")" = "$(id -u):$(id -g):600:1" ] \
         && [ "$(readlink /proc/self/ns/time)" = "$(<"$COORD/soak.time")" ] \
         || fail 'source and observer monotonic clock namespaces differ'
     fi
     [ "$PEER_SCENARIO" != input-latency ] || controller_timeout=240s
-    if [ "$PEER_SCENARIO" = viewer-soak ]; then
+    if [ "$LONG_SOAK" -eq 1 ]; then
       controller_timeout=14700s
+      [ "$PEER_SCENARIO" != input-soak ] || controller_timeout=14900s
       exec 3>&1
     fi
     set +e
@@ -1640,7 +1647,7 @@ PY
       "$CONTROLLER" "${controller_args[@]}" 2>&1)"
     controller_status=$?
     set -e
-    [ "$PEER_SCENARIO" != viewer-soak ] || exec 3>&-
+    [ "$LONG_SOAK" -eq 0 ] || exec 3>&-
     printf '%s\n' "$controller_output"
     if [ "$PEER_SCENARIO" = theme-appearance ]; then
       "$READY" --is-running "$APPEARANCE_PID" "$APPEARANCE_START" \
@@ -1745,6 +1752,12 @@ PY
         && [ "$(grep -Ec '^FLUTTER_PEER_INPUT_LATENCY_OK samples=120 deadline_ms=1000 p95_ms=[0-9]+ p99_ms=[0-9]+ maximum_ms=[0-9]+ stable_connection=true resources=bounded input=viewer-xtest response=controlled-native-request pixels=viewer-root$' <<<"$controller_output")" -eq 1 ] \
         || fail 'native input-to-visible response observation is incomplete'
       viewer_result='viewer=joined xvfb=joined input_latency_samples=120 stable_connection=true resources=bounded'
+    elif [ "$PEER_SCENARIO" = input-soak ]; then
+      [ "$(grep -c '^FLUTTER_PEER_INPUT_LATENCY_SAMPLE ' <<<"$controller_output")" -eq 7320 ] \
+        && [ "$(grep -c '^FLUTTER_PEER_INPUT_SOAK_WINDOW ' <<<"$controller_output")" -eq 61 ] \
+        && grep -Fxq 'FLUTTER_PEER_INPUT_SOAK_OK baseline_ms=240000 duration_ms=14400000 windows=60 samples=7320 interval_ms=2000 deadline_ms=1000 p95_drift_ms=250 p99_drift_ms=250 stable_connection=true resources=bounded input=viewer-xtest pixels=viewer-root' \
+          <<<"$controller_output" || fail 'four-hour input response observation is incomplete'
+      viewer_result='viewer=joined xvfb=joined input_soak_hours=4 input_latency_samples=7320 stable_connection=true resources=bounded'
     elif [ "$PEER_SCENARIO" = viewer-soak ]; then
       [ "$(grep -c '^FLUTTER_PEER_SOAK_WINDOW ' <<<"$controller_output")" -eq 241 ] \
         && grep -Fxq 'FLUTTER_PEER_SOAK_OK baseline_ms=60000 duration_ms=14400000 windows=240 freshness_limit_ms=1000 p95_drift_ms=250 p99_drift_ms=250 stable_connection=true resources=bounded x11_pixels=true' \

@@ -168,7 +168,7 @@ static void draw_texture(Display *display, Pixmap buffer, GC graphics,
               (unsigned int)image->width, (unsigned int)image->height);
 }
 
-/* A unique two-digit request followed by Return prevents delayed input from impersonating a new trial. */
+/* A unique four-digit request followed by Return prevents delayed input from impersonating a new trial. */
 typedef struct {
     unsigned int held, position, request;
 } ResponseInput;
@@ -186,10 +186,11 @@ static int response_input(Display *display, Window root, ResponseInput *input) {
             continue;
         }
         if (event.type != KeyPress && event.type != KeyRelease) continue;
-        if (input->request > 255U || input->position > 2U) return -1;
-        unsigned int digit = input->position == 0U ? input->request >> 4U : input->request & 15U;
-        KeySym wanted = input->position == 2U ? XK_Return : XK_a + digit;
-        char character = input->position == 2U ? '\r' : (char)('a' + digit);
+        if (input->request > 65535U || input->position > 4U) return -1;
+        unsigned int digit = input->position < 4U ?
+            (input->request >> ((3U - input->position) * 4U)) & 15U : 0U;
+        KeySym wanted = input->position == 4U ? XK_Return : XK_a + digit;
+        char character = input->position == 4U ? '\r' : (char)('a' + digit);
         int size = XLookupString(&event.xkey, text, sizeof(text), &symbol, NULL);
         if (event.xkey.window != root || event.xkey.send_event ||
             (event.xkey.state & 255U) != 0U || symbol != wanted || size != 1 || text[0] != character)
@@ -200,7 +201,7 @@ static int response_input(Display *display, Window root, ResponseInput *input) {
         } else {
             if (input->held == 0U || input->held != event.xkey.keycode || completed != 0U) return -1;
             input->held = 0U;
-            if (++input->position == 3U) {
+            if (++input->position == 5U) {
                 input->position = 0U;
                 input->request += 1U;
                 completed = 1U;

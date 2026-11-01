@@ -39,7 +39,9 @@ PALETTE = (
 )
 STATE_CODE_BARS = 24
 STATE_CODE_ROWS = 4
-MAX_SOURCE_BYTES = 2 * 1024 * 1024
+MAX_SOURCE_BYTES = 64 * 1024 * 1024
+SOURCE_WINDOW_BYTES = 512 * 1024
+MAX_SOURCE_LINE_BYTES = 256
 FRESHNESS_LIMIT_MS = 2000
 STATE_CODE_MIN_BAR_WIDTH = 3
 STATE_CODE_MIN_CONTRAST = 8
@@ -170,7 +172,8 @@ def decode_state_code_row(
     return state, min(contrasts + [separation])
 
 
-def source_history(path: Path, now_monotonic_ns: int | None = None) -> dict[int, int]:
+def source_publications(path: Path, require_complete: bool,
+                        now_monotonic_ns: int | None = None):
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         metadata = os.fstat(descriptor)
@@ -179,45 +182,91 @@ def source_history(path: Path, now_monotonic_ns: int | None = None) -> dict[int,
                 or stat.S_IMODE(metadata.st_mode) != 0o600
                 or not 0 < metadata.st_size <= MAX_SOURCE_BYTES):
             raise InvalidFrame("source publication file authority differs")
+        if now_monotonic_ns is None:
+            now_monotonic_ns = time.monotonic_ns()
         with os.fdopen(descriptor, "rb", closefd=False) as stream:
-            data = stream.read(metadata.st_size)
-        if len(data) != metadata.st_size:
-            raise InvalidFrame("source publication prefix was truncated")
+            remaining = metadata.st_size
+
+            def read_line():
+                nonlocal remaining
+                line = stream.readline(min(remaining, MAX_SOURCE_LINE_BYTES + 1))
+                remaining -= len(line)
+                if not line or (not line.endswith(b"\n") and remaining):
+                    raise InvalidFrame("source publication line was truncated or oversized")
+                if len(line) > MAX_SOURCE_LINE_BYTES:
+                    raise InvalidFrame("source publication line exceeds its byte bound")
+                return line
+
+            header = read_line()
+            if not header.endswith(b"\n") or re.fullmatch(
+                rb"FLUTTER_PEER_SOURCE_READY display=:[0-9]+ "
+                rb"(?:dimensions=640x480 interval_ms=250|dimensions=1920x1080 interval_ms=33) "
+                rb"identity=counter32 rows=4 bars=24 wrap=refused", header[:-1]
+            ) is None:
+                raise InvalidFrame("source frame identity format differs")
+            previous_identity = -1
+            previous_us = 0
+            complete = False
+            if not require_complete and remaining > SOURCE_WINDOW_BYTES:
+                # Live lookup certifies only this recent window. Full validation is
+                # required after the sole append-only writer has joined.
+                stream.seek(metadata.st_size - SOURCE_WINDOW_BYTES)
+                remaining = SOURCE_WINDOW_BYTES
+                read_line()  # Discard the record cut by the window boundary.
+                previous_identity = None
+            while remaining:
+                line = read_line()
+                if complete:
+                    raise InvalidFrame("source has data after completion")
+                if not line.endswith(b"\n"):
+                    if require_complete:
+                        raise InvalidFrame("source publication final line is unfinished")
+                    break
+                line = line[:-1]
+                match = re.fullmatch(
+                    rb"RUSTDESK_PRESENTATION_TRACE stage=source-publish monotonic_us=([0-9]+) "
+                    rb"state=([0-9]+) low=([0-9]+) high=([0-9]+)", line
+                )
+                if match is None:
+                    if (previous_identity is not None and previous_identity >= 0
+                            and line == f"FLUTTER_PEER_SOURCE_COMPLETE frames={previous_identity + 1}".encode()):
+                        complete = True
+                        continue
+                    raise InvalidFrame("source publication record differs")
+                publication_us, identity, low, high = map(int, match.groups())
+                if ((previous_identity is not None and identity != previous_identity + 1)
+                        or identity > 0xFFFFFFFF
+                        or not previous_us < publication_us <= now_monotonic_ns // 1000
+                        or low != identity & 15 or high != (identity >> 4) & 15):
+                    raise InvalidFrame("source publication identity or clock is incoherent")
+                previous_identity = identity
+                previous_us = publication_us
+                yield identity, publication_us
+            if not previous_us:
+                raise InvalidFrame("source has no complete publication evidence")
+            if require_complete and not complete:
+                raise InvalidFrame("source completion is absent")
     finally:
         os.close(descriptor)
-    if now_monotonic_ns is None:
-        now_monotonic_ns = time.monotonic_ns()
-    # The sole writer appends flushed records. Ignore only an unfinished final line.
-    lines = data[:data.rfind(b"\n") + 1].splitlines()
-    if not lines or re.fullmatch(
-        rb"FLUTTER_PEER_SOURCE_READY display=:[0-9]+ "
-        rb"(?:dimensions=640x480 interval_ms=250|dimensions=1920x1080 interval_ms=33) "
-        rb"identity=counter32 rows=4 bars=24 wrap=refused", lines[0]
-    ) is None:
-        raise InvalidFrame("source frame identity format differs")
-    history = {}
-    previous_us = 0
-    complete = False
-    for line in lines[1:]:
-        match = re.fullmatch(
-            rb"RUSTDESK_PRESENTATION_TRACE stage=source-publish monotonic_us=([0-9]+) "
-            rb"state=([0-9]+) low=([0-9]+) high=([0-9]+)", line
-        )
-        if match is None:
-            if (not complete and line == f"FLUTTER_PEER_SOURCE_COMPLETE frames={len(history)}".encode()):
-                complete = True
-                continue
-            raise InvalidFrame("source publication record differs")
-        publication_us, identity, low, high = map(int, match.groups())
-        if (complete or identity != len(history) or identity > 0xFFFFFFFF
-                or identity >= 32768 or not previous_us < publication_us <= now_monotonic_ns // 1000
-                or low != identity & 15 or high != (identity >> 4) & 15):
-            raise InvalidFrame("source publication identity or clock is incoherent")
-        history[identity] = publication_us
-        previous_us = publication_us
-    if not history:
-        raise InvalidFrame("source has no complete publication evidence")
-    return history
+
+
+def source_history(path: Path, now_monotonic_ns: int | None = None) -> dict[int, int]:
+    return dict(source_publications(path, False, now_monotonic_ns))
+
+
+def source_summary(path: Path, now_monotonic_ns: int | None = None) -> dict[str, int]:
+    count = first_us = last_us = maximum_us = 0
+    for _, publication_us in source_publications(path, True, now_monotonic_ns):
+        if count:
+            maximum_us = max(maximum_us, publication_us - last_us)
+        else:
+            first_us = publication_us
+        last_us = publication_us
+        count += 1
+    intervals = count - 1
+    mean_us = (last_us - first_us + intervals - 1) // intervals if intervals else 0
+    return dict(publications=count, first_us=first_us, last_us=last_us,
+                mean_interval_us=mean_us, max_interval_us=maximum_us)
 
 
 def analyze(record: dict[str, object], history: dict[int, int],
@@ -579,6 +628,24 @@ def self_test() -> int:
         source.write_bytes(full_hd_ready + trace)
         if source_history(source, now_monotonic_ns) != {0: 99000000}:
             raise AssertionError("full-HD publication prefix was not admitted")
+        complete = b"FLUTTER_PEER_SOURCE_COMPLETE frames=1\n"
+        source.write_bytes(ready + trace + complete)
+        if source_summary(source, now_monotonic_ns) != dict(
+                publications=1, first_us=99000000, last_us=99000000,
+                mean_interval_us=0, max_interval_us=0):
+            raise AssertionError("single-publication finality differs")
+        for content in (ready + trace, ready + trace + complete[:-1],
+                        ready + trace + complete.replace(b"frames=1", b"frames=2"),
+                        ready + trace + complete + b"unfinished",
+                        ready + trace + complete + complete,
+                        ready + b"X" * 257 + b"\n"):
+            source.write_bytes(content)
+            try:
+                source_summary(source, now_monotonic_ns)
+            except InvalidFrame:
+                pass
+            else:
+                raise AssertionError("invalid source finality was accepted")
         for content in (ready, ready + trace + trace, ready + trace.replace(b"state=0", b"state=1"),
                         ready + trace.replace(b"99000000", b"101000000"),
                         full_hd_ready.replace(b"interval_ms=33", b"interval_ms=250") + trace,

@@ -463,6 +463,16 @@ def test_source_history():
                 "long publication fixture does not exercise the intended file bound")
         print(f"ANDROID_SOURCE_HISTORY_FIXTURE publications={count} bytes={size} "
               "clock=synthetic address_space_limit=67108864", flush=True)
+        boot = Path("/work/scripts/smoke-android-emulator-boot.sh")
+        subprocess.run(["/bin/bash", "-n", str(boot)], check=True, timeout=5)
+        script = boot.read_text()
+        begin = script.index("peer_source_state() {")
+        end = script.index("\n}\n", begin) + 3
+        state = subprocess.run(["/bin/bash", "-euo", "pipefail", "-c",
+                                script[begin:end] + '\nPEER_SOURCE_LOG=$1\npeer_source_state',
+                                "source-state", str(source)],
+                               check=True, capture_output=True, text=True, timeout=5)
+        require(state.stdout == f"{count - 1}\n", "live shell lookup lost the last publication")
         child = r'''
 import importlib.util, os, resource, sys
 from pathlib import Path
@@ -647,6 +657,17 @@ def main():
                                      text=True, timeout=5)
         require(refusal.returncode != 0 and "publication output" in refusal.stderr,
                 "source ignored an actual output-write failure")
+        limited_path = Path("/tmp/limited-source.log")
+        with limited_path.open("wb") as limited:
+            refusal = subprocess.run([str(fixture / "frame-source"), "--full-hd"],
+                                     env=environment, stdout=limited, stderr=subprocess.PIPE,
+                                     preexec_fn=lambda: resource.setrlimit(resource.RLIMIT_FSIZE, (128, 1024)),
+                                     timeout=5)
+        require(refusal.returncode == -signal.SIGXFSZ and limited_path.stat().st_size == 128
+                and b"FLUTTER_PEER_SOURCE_COMPLETE" not in limited_path.read_bytes(),
+                "source raised an inherited file bound or continued beyond it")
+        print("ANDROID_SOURCE_OUTPUT=pass write_failure=refused inherited_limit_bytes=128 "
+              "excess=SIGXFSZ completion=absent", flush=True)
         with source_path.open("wb") as source_log:
             children.append(subprocess.Popen([str(fixture / "frame-source"), "--full-hd"], env=environment,
                                              stdout=source_log, stderr=subprocess.STDOUT))
@@ -793,9 +814,8 @@ def main():
             "independent fixture changed during native execution")
     require(all(binary.read_bytes() == oracle_bytes for binary in oracle_binaries),
             "C frame oracle changed during native execution")
-    history = decoder.source_history(source_path)
-    require(source_path.read_bytes().endswith(
-        f"FLUTTER_PEER_SOURCE_COMPLETE frames={len(history)}\n".encode()), "source finality is absent")
+    summary = decoder.source_summary(source_path)
+    require(summary['publications'] > fresh['state'], "source finality lost observed publications")
     for name in ("tcp", "tcp6"):
         require(not any(row.split()[3] == "0A" for row in Path("/proc/net", name).read_text().splitlines()[1:]),
                 "native test opened a TCP listener")

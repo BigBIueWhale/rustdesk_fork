@@ -126178,3 +126178,23 @@ publication records and a real 64-MiB address-space ceiling; it is observer-capa
 evidence, not a multi-hour Android run. It also requires full-prefix corruption,
 missing completion and oversized-file refusal, plus the real X11 source's output
 limit and write-failure behavior. Baseline execution is pending.
+
+At `dc1ea01a`, TUF `1u3ESmI7xR` reproduces the old observer's refusal of the
+49,927,496-byte, 500,000-publication input before later cases execute. The error
+is `source publication file authority differs`; the existing parser self-test
+passes. The focused no-NIC VM takes 52.919 seconds. QEMU 3602549 joins exit 0;
+the outer reports the expected failed case, its wrapper exits, and the
+3,714,572,288-byte peak RAM workspace retires. All three listener deltas are zero.
+Serial: 5,139 bytes, SHA-256
+`8450cb26fe5199cc6e1b55cfe22b16352c0a06e4bd262691797c0c013686a68a`.
+
+Design research: Python 3.11's [bounded binary readline and seek](https://docs.python.org/3.11/library/io.html#io.IOBase.readline)
+permit a fixed 512-KiB recent window and a streaming whole-file final check,
+with a 256-byte line ceiling and the captured file-size boundary. The full check
+requires contiguous identities from zero, increasing publication clocks and exact
+completion; recent lookup does not certify skipped history. Linux
+[RLIMIT_FSIZE](https://man7.org/linux/man-pages/man2/getrlimit.2.html) enforces the
+source's 64-MiB ceiling while preserving any lower inherited limits. Checking
+[fflush](https://man7.org/linux/man-pages/man3/fflush.3.html) catches buffered output
+failures before success is reported. Correction and focused native replay follow;
+these bounds do not establish multi-hour Android behavior.

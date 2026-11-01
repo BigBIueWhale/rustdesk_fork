@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/resource.h>
 #include <time.h>
 
 #define SOURCE_WIDTH 640U
@@ -24,6 +25,7 @@
 #define DISPLAY_OPEN_ATTEMPTS 200U
 #define STATE_CODE_BARS 24U
 #define STATE_CODE_ROWS 4U
+#define PUBLICATION_FILE_BYTES (64U * 1024U * 1024U)
 
 static volatile sig_atomic_t stop_requested = 0;
 
@@ -182,6 +184,7 @@ int main(int argc, char **argv) {
     unsigned int texture_top;
     const char *trace_value = getenv("RUSTDESK_PRESENTATION_TRACE");
     int trace_enabled = trace_value != NULL && strcmp(trace_value, "1") == 0;
+    struct rlimit output_limit;
 
     if (argc == 2 && strcmp(argv[1], "--full-hd") == 0) {
         source_width = 1920U;
@@ -189,6 +192,18 @@ int main(int argc, char **argv) {
         frame_interval_ms = 33U;
     } else if (argc != 1) {
         fputs("FLUTTER_PEER_SOURCE_FAIL usage: frame-source [--full-hd]\n", stderr);
+        return 1;
+    }
+    if (getrlimit(RLIMIT_FSIZE, &output_limit) != 0) {
+        fputs("FLUTTER_PEER_SOURCE_FAIL publication output limit\n", stderr);
+        return 1;
+    }
+    if (output_limit.rlim_cur > PUBLICATION_FILE_BYTES)
+        output_limit.rlim_cur = PUBLICATION_FILE_BYTES;
+    if (output_limit.rlim_max > PUBLICATION_FILE_BYTES)
+        output_limit.rlim_max = PUBLICATION_FILE_BYTES;
+    if (setrlimit(RLIMIT_FSIZE, &output_limit) != 0) {
+        fputs("FLUTTER_PEER_SOURCE_FAIL publication output limit\n", stderr);
         return 1;
     }
     /* Preserve band visibility after the remote screen is fitted into a thumbnail. */
@@ -283,10 +298,14 @@ int main(int argc, char **argv) {
         }
     }
     XSync(display, False);
-    printf("FLUTTER_PEER_SOURCE_READY display=%s dimensions=%ux%u interval_ms=%u "
-           "identity=counter32 rows=4 bars=24 wrap=refused\n",
-           DisplayString(display), source_width, source_height, frame_interval_ms);
-    fflush(stdout);
+    if (printf("FLUTTER_PEER_SOURCE_READY display=%s dimensions=%ux%u interval_ms=%u "
+               "identity=counter32 rows=4 bars=24 wrap=refused\n",
+               DisplayString(display), source_width, source_height, frame_interval_ms) < 0 ||
+        fflush(stdout) != 0) {
+        fputs("FLUTTER_PEER_SOURCE_FAIL publication output\n", stderr);
+        exit_status = 1;
+        goto cleanup;
+    }
 
     while (stop_requested == 0) {
         unsigned int low = frame & 15U;
@@ -343,10 +362,14 @@ int main(int argc, char **argv) {
             break;
         }
         if (trace_enabled != 0) {
-            printf("RUSTDESK_PRESENTATION_TRACE stage=source-publish monotonic_us=%llu "
-                   "state=%u low=%u high=%u\n",
-                   (unsigned long long)publication_us, frame, low, high);
-            fflush(stdout);
+            if (printf("RUSTDESK_PRESENTATION_TRACE stage=source-publish monotonic_us=%llu "
+                       "state=%u low=%u high=%u\n",
+                       (unsigned long long)publication_us, frame, low, high) < 0 ||
+                fflush(stdout) != 0) {
+                fputs("FLUTTER_PEER_SOURCE_FAIL publication output\n", stderr);
+                exit_status = 1;
+                break;
+            }
         }
         if (frame == UINT32_MAX) {
             fputs("FLUTTER_PEER_SOURCE_FAIL frame identity exhausted\n", stderr);
@@ -366,8 +389,13 @@ int main(int argc, char **argv) {
     }
 
     if (exit_status == 0) {
-        printf("FLUTTER_PEER_SOURCE_COMPLETE frames=%u\n", frame);
+        if (printf("FLUTTER_PEER_SOURCE_COMPLETE frames=%u\n", frame) < 0 ||
+            fflush(stdout) != 0) {
+            fputs("FLUTTER_PEER_SOURCE_FAIL publication output\n", stderr);
+            exit_status = 1;
+        }
     }
+cleanup:
     if (texture != NULL) XDestroyImage(texture);
     XFreePixmap(display, back_buffer);
     XFreeGC(display, graphics);

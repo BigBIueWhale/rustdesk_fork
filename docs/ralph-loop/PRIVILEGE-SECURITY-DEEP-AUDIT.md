@@ -128527,3 +128527,13 @@ crash/power-loss persistence, other platforms, installed privileged settings and
 complete release acceptance remain OPEN. Password recovery and independently
 parked work remain parked. A fresh ledger count follows; the broad goal remains
 active and incomplete.
+
+Checkpoint completion: ledger run `FoIrYt6oVd` at `65cd16de` passes all seven
+controls and the complete-input round trip: 389,080 tokens / 1,781,933 bytes,
+SHA-256 `832b7d7bf959851c1c06887487b40a509df6f70eb995d912fc4ad9199a0d4693`.
+QEMU 4030927/wrapper 4029506 are absent; 402,718,720 peak RAM bytes retire in
+30.320 supervisor seconds with three zero listener deltas. Serial SHA-256:
+`c8c9ffef9a42c30b264f05a589e9d82de551a4ad8afa5df08ee10721c37c1614`.
+All 25 current evidence files total 384,906 bytes and match their recorded hashes
+on CTE and TUF. This audit-only receipt preserves the counted ledger. No owned
+VM or transient RAM workspace remains; the native theme checkpoint is complete.

@@ -88,7 +88,7 @@ case "$#:${8:-}" in
     8:--host-network-tests)
         MODE=host-network-tests
         ;;
-    12:--linux-service-receiver-tests|12:--linux-service-convergence-failure-tests|12:--linux-service-notification-failure-tests|12:--linux-service-network-drain-tests|12:--linux-service-authorization-timeout-tests|12:--linux-service-startup-tests)
+    12:--linux-service-receiver-tests|12:--linux-service-convergence-failure-tests|12:--linux-service-notification-failure-tests|12:--linux-service-network-drain-tests|12:--linux-service-authorization-timeout-tests|12:--linux-service-startup-tests|12:--linux-service-incumbent-tests)
         MODE=linux-service-receiver-tests
         if [ "${8}" = --linux-service-convergence-failure-tests ]; then
             LINUX_RECEIVER_PROFILE=convergence-failure
@@ -100,6 +100,8 @@ case "$#:${8:-}" in
             LINUX_RECEIVER_PROFILE=authorization-timeout
         elif [ "${8}" = --linux-service-startup-tests ]; then
             LINUX_RECEIVER_PROFILE=startup
+        elif [ "${8}" = --linux-service-incumbent-tests ]; then
+            LINUX_RECEIVER_PROFILE=incumbent
         fi
         [[ "${9}" =~ ^[0-9a-f]{40}$ ]] && [[ "${10}" =~ ^[0-9a-f]{40}$ ]] \
             && [[ "${11}" =~ ^[0-9a-f]{64}$ ]] && [[ "${12}" =~ ^[0-9a-f]{40}$ ]] || exit 2
@@ -923,6 +925,8 @@ run_linux_service_receiver_tests() {
         native_args+=(--authorization-timeout)
     elif [ "$LINUX_RECEIVER_PROFILE" = startup ]; then
         native_args+=(--startup)
+    elif [ "$LINUX_RECEIVER_PROFILE" = incumbent ]; then
+        native_args+=(--incumbent)
     fi
     /usr/bin/python3 -B -I -S "$helper" "$LINUX_RECEIVER_COMMIT" "$LINUX_RECEIVER_TREE" \
         "$LINUX_RECEIVER_MANIFEST_SHA256" "$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SHA256" \

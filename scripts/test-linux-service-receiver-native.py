@@ -2071,7 +2071,7 @@ def network_shutdown(value, record, probe_sha):
             os.close(fd)
 
 
-def startup_namespace(commit, binary_sha):
+def startup_namespace(commit, binary_sha, incumbents=False):
     parent = Path("/run/RustDesk-service")
     legacy = Path("/tmp/RustDesk-service")
     target = WORK / "startup-link-target"
@@ -2101,6 +2101,65 @@ def startup_namespace(commit, binary_sha):
         return (st.st_dev, st.st_ino, st.st_uid, st.st_gid, st.st_mode,
                 st.st_nlink, st.st_size, st.st_mtime_ns, st.st_ctime_ns, os.readlink(parent))
 
+    def socket_identity(path):
+        st = path.lstat()
+        if not stat.S_ISSOCK(st.st_mode):
+            raise RuntimeError("incumbent fixture expected a socket")
+        return (st.st_dev, st.st_ino, st.st_uid, st.st_gid, st.st_mode,
+                st.st_nlink, st.st_mtime_ns, st.st_ctime_ns)
+
+    def occupy(path):
+        if path.exists():
+            old = socket_identity(path)
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+                peer.settimeout(1)
+                try:
+                    peer.connect(str(path))
+                except ConnectionRefusedError:
+                    pass
+                else:
+                    raise RuntimeError("fixture would replace a live previous service socket")
+            if socket_identity(path) != old:
+                raise RuntimeError("fixture stale socket changed")
+            path.unlink()
+        listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            listener.bind(str(path))
+            path.chmod(0o666)
+            listener.listen(16)
+            listener.settimeout(1)
+            return listener
+        except BaseException:
+            listener.close()
+            raise
+
+    def observe_incumbent(listener, path):
+        connections = 0
+        while select.select([listener], [], [], 0)[0]:
+            peer, _ = listener.accept()
+            with peer:
+                peer.settimeout(1)
+                pid, uid, gid = struct.unpack("3i", peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+                if pid <= 1 or pid == os.getpid() or uid != 0 or gid != 0 or peer.recv(1) != b"":
+                    raise RuntimeError("incumbent probe principal or payload differs")
+            connections += 1
+            if connections > 4:
+                raise RuntimeError("incumbent probe count exceeded the fixture bound")
+        if not connections:
+            raise RuntimeError("service did not reach the occupied endpoint")
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+            probe.settimeout(1)
+            probe.connect(str(path))
+            if struct.unpack("3i", probe.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12)) != (os.getpid(), 0, 0):
+                raise RuntimeError("service replaced the live incumbent")
+            peer, _ = listener.accept()
+            with peer:
+                peer.settimeout(1)
+                probe.sendall(b"alive")
+                if peer.recv(5, socket.MSG_WAITALL) != b"alive":
+                    raise RuntimeError("preserved incumbent lost transport functionality")
+        return connections
+
     def properties():
         return dict(line.split("=", 1) for line in run(
             ["/usr/bin/systemctl", "show", "rustdesk.service",
@@ -2122,9 +2181,20 @@ def startup_namespace(commit, binary_sha):
     shutil.copyfile(MEDIA / "repo/res/rustdesk.service", unit)
     run(["/usr/bin/systemctl", "daemon-reload"])
     previous = None
+    phases = ("foreign-owner", "symlink", "fresh", "restart")
+    prefix = "LINUX_SERVICE_STARTUP"
+    if incumbents:
+        parent.mkdir(mode=0o711)
+        parent.chmod(0o711)
+        phases = tuple(f"{kind}-{endpoint}" for endpoint in ("service", "password", "credential")
+                       for kind in ("live", "recovered"))
+        prefix = "LINUX_SERVICE_INCUMBENT"
     try:
-        for phase in ("foreign-owner", "symlink", "fresh", "restart"):
-            refused = phase in ("foreign-owner", "symlink")
+        for phase in phases:
+            live = phase.startswith("live-")
+            refused = phase in ("foreign-owner", "symlink") or live
+            listener = None
+            connections = None
             if phase == "foreign-owner":
                 fixture(parent)
                 before = snapshot(parent)
@@ -2133,16 +2203,23 @@ def startup_namespace(commit, binary_sha):
                 parent.symlink_to(target, target_is_directory=True)
                 link_before = link_identity()
                 before = snapshot(target)
+            elif live:
+                suffix = {"service": "_service", "password": "_service_password",
+                          "credential": "_service_credential"}[phase.split("-", 1)[1]]
+                occupied = parent / ("ipc" + suffix)
+                listener = occupy(occupied)
+                before = socket_identity(occupied)
             reference = ServiceUnitResultReference()
             pidfd = None
             try:
+                previous_ready = properties()["ActiveEnterTimestampMonotonic"]
                 began = time.monotonic()
                 started = run(["/usr/bin/systemctl", "start", "rustdesk.service"], allowed=(0, 1))
                 observed = properties()
                 if refused:
                     if (started.returncode != 1 or observed["Result"] != "exit-code"
                             or observed["ExecMainCode"] != "1" or observed["ExecMainStatus"] != "1"
-                            or observed["ActiveEnterTimestampMonotonic"] != "0"
+                            or observed["ActiveEnterTimestampMonotonic"] != previous_ready
                             or observed["MainPID"] != "0"):
                         raise RuntimeError(f"unsafe namespace reached service readiness: {observed}")
                 else:
@@ -2186,19 +2263,25 @@ def startup_namespace(commit, binary_sha):
                 if snapshot(legacy) != legacy_before:
                     raise RuntimeError("service changed the abandoned public namespace")
                 if refused:
-                    actual = snapshot(target if phase == "symlink" else parent)
+                    actual = socket_identity(occupied) if live else snapshot(target if phase == "symlink" else parent)
                     if actual != before or (phase == "symlink" and link_identity() != link_before):
                         raise RuntimeError("refused service mutated a foreign namespace")
-                print("LINUX_SERVICE_STARTUP_OBSERVED=" + json.dumps(
+                    if live:
+                        connections = observe_incumbent(listener, occupied)
+                print(prefix + "_OBSERVED=" + json.dumps(
                     {"phase": phase, "start_exit": started.returncode, "ready": observed,
                      "terminal": terminal, "elapsed_seconds": time.monotonic() - began,
                      "legacy_unchanged": True, "namespace_unchanged": refused,
+                     "incumbent_probes": connections,
                      "supervisor": previous if not refused else None}, sort_keys=True), flush=True)
                 run(["/usr/bin/systemctl", "reset-failed", "rustdesk.service"])
             finally:
                 reference.close()
                 if pidfd is not None:
                     os.close(pidfd)
+                if listener is not None:
+                    # Leave the exact socket pathname for production stale-socket recovery.
+                    listener.close()
             if phase == "foreign-owner":
                 (parent / "preserve").unlink()
                 parent.rmdir()
@@ -2206,14 +2289,15 @@ def startup_namespace(commit, binary_sha):
                 parent.unlink()
                 (target / "preserve").unlink()
                 target.rmdir()
-            print(f"LINUX_SERVICE_STARTUP_CASE=pass phase={phase}", flush=True)
+            print(f"{prefix}_CASE=pass phase={phase}", flush=True)
     finally:
         stop()
-    print(f"LINUX_SERVICE_STARTUP_NATIVE=pass cases=4 refusals=2 starts=2 source={commit} "
+    total = 6 if incumbents else 4
+    print(f"{prefix}_NATIVE=pass cases={total} refusals={total // 2} starts={total // 2} source={commit} "
           f"binary_sha256={binary_sha} fixture=installed-layout unit=shipped legacy=unchanged cleanup=joined", flush=True)
 
 
-def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False):
+def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False):
     guard()
     checked = run(["/usr/bin/setpriv", "--reuid=1000", "--regid=1000", "--clear-groups",
                    "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
@@ -2242,8 +2326,8 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
     if "not found" in run(["/usr/bin/ldd", str(PROBE)]).stdout:
         raise RuntimeError("network probe runtime dependency is missing")
     run(["/usr/bin/systemctl", "is-active", "systemd-logind.service", "polkit.service"])
-    if startup:
-        startup_namespace(commit, spec["sha256"])
+    if startup or incumbent:
+        startup_namespace(commit, spec["sha256"], incumbents=incumbent)
         return
     pam = pam_module()
     confdir = WORK / "pam"
@@ -2547,6 +2631,8 @@ if __name__ == "__main__":
         tests(sys.argv[1:6], authorization_timeout=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--startup":
         tests(sys.argv[1:6], startup=True)
+    elif len(sys.argv) == 7 and sys.argv[-1] == "--incumbent":
+        tests(sys.argv[1:6], incumbent=True)
     elif len(sys.argv) == 6:
         tests(sys.argv[1:])
     else:

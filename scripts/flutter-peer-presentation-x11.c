@@ -939,7 +939,12 @@ static int inspect_viewer_candidate(Display *display, Window window, unsigned lo
         strcpy(title, legacy);
         XFree(legacy);
     }
-    if (strstr(title, "127.0.0.1 - Control Remote Desktop") == NULL) {
+    /* Saved peers add @hostname through getDesktopTabLabel. The exact process,
+     * class, unique remote window and source pixels remain the identity checks. */
+    const char *suffix = strstr(title, " - Control Remote Desktop - RustDesk");
+    if (strncmp(title, "127.0.0.1", 9U) != 0 || suffix == NULL ||
+        strcmp(suffix, " - Control Remote Desktop - RustDesk") != 0 ||
+        (suffix != title + 9U && (title[9] != '@' || suffix <= title + 10U))) {
         return 0;
     }
     if (read_window_pid(display, window, &pid) != 0 || pid != expected_pid) {
@@ -3492,7 +3497,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling]\n",
+              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--credential-enroll|--credential-restore]\n",
               stderr);
         return 2;
     }

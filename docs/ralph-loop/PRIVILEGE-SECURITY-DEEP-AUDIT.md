@@ -127688,3 +127688,22 @@ Observe the checkbox's initially absent and subsequently present CHECKED state
 after each authentication. No credential value is read or printed by the
 observer. This slice does not establish password rotation, remember-off,
 installed-service authority, other platforms or complete release acceptance.
+
+Preparation `88f70f93`, TUF `xkpDcM4KxR`, proves the explicit unchecked-to-checked
+choice, first authentication, four fresh frames (313-ms maximum sampled age)
+and generation-one exit zero. Generation two reaches texture submission but
+the controller times out before accepting its window; this is not a completed
+persistence verdict. Source review locates the fixture mismatch:
+`getDesktopTabLabel` appends the saved hostname, while the controller requires
+the address immediately followed by the role suffix. Accept that documented
+hostname decoration while retaining exact address boundary, complete role/app
+suffix, PID, class, unique-window and independent fresh-pixel requirements.
+The product and credential scenario are unchanged. Correcting this acquisition
+prerequisite is necessary for the selected restart acceptance.
+
+The failed VM joins, its 3,012,751,360 peak RAM bytes retire after 153.616
+supervisor seconds, QEMU 3911392 and wrapper 3910303 are absent, and all four
+listener deltas are zero. Serial SHA-256:
+`24ce6c76df3e0c4baecc615311d94ee14812eb31a2aadd36342a4ebb38d4906f`.
+The failed marker is classified as `credential-restart-observation.xkpDcM4KxR`
+under the exact shared lock after terminal and scratch-absence checks.

@@ -3532,11 +3532,13 @@ out:
 static int theme_error_visible(unsigned int pid, int expected) {
     AtspiAccessible *label = NULL;
     uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    /* Flutter merges the card title and inline error into one native label. */
+    const char *name = expected ? "Theme\nFailed" : "Theme";
     while (monotonic_millis() < deadline) {
-        if (query_named_accessible(pid, "Failed", deadline, &label, 0) != 0) return -1;
+        if (query_named_accessible(pid, name, deadline, &label, 0) != 0) return -1;
         int visible = label != NULL;
         g_clear_object(&label);
-        if (visible == expected) return 0;
+        if (visible) return 0;
         if (sleep_millis(100U) != 0) return -1;
     }
     PasswordPromptScan diagnostic;

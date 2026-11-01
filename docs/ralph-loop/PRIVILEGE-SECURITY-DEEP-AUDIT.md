@@ -128861,3 +128861,15 @@ verify three duplicate app libraries against the canonical manifest and retire
 `theme-save-failure-aa4825b8-retirement.json` records completed retirement. The
 initial unlink refused because that private directory was read-only; no binary
 was removed until its owned directory was made writable for the exact cleanup.
+
+Diagnostic replay `0wSwvJ5J67` at `c55eff9b` identifies a fixture error:
+the native card exposes `Theme\nFailed` as one visible/showing accessibility
+label, with its three radio children, rather than a separate `Failed` node.
+Flutter's [semantics documentation](https://api.flutter.dev/flutter/widgets/MergeSemantics-class.html)
+describes newline-separated merged labels. Match the exact failed card label;
+baseline and retry must positively find the healthy `Theme` label. No product
+edit or weakened save/pixel/file/connection assertion is needed. The failed run
+exits 1, joins QEMU 4182355 and wrapper 4181300, retires RAM in 123.473 seconds
+(3,011,530,752 peak bytes), and has four zero listener deltas. Its raw logs and
+private diagnostic output remain; another 57,644,400 authenticated duplicate
+library bytes retire. Receipt: `theme-save-failure-c55eff9b.json`.

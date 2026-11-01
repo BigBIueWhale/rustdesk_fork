@@ -3096,7 +3096,19 @@ static int prepare_main_settings(Display *display, const ViewerWindow *viewer, W
     return 0;
 }
 
-static int open_saved_peer_menu(Display *display, Window main, unsigned int pid) {
+static int open_saved_peer_menu(Display *display, Window main, const ViewerWindow *viewer) {
+    const char prefix[] = "127.0.0.1@";
+    const char suffix[] = " - Control Remote Desktop - RustDesk";
+    char label[ACCESSIBLE_NAME_LIMIT + 1U];
+    unsigned int pid = (unsigned int)viewer->pid;
+    const char *host = viewer->title + sizeof(prefix) - 1U;
+    const char *end = strstr(host, suffix);
+    if (strncmp(viewer->title, prefix, sizeof(prefix) - 1U) != 0 || end == NULL ||
+        end == host || strcmp(end, suffix) != 0 || end - host > 64) return -1;
+    /* This fixture's server UID has no passwd entry. The card merges its
+     * authenticated username/hostname and address into one accessible image. */
+    int length = snprintf(label, sizeof(label), "unknown@%.*s\n127.0.0.1", (int)(end - host), host);
+    if (length < 0 || (size_t)length >= sizeof(label)) return -1;
     uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
     while (monotonic_millis() < deadline) {
         AtspiAccessible *peer = NULL;
@@ -3107,7 +3119,7 @@ static int open_saved_peer_menu(Display *display, Window main, unsigned int pid)
         Window child;
         unsigned long actual_pid;
         int origin_x, origin_y, valid;
-        if (query_named_accessible(pid, "127.0.0.1", deadline, &peer, 0) != 0) return -1;
+        if (query_named_accessible(pid, label, deadline, &peer, 0) != 0) return -1;
         if (peer == NULL) {
             if (sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) return -1;
             continue;
@@ -3117,23 +3129,23 @@ static int open_saved_peer_menu(Display *display, Window main, unsigned int pid)
         if (component == NULL) return -1;
         rect = atspi_component_get_extents(component, ATSPI_COORD_TYPE_SCREEN, &error);
         g_object_unref(component);
-        /* The default grid card has a 28-pixel More control immediately after
-         * its expanded address label. A real menu observation confirms the hit. */
-        valid = error == NULL && rect != NULL && rect->width > 0 && rect->height > 0 &&
+        /* The default 220x140 card's More control is centered 26 pixels from
+         * its right edge in the bottom row. A real menu confirms the hit. */
+        valid = error == NULL && rect != NULL && rect->width == 220 && rect->height == 140 &&
             read_window_pid(display, main, &actual_pid) == 0 && actual_pid == pid &&
             XGetWindowAttributes(display, main, &attributes) != 0 &&
             attributes.map_state == IsViewable &&
             XTranslateCoordinates(display, main, RootWindow(display, DefaultScreen(display)),
                 0, 0, &origin_x, &origin_y, &child) != 0 &&
             rect->x >= origin_x && rect->y >= origin_y &&
-            (int64_t)rect->x + rect->width + 28 <= (int64_t)origin_x + attributes.width &&
+            (int64_t)rect->x + rect->width <= (int64_t)origin_x + attributes.width &&
             (int64_t)rect->y + rect->height <= (int64_t)origin_y + attributes.height &&
             rect->x >= 0 && rect->y >= 0 &&
-            (int64_t)rect->x + rect->width + 28 <= DisplayWidth(display, DefaultScreen(display)) &&
+            (int64_t)rect->x + rect->width <= DisplayWidth(display, DefaultScreen(display)) &&
             (int64_t)rect->y + rect->height <= DisplayHeight(display, DefaultScreen(display));
         if (valid) {
             valid = XTestFakeMotionEvent(display, DefaultScreen(display),
-                        rect->x + rect->width + 14, rect->y + rect->height / 2, CurrentTime) != 0 &&
+                        rect->x + rect->width - 26, rect->y + rect->height - 16, CurrentTime) != 0 &&
                     XTestFakeButtonEvent(display, 1U, True, CurrentTime) != 0 &&
                     XTestFakeButtonEvent(display, 1U, False, CurrentTime) != 0;
             XSync(display, False);
@@ -3158,14 +3170,14 @@ static int exercise_credential_menu(Display *display, ViewerWindow *viewer,
     XSetInputFocus(display, main, RevertToParent, CurrentTime);
     XSync(display, False);
     phase = "forget-action";
-    if (open_saved_peer_menu(display, main, (unsigned int)viewer->pid) != 0 ||
+    if (open_saved_peer_menu(display, main, viewer) != 0 ||
         activate_named_control((unsigned int)viewer->pid, "Forget Password") != 0) goto out;
     /* Observe the first menu retiring before reopening a newly built menu. */
     for (unsigned int pass = 0U; pass < 2U; ++pass) {
         uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
         unsigned int stable = 0U;
         phase = pass == 0U ? "menu-retirement" : "forgotten-menu";
-        if (pass != 0U && open_saved_peer_menu(display, main, (unsigned int)viewer->pid) != 0)
+        if (pass != 0U && open_saved_peer_menu(display, main, viewer) != 0)
             goto out;
         while (monotonic_millis() < deadline && stable < 3U) {
             AtspiAccessible *forget = NULL, *favorite = NULL;

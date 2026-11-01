@@ -128893,3 +128893,13 @@ This closes the Linux user-owned permission-denied save/retry acceptance gap;
 other save/crash failures, concurrent writers/windows, installed privileged
 settings, other platforms and full release acceptance remain OPEN. The product
 needed no change. A fresh ledger count follows this status update.
+
+Checkpoint completion: CTE `O30jrQygAi` at `d84397b9` exits zero and counts
+389,540 tokens / 1,783,978 bytes, SHA-256
+`b9fff501d3ebe984a399186baa1abbba5c3c9d3784dbe0d560fde742ed5cfb9f`,
+using the established method, seven controls and whole-input round trip.
+QEMU 650720/wrapper 649229 are absent; 402,661,376 peak RAM bytes retire in
+30.364 seconds, with three zero listener deltas. Receipt:
+`theme-save-ledger-d84397b9.json`. This audit-only completion preserves the
+counted ledger. No owned VM or RAM workspace remains; the broader goal is active
+and incomplete.

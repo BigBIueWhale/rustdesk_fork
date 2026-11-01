@@ -12895,7 +12895,7 @@ run_flutter_model_tests() {
                 if [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
                     parser_args=(--direct-address)
                 fi
-                if [[ "$FLUTTER_TEST_PROFILE" = connection-page || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = combo-box || "$FLUTTER_TEST_PROFILE" = image-quality || "$FLUTTER_TEST_PROFILE" = desktop-theme || "$FLUTTER_TEST_PROFILE" = custom-scale ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = connection-page || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = combo-box || "$FLUTTER_TEST_PROFILE" = image-quality || "$FLUTTER_TEST_PROFILE" = desktop-theme || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = modifier-release ]]; then
                     parser_args=("--$FLUTTER_TEST_PROFILE")
                 fi
                 if [[ "$FLUTTER_TEST_PROFILE" = screenshot-save || "$FLUTTER_TEST_PROFILE" = locales || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = menu-button || "$FLUTTER_TEST_PROFILE" = help-button || "$FLUTTER_TEST_PROFILE" = password-fields || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = peer-data ]]; then

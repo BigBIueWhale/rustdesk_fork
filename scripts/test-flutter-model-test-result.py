@@ -24,7 +24,7 @@ spec.loader.exec_module(result)
 SINGLE_PROFILE = None
 if len(sys.argv) > 1 and sys.argv[1] in ("--direct-address", "--connection-page"):
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
-if len(sys.argv) > 1 and sys.argv[1] in ("--screenshot-save", "--locales", "--draggable-divider", "--file-columns", "--trackpad-speed", "--menu-button", "--help-button", "--password-fields", "--file-progress", "--peer-search", "--audio-input", "--peer-data", "--combo-box", "--image-quality", "--desktop-theme", "--status-refresh", "--custom-scale"):
+if len(sys.argv) > 1 and sys.argv[1] in ("--screenshot-save", "--locales", "--draggable-divider", "--file-columns", "--trackpad-speed", "--menu-button", "--help-button", "--password-fields", "--file-progress", "--peer-search", "--audio-input", "--peer-data", "--combo-box", "--image-quality", "--desktop-theme", "--status-refresh", "--custom-scale", "--modifier-release"):
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
 
 
@@ -216,6 +216,9 @@ class ResultTests(unittest.TestCase):
             return result.parse_result(path, profile)
 
     def test_complete_profiles(self):
+        if SINGLE_PROFILE == "modifier-release":
+            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (5, 121))
+            return
         if SINGLE_PROFILE == "connection-page":
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (1, 8))
             return
@@ -294,7 +297,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("terminal-output"), "terminal-output"), (2, 37))
         self.assertEqual(self.parse(self.events("settings-navigation"), "settings-navigation"), (1, 60))
         self.assertEqual(self.parse(self.events("desktop-theme"), "desktop-theme"), (1, 30))
-        self.assertEqual(self.parse(self.events("modifier-release"), "modifier-release"), (5, 112))
+        self.assertEqual(self.parse(self.events("modifier-release"), "modifier-release"), (5, 121))
         self.assertEqual(self.parse(self.events("connect-password"), "connect-password"), (1, 14))
         self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (10, 117))
         with tempfile.TemporaryDirectory() as root:

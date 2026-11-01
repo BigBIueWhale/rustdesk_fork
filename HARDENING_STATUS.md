@@ -4139,6 +4139,18 @@ Those remain OPEN. `--linux-service-startup-tests` reuses the canonical bounded
 VM. The audit records the initial unit-result observer repair, exact artifacts,
 four-case raw receipts and correction of the outer summary's inherited counts.
 
+**Installed live-endpoint preservation (`753d594a`).** TUF `nsuFGI7S20`
+passes six cases on the same source-matched binary and shipped unit. An
+unrelated root process occupies each of `_service`, `_service_password` and
+`_service_credential` in turn. Startup refuses before readiness, sends no
+payload over either observed probe, and preserves the live socket's identity,
+metadata and transport functionality. Closing the fixture listener leaves its
+pathname; the next real service start recovers it and owns all three sockets.
+All three successful generations stop cleanly and are reaped, with cgroups
+retired and the public temporary namespace unchanged. This adds installed-layout
+R-S11bs evidence; genuine-image incumbents, non-root actors, races, privileged
+action authorization, final packages and other-platform acceptance remain OPEN.
+
 **IPC / option CLI — component acceptance; installed acceptance OPEN.**
 At `ad638445`, TUF `1VEEFlN8jX` passes all **176 listener/transport, 32 CLI,
 10 Windows selector, 22 main-protocol, 8 main-transaction, 8 main-peer, 4 URL-loop,

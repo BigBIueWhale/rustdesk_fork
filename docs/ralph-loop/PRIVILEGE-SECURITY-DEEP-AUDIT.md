@@ -127966,3 +127966,46 @@ supervisor seconds, with three zero listener deltas. Serial SHA-256:
 The two native attempts and count retain 21 raw files (297,431 bytes),
 hash-verified on CTE and TUF. This audit-only receipt preserves the counted
 ledger. No owned VM remains; the overall release goal is incomplete.
+
+### 2026-11-01 — installed live-endpoint preservation and stale recovery
+
+The preceding goal turn made progress: four native startup cases passed.
+At that checkpoint select the R-S11bs installed incumbent gap over more viewer
+checks or a new build: the component coverage has not shown that the complete
+installed service preserves a live unrelated endpoint and then recovers its
+closed socket. Review `probe_existing_listener`, `prepare_ipc_listener_bind`,
+the three-endpoint preparation order and service readiness/drain ownership.
+Linux documents that SO_PEERCRED reports credentials captured at connect/listen
+at https://man7.org/linux/man-pages/man7/unix.7.html; it does not establish code
+identity or grant action authority. Existing independent parks remain parked.
+
+`753d594a089a8a92f083e207d898fc6c98d8d42c` adds the focused
+`--linux-service-incumbent-tests` profile. Its unrelated Python process, UID 0,
+holds one actual listening socket under the protected root-owned directory.
+After refused startup it requires preserved socket metadata/identity, bounded
+payload-free probe EOF and a fresh functional connection to that same kernel
+peer. Closing only the fixture listener leaves its pathname for the product's
+stale-socket recovery. Repeat for `_service`, `_service_password` and
+`_service_credential`, with real successful startup/stop after each refusal.
+Both successful and refused service cgroups must retire; successful exact
+supervisors must exit zero and be reaped. Public-namespace preservation remains
+mandatory. No password mutation, administrator challenge or desktop child runs.
+
+TUF `nsuFGI7S20` passes all six cases at tree
+`079a17c1e767906f2749181a3b05436b138cd9dc`. Each live endpoint observes two
+root-service probes, both EOF without bytes, and startup exits 1 without
+readiness. Recovery supervisors 7881/7905/7929 own all three sockets, stop
+successfully and are reaped. The retained `154f69db` artifact and manifest are
+the exact ones identified in the preceding startup entry; the canonical gate
+again proves complete selected production/build inputs unchanged. No app build
+or product edit occurs. This is root foreign-image installed-layout evidence,
+not genuine-image/non-root acceptance, action authorization or a namespace race.
+
+QEMU 3941671 and wrapper 3939940 are absent. Peak RAM scratch 4,098,187,264
+bytes retires after 51.248 supervisor seconds; all three host listener deltas
+are zero. Serial SHA-256:
+`d99a72936aa5d1a76ca07a2bfc82661e6959cc0b5faf74f50e2887557a9ee3e3`.
+Seven bounded raw files (87,999 bytes) are hash-verified on both CTE and TUF:
+the run's serial/console/storage/three listener records and its separate outer
+log. All six native receipts and the outer result agree. Fresh ledger count
+follows; broader installed/native, final-package and release acceptance remains open.

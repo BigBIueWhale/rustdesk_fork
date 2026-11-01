@@ -126981,3 +126981,20 @@ newer edits, both error forms, removal and replacement are observed. The existin
 before/after execution; this is callback/component evidence, not full-page,
 native IPC/device or installed acceptance. Preparation adds no product change;
 the unchanged-product comparison follows in the admitted zero-NIC TUF VM.
+
+Baseline `f13aa151`, TUF `P0KDxO3PWG`, reproduces all eight error cases;
+37 controls pass. Both callbacks let synchronous/asynchronous saved-address
+errors escape, including after removal/replacement. The exact callback/control
+copies pass their post-run comparison. QEMU 3842980 and wrapper 3842463 exit;
+the 79.641-second supervisor retires 4,058,812,416 peak RAM bytes with four zero
+listener deltas. Failed bounded diagnostics are retained under
+`address-restore-baseline.P0KDxO3PWG` after exact joined-owner verification.
+Serial SHA-256: `1c941c01c2992eca93e38b385ae077a945c8c5f6ccf3eb00ee1f639fb1da53df`.
+An earlier outer-wrapper argument-quoting error exited 2 before creating a VM;
+the corrected invocation above is the behavioral baseline.
+
+Both pages now catch the lookup failure at their async post-frame caller and
+request generic translated feedback only while mounted. The controller still
+propagates failures, retires its one restoration attempt and preserves newer
+edits. No retry, address substitution, raw-error disclosure or post-removal
+notification is added. The same 45-case workload follows unchanged.

@@ -63,9 +63,13 @@ class _ConnectionPageState extends State<ConnectionPage> {
     _addressFocusNode.addListener(onFocusChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      final restored = await _addressController
-          .restoreInitialAddress(() => bind.mainGetLastRemoteId());
-      if (restored && mounted) setState(() {});
+      try {
+        final restored = await _addressController
+            .restoreInitialAddress(() => bind.mainGetLastRemoteId());
+        if (restored && mounted) setState(() {});
+      } catch (_) {
+        if (mounted) showToast(translate('Failed'));
+      }
     });
   }
 

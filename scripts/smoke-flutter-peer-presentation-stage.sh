@@ -18,7 +18,7 @@ MENU_ACTION=pointer
 [ "$PEER_SCENARIO" != credential-menu-accessible ] || MENU_ACTION=accessible
 readonly MENU_ACTION
 case "$PEER_SCENARIO" in
-  session-close|background-close|credential-retry|theme-restart|theme-appearance) EXPECTED_RESTARTS=0 ;;
+  session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure) EXPECTED_RESTARTS=0 ;;
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
   viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation|credential-forget|credential-menu|credential-menu-accessible) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
@@ -1366,6 +1366,7 @@ PY
     [ "$PEER_SCENARIO" != background-close ] || controller_args+=(--background-close)
     [ "$PEER_SCENARIO" != credential-retry ] || controller_args+=(--credential-retry)
     [ "$PEER_SCENARIO" != theme-appearance ] || controller_args+=(--theme-appearance)
+    [ "$PEER_SCENARIO" != theme-save-failure ] || controller_args+=(--theme-save-failure)
     [ "$PEER_SCENARIO" != network-impairment ] || controller_args+=(--network-impairment)
     [ "$PEER_SCENARIO" != network-loss ] || controller_args+=(--network-loss)
     [ "$PEER_SCENARIO" != clipboard-text ] || controller_args+=(--clipboard-text)
@@ -1478,6 +1479,12 @@ PY
       elif [ "$PEER_SCENARIO" = credential-menu ] || [ "$PEER_SCENARIO" = credential-menu-accessible ]; then
         viewer_result='viewer=joined xvfb=joined credential_menu=passed generations=3 password_entries=1 saved_credential=empty next_prompt=required'
       fi
+    elif [ "$PEER_SCENARIO" = theme-save-failure ]; then
+      grep -Fxq 'FLUTTER_PEER_THEME_SAVE_REFUSED error=visible pixels=light radio=light file=unchanged kernel=EACCES' \
+        <<<"$controller_output" \
+        && grep -Fxq 'FLUTTER_PEER_THEME_SAVE_FAILURE_OK failure=visible previous=preserved retry=dark error=cleared permissions=restored stable_connection=true fresh_pixels=4' \
+        <<<"$controller_output" || fail 'native theme save failure/retry result is absent'
+      viewer_result='viewer=joined xvfb=joined theme_save_failure=passed previous=preserved retry=durable pixels=verified'
     elif [ "$PEER_SCENARIO" = theme-appearance ]; then
       grep -Fxq 'FLUTTER_PEER_THEME_APPEARANCE_OK system_transitions=4 explicit_holds=4 hold_ms=5000 choices=3 stable_connection=true fresh_pixels=4' \
         <<<"$controller_output" || fail 'native live appearance result is absent'
@@ -1632,7 +1639,8 @@ PY
       fi
       mv /tmp/viewer.log "/tmp/viewer-generation-$viewer_generation.log"
     fi
-    if [ "$PEER_SCENARIO" = theme-restart ] || [ "$PEER_SCENARIO" = theme-appearance ]; then
+    if [ "$PEER_SCENARIO" = theme-restart ] || [ "$PEER_SCENARIO" = theme-appearance ] \
+      || [ "$PEER_SCENARIO" = theme-save-failure ]; then
       python3 - "$viewer_generation" "$PEER_SCENARIO" <<'PY'
 import os, stat, sys, tomllib
 try:
@@ -1647,7 +1655,12 @@ try:
         data = source.read(131073)
         if len(data) != metadata.st_size:
             raise ValueError()
-    expected = '' if sys.argv[2] == 'theme-appearance' else ('light', 'dark', '', '')[int(sys.argv[1]) - 1]
+    if sys.argv[2] == 'theme-save-failure':
+        expected = 'dark'
+    elif sys.argv[2] == 'theme-appearance':
+        expected = ''
+    else:
+        expected = ('light', 'dark', '', '')[int(sys.argv[1]) - 1]
     value = tomllib.loads(data.decode('utf-8')).get('options', {}).get('theme', '')
     if value != expected:
         raise ValueError()

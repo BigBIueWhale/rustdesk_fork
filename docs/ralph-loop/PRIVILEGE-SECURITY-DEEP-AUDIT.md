@@ -128811,3 +128811,34 @@ QEMU 428228/wrapper 423685 are absent; 402,591,744 peak RAM bytes retire in
 31.578 supervisor seconds and all three listener deltas are zero. The bounded
 receipt `theme-ledger-c4ee481a.json` binds the raw evidence. This audit-only
 completion preserves the counted ledger and closes this native theme checkpoint.
+
+### 2026-11-01 — native theme save failure and retry
+
+Previous turn: progress, with the reproduced no-portal appearance defect verified
+in the complete app. Continue R-S0's settings correctness at the remaining real
+storage-failure boundary, ahead of additional appearance-only cases. This reuses
+app `16ba2033` and engine `ddb1541d`; independently parked topics remain parked.
+
+Source path: `_GeneralState.theme` awaits `MyTheme.changeDarkMode`, which waits
+for `mainSetLocalOption` before publishing the new theme. The native bridge
+propagates `LocalConfig::set_option`; `update_preferences` commits its candidate
+cache only after the actual transaction succeeds. Existing-directory traversal
+does not normalize its permissions. Component evidence does not establish the
+complete UI/native/file failure outcome.
+
+The focused `--theme-save-failure` replay first saves Light through the real UI.
+It retains the private viewer configuration directory, changes it from 0700 to
+0500, and observes a real EACCES creation refusal. Linux's
+[open contract](https://man7.org/linux/man-pages/man2/open.2.html) specifies that
+refusal when parent write access is absent;
+[fchmod](https://man7.org/linux/man-pages/man2/fchmod.2.html) changes the retained
+directory object and permits its owner to restore access without host authority.
+All operations occur as the existing capability-free viewer UID inside the VM.
+
+A pointer attempt to select Dark must retain the Light radio and pixels, leave
+the exact config inode/bytes/hash unchanged, and show the persistent inline
+failure after the transient toast retires. Restoring the directory permissions
+must permit a Dark retry, clear the error and save Dark in joined-process storage.
+The same authenticated Remote connection must still present fresh frames.
+Permission restoration runs on failure too. No product change is introduced;
+shell parsing and diff review pass, with native compilation/execution pending.

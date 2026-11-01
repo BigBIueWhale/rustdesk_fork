@@ -3484,6 +3484,134 @@ out:
     return result;
 }
 
+typedef struct {
+    dev_t device;
+    ino_t inode;
+    off_t bytes;
+    char sha256[65];
+} ThemeFileState;
+
+static int read_theme_file(int directory, ThemeFileState *state) {
+    int fd = openat(directory, "RustDesk_local.toml", O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+    struct stat before, after, named;
+    GChecksum *checksum = NULL;
+    int result = -1;
+    size_t total = 0U;
+    unsigned char buffer[4096];
+    if (fd < 0) return -1;
+    if (fstat(fd, &before) != 0 || !S_ISREG(before.st_mode) || before.st_uid != geteuid() ||
+        before.st_gid != getegid() || before.st_nlink != 1 || (before.st_mode & 07777) != 0600 ||
+        before.st_size <= 0 || before.st_size > 131072 ||
+        (checksum = g_checksum_new(G_CHECKSUM_SHA256)) == NULL) goto out;
+    for (;;) {
+        ssize_t count = read(fd, buffer, sizeof(buffer));
+        if (count < 0 && errno == EINTR) continue;
+        if (count < 0 || (count > 0 && total + (size_t)count > 131072U)) goto out;
+        if (count == 0) break;
+        g_checksum_update(checksum, buffer, (gssize)count);
+        total += (size_t)count;
+    }
+    if (total != (size_t)before.st_size || fstat(fd, &after) != 0 ||
+        fstatat(directory, "RustDesk_local.toml", &named, AT_SYMLINK_NOFOLLOW) != 0 ||
+        after.st_dev != before.st_dev || after.st_ino != before.st_ino ||
+        after.st_size != before.st_size || named.st_dev != before.st_dev ||
+        named.st_ino != before.st_ino || named.st_mode != before.st_mode ||
+        named.st_nlink != 1 || named.st_uid != before.st_uid || named.st_gid != before.st_gid)
+        goto out;
+    state->device = before.st_dev;
+    state->inode = before.st_ino;
+    state->bytes = before.st_size;
+    snprintf(state->sha256, sizeof(state->sha256), "%s", g_checksum_get_string(checksum));
+    result = 0;
+out:
+    if (checksum != NULL) g_checksum_free(checksum);
+    if (close(fd) != 0) result = -1;
+    return result;
+}
+
+static int theme_error_visible(unsigned int pid, int expected) {
+    AtspiAccessible *label = NULL;
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    while (monotonic_millis() < deadline) {
+        if (query_named_accessible(pid, "Failed", deadline, &label, 0) != 0) return -1;
+        int visible = label != NULL;
+        g_clear_object(&label);
+        if (visible == expected) return 0;
+        if (sleep_millis(100U) != 0) return -1;
+    }
+    return -1;
+}
+
+static int exercise_theme_save_failure(Display *display, const ViewerWindow *viewer,
+                                       SourceHistory *history, const ConnectionIdentity *connection) {
+    const char *path = "/tmp/viewer-home/.config/rustdesk";
+    Window main = None;
+    int directory = -1, permissions_changed = 0, result = -1;
+    unsigned int pid = (unsigned int)viewer->pid, connected = 0U, listeners = 0U;
+    struct stat original, current;
+    ThemeFileState before = {0}, after = {0};
+    ConnectionIdentity final = {{0}, {0}, 0UL};
+    uint64_t fresh = 0U, age = 0U;
+    if (geteuid() == 0 || prepare_main_settings(display, viewer, &main) != 0) goto out;
+    XRaiseWindow(display, main);
+    XSetInputFocus(display, main, RevertToParent, CurrentTime);
+    XSync(display, False);
+    if (click_main_control(display, main, pid, "Light") != 0 ||
+        wait_for_theme(display, main, pid, 0U, 0, 0U, 1U, "save-baseline") != 0 ||
+        theme_error_visible(pid, 0) != 0 || sleep_millis(1500U) != 0) goto out;
+    directory = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (directory < 0 || fstat(directory, &original) != 0 || original.st_uid != geteuid() ||
+        original.st_gid != getegid() || (original.st_mode & 07777) != 0700 ||
+        read_theme_file(directory, &before) != 0 || fchmod(directory, 0500) != 0) goto out;
+    permissions_changed = 1;
+    errno = 0;
+    int probe = openat(directory, ".theme-write-probe", O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+    int probe_error = errno;
+    if (probe >= 0) {
+        if (close(probe) != 0) fputs("FLUTTER_PEER_X11_FAIL write probe close\n", stderr);
+        if (unlinkat(directory, ".theme-write-probe", 0) != 0)
+            fputs("FLUTTER_PEER_X11_FAIL write probe cleanup\n", stderr);
+        goto out;
+    }
+    if (probe_error != EACCES || click_main_control(display, main, pid, "Dark") != 0 ||
+        wait_for_theme(display, main, pid, 0U, 0, 0U, 1U, "failed-save") != 0 ||
+        /* Observe the persistent inline error after the three-second toast retires. */
+        wait_for_theme(display, main, pid, 0U, 0, 4000U, 1U, "failed-save-held") != 0 ||
+        theme_error_visible(pid, 1) != 0 || read_theme_file(directory, &after) != 0 ||
+        before.device != after.device || before.inode != after.inode || before.bytes != after.bytes ||
+        strcmp(before.sha256, after.sha256) != 0 || fstat(directory, &current) != 0 ||
+        current.st_dev != original.st_dev || current.st_ino != original.st_ino ||
+        (current.st_mode & 07777) != 0500) goto out;
+    puts("FLUTTER_PEER_THEME_SAVE_REFUSED error=visible pixels=light radio=light file=unchanged kernel=EACCES");
+    if (fchmod(directory, 0700) != 0) goto out;
+    permissions_changed = 0;
+    if (click_main_control(display, main, pid, "Dark") != 0 ||
+        wait_for_theme(display, main, pid, 1U, 1, 0U, 1U, "save-retry") != 0 ||
+        theme_error_visible(pid, 0) != 0 || close_viewer(display, main) != 0) goto out;
+    main = None;
+    XRaiseWindow(display, viewer->window);
+    XSetInputFocus(display, viewer->window, RevertToParent, CurrentTime);
+    XSync(display, False);
+    if (wait_for_current_frames(display, viewer, history, AUTH_WAIT_MS, 4U, &fresh, &age) != 0 ||
+        session_socket_counts(&connected, &listeners) != 0 || connected != 2U || listeners != 1U ||
+        read_connection_identity(&final) != 0 || !same_connection(connection, &final)) goto out;
+    printf("FLUTTER_PEER_THEME_SAVE_AFTER_PIXELS first_fresh_ms=%llu maximum_age_ms=%llu distinct=4\n",
+           (unsigned long long)fresh, (unsigned long long)age);
+    result = 0;
+out:
+    if (permissions_changed && fchmod(directory, 0700) != 0) {
+        fputs("FLUTTER_PEER_X11_FAIL configuration directory permission restoration\n", stderr);
+        result = -1;
+    }
+    if (directory >= 0 && close(directory) != 0) result = -1;
+    if (main != None && close_viewer(display, main) != 0) result = -1;
+    if (result == 0)
+        puts("FLUTTER_PEER_THEME_SAVE_FAILURE_OK failure=visible previous=preserved retry=dark "
+             "error=cleared permissions=restored stable_connection=true fresh_pixels=4");
+    else fputs("FLUTTER_PEER_X11_FAIL native theme save failure/retry\n", stderr);
+    return result;
+}
+
 static int exercise_session_close(Display *display, const ViewerWindow *viewer,
                                     const char *start, const ConnectionIdentity *connection) {
     Window main = None, current_main = None;
@@ -4356,6 +4484,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--theme-system") != 0 &&
                                     strcmp(argv[5], "--theme-restore") != 0 &&
                                     strcmp(argv[5], "--theme-appearance") != 0 &&
+                                    strcmp(argv[5], "--theme-save-failure") != 0 &&
                                     strcmp(argv[5], "--credential-retry") != 0 &&
                                     strcmp(argv[5], "--credential-enroll") != 0 &&
                                     strcmp(argv[5], "--credential-replace") != 0 &&
@@ -4369,7 +4498,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
+              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
         return 2;
     }
@@ -4574,6 +4703,15 @@ int main(int argc, char **argv) {
         return 1;
     }
     print_resources("initial", 0U, &baseline_resources);
+
+    if (argc == 6 && strcmp(argv[5], "--theme-save-failure") == 0) {
+        int result = exercise_theme_save_failure(display, &viewer, &history, &current_connection);
+        if (atspi_exit() != 0) result = -1;
+        if (close_viewer(display, viewer.window) != 0) result = -1;
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return result == 0 ? 0 : 1;
+    }
 
     if (theme_generation != 0U || (argc == 6 && strcmp(argv[5], "--theme-appearance") == 0)) {
         int result = theme_generation != 0U

@@ -127120,3 +127120,24 @@ The new `--clipboard-images` replay includes all six preceding text controls,
 requires all twelve outcomes, retains the 5-second per-transfer limit, exact
 connection/window identity and existing resource/cleanup checks. No product source
 changes, new dependencies, permission relaxation or reconnect scenario are added.
+
+Preparation `e7c95f2a4e9757db3d0968fd40562ad666c20cc7`, tree
+`e3455ad666eff9e9c782ee6f2a8e5d8b3b182e2f`, passes all twelve cases in TUF
+`V9uOxrypPk`. The exact command is:
+`bash scripts/smoke-verifier-vm-authority.sh --linux-flutter-app-replay --app-commit cf43789491c88148650878052929eb76be28eaa4 --app-manifest-sha256 94941c425a12844e424c7ac903f8a84b93b19628f3ed391f29e77548e15f6d93 --engine-commit 63493887d7bf51c9ea7be8b03e7a4641dd40208f --engine-archive-sha256 e054196739ae571afafe532268dfffef958c1c69b708a25e09352770744a82d0 --engine-manifest-sha256 b78c72f5533657e6bce49ac89d289172aafcc925098651dc00e35537c0d30695 --clipboard-images`.
+The app is unbuilt/unmodified, with production Flutter 3.47.5. All three native
+drivers compile twice identically. Image cases 7–12 take 509/532/474/518/470/528 ms;
+all pixels, dimensions and alpha match, including colors beneath zero alpha.
+Existing text cases take 449/526/463/539/479/527 ms. Each image source handles two
+native requests; destination ownership is external, and the window/connection
+remains exact. Viewer RSS rises from 350,124 to at most 356,968 KiB, with at most
+one additional thread and descriptor; this is a short workload, not a soak.
+
+Outer acceptance takes 109 seconds; QEMU supervisor lifetime is 116.290 seconds.
+QEMU 3855659 and wrapper 3854597 are absent; the 3,011,112,960-byte peak RAM
+workspace retires. All four listener deltas have zero additions/removals. Serial
+SHA-256: `7d81a2ba615d35b61cc1a3303bc480b0279ee35c4a79c70ab406251da0014424`.
+Eight bounded evidence files total 100,498 bytes. No product defect or correction
+is claimed. Native installed/other-platform/current-release, refusal, larger
+selections and sustained-resource acceptance remain open. The user-directed park
+on connection-page validation and all older independent parks remain in force.

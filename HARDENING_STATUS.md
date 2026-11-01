@@ -2276,8 +2276,30 @@ leaves four zero listener deltas. Earlier VMs also join; their duplicate app
 copies are compared with the retained manifest before removal. Commands, exact
 artifacts, raw logs and cleanup: `clipboard-text-021c1b6c.json`, verified on CTE/TUF.
 This covers ordinary-user Linux X11 text transfer only. Installed service,
-unauthorized/non-Remote refusal, reconnect/concurrency, images/files/HTML,
+unauthorized/non-Remote refusal, reconnect/concurrency, files/HTML,
 large incremental selections, other platforms and soak remain OPEN.
+
+**Linux clipboard images — six full-app image cases and six text controls passed.**
+Harness `e7c95f2a`, TUF `V9uOxrypPk`, reuses the complete `cf437894` app through
+`--clipboard-images`. Transparent 1x1, mixed-alpha RGBA 17x13 and opaque RGB
+63x31 selections transfer in both directions through one authenticated Remote
+connection. Independent destination X11 reads decode PNG and match every color,
+alpha value and dimension, including RGB under fully transparent pixels.
+The six image readbacks take **509/532/474/518/470/528 ms**, below the five-second
+limit. The six existing ASCII/Unicode/16-KiB text cases also pass. Native source
+requests, external destination ownership and stable window/TCP identity are checked.
+Viewer RSS grows at most 6,844 KiB, threads one and descriptors one in this short run.
+
+Only small drivers compile, twice identically; product bytes are unchanged.
+The transaction completes in 109 outer seconds, joins QEMU and all peers, retires
+3,011,112,960 peak RAM bytes and leaves all four listener deltas zero. Raw serial,
+console, storage/listener records and exact artifact/source identities remain under
+`.harness-state/verifier-vm/flutter-peer-presentation-*run.V9uOxrypPk.*`; the audit
+records the command and cleanup. No defect or product correction is claimed.
+This covers small positive Linux X11 transfers on the named historical app.
+Current release artifacts, installed authority/refusal, large incremental
+selections, clipboard formats beyond these cases, other platforms and soak remain
+OPEN. Separately parked reconnect and decode-budget work remains parked.
 
 **Source disposition: implemented; exact-current native/product evidence remains open.** After CPace
 authentication, the connection's validated `AuthConnType`—not broad `self.authorized` state or an

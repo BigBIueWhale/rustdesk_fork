@@ -126565,3 +126565,19 @@ and event values are controlled inputs; no new native transfer or CM-page
 rendering claim follows. Run the unchanged product first, then retain active
 progress until an explicit terminal result. Other native logging gaps and all
 independent user parks remain open. No implementation or test verdict yet.
+
+At unchanged-product source `3117eced`, TUF `2bghbdvf4m`, 48 cases pass and
+the two new direction-specific checks fail: full progress reports `done` instead
+of `inProgress`. Empty terminal success and both explicit error controls pass.
+Before execution, source review removed attempted translated-label assertions
+because translation requires the native binding; the retained tests observe
+model states and make no rendered-label claim. All 50 cases execute with fresh
+bindings. QEMU 3793891 and wrapper 3793401 exit, 4,508,270,592 peak RAM bytes
+retire after 253.817 seconds, and all four listener deltas are zero. The retained
+failed directory is reconciled as `cm-state-baseline.2bghbdvf4m` after cleanup.
+
+The product correction removes byte-count-derived `done`. Positive progress
+remains `inProgress` until the existing explicit done/cancel/error mapping applies.
+Zero-byte waiting, progress clamping, rate samples and exact-owner admission are
+unchanged. The same 50-case suite now checks the candidate. Remaining producer
+error-log omissions and target-native/full UI acceptance stay open.

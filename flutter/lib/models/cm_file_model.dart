@@ -124,11 +124,7 @@ class CmFileModel {
     }
 
     if (job.finishedSize > 0) {
-      if (job.finishedSize < job.totalSize) {
-        job.state = JobState.inProgress;
-      } else {
-        job.state = JobState.done;
-      }
+      job.state = JobState.inProgress;
     }
     if (data.done) {
       job.state = JobState.done;

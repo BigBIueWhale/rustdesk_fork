@@ -11901,7 +11901,7 @@ run_flutter_model_tests() {
             expected_result='suites=10 tests=117'
         else
             result_prefix=FLUTTER_DIRECT_ADDRESS_TEST_JSON
-            expected_result='suites=1 tests=33'
+            expected_result='suites=2 tests=45'
         fi
         source_mount+=,readonly
         source_writable=false
@@ -12558,7 +12558,8 @@ run_flutter_model_tests() {
                 test_budget=90s
                 test_concurrency=4
                 if [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
-                    tests=(test/address_validator_test.dart)
+                    python3 -B -I -S /source/scripts/prepare-address-restore-probe.py prepare
+                    tests=(test/address_validator_test.dart test_probes/address_restore_probe_test.dart)
                 elif [ "$FLUTTER_TEST_PROFILE" = file-metadata ]; then
                     python3 -B -I -S /source/scripts/prepare-file-metadata-probe.py /source /work/project
                     tests=(test_probes/file_metadata_probe_test.dart)
@@ -12784,6 +12785,7 @@ run_flutter_model_tests() {
                     run_flutter_tests >/work/test.json 2>/work/test.err || test_status=$?
                 fi
                 if [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
+                    python3 -B -I -S /source/scripts/prepare-address-restore-probe.py verify
                     for relative in lib/common/widgets/rdp_port_field.dart lib/common/widgets/peer_card.dart lib/common/formatter/port_number.dart test/address_validator_test.dart; do
                         cmp "/source/flutter/$relative" "$relative"
                     done
@@ -13321,7 +13323,7 @@ run_flutter_model_tests() {
         grep -F 'CONNECT_PASSWORD_EXACT ' "$output"
     fi
     if [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
-        grep -E '^(RDP_PORT_SOURCE=|\{)' "$output"
+        grep -E '^(ADDRESS_RESTORE_|RDP_PORT_SOURCE=|\{)' "$output"
     fi
     if [ "$FLUTTER_TEST_PROFILE" = help-button ]; then
         grep -E '^(HELP_BUTTON_|\{)' "$output"
@@ -13352,7 +13354,7 @@ run_flutter_model_tests() {
         rdp_field_sha256="$(sha256sum "$source_root/flutter/lib/common/widgets/rdp_port_field.dart" | awk '{print $1}')"
         tests_sha256="$(sha256sum "$source_root/flutter/test/address_validator_test.dart" | awk '{print $1}')"
         vectors_sha256="$(sha256sum "$source_root/flutter/test/fixtures/direct_address.json" | awk '{print $1}')"
-        printf 'FLUTTER_DIRECT_ADDRESS_TESTS_VM=pass commit=%s tree=%s suites=1 tests=33 flutter=3.24.5 validator=%s port_formatter=%s rdp_field=%s tests_source=%s vectors=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-address-tests cleanup=joined\n' \
+        printf 'FLUTTER_DIRECT_ADDRESS_TESTS_VM=pass commit=%s tree=%s suites=2 tests=45 flutter=3.24.5 validator=%s port_formatter=%s rdp_field=%s tests_source=%s vectors=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-address-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$address_sha256" "$port_formatter_sha256" "$rdp_field_sha256" "$tests_sha256" "$vectors_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

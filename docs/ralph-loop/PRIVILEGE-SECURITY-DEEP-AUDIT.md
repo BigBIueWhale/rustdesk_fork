@@ -126951,3 +126951,33 @@ Seven controls and the full-input round trip pass. QEMU 3839141 and wrapper
 three listener deltas are zero. The complete fifteen-file evidence set totals
 336,659 bytes, hash-verified on both hosts. This audit-only receipt leaves the
 counted ledger unchanged. No owned VM remains live.
+
+### 2026-11-01 — user pivot; connection address restoration failure
+
+The user requests another aspect. The proposed pre-key connection-capacity
+follow-up remains OPEN/PARKED after read-only preparation; no fixture, product
+change or runtime run followed. Completed password-attempt limiter evidence
+remains. Independently parked topics are unchanged.
+
+Select R-S0/R-G2/R-SV5 connection-screen startup failure handling. Both desktop
+and mobile pages await `restoreInitialAddress` inside an async post-frame
+callback without an error handler. The production controller deliberately
+propagates lookup failures. This concrete caller gap takes priority over further
+speculative review: handle synchronous/asynchronous lookup errors, preserve the
+operator's draft and show bounded generic failure feedback only while mounted.
+Retired callbacks must settle without affecting a replacement page.
+
+Flutter documents a once-only post-frame callback that cannot be unregistered;
+Dart documents propagation of unhandled Future errors. These support owning the
+error at each mounted caller, without changing the controller's error contract:
+https://api.flutter.dev/flutter/scheduler/SchedulerBinding/addPostFrameCallback.html
+https://dart.dev/libraries/async/futures-error-handling.
+
+The focused direct-address profile gains twelve cases using each page's exact
+post-frame registration/callback, the real controller and rendered TextField.
+Saved-address reads and feedback are controlled adapters. Normal restoration,
+newer edits, both error forms, removal and replacement are observed. The existing
+33 address/port cases remain. Source copies and extracted callbacks are checked
+before/after execution; this is callback/component evidence, not full-page,
+native IPC/device or installed acceptance. Preparation adds no product change;
+the unchanged-product comparison follows in the admitted zero-NIC TUF VM.

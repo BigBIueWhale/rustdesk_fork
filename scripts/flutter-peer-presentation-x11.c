@@ -1346,6 +1346,7 @@ static void print_resources(const char *phase, unsigned int sequence,
 typedef struct {
     char text[16385];
     GdkPixbuf *image;
+    size_t supplied_bytes;
     unsigned int requests;
     int released;
     int failed;
@@ -1361,6 +1362,7 @@ static void clipboard_fixture_get(GtkClipboard *clipboard, GtkSelectionData *sel
         gtk_selection_data_set_pixbuf(selection, fixture->image) :
         gtk_selection_data_set_text(selection, fixture->text, -1);
     if (!supplied) fixture->failed = 1;
+    else fixture->supplied_bytes = (size_t)gtk_selection_data_get_length(selection);
 }
 
 static void clipboard_fixture_clear(GtkClipboard *clipboard, gpointer user_data) {
@@ -1370,14 +1372,17 @@ static void clipboard_fixture_clear(GtkClipboard *clipboard, gpointer user_data)
 
 static GdkPixbuf *clipboard_fixture_image(unsigned int sequence) {
     unsigned int kind = (sequence - 7U) / 2U;
-    int width = kind == 0U ? 1 : kind == 1U ? 17 : 63;
-    int height = kind == 0U ? 1 : kind == 1U ? 13 : 31;
+    int width = kind == 0U ? 1 : kind == 1U ? 17 : kind == 2U ? 63 :
+        kind == 3U ? 513 : 2051;
+    int height = kind == 0U ? 1 : kind == 1U ? 13 : kind == 2U ? 31 :
+        kind == 3U ? 515 : 2053;
     GdkPixbuf *image = gdk_pixbuf_new(GDK_COLORSPACE_RGB, kind != 2U, 8, width, height);
     if (image == NULL) return NULL;
     int channels = gdk_pixbuf_get_n_channels(image);
     int stride = gdk_pixbuf_get_rowstride(image);
     guchar *pixels = gdk_pixbuf_get_pixels(image);
     static const guchar alpha[] = {0, 64, 128, 255};
+    uint32_t noise = 0x9e3779b9U ^ sequence;
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
             guchar *pixel = pixels + y * stride + x * channels;
@@ -1385,6 +1390,14 @@ static GdkPixbuf *clipboard_fixture_image(unsigned int sequence) {
             pixel[1] = (guchar)(x * 3 + y * 43 + sequence * 17U);
             pixel[2] = (guchar)(x * 19 + y * 11 + sequence * 23U);
             if (channels == 4) pixel[3] = alpha[(x + y) % 4];
+            if (kind >= 3U) {
+                /* Fixed seed, full-byte entropy: PNG must not collapse the large case. */
+                noise ^= noise << 13;
+                noise ^= noise >> 17;
+                noise ^= noise << 5;
+                for (int c = 0; c < channels; ++c)
+                    pixel[c] = (guchar)(noise >> (8 * c));
+            }
         }
     }
     return image;
@@ -1430,7 +1443,8 @@ static int exercise_clipboard(Display *source, Display *display,
                                    const ViewerWindow *viewer,
                                    const ConnectionIdentity *connection,
                                    const ProcessResources *baseline, int include_images) {
-    enum { TEXT_LIMIT = 16384, TRANSFER_LIMIT_MS = 5000, CASES = 12 };
+    enum { TEXT_LIMIT = 16384, READ_LIMIT = 24 * 1024 * 1024,
+           TRANSFER_LIMIT_MS = 5000, CASES = 18 };
     GdkDisplay *gtk_displays[2] = {NULL, NULL};
     GtkClipboard *clipboards[2] = {NULL, NULL};
     Display *displays[2] = {source, display};
@@ -1441,8 +1455,9 @@ static int exercise_clipboard(Display *source, Display *display,
     const char *phase = "gtk-init";
     unsigned int sequence = 0U;
     ClipboardFixture fixtures[CASES] = {0};
+    unsigned char *received = malloc(READ_LIMIT);
 
-    if (!gtk_init_check(NULL, NULL)) goto done;
+    if (received == NULL || !gtk_init_check(NULL, NULL)) goto done;
     gtk_displays[0] = gdk_display_open(DisplayString(source));
     gtk_displays[1] = gdk_display_get_default();
     if (gtk_displays[0] == NULL || gtk_displays[1] == NULL ||
@@ -1461,16 +1476,21 @@ static int exercise_clipboard(Display *source, Display *display,
         Atom selection = XInternAtom(displays[from], "CLIPBOARD", False);
         Atom target, property;
         uint64_t start, now, next_request = 0U;
-        int pending = 0, matched = 0;
+        int pending = 0, matched = 0, incremental = 0;
+        unsigned int chunks = 0U;
+        size_t received_bytes = 0U;
         unsigned int replies = 0U;
         unsigned long last_count = 0UL, last_remaining = 0UL;
         Atom last_type = None;
         int last_format = 0;
         size_t length;
-        int is_image = sequence > 6U;
+        int is_image = sequence > 6U && sequence <= 16U;
+        int large_image = sequence >= 13U && sequence <= 16U;
         const char *kind = sequence <= 2U ? "ascii" : sequence <= 4U ? "unicode" :
             sequence <= 6U ? "16k" : sequence <= 8U ? "transparent-1x1" :
-            sequence <= 10U ? "rgba-17x13" : "rgb-63x31";
+            sequence <= 10U ? "rgba-17x13" : sequence <= 12U ? "rgb-63x31" :
+            sequence <= 14U ? "rgba-513x515" : sequence <= 16U ? "rgba-2051x2053" :
+            "text-after-images";
         ConnectionIdentity after = {{0}, {0}, 0UL};
         ProcessResources resources = {0};
         ViewerWindow current = {0};
@@ -1480,7 +1500,7 @@ static int exercise_clipboard(Display *source, Display *display,
         if (is_image) {
             fixture->image = clipboard_fixture_image(sequence);
             if (fixture->image == NULL) goto done;
-        } else if (sequence <= 4U) {
+        } else if (sequence <= 4U || sequence > 16U) {
             const char *body = sequence <= 2U ? "line one\nline two\tend" :
                 "caf\xc3\xa9 e\xcc\x81 \xd7\xa9\xd7\x9c\xd7\x95\xd7\x9d "
                 "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e \xf0\x9f\x99\x82\nlast line";
@@ -1498,7 +1518,9 @@ static int exercise_clipboard(Display *source, Display *display,
         requestor = XCreateSimpleWindow(destination, DefaultRootWindow(destination),
                                          0, 0, 1U, 1U, 0U, 0UL, 0UL);
         if (requestor == None) goto done;
+        XSelectInput(destination, requestor, PropertyChangeMask);
         target = XInternAtom(destination, is_image ? "image/png" : "UTF8_STRING", False);
+        Atom incr = XInternAtom(destination, "INCR", False);
         property = XInternAtom(destination, "_RUSTDESK_CLIPBOARD_EVIDENCE", False);
         phase = "source-ownership";
         start = monotonic_millis();
@@ -1520,6 +1542,9 @@ static int exercise_clipboard(Display *source, Display *display,
         if (fixture_owners[from] == None) goto done;
         printf("FLUTTER_PEER_CLIPBOARD_SOURCE sequence=%u owner=%lu\n", sequence,
                fixture_owners[from]);
+        if (large_image)
+            printf("FLUTTER_PEER_CLIPBOARD_X11_LIMIT sequence=%u maximum_request_bytes=%ld\n",
+                   sequence, 4L * XExtendedMaxRequestSize(destination));
         selection = XInternAtom(destination, "CLIPBOARD", False);
         phase = "destination-readback";
         while ((now = monotonic_millis()) >= start && now - start < TRANSFER_LIMIT_MS) {
@@ -1527,34 +1552,79 @@ static int exercise_clipboard(Display *source, Display *display,
             /* Bounded pumping serves native selection requests on both displays. */
             for (unsigned int i = 0U; i < 64U && g_main_context_pending(NULL); ++i)
                 g_main_context_iteration(NULL, FALSE);
-            if (pending && XCheckTypedWindowEvent(destination, requestor,
-                                                  SelectionNotify, &event)) {
+            int have_reply = pending && !incremental &&
+                XCheckTypedWindowEvent(destination, requestor, SelectionNotify, &event);
+            int have_chunk = 0;
+            if (!have_reply) {
+                /* Drain pre-INCR property notices before acknowledging its header;
+                 * a stale notice must not be mistaken for the terminal empty chunk. */
+                for (unsigned int i = 0U; i < 64U &&
+                     XCheckTypedWindowEvent(destination, requestor, PropertyNotify, &event); ++i) {
+                    if (pending && incremental && event.xproperty.atom == property &&
+                        event.xproperty.state == PropertyNewValue) {
+                        have_chunk = 1;
+                        break;
+                    }
+                }
+            }
+            if (have_reply || have_chunk) {
                 unsigned char *data = NULL;
                 Atom actual_type = None;
                 int format = 0;
                 unsigned long count = 0UL, remaining = 0UL;
-                pending = 0;
-                replies += 1U;
-                if (event.xselection.selection != selection ||
-                    event.xselection.target != target) goto done;
-                if (event.xselection.property != None) {
-                    if (event.xselection.property != property ||
-                        XGetWindowProperty(destination, requestor, property, 0L,
-                            TEXT_LIMIT / 4L, True, AnyPropertyType, &actual_type,
+                if (have_reply) {
+                    replies += 1U;
+                    if (event.xselection.selection != selection ||
+                        event.xselection.target != target) goto done;
+                    if (event.xselection.property == None) {
+                        pending = 0;
+                        next_request = now + 100U;
+                        continue;
+                    }
+                    if (event.xselection.property != property) goto done;
+                }
+                {
+                    if (XGetWindowProperty(destination, requestor, property, 0L,
+                            READ_LIMIT / 4L, False, AnyPropertyType, &actual_type,
                             &format, &count, &remaining, &data) != Success) {
                         if (data != NULL) XFree(data);
                         goto done;
                     }
-                    matched = actual_type == target && format == 8 && remaining == 0UL &&
-                        data != NULL && (is_image ?
-                        clipboard_image_matches(fixture->image, data, count) :
-                        count == length && memcmp(data, text, length) == 0);
+                    if (have_reply && actual_type == incr) {
+                        int valid = format == 32 && count == 1UL && remaining == 0UL &&
+                            data != NULL && *(unsigned long *)data <= READ_LIMIT;
+                        if (data != NULL) XFree(data);
+                        if (!valid) goto done;
+                        /* No next chunk can arrive before this deletion. */
+                        while (XCheckTypedWindowEvent(destination, requestor, PropertyNotify, &event)) {}
+                        incremental = 1;
+                        XDeleteProperty(destination, requestor, property);
+                        XFlush(destination);
+                        continue;
+                    }
+                    if (actual_type != target || format != 8 || remaining != 0UL ||
+                        count > READ_LIMIT - received_bytes || (count != 0 && data == NULL)) {
+                        if (data != NULL) XFree(data);
+                        goto done;
+                    }
+                    if (count != 0) memcpy(received + received_bytes, data, count);
+                    received_bytes += count;
+                    if (incremental && count != 0) chunks += 1U;
+                    int complete = !incremental || count == 0UL;
+                    matched = complete && (is_image ?
+                        clipboard_image_matches(fixture->image, received, received_bytes) :
+                        received_bytes == length && memcmp(received, text, length) == 0);
                     last_type = actual_type;
                     last_format = format;
-                    last_count = count;
+                    last_count = received_bytes;
                     last_remaining = remaining;
                     if (data != NULL) XFree(data);
                     XDeleteProperty(destination, requestor, property);
+                    XFlush(destination);
+                    if (complete) {
+                        pending = 0;
+                        if (!matched) { received_bytes = 0U; incremental = 0; chunks = 0U; }
+                    }
                 }
                 if (matched) {
                     Window owner = XGetSelectionOwner(destination, selection);
@@ -1573,7 +1643,8 @@ static int exercise_clipboard(Display *source, Display *display,
                     pending = 1;
                 }
             }
-            if (sleep_millis(10U) != 0) goto done;
+            /* Service the source GTK event loop promptly during its INCR handshake. */
+            if (sleep_millis(large_image ? 1U : 10U) != 0) goto done;
         }
         now = monotonic_millis();
         printf("FLUTTER_PEER_CLIPBOARD_READ sequence=%u pending=%d replies=%u "
@@ -1581,19 +1652,23 @@ static int exercise_clipboard(Display *source, Display *display,
                sequence, pending, replies, last_type, target, last_format,
                last_count, last_remaining);
         printf("FLUTTER_PEER_CLIPBOARD_OBSERVED sequence=%u requests=%u released=%d "
-               "conversion_failed=%d matched=%d source_owner=%lu destination_owner=%lu\n",
+               "conversion_failed=%d matched=%d supplied_bytes=%zu incremental=%d chunks=%u "
+               "source_owner=%lu destination_owner=%lu\n",
                sequence, fixture->requests, fixture->released, fixture->failed, matched,
+               fixture->supplied_bytes, incremental, chunks,
                XGetSelectionOwner(displays[from], XInternAtom(displays[from], "CLIPBOARD", False)),
                XGetSelectionOwner(destination, selection));
         if (!matched || fixture->failed || fixture->requests == 0U ||
             now < start || now - start >= TRANSFER_LIMIT_MS) goto done;
+        if (large_image && fixture->supplied_bytes <= (sequence <= 14U ? 1024U * 1024U :
+                                                       16U * 1024U * 1024U)) goto done;
         phase = "connection-and-resources";
         if (read_connection_identity(&after) != 0 || !same_connection(connection, &after) ||
             find_viewer_window(display, viewer->pid, &current) != 0 ||
             current.window != viewer->window ||
-            read_process_resources(viewer->pid, &resources) != 0 ||
-            !resources_are_bounded(baseline, &resources)) goto done;
+            read_process_resources(viewer->pid, &resources) != 0) goto done;
         print_resources("clipboard", sequence, &resources);
+        if (!resources_are_bounded(baseline, &resources)) goto done;
         printf("FLUTTER_PEER_CLIPBOARD_CASE_OK sequence=%u direction=%s kind=%s bytes=%lu "
                "elapsed_ms=%llu exact_%s=true destination_owner=external\n",
                sequence, from == 1U ? "viewer-to-controlled" : "controlled-to-viewer", kind,
@@ -1611,6 +1686,7 @@ done:
         if (gtk_displays[side] != NULL) gdk_display_close(gtk_displays[side]);
     for (unsigned int i = 0U; i < CASES; ++i)
         if (fixtures[i].image != NULL) g_object_unref(fixtures[i].image);
+    free(received);
     return status;
 }
 
@@ -3139,8 +3215,8 @@ int main(int argc, char **argv) {
                  "native_key_events=true exact_text=true released=both same_window=true "
                  "stable_connection=true resources=bounded");
         } else if (clipboard_images) {
-            puts("FLUTTER_PEER_CLIPBOARD_IMAGES_OK text_cases=6 image_cases=6 directions=both "
-                 "kinds=transparent-1x1,rgba-17x13,rgb-63x31 limit_ms=5000 "
+            puts("FLUTTER_PEER_CLIPBOARD_IMAGES_OK text_cases=8 image_cases=10 directions=both "
+                 "kinds=transparent-1x1,rgba-17x13,rgb-63x31,rgba-513x515,rgba-2051x2053 limit_ms=5000 "
                  "actual_peer=true native_readback=true exact_pixels=true same_window=true "
                  "stable_connection=true resources=bounded");
         } else if (clipboard_text) {

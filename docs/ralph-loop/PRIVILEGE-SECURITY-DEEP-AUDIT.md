@@ -127152,3 +127152,34 @@ diagnostics and count comprise 23 bounded evidence files / 309,097 bytes,
 hash-verified on both CTE and TUF. This audit-only receipt leaves the counted
 ledger unchanged. The selected positive clipboard workflow reaches its native
 checkpoint; the broad release goal remains open, with no owned VM live.
+
+### 2026-11-01 — native large clipboard selections
+
+Previous goal turn: PROGRESS. Six small image cases and six text controls pass on
+the complete `cf437894` Linux app. Select the next R-F1/R-S0 clipboard acceptance
+gap: larger native selections and useful clipboard updates afterward. It takes
+priority over unrelated UI cleanup because the existing cases do not cross either
+GTK's chunk threshold or the X11 server's maximum request size. The current tree
+and TUF match clean pushed `4fa071c7`; the shared VM lock is idle and all earlier
+parks remain in force. No product change is selected before native evidence.
+
+The ICCCM INCR contract requires header deletion, property-change-driven chunks,
+consistent target types and a terminal zero-length property:
+https://www.x.org/releases/X11R7.7/doc/xorg-docs/icccm/icccm.html#incr_properties.
+GTK 3.24.38 limits source chunks to 262,144 bytes (or the smaller native maximum):
+https://raw.githubusercontent.com/GNOME/gtk/3.24.38/gtk/gtkselection.c.
+The pinned arboard `85be1218` reads INCR input but its selection publisher sends
+one ChangeProperty8. This is a source observation, not yet a demonstrated failure:
+https://raw.githubusercontent.com/rustdesk-org/arboard/85be1218668ff218a7b170c9d424fde73e069914/src/platform/linux/x11.rs.
+
+Extend the existing image profile to eighteen cases: retain all twelve controls,
+add two-direction fixed-seed RGBA 513x515 and 2051x2053 selections, then two text
+updates. Assert their native encoded source payloads exceed 1 MiB and 16 MiB
+respectively; observe the native X11 request limit. The requestor now supports
+both direct and INCR results within one 24-MiB buffer and the original 5-second
+deadline. It deletes each chunk only after bounded readback and requires terminal
+completion before pixel comparison. Source GTK receives a 1-ms event-loop pump
+for these larger cases so the observer's previous 10-ms sleep does not deliberately
+starve the production backend's 10-ms inter-chunk timeout. Existing resource limits,
+exact window/connection ownership, nonroot isolation and joined cleanup remain.
+This uses the same authenticated app/engine artifacts and no product rebuild.

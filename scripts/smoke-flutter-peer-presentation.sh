@@ -155,7 +155,7 @@ elif [ "$PEER_SCENARIO" = clipboard-images ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
-  VIEWER_RESULT='viewer=joined xvfb=joined clipboard_text_cases=6 clipboard_image_cases=6 stable_connection=true resources=bounded'
+  VIEWER_RESULT='viewer=joined xvfb=joined clipboard_text_cases=8 clipboard_image_cases=10 stable_connection=true resources=bounded'
 elif [ "$PEER_SCENARIO" = clipboard-text ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

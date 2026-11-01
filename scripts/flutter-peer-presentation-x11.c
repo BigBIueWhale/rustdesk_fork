@@ -3541,7 +3541,7 @@ static int exercise_viewer_soak(Display *display, ViewerWindow *viewer, SourceHi
     int coord = open_coord_root(), process = -1, pidfd = -1, result = -1;
     char path[64], state = '\0';
     unsigned int baseline_p95 = 0U, baseline_p99 = 0U, window = 0U;
-    uint64_t began = monotonic_millis(), last_fresh = began;
+    uint64_t began = monotonic_millis(), last_fresh = began, previous = began;
     int64_t previous_state = -1;
     snprintf(path, sizeof(path), "/proc/%lu", viewer->pid);
     process = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
@@ -3551,18 +3551,25 @@ static int exercise_viewer_soak(Display *display, ViewerWindow *viewer, SourceHi
     for (window = 0U; window < WINDOWS; ++window) {
         unsigned int histogram[FRESH_LIMIT_MS + 1U] = {0};
         unsigned int samples = 0U, valid = 0U, distinct = 0U, maximum_age = 0U;
-        uint64_t window_start = monotonic_millis(), previous = window_start, maximum_gap = 0U;
+        uint64_t window_start = monotonic_millis(), maximum_gap = 0U;
         uint64_t deadline = window_start + WINDOW_MS;
         ConnectionIdentity current = {{0}, {0}, 0UL};
         ProcessResources resources = {0};
-        if (window_start == 0U || deadline < window_start) goto out;
-        while (monotonic_millis() < deadline) {
+        if (window_start == 0U || window_start < previous || deadline < window_start) goto out;
+        previous = window_start;
+        for (;;) {
+            uint64_t now = monotonic_millis();
+            if (now == 0U || now < previous) goto out;
+            previous = now;
+            if (now >= deadline) break;
             uint64_t captured = 0U, age = 0U;
             int64_t identity = viewer_state(display, viewer, &captured);
             int valid_age = x11_frame_age(history, "/coord", identity, captured, &age) == 0;
-            uint64_t now = monotonic_millis();
-            if (now == 0U || now < previous || history->failed || samples >= 10000U) goto out;
+            now = monotonic_millis();
+            if (now == 0U || now < previous || history->failed) goto out;
             previous = now;
+            if (now >= deadline) break;
+            if (samples >= 10000U) goto out;
             samples += 1U;
             uint64_t gap = now - last_fresh;
             if (gap > maximum_gap) maximum_gap = gap;
@@ -3586,7 +3593,14 @@ static int exercise_viewer_soak(Display *display, ViewerWindow *viewer, SourceHi
             }
             if (sleep_millis(SAMPLE_INTERVAL_MS) != 0) goto out;
         }
-        uint64_t elapsed = monotonic_millis() - window_start;
+        uint64_t tail = deadline - last_fresh;
+        if (tail > maximum_gap) maximum_gap = tail;
+        if (tail > FRESH_LIMIT_MS) {
+            fprintf(stderr, "FLUTTER_PEER_SOAK_SAMPLE_REFUSED gap_ms=%llu tail=true\n",
+                    (unsigned long long)tail);
+            goto out;
+        }
+        uint64_t elapsed = previous - window_start;
         if (elapsed < WINDOW_MS || elapsed > WINDOW_MS + 1000U ||
             samples < 1000U || valid * 100U < samples * 95U || distinct < 60U ||
             !viewer_pidfd_alive(pidfd) ||
@@ -3614,7 +3628,8 @@ static int exercise_viewer_soak(Display *display, ViewerWindow *viewer, SourceHi
                     resources.descriptors) < 0) goto out;
         fflush(stdout);
     }
-    if (monotonic_millis() - began < (uint64_t)WINDOWS * WINDOW_MS ||
+    uint64_t finished = monotonic_millis();
+    if (finished == 0U || finished < previous || finished - began < (uint64_t)WINDOWS * WINDOW_MS ||
         isolation_marker(coord, "soak.done", 1) != 0 ||
         wait_isolation_marker(coord, "soak.observed", 5000U) != 0) goto out;
     puts("FLUTTER_PEER_SOAK_OK baseline_ms=60000 duration_ms=14400000 windows=240 "

@@ -129492,3 +129492,20 @@ host or interrupt either soak to make room. The current display run still suppli
 useful sampled ages, drift and resource observations, but cannot close strict
 final-window tail/deadline acceptance. Preserve its sealed source and the independent
 input soak; reconcile their complete evidence before deciding on further execution.
+
+While those jobs retain their sealed source archives, prepare the observer
+correction without changing either live run. Carry the last checked clock across
+windows; validate each loop-entry and acquisition-completion read before using
+it, admit only acquisitions completed strictly before the window deadline, and
+include `deadline - last_fresh` in the maximum gap and existing 1,000 ms limit.
+Use the checked loop-exit time for elapsed accounting and validate the final
+duration read. The [Linux monotonic-clock contract](https://man7.org/linux/man-pages/man3/clock_gettime.3.html)
+allows equal consecutive values but not backward values; clock-read failures
+must not enter acceptance arithmetic. Keep all sample, valid-ratio, distinct-frame,
+age, drift, resource and overrun limits unchanged.
+
+Commit `f1b704e1` retains the unchanged observer with all ten cases for the native
+failing comparison. Run that exact baseline first when TUF retires, then the
+candidate on the same canonical fixture lane. Native compilation and both
+outcomes remain pending; source review and diff checks do not establish the fix.
+The product source and the two running execution archives are unchanged.

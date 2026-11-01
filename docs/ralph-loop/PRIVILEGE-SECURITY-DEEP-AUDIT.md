@@ -128444,3 +128444,40 @@ schedule does not inject an already-armed stale callback, cancellation, a later
 outage, multi-hour resource use or an installed/other-platform environment.
 Those and complete release acceptance remain OPEN. Evidence copying and a fresh
 ledger count follow; the broad goal remains active and incomplete.
+
+Checkpoint completion: `--ledger-token-count` at `43ea03cc`, TUF `DI2ghzVnN1`,
+passes seven controls and the complete-input round trip: 388,913 tokens /
+1,781,087 bytes, input SHA-256
+`6388cd7259be5011d6de3ef7259d6eb6067ccaa0d60d06b71c36c5784f50089c`.
+QEMU 4020942 and wrapper 4019519 are absent; 402,714,624 peak RAM bytes retire
+after 30.703 supervisor seconds, with three zero listener deltas. Serial SHA-256:
+`e3c29f9a32cdd77ad3c7f61a0f017ce951f56c469022db5a304d2d4d3eead6c6`.
+All 16 current raw/capsule files total 214,543 bytes and match their recorded
+hashes on CTE and TUF. This audit-only receipt preserves the counted ledger.
+
+### 2026-11-01 — user pivot; native desktop theme persistence
+
+The user redirects work to another aspect. Password-recovery follow-ups are
+OPEN/PARKED; the completed rejection/explicit-retry checkpoints remain valid.
+No further credential scenario follows this pivot. Independently parked topics
+remain parked.
+
+Select R-S0's complete settings/persistence/restart obligation. The desktop theme
+row records component-only persistence evidence; the earlier native dialog theme
+change did not restart the application. Reusing the unchanged app `a630f880` and
+engine `63493887` can decide this full-application gap without acquisition or a
+rebuild, ahead of another component-only setting test. The new `--theme-restart`
+scenario opens the main UI directly through four fully joined process generations:
+system to Light, restored Light to Dark, restored Dark to Follow System, and
+restored Follow System. It drives real pointer actions, observes the exclusive
+radio selection and header pixels, and reads only the stored theme value after
+each process exits. The private X11 session retains its light system appearance;
+live OS appearance changes and other-window/platform behavior remain separate.
+
+Research: Flutter's [themeMode contract](https://api.flutter.dev/flutter/material/MaterialApp/themeMode.html)
+distinguishes explicit Light/Dark from system appearance. The native observer
+uses [AT-SPI checked/visible/enabled state](https://docs.gtk.org/atspi2/enum.StateType.html)
+and X11 pixels together; action completion alone cannot prove application state
+or persistence. `MyTheme.changeDarkMode` awaits the local preference write before
+publishing the effective value. No product defect or correction is presumed.
+Native compilation/execution and exact cleanup evidence follow.

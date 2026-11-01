@@ -3286,6 +3286,116 @@ static int remote_window_retired(Display *display, Window window) {
     return attributes.map_state != IsViewable;
 }
 
+static int theme_choice_checked(unsigned int pid, const char *name, uint64_t deadline,
+                                int *checked) {
+    AtspiAccessible *node = NULL;
+    GError *error = NULL;
+    int result = -1;
+    if (query_named_accessible(pid, name, deadline, &node, 0) != 0 || node == NULL) return -1;
+    /* The label's gesture node contains the Radio, or is its sibling. */
+    for (unsigned int level = 0U; level < 3U && node != NULL; ++level) {
+        gint count = atspi_accessible_get_child_count(node, &error);
+        unsigned int matches = 0U;
+        if (error != NULL || count < 0 || count > 8) break;
+        for (gint index = -1; index < count; ++index) {
+            AtspiAccessible *candidate = index < 0 ? g_object_ref(node) :
+                atspi_accessible_get_child_at_index(node, index, &error);
+            if (error != NULL || candidate == NULL) {
+                g_clear_object(&candidate);
+                goto out;
+            }
+            atspi_accessible_clear_cache(candidate);
+            AtspiRole role = atspi_accessible_get_role(candidate, &error);
+            unsigned int owner = error == NULL ?
+                atspi_accessible_get_process_id(candidate, &error) : 0U;
+            AtspiStateSet *states = atspi_accessible_get_state_set(candidate);
+            int valid = error == NULL && owner == pid && states != NULL;
+            if (valid && role == ATSPI_ROLE_RADIO_BUTTON &&
+                atspi_state_set_contains(states, ATSPI_STATE_VISIBLE) &&
+                atspi_state_set_contains(states, ATSPI_STATE_SHOWING) &&
+                atspi_state_set_contains(states, ATSPI_STATE_ENABLED) &&
+                atspi_state_set_contains(states, ATSPI_STATE_SENSITIVE)) {
+                *checked = atspi_state_set_contains(states, ATSPI_STATE_CHECKED);
+                ++matches;
+            }
+            g_clear_object(&states);
+            g_object_unref(candidate);
+            if (!valid) goto out;
+        }
+        if (matches != 0U) {
+            if (matches == 1U && monotonic_millis() < deadline) result = 0;
+            break;
+        }
+        AtspiAccessible *parent = atspi_accessible_get_parent(node, &error);
+        g_object_unref(node);
+        node = parent;
+        if (error != NULL) break;
+    }
+out:
+    g_clear_error(&error);
+    g_clear_object(&node);
+    return result;
+}
+
+static int wait_for_theme(Display *display, Window main, unsigned int pid,
+                          unsigned int expected, unsigned int generation, const char *phase) {
+    static const char *names[] = {"Light", "Dark", "Follow System"};
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    unsigned int luminance = 0U;
+    while (monotonic_millis() < deadline) {
+        int matches = 1;
+        for (unsigned int i = 0U; i < 3U; ++i) {
+            int checked = -1;
+            if (theme_choice_checked(pid, names[i], deadline, &checked) != 0 ||
+                checked != (i == expected)) matches = 0;
+        }
+        if (main_header_luminance(display, main, &luminance) != 0) return -1;
+        /* This private X11 session has the unchanged light system appearance. */
+        if (matches && monotonic_millis() < deadline &&
+            (expected == 1U ? luminance <= 100U : luminance >= 160U)) {
+            printf("FLUTTER_PEER_THEME_OBSERVED generation=%u phase=%s selected=%u "
+                   "exclusive=true luminance=%u native_pixels=true\n",
+                   generation, phase, expected, luminance);
+            fflush(stdout);
+            return 0;
+        }
+        if (sleep_millis(100U) != 0) return -1;
+    }
+    fprintf(stderr, "FLUTTER_PEER_X11_FAIL theme state generation=%u phase=%s expected=%u "
+            "luminance=%u\n", generation, phase, expected, luminance);
+    return -1;
+}
+
+static int exercise_theme_restart(Display *display, unsigned long pid, unsigned int generation) {
+    static const char *names[] = {"Light", "Dark", "Follow System"};
+    static const unsigned int restored[] = {2U, 0U, 1U, 2U};
+    Window main = None;
+    unsigned int connected = 0U, listeners = 0U;
+    int result = -1;
+    if (find_main_window(display, pid, &main) != 0 ||
+        activate_header_control(display, main, (unsigned int)pid, "Settings") != 0 ||
+        wait_for_theme(display, main, (unsigned int)pid, restored[generation - 1U],
+                       generation, "restored") != 0) goto out;
+    if (generation < 4U &&
+        (click_main_control(display, main, (unsigned int)pid, names[generation - 1U]) != 0 ||
+         wait_for_theme(display, main, (unsigned int)pid, generation - 1U,
+                        generation, "changed") != 0)) goto out;
+    if (session_socket_counts(&connected, &listeners) != 0 || connected != 0U || listeners != 1U)
+        goto out;
+    result = 0;
+out:
+    if (result != 0) {
+        PasswordPromptScan diagnostic;
+        if (scan_password_prompt((unsigned int)pid, &diagnostic, 1) != 0)
+            fputs("FLUTTER_PEER_X11_FAIL theme accessibility diagnostic\n", stderr);
+    }
+    if (main != None && close_viewer(display, main) != 0) result = -1;
+    if (result == 0)
+        printf("FLUTTER_PEER_THEME_PHASE_OK generation=%u restored=true changed=%s "
+               "connected_sockets=0\n", generation, generation < 4U ? "true" : "false");
+    return result;
+}
+
 static int exercise_session_close(Display *display, const ViewerWindow *viewer,
                                     const char *start, const ConnectionIdentity *connection) {
     Window main = None, current_main = None;
@@ -4153,6 +4263,10 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--view-scaling") != 0 &&
                                     strcmp(argv[5], "--session-close") != 0 &&
                                     strcmp(argv[5], "--background-close") != 0 &&
+                                    strcmp(argv[5], "--theme-light") != 0 &&
+                                    strcmp(argv[5], "--theme-dark") != 0 &&
+                                    strcmp(argv[5], "--theme-system") != 0 &&
+                                    strcmp(argv[5], "--theme-restore") != 0 &&
                                     strcmp(argv[5], "--credential-retry") != 0 &&
                                     strcmp(argv[5], "--credential-enroll") != 0 &&
                                     strcmp(argv[5], "--credential-replace") != 0 &&
@@ -4166,9 +4280,15 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
+              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
         return 2;
+    }
+    unsigned int theme_generation = 0U;
+    if (argc == 6) {
+        static const char *phases[] = {"--theme-light", "--theme-dark", "--theme-system", "--theme-restore"};
+        for (unsigned int i = 0U; i < 4U; ++i)
+            if (strcmp(argv[5], phases[i]) == 0) theme_generation = i + 1U;
     }
     int credential_enroll = argc == 6 && strcmp(argv[5], "--credential-enroll") == 0;
     int credential_retry = argc == 6 && strcmp(argv[5], "--credential-retry") == 0;
@@ -4207,6 +4327,18 @@ int main(int argc, char **argv) {
         XCloseDisplay(display);
         XCloseDisplay(source);
         return 1;
+    }
+
+    if (theme_generation != 0U) {
+        int result = atspi_init();
+        if (result == 0) {
+            atspi_set_timeout(1000, 1000);
+            result = exercise_theme_restart(display, viewer_pid, theme_generation);
+            if (atspi_exit() != 0) result = -1;
+        }
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return result == 0 ? 0 : 1;
     }
 
     if (check_retired_window_discovery(display) != 0 ||

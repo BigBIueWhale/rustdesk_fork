@@ -18,7 +18,7 @@ MENU_ACTION=pointer
 [ "$PEER_SCENARIO" != credential-menu-accessible ] || MENU_ACTION=accessible
 readonly MENU_ACTION
 case "$PEER_SCENARIO" in
-  session-close|background-close|credential-retry) EXPECTED_RESTARTS=0 ;;
+  session-close|background-close|credential-retry|theme-restart) EXPECTED_RESTARTS=0 ;;
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
   viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation|credential-forget|credential-menu|credential-menu-accessible) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
@@ -1289,13 +1289,19 @@ PY
     [ "$ROTATE_CREDENTIAL" -eq 0 ] || viewer_generations=3
     [ "$PEER_SCENARIO" != credential-menu ] || viewer_generations=3
     [ "$PEER_SCENARIO" != credential-menu-accessible ] || viewer_generations=3
+    [ "$PEER_SCENARIO" != theme-restart ] || viewer_generations=4
     for viewer_generation in $(seq 1 "$viewer_generations"); do
-    (cd /app/bundle && exec env RUST_LOG=info,rustdesk::clipboard=debug "$APP" --connect 127.0.0.1) \
+    app_args=(--connect 127.0.0.1)
+    [ "$PEER_SCENARIO" != theme-restart ] || app_args=()
+    (cd /app/bundle && exec env RUST_LOG=info,rustdesk::clipboard=debug "$APP" "${app_args[@]}") \
       >/tmp/viewer.log 2>&1 &
     VIEWER_PID=$!
     VIEWER_START=$("$READY" --identity "$VIEWER_PID")
     controller_args=(:98 :99 "$VIEWER_PID" "$VIEWER_START")
-    if [ "$viewer_generations" -gt 1 ]; then
+    if [ "$PEER_SCENARIO" = theme-restart ]; then
+      theme_phases=(light dark system restore)
+      controller_args+=("--theme-${theme_phases[viewer_generation - 1]}")
+    elif [ "$viewer_generations" -gt 1 ]; then
       if [ "$viewer_generation" -eq 1 ]; then
         credential_phase=enroll
         controller_args+=(--credential-enroll)
@@ -1379,13 +1385,19 @@ PY
       emit_runtime_logs VIEWER "$HOME/.local/share/logs"
       exit "$controller_status"
     fi
-    if [ "$viewer_generation" -eq 1 ] || { [ "$ROTATE_CREDENTIAL" -eq 1 ] && [ "$viewer_generation" -eq 2 ]; }; then
+    if [ "$PEER_SCENARIO" != theme-restart ] && { [ "$viewer_generation" -eq 1 ] || { [ "$ROTATE_CREDENTIAL" -eq 1 ] && [ "$viewer_generation" -eq 2 ]; }; }; then
     grep -q '^FLUTTER_PEER_PASSWORD_INPUT_OK characters=22 observed_without_value=true$' \
       <<<"$controller_output" || fail 'complete count-only password input verdict is missing'
     grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false$' \
       <<<"$controller_output" || fail 'real password prompt verdict is missing'
     fi
-    if [ "$viewer_generations" -gt 1 ]; then
+    if [ "$PEER_SCENARIO" = theme-restart ]; then
+      theme_changed=true
+      [ "$viewer_generation" -ne 4 ] || theme_changed=false
+      grep -Fxq "FLUTTER_PEER_THEME_PHASE_OK generation=$viewer_generation restored=true changed=$theme_changed connected_sockets=0" \
+        <<<"$controller_output" || fail 'native theme generation result is absent'
+      viewer_result='viewer=joined xvfb=joined theme_restart=passed generations=4 light=restored dark=restored system=restored pixels=verified'
+    elif [ "$viewer_generations" -gt 1 ]; then
       if [ "$credential_phase" = empty ]; then
         grep -Fxq 'FLUTTER_PEER_CREDENTIAL_EMPTY_OK prompt=true remember=false input=absent cancel=true' \
           <<<"$controller_output" || fail 'forgotten credential did not require manual entry'
@@ -1561,8 +1573,37 @@ PY
       printf 'FLUTTER_PEER_DOCUMENTS_UNAVAILABLE generation=%s observed=true\n' "$viewer_generation"
     fi
     if [ "$viewer_generations" -gt 1 ]; then
-      printf 'FLUTTER_PEER_CREDENTIAL_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
+      if [ "$PEER_SCENARIO" = theme-restart ]; then
+        printf 'FLUTTER_PEER_THEME_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
+      else
+        printf 'FLUTTER_PEER_CREDENTIAL_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
+      fi
       mv /tmp/viewer.log "/tmp/viewer-generation-$viewer_generation.log"
+    fi
+    if [ "$PEER_SCENARIO" = theme-restart ]; then
+      python3 - "$viewer_generation" <<'PY'
+import os, stat, sys, tomllib
+try:
+    path = '/tmp/viewer-home/.config/rustdesk/RustDesk_local.toml'
+    descriptor = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, 'rb') as source:
+        metadata = os.fstat(source.fileno())
+        if not (stat.S_ISREG(metadata.st_mode) and metadata.st_uid == os.geteuid()
+                and metadata.st_gid == os.getegid() and metadata.st_nlink == 1
+                and stat.S_IMODE(metadata.st_mode) == 0o600 and metadata.st_size <= 131072):
+            raise ValueError()
+        data = source.read(131073)
+        if len(data) != metadata.st_size:
+            raise ValueError()
+    expected = ('light', 'dark', '', '')[int(sys.argv[1]) - 1]
+    value = tomllib.loads(data.decode('utf-8')).get('options', {}).get('theme', '')
+    if value != expected:
+        raise ValueError()
+    print('FLUTTER_PEER_THEME_STORAGE_OK generation=' + sys.argv[1]
+          + ' selected=' + (expected or 'system') + ' process=joined')
+except (OSError, ValueError, KeyError, TypeError):
+    raise SystemExit('fixture theme storage state differs') from None
+PY
     fi
     if [ "$PEER_SCENARIO" = credential-forget ] || [ "$PEER_SCENARIO" = credential-menu ] \
       || [ "$PEER_SCENARIO" = credential-menu-accessible ] || [ "$PEER_SCENARIO" = credential-retry ]; then

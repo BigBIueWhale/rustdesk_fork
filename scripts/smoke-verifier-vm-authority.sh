@@ -668,6 +668,7 @@ case "$#:${1:-}" in
                 --view-scaling) FLUTTER_VIEW_SCALING=1 ;;
                 --credential-restart) FLUTTER_CREDENTIAL_RESTART=1 ;;
                 --credential-rotation) FLUTTER_CREDENTIAL_RESTART=2 ;;
+                --credential-forget) FLUTTER_CREDENTIAL_RESTART=3 ;;
                 *) exit 2 ;;
             esac
         fi
@@ -716,7 +717,7 @@ case "$#:${1:-}" in
         printf 'Original offline engine setup: %s --linux-flutter-engine-prepare\n' "${0##*/}" >&2
         printf 'Explicit offline engine integration build: %s --linux-flutter-engine-build\n' "${0##*/}" >&2
         printf 'Source-bound Linux app producer: %s --linux-flutter-app-build --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256\n' "${0##*/}" >&2
-        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--credential-restart|--credential-rotation]\n' "${0##*/}" >&2
+        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--credential-restart|--credential-rotation|--credential-forget]\n' "${0##*/}" >&2
         printf 'Focused native Docker log-lifetime check: %s --android-runtime-log-tests\n' "${0##*/}" >&2
         printf 'Windows service-result file checks: %s --windows-service-result-tests\n' "${0##*/}" >&2
         printf 'Focused archive transaction fixtures: %s --fixed-archive-tests\n' "${0##*/}" >&2
@@ -5170,6 +5171,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         case "$FLUTTER_CREDENTIAL_RESTART" in
             1) guest_invocation+=' --credential-restart' ;;
             2) guest_invocation+=' --credential-rotation' ;;
+            3) guest_invocation+=' --credential-forget' ;;
         esac
         [ "$FLUTTER_CLIPBOARD_TEXT" -ne 1 ] || guest_invocation+=' --clipboard-text'
         [ "$FLUTTER_CLIPBOARD_TEXT" -ne 2 ] || guest_invocation+=' --clipboard-images'
@@ -8585,6 +8587,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     case "$FLUTTER_CREDENTIAL_RESTART" in
         1) peer_scenario=credential-restart ;;
         2) peer_scenario=credential-rotation ;;
+        3) peer_scenario=credential-forget ;;
     esac
     [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || peer_scenario=viewer-suspend
     [ "$FLUTTER_CLIPBOARD_TEXT" -ne 1 ] || peer_scenario=clipboard-text

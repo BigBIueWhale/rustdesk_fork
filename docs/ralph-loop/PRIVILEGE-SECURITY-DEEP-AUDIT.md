@@ -127826,3 +127826,35 @@ supervisor seconds and all three listener deltas are zero. Serial SHA-256:
 The rotation run and count retain 15 bounded raw files (208,326 bytes),
 hash-verified on both hosts. This audit-only receipt preserves the counted
 ledger. No owned VM remains; the broad release goal is still incomplete.
+
+## 2026-11-01 — native removal of a remembered credential
+
+The previous rotation/replacement/restart turn is progress. Select the remaining
+R-S9/R-S0 remember-off obligation: a successful authorized login must remain
+functional while an explicit no-retention choice removes the previously saved
+credential. This has direct credential-retention value and takes priority over
+additional presentation checks; scaling and independent user parks remain parked.
+`ConnectPasswordDialog` submits the exact remember choice and the production
+peer-info handler clears `config.password_prs` when false before saving.
+Those product sources remain unchanged from the retained app.
+
+Add `--credential-forget` to the existing bounded rotation replay. First enroll
+and join a viewer and observe a nonempty credential field in its private peer
+record. Rotate the same live user-server through the shipped CLI. In the real
+replacement prompt, observe checked remember, explicitly uncheck it, submit
+the replacement password, require four fresh frames and join the viewer. The
+record must now contain an empty credential array. A third fresh process gets
+no password input: require its blank password field and unchecked remember,
+invoke the real Cancel action, join exit zero and require the field still empty.
+The prior typed server key-confirmation refusal remains mandatory.
+
+Read only the exact fixture's no-follow-opened, UID/GID-owned, single-link,
+mode-0600 regular peer record, bounded to 128 KiB; parse complete TOML with the
+runtime standard library, validate the byte-array shape and emit only presence
+or absence, never its value or parser exception text. Python documents the
+read-only parser and array/list conversion at
+https://docs.python.org/3.11/library/tomllib.html. Native checkbox state and
+action invocation remain distinct observations. No test writes credential
+storage or substitutes a native bridge. This is normal Linux user-mode removal,
+not forensic erasure, a secret-storage confidentiality claim, installed service
+authorization, other platforms or release acceptance.

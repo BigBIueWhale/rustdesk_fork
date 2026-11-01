@@ -3428,7 +3428,7 @@ out:
     return status;
 }
 
-static int choose_remember_password(unsigned int pid, int already_remembered) {
+static int choose_remember_password(unsigned int pid, int before, int after) {
     uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
     int activated = 0;
     while (monotonic_millis() < deadline) {
@@ -3448,13 +3448,12 @@ static int choose_remember_password(unsigned int pid, int already_remembered) {
             g_clear_object(&states);
             g_object_unref(control);
             if (!valid) return -1;
-            if (checked) {
-                if (!activated && !already_remembered) return -1;
-                printf("FLUTTER_PEER_REMEMBER_CHOICE_OK before=%s after=true\n",
-                       already_remembered ? "true" : "false");
+            if (checked == after && (before == after || activated)) {
+                printf("FLUTTER_PEER_REMEMBER_CHOICE_OK before=%s after=%s\n",
+                       before ? "true" : "false", after ? "true" : "false");
                 return 0;
             }
-            if (!activated && !already_remembered) {
+            if (!activated && checked == before && before != after) {
                 if (activate_named_control(pid, "Remember password") != 0) return -1;
                 activated = 1;
             }
@@ -3495,18 +3494,23 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--view-scaling") != 0 &&
                                     strcmp(argv[5], "--credential-enroll") != 0 &&
                                     strcmp(argv[5], "--credential-replace") != 0 &&
+                                    strcmp(argv[5], "--credential-forget") != 0 &&
+                                    strcmp(argv[5], "--credential-empty") != 0 &&
                                     strcmp(argv[5], "--credential-restore") != 0 &&
                                     strcmp(argv[5], "--clipboard-text") != 0 &&
                                     strcmp(argv[5], "--clipboard-images") != 0 &&
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--credential-enroll|--credential-replace|--credential-restore]\n",
+              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--credential-enroll|--credential-replace|--credential-forget|--credential-empty|--credential-restore]\n",
               stderr);
         return 2;
     }
     int credential_enroll = argc == 6 && strcmp(argv[5], "--credential-enroll") == 0;
-    int credential_replace = argc == 6 && strcmp(argv[5], "--credential-replace") == 0;
+    int credential_forget = argc == 6 && strcmp(argv[5], "--credential-forget") == 0;
+    int credential_empty = argc == 6 && strcmp(argv[5], "--credential-empty") == 0;
+    int credential_replace = credential_forget ||
+                             (argc == 6 && strcmp(argv[5], "--credential-replace") == 0);
     int credential_restore = argc == 6 && strcmp(argv[5], "--credential-restore") == 0;
     source_name = argv[1];
     viewer_name = argv[2];
@@ -3583,6 +3587,16 @@ int main(int argc, char **argv) {
            "role=password_text editable=true enabled=true sensitive=true visible=true "
            "focusable=true focused=true characters=0\n",
            viewer_pid, prompt_scan.application_roots, prompt_scan.nodes);
+    if (credential_empty) {
+        int result = choose_remember_password((unsigned int)viewer_pid, 0, 0);
+        if (result == 0) result = activate_named_control((unsigned int)viewer_pid, "Cancel");
+        if (atspi_exit() != 0) result = -1;
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        if (result != 0) return 1;
+        puts("FLUTTER_PEER_CREDENTIAL_EMPTY_OK prompt=true remember=false input=absent cancel=true");
+        return 0;
+    }
     if (type_password(display, credential_replace ? replacement_password : test_password) != 0) {
         fputs("FLUTTER_PEER_X11_FAIL real password prompt input\n", stderr);
         exit_atspi_after_failure();
@@ -3608,7 +3622,7 @@ int main(int argc, char **argv) {
     printf("FLUTTER_PEER_PASSWORD_INPUT_OK characters=%zu observed_without_value=true\n",
            sizeof(test_password) - 1U);
     if ((credential_enroll || credential_replace) &&
-        choose_remember_password((unsigned int)viewer_pid, credential_replace) != 0) {
+        choose_remember_password((unsigned int)viewer_pid, credential_replace, !credential_forget) != 0) {
         fputs("FLUTTER_PEER_X11_FAIL explicit remember selection\n", stderr);
         exit_atspi_after_failure();
         XCloseDisplay(display);
@@ -3685,7 +3699,8 @@ int main(int argc, char **argv) {
         XCloseDisplay(source);
         if (result != 0) return 1;
         printf("FLUTTER_PEER_CREDENTIAL_PHASE_OK phase=%s fresh_pixels=4\n",
-               credential_restore ? "restore" : credential_replace ? "replace" : "enroll");
+               credential_restore ? "restore" : credential_forget ? "forget" :
+               credential_replace ? "replace" : "enroll");
         return 0;
     }
 

@@ -16,10 +16,15 @@ fail() {
 readonly PEER_SCENARIO=${FLUTTER_PEER_SCENARIO:-focus-reconnect-resource}
 case "$PEER_SCENARIO" in
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
-  viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation) EXPECTED_RESTARTS=0 ;;
+  viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation|credential-forget) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
 esac
 readonly EXPECTED_RESTARTS
+case "$PEER_SCENARIO" in
+  credential-rotation|credential-forget) ROTATE_CREDENTIAL=1 ;;
+  *) ROTATE_CREDENTIAL=0 ;;
+esac
+readonly ROTATE_CREDENTIAL
 
 verify_regular() {
   [ -f "$1" ] && [ ! -L "$1" ] || fail "missing regular input: $1"
@@ -1103,7 +1108,7 @@ PY
         stop_seen=1
         break
       fi
-      if [ "$PEER_SCENARIO" = credential-rotation ] && [ "$credential_rotated" -eq 0 ] \
+      if [ "$ROTATE_CREDENTIAL" -eq 1 ] && [ "$credential_rotated" -eq 0 ] \
         && [ -e "$COORD/credential.rotate.request" ]; then
         [ -f "$COORD/credential.rotate.request" ] && [ ! -L "$COORD/credential.rotate.request" ] \
           && [ "$(stat -c '%u:%g:%a:%h:%s' "$COORD/credential.rotate.request")" = \
@@ -1175,7 +1180,7 @@ PY
     else
       [ "$completed_restarts" -eq "$EXPECTED_RESTARTS" ] \
         || fail "successful viewer completed only $completed_restarts server restarts"
-      if [ "$PEER_SCENARIO" = credential-rotation ]; then
+      if [ "$ROTATE_CREDENTIAL" -eq 1 ]; then
         [ "$credential_rotated" -eq 1 ] || fail 'credential rotation did not execute'
         rotation_events="$(emit_runtime_logs SERVER "$HOME/.local/share/logs" 2>&1 \
           | sed -n -E 's/^.*R-S10\/R-T12 security summary .*shed=([0-9]+) rate_limited=([0-9]+) key_confirmation_failures=([0-9]+) recent_src=Some\(127\.0\.0\.1\)$/\1 \2 \3/p')"
@@ -1272,7 +1277,7 @@ PY
     [ "$(udp_socket_count)" -eq 0 ] || fail 'shared namespace has a UDP socket before connect'
     viewer_generations=1
     [ "$PEER_SCENARIO" != credential-restart ] || viewer_generations=2
-    [ "$PEER_SCENARIO" != credential-rotation ] || viewer_generations=3
+    [ "$ROTATE_CREDENTIAL" -eq 0 ] || viewer_generations=3
     for viewer_generation in $(seq 1 "$viewer_generations"); do
     (cd /app/bundle && exec env RUST_LOG=info,rustdesk::clipboard=debug "$APP" --connect 127.0.0.1) \
       >/tmp/viewer.log 2>&1 &
@@ -1283,6 +1288,12 @@ PY
       if [ "$viewer_generation" -eq 1 ]; then
         credential_phase=enroll
         controller_args+=(--credential-enroll)
+      elif [ "$PEER_SCENARIO:$viewer_generation" = credential-forget:2 ]; then
+        credential_phase=forget
+        controller_args+=(--credential-forget)
+      elif [ "$PEER_SCENARIO:$viewer_generation" = credential-forget:3 ]; then
+        credential_phase=empty
+        controller_args+=(--credential-empty)
       elif [ "$PEER_SCENARIO:$viewer_generation" = credential-rotation:2 ]; then
         credential_phase=replace
         controller_args+=(--credential-replace)
@@ -1348,13 +1359,17 @@ PY
       emit_runtime_logs VIEWER "$HOME/.local/share/logs"
       exit "$controller_status"
     fi
-    if [ "$viewer_generation" -eq 1 ] || [ "$PEER_SCENARIO:$viewer_generation" = credential-rotation:2 ]; then
+    if [ "$viewer_generation" -eq 1 ] || { [ "$ROTATE_CREDENTIAL" -eq 1 ] && [ "$viewer_generation" -eq 2 ]; }; then
     grep -q '^FLUTTER_PEER_PASSWORD_INPUT_OK characters=22 observed_without_value=true$' \
       <<<"$controller_output" || fail 'complete count-only password input verdict is missing'
     grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false$' \
       <<<"$controller_output" || fail 'real password prompt verdict is missing'
     fi
     if [ "$viewer_generations" -gt 1 ]; then
+      if [ "$credential_phase" = empty ]; then
+        grep -Fxq 'FLUTTER_PEER_CREDENTIAL_EMPTY_OK prompt=true remember=false input=absent cancel=true' \
+          <<<"$controller_output" || fail 'forgotten credential did not require manual entry'
+      else
       grep -Fxq "FLUTTER_PEER_CREDENTIAL_PHASE_OK phase=$credential_phase fresh_pixels=4" \
         <<<"$controller_output" || fail 'credential generation did not authenticate and present'
       if [ "$viewer_generation" -eq 1 ]; then
@@ -1363,13 +1378,19 @@ PY
       elif [ "$credential_phase" = replace ]; then
         grep -Fxq 'FLUTTER_PEER_REMEMBER_CHOICE_OK before=true after=true' \
           <<<"$controller_output" || fail 'credential replacement lost the remember choice'
+      elif [ "$credential_phase" = forget ]; then
+        grep -Fxq 'FLUTTER_PEER_REMEMBER_CHOICE_OK before=true after=false' \
+          <<<"$controller_output" || fail 'remember choice was not explicitly disabled'
       else
         grep -Fxq 'FLUTTER_PEER_CREDENTIAL_RESTORED_OK password_input=absent prompt=absent' \
           <<<"$controller_output" || fail 'fresh viewer did not restore its credential'
       fi
+      fi
       viewer_result='viewer=joined xvfb=joined credential_restart=passed generations=2 password_entries=1 fresh_pixels=both'
       if [ "$PEER_SCENARIO" = credential-rotation ]; then
         viewer_result='viewer=joined xvfb=joined credential_rotation=passed generations=3 password_entries=2 fresh_pixels=all'
+      elif [ "$PEER_SCENARIO" = credential-forget ]; then
+        viewer_result='viewer=joined xvfb=joined credential_forget=passed generations=3 password_entries=2 saved_credential=empty next_prompt=required'
       fi
     elif [ "$PEER_SCENARIO" = view-scaling ]; then
       for sequence in {1..6}; do
@@ -1498,7 +1519,33 @@ PY
       printf 'FLUTTER_PEER_CREDENTIAL_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
       mv /tmp/viewer.log "/tmp/viewer-generation-$viewer_generation.log"
     fi
-    if [ "$PEER_SCENARIO:$viewer_generation" = credential-rotation:1 ]; then
+    if [ "$PEER_SCENARIO" = credential-forget ]; then
+      python3 - "$viewer_generation" <<'PY'
+import os, stat, sys, tomllib
+try:
+    path = '/tmp/viewer-home/.config/rustdesk/peers/127.0.0.1.toml'
+    descriptor = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, 'rb') as source:
+        metadata = os.fstat(source.fileno())
+        if not (stat.S_ISREG(metadata.st_mode) and metadata.st_uid == os.geteuid()
+                and metadata.st_gid == os.getegid() and metadata.st_nlink == 1
+                and stat.S_IMODE(metadata.st_mode) == 0o600 and metadata.st_size <= 131072):
+            raise ValueError()
+        data = source.read(131073)
+        if len(data) != metadata.st_size:
+            raise ValueError()
+    value = tomllib.loads(data.decode('utf-8'))['password_prs']
+    if (not isinstance(value, list) or len(value) > 4096
+            or any(type(item) is not int or not 0 <= item <= 255 for item in value)
+            or bool(value) != (sys.argv[1] == '1')):
+        raise ValueError()
+    print('FLUTTER_PEER_CREDENTIAL_STORAGE_OK generation=' + sys.argv[1]
+          + ' state=' + ('present' if value else 'empty'))
+except (OSError, ValueError, KeyError, TypeError):
+    raise SystemExit('fixture credential storage state differs') from None
+PY
+    fi
+    if [ "$ROTATE_CREDENTIAL:$viewer_generation" = 1:1 ]; then
       [ ! -e "$COORD/credential.rotate.request" ] && [ ! -L "$COORD/credential.rotate.request" ] \
         || fail 'credential rotation request was not freshly absent'
       printf 'rotate\n' > "$COORD/credential.rotate.request.tmp"

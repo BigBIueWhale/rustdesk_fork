@@ -78,6 +78,7 @@ case "$#:${1:-}" in
         --network-impairment) PEER_SCENARIO=network-impairment ;;
         --network-loss) PEER_SCENARIO=network-loss ;;
         --clipboard-text) PEER_SCENARIO=clipboard-text ;;
+        --clipboard-images) PEER_SCENARIO=clipboard-images ;;
         --keyboard-input) PEER_SCENARIO=keyboard-input ;;
         --keyboard-retirement) PEER_SCENARIO=keyboard-retirement ;;
         --mouse-input) PEER_SCENARIO=mouse-input ;;
@@ -150,6 +151,11 @@ elif [ "$PEER_SCENARIO" = keyboard-input ]; then
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined keyboard_cases=11 stable_connection=true resources=bounded'
+elif [ "$PEER_SCENARIO" = clipboard-images ]; then
+  RUNTIME_CYCLES=1
+  SERVER_GENERATIONS='1'
+  SERVER_REPLACEMENTS=0
+  VIEWER_RESULT='viewer=joined xvfb=joined clipboard_text_cases=6 clipboard_image_cases=6 stable_connection=true resources=bounded'
 elif [ "$PEER_SCENARIO" = clipboard-text ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

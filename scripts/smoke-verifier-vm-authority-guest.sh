@@ -262,6 +262,7 @@ case "$#:${8:-}" in
                 --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
                 --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
                 --clipboard-text) FLUTTER_CLIPBOARD_TEXT=1 ;;
+                --clipboard-images) FLUTTER_CLIPBOARD_TEXT=2 ;;
                 --keyboard-input) FLUTTER_KEYBOARD_INPUT=1 ;;
                 --keyboard-retirement) FLUTTER_KEYBOARD_INPUT=2 ;;
                 --mouse-input) FLUTTER_MOUSE_INPUT=1 ;;
@@ -14007,7 +14008,8 @@ run_flutter_peer_presentation() {
     fi
     peer_args+=(--engine-context "$FLUTTER_APP_ENGINE_CONTEXT")
     [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || peer_args+=(--viewer-suspend)
-    [ "$FLUTTER_CLIPBOARD_TEXT" -eq 0 ] || peer_args+=(--clipboard-text)
+    [ "$FLUTTER_CLIPBOARD_TEXT" -ne 1 ] || peer_args+=(--clipboard-text)
+    [ "$FLUTTER_CLIPBOARD_TEXT" -ne 2 ] || peer_args+=(--clipboard-images)
     [ "$FLUTTER_MOUSE_INPUT" -eq 0 ] || peer_args+=(--mouse-input)
     case "$FLUTTER_KEYBOARD_INPUT" in
         1) peer_args+=(--keyboard-input) ;;
@@ -14062,6 +14064,9 @@ run_flutter_peer_presentation() {
         peer_cycles=1
     elif [ "$FLUTTER_KEYBOARD_INPUT" -eq 1 ]; then
         peer_scenario=keyboard-input
+        peer_cycles=1
+    elif [ "$FLUTTER_CLIPBOARD_TEXT" -eq 2 ]; then
+        peer_scenario=clipboard-images
         peer_cycles=1
     elif [ "$FLUTTER_CLIPBOARD_TEXT" -eq 1 ]; then
         peer_scenario=clipboard-text

@@ -16,7 +16,7 @@ fail() {
 readonly PEER_SCENARIO=${FLUTTER_PEER_SCENARIO:-focus-reconnect-resource}
 case "$PEER_SCENARIO" in
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
-  viewer-suspend|network-impairment|network-loss|clipboard-text|keyboard-input|keyboard-retirement|mouse-input) EXPECTED_RESTARTS=0 ;;
+  viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-retirement|mouse-input) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
 esac
 readonly EXPECTED_RESTARTS
@@ -1245,6 +1245,7 @@ PY
     [ "$PEER_SCENARIO" != network-impairment ] || controller_args+=(--network-impairment)
     [ "$PEER_SCENARIO" != network-loss ] || controller_args+=(--network-loss)
     [ "$PEER_SCENARIO" != clipboard-text ] || controller_args+=(--clipboard-text)
+    [ "$PEER_SCENARIO" != clipboard-images ] || controller_args+=(--clipboard-images)
     [ "$PEER_SCENARIO" != keyboard-input ] || controller_args+=(--keyboard-input)
     [ "$PEER_SCENARIO" != keyboard-retirement ] || controller_args+=(--keyboard-retirement)
     [ "$PEER_SCENARIO" != mouse-input ] || controller_args+=(--mouse-input)
@@ -1288,6 +1289,14 @@ PY
       grep -Fxq 'FLUTTER_PEER_KEYBOARD_INPUT_OK cases=11 events=28 actual_peer=true native_key_events=true exact_text=true released=both same_window=true stable_connection=true resources=bounded' \
         <<<"$controller_output" || fail 'native keyboard input verdict is missing'
       viewer_result='viewer=joined xvfb=joined keyboard_cases=11 stable_connection=true resources=bounded'
+    elif [ "$PEER_SCENARIO" = clipboard-images ]; then
+      for sequence in {1..12}; do
+        [ "$(grep -Ec "^FLUTTER_PEER_CLIPBOARD_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
+          || fail "clipboard case $sequence is absent or duplicated"
+      done
+      grep -Fxq 'FLUTTER_PEER_CLIPBOARD_IMAGES_OK text_cases=6 image_cases=6 directions=both kinds=transparent-1x1,rgba-17x13,rgb-63x31 limit_ms=5000 actual_peer=true native_readback=true exact_pixels=true same_window=true stable_connection=true resources=bounded' \
+        <<<"$controller_output" || fail 'native clipboard image verdict is missing'
+      viewer_result='viewer=joined xvfb=joined clipboard_text_cases=6 clipboard_image_cases=6 stable_connection=true resources=bounded'
     elif [ "$PEER_SCENARIO" = clipboard-text ]; then
       for sequence in 1 2 3 4 5 6; do
         [ "$(grep -Ec "^FLUTTER_PEER_CLIPBOARD_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \

@@ -1345,6 +1345,7 @@ static void print_resources(const char *phase, unsigned int sequence,
  * destination selection; only the two real applications can transfer between them. */
 typedef struct {
     char text[16385];
+    GdkPixbuf *image;
     unsigned int requests;
     int released;
     int failed;
@@ -1356,7 +1357,10 @@ static void clipboard_fixture_get(GtkClipboard *clipboard, GtkSelectionData *sel
     (void)clipboard;
     (void)info;
     fixture->requests += 1U;
-    if (!gtk_selection_data_set_text(selection, fixture->text, -1)) fixture->failed = 1;
+    gboolean supplied = fixture->image != NULL ?
+        gtk_selection_data_set_pixbuf(selection, fixture->image) :
+        gtk_selection_data_set_text(selection, fixture->text, -1);
+    if (!supplied) fixture->failed = 1;
 }
 
 static void clipboard_fixture_clear(GtkClipboard *clipboard, gpointer user_data) {
@@ -1364,11 +1368,69 @@ static void clipboard_fixture_clear(GtkClipboard *clipboard, gpointer user_data)
     ((ClipboardFixture *)user_data)->released = 1;
 }
 
-static int exercise_clipboard_text(Display *source, Display *display,
+static GdkPixbuf *clipboard_fixture_image(unsigned int sequence) {
+    unsigned int kind = (sequence - 7U) / 2U;
+    int width = kind == 0U ? 1 : kind == 1U ? 17 : 63;
+    int height = kind == 0U ? 1 : kind == 1U ? 13 : 31;
+    GdkPixbuf *image = gdk_pixbuf_new(GDK_COLORSPACE_RGB, kind != 2U, 8, width, height);
+    if (image == NULL) return NULL;
+    int channels = gdk_pixbuf_get_n_channels(image);
+    int stride = gdk_pixbuf_get_rowstride(image);
+    guchar *pixels = gdk_pixbuf_get_pixels(image);
+    static const guchar alpha[] = {0, 64, 128, 255};
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            guchar *pixel = pixels + y * stride + x * channels;
+            pixel[0] = (guchar)(x * 31 + y * 7 + sequence * 13U);
+            pixel[1] = (guchar)(x * 3 + y * 43 + sequence * 17U);
+            pixel[2] = (guchar)(x * 19 + y * 11 + sequence * 23U);
+            if (channels == 4) pixel[3] = alpha[(x + y) % 4];
+        }
+    }
+    return image;
+}
+
+static int clipboard_image_matches(GdkPixbuf *expected, const unsigned char *data,
+                                    size_t length) {
+    GError *error = NULL;
+    GdkPixbufLoader *loader = gdk_pixbuf_loader_new_with_type("png", &error);
+    int matched = 0;
+    if (loader == NULL) goto done;
+    gboolean written = gdk_pixbuf_loader_write(loader, data, length, &error);
+    /* Close even after a decoding error, but never reuse a populated GError. */
+    gboolean closed = gdk_pixbuf_loader_close(loader, written ? &error : NULL);
+    if (!written || !closed) goto done;
+    GdkPixbuf *actual = gdk_pixbuf_loader_get_pixbuf(loader);
+    int width = gdk_pixbuf_get_width(expected), height = gdk_pixbuf_get_height(expected);
+    if (actual == NULL || gdk_pixbuf_get_width(actual) != width ||
+        gdk_pixbuf_get_height(actual) != height ||
+        gdk_pixbuf_get_colorspace(actual) != GDK_COLORSPACE_RGB ||
+        gdk_pixbuf_get_bits_per_sample(actual) != 8) goto done;
+    int expected_channels = gdk_pixbuf_get_n_channels(expected);
+    int actual_channels = gdk_pixbuf_get_n_channels(actual);
+    if (actual_channels != 3 && actual_channels != 4) goto done;
+    const guchar *a = gdk_pixbuf_read_pixels(actual), *e = gdk_pixbuf_read_pixels(expected);
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            const guchar *ap = a + y * gdk_pixbuf_get_rowstride(actual) + x * actual_channels;
+            const guchar *ep = e + y * gdk_pixbuf_get_rowstride(expected) + x * expected_channels;
+            if (memcmp(ap, ep, 3U) != 0 ||
+                (actual_channels == 4 ? ap[3] : 255) !=
+                (expected_channels == 4 ? ep[3] : 255)) goto done;
+        }
+    }
+    matched = 1;
+done:
+    if (error != NULL) g_error_free(error);
+    if (loader != NULL) g_object_unref(loader);
+    return matched;
+}
+
+static int exercise_clipboard(Display *source, Display *display,
                                    const ViewerWindow *viewer,
                                    const ConnectionIdentity *connection,
-                                   const ProcessResources *baseline) {
-    enum { TEXT_LIMIT = 16384, TRANSFER_LIMIT_MS = 5000, CASES = 6 };
+                                   const ProcessResources *baseline, int include_images) {
+    enum { TEXT_LIMIT = 16384, TRANSFER_LIMIT_MS = 5000, CASES = 12 };
     GdkDisplay *gtk_displays[2] = {NULL, NULL};
     GtkClipboard *clipboards[2] = {NULL, NULL};
     Display *displays[2] = {source, display};
@@ -1391,7 +1453,7 @@ static int exercise_clipboard_text(Display *source, Display *display,
                                                        GDK_SELECTION_CLIPBOARD);
         if (clipboards[side] == NULL) goto done;
     }
-    for (sequence = 1U; sequence <= CASES; ++sequence) {
+    for (sequence = 1U; sequence <= (include_images ? CASES : 6U); ++sequence) {
         ClipboardFixture *fixture = &fixtures[sequence - 1U];
         char *text = fixture->text;
         unsigned int from = sequence % 2U;
@@ -1405,15 +1467,20 @@ static int exercise_clipboard_text(Display *source, Display *display,
         Atom last_type = None;
         int last_format = 0;
         size_t length;
-        const char *kind = sequence <= 2U ? "ascii" :
-                           sequence <= 4U ? "unicode" : "16k";
+        int is_image = sequence > 6U;
+        const char *kind = sequence <= 2U ? "ascii" : sequence <= 4U ? "unicode" :
+            sequence <= 6U ? "16k" : sequence <= 8U ? "transparent-1x1" :
+            sequence <= 10U ? "rgba-17x13" : "rgb-63x31";
         ConnectionIdentity after = {{0}, {0}, 0UL};
         ProcessResources resources = {0};
         ViewerWindow current = {0};
         int prefix = snprintf(text, sizeof(fixture->text), "clipboard-%u-%s\n", sequence, kind);
         if (prefix <= 0 || (size_t)prefix >= sizeof(fixture->text)) goto done;
         length = (size_t)prefix;
-        if (sequence <= 4U) {
+        if (is_image) {
+            fixture->image = clipboard_fixture_image(sequence);
+            if (fixture->image == NULL) goto done;
+        } else if (sequence <= 4U) {
             const char *body = sequence <= 2U ? "line one\nline two\tend" :
                 "caf\xc3\xa9 e\xcc\x81 \xd7\xa9\xd7\x9c\xd7\x95\xd7\x9d "
                 "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e \xf0\x9f\x99\x82\nlast line";
@@ -1431,13 +1498,16 @@ static int exercise_clipboard_text(Display *source, Display *display,
         requestor = XCreateSimpleWindow(destination, DefaultRootWindow(destination),
                                          0, 0, 1U, 1U, 0U, 0UL, 0UL);
         if (requestor == None) goto done;
-        target = XInternAtom(destination, "UTF8_STRING", False);
+        target = XInternAtom(destination, is_image ? "image/png" : "UTF8_STRING", False);
         property = XInternAtom(destination, "_RUSTDESK_CLIPBOARD_EVIDENCE", False);
         phase = "source-ownership";
         start = monotonic_millis();
         if (start == 0U) goto done;
         GtkTargetList *targets = gtk_target_list_new(NULL, 0U);
-        gtk_target_list_add_text_targets(targets, 0U);
+        if (is_image)
+            gtk_target_list_add(targets, gdk_atom_intern_static_string("image/png"), 0U, 0U);
+        else
+            gtk_target_list_add_text_targets(targets, 0U);
         gint target_count = 0;
         GtkTargetEntry *entries = gtk_target_table_new_from_list(targets, &target_count);
         gboolean owned = gtk_clipboard_set_with_data(clipboards[from], entries, target_count,
@@ -1476,7 +1546,9 @@ static int exercise_clipboard_text(Display *source, Display *display,
                         goto done;
                     }
                     matched = actual_type == target && format == 8 && remaining == 0UL &&
-                              count == length && data != NULL && memcmp(data, text, length) == 0;
+                        data != NULL && (is_image ?
+                        clipboard_image_matches(fixture->image, data, count) :
+                        count == length && memcmp(data, text, length) == 0);
                     last_type = actual_type;
                     last_format = format;
                     last_count = count;
@@ -1522,10 +1594,10 @@ static int exercise_clipboard_text(Display *source, Display *display,
             read_process_resources(viewer->pid, &resources) != 0 ||
             !resources_are_bounded(baseline, &resources)) goto done;
         print_resources("clipboard", sequence, &resources);
-        printf("FLUTTER_PEER_CLIPBOARD_CASE_OK sequence=%u direction=%s kind=%s bytes=%zu "
-               "elapsed_ms=%llu exact_utf8=true destination_owner=external\n",
+        printf("FLUTTER_PEER_CLIPBOARD_CASE_OK sequence=%u direction=%s kind=%s bytes=%lu "
+               "elapsed_ms=%llu exact_%s=true destination_owner=external\n",
                sequence, from == 1U ? "viewer-to-controlled" : "controlled-to-viewer", kind,
-               length, (unsigned long long)(now - start));
+               last_count, (unsigned long long)(now - start), is_image ? "pixels" : "utf8");
         fflush(stdout);
         XDestroyWindow(destination, requestor);
         requestor = None;
@@ -1537,6 +1609,8 @@ done:
     if (requestor != None) XDestroyWindow(destination, requestor);
     for (unsigned int side = 0U; side < 2U; ++side)
         if (gtk_displays[side] != NULL) gdk_display_close(gtk_displays[side]);
+    for (unsigned int i = 0U; i < CASES; ++i)
+        if (fixtures[i].image != NULL) g_object_unref(fixtures[i].image);
     return status;
 }
 
@@ -2864,10 +2938,11 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--keyboard-input") != 0 &&
                                     strcmp(argv[5], "--mouse-input") != 0 &&
                                     strcmp(argv[5], "--clipboard-text") != 0 &&
+                                    strcmp(argv[5], "--clipboard-images") != 0 &&
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--keyboard-input|--keyboard-retirement|--mouse-input]\n",
+              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input]\n",
               stderr);
         return 2;
     }
@@ -3026,6 +3101,7 @@ int main(int argc, char **argv) {
         int keyboard_input = strcmp(argv[5], "--keyboard-input") == 0;
         int mouse_input = strcmp(argv[5], "--mouse-input") == 0;
         int clipboard_text = strcmp(argv[5], "--clipboard-text") == 0;
+        int clipboard_images = strcmp(argv[5], "--clipboard-images") == 0;
         int partial_loss = strcmp(argv[5], "--network-loss") == 0;
         int network = partial_loss || strcmp(argv[5], "--network-impairment") == 0;
         int suspension_status = mouse_input ? exercise_mouse_input(
@@ -3033,8 +3109,8 @@ int main(int argc, char **argv) {
             keyboard_retirement ? exercise_keyboard_retirement(
             source, display, &viewer, argv[4], &current_connection) : keyboard_input ? exercise_keyboard_input(
             source, display, &viewer, &current_connection, &baseline_resources) :
-            clipboard_text ? exercise_clipboard_text(
-            source, display, &viewer, &current_connection, &baseline_resources) :
+            (clipboard_text || clipboard_images) ? exercise_clipboard(
+            source, display, &viewer, &current_connection, &baseline_resources, clipboard_images) :
             network ? exercise_network_impairment(
             source, display, &viewer, &history, viewer_pid,
             &current_connection, &baseline_resources, partial_loss) : exercise_viewer_suspension(
@@ -3061,6 +3137,11 @@ int main(int argc, char **argv) {
         } else if (keyboard_input) {
             puts("FLUTTER_PEER_KEYBOARD_INPUT_OK cases=11 events=28 actual_peer=true "
                  "native_key_events=true exact_text=true released=both same_window=true "
+                 "stable_connection=true resources=bounded");
+        } else if (clipboard_images) {
+            puts("FLUTTER_PEER_CLIPBOARD_IMAGES_OK text_cases=6 image_cases=6 directions=both "
+                 "kinds=transparent-1x1,rgba-17x13,rgb-63x31 limit_ms=5000 "
+                 "actual_peer=true native_readback=true exact_pixels=true same_window=true "
                  "stable_connection=true resources=bounded");
         } else if (clipboard_text) {
             puts("FLUTTER_PEER_CLIPBOARD_TEXT_OK cases=6 directions=both kinds=ascii,unicode,16k "

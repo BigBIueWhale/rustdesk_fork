@@ -43,6 +43,13 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-01):** Complete connection-page address validation remains
+OPEN/PARKED. Preparation `136490a5` stops at a fixture compile error before any
+page case executes; correction `8685264a` is committed but unrun. QEMU and its
+wrapper exit, RAM scratch retires and all four listener deltas are zero.
+The accepted callback-level correction remains. Work moved to native clipboard
+image transfer; do not resume the complete-page scenario automatically.
+
 **User pivot (2026-11-01):** Pre-key connection-capacity validation remains
 OPEN/PARKED after read-only preparation. No fixture, product change or runtime
 run followed. Completed password-attempt limiter evidence remains. Work moved

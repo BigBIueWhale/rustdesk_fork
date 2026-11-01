@@ -127088,3 +127088,35 @@ case executes. Remove only that await and repeat the same scenarios. QEMU
 3851432 and wrapper 3850866 exit; RAM scratch retires with four zero listener
 deltas. Retained diagnostics: `connection-page-fixture.38ntxFM7od`. This is
 fixture correction, not product failure evidence or a changed acceptance condition.
+
+### 2026-11-01 — user pivot; native clipboard image transfer
+
+The user requests another aspect. Complete connection-page validation is parked
+after preparation `136490a5` and fixture-only correction `8685264a`; the correction
+has not run. TUF's shared run lock is available, no `run.*` workspace remains,
+and the prior recorded QEMU/wrapper and RAM workspace are absent. Earlier parks,
+including clipboard reconnect and aggregate decode-budget work, remain parked.
+
+Select R-F1/R-S0's required clipboard functionality, with the native handoff gap
+under R-S7: transfer image selections through the real authenticated desktop peers
+in both directions and compare every decoded pixel, dimensions and alpha. This
+adds a required workflow absent from the existing six text transfers, ahead of
+unrelated UI cleanup. Reuse source-bound app `cf437894` and engine `63493887`;
+clipboard, client, transport and dependency sources are unchanged. Intervening
+runtime changes concern idle-timeout bounds, file-job logs/rates and connection
+page restoration; this remains evidence for the named artifact, not current-tree
+or installed release acceptance.
+
+Extend the existing native selection fixture with a PNG target and three small
+image shapes (transparent 1x1, RGBA 17x13 and RGB 63x31), each in both directions.
+Each image has a sequence-specific color pattern. The destination is read through
+the independent Xlib selection request; only the two applications transfer between
+their X displays. Decode the received PNG and compare each pixel using its actual
+channel count and row stride. GTK documents target-dependent pixbuf conversion
+and GdkPixbuf documents row padding and alpha/channel layout:
+https://docs.gtk.org/gtk3/method.SelectionData.set_pixbuf.html
+https://docs.gtk.org/gdk-pixbuf/class.Pixbuf.html.
+The new `--clipboard-images` replay includes all six preceding text controls,
+requires all twelve outcomes, retains the 5-second per-transfer limit, exact
+connection/window identity and existing resource/cleanup checks. No product source
+changes, new dependencies, permission relaxation or reconnect scenario are added.

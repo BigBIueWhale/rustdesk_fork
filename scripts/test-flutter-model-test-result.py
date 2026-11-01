@@ -22,6 +22,8 @@ spec.loader.exec_module(result)
 
 
 SINGLE_PROFILE = None
+if len(sys.argv) > 1 and sys.argv[1] == "--direct-address":
+    SINGLE_PROFILE = sys.argv.pop(1)[2:]
 if len(sys.argv) > 1 and sys.argv[1] in ("--screenshot-save", "--locales", "--draggable-divider", "--file-columns", "--trackpad-speed", "--menu-button", "--help-button", "--password-fields", "--file-progress", "--peer-search", "--audio-input", "--peer-data", "--combo-box", "--image-quality", "--desktop-theme", "--status-refresh", "--custom-scale"):
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
 
@@ -158,7 +160,7 @@ class ResultTests(unittest.TestCase):
             suites = sorted(inventory)
             names = sorted(set().union(*inventory.values()))
         else:
-            suites = ["address_validator_test.dart"]
+            suites = ["address_validator_test.dart", "address_restore_probe_test.dart"]
             names = sorted(result.DIRECT_ADDRESS_TESTS)
         events = [{"type": "start"}]
         for suite_id, name in enumerate(suites):
@@ -168,6 +170,8 @@ class ResultTests(unittest.TestCase):
             })
         for test_id, name in enumerate(names):
             suite_id = test_id % len(suites)
+            if profile == "direct-address":
+                suite_id = int(name.startswith(("desktop address startup ", "mobile address startup ")))
             if profile == "models":
                 suite_id = suites.index(model_cases[test_id][0])
             if profile in ("credential-dialog", "terminal-output", "file-navigation", "modifier-release", "peer-data", "tab-selection", "status-refresh", "audio-input", "trackpad-speed", "reconnect", "credential-badge", "menu-button", "help-button", "password-fields", "combo-box", "image-quality"):
@@ -209,6 +213,9 @@ class ResultTests(unittest.TestCase):
             return result.parse_result(path, profile)
 
     def test_complete_profiles(self):
+        if SINGLE_PROFILE == "direct-address":
+            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 45))
+            return
         if SINGLE_PROFILE == "help-button":
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 14))
             return
@@ -251,7 +258,7 @@ class ResultTests(unittest.TestCase):
             self.parse(self.events("frame-queue"), "frame-queue"),
             (1, len(result.FRAME_QUEUE_TESTS)),
         )
-        self.assertEqual(self.parse(self.events("direct-address"), "direct-address"), (1, 33))
+        self.assertEqual(self.parse(self.events("direct-address"), "direct-address"), (2, 45))
         self.assertEqual(self.parse(self.events("password-fields"), "password-fields"), (3, 25))
         self.assertEqual(self.parse(self.events("menu-button"), "menu-button"), (6, 53))
         self.assertEqual(self.parse(self.events("hold-drag"), "hold-drag"), (1, 17))

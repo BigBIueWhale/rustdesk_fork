@@ -126998,3 +126998,17 @@ request generic translated feedback only while mounted. The controller still
 propagates failures, retires its one restoration attempt and preserves newer
 edits. No retry, address substitution, raw-error disclosure or post-removal
 notification is added. The same 45-case workload follows unchanged.
+
+Candidate `9823e986`, TUF `9o2W4LFcpj`, passes all 45 behavioral cases and
+the callback/source comparison. The wrapper then fails its parser self-tests:
+the fixture still supplies one address suite, and the generic invocation also
+reaches three already-parked model-inventory failures. This is not complete
+workload acceptance. QEMU 3844178 and wrapper 3843663 exit after 82.432 seconds;
+4,060,143,616 peak RAM bytes retire and all four listener deltas are zero.
+Bounded diagnostics remain under `address-restore-parser.9o2W4LFcpj`.
+Serial SHA-256: `2fd6816a59cb6b023b6f71d23f3eb080ab33ac9e3d7108815737c426f1f670a5`.
+
+Update only the address fixture's two-suite/45-case inventory and add its
+focused parser-control selection, matching the existing focused-profile pattern.
+The shared model parser investigation remains parked; no acceptance check or
+product/test case is removed. Rerun this narrow workload for integrated acceptance.

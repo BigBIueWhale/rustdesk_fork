@@ -12854,6 +12854,9 @@ run_flutter_model_tests() {
                     cat /work/test.json
                 fi
                 parser_args=()
+                if [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
+                    parser_args=(--direct-address)
+                fi
                 if [[ "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = combo-box || "$FLUTTER_TEST_PROFILE" = image-quality || "$FLUTTER_TEST_PROFILE" = desktop-theme || "$FLUTTER_TEST_PROFILE" = custom-scale ]]; then
                     parser_args=("--$FLUTTER_TEST_PROFILE")
                 fi

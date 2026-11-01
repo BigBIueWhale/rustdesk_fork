@@ -2135,9 +2135,17 @@ where
                         };
                         let log = serialize_cm_transfer_jobs(&owner.read_jobs);
                         self.client_owner = Some(owner);
-                        if let Err(error) = result {
-                            log::error!("failed to publish CM read-job response: {error}");
-                            break;
+                        let job_log = match result {
+                            Ok(job_log) => job_log,
+                            Err(error) => {
+                                log::error!("failed to publish CM read-job response: {error}");
+                                break;
+                            }
+                        };
+                        if let Some(job_log) = job_log {
+                            if !self.cm.file_transfer_log(owner_key, "transfer", &job_log) {
+                                break;
+                            }
                         }
                         if !self.cm.file_transfer_log(owner_key, "transfer", &log) {
                             break;
@@ -3305,41 +3313,50 @@ async fn start_read_job(
 async fn handle_read_jobs_tick(
     jobs: &mut Vec<CmTransferJob>,
     responder: CmFileResponder<'_>,
-) -> Result<(), CmEgressAdmissionError> {
+) -> Result<Option<String>, CmEgressAdmissionError> {
     let Some(index) = jobs.iter().position(|transfer| !transfer.job.is_last_job) else {
-        return Ok(());
+        return Ok(None);
     };
     let transfer = &mut jobs[index];
     let generation = transfer.generation;
     let job = &mut transfer.job;
 
     match init_read_job_for_cm(job, generation).await {
-        Ok(Some(response)) => return responder.send(response),
+        Ok(Some(response)) => {
+            responder.send(response)?;
+            return Ok(None);
+        }
         Ok(None) => {}
         Err(err) => {
+            let error = err.to_string();
+            let log = serialize_transfer_job(job, false, false, &error);
             responder.send(ipc::CmFileResponseKind::ReadError {
                 id: job.id,
                 generation,
                 file_num: job.file_num(),
-                error: err.to_string(),
+                error,
             })?;
             drop(jobs.remove(index));
-            return Ok(());
+            return Ok(Some(log));
         }
     }
 
     #[cfg(all(test, not(any(target_os = "android", target_os = "ios"))))]
     pause_cm_test_read_tick_before_block(job.id, job.conn_id).await;
-    let (response, finished) = match job.read().await {
-        Err(err) => (
-            Some(ipc::CmFileResponseKind::ReadError {
-                id: job.id,
-                generation,
-                file_num: job.file_num(),
-                error: err.to_string(),
-            }),
-            true,
-        ),
+    let (response, job_log) = match job.read().await {
+        Err(err) => {
+            let error = err.to_string();
+            let log = serialize_transfer_job(job, false, false, &error);
+            (
+                Some(ipc::CmFileResponseKind::ReadError {
+                    id: job.id,
+                    generation,
+                    file_num: job.file_num(),
+                    error,
+                }),
+                Some(log),
+            )
+        }
         Ok(Some(block)) => (
             Some(ipc::CmFileResponseKind::ReadBlock {
                 id: block.id,
@@ -3348,10 +3365,17 @@ async fn handle_read_jobs_tick(
                 data: block.data,
                 compressed: block.compressed,
             }),
-            false,
+            None,
         ),
         Ok(None) if job.job_completed() => {
-            let response = match job.job_error() {
+            let error = job.job_error();
+            let log = serialize_transfer_job(
+                job,
+                error.is_none(),
+                false,
+                error.as_deref().unwrap_or_default(),
+            );
+            let response = match error {
                 Some(error) => ipc::CmFileResponseKind::ReadError {
                     id: job.id,
                     generation,
@@ -3364,17 +3388,17 @@ async fn handle_read_jobs_tick(
                     file_num: job.file_num(),
                 },
             };
-            (Some(response), true)
+            (Some(response), Some(log))
         }
-        Ok(None) => (None, false),
+        Ok(None) => (None, None),
     };
     if let Some(response) = response {
         responder.send(response)?;
     }
-    if finished {
+    if job_log.is_some() {
         drop(jobs.remove(index));
     }
-    Ok(())
+    Ok(job_log)
 }
 
 /// Initialize a read job's data stream and return any digest produced for overwrite detection.

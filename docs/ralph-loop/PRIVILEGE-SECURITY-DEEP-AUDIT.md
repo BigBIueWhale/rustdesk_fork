@@ -126494,3 +126494,24 @@ profile reuses bounded RAM/full-parent preparation and runs only this new test.
 The independently parked CM scheduling tests, pre-bootstrap cancellation,
 Android soak and other user parks remain untouched. Product correction and
 native execution are pending.
+
+Unchanged-product preparation `b776dedb`, TUF `Kf90bm2SUB`, compiles the complete
+parent library with fresh bindings in 109 seconds. The single regression runs
+all three scenarios and fails only after their native responses, exact byte
+checks, joined owner retirement and descriptor closure: all three produce zero
+terminal UI logs. Artifact SHA-256:
+`6c8317dde6690aef894996e7349e3987418d03dd7f3faf32af36b22d2cf058e3`.
+The 353.496-second run joins QEMU 3786018 and wrapper 3785502, retires
+6,293,078,016 peak RAM bytes and records zero deltas in four listener snapshots.
+The failed marker is reconciled as `cm-log-baseline.Kf90bm2SUB` after cleanup.
+
+The correction returns an optional terminal log from the existing selected
+read tick. Its exact joined owner publishes that log before the remaining-job
+snapshot, using the existing registry-generation check. Open/read failures
+retain their error; completion retains the native done/error result. Response
+admission still precedes job removal, and refused admission returns no log.
+Selection, queue order and lifetime policy are unchanged. The identical native
+regression will exercise the candidate. Dart's byte-count completion inference,
+direct-send initial-open logging, CM confirmation errors and end-to-end/native
+Windows/installed acceptance remain OPEN; no global transfer-completion closure
+is claimed by this producer correction.

@@ -70,7 +70,7 @@ const MAX_VIDEO_FRAME_ACK_CONTROLLERS: usize = 64;
 const MAX_SCREENSHOT_REQUEST_OWNERS: usize = 64;
 const SCREENSHOT_ENCODE_QUEUE_CAPACITY: usize = 2;
 
-fn presentation_trace_enabled() -> bool {
+pub(super) fn presentation_trace_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
     *ENABLED.get_or_init(|| {
         std::env::var("RUSTDESK_PRESENTATION_TRACE")

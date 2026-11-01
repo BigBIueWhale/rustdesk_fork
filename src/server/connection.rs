@@ -2462,6 +2462,19 @@ impl PendingVideoDelivery {
     fn is_complete(&self) -> bool {
         self.writer_complete && self.peer_received
     }
+
+    fn trace(&self, connection_id: i32, event: &str) {
+        if video_service::presentation_trace_enabled() {
+            log::info!(
+                "RUSTDESK_PRESENTATION_TRACE stage=server-video-delivery connection={connection_id} event={event} source={:?} display={} wire_generation={} writer_complete={} peer_received={}",
+                self.identity.source,
+                self.identity.display,
+                self.identity.generation,
+                self.writer_complete,
+                self.peer_received,
+            );
+        }
+    }
 }
 
 async fn wait_for_video_write(
@@ -2487,6 +2500,7 @@ fn complete_video_delivery(pending: &mut Option<PendingVideoDelivery>, connectio
     let Some(pending) = pending.take() else {
         return;
     };
+    pending.trace(connection_id, "complete");
     video_service::notify_video_frame_fetched(
         pending.identity.source,
         pending.identity.display,
@@ -2573,6 +2587,36 @@ fn lock_video_egress_state(
 }
 
 impl VideoEgressSender {
+    fn trace_occupancy(&self, connection_id: i32, offered_generation: u64) {
+        if !video_service::presentation_trace_enabled() {
+            return;
+        }
+        let (displays, ready, frames, protobuf_bytes, refresh) = {
+            let state = lock_video_egress_state(&self.state);
+            let (mut frames, mut protobuf_bytes, mut refresh) = (0usize, 0u64, 0usize);
+            for slot in state.displays.values() {
+                match &slot.pending {
+                    Some(PendingVideoEgress::Frame(frame)) => {
+                        frames += 1;
+                        protobuf_bytes = protobuf_bytes.saturating_add(frame.message.compute_size());
+                    }
+                    Some(PendingVideoEgress::RefreshRequired) => refresh += 1,
+                    None => {}
+                }
+            }
+            (
+                state.displays.len(),
+                state.ready_displays.len(),
+                frames,
+                protobuf_bytes,
+                refresh,
+            )
+        };
+        log::info!(
+            "RUSTDESK_PRESENTATION_TRACE stage=server-video-mailbox connection={connection_id} offered_generation={offered_generation} displays={displays} ready={ready} frames={frames} protobuf_bytes={protobuf_bytes} refresh={refresh}"
+        );
+    }
+
     fn wake_receiver(&self) -> bool {
         match self.wake.try_send(()) {
             Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => true,
@@ -5201,6 +5245,7 @@ impl ConnInner {
     ) {
         if let Some(tx) = self.tx_video.as_ref() {
             self.retire_video_frames(tx.send_video_frame(msg, source, display, generation));
+            tx.trace_occupancy(self.id, generation);
         } else {
             video_service::retire_video_frame_round(source, display, generation, self.id);
         }
@@ -6888,10 +6933,12 @@ impl Connection {
                                     msg_in.union.as_ref()
                                 {
                                     if let Some(pending) = pending_video_delivery.as_mut() {
-                                        pending.observe_peer_receipt(
+                                        if pending.observe_peer_receipt(
                                             conn.authenticated_video_source(),
                                             receipt,
-                                        );
+                                        ) {
+                                            pending.trace(id, "peer-received");
+                                        }
                                     }
                                     complete_video_delivery(&mut pending_video_delivery, id);
                                     continue;
@@ -6973,6 +7020,7 @@ impl Connection {
                     match completion {
                         Ok(Ok(())) => {
                             pending.mark_writer_complete();
+                            pending.trace(id, "writer-complete");
                             complete_video_delivery(&mut pending_video_delivery, id);
                         }
                         Ok(Err(err)) => {
@@ -7015,8 +7063,9 @@ impl Connection {
                                             frame.identity.generation,
                                         );
                                     }
-                                    pending_video_delivery =
-                                        Some(PendingVideoDelivery::new(receipt, &frame));
+                                    let pending = PendingVideoDelivery::new(receipt, &frame);
+                                    pending.trace(id, "enqueued");
+                                    pending_video_delivery = Some(pending);
                                 }
                                 Err(err) => {
                                     conn.on_close(&err.to_string(), false).await;

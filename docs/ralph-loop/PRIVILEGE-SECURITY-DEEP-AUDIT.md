@@ -129045,3 +129045,36 @@ QEMU 965321/wrapper 963184 are absent; 402,599,936 peak RAM bytes retire in
 31.674 supervisor seconds with three zero listener deltas. Receipt:
 `all-stalled-ledger-28a55ee9.json`. This audit-only completion preserves the
 counted ledger. The broader release goal remains active and incomplete.
+
+### 2026-11-01 — native video-mailbox occupancy
+
+Previous turn: progress; complete-app all-stalled capture/resource bounds passed.
+Continue R-S11fk/R-S11fl at the missing actual mailbox and transmitted-unreceipted
+ownership observations, ahead of more settings cases. CPU/RSS and kernel socket
+queues cannot establish application mailbox occupancy. Existing focused Rust
+cases cover latest-frame replacement, dependent-GOP retirement, display capacity,
+receiver closure and both receipt orders; the retained full-app traces omit this
+state. A source-bound app build is the necessary prerequisite for native evidence.
+
+Add metadata to the existing opt-in presentation trace. `ConnInner` samples the
+actual mailbox after each offer, reading retained display/ready/frame/refresh
+counts and protobuf sizes under its existing mutex, then releases the lock before
+logging. This is a coherent occupancy sample, not a claim to observe every
+transient allocation or kernel queue. The iteration is bounded by the existing
+32-display capacity. Pending delivery logs its real enqueue, writer completion,
+accepted exact peer receipt and completion transitions with connection/source/
+display/generation identity. Frame contents, credentials and memory addresses
+are excluded. Ownership and transmission decisions remain the existing code.
+
+The [Rust mutex contract](https://doc.rust-lang.org/std/sync/struct.Mutex.html)
+supports coherent guarded reads; pinned protobuf 3.7.2's
+[Message API](https://docs.rs/protobuf/3.7.2/protobuf/trait.Message.html)
+provides encoded size without serializing another payload. Disabled tracing
+returns before locking or traversing retained messages. The native replay must
+observe both connections, one transmitted-unreceipted frame per connection,
+one pending frame or refresh marker for its single display, encoded bytes within
+the 32-MiB protocol cap, stale-candidate replacement and recovery without a
+second enqueue before exact completion. Existing pixel and process checks remain.
+The build uses the authenticated engine `ddb1541d`, admitted bounded RAM scratch
+and the existing isolated producer. Compilation and runtime evidence are pending;
+this instrumentation itself does not close the release requirement.

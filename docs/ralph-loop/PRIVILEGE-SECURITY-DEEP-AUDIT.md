@@ -129036,3 +129036,12 @@ All four independently decoded listener deltas are zero. Capsule
 `0c0bbf621fe5b62bf43e98a6442d1ddda3169d0b3d9a47d6b06c6fa0777a3224`)
 and its seven raw files verify on both hosts. No production change was needed.
 The scope limitations above remain; a fresh ledger count follows this update.
+
+Checkpoint completion: CTE `a6BeuNchxi` at `28a55ee9` exits zero and counts
+389,903 tokens / 1,785,413 bytes, SHA-256
+`4b334e5756700464165e281b6d85581e52aa8439b93a56b5bf18beafdc514ce8`,
+with the established method, seven controls and complete-input round trip.
+QEMU 965321/wrapper 963184 are absent; 402,599,936 peak RAM bytes retire in
+31.674 supervisor seconds with three zero listener deltas. Receipt:
+`all-stalled-ledger-28a55ee9.json`. This audit-only completion preserves the
+counted ledger. The broader release goal remains active and incomplete.

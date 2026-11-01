@@ -1114,11 +1114,131 @@ PY
     echo 'FLUTTER_PEER_SERVER_READY network=none interfaces=lo listener=127.0.0.1:21118 udp=0 parked_then_passworded=true'
     stop_seen=0
     credential_rotated=0
+    all_stalled_observed=0
     next_generation=2
     for _ in $(seq 1 3000); do
       if [ -f "$COORD/stop" ] && [ ! -L "$COORD/stop" ]; then
         stop_seen=1
         break
+      fi
+      if [ "$PEER_SCENARIO" = viewer-isolation ] && [ "$all_stalled_observed" -eq 0 ] \
+        && [ -e "$COORD/both.frozen" ]; then
+        /usr/bin/python3 -I -S - "$SERVER_PID" "$SERVER_START" \
+          "$HOME/.local/share/logs/RustDesk/server/rustdesk_rCURRENT.log" <<'PY'
+import contextlib
+import ctypes
+import json
+import os
+import pathlib
+import select
+import stat
+import sys
+import time
+
+pid, start = int(sys.argv[1]), sys.argv[2]
+coord = pathlib.Path('/coord')
+
+def marker(name):
+    try:
+        fd = os.open(coord / name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return False
+    with os.fdopen(fd, 'rb') as stream:
+        metadata = os.fstat(stream.fileno())
+        assert stat.S_ISREG(metadata.st_mode)
+        assert (metadata.st_uid, metadata.st_gid, stat.S_IMODE(metadata.st_mode),
+                metadata.st_nlink, metadata.st_size) == (os.getuid(), os.getgid(), 0o600, 1, 6)
+        assert stream.read(7) == b'ready\n'
+    return True
+
+with contextlib.ExitStack() as cleanup:
+    process = os.open(f'/proc/{pid}', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    cleanup.callback(os.close, process)
+    pidfd = os.pidfd_open(pid)
+    cleanup.callback(os.close, pidfd)
+    log = cleanup.enter_context(os.fdopen(os.open(sys.argv[3], os.O_RDONLY | os.O_NOFOLLOW), 'rb'))
+    log_identity = os.fstat(log.fileno())
+    assert stat.S_ISREG(log_identity.st_mode) and log_identity.st_nlink == 1
+    assert log_identity.st_uid == os.getuid() and log_identity.st_gid == os.getgid()
+    counts = dict(capture=0, convert=0, encoded=0, pacing=0, long_wait=0)
+    pending = b''
+
+    def sample():
+        global pending
+        assert not select.select([pidfd], [], [], 0)[0], 'controlled server exited'
+        with os.fdopen(os.open('stat', os.O_RDONLY | os.O_NOFOLLOW, dir_fd=process), 'rb') as stream:
+            raw = stream.read(4097)
+        assert len(raw) <= 4096 and raw.startswith(f'{pid} ('.encode())
+        fields = raw.rsplit(b')', 1)[1].split()
+        assert fields[19].decode() == start and fields[0] not in (b'T', b't', b'Z', b'X')
+        descriptors = os.open('fd', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=process)
+        try:
+            fds = len(os.listdir(descriptors))
+        finally:
+            os.close(descriptors)
+        assert fds <= 4096
+        metadata = os.stat(sys.argv[3], follow_symlinks=False)
+        assert (metadata.st_dev, metadata.st_ino) == (log_identity.st_dev, log_identity.st_ino)
+        assert log.tell() <= metadata.st_size <= 8 * 1024 * 1024
+        pending += log.read(metadata.st_size - log.tell())
+        lines = pending.split(b'\n')
+        pending = lines.pop()
+        assert len(pending) <= 65536
+        for line in lines:
+            for key, stage in (('capture', b'server-capture'), ('convert', b'server-convert'),
+                               ('encoded', b'server-encoded-decode'), ('pacing', b'server-pacing')):
+                if b'RUSTDESK_PRESENTATION_TRACE stage=' + stage + b' display=0 ' in line:
+                    counts[key] += 1
+                    if key == 'pacing':
+                        wait = int(line.split(b' ack_wait_us=', 1)[1].split()[0])
+                        counts['long_wait'] += wait >= 2800000
+        return dict(cpu_ticks=int(fields[11]) + int(fields[12]), threads=int(fields[17]),
+                    rss_bytes=int(fields[21]) * os.sysconf('SC_PAGESIZE'), fds=fds)
+
+    assert marker('slow.frozen') and marker('both.frozen')
+    # Drain a frame/receipt already in flight before measuring the stalled interval.
+    time.sleep(1)
+    baseline = sample()
+    assert all(counts[key] >= 4 for key in ('capture', 'convert', 'encoded', 'pacing'))
+    initial = counts.copy()
+    peak = baseline.copy()
+    begin = time.monotonic()
+    while time.monotonic() - begin < 8:
+        current = sample()
+        for key in peak:
+            peak[key] = max(peak[key], current[key])
+        time.sleep(0.1)
+    current = sample()
+    elapsed_ms = round((time.monotonic() - begin) * 1000)
+    delta = {key: counts[key] - initial[key] for key in counts}
+    cpu_ms = (current['cpu_ticks'] - baseline['cpu_ticks']) * 1000 / os.sysconf('SC_CLK_TCK')
+    for key in peak:
+        peak[key] = max(peak[key], current[key])
+    observation = dict(duration_ms=elapsed_ms, cpu_ms=cpu_ms, events=delta,
+                       baseline=baseline, peak=peak, final=current)
+    print('FLUTTER_PEER_ALL_STALLED_SAMPLE=' + json.dumps(observation, sort_keys=True), flush=True)
+    assert 8000 <= elapsed_ms <= 10000 and 0 <= cpu_ms <= 2000
+    assert all(1 <= delta[key] <= 4 for key in ('capture', 'convert', 'encoded', 'pacing'))
+    assert delta['long_wait'] >= 2
+    assert peak['threads'] <= baseline['threads'] + 8 and peak['fds'] <= baseline['fds'] + 16
+    assert peak['rss_bytes'] <= baseline['rss_bytes'] + 128 * 1024 * 1024
+    temporary = coord / 'both.observed.tmp'
+    with os.fdopen(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), 'wb') as stream:
+        stream.write(b'ready\n')
+    rename = ctypes.CDLL(None, use_errno=True).renameat2
+    if rename(-100, os.fsencode(temporary), -100, os.fsencode(coord / 'both.observed'), 1) != 0:
+        raise OSError(ctypes.get_errno(), 'publish both-viewer observation')
+    deadline = time.monotonic() + 15
+    while not marker('healthy.observed'):
+        assert time.monotonic() < deadline, 'first viewer did not recover'
+        sample()
+        time.sleep(0.1)
+    sample()
+    assert counts['capture'] - initial['capture'] - delta['capture'] >= 4
+    assert counts['encoded'] - initial['encoded'] - delta['encoded'] >= 4
+    print('FLUTTER_PEER_ALL_STALLED_OK capture=bounded encode=bounded cpu=bounded resources=bounded recovery=observed')
+PY
+        all_stalled_observed=1
       fi
       if [ "$ROTATE_CREDENTIAL" -eq 1 ] && [ "$credential_rotated" -eq 0 ] \
         && [ -e "$COORD/credential.rotate.request" ]; then
@@ -1192,6 +1312,8 @@ PY
     else
       [ "$completed_restarts" -eq "$EXPECTED_RESTARTS" ] \
         || fail "successful viewer completed only $completed_restarts server restarts"
+      [ "$PEER_SCENARIO" != viewer-isolation ] || [ "$all_stalled_observed" -eq 1 ] \
+        || fail 'both-viewer capture/encode/resource observation did not complete'
       if [ "$ROTATE_CREDENTIAL" -eq 1 ] || [ "$PEER_SCENARIO" = credential-retry ]; then
         [ "$ROTATE_CREDENTIAL" -eq 0 ] || [ "$credential_rotated" -eq 1 ] \
           || fail 'credential rotation did not execute'

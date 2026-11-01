@@ -3292,6 +3292,20 @@ static int wait_isolation_marker(int coord, const char *name, unsigned int budge
     return -1;
 }
 
+static int stop_isolation_viewer(int process, int pidfd, unsigned long pid,
+                                 const char *start) {
+    char state = '\0';
+    if (syscall(SYS_pidfd_send_signal, pidfd, SIGSTOP, NULL, 0U) != 0) return -1;
+    uint64_t deadline = monotonic_millis() + 1000U;
+    do {
+        if (!viewer_pidfd_alive(pidfd) ||
+            viewer_process_state(process, pid, start, &state) != 0) return -1;
+        if (state == 'T') return sleep_millis(200U);
+        if (sleep_millis(10U) != 0) return -1;
+    } while (monotonic_millis() < deadline);
+    return -1;
+}
+
 static int exercise_viewer_isolation(Display *source, Display *display, ViewerWindow *viewer,
                                     SourceHistory *history, const char *start,
                                     const ConnectionIdentity *connection,
@@ -3304,35 +3318,31 @@ static int exercise_viewer_isolation(Display *source, Display *display, ViewerWi
     ConnectionIdentity after = {{0}, {0}, 0UL};
     ProcessResources resources = {0};
     if (coord < 0) goto out;
+    snprintf(path, sizeof(path), "/proc/%lu", viewer->pid);
+    process = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    pidfd = (int)syscall(SYS_pidfd_open, (pid_t)viewer->pid, 0U);
+    if (process < 0 || pidfd < 0 || !viewer_pidfd_alive(pidfd) ||
+        viewer_process_state(process, viewer->pid, start, &state) != 0 || state == 'T') goto out;
     if (slow) {
-        snprintf(path, sizeof(path), "/proc/%lu", viewer->pid);
-        process = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-        pidfd = (int)syscall(SYS_pidfd_open, (pid_t)viewer->pid, 0U);
-        if (process < 0 || pidfd < 0 || !viewer_pidfd_alive(pidfd) ||
-            viewer_process_state(process, viewer->pid, start, &state) != 0 || state == 'T' ||
-            isolation_marker(coord, "slow.ready", 1) != 0 ||
+        if (isolation_marker(coord, "slow.ready", 1) != 0 ||
             wait_isolation_marker(coord, "healthy.ready", 60000U) != 0) goto out;
         phase = "suspend";
-        if (syscall(SYS_pidfd_send_signal, pidfd, SIGSTOP, NULL, 0U) != 0) goto out;
         resume = 1;
-        uint64_t deadline = monotonic_millis() + 1000U;
-        do {
-            if (!viewer_pidfd_alive(pidfd) ||
-                viewer_process_state(process, viewer->pid, start, &state) != 0) goto out;
-            if (state == 'T') break;
-            if (sleep_millis(10U) != 0) goto out;
-        } while (monotonic_millis() < deadline);
-        if (state != 'T' || sleep_millis(200U) != 0) goto out;
+        if (stop_isolation_viewer(process, pidfd, viewer->pid, start) != 0) goto out;
         uint64_t captured = 0U, held = monotonic_millis();
         int64_t frozen = viewer_state(display, viewer, &captured);
         if (frozen < 0 || isolation_marker(coord, "slow.frozen", 1) != 0) goto out;
         phase = "frozen-hold";
-        do {
+        for (;;) {
             if (!viewer_pidfd_alive(pidfd) ||
                 viewer_process_state(process, viewer->pid, start, &state) != 0 || state != 'T' ||
                 viewer_state(display, viewer, &captured) != frozen ||
                 sleep_millis(SAMPLE_INTERVAL_MS) != 0) goto out;
-        } while (monotonic_millis() - held < 10000U);
+            int observed = isolation_marker(coord, "healthy.observed", 0);
+            uint64_t elapsed = monotonic_millis() - held;
+            if (observed < 0 || elapsed > 40000U) goto out;
+            if (observed == 1 && elapsed >= 10000U) break;
+        }
         if (isolation_marker(coord, "healthy.observed", 0) != 1 ||
             session_socket_counts(&connected, &listeners) != 0 || connected != 4U || listeners != 1U ||
             read_connection_identity(&after) != 0 || !same_connection(connection, &after)) goto out;
@@ -3355,6 +3365,40 @@ static int exercise_viewer_isolation(Display *source, Display *display, ViewerWi
                                                 &gap, &age, &distinct) != 0 || age > FRESH_LIMIT_MS ||
             isolation_marker(coord, "healthy.ready", 1) != 0 ||
             wait_isolation_marker(coord, "slow.frozen", 5000U) != 0) goto out;
+        phase = "both-suspended";
+        resume = 1;
+        if (stop_isolation_viewer(process, pidfd, viewer->pid, start) != 0) goto out;
+        uint64_t captured = 0U, held = monotonic_millis(), progress = held;
+        int64_t frozen = viewer_state(display, viewer, &captured);
+        int64_t initial_source = source_state(source), previous_source = initial_source;
+        if (frozen < 0 || initial_source < 0 ||
+            isolation_marker(coord, "both.frozen", 1) != 0) goto out;
+        for (;;) {
+            uint64_t now = monotonic_millis();
+            int64_t current_source = source_state(source);
+            if (!viewer_pidfd_alive(pidfd) ||
+                viewer_process_state(process, viewer->pid, start, &state) != 0 || state != 'T' ||
+                viewer_state(display, viewer, &captured) != frozen ||
+                current_source < previous_source || now - progress > FRESH_LIMIT_MS ||
+                now - held > 15000U) goto out;
+            if (current_source > previous_source) { previous_source = current_source; progress = now; }
+            int observed = isolation_marker(coord, "both.observed", 0);
+            if (observed < 0) goto out;
+            if (observed == 1) break;
+            if (sleep_millis(SAMPLE_INTERVAL_MS) != 0) goto out;
+        }
+        if (monotonic_millis() - held < 8000U || previous_source <= initial_source ||
+            read_connection_identity(&after) != 0 || !same_connection(connection, &after)) goto out;
+        printf("FLUTTER_PEER_ISOLATION_BOTH_FROZEN held_ms=%llu kernel_state=T pixels=frozen source_advanced=true\n",
+               (unsigned long long)(monotonic_millis() - held));
+        phase = "first-viewer-resume";
+        uint64_t resumed = monotonic_millis();
+        if (syscall(SYS_pidfd_send_signal, pidfd, SIGCONT, NULL, 0U) != 0) goto out;
+        resume = 0;
+        if (wait_for_current_frames(display, viewer, history, RECOVERY_LIMIT_MS, 4U, &fresh, &age) != 0 ||
+            monotonic_millis() - resumed > RECOVERY_LIMIT_MS) goto out;
+        printf("FLUTTER_PEER_ISOLATION_FIRST_RECOVERED elapsed_ms=%llu maximum_age_ms=%llu distinct=4\n",
+               (unsigned long long)(monotonic_millis() - resumed), (unsigned long long)age);
         phase = "healthy-during-suspension";
         if (observe_current_frames_for_duration(source, display, viewer, history, 8000U,
                                                 &gap, &age, &distinct) != 0 || age > FRESH_LIMIT_MS ||

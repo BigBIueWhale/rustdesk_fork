@@ -128978,3 +128978,35 @@ QEMU 848188/wrapper 846620 are absent; 402,731,008 peak RAM bytes retire in
 30.468 supervisor seconds, and all three listener deltas are zero. Receipt:
 `viewer-isolation-ledger-ffea308c.json`. This audit-only completion preserves
 the counted ledger; the broader release goal remains active and incomplete.
+
+### 2026-11-01 — all-stalled shared-capture bounds
+
+Previous turn: progress; complete-app suspended-viewer isolation passed. Continue
+R-S11fl at its unproved all-stalled boundary ahead of additional settings cases.
+The actual capture loop waits on `VideoFrameAckState` with a three-second outer
+interval; local retirement cannot set its peer-progress bit. The requirement
+forbids all-stalled capture/encode spin, but the previous one-healthy-viewer run
+does not establish that resource behavior. No new defect is assumed.
+
+Extend the same two-viewer scenario: both exact pidfd-owned viewers stop and
+retain frozen pixels while the source keeps changing. After one second for
+in-flight work, observe eight seconds of the unchanged controlled application.
+Its existing direct trace records must show one to four capture, conversion,
+encode and pacing events, including at least two acknowledgement waits of
+2.8 seconds or more. The exact server's CPU use must remain within two CPU
+seconds; sampled growth is bounded by eight threads, sixteen FDs and 128 MiB RSS.
+These limits precede execution. Trace activity before suspension and after
+recovery prevents an absent or dead observer from passing.
+
+The server observer retains procfs/log descriptors and a pidfd, checks process
+start time and unchanged log identity, bounds reads, and samples every 100 ms.
+Linux [proc_pid_stat](https://man7.org/linux/man-pages/man5/proc_pid_stat.5.html)
+defines process CPU ticks, thread count, start time and RSS units; its
+[pidfd signal contract](https://man7.org/linux/man-pages/man2/pidfd_send_signal.2.html)
+binds stop/continue to the retained viewer. All observation remains inside the
+existing isolated guest/container topology. One viewer then resumes and must
+present four fresh frames within 2,500 ms, sustain eight healthy seconds while
+the other stays stopped, and retain the existing final-resume/connection checks.
+This reuses app `16ba2033` and engine `ddb1541d`; no product edit or rebuild.
+Queue byte/depth bounds, soaks, network impairment, installed packages and other
+platforms remain outside this focused observation and OPEN. Native run pending.

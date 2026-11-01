@@ -128802,3 +128802,12 @@ level. Other platforms/providers, concurrent writers/windows, save/crash failure
 installed privileged settings and complete release acceptance remain OPEN.
 Password recovery and independently parked topics remain parked. No owned VM or
 RAM workspace remains. A fresh ledger count follows; the broad goal is incomplete.
+
+Checkpoint completion: CTE `TmXipgPREZ` at `c4ee481a` exits zero and counts
+389,395 tokens / 1,783,349 bytes, SHA-256
+`3de9f990da5f93874a634f6d2f55c862a2e4f9184e220215578661134519e639`,
+with the established method, seven controls and complete-input round trip.
+QEMU 428228/wrapper 423685 are absent; 402,591,744 peak RAM bytes retire in
+31.578 supervisor seconds and all three listener deltas are zero. The bounded
+receipt `theme-ledger-c4ee481a.json` binds the raw evidence. This audit-only
+completion preserves the counted ledger and closes this native theme checkpoint.

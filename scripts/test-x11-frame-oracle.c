@@ -272,6 +272,17 @@ finished:
     return result;
 }
 
+static int response_request(Display *display, unsigned int request, unsigned int first) {
+    KeySym symbols[] = {XK_a + (request >> 4U), XK_a + (request & 15U), XK_Return};
+    for (unsigned int i = first; i < 3U; ++i) {
+        KeyCode key = XKeysymToKeycode(display, symbols[i]);
+        if (key == 0U || XTestFakeKeyEvent(display, key, True, CurrentTime) == 0 ||
+            XTestFakeKeyEvent(display, key, False, CurrentTime) == 0) return -1;
+    }
+    XSync(display, False);
+    return 0;
+}
+
 static int input_response_case(const char *directory) {
     Display *display = XOpenDisplay(":98");
     SourceHistory history = {0};
@@ -289,9 +300,7 @@ static int input_response_case(const char *directory) {
         if (x11_frame_capture(display, DefaultRootWindow(display), pixels, &captured) >= 0) break;
         if (x11_frame_monotonic_us() - began > 2000000U || nanosleep(&pause, NULL) != 0) goto out;
     }
-    if (XTestFakeKeyEvent(display, key, True, CurrentTime) == 0 ||
-        XTestFakeKeyEvent(display, key, False, CurrentTime) == 0) goto out;
-    XSync(display, False);
+    if (response_request(display, 0U, 0U) != 0) goto out;
     for (;;) {
         FILE *file = fopen(marker_path, "r");
         if (file != NULL) {
@@ -320,6 +329,12 @@ static int input_response_case(const char *directory) {
         if (XTestFakeKeyEvent(display, key, False, CurrentTime) == 0) goto out;
         held = 0;
         XSync(display, False);
+        uint64_t partial = x11_frame_monotonic_us();
+        do {
+            if (x11_frame_capture(display, DefaultRootWindow(display), pixels, &captured)
+                    != (int64_t)initial + trial || nanosleep(&pause, NULL) != 0) goto out;
+        } while (x11_frame_monotonic_us() - partial < 200000U);
+        if (response_request(display, trial + 1U, 1U) != 0) goto out;
         uint64_t sent = x11_frame_monotonic_us();
         for (;;) {
             int64_t identity = x11_frame_capture(display, DefaultRootWindow(display), pixels, &captured);
@@ -328,7 +343,8 @@ static int input_response_case(const char *directory) {
                 x11_frame_monotonic_us() - sent > 1000000U || nanosleep(&pause, NULL) != 0) goto out;
         }
     }
-    puts("X11_INPUT_RESPONSE_FIXTURE=pass no_input=stable held_key=stable native_release=advances "
+    if (response_request(display, 4U, 0U) != 0) goto out;
+    puts("X11_INPUT_RESPONSE_FIXTURE=pass no_input=stable held_key=stable partial_request=stable native_request=advances "
          "samples=4 pixels=actual scope=fixture-only");
     result = 0;
 out:

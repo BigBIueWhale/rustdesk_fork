@@ -129242,10 +129242,13 @@ start the monotonic timer before injecting the viewer key pair and stop only
 after the viewer root pixels contain the newly published controlled-side state.
 XSync, a delivered key, or a source publication alone cannot complete a trial.
 
-The controlled fixture initially animates normally. Its first native `a`
-press/release switches it to event-driven publication; each later complete pair
-advances exactly one full counter identity. Unsupported, duplicate or synthetic
-send-event input refuses the fixture. A private atomic marker binds the transition.
+The controlled fixture initially animates normally. Request zero switches it
+to event-driven publication. Requests contain two base-16 letters followed by
+Return, each as a complete native press/release; request numbers advance without
+repetition. Only the complete expected request advances one full counter identity.
+Unsupported, duplicate, out-of-order or synthetic send-event input refuses the
+fixture. A private atomic marker binds the transition. Unique requests prevent
+a delayed duplicate from being mistaken for a newer trial's response.
 Before every trial, require 200 ms of unchanged visible state and publication
 count. The next identity must be published after the timed viewer input, and
 its actual visible image must arrive within 1,000 ms. Predeclare 120 trials,
@@ -129255,7 +129258,8 @@ This measures XTEST-to-Xvfb-visible response on Linux, not physical keyboard/
 display latency, impairment recovery, long-session input behavior or other OSes.
 
 The Linux fixture gate additionally observes actual X11 pixels across four
-no-input, held-key and released-key cases, and joins the exact source/Xvfb.
+no-input, held-key, partial-request and completed-request cases, then requires
+duplicate-request refusal and joins the exact source/Xvfb.
 The existing source/history/geometry regressions and full controller compilation
 remain in that same bounded VM lane. Execution and complete-peer acceptance
 are pending; the TUF soak continues on its original immutable source archive.
@@ -129269,3 +129273,12 @@ zero, and RAM scratch retires after 51.174 seconds (3,874,545,664 peak bytes).
 The exact retained private directory is inventoried and retired under the shared
 lock. Capsule `input-response-link-failure-0323defe.json` binds the raw failure;
 `input-response-link-failure-retired.json` records cleanup. Rerun the corrected lane.
+
+CTE `rJowmIcS6t` at `914b40cc` compiles the complete controller but exposes
+a stale extraction boundary in the existing aggregation fixture: it now includes
+socket-identity helpers after the intended observer functions. End extraction
+before those helpers; retain the same behavioral controls. No native input-response
+pass is claimed. Wrapper 1661751/QEMU 1663708 are absent, three listener deltas
+are zero, and RAM retires after 47.585 seconds with 4,004,110,336 peak bytes.
+Exact private retirement and raw evidence are bound by
+`input-response-observer-failure-914b40cc.json` and its retirement capsule.

@@ -25,7 +25,7 @@ def test_observer_age(environment):
     # This tests aggregation and freshness decisions, not presented RustDesk pixels.
     controller = Path("/work/scripts/flutter-peer-presentation-x11.c").read_text()
     begin = "static int wait_for_current_frames("
-    end = "static int read_connection_identity("
+    end = "static int viewer_owns_socket("
     require(controller.count(begin) == controller.count(end) == 1,
             "observer function boundaries are ambiguous")
     loops = controller[controller.index(begin):controller.index(end)]
@@ -687,11 +687,11 @@ def test_input_response(fixture, oracle, environment):
             ], env=source_environment, stdout=log, stderr=subprocess.STDOUT))
         subprocess.run([str(oracle), '--input-response', str(directory)],
                        env=environment, check=True, timeout=10)
-        require(all(child.poll() is None for child in children), 'input-response child exited early')
-        children[-1].send_signal(signal.SIGTERM)
-        require(children[-1].wait(timeout=5) == 0 and
-                'FLUTTER_PEER_SOURCE_COMPLETE ' in source_path.read_text(),
-                'input-response source did not complete cleanly')
+        require(children[0].poll() is None, 'input-response X11 display exited early')
+        require(children[-1].wait(timeout=5) == 1 and
+                'FLUTTER_PEER_SOURCE_FAIL native input response' in source_path.read_text() and
+                'FLUTTER_PEER_SOURCE_COMPLETE ' not in source_path.read_text(),
+                'input-response source admitted a duplicate request')
     finally:
         for child in reversed(children):
             if child.poll() is None:
@@ -702,7 +702,7 @@ def test_input_response(fixture, oracle, environment):
                 child.kill()
                 child.wait(timeout=5)
     require(not Path('/tmp/.X11-unix/X98').exists(), 'input-response X11 socket remained')
-    print('X11_INPUT_RESPONSE_JOINED=pass source=joined xvfb=joined socket=absent', flush=True)
+    print('X11_INPUT_RESPONSE_JOINED=pass duplicate_request=refused source=joined xvfb=joined socket=absent', flush=True)
 
 
 def main():

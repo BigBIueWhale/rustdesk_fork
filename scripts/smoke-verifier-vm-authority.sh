@@ -6330,10 +6330,10 @@ elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'X11 enumeration completion'
 elif [ "$MODE" = android-frame-tests ]; then
     require_exact_fixed_receipt \
-        'X11_INPUT_RESPONSE_FIXTURE=pass no_input=stable held_key=stable native_release=advances samples=4 pixels=actual scope=fixture-only' \
+        'X11_INPUT_RESPONSE_FIXTURE=pass no_input=stable held_key=stable partial_request=stable native_request=advances samples=4 pixels=actual scope=fixture-only' \
         'native input-driven source refuses autonomous and incomplete-input progress'
     require_exact_fixed_receipt \
-        'X11_INPUT_RESPONSE_JOINED=pass source=joined xvfb=joined socket=absent' \
+        'X11_INPUT_RESPONSE_JOINED=pass duplicate_request=refused source=joined xvfb=joined socket=absent' \
         'native input-driven source exact cleanup'
     mapfile -t frame_source_build < <(/usr/bin/grep -Eo \
         'X11_FRAME_SOURCE_BUILD=pass source_sha256=[0-9a-f]{64} sha256=[0-9a-f]{64} bytes=[1-9][0-9]* copies=2 equality=byte-identical network=none output=private' \

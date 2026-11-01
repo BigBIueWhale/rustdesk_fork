@@ -168,8 +168,12 @@ static void draw_texture(Display *display, Pixmap buffer, GC graphics,
               (unsigned int)image->width, (unsigned int)image->height);
 }
 
-/* Only a complete native key pair may advance the interactive source. */
-static int response_input(Display *display, Window root, unsigned int *held) {
+/* A unique two-digit request followed by Return prevents delayed input from impersonating a new trial. */
+typedef struct {
+    unsigned int held, position, request;
+} ResponseInput;
+
+static int response_input(Display *display, Window root, ResponseInput *input) {
     unsigned int events = 0U, completed = 0U;
     while (XPending(display) != 0) {
         XEvent event;
@@ -182,17 +186,25 @@ static int response_input(Display *display, Window root, unsigned int *held) {
             continue;
         }
         if (event.type != KeyPress && event.type != KeyRelease) continue;
+        if (input->request > 255U || input->position > 2U) return -1;
+        unsigned int digit = input->position == 0U ? input->request >> 4U : input->request & 15U;
+        KeySym wanted = input->position == 2U ? XK_Return : XK_a + digit;
+        char character = input->position == 2U ? '\r' : (char)('a' + digit);
         int size = XLookupString(&event.xkey, text, sizeof(text), &symbol, NULL);
         if (event.xkey.window != root || event.xkey.send_event ||
-            (event.xkey.state & 255U) != 0U || symbol != XK_a || size != 1 || text[0] != 'a')
+            (event.xkey.state & 255U) != 0U || symbol != wanted || size != 1 || text[0] != character)
             return -1;
         if (event.type == KeyPress) {
-            if (*held != 0U || completed != 0U) return -1;
-            *held = event.xkey.keycode;
+            if (input->held != 0U || completed != 0U) return -1;
+            input->held = event.xkey.keycode;
         } else {
-            if (*held == 0U || *held != event.xkey.keycode || completed != 0U) return -1;
-            *held = 0U;
-            completed = 1U;
+            if (input->held == 0U || input->held != event.xkey.keycode || completed != 0U) return -1;
+            input->held = 0U;
+            if (++input->position == 3U) {
+                input->position = 0U;
+                input->request += 1U;
+                completed = 1U;
+            }
         }
     }
     return (int)completed;
@@ -237,7 +249,7 @@ int main(int argc, char **argv) {
     unsigned int source_width = SOURCE_WIDTH;
     unsigned int source_height = SOURCE_HEIGHT;
     unsigned int frame_interval_ms = FRAME_INTERVAL_MS;
-    unsigned int held_key = 0U;
+    ResponseInput response = {0};
     int input_response = 0, interactive = 0, response_ready = 0;
     const char *response_directory = NULL;
     unsigned int code_height;
@@ -383,7 +395,7 @@ int main(int argc, char **argv) {
         if (input_response) {
             int received;
             do {
-                received = response_input(display, root, &held_key);
+                received = response_input(display, root, &response);
                 if (received < 0 || (interactive && received == 0 && sleep_millis(10U) != 0)) {
                     fputs("FLUTTER_PEER_SOURCE_FAIL native input response\n", stderr);
                     exit_status = 1;

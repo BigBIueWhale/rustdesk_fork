@@ -1742,7 +1742,7 @@ PY
       fi
     elif [ "$PEER_SCENARIO" = input-latency ]; then
       [ "$(grep -c '^FLUTTER_PEER_INPUT_LATENCY_SAMPLE ' <<<"$controller_output")" -eq 120 ] \
-        && [ "$(grep -Ec '^FLUTTER_PEER_INPUT_LATENCY_OK samples=120 deadline_ms=1000 p95_ms=[0-9]+ p99_ms=[0-9]+ maximum_ms=[0-9]+ stable_connection=true resources=bounded input=viewer-xtest response=controlled-native-key-pair pixels=viewer-root$' <<<"$controller_output")" -eq 1 ] \
+        && [ "$(grep -Ec '^FLUTTER_PEER_INPUT_LATENCY_OK samples=120 deadline_ms=1000 p95_ms=[0-9]+ p99_ms=[0-9]+ maximum_ms=[0-9]+ stable_connection=true resources=bounded input=viewer-xtest response=controlled-native-request pixels=viewer-root$' <<<"$controller_output")" -eq 1 ] \
         || fail 'native input-to-visible response observation is incomplete'
       viewer_result='viewer=joined xvfb=joined input_latency_samples=120 stable_connection=true resources=bounded'
     elif [ "$PEER_SCENARIO" = viewer-soak ]; then

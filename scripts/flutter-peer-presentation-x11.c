@@ -3343,6 +3343,20 @@ static int input_response_ready(int coord, int64_t *identity) {
     return result;
 }
 
+static int send_response_request(Display *display, unsigned int request) {
+    KeySym symbols[] = {XK_a + (request >> 4U), XK_a + (request & 15U), XK_Return};
+    if (request > 255U) return -1;
+    for (unsigned int i = 0U; i < 3U; ++i) {
+        KeyCode key = XKeysymToKeycode(display, symbols[i]);
+        if (key == 0U) return -1;
+        int pressed = XTestFakeKeyEvent(display, key, True, CurrentTime);
+        int released = XTestFakeKeyEvent(display, key, False, CurrentTime);
+        XSync(display, False);
+        if (pressed == 0 || released == 0) return -1;
+    }
+    return 0;
+}
+
 static int exercise_input_latency(Display *source, Display *display, ViewerWindow *viewer,
                                    SourceHistory *history, const ConnectionIdentity *connection,
                                    const ProcessResources *baseline) {
@@ -3350,17 +3364,16 @@ static int exercise_input_latency(Display *source, Display *display, ViewerWindo
     int coord = open_coord_root(), result = -1;
     int64_t expected = -1;
     unsigned int histogram[FRESH_LIMIT_MS + 1U] = {0}, maximum = 0U, trial = 0U;
-    KeyCode key = XKeysymToKeycode(display, XK_a);
     Window focus;
     int revert;
     uint64_t began = monotonic_millis();
     XGetInputFocus(source, &focus, &revert);
-    if (coord < 0 || key == 0U || began == 0U ||
+    if (coord < 0 || began == 0U ||
         focus != RootWindow(source, DefaultScreen(source)) ||
         return_focus_with_pointer(display, viewer) != 0 ||
         !keyboard_is_released(source) || !keyboard_is_released(display) ||
-        fake_key(display, XK_a) != 0) goto out;
-    /* The first real remote key pair switches the source from animation to event-driven updates. */
+        send_response_request(display, 0U) != 0) goto out;
+    /* Request zero switches the source from animation to event-driven updates. */
     for (;;) {
         int ready = input_response_ready(coord, &expected);
         if (ready < 0 || monotonic_millis() - began > 5000U) goto out;
@@ -3397,10 +3410,7 @@ static int exercise_input_latency(Display *source, Display *display, ViewerWindo
             !keyboard_is_released(source) || !keyboard_is_released(display)) goto out;
         ++expected;
         start_us = x11_frame_monotonic_us();
-        int pressed = XTestFakeKeyEvent(display, key, True, CurrentTime);
-        int released = XTestFakeKeyEvent(display, key, False, CurrentTime);
-        XSync(display, False);
-        if (start_us == 0U || pressed == 0 || released == 0) goto out;
+        if (start_us == 0U || send_response_request(display, trial + 1U) != 0) goto out;
         for (;;) {
             uint64_t captured = 0U, now_us, age = 0U;
             int64_t identity = viewer_state(display, viewer, &captured);
@@ -3426,13 +3436,13 @@ static int exercise_input_latency(Display *source, Display *display, ViewerWindo
             !resources_are_bounded(baseline, &resources)) goto out;
         histogram[latency] += 1U;
         if (latency > maximum) maximum = latency;
-        printf("FLUTTER_PEER_INPUT_LATENCY_SAMPLE index=%u identity=%lld elapsed_us=%llu "
-               "quiet_samples=%u input=native-key-pair response=visible-pixels\n",
-               trial, (long long)expected, (unsigned long long)elapsed_us, quiet_samples);
+        printf("FLUTTER_PEER_INPUT_LATENCY_SAMPLE index=%u request=%u identity=%lld elapsed_us=%llu "
+               "quiet_samples=%u input=native-request response=visible-pixels\n",
+               trial, trial + 1U, (long long)expected, (unsigned long long)elapsed_us, quiet_samples);
     }
     printf("FLUTTER_PEER_INPUT_LATENCY_OK samples=120 deadline_ms=1000 p95_ms=%u p99_ms=%u "
            "maximum_ms=%u stable_connection=true resources=bounded input=viewer-xtest "
-           "response=controlled-native-key-pair pixels=viewer-root\n",
+           "response=controlled-native-request pixels=viewer-root\n",
            latency_percentile(histogram, SAMPLES, 95U), latency_percentile(histogram, SAMPLES, 99U), maximum);
     result = 0;
 out:

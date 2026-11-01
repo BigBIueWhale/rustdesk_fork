@@ -43,6 +43,13 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-01):** Live Original/Adaptive scaling remains OPEN/PARKED.
+The native menu and saved peer record both remain Original after selecting
+Adaptive; the stream stays fresh. No product correction followed. The three
+VMs joined and retired their RAM workspaces with zero listener deltas. Work
+moved to remembered-password persistence across a complete viewer restart;
+do not resume the scaling investigation automatically.
+
 **User pivot (2026-11-01):** Positive native screenshot Save As validation and
 chooser acquisition remain OPEN/PARKED after read-only prerequisite research.
 The reproduced missing-provider error and Debian dependency correction remain.

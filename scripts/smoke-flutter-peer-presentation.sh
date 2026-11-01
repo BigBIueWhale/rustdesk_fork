@@ -85,6 +85,7 @@ case "$#:${1:-}" in
         --mouse-retirement) PEER_SCENARIO=mouse-retirement ;;
         --screenshot-save-unavailable) PEER_SCENARIO=screenshot-save-unavailable ;;
         --view-scaling) PEER_SCENARIO=view-scaling ;;
+        --credential-restart) PEER_SCENARIO=credential-restart ;;
         *) die 'unknown app replay scenario' ;;
       esac
     fi
@@ -139,6 +140,11 @@ if [ "$PEER_SCENARIO" = network-impairment ] || [ "$PEER_SCENARIO" = network-los
   if [ "$PEER_SCENARIO" = network-loss ]; then
     VIEWER_RESULT='viewer=joined xvfb=joined impairment_cycles=3 stable_connection=true resources=bounded'
   fi
+elif [ "$PEER_SCENARIO" = credential-restart ]; then
+  RUNTIME_CYCLES=1
+  SERVER_GENERATIONS='1'
+  SERVER_REPLACEMENTS=0
+  VIEWER_RESULT='viewer=joined xvfb=joined credential_restart=passed generations=2 password_entries=1 fresh_pixels=both'
 elif [ "$PEER_SCENARIO" = view-scaling ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

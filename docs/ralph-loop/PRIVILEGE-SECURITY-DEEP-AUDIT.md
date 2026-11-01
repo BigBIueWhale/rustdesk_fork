@@ -127647,3 +127647,44 @@ https://docs.gtk.org/atspi2/enum.StateType.html.
 Use the runtime's standard TOML parser after bounded file admission, with no
 substring interpretation or write:
 https://docs.python.org/3.11/library/tomllib.html.
+
+At `469672ee`, TUF `EMiuWtwd3b` passes Original, then reproduces the
+Adaptive failure with the same 627..660 width interval and 388-ms maximum
+sampled frame age. The reopened menu checks Original only; the bounded private
+peer record also stores Original. The change is lost before persistence; the
+exact cause remains unproved. QEMU 3906450 and wrapper 3905385 are absent,
+3,012,075,520 peak RAM bytes retire after 111.582 supervisor seconds, and all
+four listener deltas are zero. Serial SHA-256:
+`e6c9007020d965e5b40093c8ee7b0709293191d0bdf71c54be4896115ab576ef`.
+Eight raw evidence files (305,013 bytes) are retained and hash-verified on CTE;
+the corresponding TUF records were authenticated during collection.
+
+## 2026-11-01 — user pivot; remembered password across viewer restart
+
+The user directs work to another aspect. Park scaling at the reproduced
+failure above, without a speculative product edit. Select R-S9/R-S0's actual
+remembered-password workflow: historical storage/handler components pass, and
+native reconnects reuse one viewer process, but neither establishes complete
+application restart persistence. This required connection workflow takes
+priority over further unrelated UI cleanup and reuses the authenticated app
+`cf437894` with engine `63493887`, without rebuilding either.
+
+The production `ConnectPasswordDialog` starts unchecked and submits an explicit
+remember choice; `LoginConfigHandler::handle_peer_info` persists the derived
+PRS, `PeerConfig::store_path` applies its at-rest wrapper, and a new initiator
+loads the stored PRS before TCP acquisition. The selected native scenario
+uses the real checkbox and OK button, requires four fresh remote frames,
+closes and joins the exact viewer, then launches a fresh process with only
+the direct address. It supplies no password to that second process/controller
+and requires four new fresh frames and no password field. Both processes
+must exit zero through ordinary window closure before the final verdict.
+The same private home, machine identity, server and application remain;
+all runtime work stays inside the admitted zero-NIC TUF VM.
+
+AT-SPI action invocation alone cannot establish the choice or authentication:
+https://docs.gtk.org/atspi2/method.Action.do_action.html.
+Observe the checkbox's initially absent and subsequently present CHECKED state
+(https://docs.gtk.org/atspi2/enum.StateType.html), then actual fresh pixels
+after each authentication. No credential value is read or printed by the
+observer. This slice does not establish password rotation, remember-off,
+installed-service authority, other platforms or complete release acceptance.

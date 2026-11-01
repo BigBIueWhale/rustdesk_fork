@@ -53,6 +53,7 @@ FLUTTER_KEYBOARD_INPUT=0
 FLUTTER_MOUSE_INPUT=0
 FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE=0
 FLUTTER_VIEW_SCALING=0
+FLUTTER_CREDENTIAL_RESTART=0
 FLUTTER_NETWORK_IMPAIRMENT=0
 FLUTTER_APP_COMMIT=
 FLUTTER_APP_EXPECTED_MANIFEST_SHA256=
@@ -665,6 +666,7 @@ case "$#:${1:-}" in
                 --mouse-retirement) FLUTTER_MOUSE_INPUT=2 ;;
                 --screenshot-save-unavailable) FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE=1 ;;
                 --view-scaling) FLUTTER_VIEW_SCALING=1 ;;
+                --credential-restart) FLUTTER_CREDENTIAL_RESTART=1 ;;
                 *) exit 2 ;;
             esac
         fi
@@ -809,6 +811,7 @@ readonly FLUTTER_KEYBOARD_INPUT
 readonly FLUTTER_MOUSE_INPUT
 readonly FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE
 readonly FLUTTER_VIEW_SCALING
+readonly FLUTTER_CREDENTIAL_RESTART
 readonly FLUTTER_TEST_PROFILE
 readonly RUST_TEST_PROFILE
 readonly FLUTTER_APP_ENGINE_COMMIT FLUTTER_APP_ENGINE_ARCHIVE_SHA256 FLUTTER_APP_ENGINE_MANIFEST_SHA256
@@ -5163,6 +5166,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || guest_invocation+=' --viewer-suspend'
         [ "$FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE" -eq 0 ] || guest_invocation+=' --screenshot-save-unavailable'
         [ "$FLUTTER_VIEW_SCALING" -eq 0 ] || guest_invocation+=' --view-scaling'
+        [ "$FLUTTER_CREDENTIAL_RESTART" -eq 0 ] || guest_invocation+=' --credential-restart'
         [ "$FLUTTER_CLIPBOARD_TEXT" -ne 1 ] || guest_invocation+=' --clipboard-text'
         [ "$FLUTTER_CLIPBOARD_TEXT" -ne 2 ] || guest_invocation+=' --clipboard-images'
         case "$FLUTTER_MOUSE_INPUT" in
@@ -8574,6 +8578,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     peer_scenario=focus-reconnect-resource
     [ "$FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE" -eq 0 ] || peer_scenario=screenshot-save-unavailable
     [ "$FLUTTER_VIEW_SCALING" -eq 0 ] || peer_scenario=view-scaling
+    [ "$FLUTTER_CREDENTIAL_RESTART" -eq 0 ] || peer_scenario=credential-restart
     [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || peer_scenario=viewer-suspend
     [ "$FLUTTER_CLIPBOARD_TEXT" -ne 1 ] || peer_scenario=clipboard-text
     [ "$FLUTTER_CLIPBOARD_TEXT" -ne 2 ] || peer_scenario=clipboard-images

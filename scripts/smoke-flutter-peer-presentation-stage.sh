@@ -16,7 +16,7 @@ fail() {
 readonly PEER_SCENARIO=${FLUTTER_PEER_SCENARIO:-focus-reconnect-resource}
 case "$PEER_SCENARIO" in
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
-  viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling) EXPECTED_RESTARTS=0 ;;
+  viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
 esac
 readonly EXPECTED_RESTARTS
@@ -1236,11 +1236,21 @@ PY
     start_xvfb :99 1280x800x24 /tmp/viewer-xvfb.log
     listener_is_exact || fail 'shared namespace lost the exact loopback server listener'
     [ "$(udp_socket_count)" -eq 0 ] || fail 'shared namespace has a UDP socket before connect'
+    viewer_generations=1
+    [ "$PEER_SCENARIO" != credential-restart ] || viewer_generations=2
+    for viewer_generation in $(seq 1 "$viewer_generations"); do
     (cd /app/bundle && exec env RUST_LOG=info,rustdesk::clipboard=debug "$APP" --connect 127.0.0.1) \
       >/tmp/viewer.log 2>&1 &
     VIEWER_PID=$!
     VIEWER_START=$("$READY" --identity "$VIEWER_PID")
     controller_args=(:98 :99 "$VIEWER_PID" "$VIEWER_START")
+    if [ "$PEER_SCENARIO" = credential-restart ]; then
+      if [ "$viewer_generation" -eq 1 ]; then
+        controller_args+=(--credential-enroll)
+      else
+        controller_args+=(--credential-restore)
+      fi
+    fi
     if [ "$PEER_SCENARIO" = screenshot-save-unavailable ]; then
       command -v which >/dev/null || fail 'file-picker executable lookup tool is absent'
       for helper in qarma kdialog zenity; do
@@ -1298,11 +1308,24 @@ PY
       emit_runtime_logs VIEWER "$HOME/.local/share/logs"
       exit "$controller_status"
     fi
+    if [ "$viewer_generation" -eq 1 ]; then
     grep -q '^FLUTTER_PEER_PASSWORD_INPUT_OK characters=22 observed_without_value=true$' \
       <<<"$controller_output" || fail 'complete count-only password input verdict is missing'
     grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false$' \
       <<<"$controller_output" || fail 'real password prompt verdict is missing'
-    if [ "$PEER_SCENARIO" = view-scaling ]; then
+    fi
+    if [ "$PEER_SCENARIO" = credential-restart ]; then
+      grep -Fxq "FLUTTER_PEER_CREDENTIAL_GENERATION_OK generation=$viewer_generation fresh_pixels=4" \
+        <<<"$controller_output" || fail 'credential generation did not authenticate and present'
+      if [ "$viewer_generation" -eq 1 ]; then
+        grep -Fxq 'FLUTTER_PEER_REMEMBER_CHOICE_OK before=false after=true' \
+          <<<"$controller_output" || fail 'explicit remember selection is missing'
+      else
+        grep -Fxq 'FLUTTER_PEER_CREDENTIAL_RESTORED_OK password_input=absent prompt=absent' \
+          <<<"$controller_output" || fail 'fresh viewer did not restore its credential'
+      fi
+      viewer_result='viewer=joined xvfb=joined credential_restart=passed generations=2 password_entries=1 fresh_pixels=both'
+    elif [ "$PEER_SCENARIO" = view-scaling ]; then
       for sequence in {1..6}; do
         [ "$(grep -Ec "^FLUTTER_PEER_VIEW_SCALE_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
           || fail "view scaling case $sequence is absent or duplicated"
@@ -1425,6 +1448,11 @@ PY
       cat /tmp/viewer.log >&2
       fail 'viewer used a Flutter messenger after engine retirement'
     fi
+    if [ "$PEER_SCENARIO" = credential-restart ]; then
+      printf 'FLUTTER_PEER_CREDENTIAL_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
+      mv /tmp/viewer.log "/tmp/viewer-generation-$viewer_generation.log"
+    fi
+    done
     listener_is_exact || fail 'viewer lifecycle changed the exact server listener'
     [ "$(udp_socket_count)" -eq 0 ] || fail 'viewer lifecycle opened a UDP socket'
     "$READY" --stop "$XVFB_PID" "$XVFB_START"

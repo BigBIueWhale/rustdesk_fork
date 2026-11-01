@@ -3321,10 +3321,11 @@ out:
 }
 
 static int wait_for_theme(Display *display, Window main, unsigned int pid,
-                          unsigned int expected, unsigned int generation, const char *phase) {
+                          unsigned int expected, int dark, unsigned int hold_ms,
+                          unsigned int generation, const char *phase) {
     static const char *names[] = {"Light", "Dark", "Follow system"};
-    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
-    unsigned int luminance = 0U;
+    uint64_t start = monotonic_millis(), deadline = start + DIALOG_CONTROL_WAIT_MS + hold_ms;
+    unsigned int luminance = 0U, samples = 0U;
     while (monotonic_millis() < deadline) {
         int matches = 1;
         for (unsigned int i = 0U; i < 3U; ++i) {
@@ -3333,12 +3334,14 @@ static int wait_for_theme(Display *display, Window main, unsigned int pid,
                 checked != (i == expected)) matches = 0;
         }
         if (main_header_luminance(display, main, &luminance) != 0) return -1;
-        /* This private X11 session has the unchanged light system appearance. */
-        if (matches && monotonic_millis() < deadline &&
-            (expected == 1U ? luminance <= 100U : luminance >= 160U)) {
+        matches = matches && (dark ? luminance <= 100U : luminance >= 160U);
+        ++samples;
+        if (hold_ms != 0U && !matches) break;
+        if (matches && monotonic_millis() < deadline && monotonic_millis() - start >= hold_ms) {
             printf("FLUTTER_PEER_THEME_OBSERVED generation=%u phase=%s selected=%u "
-                   "exclusive=true luminance=%u native_pixels=true\n",
-                   generation, phase, expected, luminance);
+                   "exclusive=true luminance=%u native_pixels=true samples=%u elapsed_ms=%llu\n",
+                   generation, phase, expected, luminance, samples,
+                   (unsigned long long)(monotonic_millis() - start));
             fflush(stdout);
             return 0;
         }
@@ -3363,10 +3366,12 @@ static int exercise_theme_restart(Display *display, const ViewerWindow *viewer,
     XSetInputFocus(display, main, RevertToParent, CurrentTime);
     XSync(display, False);
     if (wait_for_theme(display, main, (unsigned int)pid, restored[generation - 1U],
+                       restored[generation - 1U] == 1U, 0U,
                        generation, "restored") != 0) goto out;
     if (generation < 4U &&
         (click_main_control(display, main, (unsigned int)pid, names[generation - 1U]) != 0 ||
          wait_for_theme(display, main, (unsigned int)pid, generation - 1U,
+                        generation == 2U, 0U,
                         generation, "changed") != 0)) goto out;
     if (session_socket_counts(&connected, &listeners) != 0 || connected != 2U || listeners != 1U ||
         read_connection_identity(&after) != 0 || !same_connection(connection, &after))
@@ -3383,6 +3388,99 @@ out:
         printf("FLUTTER_PEER_THEME_PHASE_OK generation=%u restored=true changed=%s "
                "connected_sockets=2 stable_connection=true fresh_pixels=4\n",
                generation, generation < 4U ? "true" : "false");
+    return result;
+}
+
+static int change_system_appearance(GSettings *settings, int dark) {
+    const char *value = dark ? "Adwaita-dark" : "Adwaita";
+    gchar *before = g_settings_get_string(settings, "gtk-theme");
+    int changed = g_strcmp0(before, value) != 0;
+    g_free(before);
+    if (!changed || !g_settings_set_string(settings, "gtk-theme", value)) return -1;
+    g_settings_sync();
+    gchar *after = g_settings_get_string(settings, "gtk-theme");
+    int result = g_strcmp0(after, value) == 0 ? 0 : -1;
+    g_free(after);
+    if (result == 0)
+        printf("FLUTTER_PEER_THEME_OS_CHANGED dark=%s backend=keyfile readback=true\n",
+               dark ? "true" : "false");
+    return result;
+}
+
+static int exercise_theme_appearance(Display *display, const ViewerWindow *viewer,
+                                     SourceHistory *history, const ConnectionIdentity *connection) {
+    Window main = None;
+    unsigned int pid = (unsigned int)viewer->pid;
+    GSettings *settings = NULL;
+    GObject *backend = NULL;
+    GSettingsSchema *schema = NULL;
+    GSettingsSchemaSource *source = g_settings_schema_source_get_default();
+    ConnectionIdentity after = {{0}, {0}, 0UL};
+    unsigned int connected = 0U, listeners = 0U;
+    uint64_t fresh = 0U, age = 0U;
+    int result = -1;
+    if (g_strcmp0(g_getenv("GSETTINGS_BACKEND"), "keyfile") != 0 ||
+        g_strcmp0(g_get_user_config_dir(), "/tmp/viewer-home/.config") != 0 || source == NULL)
+        goto out;
+    schema = g_settings_schema_source_lookup(source, "org.gnome.desktop.interface", TRUE);
+    if (schema == NULL || !g_settings_schema_has_key(schema, "gtk-theme")) goto out;
+    settings = g_settings_new_full(schema, NULL, NULL);
+    g_object_get(settings, "backend", &backend, NULL);
+    if (backend == NULL || strcmp(G_OBJECT_TYPE_NAME(backend), "GKeyfileSettingsBackend") != 0 ||
+        !g_settings_is_writable(settings, "gtk-theme") ||
+        prepare_main_settings(display, viewer, &main) != 0) goto out;
+    XRaiseWindow(display, main);
+    XSetInputFocus(display, main, RevertToParent, CurrentTime);
+    XSync(display, False);
+    if (wait_for_theme(display, main, pid, 2U, 0, 0U, 1U, "system-initial") != 0) goto out;
+    for (unsigned int i = 0U; i < 2U; ++i) {
+        int dark = i == 0U;
+        if (change_system_appearance(settings, dark) != 0 ||
+            wait_for_theme(display, main, pid, 2U, dark, 0U, 1U,
+                           dark ? "system-dark" : "system-light") != 0) goto out;
+    }
+    for (unsigned int choice = 0U; choice < 2U; ++choice) {
+        if (click_main_control(display, main, pid, choice == 0U ? "Light" : "Dark") != 0 ||
+            wait_for_theme(display, main, pid, choice, choice == 1U, 0U, 1U,
+                           "explicit-selected") != 0) goto out;
+        for (unsigned int i = 0U; i < 2U; ++i) {
+            if (change_system_appearance(settings, i == 0U) != 0 ||
+                wait_for_theme(display, main, pid, choice, choice == 1U, 5000U, 1U,
+                               i == 0U ? "explicit-os-dark" : "explicit-os-light") != 0) goto out;
+        }
+    }
+    if (click_main_control(display, main, pid, "Follow system") != 0 ||
+        wait_for_theme(display, main, pid, 2U, 0, 0U, 1U, "system-reselected") != 0) goto out;
+    for (unsigned int i = 0U; i < 2U; ++i) {
+        int dark = i == 0U;
+        if (change_system_appearance(settings, dark) != 0 ||
+            wait_for_theme(display, main, pid, 2U, dark, 0U, 1U,
+                           dark ? "system-dark-again" : "system-light-again") != 0) goto out;
+    }
+    if (close_viewer(display, main) != 0) goto out;
+    main = None;
+    XRaiseWindow(display, viewer->window);
+    XSetInputFocus(display, viewer->window, RevertToParent, CurrentTime);
+    XSync(display, False);
+    if (wait_for_current_frames(display, viewer, history, AUTH_WAIT_MS, 4U, &fresh, &age) != 0 ||
+        session_socket_counts(&connected, &listeners) != 0 || connected != 2U || listeners != 1U ||
+        read_connection_identity(&after) != 0 || !same_connection(connection, &after)) goto out;
+    printf("FLUTTER_PEER_THEME_AFTER_PIXELS first_fresh_ms=%llu maximum_age_ms=%llu distinct=4\n",
+           (unsigned long long)fresh, (unsigned long long)age);
+    result = 0;
+out:
+    if (result != 0) {
+        PasswordPromptScan diagnostic;
+        if (scan_password_prompt(pid, &diagnostic, 1) != 0)
+            fputs("FLUTTER_PEER_X11_FAIL appearance accessibility diagnostic\n", stderr);
+    }
+    if (main != None && close_viewer(display, main) != 0) result = -1;
+    g_clear_object(&backend);
+    g_clear_object(&settings);
+    if (schema != NULL) g_settings_schema_unref(schema);
+    if (result == 0)
+        puts("FLUTTER_PEER_THEME_APPEARANCE_OK system_transitions=4 explicit_holds=4 "
+             "hold_ms=5000 choices=3 stable_connection=true fresh_pixels=4");
     return result;
 }
 
@@ -4257,6 +4355,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--theme-dark") != 0 &&
                                     strcmp(argv[5], "--theme-system") != 0 &&
                                     strcmp(argv[5], "--theme-restore") != 0 &&
+                                    strcmp(argv[5], "--theme-appearance") != 0 &&
                                     strcmp(argv[5], "--credential-retry") != 0 &&
                                     strcmp(argv[5], "--credential-enroll") != 0 &&
                                     strcmp(argv[5], "--credential-replace") != 0 &&
@@ -4270,7 +4369,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
+              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
         return 2;
     }
@@ -4476,8 +4575,10 @@ int main(int argc, char **argv) {
     }
     print_resources("initial", 0U, &baseline_resources);
 
-    if (theme_generation != 0U) {
-        int result = exercise_theme_restart(display, &viewer, theme_generation, &current_connection);
+    if (theme_generation != 0U || (argc == 6 && strcmp(argv[5], "--theme-appearance") == 0)) {
+        int result = theme_generation != 0U
+            ? exercise_theme_restart(display, &viewer, theme_generation, &current_connection)
+            : exercise_theme_appearance(display, &viewer, &history, &current_connection);
         if (atspi_exit() != 0) result = -1;
         if (close_viewer(display, viewer.window) != 0) result = -1;
         XCloseDisplay(display);

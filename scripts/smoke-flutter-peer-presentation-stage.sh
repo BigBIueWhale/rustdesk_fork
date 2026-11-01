@@ -18,7 +18,7 @@ MENU_ACTION=pointer
 [ "$PEER_SCENARIO" != credential-menu-accessible ] || MENU_ACTION=accessible
 readonly MENU_ACTION
 case "$PEER_SCENARIO" in
-  session-close|background-close|credential-retry|theme-restart) EXPECTED_RESTARTS=0 ;;
+  session-close|background-close|credential-retry|theme-restart|theme-appearance) EXPECTED_RESTARTS=0 ;;
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
   viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation|credential-forget|credential-menu|credential-menu-accessible) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
@@ -1290,6 +1290,21 @@ PY
     [ "$PEER_SCENARIO" != credential-menu ] || viewer_generations=3
     [ "$PEER_SCENARIO" != credential-menu-accessible ] || viewer_generations=3
     [ "$PEER_SCENARIO" != theme-restart ] || viewer_generations=4
+    if [ "$PEER_SCENARIO" = theme-appearance ]; then
+      # Use GLib's real shared file backend, read by the unmodified native engine.
+      # This private session must take the engine's GNOME settings route.
+      for method in ListNames ListActivatableNames; do
+        portal_names="$(gdbus call --session --dest org.freedesktop.DBus \
+          --object-path /org/freedesktop/DBus --method "org.freedesktop.DBus.$method")"
+        [[ "$portal_names" != *org.freedesktop.portal.Desktop* ]] \
+          || fail 'appearance scenario unexpectedly has a desktop portal'
+      done
+      export GSETTINGS_BACKEND=keyfile
+      gsettings set org.gnome.desktop.interface gtk-theme Adwaita
+      [ "$(gsettings get org.gnome.desktop.interface gtk-theme)" = "'Adwaita'" ] \
+        || fail 'native initial appearance differs'
+      echo 'FLUTTER_PEER_THEME_OS_ENV backend=keyfile portal=absent initial=light'
+    fi
     for viewer_generation in $(seq 1 "$viewer_generations"); do
     (cd /app/bundle && exec env RUST_LOG=info,rustdesk::clipboard=debug "$APP" --connect 127.0.0.1) \
       >/tmp/viewer.log 2>&1 &
@@ -1338,6 +1353,7 @@ PY
     [ "$PEER_SCENARIO" != session-close ] || controller_args+=(--session-close)
     [ "$PEER_SCENARIO" != background-close ] || controller_args+=(--background-close)
     [ "$PEER_SCENARIO" != credential-retry ] || controller_args+=(--credential-retry)
+    [ "$PEER_SCENARIO" != theme-appearance ] || controller_args+=(--theme-appearance)
     [ "$PEER_SCENARIO" != network-impairment ] || controller_args+=(--network-impairment)
     [ "$PEER_SCENARIO" != network-loss ] || controller_args+=(--network-loss)
     [ "$PEER_SCENARIO" != clipboard-text ] || controller_args+=(--clipboard-text)
@@ -1428,6 +1444,10 @@ PY
       elif [ "$PEER_SCENARIO" = credential-menu ] || [ "$PEER_SCENARIO" = credential-menu-accessible ]; then
         viewer_result='viewer=joined xvfb=joined credential_menu=passed generations=3 password_entries=1 saved_credential=empty next_prompt=required'
       fi
+    elif [ "$PEER_SCENARIO" = theme-appearance ]; then
+      grep -Fxq 'FLUTTER_PEER_THEME_APPEARANCE_OK system_transitions=4 explicit_holds=4 hold_ms=5000 choices=3 stable_connection=true fresh_pixels=4' \
+        <<<"$controller_output" || fail 'native live appearance result is absent'
+      viewer_result='viewer=joined xvfb=joined theme_appearance=passed system=live explicit=preserved pixels=verified'
     elif [ "$PEER_SCENARIO" = credential-retry ]; then
       [ "$(grep -Ec '^FLUTTER_PEER_PASSWORD_REJECTED_OK replacement_prompt=blank remember=false connected_sockets=0 listener=preserved samples=[0-9]+ interval_ms=100 idle_ms=[0-9]+ tcp_active_opens=0 tcp_passive_opens=0 wrong_opens=1 elapsed_ms=[0-9]+$' <<<"$controller_output")" -eq 1 ] \
         || fail 'rejected-password observation is absent or duplicated'
@@ -1578,8 +1598,8 @@ PY
       fi
       mv /tmp/viewer.log "/tmp/viewer-generation-$viewer_generation.log"
     fi
-    if [ "$PEER_SCENARIO" = theme-restart ]; then
-      python3 - "$viewer_generation" <<'PY'
+    if [ "$PEER_SCENARIO" = theme-restart ] || [ "$PEER_SCENARIO" = theme-appearance ]; then
+      python3 - "$viewer_generation" "$PEER_SCENARIO" <<'PY'
 import os, stat, sys, tomllib
 try:
     path = '/tmp/viewer-home/.config/rustdesk/RustDesk_local.toml'
@@ -1593,7 +1613,7 @@ try:
         data = source.read(131073)
         if len(data) != metadata.st_size:
             raise ValueError()
-    expected = ('light', 'dark', '', '')[int(sys.argv[1]) - 1]
+    expected = '' if sys.argv[2] == 'theme-appearance' else ('light', 'dark', '', '')[int(sys.argv[1]) - 1]
     value = tomllib.loads(data.decode('utf-8')).get('options', {}).get('theme', '')
     if value != expected:
         raise ValueError()

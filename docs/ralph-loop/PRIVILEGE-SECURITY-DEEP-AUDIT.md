@@ -128537,3 +128537,31 @@ QEMU 4030927/wrapper 4029506 are absent; 402,718,720 peak RAM bytes retire in
 All 25 current evidence files total 384,906 bytes and match their recorded hashes
 on CTE and TUF. This audit-only receipt preserves the counted ledger. No owned
 VM or transient RAM workspace remains; the native theme checkpoint is complete.
+
+### 2026-11-01 — live desktop appearance and explicit theme preference
+
+Continue R-S0's required settings behavior at the remaining native OS-appearance
+gap. The completed restart checkpoint is retained. This full-app check reuses
+app `a630f880` and engine `63493887`, ahead of another component-only setting
+case; password recovery and independently parked topics remain parked.
+
+The [pinned Flutter Linux settings selector](https://raw.githubusercontent.com/flutter/flutter/6a19cca56475dbfba1478ee68d7bd0c2ef891da1/engine/src/flutter/shell/platform/linux/fl_settings.cc)
+uses the desktop portal or [GNOME GSettings](https://raw.githubusercontent.com/flutter/flutter/6a19cca56475dbfba1478ee68d7bd0c2ef891da1/engine/src/flutter/shell/platform/linux/fl_gnome_settings.cc).
+The latter reads `org.gnome.desktop.interface` / `gtk-theme`, treating the
+`-dark` suffix as dark and observing that key's changes. The retained engine's
+accessibility patch does not change those files. An XSETTINGS-only stimulus
+would not test this brightness path. GLib's [native keyfile backend](https://raw.githubusercontent.com/GNOME/glib/2.74.6/gio/gkeyfilesettingsbackend.c)
+persists shared settings and monitors external file changes. The authenticated
+offline schema closure already contains the needed desktop schema.
+
+`--theme-appearance` selects that real backend only inside the private viewer
+container, verifies the absence of an active/activatable desktop portal and
+initializes light appearance before launch. The native driver changes GSettings
+from a separate process; no Dart brightness callback is injected. Four system
+transitions must change rendered main-window pixels while Follow System remains
+selected. Explicit Light and Dark each face both OS appearances for five seconds
+per observation, retaining their exclusive radio selection and pixels. Returning
+to Follow System must immediately reflect the current OS and follow subsequent
+changes. Actual remote frames and the exact same TCP connection must survive;
+joined-process storage must retain the system preference. The complete app is
+unchanged. Native compilation, execution and joined cleanup follow.

@@ -14,6 +14,7 @@ FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE=0
 FLUTTER_VIEW_SCALING=0
 FLUTTER_SESSION_CLOSE=0
 FLUTTER_THEME_RESTART=0
+FLUTTER_THEME_APPEARANCE=0
 FLUTTER_CREDENTIAL_RESTART=0
 FLUTTER_NETWORK_IMPAIRMENT=0
 FLUTTER_APP_COMMIT=
@@ -281,6 +282,7 @@ case "$#:${8:-}" in
                 --session-close) FLUTTER_SESSION_CLOSE=1 ;;
                 --background-close) FLUTTER_SESSION_CLOSE=2 ;;
                 --theme-restart) FLUTTER_THEME_RESTART=1 ;;
+                --theme-appearance) FLUTTER_THEME_APPEARANCE=1 ;;
                 --credential-restart) FLUTTER_CREDENTIAL_RESTART=1 ;;
                 --credential-rotation) FLUTTER_CREDENTIAL_RESTART=2 ;;
                 --credential-forget) FLUTTER_CREDENTIAL_RESTART=3 ;;
@@ -375,6 +377,7 @@ readonly FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE
 readonly FLUTTER_VIEW_SCALING
 readonly FLUTTER_SESSION_CLOSE
 readonly FLUTTER_THEME_RESTART
+readonly FLUTTER_THEME_APPEARANCE
 readonly FLUTTER_CREDENTIAL_RESTART
 readonly RUST_TEST_SOURCE_ARCHIVE=${9:-}
 readonly RUST_TEST_SOURCE_COMMIT=${10:-}
@@ -14043,6 +14046,7 @@ run_flutter_peer_presentation() {
     [ "$FLUTTER_SESSION_CLOSE" -ne 1 ] || peer_args+=(--session-close)
     [ "$FLUTTER_SESSION_CLOSE" -ne 2 ] || peer_args+=(--background-close)
     [ "$FLUTTER_THEME_RESTART" -eq 0 ] || peer_args+=(--theme-restart)
+    [ "$FLUTTER_THEME_APPEARANCE" -eq 0 ] || peer_args+=(--theme-appearance)
     case "$FLUTTER_CREDENTIAL_RESTART" in
         1) peer_args+=(--credential-restart) ;;
         2) peer_args+=(--credential-rotation) ;;
@@ -14102,7 +14106,10 @@ run_flutter_peer_presentation() {
         fail 'Linux replay unexpectedly built an app'
     fi
     local peer_scenario=focus-reconnect-resource peer_cycles=6
-    if [ "$FLUTTER_THEME_RESTART" -eq 1 ]; then
+    if [ "$FLUTTER_THEME_APPEARANCE" -eq 1 ]; then
+        peer_scenario=theme-appearance
+        peer_cycles=1
+    elif [ "$FLUTTER_THEME_RESTART" -eq 1 ]; then
         peer_scenario=theme-restart
         peer_cycles=1
     elif [ "$FLUTTER_CREDENTIAL_RESTART" -eq 6 ]; then

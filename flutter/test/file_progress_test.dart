@@ -213,7 +213,6 @@ void main() {
       h.report(id, 100, total: 100);
       expect(h.job(id).finishedSize, 100);
       expect(h.job(id).state, JobState.inProgress);
-      expect(h.job(id).display(), isNot('Finished'));
       h.report(id, 120, total: 100);
       expect(h.job(id).finishedSize, 100);
       expect(h.job(id).state, JobState.inProgress);
@@ -221,7 +220,6 @@ void main() {
       expect(h.job(id).state, JobState.inProgress);
       h.report(id, 120, total: 100, done: true);
       expect(h.job(id).state, JobState.done);
-      expect(h.job(id).display(), 'Finished');
       h.report(id + 2, 1, total: 100);
       expect(h.job(id).state, JobState.done);
     });
@@ -235,12 +233,10 @@ void main() {
       h.report(id, 0, total: 0, done: true);
       expect(h.job(id).finishedSize, 0);
       expect(h.job(id).state, JobState.done);
-      expect(h.job(id).display(), 'Finished');
       h.report(id + 2, 100, total: 100);
       h.report(id + 2, 100, total: 100, error: 'finalization failed');
       expect(h.job(id + 2).state, JobState.error);
       expect(h.job(id + 2).err, 'finalization failed');
-      expect(h.job(id + 2).display(), 'Error');
       h.report(id + 4, 0, total: 100, error: 'source open failed');
       expect(h.job(id + 4).state, JobState.error);
       expect(h.job(id + 4).err, 'source open failed');

@@ -1223,6 +1223,17 @@ if (cli.returncode != 1 or cli.stdout or len(cli.stderr) > 4096 or
         'ValueError: VM refused: RAM requires 20480 MiB including scratch and headroom;' not in cli.stderr):
     raise SystemExit('input CLI did not reach native RAM admission: ' + cli.stderr)
 print('VM_TRANSIENT_X11_INPUT_CLI=pass profile=x11-key-input guest_mib=4096 required_mib=20480 insufficient_ram=refused allocation=not-entered')
+for profile, memory, required in (('linux-flutter-engine-prepare', 4096, 27648),
+                                   ('linux-flutter-engine-build', 16384, 39936)):
+    cli = subprocess.run([sys.executable, '-B', '-I', '-S', sys.argv[1], 'preflight',
+                          '--memory-mib', str(memory), '--storage-profile', profile],
+                         capture_output=True, text=True, timeout=5, check=False)
+    if (cli.returncode != 1 or cli.stdout or len(cli.stderr) > 4096 or
+            f'ValueError: VM refused: RAM requires {required} MiB including scratch and headroom;'
+            not in cli.stderr):
+        raise SystemExit('engine CLI did not reach native RAM admission: ' + cli.stderr)
+    print(f'VM_TRANSIENT_ENGINE_CLI=pass profile={profile} guest_mib={memory} '
+          f'required_mib={required} insufficient_ram=refused allocation=not-entered')
 shell = Path(sys.argv[2])
 modes = set()
 for caller in ('smoke-verifier-vm-authority.sh', 'online-fetch-vm.sh'):
@@ -1233,6 +1244,7 @@ if len(modes) != 41:
     raise SystemExit('VM workload control inventory differs')
 special = {mode: mode for mode in ('ledger-token-count', 'cpace-recovery-tests',
                                   'linux-service-uid-tests', 'hbb-common-fs', 'media-kernel-tests',
+                                  'linux-flutter-engine-prepare', 'linux-flutter-engine-build',
                                   'fixed-archive-tests', 'debian-package-tests')}
 special.update({'authority-smoke': 'authority-smoke', 'dependency-inventory': 'authority-smoke',
                 'android-emulator-runtime': 'android-replay',

@@ -128688,3 +128688,34 @@ QEMU 4048413 and wrapper 4046445 are absent, all four listener deltas are zero,
 and the 13,008,510,976-byte peak RAM workspace retired in 101.23 supervisor
 seconds. The bounded retained diagnostics are `settings-engine-nss-refusal.jtrBpMtTSa`.
 No full engine compilation or artifact publication ran.
+
+At `ddb1541d`, the corrected fixture in TUF `waN3vSleW4` reports all three
+baseline wrong-provider cases, both valid partial-portal controls, and then all
+three corrected GNOME selections with six live transitions plus both retained
+portal controls. Baseline/candidate binaries are SHA-256
+`56ccec579dc437fdf1cff14c0150e3f2611c7451a5d8544a41361e063eb2fa26` /
+`81f806eb32d46a635bc19a0d4672096c84b0b934945ba40b12d35e11ce9bf0c3`.
+Applied patch SHA-256 is
+`66384e11bc3363a4a7a3da50e9f794da002a81515e29fb98232eb656ce9a268f`.
+The full engine build subsequently reached action 3696/4793. Its exact QEMU
+4051626/start 292218362 and wrapper 4049460 were then observed alive; the control
+directory is `.harness-state/engine-settings-build-ddb1541d`.
+
+The SSH master later refused connections. Its loss is not evidence that the
+build stopped or completed. The user was asked to restore the existing master,
+as the referenced TUF access instructions require. No replacement connection,
+duplicate build or remote mutation follows; artifact publication and joined
+cleanup remain unknown. The last observation is retained locally in
+`theme-settings-tuf-access-pending.json`; do not sync TUF's checkout before checking
+this exact job and its postconditions. The goal remains active.
+
+The next turn revalidates the access failure and advances the pending engine
+storage-profile verification on CTE, whose owned VM roots are idle and whose
+available RAM exceeds the existing 13 GiB small-VM admission. The test's mode
+selector expectations still named the generic profile for engine modes; update
+those two expectations and exercise both real CLI memory refusals alongside the
+two limit cases and four wrong-memory cases. This runs the existing bounded
+ledger/profile VM, also counting the updated truthful status. CTE edits do not
+change TUF's frozen checkout, source inputs or locally cached origin reference.
+Neither the profile result nor the previously observed component pass closes
+the full application theme requirement.

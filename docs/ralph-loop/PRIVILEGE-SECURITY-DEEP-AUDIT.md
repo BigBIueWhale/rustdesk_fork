@@ -128612,3 +128612,13 @@ both runs, exact command/artifacts, cleanup and scope. All 19 evidence files tot
 745,036 bytes and match their recorded hashes on CTE and TUF. Prior native theme
 restart evidence remains valid. Correction, later appearance assertions, other
 platforms and release acceptance remain OPEN; the broad goal is incomplete.
+
+Checkpoint completion: ledger run `6GqBmWQucv` at `890e5363` passes seven
+controls and the whole-input round trip: 389,229 tokens / 1,782,606 bytes,
+SHA-256 `5ee2fabba08301678778a3742d2532874d3a5c2602375fe58aa9142166d79d78`.
+QEMU 4041107/wrapper 4039685 are absent; the 402,653,184-byte peak RAM workspace
+retires in 30.414 supervisor seconds with three zero listener deltas. Serial
+SHA-256 `b6860e68876a35f867c9c52114c644f2dd2ee86910b444721e59221af127c4c2`.
+All 26 current evidence files total 854,771 bytes and match their recorded hashes
+on CTE and TUF. This audit-only receipt preserves the counted ledger. The selected
+appearance defect remains OPEN for correction; no owned VM/workspace remains.

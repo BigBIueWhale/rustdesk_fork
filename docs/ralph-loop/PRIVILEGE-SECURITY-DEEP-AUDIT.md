@@ -128086,3 +128086,100 @@ seconds, with three zero listener deltas. Serial SHA-256:
 The four input attempts and count retain 39 raw files (745,452 bytes), hash-verified
 on both hosts. This audit-only receipt preserves the counted ledger. No owned VM
 remains; the scrolling correction reaches a component-validation checkpoint.
+
+### 2026-11-01 — saved-peer visibility and explicit Forget password
+
+The latest user pivot parks fractional-wheel native validation; its component
+correction remains. Select R-S0 and Appendix C #48's required saved-credential
+workflow. This closes a concrete desktop usability failure and adds native
+removal/restart evidence beyond the already accepted remember-off workflow.
+
+The real Linux app records Documents unavailable, successfully authenticates and
+persists its PRS, yet shows no Recent peer. `main_load_recent_peers` and
+`main_load_fav_peers` incorrectly gate desktop enumeration on `APP_DIR`.
+`NativeModel.init` leaves that value empty when Documents is unavailable;
+desktop `Config::path` uses its independent platform configuration root.
+The pinned [path_provider_linux source](https://raw.githubusercontent.com/flutter/packages/path_provider_linux-v2.2.1/packages/path_provider/path_provider_linux/lib/src/path_provider_linux.dart)
+permits a missing Documents result; the [XDG specification](https://specifications.freedesktop.org/basedir/latest/)
+defines a separate configuration location. `7e9491ad9a94715851459bceaedd5f9601b7cbb6`
+removes this unrelated desktop prerequisite from both loaders while preserving
+mobile initialization and the existing nonsecret, read-only enumeration.
+Favorites receives the source correction; only Recent is exercised natively.
+
+A complete Rust/Flutter/FRB/plugin build succeeds at tree
+`7ceef7104f9af85ff49ef22c8886262a58c2ea74`: 74 files / 70,287,298 bytes,
+manifest SHA-256
+`27100fba0dbaf6cc8ff2770692904a2917588110db2624a039939984f318c832`,
+core SHA-256
+`26c5d6cdedda71e0e2f4a16aa5d09389b6aa7bbfe9d6861109ea4f68d6c974cc`.
+All later replays reuse it. The baseline is retained app `cf437894`, manifest
+`94941c425a12844e424c7ac903f8a84b93b19628f3ed391f29e77548e15f6d93`.
+Selected list/menu/credential/storage paths match before the correction, but the
+two complete artifacts also contain other accumulated changes; this is not a
+claim that their entire source differs only by this patch. Both use retained
+engine `63493887` / Flutter 3.47.5. The evidence capsule retains full source,
+tree, engine, artifact, file and recipe identities.
+
+| Harness / TUF run | Observed result |
+| --- | --- |
+| `afe87844` / `23pC98178c` | Old app enrolls/restores with fresh frames, but no saved peer is shown with Documents unavailable. |
+| `7e9491ad` / `uVLG8KdvSI` | Complete corrected app builds successfully; 722.424 seconds, 10,604,601,344 peak RAM bytes. |
+| `599a716d` / `6gJ2FoGhO6` | Enrollment passes; second viewer authenticates/decodes but the fresh-pixel observer fails. Cause remains OPEN; no menu assertion runs. |
+| `0c7db4ce` / `VofOdKxiAu` | Both fresh-frame phases pass and the real Recent card appears. Observer expects a separate address label, but the card exposes a combined label. |
+| `f2d736c0` / `QWz5iYJ2di` | Card/menu open; observer uses untranslated key casing rather than rendered English labels. No Forget invocation occurs. |
+| `a0c46b59` / `jcZXcESukS` | Accessible Tap dismisses the menu, but the reopened menu still offers Forget. This is a separate OPEN product accessibility failure. |
+| `0a9a3be1` / `mZsdL8CWKx` | Real pointer Forget succeeds, removes the menu item and leaves the joined peer record empty. Third-viewer discovery aborts on a retired X11 window; complete acceptance is withheld. |
+| `80ba8258` / `xrEXPeFPQW` | Complete three-process workflow passes with the same corrected app; retired-window control also passes in all three controller processes. |
+
+The final run checks a real Remember choice and saved PRS after process one;
+process two restores without password input or a password field, opens the actual
+Recent card, clicks Forget, observes menu retirement/reopening with Forget absent
+and preserves the same TCP connection. Its joined peer record has empty PRS.
+Process three receives no password input, shows a blank prompt with Remember
+unchecked, performs real Cancel and leaves that record empty. All three viewer
+processes exit zero, and all three independently record Documents unavailable.
+The two authenticated phases each present four fresh frames, with maximum
+sampled ages 346/318 ms. This establishes normal removal and subsequent prompting,
+not forensic erasure, confidentiality or a latency/reliability soak.
+
+The accessible menu failure is retained: `MenuEntryButton` puts its callback
+on an inner TextButton, while the merged outer PopupMenuItem action only pops
+the route. Pointer success does not close accessibility acceptance. A correct
+follow-up must reconcile one action with enabled/dismissal behavior; some menu
+items intentionally remain open. No shared-menu product change is made here.
+AT-SPI [action semantics](https://docs.gtk.org/atspi2/method.Action.do_action.html)
+do not establish the application effect; the test checks authoritative state.
+The observer reuses bounded visible [component extents](https://docs.gtk.org/atspi2/method.Component.get_extents.html)
+for native pointer input. Its X11 discovery correction traps only the inspected
+candidate's BadWindow on the exact display, synchronizes before/after, restores
+the previous handler and delegates every other error, following
+[Xlib's error-handler contract](https://xorg.freedesktop.org/archive/current/doc/libX11/libX11/libX11.html#Using_the_Default_Error_Handlers).
+An explicitly destroyed native window must be refused before real discovery.
+
+Reproduce using the canonical `--linux-flutter-app-replay` invocation with the
+above app/manifest, retained engine identity and `--credential-menu`. The exact
+command and all eight run records are retained in
+`.harness-state/verifier-vm/desktop-peer-documents-7e9491ad.json`.
+The final source tree is `6d8ea068a04f3e044fd4481eb7d1962ff9ecff7d`;
+serial SHA-256
+`7fe77e43685d503b5a6909c8a33818c05abf3a07408a14fe2ce0478bded061f9`.
+QEMU 3981226 and wrapper 3980160 are absent; 3,010,355,200 peak RAM bytes
+retire after 116.094 supervisor seconds. All eight VMs join, every RAM workspace
+retires, and all 32 listener deltas are zero. No host product/service executes.
+
+Storage reconciliation: the producer first refuses its nonempty artifact cache
+before starting a VM. The exact old 74-file app and manifest are copied and
+verified on CTE; only the TUF duplicate is retired (70,590,464 allocated bytes).
+CTE retains four app generations and TUF one new generation. After all replays,
+six failed-run binary bundles are compared against those retained manifests and
+retired: 347,999,392 duplicate file bytes. Logs, identities, original checksum
+lists, input providers and per-run retirement receipts remain; no cores existed.
+The first cleanup needed an owned parent-mode correction to retire its already
+empty bundle directory; that partial outcome and completion are explicitly recorded.
+No canonical offline input or unrelated data is removed. Seventy-one bounded raw
+files/retirement receipts total 2,587,574 bytes and are hash-verified on both hosts;
+the capsule binds them. Fresh ledger count follows.
+
+Shared-menu accessibility, the unexplained fresh-pixel failure, native Favorites,
+other platforms, failure/concurrency, installed privileged authority and current
+release acceptance remain OPEN. The latest pivot is honored; older parks remain.

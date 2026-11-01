@@ -43,6 +43,11 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-01):** Fractional-wheel native validation remains
+OPEN/PARKED after the completed component checkpoint. No wheel provider or
+native scrolling scenario followed. Work moved to saved-peer visibility and
+explicit Forget password; do not resume native scrolling automatically.
+
 **User pivot (2026-11-01):** Installed Linux caller/administrator authorization
 validation remains OPEN/PARKED after read-only preparation. No principal-profile
 fixture, product correction or authorization run followed. The completed startup
@@ -15298,6 +15303,37 @@ RAM workspace retire with four zero listener deltas. Reproduce with retained-app
 option `--credential-forget`; no product correction was needed. This establishes
 normal removal from the active peer record and subsequent prompting, not
 forensic erasure, confidentiality, other platforms or release acceptance.
+
+**Saved-peer lists without Documents; native pointer Forget workflow.**
+`7e9491ad` removes the desktop Recent/Favorites dependency on `APP_DIR`;
+desktop peer files already use the platform configuration path. The mobile
+initialization guard remains. The old Linux app authenticates and persists a
+credential but displays no recent peer when Documents is unavailable. A complete
+Rust/Flutter/FRB build of the correction succeeds, and the new app exposes that
+peer in the same missing-Documents fixture. Native Favorites and other-platform
+acceptance remain OPEN.
+
+Harness `80ba8258`, TUF `xrEXPeFPQW`, retained app `7e9491ad` and engine
+`63493887` pass enrollment, a complete viewer restart without password input,
+a real pointer click on the peer's Forget password item, and a third viewer
+requiring a blank prompt with Remember unchecked. The first joined peer record
+contains saved PRS; the second and third are empty. Reopening the menu shows
+Forget absent, and the existing TCP connection survives the action. All three
+viewer processes exit zero. This proves normal removal and subsequent prompting,
+not forensic erasure or privileged credential authority.
+
+**OPEN:** the accessible Tap action closes this menu without executing its
+inner Forget callback; pointer success does not resolve that defect. One earlier
+corrected-app replay authenticated/decoded but failed fresh-pixel observation;
+later runs of the same app pass, and causation remains unresolved. The final
+authenticated phases each present four fresh frames (maximum sampled ages
+346/318 ms); this is no reliability or latency-soak claim. The observer separately
+corrects actual card/translated labels and tolerates a candidate window retiring
+during discovery, with an executed destroyed-window control. Every run joins,
+retires RAM scratch and leaves zero listener deltas. Exact failures, artifacts,
+cleanup and reproduction command are in the audit and
+`desktop-peer-documents-7e9491ad.json`. Shared-menu accessibility, failure/concurrency,
+other platforms, installed authority and release acceptance remain OPEN.
 
 **Peer history snapshots (`6fc33995`) — Dart component A/B verified; full application/native integration OPEN.**
 `Peers.updatePeers` now prepares the peer rows and pending-address list before

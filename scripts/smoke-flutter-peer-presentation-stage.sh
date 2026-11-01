@@ -1260,7 +1260,7 @@ PY
         "$(id -u):$(id -g):700" ] \
       || fail 'viewer private session directories differ'
     mkdir -m 1777 /tmp/.X11-unix
-    XVFB_PID= XVFB_START= VIEWER_PID= VIEWER_START=
+    XVFB_PID= XVFB_START= VIEWER_PID= VIEWER_START= APPEARANCE_PID= APPEARANCE_START=
     cleanup_viewer() {
       local status=$? cleanup_status=0
       trap - EXIT HUP INT TERM
@@ -1268,6 +1268,12 @@ PY
         && "$READY" --is-running "$VIEWER_PID" "$VIEWER_START"; then
         "$READY" --stop "$VIEWER_PID" "$VIEWER_START" || cleanup_status=$?
         wait "$VIEWER_PID" 2>/dev/null || true
+      fi
+      if [ -n "$APPEARANCE_PID" ] && [ -n "$APPEARANCE_START" ]; then
+        if "$READY" --is-running "$APPEARANCE_PID" "$APPEARANCE_START"; then
+          "$READY" --stop "$APPEARANCE_PID" "$APPEARANCE_START" || cleanup_status=$?
+        fi
+        wait "$APPEARANCE_PID" 2>/dev/null || true
       fi
       if [ -n "$XVFB_PID" ] && [ -n "$XVFB_START" ] \
         && "$READY" --is-running "$XVFB_PID" "$XVFB_START"; then
@@ -1303,10 +1309,16 @@ PY
       gsettings set org.gnome.desktop.interface gtk-theme Adwaita
       [ "$(gsettings get org.gnome.desktop.interface gtk-theme)" = "'Adwaita'" ] \
         || fail 'native initial appearance differs'
+      stdbuf --output=L gsettings monitor org.gnome.desktop.interface gtk-theme \
+        >/tmp/theme-monitor.log 2>&1 &
+      APPEARANCE_PID=$!
+      APPEARANCE_START=$("$READY" --identity "$APPEARANCE_PID")
       echo 'FLUTTER_PEER_THEME_OS_ENV backend=keyfile portal=absent initial=light'
     fi
     for viewer_generation in $(seq 1 "$viewer_generations"); do
-    (cd /app/bundle && exec env RUST_LOG=info,rustdesk::clipboard=debug "$APP" --connect 127.0.0.1) \
+    viewer_environment=()
+    [ "$PEER_SCENARIO" != theme-appearance ] || viewer_environment+=(G_MESSAGES_DEBUG=all)
+    (cd /app/bundle && exec env "${viewer_environment[@]}" RUST_LOG=info,rustdesk::clipboard=debug "$APP" --connect 127.0.0.1) \
       >/tmp/viewer.log 2>&1 &
     VIEWER_PID=$!
     VIEWER_START=$("$READY" --identity "$VIEWER_PID")
@@ -1368,6 +1380,28 @@ PY
     controller_status=$?
     set -e
     printf '%s\n' "$controller_output"
+    if [ "$PEER_SCENARIO" = theme-appearance ]; then
+      "$READY" --is-running "$APPEARANCE_PID" "$APPEARANCE_START" \
+        || fail 'independent native appearance observer exited early'
+      "$READY" --stop "$APPEARANCE_PID" "$APPEARANCE_START"
+      set +e
+      wait "$APPEARANCE_PID"
+      appearance_status=$?
+      set -e
+      APPEARANCE_PID= APPEARANCE_START=
+      [ "$appearance_status" -eq 143 ] || fail 'native appearance observer exit differs'
+      [ "$(stat -c %s /tmp/theme-monitor.log)" -le 4096 ] \
+        || fail 'native appearance observer output exceeded its bound'
+      echo 'FLUTTER_PEER_THEME_NATIVE_MONITOR_BEGIN'
+      cat /tmp/theme-monitor.log
+      echo 'FLUTTER_PEER_THEME_NATIVE_MONITOR_END joined=true'
+      if [ "$controller_status" -eq 0 ]; then
+        [ "$(grep -Fxc "gtk-theme: 'Adwaita-dark'" /tmp/theme-monitor.log)" -eq 4 ] \
+          && [ "$(grep -Fxc "gtk-theme: 'Adwaita'" /tmp/theme-monitor.log)" -eq 4 ] \
+          && [ "$(wc -l </tmp/theme-monitor.log)" -eq 8 ] \
+          || fail 'independent native appearance notifications differ'
+      fi
+    fi
     if [ "$controller_status" -ne 0 ]; then
       if [ "$PEER_SCENARIO" = view-scaling ]; then
         python3 - <<'PY'

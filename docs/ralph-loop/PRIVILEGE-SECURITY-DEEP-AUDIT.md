@@ -128565,3 +128565,18 @@ to Follow System must immediately reflect the current OS and follow subsequent
 changes. Actual remote frames and the exact same TCP connection must survive;
 joined-process storage must retain the system preference. The complete app is
 unchanged. Native compilation, execution and joined cleanup follow.
+
+First replay `6607202d`, TUF `xKTqhKkXZe`, compiles both drivers twice with
+identical bytes, then stops at the first system-dark transition: the independent
+driver reads back dark but the Follow System radio and main pixels remain light
+(luminance 224) for the five-second deadline. This establishes a failed scenario;
+notification delivery to the native app is not yet established. Add a separately
+joined `gsettings monitor` observer and enable native GLib diagnostics only for
+this app replay to distinguish fixture/backend delivery from application behavior.
+QEMU 4034877/wrapper 4033786 are absent; the 3,011,751,936-byte peak RAM workspace
+retires in 117.462 supervisor seconds and all four listener deltas are zero.
+The failed root is reconciled as `theme-appearance-notification.xKTqhKkXZe`.
+Twelve app duplicates match the canonical manifest and byte hashes before removal
+(57,999,216 logical / 58,019,840 allocated bytes); raw diagnostics and the provider
+witness remain. Retirement receipt `theme-appearance-duplicate-bundles-retired.json`
+has SHA-256 `e926414741397897f64f22ab4afaf048559d54730e976f05ab3d1fd2c129c048`.

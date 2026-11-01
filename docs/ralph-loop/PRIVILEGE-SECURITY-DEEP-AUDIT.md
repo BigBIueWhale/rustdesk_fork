@@ -127581,3 +127581,38 @@ and 3,011,657,728 peak RAM bytes retire after 111.325 supervisor seconds.
 The terminal marker becomes `view-scaling-observation.ultJBdeVTr` under the exact
 shared lock. Serial SHA-256:
 `7dc96d720ff1fe5e07d50946d01db979f065022a1cbdb0f3075ae093b363fffb`.
+
+Counterfactual `507c8a40653be2ebebc5dafa9eceb9a3c39eb6f6`, tree
+`7062df176f14454719455d66a9e3d22970189902`, TUF `2h7XnM22Ql`, repeats the
+same failure despite the 500-ms hold. Original passes with four fresh frame IDs
+and 627..660 width; Adaptive stays at that interval with 303-ms maximum sampled
+age. The remaining four cases do not execute. This rules out treating a short
+arbitrary delay as a correction; it does not identify the precise failing layer.
+Remove the diagnostic hold, restoring the original regression's timing.
+
+The source path is `toolbarViewStyle`/`selectSessionViewStyle` in
+`flutter/lib/common/widgets/toolbar.dart`, native `session_set_view_style` and
+`LoginConfigHandler::save_view_style`, then `CanvasModel.updateViewStyle` and the
+desktop texture layout. The toolbar captures a context and canvas presentation
+owner across the native save; collapse removes its `_DisplayMenu` subtree.
+Presentation and context lifetime are candidate causes, not established causation.
+The durable/effective style and exact point of canvas refusal still need a
+bounded observation. Official Flutter documents context retirement and default
+menu closure separately from asynchronous application work:
+https://api.flutter.dev/flutter/widgets/BuildContext/mounted.html and
+https://api.flutter.dev/flutter/material/RadioMenuButton/closeOnActivate.html.
+No speculative product patch is applied. The next decisive step observes the
+actual stored/effective style and owner state, then corrects the demonstrated
+path and replays this unchanged pixel/geometry scenario on a source-bound app.
+
+Both commands are the retained-app replay recorded above with final option
+`--view-scaling`; only the counterfactual's half-second hold differs. The complete
+toolbar/model source is unchanged from the app artifact. QEMU 3901333 and wrapper
+3900243 are absent, all four listener deltas are zero and 3,013,230,592 peak RAM
+bytes retire after 111.043 supervisor seconds. Its terminal marker becomes
+`view-scaling-toolbar-hold.2h7XnM22Ql` under the shared lock. Serial SHA-256:
+`cc8bafa16b74714a97f848d28f19c0fefaa450e85fca9d2080a5b51c65f6b092`.
+Both raw serial/console/storage/listener/outer records and bounded viewer logs
+are retained on CTE and TUF; larger terminal diagnostics remain on TUF.
+The reproduction is a meaningful checkpoint, with the selected scaling blocker
+still active and the broad release goal incomplete. Fresh ledger count follows.

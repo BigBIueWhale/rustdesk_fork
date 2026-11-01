@@ -43,6 +43,12 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-01):** Positive native screenshot Save As validation and
+chooser acquisition remain OPEN/PARKED after read-only prerequisite research.
+The reproduced missing-provider error and Debian dependency correction remain.
+Work moved to live viewer Original/Adaptive scaling; do not resume positive
+Save As automatically. No chooser acquisition or positive save run followed.
+
 **User pivot (2026-11-01):** Large-selection/repeated-clipboard validation remains
 OPEN/PARKED. Preparation `d7cf665e` and one unchanged replay both fail at text
 case 3, before any image case. Native clipboard-read timeouts are recorded, but
@@ -4799,6 +4805,25 @@ test duplication; broader installed, platform and release acceptance is unchange
 | Display defaults (`751b4d9c`, `3058558f`) | Initial reads, bounded refresh and save preflight use the private read-only configuration view without repair or recovery. Failed reads retain their existing in-memory fallback/confirmed-cache rules; corrupt or unreadable saves return fixed errors. Linux single-key saves now share the LocalConfig transaction: a stable per-record lease owns fresh reread, selected mutation, conditional durable replacement and confirmed-cache publication through one retained directory. Returned values come from that final candidate; refresh time advances only after success. Read-only satisfied and missing-empty operations remain write-free. The previous separate process-local read/replace path is removed. | At preparation `d9800737`, actual separate-process default saves lose a completed other-key change and ignore a held lease, changing file/cache in 2 ms. LocalConfig's paired controls pass; 180 tests pass and two fail across five groups before the final three controls are skipped. The same three test bodies at `3058558f` exercise both stores and pass all 185 tests/six groups, including all 182 other controls. Both stores preserve completed changes, return TimedOut near one second without file/cache/lease changes, retry after release, and retain the lock inode while owner-process exit releases its kernel lock. Descriptors return 4 to 4 for both stores. Prior default permission/corruption/repeat/no-op, normalization, removal, policy-purge and eight-thread controls pass. `display-default-transaction-3058558f.json` binds source/artifacts, actual outcomes and joined bounded-RAM cleanup; earlier read and bridge/helper evidence remains in `display-default-read-751b4d9c.json` and `display-defaults-a6a8c0b1.json`. No public API/FFI/Dart or Linux lease implementation changes. Other-platform and older/noncooperating writers, global/peer transactions, namespace/ACL/mount/network-filesystem races, physical crash durability, full settings/radio/numeric drafts, overlap/debounce, current UI error presentation, native FFI/installed, R-S0/R-F5 and release acceptance remain OPEN. |
 | Last-peer history | LocalConfig stores its private candidate before publication, preserving replacement/clear failure and identical retry. Unchanged history avoids a write. Exact registry/session admission precedes history, storage failure preserves the admitted session and duplicate refusal cannot advance history. Unused LocalConfig geometry APIs/storage are absent; old-format files retain live preferences and omit retired geometry on the next save. Active Flutter/per-peer geometry paths remain. | Config component and actual session-add/native bridge with storage denial and healthy retry: `last-peer-159cb6bf.json`. No network peer; full remembered-peer desktop/mobile interaction remains OPEN. |
 | Ordinary option storage and framed transaction (`9fbb652a`, `4e7e2f4a`) | Config2 reads preserve failed sources. Linux single-key saves share the LocalConfig/display-default transaction: a stable owned per-record lease holds a fresh reread, selected mutation, conditional durable replacement and confirmed-cache publication through one retained directory. The previous process-local read/replace path and private whole-record store are removed. Read-only satisfied/missing-empty no-ops, fixed read errors, strict present-value decoding, immutable policy pins and receiver authority remain. Other platforms retain process-local ordering. | At preparation `f066a7b7`, two extended separate-process regressions fail for ordinary options: a completed other-key change is lost, and a held lease is ignored in 3 ms with file/cache changes; 185 controls pass before failure skips the last two groups. The same three test bodies at `4e7e2f4a` pass across all three stores in the 202-case Linux cohort: completed changes survive, contention returns TimedOut near one second with file/cache/lease preserved, the identical retry succeeds, and owner-process exit releases the lock while retaining its inode. Descriptors return 4 to 4. Existing corruption/permission, no-write idempotence, sparse/missing, eight-thread, credential and policy controls pass. `ordinary-option-transaction-f066a7b7.json` binds sources, artifacts, actual A/B outcomes and joined bounded-RAM cleanup. Earlier `ordinary-option-source-9fbb652a.json`, `option-persistence-f895b8a0.json` and `main-ipc-framing-4278b228.json` retain source-admission and framed receiver/permit evidence. These are nonroot Linux library scenarios. Mixed-version/noncooperating writers, peer/credential transactions, namespace/ACL/mount/network-filesystem races, physical crash durability, setting/audio effects, current full app/UI/FFI and installed endpoint/root/cross-UID/role/restart, other target OS, R-S0/R-F5 and release acceptance remain OPEN. |
+
+**Native viewer scaling — reproduced setting-effect failure; correction OPEN.**
+At preparation `6f8b42ba`, the actual toolbar selects Original at 1100x650 and
+four fresh decoded frame IDs show a 627..660-pixel content-width interval for
+the 640-pixel source. Selecting Adaptive leaves that same interval throughout
+the 2.5-second observation, instead of the expected fitted width near 813 pixels;
+maximum sampled frame age is 324 ms. The `507c8a40` counterfactual holds the
+toolbar open for 500 ms before collapse and reproduces the same failure, with
+303-ms maximum sampled age. It does not establish early toolbar removal as the
+cause. The original timing is restored for the regression. Both runs use the
+unmodified retained `cf437894` app and `63493887` engine; all three drivers compile
+twice identically. No product correction is claimed, and the remaining four
+resize/style cases are unreached. Both VMs join, bounded RAM scratch retires and
+all eight listener deltas are zero. The audit's live-viewer-scaling entry binds
+source/artifacts, commands, logs and cleanup. Next distinguish the actual saved
+and effective style from canvas-publication lifetime, then rerun the unchanged
+pixel/geometry scenario against a corrected artifact. Custom scaling, exact
+subpixel geometry, saved-canvas restart, other platforms and release acceptance
+remain OPEN.
 
 **Trackpad speed announcements (`70be9d9a`).** The slider now formats its actual
 speed percentage and accessible adjustment predictions. Baseline `c2e9f564`

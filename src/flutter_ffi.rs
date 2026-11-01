@@ -1395,7 +1395,11 @@ pub fn main_load_recent_peers() {
         );
     };
 
-    if !config::APP_DIR.read().unwrap().is_empty() {
+    // Desktop peer files use Config::path independently of the Documents directory.
+    // Only mobile storage requires APP_DIR to have been initialized.
+    if !cfg!(any(target_os = "android", target_os = "ios"))
+        || !config::APP_DIR.read().unwrap().is_empty()
+    {
         let vec_id_modified_time_path = PeerConfig::get_vec_id_modified_time_path(&None);
         if vec_id_modified_time_path.is_empty() {
             push_to_flutter("".to_owned(), None);
@@ -1444,7 +1448,9 @@ pub fn main_load_fav_peers() {
             serde_json::ser::to_string(&data).unwrap_or("".to_owned()),
         );
     };
-    if !config::APP_DIR.read().unwrap().is_empty() {
+    if !cfg!(any(target_os = "android", target_os = "ios"))
+        || !config::APP_DIR.read().unwrap().is_empty()
+    {
         let favs = get_fav();
         // R-X5 / R-D7a: LAN discovery is excised. The former merge of favorite LAN peers
         // (config::LanPeers::load()) is removed with the rest of the lan machinery — nothing

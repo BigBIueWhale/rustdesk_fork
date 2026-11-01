@@ -127021,3 +127021,23 @@ sets through the parser's existing `expected_by_suite` path; preserve that negat
 control. Product and behavioral cases remain identical. This run also joins QEMU
 3845299/wrapper 3844832, retires RAM scratch and has four zero listener deltas;
 bounded diagnostics are retained as `address-restore-inventory.zkURfsa88B`.
+
+Final source `311e4f6a9899c52b9abe378596947e06565503d4`, tree
+`6ace72e4ee0a262d01fc57a575379fc3b6d13c26`, TUF `lPKTw1OTIY`, passes both
+suites/all 45 behavioral cases and all three focused parser controls. Command:
+`bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --direct-address`.
+Product, callback fixture and controller bytes are unchanged from `9823e986`.
+The exact callbacks execute under Flutter 3.24.5; reads/feedback remain adapters.
+Full pages, production engine, real native IPC/toast, device/installed, R-S0/R-F5
+and release acceptance remain OPEN. No broader application or security closure
+is claimed; independently parked work remains parked.
+
+The outer run completes in 94 seconds; the QEMU supervisor lifetime is 98.134
+seconds. QEMU 3846488 and wrapper 3846023 are absent. The 4,059,029,504-byte
+peak RAM workspace retires; all four listener deltas are zero. Serial SHA-256:
+`c20c528b72cb098f384d4151cebf10e545e1603da56e2c9029734756dbf130e1`.
+All four runs' 32 evidence files total 589,851 bytes and are hash-verified on
+CTE and TUF. Raw records are `flutter-model-tests-*run.<id>.*` under
+`.harness-state/verifier-vm/`, with outer logs in `.harness-state/address-restore-*`.
+The current ledger records the user pivot and component result; its fresh count
+follows. No owned VM remains live.

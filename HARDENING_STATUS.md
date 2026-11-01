@@ -43,6 +43,12 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-01):** Pre-key connection-capacity validation remains
+OPEN/PARKED after read-only preparation. No fixture, product change or runtime
+run followed. Completed password-attempt limiter evidence remains. Work moved
+to connection-screen saved-address failure handling; do not resume capacity
+validation automatically.
+
 **User pivot (2026-11-01):** Native file-browser UI navigation remains
 OPEN/PARKED. The unrun five-file scenario is preserved in stash
 `832a88e30e4148bf3ef798dacff650edb8054ddc`; the completed Dart/Rust listing
@@ -13895,6 +13901,22 @@ endpoint and cleanup evidence is retained in
 This is controller/TextField evidence, without compilation or execution of the whole pages,
 RawAutocomplete, AutoSizeTextField, real IMEs, screen readers, sockets/peers or installed artifacts.
 Native page/platform, current production engine, release and independent reproduction remain OPEN.
+
+**Connection-screen saved-address failures (`9823e986`).** Both pages handle
+failed initial lookups at their async post-frame caller, request generic translated
+feedback while mounted and suppress late notifications after removal. Newer typed
+addresses, normal restoration and the controller's one-attempt/error contract
+remain. The unchanged-product comparison reproduces eight desktop/mobile error
+cases with 37 controls passing. Final `311e4f6a`, TUF `lPKTw1OTIY`, passes the
+identical 45-case workload and three focused result-parser controls in 94 outer
+seconds. Two intervening runs pass the product cases but fail runner inventory
+checks; their corrections retain exact case-to-suite ownership and negative
+controls. All four VMs join, retire bounded RAM scratch and show zero listener
+deltas. The exact page callbacks, production controller and rendered TextField
+execute on Linux Flutter 3.24.5; native reads and feedback are adapters. Complete
+pages, real IPC/toast/device behavior, current production engine and installed/
+release acceptance remain OPEN. Sources, failures and cleanup are in the audit
+entry “2026-11-01 — user pivot; connection address restoration failure”.
 
 **SOURCE CORRECTED — direct-address grammar; focused Rust/Dart tests PASSED, native integration OPEN.**
 `hbb_common::is_direct_address` owns the IPv4/IPv4:port/qualified-ASCII-hostname:port predicate used by

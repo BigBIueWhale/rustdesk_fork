@@ -34,6 +34,8 @@ use hbb_common::protobuf::EnumOrUnknown;
 use hbb_common::tokio::sync::oneshot;
 mod latency_probe;
 use latency_probe::LatencyProbe;
+#[cfg(all(test, target_os = "linux"))]
+mod idle_timeout_tests;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod resolution_work;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

@@ -43,6 +43,13 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-01):** CM filesystem-action outcome logging remains
+OPEN/PARKED. Preparation `40d5f993` reproduces zero receiver action logs for ten
+completed native operations; the existing transfer-log test passes. QEMU joined,
+RAM scratch retired and all listener deltas were zero. No product correction or
+Dart run followed. Work moved to native inactivity-timeout bounds; do not resume
+the action-log fix automatically. Exact evidence is retained in the audit journal.
+
 **User pivot (2026-11-01):** Android long-session/presentation follow-ups remain
 OPEN/PARKED. The two-hour run was stopped after five passing minute windows;
 its exact VM exited and RAM scratch retired. This is partial evidence, not

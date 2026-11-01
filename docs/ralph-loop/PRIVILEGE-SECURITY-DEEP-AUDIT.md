@@ -126708,3 +126708,40 @@ Seven controls and the complete-input round trip pass. QEMU 3807771 and wrapper
 three listener deltas are zero. The complete 23-file evidence set totals
 290,808 bytes, hash-verified on CTE and TUF. This audit-only receipt leaves the
 counted ledger unchanged; no owned VM remains live.
+
+### 2026-11-01 — user pivot; native inactivity-timeout bounds
+
+The user directs another topic. CM filesystem-action logging is OPEN/PARKED;
+do not continue its proposed correction or Dart baseline automatically.
+Already-running baseline `40d5f993`, TUF `o2pILEU2Eq`, finishes with one existing
+transfer-log pass and one new action-log failure: ten real filesystem outcomes
+(five successes, five failures) produce zero receiver action logs. Native responses,
+effects and owner retirement precede the failed assertion. No product change or
+Dart execution follows. The full Linux parent compiled with fresh bindings;
+login authorization and the UI callback receiver remain fixtures.
+Artifact SHA-256: `a24f4e328d1099639b7a4ca9f92dac3729145be1bfa734d724574518a446cba1`.
+Serial SHA-256: `891f83108677ef1184d997a9043510331d3408eb1cfff36c64a61b4fd4244a74`.
+QEMU 3810311 and wrapper 3809795 exit after 353.421 seconds; 6,292,946,944 peak
+RAM scratch bytes retire and all four listener deltas are zero. Failed diagnostics
+are reconciled as `action-log-parked.o2pILEU2Eq`; no owned VM remains live.
+
+Select R-S0 settings correctness: `Connection::get_auto_disconenct_timer` accepts
+any parsed u64 minutes, and the live periodic branch multiplies it by 60 unchecked.
+The ordinary Config writer does not validate that option's numeric range; the
+desktop timeout editor already limits input to 65,535. This concrete mismatch
+takes priority over further exploratory UI review. The Rust Reference documents
+multiplication overflow and debug panic behavior:
+https://doc.rust-lang.org/reference/expressions/operator-expr.html#overflow.
+No actual connection panic, installed failure or privilege escalation is claimed.
+
+Prepare one complete-parent regression using actual isolated Config writes/reads
+and the production timer initializer: twenty numeric/malformed/default values,
+both disabled forms, fresh timer timestamps and no read-side file mutation. It
+must reject oversized timer admission while retaining supported values and the
+existing ten-minute zero/invalid default. The proposed correction stores bounded
+u16 minutes and widens before conversion to seconds. The focused VM profile reuses
+the existing full-parent build/isolation/storage path and selects only this test;
+its build is an integration prerequisite, not a full unrelated test catalogue.
+First run unchanged production behavior. Full authenticated idle disconnect,
+activity resets, settings changes during sessions and other-platform acceptance
+remain separate missing evidence; no parked work resumes.

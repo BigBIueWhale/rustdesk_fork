@@ -229,6 +229,12 @@ case "$#:${1:-}" in
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=cm-file-log
         ;;
+    1:--idle-timeout-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'Idle timeout input/run overrides are forbidden' >&2; exit 2; }
+        MODE=android-rust-lifecycle-tests
+        RUST_TEST_PROFILE=idle-timeout
+        ;;
     1:--cm-read-tick-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'CM read-tick input/run overrides are forbidden' >&2; exit 2; }
@@ -753,6 +759,7 @@ case "$#:${1:-}" in
         printf 'Installed Linux authorization deadline: %s --linux-service-authorization-timeout-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Exact CM read-tick ownership: %s --cm-read-tick-tests\n' "${0##*/}" >&2
         printf 'Native CM transfer outcome logs: %s --cm-file-log-tests\n' "${0##*/}" >&2
+        printf 'Native inactivity timeout bounds: %s --idle-timeout-tests\n' "${0##*/}" >&2
         printf 'Blocked-worker owner transitions: %s --android-client-drain-tests\n' "${0##*/}" >&2
         printf 'Send digest/read admission and terminal retirement: %s --file-send-digest-tests\n' "${0##*/}" >&2
         printf 'Direct sender terminal logs: %s --file-send-log-tests\n' "${0##*/}" >&2
@@ -1045,7 +1052,7 @@ elif [ "$MODE" = debian-systemd-lifecycle ]; then
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     if [[ "$RUST_TEST_PROFILE" = viewer-video || "$RUST_TEST_PROFILE" = video-qos || "$RUST_TEST_PROFILE" = option-ack || "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-resume ]]; then
         readonly VM_TIMEOUT_SECONDS=900
-    elif [[ "$RUST_TEST_PROFILE" = recording-output || "$RUST_TEST_PROFILE" = video-vpx || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log ]]; then
+    elif [[ "$RUST_TEST_PROFILE" = recording-output || "$RUST_TEST_PROFILE" = video-vpx || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log || "$RUST_TEST_PROFILE" = idle-timeout ]]; then
         readonly VM_TIMEOUT_SECONDS=600
     elif [ "$RUST_TEST_PROFILE" != integration ]; then
         readonly VM_TIMEOUT_SECONDS=300
@@ -1055,7 +1062,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     readonly OVERLAY_SIZE=40G
     if [[ "$RUST_TEST_PROFILE" = clipboard-filetime || "$RUST_TEST_PROFILE" = recording-output || "$RUST_TEST_PROFILE" = viewer-video || "$RUST_TEST_PROFILE" = video-qos || "$RUST_TEST_PROFILE" = video-qos-controller || "$RUST_TEST_PROFILE" = video-vpx || "$RUST_TEST_PROFILE" = option-ack || "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller \
         || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log \
-        || "$RUST_TEST_PROFILE" = input-revocation \
+        || "$RUST_TEST_PROFILE" = idle-timeout || "$RUST_TEST_PROFILE" = input-revocation \
         || "$RUST_TEST_PROFILE" = clipboard ]]; then
         readonly VM_MEMORY=6144
     elif [[ "$RUST_TEST_PROFILE" = installer-package || "$RUST_TEST_PROFILE" = pake-timing || "$RUST_TEST_PROFILE" = pake-allocation \
@@ -3046,7 +3053,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     )
     rust_lifecycle_dirs=("$ONLINE_INPUTS" "$CARGO_VENDOR_ROOT")
     rust_lifecycle_files=()
-    if [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log || "$RUST_TEST_PROFILE" = option-ack ]]; then
+    if [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log || "$RUST_TEST_PROFILE" = idle-timeout || "$RUST_TEST_PROFILE" = option-ack ]]; then
         rust_lifecycle_inputs+=(
             "$RUST_TEST_ARCHIVE:$SIZE_RUST_1_75:$SHA256_RUST_1_75"
             "$FLUTTER_TEST_ARCHIVE:$SIZE_FLUTTER_3_24_5:$SHA256_FLUTTER_3_24_5"
@@ -3067,7 +3074,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         verify_sha256 "$path" "$digest"
         rust_lifecycle_files+=("$path")
     done
-    if [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log || "$RUST_TEST_PROFILE" = option-ack ]]; then
+    if [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log || "$RUST_TEST_PROFILE" = idle-timeout || "$RUST_TEST_PROFILE" = option-ack ]]; then
         [ -f "$FRB_CODEGEN" ] && [ ! -L "$FRB_CODEGEN" ] \
             && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$FRB_CODEGEN")" = \
                  "$HOST_UID:$HOST_GID:500:1:$SIZE_FLUTTER_PEER_FRB_CODEGEN" ] \
@@ -3086,7 +3093,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$CARGO_VENDOR_ROOT")" = \
              "$HOST_UID:$HOST_GID:500" ] \
         || fail 'sealed Cargo vendor root metadata differs'
-    if [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log || "$RUST_TEST_PROFILE" = option-ack ]]; then
+    if [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log || "$RUST_TEST_PROFILE" = idle-timeout || "$RUST_TEST_PROFILE" = option-ack ]]; then
         [ -d "$PUB_CACHE_ROOT" ] && [ ! -L "$PUB_CACHE_ROOT" ] \
             && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$PUB_CACHE_ROOT")" = \
                  "$HOST_UID:$HOST_GID:500" ] \
@@ -7323,6 +7330,30 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = cm-f
         'DIRECT_PASSWORD_GENERATED=pass retired_flag=absent dart=fresh rust=fresh' \
         'fresh direct-password generated API absence'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'CM file log cloud-init completion'
+elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = idle-timeout ]; then
+    mapfile -t idle_timeout_artifacts < <(
+        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
+            'IDLE_TIMEOUT_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=1 groups=1 unchanged=before-after execution_seconds=[0-9]+$'
+    )
+    [ "${#idle_timeout_artifacts[@]}" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fc 'IDLE_TIMEOUT_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
+        || fail 'Idle timeout artifact receipt differs'
+    require_exact_fixed_receipt \
+        "IDLE_TIMEOUT_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=1 target=linux-x86_64 scope=production-config-and-idle-timer-admission installed=unexecuted rust=1.75.0 features=linux-pkg-config,flutter vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        'Idle timeout parent compilation and native component result'
+    [ "$(/usr/bin/grep -Ec 'IDLE_TIMEOUT_BRIDGE=pass rust_sha256=[0-9a-f]{64} io_sha256=[0-9a-f]{64} unchanged=before-after' "$SERIAL_LOG")" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fc 'IDLE_TIMEOUT_BRIDGE=' "$SERIAL_LOG")" -eq 1 ] \
+        || fail 'Idle timeout generated bridge binding differs'
+    require_exact_fixed_receipt \
+        "ANDROID_RUST_FRB=pass flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN source=exact-pushed network=none outputs=readonly-publication" \
+        'Idle timeout fresh bridge generation'
+    require_exact_fixed_receipt \
+        'IDLE_TIMEOUT_BRIDGE_STORAGE=pass tools=retired builder_image=absent trim=guest-root-only' \
+        'joined bridge preparation storage retirement'
+    require_exact_fixed_receipt \
+        'DIRECT_PASSWORD_GENERATED=pass retired_flag=absent dart=fresh rust=fresh' \
+        'fresh direct-password generated API absence'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Idle timeout cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = cm-read-tick ]; then
     mapfile -t cm_read_tick_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
@@ -9410,6 +9441,11 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf '%s\n' "${cm_file_log_artifacts[@]}"
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE 'test ui_cm_interface::tests::cm_file_log_[a-z_]+ \.\.\. ok|CM_FILE_LOG_(CASE|OPERATIONS)=.*'
         printf 'CM_FILE_LOG_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=2 target=linux-x86_64 scope=production-cm-terminal-logs-and-native-unix-responses installed=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
+    elif [ "$RUST_TEST_PROFILE" = idle-timeout ]; then
+        printf '%s\n' "${idle_timeout_artifacts[@]}"
+        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE 'test server::connection::idle_timeout_tests::[a-z_]+ \.\.\. ok|IDLE_TIMEOUT_CASE=.*'
+        printf 'IDLE_TIMEOUT_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=1 target=linux-x86_64 scope=production-config-and-idle-timer-admission installed=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = cm-read-tick ]; then
         printf '%s\n' "${cm_read_tick_artifacts[@]}"

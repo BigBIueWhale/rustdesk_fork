@@ -126775,3 +126775,19 @@ ten-minute default; disabled settings and activity-reset ordering are unchanged.
 No timer-saturation fallback, new dependency, API mode or settings-write mutation
 is introduced. Run the identical regression and full-parent build on this candidate;
 candidate acceptance is not yet claimed.
+
+Candidate `42e6e4316ff82ebe18c872ecef3df76539dc3068`, TUF `UdOKqKhHLW`,
+passes the identical one-test/twenty-value regression, forty disabled observations,
+fresh timestamps and configuration preservation. Full-parent compilation, fresh
+bindings, exact named inventory and source-copy postconditions pass. The test and
+harness bytes match the baseline; the only product diff is the four-line correction.
+Command: `bash scripts/smoke-verifier-vm-authority.sh --idle-timeout-tests`.
+Artifact SHA-256: `7001efb6c601114159772443673d7d5c2db3b3cdbf5141e43f9b5f9e2d50a87d`.
+Serial SHA-256: `3cc4a8a03b53005cf427a06fb3107d4554ed3a937ca716065e1138e3ed2c1dfe`.
+QEMU 3818165 and wrapper 3817674 exit after 387.803 seconds; 6,293,913,600 peak
+RAM bytes retire, all four listener deltas are zero and no owned VM remains live.
+The four runs in this turn (parked action logs, canceled setup, timer baseline and
+candidate) retain 32 evidence files totaling 354,900 bytes, hash-verified on CTE
+and TUF. Full authenticated idle expiry, activity resets and live-setting behavior,
+installed/other-platform and release acceptance remain OPEN. Fresh ledger counting
+follows the current-state update; all independently parked work stays parked.

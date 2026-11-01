@@ -126641,3 +126641,18 @@ and keyed TCP run with fixture keys; PAKE, CM callbacks/rendering and installed
 authority are outside this component claim. First execute unchanged production
 code, then correct the omitted log without changing retirement/admission order.
 No behavioral verdict or product correction is claimed yet.
+
+At unchanged-product source `7c0486d0`, TUF `xNE6gYROQu`, three tests pass
+and the initial-open case fails only its missing-log verdict. Native Error,
+same-ID survivor bytes/EOF/Done, writer joins and source-descriptor closure pass
+before the assertion; all three terminal-admission refusals preserve retirement.
+Artifact SHA-256: `c83839f4f5f96c9027b8a3a58cbc7b8eb02d385a00658d52eced41893d5e1253`.
+The failed harness repeats test summaries in diagnostics; four tests ran.
+QEMU 3803604 and wrapper 3803087 exit, 3,506,970,624 peak RAM bytes retire
+after 129.799 seconds, and all four listener deltas are zero. The failed marker
+is reconciled as `send-log-baseline.xNE6gYROQu` after exact cleanup.
+
+The correction serializes the failed job before removal and returns that log
+alongside the admitted error receipt. Removal-before-admission, exact selected
+entry, response content and fatal transport error propagation are unchanged.
+Run the identical four tests on this candidate; no candidate verdict yet.

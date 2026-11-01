@@ -5192,13 +5192,14 @@ pub async fn handle_read_jobs(
         }
         Ok(None) => {}
         Err(err) => {
+            let job_log = serialize_transfer_job(job, false, false, &err.to_string());
             let id = job.id();
             let file_num = job.file_num();
             jobs.remove(index);
             let receipt = stream
                 .send_with_receipt(&new_error(id, err, file_num))
                 .await?;
-            return Ok((String::new(), Some(receipt)));
+            return Ok((job_log, Some(receipt)));
         }
     }
 

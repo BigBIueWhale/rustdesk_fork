@@ -38,6 +38,7 @@ X11_CAPTURE_MAPPING_ONLY=0
 X11_CONTEXTS_ONLY=0
 LINUX_RECEIVER_PROFILE=focused
 PEER_BUILD_PROFILE=default
+SERVER_GUESS_LIMITER=0
 CM_DIRECTORY_DOWNLOAD=0
 LIFECYCLE_ARTIFACT=
 LIFECYCLE_ARTIFACT_SHA256=
@@ -543,13 +544,16 @@ case "$#:${1:-}" in
             *) echo 'unknown X11 shard' >&2; exit 2 ;;
         esac
         ;;
-    1:--android-peer-build|1:--linux-service-build)
+    1:--android-peer-build|1:--linux-service-build|1:--linux-server-limiter-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'Android peer-build input/run overrides are forbidden' >&2; exit 2; }
         MODE=android-peer-build
-        if [ "$1" = --linux-service-build ]; then
+        if [ "$1" != --android-peer-build ]; then
             PEER_BUILD_PROFILE=bounded
+        fi
+        if [ "$1" = --linux-server-limiter-tests ]; then
+            SERVER_GUESS_LIMITER=1
         fi
         ;;
     1:--cm-file-replay|2:--cm-file-replay)
@@ -717,6 +721,7 @@ case "$#:${1:-}" in
         printf 'Focused macOS cursor adapter compilation: %s --apple-conform --cursor-compile\n' "${0##*/}" >&2
         printf 'Focused macOS file-mode compilation: %s --apple-conform --file-mode-compile\n' "${0##*/}" >&2
         printf 'Current-source CM file replay: %s --cm-file-replay [--directory-download]\n' "${0##*/}" >&2
+        printf 'Current-source native server limiter: %s --linux-server-limiter-tests\n' "${0##*/}" >&2
         printf 'Focused production frame-queue runtime: %s --flutter-model-tests --frame-queue\n' "${0##*/}" >&2
         printf 'Focused direct-address validation: %s --flutter-model-tests --direct-address\n' "${0##*/}" >&2
         printf 'Focused password keyboard policy: %s --flutter-model-tests --password-fields\n' "${0##*/}" >&2
@@ -5120,7 +5125,9 @@ elif [ "$MODE" = android-owner-tests ]; then
     guest_invocation+=" --android-owner-tests /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_OWNER_SOURCE_COMMIT $ANDROID_OWNER_SOURCE_TREE $ANDROID_OWNER_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = android-peer-build ]; then
     guest_invocation+=" --android-peer-build /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_EMULATOR_SOURCE_COMMIT $ANDROID_EMULATOR_SOURCE_TREE $ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256"
-    if [ "$PEER_BUILD_PROFILE" = bounded ]; then
+    if [ "$SERVER_GUESS_LIMITER" -eq 1 ]; then
+        guest_invocation+=" --linux-server-limiter-tests"
+    elif [ "$PEER_BUILD_PROFILE" = bounded ]; then
         guest_invocation+=" --linux-service-build"
     fi
 elif [ "$MODE" = cm-file-replay ]; then
@@ -8100,7 +8107,11 @@ elif [ "$MODE" = android-owner-tests ]; then
         'VERIFIER_VM_CLOUD_INIT=pass' \
         'focused Android owner-state cloud-init completion marker'
 elif [ "$MODE" = android-peer-build ]; then
-    if [ "$PEER_BUILD_PROFILE" = bounded ]; then
+    if [ "$SERVER_GUESS_LIMITER" -eq 1 ]; then
+        require_exact_fixed_receipt \
+            'SERVER_GUESS_LIMITER=pass auth=cpace eof=12 threshold=10 unrelated=keyed checkpoints=0,20,40 recovered=64s server=same listener=same cleanup=server-joined' \
+            'native server limiter threshold, source isolation and real-window recovery'
+    elif [ "$PEER_BUILD_PROFILE" = bounded ]; then
         require_exact_fixed_receipt \
             'FILE_TYPE_REPLAY=pass auth=cpace session=filetransfer unsupported=7 job=17013 generic=150001-bytes digest=confirmed done=once barrier=passed network=container-loopback cleanup=server-joined' \
             'Linux service peer file-type admission and same-ID recovery'

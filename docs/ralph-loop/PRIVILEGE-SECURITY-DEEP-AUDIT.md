@@ -126866,3 +126866,38 @@ Seven controls and the complete-input round trip pass. QEMU 3829111 and wrapper
 listener deltas are zero. The complete fifteen-file evidence set totals 188,369
 bytes, hash-verified on CTE and TUF. This audit-only receipt leaves the counted
 ledger unchanged; no owned VM remains live. The broader goal remains incomplete.
+
+### 2026-11-01 — user pivot; actual server password-attempt limiting
+
+The user directs another aspect. The unrun five-file native file-browser UI
+scenario is preserved in stash `832a88e30e4148bf3ef798dacff650edb8054ddc` and
+OPEN/PARKED. No UI scenario or new file-browser product change ran. The completed
+native Dart/Rust listing evidence remains valid; all independent parks remain.
+
+Select R-S10/R-P14c at the production server connection path. The existing
+limiter API tests establish normalization, capacity and real-clock expiration,
+but not the server's actual accepted-socket accounting and admission. Closing
+that concrete integration gap takes priority over further speculative UI review.
+The existing smoke stage already has native CPace probes and exact-server joins;
+reuse its bounded Linux build profile for one focused current-source scenario.
+
+The scenario requires actual correct-password keying before failure injection,
+access after nine wrong passwords plus twelve socket EOFs, refusal after the
+tenth wrong password, unaffected keying from another loopback source, continued
+blocking at 20/40 seconds and recovery after a 64-second real interval. Retain
+the same server PID/start identity and owned listener inode throughout; then
+join that exact server. No product timer, counter, password policy or code is
+changed. Rust's Instant documentation describes elapsed monotonic time and
+platform-dependent suspend behavior; this Linux VM result will not establish
+other-platform or suspend semantics:
+https://doc.rust-lang.org/std/time/struct.Instant.html.
+The actual probe uses the pinned socket client's explicit local-address bind.
+
+The new entry `--linux-server-limiter-tests` reuses the existing 8 GiB guest,
+7 GiB RAM scratch, 6 GiB overlay ceiling, monitored storage and joined cleanup.
+The current binary and existing probe are built once and retained through the
+authenticated seven-file peer artifact publisher. No file-transfer scenario,
+installed service, host product or external peer is used. Preparation passes
+shell syntax/diff inspection; native execution remains pending. Full application
+login, installed/platform, sustained-resource, release and independent review
+remain separate obligations.

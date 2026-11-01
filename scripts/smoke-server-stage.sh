@@ -87,7 +87,7 @@ start_server() {
 }
 
 case "$1" in
-  android-peer-build|linux-service-build|cm-file-build)
+  android-peer-build|linux-service-build|linux-server-limiter-build|cm-file-build)
     # Build the production peer and only the fixtures needed by the selected runtime replay.
     # The CM file replay also builds its production Session test artifact.
     verify_smoke_build_inputs
@@ -156,6 +156,8 @@ case "$1" in
     fi
     if [ "$1" = linux-service-build ]; then
       /bin/bash --noprofile --norc /work/scripts/smoke-server-stage.sh file-type-replay
+    elif [ "$1" = linux-server-limiter-build ]; then
+      /bin/bash --noprofile --norc /work/scripts/smoke-server-stage.sh server-limiter
     fi
     ;;
   file-type-replay)
@@ -1318,6 +1320,102 @@ EOS
     grep -m1 "Connection closed: decryption error" /tmp/srv.log || echo "(no decryption-error close)"
     $READY --terminate-server "$SRV" "$SRV_START" /tmp/srv.log
     wait "$SRV"
+    ;;
+  server-limiter)
+    export HOME=/tmp/rd-guess-limiter
+    mkdir -m 0700 "$HOME"
+    /smoke-target/debug/examples/seed_password "Str0ng-Test-Pw-123" >/dev/null
+    retire_limiter_server() {
+      local result=$?
+      trap - EXIT
+      if [ -n "$SRV" ]; then
+        $READY --terminate-server "$SRV" "$SRV_START" /tmp/limiter-server.log || result=1
+        wait "$SRV" || result=1
+      fi
+      exit "$result"
+    }
+    trap retire_limiter_server EXIT
+    start_server /smoke-target/debug/rustdesk /tmp/limiter-server.log
+    $READY --wait-server "$SRV" "$SRV_START" /tmp/limiter-server.log /smoke-target/debug/examples/smoke_readiness "$(id -u)"
+    python3 -I -S - "$SRV" "$SRV_START" <<'PY'
+from pathlib import Path
+import os
+import socket
+import subprocess
+import sys
+import time
+
+pid, start = sys.argv[1:]
+proc = Path('/proc') / pid
+probe = '/smoke-target/debug/examples/probe_client'
+password = 'Str0ng-Test-Pw-123'
+source = '127.0.0.1'
+other = '127.0.0.2'
+
+def identity():
+    fields = (proc / 'stat').read_text().rsplit(')', 1)[1].split()
+    assert fields[19] == start and fields[0] not in {'Z', 'X'}
+    assert os.readlink(proc / 'exe') == '/smoke-target/debug/rustdesk'
+    owned = set()
+    for entry in (proc / 'fd').iterdir():
+        try:
+            owned.add(os.readlink(entry))
+        except FileNotFoundError:
+            pass  # A completed handshake may retire its own descriptor here.
+    listeners = [line.split()[9] for line in Path('/proc/net/tcp').read_text().splitlines()[1:]
+                 if line.split()[1] == '0100007F:527E' and line.split()[3] == '0A']
+    assert len(listeners) == 1 and 'socket:[' + listeners[0] + ']' in owned
+    return listeners[0]
+
+listener = identity()
+def keyed(value, expected, address, phase):
+    result = subprocess.run([probe, '127.0.0.1:21118', '--password-stdin',
+                             'ok' if expected else 'fail', '', address + ':0'],
+                            input=value + '\n', text=True, capture_output=True, timeout=10)
+    assert result.returncode == 0 and not result.stderr, (phase, result.returncode, result.stderr)
+    assert result.stdout.splitlines() == [
+        'probe_client: keying ok=' + str(expected).lower() + ' (expected=' + ('ok' if expected else 'fail') + ')',
+        'probe_client: PASS'], (phase, result.stdout)
+    assert identity() == listener
+    print('SERVER_LIMITER_CASE=pass phase=' + phase + ' source=' + address +
+          ' keyed=' + str(expected).lower(), flush=True)
+
+keyed(password, True, source, 'initial')
+keyed(password, True, other, 'initial-other')
+for attempt in range(9):
+    keyed('wrong-password-' + str(attempt), False, source, 'wrong-' + str(attempt + 1))
+    if attempt == 0:
+        first_failure = time.monotonic()
+for _ in range(12):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as peer:
+        peer.settimeout(5)
+        peer.bind((source, 0))
+        peer.connect(('127.0.0.1', 21118))
+        peer.shutdown(socket.SHUT_WR)
+        assert peer.recv(1) == b''
+keyed(password, True, source, 'nine-failures-plus-eof')
+keyed('wrong-password-final', False, source, 'wrong-10')
+for checkpoint in (0, 20, 40):
+    remaining = first_failure + checkpoint - time.monotonic()
+    if remaining > 0:
+        time.sleep(remaining)
+    assert time.monotonic() - first_failure < 50, 'window expired before blocked observation'
+    keyed(password, False, source, 'blocked-' + str(checkpoint))
+    keyed(password, True, other, 'other-' + str(checkpoint))
+remaining = first_failure + 64 - time.monotonic()
+assert remaining > 0
+time.sleep(remaining)
+keyed(password, True, source, 'recovered')
+keyed(password, True, other, 'recovered-other')
+print('SERVER_LIMITER_WINDOW=pass elapsed_ms=' + str(int((time.monotonic() - first_failure) * 1000)) +
+      ' pid=' + pid + ' start=' + start + ' listener=' + listener, flush=True)
+PY
+    $READY --wait-server "$SRV" "$SRV_START" /tmp/limiter-server.log /smoke-target/debug/examples/smoke_readiness "$(id -u)"
+    $READY --terminate-server "$SRV" "$SRV_START" /tmp/limiter-server.log
+    wait "$SRV"
+    SRV=
+    trap - EXIT
+    printf 'SERVER_GUESS_LIMITER=pass auth=cpace eof=12 threshold=10 unrelated=keyed checkpoints=0,20,40 recovered=64s server=same listener=same cleanup=server-joined\n'
     ;;
   limiter)
     export HOME=/tmp/rd8

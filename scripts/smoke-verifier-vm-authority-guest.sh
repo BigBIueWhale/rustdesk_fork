@@ -33,6 +33,7 @@ X11_CAPTURE_MAPPING_ONLY=0
 X11_CONTEXTS_ONLY=0
 LINUX_RECEIVER_PROFILE=focused
 PEER_BUILD_PROFILE=default
+SERVER_GUESS_LIMITER=0
 CM_DIRECTORY_DOWNLOAD=0
 case "$#:${8:-}" in
     7:)
@@ -204,7 +205,11 @@ case "$#:${8:-}" in
         MODE=android-peer-build
         ;;
     13:--android-peer-build)
-        [ "${13}" = --linux-service-build ] || exit 2
+        case "${13}" in
+            --linux-service-build) ;;
+            --linux-server-limiter-tests) SERVER_GUESS_LIMITER=1 ;;
+            *) exit 2 ;;
+        esac
         MODE=android-peer-build
         PEER_BUILD_PROFILE=bounded
         ;;
@@ -9836,6 +9841,9 @@ run_android_peer_build() {
         build_cpus=2
         build_jobs=2
         build_stage=linux-service-build
+        if [ "$SERVER_GUESS_LIMITER" -eq 1 ]; then
+            build_stage=linux-server-limiter-build
+        fi
         profile_environment+=(--env CARGO_PROFILE_DEV_DEBUG=0)
         printf '%s\n' 727573746465736b2d73657276657231 > "$ROOT/service-check.machine-id"
         chown 1000:1000 "$ROOT/service-check.machine-id"
@@ -9956,7 +9964,10 @@ run_android_peer_build() {
         || { tail -n 200 "$output" >&2; fail "Android peer build failed: $status"; }
     [ "$(grep -Fc 'ANDROID_PEER_BUILD=pass server=production auth=cpace source=x11-changing files=7 network=none' "$output")" -eq 1 ] \
         || fail 'Android peer build receipt differs'
-    if [ "$PEER_BUILD_PROFILE" = bounded ]; then
+    if [ "$SERVER_GUESS_LIMITER" -eq 1 ]; then
+        [ "$(grep -Fxc 'SERVER_GUESS_LIMITER=pass auth=cpace eof=12 threshold=10 unrelated=keyed checkpoints=0,20,40 recovered=64s server=same listener=same cleanup=server-joined' "$output")" -eq 1 ] \
+            || fail 'native server limiter result differs'
+    elif [ "$PEER_BUILD_PROFILE" = bounded ]; then
         [ "$(grep -Fxc 'FILE_TYPE_REPLAY=pass auth=cpace session=filetransfer unsupported=7 job=17013 generic=150001-bytes digest=confirmed done=once barrier=passed network=container-loopback cleanup=server-joined' "$output")" -eq 1 ] \
             || fail 'Linux service peer file-type admission result differs'
         [ "$(grep -Fxc 'FILE_SOURCE_REPLAY=pass auth=cpace session=filetransfer swap=after-admission first=150001-bytes error=once file=1 false_done=absent restored=2 barrier=passed recovery=150001-bytes cleanup=server-joined' "$output")" -eq 1 ] \

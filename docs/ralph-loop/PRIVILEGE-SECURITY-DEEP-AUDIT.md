@@ -126942,3 +126942,12 @@ application login, installed/root-service authority, sustained flood/resource,
 other non-confirmation errors, platform/suspend or release acceptance. The user
 pivot and verified scope are recorded in the current-state ledger; a fresh count
 follows. All independently parked topics remain parked; the broad goal is open.
+
+Fresh ledger count at `481c1159`, TUF `P5hbfN1sLA`, passes at 384,000 tokens /
+1,757,643 bytes, SHA-256
+`eba92af9f5602ee161818464e35b6416cb8b2b24567858b4110927431834749c`.
+Seven controls and the full-input round trip pass. QEMU 3839141 and wrapper
+3837719 exit after 30.413 seconds; 402,677,760 peak RAM bytes retire, and all
+three listener deltas are zero. The complete fifteen-file evidence set totals
+336,659 bytes, hash-verified on both hosts. This audit-only receipt leaves the
+counted ledger unchanged. No owned VM remains live.

@@ -129226,3 +129226,36 @@ and per-minute bounds pass at this checkpoint. This establishes only the fixed
 baseline; four-hour acceptance, server summaries and joined cleanup remain
 pending. Preserve this live run, poll its exact handles, and do not launch a
 replacement or synchronize the TUF repository while it owns the shared lock.
+
+### 2026-11-01 — native input-to-visible response measurement
+
+Previous turn: verified wait on the exact live soak. Continue R-F5 while that
+integration job owns TUF: the existing keyboard cases establish native event
+delivery but do not measure the resulting visible response. Add that missing
+observer using the retained application; no product or application rebuild is
+needed. CTE has capacity for the separate canonical Linux frame-fixture lane.
+
+The [XTEST contract](https://www.x.org/releases/X11R7.7/doc/libXtst/xtestlib.pdf)
+defines native key synthesis, while [Xlib event selection and synchronization](https://www.x.org/releases/X11R7.6/doc/libX11/specs/libX11/libX11.html)
+distinguish queued requests from events processed by another client. Therefore
+start the monotonic timer before injecting the viewer key pair and stop only
+after the viewer root pixels contain the newly published controlled-side state.
+XSync, a delivered key, or a source publication alone cannot complete a trial.
+
+The controlled fixture initially animates normally. Its first native `a`
+press/release switches it to event-driven publication; each later complete pair
+advances exactly one full counter identity. Unsupported, duplicate or synthetic
+send-event input refuses the fixture. A private atomic marker binds the transition.
+Before every trial, require 200 ms of unchanged visible state and publication
+count. The next identity must be published after the timed viewer input, and
+its actual visible image must arrive within 1,000 ms. Predeclare 120 trials,
+nearest-rank p95/p99 and maximum, the same TCP connection, released keys and the
+existing viewer resource bounds. Both peers share a checked time namespace.
+This measures XTEST-to-Xvfb-visible response on Linux, not physical keyboard/
+display latency, impairment recovery, long-session input behavior or other OSes.
+
+The Linux fixture gate additionally observes actual X11 pixels across four
+no-input, held-key and released-key cases, and joins the exact source/Xvfb.
+The existing source/history/geometry regressions and full controller compilation
+remain in that same bounded VM lane. Execution and complete-peer acceptance
+are pending; the TUF soak continues on its original immutable source archive.

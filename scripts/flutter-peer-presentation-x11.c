@@ -3309,7 +3309,7 @@ static int stop_isolation_viewer(int process, int pidfd, unsigned long pid,
     return -1;
 }
 
-static unsigned int soak_percentile(const unsigned int *histogram, unsigned int samples,
+static unsigned int latency_percentile(const unsigned int *histogram, unsigned int samples,
                                     unsigned int percent) {
     unsigned int seen = 0U, target = (samples * percent + 99U) / 100U;
     for (unsigned int age = 0U; age <= FRESH_LIMIT_MS; ++age) {
@@ -3317,6 +3317,130 @@ static unsigned int soak_percentile(const unsigned int *histogram, unsigned int 
         if (seen >= target) return age;
     }
     return FRESH_LIMIT_MS + 1U;
+}
+
+static int input_response_ready(int coord, int64_t *identity) {
+    char value[32] = {0}, canonical[32];
+    struct stat metadata;
+    unsigned long long parsed;
+    char newline;
+    int consumed = 0, result = -1;
+    int file = openat(coord, "input-response.ready", O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+    if (file < 0) return errno == ENOENT ? 0 : -1;
+    if (fstat(file, &metadata) == 0 && S_ISREG(metadata.st_mode) &&
+        metadata.st_uid == geteuid() && metadata.st_gid == getegid() &&
+        (metadata.st_mode & 07777U) == 0600U && metadata.st_nlink == 1U &&
+        metadata.st_size > 1 && metadata.st_size < (off_t)sizeof(value) &&
+        read(file, value, sizeof(value) - 1U) == metadata.st_size &&
+        sscanf(value, "%llu%c%n", &parsed, &newline, &consumed) == 2 &&
+        newline == '\n' && consumed == metadata.st_size && parsed < X11_FRAME_HISTORY_LIMIT &&
+        snprintf(canonical, sizeof(canonical), "%llu\n", parsed) == consumed &&
+        memcmp(value, canonical, (size_t)consumed) == 0) {
+        *identity = (int64_t)parsed;
+        result = 1;
+    }
+    if (close(file) != 0) result = -1;
+    return result;
+}
+
+static int exercise_input_latency(Display *source, Display *display, ViewerWindow *viewer,
+                                   SourceHistory *history, const ConnectionIdentity *connection,
+                                   const ProcessResources *baseline) {
+    enum { SAMPLES = 120, QUIET_MS = 200 };
+    int coord = open_coord_root(), result = -1;
+    int64_t expected = -1;
+    unsigned int histogram[FRESH_LIMIT_MS + 1U] = {0}, maximum = 0U, trial = 0U;
+    KeyCode key = XKeysymToKeycode(display, XK_a);
+    Window focus;
+    int revert;
+    uint64_t began = monotonic_millis();
+    XGetInputFocus(source, &focus, &revert);
+    if (coord < 0 || key == 0U || began == 0U ||
+        focus != RootWindow(source, DefaultScreen(source)) ||
+        return_focus_with_pointer(display, viewer) != 0 ||
+        !keyboard_is_released(source) || !keyboard_is_released(display) ||
+        fake_key(display, XK_a) != 0) goto out;
+    /* The first real remote key pair switches the source from animation to event-driven updates. */
+    for (;;) {
+        int ready = input_response_ready(coord, &expected);
+        if (ready < 0 || monotonic_millis() - began > 5000U) goto out;
+        if (ready == 1) break;
+        if (sleep_millis(10U) != 0) goto out;
+    }
+    for (;;) {
+        uint64_t captured = 0U;
+        int64_t identity = viewer_state(display, viewer, &captured);
+        if (identity > expected || x11_frame_refresh(history, "/coord") != 0 ||
+            monotonic_millis() - began > 5000U) goto out;
+        if (identity == expected && history->count == (uint64_t)expected + 1U) break;
+        if (sleep_millis(10U) != 0) goto out;
+    }
+    for (trial = 0U; trial < SAMPLES; ++trial) {
+        uint64_t quiet = monotonic_millis(), previous = quiet, start_us, elapsed_us = 0U;
+        unsigned int quiet_samples = 0U;
+        ConnectionIdentity current = {{0}, {0}, 0UL};
+        ProcessResources resources = {0};
+        if (quiet == 0U || expected + 1 >= X11_FRAME_HISTORY_LIMIT) goto out;
+        /* No input must mean no response. Automatic animation cannot satisfy the next trial. */
+        while (monotonic_millis() - quiet < QUIET_MS) {
+            uint64_t captured = 0U, now;
+            int64_t identity = viewer_state(display, viewer, &captured);
+            now = monotonic_millis();
+            if (now < previous || identity != expected ||
+                x11_frame_refresh(history, "/coord") != 0 ||
+                history->count != (uint64_t)expected + 1U) goto out;
+            previous = now;
+            quiet_samples += 1U;
+            if (sleep_millis(20U) != 0) goto out;
+        }
+        if (quiet_samples < 4U || monotonic_millis() - quiet > QUIET_MS + 100U ||
+            !keyboard_is_released(source) || !keyboard_is_released(display)) goto out;
+        ++expected;
+        start_us = x11_frame_monotonic_us();
+        int pressed = XTestFakeKeyEvent(display, key, True, CurrentTime);
+        int released = XTestFakeKeyEvent(display, key, False, CurrentTime);
+        XSync(display, False);
+        if (start_us == 0U || pressed == 0 || released == 0) goto out;
+        for (;;) {
+            uint64_t captured = 0U, now_us, age = 0U;
+            int64_t identity = viewer_state(display, viewer, &captured);
+            now_us = x11_frame_monotonic_us();
+            if (now_us < start_us || now_us - start_us > FRESH_LIMIT_MS * 1000U ||
+                identity > expected || x11_frame_refresh(history, "/coord") != 0 ||
+                history->count > (uint64_t)expected + 1U) goto out;
+            if (identity == expected) {
+                if (captured < start_us || history->count != (uint64_t)expected + 1U ||
+                    history->publication_us[expected] < start_us ||
+                    x11_frame_age(history, "/coord", identity, captured, &age) != 0 ||
+                    age > FRESH_LIMIT_MS) goto out;
+                elapsed_us = x11_frame_monotonic_us() - start_us;
+                if (elapsed_us > FRESH_LIMIT_MS * 1000U) goto out;
+                break;
+            }
+            if (sleep_millis(10U) != 0) goto out;
+        }
+        unsigned int latency = (unsigned int)((elapsed_us + 999U) / 1000U);
+        if (!keyboard_is_released(source) || !keyboard_is_released(display) ||
+            read_connection_identity(&current) != 0 || !same_connection(connection, &current) ||
+            read_process_resources(viewer->pid, &resources) != 0 ||
+            !resources_are_bounded(baseline, &resources)) goto out;
+        histogram[latency] += 1U;
+        if (latency > maximum) maximum = latency;
+        printf("FLUTTER_PEER_INPUT_LATENCY_SAMPLE index=%u identity=%lld elapsed_us=%llu "
+               "quiet_samples=%u input=native-key-pair response=visible-pixels\n",
+               trial, (long long)expected, (unsigned long long)elapsed_us, quiet_samples);
+    }
+    printf("FLUTTER_PEER_INPUT_LATENCY_OK samples=120 deadline_ms=1000 p95_ms=%u p99_ms=%u "
+           "maximum_ms=%u stable_connection=true resources=bounded input=viewer-xtest "
+           "response=controlled-native-key-pair pixels=viewer-root\n",
+           latency_percentile(histogram, SAMPLES, 95U), latency_percentile(histogram, SAMPLES, 99U), maximum);
+    result = 0;
+out:
+    if (result != 0)
+        fprintf(stderr, "FLUTTER_PEER_X11_FAIL input-latency trial=%u identity=%lld errno=%d\n",
+                trial, (long long)expected, errno);
+    if (coord >= 0 && close(coord) != 0) result = -1;
+    return result;
 }
 
 static int exercise_viewer_soak(Display *display, ViewerWindow *viewer, SourceHistory *history,
@@ -3379,8 +3503,8 @@ static int exercise_viewer_soak(Display *display, ViewerWindow *viewer, SourceHi
             read_connection_identity(&current) != 0 || !same_connection(connection, &current) ||
             read_process_resources(viewer->pid, &resources) != 0 ||
             !resources_are_bounded(baseline, &resources)) goto out;
-        unsigned int p95 = soak_percentile(histogram, valid, 95U);
-        unsigned int p99 = soak_percentile(histogram, valid, 99U);
+        unsigned int p95 = latency_percentile(histogram, valid, 95U);
+        unsigned int p99 = latency_percentile(histogram, valid, 99U);
         if (window == 0U) { baseline_p95 = p95; baseline_p99 = p99; }
         printf("FLUTTER_PEER_SOAK_WINDOW index=%u elapsed_ms=%llu samples=%u valid=%u "
                "distinct=%u p95_ms=%u p99_ms=%u maximum_age_ms=%u maximum_gap_ms=%llu "
@@ -4806,6 +4930,7 @@ int main(int argc, char **argv) {
 
     if (argc != 5 && (argc != 6 || (strcmp(argv[5], "--viewer-suspend") != 0 &&
                                     strcmp(argv[5], "--viewer-soak") != 0 &&
+                                    strcmp(argv[5], "--input-latency") != 0 &&
                                     strcmp(argv[5], "--isolation-slow") != 0 &&
                                     strcmp(argv[5], "--isolation-healthy") != 0 &&
                                     strcmp(argv[5], "--keyboard-retirement") != 0 &&
@@ -4835,7 +4960,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--viewer-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
+              "VIEWER_START [--viewer-suspend|--viewer-soak|--input-latency|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
         return 2;
     }
@@ -5048,6 +5173,16 @@ int main(int argc, char **argv) {
         return 1;
     }
     print_resources("initial", 0U, &baseline_resources);
+
+    if (argc == 6 && strcmp(argv[5], "--input-latency") == 0) {
+        int result = exercise_input_latency(source, display, &viewer, &history,
+                                           &current_connection, &baseline_resources);
+        if (atspi_exit() != 0) result = -1;
+        if (close_viewer(display, viewer.window) != 0) result = -1;
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return result == 0 ? 0 : 1;
+    }
 
     if (argc == 6 && strcmp(argv[5], "--viewer-soak") == 0) {
         int result = exercise_viewer_soak(display, &viewer, &history, argv[4],

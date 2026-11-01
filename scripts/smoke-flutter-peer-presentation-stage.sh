@@ -26,7 +26,7 @@ MENU_ACTION=pointer
 [ "$PEER_SCENARIO" != credential-menu-accessible ] || MENU_ACTION=accessible
 readonly MENU_ACTION
 case "$PEER_SCENARIO" in
-  session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|viewer-isolation|viewer-soak) EXPECTED_RESTARTS=0 ;;
+  session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|viewer-isolation|viewer-soak|input-latency) EXPECTED_RESTARTS=0 ;;
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
   viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation|credential-forget|credential-menu|credential-menu-accessible) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
@@ -519,7 +519,7 @@ PY
     done
     /usr/bin/cc -std=c11 -O2 -Wall -Wextra -Werror \
       -DX11_FRAME_HISTORY_LIMIT=65536U '-DX11_FRAME_LOG_LIMIT=(8U*1024U*1024U)' \
-      /source/scripts/test-x11-frame-oracle.c $(pkg-config --cflags --libs x11) \
+      /source/scripts/test-x11-frame-oracle.c $(pkg-config --cflags --libs x11 xtst) \
       -o /tmp/desktop-frame-oracle
     /tmp/desktop-frame-oracle --unit
     echo 'LINUX_FLUTTER_ORACLE_UNITS=pass history_limit=65536 log_bytes_limit=8388608 stale_age=preserved uncertainty=sticky'
@@ -1060,7 +1060,9 @@ PY
         || fail 'cannot overlap controlled-server generations'
       SERVER_LOG="/tmp/server.$generation.log"
       local rust_log=info,rustdesk::video_qos=debug,rustdesk::clipboard=debug
-      [ "$PEER_SCENARIO" != viewer-soak ] || rust_log=info
+      if [ "$PEER_SCENARIO" = viewer-soak ] || [ "$PEER_SCENARIO" = input-latency ]; then
+        rust_log=info
+      fi
       (cd /app/bundle && LD_PRELOAD="$BIND_SHIM" RUST_LOG="$rust_log" exec "$APP" --server) \
         >"$SERVER_LOG" 2>&1 &
       SERVER_PID=$!
@@ -1088,8 +1090,10 @@ PY
         || fail "controlled server generation $generation retained a socket after teardown"
     }
     start_xvfb :98 640x480x24 /tmp/server-xvfb.log
+    source_args=()
+    [ "$PEER_SCENARIO" != input-latency ] || source_args+=(--input-response "$COORD")
     set -o noclobber
-    RUSTDESK_PRESENTATION_TRACE=1 "$SOURCE_FIXTURE" >"$COORD/frame-source.log" 2>&1 &
+    RUSTDESK_PRESENTATION_TRACE=1 "$SOURCE_FIXTURE" "${source_args[@]}" >"$COORD/frame-source.log" 2>&1 &
     SOURCE_PID=$!
     set +o noclobber
     SOURCE_START=$("$READY" --identity "$SOURCE_PID")
@@ -1120,7 +1124,7 @@ PY
       "$SERVER_PID" "$SERVER_START" > "$COORD/server.ready.tmp"
     mv "$COORD/server.ready.tmp" "$COORD/server.ready"
     echo 'FLUTTER_PEER_SERVER_READY network=none interfaces=lo listener=127.0.0.1:21118 udp=0 parked_then_passworded=true'
-    if [ "$PEER_SCENARIO" = viewer-soak ]; then
+    if [ "$PEER_SCENARIO" = viewer-soak ] || [ "$PEER_SCENARIO" = input-latency ]; then
       readlink /proc/self/ns/time > "$COORD/soak.time"
     fi
     stop_seen=0
@@ -1550,7 +1554,9 @@ PY
     viewer_environment=()
     [ "$PEER_SCENARIO" != theme-appearance ] || viewer_environment+=(G_MESSAGES_DEBUG=all)
     viewer_rust_log=info,rustdesk::clipboard=debug
-    [ "$PEER_SCENARIO" != viewer-soak ] || viewer_rust_log=info
+    if [ "$PEER_SCENARIO" = viewer-soak ] || [ "$PEER_SCENARIO" = input-latency ]; then
+      viewer_rust_log=info
+    fi
     (cd /app/bundle && exec env "${viewer_environment[@]}" RUST_LOG="$viewer_rust_log" "$APP" --connect 127.0.0.1) \
       >/tmp/viewer.log 2>&1 &
     VIEWER_PID=$!
@@ -1602,6 +1608,7 @@ PY
     fi
     [ "$PEER_SCENARIO" != viewer-suspend ] || controller_args+=(--viewer-suspend)
     [ "$PEER_SCENARIO" != viewer-soak ] || controller_args+=(--viewer-soak)
+    [ "$PEER_SCENARIO" != input-latency ] || controller_args+=(--input-latency)
     [ "$PEER_SCENARIO" != view-scaling ] || controller_args+=(--view-scaling)
     [ "$PEER_SCENARIO" != session-close ] || controller_args+=(--session-close)
     [ "$PEER_SCENARIO" != background-close ] || controller_args+=(--background-close)
@@ -1617,11 +1624,14 @@ PY
     [ "$PEER_SCENARIO" != mouse-input ] || controller_args+=(--mouse-input)
     [ "$PEER_SCENARIO" != mouse-retirement ] || controller_args+=(--mouse-retirement)
     controller_timeout=180s
-    if [ "$PEER_SCENARIO" = viewer-soak ]; then
+    if [ "$PEER_SCENARIO" = viewer-soak ] || [ "$PEER_SCENARIO" = input-latency ]; then
       [ -f "$COORD/soak.time" ] && [ ! -L "$COORD/soak.time" ] \
         && [ "$(stat -c '%u:%g:%a:%h' "$COORD/soak.time")" = "$(id -u):$(id -g):600:1" ] \
         && [ "$(readlink /proc/self/ns/time)" = "$(<"$COORD/soak.time")" ] \
         || fail 'source and observer monotonic clock namespaces differ'
+    fi
+    [ "$PEER_SCENARIO" != input-latency ] || controller_timeout=240s
+    if [ "$PEER_SCENARIO" = viewer-soak ]; then
       controller_timeout=14700s
       exec 3>&1
     fi
@@ -1730,6 +1740,11 @@ PY
       elif [ "$PEER_SCENARIO" = credential-menu ] || [ "$PEER_SCENARIO" = credential-menu-accessible ]; then
         viewer_result='viewer=joined xvfb=joined credential_menu=passed generations=3 password_entries=1 saved_credential=empty next_prompt=required'
       fi
+    elif [ "$PEER_SCENARIO" = input-latency ]; then
+      [ "$(grep -c '^FLUTTER_PEER_INPUT_LATENCY_SAMPLE ' <<<"$controller_output")" -eq 120 ] \
+        && [ "$(grep -Ec '^FLUTTER_PEER_INPUT_LATENCY_OK samples=120 deadline_ms=1000 p95_ms=[0-9]+ p99_ms=[0-9]+ maximum_ms=[0-9]+ stable_connection=true resources=bounded input=viewer-xtest response=controlled-native-key-pair pixels=viewer-root$' <<<"$controller_output")" -eq 1 ] \
+        || fail 'native input-to-visible response observation is incomplete'
+      viewer_result='viewer=joined xvfb=joined input_latency_samples=120 stable_connection=true resources=bounded'
     elif [ "$PEER_SCENARIO" = viewer-soak ]; then
       [ "$(grep -c '^FLUTTER_PEER_SOAK_WINDOW ' <<<"$controller_output")" -eq 241 ] \
         && grep -Fxq 'FLUTTER_PEER_SOAK_OK baseline_ms=60000 duration_ms=14400000 windows=240 freshness_limit_ms=1000 p95_drift_ms=250 p99_drift_ms=250 stable_connection=true resources=bounded x11_pixels=true' \

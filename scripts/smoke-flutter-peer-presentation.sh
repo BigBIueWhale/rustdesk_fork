@@ -77,6 +77,7 @@ case "$#:${1:-}" in
         --viewer-suspend) PEER_SCENARIO=viewer-suspend ;;
         --viewer-isolation) PEER_SCENARIO=viewer-isolation ;;
         --viewer-soak) PEER_SCENARIO=viewer-soak ;;
+        --input-latency) PEER_SCENARIO=input-latency ;;
         --network-impairment) PEER_SCENARIO=network-impairment ;;
         --network-loss) PEER_SCENARIO=network-loss ;;
         --clipboard-text) PEER_SCENARIO=clipboard-text ;;
@@ -146,6 +147,7 @@ readonly SUPPLIED_SOURCE_ARCHIVE SUPPLIED_SOURCE_COMMIT \
 readonly PEER_SCENARIO
 PRESENTATION_TRACE=1
 [ "$PEER_SCENARIO" != viewer-soak ] || PRESENTATION_TRACE=0
+[ "$PEER_SCENARIO" != input-latency ] || PRESENTATION_TRACE=0
 readonly PRESENTATION_TRACE
 if [ "$PEER_SCENARIO" = network-impairment ] || [ "$PEER_SCENARIO" = network-loss ]; then
   RUNTIME_CYCLES=1
@@ -245,6 +247,11 @@ elif [ "$PEER_SCENARIO" = clipboard-text ]; then
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined clipboard_cases=6 stable_connection=true resources=bounded'
+elif [ "$PEER_SCENARIO" = input-latency ]; then
+  RUNTIME_CYCLES=1
+  SERVER_GENERATIONS='1'
+  SERVER_REPLACEMENTS=0
+  VIEWER_RESULT='viewer=joined xvfb=joined input_latency_samples=120 stable_connection=true resources=bounded'
 elif [ "$PEER_SCENARIO" = viewer-soak ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

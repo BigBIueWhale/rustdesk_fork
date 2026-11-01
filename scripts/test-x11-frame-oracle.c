@@ -1,5 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <stdlib.h>
+#include <X11/extensions/XTest.h>
+#include <X11/keysym.h>
 #include "x11-frame-oracle.h"
 
 #define REQUIRE(condition) do { \
@@ -270,14 +272,80 @@ finished:
     return result;
 }
 
+static int input_response_case(const char *directory) {
+    Display *display = XOpenDisplay(":98");
+    SourceHistory history = {0};
+    uint8_t pixels[X11_FRAME_BYTES];
+    uint64_t captured = 0U, began = x11_frame_monotonic_us();
+    struct timespec pause = {0, 10000000L};
+    char marker_path[512];
+    unsigned int initial = 0U;
+    int result = -1, held = 0;
+    if (display == NULL) return -1;
+    KeyCode key = XKeysymToKeycode(display, XK_a);
+    if (key == 0U || snprintf(marker_path, sizeof(marker_path), "%s/input-response.ready", directory)
+        >= (int)sizeof(marker_path)) goto out;
+    for (;;) {
+        if (x11_frame_capture(display, DefaultRootWindow(display), pixels, &captured) >= 0) break;
+        if (x11_frame_monotonic_us() - began > 2000000U || nanosleep(&pause, NULL) != 0) goto out;
+    }
+    if (XTestFakeKeyEvent(display, key, True, CurrentTime) == 0 ||
+        XTestFakeKeyEvent(display, key, False, CurrentTime) == 0) goto out;
+    XSync(display, False);
+    for (;;) {
+        FILE *file = fopen(marker_path, "r");
+        if (file != NULL) {
+            int valid = fscanf(file, "%u", &initial) == 1;
+            if (fclose(file) != 0 || !valid) goto out;
+            break;
+        }
+        if (errno != ENOENT || x11_frame_monotonic_us() - began > 3000000U ||
+            nanosleep(&pause, NULL) != 0) goto out;
+    }
+    for (unsigned int trial = 0U; trial < 4U; ++trial) {
+        for (unsigned int phase = 0U; phase < 2U; ++phase) {
+            if (phase == 1U) {
+                if (XTestFakeKeyEvent(display, key, True, CurrentTime) == 0) goto out;
+                held = 1;
+                XSync(display, False);
+            }
+            uint64_t quiet = x11_frame_monotonic_us();
+            do {
+                if (x11_frame_capture(display, DefaultRootWindow(display), pixels, &captured)
+                        != (int64_t)initial + trial ||
+                    x11_frame_refresh(&history, directory) != 0 ||
+                    history.count != initial + trial + 1U || nanosleep(&pause, NULL) != 0) goto out;
+            } while (x11_frame_monotonic_us() - quiet < 200000U);
+        }
+        if (XTestFakeKeyEvent(display, key, False, CurrentTime) == 0) goto out;
+        held = 0;
+        XSync(display, False);
+        uint64_t sent = x11_frame_monotonic_us();
+        for (;;) {
+            int64_t identity = x11_frame_capture(display, DefaultRootWindow(display), pixels, &captured);
+            if (identity == (int64_t)initial + trial + 1) break;
+            if (identity > (int64_t)initial + trial + 1 ||
+                x11_frame_monotonic_us() - sent > 1000000U || nanosleep(&pause, NULL) != 0) goto out;
+        }
+    }
+    puts("X11_INPUT_RESPONSE_FIXTURE=pass no_input=stable held_key=stable native_release=advances "
+         "samples=4 pixels=actual scope=fixture-only");
+    result = 0;
+out:
+    if (held && XTestFakeKeyEvent(display, key, False, CurrentTime) == 0) result = -1;
+    if (XCloseDisplay(display) != 0) result = -1;
+    return result;
+}
+
 int main(int argc, char **argv) {
     if (argc == 2 && strcmp(argv[1], "--unit") == 0 && getuid() != 0 && getgid() != 0 &&
         getuid() == geteuid() && getgid() == getegid()) {
         return unit_cases() != 0;
     }
-    if (argc != 2 || getuid() != 4000 || geteuid() != 4000 || getgid() != 4000 || getegid() != 4000) {
+    if ((argc != 2 && argc != 3) || getuid() != 4000 || geteuid() != 4000 || getgid() != 4000 || getegid() != 4000) {
         return 1;
     }
+    if (argc == 3) return strcmp(argv[1], "--input-response") != 0 || input_response_case(argv[2]) != 0;
     if (strcmp(argv[1], "--old-window-image") == 0) return geometry_case(1) != 0;
     if (strcmp(argv[1], "--geometry") == 0) return unit_cases() != 0 || geometry_case(0) != 0;
     return native_case(argv[1]) != 0;

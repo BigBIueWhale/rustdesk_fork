@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #define _POSIX_C_SOURCE 200809L
 
 /*
@@ -10,14 +11,19 @@
  */
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <X11/keysym.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/resource.h>
+#include <sys/stat.h>
+#include <sys/syscall.h>
 #include <time.h>
+#include <unistd.h>
 
 #define SOURCE_WIDTH 640U
 #define SOURCE_HEIGHT 480U
@@ -162,6 +168,57 @@ static void draw_texture(Display *display, Pixmap buffer, GC graphics,
               (unsigned int)image->width, (unsigned int)image->height);
 }
 
+/* Only a complete native key pair may advance the interactive source. */
+static int response_input(Display *display, Window root, unsigned int *held) {
+    unsigned int events = 0U, completed = 0U;
+    while (XPending(display) != 0) {
+        XEvent event;
+        KeySym symbol = NoSymbol;
+        char text[8];
+        if (++events > 128U) return -1;
+        XNextEvent(display, &event);
+        if (event.type == MappingNotify) {
+            XRefreshKeyboardMapping(&event.xmapping);
+            continue;
+        }
+        if (event.type != KeyPress && event.type != KeyRelease) continue;
+        int size = XLookupString(&event.xkey, text, sizeof(text), &symbol, NULL);
+        if (event.xkey.window != root || event.xkey.send_event ||
+            (event.xkey.state & 255U) != 0U || symbol != XK_a || size != 1 || text[0] != 'a')
+            return -1;
+        if (event.type == KeyPress) {
+            if (*held != 0U || completed != 0U) return -1;
+            *held = event.xkey.keycode;
+        } else {
+            if (*held == 0U || *held != event.xkey.keycode || completed != 0U) return -1;
+            *held = 0U;
+            completed = 1U;
+        }
+    }
+    return (int)completed;
+}
+
+static int publish_response_ready(const char *directory, uint32_t frame) {
+    struct stat metadata;
+    char value[16];
+    int length = snprintf(value, sizeof(value), "%u\n", frame);
+    int parent = open(directory, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    int result = -1, file = -1;
+    if (parent < 0) return -1;
+    if (fstat(parent, &metadata) != 0 || metadata.st_uid != geteuid() ||
+        metadata.st_gid != getegid() || (metadata.st_mode & 07777U) != 0700U) goto out;
+    file = openat(parent, "input-response.ready.tmp", O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW |
+                  O_CLOEXEC, 0600);
+    if (file >= 0 && length > 0 && (size_t)length < sizeof(value) &&
+        write(file, value, (size_t)length) == length) result = 0;
+out:
+    if (file >= 0 && close(file) != 0) result = -1;
+    if (result == 0 && syscall(SYS_renameat2, parent, "input-response.ready.tmp",
+                              parent, "input-response.ready", 1U) != 0) result = -1;
+    if (close(parent) != 0) result = -1;
+    return result;
+}
+
 int main(int argc, char **argv) {
     Display *display = NULL;
     struct sigaction action = {0};
@@ -180,6 +237,9 @@ int main(int argc, char **argv) {
     unsigned int source_width = SOURCE_WIDTH;
     unsigned int source_height = SOURCE_HEIGHT;
     unsigned int frame_interval_ms = FRAME_INTERVAL_MS;
+    unsigned int held_key = 0U;
+    int input_response = 0, interactive = 0, response_ready = 0;
+    const char *response_directory = NULL;
     unsigned int code_height;
     unsigned int texture_top;
     const char *trace_value = getenv("RUSTDESK_PRESENTATION_TRACE");
@@ -190,8 +250,11 @@ int main(int argc, char **argv) {
         source_width = 1920U;
         source_height = 1080U;
         frame_interval_ms = 33U;
+    } else if (argc == 3 && strcmp(argv[1], "--input-response") == 0) {
+        input_response = 1;
+        response_directory = argv[2];
     } else if (argc != 1) {
-        fputs("FLUTTER_PEER_SOURCE_FAIL usage: frame-source [--full-hd]\n", stderr);
+        fputs("FLUTTER_PEER_SOURCE_FAIL usage: frame-source [--full-hd|--input-response DIRECTORY]\n", stderr);
         return 1;
     }
     if (getrlimit(RLIMIT_FSIZE, &output_limit) != 0) {
@@ -246,6 +309,10 @@ int main(int argc, char **argv) {
         return 1;
     }
     root = RootWindow(display, screen);
+    if (input_response) {
+        XSelectInput(display, root, KeyPressMask | KeyReleaseMask);
+        XSetInputFocus(display, root, RevertToParent, CurrentTime);
+    }
     attributes.override_redirect = True;
     attributes.background_pixel = rgb_pixel(visual, palette[0]);
     window = XCreateWindow(display, root, 0, 0, source_width, source_height, 0,
@@ -273,7 +340,7 @@ int main(int argc, char **argv) {
         return 1;
     }
     XMapRaised(display, window);
-    if (argc == 2) {
+    if (source_width == 1920U) {
         unsigned int component;
         texture = XCreateImage(display, visual, (unsigned int)DefaultDepth(display, screen),
                                 ZPixmap, 0, NULL, source_width,
@@ -312,6 +379,20 @@ int main(int argc, char **argv) {
         unsigned int high = (frame >> 4U) & 15U;
         unsigned int row, bar;
         uint64_t publication_us;
+
+        if (input_response) {
+            int received;
+            do {
+                received = response_input(display, root, &held_key);
+                if (received < 0 || (interactive && received == 0 && sleep_millis(10U) != 0)) {
+                    fputs("FLUTTER_PEER_SOURCE_FAIL native input response\n", stderr);
+                    exit_status = 1;
+                    goto cleanup;
+                }
+            } while (interactive && received == 0 && stop_requested == 0);
+            if (stop_requested != 0) break;
+            if (received == 1) interactive = 1;
+        }
 
         XSetForeground(display, graphics, rgb_pixel(visual, palette[low]));
         XFillRectangle(display, back_buffer, graphics, 0, 0, source_width / 2U,
@@ -371,13 +452,21 @@ int main(int argc, char **argv) {
                 break;
             }
         }
+        if (interactive && !response_ready) {
+            if (publish_response_ready(response_directory, frame) != 0) {
+                fputs("FLUTTER_PEER_SOURCE_FAIL response readiness\n", stderr);
+                exit_status = 1;
+                break;
+            }
+            response_ready = 1;
+        }
         if (frame == UINT32_MAX) {
             fputs("FLUTTER_PEER_SOURCE_FAIL frame identity exhausted\n", stderr);
             exit_status = 1;
             break;
         }
         ++frame;
-        if (sleep_millis(frame_interval_ms) != 0) {
+        if (!interactive && sleep_millis(frame_interval_ms) != 0) {
             fputs("FLUTTER_PEER_SOURCE_FAIL frame pacing\n", stderr);
             if (texture != NULL) XDestroyImage(texture);
             XFreePixmap(display, back_buffer);

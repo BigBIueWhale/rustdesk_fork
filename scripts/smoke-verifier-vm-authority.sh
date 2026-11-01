@@ -59,6 +59,7 @@ FLUTTER_THEME_APPEARANCE=0
 FLUTTER_THEME_SAVE_FAILURE=0
 FLUTTER_VIEWER_ISOLATION=0
 FLUTTER_VIEWER_SOAK=0
+FLUTTER_INPUT_LATENCY=0
 FLUTTER_CREDENTIAL_RESTART=0
 FLUTTER_NETWORK_IMPAIRMENT=0
 FLUTTER_APP_COMMIT=
@@ -683,6 +684,7 @@ case "$#:${1:-}" in
                 --theme-save-failure) FLUTTER_THEME_SAVE_FAILURE=1 ;;
                 --viewer-isolation) FLUTTER_VIEWER_ISOLATION=1 ;;
                 --viewer-soak) FLUTTER_VIEWER_SOAK=1 ;;
+                --input-latency) FLUTTER_INPUT_LATENCY=1 ;;
                 --credential-restart) FLUTTER_CREDENTIAL_RESTART=1 ;;
                 --credential-rotation) FLUTTER_CREDENTIAL_RESTART=2 ;;
                 --credential-forget) FLUTTER_CREDENTIAL_RESTART=3 ;;
@@ -737,7 +739,7 @@ case "$#:${1:-}" in
         printf 'Original offline engine setup: %s --linux-flutter-engine-prepare\n' "${0##*/}" >&2
         printf 'Explicit offline engine integration build: %s --linux-flutter-engine-build\n' "${0##*/}" >&2
         printf 'Source-bound Linux app producer: %s --linux-flutter-app-build --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256\n' "${0##*/}" >&2
-        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend|--viewer-isolation|--viewer-soak|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-restart|--theme-appearance|--theme-save-failure|--credential-retry|--credential-restart|--credential-rotation|--credential-forget|--credential-menu|--credential-menu-accessible]\n' "${0##*/}" >&2
+        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend|--viewer-isolation|--viewer-soak|--input-latency|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-restart|--theme-appearance|--theme-save-failure|--credential-retry|--credential-restart|--credential-rotation|--credential-forget|--credential-menu|--credential-menu-accessible]\n' "${0##*/}" >&2
         printf 'Focused native Docker log-lifetime check: %s --android-runtime-log-tests\n' "${0##*/}" >&2
         printf 'Windows service-result file checks: %s --windows-service-result-tests\n' "${0##*/}" >&2
         printf 'Focused archive transaction fixtures: %s --fixed-archive-tests\n' "${0##*/}" >&2
@@ -841,6 +843,7 @@ readonly FLUTTER_THEME_APPEARANCE
 readonly FLUTTER_THEME_SAVE_FAILURE
 readonly FLUTTER_VIEWER_ISOLATION
 readonly FLUTTER_VIEWER_SOAK
+readonly FLUTTER_INPUT_LATENCY
 readonly FLUTTER_CREDENTIAL_RESTART
 readonly FLUTTER_TEST_PROFILE
 readonly RUST_TEST_PROFILE
@@ -5214,6 +5217,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         [ "$FLUTTER_THEME_SAVE_FAILURE" -eq 0 ] || guest_invocation+=' --theme-save-failure'
         [ "$FLUTTER_VIEWER_ISOLATION" -eq 0 ] || guest_invocation+=' --viewer-isolation'
         [ "$FLUTTER_VIEWER_SOAK" -eq 0 ] || guest_invocation+=' --viewer-soak'
+        [ "$FLUTTER_INPUT_LATENCY" -eq 0 ] || guest_invocation+=' --input-latency'
         case "$FLUTTER_CREDENTIAL_RESTART" in
             1) guest_invocation+=' --credential-restart' ;;
             2) guest_invocation+=' --credential-rotation' ;;
@@ -6325,6 +6329,12 @@ elif [ "$MODE" = x11-display-tests ]; then
         'X11 enumeration guest finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'X11 enumeration completion'
 elif [ "$MODE" = android-frame-tests ]; then
+    require_exact_fixed_receipt \
+        'X11_INPUT_RESPONSE_FIXTURE=pass no_input=stable held_key=stable native_release=advances samples=4 pixels=actual scope=fixture-only' \
+        'native input-driven source refuses autonomous and incomplete-input progress'
+    require_exact_fixed_receipt \
+        'X11_INPUT_RESPONSE_JOINED=pass source=joined xvfb=joined socket=absent' \
+        'native input-driven source exact cleanup'
     mapfile -t frame_source_build < <(/usr/bin/grep -Eo \
         'X11_FRAME_SOURCE_BUILD=pass source_sha256=[0-9a-f]{64} sha256=[0-9a-f]{64} bytes=[1-9][0-9]* copies=2 equality=byte-identical network=none output=private' \
         "$SERIAL_LOG" || true)
@@ -8652,6 +8662,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     [ "$FLUTTER_THEME_SAVE_FAILURE" -eq 0 ] || peer_scenario=theme-save-failure
     [ "$FLUTTER_VIEWER_ISOLATION" -eq 0 ] || peer_scenario=viewer-isolation
     [ "$FLUTTER_VIEWER_SOAK" -eq 0 ] || peer_scenario=viewer-soak
+    [ "$FLUTTER_INPUT_LATENCY" -eq 0 ] || peer_scenario=input-latency
     case "$FLUTTER_CREDENTIAL_RESTART" in
         1) peer_scenario=credential-restart ;;
         2) peer_scenario=credential-rotation ;;

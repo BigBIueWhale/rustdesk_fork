@@ -663,6 +663,48 @@ def test_observation_schedule(decoder):
           "clock=synthetic refusals=11 boundaries=accepted final_interval=checked", flush=True)
 
 
+def test_input_response(fixture, oracle, environment):
+    directory = Path('/tmp/input-response-source')
+    directory.mkdir(mode=0o700)
+    source_path = directory / 'frame-source.log'
+    children = []
+    try:
+        with (directory / 'xvfb.log').open('wb') as log:
+            children.append(subprocess.Popen([
+                '/xvfb-root/usr/bin/Xvfb', ':98', '-screen', '0', '640x480x24',
+                '-nolisten', 'tcp', '-ac', '-noreset',
+            ], env=environment, stdout=log, stderr=subprocess.STDOUT))
+        began = time.monotonic()
+        while not Path('/tmp/.X11-unix/X98').is_socket():
+            require(children[0].poll() is None and time.monotonic() - began < 5,
+                    'input-response X11 display did not start')
+            time.sleep(0.05)
+        source_environment = dict(environment, DISPLAY=':98')
+        with source_path.open('wb') as log:
+            source_path.chmod(0o600)
+            children.append(subprocess.Popen([
+                str(fixture / 'frame-source'), '--input-response', str(directory),
+            ], env=source_environment, stdout=log, stderr=subprocess.STDOUT))
+        subprocess.run([str(oracle), '--input-response', str(directory)],
+                       env=environment, check=True, timeout=10)
+        require(all(child.poll() is None for child in children), 'input-response child exited early')
+        children[-1].send_signal(signal.SIGTERM)
+        require(children[-1].wait(timeout=5) == 0 and
+                'FLUTTER_PEER_SOURCE_COMPLETE ' in source_path.read_text(),
+                'input-response source did not complete cleanly')
+    finally:
+        for child in reversed(children):
+            if child.poll() is None:
+                child.send_signal(signal.SIGTERM)
+            try:
+                child.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                child.kill()
+                child.wait(timeout=5)
+    require(not Path('/tmp/.X11-unix/X98').exists(), 'input-response X11 socket remained')
+    print('X11_INPUT_RESPONSE_JOINED=pass source=joined xvfb=joined socket=absent', flush=True)
+
+
 def main():
     require(os.getuid() == 4000 and os.getgid() == 4000, "numeric nonroot principal differs")
     module_path = Path("/work/scripts/android-emulator-frame.py")
@@ -712,7 +754,7 @@ def main():
     oracle_binaries = [Path(f"/build/x11-frame-oracle-{index}") for index in range(2)]
     for binary in oracle_binaries:
         subprocess.run(["/usr/bin/cc", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
-                        "/work/scripts/test-x11-frame-oracle.c", "-lX11", "-o", str(binary)],
+                        "/work/scripts/test-x11-frame-oracle.c", "-lX11", "-lXtst", "-o", str(binary)],
                        env=environment, check=True, timeout=30)
         binary.chmod(0o500)
     oracle_bytes = oracle_binaries[0].read_bytes()
@@ -726,6 +768,7 @@ def main():
     print("ANDROID_FRAME_NATIVE_X11_BUILD copies=2 equal=true controller=compiled "
           f"sha256={hashlib.sha256(oracle_bytes).hexdigest()} bytes={len(oracle_bytes)}", flush=True)
     test_observer_age(environment)
+    test_input_response(fixture, oracle_binaries[0], environment)
     children = []
     display = None
     lib = ctypes.CDLL("libX11.so.6")

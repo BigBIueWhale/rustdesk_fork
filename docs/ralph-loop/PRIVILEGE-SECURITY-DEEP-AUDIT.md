@@ -126432,3 +126432,13 @@ any counter decrease reset that job's baseline and rate. Subsecond updates
 preserve the sample until the existing one-second cadence is reached. The
 same 47-case test source will now exercise the candidate; no completion or
 cancellation decision, native transfer operation or authority path is changed.
+
+Review caught an integer intermediate in the initial rate formula: multiplying
+the byte delta by one million before division can overflow Dart's native integer.
+Convert by division before scaling. Extend the existing rate cases with an exact
+counter above 2^53, zero byte growth and a counter drop between cadence samples.
+The initial three failing assertions are unchanged; these additional controls
+have no separate baseline execution claim. Run `ogrWoGyJjQ` was stopped before
+its tests ran, so it supplies no candidate verdict. QEMU 3746988 and wrapper
+3746500 exit, 562,692,096 peak RAM bytes retire and all four listener deltas are
+zero after 46.224 seconds. Retained directory: `cm-rate-cancelled.ogrWoGyJjQ`.

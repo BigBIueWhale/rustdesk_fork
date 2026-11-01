@@ -91,8 +91,8 @@ class _CmRateHarness {
 }
 
 void _expectMeasuredRate(CmFileLog job, int bytes, Stopwatch clock) {
-  final expected = bytes * Duration.microsecondsPerSecond /
-      clock.elapsedMicroseconds;
+  final expected = bytes / clock.elapsedMicroseconds *
+      Duration.microsecondsPerSecond;
   expect(job.speed, closeTo(expected, expected * 0.1));
 }
 
@@ -207,6 +207,15 @@ void main() {
     _expectMeasuredRate(h.job(1), 6000, clock);
     expect(h.job(1).finishedSize, 6000);
     expect(h.job(1).state, JobState.inProgress);
+    clock.reset();
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    const largeCounter = 9007199254740993;
+    h.report(1, largeCounter);
+    expect(h.job(1).speed.isFinite, isTrue);
+    _expectMeasuredRate(h.job(1), largeCounter - 6000, clock);
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    h.report(1, largeCounter);
+    expect(h.job(1).speed, 0);
   });
 
   test('CM transfer speeds keep independent sample windows', () async {
@@ -239,6 +248,9 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 1200));
     h.report(2, 51200);
     _expectMeasuredRate(h.job(2), 1200, clock);
+    h.report(2, 51400);
+    h.report(2, 51300);
+    expect(h.job(2).speed, 0);
     h.report(2, 100);
     expect(h.job(2).speed, 0);
     clock.reset();

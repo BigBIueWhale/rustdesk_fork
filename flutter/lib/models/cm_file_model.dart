@@ -146,8 +146,8 @@ class CmFileModel {
       job._lastTransferredSize = data.transferred;
       job._lastTransferredElapsed = elapsed;
     } else if (elapsed - previousElapsed >= Duration.microsecondsPerSecond) {
-      job.speed = (data.transferred - job._lastTransferredSize) *
-          Duration.microsecondsPerSecond / (elapsed - previousElapsed);
+      job.speed = (data.transferred - job._lastTransferredSize) /
+          (elapsed - previousElapsed) * Duration.microsecondsPerSecond;
       job._lastTransferredSize = data.transferred;
       job._lastTransferredElapsed = elapsed;
     }

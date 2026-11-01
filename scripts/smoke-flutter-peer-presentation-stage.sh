@@ -1268,6 +1268,31 @@ PY
     set -e
     printf '%s\n' "$controller_output"
     if [ "$controller_status" -ne 0 ]; then
+      if [ "$PEER_SCENARIO" = view-scaling ]; then
+        python3 - <<'PY'
+import json, os, stat, tomllib
+path = '/tmp/viewer-home/.config/rustdesk/peers/127.0.0.1.toml'
+try:
+    descriptor = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, 'rb') as source:
+        metadata = os.fstat(source.fileno())
+        if not (stat.S_ISREG(metadata.st_mode) and metadata.st_uid == os.geteuid()
+                and metadata.st_gid == os.getegid() and metadata.st_nlink == 1
+                and stat.S_IMODE(metadata.st_mode) == 0o600 and metadata.st_size <= 131072):
+            raise ValueError('invalid fixture record')
+        data = source.read(131073)
+        if len(data) != metadata.st_size:
+            raise ValueError('fixture record changed')
+    value = tomllib.loads(data.decode('utf-8')).get('view_style')
+    # This isolated fixture record can also contain credentials. Emit only the
+    # closed nonsecret style value; never the document or parser exception text.
+    if value not in (None, '', 'original', 'adaptive', 'custom'):
+        raise ValueError('invalid fixture style')
+    print('FLUTTER_PEER_VIEW_SCALE_STORED=' + json.dumps({'style': value, 'bytes': len(data)}))
+except (OSError, ValueError) as error:
+    print('FLUTTER_PEER_VIEW_SCALE_STORED=' + json.dumps({'unavailable': type(error).__name__}))
+PY
+      fi
       cat /tmp/viewer.log >&2 || true
       cat /tmp/viewer-xvfb.log >&2 || true
       emit_runtime_logs VIEWER "$HOME/.local/share/logs"

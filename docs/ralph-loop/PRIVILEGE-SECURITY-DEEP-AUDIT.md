@@ -127627,3 +127627,23 @@ seconds, and all three listener deltas are zero. Serial SHA-256:
 The two native runs and count have 25 bounded evidence files, verified on both
 hosts. This audit-only receipt preserves the counted ledger bytes. No owned VM
 remains; the selected scaling failure still needs its correction and acceptance.
+
+## 2026-11-01 — locate the native view-scale update failure
+
+The preceding goal turn is progress: two source-bound native runs reproduce
+Adaptive remaining at the Original content width while presented frames stay
+fresh. Continue this selected R-S0 workflow failure rather than opening another
+settings topic. Add failure-only observations to the same scenario: reopen its
+actual menu and read the three radio states, then parse only the closed
+`view_style` field from its bounded private peer record. Keep credentials and
+parser exception text out of output. The six pixel/geometry cases, deadlines,
+original timing and application artifact remain unchanged. These observations
+distinguish persisted/effective preference state from canvas publication without
+modifying the product to guess at a cause.
+
+AT-SPI distinguishes checked from selected state; record both rather than infer
+radio value from an action return:
+https://docs.gtk.org/atspi2/enum.StateType.html.
+Use the runtime's standard TOML parser after bounded file admission, with no
+substring interpretation or write:
+https://docs.python.org/3.11/library/tomllib.html.

@@ -3141,6 +3141,41 @@ static int counter_width_interval(const uint8_t pixels[X11_FRAME_BYTES], uint32_
     return 0;
 }
 
+static void observe_scale_menu_after_failure(unsigned int pid) {
+    static const char *names[] = {"Scale original", "Scale adaptive", "Scale custom"};
+    uint64_t deadline;
+    if (activate_named_control(pid, "Show toolbar") != 0 ||
+        activate_named_control(pid, "Display settings") != 0) {
+        fputs("FLUTTER_PEER_VIEW_SCALE_MENU unavailable=true\n", stderr);
+        return;
+    }
+    deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    for (unsigned int index = 0U; index < 3U; ++index) {
+        AtspiAccessible *control = NULL;
+        AtspiStateSet *states;
+        while (monotonic_millis() < deadline && control == NULL) {
+            if (query_named_accessible(pid, names[index], deadline, &control, 0) != 0)
+                g_clear_object(&control);
+            if (control == NULL && sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) return;
+        }
+        if (control == NULL) {
+            fputs("FLUTTER_PEER_VIEW_SCALE_MENU unavailable=true\n", stderr);
+            return;
+        }
+        states = atspi_accessible_get_state_set(control);
+        if (states != NULL) {
+            printf("FLUTTER_PEER_VIEW_SCALE_MENU control=\"%s\" checked=%d selected=%d\n",
+                   names[index], atspi_state_set_contains(states, ATSPI_STATE_CHECKED),
+                   atspi_state_set_contains(states, ATSPI_STATE_SELECTED));
+            g_object_unref(states);
+        } else {
+            fputs("FLUTTER_PEER_VIEW_SCALE_MENU unavailable=true\n", stderr);
+        }
+        g_object_unref(control);
+    }
+    fflush(stdout);
+}
+
 static int exercise_view_scaling(Display *display, ViewerWindow *viewer,
                                   SourceHistory *history, const ConnectionIdentity *connection,
                                   const ProcessResources *baseline) {
@@ -3209,6 +3244,7 @@ static int exercise_view_scaling(Display *display, ViewerWindow *viewer,
             fprintf(stderr, "FLUTTER_PEER_VIEW_SCALE_FAILED sequence=%u distinct=%u "
                     "width_interval=%u..%u maximum_age_ms=%llu\n", sequence + 1U,
                     distinct, minimum, maximum, (unsigned long long)maximum_age);
+            observe_scale_menu_after_failure((unsigned int)viewer->pid);
             goto out;
         }
         printf("FLUTTER_PEER_VIEW_SCALE_CASE_OK sequence=%u style=%s dimensions=%ux%u "

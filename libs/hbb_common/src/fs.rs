@@ -8649,7 +8649,7 @@ mod tests {
             };
             terminal_log_matches = serde_json::from_str::<serde_json::Value>(&log)
                 .map(|log| log["id"] == 184 && log["remote"] == "active"
-                    && log["path"] == active_source.to_string_lossy().as_ref()
+                    && log["dataSource"] == active_source.to_string_lossy().as_ref()
                     && log["done"] == expected_done && log["cancel"] == false
                     && log["error"] == expected_error)
                 .unwrap_or(false);

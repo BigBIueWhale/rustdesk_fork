@@ -3108,8 +3108,10 @@ static int exercise_screenshot_save_unavailable(const ViewerWindow *viewer,
 
     deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
     while (monotonic_millis() < deadline && error_text == NULL) {
+        /* Replaced dialog nodes can invalidate a read; only a complete peer-bound scan counts. */
         if (query_named_accessible((unsigned int)viewer->pid, missing_picker,
-                                   deadline, &error_text, 1) != 0) goto out;
+                                   deadline, &error_text, 1) != 0)
+            g_clear_object(&error_text);
         if (error_text == NULL && sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) goto out;
     }
     if (error_text == NULL || monotonic_millis() >= deadline ||

@@ -127442,3 +127442,14 @@ are absent, all four listener deltas are zero and the 3,010,371,584-byte peak RA
 workspace retires after 114.207 supervisor seconds. The terminal failed marker
 is renamed under the exact shared lock to `screenshot-label-preparation.zFPwDfhwGe`.
 Serial SHA-256: `0f57dc20c61e481b955a6090b3ab14df5ba9b3497b69e24078f485f3477a3d92`.
+
+Preparation `6cd0403b`, TUF `tprQXL8fLm`, activates the actual Control actions,
+Take screenshot and received Save As controls. Its subsequent read intersects
+dialog replacement: a child disappears during accessibility traversal. This is
+an incomplete error observation, not a completed failure-path verdict. Retry only
+this read within the existing five-second deadline; success still requires one
+complete exact-peer scan locating the exact error inside Alert. No failed scan
+counts as an observation, and no product/action/authority check changes. QEMU
+3885791 and wrapper 3884727 are absent, all four listener deltas are zero and RAM
+scratch retires. The terminal marker becomes
+`screenshot-dialog-preparation.tprQXL8fLm` under the exact shared lock.

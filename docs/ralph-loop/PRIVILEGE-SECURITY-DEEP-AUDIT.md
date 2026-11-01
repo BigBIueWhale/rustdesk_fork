@@ -128735,3 +128735,70 @@ The updated ledger counts 389,335 tokens / 1,783,043 bytes, SHA-256
 using the established method, seven controls and whole-input round trip.
 This audit-only completion preserves that counted ledger. TUF access and the
 original engine build's final artifact/cleanup observation remain pending.
+
+### 2026-11-01 — restore TUF access and validate the corrected theme engine
+
+The user restores `/tmp/cm199.sock`; its master check succeeds. Inspect the
+original `waN3vSleW4` job before changing TUF's frozen checkout: outer exit is
+zero, QEMU 4051626 and wrapper 4049460 are absent, and the private run and exact
+RAM workspace have retired. The complete native comparison confirms the three
+baseline failures, three corrected GNOME selections/six transitions, and both
+partial-portal controls in each binary. The original build is not repeated.
+
+Engine producer `ddb1541d` / tree `b7ca02592fef5c9a91b9ea102bb0df9b7411cc9d`
+publishes an 89,128,960-byte archive, SHA-256
+`57387c0449db041817c1e0954ec7977068acdf800d2a3d0b6a3281022cdf115a`;
+manifest SHA-256 is
+`d4af9790d123c1c5d4eb7d40581b7ef824e53310402c9f9b23934d59a1f3f30b`.
+Independent read-only inspection verifies all 341 member sizes/hashes, exact
+inventory and source/patch binding. The storage supervisor records 724.01 seconds,
+13,615,243,264 peak RAM bytes and QEMU return 0. All four decoded listener
+snapshots have zero added/removed endpoints. The bounded receipt and raw evidence
+are retained on both hosts as `theme-settings-engine-ddb1541d.json` and its
+referenced files.
+
+Under the shared lock, restore the unchanged old engine generation to its
+canonical cache and preserve the old app generation before the next producer;
+both operations verify retained identities and bytes and use no-clobber renames.
+Receipts are `settings-engine-baseline-restored.json` and
+`settings-app-baseline-preservation.json`. TUF then advances to `16ba2033` for the
+matching app build. Application sources are unchanged from baseline `a630f880`;
+the appearance controller and scenario behavior are unchanged from `61ea882f`
+(only a comment differs). The replay below tests the corrected engine with that
+unchanged scenario.
+
+App build `BYFJc1mQ2Q` exits zero at `16ba2033` / tree
+`8d1ef54e1c2c477bc790dc885883b21c15b972a5`. Its 74 files independently match
+manifest SHA-256 `7332aeead7d26660ae0749adbfd22d2d576db47f73fde5238a9ebd185ba97aa6`
+and the corrected engine context. QEMU 4064905/wrapper 4064269 are absent;
+10,603,896,832 peak RAM bytes retire after 762.066 supervisor seconds and all
+four listener deltas are zero. The prior app generation is restored unchanged
+under the shared lock after verifying its manifest and every member.
+`theme-settings-app-16ba2033.json` binds the build, artifact and restoration.
+
+The unchanged full-app appearance scenario passes TUF `sjF2tSUfzS` on the new
+app/engine. Follow System responds to all four external GNOME dark/light changes
+with actual header pixels and the correct exclusive radio state. Explicit Light
+and Dark each survive both OS appearances for at least five seconds (four holds);
+reselecting System immediately resolves the current appearance and resumes live
+updates. After settings close, four fresh remote frames have maximum sampled age
+296 ms on the exact same TCP connection; initial maximum sampled age was 360 ms.
+These samples are scenario observations, not latency-recovery or soak acceptance.
+The independent native settings monitor joins; after the viewer joins, stored
+theme is System. Viewer, server, source, Xvfb and container cleanup all join.
+The UI driver compiles twice to identical bytes, SHA-256
+`f42a6813bd76255c377c73e4a8ce7a2e85cf806cda291d84847268ec43a6f0b7`.
+
+QEMU 4069095/wrapper 4068030 are absent; 3,011,616,768 peak RAM bytes retire in
+143.251 supervisor seconds, with all four listener deltas zero. Serial SHA-256
+is `2f02c0246666a3f236bfa9a5ae511280f6dd9eae9336e0d7b438a8de0c493fb2`.
+The 8,294-byte capsule `theme-appearance-fixed-16ba2033.json`, SHA-256
+`29e2fcf256b3416c08cf56e5021d273583400a5853997dbfb8959ec8c74d8416`,
+binds command, artifacts, raw receipts, outcomes and cleanup. All three current
+engine/build/replay capsules and their referenced raw files verify on CTE and TUF.
+
+This closes the reproduced Linux no-portal live-appearance defect at complete-app
+level. Other platforms/providers, concurrent writers/windows, save/crash failures,
+installed privileged settings and complete release acceptance remain OPEN.
+Password recovery and independently parked topics remain parked. No owned VM or
+RAM workspace remains. A fresh ledger count follows; the broad goal is incomplete.

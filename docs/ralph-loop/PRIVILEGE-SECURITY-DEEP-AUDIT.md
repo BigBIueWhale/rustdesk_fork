@@ -126271,3 +126271,24 @@ check elapsed acquisition and the final interval. Android's
 old lifecycle records cannot be assumed to survive a multi-hour test. Runtime log
 bounds and truthful lifecycle evidence must be settled before the long VM launch.
 No product change or parked-topic resumption is selected.
+
+At `94c54123`, TUF `T1B8P7q4tV` passes the focused native VM in 59.619 seconds.
+The new observer exercises 7,201 scheduled samples and 120 minute summaries with
+synthetic monotonic time over 7,200 simulated seconds. Ten cases refuse stale or
+unknown pixels, old observer data, repeated observer sequences, backwards source
+identity, processing overrun, ordinary/final gaps, backwards clocks and report
+delays. Exact freshness/observer-age boundaries and temporarily repeated fresh
+content remain valid. The actual X11 observation then spans 3,126 ms and four
+samples: p50 131 ms, p95/max 158 ms, observer age 1 ms, maximum gap 1,001 ms.
+The existing full-HD identity, stale-alias and 500,000-record capacity checks pass.
+Neither the synthetic clock exercise nor the three-second native run is a
+two-hour Android result; the new loop is not yet wired into emulator execution.
+
+QEMU 3643462 joins exit 0 and wrapper 3641877 exits; its 3,896,643,584-byte peak
+RAM workspace retires and all three listener deltas are zero. The complete serial
+is 14,266 bytes, SHA-256
+`7414b0c5bf63bbd2124c6a631906b3624f109869ac6b41e47924290042a8a768`.
+The seven bounded raw/closure files are retained on both hosts. The next step
+continues this same blocker: wire the scheduled observer into an explicitly
+selected long runtime, retain lifecycle evidence through the circular-log lifetime,
+enforce log/resource bounds, then execute the two-hour app/peer control.

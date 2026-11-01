@@ -6360,6 +6360,15 @@ multi-hour app freshness/resources, input-to-visible response and R-F5 remain OP
 Next: admit a sustained emulator workload with bounded runtime logs and actual
 presentation/resource measurements, reusing the source-bound app/peer artifacts.
 
+**Scheduled observation (`94c54123`).** `observe_duration` rejects each stale,
+unknown, regressing or over-budget sample instead of waiting for later recovery.
+Absolute monotonic scheduling checks the final interval and keeps fixed-size age
+histograms. TUF `T1B8P7q4tV` passes a synthetic two-hour schedule and ten refusal
+cases; an actual 3,126-ms X11 observation takes four samples, with 158-ms maximum
+age and 1,001-ms maximum gap. This is native observer evidence. The two-hour
+Android workload, log-retention integration and process-resource observations
+remain unexecuted; no app freshness or release completion is claimed.
+
 **Current-source app/task-relaunch comparison (`f372aacf`).** TUF `k8M8wgR5WF`
 builds, inspects, installs and launches the exact-source app/test pair in
 1,012.981 seconds. The test-only x86_64 APK is 48,291,544 bytes, SHA-256

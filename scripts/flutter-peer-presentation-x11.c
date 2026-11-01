@@ -3110,6 +3110,128 @@ out:
     return status;
 }
 
+/* Estimate content width from all four independently tagged counter bands. The full
+ * decoder must already have established one unambiguous frame identity. Retain the
+ * complete matching interval instead of presenting thumbnail sampling as exact pixels. */
+static int counter_width_interval(const uint8_t pixels[X11_FRAME_BYTES], uint32_t identity,
+                                   unsigned int window_width, unsigned int *minimum,
+                                   unsigned int *maximum) {
+    unsigned int smallest = UINT_MAX, largest = 0U;
+    for (unsigned int span = 48U; span <= X11_FRAME_WIDTH; span += 2U) {
+        int centered = (int)(X11_FRAME_WIDTH - span) / 2;
+        for (int left = centered - 3; left <= centered + 3; ++left) {
+            unsigned int bands = 0U;
+            if (left < 0 || (unsigned int)left + span > X11_FRAME_WIDTH) continue;
+            for (unsigned int y = 0U; y < X11_FRAME_HEIGHT && bands != 15U; ++y) {
+                int code = x11_frame_row(pixels, y, (unsigned int)left, span);
+                if (code < 0) continue;
+                unsigned int band = (unsigned int)code >> 8U;
+                if ((unsigned int)(code & 255) == ((identity >> (24U - band * 8U)) & 255U))
+                    bands |= 1U << band;
+            }
+            if (bands == 15U) {
+                if (span < smallest) smallest = span;
+                if (span > largest) largest = span;
+            }
+        }
+    }
+    if (largest == 0U) return -1;
+    *minimum = smallest * window_width / X11_FRAME_WIDTH;
+    *maximum = (largest * window_width + X11_FRAME_WIDTH - 1U) / X11_FRAME_WIDTH;
+    return 0;
+}
+
+static int exercise_view_scaling(Display *display, ViewerWindow *viewer,
+                                  SourceHistory *history, const ConnectionIdentity *connection,
+                                  const ProcessResources *baseline) {
+    /* At unit DPI the normal Linux viewport reserves 40 vertical pixels for
+     * the tab bar, border and resize padding. Fit the 640x480 source within it. */
+    static const struct { unsigned int width, height, content_width; int adaptive; } cases[] = {
+        {1100U, 650U, 640U, 0}, {1100U, 650U, 813U, 1}, {900U, 700U, 880U, 1},
+        {900U, 700U, 640U, 0}, {1200U, 740U, 933U, 1}, {1200U, 740U, 640U, 0},
+    };
+    AtspiAccessible *show = NULL, *hide = NULL;
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    int result = -1;
+    if (query_named_accessible((unsigned int)viewer->pid, "Show toolbar", deadline, &show, 0) != 0 ||
+        query_named_accessible((unsigned int)viewer->pid, "Hide toolbar", deadline, &hide, 0) != 0 ||
+        (show == NULL) == (hide == NULL)) goto out;
+    if (show != NULL && activate_named_control((unsigned int)viewer->pid, "Show toolbar") != 0)
+        goto out;
+    for (unsigned int sequence = 0U; sequence < sizeof(cases) / sizeof(cases[0]); ++sequence) {
+        XWindowAttributes attributes;
+        ConnectionIdentity after = {{0}, {0}, 0UL};
+        ProcessResources resources = {0};
+        unsigned int distinct = 0U, minimum = 0U, maximum = 0U;
+        int64_t previous = -1;
+        uint64_t maximum_age = 0U, start;
+        const char *style = cases[sequence].adaptive ? "Scale adaptive" : "Scale original";
+        XMoveResizeWindow(display, viewer->window, 0, 0,
+                          cases[sequence].width, cases[sequence].height);
+        XSync(display, False);
+        if (XGetWindowAttributes(display, viewer->window, &attributes) == 0 ||
+            attributes.map_state != IsViewable || attributes.width != (int)cases[sequence].width ||
+            attributes.height != (int)cases[sequence].height) goto out;
+        viewer->width = cases[sequence].width;
+        viewer->height = cases[sequence].height;
+        if (sequence != 0U &&
+            activate_named_control((unsigned int)viewer->pid, "Show toolbar") != 0) goto out;
+        if (activate_named_control((unsigned int)viewer->pid, "Display settings") != 0 ||
+            activate_named_control((unsigned int)viewer->pid, style) != 0 ||
+            activate_named_control((unsigned int)viewer->pid, "Hide toolbar") != 0) goto out;
+        start = monotonic_millis();
+        deadline = start + RECOVERY_LIMIT_MS;
+        while (monotonic_millis() < deadline && distinct < 4U) {
+            uint8_t pixels[X11_FRAME_BYTES];
+            uint64_t captured_us = 0U, age = 0U;
+            int64_t state = x11_frame_capture(display, viewer->window, pixels, &captured_us);
+            int geometry = state >= 0 && counter_width_interval(pixels, (uint32_t)state,
+                viewer->width, &minimum, &maximum) == 0;
+            int fresh = x11_frame_age(history, "/coord", state, captured_us, &age) == 0;
+            if (history->failed) goto out;
+            if (fresh && age > maximum_age) maximum_age = age;
+            /* The sampled interval midpoint must be within 20 physical pixels
+             * of the expected width; unchanged scaling cannot pass the next case. */
+            geometry = geometry && maximum - minimum <= 100U &&
+                minimum + maximum >= 2U * (cases[sequence].content_width - 20U) &&
+                minimum + maximum <= 2U * (cases[sequence].content_width + 20U);
+            if (geometry && fresh && age <= FRESH_LIMIT_MS && state > previous &&
+                monotonic_millis() < deadline) {
+                previous = state;
+                distinct += 1U;
+            }
+            if (distinct < 4U && sleep_millis(SAMPLE_INTERVAL_MS) != 0) goto out;
+        }
+        if (distinct != 4U || read_connection_identity(&after) != 0 ||
+            !same_connection(connection, &after) ||
+            read_process_resources(viewer->pid, &resources) != 0 ||
+            !resources_are_bounded(baseline, &resources)) {
+            fprintf(stderr, "FLUTTER_PEER_VIEW_SCALE_FAILED sequence=%u distinct=%u "
+                    "width_interval=%u..%u maximum_age_ms=%llu\n", sequence + 1U,
+                    distinct, minimum, maximum, (unsigned long long)maximum_age);
+            goto out;
+        }
+        printf("FLUTTER_PEER_VIEW_SCALE_CASE_OK sequence=%u style=%s dimensions=%ux%u "
+               "width_interval=%u..%u distinct=4 elapsed_ms=%llu maximum_age_ms=%llu\n",
+               sequence + 1U, cases[sequence].adaptive ? "adaptive" : "original",
+               viewer->width, viewer->height, minimum, maximum,
+               (unsigned long long)(monotonic_millis() - start), (unsigned long long)maximum_age);
+        print_resources("view-scaling", sequence + 1U, &resources);
+        fflush(stdout);
+    }
+    result = 0;
+out:
+    if (show != NULL) g_object_unref(show);
+    if (hide != NULL) g_object_unref(hide);
+    if (result != 0) {
+        PasswordPromptScan diagnostic;
+        fputs("FLUTTER_PEER_X11_FAIL native view scaling scenario\n", stderr);
+        if (scan_password_prompt((unsigned int)viewer->pid, &diagnostic, 1) != 0)
+            fputs("FLUTTER_PEER_X11_FAIL view scaling accessibility diagnostic\n", stderr);
+    }
+    return result;
+}
+
 static int exercise_screenshot_save_unavailable(const ViewerWindow *viewer,
                                                 const ConnectionIdentity *connection,
                                                 const ProcessResources *baseline) {
@@ -3291,12 +3413,13 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--mouse-input") != 0 &&
                                     strcmp(argv[5], "--mouse-retirement") != 0 &&
                                     strcmp(argv[5], "--screenshot-save-unavailable") != 0 &&
+                                    strcmp(argv[5], "--view-scaling") != 0 &&
                                     strcmp(argv[5], "--clipboard-text") != 0 &&
                                     strcmp(argv[5], "--clipboard-images") != 0 &&
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable]\n",
+              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling]\n",
               stderr);
         return 2;
     }
@@ -3456,11 +3579,14 @@ int main(int argc, char **argv) {
         int mouse_input = strcmp(argv[5], "--mouse-input") == 0;
         int mouse_retirement = strcmp(argv[5], "--mouse-retirement") == 0;
         int screenshot_unavailable = strcmp(argv[5], "--screenshot-save-unavailable") == 0;
+        int view_scaling = strcmp(argv[5], "--view-scaling") == 0;
         int clipboard_text = strcmp(argv[5], "--clipboard-text") == 0;
         int clipboard_images = strcmp(argv[5], "--clipboard-images") == 0;
         int partial_loss = strcmp(argv[5], "--network-loss") == 0;
         int network = partial_loss || strcmp(argv[5], "--network-impairment") == 0;
-        int suspension_status = screenshot_unavailable ? exercise_screenshot_save_unavailable(
+        int suspension_status = view_scaling ? exercise_view_scaling(
+            display, &viewer, &history, &current_connection, &baseline_resources) :
+            screenshot_unavailable ? exercise_screenshot_save_unavailable(
             &viewer, &current_connection, &baseline_resources) : mouse_retirement ? exercise_mouse_retirement(
             source, display, &viewer, argv[4], &current_connection) : mouse_input ? exercise_mouse_input(
             source, display, &viewer, &current_connection, &baseline_resources) :
@@ -3486,7 +3612,10 @@ int main(int argc, char **argv) {
         XCloseDisplay(display);
         XCloseDisplay(source);
         if (suspension_status != 0) return 1;
-        if (screenshot_unavailable) {
+        if (view_scaling) {
+            puts("FLUTTER_PEER_VIEW_SCALING_OK cases=6 styles=original,adaptive "
+                 "geometry=pixel-witness pixels=fresh stable_connection=true resources=bounded");
+        } else if (screenshot_unavailable) {
             puts("FLUTTER_PEER_SCREENSHOT_SAVE_UNAVAILABLE_OK screenshot_received=true "
                  "save=unavailable error=visible stable_connection=true");
         } else if (mouse_retirement) {

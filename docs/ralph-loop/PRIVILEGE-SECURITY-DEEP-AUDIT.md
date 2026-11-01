@@ -127526,3 +127526,41 @@ evidence files total 1,096,895 bytes and are hash-verified on CTE and TUF.
 This audit-only receipt preserves the counted ledger. No owned VM remains.
 The dependency correction reaches its validation checkpoint; successful native
 Save As and installed acceptance remain the next work, with the broad goal open.
+
+## 2026-11-01 — user pivot to live viewer scaling
+
+The user directs work to another aspect. Screenshot native Save As/positive
+chooser acquisition is OPEN/PARKED after read-only source/dependency research;
+no chooser acquisition, build or positive save run follows that research.
+The accepted missing-provider evidence and Debian dependency correction remain.
+Do not resume the positive-save follow-up automatically. Mouse and the other
+independently parked investigations remain set aside.
+
+Select R-S0's required settings functionality and the actual presentation gap:
+Original/Adaptive selection and native viewer resizing. The ledger's view-style
+row retains library/bridge and controlled-editor evidence, not this full peer
+workflow. Reusing the authenticated cf437894 app/63493887 engine can exercise
+the real toolbar, persistence, canvas update and displayed pixels without a new
+application build. This gives more decisive evidence than another component-only
+settings case; screenshot work is excluded by the current pivot.
+
+The toolbar/model source is unchanged from that retained app. Six cases select
+Original/Adaptive at 1100x650, 900x700 and 1200x740. Observe exact X11 dimensions,
+four increasing complete frame IDs within 2.5 seconds after each selection and
+toolbar retirement, each no older than one second. Independently inspect all
+four tagged counter bands to estimate rendered content width, retaining its
+sampling interval. The midpoint must be within 20 pixels of the 640-pixel
+Original source or the normal unit-DPI fitted widths 813/880/933; an unchanged
+mode or stale viewport scale cannot pass the sequence. Require the same TCP
+identity and existing RSS/thread/descriptor bounds, then normal joined teardown.
+This is a bounded Linux software-rendered workflow, not exact subpixel geometry,
+custom scaling, saved-canvas restart, a soak or cross-platform acceptance.
+
+Primary Xlib documentation says move/resize requests may be redirected and do
+not raise the window; observe dimensions rather than accepting the command:
+https://xorg.freedesktop.org/archive/current/doc/libX11/libX11/libX11.html.
+AT-SPI action success reports invocation, not its application outcome:
+https://docs.gtk.org/atspi2/method.Action.do_action.html.
+Use the existing exact-PID action helper, followed by actual root-window pixels
+and the independently recorded source-publication history. No source-string
+verdict or UI-action return substitutes for the observed setting effect.

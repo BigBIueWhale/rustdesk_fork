@@ -11,6 +11,7 @@ FLUTTER_CLIPBOARD_TEXT=0
 FLUTTER_KEYBOARD_INPUT=0
 FLUTTER_MOUSE_INPUT=0
 FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE=0
+FLUTTER_VIEW_SCALING=0
 FLUTTER_NETWORK_IMPAIRMENT=0
 FLUTTER_APP_COMMIT=
 FLUTTER_APP_TREE=
@@ -269,6 +270,7 @@ case "$#:${8:-}" in
                 --mouse-input) FLUTTER_MOUSE_INPUT=1 ;;
                 --mouse-retirement) FLUTTER_MOUSE_INPUT=2 ;;
                 --screenshot-save-unavailable) FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE=1 ;;
+                --view-scaling) FLUTTER_VIEW_SCALING=1 ;;
                 *) exit 2 ;;
             esac
         fi
@@ -354,6 +356,7 @@ readonly FLUTTER_CLIPBOARD_TEXT
 readonly FLUTTER_KEYBOARD_INPUT
 readonly FLUTTER_MOUSE_INPUT
 readonly FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE
+readonly FLUTTER_VIEW_SCALING
 readonly RUST_TEST_SOURCE_ARCHIVE=${9:-}
 readonly RUST_TEST_SOURCE_COMMIT=${10:-}
 readonly RUST_TEST_SOURCE_TREE=${11:-}
@@ -14013,6 +14016,7 @@ run_flutter_peer_presentation() {
     peer_args+=(--engine-context "$FLUTTER_APP_ENGINE_CONTEXT")
     [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || peer_args+=(--viewer-suspend)
     [ "$FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE" -eq 0 ] || peer_args+=(--screenshot-save-unavailable)
+    [ "$FLUTTER_VIEW_SCALING" -eq 0 ] || peer_args+=(--view-scaling)
     [ "$FLUTTER_CLIPBOARD_TEXT" -ne 1 ] || peer_args+=(--clipboard-text)
     [ "$FLUTTER_CLIPBOARD_TEXT" -ne 2 ] || peer_args+=(--clipboard-images)
     case "$FLUTTER_MOUSE_INPUT" in
@@ -14064,7 +14068,10 @@ run_flutter_peer_presentation() {
         fail 'Linux replay unexpectedly built an app'
     fi
     local peer_scenario=focus-reconnect-resource peer_cycles=6
-    if [ "$FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE" -eq 1 ]; then
+    if [ "$FLUTTER_VIEW_SCALING" -eq 1 ]; then
+        peer_scenario=view-scaling
+        peer_cycles=1
+    elif [ "$FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE" -eq 1 ]; then
         peer_scenario=screenshot-save-unavailable
         peer_cycles=1
     elif [ "$FLUTTER_MOUSE_INPUT" -eq 2 ]; then

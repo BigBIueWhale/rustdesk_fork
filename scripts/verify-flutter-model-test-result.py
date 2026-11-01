@@ -817,6 +817,15 @@ PHYSICAL_MOUSE_TESTS = {
 
 TRACKPAD_INPUT_TESTS = {
     "wheel ordinary directions retain session and dominant axis",
+    "wheel fractional movement accumulates in all four directions",
+    "wheel fractional excess survives a dispatched step",
+    "wheel fractional reversal cancels pending distance",
+    "wheel zero movement emits nothing and preserves pending distance",
+    "wheel nonfinite movement refuses and retires pending distance",
+    "wheel fractional distance belongs to its session client device and view",
+    "wheel refused input retires fractional distance before recovery",
+    "wheel blur leave and reset retire fractional distance",
+    "wheel axis changes retire the previous axis remainder",
     "wheel inactive owner refuses dispatch and permits fresh input",
     "wheel disposed model refuses retained callbacks",
     "wheel permission refusal permits an authorized retry",

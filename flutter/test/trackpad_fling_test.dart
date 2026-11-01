@@ -181,6 +181,151 @@ void main() {
     });
   });
 
+  test('wheel fractional movement accumulates in all four directions', () {
+    for (final delta in [const Offset(0.25, 0), const Offset(-0.25, 0),
+        const Offset(0, 0.25), const Offset(0, -0.25)]) {
+      _run((clock, owner, input) {
+        for (var i = 0; i < 8; i++) {
+          input.onPointerSignalImage(PointerScrollEvent(scrollDelta: delta));
+          expect(input.wheels.length, (i + 1) ~/ 4);
+        }
+        expect(input.wheels.every((event) => event.session == owner.sessionId &&
+            event.x == -delta.dx.sign.toInt() &&
+            event.y == -delta.dy.sign.toInt()), isTrue);
+      });
+    }
+  });
+
+  test('wheel fractional excess survives a dispatched step', () {
+    _run((clock, owner, input) {
+      for (final y in [0.75, 0.5, 0.75]) {
+        input.onPointerSignalImage(PointerScrollEvent(scrollDelta: Offset(0, y)));
+      }
+      expect(input.wheels, [
+        (session: owner.sessionId, x: 0, y: -1),
+        (session: owner.sessionId, x: 0, y: -1),
+      ]);
+    });
+  });
+
+  test('wheel fractional reversal cancels pending distance', () {
+    _run((clock, owner, input) {
+      for (final y in [0.75, -0.5, -0.5]) {
+        input.onPointerSignalImage(PointerScrollEvent(scrollDelta: Offset(0, y)));
+      }
+      expect(input.wheels, isEmpty);
+      input.onPointerSignalImage(const PointerScrollEvent(
+          scrollDelta: Offset(0, -0.75)));
+      expect(input.wheels, [(session: owner.sessionId, x: 0, y: 1)]);
+    });
+  });
+
+  test('wheel zero movement emits nothing and preserves pending distance', () {
+    _run((clock, owner, input) {
+      input.onPointerSignalImage(const PointerScrollEvent());
+      input.onPointerSignalImage(const PointerScrollEvent(
+          scrollDelta: Offset(0.75, 0)));
+      input.onPointerSignalImage(const PointerScrollEvent());
+      expect(input.wheels, isEmpty);
+      input.onPointerSignalImage(const PointerScrollEvent(
+          scrollDelta: Offset(0.25, 0)));
+      expect(input.wheels, [(session: owner.sessionId, x: -1, y: 0)]);
+    });
+  });
+
+  test('wheel nonfinite movement refuses and retires pending distance', () {
+    for (final value in [double.nan, double.infinity, double.negativeInfinity]) {
+      for (final delta in [Offset(value, 0), Offset(0, value)]) {
+        _run((clock, owner, input) {
+          input.onPointerSignalImage(const PointerScrollEvent(
+              scrollDelta: Offset(0, 0.75)));
+          input.onPointerSignalImage(PointerScrollEvent(scrollDelta: delta));
+          input.onPointerSignalImage(const PointerScrollEvent(
+              scrollDelta: Offset(0, 0.5)));
+          expect(input.wheels, isEmpty);
+          input.onPointerSignalImage(const PointerScrollEvent(
+              scrollDelta: Offset(0, 0.5)));
+          expect(input.wheels, [(session: owner.sessionId, x: 0, y: -1)]);
+        });
+      }
+    }
+  });
+
+  test('wheel fractional distance belongs to its session client device and view', () {
+    for (final field in ['session', 'client', 'device', 'view']) {
+      _run((clock, owner, input) {
+        input.onPointerSignalImage(const PointerScrollEvent(
+            scrollDelta: Offset(0, 0.75)));
+        if (field == 'session') owner.sessionId = const Uuid().v4obj();
+        if (field == 'client') owner.clientOwnerId = const Uuid().v4obj();
+        final event = PointerScrollEvent(scrollDelta: const Offset(0, 0.5),
+            device: field == 'device' ? 1 : 0, viewId: field == 'view' ? 1 : 0);
+        input.onPointerSignalImage(event);
+        expect(input.wheels, isEmpty);
+        input.onPointerSignalImage(event);
+        expect(input.wheels, [(session: owner.sessionId, x: 0, y: -1)]);
+      });
+    }
+  });
+
+  test('wheel refused input retires fractional distance before recovery', () {
+    for (final refusal in ['owner', 'permission', 'view-only', 'camera']) {
+      _run((clock, owner, input) {
+        input.onPointerSignalImage(const PointerScrollEvent(
+            scrollDelta: Offset(0, 0.75)));
+        owner.current = refusal != 'owner';
+        input.keyboardAllowed = refusal != 'permission';
+        input.viewOnly = refusal == 'view-only';
+        input.viewCamera = refusal == 'camera';
+        input.onPointerSignalImage(const PointerScrollEvent(
+            scrollDelta: Offset(0, 0.75)));
+        owner.current = true;
+        input.keyboardAllowed = true;
+        input.viewOnly = false;
+        input.viewCamera = false;
+        input.onPointerSignalImage(const PointerScrollEvent(
+            scrollDelta: Offset(0, 0.5)));
+        expect(input.wheels, isEmpty);
+        input.onPointerSignalImage(const PointerScrollEvent(
+            scrollDelta: Offset(0, 0.5)));
+        expect(input.wheels, [(session: owner.sessionId, x: 0, y: -1)]);
+      });
+    }
+  });
+
+  test('wheel blur leave and reset retire fractional distance', () {
+    for (final boundary in ['blur', 'leave', 'reset']) {
+      _run((clock, owner, input) {
+        input.onPointerSignalImage(const PointerScrollEvent(
+            scrollDelta: Offset(0, 0.75)));
+        switch (boundary) {
+          case 'blur': input.onWindowBlur();
+          case 'leave': input.enterOrLeave(false);
+          case 'reset': input.resetForSession(owner.sessionId);
+        }
+        input.onPointerSignalImage(const PointerScrollEvent(
+            scrollDelta: Offset(0, 0.5)));
+        expect(input.wheels, isEmpty);
+        input.onPointerSignalImage(const PointerScrollEvent(
+            scrollDelta: Offset(0, 0.5)));
+        expect(input.wheels, [(session: owner.sessionId, x: 0, y: -1)]);
+      });
+    }
+  });
+
+  test('wheel axis changes retire the previous axis remainder', () {
+    _run((clock, owner, input) {
+      for (final delta in [const Offset(0, 0.75), const Offset(0.75, 0),
+          const Offset(0, 0.25)]) {
+        input.onPointerSignalImage(PointerScrollEvent(scrollDelta: delta));
+      }
+      expect(input.wheels, isEmpty);
+      input.onPointerSignalImage(const PointerScrollEvent(
+          scrollDelta: Offset(0, 0.75)));
+      expect(input.wheels, [(session: owner.sessionId, x: 0, y: -1)]);
+    });
+  });
+
   test('wheel inactive owner refuses dispatch and permits fresh input', () {
     _run((clock, owner, input) {
       owner.current = false;

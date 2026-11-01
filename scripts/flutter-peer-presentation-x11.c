@@ -2370,7 +2370,7 @@ static int mouse_snapshot(Display *display, int *x, int *y, unsigned int *mask) 
                          &root, &child, x, y, &local_x, &local_y, mask) ? 0 : -1;
 }
 
-static int mouse_buttons_match(Display *display, unsigned int held) {
+static int mouse_button_set_matches(Display *display, const unsigned int *held, size_t count) {
     int device;
     Window root, child;
     double root_x, root_y, win_x, win_y;
@@ -2383,11 +2383,165 @@ static int mouse_buttons_match(Display *display, unsigned int held) {
     if (buttons.mask == NULL || buttons.mask_len < 2 || buttons.mask_len > 32) matched = 0;
     if (matched) {
         for (unsigned int i = 0U; i < (unsigned int)buttons.mask_len * 8U; ++i) {
-            if ((XIMaskIsSet(buttons.mask, i) != 0) != (held != 0U && i == held)) matched = 0;
+            int expected = 0;
+            for (size_t j = 0U; j < count; ++j) if (held[j] == i) expected = 1;
+            if ((XIMaskIsSet(buttons.mask, i) != 0) != expected) matched = 0;
         }
+        for (size_t j = 0U; j < count; ++j)
+            if (held[j] == 0U || held[j] >= (unsigned int)buttons.mask_len * 8U) matched = 0;
     }
     if (buttons.mask != NULL) XFree(buttons.mask);
     return matched;
+}
+
+static int mouse_buttons_match(Display *display, unsigned int held) {
+    return mouse_button_set_matches(display, &held, held == 0U ? 0U : 1U);
+}
+
+static int exercise_mouse_retirement(Display *source, Display *display,
+                                     const ViewerWindow *viewer, const char *start,
+                                     const ConnectionIdentity *connection) {
+    const unsigned int buttons[] = {1U, 8U, 9U, 3U};
+    Window root = RootWindow(source, DefaultScreen(source));
+    char path[64], state = '\0';
+    int process = -1, pidfd = -1, result = -1, foreign_held = 0;
+    unsigned int local_held = 0U;
+    struct stat metadata;
+    uint64_t killed_at = 0U, released_at = 0U;
+    const char *phase = "identity";
+    if (start[0] < '1' || start[0] > '9' || strspn(start, "0123456789") != strlen(start) ||
+        strlen(start) > 20U || viewer->pid > INT_MAX ||
+        snprintf(path, sizeof(path), "/proc/%lu", viewer->pid) <= 0) goto finished;
+    process = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (process < 0 || fstat(process, &metadata) != 0 || metadata.st_uid != geteuid() ||
+        viewer_process_state(process, viewer->pid, start, &state) != 0) goto finished;
+    pidfd = (int)syscall(SYS_pidfd_open, (pid_t)viewer->pid, 0U);
+    if (pidfd < 0 || !viewer_pidfd_alive(pidfd) ||
+        viewer_process_state(process, viewer->pid, start, &state) != 0) goto finished;
+    int source_major = 2, source_minor = 0, viewer_major = 2, viewer_minor = 0;
+    unsigned char mapping[32];
+    if (XIQueryVersion(source, &source_major, &source_minor) != Success ||
+        XIQueryVersion(display, &viewer_major, &viewer_minor) != Success ||
+        XGetPointerMapping(source, mapping, sizeof(mapping)) < 9) goto finished;
+    for (unsigned int i = 0U; i < 9U; ++i) if (mapping[i] != i + 1U) goto finished;
+    if (XGetPointerMapping(display, mapping, sizeof(mapping)) < 9) goto finished;
+    for (unsigned int i = 0U; i < 9U; ++i) if (mapping[i] != i + 1U) goto finished;
+    phase = "focus-click";
+    if (!mouse_buttons_match(source, 0U) || !mouse_buttons_match(display, 0U)) goto finished;
+    XSelectInput(source, root, ButtonPressMask | ButtonReleaseMask);
+    XSync(source, False);
+    if (return_focus_with_pointer(display, viewer) != 0) goto finished;
+    unsigned int focus_events = 0U, focus_scans = 0U;
+    uint64_t focus_deadline = monotonic_millis() + 5000U, focus_complete = 0U;
+    while (monotonic_millis() < focus_deadline) {
+        while (XPending(source) != 0) {
+            XEvent event;
+            if (++focus_scans > 128U) goto finished;
+            XNextEvent(source, &event);
+            if (event.type != ButtonPress && event.type != ButtonRelease) continue;
+            if (focus_events >= 2U || event.xbutton.window != root || event.xbutton.send_event ||
+                event.xbutton.button != 1U ||
+                event.type != (focus_events == 0U ? ButtonPress : ButtonRelease) ||
+                event.xbutton.state != (focus_events == 0U ? 0U : Button1Mask)) goto finished;
+            if (++focus_events == 2U) focus_complete = monotonic_millis();
+        }
+        if (focus_complete != 0U && monotonic_millis() - focus_complete >= 100U) break;
+        if (sleep_millis(10U) != 0) goto finished;
+    }
+    if (focus_events != 2U || focus_complete == 0U || monotonic_millis() >= focus_deadline ||
+        !mouse_buttons_match(source, 0U) || !mouse_buttons_match(display, 0U)) goto finished;
+    puts("FLUTTER_PEER_MOUSE_RETIRE_CONTROL_OK focus_click=delivered released=both");
+    phase = "remote-hold";
+    for (size_t i = 0U; i < 3U; ++i) {
+        if (XTestFakeButtonEvent(display, buttons[i], True, CurrentTime) == 0) goto finished;
+        local_held += 1U;
+        XSync(display, False);
+        if (sleep_millis(30U) != 0) goto finished;
+    }
+    for (unsigned int pass = 0U; pass < 2U; ++pass) {
+        unsigned int seen = 0U, events = 0U;
+        uint64_t deadline = monotonic_millis() + 5000U, complete = 0U;
+        while (monotonic_millis() < deadline) {
+            while (XPending(source) != 0) {
+                XEvent event;
+                if (++events > 128U) goto finished;
+                XNextEvent(source, &event);
+                if (event.type != ButtonPress && event.type != ButtonRelease) continue;
+                unsigned int bit = event.xbutton.button == buttons[0] ? 1U :
+                    event.xbutton.button == buttons[1] ? 2U :
+                    event.xbutton.button == buttons[2] ? 4U : 0U;
+                unsigned int expected_state = pass == 0U ? (seen == 0U ? 0U : Button1Mask) :
+                    Button3Mask | ((seen & 1U) == 0U ? Button1Mask : 0U);
+                printf("FLUTTER_PEER_MOUSE_RETIRE_EVENT phase=%s type=%d button=%u state=%u synthetic=%d\n",
+                       phase, event.type, event.xbutton.button, event.xbutton.state, event.xbutton.send_event);
+                if (event.xbutton.window != root || event.xbutton.send_event || bit == 0U ||
+                    (seen & bit) != 0U || event.type != (pass == 0U ? ButtonPress : ButtonRelease) ||
+                    event.xbutton.state != expected_state ||
+                    (pass == 0U && bit != (seen == 0U ? 1U : seen == 1U ? 2U : 4U))) goto finished;
+                seen |= bit;
+                if (seen == 7U) complete = monotonic_millis();
+            }
+            if (complete != 0U && monotonic_millis() - complete >= 100U) break;
+            if (sleep_millis(10U) != 0) goto finished;
+        }
+        if (seen != 7U || complete == 0U || monotonic_millis() >= deadline) goto finished;
+        if (pass == 1U) {
+            struct pollfd exited = {.fd = pidfd, .events = POLLIN};
+            int status;
+            do { status = poll(&exited, 1U, 0); } while (status < 0 && errno == EINTR);
+            if (status != 1 || (exited.revents & POLLIN) == 0 ||
+                (exited.revents & (POLLERR | POLLNVAL)) != 0 ||
+                !mouse_button_set_matches(source, buttons + 3, 1U)) goto finished;
+            released_at = complete;
+            break;
+        }
+        ConnectionIdentity current = {{0}, {0}, 0UL};
+        if (!mouse_button_set_matches(source, buttons, 3U) ||
+            !mouse_button_set_matches(display, buttons, 3U) ||
+            read_connection_identity(&current) != 0 || !same_connection(connection, &current)) goto finished;
+        phase = "local-hold";
+        if (XTestFakeButtonEvent(source, buttons[3], True, CurrentTime) == 0) goto finished;
+        foreign_held = 1;
+        XSync(source, False);
+        unsigned int foreign_events = 0U;
+        events = 0U;
+        while (XPending(source) != 0) {
+            XEvent event;
+            if (++events > 128U) goto finished;
+            XNextEvent(source, &event);
+            if (event.type != ButtonPress && event.type != ButtonRelease) continue;
+            if (++foreign_events != 1U || event.type != ButtonPress || event.xbutton.window != root ||
+                event.xbutton.send_event || event.xbutton.button != buttons[3] ||
+                event.xbutton.state != Button1Mask) goto finished;
+        }
+        if (foreign_events != 1U || !mouse_button_set_matches(source, buttons, 4U)) goto finished;
+        puts("FLUTTER_PEER_MOUSE_RETIRE_HELD_OK remote_buttons=3 local_buttons=1 exact_native_state=true");
+        phase = "abrupt-retirement";
+        if (!viewer_pidfd_alive(pidfd) ||
+            viewer_process_state(process, viewer->pid, start, &state) != 0) goto finished;
+        killed_at = monotonic_millis();
+        if (syscall(SYS_pidfd_send_signal, pidfd, SIGKILL, NULL, 0U) != 0) goto finished;
+    }
+    if (released_at < killed_at || released_at - killed_at >= 5000U) goto finished;
+    printf("FLUTTER_PEER_MOUSE_RETIRE_RELEASED_OK remote_buttons=3 local_buttons=1 elapsed_ms=%llu "
+           "limit_ms=5000 native_releases=true local_preserved=true viewer_exited=true\n",
+           (unsigned long long)(released_at - killed_at));
+    result = 0;
+finished:
+    /* Fixture cleanup cannot supply any of the observed remote releases. */
+    if (foreign_held && XTestFakeButtonEvent(source, buttons[3], False, CurrentTime) == 0) result = -1;
+    while (local_held != 0U) {
+        if (XTestFakeButtonEvent(display, buttons[--local_held], False, CurrentTime) == 0) result = -1;
+    }
+    XSync(source, False);
+    XSync(display, False);
+    if (result == 0 && (!mouse_buttons_match(source, 0U) || !mouse_buttons_match(display, 0U))) result = -1;
+    XSelectInput(source, root, NoEventMask);
+    XSync(source, False);
+    if (pidfd >= 0 && close(pidfd) != 0) result = -1;
+    if (process >= 0 && close(process) != 0) result = -1;
+    if (result != 0) fprintf(stderr, "FLUTTER_PEER_X11_FAIL mouse-retirement phase=%s errno=%d\n", phase, errno);
+    return result;
 }
 
 static int wait_mouse_drag(Display *source, unsigned int held, int previous_x, int previous_y,
@@ -3053,12 +3207,13 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--keyboard-retirement") != 0 &&
                                     strcmp(argv[5], "--keyboard-input") != 0 &&
                                     strcmp(argv[5], "--mouse-input") != 0 &&
+                                    strcmp(argv[5], "--mouse-retirement") != 0 &&
                                     strcmp(argv[5], "--clipboard-text") != 0 &&
                                     strcmp(argv[5], "--clipboard-images") != 0 &&
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input]\n",
+              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement]\n",
               stderr);
         return 2;
     }
@@ -3216,11 +3371,13 @@ int main(int argc, char **argv) {
         int keyboard_retirement = strcmp(argv[5], "--keyboard-retirement") == 0;
         int keyboard_input = strcmp(argv[5], "--keyboard-input") == 0;
         int mouse_input = strcmp(argv[5], "--mouse-input") == 0;
+        int mouse_retirement = strcmp(argv[5], "--mouse-retirement") == 0;
         int clipboard_text = strcmp(argv[5], "--clipboard-text") == 0;
         int clipboard_images = strcmp(argv[5], "--clipboard-images") == 0;
         int partial_loss = strcmp(argv[5], "--network-loss") == 0;
         int network = partial_loss || strcmp(argv[5], "--network-impairment") == 0;
-        int suspension_status = mouse_input ? exercise_mouse_input(
+        int suspension_status = mouse_retirement ? exercise_mouse_retirement(
+            source, display, &viewer, argv[4], &current_connection) : mouse_input ? exercise_mouse_input(
             source, display, &viewer, &current_connection, &baseline_resources) :
             keyboard_retirement ? exercise_keyboard_retirement(
             source, display, &viewer, argv[4], &current_connection) : keyboard_input ? exercise_keyboard_input(
@@ -3239,11 +3396,15 @@ int main(int argc, char **argv) {
             fputs("FLUTTER_PEER_X11_FAIL private AT-SPI teardown\n", stderr);
             suspension_status = -1;
         }
-        if (!keyboard_retirement && close_viewer(display, viewer.window) != 0) suspension_status = -1;
+        if (!keyboard_retirement && !mouse_retirement &&
+            close_viewer(display, viewer.window) != 0) suspension_status = -1;
         XCloseDisplay(display);
         XCloseDisplay(source);
         if (suspension_status != 0) return 1;
-        if (mouse_input) {
+        if (mouse_retirement) {
+            puts("FLUTTER_PEER_MOUSE_RETIREMENT_OK remote_buttons=3 local_button=preserved "
+                 "viewer_exit=abrupt native_releases=true fixture_buttons_released=true");
+        } else if (mouse_input) {
             puts("FLUTTER_PEER_MOUSE_INPUT_OK cases=17 button_events=34 drag_moves=2 "
                  "wheel_directions=4 outside_releases=3 reentries=3 side_buttons=2 actual_peer=true native_events=true released=both "
                  "same_window=true stable_connection=true resources=bounded");

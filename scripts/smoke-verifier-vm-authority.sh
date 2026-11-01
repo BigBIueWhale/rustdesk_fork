@@ -660,6 +660,7 @@ case "$#:${1:-}" in
                 --keyboard-input) FLUTTER_KEYBOARD_INPUT=1 ;;
                 --keyboard-retirement) FLUTTER_KEYBOARD_INPUT=2 ;;
                 --mouse-input) FLUTTER_MOUSE_INPUT=1 ;;
+                --mouse-retirement) FLUTTER_MOUSE_INPUT=2 ;;
                 *) exit 2 ;;
             esac
         fi
@@ -708,7 +709,7 @@ case "$#:${1:-}" in
         printf 'Original offline engine setup: %s --linux-flutter-engine-prepare\n' "${0##*/}" >&2
         printf 'Explicit offline engine integration build: %s --linux-flutter-engine-build\n' "${0##*/}" >&2
         printf 'Source-bound Linux app producer: %s --linux-flutter-app-build --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256\n' "${0##*/}" >&2
-        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input]\n' "${0##*/}" >&2
+        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement]\n' "${0##*/}" >&2
         printf 'Focused native Docker log-lifetime check: %s --android-runtime-log-tests\n' "${0##*/}" >&2
         printf 'Windows service-result file checks: %s --windows-service-result-tests\n' "${0##*/}" >&2
         printf 'Focused archive transaction fixtures: %s --fixed-archive-tests\n' "${0##*/}" >&2
@@ -5156,7 +5157,10 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || guest_invocation+=' --viewer-suspend'
         [ "$FLUTTER_CLIPBOARD_TEXT" -ne 1 ] || guest_invocation+=' --clipboard-text'
         [ "$FLUTTER_CLIPBOARD_TEXT" -ne 2 ] || guest_invocation+=' --clipboard-images'
-        [ "$FLUTTER_MOUSE_INPUT" -eq 0 ] || guest_invocation+=' --mouse-input'
+        case "$FLUTTER_MOUSE_INPUT" in
+            1) guest_invocation+=' --mouse-input' ;;
+            2) guest_invocation+=' --mouse-retirement' ;;
+        esac
         case "$FLUTTER_KEYBOARD_INPUT" in
             1) guest_invocation+=' --keyboard-input' ;;
             2) guest_invocation+=' --keyboard-retirement' ;;
@@ -8563,7 +8567,10 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || peer_scenario=viewer-suspend
     [ "$FLUTTER_CLIPBOARD_TEXT" -ne 1 ] || peer_scenario=clipboard-text
     [ "$FLUTTER_CLIPBOARD_TEXT" -ne 2 ] || peer_scenario=clipboard-images
-    [ "$FLUTTER_MOUSE_INPUT" -eq 0 ] || peer_scenario=mouse-input
+    case "$FLUTTER_MOUSE_INPUT" in
+        1) peer_scenario=mouse-input ;;
+        2) peer_scenario=mouse-retirement ;;
+    esac
     case "$FLUTTER_KEYBOARD_INPUT" in
         1) peer_scenario=keyboard-input ;;
         2) peer_scenario=keyboard-retirement ;;

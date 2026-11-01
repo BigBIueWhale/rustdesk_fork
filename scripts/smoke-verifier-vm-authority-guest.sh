@@ -266,6 +266,7 @@ case "$#:${8:-}" in
                 --keyboard-input) FLUTTER_KEYBOARD_INPUT=1 ;;
                 --keyboard-retirement) FLUTTER_KEYBOARD_INPUT=2 ;;
                 --mouse-input) FLUTTER_MOUSE_INPUT=1 ;;
+                --mouse-retirement) FLUTTER_MOUSE_INPUT=2 ;;
                 *) exit 2 ;;
             esac
         fi
@@ -14010,7 +14011,10 @@ run_flutter_peer_presentation() {
     [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || peer_args+=(--viewer-suspend)
     [ "$FLUTTER_CLIPBOARD_TEXT" -ne 1 ] || peer_args+=(--clipboard-text)
     [ "$FLUTTER_CLIPBOARD_TEXT" -ne 2 ] || peer_args+=(--clipboard-images)
-    [ "$FLUTTER_MOUSE_INPUT" -eq 0 ] || peer_args+=(--mouse-input)
+    case "$FLUTTER_MOUSE_INPUT" in
+        1) peer_args+=(--mouse-input) ;;
+        2) peer_args+=(--mouse-retirement) ;;
+    esac
     case "$FLUTTER_KEYBOARD_INPUT" in
         1) peer_args+=(--keyboard-input) ;;
         2) peer_args+=(--keyboard-retirement) ;;
@@ -14056,7 +14060,10 @@ run_flutter_peer_presentation() {
         fail 'Linux replay unexpectedly built an app'
     fi
     local peer_scenario=focus-reconnect-resource peer_cycles=6
-    if [ "$FLUTTER_MOUSE_INPUT" -eq 1 ]; then
+    if [ "$FLUTTER_MOUSE_INPUT" -eq 2 ]; then
+        peer_scenario=mouse-retirement
+        peer_cycles=1
+    elif [ "$FLUTTER_MOUSE_INPUT" -eq 1 ]; then
         peer_scenario=mouse-input
         peer_cycles=1
     elif [ "$FLUTTER_KEYBOARD_INPUT" -eq 2 ]; then

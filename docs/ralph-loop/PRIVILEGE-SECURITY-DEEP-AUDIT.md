@@ -127266,3 +127266,36 @@ peak RAM workspace retires and all three listener deltas are zero. The complete
 audit-only receipt leaves the counted ledger unchanged. Native side-button
 delivery reaches its positive workflow checkpoint; the broad release goal and
 the explicitly parked clipboard investigation remain open. No owned VM is live.
+
+### 2026-11-01 — native mouse release after abrupt viewer exit
+
+Previous goal turn: PROGRESS. The seventeen-case full-app mouse workload passes,
+including both native side buttons. Current CTE/TUF match clean pushed `99d6945d`;
+the shared run lock is idle with no VM workspace. Continue R-F1/R-S0/R-S19's
+input lifetime acceptance. A disconnected owner leaving buttons held, or releasing
+unrelated local input, is more consequential than further ordinary-click coverage.
+All independently parked work, including clipboard, remains parked.
+
+The actual receiver's InputOwner tracks a connection's held buttons and the
+aggregate registry; release_remaining invokes release_all_mouse_buttons and
+releases only final remote owners. Its native cleanup sink is
+release_owned_mouse_button. The relevant input code is unchanged from app
+`cf437894`; later connection.rs changes concern idle-timeout representation.
+No defect is inferred from missing full-app teardown evidence.
+
+Add `--mouse-retirement` to the existing source-bound replay. First observe the
+native focus-click pair and released state, then hold Left, Back and Forward
+through the actual viewer. Require the exact remote presses and all three held
+states on both displays. Hold Right directly on the controlled display and prove
+the four-button native state. Terminate only the identity-checked disposable
+viewer through its retained pidfd; Linux documents descriptor-bound signaling:
+https://man7.org/linux/man-pages/man2/pidfd_send_signal.2.html.
+Within five seconds require exactly the three owned release events, correct
+pre-event state for either release order, viewer exit and preserved local Right.
+XInput2 supplies complete button state beyond the core five-button mask:
+https://www.x.org/archive/X11R7.5/doc/man/man3/XIQueryPointer.3.html.
+Only after these observations may fixture-owned input be released. No fixture
+operation releases a remote-owned button on the controlled display. The guest
+then joins the expected status-137 viewer, controlled server, displays and
+containers before exact VM/RAM retirement. The existing mouse profile shares
+only the generalized button-set observer; its single-button API is retained.

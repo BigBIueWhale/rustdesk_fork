@@ -127141,3 +127141,14 @@ Eight bounded evidence files total 100,498 bytes. No product defect or correctio
 is claimed. Native installed/other-platform/current-release, refusal, larger
 selections and sustained-resource acceptance remain open. The user-directed park
 on connection-page validation and all older independent parks remain in force.
+
+Fresh ledger count at `245bf66e`, TUF `m91Gxpfj7v`, passes at 384,772 tokens /
+1,761,234 bytes, input SHA-256
+`24024b43fd470e337a7df54f91c4223f965564ca1ad60abd6fa9ad3ef3830273`.
+Seven controls and the whole-input round trip pass. QEMU 3858451 and wrapper
+3857027 exit after 30.573 supervisor seconds; 402,550,784 peak RAM bytes retire
+and all three listener deltas are zero. The clipboard run, preceding parked-page
+diagnostics and count comprise 23 bounded evidence files / 309,097 bytes,
+hash-verified on both CTE and TUF. This audit-only receipt leaves the counted
+ledger unchanged. The selected positive clipboard workflow reaches its native
+checkpoint; the broad release goal remains open, with no owned VM live.

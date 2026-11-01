@@ -426,6 +426,9 @@ class InputModel {
   int _lastButtons = 0;
   Offset lastMousePos = Offset.zero;
   int _lastWheelTsUs = 0;
+  double _wheelRemainder = 0;
+  ({SessionID sessionId, SessionID clientOwnerId, int device, int viewId,
+      bool horizontal})? _wheelScrollOwner;
 
   // Wheel acceleration thresholds.
   static const int _wheelAccelFastThresholdUs = 40000; // 40ms
@@ -1234,7 +1237,7 @@ class InputModel {
     releaseHeldModifiers();
     _pointerMovedAfterEnter = false;
     _pointerInsideImage = enter;
-    _lastWheelTsUs = 0;
+    _resetWheelScroll();
 
     // Track active model for side button events (Linux).
     if (enter) {
@@ -1403,7 +1406,7 @@ class InputModel {
     _pointerInsideImage = false;
     _lastButtons = 0;
     lastMousePos = Offset.zero;
-    _lastWheelTsUs = 0;
+    _resetWheelScroll();
     _queryOtherWindowCoords = false;
     _windowRect = null;
     _remoteWindowCoords.clear();
@@ -1419,6 +1422,7 @@ class InputModel {
 
   void disposeRelativeMouseMode({SessionID? expectedSessionId}) {
     _disposed = true;
+    _resetWheelScroll();
     _trackpadGesture = null;
     _trackpadScrollOwner = null;
     _trackpadScrollUnsent = Offset.zero;
@@ -1436,6 +1440,7 @@ class InputModel {
   }
 
   void onWindowBlur() {
+    _resetWheelScroll();
     _stopTrackpadFling();
     _relativeMouse.onWindowBlur();
   }
@@ -1817,6 +1822,12 @@ class InputModel {
     return null;
   }
 
+  void _resetWheelScroll() {
+    _wheelScrollOwner = null;
+    _wheelRemainder = 0;
+    _lastWheelTsUs = 0;
+  }
+
   /// Handle scroll/wheel events.
   /// Note: Scroll events intentionally use absolute positioning even in relative mouse mode.
   /// This is because scroll events don't need relative positioning - they represent
@@ -1824,13 +1835,32 @@ class InputModel {
   /// handle scroll events the same way regardless of mouse mode.
   void onPointerSignalImage(PointerSignalEvent e) {
     final owner = parent.target;
-    if (_disposed || owner == null) return;
+    if (_disposed || owner == null) {
+      _resetWheelScroll();
+      return;
+    }
     final expectedSessionId = owner.sessionId;
     if (!owner.isCurrentSessionOwner(expectedSessionId, owner.clientOwnerId) ||
-        isViewOnly || !keyboardPerm || isViewCamera) return;
+        isViewOnly || !keyboardPerm || isViewCamera) {
+      _resetWheelScroll();
+      return;
+    }
     if (e is PointerScrollEvent) {
       final rawDx = e.scrollDelta.dx;
       final rawDy = e.scrollDelta.dy;
+      if (!rawDx.isFinite || !rawDy.isFinite) {
+        _resetWheelScroll();
+        return;
+      }
+      if (rawDx == 0 && rawDy == 0) return;
+      final horizontal = rawDx.abs() > rawDy.abs();
+      final scrollOwner = (sessionId: expectedSessionId,
+          clientOwnerId: owner.clientOwnerId, device: e.device,
+          viewId: e.viewId, horizontal: horizontal);
+      if (_wheelScrollOwner != scrollOwner) {
+        _resetWheelScroll();
+        _wheelScrollOwner = scrollOwner;
+      }
       final dominantDelta =
           rawDx.abs() > rawDy.abs() ? rawDx.abs() : rawDy.abs();
       final isSmooth = dominantDelta < 1;
@@ -1852,24 +1882,15 @@ class InputModel {
           }
         }
       }
-      var dx = rawDx.toInt();
-      var dy = rawDy.toInt();
-      if (rawDx.abs() > rawDy.abs()) {
-        dy = 0;
-      } else {
-        dx = 0;
-      }
-      if (dx > 0) {
-        dx = -accel;
-      } else if (dx < 0) {
-        dx = accel;
-      }
-      if (dy > 0) {
-        dy = -accel;
-      } else if (dy < 0) {
-        dy = accel;
-      }
-      sendWheelScroll(dx, dy, expectedSessionId: expectedSessionId);
+      // Keep the existing whole-pixel threshold and wheel-step normalization,
+      // retaining less than one logical pixel for this owner and axis.
+      final distance = _wheelRemainder + (horizontal ? rawDx : rawDy);
+      final whole = distance.truncateToDouble();
+      _wheelRemainder = distance - whole;
+      if (whole == 0) return;
+      final step = whole > 0 ? -accel : accel;
+      sendWheelScroll(horizontal ? step : 0, horizontal ? 0 : step,
+          expectedSessionId: expectedSessionId);
     }
   }
 

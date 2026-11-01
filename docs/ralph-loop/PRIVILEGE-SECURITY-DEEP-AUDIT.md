@@ -126244,3 +126244,30 @@ all 80 workload-admission controls and five refusals pass. QEMU 3610005 joins,
 402,636,800 peak RAM bytes retire, and three listener deltas are zero. All 29
 comparison/capsule/count files total 413,788 bytes and are hash-verified on CTE/TUF.
 This audit-only receipt leaves the counted ledger bytes unchanged.
+
+### 2026-11-01 — uninterrupted Android observation and soak preparation
+
+The previous goal turn made progress by closing the bounded-history prerequisite.
+The selected requirement remains R-F5's unimpaired multi-hour Android control;
+repeating the accepted short lifecycle schedule alone cannot resolve it. Current
+`capture_peer_freshness` intentionally waits for two fresh states after a lifecycle
+event, so it is not an uninterrupted-session oracle: earlier unavailable/stale
+samples can precede success. The next prerequisite is a scheduled observer that
+refuses each bad sample and bounds measurement gaps through the final deadline.
+
+The intended workload is a two-hour foreground connection, with no manual reconnect
+or restart during that interval, one actual-pixel sample per second, a two-second
+maximum observation gap, the existing 2,000-ms content-age and 500-ms observer-age
+limits, and at most 500 ms spent acquiring/classifying each sample. Fixed-size age
+histograms supply minute and whole-run percentiles without retaining every frame.
+The first healthy minute will anchor a predeclared 250-ms p95 drift allowance;
+RSS/thread limits remain 128 MiB/eight above the warmed process baseline. These
+are proposed execution limits, not observed product behavior or R-F5 acceptance.
+
+Research: Python's [monotonic clock](https://docs.python.org/3.11/library/time.html#time.monotonic)
+supports deadlines independent of wall-clock adjustment; observation must also
+check elapsed acquisition and the final interval. Android's
+[logcat buffers are circular](https://developer.android.com/tools/logcat), so
+old lifecycle records cannot be assumed to survive a multi-hour test. Runtime log
+bounds and truthful lifecycle evidence must be settled before the long VM launch.
+No product change or parked-topic resumption is selected.

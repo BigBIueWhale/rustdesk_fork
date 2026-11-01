@@ -531,6 +531,87 @@ print("ANDROID_SOURCE_HISTORY=pass publications=500000 reader_as_bytes=67108864 
         source.unlink()
 
 
+def test_observation_schedule(decoder):
+    class Clock:
+        def __init__(self):
+            self.now = 10_000_000_000
+            self.calls = 0
+
+        def read(self):
+            return self.now
+
+        def sleep(self, seconds):
+            self.now += round(seconds * 1_000_000_000)
+
+        def sample(self):
+            self.calls += 1
+            self.now += 10_000_000
+            return ({"sequence": self.calls, "observation_ms": 30},
+                    {"state": self.calls, "age": 100})
+
+    clock = Clock()
+    windows = []
+    summary = decoder.observe_duration(clock.sample, 7200, clock=clock.read,
+                                       sleep=clock.sleep, report=windows.append)
+    require(summary == dict(samples=7201, elapsed_ms=7200010, age_p50_ms=100,
+                            age_p95_ms=100, age_max_ms=100, observer_max_ms=30,
+                            maximum_gap_ms=1000, last_sequence=7201, last_state=7201),
+            "scheduled two-hour observer summary differs")
+    require(len(windows) == 120 and sum(w['samples'] for w in windows) == 7201
+            and [w['elapsed_ms'] for w in windows] == [i * 60000 + 10 for i in range(1, 121)],
+            "minute reports lost samples or changed the absolute schedule")
+
+    for case in ("stale", "unknown", "observer-old", "sequence-repeat", "state-backward",
+                 "processing-overrun", "sleep-gap", "final-gap", "clock-backward",
+                 "report-gap"):
+        clock = Clock()
+
+        def sample():
+            record, candidate = clock.sample()
+            if clock.calls == 2:
+                if case == "stale": candidate['age'] = 2001
+                if case == "unknown": candidate = None
+                if case == "observer-old": record['observation_ms'] = 501
+                if case == "sequence-repeat": record['sequence'] = 1
+                if case == "state-backward": candidate['state'] = 0
+                if case == "processing-overrun": clock.now += 500_000_000
+                if case == "clock-backward": clock.now -= 20_000_000
+            return record, candidate
+
+        def sleep(seconds):
+            clock.sleep(seconds)
+            if case == "sleep-gap" or (case == "final-gap" and clock.calls == 3):
+                clock.now += 1_001_000_000
+
+        def report(window):
+            if case == "report-gap": clock.now += 2_001_000_000
+
+        try:
+            decoder.observe_duration(sample, 61 if case == "report-gap" else 3,
+                                     clock=clock.read, sleep=sleep, report=report)
+        except decoder.InvalidFrame:
+            pass
+        else:
+            raise AssertionError(f"scheduled observation accepted {case}")
+
+    clock = Clock()
+    ages = (0, 2000, 500, 100)
+
+    def boundary_sample():
+        record, candidate = clock.sample()
+        candidate['age'] = ages[clock.calls - 1]
+        candidate['state'] = 1 if clock.calls <= 2 else clock.calls
+        record['observation_ms'] = 500
+        return record, candidate
+
+    summary = decoder.observe_duration(boundary_sample, 3, clock=clock.read, sleep=clock.sleep)
+    require(summary['age_p50_ms'] == 100 and summary['age_p95_ms'] == 2000
+            and summary['age_max_ms'] == 2000 and summary['observer_max_ms'] == 500,
+            "valid freshness boundaries or percentiles differ")
+    print("ANDROID_OBSERVATION_SCHEDULE=pass seconds=7200 windows=120 samples=7201 "
+          "clock=synthetic refusals=10 boundaries=accepted final_interval=checked", flush=True)
+
+
 def main():
     require(os.getuid() == 4000 and os.getgid() == 4000, "numeric nonroot principal differs")
     module_path = Path("/work/scripts/android-emulator-frame.py")
@@ -538,6 +619,7 @@ def main():
     decoder = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(decoder)
     decoder.self_test()
+    test_observation_schedule(decoder)
     test_source_history()
     inspect_retained_android_frame(decoder)
     fixture = Path("/build/fixture")
@@ -798,6 +880,21 @@ def main():
               f"mean_interval_us={interval_us} bands=scaled-40-percent", flush=True)
         print(f"ANDROID_FRAME_NATIVE_AB=pass old_predicate=accept new=refuse stale_age_ms={stale['age']} "
               f"old_identity={identity} fresh_identity={fresh['state']} fresh_age_ms={fresh['age']}", flush=True)
+        observed = 0
+
+        def scheduled_sample():
+            nonlocal observed
+            observed += 1
+            current_record = record(capture(), observed)
+            current_history = decoder.source_history(source_path)
+            return current_record, decoder.classify(current_record, current_history)
+
+        window = decoder.observe_duration(scheduled_sample, 3)
+        require(window['elapsed_ms'] >= 3000 and window['samples'] >= 3
+                and window['last_state'] > fresh['state'],
+                "scheduled native observation did not span its actual duration")
+        print("ANDROID_OBSERVATION_NATIVE=pass clock=real pixels=actual-x11 "
+              + " ".join(f"{key}={value}" for key, value in window.items()), flush=True)
     finally:
         if display:
             lib.XCloseDisplay(display)

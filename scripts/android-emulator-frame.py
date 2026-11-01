@@ -406,6 +406,94 @@ def classify(record: dict[str, object], history: dict[int, int],
     return analyze(record, history, now_monotonic_ns)["chosen"]
 
 
+def observe_duration(sample, duration_seconds: int, *, clock=time.monotonic_ns,
+                     sleep=time.sleep, report=lambda window: None) -> dict[str, int]:
+    """Observe every scheduled sample; recovery after a failed sample cannot pass."""
+    if not 1 <= duration_seconds <= 10800:
+        raise InvalidFrame("observation duration is outside its three-hour bound")
+    period_ns = 1_000_000_000
+    gap_limit_ns = 2 * period_ns
+    started = clock()
+    if started <= 0:
+        raise InvalidFrame("observation clock is unavailable")
+    deadline = started + duration_seconds * period_ns
+    previous_end = started
+    previous_sequence = previous_state = -1
+    samples = maximum_gap_ns = observer_max_ms = 0
+    histogram = [0] * (FRESHNESS_LIMIT_MS + 1)
+    window_histogram = [0] * len(histogram)
+    window_samples = window_max_gap_ns = window_observer_max_ms = 0
+    next_report = min(started + 60 * period_ns, deadline)
+
+    def summary(count, counts, gap_ns, observer_ms, elapsed_ns):
+        def percentile(percent):
+            rank = (count * percent + 99) // 100
+            total = 0
+            for age, occurrences in enumerate(counts):
+                total += occurrences
+                if total >= rank:
+                    return age
+            raise InvalidFrame("observation histogram is incomplete")
+
+        return dict(samples=count, elapsed_ms=(elapsed_ns + 999999) // 1000000,
+                    age_p50_ms=percentile(50), age_p95_ms=percentile(95),
+                    age_max_ms=percentile(100), observer_max_ms=observer_ms,
+                    maximum_gap_ms=(gap_ns + 999999) // 1000000,
+                    last_sequence=previous_sequence, last_state=previous_state)
+
+    while True:
+        target = min(started + samples * period_ns, deadline)
+        now = clock()
+        if now < previous_end:
+            raise InvalidFrame("observation clock regressed")
+        if now < target:
+            sleep((target - now) / period_ns)
+        before = clock()
+        if before < max(previous_end, target) or before - previous_end > gap_limit_ns:
+            raise InvalidFrame("observation schedule lost its bounded coverage")
+        record, candidate = sample()
+        ended = clock()
+        if ended < before or ended - before > 500_000_000:
+            raise InvalidFrame("pixel observation exceeded its processing budget")
+        gap_ns = ended - previous_end
+        if gap_ns > gap_limit_ns:
+            raise InvalidFrame("observation gap exceeded two seconds")
+        if candidate is None:
+            raise InvalidFrame("scheduled pixels were stale, unknown or undecodable")
+        sequence = int(record["sequence"])
+        state = int(candidate["state"])
+        age = int(candidate["age"])
+        observer_ms = int(record["observation_ms"])
+        if (not previous_sequence < sequence <= 0xFFFFFFFF
+                or not previous_state <= state <= 0xFFFFFFFF
+                or not 0 <= age <= FRESHNESS_LIMIT_MS
+                or not 0 <= observer_ms <= 500):
+            raise InvalidFrame("scheduled frame identity, freshness or observer age differs")
+        previous_sequence, previous_state = sequence, state
+        samples += 1
+        if samples > duration_seconds + 2:
+            raise InvalidFrame("observation sample count exceeds its finite schedule")
+        histogram[age] += 1
+        window_histogram[age] += 1
+        window_samples += 1
+        maximum_gap_ns = max(maximum_gap_ns, gap_ns)
+        window_max_gap_ns = max(window_max_gap_ns, gap_ns)
+        observer_max_ms = max(observer_max_ms, observer_ms)
+        window_observer_max_ms = max(window_observer_max_ms, observer_ms)
+        previous_end = ended
+        if ended >= next_report:
+            report(summary(window_samples, window_histogram, window_max_gap_ns,
+                           window_observer_max_ms, ended - started))
+            window_histogram = [0] * len(histogram)
+            window_samples = window_max_gap_ns = window_observer_max_ms = 0
+            next_report = min(next_report + 60 * period_ns, deadline)
+        if ended >= deadline:
+            if ended - deadline > gap_limit_ns:
+                raise InvalidFrame("observation completion missed its deadline")
+            return summary(samples, histogram, maximum_gap_ns, observer_max_ms,
+                           ended - started)
+
+
 def decode(path: Path, source_log: Path, diagnose: bool) -> int:
     with path.open("rb") as stream:
         data = stream.read(MAX_RECORD_BYTES + 1)

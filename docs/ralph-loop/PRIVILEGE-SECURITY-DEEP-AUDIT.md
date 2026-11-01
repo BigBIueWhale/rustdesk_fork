@@ -127955,3 +127955,14 @@ native cases; shell syntax and diff review cover that output-only correction.
 This closes the named sessionless startup gap, not final Debian artifact,
 active-desktop/credential authorization, namespace races, other supervisors,
 other platforms or release acceptance. Fresh ledger count follows.
+
+Fresh count at `38c12e3b`, TUF `DObriEjc00`, passes at 387,024 tokens /
+1,771,999 bytes, input SHA-256
+`fca30aba59835cb3a4f8b6d83c5790c916cffbe9a8afe6f2597c9325b4ca1ee6`.
+Seven controls and the complete-input round trip pass. QEMU 3938313 and
+wrapper 3936835 are absent; 402,702,336 peak RAM bytes retire after 30.805
+supervisor seconds, with three zero listener deltas. Serial SHA-256:
+`1b7493dcf71373112577832c4e38881ca9a1f1eea9ef18a19d62215ec536a4de`.
+The two native attempts and count retain 21 raw files (297,431 bytes),
+hash-verified on CTE and TUF. This audit-only receipt preserves the counted
+ledger. No owned VM remains; the overall release goal is incomplete.

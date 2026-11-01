@@ -1390,7 +1390,7 @@ PY
         grep -Fxq 'FLUTTER_PEER_CREDENTIAL_RESTORED_OK password_input=absent prompt=absent' \
           <<<"$controller_output" || fail 'fresh viewer did not restore its credential'
         if [ "$credential_phase" = menu ]; then
-          grep -Fxq 'FLUTTER_PEER_CREDENTIAL_MENU_OK action=activated next_menu=present forget=absent stable_connection=true' \
+          grep -Fxq 'FLUTTER_PEER_CREDENTIAL_MENU_OK action=pointer next_menu=present forget=absent stable_connection=true' \
             <<<"$controller_output" || fail 'saved-peer Forget action did not complete'
         fi
       fi

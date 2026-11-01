@@ -3030,7 +3030,8 @@ static int activate_header_control(Display *display, Window window, unsigned int
     return -1;
 }
 
-static int activate_dark_theme(Display *display, Window main, unsigned int expected_pid) {
+static int click_main_control(Display *display, Window main, unsigned int expected_pid,
+                              const char *name) {
     XWindowAttributes attributes;
     Window child;
     unsigned long pid;
@@ -3047,7 +3048,7 @@ static int activate_dark_theme(Display *display, Window main, unsigned int expec
         AtspiRect *rect;
         GError *error = NULL;
         int valid;
-        if (query_named_accessible(expected_pid, "Dark", deadline, &label, 0) != 0) return -1;
+        if (query_named_accessible(expected_pid, name, deadline, &label, 0) != 0) return -1;
         if (label == NULL) {
             if (sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) return -1;
             continue;
@@ -3078,7 +3079,7 @@ static int activate_dark_theme(Display *display, Window main, unsigned int expec
         if (rect != NULL) g_boxed_free(ATSPI_TYPE_RECT, rect);
         return valid != 0 && monotonic_millis() < deadline ? 0 : -1;
     }
-    fputs("FLUTTER_PEER_X11_FAIL actual Dark theme label unavailable\n", stderr);
+    fprintf(stderr, "FLUTTER_PEER_X11_FAIL actual main control unavailable name=\"%s\"\n", name);
     return -1;
 }
 
@@ -3171,7 +3172,7 @@ static int exercise_credential_menu(Display *display, ViewerWindow *viewer,
     XSync(display, False);
     phase = "forget-action";
     if (open_saved_peer_menu(display, main, viewer) != 0 ||
-        activate_named_control((unsigned int)viewer->pid, "Forget password") != 0) goto out;
+        click_main_control(display, main, (unsigned int)viewer->pid, "Forget password") != 0) goto out;
     /* Observe the first menu retiring before reopening a newly built menu. */
     for (unsigned int pass = 0U; pass < 2U; ++pass) {
         uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
@@ -3196,7 +3197,7 @@ static int exercise_credential_menu(Display *display, ViewerWindow *viewer,
     }
     phase = "connection-preserved";
     if (read_connection_identity(&after) != 0 || !same_connection(connection, &after)) goto out;
-    puts("FLUTTER_PEER_CREDENTIAL_MENU_OK action=activated next_menu=present forget=absent stable_connection=true");
+    puts("FLUTTER_PEER_CREDENTIAL_MENU_OK action=pointer next_menu=present forget=absent stable_connection=true");
     result = 0;
 out:
     if (result != 0) {
@@ -3226,7 +3227,7 @@ static int exercise_dialog_theme(Display *display, const ViewerWindow *viewer, W
     }
     puts("FLUTTER_PEER_DIALOG_THEME_BEGIN source=actual_main_settings dialog=trackpad_speed");
     fflush(stdout);
-    if (activate_dark_theme(display, main, (unsigned int)viewer->pid) != 0) goto out;
+    if (click_main_control(display, main, (unsigned int)viewer->pid, "Dark") != 0) goto out;
     deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
     while (monotonic_millis() < deadline) {
         if (main_header_luminance(display, main, &dark) != 0) goto out;

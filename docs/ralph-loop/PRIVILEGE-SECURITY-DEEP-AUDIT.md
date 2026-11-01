@@ -126611,3 +126611,12 @@ serial SHA-256: `5d6281967f28d5335baa267a85348cf8b15ede14d829288fc5d85c48fc7fe23
 The three runs retain 24 raw/closure files totaling 424,958 bytes, hash-verified
 on CTE and TUF. No owned VM remains live. The next concrete reporting gap is the
 common direct sender's omitted initial-open error log.
+
+Fresh ledger count at `4df3b838`, TUF `BH3OFNazts`, passes at 382,761 tokens /
+1,751,813 bytes, SHA-256
+`2efd0ebacebf9e020cc7955fdb1a5bcb1353306ab28da8e7726bf2a46814d489`.
+Seven controls and the complete-input round trip pass. QEMU 3801159 and wrapper
+3799738 exit, 402,460,672 peak RAM bytes retire after 30.509 seconds, and all
+three listener deltas are zero. The complete 31-file evidence set totals
+535,712 bytes, hash-verified on both hosts. This audit-only receipt leaves the
+counted ledger unchanged; no owned VM remains live.

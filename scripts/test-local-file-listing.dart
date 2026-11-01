@@ -129,10 +129,88 @@ Future<void> main(List<String> arguments) async {
     }
     check(sentinel.readAsStringSync() == 'preserved', 'sentinel changed');
     print('LOCAL_FILE_LISTING_DART_CASE=pass name=empty_hidden_success');
+
+    final targets = Directory('${root.path}/targets')..createSync();
+    final targetPayload = File('${targets.path}/payload')
+      ..writeAsStringSync('link target preserved');
+    Directory('${targets.path}/external-empty').createSync();
+    final links = Directory('${root.path}/links')..createSync();
+    Directory('${links.path}/direct-empty').createSync();
+    final linkTargets = {
+      'directory': '../targets',
+      'file': '../targets/payload',
+      'dangling': '../targets/missing',
+      'cycle-a': 'cycle-b',
+      'cycle-b': 'cycle-a',
+      'parent': '..',
+    };
+    for (final entry in linkTargets.entries) {
+      Link('${links.path}/${entry.key}').createSync(entry.value);
+    }
+    final linkEntries = (await flat(links))['entries'] as List;
+    // FileType wire values: Dir=0, DirLink=2, FileLink=5.
+    final expectedTypes = {
+      'direct-empty': 0, 'directory': 2, 'file': 5, 'dangling': 5,
+      'cycle-a': 5, 'cycle-b': 5, 'parent': 2,
+    };
+    check(linkEntries.length == expectedTypes.length, 'link inventory changed');
+    for (final expected in expectedTypes.entries) {
+      final entry = linkEntries.singleWhere((entry) => entry['name'] == expected.key);
+      check(entry['entry_type'] == expected.value && entry['size'] == 0,
+          'link classification changed: ${expected.key}');
+    }
+    final recursive = await emptyDirs(links);
+    check(recursive.length == 1 &&
+        recursive.single['path'] == '${links.path}/direct-empty' &&
+        (recursive.single['entries'] as List).isEmpty,
+        'recursive listing followed a link or lost the real empty directory');
+    final alias = Directory('${links.path}/directory');
+    final aliasNames = names(await flat(alias));
+    check(aliasNames.length == 2 &&
+        aliasNames.containsAll({'payload', 'external-empty'}),
+        'explicit directory-link navigation failed');
+    final aliasEmpty = await emptyDirs(alias);
+    check(aliasEmpty.length == 1 &&
+        aliasEmpty.single['path'] == '${alias.path}/external-empty' &&
+        (aliasEmpty.single['entries'] as List).isEmpty,
+        'explicit directory-link recursion lost the requested path');
+    for (final entry in linkTargets.entries) {
+      final link = Link('${links.path}/${entry.key}');
+      check(FileSystemEntity.typeSync(link.path, followLinks: false) ==
+          FileSystemEntityType.link && link.targetSync() == entry.value,
+          'listing changed a link');
+    }
+    check(targetPayload.readAsStringSync() == 'link target preserved' &&
+        Directory('${targets.path}/external-empty').listSync().isEmpty,
+        'listing changed the external target');
+    print('LOCAL_FILE_LISTING_DART_CASE=pass name=link_navigation_and_recursion');
+
+    final unusual = Directory('${root.path}/quoted"\\dir-עברית')..createSync();
+    final unusualNames = [
+      'quote"slash\\', 'line\nbreak', 'tab\tname', 'עברית-中文-🙂',
+      'brackets[{}],.txt',
+    ];
+    for (final name in unusualNames) {
+      File('${unusual.path}/$name').writeAsStringSync('payload:$name');
+    }
+    final unusualEntries = (await flat(unusual))['entries'] as List;
+    check(unusualEntries.length == unusualNames.length, 'filename inventory changed');
+    for (final name in unusualNames) {
+      final entry = unusualEntries.singleWhere((entry) => entry['name'] == name);
+      final file = File('${unusual.path}/$name');
+      final metadata = file.statSync();
+      check(entry['entry_type'] == 4 && entry['size'] == metadata.size &&
+          entry['size'] == utf8.encode('payload:$name').length &&
+          entry['modified_time'] == metadata.modified.millisecondsSinceEpoch ~/ 1000 &&
+          file.readAsStringSync() == 'payload:$name',
+          'filename, metadata or payload changed during the native JSON round trip');
+    }
+    check((await emptyDirs(unusual)).isEmpty, 'nonempty unusual directory returned');
+    print('LOCAL_FILE_LISTING_DART_CASE=pass name=unicode_and_escaped_names');
   } finally {
     chmod(blocked, '700');
     root.deleteSync(recursive: true);
   }
   check(!root.existsSync(), 'owned fixture survived cleanup');
-  print('LOCAL_FILE_LISTING_DART=pass cases=3 exports=2 native_errors=8 recovery=pass fixtures=retired');
+  print('LOCAL_FILE_LISTING_DART=pass cases=5 exports=2 native_errors=8 recovery=pass fixtures=retired');
 }

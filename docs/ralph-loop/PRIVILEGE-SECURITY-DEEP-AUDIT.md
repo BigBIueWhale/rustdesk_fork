@@ -126800,3 +126800,38 @@ Seven controls and the complete-input round trip pass. QEMU 3821647 and wrapper
 three listener deltas are zero. The complete 39-file evidence set totals 466,311
 bytes, hash-verified on CTE and TUF. This audit-only receipt leaves the counted
 ledger unchanged; no owned VM remains live.
+
+### 2026-11-01 — user pivot; native file-browser link and filename transport
+
+The user directs another aspect. The completed inactivity-timeout bounds fix and
+its evidence remain; full authenticated expiry, activity resets and live-setting
+follow-ups are OPEN/PARKED. No timer fixture or run follows this pivot. Read-only
+resolution review found the older explicit native-query park; no resolution change
+or execution follows. All other independent parks remain in force.
+
+Select R-S0 file-browser correctness through the actual generated Dart/Rust bridge.
+Existing native transport evidence at `72056f19` covers filesystem failures,
+entry-budget recovery and hidden/empty directories. Link classification and JSON
+filename preservation lack that end-to-end observation, and the filesystem code
+has materially changed since the retained artifact. This concrete integration gap
+takes priority over speculative UI or source-only cleanup. No new defect or local
+privilege escalation is asserted before execution.
+
+Extend the existing AOT-client workload with two cases: native relative directory,
+file, dangling, cyclic and ancestor links, including explicit directory navigation
+and recursive non-following; and exact Unicode/escaped filenames, requested path,
+size, modification time and payload preservation. Both actual exported functions
+must run, linked targets remain unchanged, and all private fixtures must retire.
+The three existing cases remain. The current complete non-test Rust cdylib and
+fresh generated Dart API run in the existing bounded, networkless TUF VM profile;
+no new product mode, dependency, VM profile or resource limit is introduced.
+
+Dart's primary Link and Directory.deleteSync documentation confirms native link
+creation/inspection and non-following recursive fixture deletion:
+https://api.dart.dev/dart-io/Link-class.html and
+https://api.dart.dev/dart-io/Directory/deleteSync.html.
+FileStat supplies the independent native size/time observations:
+https://api.dart.dev/dart-io/FileStat-class.html.
+The pinned Flutter 3.24.5 compiler/run will decide actual API compatibility.
+Rendered file-manager navigation, remote peers, cancellation/races, installed and
+other-platform/release acceptance remain separate obligations. Execution pending.

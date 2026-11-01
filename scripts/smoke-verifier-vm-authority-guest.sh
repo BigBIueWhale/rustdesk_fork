@@ -5245,7 +5245,7 @@ run_focused_rust_tests() {
                 scripts/run-local-file-listing-tests.sh scripts/test-local-file-listing.dart
             )
             required_tests=(
-                filesystem_errors entry_budget_recovery empty_hidden_success
+                filesystem_errors entry_budget_recovery empty_hidden_success link_navigation_and_recursion unicode_and_escaped_names
             )
         elif [ "$RUST_TEST_PROFILE" = viewer-resume ]; then
             container_name=rustdesk-viewer-resume-tests
@@ -7927,13 +7927,13 @@ PY
             || fail 'Android client drain artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = local-file-listing ]; then
         [ "${#result_lines[@]}" -eq 0 ] || fail 'local file-listing unexpectedly ran Rust unit tests'
-        [ "$(grep -Ec '^LOCAL_FILE_LISTING_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} tests=3 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^LOCAL_FILE_LISTING_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} tests=5 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'LOCAL_FILE_LISTING_ARTIFACT=' "$output")" -eq 1 ] \
-            && [ "$(grep -Fxc 'LOCAL_FILE_LISTING_DART=pass cases=3 exports=2 native_errors=8 recovery=pass fixtures=retired' "$output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'LOCAL_FILE_LISTING_DART=pass cases=5 exports=2 native_errors=8 recovery=pass fixtures=retired' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'LOCAL_FILE_LISTING_DART=' "$output")" -eq 1 ] \
-            && [ "$(grep -Fc 'LOCAL_FILE_LISTING_DART_CASE=' "$output")" -eq 3 ] \
+            && [ "$(grep -Fc 'LOCAL_FILE_LISTING_DART_CASE=' "$output")" -eq 5 ] \
             || fail 'local file-listing Dart artifact or outcomes differ'
-        tests_passed=3
+        tests_passed=5
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-resume ]; then
         [ "${#result_lines[@]}" -eq 5 ] || fail 'viewer connection summary count differs'
         [ "$(grep -Ec '^VIEWER_RESUME_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=24 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
@@ -8808,8 +8808,8 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = local-file-listing ]; then
             grep -E '^LOCAL_FILE_LISTING_(ARTIFACT|BUILD|DART|DART_CASE)=' "$output"
-            [ "$tests_passed" -eq 3 ] || fail 'local file-listing total differs'
-            printf 'LOCAL_FILE_LISTING_VM=pass commit=%s tree=%s tests=3 target=linux-x86_64 scope=generated-dart-api-to-complete-rust-cdylib rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            [ "$tests_passed" -eq 5 ] || fail 'local file-listing total differs'
+            printf 'LOCAL_FILE_LISTING_VM=pass commit=%s tree=%s tests=5 target=linux-x86_64 scope=generated-dart-api-to-complete-rust-cdylib rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = viewer-resume ]; then
             grep -E '^test (client::io_loop::file_resume_tests::.*|port_forward::tests::.*|ui_session_interface::port_forward_mapping_tests::.*|cli_command::tests::.*|common::tests::retired_server_key_option_remains_pinned_empty) \.\.\. ok$|^VIEWER_RESUME_(ARTIFACT|BUILD|CLI_CHECK|COMPLETE|LIVE)=' "$output"

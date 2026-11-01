@@ -7405,21 +7405,21 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = andr
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = local-file-listing ]; then
     mapfile -t local_file_listing_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'LOCAL_FILE_LISTING_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} tests=3 unchanged=before-after execution_seconds=[0-9]+$'
+            'LOCAL_FILE_LISTING_ARTIFACT=pass sha256=[0-9a-f]{64} library=/cargo-target/debug/liblibrustdesk.so dart_sha256=[0-9a-f]{64} tests=5 unchanged=before-after execution_seconds=[0-9]+$'
     )
     [ "${#local_file_listing_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'LOCAL_FILE_LISTING_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'local file-listing artifact receipt differs'
     require_exact_fixed_receipt \
-        "LOCAL_FILE_LISTING_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=3 target=linux-x86_64 scope=generated-dart-api-to-complete-rust-cdylib rust=1.75.0 features=linux-pkg-config,flutter vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "LOCAL_FILE_LISTING_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=5 target=linux-x86_64 scope=generated-dart-api-to-complete-rust-cdylib rust=1.75.0 features=linux-pkg-config,flutter vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'local file-listing complete library and generated Dart API result'
     require_exact_fixed_receipt \
         'LOCAL_FILE_LISTING_DART_BUILD=pass compiler=flutter-3.24.5 format=aot-executable generated_api=exact source=exact-pushed' \
         'local file-listing generated Dart consumer compilation'
     require_exact_fixed_receipt \
-        'LOCAL_FILE_LISTING_DART=pass cases=3 exports=2 native_errors=8 recovery=pass fixtures=retired' \
+        'LOCAL_FILE_LISTING_DART=pass cases=5 exports=2 native_errors=8 recovery=pass fixtures=retired' \
         'local file-listing actual Dart transport and recovery'
-    for listing_case in filesystem_errors entry_budget_recovery empty_hidden_success; do
+    for listing_case in filesystem_errors entry_budget_recovery empty_hidden_success link_navigation_and_recursion unicode_and_escaped_names; do
         require_exact_fixed_receipt "LOCAL_FILE_LISTING_DART_CASE=pass name=$listing_case" \
             'local file-listing exact Dart case'
     done
@@ -9459,7 +9459,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = local-file-listing ]; then
         printf '%s\n' "${local_file_listing_artifacts[@]}"
-        printf 'LOCAL_FILE_LISTING_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=3 scope=generated-dart-api-to-complete-rust-cdylib network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'LOCAL_FILE_LISTING_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=5 scope=generated-dart-api-to-complete-rust-cdylib network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = viewer-resume ]; then
         printf 'VIEWER_RESUME_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=24 scope=production-viewer-connection-callers-and-cli-parser network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

@@ -507,7 +507,7 @@ PY
         $(pkg-config --cflags --libs x11) -o "/tmp/drivers.$pass/flutter-peer-source-x11"
       /usr/bin/cc -std=c11 -O2 -Wall -Wextra -Werror \
         /source/scripts/flutter-peer-presentation-x11.c \
-        $(pkg-config --cflags --libs x11 xtst atspi-2 gobject-2.0 gtk+-3.0) \
+        $(pkg-config --cflags --libs x11 xtst xi atspi-2 gobject-2.0 gtk+-3.0) \
         -o "/tmp/drivers.$pass/flutter-peer-presentation-x11"
       /usr/bin/cc -std=c11 -shared -fPIC -O2 -Wall -Wextra -Werror \
         /source/scripts/smoke-bind-loopback.c \
@@ -1266,7 +1266,7 @@ PY
     grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false$' \
       <<<"$controller_output" || fail 'real password prompt verdict is missing'
     if [ "$PEER_SCENARIO" = mouse-input ]; then
-      for sequence in {1..14}; do
+      for sequence in {1..17}; do
         [ "$(grep -Ec "^FLUTTER_PEER_MOUSE_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
           || fail "mouse case $sequence is absent or duplicated"
       done
@@ -1274,9 +1274,13 @@ PY
         [ "$(grep -Ec "^FLUTTER_PEER_MOUSE_OUTSIDE_HELD sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
           || fail "mouse outside-held observation $sequence is absent or duplicated"
       done
-      grep -Fxq 'FLUTTER_PEER_MOUSE_INPUT_OK cases=14 button_events=28 drag_moves=2 wheel_directions=4 outside_releases=3 reentries=3 actual_peer=true native_events=true released=both same_window=true stable_connection=true resources=bounded' \
+      for sequence in 15 16; do
+        [ "$(grep -Ec "^FLUTTER_PEER_MOUSE_SIDE_HELD sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
+          || fail "mouse side-button hold $sequence is absent or duplicated"
+      done
+      grep -Fxq 'FLUTTER_PEER_MOUSE_INPUT_OK cases=17 button_events=34 drag_moves=2 wheel_directions=4 outside_releases=3 reentries=3 side_buttons=2 actual_peer=true native_events=true released=both same_window=true stable_connection=true resources=bounded' \
         <<<"$controller_output" || fail 'native mouse input verdict is missing'
-      viewer_result='viewer=joined xvfb=joined mouse_cases=14 stable_connection=true resources=bounded'
+      viewer_result='viewer=joined xvfb=joined mouse_cases=17 stable_connection=true resources=bounded'
     elif [ "$PEER_SCENARIO" = keyboard-retirement ]; then
       grep -Fxq 'FLUTTER_PEER_KEYBOARD_RETIREMENT_OK remote_keys=2 local_key=preserved viewer_exit=abrupt native_releases=true fixture_keys_released=true' \
         <<<"$controller_output" || fail 'native keyboard retirement verdict is missing'

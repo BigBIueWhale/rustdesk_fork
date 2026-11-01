@@ -127183,3 +127183,48 @@ for these larger cases so the observer's previous 10-ms sleep does not deliberat
 starve the production backend's 10-ms inter-chunk timeout. Existing resource limits,
 exact window/connection ownership, nonroot isolation and joined cleanup remain.
 This uses the same authenticated app/engine artifacts and no product rebuild.
+
+Preparation `d7cf665e` fails at ordinary Unicode text case 3 in both TUF
+`Vf3Nbc9Ydn` and one unchanged diagnostic replay `KskBb4guZG`. Cases 1–2 pass;
+case 3 supplies 63 source bytes but observes no destination reply or matching
+selection. Both controlled logs contain native arboard clipboard-read timeouts.
+No new image case executes. The observer changed, so these results do not yet
+distinguish a fixture scheduling error from a product failure. The prior twelve
+small-image/text passes remain historical evidence, not reliable repeated-transfer
+or large-selection acceptance. Both outer exits are 1; QEMU exits are 0 with
+supervisor-waited accounting. QEMU/wrapper pairs 3860969/3859905 and
+3862915/3861818 are absent, all eight listener deltas are zero, and peak RAM
+workspaces of 3,010,412,544 and 3,010,609,152 bytes retire. Serial hashes:
+`01c71075d9e983f268ca050c871d40600e6ff54cf1b50cfc6b0eba98acd73ba6` and
+`5452cad0b850f166808a51243727296b1ace3d25e5c642610c7b07a8087cc02d`.
+Terminal diagnostics remain in `clipboard-large-first.Vf3Nbc9Ydn` and
+`clipboard-large-repeat.KskBb4guZG`; no active run marker remains.
+
+### 2026-11-01 — user pivot; native mouse side-button delivery
+
+The user requests another aspect. Park the large-selection/repeated-clipboard
+investigation above, retaining its two failures without another clipboard run.
+All independent parks remain in force. Both repositories are clean at pushed
+`d7cf665e`, and TUF's shared run lock is idle with no `run.*` workspace.
+
+Select R-F1/R-S0's remote input functionality: prove Back/Forward button delivery
+through the complete Linux viewer, authenticated peer and controlled X server.
+The current fourteen-case native mouse workload omits these two buttons, whose
+GTK/platform-channel path differs from ordinary Flutter mouse input. This takes
+priority over unrelated UI cleanup because component side-channel passes do not
+establish that the native window actually delivers those events.
+
+Extend the existing mouse profile with Back, Forward and a subsequent ordinary
+left click. Require each side button to become held on both independent X servers
+before release, exact remote press/release pairs and complete release afterward;
+retain the existing fourteen cases, deadlines, resource bounds and exact session.
+XInput2 supplies the button state beyond core X11's five-button mask, through the
+queried client pointer, not an assumed device number:
+https://www.x.org/archive/X11R7.5/doc/man/man3/XIQueryPointer.3.html
+https://www.x.org/archive/X11R7.5/doc/man/man3/XIGetClientPointer.3.html.
+XTEST injects only on the viewer display; the controlled observer cannot create
+a passing remote event:
+https://www.x.org/releases/X11R7.7/doc/libXtst/xtestlib.html.
+Reuse app `cf437894`/engine `63493887`; native window, InputModel and receiver
+sources are byte-identical to that app. The named artifact is the acceptance
+scope, with current-tree/installed/other-platform obligations still open.

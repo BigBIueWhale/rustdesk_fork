@@ -12,6 +12,7 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/extensions/XTest.h>
+#include <X11/extensions/XInput2.h>
 #include <X11/keysym.h>
 #include <atspi/atspi.h>
 #include <gtk/gtk.h>
@@ -2369,6 +2370,26 @@ static int mouse_snapshot(Display *display, int *x, int *y, unsigned int *mask) 
                          &root, &child, x, y, &local_x, &local_y, mask) ? 0 : -1;
 }
 
+static int mouse_buttons_match(Display *display, unsigned int held) {
+    int device;
+    Window root, child;
+    double root_x, root_y, win_x, win_y;
+    XIButtonState buttons = {0};
+    XIModifierState modifiers;
+    XIGroupState group;
+    if (!XIGetClientPointer(display, None, &device)) return 0;
+    int matched = XIQueryPointer(display, device, RootWindow(display, DefaultScreen(display)),
+        &root, &child, &root_x, &root_y, &win_x, &win_y, &buttons, &modifiers, &group);
+    if (buttons.mask == NULL || buttons.mask_len < 2 || buttons.mask_len > 32) matched = 0;
+    if (matched) {
+        for (unsigned int i = 0U; i < (unsigned int)buttons.mask_len * 8U; ++i) {
+            if ((XIMaskIsSet(buttons.mask, i) != 0) != (held != 0U && i == held)) matched = 0;
+        }
+    }
+    if (buttons.mask != NULL) XFree(buttons.mask);
+    return matched;
+}
+
 static int wait_mouse_drag(Display *source, unsigned int held, int previous_x, int previous_y,
                            int moved, int *x, int *y) {
     uint64_t deadline = monotonic_millis() + 5000U;
@@ -2389,7 +2410,7 @@ static int exercise_mouse_input(Display *source, Display *display,
                                 const ViewerWindow *viewer,
                                 const ConnectionIdentity *connection,
                                 const ProcessResources *baseline) {
-    enum { MOUSE_CLICK, MOUSE_DRAG, MOUSE_EXIT, MOUSE_REENTER };
+    enum { MOUSE_CLICK, MOUSE_DRAG, MOUSE_EXIT, MOUSE_REENTER, MOUSE_SIDE };
     static const struct { const char *name; unsigned int button; int action; } cases[] = {
         {"left-click", 1U, MOUSE_CLICK}, {"middle-click", 2U, MOUSE_CLICK},
         {"right-click", 3U, MOUSE_CLICK}, {"left-drag", 1U, MOUSE_DRAG},
@@ -2398,17 +2419,22 @@ static int exercise_mouse_input(Display *source, Display *display,
         {"left-release-outside", 1U, MOUSE_EXIT}, {"left-reentry", 1U, MOUSE_REENTER},
         {"middle-release-outside", 2U, MOUSE_EXIT}, {"middle-reentry", 2U, MOUSE_REENTER},
         {"right-release-outside", 3U, MOUSE_EXIT}, {"right-reentry", 3U, MOUSE_REENTER},
+        {"back-click", 8U, MOUSE_SIDE}, {"forward-click", 9U, MOUSE_SIDE},
+        {"left-after-side-buttons", 1U, MOUSE_CLICK},
     };
     Window root = RootWindow(source, DefaultScreen(source)), child;
     unsigned char mapping[32];
     int origin_x, origin_y, result = -1;
     int center_x, center_y;
     unsigned int injected_held = 0U;
+    int source_major = 2, source_minor = 0, viewer_major = 2, viewer_minor = 0;
+    if (XIQueryVersion(source, &source_major, &source_minor) != Success ||
+        XIQueryVersion(display, &viewer_major, &viewer_minor) != Success) return -1;
     /* Admit identity button maps on both independent X servers. */
-    if (XGetPointerMapping(source, mapping, sizeof(mapping)) < 7) return -1;
-    for (unsigned int i = 0U; i < 7U; ++i) if (mapping[i] != i + 1U) return -1;
-    if (XGetPointerMapping(display, mapping, sizeof(mapping)) < 7) return -1;
-    for (unsigned int i = 0U; i < 7U; ++i) if (mapping[i] != i + 1U) return -1;
+    if (XGetPointerMapping(source, mapping, sizeof(mapping)) < 9) return -1;
+    for (unsigned int i = 0U; i < 9U; ++i) if (mapping[i] != i + 1U) return -1;
+    if (XGetPointerMapping(display, mapping, sizeof(mapping)) < 9) return -1;
+    for (unsigned int i = 0U; i < 9U; ++i) if (mapping[i] != i + 1U) return -1;
     if (return_focus_with_pointer(display, viewer) != 0 || sleep_millis(250U) != 0 ||
         !XTranslateCoordinates(display, viewer->window,
             RootWindow(display, DefaultScreen(display)),
@@ -2441,11 +2467,23 @@ static int exercise_mouse_input(Display *source, Display *display,
             if (end_x != center_x || end_y != center_y) goto finished;
         }
         if (mouse_snapshot(source, &start_x, &start_y, &mask) != 0 || mask != 0U ||
-            mouse_snapshot(display, &local_x, &local_y, &mask) != 0 || mask != 0U) goto finished;
+            mouse_snapshot(display, &local_x, &local_y, &mask) != 0 || mask != 0U ||
+            !mouse_buttons_match(source, 0U) || !mouse_buttons_match(display, 0U)) goto finished;
         if (XTestFakeButtonEvent(display, button, True, CurrentTime) == 0) goto finished;
         injected_held = button;
         XSync(display, False);
-        if (cases[i].action == MOUSE_DRAG) {
+        if (cases[i].action == MOUSE_SIDE) {
+            while (!mouse_buttons_match(source, button)) {
+                if (monotonic_millis() - start >= 5000U) {
+                    fprintf(stderr, "FLUTTER_PEER_X11_FAIL side button=%u remote hold absent\n", button);
+                    goto finished;
+                }
+                if (sleep_millis(10U) != 0) goto finished;
+            }
+            if (!mouse_buttons_match(display, button)) goto finished;
+            printf("FLUTTER_PEER_MOUSE_SIDE_HELD sequence=%u button=%u native_state=both\n",
+                   i + 1U, button);
+        } else if (cases[i].action == MOUSE_DRAG) {
             if (wait_mouse_drag(source, bit, start_x, start_y, 0, &end_x, &end_y) != 0) goto finished;
             for (int step = 1; step <= 2; ++step) {
                 int previous_x = end_x, previous_y = end_y;
@@ -2502,7 +2540,8 @@ static int exercise_mouse_input(Display *source, Display *display,
                     event.xbutton.button != button ||
                     event.type != (received == 0U ? ButtonPress : ButtonRelease) ||
                     event.xbutton.state != (received == 0U ? 0U : bit)) goto finished;
-                if (received == 0U || cases[i].action == MOUSE_CLICK || cases[i].action == MOUSE_REENTER) {
+                if (received == 0U || cases[i].action == MOUSE_CLICK ||
+                    cases[i].action == MOUSE_REENTER || cases[i].action == MOUSE_SIDE) {
                     if (event.xbutton.x_root != start_x || event.xbutton.y_root != start_y) goto finished;
                 } else if (cases[i].action == MOUSE_DRAG &&
                            (event.xbutton.x_root != end_x || event.xbutton.y_root != end_y)) goto finished;
@@ -2515,6 +2554,7 @@ static int exercise_mouse_input(Display *source, Display *display,
             (cases[i].action == MOUSE_DRAG && held_moves < 2U) ||
             mouse_snapshot(source, &end_x, &end_y, &mask) != 0 || mask != 0U ||
             mouse_snapshot(display, &local_x, &local_y, &mask) != 0 || mask != 0U ||
+            !mouse_buttons_match(source, 0U) || !mouse_buttons_match(display, 0U) ||
             (cases[i].action == MOUSE_EXIT && (local_x != outside_x || local_y != outside_y)) ||
             find_viewer_window(display, viewer->pid, &current) != 0 || current.window != viewer->window ||
             read_connection_identity(&after) != 0 || !same_connection(connection, &after) ||
@@ -3204,8 +3244,8 @@ int main(int argc, char **argv) {
         XCloseDisplay(source);
         if (suspension_status != 0) return 1;
         if (mouse_input) {
-            puts("FLUTTER_PEER_MOUSE_INPUT_OK cases=14 button_events=28 drag_moves=2 "
-                 "wheel_directions=4 outside_releases=3 reentries=3 actual_peer=true native_events=true released=both "
+            puts("FLUTTER_PEER_MOUSE_INPUT_OK cases=17 button_events=34 drag_moves=2 "
+                 "wheel_directions=4 outside_releases=3 reentries=3 side_buttons=2 actual_peer=true native_events=true released=both "
                  "same_window=true stable_connection=true resources=bounded");
         } else if (keyboard_retirement) {
             puts("FLUTTER_PEER_KEYBOARD_RETIREMENT_OK remote_keys=2 local_key=preserved "

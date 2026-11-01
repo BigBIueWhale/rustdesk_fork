@@ -1386,8 +1386,6 @@ reserve_verifier_run() {
             && [ "$(/usr/bin/readlink -f -- "$ANDROID_ARTIFACT_STATE_ROOT")" = "$ANDROID_ARTIFACT_STATE_ROOT" ] \
             && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ANDROID_ARTIFACT_STATE_ROOT")" = "$HOST_UID:$HOST_GID:700" ] \
             || fail 'Android peer artifact state authority differs'
-        [ -z "$(/usr/bin/find "$ANDROID_ARTIFACT_STATE_ROOT" -mindepth 1 -maxdepth 1 -print -quit)" ] \
-            || fail 'an earlier Android peer artifact remains; reuse it or explicitly reconcile it before building another'
     fi
     for entry in "/proc/$$/fd/$shared_descriptor"/run.*; do
         [ -e "$entry" ] || [ -L "$entry" ] || continue

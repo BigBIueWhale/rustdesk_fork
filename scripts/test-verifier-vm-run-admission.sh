@@ -432,8 +432,11 @@ run_admission_cases() {
                 file) : >"$capsule/retained" ;;
                 symlink) /usr/bin/ln -s -- missing "$capsule/retained" ;;
             esac
-            require_refusal "$root" 'an earlier Android peer artifact remains' android-peer-build "$capsule"
-            [ -z "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -print -quit)" ]
+            result=$(invoke "$root" android-peer-build "$capsule")
+            run=${result% *}
+            run_id=${result##* }
+            /usr/bin/python3 -I -S "$SCRIPT_DIR/verify-private-tree-closure.py" \
+                --remove-private-root "$run" --expected-identity "$run_id"
             [ "$(/usr/bin/find "$capsule" -mindepth 1 -maxdepth 1 | /usr/bin/wc -l)" -eq 1 ]
             require_refusal "$root" 'an earlier Linux Flutter app artifact remains' flutter-peer-presentation "$capsule" 1
             [ -z "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -print -quit)" ]

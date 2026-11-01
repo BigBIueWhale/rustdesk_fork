@@ -126901,3 +126901,15 @@ installed service, host product or external peer is used. Preparation passes
 shell syntax/diff inspection; native execution remains pending. Full application
 login, installed/platform, sustained-resource, release and independent review
 remain separate obligations.
+
+Two launch attempts at `b80df6f1` stop before VM creation: first the fixed host
+bootstrap refuses group-write permission introduced when the parked source was
+stashed, then the September peer-cache empty-root rule refuses the one retained
+`b30f4811` artifact. Restore the edited files' non-writable group/other modes.
+Remove only the peer cache's obsolete empty-root check; its root identity/mode
+checks, later four-generation admission under the shared lock, source binding,
+immutable destination, monitoring and publication checks remain. The existing
+run-admission fixture now preserves cached entries while admitting a distinct
+run; its app/engine, stale-run, lock and concurrency refusals remain. Preserve
+the useful prior artifact; do not move or delete it to make a build start.
+No product execution or native acceptance occurred in either refusal.

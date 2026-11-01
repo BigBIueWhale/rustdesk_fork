@@ -126536,3 +126536,12 @@ on CTE and TUF. Candidate serial SHA-256:
 `10d9a0b93af2f0509003f059d6e07a35b7f5280766de120b6158b499208f50fc`.
 No owned VM remains live. This is a verified CM producer checkpoint; the next
 decisive reporting check is the Dart model's premature byte-count completion.
+
+The required fresh ledger count at `22e9d778`, TUF `tiiVaBlgP8`, passes:
+382,537 tokens / 1,750,740 bytes, SHA-256
+`3eb7cdb1a674b19358038e2324365bde91a75cac099247e317de72e8be58c235`.
+Seven controls and the complete-input round trip pass. QEMU 3792231 and wrapper
+3790805 exit; 402,722,816 peak RAM bytes retire after 30.390 seconds, and all
+three listener deltas are zero. The complete 23-file evidence set totals
+285,512 bytes and is hash-verified on both hosts. This audit-only receipt leaves
+the counted ledger unchanged. All three isolated runs are joined and retired.

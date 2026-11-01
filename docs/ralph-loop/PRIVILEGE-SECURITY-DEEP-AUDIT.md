@@ -126656,3 +126656,23 @@ The correction serializes the failed job before removal and returns that log
 alongside the admitted error receipt. Removal-before-admission, exact selected
 entry, response content and fatal transport error propagation are unchanged.
 Run the identical four tests on this candidate; no candidate verdict yet.
+
+Candidate `820b51bf762e58b8288e52da3149e6b8e7294161`, TUF `6DevrYv3zB`,
+passes all four tests, exact named inventory, source-copy postconditions and
+artifact checks. Test and harness bodies are identical to the failing baseline;
+the only product difference is capturing and returning the omitted terminal log.
+The initial-open, read-error and completion logs match the selected job, source,
+native error and terminal flags. All three refused terminal frames preserve
+removal-before-admission. Healthy survivor bytes/EOF/Done, exact writer joins
+and source-descriptor retirement pass in every case. Command:
+`bash scripts/smoke-verifier-vm-authority.sh --file-send-log-tests`.
+Artifact SHA-256: `e1127a159b27fac16cd1aeaa1e0ad87f17c11a74c6638c0d7a9d5d91684d24ec`.
+Serial SHA-256: `137dc076f098575b6bf15040c979a0153661d9ec4cde618c6e9e4d2d87c1cc2f`.
+
+QEMU 3805333 and wrapper 3804840 exit after 133.424 seconds; 3,506,270,208
+peak RAM bytes retire, and all four listener deltas are zero. The two runs retain
+16 evidence files totaling 180,298 bytes, hash-verified on both hosts. No owned
+VM remains live. This is production-library behavior with real files and keyed
+TCP using fixture keys. The controlled caller's forwarding is source-reviewed;
+actual PAKE, complete server/CM/UI and installed/platform acceptance remain OPEN.
+CM confirmation errors and all independently parked work remain unchanged.

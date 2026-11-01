@@ -17278,10 +17278,22 @@ The complete Linux parent library compiles with fresh bindings; actual files and
 Unix IPC run, while login authority and the UI callback receiver are fixtures.
 Runs `Kf90bm2SUB` / `y6mWjLeFRf` join, retire bounded RAM and retain zero listener
 deltas. Exact source/artifact and cleanup evidence is in the audit entry
-“2026-11-01 — CM transfer terminal-outcome reporting”. Direct-send initial-open
-logging, CM confirmation errors, actual UI,
+“2026-11-01 — CM transfer terminal-outcome reporting”. CM confirmation errors, actual UI,
 remote durable receipt and native Windows/installed acceptance remain OPEN.
 The CM scheduling and other user parks are unchanged.
+
+**Direct-send initial-open log (`820b51bf`) — Linux library/keyed TCP A/B verified.**
+The common sender now returns its failed job's terminal log alongside the native
+Error receipt. Exact selected-entry retirement still precedes response admission.
+The unchanged-product open-failure case fails its missing-log check; after the
+correction all four focused tests pass. Read failure and successful completion
+retain matching logs; all three terminal-admission refusal controls preserve
+retirement. Each case preserves the same-ID paused sibling, later delivers its
+exact bytes/EOF/Done, joins writers and checks source-descriptor closure. Runs
+`xNE6gYROQu` / `6DevrYv3zB` retire bounded RAM with zero listener deltas. The audit's
+“2026-11-01 — direct sender initial-open outcome log” binds source/artifact evidence.
+Fixture keys replace PAKE; the full server/CM callback/UI path and installed or
+other-platform acceptance remain OPEN. Independent parks are unchanged.
 
 **CM completion state (`830abf3c`) — Dart model A/B verified.**
 Full or clamped byte progress no longer marks a transfer done. Positive progress

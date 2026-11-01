@@ -129637,3 +129637,21 @@ ignored evidence. TUF's already-running corrected display soak remains on
 unchanged `06aab2df`, with 73 complete minutes, maximum sampled age 335 ms and
 no observer failure. Do not sync, edit or interrupt that checkout while live.
 Both canonical long-session acceptance conditions remain OPEN.
+
+Fresh isolated count on `8140f1da`, CTE `X2dE6OgJ4N`, reports 391,439 tokens /
+1,792,152 bytes, SHA-256
+`dbc760d14df390c061c39bf99b9b6a49eaeb1f1649d01cdfaab178c8ac71f18d`,
+using pinned tiktoken 0.12.0/cl100k_base/encode_ordinary, seven controls and
+exact round-trip. Exit is zero; three decoded listener deltas are zero,
+wrapper 4120235/QEMU 4121818 are absent and RAM `run.ln2g80p3` is retired.
+Duration is 30.368 seconds, peak scratch 402,677,760 bytes. Receipt
+`input-soak-ledger-8140f1da.json` is 3,835 bytes, SHA-256
+`6d323a28aa961a54cd37ed4eab77c4ed29604536d0af41571328cf79dce6de50`.
+
+The three completed TUF display/accounting/count capsules and their referenced
+raw files are also copied to CTE after digest/inventory verification: 22 files,
+461,263 bytes. The live TUF run and checkout are untouched. Following this
+audit commit, launch the repeated input scenario with control directory
+`input-soak-frozen-<admitted-commit-prefix>` and retain its exact source, process
+identities and live observations there. Make no further checkout or Git-state
+changes on either running host until its terminal cleanup is reconciled.

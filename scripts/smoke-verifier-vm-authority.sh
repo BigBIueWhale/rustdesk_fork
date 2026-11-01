@@ -4816,6 +4816,17 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
         "repo/scripts/smoke-xvfb-packages.tsv=$SCRIPT_DIR/smoke-xvfb-packages.tsv"
         "repo/scripts/smoke-xvfb-files.tsv=$SCRIPT_DIR/smoke-xvfb-files.tsv"
     )
+    if [ "$MODE" = android-frame-tests ]; then
+        soak_before=$VM_TRANSIENT/flutter-peer-soak-before.c
+        (set -o noclobber; git_closed -C "$REPO_ROOT" show \
+            f1b704e177d2eebb3e97409909dae8cdff8039be:scripts/flutter-peer-presentation-x11.c \
+            >"$soak_before") || fail 'cannot export the exact historical soak controller'
+        [ "$(/usr/bin/sha256sum "$soak_before" | /usr/bin/awk '{print $1}')" = \
+          4dac44e4709a163f32afedffd7bde5e2d47ee8bf52c8801ed4048bde3ad3326d ] \
+            || fail 'historical soak controller digest differs'
+        /usr/bin/chmod 400 "$soak_before"
+        lifecycle_payload_grafts+=("repo/scripts/flutter-peer-soak-before.c=$soak_before")
+    fi
     if [ "$MODE" = x11-display-tests ]; then
         lifecycle_payload_grafts+=(
             "repo/scripts/test-x11-display-native.py=$SCRIPT_DIR/test-x11-display-native.py"
@@ -6380,6 +6391,9 @@ elif [ "$MODE" = android-frame-tests ]; then
     require_exact_fixed_receipt \
         'X11_OBSERVER_CLOCK=pass cases=13 scope=controller-aggregation inputs=synthetic failed=refused backward=refused equal=accepted' \
         'actual controller loops refuse invalid clock observations immediately'
+    require_exact_fixed_receipt \
+        'X11_SOAK_ACCOUNTING_BASELINE=observed failures=7 controls=3 commit=f1b704e177d2eebb3e97409909dae8cdff8039be controller_sha256=4dac44e4709a163f32afedffd7bde5e2d47ee8bf52c8801ed4048bde3ad3326d' \
+        'exact historical long-session loop reproduces seven accounting failures'
     require_exact_fixed_receipt \
         'X11_SOAK_ACCOUNTING=pass cases=10 scope=controller-aggregation inputs=synthetic windows=241 deadline=exclusive tail=bounded clocks=checked' \
         'actual long-session loop accounts for the final interval and deadline'

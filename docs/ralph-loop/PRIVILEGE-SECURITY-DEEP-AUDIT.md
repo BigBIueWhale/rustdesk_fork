@@ -129509,3 +129509,32 @@ failing comparison. Run that exact baseline first when TUF retires, then the
 candidate on the same canonical fixture lane. Native compilation and both
 outcomes remain pending; source review and diff checks do not establish the fix.
 The product source and the two running execution archives are unchanged.
+
+TUF display run `Agz8Yh9Qs1` has now completed with outer exit zero. Its 241
+windows contain 308,313 valid samples; reported p95/p99 ranges are 291–304 /
+307–320 ms, maximum sampled age 353 ms and maximum reported gap 111 ms. The
+fixed baseline is 295/313 ms, giving maximum upward drift of 9/7 ms. Viewer FDs
+stay at 45, RSS spans 363,888–389,500 KiB and threads 51–53. The server observer
+records 14,461 samples over 14,466,662 ms; peak per-window CPU is 1,580 ms.
+All owned processes join, exact wrapper 41960 and QEMU 43021 are absent, RAM
+`run.jpmy9a11` retires, and all four decoded listener deltas are zero. Scratch
+peaks at 3,024,658,432 bytes within 7 GiB. TUF receipt
+`viewer-soak-38d007eb.json` is 43,409 bytes, SHA-256
+`2b5a0f1e060b0a0462b895f8a4aa1f393afc377940b6d615ad1073e1bd470a9d`.
+Its explicit limitation preserves strict final-tail/deadline acceptance as OPEN;
+these are reported sampled observations, not retroactive acceptance of the
+corrected observer, physical scanout, input latency or impairment recovery.
+
+Native comparison preparation encounters two preflight refusals, before any VM:
+TUF checkout mode 0775 violates the verifier-entry authority check; after exact
+Git-byte verification, descriptor-relative chmod restores 0755 without changing
+content. The historical checkout then fails the existing pushed-master gate.
+Both wrappers (419288/419321) are absent and no private run remains. Preserve
+those bounded control records and the gate. Supersede the separate-checkout plan:
+export the exact `f1b704e1` controller into bounded RAM, require its full-file
+SHA-256 `4dac44e4709a163f32afedffd7bde5e2d47ee8bf52c8801ed4048bde3ad3326d`,
+and execute historical then corrected complete loops in one current-source
+fixture VM with identical adapters and cases. Require the seven specific
+historical discrepancies, three passing controls and all ten candidate cases.
+Python/shell syntax and diff checks pass; native results remain pending. Future
+TUF checkouts use umask 077. CTE's original input soak remains live and untouched.

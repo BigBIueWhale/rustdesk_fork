@@ -370,10 +370,17 @@ int main(void) {
         print(f"X11_OBSERVER_AGE_ARTIFACT=observed sha256={binary_digest} unchanged=before-after", flush=True)
 
 
-def test_soak_accounting(environment):
-    # Run the complete unchanged soak loop with a synthetic clock and observations.
+def test_soak_accounting(environment, before=False):
+    # Run the complete selected soak loop with a synthetic clock and observations.
     # Process/resource/coordination adapters are doubles; this is not pixel acceptance.
-    controller = Path("/work/scripts/flutter-peer-presentation-x11.c").read_text()
+    role = "baseline" if before else "candidate"
+    filename = "flutter-peer-soak-before.c" if before else "flutter-peer-presentation-x11.c"
+    controller_bytes = (Path("/work/scripts") / filename).read_bytes()
+    controller_digest = hashlib.sha256(controller_bytes).hexdigest()
+    if before:
+        require(controller_digest == "4dac44e4709a163f32afedffd7bde5e2d47ee8bf52c8801ed4048bde3ad3326d",
+                "historical soak controller digest differs")
+    controller = controller_bytes.decode("utf-8")
     loops = ""
     for begin, end in (
         ("static unsigned int latency_percentile(", "static int input_response_ready("),
@@ -495,12 +502,14 @@ int main(int argc, char **argv) {
     return 0;
 }
 '''
-    source, binary = Path("/build/soak-accounting.c"), Path("/build/soak-accounting")
+    source = Path(f"/build/soak-accounting-{role}.c")
+    binary = Path(f"/build/soak-accounting-{role}")
     source.write_text(fixture)
     subprocess.run(["/usr/bin/cc", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
                     str(source), "-o", str(binary)], env=environment, check=True, timeout=30)
     digest = hashlib.sha256(binary.read_bytes()).hexdigest()
     print("X11_SOAK_ACCOUNTING_BUILD "
+          f"role={role} controller_sha256={controller_digest} "
           f"loops_sha256={hashlib.sha256(loops.encode()).hexdigest()} "
           f"fixture_sha256={hashlib.sha256(source.read_bytes()).hexdigest()} "
           f"binary_sha256={digest}", flush=True)
@@ -516,7 +525,7 @@ int main(int argc, char **argv) {
         ("failed-loop-entry-clock", -1, None, None),
         ("backward-loop-entry-clock", -1, None, None),
     )
-    passed = True
+    failures = []
     try:
         for mode, (name, expected, samples, gap) in enumerate(cases):
             result = subprocess.run([str(binary), str(mode)], env=environment,
@@ -546,16 +555,27 @@ int main(int argc, char **argv) {
                 case_passed = case_passed and windows[-1][2:5] == (samples,) * 3
                 case_passed = case_passed and windows[-1][8] == gap
             case_passed = case_passed and faults == (1 if mode >= 8 else 0)
-            print(f"X11_SOAK_ACCOUNTING_CASE name={name} status={status} expected={expected} "
+            if before:
+                require(status == 0 and len(windows) == 241,
+                        "historical soak did not reproduce its accepted-window behavior")
+            print(f"X11_SOAK_ACCOUNTING_CASE role={role} name={name} status={status} expected={expected} "
                   f"windows={len(windows)} tail_samples={tail_samples} clock_faults={faults} "
                   f"maximum_gap_ms={windows[-1][8] if len(windows) == 241 else 'refused'} "
                   f"passed={str(case_passed).lower()}", flush=True)
-            passed = passed and case_passed
-        require(passed, "soak window accounting differs from its declared bounds")
+            if not case_passed:
+                failures.append(name)
+        expected_failures = [cases[i][0] for i in (1, 2, 3, 6, 7, 8, 9)] if before else []
+        require(failures == expected_failures,
+                "soak window accounting differs from the expected comparison")
     finally:
         require(hashlib.sha256(binary.read_bytes()).hexdigest() == digest,
                 "soak accounting artifact changed during execution")
-        print(f"X11_SOAK_ACCOUNTING_ARTIFACT=observed sha256={digest} unchanged=before-after", flush=True)
+        print(f"X11_SOAK_ACCOUNTING_ARTIFACT=observed role={role} sha256={digest} unchanged=before-after", flush=True)
+    if before:
+        print("X11_SOAK_ACCOUNTING_BASELINE=observed failures=7 controls=3 "
+              "commit=f1b704e177d2eebb3e97409909dae8cdff8039be "
+              f"controller_sha256={controller_digest}", flush=True)
+        return
     print("X11_SOAK_ACCOUNTING=pass cases=10 scope=controller-aggregation inputs=synthetic "
           "windows=241 deadline=exclusive tail=bounded clocks=checked", flush=True)
 
@@ -962,6 +982,7 @@ def main():
     print("ANDROID_FRAME_NATIVE_X11_BUILD copies=2 equal=true controller=compiled "
           f"sha256={hashlib.sha256(oracle_bytes).hexdigest()} bytes={len(oracle_bytes)}", flush=True)
     test_observer_age(environment)
+    test_soak_accounting(environment, before=True)
     test_soak_accounting(environment)
     test_input_response(fixture, oracle_binaries[0], environment)
     children = []

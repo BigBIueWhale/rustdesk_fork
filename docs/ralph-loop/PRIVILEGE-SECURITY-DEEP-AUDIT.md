@@ -127324,3 +127324,13 @@ Eight raw files are retained under the `flutter-peer-presentation-*run.uhkIf2KOd
 prefixes and `.harness-state/mouse-retirement-ac6c8a9d/outer.log`, hash-verified
 on CTE and TUF. The status ledger records this native checkpoint. No owned VM
 remains, and no parked topic is resumed; a fresh ledger count follows.
+
+Fresh ledger count at `3d03d412`, TUF `vcO5fcnfRk`, passes at 385,337 tokens /
+1,763,861 bytes, input SHA-256
+`749cdf77ac35fd03167aec65f4fa6763e3eaba744ceb27d8e63a965b855b63e1`.
+Seven controls and the complete input round trip pass. QEMU 3874669 and wrapper
+3873114 are absent after 30.794 supervisor seconds; 402,554,880 peak RAM bytes
+retire and all three listener deltas are zero. Both runs' fifteen bounded evidence
+files total 203,556 bytes, hash-verified on CTE/TUF. This audit-only receipt leaves
+the counted ledger unchanged. The broad release goal remains open after this
+native input-cleanup checkpoint, with no owned VM live.

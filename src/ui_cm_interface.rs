@@ -4108,6 +4108,110 @@ mod tests {
     }
 
     #[cfg(target_os = "linux")]
+    #[tokio::test(flavor = "current_thread")]
+    async fn cm_file_log_reports_native_read_outcomes() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = CmFileTestDir::new("terminal_read_logs");
+        let mut missing = Vec::new();
+        for (offset, name, content, denied) in [
+            (0, "complete.zip", b"completed bytes".as_slice(), false),
+            (1, "empty.zip", b"".as_slice(), false),
+            (2, "unreadable.zip", b"not readable".as_slice(), true),
+        ] {
+            let id = 2_000_230_001 + offset;
+            let source = temp.join(name);
+            fs::write(&source, content).unwrap();
+            if denied {
+                fs::set_permissions(&source, fs::Permissions::from_mode(0)).unwrap();
+                assert_eq!(fs::File::open(&source).unwrap_err().kind(),
+                    std::io::ErrorKind::PermissionDenied);
+            }
+            let (mut task, mut peer, observer, ui) = admitted_cm_native_output_test(id).await;
+            let owner = CLIENTS.read().unwrap().clients[&id].registry_generation;
+            peer.send(&Data::AuthorizedFS {
+                cm_auth_token: "test-token".to_owned(),
+                fs: ipc::FS::ReadFile {
+                    path: source.to_string_lossy().into_owned(), id: 17, file_num: 0,
+                    include_hidden: true, conn_id: id, overwrite_detection: false,
+                    generation: 4,
+                },
+            }).await.unwrap();
+            let mut received = Vec::new();
+            let mut initialized = 0;
+            let error = loop {
+                let response = tokio::time::timeout(std::time::Duration::from_secs(2), peer.next())
+                    .await.unwrap().unwrap().unwrap();
+                let Data::CmFileResponse(envelope) = response else {
+                    panic!("expected typed file reply");
+                };
+                match *envelope.response {
+                    ipc::CmFileResponseKind::ReadJobInit { id: 17, generation: 4, result: Ok(_) } => {
+                        initialized += 1;
+                    }
+                    ipc::CmFileResponseKind::ReadBlock {
+                        id: 17, generation: 4, file_num: 0, compressed: false, ..
+                    } => {
+                        let raw = tokio::time::timeout(
+                            std::time::Duration::from_secs(2), peer.next_raw(),
+                        ).await.unwrap().unwrap();
+                        received.extend_from_slice(&raw);
+                    }
+                    ipc::CmFileResponseKind::ReadDone { id: 17, generation: 4, file_num: 1 } => {
+                        break String::new();
+                    }
+                    ipc::CmFileResponseKind::ReadError { id: 17, generation: 4, error, .. } => {
+                        break error;
+                    }
+                    reply => panic!("unexpected file outcome: {reply:?}"),
+                }
+            };
+            peer.send(&Data::Close).await.unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(2), &mut task)
+                .await.unwrap().unwrap();
+            drop(peer);
+            drop(observer);
+            assert_eq!(*lock_cm_egress_test(&ui.removed), vec![(id, owner, true)]);
+            assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
+            assert!(!cm_read_tick_source_open(&source));
+            assert_eq!(initialized, 1);
+            assert_eq!(!error.is_empty(), denied);
+            assert_eq!(received.as_slice(), if denied { b"" } else { content });
+
+            let logs = lock_cm_egress_test(&ui.file_logs);
+            let mut terminal = Vec::new();
+            for (connection, generation, action, log) in logs.iter() {
+                assert_eq!((*connection, *generation, action.as_str()), (id, owner, "transfer"));
+                let value: serde_json::Value = serde_json::from_str(log).unwrap();
+                let entries = value.as_array().cloned().unwrap_or_else(|| vec![value]);
+                for entry in entries {
+                    if entry["done"] == true || entry["error"].as_str().map_or(false, |e| !e.is_empty()) {
+                        terminal.push(entry);
+                    }
+                }
+            }
+            println!("CM_FILE_LOG_CASE={name} bytes={} terminal_logs={} owner_retired=true source_closed=true",
+                received.len(), terminal.len());
+            if terminal.len() != 1 {
+                missing.push((name, terminal.len()));
+            } else {
+                let log = &terminal[0];
+                assert_eq!(log["connId"], id);
+                assert_eq!(log["id"], 17);
+                assert_eq!(log["dataSource"], source.to_string_lossy().as_ref());
+                assert_eq!(log["done"], !denied);
+                assert_eq!(log["cancel"], false);
+                assert_eq!(log["error"], error);
+                assert_eq!(log["finishedSize"], received.len());
+            }
+            if denied {
+                fs::set_permissions(&source, fs::Permissions::from_mode(0o600)).unwrap();
+            }
+        }
+        assert!(missing.is_empty(), "native terminal outcomes missing from CM UI: {missing:?}");
+    }
+
+    #[cfg(target_os = "linux")]
     fn cm_read_tick_source_open(path: &std::path::Path) -> bool {
         std::fs::read_dir("/proc/self/fd").unwrap().any(|entry| {
             match std::fs::read_link(entry.unwrap().path()) {

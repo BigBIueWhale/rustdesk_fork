@@ -126472,3 +126472,25 @@ The pinned method passes seven controls and whole-input round trip. QEMU
 three listener deltas are zero. All 31 baseline/preparation/candidate/count
 files total 429,854 bytes and are hash-verified on CTE/TUF. This audit-only
 receipt leaves the counted ledger bytes unchanged. No owned VM remains live.
+
+### 2026-11-01 — CM transfer terminal-outcome reporting
+
+R-F1/R-S0 requires truthful transfer results. Source review finds that the CM
+Dart model infers completion from byte counts, while the native CM read tick
+removes finished/failed jobs without publishing a terminal UI log. The common
+direct-send path publishes normal terminal logs but omits its initial-open error.
+This concrete reporting gap takes priority over another exploratory UI review.
+The intended model reports progress from counters and completion/failure from
+the exact native terminal outcome; local sender completion does not establish
+remote durable receipt.
+
+First establish the CM producer failure with actual files and Unix IPC through
+the production runner: nonempty success, empty success and permission-denied
+open. Each scenario observes the typed native outcome, exact bytes, joined
+owner retirement and closed source descriptors before checking the UI logs.
+Login authority is a controlled validator, so this is component evidence, not
+installed privilege authorization or Windows acceptance. The new cm-file-log
+profile reuses bounded RAM/full-parent preparation and runs only this new test.
+The independently parked CM scheduling tests, pre-bootstrap cancellation,
+Android soak and other user parks remain untouched. Product correction and
+native execution are pending.

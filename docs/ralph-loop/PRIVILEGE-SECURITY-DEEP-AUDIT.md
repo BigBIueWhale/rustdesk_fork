@@ -126545,3 +126545,23 @@ Seven controls and the complete-input round trip pass. QEMU 3792231 and wrapper
 three listener deltas are zero. The complete 23-file evidence set totals
 285,512 bytes and is hash-verified on both hosts. This audit-only receipt leaves
 the counted ledger unchanged. All three isolated runs are joined and retired.
+
+### 2026-11-01 — CM completion requires an explicit native result
+
+The preceding native-log correction is verified progress. Continue the same
+R-F1/R-S0 reporting requirement: `CmFileModel._dealOneJob` marks a row done when
+its clamped finished-byte count reaches its total, before any terminal event.
+`CmFileLog.display` then exposes `Finished`, and the server page hides progress.
+Both native CM receive finalization and direct/CM send completion already have
+explicit terminal logs; byte counters alone do not establish their outcome.
+This demonstrated source path takes priority over another exploratory review.
+
+Three production-model regressions exercise both directions at zero, partial,
+full and over-total byte counts; stale completion rejection; valid completion;
+independent job updates; terminal-only empty success and open failure; and
+finalization error after all bytes are counted. Progress uses the native list
+shape and terminal events the native single-object shape. Server/chat ownership
+and event values are controlled inputs; no new native transfer or CM-page
+rendering claim follows. Run the unchanged product first, then retain active
+progress until an explicit terminal result. Other native logging gaps and all
+independent user parks remain open. No implementation or test verdict yet.

@@ -68,16 +68,20 @@ class _CmRateHarness {
     await Future<void>.delayed(Duration.zero);
   }
 
-  void report(int id, int transferred, {int? owner}) {
+  void report(int id, int transferred,
+      {int? owner, int total = 1000000, bool done = false, String error = ''}) {
+    final data = {
+      'connId': 41, 'id': id, 'dataSource': '/file-$id',
+      'isRemote': id.isEven, 'totalSize': total,
+      'finishedSize': transferred, 'transferred': transferred,
+      if (done) 'done': true,
+      if (error.isNotEmpty) 'error': error,
+    };
     model.onFileTransferLog({
       'id': '41',
       'registry_generation': '${owner ?? generation}',
       'action': 'transfer',
-      'log': jsonEncode([{
-        'connId': 41, 'id': id, 'dataSource': '/file-$id',
-        'isRemote': id.isEven, 'totalSize': 1000000,
-        'finishedSize': transferred, 'transferred': transferred,
-      }]),
+      'log': jsonEncode(done || error.isNotEmpty ? data : [data]),
     });
   }
 
@@ -195,6 +199,53 @@ class _StatusHarness {
 
 
 void main() {
+
+  for (final id in [1, 2]) {
+    final direction = id.isEven ? 'receive' : 'send';
+    test('CM $direction waits for a terminal result after full byte progress', () async {
+      final h = _CmRateHarness();
+      addTearDown(h.dispose);
+      await h.selectOwner();
+      h.report(id, 0, total: 100);
+      expect(h.job(id).state, JobState.none);
+      h.report(id, 50, total: 100);
+      expect(h.job(id).state, JobState.inProgress);
+      h.report(id, 100, total: 100);
+      expect(h.job(id).finishedSize, 100);
+      expect(h.job(id).state, JobState.inProgress);
+      expect(h.job(id).display(), isNot('Finished'));
+      h.report(id, 120, total: 100);
+      expect(h.job(id).finishedSize, 100);
+      expect(h.job(id).state, JobState.inProgress);
+      h.report(id, 120, total: 100, done: true, owner: 72);
+      expect(h.job(id).state, JobState.inProgress);
+      h.report(id, 120, total: 100, done: true);
+      expect(h.job(id).state, JobState.done);
+      expect(h.job(id).display(), 'Finished');
+      h.report(id + 2, 1, total: 100);
+      expect(h.job(id).state, JobState.done);
+    });
+  }
+
+  test('CM terminal events preserve empty successes and native failures', () async {
+    final h = _CmRateHarness();
+    addTearDown(h.dispose);
+    await h.selectOwner();
+    for (final id in [1, 2]) {
+      h.report(id, 0, total: 0, done: true);
+      expect(h.job(id).finishedSize, 0);
+      expect(h.job(id).state, JobState.done);
+      expect(h.job(id).display(), 'Finished');
+      h.report(id + 2, 100, total: 100);
+      h.report(id + 2, 100, total: 100, error: 'finalization failed');
+      expect(h.job(id + 2).state, JobState.error);
+      expect(h.job(id + 2).err, 'finalization failed');
+      expect(h.job(id + 2).display(), 'Error');
+      h.report(id + 4, 0, total: 100, error: 'source open failed');
+      expect(h.job(id + 4).state, JobState.error);
+      expect(h.job(id + 4).err, 'source open failed');
+    }
+  });
 
   test('CM transfer speed uses elapsed seconds', () async {
     final h = _CmRateHarness();

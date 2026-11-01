@@ -22,7 +22,7 @@ spec.loader.exec_module(result)
 
 
 SINGLE_PROFILE = None
-if len(sys.argv) > 1 and sys.argv[1] == "--direct-address":
+if len(sys.argv) > 1 and sys.argv[1] in ("--direct-address", "--connection-page"):
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
 if len(sys.argv) > 1 and sys.argv[1] in ("--screenshot-save", "--locales", "--draggable-divider", "--file-columns", "--trackpad-speed", "--menu-button", "--help-button", "--password-fields", "--file-progress", "--peer-search", "--audio-input", "--peer-data", "--combo-box", "--image-quality", "--desktop-theme", "--status-refresh", "--custom-scale"):
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
@@ -74,6 +74,9 @@ class ResultTests(unittest.TestCase):
         elif profile == "tab-selection":
             suites = sorted(result.TAB_SELECTION_SUITES)
             names = sorted(set().union(*result.TAB_SELECTION_SUITES.values()))
+        elif profile == "connection-page":
+            suites = ["connection_page_probe_test.dart"]
+            names = sorted(result.CONNECTION_PAGE_TESTS)
         elif profile == "status-refresh":
             suites = sorted(result.STATUS_REFRESH_SUITES)
             names = sorted(set().union(*result.STATUS_REFRESH_SUITES.values()))
@@ -213,6 +216,9 @@ class ResultTests(unittest.TestCase):
             return result.parse_result(path, profile)
 
     def test_complete_profiles(self):
+        if SINGLE_PROFILE == "connection-page":
+            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (1, 8))
+            return
         if SINGLE_PROFILE == "direct-address":
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 45))
             return

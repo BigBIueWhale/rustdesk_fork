@@ -127051,3 +127051,33 @@ and all three listener deltas are zero. The complete 39-file evidence set totals
 699,324 bytes, hash-verified on CTE and TUF. This audit-only receipt leaves the
 counted ledger unchanged. The broad release goal remains open; this correction
 has reached its verified component checkpoint, with no owned VM remaining live.
+
+### 2026-11-01 — complete desktop connection-page address validation
+
+Previous goal turn: PROGRESS. The address callback correction has an eight-failure
+baseline and accepted 45-case component workload. Current records also explicitly
+park listener-status loading/errors at `c82aa2a5`; the initial read-only selection
+review found that restriction, so no listener-status correction or run follows.
+
+Continue R-S0/R-G2/R-SV5 at the next observable layer: mount the complete desktop
+ConnectionPage and exercise its actual address input, restoration, feedback and
+invalid-target submission. This closes the prior callback fixture's visible-page
+gap and takes priority over unrelated UI cleanup. Eight cases cover successful
+restoration, newer typing, synchronous/asynchronous errors, removal/replacement,
+and malformed-target refusal through the actual button and keyboard callbacks.
+The product's toast and shared connect validation execute. Native read/translation
+adapters and empty recent/favorite models supply the controlled environment;
+no Rust IPC, successful network connection or installed/device claim follows.
+
+The fixture uses the real application's navigator key for its actual toast
+overlay and explicit frame pumps for the polling page. Flutter documents that
+the navigator key identifies the Navigator and that indefinite animations can
+prevent pumpAndSettle from finishing:
+https://api.flutter.dev/flutter/material/MaterialApp/navigatorKey.html
+https://api.flutter.dev/flutter/flutter_test/WidgetTester/pumpAndSettle.html.
+The new `--flutter-model-tests --connection-page` profile reuses the admitted
+bounded-RAM VM, sealed inputs, fresh bridge generation and nonroot networkless
+container. Whole product library copies are verified before/after, with only
+two adapter installers appended in the disposable copy. No product source is
+changed. The focused eight-case result inventory and three parser controls are
+part of acceptance; parked listener/model scenarios are not selected.

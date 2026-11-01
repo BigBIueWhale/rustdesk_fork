@@ -194,7 +194,7 @@ case "$#:${8:-}" in
         MODE=flutter-model-tests
         ;;
     13:--flutter-model-tests)
-        [[ "${13}" = --combo-box || "${13}" = --image-quality || "${13}" = --frame-queue || "${13}" = --direct-address || "${13}" = --file-metadata || "${13}" = --password-fields || "${13}" = --share-rdp || "${13}" = --connect-password || "${13}" = --credential-dialog || "${13}" = --terminal-output || "${13}" = --settings-navigation || "${13}" = --desktop-theme || "${13}" = --window-dispatch || "${13}" = --keyboard-layout || "${13}" = --menu-button || "${13}" = --help-button || "${13}" = --hold-drag || "${13}" = --locales || "${13}" = --path-labels || "${13}" = --setting-checkbox || "${13}" = --draggable-divider || "${13}" = --list-search || "${13}" = --credential-badge || "${13}" = --peer-search || "${13}" = --tab-selection || "${13}" = --status-refresh || "${13}" = --peer-data || "${13}" = --file-progress || "${13}" = --file-search || "${13}" = --file-columns || "${13}" = --screenshot-save || "${13}" = --clipboard-keystrokes || "${13}" = --floating-position || "${13}" = --virtual-joystick || "${13}" = --virtual-mouse-buttons || "${13}" = --custom-scale || "${13}" = --trackpad-speed || "${13}" = --audio-input || "${13}" = --reconnect || "${13}" = --file-navigation || "${13}" = --directory-ordering || "${13}" = --modifier-release || "${13}" = --auto-disconnect ]] || exit 2
+        [[ "${13}" = --combo-box || "${13}" = --image-quality || "${13}" = --frame-queue || "${13}" = --direct-address || "${13}" = --file-metadata || "${13}" = --password-fields || "${13}" = --share-rdp || "${13}" = --connect-password || "${13}" = --credential-dialog || "${13}" = --terminal-output || "${13}" = --settings-navigation || "${13}" = --desktop-theme || "${13}" = --window-dispatch || "${13}" = --keyboard-layout || "${13}" = --menu-button || "${13}" = --help-button || "${13}" = --hold-drag || "${13}" = --locales || "${13}" = --path-labels || "${13}" = --setting-checkbox || "${13}" = --draggable-divider || "${13}" = --list-search || "${13}" = --credential-badge || "${13}" = --peer-search || "${13}" = --tab-selection || "${13}" = --connection-page || "${13}" = --status-refresh || "${13}" = --peer-data || "${13}" = --file-progress || "${13}" = --file-search || "${13}" = --file-columns || "${13}" = --screenshot-save || "${13}" = --clipboard-keystrokes || "${13}" = --floating-position || "${13}" = --virtual-joystick || "${13}" = --virtual-mouse-buttons || "${13}" = --custom-scale || "${13}" = --trackpad-speed || "${13}" = --audio-input || "${13}" = --reconnect || "${13}" = --file-navigation || "${13}" = --directory-ordering || "${13}" = --modifier-release || "${13}" = --auto-disconnect ]] || exit 2
         MODE=flutter-model-tests
         FLUTTER_TEST_PROFILE=${13#--}
         ;;
@@ -11697,7 +11697,7 @@ run_flutter_model_tests() {
     local memory=8g memory_bytes=8589934592 result_prefix=FLUTTER_MODEL_TEST_JSON
     local -a toolchain_mounts=()
     local bridge_required=0
-    if [[ "$FLUTTER_TEST_PROFILE" = models || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = screenshot-save || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = credential-badge || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect || "$FLUTTER_TEST_PROFILE" = combo-box || "$FLUTTER_TEST_PROFILE" = image-quality ]]; then
+    if [[ "$FLUTTER_TEST_PROFILE" = models || "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = screenshot-save || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = connection-page || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = credential-badge || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect || "$FLUTTER_TEST_PROFILE" = combo-box || "$FLUTTER_TEST_PROFILE" = image-quality ]]; then
         bridge_required=1
         toolchain_mounts=(
             --mount "type=bind,source=$cargo_vendor,target=/online/cargo-vendor,readonly"
@@ -11768,6 +11768,11 @@ run_flutter_model_tests() {
             memory_bytes=3221225472
             result_prefix=FLUTTER_TAB_SELECTION_TEST_JSON
             expected_result='suites=2 tests=31'
+        elif [ "$FLUTTER_TEST_PROFILE" = connection-page ]; then
+            memory=3g
+            memory_bytes=3221225472
+            result_prefix=FLUTTER_CONNECTION_PAGE_TEST_JSON
+            expected_result='suites=1 tests=8'
         elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
             memory=3g
             memory_bytes=3221225472
@@ -11931,6 +11936,8 @@ run_flutter_model_tests() {
             printf 'FLUTTER_PEER_SEARCH_STAGE=verify-source-and-inputs\n'
         elif [ "$FLUTTER_TEST_PROFILE" = tab-selection ]; then
             printf 'FLUTTER_TAB_SELECTION_STAGE=verify-source-and-inputs\n'
+        elif [ "$FLUTTER_TEST_PROFILE" = connection-page ]; then
+            printf 'FLUTTER_CONNECTION_PAGE_STAGE=verify-source-and-inputs\n'
         elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
             printf 'FLUTTER_STATUS_REFRESH_STAGE=verify-source-and-inputs\n'
         elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
@@ -12251,7 +12258,7 @@ run_flutter_model_tests() {
                     else
                         tar -C /work/toolchain -xf /inputs/rust.tar.xz
                     fi
-                    if [[ "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = screenshot-save || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = credential-badge || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect || "$FLUTTER_TEST_PROFILE" = combo-box || "$FLUTTER_TEST_PROFILE" = image-quality ]]; then
+                    if [[ "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = screenshot-save || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = connection-page || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = credential-badge || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect || "$FLUTTER_TEST_PROFILE" = combo-box || "$FLUTTER_TEST_PROFILE" = image-quality ]]; then
                         llvm_root=clang+llvm-15.0.6-x86_64-linux-gnu-ubuntu-18.04
                         tar -C /work/toolchain -xf /inputs/llvm.tar.xz \
                             "$llvm_root/lib/libclang.so" \
@@ -12308,7 +12315,7 @@ run_flutter_model_tests() {
                 export PATH=/work/flutter-shim:$PATH
                 project_root=/source/flutter
                 codegen_source=/source
-                if [[ "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = screenshot-save || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = credential-badge || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect || "$FLUTTER_TEST_PROFILE" = combo-box || "$FLUTTER_TEST_PROFILE" = image-quality ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog || "$FLUTTER_TEST_PROFILE" = terminal-output || "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = desktop-theme || "$FLUTTER_TEST_PROFILE" = peer-data || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = screenshot-save || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = connection-page || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = credential-badge || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = file-navigation || "$FLUTTER_TEST_PROFILE" = directory-ordering || "$FLUTTER_TEST_PROFILE" = modifier-release || "$FLUTTER_TEST_PROFILE" = auto-disconnect || "$FLUTTER_TEST_PROFILE" = combo-box || "$FLUTTER_TEST_PROFILE" = image-quality ]]; then
                     cp -a /source /work/source
                     codegen_source=/work/source
                     project_root=/work/source/flutter
@@ -12376,6 +12383,8 @@ run_flutter_model_tests() {
                 elif [ "$FLUTTER_TEST_PROFILE" = peer-search ]; then
                     format_paths=()
                 elif [ "$FLUTTER_TEST_PROFILE" = tab-selection ]; then
+                    format_paths=()
+                elif [ "$FLUTTER_TEST_PROFILE" = connection-page ]; then
                     format_paths=()
                 elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
                     format_paths=(test/server_status_refresh_loop_test.dart)
@@ -12612,6 +12621,11 @@ run_flutter_model_tests() {
                     tests=(test_probes/tab_selection_probe_test.dart test/desktop_tab_retirement_test.dart)
                     test_budget=120s
                     test_concurrency=1
+                elif [ "$FLUTTER_TEST_PROFILE" = connection-page ]; then
+                    python3 -B -I -S /source/scripts/prepare-connection-page-probe.py prepare
+                    tests=(test_probes/connection_page_probe_test.dart)
+                    test_budget=120s
+                    test_concurrency=1
                 elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
                     python3 -B -I -S /source/scripts/prepare-listener-status-probe.py prepare
                     tests=(test/server_status_refresh_loop_test.dart test_probes/listener_status_probe_test.dart)
@@ -12784,6 +12798,9 @@ run_flutter_model_tests() {
                 else
                     run_flutter_tests >/work/test.json 2>/work/test.err || test_status=$?
                 fi
+                if [ "$FLUTTER_TEST_PROFILE" = connection-page ]; then
+                    python3 -B -I -S /source/scripts/prepare-connection-page-probe.py verify
+                fi
                 if [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
                     python3 -B -I -S /source/scripts/prepare-address-restore-probe.py verify
                     for relative in lib/common/widgets/rdp_port_field.dart lib/common/widgets/peer_card.dart lib/common/formatter/port_number.dart test/address_validator_test.dart; do
@@ -12850,14 +12867,14 @@ run_flutter_model_tests() {
                 [ "$(stat -c %s /work/test.err)" -le 1048576 ]
                 [ ! -s /work/test.err ] || tail -n 120 /work/test.err >&2
                 file_navigation_stage validate-results
-                if [[ "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = direct-address || "$FLUTTER_TEST_PROFILE" = hold-drag || "$FLUTTER_TEST_PROFILE" = menu-button || "$FLUTTER_TEST_PROFILE" = help-button || "$FLUTTER_TEST_PROFILE" = password-fields || "$FLUTTER_TEST_PROFILE" = custom-scale ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = connection-page || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = direct-address || "$FLUTTER_TEST_PROFILE" = hold-drag || "$FLUTTER_TEST_PROFILE" = menu-button || "$FLUTTER_TEST_PROFILE" = help-button || "$FLUTTER_TEST_PROFILE" = password-fields || "$FLUTTER_TEST_PROFILE" = custom-scale ]]; then
                     cat /work/test.json
                 fi
                 parser_args=()
                 if [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
                     parser_args=(--direct-address)
                 fi
-                if [[ "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = combo-box || "$FLUTTER_TEST_PROFILE" = image-quality || "$FLUTTER_TEST_PROFILE" = desktop-theme || "$FLUTTER_TEST_PROFILE" = custom-scale ]]; then
+                if [[ "$FLUTTER_TEST_PROFILE" = connection-page || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = combo-box || "$FLUTTER_TEST_PROFILE" = image-quality || "$FLUTTER_TEST_PROFILE" = desktop-theme || "$FLUTTER_TEST_PROFILE" = custom-scale ]]; then
                     parser_args=("--$FLUTTER_TEST_PROFILE")
                 fi
                 if [[ "$FLUTTER_TEST_PROFILE" = screenshot-save || "$FLUTTER_TEST_PROFILE" = locales || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = menu-button || "$FLUTTER_TEST_PROFILE" = help-button || "$FLUTTER_TEST_PROFILE" = password-fields || "$FLUTTER_TEST_PROFILE" = file-progress || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = peer-data ]]; then
@@ -13136,6 +13153,8 @@ run_flutter_model_tests() {
         printf 'FLUTTER_PEER_SEARCH_STAGE=run-production-widget-tests\n'
     elif [ "$FLUTTER_TEST_PROFILE" = tab-selection ]; then
         printf 'FLUTTER_TAB_SELECTION_STAGE=run-production-widget-tests\n'
+    elif [ "$FLUTTER_TEST_PROFILE" = connection-page ]; then
+        printf 'FLUTTER_CONNECTION_PAGE_STAGE=run-production-page-tests\n'
     elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
         printf 'FLUTTER_STATUS_REFRESH_STAGE=run-production-lifecycle-tests\n'
     elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
@@ -13319,11 +13338,14 @@ run_flutter_model_tests() {
             || fail 'native window-channel artifact binding differs'
         grep -E '^LINUX_WINDOW_CHANNEL_ARTIFACTS=|^WINDOW_CHANNEL_CASE=|^WINDOW_VALUE_' "$output"
     fi
-    if [[ "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = screenshot-save || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = credential-badge || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = hold-drag || "$FLUTTER_TEST_PROFILE" = locales || "$FLUTTER_TEST_PROFILE" = path-labels || "$FLUTTER_TEST_PROFILE" = setting-checkbox || "$FLUTTER_TEST_PROFILE" = list-search ]]; then
+    if [[ "$FLUTTER_TEST_PROFILE" = file-search || "$FLUTTER_TEST_PROFILE" = file-columns || "$FLUTTER_TEST_PROFILE" = screenshot-save || "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes || "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = virtual-joystick || "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = trackpad-speed || "$FLUTTER_TEST_PROFILE" = audio-input || "$FLUTTER_TEST_PROFILE" = reconnect || "$FLUTTER_TEST_PROFILE" = connection-page || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = credential-badge || "$FLUTTER_TEST_PROFILE" = peer-search || "$FLUTTER_TEST_PROFILE" = tab-selection || "$FLUTTER_TEST_PROFILE" = draggable-divider || "$FLUTTER_TEST_PROFILE" = hold-drag || "$FLUTTER_TEST_PROFILE" = locales || "$FLUTTER_TEST_PROFILE" = path-labels || "$FLUTTER_TEST_PROFILE" = setting-checkbox || "$FLUTTER_TEST_PROFILE" = list-search ]]; then
         grep -E '^\{.*"type":"(start|suite|testStart|testDone|done)"' "$output"
     fi
     if [ "$FLUTTER_TEST_PROFILE" = connect-password ]; then
         grep -F 'CONNECT_PASSWORD_EXACT ' "$output"
+    fi
+    if [ "$FLUTTER_TEST_PROFILE" = connection-page ]; then
+        grep -E '^CONNECTION_PAGE_SOURCE=' "$output"
     fi
     if [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
         grep -E '^(ADDRESS_RESTORE_|RDP_PORT_SOURCE=|\{)' "$output"
@@ -13455,6 +13477,12 @@ run_flutter_model_tests() {
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$widget_sha256" "$tests_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+    elif [ "$FLUTTER_TEST_PROFILE" = connection-page ]; then
+        local widget_sha256 widget_tests_sha256
+        widget_sha256="$(sha256sum "$source_root/flutter/lib/desktop/pages/connection_page.dart" | awk '{print $1}')"
+        widget_tests_sha256="$(sha256sum "$source_root/flutter/test_probes/connection_page_cases.dart.inc" | awk '{print $1}')"
+        printf 'FLUTTER_CONNECTION_PAGE_TESTS_VM=pass commit=%s tree=%s suites=1 tests=8 flutter=3.24.5 widget=%s tests_source=%s source=readonly network=none cleanup=joined\n' \
+            "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$widget_sha256" "$widget_tests_sha256"
     elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
         local lifecycle_sha256 widget_sha256 widget_tests_sha256
         lifecycle_sha256="$(sha256sum "$source_root/flutter/lib/models/server_status_refresh_loop.dart" | awk '{print $1}')"

@@ -365,6 +365,16 @@ STATUS_REFRESH_TESTS = {
     "close cancels the deferred first turn before it begins",
     "refuses duplicate start and restart after close",
 }
+CONNECTION_PAGE_TESTS = {
+    "connection page restores the saved address visibly",
+    "connection page preserves a typed address during restoration",
+    "connection page shows lookup failure synchronous=false",
+    "connection page shows lookup failure synchronous=true",
+    "connection page suppresses a late failure after removal",
+    "connection page isolates replacement from the prior lookup",
+    "connection page rejects an invalid target keyboard=false",
+    "connection page rejects an invalid target keyboard=true",
+}
 STATUS_REFRESH_SUITES = {
     "server_status_refresh_loop_test.dart": STATUS_REFRESH_TESTS,
     "listener_status_probe_test.dart": {
@@ -1815,7 +1825,7 @@ MODEL_TESTS = {
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "help-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "help-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "connection-page", "status-refresh", "peer-data", "file-progress", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality"}, "test profile is unknown")
     expected_suites = set(MODEL_TESTS)
     expected_by_suite = None
     if profile == "frame-queue":
@@ -1880,6 +1890,10 @@ def parse_result(path, profile="models"):
         expected_by_suite = TAB_SELECTION_SUITES
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())
+        expected_tests = len(expected_names)
+    elif profile == "connection-page":
+        expected_suites = {"connection_page_probe_test.dart"}
+        expected_names = CONNECTION_PAGE_TESTS
         expected_tests = len(expected_names)
     elif profile == "status-refresh":
         expected_by_suite = STATUS_REFRESH_SUITES
@@ -2130,7 +2144,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "help-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "help-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "connection-page", "status-refresh", "peer-data", "file-progress", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -2155,6 +2169,7 @@ def main():
         "credential-badge": "FLUTTER_CREDENTIAL_BADGE_TEST_JSON",
         "peer-search": "FLUTTER_PEER_SEARCH_TEST_JSON",
         "tab-selection": "FLUTTER_TAB_SELECTION_TEST_JSON",
+        "connection-page": "FLUTTER_CONNECTION_PAGE_TEST_JSON",
         "status-refresh": "FLUTTER_STATUS_REFRESH_TEST_JSON",
         "share-rdp": "FLUTTER_SHARE_RDP_TEST_JSON",
         "window-dispatch": "FLUTTER_WINDOW_DISPATCH_TEST_JSON",

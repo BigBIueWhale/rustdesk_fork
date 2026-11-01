@@ -127815,3 +127815,14 @@ Eight bounded raw files (97,737 bytes) are retained and verified on CTE;
 their TUF originals were authenticated during collection. This closes the
 selected sequential user-server rotation/replacement/restart gap and leaves
 the broader obligations above open. Fresh ledger count follows.
+
+Fresh count at `cd4cc001`, TUF `UZF6GHnwFZ`, passes at 386,561 tokens /
+1,769,767 bytes, input SHA-256
+`3727b0b63de3ac4b178d99ed1d5f7ba34aa842f2ec19aedb258319a1abe4eaec`.
+All seven controls and the complete-input round trip pass. QEMU 3922178 and
+wrapper 3920757 are absent; 402,698,240 peak RAM bytes retire after 30.933
+supervisor seconds and all three listener deltas are zero. Serial SHA-256:
+`678233a7fc477f9e1737d04ebf8128602f16fe1d962f9b0c815e86b4ab107d95`.
+The rotation run and count retain 15 bounded raw files (208,326 bytes),
+hash-verified on both hosts. This audit-only receipt preserves the counted
+ledger. No owned VM remains; the broad release goal is still incomplete.

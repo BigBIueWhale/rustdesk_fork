@@ -1419,9 +1419,9 @@ PY
         viewer_result='viewer=joined xvfb=joined credential_menu=passed generations=3 password_entries=1 saved_credential=empty next_prompt=required'
       fi
     elif [ "$PEER_SCENARIO" = credential-retry ]; then
-      [ "$(grep -Ec '^FLUTTER_PEER_PASSWORD_REJECTED_OK replacement_prompt=blank remember=false connected_sockets=0 listener=preserved samples=30 interval_ms=100 elapsed_ms=[0-9]+$' <<<"$controller_output")" -eq 1 ] \
+      [ "$(grep -Ec '^FLUTTER_PEER_PASSWORD_REJECTED_OK replacement_prompt=blank remember=false connected_sockets=0 listener=preserved samples=[0-9]+ interval_ms=100 idle_ms=[0-9]+ tcp_active_opens=0 tcp_passive_opens=0 wrong_opens=1 elapsed_ms=[0-9]+$' <<<"$controller_output")" -eq 1 ] \
         || fail 'rejected-password observation is absent or duplicated'
-      grep -Fxq 'FLUTTER_PEER_CREDENTIAL_RETRY_OK wrong=refused replacement_prompt=blank correct=authenticated fresh_pixels=4 same_window=true password_entries=2 remember=false' \
+      grep -Fxq 'FLUTTER_PEER_CREDENTIAL_RETRY_OK wrong=refused replacement_prompt=blank correct=authenticated fresh_pixels=4 same_window=true password_entries=2 remember=false idle_limit_ms=65000 idle_tcp_opens=0 explicit_opens=2' \
         <<<"$controller_output" || fail 'native password retry result is absent'
       viewer_result='viewer=joined xvfb=joined credential_retry=passed wrong=refused correct=authenticated saved_credential=empty'
     elif [ "$PEER_SCENARIO" = background-close ]; then

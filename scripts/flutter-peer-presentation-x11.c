@@ -84,6 +84,11 @@ typedef struct {
 } ConnectionIdentity;
 
 typedef struct {
+    unsigned long long active;
+    unsigned long long passive;
+} TcpOpenCounts;
+
+typedef struct {
     unsigned long long rss_kib;
     unsigned int threads;
     unsigned int descriptors;
@@ -3220,6 +3225,51 @@ out:
     return result;
 }
 
+/* Cumulative namespace counters retain brief attempts between socket samples.
+ * The fixture has one loopback TCP listener; X11 and AT-SPI use Unix sockets. */
+static int read_tcp_open_counts(TcpOpenCounts *counts, const char *phase) {
+    FILE *stream = fopen("/proc/net/snmp", "r");
+    char names[4096], values[4096];
+    unsigned int found = 0U, lines = 0U;
+    int result = -1;
+    if (stream == NULL) return -1;
+    while (fgets(names, sizeof(names), stream) != NULL) {
+        if (++lines > 64U || strchr(names, '\n') == NULL) goto out;
+        if (strncmp(names, "Tcp:", 4U) != 0) continue;
+        if (found != 0U || fgets(values, sizeof(values), stream) == NULL ||
+            strchr(values, '\n') == NULL || strncmp(values, "Tcp:", 4U) != 0) goto out;
+        char *name_state = NULL, *value_state = NULL;
+        char *name = strtok_r(names + 4, " \t\n", &name_state);
+        char *value = strtok_r(values + 4, " \t\n", &value_state);
+        while (name != NULL && value != NULL) {
+            unsigned int field = strcmp(name, "ActiveOpens") == 0 ? 1U :
+                                 strcmp(name, "PassiveOpens") == 0 ? 2U : 0U;
+            if (field != 0U) {
+                char *end = NULL;
+                if ((found & field) != 0U || *value < '0' || *value > '9') goto out;
+                errno = 0;
+                unsigned long long count = strtoull(value, &end, 10);
+                if (errno != 0 || end == value || *end != '\0') goto out;
+                if (field == 1U) counts->active = count;
+                else counts->passive = count;
+                found |= field;
+            }
+            name = strtok_r(NULL, " \t\n", &name_state);
+            value = strtok_r(NULL, " \t\n", &value_state);
+        }
+        if (name != NULL || value != NULL || found != 3U) goto out;
+    }
+    if (ferror(stream) == 0 && found == 3U) result = 0;
+out:
+    if (fclose(stream) != 0) result = -1;
+    if (result == 0)
+        printf("FLUTTER_PEER_TCP_OPEN_COUNTS phase=%s active=%llu passive=%llu\n",
+               phase, counts->active, counts->passive);
+    else
+        fprintf(stderr, "FLUTTER_PEER_TCP_OPEN_COUNTS_FAIL phase=%s\n", phase);
+    return result;
+}
+
 static int remote_window_retired(Display *display, Window window) {
     XWindowAttributes attributes;
     XSync(display, False);
@@ -4025,10 +4075,14 @@ static int choose_remember_password(unsigned int pid, int before, int after) {
     return -1;
 }
 
-static int exercise_rejected_password(Display *display, const ViewerWindow *viewer) {
+static int exercise_rejected_password(Display *display, const ViewerWindow *viewer,
+                                       TcpOpenCounts *idle) {
     PasswordPromptScan prompt = {0};
+    TcpOpenCounts before = {0}, after_idle = {0};
     uint64_t started = monotonic_millis();
-    if (choose_remember_password((unsigned int)viewer->pid, 0, 0) != 0 ||
+    if (started == 0U || choose_remember_password((unsigned int)viewer->pid, 0, 0) != 0 ||
+        read_tcp_open_counts(&before, "before-wrong") != 0 ||
+        before.active == ULLONG_MAX || before.passive == ULLONG_MAX ||
         type_password(display, replacement_password) != 0 ||
         wait_for_password_character_count((unsigned int)viewer->pid,
                                            sizeof(replacement_password) - 1U, &prompt) != 0 ||
@@ -4037,9 +4091,14 @@ static int exercise_rejected_password(Display *display, const ViewerWindow *view
          * must therefore belong to a replacement prompt, even if its predecessor
          * retired too quickly to observe an intermediate absent state. */
         wait_for_password_prompt((unsigned int)viewer->pid, &prompt) != 0 ||
-        choose_remember_password((unsigned int)viewer->pid, 0, 0) != 0) return -1;
-    unsigned int connected = 0U, listeners = 0U;
-    for (unsigned int sample = 0U; sample < 30U; ++sample) {
+        choose_remember_password((unsigned int)viewer->pid, 0, 0) != 0 ||
+        read_tcp_open_counts(idle, "rejected") != 0 ||
+        idle->active != before.active + 1U || idle->passive != before.passive + 1U) return -1;
+    /* Beyond two maximum 30-second automatic-reconnect delays. */
+    uint64_t idle_started = monotonic_millis(), now = idle_started;
+    if (idle_started == 0U || idle_started > UINT64_MAX - 65000U) return -1;
+    unsigned int connected = 0U, listeners = 0U, samples = 0U;
+    do {
         ViewerWindow current = {0};
         if (inspect_viewer_candidate(display, viewer->window, viewer->pid, &current) != 1 ||
             scan_password_prompt((unsigned int)viewer->pid, &prompt, 0) != 0 ||
@@ -4047,10 +4106,18 @@ static int exercise_rejected_password(Display *display, const ViewerWindow *view
             prompt.first_password_character_count != 0 ||
             session_socket_counts(&connected, &listeners) != 0 ||
             connected != 0U || listeners != 1U || sleep_millis(100U) != 0) return -1;
-    }
+        samples += 1U;
+        uint64_t next = monotonic_millis();
+        if (next < now || samples > 1000U) return -1;
+        now = next;
+    } while (now < idle_started + 65000U);
+    if (read_tcp_open_counts(&after_idle, "after-idle") != 0 || after_idle.active != idle->active ||
+        after_idle.passive != idle->passive) return -1;
     printf("FLUTTER_PEER_PASSWORD_REJECTED_OK replacement_prompt=blank remember=false "
-           "connected_sockets=0 listener=preserved samples=30 interval_ms=100 elapsed_ms=%llu\n",
-           (unsigned long long)(monotonic_millis() - started));
+           "connected_sockets=0 listener=preserved samples=%u interval_ms=100 idle_ms=%llu "
+           "tcp_active_opens=0 tcp_passive_opens=0 wrong_opens=1 elapsed_ms=%llu\n",
+           samples, (unsigned long long)(now - idle_started),
+           (unsigned long long)(now - started));
     return 0;
 }
 
@@ -4073,6 +4140,7 @@ int main(int argc, char **argv) {
     uint64_t initial_fresh_ms;
     uint64_t initial_max_age;
     ConnectionIdentity current_connection = {{0}, {0}, 0UL};
+    TcpOpenCounts retry_idle = {0};
     PasswordPromptScan prompt_scan = {0};
     AtspiAccessible *previous_caption = NULL;
 
@@ -4199,7 +4267,7 @@ int main(int argc, char **argv) {
         puts("FLUTTER_PEER_CREDENTIAL_EMPTY_OK prompt=true remember=false input=absent cancel=true");
         return 0;
     }
-    if (credential_retry && exercise_rejected_password(display, &viewer) != 0) {
+    if (credential_retry && exercise_rejected_password(display, &viewer, &retry_idle) != 0) {
         fputs("FLUTTER_PEER_X11_FAIL rejected-password recovery\n", stderr);
         PasswordPromptScan diagnostic;
         if (scan_password_prompt((unsigned int)viewer_pid, &diagnostic, 1) != 0)
@@ -4300,14 +4368,20 @@ int main(int argc, char **argv) {
 
     if (credential_retry) {
         ViewerWindow current = {0};
-        int result = inspect_viewer_candidate(display, viewer.window, viewer_pid, &current) == 1 ? 0 : -1;
+        TcpOpenCounts connected = {0};
+        int result = inspect_viewer_candidate(display, viewer.window, viewer_pid, &current) == 1 &&
+            retry_idle.active < ULLONG_MAX && retry_idle.passive < ULLONG_MAX &&
+            read_tcp_open_counts(&connected, "after-correct") == 0 &&
+            connected.active == retry_idle.active + 1U &&
+            connected.passive == retry_idle.passive + 1U ? 0 : -1;
         if (atspi_exit() != 0) result = -1;
         if (close_viewer(display, viewer.window) != 0) result = -1;
         XCloseDisplay(display);
         XCloseDisplay(source);
         if (result != 0) return 1;
         puts("FLUTTER_PEER_CREDENTIAL_RETRY_OK wrong=refused replacement_prompt=blank "
-             "correct=authenticated fresh_pixels=4 same_window=true password_entries=2 remember=false");
+             "correct=authenticated fresh_pixels=4 same_window=true password_entries=2 remember=false "
+             "idle_limit_ms=65000 idle_tcp_opens=0 explicit_opens=2");
         return 0;
     }
 

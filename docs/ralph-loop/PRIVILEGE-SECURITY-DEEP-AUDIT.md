@@ -126676,3 +126676,12 @@ VM remains live. This is production-library behavior with real files and keyed
 TCP using fixture keys. The controlled caller's forwarding is source-reviewed;
 actual PAKE, complete server/CM/UI and installed/platform acceptance remain OPEN.
 CM confirmation errors and all independently parked work remain unchanged.
+
+Fresh ledger count at `c6c064a6`, TUF `doPh8YlkMi`, passes at 382,963 tokens /
+1,752,754 bytes, SHA-256
+`56207cc88eaf38360d39d6e8de2ea593135b7b42ad8011a3e7228002015b9532`.
+Seven controls and the complete-input round trip pass. QEMU 3807771 and wrapper
+3806347 exit after 30.516 seconds; 402,726,912 peak RAM bytes retire, and all
+three listener deltas are zero. The complete 23-file evidence set totals
+290,808 bytes, hash-verified on CTE and TUF. This audit-only receipt leaves the
+counted ledger unchanged; no owned VM remains live.

@@ -126857,3 +126857,12 @@ receipts use `android-rust-lifecycle-tests-*run.UgmYssF3bn.*` under
 Rendered/native-UI, remote-peer, concurrent namespace, installed/other-platform,
 R-S0/R-F5 and release acceptance remain OPEN. The current-state ledger records
 the verified integration scope and timer park; a fresh ledger count follows.
+
+Fresh ledger count at `8422aaaa`, TUF `53ki3edoj9`, passes at 383,654 tokens /
+1,756,098 bytes, SHA-256
+`52a7ee21a84adc54a08626927c4636d1e9354f9850f872d5b0437cc1e487c1bd`.
+Seven controls and the complete-input round trip pass. QEMU 3829111 and wrapper
+3827688 exit after 30.983 seconds; 402,673,664 peak RAM bytes retire and all three
+listener deltas are zero. The complete fifteen-file evidence set totals 188,369
+bytes, hash-verified on CTE and TUF. This audit-only receipt leaves the counted
+ledger unchanged; no owned VM remains live. The broader goal remains incomplete.

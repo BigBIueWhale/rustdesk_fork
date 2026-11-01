@@ -129683,3 +129683,13 @@ CTE's replacement input soak remains live on frozen `b5f70992`; terminal accepta
 is still pending. TUF is now free for work. The source postcondition checks each
 host's admitted checkout and local Git refs, not the remote server: TUF can sync,
 edit and push after cleanup while CTE remains unchanged and does not fetch.
+
+Fresh isolated count on pushed `f9f7ed95`, TUF `UMJL6JCF1o`, reports 391,482
+tokens / 1,792,325 bytes, SHA-256
+`95c4f0bb76d156f2f1cf0cd2a6222efbca0544b754347d2edbffbef9af30a8a9`,
+using pinned tiktoken 0.12.0/cl100k_base/encode_ordinary, seven controls and
+exact round-trip. Exit is zero; three strictly decoded listener deltas are zero,
+wrapper 432960/QEMU 434377 are absent and RAM `run.y59iak72` (`29:37022`)
+retires. Duration is 51.598 seconds; peak scratch is 402,350,080 bytes.
+Receipt `display-soak-ledger-f9f7ed95.json` is 3,832 bytes, SHA-256
+`faa6ca424138996ebb7b9832b23b203594b718b0e456ab8ce0ccb7b91cf8dbe5`.

@@ -94,6 +94,8 @@ elif [ "${MODE:-}:${LINUX_RECEIVER_PROFILE:-}" = linux-service-receiver-tests:au
     readonly VM_STORAGE_PROFILE=linux-service-receiver
 elif [ "${MODE:-}:${FLUTTER_APP_BUILD_ONLY:-0}" = flutter-peer-presentation:1 ]; then
     readonly VM_STORAGE_PROFILE=linux-flutter-build
+elif [ "${MODE:-}" = linux-flutter-engine-prepare ] || [ "${MODE:-}" = linux-flutter-engine-build ]; then
+    readonly VM_STORAGE_PROFILE="$MODE"
 elif [ "${MODE:-}:${FLUTTER_APP_REPLAY:-0}" = flutter-peer-presentation:1 ]; then
     case "${FLUTTER_VIEWER_SUSPEND:-0}" in
         0) readonly VM_STORAGE_PROFILE=linux-flutter-replay ;;
@@ -167,7 +169,6 @@ else
         debian-polkit-tests|debian-systemd-lifecycle|\
         flutter-model-tests|flutter-peer-presentation|\
         hbb-common-fs|host-network-tests|linux-flutter-artifact-tests|\
-        linux-flutter-engine-build|linux-flutter-engine-prepare|\
         linux-service-receiver-tests|\
         linux-systemd-notification-tests|rust-audit|transaction|x11-display-tests)
             readonly VM_STORAGE_PROFILE=standard

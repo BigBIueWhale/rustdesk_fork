@@ -99,6 +99,12 @@ def storage_limits(profile, memory_mib):
         require(memory_mib == 20480, 'Flutter app build requires its 20 GiB guest')
         # The sequential build container is capped at 16 GiB; retain 4 GiB for the guest.
         return 16 * GIB, 12 * GIB
+    if profile in ('linux-flutter-engine-prepare', 'linux-flutter-engine-build'):
+        expected_memory = 4096 if profile == 'linux-flutter-engine-prepare' else 16384
+        require(memory_mib == expected_memory, 'Flutter engine guest memory differs')
+        # Authenticated sources alone occupy 8.64 GiB before image/build data.
+        # Keep two GiB beside the overlay for the bounded input and seed media.
+        return 16 * GIB, 14 * GIB
     if profile in ('linux-flutter-replay', 'android-storage-key'):
         require(memory_mib == 10240, f'{profile} requires its 10 GiB guest')
         return 7 * GIB, 6 * GIB
@@ -487,6 +493,7 @@ def main():
                                  'pake-timing', 'pake-allocation', 'main-config-key', 'language-selection', 'windows-pointer', 'linux-resource-limits', 'linux-resolution-lifetime', 'fusermount-process', 'xrandr-acquisition',
                                  'linux-service-uid-tests', 'audio-buffer', 'audio-mailbox', 'file-block', 'control-egress', 'clipboard-response',
                                  'linux-service-receiver', 'linux-flutter-build', 'linux-flutter-replay', 'installer-package',
+                                 'linux-flutter-engine-prepare', 'linux-flutter-engine-build',
                                  'android-storage-key', 'android-replay', 'linux-flutter-suspend', 'media-kernel-tests', 'media-nokhwa',
                                  'debian-package-tests', 'protobuf-parser', 'tcp-key-transition'),
                         default='standard')

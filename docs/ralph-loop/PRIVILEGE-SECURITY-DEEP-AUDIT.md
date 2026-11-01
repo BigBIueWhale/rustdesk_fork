@@ -128655,3 +128655,24 @@ the existing complete-app scenario supplies the separate real-desktop-API/pixel
 check after rebuilding. [GTestDBus](https://docs.gtk.org/gio/class.TestDBus.html)
 owns the private bus; the service thread and connection join before bus shutdown.
 No component result alone closes full application acceptance.
+
+The first build admission stopped before QEMU because the previous engine was
+retained. Its exact 89,128,960-byte archive remains unchanged under
+`.harness-state/flutter-linux-engine-baseline-63493887` on TUF, temporarily moved
+under the shared lock for the producer's empty-state rule; restore that generation
+to its canonical cache after the terminal build. The preservation receipt is
+`settings-engine-baseline-preservation.json`. The second admission (`wCWqO453Pj`)
+found the engine inputs absent on TUF; no QEMU launched and zero bulk RAM bytes
+were allocated. The retired workspace and absent wrapper were verified before
+preserving its three diagnostics as `settings-engine-input-refusal.wCWqO453Pj`.
+
+All 102 existing CTE engine inputs (8,252,990,367 bytes) were checked against the
+three pinned manifests, copied once to TUF, and checked there. No input was fetched
+again or executed on either host. Read-only TAR inventory finds 8,600,939,366
+regular content bytes, or 9,273,823,232 bytes rounded per file to 4 KiB, before
+image/compiler output. Thus the generic 8 GiB overlay cannot hold even the source
+tree. Engine prepare/build now select explicit 4/16 GiB guest profiles with a
+14 GiB overlay ceiling inside the unchanged 16 GiB scratch budget. Two GiB remain
+for media; 6 GiB host headroom, 1 GiB overhead, pre-boot hard-limit installation,
+live monitoring and joined cleanup remain. Existing profile checks add both valid
+selections and four wrong-memory refusals; native execution is pending.

@@ -3178,6 +3178,7 @@ static int exercise_view_scaling(Display *display, ViewerWindow *viewer,
             activate_named_control((unsigned int)viewer->pid, "Show toolbar") != 0) goto out;
         if (activate_named_control((unsigned int)viewer->pid, "Display settings") != 0 ||
             activate_named_control((unsigned int)viewer->pid, style) != 0 ||
+            sleep_millis(500U) != 0 ||
             activate_named_control((unsigned int)viewer->pid, "Hide toolbar") != 0) goto out;
         start = monotonic_millis();
         deadline = start + RECOVERY_LIMIT_MS;

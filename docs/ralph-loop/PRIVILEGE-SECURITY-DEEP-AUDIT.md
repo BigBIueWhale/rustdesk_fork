@@ -127564,3 +127564,20 @@ https://docs.gtk.org/atspi2/method.Action.do_action.html.
 Use the existing exact-PID action helper, followed by actual root-window pixels
 and the independently recorded source-publication history. No source-string
 verdict or UI-action return substitutes for the observed setting effect.
+
+Preparation `6f8b42ba`, TUF `ultJBdeVTr`, passes Original at 1100x650 with
+627..660 measured content-width interval and four fresh frames. Adaptive's
+real Tap then leaves the same 627..660 interval throughout the 2.5-second
+observation; maximum sampled frame age is 324 ms. This is a visible setting
+effect failure, not a stalled stream. Cause is not yet attributed: the controller
+collapses the toolbar immediately after the action. A diagnostic counterfactual
+adds only a 500-ms hold before that collapse, retaining all geometry/freshness
+checks and the same app/engine. It is not a product correction or a relaxation
+of the immediate-collapse failure. Source review checks context and presentation
+generation lifetime around the asynchronous native save and canvas update.
+
+QEMU 3898921 and wrapper 3897806 are absent, all four listener deltas are zero,
+and 3,011,657,728 peak RAM bytes retire after 111.325 supervisor seconds.
+The terminal marker becomes `view-scaling-observation.ultJBdeVTr` under the exact
+shared lock. Serial SHA-256:
+`7dc96d720ff1fe5e07d50946d01db979f065022a1cbdb0f3075ae093b363fffb`.

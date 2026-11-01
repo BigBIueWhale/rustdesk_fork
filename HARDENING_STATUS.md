@@ -4124,6 +4124,21 @@ those obligations.
 
 <a id="linux-ipc-components"></a>
 
+**Installed Linux IPC startup (`674573db`).** The shipped systemd unit and
+retained debug/headless binary `154f69db` pass four native cases in TUF
+`eCAUBD6TmW`: foreign-owned and symlinked `/run/RustDesk-service` parents
+refuse readiness without changing their identity, metadata or sentinel contents;
+fresh creation and a subsequent stop/start become ready with root-owned 0711
+parent and three 0666 sockets, each kernel-bound to the exact supervisor. Both
+successful generations exit zero and are reaped; every service cgroup retires.
+The foreign-owned retired `/tmp/RustDesk-service` fixture remains unchanged.
+Product/build inputs match the retained binary's source. This is sessionless
+installed-layout execution, not final Debian packaging, active-desktop/credential
+authorization, replacement races, other init systems or complete R-S0 acceptance.
+Those remain OPEN. `--linux-service-startup-tests` reuses the canonical bounded
+VM. The audit records the initial unit-result observer repair, exact artifacts,
+four-case raw receipts and correction of the outer summary's inherited counts.
+
 **IPC / option CLI — component acceptance; installed acceptance OPEN.**
 At `ad638445`, TUF `1VEEFlN8jX` passes all **176 listener/transport, 32 CLI,
 10 Windows selector, 22 main-protocol, 8 main-transaction, 8 main-peer, 4 URL-loop,

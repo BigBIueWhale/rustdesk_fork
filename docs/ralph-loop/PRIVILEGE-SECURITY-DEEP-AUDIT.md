@@ -127896,3 +127896,62 @@ supervisor seconds and all three listener deltas are zero. Serial SHA-256:
 The removal run and count retain 15 bounded raw files (208,093 bytes),
 hash-verified on both hosts. This audit-only receipt preserves the counted
 ledger. No owned VM remains; the overall release goal remains incomplete.
+
+### 2026-11-01 — installed Linux service IPC startup
+
+After the user's direction to focus on another aspect, select R-S11a/R-S0
+startup acceptance over further viewer-password checks. Exercise the shipped
+systemd unit and actual service binary with foreign-owned and symlinked IPC
+parents, then fresh creation and stop/start recovery. Refusal must precede
+readiness and preserve the refused namespace; successful startup must expose
+the three root-owned sockets from the exact supervisor and stop with process
+reaping/cgroup retirement. Independently parked topics remain parked.
+Reviewed `Config::ipc_path`, `ensure_secure_ipc_parent_dir`,
+`prepare_service_ipc`, `start_os_service` and the canonical receiver fixture.
+Systemd documents notify readiness and unit/result lifetime at
+https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html
+and https://www.freedesktop.org/software/systemd/man/latest/systemctl.html.
+
+Preparation `6c60f57f` adds `--linux-service-startup-tests`. Preboot attempt
+`PXxLs1KGv0` refuses TUF's missing pinned runtime archive, before QEMU. Exact
+wrapper/workspace absence is checked under the shared lock and its marker is
+classified. CTE's existing 31,596,230-byte package archive is copied to TUF;
+both copies match pin
+`a63395942db3f45e833e22dcb0f018d91f82ee0e5c4bc1c2390502c1c8cc025d`
+and UID/GID 1000, mode 0400, single-link authority. No acquisition runs.
+
+TUF `IRWGLJMHWo` observes the first refusal correctly, then the fixture tries
+`reset-failed` after releasing its retained systemd unit. Systemd has unloaded
+the unit; the fixture fails. `674573db` moves reset before reference release.
+The first VM joins in 53.257 supervisor seconds with 4,098,113,536 peak RAM
+bytes retired and three zero listener deltas; its failed marker is classified
+only after QEMU 3933272, wrapper 3931540 and the exact workspace are absent.
+Serial SHA-256:
+`5710998fe65cf6c193e48ee07e4ccd1f616c01d7916a4bc70345b20a933b5d57`.
+
+At `674573dbb7a94ac53034bf27fd4b4fa27b6f99c9`, TUF `eCAUBD6TmW`
+passes all four cases. Both refusals have exit 1 and no readiness timestamp;
+sentinel bytes, directory/link identities, ownership, modes and change times
+remain equal. Fresh/restarted supervisors 7876/7889 have distinct start times;
+each reaches active/running, owns all three sockets by SO_PEERCRED, exits zero
+and is reaped. Every cgroup retires. The retired public namespace remains
+unchanged throughout. No desktop child or password operation is requested.
+The retained artifact is `154f69db019c0254e9f3b7c94b569ff1040df562`,
+manifest `ac6304a5cbf603859373ea1fe314552be07b0f471274b52c9c68ff0d13681989`,
+binary `c28d8e52734de5eb3c530e14dc09c85bfb1c9d72adf81e9b96dec5e7a622b88d`.
+The canonical gate proves production/build inputs unchanged; no app rebuild.
+
+QEMU 3935691 and wrapper 3933959 are absent; 4,112,531,456 peak RAM bytes
+retire after 51.040 supervisor seconds, with three zero host listener deltas.
+Serial SHA-256:
+`29ea3c7a51eca5d8cf9529f417176cb9aae73c7e2b7383bc40137158ee58d82d`.
+The two native attempts retain fourteen hash-verified raw files on both hosts
+(187,832 bytes). Their `linux-service-receiver-tests-run.*` serial, console,
+storage and listener records and separate control-directory outer logs are
+retained. The successful outer log incorrectly prints the old seventeen-case
+credential summary; only the four checked native startup receipts count.
+The outer formatting branch is corrected separately without repeating passed
+native cases; shell syntax and diff review cover that output-only correction.
+This closes the named sessionless startup gap, not final Debian artifact,
+active-desktop/credential authorization, namespace races, other supervisors,
+other platforms or release acceptance. Fresh ledger count follows.

@@ -17,6 +17,7 @@ FLUTTER_THEME_RESTART=0
 FLUTTER_THEME_APPEARANCE=0
 FLUTTER_THEME_SAVE_FAILURE=0
 FLUTTER_VIEWER_ISOLATION=0
+FLUTTER_VIEWER_SOAK=0
 FLUTTER_CREDENTIAL_RESTART=0
 FLUTTER_NETWORK_IMPAIRMENT=0
 FLUTTER_APP_COMMIT=
@@ -287,6 +288,7 @@ case "$#:${8:-}" in
                 --theme-appearance) FLUTTER_THEME_APPEARANCE=1 ;;
                 --theme-save-failure) FLUTTER_THEME_SAVE_FAILURE=1 ;;
                 --viewer-isolation) FLUTTER_VIEWER_ISOLATION=1 ;;
+                --viewer-soak) FLUTTER_VIEWER_SOAK=1 ;;
                 --credential-restart) FLUTTER_CREDENTIAL_RESTART=1 ;;
                 --credential-rotation) FLUTTER_CREDENTIAL_RESTART=2 ;;
                 --credential-forget) FLUTTER_CREDENTIAL_RESTART=3 ;;
@@ -384,6 +386,7 @@ readonly FLUTTER_THEME_RESTART
 readonly FLUTTER_THEME_APPEARANCE
 readonly FLUTTER_THEME_SAVE_FAILURE
 readonly FLUTTER_VIEWER_ISOLATION
+readonly FLUTTER_VIEWER_SOAK
 readonly FLUTTER_CREDENTIAL_RESTART
 readonly RUST_TEST_SOURCE_ARCHIVE=${9:-}
 readonly RUST_TEST_SOURCE_COMMIT=${10:-}
@@ -14083,6 +14086,7 @@ run_flutter_peer_presentation() {
     [ "$FLUTTER_THEME_APPEARANCE" -eq 0 ] || peer_args+=(--theme-appearance)
     [ "$FLUTTER_THEME_SAVE_FAILURE" -eq 0 ] || peer_args+=(--theme-save-failure)
     [ "$FLUTTER_VIEWER_ISOLATION" -eq 0 ] || peer_args+=(--viewer-isolation)
+    [ "$FLUTTER_VIEWER_SOAK" -eq 0 ] || peer_args+=(--viewer-soak)
     case "$FLUTTER_CREDENTIAL_RESTART" in
         1) peer_args+=(--credential-restart) ;;
         2) peer_args+=(--credential-rotation) ;;
@@ -14142,7 +14146,10 @@ run_flutter_peer_presentation() {
         fail 'Linux replay unexpectedly built an app'
     fi
     local peer_scenario=focus-reconnect-resource peer_cycles=6
-    if [ "$FLUTTER_VIEWER_ISOLATION" -eq 1 ]; then
+    if [ "$FLUTTER_VIEWER_SOAK" -eq 1 ]; then
+        peer_scenario=viewer-soak
+        peer_cycles=1
+    elif [ "$FLUTTER_VIEWER_ISOLATION" -eq 1 ]; then
         peer_scenario=viewer-isolation
         peer_cycles=1
     elif [ "$FLUTTER_THEME_SAVE_FAILURE" -eq 1 ]; then

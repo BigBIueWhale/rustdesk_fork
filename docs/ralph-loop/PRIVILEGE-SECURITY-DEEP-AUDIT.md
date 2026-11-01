@@ -129197,3 +129197,18 @@ monitor and joined cleanup; only this scenario admits a 15,120-second outer
 deadline. Server observation must complete before the viewer closes. Native
 execution is pending; the four-hour acceptance remains OPEN until terminal
 success and exact process/storage retirement are verified.
+
+First execution `tNoS6cQN62` at `ef40c0f4` exits 1 before product startup:
+the guest replay parser omitted `--viewer-soak`. The guest now accepts and
+forwards that single scenario and requires its one-cycle result. This is a
+harness repair, with no changed product, numeric acceptance or storage limits.
+The failed run has no presentation evidence. Wrapper 10656/QEMU 11835 are
+absent, all four decoded listener deltas are zero, and the RAM workspace is
+absent after 12.194 supervisor seconds with 221,356,032 peak bytes. Under the
+verified shared lock, the exact private directory `66306:77899093` was
+inventoried and retired after publishing its bounded failure capsule; 3,373,440
+regular-file bytes were removed. Raw serial/storage/listener records remain.
+Receipt: `viewer-soak-flag-failure-ef40c0f4.json` (13,508 bytes, SHA-256
+`0a02436a8d9101f7e8ea913eec27dc5c215ebcc8de0a4136dd8373a21260ec92`),
+with `viewer-soak-flag-failure-retired.json` recording exact retirement.
+The corrected replay reuses the same authenticated app and engine artifacts.

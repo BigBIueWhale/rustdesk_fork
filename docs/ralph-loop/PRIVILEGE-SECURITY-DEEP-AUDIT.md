@@ -129259,3 +129259,13 @@ no-input, held-key and released-key cases, and joins the exact source/Xvfb.
 The existing source/history/geometry regressions and full controller compilation
 remain in that same bounded VM lane. Execution and complete-peer acceptance
 are pending; the TUF soak continues on its original immutable source archive.
+
+CTE `oeveYwX6G7` at `0323defe` stops at controller linking: this older
+fixture runner omitted `libXi`, already used by the complete controller.
+Add `xi` to its pkg-config inputs, matching the complete-peer build. The source
+fixture itself builds twice identically; no new native-response pass is claimed.
+Wrapper 1616851/QEMU 1621486 are absent, three decoded listener deltas are
+zero, and RAM scratch retires after 51.174 seconds (3,874,545,664 peak bytes).
+The exact retained private directory is inventoried and retired under the shared
+lock. Capsule `input-response-link-failure-0323defe.json` binds the raw failure;
+`input-response-link-failure-retired.json` records cleanup. Rerun the corrected lane.

@@ -760,7 +760,7 @@ def main():
     oracle_bytes = oracle_binaries[0].read_bytes()
     require(oracle_bytes == oracle_binaries[1].read_bytes(), "C frame oracle builds differ")
     controller_flags = subprocess.run([
-        "/usr/bin/pkg-config", "--cflags", "--libs", "x11", "xtst", "atspi-2", "gobject-2.0", "gtk+-3.0",
+        "/usr/bin/pkg-config", "--cflags", "--libs", "x11", "xtst", "xi", "atspi-2", "gobject-2.0", "gtk+-3.0",
     ], env=environment, check=True, capture_output=True, text=True, timeout=5).stdout.split()
     subprocess.run(["/usr/bin/cc", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
                     "/work/scripts/flutter-peer-presentation-x11.c", *controller_flags,

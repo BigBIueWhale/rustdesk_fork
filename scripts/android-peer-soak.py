@@ -24,12 +24,14 @@ def require(condition, message):
         raise RuntimeError(message)
 
 
-def read_file(path, limit):
+def read_file(path, limit, *, replaceable=False):
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
     with os.fdopen(descriptor, "rb") as stream:
         info = os.fstat(stream.fileno())
-        require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1
-                and (info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode)) == (1000, 1000, 0o600)
+        # Atomic publication may unlink the opened previous frame. Its retained
+        # descriptor still owns immutable bytes; freshness decides usability.
+        require(stat.S_ISREG(info.st_mode) and info.st_nlink in ((0, 1) if replaceable else (1,))
+                and (info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode)) == (os.getuid(), os.getgid(), 0o600)
                 and 0 < info.st_size <= limit, "soak input metadata or size differs")
         value = stream.read(limit + 1)
         require(len(value) <= limit, "soak input grew past its bound")
@@ -133,7 +135,7 @@ def main():
         nonlocal last_frame, last_detail
         require(not os.path.lexists(observer_failure), "emulator frame observer failed")
         require(local_identity() == connection, "soak peer connection was replaced")
-        last_frame = read_file(frame, decoder.MAX_RECORD_BYTES)
+        last_frame = read_file(frame, decoder.MAX_RECORD_BYTES, replaceable=True)
         last_detail = {}
         record = decoder.parse_record(last_frame)
         history = decoder.source_history(Path(source))

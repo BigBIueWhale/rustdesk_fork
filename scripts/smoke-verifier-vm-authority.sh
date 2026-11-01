@@ -1913,6 +1913,7 @@ android_frame_input_inventory() {
     local file name size digest url extra count=0
     local -a files=(
         "$SCRIPT_DIR/android-emulator-frame.py" "$SCRIPT_DIR/flutter-peer-source-x11.c"
+        "$SCRIPT_DIR/android-peer-soak.py"
         "$SCRIPT_DIR/x11-frame-oracle.h" "$SCRIPT_DIR/test-x11-frame-oracle.c"
         "$SCRIPT_DIR/flutter-peer-presentation-x11.c"
         "$SCRIPT_DIR/test-android-frame-native.py" "$SCRIPT_DIR/smoke-xvfb-prepare.sh"
@@ -4730,6 +4731,7 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
         "devcheck.docker.tar.gz=$DEV_CHECK_IMAGE_ARCHIVE"
         "xvfb-debs=$ONLINE_INPUTS/xvfb-debs"
         "repo/scripts/android-emulator-frame.py=$SCRIPT_DIR/android-emulator-frame.py"
+        "repo/scripts/android-peer-soak.py=$SCRIPT_DIR/android-peer-soak.py"
         "repo/scripts/flutter-peer-source-x11.c=$SCRIPT_DIR/flutter-peer-source-x11.c"
         "repo/scripts/x11-frame-oracle.h=$SCRIPT_DIR/x11-frame-oracle.h"
         "repo/scripts/test-x11-frame-oracle.c=$SCRIPT_DIR/test-x11-frame-oracle.c"

@@ -11,6 +11,7 @@ from pathlib import Path
 import resource
 import signal
 import subprocess
+import tempfile
 import time
 
 
@@ -531,6 +532,54 @@ print("ANDROID_SOURCE_HISTORY=pass publications=500000 reader_as_bytes=67108864 
         source.unlink()
 
 
+def test_soak_atomic_read():
+    spec = importlib.util.spec_from_file_location("peer_soak", "/work/scripts/android-peer-soak.py")
+    soak = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(soak)
+    with tempfile.TemporaryDirectory(prefix="android-soak-open-", dir="/tmp") as directory:
+        path = Path(directory) / "frame"
+        successor = Path(directory) / "successor"
+        original_open = os.open
+
+        def open_then_replace(filename, flags):
+            descriptor = original_open(filename, flags)
+            try:
+                os.replace(successor, path)
+                require(os.fstat(descriptor).st_nlink == 0, "replacement did not unlink the opened frame")
+                return descriptor
+            except BaseException:
+                os.close(descriptor)
+                raise
+
+        for replaceable in (False, True):
+            path.write_bytes(b"original")
+            successor.write_bytes(b"successor")
+            path.chmod(0o600)
+            successor.chmod(0o600)
+            os.open = open_then_replace
+            try:
+                try:
+                    value = soak.read_file(path, 32, replaceable=replaceable)
+                except RuntimeError:
+                    require(not replaceable, "atomic frame replacement was refused")
+                else:
+                    require(replaceable and value == b"original", "replaced read changed its descriptor bytes")
+            finally:
+                os.open = original_open
+            require(path.read_bytes() == b"successor", "atomic replacement did not publish the successor")
+        require(soak.read_file(path, 32) == b"successor", "ordinary bounded file read differs")
+        os.link(path, Path(directory) / "alias")
+        for replaceable in (False, True):
+            try:
+                soak.read_file(path, 32, replaceable=replaceable)
+            except RuntimeError:
+                pass
+            else:
+                raise RuntimeError("soak accepted a multiply linked file")
+    print("ANDROID_SOAK_ATOMIC_READ=pass replaced=original-bytes log_unlink=refused "
+          "hardlink=refused lifetime=real-descriptor", flush=True)
+
+
 def test_observation_schedule(decoder):
     class Clock:
         def __init__(self):
@@ -621,6 +670,7 @@ def main():
     decoder = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(decoder)
     decoder.self_test()
+    test_soak_atomic_read()
     test_observation_schedule(decoder)
     test_source_history()
     inspect_retained_android_frame(decoder)

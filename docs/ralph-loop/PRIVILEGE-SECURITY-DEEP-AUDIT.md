@@ -126352,3 +126352,19 @@ retain all subsequent lifecycle checks. The peer log receives an 8-MiB hard
 file ceiling for this run; normal replay retains its 2-MiB ceiling, now enforced
 at launch too. Runtime/diagnostic output caps remain unchanged. Native integration
 is pending and will decide whether these target observations and retention work.
+
+Initial integration `G6QoUrjGzi` at `fc8fc390` was deliberately stopped after
+review found an observer race: the Java publisher atomically replaces `latest.frame`,
+so a descriptor opened before replacement can legitimately have zero links when
+the Python reader inspects it. The initial link-count-one check could reject that
+valid retained frame. Only replaceable frame reads now admit zero or one links;
+ordinary log reads retain exactly one, and multiple links remain refused. The
+focused fixture forces a real rename between open and fstat, checks original
+descriptor bytes versus the new pathname, and retains log/hardlink refusals.
+
+The cancelled VM produced no soak verdict. Its exact QEMU 3733759 received TERM
+through a validated pidfd; QEMU and wrapper 3732583 exited, and the 4,628,439,040-byte
+peak RAM workspace retired after 98.354 seconds. All five listener deltas are zero.
+The failed outer status is 1, notwithstanding QEMU's normal signal-exit status 0.
+Only after terminal/cleanup proof was its retained diagnostic directory renamed
+`android-soak-cancelled.G6QoUrjGzi`, releasing admission for the focused correction.

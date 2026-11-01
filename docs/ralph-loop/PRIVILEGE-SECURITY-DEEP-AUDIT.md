@@ -128391,3 +128391,14 @@ pre-key security, long-duration retry/resource behavior, Unicode/device keyboard
 cancellation races, installed privilege-boundary acceptance, other platforms or
 release readiness. Those obligations remain OPEN. Fresh ledger count and final
 evidence-copy verification follow; the broad goal remains active and incomplete.
+
+Checkpoint completion: `--ledger-token-count` at `033d4bd2`, TUF `wa0rHZy2UM`,
+passes seven controls and the complete-input round trip: 388,838 tokens /
+1,780,804 bytes, input SHA-256
+`82bb55f47efa5a6c8704fb167dc5593f6082907911f245ff5fab2d77c2d94f55`.
+QEMU 4015024 and wrapper 4013603 are absent; 402,649,088 peak RAM bytes retire
+after 30.100 supervisor seconds, with three zero listener deltas. Serial SHA-256:
+`132fe14b6bbaeaabddc721b04c08ea9274107ba8cf86b524c6d6d169ecc6e298`.
+All 34 current raw/capsule/retirement files total 908,531 bytes and match their
+recorded hashes on CTE and TUF. This audit-only receipt preserves the counted
+ledger bytes. No owned VM or transient RAM workspace remains.

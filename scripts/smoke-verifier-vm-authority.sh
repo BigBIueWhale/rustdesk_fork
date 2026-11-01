@@ -60,6 +60,7 @@ ANDROID_RUNTIME_ARTIFACT_COMMIT=
 ANDROID_RUNTIME_APK_SHA256=
 ANDROID_TEST_APK_SHA256=
 ANDROID_RUNTIME_SCENARIO=
+ANDROID_RUNTIME_SOAK=0
 ANDROID_STORAGE_TESTS=0
 ANDROID_RUNTIME_PEER_COMMIT=
 ANDROID_RUNTIME_PEER_MANIFEST_SHA256=
@@ -579,7 +580,7 @@ case "$#:${1:-}" in
         ANDROID_TEST_APK_SHA256=$7
         ANDROID_RUNTIME_SCENARIO=$9
         ;;
-    13:--android-emulator-runtime)
+    13:--android-emulator-runtime|14:--android-emulator-runtime)
         [ "$2" = --artifact-commit ] && [ "$4" = --apk-sha256 ] \
             && [ "$6" = --test-apk-sha256 ] && [ "$8" = --scenario ] \
             && { [ "$9" = peer-lifecycle ] || [ "$9" = controlled-cm ]; } \
@@ -595,6 +596,10 @@ case "$#:${1:-}" in
         ANDROID_RUNTIME_SCENARIO=$9
         ANDROID_RUNTIME_PEER_COMMIT=${11}
         ANDROID_RUNTIME_PEER_MANIFEST_SHA256=${13}
+        if [ "$#" -eq 14 ]; then
+            [ "${14}" = --soak ] && [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ] || exit 2
+            ANDROID_RUNTIME_SOAK=1
+        fi
         ;;
     1:--apple-conform)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
@@ -1188,7 +1193,11 @@ elif [ "$MODE" = android-emulator-app ]; then
     readonly OVERLAY_SIZE=64G
     readonly VM_MEMORY=24576
 elif [ "$MODE" = android-emulator-runtime ]; then
-    readonly VM_TIMEOUT_SECONDS=7200
+    if [ "$ANDROID_RUNTIME_SOAK" -eq 1 ]; then
+        readonly VM_TIMEOUT_SECONDS=10800
+    else
+        readonly VM_TIMEOUT_SECONDS=7200
+    fi
     readonly OVERLAY_SIZE=48G
     readonly VM_MEMORY=18432
 elif [ "$MODE" = apple-conform ]; then
@@ -5111,6 +5120,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
        || [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; then
         guest_invocation+=" $ANDROID_RUNTIME_PEER_COMMIT $ANDROID_RUNTIME_PEER_TREE $ANDROID_RUNTIME_PEER_MANIFEST_SHA256"
     fi
+    [ "$ANDROID_RUNTIME_SOAK" -eq 0 ] || guest_invocation+=' --soak'
 elif [ "$MODE" = flutter-peer-presentation ]; then
     if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
         guest_invocation+=" --linux-flutter-app-build /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
@@ -8292,6 +8302,11 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     require_exact_fixed_receipt \
         'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=loopback-only transport=grpc-stream network=container-none' \
         'Android emulator frame-endpoint receipt'
+    if [ "$ANDROID_RUNTIME_SOAK" -eq 1 ]; then
+        require_exact_fixed_receipt \
+            'ANDROID_PEER_SOAK=pass seconds=7200 observation=per-second age_limit_ms=2000 observer_limit_ms=500 gap_limit_ms=2000 drift_limit_ms=250 resources=rss-threads task=stable process=stable peer=stable logs=retained' \
+            'uninterrupted two-hour Android soak receipt'
+    fi
     require_exact_fixed_receipt \
         'ANDROID_EMULATOR_FRAME_PARSER_SELF_TEST=pass format=counter32 source=monotonic-publication alias=refused' \
         'Android emulator frame-parser self-test receipt'

@@ -8,8 +8,8 @@ die() {
     exit 1
 }
 
-[ "$#" -eq 6 ] || [ "$#" -eq 10 ] \
-    || die 'usage: android-emulator-runtime-check.sh APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT recents | APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT {peer-lifecycle|controlled-cm} PEER_ROOT PEER_COMMIT PEER_TREE MANIFEST_SHA256'
+[ "$#" -eq 6 ] || [ "$#" -eq 10 ] || [ "$#" -eq 11 ] \
+    || die 'usage: android-emulator-runtime-check.sh APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT recents | APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT {peer-lifecycle|controlled-cm} PEER_ROOT PEER_COMMIT PEER_TREE MANIFEST_SHA256 [--soak]'
 readonly APK=$1
 readonly APK_SHA256=$2
 readonly TEST_APK=$3
@@ -20,10 +20,15 @@ readonly PEER_ROOT=${7:-}
 readonly PEER_COMMIT=${8:-}
 readonly PEER_TREE=${9:-}
 readonly PEER_MANIFEST_SHA256=${10:-}
+readonly SOAK=${11:-}
+if [ "$#" -eq 11 ]; then
+    [ "$SOAK" = --soak ] && [ "$RUNTIME_SCENARIO" = peer-lifecycle ] \
+        || die 'the two-hour soak requires peer-lifecycle'
+fi
 case "$RUNTIME_SCENARIO" in
     recents) [ "$#" -eq 6 ] || die 'Recents-only replay accepts no peer authority' ;;
     peer-lifecycle|controlled-cm)
-        [ "$#" -eq 10 ] && [[ "$PEER_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+        { [ "$#" -eq 10 ] || [ "$#" -eq 11 ]; } && [[ "$PEER_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
             && [[ "$PEER_TREE" =~ ^[0-9a-f]{40}$ ]] \
             && [[ "$PEER_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]] \
             || die 'peer replay requires exact source and manifest authority'
@@ -192,6 +197,7 @@ events = {
     b"ANDROID_PEER_CREDENTIAL_RECOVERY", b"ANDROID_PEER_PRESENTATION_STAGE",
     b"ANDROID_PEER_FRESHNESS", b"ANDROID_PEER_RESOURCE_SAMPLE",
     b"ANDROID_PEER_WARM_HOLD", b"ANDROID_PEER_TASK_PARK_SAMPLE",
+    b"ANDROID_PEER_SOAK_WINDOW", b"ANDROID_PEER_SOAK_SUMMARY", b"ANDROID_PEER_SOAK_LOG",
 }
 
 def forward(line):
@@ -795,6 +801,9 @@ if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
     )
 fi
 readonly -a runtime_mounts runtime_environment
+soak_arguments=()
+[ -z "$SOAK" ] || soak_arguments+=("$SOAK")
+readonly -a soak_arguments
 
 RUNTIME_CONTAINER="$(vm_docker create \
     --name rustdesk-android-emulator-runtime \
@@ -815,7 +824,7 @@ RUNTIME_CONTAINER="$(vm_docker create \
         /source/scripts/smoke-android-emulator-boot.sh \
         /inputs/emulator.zip /inputs/system-image.zip /inputs/adb \
         /tmp/android-emulator-app /inputs/app.apk "$RUNTIME_SCENARIO" \
-        /inputs/recents-dismiss.jar)"
+        /inputs/recents-dismiss.jar "${soak_arguments[@]}")"
 [[ "$RUNTIME_CONTAINER" =~ ^[0-9a-f]{64}$ ]] \
     || die 'Android runtime container ID is malformed'
 runtime_authority="$(vm_docker inspect --format \
@@ -1521,6 +1530,14 @@ fi
 [ "$(vm_docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' \
     "$RUNTIME_CONTAINER")" = exited:0 ] \
     || die 'Android runtime container did not exit cleanly'
+if [ -n "$SOAK" ]; then
+    soak_receipt="$(grep -Fx 'ANDROID_PEER_SOAK=pass seconds=7200 observation=per-second age_limit_ms=2000 observer_limit_ms=500 gap_limit_ms=2000 drift_limit_ms=250 resources=rss-threads task=stable process=stable peer=stable logs=retained' "$RUNTIME_LOG")" \
+        || die 'the uninterrupted two-hour Android receipt is absent'
+    [ "$(grep -c '^ANDROID_PEER_SOAK=' "$RUNTIME_LOG")" -eq 1 ] \
+        && [ "$(grep -c '^ANDROID_PEER_SOAK_WINDOW=pass ' "$RUNTIME_LOG")" -eq 120 ] \
+        && [ "$(grep -c '^ANDROID_PEER_SOAK_SUMMARY=pass ' "$RUNTIME_LOG")" -eq 1 ] \
+        || die 'the uninterrupted two-hour Android evidence count differs'
+fi
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
     vm_docker rm "$OBSERVER_CONTAINER" >/dev/null
     OBSERVER_CONTAINER=
@@ -1598,6 +1615,10 @@ if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
         "${lifecycle_receipts[0]}" "${initial_credential_receipts[0]}" \
         "${peer_receipts[0]}"
     runtime_peer=production-loopback-cpace-changing-display
+    if [ -n "$SOAK" ]; then
+        grep '^ANDROID_PEER_SOAK_SUMMARY=pass ' "$RUNTIME_LOG"
+        printf '%s\n' "$soak_receipt"
+    fi
 elif [ "$RUNTIME_SCENARIO" = controlled-cm ]; then
     printf '%s\n' "${controlled_cm_receipts[0]}" \
         "${controlled_stop_receipts[0]}" "${controlled_restart_receipts[0]}" \

@@ -9,8 +9,8 @@ fail() {
 }
 
 [ "$#" -eq 4 ] || [ "$#" -eq 5 ] || [ "$#" -eq 6 ] \
-    || [ "$#" -eq 7 ] \
-    || fail 'usage: smoke-android-emulator-boot.sh EMULATOR_ZIP SYSTEM_IMAGE_ZIP ADB WORK_ROOT [RUNTIME_TEST_APK [launch|recents|lifecycle|peer-lifecycle|controlled-cm [RECENTS_GESTURE_JAR]]]'
+    || [ "$#" -eq 7 ] || [ "$#" -eq 8 ] \
+    || fail 'usage: smoke-android-emulator-boot.sh EMULATOR_ZIP SYSTEM_IMAGE_ZIP ADB WORK_ROOT [RUNTIME_TEST_APK [launch|recents|lifecycle|peer-lifecycle|controlled-cm [RECENTS_GESTURE_JAR [--soak]]]]'
 readonly EMULATOR_ZIP=$1
 readonly SYSTEM_IMAGE_ZIP=$2
 readonly INPUT_ADB=$3
@@ -18,6 +18,16 @@ readonly WORK_ROOT=$4
 readonly RUNTIME_TEST_APK=${5:-}
 readonly APP_SCENARIO=${6:-launch}
 readonly RECENTS_GESTURE_JAR=${7:-}
+readonly SOAK=${8:-}
+if [ "$#" -eq 8 ]; then
+    [ "$SOAK" = --soak ] && [ "$APP_SCENARIO" = peer-lifecycle ] && [ -n "$RUNTIME_TEST_APK" ] \
+        || fail 'the two-hour soak requires a peer-lifecycle app workload'
+fi
+if [ -n "$SOAK" ]; then
+    readonly PEER_SERVER_LOG_LIMIT=8388608
+else
+    readonly PEER_SERVER_LOG_LIMIT=2097152
+fi
 readonly INSTRUMENTATION_APK=${RUSTDESK_ANDROID_INSTRUMENTATION_APK:-}
 readonly STORAGE_KEY_PROBE=${ANDROID_STORAGE_KEY_PROBE:-}
 if [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = controlled-cm ]; then
@@ -1579,7 +1589,14 @@ PY
         || { tail -n 40 "$PEER_SEED_LOG" >&2; fail 'the Android peer password seed receipt differs'; }
     HOME=/tmp/android-peer-server-home DISPLAY=:99 RUST_LOG=debug \
         LD_PRELOAD="$PEER_TARGET/smoke-bind-loopback.so" \
-        "$PEER_TARGET/smoke-server-launcher" "$PEER_TARGET/debug/rustdesk" \
+        python3 -B -I -S -c '
+import os, resource, sys
+limit = int(sys.argv[1])
+soft, hard = resource.getrlimit(resource.RLIMIT_FSIZE)
+limit = min(value for value in (limit, soft, hard) if value != resource.RLIM_INFINITY)
+resource.setrlimit(resource.RLIMIT_FSIZE, (limit, limit))
+os.execv(sys.argv[2], sys.argv[2:])
+' "$PEER_SERVER_LOG_LIMIT" "$PEER_TARGET/smoke-server-launcher" "$PEER_TARGET/debug/rustdesk" \
         >"$PEER_SERVER_LOG" 2>&1 &
     SERVER_PID=$!
     SERVER_START="$(process_start_time "$SERVER_PID")" \
@@ -3903,6 +3920,30 @@ exercise_peer_warm_hold() {
         "$PEER_WARM_HOLD_SAMPLES" "$PEER_WARM_HOLD_INTERVAL_SECONDS" "$elapsed_ms"
 }
 
+exercise_peer_soak() {
+    local task lifecycle_log
+    task="$(current_app_task_id)" || fail 'cannot bind the two-hour Android task'
+    wait_frame_observer_ready || fail 'the two-hour display observer is unavailable'
+    assert_main_service_log_cardinality \
+        "$(adb_shell_value logcat -d -v brief)" soak-before 1 0 \
+        || fail 'the two-hour control lacks its initial service records'
+    python3 -B -u -I -S "$SCRIPT_DIR/android-peer-soak.py" \
+        "$FRAME_DECODER" "$FRAME_OBSERVER_FRAME" "$PEER_SOURCE_LOG" \
+        "$PEER_SERVER_LOG" "$FRAME_OBSERVER_FAILURE" "$ADB" "$SERIAL" \
+        "$APP_PID" "$task" "$SERVER_PID" "$SERVER_START" "$SOURCE_PID" "$SOURCE_START" \
+        || {
+            print_peer_ui_failure_diagnostic soak || true
+            fail 'the uninterrupted two-hour Android observation failed'
+        }
+    lifecycle_log="$(adb_shell_value logcat -d -v brief)" \
+        || fail 'cannot retrieve the retained Android lifecycle records'
+    [ "$(grep -cF 'RUSTDESK_SOAK_LOG_START' <<<"$lifecycle_log" || true)" -eq 1 ] \
+        && assert_main_service_log_cardinality "$lifecycle_log" soak-after 1 0 \
+        && ! grep -Eq 'FATAL EXCEPTION|Failed to resume Android client session ownership|MainService destruction retained incomplete generation authority' <<<"$lifecycle_log" \
+        || fail 'the two-hour control lost initial records or logged an ownership failure'
+    printf 'ANDROID_PEER_SOAK=pass seconds=7200 observation=per-second age_limit_ms=2000 observer_limit_ms=500 gap_limit_ms=2000 drift_limit_ms=250 resources=rss-threads task=stable process=stable peer=stable logs=retained\n'
+}
+
 exercise_peer_task_park() {
     local sample keyed_before elapsed_ms started_ms
     keyed_before="$(peer_server_keyed_session_count)"
@@ -4161,8 +4202,23 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
         grep -Eq "(^|,)$APP_PACKAGE(,|$)" <<<"$idle_state" \
             || fail 'the battery prerequisite is not granted'
     fi
+    if [ -n "$SOAK" ]; then
+        timeout --signal=TERM --kill-after=2s 10s \
+            "$ADB" -s "$SERIAL" logcat -b main,system,crash -G 16M \
+            || fail 'cannot admit bounded Android soak log buffers as the existing shell user'
+        log_sizes="$(adb_shell_value logcat -b main,system,crash -g)" \
+            || fail 'cannot inspect the Android soak log buffers'
+        [ "$(grep -Ec '^(main|system|crash): ring buffer is 16 MiB ' <<<"$log_sizes")" -eq 3 ] \
+            && [ "$(wc -l <<<"$log_sizes")" -eq 3 ] \
+            || fail 'Android soak log buffer capacity differs'
+        printf 'ANDROID_PEER_SOAK_LOG=ready buffers=main,system,crash bytes_each=16777216 principal=existing-adb-shell\n'
+    fi
     "$ADB" -s "$SERIAL" logcat -c \
         || fail 'cannot clear the runtime-test log before launch'
+    if [ -n "$SOAK" ]; then
+        adb_shell_value log -t RustDeskSoak RUSTDESK_SOAK_LOG_START >/dev/null \
+            || fail 'cannot record the Android soak log-retention marker'
+    fi
     launch_output="$(timeout --signal=TERM --kill-after=2s 60s \
         "$ADB" -s "$SERIAL" shell am start -W \
         -n com.carriez.flutter_hbb/.MainActivity | tr -d '\r')" \
@@ -4447,6 +4503,7 @@ PY
             done
             record_peer_process_resources baseline 0
             exercise_peer_warm_hold
+            [ -z "$SOAK" ] || exercise_peer_soak
             for warm_cycle in $(seq 1 "$PEER_WARM_RECONNECT_CYCLES"); do
                 exercise_peer_warm_reconnect "$warm_cycle"
             done
@@ -4744,7 +4801,7 @@ if [ "$WORKLOAD" = app-peer-lifecycle ]; then
     stop_peer_infrastructure \
         || fail 'the controlled Android peer infrastructure did not join'
     [ "$(stat -c '%s' -- "$PEER_SOURCE_LOG")" -le 67108864 ] \
-        && [ "$(stat -c '%s' -- "$PEER_SERVER_LOG")" -le 2097152 ] \
+        && [ "$(stat -c '%s' -- "$PEER_SERVER_LOG")" -le "$PEER_SERVER_LOG_LIMIT" ] \
         && [ "$(stat -c '%s' -- "$PEER_SEED_LOG")" -le 4096 ] \
         && [ ! -s "$PEER_XVFB_LOG" ] \
         || fail 'the controlled Android peer logs differ from their finite bounds'

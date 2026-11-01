@@ -230,8 +230,11 @@ case "$#:${8:-}" in
         [ "${17}" = recents ] || exit 2
         MODE=android-emulator-runtime
         ;;
-    20:--android-emulator-runtime)
+    20:--android-emulator-runtime|21:--android-emulator-runtime)
         [ "${17}" = peer-lifecycle ] || [ "${17}" = controlled-cm ] || exit 2
+        if [ "$#" -eq 21 ]; then
+            [ "${21}" = --soak ] && [ "${17}" = peer-lifecycle ] || exit 2
+        fi
         MODE=android-emulator-runtime
         ;;
     12:--apple-conform)
@@ -364,6 +367,7 @@ readonly ANDROID_RUNTIME_SCENARIO=${17:-}
 readonly ANDROID_RUNTIME_PEER_COMMIT=${18:-}
 readonly ANDROID_RUNTIME_PEER_TREE=${19:-}
 readonly ANDROID_RUNTIME_PEER_MANIFEST_SHA256=${20:-}
+readonly ANDROID_RUNTIME_SOAK=${21:-}
 readonly APPLE_SOURCE_ARCHIVE=${9:-}
 readonly APPLE_SOURCE_COMMIT=${10:-}
 readonly APPLE_SOURCE_TREE=${11:-}
@@ -10684,7 +10688,7 @@ run_android_emulator_runtime() {
     local entry_receipt apk_receipt instrumentation_receipt renderer_receipt runtime_receipt peer_artifact_receipt frame_source_receipt input_provider_receipt
     local -a runtime_arguments=()
     local lifecycle_receipt task_park_receipt peer_receipt focused_recents_receipt check_receipt
-    local resource_bound_receipt
+    local resource_bound_receipt soak_receipt
     local checksum_line runtime_peer phase_ordinal phase ordinal
     local recents_build_receipt recents_driver_receipt recents_driver_sha256
     local recents_cycles recents_cycle_pattern recents_cycle recents_task_id
@@ -10776,6 +10780,7 @@ run_android_emulator_runtime() {
     done
     for workload in pins.env lib.sh online-android-sdk-output.py \
         build-x11-frame-source.py \
+        android-peer-soak.py \
         android-peer-artifact.py \
         online-gradle-output.py \
         AndroidRecentsDismiss.java \
@@ -10803,6 +10808,7 @@ run_android_emulator_runtime() {
         "$source_root/scripts/AndroidRecentsDismiss.java" \
         "$source_root/scripts/android-emulator-frame-observer.sh" \
         "$source_root/scripts/android-emulator-frame.py" \
+        "$source_root/scripts/android-peer-soak.py" \
         "$source_root/scripts/AndroidEmulatorFrameObserver.java" \
         "$source_root/scripts/android-emulator-frame-observer-dependencies.tsv" \
         "$source_root/scripts/smoke-android-emulator-boot.sh" \
@@ -10912,6 +10918,7 @@ run_android_emulator_runtime() {
         runtime_arguments+=("$peer_input" "$ANDROID_RUNTIME_PEER_COMMIT" \
             "$ANDROID_RUNTIME_PEER_TREE" "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256")
     fi
+    [ -z "$ANDROID_RUNTIME_SOAK" ] || runtime_arguments+=("$ANDROID_RUNTIME_SOAK")
     [ ! -e "$staged_apk" ] && [ ! -L "$staged_apk" ] \
         || fail 'Android runtime execution-copy destination already exists'
     [ ! -e "$staged_test_apk" ] && [ ! -L "$staged_test_apk" ] \
@@ -11122,6 +11129,12 @@ run_android_emulator_runtime() {
     fi
     [ "$(stat -c '%s' -- "$output")" -le 2097152 ] \
         || fail 'Android emulator runtime replay output exceeds its bound'
+    if [ -n "$ANDROID_RUNTIME_SOAK" ]; then
+        soak_receipt="$(grep -Fx 'ANDROID_PEER_SOAK=pass seconds=7200 observation=per-second age_limit_ms=2000 observer_limit_ms=500 gap_limit_ms=2000 drift_limit_ms=250 resources=rss-threads task=stable process=stable peer=stable logs=retained' "$output")" \
+            || fail 'the requested uninterrupted Android soak did not complete'
+        [ "$(grep -c '^ANDROID_PEER_SOAK=' "$output")" -eq 1 ] \
+            || fail 'the uninterrupted Android soak receipt is duplicated'
+    fi
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ] \
        || [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; then
         peer_artifact_receipt="$(grep -Fx \
@@ -11442,6 +11455,7 @@ run_android_emulator_runtime() {
           "$source_root/scripts/AndroidRecentsDismiss.java" \
           "$source_root/scripts/android-emulator-frame-observer.sh" \
           "$source_root/scripts/android-emulator-frame.py" \
+          "$source_root/scripts/android-peer-soak.py" \
           "$source_root/scripts/AndroidEmulatorFrameObserver.java" \
           "$source_root/scripts/android-emulator-frame-observer-dependencies.tsv" \
           "$source_root/scripts/smoke-android-emulator-boot.sh" \
@@ -11522,6 +11536,7 @@ run_android_emulator_runtime() {
             "${presentation_stage_receipts[@]}" \
             "${resource_samples[@]}" "$resource_bound_receipt" \
             "$peer_receipt"
+        [ -z "$ANDROID_RUNTIME_SOAK" ] || printf '%s\n' "$soak_receipt"
     elif [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; then
         printf '%s\n' "$controlled_cm_receipt" "$controlled_stop_receipt" \
             "$controlled_lifecycle_receipt"

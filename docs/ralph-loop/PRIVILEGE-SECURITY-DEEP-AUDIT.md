@@ -126321,3 +126321,34 @@ files total 88,653 bytes and are hash-verified on CTE/TUF. Serial SHA-256:
 The scheduled-observer checkpoint is complete. The next selected work remains
 bounded-log/runtime integration and the actual uninterrupted two-hour app/peer
 control; product behavior, input-to-visible latency and full R-F5 stay open.
+
+### 2026-11-01 — real Android two-hour control integration
+
+The previous goal turn made progress: the scheduled observer passed native checks.
+Continue R-F5's unimpaired Android lifetime control rather than repeat the short
+accepted replay. The retained `f372aacf` app/test APKs and `b30f4811` peer remain
+the product artifacts; this slice changes orchestration and observation only.
+An explicit `--soak` suffix keeps the existing peer-lifecycle route and adds a
+7,200-second uninterrupted interval after its warmed foreground hold. Only that
+selected run receives a three-hour outer integration deadline; its admitted
+18-GiB guest/16-GiB RAM scratch profile and cleanup remain unchanged.
+
+The observer samples actual emulator pixels each second, binds the same TCP tuple
+and inode and live source/server generations, and samples Android PID/start time,
+service identity, task, RSS and threads each minute. Retain the previously declared
+2,000-ms content age, 500-ms observer/acquisition bounds, two-second gap, first-minute
+p95 plus 250-ms drift and warmed RSS/thread growth limits of 128 MiB/eight. All
+120 minute summaries are required. On refusal, preserve the exact last frame and
+its classification before a later UI diagnostic can replace that evidence.
+Handles and input-to-visible response remain unobserved, not implicitly passed.
+
+[Android logcat](https://developer.android.com/tools/logcat) uses circular buffers.
+The pinned [AOSP 14 log permission implementation](https://android.googlesource.com/platform/system/logging/+/refs/tags/android-14.0.0_r1/logd/LogPermissions.cpp)
+admits the log group; its [logcat implementation](https://android.googlesource.com/platform/system/logging/+/refs/tags/android-14.0.0_r1/logcat/logcat.cpp)
+sets and reports buffer capacity. Request and verify 16 MiB each for main/system/crash
+using the existing emulator shell principal, with no elevation fallback. Require
+the pre-launch marker and original service cardinality after the long interval;
+retain all subsequent lifecycle checks. The peer log receives an 8-MiB hard
+file ceiling for this run; normal replay retains its 2-MiB ceiling, now enforced
+at launch too. Runtime/diagnostic output caps remain unchanged. Native integration
+is pending and will decide whether these target observations and retention work.

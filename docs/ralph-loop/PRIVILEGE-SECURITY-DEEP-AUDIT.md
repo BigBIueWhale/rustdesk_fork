@@ -126835,3 +126835,25 @@ https://api.dart.dev/dart-io/FileStat-class.html.
 The pinned Flutter 3.24.5 compiler/run will decide actual API compatibility.
 Rendered file-manager navigation, remote peers, cancellation/races, installed and
 other-platform/release acceptance remain separate obligations. Execution pending.
+
+Source `567b73a953307ffb0f0877656f7c3ff271393a82`, TUF `UgmYssF3bn`, passes
+all five named Dart/native cases. The two new cases observe six actual links,
+explicit alias navigation and recursion, five escaped/Unicode names, exact native
+metadata and preserved payloads/targets. All three prior cases, including eight
+native errors, exact 10,000-entry recovery and hidden filtering, pass. The complete
+non-test Linux library builds in 110 seconds; fresh generated bridge compilation,
+artifact equality and fixture retirement pass. No product correction is needed.
+Command: `bash scripts/smoke-verifier-vm-authority.sh --local-file-listing-tests`.
+Rust SHA-256: `632c8a86a84aace474ea2f400d4a9a514e78828d5f92a7fc59d8c09f6463ef39`.
+Dart SHA-256: `de9631f408dbfa2b7061dac5d02b9cc20dfa86b6ce218c60b04be4c8ce34b2f4`.
+Serial SHA-256: `047dc5bb96d30849a4b02059ca4a79994164be29bded462c1f462c1f98a7d76f`.
+QEMU 3825465 and wrapper 3824947 exit; supervisor lifetime is 384.834 seconds.
+The 6,300,229,632-byte peak RAM workspace retires, all four listener deltas are
+zero and no owned VM remains live. Eight retained evidence files total 78,716
+bytes, hash-verified on CTE and TUF. Raw result, console, storage and listener
+receipts use `android-rust-lifecycle-tests-*run.UgmYssF3bn.*` under
+`.harness-state/verifier-vm/`; the outer receipt is in
+`.harness-state/local-listing-links-567b73a9/outer.log`.
+Rendered/native-UI, remote-peer, concurrent namespace, installed/other-platform,
+R-S0/R-F5 and release acceptance remain OPEN. The current-state ledger records
+the verified integration scope and timer park; a fresh ledger count follows.

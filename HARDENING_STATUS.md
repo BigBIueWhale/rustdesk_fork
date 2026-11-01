@@ -43,6 +43,12 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-01):** Inactivity-timeout session validation remains
+OPEN/PARKED after read-only preparation. The completed bounds correction and its
+native initializer evidence remain; no authenticated expiry/activity-reset fixture
+or run follows the pivot. Work moved to native file-browser link and filename
+transport. Do not resume the timer follow-up automatically.
+
 **User pivot (2026-11-01):** CM filesystem-action outcome logging remains
 OPEN/PARKED. Preparation `40d5f993` reproduces zero receiver action logs for ten
 completed native operations; the existing transfer-log test passes. QEMU joined,
@@ -17582,6 +17588,24 @@ Rendered error feedback, controller/session continuation,
 installed/native other-platform behavior, I/O deadlines/cancellation, aggregate resources
 and broader release obligations remain OPEN. Directory-ordering/Home and all other explicit
 user parks remain parked.
+
+At `567b73a9`, the same actual Dart-to-cdylib workload passes **five cases** in
+TUF run `UgmYssF3bn`, including two new path-shape checks. Six native relative links
+cover directory/file targets, dangling targets, a two-link cycle and an ancestor.
+Exact type/size results, explicit directory-link navigation, requested alias paths,
+recursive non-following and unchanged links/targets pass. Five Unicode/escaped
+filenames preserve exact names, sizes, modification times and payloads through JSON;
+the requested directory path also contains quoting, a backslash and Hebrew text.
+The three prior filesystem-error, exact-budget recovery and hidden/empty cases pass.
+Fresh generated Dart/Rust bindings and the complete non-test Linux Flutter-enabled
+library compile; Rust compilation takes 110 seconds. Both artifacts retain their
+before/after hashes. QEMU and its wrapper join after 384.834 seconds, the 6,300,229,632
+peak RAM scratch bytes retire, and all four listener deltas are zero. Eight evidence
+files total 78,716 bytes, hash-verified on CTE and TUF; exact identities and the
+canonical command are in the audit entry “native file-browser link and filename
+transport”. No product correction was needed. This establishes these two native
+exports' Linux behavior, not rendered navigation, remote-peer, concurrent namespace,
+installed or other-platform acceptance; those obligations remain OPEN.
 
 **Default receive-list admission — Linux library A/B ACCEPTED; caller/platform integration OPEN.**
 `TransferJob::set_files` and its `with_files` builder now use the shared 10,000-entry

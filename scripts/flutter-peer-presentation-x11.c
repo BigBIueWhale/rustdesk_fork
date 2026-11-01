@@ -3171,7 +3171,7 @@ static int exercise_credential_menu(Display *display, ViewerWindow *viewer,
     XSync(display, False);
     phase = "forget-action";
     if (open_saved_peer_menu(display, main, viewer) != 0 ||
-        activate_named_control((unsigned int)viewer->pid, "Forget Password") != 0) goto out;
+        activate_named_control((unsigned int)viewer->pid, "Forget password") != 0) goto out;
     /* Observe the first menu retiring before reopening a newly built menu. */
     for (unsigned int pass = 0U; pass < 2U; ++pass) {
         uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
@@ -3181,9 +3181,9 @@ static int exercise_credential_menu(Display *display, ViewerWindow *viewer,
             goto out;
         while (monotonic_millis() < deadline && stable < 3U) {
             AtspiAccessible *forget = NULL, *favorite = NULL;
-            int observed = query_named_accessible((unsigned int)viewer->pid, "Forget Password",
+            int observed = query_named_accessible((unsigned int)viewer->pid, "Forget password",
                                                   deadline, &forget, 0) == 0 &&
-                           query_named_accessible((unsigned int)viewer->pid, "Add to Favorites",
+                           query_named_accessible((unsigned int)viewer->pid, "Add to favorites",
                                                   deadline, &favorite, 0) == 0;
             int expected = observed && forget == NULL && (favorite != NULL) == (pass != 0U);
             g_clear_object(&forget);

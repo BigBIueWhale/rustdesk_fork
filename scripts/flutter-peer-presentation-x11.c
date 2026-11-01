@@ -3539,6 +3539,10 @@ static int theme_error_visible(unsigned int pid, int expected) {
         if (visible == expected) return 0;
         if (sleep_millis(100U) != 0) return -1;
     }
+    PasswordPromptScan diagnostic;
+    if (scan_password_prompt(pid, &diagnostic, 1) != 0)
+        fputs("FLUTTER_PEER_X11_FAIL theme error accessibility diagnostic\n", stderr);
+    fprintf(stderr, "FLUTTER_PEER_X11_FAIL theme error label expected=%d\n", expected);
     return -1;
 }
 
@@ -3552,6 +3556,7 @@ static int exercise_theme_save_failure(Display *display, const ViewerWindow *vie
     ThemeFileState before = {0}, after = {0};
     ConnectionIdentity final = {{0}, {0}, 0UL};
     uint64_t fresh = 0U, age = 0U;
+    const char *phase = "initial-light";
     if (geteuid() == 0 || prepare_main_settings(display, viewer, &main) != 0) goto out;
     XRaiseWindow(display, main);
     XSetInputFocus(display, main, RevertToParent, CurrentTime);
@@ -3560,6 +3565,7 @@ static int exercise_theme_save_failure(Display *display, const ViewerWindow *vie
         wait_for_theme(display, main, pid, 0U, 0, 0U, 1U, "save-baseline") != 0 ||
         theme_error_visible(pid, 0) != 0 || sleep_millis(1500U) != 0) goto out;
     directory = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    phase = "write-refusal-setup";
     if (directory < 0 || fstat(directory, &original) != 0 || original.st_uid != geteuid() ||
         original.st_gid != getegid() || (original.st_mode & 07777) != 0700 ||
         read_theme_file(directory, &before) != 0 || fchmod(directory, 0500) != 0) goto out;
@@ -3573,16 +3579,21 @@ static int exercise_theme_save_failure(Display *display, const ViewerWindow *vie
             fputs("FLUTTER_PEER_X11_FAIL write probe cleanup\n", stderr);
         goto out;
     }
+    phase = "failed-choice-pixels";
     if (probe_error != EACCES || click_main_control(display, main, pid, "Dark") != 0 ||
         wait_for_theme(display, main, pid, 0U, 0, 0U, 1U, "failed-save") != 0 ||
         /* Observe the persistent inline error after the three-second toast retires. */
-        wait_for_theme(display, main, pid, 0U, 0, 4000U, 1U, "failed-save-held") != 0 ||
-        theme_error_visible(pid, 1) != 0 || read_theme_file(directory, &after) != 0 ||
+        wait_for_theme(display, main, pid, 0U, 0, 4000U, 1U, "failed-save-held") != 0) goto out;
+    phase = "visible-error";
+    if (theme_error_visible(pid, 1) != 0) goto out;
+    phase = "unchanged-file";
+    if (read_theme_file(directory, &after) != 0 ||
         before.device != after.device || before.inode != after.inode || before.bytes != after.bytes ||
         strcmp(before.sha256, after.sha256) != 0 || fstat(directory, &current) != 0 ||
         current.st_dev != original.st_dev || current.st_ino != original.st_ino ||
         (current.st_mode & 07777) != 0500) goto out;
     puts("FLUTTER_PEER_THEME_SAVE_REFUSED error=visible pixels=light radio=light file=unchanged kernel=EACCES");
+    phase = "restore-and-retry";
     if (fchmod(directory, 0700) != 0) goto out;
     permissions_changed = 0;
     if (click_main_control(display, main, pid, "Dark") != 0 ||
@@ -3608,7 +3619,7 @@ out:
     if (result == 0)
         puts("FLUTTER_PEER_THEME_SAVE_FAILURE_OK failure=visible previous=preserved retry=dark "
              "error=cleared permissions=restored stable_connection=true fresh_pixels=4");
-    else fputs("FLUTTER_PEER_X11_FAIL native theme save failure/retry\n", stderr);
+    else fprintf(stderr, "FLUTTER_PEER_X11_FAIL native theme save failure/retry phase=%s\n", phase);
     return result;
 }
 

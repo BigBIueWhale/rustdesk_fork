@@ -128842,3 +128842,22 @@ must permit a Dark retry, clear the error and save Dark in joined-process storag
 The same authenticated Remote connection must still present fresh frames.
 Permission restoration runs on failure too. No product change is introduced;
 shell parsing and diff review pass, with native compilation/execution pending.
+
+First replay `xSGPDvj9pu` at `aa4825b8` compiles the native controller and
+reaches the real EACCES save refusal. The application reports the temporary-file
+creation error; Light selection and pixels remain through the four-second hold.
+The compound assertion then fails before retry. This does not yet identify a
+product defect: the error-label and unchanged-file observations need distinct
+diagnostics. Add phase reporting and a bounded accessibility dump on missing
+error text, without changing the application or acceptance conditions.
+
+Outer exit is 1; QEMU 4124803 and wrapper 4123138 are absent, the RAM workspace
+retires after 123.215 seconds (3,013,693,440 peak allocated bytes), and all four
+decoded listener deltas are zero. Preserve raw evidence and the failed private
+output as `theme-save-failure-diagnostic.xSGPDvj9pu`. Under the shared lock,
+verify three duplicate app libraries against the canonical manifest and retire
+57,644,400 bytes, restoring the retained library directory's original 0500 mode.
+`theme-save-failure-aa4825b8.json` records the evidence and retirement plan;
+`theme-save-failure-aa4825b8-retirement.json` records completed retirement. The
+initial unlink refused because that private directory was read-only; no binary
+was removed until its owned directory was made writable for the exact cleanup.

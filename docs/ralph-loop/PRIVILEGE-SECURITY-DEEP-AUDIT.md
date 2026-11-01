@@ -126463,3 +126463,12 @@ rate calculation; completion, cancellation, native file operations and existing
 owner admission retain their prior behavior. This closes the selected reporting
 correction at the Dart model layer. Full CM/native integration and the separate
 terminal-state mapping remain open; Android and all other user parks remain.
+
+Fresh ledger count at `8f7311ec`, TUF `4zxdjZX71A`, passes in 30.214 seconds:
+382,277 tokens / 1,749,493 bytes, SHA-256
+`b4a7524e65fe7894cca859c2396d6e4948799f2b42e934cad05b47b889904fe6`.
+The pinned method passes seven controls and whole-input round trip. QEMU
+3770433 and wrapper 3768807 exit, 402,518,016 peak RAM bytes retire and all
+three listener deltas are zero. All 31 baseline/preparation/candidate/count
+files total 429,586 bytes and are hash-verified on CTE/TUF. This audit-only
+receipt leaves the counted ledger bytes unchanged. No owned VM remains live.

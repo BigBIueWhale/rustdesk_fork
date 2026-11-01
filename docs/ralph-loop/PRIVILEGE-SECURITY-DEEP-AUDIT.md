@@ -127228,3 +127228,30 @@ https://www.x.org/releases/X11R7.7/doc/libXtst/xtestlib.html.
 Reuse app `cf437894`/engine `63493887`; native window, InputModel and receiver
 sources are byte-identical to that app. The named artifact is the acceptance
 scope, with current-tree/installed/other-platform obligations still open.
+
+At `32b6b7b04e6054a0f4e525c0bc21ba356a918491`, tree
+`40a024d92c76f14f216fb6ace2f072b4fbef9397`, TUF `kWVIdHQCnI` passes all
+seventeen cases. The exact command is:
+`bash scripts/smoke-verifier-vm-authority.sh --linux-flutter-app-replay --app-commit cf43789491c88148650878052929eb76be28eaa4 --app-manifest-sha256 94941c425a12844e424c7ac903f8a84b93b19628f3ed391f29e77548e15f6d93 --engine-commit 63493887d7bf51c9ea7be8b03e7a4641dd40208f --engine-archive-sha256 e054196739ae571afafe532268dfffef958c1c69b708a25e09352770744a82d0 --engine-manifest-sha256 b78c72f5533657e6bce49ac89d289172aafcc925098651dc00e35537c0d30695 --mouse-input`.
+Back and Forward have their exact native press/release pairs and held-state
+observations, at 21 ms each; the following left click takes 10 ms. All 34 button
+events, two held drag movements, four wheel directions and three outside releases
+with reentry pass. XInput2 confirms no held button after each case. The exact
+viewer window and authenticated TCP connection persist. RSS goes from 348,612
+to at most 358,756 KiB, threads from 57 to at most 58, descriptors stay at 44.
+This short positive native workload does not establish physical-device, application
+navigation, side-button outside release, negative session-type, installed,
+other-platform, latency/soak or current-release acceptance. No product defect or
+product correction is claimed.
+
+All three drivers compile twice identically. Outer acceptance takes 106 seconds;
+the supervisor lifetime is 112.619 seconds. QEMU 3866601 and wrapper 3865501 are
+absent, the 3,010,891,776-byte peak RAM workspace is retired, and all four listener
+deltas are zero. Serial SHA-256:
+`3cd27b9a56a302978ec4859b72f1879e1f7d0dde9965703d9fccf4aedbb97526`.
+The eight raw files total 101,761 bytes; together with the two parked clipboard
+runs, 24 files / 707,610 bytes are hash-verified on CTE and TUF. Raw evidence is
+`flutter-peer-presentation-*run.<id>.*` under `.harness-state/verifier-vm/`, with
+outer logs in `.harness-state/side-buttons-32b6b7b0` and the recorded clipboard
+control directories. No owned VM remains. The status ledger records the user
+pivot and this native acceptance checkpoint; its fresh count follows.

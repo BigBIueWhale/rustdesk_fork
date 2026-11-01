@@ -43,6 +43,15 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-01):** Large-selection/repeated-clipboard validation remains
+OPEN/PARKED. Preparation `d7cf665e` and one unchanged replay both fail at text
+case 3, before any image case. Native clipboard-read timeouts are recorded, but
+fixture versus product causation is unresolved. The earlier twelve-case pass
+remains historical evidence. Both VMs join, RAM scratch retires and all eight
+listener deltas are zero. Work moved to native Back/Forward mouse delivery;
+do not resume the clipboard investigation automatically. Exact evidence remains
+in the audit journal and the two retained run receipts.
+
 **User pivot (2026-11-01):** Complete connection-page address validation remains
 OPEN/PARKED. Preparation `136490a5` stops at a fixture compile error before any
 page case executes; correction `8685264a` is committed but unrun. QEMU and its
@@ -584,7 +593,7 @@ Do not resume automatically. Work moved to the R-S11hj current-state ledger clea
 | File-conflict presentation (`2bb6d9de`) | The unsupported content-identity hint is removed from Rust/Flutter conflict presentation and typed dialogs; Resume's wire flag and overwrite decisions remain. Rendered framework cases preserve Cancel/Skip/Overwrite/Escape and per-opening remember state with fresh bindings. This is source/Flutter evidence, not fresh parent Rust, native peer or installed execution. | `file-conflict-presentation-2bb6d9de.json` |
 | File-conflict timestamp precision (`c3543d52`) | Destination inspection compares mtime at the sender digest's whole-second precision, retaining size checks and explicit overwrite decisions. Linux real-file cases execute source open/digest/protobuf/destination comparison and preserve contents, nanosecond times and sidecars. Metadata matching is not content equality. Native peer/UI, other-platform and installed behavior remain OPEN. | `file-digest-precision-c3543d52.json` |
 | Modifier callback retirement (`207c444a`) | Unused release-callback APIs and callback-only test machinery are removed; production modifier cache/reset/owned dispatch remains byte-identical. Direct nine-slot key identity checks and real releaseHeldModifiers cleanup remain with the other unchanged cases. The 93-case Flutter shard passes. This is retirement of obsolete machinery, not a demonstrated live vulnerability; native mouse/UI-owner dispatch and GTK/peer effects remain OPEN. | `modifier-callback-retirement-207c444a.json` |
-| Linux side-button routing (`27d447f3`) | The Linux back/forward channel admits only Down/Up from a current permitted non-view-only owner. Presses retain model/session; duplicate Down cannot replace them, Up uses their owner, exact teardown preserves successors and invalid input is inert. Twelve real Flutter channel cases and existing controls pass with observed bridge Futures. GTK/native events, cross-window handoff, Rust/peer button retirement and resource/soak remain OPEN. | `side-button-owner-27d447f3.json` |
+| Linux side-button routing (`27d447f3`) | The Linux back/forward channel admits only Down/Up from a current permitted non-view-only owner. Presses retain model/session; duplicate Down cannot replace them, Up uses their owner, exact teardown preserves successors and invalid input is inert. Twelve real Flutter channel cases and existing controls pass with observed bridge Futures. The full-app mouse workload below additionally passes native Back/Forward press/release and subsequent input on `cf437894`. Cross-window handoff, abrupt Rust/peer button retirement and resource/soak remain OPEN. | `side-button-owner-27d447f3.json`; native run `kWVIdHQCnI` |
 | Linux recursive directory ownership (`a8cf3a42`) | Both recursive walkers retain each listed parent and open a validated directory-only child relative to it without following child symlinks. Only disappearance is skipped; other failures propagate. Controlled Linux namespace cases preserve aliases, hidden/single-file behavior, budgets and handle retirement. Selection occurs at the child open, not an atomic tree/content snapshot. Later file I/O, procfs/current-app, other-platform and installed behavior remain OPEN. | `recursive-directory-owner-a8cf3a42.json` |
 | Linux directory listing context (`ba8cfbe0`) | Linux enumeration and link-target classification retain one directory through the entry loop and use descriptor paths while preserving original presentation names. Native controlled-schedule cases cover aliases, hidden/broken links, non-directory/FIFO refusal and exact handle retirement on success/budget failure. Leaf/target mutation, recursive/later-open identity, missing procfs, full app and other-platform behavior remain OPEN. | `directory-context-ba8cfbe0.json` |
 | Directory-entry parent metadata (`f6a30550`) | Unix metadata uses the retained DirEntry parent; pinned Linux GNU cases cover parent rename/replacement/link substitution and refusal to revive vanished children. Windows keeps its fresh pathname query because its DirEntry metadata is cached. Scheduling is controlled before the entry loop. Symlink-target/recursive/later-open identity, Windows/other-platform execution and complete caller/peer behavior remain OPEN. | `directory-parent-f6a30550.json` |
@@ -2176,33 +2185,41 @@ cold R-B2/R-B10, independent-reproduction, or external-review obligations.
 
 **R-S19 — `AuthConnType` capability confinement (CWE-863).**
 
-**Linux remote mouse — fourteen full-app positive cases passed.**
-Harness `7ecdc2f0`, run `UliG8D89Ks`, reuses the complete `cf437894` app through
+**Linux remote mouse — seventeen full-app positive cases passed.**
+Harness `32b6b7b0`, run `kWVIdHQCnI`, reuses the complete `cf437894` app through
 `--mouse-input`. After real password authentication, native viewer input produces
 the expected controlled-side left/middle/right clicks, a left-button drag and all
 four wheel directions. It additionally presses each of left/middle/right inside
 the image, observes the viewer pointer beyond the complete window with the button
 held, releases there and returns for another click. The native controlled-side
-release and reentry succeed in all three cases. All 28 button events have exact
+release and reentry succeed in all three cases. Back/Forward additionally travel
+through the native GTK/platform-channel path, become held on both X servers,
+then release; a subsequent ordinary left click succeeds. All 34 button events have exact
 identity, order and pre-event state. Two separately observed drag movements retain
-the held button; both displays finish each case with no held buttons. Quiet
+the held button; XInput2 queries prove both displays finish each case with no held
+buttons, including those beyond core X11's five-button state mask. Quiet
 intervals reject extra pairs; window and authenticated TCP identity remain stable.
-Outside-release observations take 72/21/22 ms, including the initial press and
-movement. These are native event observations, not input-to-visible-response or
-application drop/scroll outcomes. Viewer RSS grows at most 1,964 KiB, threads one
+The two side-button pairs take 21 ms each, including observed held state; the
+following left click takes 10 ms. These are native event observations, not
+input-to-visible-response or application navigation/drop/scroll outcomes.
+Viewer RSS grows at most 10,144 KiB, threads one
 and descriptors zero in this short run.
 
-The app is unmodified; the only intervening `src`/`libs`/`flutter` change is in a
-test-only module. Small drivers compile twice identically. The 113.268-second
-transaction joins viewer/server/Xvfb/containers and QEMU, retires 3,010,142,208 bytes
-peak RAM scratch and leaves all four host listener deltas zero. Exact command,
-artifact identities, native events, primary references and cleanup are retained in
-`mouse-outside-7ecdc2f0.json` under `.harness-state/verifier-vm/` on CTE/TUF;
-the preceding eight-case receipt is `mouse-input-dcae70c7.json`.
-No product defect or correction is claimed. Physical devices, side buttons,
+The app is unmodified; the native window, InputModel and receiver source files
+are byte-identical to that artifact. Later product edits concern connection-page
+restoration, file-job logging/rates and idle-timeout bounds. Small drivers compile
+twice identically. The 112.619-second supervisor lifetime joins the exact QEMU,
+retires 3,010,891,776 peak RAM bytes and leaves all four host listener deltas zero;
+the inner workload joins viewer/server/Xvfb/containers. The audit entry
+“2026-11-01 — user pivot; native mouse side-button delivery” retains the exact
+command, artifact identities and cleanup; eight raw evidence files total 101,761
+bytes, hash-verified on CTE/TUF. Earlier receipts `mouse-outside-7ecdc2f0.json` and
+`mouse-input-dcae70c7.json` remain historical evidence.
+No product defect or correction is claimed. Physical devices, side-button outside release,
 relative mode, other boundaries/scales/layouts, focus/cancel/reconnect ownership,
 application-specific outcomes, non-Remote refusal, installed privilege boundaries,
-other platforms and sustained-use acceptance remain OPEN under R-F1/R-S0/R-S19.
+current release artifacts, other platforms and sustained-use acceptance remain
+OPEN under R-F1/R-S0/R-S19.
 
 **Linux remote keyboard — Ctrl+A corrected; eleven full-app cases passed.**
 `cf437894` routes Linux Legacy character shortcuts through the existing native

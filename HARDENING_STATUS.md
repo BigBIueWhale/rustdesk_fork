@@ -15230,8 +15230,24 @@ decoration; its corrected lookup retains exact PID/class/address/role and
 independent pixel checks. No product edit was needed. Both attempts join,
 retire RAM scratch and leave zero listener deltas. Reproduce with retained-app
 replay option `--credential-restart`; exact identities and raw evidence are in
-the audit journal. Remember-off, rotation, other platforms, installed authority,
+the audit journal. Remember-off, privileged rotation, other platforms, installed authority,
 at-rest confidentiality and current release-artifact acceptance remain OPEN.
+
+**Live password rotation — bounded Linux user-server workflow accepted.**
+Harness `23a11d8f`, TUF `HBRHHVZxxC`, uses the same retained app/engine and
+unchanged authentication/storage source. After enrollment and viewer exit,
+the shipped `--password-stdin` changes the private user-server credential
+without replacing its PID/start identity or listener. The old saved viewer
+reaches the real replacement prompt; the server records exactly one typed
+key-confirmation refusal, with no shedding or rate limit. Remember password
+stays checked, explicit new input authenticates, and a third fresh process
+restores the replacement without input or a password field. All three phases
+present four fresh frames (maximum sampled ages 319/364/333 ms) and exit zero.
+The single server generation, VM and RAM workspace join/retire with four zero
+listener deltas. Reproduce with retained-app option `--credential-rotation`.
+No product change was needed. This is a normal sequential user-owned Linux
+rotation; installed privileged authorization, in-flight/concurrent rotation,
+remember-off, other platforms and release-artifact acceptance remain OPEN.
 
 **Peer history snapshots (`6fc33995`) — Dart component A/B verified; full application/native integration OPEN.**
 `Peers.updatePeers` now prepares the peer rows and pending-address list before

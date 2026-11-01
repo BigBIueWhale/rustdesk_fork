@@ -127789,3 +127789,29 @@ All work remains in the zero-NIC TUF VM with unchanged admitted RAM/storage
 bounds and source-bound app/engine reuse. This tests a user-owned Linux server;
 installed privileged rotation, concurrent in-flight mutation, remember-off,
 other platforms and release acceptance remain separate open obligations.
+
+At `23a11d8f32209dfccfe53cd15673cd637e05b999`, tree
+`e7cd9aa3663e05429fdd78f791cfe7d9d430865b`, TUF `HBRHHVZxxC` passes.
+Viewer PID 231 enrolls with Remember password explicitly false-to-true and
+joins with exit zero. The shipped CLI rotates the live user-server credential;
+its exact process/start identity and listener remain. PID 349 attempts the
+saved old credential, receives the real prompt, preserves checked remember,
+accepts the replacement input and joins zero. PID 447 then restores that new
+credential without input or a password field and joins zero. Each phase
+presents four independent fresh frame IDs, with maximum sampled ages
+319/364/333 ms. The receiver's bounded native logs yield exactly one
+key-confirmation mismatch and zero shedding/rate limiting; a merely missing
+viewer credential could not satisfy that receiver observation.
+
+The command is the same authenticated app/engine replay, selecting
+`--credential-rotation`. No application rebuild or product change occurs.
+The native drivers compile twice identically; controller SHA-256:
+`d576abf5e4bd36d613792ee7febbd3a634acc36ecca048fa0064fcacefe3033d`.
+QEMU 3919400 and wrapper 3918307 are absent, 3,010,940,928 peak RAM bytes
+retire after 115.886 supervisor seconds (109-second outer workload), and
+all four host listener deltas are zero. Serial SHA-256:
+`801dba476f7c130339f60a226640c61863ab08597d8f1458f7f1d268d0dee3df`.
+Eight bounded raw files (97,737 bytes) are retained and verified on CTE;
+their TUF originals were authenticated during collection. This closes the
+selected sequential user-server rotation/replacement/restart gap and leaves
+the broader obligations above open. Fresh ledger count follows.

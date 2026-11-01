@@ -128498,3 +128498,32 @@ the canonical app manifest and bytes before removal (57,999,216 logical bytes).
 Raw diagnostics, identities and the provider witness remain. Retirement receipt:
 `theme-restart-duplicate-bundles-retired.json`, SHA-256
 `5a6a497c63eb9ef477d33f88ac784b2568b643d2c0364e91350a5eb4ae1a28fd`.
+
+Corrected harness `ea75e846c5f5d79d35755f33386339576fb5eb13`, tree
+`cec90e5d7eac6540fe40e9237f0e3a8427e476e8`, passes TUF `snoBm9MESz` on the
+unchanged app/engine. All four processes exit zero. Three actual pointer changes
+persist Light, Dark and Follow System; the following process restores each
+exclusive radio state. Header luminance is 224 for Light/the fixture's system
+appearance and 49 for Dark. Joined-file inspection agrees after every generation.
+Each generation authenticates and presents four fresh frames before settings
+(maximum sampled ages 341/326/318/318 ms); the exact TCP connection survives
+the settings action. The server is never replaced. This adds a complete Linux
+app persistence checkpoint without changing or rebuilding product code.
+
+Both driver builds are byte-identical; the UI driver's SHA-256 is
+`2685f42658b7b85bed1cedf47980d9ef3444a8c4d1006b3a29ec5f503f85cffc`.
+Viewer/server/source/Xvfb/container cleanup joins. QEMU 4027260 and wrapper
+4026194 are absent; 3,012,313,088 peak RAM bytes retire after 128.419 supervisor
+seconds, with four zero listener deltas. Serial SHA-256:
+`24ea09f15a3cbd702eb8221e48b2fa0a26df915870988f6ff502f31b6b8f93cc`.
+`theme-restart-ea75e846.json` binds command, artifact/source identities, both
+attempts, raw receipts and retirement (23,908 bytes; SHA-256
+`e90411edd8eb40dc3bbffa0d4cac7f5d8ef9e1e03d9aef74c7a7d9e600256943`).
+All 18 current raw/capsule/retirement files total 275,812 bytes and match hashes
+on CTE and TUF. No owned VM or transient RAM workspace remains.
+
+Live OS appearance changes, concurrent writers/windows, injected save errors,
+crash/power-loss persistence, other platforms, installed privileged settings and
+complete release acceptance remain OPEN. Password recovery and independently
+parked work remain parked. A fresh ledger count follows; the broad goal remains
+active and incomplete.

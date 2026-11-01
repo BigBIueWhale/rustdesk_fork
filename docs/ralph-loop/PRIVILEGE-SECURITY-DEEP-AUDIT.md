@@ -128481,3 +128481,20 @@ and X11 pixels together; action completion alone cannot prove application state
 or persistence. `MyTheme.changeDarkMode` awaits the local preference write before
 publishing the effective value. No product defect or correction is presumed.
 Native compilation/execution and exact cleanup evidence follow.
+
+Preparation `58ce1eb2`, TUF `AOWobCQzfv`, compiles both drivers twice with
+byte-identical output but stops before any theme change: the English accessible
+label is `Follow system`, not the untranslated `Follow System` key. The captured
+tree exposes exactly one anonymous radio under each labelled gesture node.
+The main-only launch also cannot satisfy this peer fixture's positive input-provider
+mapping control. Correct the locator to that observed tree/label and exercise
+each settings generation alongside a real authenticated Remote session with four
+fresh frames, preserving the existing provider control and checking the same TCP
+connection across the setting change. No product failure has been established.
+QEMU 4024811/wrapper 4023696 join; 3,010,936,832 peak RAM bytes retire after
+120.251 supervisor seconds, with four zero listener deltas. The failed run root
+is reconciled as `theme-restart-locator.AOWobCQzfv`; 12 binary duplicates match
+the canonical app manifest and bytes before removal (57,999,216 logical bytes).
+Raw diagnostics, identities and the provider witness remain. Retirement receipt:
+`theme-restart-duplicate-bundles-retired.json`, SHA-256
+`5a6a497c63eb9ef477d33f88ac784b2568b643d2c0364e91350a5eb4ae1a28fd`.

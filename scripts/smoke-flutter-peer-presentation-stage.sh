@@ -1291,9 +1291,7 @@ PY
     [ "$PEER_SCENARIO" != credential-menu-accessible ] || viewer_generations=3
     [ "$PEER_SCENARIO" != theme-restart ] || viewer_generations=4
     for viewer_generation in $(seq 1 "$viewer_generations"); do
-    app_args=(--connect 127.0.0.1)
-    [ "$PEER_SCENARIO" != theme-restart ] || app_args=()
-    (cd /app/bundle && exec env RUST_LOG=info,rustdesk::clipboard=debug "$APP" "${app_args[@]}") \
+    (cd /app/bundle && exec env RUST_LOG=info,rustdesk::clipboard=debug "$APP" --connect 127.0.0.1) \
       >/tmp/viewer.log 2>&1 &
     VIEWER_PID=$!
     VIEWER_START=$("$READY" --identity "$VIEWER_PID")
@@ -1385,7 +1383,7 @@ PY
       emit_runtime_logs VIEWER "$HOME/.local/share/logs"
       exit "$controller_status"
     fi
-    if [ "$PEER_SCENARIO" != theme-restart ] && { [ "$viewer_generation" -eq 1 ] || { [ "$ROTATE_CREDENTIAL" -eq 1 ] && [ "$viewer_generation" -eq 2 ]; }; }; then
+    if [ "$PEER_SCENARIO" = theme-restart ] || [ "$viewer_generation" -eq 1 ] || { [ "$ROTATE_CREDENTIAL" -eq 1 ] && [ "$viewer_generation" -eq 2 ]; }; then
     grep -q '^FLUTTER_PEER_PASSWORD_INPUT_OK characters=22 observed_without_value=true$' \
       <<<"$controller_output" || fail 'complete count-only password input verdict is missing'
     grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false$' \
@@ -1394,7 +1392,7 @@ PY
     if [ "$PEER_SCENARIO" = theme-restart ]; then
       theme_changed=true
       [ "$viewer_generation" -ne 4 ] || theme_changed=false
-      grep -Fxq "FLUTTER_PEER_THEME_PHASE_OK generation=$viewer_generation restored=true changed=$theme_changed connected_sockets=0" \
+      grep -Fxq "FLUTTER_PEER_THEME_PHASE_OK generation=$viewer_generation restored=true changed=$theme_changed connected_sockets=2 stable_connection=true fresh_pixels=4" \
         <<<"$controller_output" || fail 'native theme generation result is absent'
       viewer_result='viewer=joined xvfb=joined theme_restart=passed generations=4 light=restored dark=restored system=restored pixels=verified'
     elif [ "$viewer_generations" -gt 1 ]; then

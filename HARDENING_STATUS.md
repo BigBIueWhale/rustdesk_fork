@@ -5927,21 +5927,24 @@ full model checkpoint remain OPEN.
 The terminal parser's retained-input and CPU-work limits remain a separate OPEN
 item, parked at the user's request.
 
-**Incorrect-password retry — native Linux checkpoint (`d188cf83`).**
-TUF `yrkev0XS6E` reuses complete app `a630f880` and engine `63493887`.
-A manually entered incorrect password produces a blank, focused replacement
-prompt with Remember unchecked. Thirty observations spaced 100 ms apart find
-no retained connected socket and preserve the serving listener. The same viewer
-window/process then accepts correct input and presents four fresh remote frames
-(maximum sampled age 371 ms). After normal viewer exit, the peer record has an
-empty credential array. The real server records exactly one key-confirmation
-failure, no shedding or rate limit, and no serving-generation replacement.
-All processes/containers/VM join, RAM scratch retires, and four listener deltas
-are zero. No product correction or full rebuild was needed. Reproduce with
-`--credential-retry` and the source-bound command in
-`password-retry-d188cf83.json`; the audit records artifact and raw-log identities.
-This covers one sequential Linux X11 workflow, not long-duration retry behavior,
-cancellation races, device keyboards, installed authority, other platforms or
+**Incorrect-password retry — native Linux checkpoint (`5e334000`).**
+TUF `IZblnNUjMU` reuses complete app `a630f880` and engine `63493887`.
+Incorrect input produces a blank, focused replacement prompt with Remember off.
+During a 65.055-second idle interval, 588 prompt/socket observations with 100-ms
+sleeps preserve the listener and find no retained connected socket. Cumulative
+kernel TCP ActiveOpens/PassiveOpens both remain 1, detecting even short attempts
+between samples. The deliberate wrong and correct submissions each advance both
+counters by exactly one: 0 → 1 → 1 → 2. The interval exceeds two maximum 30-second
+generic reconnect delays. Correct retry in the same viewer window/process
+presents four fresh frames, maximum sampled age 303 ms; the joined peer record
+has an empty credential array. The server records one confirmation failure,
+zero shedding/rate limit and zero replacements. All processes/containers/VM join,
+RAM scratch retires, and four listener deltas are zero. No product correction or
+full rebuild was needed. Reproduce with `--credential-retry` and the command in
+`password-idle-5e334000.json`. The earlier 30-sample checkpoint remains in
+`password-retry-d188cf83.json`. This finite observation does not inject an armed
+stale callback, cover cancellation races or later outage recovery, or establish
+multi-hour resources, device keyboards, installed authority, other-platform or
 complete authentication/release acceptance. Those remain OPEN.
 
 **Connection-password prompt lifetime: source corrected; dialog components and current bridge compilation accepted.**

@@ -128402,3 +128402,45 @@ after 30.100 supervisor seconds, with three zero listener deltas. Serial SHA-256
 All 34 current raw/capsule/retirement files total 908,531 bytes and match their
 recorded hashes on CTE and TUF. This audit-only receipt preserves the counted
 ledger bytes. No owned VM or transient RAM workspace remains.
+
+### 2026-11-01 — rejected credentials stay idle beyond reconnect delays
+
+The previous goal turn was progress: actual refusal, deliberate retry and empty
+saved credential passed. Continue R-S0/R-S2/R-S9/R-S13 at its unproved delayed
+retry boundary. A finite three-second sample window could miss a later attempt;
+socket snapshots could also miss short connections. The UI caps generic retry
+delay at 30 seconds, while both Dart and native round ownership suppress generic
+reconnect until deliberate credential replacement succeeds. This native gap
+takes priority over another unrelated component case; parked topics remain parked.
+
+Harness `5e3340005ff3831a3ef28c09c4e9291aa0f7cbe0` extends the existing
+`--credential-retry` scenario to at least 65 seconds and reads cumulative TCP
+ActiveOpens/PassiveOpens from the isolated namespace. The
+[kernel counter contract](https://docs.kernel.org/networking/snmp_counter.html)
+counts active SYN initiation and passive SYN/SYN-ACK admission. The namespace
+has one loopback listener; AT-SPI and X11 use Unix sockets. Both deliberate
+submissions must advance both counters exactly once, providing positive controls
+for the same observer. Missing, duplicate, malformed or overflowing fields refuse.
+[Dart Timer cancellation](https://api.dart.dev/dart-async/Timer/cancel.html)
+prevents the timer callback; the existing generation checks additionally guard
+the application's retained callback/round authority. No product change is made.
+
+TUF `IZblnNUjMU`, tree `b81cddf7552383eff9f580b46fad0bd9fbbd1eae`, passes on
+unchanged app `a630f880`/engine `63493887`. Both TCP counters move 0 → 1 after
+incorrect entry, stay 1 through 65,055 ms and 588 blank-prompt/socket samples,
+then become 2 after explicit correct input. Four fresh frames render with maximum
+sampled age 303 ms. The same viewer process/window survives; its joined peer
+record is empty. The server records exactly one key-confirmation failure, no
+shedding/rate limit and no replacement. QEMU 4017675 and wrapper 4016613 are
+absent; 3,012,337,664 peak RAM bytes retire after 176.291 supervisor seconds.
+All four listener deltas are zero. Serial SHA-256:
+`c8cc96d8f53bdeeaaa24d49e4e97ebb07765fd9ff03eb57140e8b2b38c3832d1`.
+
+`password-idle-5e334000.json` retains the exact command, source/artifacts, raw
+hashes, counts and cleanup (11,180 bytes; SHA-256
+`7400917f8b3be3cd311c16e1bf712006b51fe8877210de2ea4d7985044330c00`).
+The prior shorter checkpoint is retained without upgrading its claim. This
+schedule does not inject an already-armed stale callback, cancellation, a later
+outage, multi-hour resource use or an installed/other-platform environment.
+Those and complete release acceptance remain OPEN. Evidence copying and a fresh
+ledger count follow; the broad goal remains active and incomplete.

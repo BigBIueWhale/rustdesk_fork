@@ -240,7 +240,7 @@ class ResultTests(unittest.TestCase):
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE),
                              (1, {"locales": 10, "screenshot-save": 12,
                                   "draggable-divider": 22, "file-columns": 13,
-                                  "file-progress": 50, "peer-search": 36,
+                                  "file-progress": 52, "peer-search": 36,
                                   "desktop-theme": 30, "custom-scale": 42}[SINGLE_PROFILE]))
             return
         self.assertEqual(
@@ -267,7 +267,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("share-rdp"), "share-rdp"), (1, 4))
         self.assertEqual(self.parse(self.events("window-dispatch"), "window-dispatch"), (1, 8))
         self.assertEqual(self.parse(self.events("peer-data"), "peer-data"), (7, 113))
-        self.assertEqual(self.parse(self.events("file-progress"), "file-progress"), (1, 50))
+        self.assertEqual(self.parse(self.events("file-progress"), "file-progress"), (1, 52))
         self.assertEqual(self.parse(self.events("audio-input"), "audio-input"), (3, 40))
         self.assertEqual(self.parse(self.events("reconnect"), "reconnect"), (2, 11))
         self.assertEqual(self.parse(self.events("custom-scale"), "custom-scale"), (1, 42))

@@ -126621,6 +126621,29 @@ three listener deltas are zero. The complete 31-file evidence set totals
 535,712 bytes, hash-verified on both hosts. This audit-only receipt leaves the
 counted ledger unchanged; no owned VM remains live.
 
+### 2026-11-01 — filesystem action logs must report receiver outcomes
+
+The direct-send log correction is verified progress. Tracing its full path finds
+another concrete R-F1/R-S0 reporting defect: server create/rename commands publish
+successful-looking logs after queue admission; remove commands enter a one-second
+success-log batch before any CM result. The validated Operation response forwards
+native success/error only to the remote peer. Dart marks every action log done,
+and a failed parent removal can erase child history. The existing full peer replay
+uses a headless CM with no UI observer, so it cannot decide these local outcomes.
+Prioritize this demonstrated mismatch over extending that replay without a receiver
+observer. Full direct-server/CM/UI integration remains open; no parked topic resumes.
+
+Prepare ten native Unix-IPC/CM cases: successful and failed create, rename, file
+removal, empty-directory removal and recursive empty-tree removal. Hold create
+before its real effect to exclude premature publication; inspect actual files,
+exact responses, owner retirement and one corresponding UI log per outcome.
+Login validation and the callback receiver remain fixtures. Two Dart cases cover
+action errors and preservation of failed child history. First run unchanged
+production code. The intended correction makes the joined CM operation return
+its actual action/outcome to its exact owner, removes request-side success logs
+and batching, and displays failures without collapsing their history. No native
+or Dart verdict and no product correction are claimed yet.
+
 ### 2026-11-01 — direct sender initial-open outcome log
 
 The preceding CM-state correction is verified progress. Continue R-F1/R-S0

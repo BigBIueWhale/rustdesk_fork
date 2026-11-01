@@ -7302,13 +7302,13 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = cm-file-log ]; then
     mapfile -t cm_file_log_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'CM_FILE_LOG_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=1 groups=1 unchanged=before-after execution_seconds=[0-9]+$'
+            'CM_FILE_LOG_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=2 groups=1 unchanged=before-after execution_seconds=[0-9]+$'
     )
     [ "${#cm_file_log_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'CM_FILE_LOG_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'CM file log artifact receipt differs'
     require_exact_fixed_receipt \
-        "CM_FILE_LOG_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=1 target=linux-x86_64 scope=production-cm-terminal-logs-and-native-unix-responses installed=unexecuted rust=1.75.0 features=linux-pkg-config,flutter vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "CM_FILE_LOG_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=2 target=linux-x86_64 scope=production-cm-terminal-logs-and-native-unix-responses installed=unexecuted rust=1.75.0 features=linux-pkg-config,flutter vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'CM file log parent compilation and native component result'
     [ "$(/usr/bin/grep -Ec 'CM_FILE_LOG_BRIDGE=pass rust_sha256=[0-9a-f]{64} io_sha256=[0-9a-f]{64} unchanged=before-after' "$SERIAL_LOG")" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'CM_FILE_LOG_BRIDGE=' "$SERIAL_LOG")" -eq 1 ] \
@@ -8774,7 +8774,7 @@ else
             'focused Flutter reconnect receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = file-progress ]; then
         require_exact_fixed_receipt \
-            "FLUTTER_FILE_PROGRESS_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=50 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-file-progress-tests cleanup=joined" \
+            "FLUTTER_FILE_PROGRESS_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=52 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-file-progress-tests cleanup=joined" \
             'focused Flutter file progress receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = connect-password ]; then
         require_exact_fixed_receipt \
@@ -9408,8 +9408,8 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = cm-file-log ]; then
         printf '%s\n' "${cm_file_log_artifacts[@]}"
-        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE 'test ui_cm_interface::tests::cm_file_log_[a-z_]+ \.\.\. ok|CM_FILE_LOG_CASE=.*'
-        printf 'CM_FILE_LOG_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=1 target=linux-x86_64 scope=production-cm-terminal-logs-and-native-unix-responses installed=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE 'test ui_cm_interface::tests::cm_file_log_[a-z_]+ \.\.\. ok|CM_FILE_LOG_(CASE|OPERATIONS)=.*'
+        printf 'CM_FILE_LOG_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=2 target=linux-x86_64 scope=production-cm-terminal-logs-and-native-unix-responses installed=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = cm-read-tick ]; then
         printf '%s\n' "${cm_read_tick_artifacts[@]}"

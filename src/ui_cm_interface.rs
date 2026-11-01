@@ -4236,6 +4236,127 @@ mod tests {
     }
 
     #[cfg(target_os = "linux")]
+    #[tokio::test(flavor = "current_thread")]
+    async fn cm_file_log_reports_native_operation_outcomes() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = CmFileTestDir::new("operation_logs");
+        let id = 2_000_230_101;
+        let (mut task, mut peer, observer, ui) = admitted_cm_native_output_test(id).await;
+        let owner = CLIENTS.read().unwrap().clients[&id].registry_generation;
+        let mut expected = Vec::new();
+        let mut request_id = 0_u64;
+        for denied in [false, true] {
+            for kind in ["create_dir", "rename", "remove_file", "remove_dir", "remove_tree"] {
+                request_id += 1;
+                let parent = temp.join(&format!("{kind}-{denied}"));
+                fs::create_dir(&parent).unwrap();
+                let path = parent.join("source");
+                let target = parent.join("renamed");
+                let directory = matches!(kind, "create_dir" | "remove_dir" | "remove_tree");
+                if kind != "create_dir" {
+                    if directory {
+                        fs::create_dir(&path).unwrap();
+                        if kind == "remove_tree" {
+                            if denied { fs::write(path.join("keep"), b"retained").unwrap(); }
+                            else { fs::create_dir(path.join("empty")).unwrap(); }
+                        }
+                    } else {
+                        fs::write(&path, b"retained").unwrap();
+                    }
+                }
+                if denied && kind != "remove_tree" {
+                    fs::set_permissions(&parent, fs::Permissions::from_mode(0o500)).unwrap();
+                }
+                let path_text = path.to_string_lossy().into_owned();
+                let job_id = request_id as i32;
+                let (command, operation, action) = match kind {
+                    "create_dir" => (
+                        ipc::FS::CreateDir { path: path_text.clone(), id: job_id, request_id },
+                        ipc::CmFileOperation::CreateDirectory { path: path_text.clone() }, "create_dir",
+                    ),
+                    "rename" => (
+                        ipc::FS::Rename { path: path_text.clone(), new_name: "renamed".to_owned(), id: job_id, request_id },
+                        ipc::CmFileOperation::Rename { path: path_text.clone(), new_name: "renamed".to_owned() }, "rename",
+                    ),
+                    "remove_file" => (
+                        ipc::FS::RemoveFile { path: path_text.clone(), id: job_id, file_num: 0, request_id },
+                        ipc::CmFileOperation::RemoveFile { path: path_text.clone() }, "remove",
+                    ),
+                    _ => (
+                        ipc::FS::RemoveDir { path: path_text.clone(), id: job_id, recursive: kind == "remove_tree", request_id },
+                        ipc::CmFileOperation::RemoveDirectory { path: path_text.clone(), recursive: kind == "remove_tree" }, "remove",
+                    ),
+                };
+                let pause = if kind == "create_dir" {
+                    let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+                    let (resume_tx, resume_rx) = std_mpsc::sync_channel(1);
+                    let mut slot = CM_TEST_CREATE_DIR_PAUSE.get_or_init(|| StdMutex::new(None)).lock().unwrap();
+                    assert!(slot.is_none());
+                    *slot = Some(CmTestCreateDirPause {
+                        path: path_text.clone(), entered: entered_tx, resume: resume_rx,
+                    });
+                    Some((entered_rx, resume_tx))
+                } else { None };
+                peer.send(&Data::AuthorizedFS {
+                    cm_auth_token: "test-token".to_owned(), fs: command,
+                }).await.unwrap();
+                if let Some((entered, resume)) = pause {
+                    tokio::time::timeout(std::time::Duration::from_secs(2), entered).await.unwrap().unwrap();
+                    let early_log = lock_cm_egress_test(&ui.file_logs).iter().any(|(_, _, action, body)| {
+                        action != "transfer" && serde_json::from_str::<serde_json::Value>(body).unwrap()["path"] == path_text
+                    });
+                    let early_effect = path.exists();
+                    resume.send(()).unwrap();
+                    assert!(!early_log && !early_effect, "pending operation must not publish an outcome");
+                }
+                let Data::CmFileResponse(response) = tokio::time::timeout(
+                    std::time::Duration::from_secs(2), peer.next(),
+                ).await.unwrap().unwrap().unwrap() else { panic!("typed native operation response"); };
+                assert_eq!(response.conn_id, id);
+                assert_eq!(response.cm_auth_token, "test-token");
+                let ipc::CmFileResponseKind::Operation { request_id: actual_id, operation: actual, result } =
+                    *response.response else { panic!("operation result"); };
+                assert_eq!(actual_id, request_id);
+                assert_eq!(actual, operation);
+                assert_eq!(result.is_err(), denied);
+                if denied {
+                    assert_eq!(path.exists(), kind != "create_dir");
+                    if !directory { assert_eq!(fs::read(&path).unwrap(), b"retained"); }
+                    if kind == "remove_tree" { assert_eq!(fs::read(path.join("keep")).unwrap(), b"retained"); }
+                } else if kind == "create_dir" {
+                    assert!(path.is_dir());
+                } else {
+                    assert!(!path.exists());
+                    if kind == "rename" { assert_eq!(fs::read(&target).unwrap(), b"retained"); }
+                }
+                fs::set_permissions(&parent, fs::Permissions::from_mode(0o700)).unwrap();
+                expected.push((job_id, path_text, action, directory, result.err().unwrap_or_default()));
+            }
+        }
+        peer.send(&Data::Close).await.unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(2), &mut task).await.unwrap().unwrap();
+        drop((peer, observer));
+        assert_eq!(*lock_cm_egress_test(&ui.removed), vec![(id, owner, true)]);
+        assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
+        let logs = lock_cm_egress_test(&ui.file_logs);
+        let operations: Vec<_> = logs.iter().filter(|(_, _, action, _)| action != "transfer").collect();
+        println!("CM_FILE_LOG_OPERATIONS=observed expected=10 actual={} native_success=5 native_failure=5 owner=retired", operations.len());
+        assert_eq!(operations.len(), expected.len(), "native operation outcomes must reach CM UI exactly once");
+        for ((job_id, path, action, directory, error), (connection, generation, actual_action, body)) in
+            expected.iter().zip(operations) {
+            assert_eq!((*connection, *generation, actual_action.as_str()), (id, owner, *action));
+            let log: serde_json::Value = serde_json::from_str(body).unwrap();
+            assert_eq!(log["connId"], id);
+            assert_eq!(log["id"], *job_id);
+            assert_eq!(log["path"], *path);
+            assert_eq!(log["error"], *error);
+            if *action == "rename" { assert_eq!(log["newName"], "renamed"); }
+            else { assert_eq!(log["dir"], *directory); }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
     fn cm_read_tick_source_open(path: &std::path::Path) -> bool {
         std::fs::read_dir("/proc/self/fd").unwrap().any(|entry| {
             match std::fs::read_link(entry.unwrap().path()) {

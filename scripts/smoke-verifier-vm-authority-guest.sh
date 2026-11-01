@@ -5185,12 +5185,13 @@ run_focused_rust_tests() {
             memory=5g
             memory_bytes=5368709120
             source_fingerprints=(
-                Cargo.lock Cargo.toml src/lib.rs src/ui_cm_interface.rs src/ipc.rs
+                Cargo.lock Cargo.toml src/lib.rs src/ui_cm_interface.rs src/ipc.rs src/server/connection.rs
                 libs/hbb_common/src/fs.rs libs/hbb_common/src/bytes_codec.rs
                 scripts/run-cm-file-log-tests.sh scripts/linux-parent-test-build.sh
             )
             required_tests=(
                 ui_cm_interface::tests::cm_file_log_reports_native_read_outcomes
+                ui_cm_interface::tests::cm_file_log_reports_native_operation_outcomes
             )
         elif [ "$RUST_TEST_PROFILE" = cm-read-tick ]; then
             container_name=rustdesk-cm-read-tick-tests
@@ -7886,7 +7887,7 @@ PY
             || fail 'file-receive parent artifact or named outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = cm-file-log ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'CM file log summary count differs'
-        [ "$(grep -Ec '^CM_FILE_LOG_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=1 groups=1 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^CM_FILE_LOG_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=2 groups=1 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CM_FILE_LOG_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'CM file log artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = cm-read-tick ]; then
@@ -8757,9 +8758,9 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = cm-file-log ]; then
-            grep -E '^test ui_cm_interface::tests::cm_file_log_.* \.\.\. ok$|^CM_FILE_LOG_(ARTIFACT|BUILD|CASE)=' "$output"
-            [ "$tests_passed" -eq 1 ] || fail 'CM file log total differs'
-            printf 'CM_FILE_LOG_VM=pass commit=%s tree=%s tests=1 target=linux-x86_64 scope=production-cm-terminal-logs-and-native-unix-responses installed=unexecuted rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            grep -E '^test ui_cm_interface::tests::cm_file_log_.* \.\.\. ok$|^CM_FILE_LOG_(ARTIFACT|BUILD|CASE|OPERATIONS)=' "$output"
+            [ "$tests_passed" -eq 2 ] || fail 'CM file log total differs'
+            printf 'CM_FILE_LOG_VM=pass commit=%s tree=%s tests=2 target=linux-x86_64 scope=production-cm-terminal-logs-and-native-unix-responses installed=unexecuted rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = cm-read-tick ]; then
             grep -E '^test ui_cm_interface::tests::cm_read_tick_.* \.\.\. ok$|^CM_READ_TICK_(ARTIFACT|BUILD|BEFORE|CURRENT|REFUSAL)=' "$output"
@@ -11836,7 +11837,7 @@ run_flutter_model_tests() {
             memory=1792m
             memory_bytes=1879048192
             result_prefix=FLUTTER_FILE_PROGRESS_TEST_JSON
-            expected_result='suites=1 tests=50'
+            expected_result='suites=1 tests=52'
         elif [ "$FLUTTER_TEST_PROFILE" = connect-password ]; then
             memory=3g
             memory_bytes=3221225472
@@ -13539,7 +13540,7 @@ run_flutter_model_tests() {
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = file-progress ]; then
-        printf 'FLUTTER_FILE_PROGRESS_TESTS_VM=pass commit=%s tree=%s suites=1 tests=50 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-file-progress-tests cleanup=joined\n' \
+        printf 'FLUTTER_FILE_PROGRESS_TESTS_VM=pass commit=%s tree=%s suites=1 tests=52 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-file-progress-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

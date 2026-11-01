@@ -966,6 +966,8 @@ FILE_COMMAND_TESTS = {
     "new file job owners share admission with listing owners",
 }
 FILE_PROGRESS_TESTS = {
+    "CM filesystem action logs preserve success and failure outcomes",
+    "CM failed directory removal preserves earlier child outcomes",
     "CM send waits for a terminal result after full byte progress",
     "CM receive waits for a terminal result after full byte progress",
     "CM terminal events preserve empty successes and native failures",

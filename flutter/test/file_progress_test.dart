@@ -87,6 +87,16 @@ class _CmRateHarness {
 
   CmFileLog job(int id) => model.currentJobTable.singleWhere((job) => job.id == id);
 
+  void action(String action, int id, String path, {String error = '', bool dir = false}) {
+    model.onFileTransferLog({
+      'id': '41', 'registry_generation': '$generation', 'action': action,
+      'log': jsonEncode({
+        'connId': 41, 'id': id, 'path': path, 'dir': dir,
+        'newName': 'renamed', 'error': error,
+      }),
+    });
+  }
+
   void dispose() {
     model.reconcileClients([]);
     ffi.serverModel.tabController.state.value.scrollController.dispose();
@@ -199,6 +209,42 @@ class _StatusHarness {
 
 
 void main() {
+  test('CM filesystem action logs preserve success and failure outcomes', () async {
+    final h = _CmRateHarness();
+    addTearDown(h.dispose);
+    await h.selectOwner();
+    var id = 0;
+    for (final action in ['create_dir', 'rename', 'remove']) {
+      for (final error in ['', 'Permission denied']) {
+        h.action(action, ++id, '/action-$id', error: error, dir: action == 'create_dir');
+        final row = h.model.currentJobTable.last;
+        expect(row.state, error.isEmpty ? JobState.done : JobState.error);
+        expect(row.err, error);
+      }
+    }
+    expect(h.model.currentJobTable, hasLength(6));
+    expect(h.ffi.serverModel.clients.single.unreadChatMessageCount.value, 6);
+  });
+
+  test('CM failed directory removal preserves earlier child outcomes', () async {
+    final h = _CmRateHarness();
+    addTearDown(h.dispose);
+    await h.selectOwner();
+    h.action('remove', 1, '/tree/removed');
+    h.action('remove', 2, '/tree/retained', error: 'Permission denied');
+    h.action('remove', 3, '/tree', error: 'Directory not empty', dir: true);
+    expect(h.model.currentJobTable.map((row) => row.id), [1, 2, 3]);
+    expect(h.job(2).state, JobState.error);
+    expect(h.job(3).state, JobState.error);
+    expect(h.ffi.serverModel.clients.single.unreadChatMessageCount.value, 3);
+    h.action('remove', 4, '/tree', dir: true);
+    expect(h.model.currentJobTable.map((row) => row.id), [2, 3, 4]);
+    expect(h.job(4).state, JobState.done);
+    expect(h.job(2).err, 'Permission denied');
+    expect(h.job(3).err, 'Directory not empty');
+    expect(h.ffi.serverModel.clients.single.unreadChatMessageCount.value, 3);
+  });
+
 
   for (final id in [1, 2]) {
     final direction = id.isEven ? 'receive' : 'send';

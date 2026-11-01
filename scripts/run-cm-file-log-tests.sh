@@ -12,8 +12,8 @@ source /source/scripts/linux-parent-test-build.sh
 build_linux_parent_test "$WORK" CM_FILE_LOG
 execution_started=$SECONDS
 timeout --signal=TERM --kill-after=5s 20s \
-    "$test_executable" ui_cm_interface::tests::cm_file_log_reports_native_read_outcomes \
-    --exact --color never --test-threads=1 --show-output
+    "$test_executable" ui_cm_interface::tests::cm_file_log_ \
+    --color never --test-threads=1 --show-output
 [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
-printf 'CM_FILE_LOG_ARTIFACT=pass sha256=%s executable=%s tests=1 groups=1 unchanged=before-after execution_seconds=%s\n' \
+printf 'CM_FILE_LOG_ARTIFACT=pass sha256=%s executable=%s tests=2 groups=1 unchanged=before-after execution_seconds=%s\n' \
     "$artifact_sha" "$test_executable" "$((SECONDS - execution_started))"

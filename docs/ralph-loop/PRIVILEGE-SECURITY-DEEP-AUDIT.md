@@ -127360,3 +127360,31 @@ https://www.x.org/archive/X11R7.5/doc/man/man3/XIQueryPointer.3.html.
 Retain exact remote pairs, all prior controls, five-second deadlines, the same
 authenticated connection/window, resource bounds and joined VM/RAM cleanup.
 No application source or artifact changes before the native result.
+
+Preparation `f8bf9f4119db2a876c8170042ebd37f4351013eb`, tree
+`6bfd7994048644020ceb6f4a0a4d4f5cb87fe66c`, passes all twenty-one cases in TUF
+`pgkRbf8KPn`. Exact command:
+`bash scripts/smoke-verifier-vm-authority.sh --linux-flutter-app-replay --app-commit cf43789491c88148650878052929eb76be28eaa4 --app-manifest-sha256 94941c425a12844e424c7ac903f8a84b93b19628f3ed391f29e77548e15f6d93 --engine-commit 63493887d7bf51c9ea7be8b03e7a4641dd40208f --engine-archive-sha256 e054196739ae571afafe532268dfffef958c1c69b708a25e09352770744a82d0 --engine-manifest-sha256 b78c72f5533657e6bce49ac89d289172aafcc925098651dc00e35537c0d30695 --mouse-input`.
+Both new outside-release cases observe the viewer pointer at window-relative
+y=750 beyond height=740, with the exact side button still held. Remote button
+8/9 releases arrive at controlled coordinates 320,479, and each following reentry
+click succeeds at 320,226. Case times are 73/73/25/21 ms for Back-outside/reentry
+and Forward-outside/reentry. All prior seventeen cases pass; all 42 button events
+have exact identity/order/pre-event state, both X servers finish each case with
+no held buttons, and the original viewer window/TCP connection remains. RSS
+357,744 to at most 360,000 KiB, threads at most +1 and descriptors unchanged at
+44 satisfy the existing short-workload bounds. No product correction is needed
+for this scenario. Physical devices, other boundaries/scales/layouts, overlapping
+owners, policy/focus/cancel/reconnect, installed/other-platform, latency/soak and
+current-release acceptance remain open; no independent park is resumed.
+
+The three native drivers compile twice identically; the app is unbuilt/unmodified.
+Outer acceptance is 106 seconds, supervisor lifetime 112.796 seconds. QEMU
+3876938 and wrapper 3875876 are absent; 3,010,609,152 peak RAM bytes retire and
+all four listener deltas are zero. Serial SHA-256:
+`c2d30222baf98ed9f088b0133298ca728fd450aa8bd208b0ade223b34589d631`.
+Eight files / 102,543 bytes are hash-verified on CTE/TUF, under
+`flutter-peer-presentation-*run.pgkRbf8KPn.*` and
+`.harness-state/side-outside-f8bf9f41/outer.log`. No owned VM remains. The current
+ledger replaces its seventeen-case snapshot with this accepted workload;
+historical receipts remain. Its fresh count follows.

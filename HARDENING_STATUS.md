@@ -604,7 +604,7 @@ Do not resume automatically. Work moved to the R-S11hj current-state ledger clea
 | Wheel event admission (`5c43899a`) | The handler requires a live input model, the current session/client and keyboard/mouse permission, then sends to the captured session. Camera/view-only refusals remain. At preparation `027c3cfa`, which only extracts the existing send for observation, three cases emit a wheel command after owner retirement, model disposal or permission refusal; 100 controls pass. The identical Linux Flutter shard passes all 103 cases after correction, plus three parser controls, including authorized retries, replacement input and ordinary direction/axis behavior. Conversion, acceleration and trackpad processing are unchanged. Final native sends and owner/policy inputs are controlled; actual close/UI/native peer timing, other platforms, fractional pixel-to-wheel conversion, R-S0/R-F5 and release acceptance remain OPEN. Each final host snapshot has one unattributed endpoint addition (baseline UDP; corrected loopback TCP); neither owner was inspected or changed. | `wheel-admission-50f81a78.json` |
 | Raw mouse cancellation and touch-source cleanup (`46ccfc52`) | RawPointerMouseRegion routes cancellation through the typed terminal path, and retained history releases buttons after touch-source changes. Rendered Flutter binding/hit-test cases cover normal cancel/touch switching; repeated/wrong/empty controls invoke the mounted Listener directly and observe final sends. Physical/native peer effects, relative mode and policy/focus/session/asynchronous ownership remain OPEN. | `mouse-cancel-46ccfc52.json` |
 | Windows absolute pointer coordinates (`9dfd6eb6`) | The Windows input path normalizes both axes with widened arithmetic, rejects invalid extents/outside coordinates before SendInput, and selects an integer inside each requested pixel's normalized bin. Negative monitor origins remain valid. The unchanged five-test Linux component check reproduces four baseline failures and passes after correction, including 535,116 pixel round trips and extreme origins, compiled with optimization and overflow checks disabled. Accepted run `xqETEKY6pJ` takes 60 outer seconds after repairing the missing harness network canary; product and tests are unchanged by that repair. QEMU joins and RAM scratch retires. Actual Windows compilation/input, DPI/topology changes, monitor gaps, installed/peer behavior and release acceptance remain OPEN. | Audit entry “2026-10-28 — user pivot to Windows pointer coordinates”; `android-rust-lifecycle-tests-run.xqETEKY6pJ.serial.log` |
-| Mouse releases outside the remote image (`25948e56`) | Absolute bounds allow all five individual releases while refusing outside presses/movement; obsolete coordinate button parameters are removed. Production coordinate/encoding cases with controlled Linux/Windows/macOS metadata observe final sends and retain snapping/tolerance/clamping controls. The Linux full-app mouse cohort below now observes left/middle/right release beyond the viewer window and successful reentry. Side buttons, physical devices, relative mode and policy/focus/cancel/reconnect/session ownership remain OPEN. | `mouse-release-outside-25948e56.json`; `mouse-outside-7ecdc2f0.json` |
+| Mouse releases outside the remote image (`25948e56`) | Absolute bounds allow all five individual releases while refusing outside presses/movement; obsolete coordinate button parameters are removed. Production coordinate/encoding cases with controlled Linux/Windows/macOS metadata observe final sends and retain snapping/tolerance/clamping controls. The Linux full-app mouse cohort below observes left/middle/right/back/forward release beyond the viewer window and successful reentry. Physical devices, relative mode and policy/focus/cancel/reconnect/session ownership remain OPEN. | `mouse-release-outside-25948e56.json`; native run `pgkRbf8KPn` |
 | VM storage observer retirement (`07951e38`) | The storage monitor skips only a vanished durable entry; other scan/owner/stop/resource failures refuse. Four UID4000 VM watch cases cover real staged socket/file deletion, permission failure and injected headroom, with actual QEMU join/RAM retirement. Memory and inner-receipt values are fixture-controlled, not real pressure or interrupted-QEMU proof. Limits/no-disk-fallback remain; complete timeout/owner-loss and media/Windows launcher acceptance remain OPEN. | `storage-watch-07951e38.json` |
 | VM supervisor cancellation (`59f691bb`, `0881465f`, `8413d5ab`) | Cancellation closes QMP admission and retains the exact child through TERM, five-second grace, pidfd KILL and join before waited-child accounting. Kernel/scheduler drain is not hard-bounded; escalation precedes the outer ten-second kill window, and guest fixtures retain their 30-second budget. Real-QEMU observations cover ordinary interruption (QEMU0/outer130), a stopped child plus supervisor TERM (QEMU−9 after 5.076s; expected outer1), and natural expiry of the unchanged 150-second production timeout at source `c1565f41` (timeout124/wrapper1, joined QEMU0). The latter stops only the owned QEMU by pidfd, leaves it stopped through a later observation and sends no cleanup signal; GNU timeout supplies TERM/CONT. It is an accepted timeout/refusal scenario, not a completed token workload or forced-KILL proof. Its storage lifetime is 152.699s; bounded RAM scratch peaks at 401,342,464 bytes and is retired. The exact 16-node diagnostic root is retired after terminal/join and retained evidence. Owning-PTY and natural-timeout continuation remain distinct from the forced-KILL case. Source, deadlines and resource caps are unchanged. Real-QEMU early startup/handler-setup failure, abrupt supervisor loss, failed continuation, kernel-stalled drain, media/Windows storage and full R-S0/R-F5 acceptance remain OPEN. | `vm-supervisor-cancel-59f691bb.json`, `vm-startup-cancel-0881465f.json`, `qemu-interrupt-observation-8413d5ab.json`, `qemu-stopped-cancel-48d1285e.json`, `qemu-outer-timeout-c1565f41.json` |
 | VM supervisor early startup (`38067602`) | The shared runner installs cancellation handlers before creating a child and owns both under one cleanup scope. Cancellation during creation is latched until the returned child can be joined; partial handler setup restores the installed subset and creates no child. Two identical UID4000 guest regressions reproduce live orphaned children before correction, adopted and joined by the fixture; afterward both pass without fixture cleanup, alongside all eleven retained watch/supervisor/startup controls. These use native process signals/pidfds/waits with controlled scheduling, a Python QMP child and an injected installation error. The actual enclosing QEMU runs exercise normal startup/join and RAM retirement only. Real-QEMU early cancellation/setup failures, abrupt supervisor loss, media/Windows storage and complete R-S0/R-F5 acceptance remain OPEN. | `qemu-early-startup-5be33145.json` |
@@ -2185,37 +2185,37 @@ cold R-B2/R-B10, independent-reproduction, or external-review obligations.
 
 **R-S19 — `AuthConnType` capability confinement (CWE-863).**
 
-**Linux remote mouse — seventeen full-app positive cases passed.**
-Harness `32b6b7b0`, run `kWVIdHQCnI`, reuses the complete `cf437894` app through
+**Linux remote mouse — twenty-one full-app positive cases passed.**
+Harness `f8bf9f41`, run `pgkRbf8KPn`, reuses the complete `cf437894` app through
 `--mouse-input`. After real password authentication, native viewer input produces
 the expected controlled-side left/middle/right clicks, a left-button drag and all
-four wheel directions. It additionally presses each of left/middle/right inside
+four wheel directions. It additionally presses each of left/middle/right/back/forward inside
 the image, observes the viewer pointer beyond the complete window with the button
 held, releases there and returns for another click. The native controlled-side
-release and reentry succeed in all three cases. Back/Forward additionally travel
+release and reentry succeed for all five buttons. Back/Forward additionally travel
 through the native GTK/platform-channel path, become held on both X servers,
-then release; a subsequent ordinary left click succeeds. All 34 button events have exact
+then release; a subsequent ordinary left click succeeds. All 42 button events have exact
 identity, order and pre-event state. Two separately observed drag movements retain
 the held button; XInput2 queries prove both displays finish each case with no held
 buttons, including those beyond core X11's five-button state mask. Quiet
 intervals reject extra pairs; window and authenticated TCP identity remain stable.
-The two side-button pairs take 21 ms each, including observed held state; the
-following left click takes 10 ms. These are native event observations, not
+Back/Forward outside-release cases take 73/25 ms, including initial press and
+movement; their reentry cases take 73/21 ms. These are native event observations, not
 input-to-visible-response or application navigation/drop/scroll outcomes.
-Viewer RSS grows at most 10,144 KiB, threads one
+Viewer RSS grows at most 2,256 KiB, threads one
 and descriptors zero in this short run.
 
 The app is unmodified; the native window, InputModel and receiver source files
 are byte-identical to that artifact. Later product edits concern connection-page
 restoration, file-job logging/rates and idle-timeout bounds. Small drivers compile
-twice identically. The 112.619-second supervisor lifetime joins the exact QEMU,
-retires 3,010,891,776 peak RAM bytes and leaves all four host listener deltas zero;
+twice identically. The 112.796-second supervisor lifetime joins the exact QEMU,
+retires 3,010,609,152 peak RAM bytes and leaves all four host listener deltas zero;
 the inner workload joins viewer/server/Xvfb/containers. The audit entry
-“2026-11-01 — user pivot; native mouse side-button delivery” retains the exact
-command, artifact identities and cleanup; eight raw evidence files total 101,761
+“2026-11-01 — native side-button release outside the viewer” retains the exact
+command, artifact identities and cleanup; eight raw evidence files total 102,543
 bytes, hash-verified on CTE/TUF. Earlier receipts `mouse-outside-7ecdc2f0.json` and
 `mouse-input-dcae70c7.json` remain historical evidence.
-No product defect or correction is claimed. Physical devices, side-button outside release,
+No product defect or correction is claimed. Physical devices,
 relative mode, other boundaries/scales/layouts, focus/cancel/reconnect ownership,
 application-specific outcomes, non-Remote refusal, installed privilege boundaries,
 current release artifacts, other platforms and sustained-use acceptance remain

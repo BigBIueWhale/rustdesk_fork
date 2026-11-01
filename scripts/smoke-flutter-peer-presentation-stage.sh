@@ -1151,6 +1151,14 @@ def marker(name):
         assert stream.read(7) == b'ready\n'
     return True
 
+def publish_marker(name):
+    temporary = coord / (name + '.tmp')
+    with os.fdopen(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), 'wb') as stream:
+        stream.write(b'ready\n')
+    rename = ctypes.CDLL(None, use_errno=True).renameat2
+    if rename(-100, os.fsencode(temporary), -100, os.fsencode(coord / name), 1) != 0:
+        raise OSError(ctypes.get_errno(), 'publish video observation')
+
 with contextlib.ExitStack() as cleanup:
     process = os.open(f'/proc/{pid}', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     cleanup.callback(os.close, process)
@@ -1162,6 +1170,62 @@ with contextlib.ExitStack() as cleanup:
     assert log_identity.st_uid == os.getuid() and log_identity.st_gid == os.getgid()
     counts = dict(capture=0, convert=0, encoded=0, pacing=0, long_wait=0)
     pending = b''
+    deliveries, queues, totals = {}, {}, {}
+
+    def observe_video_queue(line):
+        prefix = b'RUSTDESK_PRESENTATION_TRACE stage=server-video-'
+        if prefix not in line:
+            return
+        fields = dict(part.split(b'=', 1) for part in line.split(prefix, 1)[1].split()[1:])
+        connection = int(fields[b'connection'])
+        total = totals.setdefault(connection, dict(enqueued=0, complete=0, last_generation=0))
+        assert len(totals) <= 2 and connection > 0
+        if prefix + b'delivery ' in line:
+            assert set(fields) == {b'connection', b'event', b'source', b'display',
+                                   b'wire_generation', b'writer_complete', b'peer_received'}
+            assert fields[b'source'] == b'Monitor' and fields[b'display'] == b'0'
+            generation = int(fields[b'wire_generation'])
+            assert generation > 0
+            assert fields[b'writer_complete'] in (b'true', b'false')
+            assert fields[b'peer_received'] in (b'true', b'false')
+            observed = (generation, fields[b'writer_complete'] == b'true',
+                        fields[b'peer_received'] == b'true')
+            event = fields[b'event']
+            if event == b'enqueued':
+                assert connection not in deliveries, 'second video enqueued before exact completion'
+                assert observed == (generation, False, False) and generation > total['last_generation']
+                total['last_generation'] = generation
+                total['enqueued'] += 1
+                deliveries[connection] = observed
+            else:
+                previous = deliveries[connection]
+                assert previous[0] == generation
+                if event == b'writer-complete':
+                    assert not previous[1] and observed == (generation, True, previous[2])
+                    deliveries[connection] = observed
+                elif event == b'peer-received':
+                    assert not previous[2] and observed == (generation, previous[1], True)
+                    deliveries[connection] = observed
+                else:
+                    assert event == b'complete' and previous == observed == (generation, True, True)
+                    del deliveries[connection]
+                    total['complete'] += 1
+        else:
+            assert prefix + b'mailbox ' in line
+            assert set(fields) == {b'connection', b'offered_generation', b'displays', b'ready',
+                                   b'frames', b'protobuf_bytes', b'refresh'}
+            values = {key.decode(): int(value) for key, value in fields.items()}
+            assert values['offered_generation'] > 0
+            assert 0 <= values['frames'] + values['refresh'] == values['ready'] <= values['displays'] <= 1
+            assert values['frames'] in (0, 1) and values['refresh'] in (0, 1)
+            assert 0 <= values['protobuf_bytes'] <= 32 * 1024 * 1024
+            assert (values['protobuf_bytes'] > 0) == (values['frames'] == 1)
+            queue = queues.setdefault(connection, dict(samples=0, frames_peak=0,
+                                                       protobuf_bytes_peak=0, refresh_samples=0))
+            queue['samples'] += 1
+            queue['frames_peak'] = max(queue['frames_peak'], values['frames'])
+            queue['protobuf_bytes_peak'] = max(queue['protobuf_bytes_peak'], values['protobuf_bytes'])
+            queue['refresh_samples'] += values['refresh']
 
     def sample():
         global pending
@@ -1185,6 +1249,7 @@ with contextlib.ExitStack() as cleanup:
         pending = lines.pop()
         assert len(pending) <= 65536
         for line in lines:
+            observe_video_queue(line)
             for key, stage in (('capture', b'server-capture'), ('convert', b'server-convert'),
                                ('encoded', b'server-encoded-decode'), ('pacing', b'server-pacing')):
                 if b'RUSTDESK_PRESENTATION_TRACE stage=' + stage + b' display=0 ' in line:
@@ -1200,6 +1265,11 @@ with contextlib.ExitStack() as cleanup:
     time.sleep(1)
     baseline = sample()
     assert all(counts[key] >= 4 for key in ('capture', 'convert', 'encoded', 'pacing'))
+    assert len(deliveries) == 2 and set(deliveries) == set(queues) == set(totals)
+    assert all(value[1:] == (True, False) for value in deliveries.values())
+    frozen_deliveries = deliveries.copy()
+    initial_totals = {key: value.copy() for key, value in totals.items()}
+    initial_samples = {key: value['samples'] for key, value in queues.items()}
     initial = counts.copy()
     peak = baseline.copy()
     begin = time.monotonic()
@@ -1222,12 +1292,12 @@ with contextlib.ExitStack() as cleanup:
     assert delta['long_wait'] >= 2
     assert peak['threads'] <= baseline['threads'] + 8 and peak['fds'] <= baseline['fds'] + 16
     assert peak['rss_bytes'] <= baseline['rss_bytes'] + 128 * 1024 * 1024
-    temporary = coord / 'both.observed.tmp'
-    with os.fdopen(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), 'wb') as stream:
-        stream.write(b'ready\n')
-    rename = ctypes.CDLL(None, use_errno=True).renameat2
-    if rename(-100, os.fsencode(temporary), -100, os.fsencode(coord / 'both.observed'), 1) != 0:
-        raise OSError(ctypes.get_errno(), 'publish both-viewer observation')
+    assert deliveries == frozen_deliveries and totals == initial_totals
+    assert all(queues[key]['samples'] - initial_samples[key] >= 2 for key in queues)
+    stalled_samples = {key: value['samples'] for key, value in queues.items()}
+    print('FLUTTER_PEER_VIDEO_QUEUES_STALLED=' + json.dumps(
+        dict(deliveries=deliveries, queues=queues), sort_keys=True), flush=True)
+    publish_marker('both.observed')
     deadline = time.monotonic() + 15
     while not marker('healthy.observed'):
         assert time.monotonic() < deadline, 'first viewer did not recover'
@@ -1236,6 +1306,17 @@ with contextlib.ExitStack() as cleanup:
     sample()
     assert counts['capture'] - initial['capture'] - delta['capture'] >= 4
     assert counts['encoded'] - initial['encoded'] - delta['encoded'] >= 4
+    slow = [key for key in totals if totals[key] == initial_totals[key]]
+    healthy = [key for key in totals if totals[key]['complete'] - initial_totals[key]['complete'] >= 4]
+    assert len(slow) == len(healthy) == 1 and slow[0] != healthy[0]
+    assert deliveries[slow[0]] == frozen_deliveries[slow[0]]
+    assert queues[slow[0]]['samples'] - stalled_samples[slow[0]] >= 8
+    assert all(value['frames_peak'] == 1 and value['refresh_samples'] > 0 for value in queues.values())
+    print('FLUTTER_PEER_VIDEO_QUEUES_RECOVERED=' + json.dumps(
+        dict(slow=slow[0], healthy=healthy[0], deliveries=deliveries, queues=queues,
+             totals=totals), sort_keys=True), flush=True)
+    publish_marker('server.observed')
+    print('FLUTTER_PEER_VIDEO_QUEUES_OK peers=2 in_flight_max=1 pending_frames_max=1 replacement=observed slow_enqueue=blocked healthy_progress=observed')
     print('FLUTTER_PEER_ALL_STALLED_OK capture=bounded encode=bounded cpu=bounded resources=bounded recovery=observed')
 PY
         all_stalled_observed=1

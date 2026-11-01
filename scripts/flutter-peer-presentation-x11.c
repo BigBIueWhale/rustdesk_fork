@@ -3341,7 +3341,9 @@ static int exercise_viewer_isolation(Display *source, Display *display, ViewerWi
             int observed = isolation_marker(coord, "healthy.observed", 0);
             uint64_t elapsed = monotonic_millis() - held;
             if (observed < 0 || elapsed > 40000U) goto out;
-            if (observed == 1 && elapsed >= 10000U) break;
+            int server_observed = isolation_marker(coord, "server.observed", 0);
+            if (server_observed < 0) goto out;
+            if (observed == 1 && server_observed == 1 && elapsed >= 10000U) break;
         }
         if (isolation_marker(coord, "healthy.observed", 0) != 1 ||
             session_socket_counts(&connected, &listeners) != 0 || connected != 4U || listeners != 1U ||

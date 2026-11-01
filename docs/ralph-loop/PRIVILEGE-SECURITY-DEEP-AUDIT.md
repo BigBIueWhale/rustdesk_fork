@@ -129078,3 +129078,24 @@ second enqueue before exact completion. Existing pixel and process checks remain
 The build uses the authenticated engine `ddb1541d`, admitted bounded RAM scratch
 and the existing isolated producer. Compilation and runtime evidence are pending;
 this instrumentation itself does not close the release requirement.
+
+The first producer refused before VM creation because its canonical app root
+already contained two retained generations. Under the shared run lock, both
+fully verified generations (`16ba2033`, `a630f880`) were renamed without copying
+to private `video-mailbox-baselines-0243c010`; their identities and manifest
+hashes are recorded in `video-mailbox-baselines-0243c010.json`. Restore both
+unchanged canonical parents after the admitted producer terminates. Three total
+generations remain below the four-generation artifact cap. No launcher or
+storage-admission rule changes. The admitted run is `UL7aM92G7H`.
+
+The native observer reconstructs enqueue, writer, peer-receipt and completion
+events for both exact connections, refusing overlapping deliveries or mismatched
+generations. During the existing eight-second all-stalled observation neither
+delivery may progress despite new mailbox offers. After one viewer resumes,
+its completions must advance while the other exact pending delivery remains
+unchanged and its mailbox continues replacing candidates with refresh state.
+Every sampled single-display mailbox must retain at most one frame or refresh
+marker and at most 32 MiB of protobuf bytes. The slow viewer waits for the
+server observer before resuming, preventing final sampling from racing resume.
+Shell syntax, embedded Python parsing and diff hygiene pass; native acceptance
+and the diagnostic app build remain pending.

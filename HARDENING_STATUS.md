@@ -49,7 +49,10 @@ p95/p99 drift 9/7 ms, with bounded resources and joined cleanup. Its observer
 omitted final-window intervals; the R-F5 entry below retains that limitation.
 The exact historical/corrected observer comparison now reproduces seven accounting
 discrepancies and passes all ten corrected cases. Corrected full-duration display
-acceptance and the separately running input soak remain pending.
+acceptance remains pending. The input guest completes 7,320 trials with 61–153 ms
+responses and maximum p95/p99 drift 8/9 ms, but outer exit is one: admitted host
+sources were edited during execution. Guest observations are retained; canonical
+input-soak acceptance remains OPEN pending a run with an unchanged host checkout.
 
 **Linux shared-capture queues and recovery verified (2026-11-01):** Two complete
 Flutter viewers retain their connections through simultaneous suspension and
@@ -3314,9 +3317,33 @@ discrepancies and three passing controls; all ten corrected cases pass, includin
 the 1,000/1,001 ms tail boundary and last required acquisition before/at/after
 the deadline. QEMU joins, RAM retires and three decoded listener deltas are zero.
 Receipt: `soak-accounting-ab-bf2d1147.json`. This is native controller accounting,
-not an additional full-peer run. Corrected full-duration display acceptance and
-the separately running input soak remain pending; physical scanout, impaired
-recovery, installed artifacts and other-platform obligations remain OPEN.
+not an additional full-peer run. Corrected full-duration display acceptance
+remains pending; physical scanout, impaired recovery, installed artifacts and
+other-platform obligations remain OPEN.
+
+**Healthy Linux input soak — guest observations; outer acceptance OPEN.** CTE
+`xmA4oGPG17`, harness `23739a5e`, reuses app `0243c010` / engine `ddb1541d`.
+All 7,320 unique XTEST requests receive matching viewer-root pixels within
+61–153 ms over a four-minute baseline and four additional hours. Recomputing
+all 61 windows from raw measurements gives p95 112–123 ms and p99 115–135 ms;
+the fixed baseline is 115/126 ms, with maximum upward drift 8/9 ms. Viewer
+descriptors stay at 46, RSS spans 364,900–392,140 KiB and threads 51–53.
+The server records 14,636 samples over 14,640,850 ms, with peak window CPU
+1,360 ms and resources within their predeclared bounds. Guest peers join;
+wrapper/QEMU are absent, RAM retires and all four decoded listener deltas are
+zero. Scratch peaks at 3,023,826,944 bytes within 7 GiB.
+
+Outer exit is **one**, because the host launcher, presentation controller and
+this ledger changed after source admission. The sealed guest archive preserves
+the measured execution but does not satisfy the host's unchanged-source gate;
+later postflight checks did not complete. Receipt
+`input-soak-guest-evidence-23739a5e.json` explicitly preserves that failure and
+the raw measurements. Exact retained diagnostics are reconciled and retired in
+`input-soak-private-retired-23739a5e.json` (5,777,636 regular-file bytes).
+Canonical acceptance requires a fresh unchanged-checkout run using the same
+authenticated app/engine. No product defect is demonstrated by this host
+source-consistency failure. Physical scanout, impairment recovery, installed
+artifacts and other-platform acceptance remain OPEN.
 
 **Shared R-F5 acceptance remains OPEN.** Execute exact current peer artifacts through
 capture, encode, transport, decode and actual presentation; measure frame age and

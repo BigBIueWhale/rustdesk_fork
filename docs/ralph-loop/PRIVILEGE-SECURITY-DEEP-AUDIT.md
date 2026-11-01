@@ -129595,3 +129595,45 @@ the independent original CTE input soak rather than relaunching either. At the
 latest CTE checkpoint 5,340 requests complete, worst response remains 146 ms,
 44 complete windows retain maximum drift 5/6 ms and 46 viewer descriptors.
 These are live checkpoints, not terminal acceptance; R-F5 remains OPEN.
+
+### 2026-11-01 — completed input observations; host source gate refuses acceptance
+
+CTE `xmA4oGPG17` completes every one of 7,320 input requests and all 61 windows
+under sealed harness `23739a5e`, app `0243c010` and engine `ddb1541d`.
+Independent recomputation from the retained individual measurements gives
+61–153 ms responses, p95 112–123 ms and p99 115–135 ms. The fixed baseline
+115/126 ms yields maximum drift 8/9 ms. Every request/identity is consecutive;
+each records eight or nine quiet observations before input. All 244 progress
+records satisfy the declared viewer resource limits; FDs remain 46. Server
+duration is 14,640,850 ms with 14,636 samples, 244 CPU windows and maximum
+window CPU 1,360 ms. Guest peer/join receipts complete.
+
+The outer harness exits **one** at its unchanged-source postcondition. Contrary
+to the earlier working assumption, sealing the guest archive does not permit
+editing the host checkout during this run. The checked host launcher,
+presentation controller and HARDENING_STATUS.md all changed while it was live.
+These edits caused the acceptance failure; later postflight checks did not run.
+Do not relabel the guest observations as canonical acceptance or relax the gate.
+Receipt `input-soak-guest-evidence-23739a5e.json` is 33,296 bytes, SHA-256
+`f65cc157cdc4077f7c07d9760ec3e6ed4411709dfbd2999529c30b012140c06d`.
+It binds the failed outer log, changed source hashes, sealed guest provenance,
+all seven raw evidence files, recomputed windows and exact retained inventory.
+
+Wrapper 2186453 and QEMU 2188072 are absent; RAM `run.c1qisuqx` (`29:9906`)
+is retired and all four strictly decoded listener deltas are zero. Scratch
+peaks at 3,023,826,944 bytes within 7 GiB. Under the evidence and RAM root
+locks, the unchanged private inventory (`66306:105155262`) is revalidated and
+retired through no-follow directory descriptors: 28 files, 5,777,636 bytes,
+13 directories and one package symlink. Canonical inputs and raw evidence
+remain. Receipt `input-soak-private-retired-23739a5e.json` is 649 bytes,
+SHA-256 `4fc5a3b5d6cd9a94fe2fd5e857b25257f03f9f3f0da5fd4d0ac5e221714ac9c2`.
+
+The next decisive input check is the same full-duration scenario with a frozen
+host checkout, after this ledger update and its fresh count. Reuse the existing
+authenticated app/engine; no product rebuild or repeated native accounting
+fixture is needed. Freeze the complete admitted checkout and its Git state
+through terminal evidence and cleanup; record live progress only in bounded
+ignored evidence. TUF's already-running corrected display soak remains on
+unchanged `06aab2df`, with 73 complete minutes, maximum sampled age 335 ms and
+no observer failure. Do not sync, edit or interrupt that checkout while live.
+Both canonical long-session acceptance conditions remain OPEN.

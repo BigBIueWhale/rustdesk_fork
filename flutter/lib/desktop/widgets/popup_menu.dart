@@ -298,13 +298,31 @@ class MenuEntryButton<T> extends MenuEntryBase<T> {
   List<mod_menu.PopupMenuEntry<T>> build(
       BuildContext context, MenuConfig conf) {
     return [
-      mod_menu.PopupMenuItem(
-        padding: EdgeInsets.zero,
+      _ButtonMenuEntry<T>(
         height: conf.height,
         child: _buildChild(context, conf),
       )
     ];
   }
+}
+
+class _ButtonMenuEntry<T> extends mod_menu.PopupMenuEntry<T> {
+  const _ButtonMenuEntry({required this.height, required this.child});
+
+  @override
+  final double height;
+  final Widget child;
+
+  @override
+  bool represents(T? value) => false;
+
+  @override
+  State<_ButtonMenuEntry<T>> createState() => _ButtonMenuEntryState<T>();
+}
+
+class _ButtonMenuEntryState<T> extends State<_ButtonMenuEntry<T>> {
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 class CustomPopupMenuTheme {

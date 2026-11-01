@@ -126592,3 +126592,22 @@ behavioral workload with failed harness acceptance. A fresh candidate run will
 complete the required checks. QEMU 3795852 and wrapper 3795337 exit after
 247.436 seconds, 4,525,199,360 peak RAM bytes retire, and all four listener deltas
 are zero. Retained diagnostics are `cm-state-count-refusal.Uoq3nXCosw`.
+
+Final verification source `8bb7629505be00a0977d4b28825b804fd77513a8`, TUF
+`ZDhvaDgxX0`, passes all 50 cases, the three scoped parser controls and complete
+source-copy postconditions with fresh bindings. Product and test bodies are
+identical to `830abf3c`; only the expected result inventory/control counts changed.
+Both formerly failing direction cases pass, including later clamping, stale-owner
+rejection, explicit completion and independent-job checks. The terminal-only
+empty/open-error and finalization-failure controls also pass. This proves model
+state behavior with controlled native-shaped events, not live transfer/CM-page
+rendering, translated labels, native event delivery or installed acceptance.
+Command: `bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests
+--file-progress`. Other native logging omissions and user parks remain open.
+
+QEMU 3798231 and wrapper 3797686 exit after 269.426 seconds; the 4,508,880,896-byte
+peak RAM workspace retires, and all four listener deltas are zero. Candidate
+serial SHA-256: `5d6281967f28d5335baa267a85348cf8b15ede14d829288fc5d85c48fc7fe238`.
+The three runs retain 24 raw/closure files totaling 424,958 bytes, hash-verified
+on CTE and TUF. No owned VM remains live. The next concrete reporting gap is the
+common direct sender's omitted initial-open error log.

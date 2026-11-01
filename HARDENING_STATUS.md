@@ -17278,10 +17278,25 @@ The complete Linux parent library compiles with fresh bindings; actual files and
 Unix IPC run, while login authority and the UI callback receiver are fixtures.
 Runs `Kf90bm2SUB` / `y6mWjLeFRf` join, retire bounded RAM and retain zero listener
 deltas. Exact source/artifact and cleanup evidence is in the audit entry
-“2026-11-01 — CM transfer terminal-outcome reporting”. Dart's byte-count completion
-inference, direct-send initial-open logging, CM confirmation errors, actual UI,
+“2026-11-01 — CM transfer terminal-outcome reporting”. Direct-send initial-open
+logging, CM confirmation errors, actual UI,
 remote durable receipt and native Windows/installed acceptance remain OPEN.
 The CM scheduling and other user parks are unchanged.
+
+**CM completion state (`830abf3c`) — Dart model A/B verified.**
+Full or clamped byte progress no longer marks a transfer done. Positive progress
+remains active until the existing explicit native done/cancel/error mapping applies.
+The unchanged-product baseline passes 48 cases and fails both send/receive checks
+at 100% progress. The identical 50-case suite passes on the candidate, including
+over-total clamping, stale completion refusal, valid completion, independent jobs,
+empty terminal success and explicit finalization/open errors. Three parser controls,
+fresh bindings and exact source-copy postconditions also pass. Server/chat owners
+and event values are controlled inputs; full CM rendering, native event transport
+and installed/platform acceptance remain OPEN. Runs `2bghbdvf4m` / `ZDhvaDgxX0`
+join and retire bounded RAM with zero listener deltas. The audit entry
+“2026-11-01 — CM completion requires an explicit native result” records evidence
+and the intermediate stale result-inventory refusal. Other producer logging gaps
+above, end-to-end acceptance and existing user parks remain open.
 
 **Folder-summary admission (`513aa1b5`) — Dart model/widget A/B verified; native integration OPEN.**
 `JobController.updateFolderFiles` admits a bounded three-field JSON object, positive

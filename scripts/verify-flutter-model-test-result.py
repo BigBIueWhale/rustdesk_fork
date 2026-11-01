@@ -966,6 +966,9 @@ FILE_COMMAND_TESTS = {
     "new file job owners share admission with listing owners",
 }
 FILE_PROGRESS_TESTS = {
+    "CM send waits for a terminal result after full byte progress",
+    "CM receive waits for a terminal result after full byte progress",
+    "CM terminal events preserve empty successes and native failures",
     "CM transfer speed uses elapsed seconds",
     "CM transfer speeds keep independent sample windows",
     "CM transfer speed starts with each job and rebases counters",

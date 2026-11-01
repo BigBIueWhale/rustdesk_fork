@@ -126581,3 +126581,14 @@ remains `inProgress` until the existing explicit done/cancel/error mapping appli
 Zero-byte waiting, progress clamping, rate samples and exact-owner admission are
 unchanged. The same 50-case suite now checks the candidate. Remaining producer
 error-log omissions and target-native/full UI acceptance stay open.
+
+Initial candidate `830abf3c`, TUF `Uoq3nXCosw`, passes all 50 Dart cases and
+three parser controls, then the result parser refuses the new inventory because
+its named-case set still has 47 entries. The three new names and both parser
+control totals were omitted from preparation; add them without changing product
+or test bodies. Failure diagnostics print the completed event stream twice;
+that is 50 tests, not 100. Source postconditions did not run, so this is a passed
+behavioral workload with failed harness acceptance. A fresh candidate run will
+complete the required checks. QEMU 3795852 and wrapper 3795337 exit after
+247.436 seconds, 4,525,199,360 peak RAM bytes retire, and all four listener deltas
+are zero. Retained diagnostics are `cm-state-count-refusal.Uoq3nXCosw`.

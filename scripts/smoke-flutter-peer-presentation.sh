@@ -146,7 +146,7 @@ elif [ "$PEER_SCENARIO" = mouse-input ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
-  VIEWER_RESULT='viewer=joined xvfb=joined mouse_cases=17 stable_connection=true resources=bounded'
+  VIEWER_RESULT='viewer=joined xvfb=joined mouse_cases=21 stable_connection=true resources=bounded'
 elif [ "$PEER_SCENARIO" = keyboard-retirement ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

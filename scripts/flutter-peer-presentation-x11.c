@@ -2544,19 +2544,21 @@ finished:
     return result;
 }
 
-static int wait_mouse_drag(Display *source, unsigned int held, int previous_x, int previous_y,
+static int wait_mouse_drag(Display *source, unsigned int button, int previous_x, int previous_y,
                            int moved, int *x, int *y) {
     uint64_t deadline = monotonic_millis() + 5000U;
+    unsigned int held = button <= 5U ? 1U << (button + 7U) : 0U;
     do {
         unsigned int mask;
         if (mouse_snapshot(source, x, y, &mask) != 0) return -1;
-        if (mask == held && (!moved || (*x >= previous_x + 10 && *y >= previous_y + 10))) {
+        if (mask == held && mouse_buttons_match(source, button) &&
+            (!moved || (*x >= previous_x + 10 && *y >= previous_y + 10))) {
             return 0;
         }
         if (sleep_millis(10U) != 0) return -1;
     } while (monotonic_millis() < deadline);
-    fprintf(stderr, "FLUTTER_PEER_X11_FAIL mouse drag held=%u previous=%d,%d actual=%d,%d\n",
-            held, previous_x, previous_y, *x, *y);
+    fprintf(stderr, "FLUTTER_PEER_X11_FAIL mouse drag button=%u previous=%d,%d actual=%d,%d\n",
+            button, previous_x, previous_y, *x, *y);
     return -1;
 }
 
@@ -2575,6 +2577,8 @@ static int exercise_mouse_input(Display *source, Display *display,
         {"right-release-outside", 3U, MOUSE_EXIT}, {"right-reentry", 3U, MOUSE_REENTER},
         {"back-click", 8U, MOUSE_SIDE}, {"forward-click", 9U, MOUSE_SIDE},
         {"left-after-side-buttons", 1U, MOUSE_CLICK},
+        {"back-release-outside", 8U, MOUSE_EXIT}, {"back-reentry", 8U, MOUSE_REENTER},
+        {"forward-release-outside", 9U, MOUSE_EXIT}, {"forward-reentry", 9U, MOUSE_REENTER},
     };
     Window root = RootWindow(source, DefaultScreen(source)), child;
     unsigned char mapping[32];
@@ -2638,19 +2642,19 @@ static int exercise_mouse_input(Display *source, Display *display,
             printf("FLUTTER_PEER_MOUSE_SIDE_HELD sequence=%u button=%u native_state=both\n",
                    i + 1U, button);
         } else if (cases[i].action == MOUSE_DRAG) {
-            if (wait_mouse_drag(source, bit, start_x, start_y, 0, &end_x, &end_y) != 0) goto finished;
+            if (wait_mouse_drag(source, button, start_x, start_y, 0, &end_x, &end_y) != 0) goto finished;
             for (int step = 1; step <= 2; ++step) {
                 int previous_x = end_x, previous_y = end_y;
                 if (XTestFakeMotionEvent(display, DefaultScreen(display),
                         origin_x + step * 40, origin_y + step * 30, CurrentTime) == 0) goto finished;
                 XSync(display, False);
-                if (wait_mouse_drag(source, bit, previous_x, previous_y, 1, &end_x, &end_y) != 0) goto finished;
+                if (wait_mouse_drag(source, button, previous_x, previous_y, 1, &end_x, &end_y) != 0) goto finished;
             }
         } else if (cases[i].action == MOUSE_EXIT) {
             XWindowAttributes attributes, root_attributes;
             int window_x, window_y;
             Window actual_root, actual_child;
-            if (wait_mouse_drag(source, bit, start_x, start_y, 0, &end_x, &end_y) != 0 ||
+            if (wait_mouse_drag(source, button, start_x, start_y, 0, &end_x, &end_y) != 0 ||
                 XGetWindowAttributes(display, viewer->window, &attributes) == 0 ||
                 XGetWindowAttributes(display, attributes.root, &root_attributes) == 0 ||
                 !XTranslateCoordinates(display, viewer->window, attributes.root, 0, 0,
@@ -2665,9 +2669,10 @@ static int exercise_mouse_input(Display *source, Display *display,
             if (!XQueryPointer(display, viewer->window, &actual_root, &actual_child,
                                &local_x, &local_y, &window_x, &window_y, &mask) ||
                 local_x != outside_x || local_y != outside_y ||
-                window_y < attributes.height || mask != bit) goto finished;
+                window_y < attributes.height || mask != bit ||
+                !mouse_buttons_match(display, button)) goto finished;
             printf("FLUTTER_PEER_MOUSE_OUTSIDE_HELD sequence=%u button=%u viewer_x=%d viewer_y=%d "
-                   "relative_y=%d window_height=%d held=%u\n", i + 1U, button,
+                   "relative_y=%d window_height=%d held=%u xi_button_held=true\n", i + 1U, button,
                    outside_x, outside_y, window_y, attributes.height, mask);
         }
         if (XTestFakeButtonEvent(display, button, False, CurrentTime) == 0) goto finished;
@@ -3405,8 +3410,8 @@ int main(int argc, char **argv) {
             puts("FLUTTER_PEER_MOUSE_RETIREMENT_OK remote_buttons=3 local_button=preserved "
                  "viewer_exit=abrupt native_releases=true fixture_buttons_released=true");
         } else if (mouse_input) {
-            puts("FLUTTER_PEER_MOUSE_INPUT_OK cases=17 button_events=34 drag_moves=2 "
-                 "wheel_directions=4 outside_releases=3 reentries=3 side_buttons=2 actual_peer=true native_events=true released=both "
+            puts("FLUTTER_PEER_MOUSE_INPUT_OK cases=21 button_events=42 drag_moves=2 "
+                 "wheel_directions=4 outside_releases=5 reentries=5 side_buttons=2 actual_peer=true native_events=true released=both "
                  "same_window=true stable_connection=true resources=bounded");
         } else if (keyboard_retirement) {
             puts("FLUTTER_PEER_KEYBOARD_RETIREMENT_OK remote_keys=2 local_key=preserved "

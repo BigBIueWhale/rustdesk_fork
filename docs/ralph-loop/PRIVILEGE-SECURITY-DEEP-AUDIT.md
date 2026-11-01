@@ -127334,3 +127334,29 @@ retire and all three listener deltas are zero. Both runs' fifteen bounded eviden
 files total 203,556 bytes, hash-verified on CTE/TUF. This audit-only receipt leaves
 the counted ledger unchanged. The broad release goal remains open after this
 native input-cleanup checkpoint, with no owned VM live.
+
+### 2026-11-01 — native side-button release outside the viewer
+
+Previous goal turn: PROGRESS. Abrupt viewer exit releases three owned buttons
+while preserving a distinct local button. Current CTE/TUF match clean pushed
+`cc9ce2e8`, the shared VM lock is idle and no workspace remains. Continue the
+explicit R-F1/R-S0 mouse gap: Back/Forward release after the pointer leaves the
+whole viewer window, followed by working input on reentry. A stuck remote button
+after ordinary pointer movement is more consequential than more in-image clicks.
+All independent parks remain parked; this does not resume shared-key ownership.
+
+The native window enables GTK press/release events and forwards buttons 8/9 to
+the engine's dedicated channel. InputModel retains each press with its session;
+leaving the image clears the active model for new presses but does not transfer
+an existing press's release to another model. GTK documents release-mask admission
+and routing to the grab widget:
+https://docs.gtk.org/gtk3/signal.Widget.button-release-event.html.
+This source path is unchanged from app `cf437894`; behavior still needs native
+evidence. Extend `--mouse-input` from seventeen to twenty-one cases by adding
+Back/Forward outside release and reentry. Use complete XInput2 button state for
+the pre-movement remote hold and for the viewer's hold beyond its window, because
+core X11 button masks cannot establish buttons 8/9:
+https://www.x.org/archive/X11R7.5/doc/man/man3/XIQueryPointer.3.html.
+Retain exact remote pairs, all prior controls, five-second deadlines, the same
+authenticated connection/window, resource bounds and joined VM/RAM cleanup.
+No application source or artifact changes before the native result.

@@ -18,7 +18,7 @@ MENU_ACTION=pointer
 [ "$PEER_SCENARIO" != credential-menu-accessible ] || MENU_ACTION=accessible
 readonly MENU_ACTION
 case "$PEER_SCENARIO" in
-  session-close|background-close) EXPECTED_RESTARTS=0 ;;
+  session-close|background-close|credential-retry) EXPECTED_RESTARTS=0 ;;
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
   viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation|credential-forget|credential-menu|credential-menu-accessible) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
@@ -1184,13 +1184,18 @@ PY
     else
       [ "$completed_restarts" -eq "$EXPECTED_RESTARTS" ] \
         || fail "successful viewer completed only $completed_restarts server restarts"
-      if [ "$ROTATE_CREDENTIAL" -eq 1 ]; then
-        [ "$credential_rotated" -eq 1 ] || fail 'credential rotation did not execute'
+      if [ "$ROTATE_CREDENTIAL" -eq 1 ] || [ "$PEER_SCENARIO" = credential-retry ]; then
+        [ "$ROTATE_CREDENTIAL" -eq 0 ] || [ "$credential_rotated" -eq 1 ] \
+          || fail 'credential rotation did not execute'
         rotation_events="$(emit_runtime_logs SERVER "$HOME/.local/share/logs" 2>&1 \
           | sed -n -E 's/^.*R-S10\/R-T12 security summary .*shed=([0-9]+) rate_limited=([0-9]+) key_confirmation_failures=([0-9]+) recent_src=Some\(127\.0\.0\.1\)$/\1 \2 \3/p')"
         [ "$rotation_events" = '0 0 1' ] \
           || fail 'server did not record exactly one key-confirmation refusal'
-        echo 'FLUTTER_PEER_OLD_CREDENTIAL_REFUSED_OK key_confirmation_failures=1 rate_limited=0 shed=0'
+        if [ "$PEER_SCENARIO" = credential-retry ]; then
+          echo 'FLUTTER_PEER_WRONG_CREDENTIAL_REFUSED_OK key_confirmation_failures=1 rate_limited=0 shed=0'
+        else
+          echo 'FLUTTER_PEER_OLD_CREDENTIAL_REFUSED_OK key_confirmation_failures=1 rate_limited=0 shed=0'
+        fi
       fi
     fi
     "$READY" --stop "$SOURCE_PID" "$SOURCE_START"
@@ -1328,6 +1333,7 @@ PY
     [ "$PEER_SCENARIO" != view-scaling ] || controller_args+=(--view-scaling)
     [ "$PEER_SCENARIO" != session-close ] || controller_args+=(--session-close)
     [ "$PEER_SCENARIO" != background-close ] || controller_args+=(--background-close)
+    [ "$PEER_SCENARIO" != credential-retry ] || controller_args+=(--credential-retry)
     [ "$PEER_SCENARIO" != network-impairment ] || controller_args+=(--network-impairment)
     [ "$PEER_SCENARIO" != network-loss ] || controller_args+=(--network-loss)
     [ "$PEER_SCENARIO" != clipboard-text ] || controller_args+=(--clipboard-text)
@@ -1412,6 +1418,12 @@ PY
       elif [ "$PEER_SCENARIO" = credential-menu ] || [ "$PEER_SCENARIO" = credential-menu-accessible ]; then
         viewer_result='viewer=joined xvfb=joined credential_menu=passed generations=3 password_entries=1 saved_credential=empty next_prompt=required'
       fi
+    elif [ "$PEER_SCENARIO" = credential-retry ]; then
+      [ "$(grep -Ec '^FLUTTER_PEER_PASSWORD_REJECTED_OK replacement_prompt=blank remember=false connected_sockets=0 listener=preserved samples=30 interval_ms=100 elapsed_ms=[0-9]+$' <<<"$controller_output")" -eq 1 ] \
+        || fail 'rejected-password observation is absent or duplicated'
+      grep -Fxq 'FLUTTER_PEER_CREDENTIAL_RETRY_OK wrong=refused replacement_prompt=blank correct=authenticated fresh_pixels=4 same_window=true password_entries=2 remember=false' \
+        <<<"$controller_output" || fail 'native password retry result is absent'
+      viewer_result='viewer=joined xvfb=joined credential_retry=passed wrong=refused correct=authenticated saved_credential=empty'
     elif [ "$PEER_SCENARIO" = background-close ]; then
       grep -Fxq 'FLUTTER_PEER_BACKGROUND_CLOSE_OK action=pointer first=retired second=preserved pixels=fresh final_close=passed main=usable' \
         <<<"$controller_output" || fail 'native background-close result is absent'
@@ -1553,8 +1565,8 @@ PY
       mv /tmp/viewer.log "/tmp/viewer-generation-$viewer_generation.log"
     fi
     if [ "$PEER_SCENARIO" = credential-forget ] || [ "$PEER_SCENARIO" = credential-menu ] \
-      || [ "$PEER_SCENARIO" = credential-menu-accessible ]; then
-      python3 - "$viewer_generation" <<'PY'
+      || [ "$PEER_SCENARIO" = credential-menu-accessible ] || [ "$PEER_SCENARIO" = credential-retry ]; then
+      python3 - "$viewer_generation" "$PEER_SCENARIO" <<'PY'
 import os, stat, sys, tomllib
 try:
     path = '/tmp/viewer-home/.config/rustdesk/peers/127.0.0.1.toml'
@@ -1571,7 +1583,7 @@ try:
     value = tomllib.loads(data.decode('utf-8'))['password_prs']
     if (not isinstance(value, list) or len(value) > 4096
             or any(type(item) is not int or not 0 <= item <= 255 for item in value)
-            or bool(value) != (sys.argv[1] == '1')):
+            or bool(value) != (sys.argv[1] == '1' and sys.argv[2] != 'credential-retry')):
         raise ValueError()
     print('FLUTTER_PEER_CREDENTIAL_STORAGE_OK generation=' + sys.argv[1]
           + ' state=' + ('present' if value else 'empty'))

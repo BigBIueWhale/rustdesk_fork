@@ -4025,6 +4025,35 @@ static int choose_remember_password(unsigned int pid, int before, int after) {
     return -1;
 }
 
+static int exercise_rejected_password(Display *display, const ViewerWindow *viewer) {
+    PasswordPromptScan prompt = {0};
+    uint64_t started = monotonic_millis();
+    if (choose_remember_password((unsigned int)viewer->pid, 0, 0) != 0 ||
+        type_password(display, replacement_password) != 0 ||
+        wait_for_password_character_count((unsigned int)viewer->pid,
+                                           sizeof(replacement_password) - 1U, &prompt) != 0 ||
+        activate_named_control((unsigned int)viewer->pid, "OK") != 0 ||
+        /* The submitted editor contained 22 characters. A ready empty editor
+         * must therefore belong to a replacement prompt, even if its predecessor
+         * retired too quickly to observe an intermediate absent state. */
+        wait_for_password_prompt((unsigned int)viewer->pid, &prompt) != 0 ||
+        choose_remember_password((unsigned int)viewer->pid, 0, 0) != 0) return -1;
+    unsigned int connected = 0U, listeners = 0U;
+    for (unsigned int sample = 0U; sample < 30U; ++sample) {
+        ViewerWindow current = {0};
+        if (inspect_viewer_candidate(display, viewer->window, viewer->pid, &current) != 1 ||
+            scan_password_prompt((unsigned int)viewer->pid, &prompt, 0) != 0 ||
+            prompt.password_nodes != 1U || prompt.ready_passwords != 1U ||
+            prompt.first_password_character_count != 0 ||
+            session_socket_counts(&connected, &listeners) != 0 ||
+            connected != 0U || listeners != 1U || sleep_millis(100U) != 0) return -1;
+    }
+    printf("FLUTTER_PEER_PASSWORD_REJECTED_OK replacement_prompt=blank remember=false "
+           "connected_sockets=0 listener=preserved samples=30 interval_ms=100 elapsed_ms=%llu\n",
+           (unsigned long long)(monotonic_millis() - started));
+    return 0;
+}
+
 int main(int argc, char **argv) {
     const char *source_name;
     const char *viewer_name;
@@ -4056,6 +4085,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--view-scaling") != 0 &&
                                     strcmp(argv[5], "--session-close") != 0 &&
                                     strcmp(argv[5], "--background-close") != 0 &&
+                                    strcmp(argv[5], "--credential-retry") != 0 &&
                                     strcmp(argv[5], "--credential-enroll") != 0 &&
                                     strcmp(argv[5], "--credential-replace") != 0 &&
                                     strcmp(argv[5], "--credential-forget") != 0 &&
@@ -4068,11 +4098,12 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
+              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
         return 2;
     }
     int credential_enroll = argc == 6 && strcmp(argv[5], "--credential-enroll") == 0;
+    int credential_retry = argc == 6 && strcmp(argv[5], "--credential-retry") == 0;
     int credential_forget = argc == 6 && strcmp(argv[5], "--credential-forget") == 0;
     int credential_empty = argc == 6 && strcmp(argv[5], "--credential-empty") == 0;
     int credential_replace = credential_forget ||
@@ -4168,6 +4199,16 @@ int main(int argc, char **argv) {
         puts("FLUTTER_PEER_CREDENTIAL_EMPTY_OK prompt=true remember=false input=absent cancel=true");
         return 0;
     }
+    if (credential_retry && exercise_rejected_password(display, &viewer) != 0) {
+        fputs("FLUTTER_PEER_X11_FAIL rejected-password recovery\n", stderr);
+        PasswordPromptScan diagnostic;
+        if (scan_password_prompt((unsigned int)viewer_pid, &diagnostic, 1) != 0)
+            fputs("FLUTTER_PEER_X11_FAIL retry prompt diagnostic unavailable\n", stderr);
+        exit_atspi_after_failure();
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return 1;
+    }
     if (type_password(display, credential_replace ? replacement_password : test_password) != 0) {
         fputs("FLUTTER_PEER_X11_FAIL real password prompt input\n", stderr);
         exit_atspi_after_failure();
@@ -4256,6 +4297,19 @@ int main(int argc, char **argv) {
         return 1;
     }
     print_resources("initial", 0U, &baseline_resources);
+
+    if (credential_retry) {
+        ViewerWindow current = {0};
+        int result = inspect_viewer_candidate(display, viewer.window, viewer_pid, &current) == 1 ? 0 : -1;
+        if (atspi_exit() != 0) result = -1;
+        if (close_viewer(display, viewer.window) != 0) result = -1;
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        if (result != 0) return 1;
+        puts("FLUTTER_PEER_CREDENTIAL_RETRY_OK wrong=refused replacement_prompt=blank "
+             "correct=authenticated fresh_pixels=4 same_window=true password_entries=2 remember=false");
+        return 0;
+    }
 
     if (credential_enroll || credential_restore || credential_replace) {
         int result = 0;

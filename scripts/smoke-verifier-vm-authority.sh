@@ -678,6 +678,7 @@ case "$#:${1:-}" in
                 --credential-forget) FLUTTER_CREDENTIAL_RESTART=3 ;;
                 --credential-menu) FLUTTER_CREDENTIAL_RESTART=4 ;;
                 --credential-menu-accessible) FLUTTER_CREDENTIAL_RESTART=5 ;;
+                --credential-retry) FLUTTER_CREDENTIAL_RESTART=6 ;;
                 *) exit 2 ;;
             esac
         fi
@@ -726,7 +727,7 @@ case "$#:${1:-}" in
         printf 'Original offline engine setup: %s --linux-flutter-engine-prepare\n' "${0##*/}" >&2
         printf 'Explicit offline engine integration build: %s --linux-flutter-engine-build\n' "${0##*/}" >&2
         printf 'Source-bound Linux app producer: %s --linux-flutter-app-build --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256\n' "${0##*/}" >&2
-        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--credential-restart|--credential-rotation|--credential-forget|--credential-menu|--credential-menu-accessible]\n' "${0##*/}" >&2
+        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--credential-retry|--credential-restart|--credential-rotation|--credential-forget|--credential-menu|--credential-menu-accessible]\n' "${0##*/}" >&2
         printf 'Focused native Docker log-lifetime check: %s --android-runtime-log-tests\n' "${0##*/}" >&2
         printf 'Windows service-result file checks: %s --windows-service-result-tests\n' "${0##*/}" >&2
         printf 'Focused archive transaction fixtures: %s --fixed-archive-tests\n' "${0##*/}" >&2
@@ -5192,6 +5193,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
             3) guest_invocation+=' --credential-forget' ;;
             4) guest_invocation+=' --credential-menu' ;;
             5) guest_invocation+=' --credential-menu-accessible' ;;
+            6) guest_invocation+=' --credential-retry' ;;
         esac
         [ "$FLUTTER_CLIPBOARD_TEXT" -ne 1 ] || guest_invocation+=' --clipboard-text'
         [ "$FLUTTER_CLIPBOARD_TEXT" -ne 2 ] || guest_invocation+=' --clipboard-images'
@@ -8622,6 +8624,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         3) peer_scenario=credential-forget ;;
         4) peer_scenario=credential-menu ;;
         5) peer_scenario=credential-menu-accessible ;;
+        6) peer_scenario=credential-retry ;;
     esac
     [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || peer_scenario=viewer-suspend
     [ "$FLUTTER_CLIPBOARD_TEXT" -ne 1 ] || peer_scenario=clipboard-text

@@ -126235,3 +126235,12 @@ Android behavior is claimed. The next decisive step is an uninterrupted emulator
 workload with bounded runtime logs, actual presentation and process-resource
 measurements, using the retained app/peer artifacts. Input-to-visible response,
 cross-platform/device acceptance and R-F5 remain open; no parked topic is reopened.
+
+Final ledger checkpoint at `38b24d03`, TUF `FM2G48ZFBo`, passes in 30.707 seconds:
+381,621 tokens, 1,746,664 bytes, SHA-256
+`e317412dd147de23395d0920ce63475d99952bdc3528588d09180b06ee34068c`.
+The pinned count method passes seven controls and the full-input round trip;
+all 80 workload-admission controls and five refusals pass. QEMU 3610005 joins,
+402,636,800 peak RAM bytes retire, and three listener deltas are zero. All 29
+comparison/capsule/count files total 413,788 bytes and are hash-verified on CTE/TUF.
+This audit-only receipt leaves the counted ledger bytes unchanged.

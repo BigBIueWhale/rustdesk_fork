@@ -563,11 +563,13 @@ def test_observation_schedule(decoder):
 
     for case in ("stale", "unknown", "observer-old", "sequence-repeat", "state-backward",
                  "processing-overrun", "sleep-gap", "final-gap", "clock-backward",
-                 "report-gap"):
+                 "report-gap", "negative-initial-state"):
         clock = Clock()
 
         def sample():
             record, candidate = clock.sample()
+            if clock.calls == 1 and case == "negative-initial-state":
+                candidate['state'] = -1
             if clock.calls == 2:
                 if case == "stale": candidate['age'] = 2001
                 if case == "unknown": candidate = None
@@ -609,7 +611,7 @@ def test_observation_schedule(decoder):
             and summary['age_max_ms'] == 2000 and summary['observer_max_ms'] == 500,
             "valid freshness boundaries or percentiles differ")
     print("ANDROID_OBSERVATION_SCHEDULE=pass seconds=7200 windows=120 samples=7201 "
-          "clock=synthetic refusals=10 boundaries=accepted final_interval=checked", flush=True)
+          "clock=synthetic refusals=11 boundaries=accepted final_interval=checked", flush=True)
 
 
 def main():

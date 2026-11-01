@@ -126292,3 +126292,19 @@ The seven bounded raw/closure files are retained on both hosts. The next step
 continues this same blocker: wire the scheduled observer into an explicitly
 selected long runtime, retain lifecycle evidence through the circular-log lifetime,
 enforce log/resource bounds, then execute the two-hour app/peer control.
+
+Ledger checkpoint at `e4eda91c`, TUF `ddfm8HBwxX`, passes in 30.835 seconds:
+381,763 tokens, 1,747,295 bytes, SHA-256
+`4840b6007aca656a5064dc87ac8fb27b0f32e54cd2abc197ba0cd58778f29d1d`.
+The pinned count method passes its seven controls and round trip. QEMU 3653471
+and wrapper 3652046 exit, the 402,509,824-byte peak RAM workspace retires, and
+all three listener deltas are zero. Seven raw/closure files total 109,165 bytes
+and are hash-verified on CTE/TUF; this audit-only receipt preserves ledger bytes.
+
+Final observer review found that its initial `previous_state = -1` sentinel also
+allowed a first callback to supply state -1. The actual unsigned pixel decoder
+does not produce that value; this is observer input validation, not an observed
+product or pixel-decoding failure. Require an unsigned state independently of
+monotonic ordering, and add the negative-first-state refusal to the existing
+scheduled-observation cases. Focused isolated execution of this correction is
+pending; the two-hour Android integration remains open.

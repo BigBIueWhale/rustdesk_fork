@@ -465,7 +465,7 @@ def observe_duration(sample, duration_seconds: int, *, clock=time.monotonic_ns,
         age = int(candidate["age"])
         observer_ms = int(record["observation_ms"])
         if (not previous_sequence < sequence <= 0xFFFFFFFF
-                or not previous_state <= state <= 0xFFFFFFFF
+                or not 0 <= state <= 0xFFFFFFFF or state < previous_state
                 or not 0 <= age <= FRESHNESS_LIMIT_MS
                 or not 0 <= observer_ms <= 500):
             raise InvalidFrame("scheduled frame identity, freshness or observer age differs")

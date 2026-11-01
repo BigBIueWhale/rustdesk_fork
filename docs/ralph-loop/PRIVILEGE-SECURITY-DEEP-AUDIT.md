@@ -128020,3 +128020,58 @@ seconds, with three zero listener deltas. Serial SHA-256:
 The native run and count retain fourteen raw files (198,528 bytes), verified
 on both hosts. This audit-only receipt preserves the counted ledger; no owned
 VM remains and the broad release goal remains active and incomplete.
+
+### 2026-11-01 — user pivot to fractional wheel movement
+
+The user directs another aspect. Leave the read-only installed Linux principal/
+administrator authorization preparation OPEN/PARKED; no fixture or runtime action
+was added. Preserve the preceding startup/incumbent evidence and all other parks.
+Select R-F1/R-S0 remote-input correctness. Existing real-peer evidence covers
+discrete wheel events; source review instead finds actionable loss of every
+sub-pixel event in `InputModel.onPointerSignalImage`, before native dispatch.
+This demonstrated handler failure takes priority over extending that passed cohort.
+
+Flutter defines scroll deltas as logical pixels and device/view IDs as the source
+identity: https://api.flutter.dev/flutter/gestures/PointerScrollEvent/scrollDelta.html,
+https://api.flutter.dev/flutter/gestures/PointerEvent/device.html and
+https://api.flutter.dev/flutter/gestures/PointerEvent/viewId.html.
+Dart's https://api.dart.dev/dart-core/double/truncateToDouble.html specifies signed
+truncation without narrowing to a machine integer. `6eb4c7b7` retains only the
+fractional remainder, bound to session/client/device/view/axis, and retires it on
+blur, image exit, reset, disposal, admission refusal or invalid numbers. Zero
+movement emits nothing. The existing whole-pixel threshold, direction convention,
+step normalization and acceleration formula remain; this does not calibrate
+physical pixels against native wheel sensitivity or change trackpad pan/zoom.
+
+The command for each run is
+`bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --modifier-release`.
+Preparation `3328fab630909fed0c7bd0c05aba879914123934` changes tests/inventory only.
+Product `6eb4c7b7a488e70a606c4e0bc267902eb307d620` changes only InputModel.
+Tests are identical throughout A/B; later changes repair required harness counts
+and select its existing focused-parser mechanism for this five-suite profile.
+No parked broad-parser implementation is resumed or claimed fixed.
+
+| Source / TUF run | Observed result | Supervisor seconds / peak RAM bytes | Serial SHA-256 |
+| --- | --- | --- | --- |
+| `3328fab6` / `UGY9BpTn9K` | 112 controls pass; all nine new cases fail. Most stop at unexpected zero-distance commands; the nonfinite case throws. The 0.75/0.5/0.75 sequence emits three zeros instead of two steps. Later assertions in failed cases are unexecuted. | 233.223 / 6,540,615,680 | `1d810e0f1205be63ef4718b2f800f880343a14bbce1ba87c7a12d2f598c5a559` |
+| `6eb4c7b7` / `gIsPyquIQq` | Dart exits successfully; parser self-check fails on stale 112 count and three previously parked broad-model cases. No full acceptance. | 235.919 / 6,432,612,352 | `69b97e325080b4dc63bddc1a1e352318aaad8119df107cf408bb6d8643184d26` |
+| `9054b00b` / `nIHjVI9zeM` | Dart and focused parser checks pass; guest summary still expects 112. Three remaining guest/outer count strings are corrected in `b03d6334`. No full acceptance for this attempt. | 235.767 / 6,428,200,960 | `a97ed8e3dd6ba9f19cf2b5a595a3337c9e753769e11a328ffe9c9433babc734b` |
+| `b03d6334` / `TSJ2gxVNNI` | All 121 named cases/five suites, three parser controls, exact source and dependency postconditions, and complete guest/outer acceptance pass. | 254.650 / 6,540,222,464 | `b5b480925f208b42ee897fdd9ea1c1ebd598fb787e86bcaef1218e7693b965ed` |
+
+Final tree `1f68a5f3f27435b9ecfbce410ec13c17b09e7bda` executes production
+Dart handlers with controlled owner/policy inputs and final native-send observers.
+The nine new cases cover all four directions, fractional excess/reversal, zero and
+nonfinite input, identity changes, refusal/recovery, blur/leave/reset and axis changes.
+Raw successful case results are retained. This is component execution on Flutter
+3.24.5, not a full-app/physical-device or presentation-latency claim.
+
+QEMU PIDs 3947688/3949851/3951870/3953827 and wrappers
+3947203/3949364/3951381/3953337 are absent, every bounded RAM workspace retires,
+and all sixteen host listener deltas are zero. Failed markers are classified only
+after exact joined cleanup under the shared lock. Thirty-two raw serial, console,
+storage, listener and outer-log files total 636,438 bytes and are hash-verified on
+CTE and TUF. No retained app build or bulk disk scratch is added. The result-parser
+scope repair leaves unrelated parked checks open. Bash/Python syntax and whitespace
+checks pass. Physical calibration, current full-app/peer input and displayed effects,
+other platforms, installed authority and release acceptance remain OPEN. A fresh
+ledger count follows; the broad goal remains active and incomplete.

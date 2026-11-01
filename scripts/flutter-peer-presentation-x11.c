@@ -3100,7 +3100,7 @@ static int exercise_screenshot_save_unavailable(const ViewerWindow *viewer,
         (show == NULL) == (hide == NULL)) goto out;
     if (show != NULL && activate_named_control((unsigned int)viewer->pid, "Show toolbar") != 0)
         goto out;
-    if (activate_named_control((unsigned int)viewer->pid, "Control Actions") != 0 ||
+    if (activate_named_control((unsigned int)viewer->pid, "Control actions") != 0 ||
         activate_named_control((unsigned int)viewer->pid, "Take screenshot") != 0 ||
         activate_named_control((unsigned int)viewer->pid, "Save as...") != 0) goto out;
     puts("FLUTTER_PEER_SCREENSHOT_RESPONSE_OBSERVED actions=visible save_as=activated");

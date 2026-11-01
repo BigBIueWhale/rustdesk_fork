@@ -127432,3 +127432,13 @@ functionality, and section 7.1 defines alternatives:
 https://www.debian.org/doc/debian-policy/ch-relationships.html.
 Debian publishes the GTK chooser provider as zenity:
 https://packages.debian.org/bookworm/zenity.
+
+Preparation `426f5cb4`, TUF `zFPwDfhwGe`, stops before requesting a screenshot:
+the fixture uses the untranslated key `Control Actions` rather than the actual
+English display text `Control actions` from `src/lang/en.rs`. Correct only that
+selector. This attempt supplies no screenshot or missing-picker observation.
+The three drivers compile twice identically. Wrapper 3882772 and QEMU 3883868
+are absent, all four listener deltas are zero and the 3,010,371,584-byte peak RAM
+workspace retires after 114.207 supervisor seconds. The terminal failed marker
+is renamed under the exact shared lock to `screenshot-label-preparation.zFPwDfhwGe`.
+Serial SHA-256: `0f57dc20c61e481b955a6090b3ab14df5ba9b3497b69e24078f485f3477a3d92`.

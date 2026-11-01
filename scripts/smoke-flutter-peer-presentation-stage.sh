@@ -16,7 +16,7 @@ fail() {
 readonly PEER_SCENARIO=${FLUTTER_PEER_SCENARIO:-focus-reconnect-resource}
 case "$PEER_SCENARIO" in
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
-  viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart) EXPECTED_RESTARTS=0 ;;
+  viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
 esac
 readonly EXPECTED_RESTARTS
@@ -1096,11 +1096,37 @@ PY
     mv "$COORD/server.ready.tmp" "$COORD/server.ready"
     echo 'FLUTTER_PEER_SERVER_READY network=none interfaces=lo listener=127.0.0.1:21118 udp=0 parked_then_passworded=true'
     stop_seen=0
+    credential_rotated=0
     next_generation=2
     for _ in $(seq 1 3000); do
       if [ -f "$COORD/stop" ] && [ ! -L "$COORD/stop" ]; then
         stop_seen=1
         break
+      fi
+      if [ "$PEER_SCENARIO" = credential-rotation ] && [ "$credential_rotated" -eq 0 ] \
+        && [ -e "$COORD/credential.rotate.request" ]; then
+        [ -f "$COORD/credential.rotate.request" ] && [ ! -L "$COORD/credential.rotate.request" ] \
+          && [ "$(stat -c '%u:%g:%a:%h:%s' "$COORD/credential.rotate.request")" = \
+            "$(id -u):$(id -g):600:1:7" ] \
+          && [ "$(<"$COORD/credential.rotate.request")" = rotate ] \
+          || fail 'credential rotation request differs'
+        "$READY" --is-running "$SERVER_PID" "$SERVER_START" \
+          || fail 'server retired before credential rotation'
+        set +e
+        password_output="$(printf '%s\n' 'rustdesk-peer-c7e49f2a' \
+          | (cd /app/bundle && "$APP" --password-stdin) 2>&1)"
+        password_status=$?
+        set -e
+        [ "$password_status" -eq 0 ] && grep -qx 'Done!' <<<"$password_output" \
+          || fail 'shipped credential rotation command failed'
+        "$READY" --is-running "$SERVER_PID" "$SERVER_START" && listener_is_exact \
+          || fail 'credential rotation changed the server generation or listener'
+        [ ! -e "$COORD/credential.rotate.ready" ] && [ ! -L "$COORD/credential.rotate.ready" ] \
+          || fail 'credential rotation receipt was not freshly absent'
+        printf 'rotated\n' > "$COORD/credential.rotate.ready.tmp"
+        mv "$COORD/credential.rotate.ready.tmp" "$COORD/credential.rotate.ready"
+        credential_rotated=1
+        echo 'FLUTTER_PEER_CREDENTIAL_ROTATED_OK command=password-stdin server_generation=unchanged'
       fi
       restart_request="$COORD/server.restart.$next_generation.request"
       if [ -f "$restart_request" ] && [ ! -L "$restart_request" ]; then
@@ -1149,6 +1175,14 @@ PY
     else
       [ "$completed_restarts" -eq "$EXPECTED_RESTARTS" ] \
         || fail "successful viewer completed only $completed_restarts server restarts"
+      if [ "$PEER_SCENARIO" = credential-rotation ]; then
+        [ "$credential_rotated" -eq 1 ] || fail 'credential rotation did not execute'
+        rotation_events="$(emit_runtime_logs SERVER "$HOME/.local/share/logs" 2>&1 \
+          | sed -n -E 's/^.*R-S10\/R-T12 security summary .*shed=([0-9]+) rate_limited=([0-9]+) key_confirmation_failures=([0-9]+) recent_src=Some\(127\.0\.0\.1\)$/\1 \2 \3/p')"
+        [ "$rotation_events" = '0 0 1' ] \
+          || fail 'server did not record exactly one key-confirmation refusal'
+        echo 'FLUTTER_PEER_OLD_CREDENTIAL_REFUSED_OK key_confirmation_failures=1 rate_limited=0 shed=0'
+      fi
     fi
     "$READY" --stop "$SOURCE_PID" "$SOURCE_START"
     wait "$SOURCE_PID"
@@ -1238,16 +1272,22 @@ PY
     [ "$(udp_socket_count)" -eq 0 ] || fail 'shared namespace has a UDP socket before connect'
     viewer_generations=1
     [ "$PEER_SCENARIO" != credential-restart ] || viewer_generations=2
+    [ "$PEER_SCENARIO" != credential-rotation ] || viewer_generations=3
     for viewer_generation in $(seq 1 "$viewer_generations"); do
     (cd /app/bundle && exec env RUST_LOG=info,rustdesk::clipboard=debug "$APP" --connect 127.0.0.1) \
       >/tmp/viewer.log 2>&1 &
     VIEWER_PID=$!
     VIEWER_START=$("$READY" --identity "$VIEWER_PID")
     controller_args=(:98 :99 "$VIEWER_PID" "$VIEWER_START")
-    if [ "$PEER_SCENARIO" = credential-restart ]; then
+    if [ "$viewer_generations" -gt 1 ]; then
       if [ "$viewer_generation" -eq 1 ]; then
+        credential_phase=enroll
         controller_args+=(--credential-enroll)
+      elif [ "$PEER_SCENARIO:$viewer_generation" = credential-rotation:2 ]; then
+        credential_phase=replace
+        controller_args+=(--credential-replace)
       else
+        credential_phase=restore
         controller_args+=(--credential-restore)
       fi
     fi
@@ -1308,23 +1348,29 @@ PY
       emit_runtime_logs VIEWER "$HOME/.local/share/logs"
       exit "$controller_status"
     fi
-    if [ "$viewer_generation" -eq 1 ]; then
+    if [ "$viewer_generation" -eq 1 ] || [ "$PEER_SCENARIO:$viewer_generation" = credential-rotation:2 ]; then
     grep -q '^FLUTTER_PEER_PASSWORD_INPUT_OK characters=22 observed_without_value=true$' \
       <<<"$controller_output" || fail 'complete count-only password input verdict is missing'
     grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false$' \
       <<<"$controller_output" || fail 'real password prompt verdict is missing'
     fi
-    if [ "$PEER_SCENARIO" = credential-restart ]; then
-      grep -Fxq "FLUTTER_PEER_CREDENTIAL_GENERATION_OK generation=$viewer_generation fresh_pixels=4" \
+    if [ "$viewer_generations" -gt 1 ]; then
+      grep -Fxq "FLUTTER_PEER_CREDENTIAL_PHASE_OK phase=$credential_phase fresh_pixels=4" \
         <<<"$controller_output" || fail 'credential generation did not authenticate and present'
       if [ "$viewer_generation" -eq 1 ]; then
         grep -Fxq 'FLUTTER_PEER_REMEMBER_CHOICE_OK before=false after=true' \
           <<<"$controller_output" || fail 'explicit remember selection is missing'
+      elif [ "$credential_phase" = replace ]; then
+        grep -Fxq 'FLUTTER_PEER_REMEMBER_CHOICE_OK before=true after=true' \
+          <<<"$controller_output" || fail 'credential replacement lost the remember choice'
       else
         grep -Fxq 'FLUTTER_PEER_CREDENTIAL_RESTORED_OK password_input=absent prompt=absent' \
           <<<"$controller_output" || fail 'fresh viewer did not restore its credential'
       fi
       viewer_result='viewer=joined xvfb=joined credential_restart=passed generations=2 password_entries=1 fresh_pixels=both'
+      if [ "$PEER_SCENARIO" = credential-rotation ]; then
+        viewer_result='viewer=joined xvfb=joined credential_rotation=passed generations=3 password_entries=2 fresh_pixels=all'
+      fi
     elif [ "$PEER_SCENARIO" = view-scaling ]; then
       for sequence in {1..6}; do
         [ "$(grep -Ec "^FLUTTER_PEER_VIEW_SCALE_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
@@ -1448,9 +1494,24 @@ PY
       cat /tmp/viewer.log >&2
       fail 'viewer used a Flutter messenger after engine retirement'
     fi
-    if [ "$PEER_SCENARIO" = credential-restart ]; then
+    if [ "$viewer_generations" -gt 1 ]; then
       printf 'FLUTTER_PEER_CREDENTIAL_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
       mv /tmp/viewer.log "/tmp/viewer-generation-$viewer_generation.log"
+    fi
+    if [ "$PEER_SCENARIO:$viewer_generation" = credential-rotation:1 ]; then
+      [ ! -e "$COORD/credential.rotate.request" ] && [ ! -L "$COORD/credential.rotate.request" ] \
+        || fail 'credential rotation request was not freshly absent'
+      printf 'rotate\n' > "$COORD/credential.rotate.request.tmp"
+      mv "$COORD/credential.rotate.request.tmp" "$COORD/credential.rotate.request"
+      for _ in $(seq 1 150); do
+        [ ! -e "$COORD/credential.rotate.ready" ] || break
+        sleep 0.1
+      done
+      [ -f "$COORD/credential.rotate.ready" ] && [ ! -L "$COORD/credential.rotate.ready" ] \
+        && [ "$(stat -c '%u:%g:%a:%h:%s' "$COORD/credential.rotate.ready")" = \
+          "$(id -u):$(id -g):600:1:8" ] \
+        && [ "$(<"$COORD/credential.rotate.ready")" = rotated ] \
+        || fail 'credential rotation readiness is absent or differs'
     fi
     done
     listener_is_exact || fail 'viewer lifecycle changed the exact server listener'

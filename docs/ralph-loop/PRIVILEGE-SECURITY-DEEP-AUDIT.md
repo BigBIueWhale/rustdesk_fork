@@ -127749,3 +127749,43 @@ supervisor seconds, and all three listener deltas are zero. Serial SHA-256:
 The two restart attempts and count retain 23 bounded raw files (974,901 bytes),
 hash-verified on both CTE and TUF. This audit-only receipt preserves the counted
 ledger bytes. No owned VM remains running.
+
+## 2026-11-01 — native password rotation and saved-credential replacement
+
+The preceding turn is progress: complete Linux viewer restart persistence now
+has actual-peer evidence. Select the adjacent R-S9/R-S0 rotation obligation,
+which crosses both credential enforcement and required recovery behavior and
+takes priority over further presentation polish. Scaling and all independent
+user parks remain untouched. The direct-credential API park concerns retired
+shared-password factory routing, not this current application rotation scenario.
+
+`Client::_start` gives deliberate re-entry precedence over the stored PRS,
+stages only the newly authenticated derived value and clears the plaintext
+override. `handle_peer_info` saves the elected credential. The controlled
+`authenticate_tcp_stream` reads its effective credential on every handshake
+and records a typed key-confirmation mismatch before refusing that stream.
+These complete source files, storage and prompt sources match retained app
+`cf437894`. No product change is justified before native execution.
+
+Extend the existing admitted replay with `--credential-rotation`: enroll and
+join the first viewer, use the shipped `--password-stdin` operation in the
+private user-owned server container, prove the same server PID/start identity
+and listener remain, then launch the old saved viewer. Require its real
+replacement prompt, preserved checked Remember password choice, explicit new
+password entry, four fresh frames and normal exit. A third fresh viewer must
+restore the new credential without input or a password field and present four
+fresh frames. Each exact process is joined before its successor. The original
+restart scenario's enroll/restore phases are retained in this sequence.
+
+The server's bounded native file logs must additionally contain exactly one
+security summary reporting one key-confirmation failure and no shedding or
+rate limit. This typed receiver event distinguishes old-credential refusal
+from a merely missing local credential or a successful UI action. No credential
+value is inspected or emitted. Actual AT-SPI state is observed separately from
+action invocation, as documented at
+https://docs.gtk.org/atspi2/enum.StateType.html and
+https://docs.gtk.org/atspi2/method.Action.do_action.html.
+All work remains in the zero-NIC TUF VM with unchanged admitted RAM/storage
+bounds and source-bound app/engine reuse. This tests a user-owned Linux server;
+installed privileged rotation, concurrent in-flight mutation, remember-off,
+other platforms and release acceptance remain separate open obligations.

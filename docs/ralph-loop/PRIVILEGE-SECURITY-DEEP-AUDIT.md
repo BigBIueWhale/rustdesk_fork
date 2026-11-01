@@ -129099,3 +129099,50 @@ marker and at most 32 MiB of protobuf bytes. The slow viewer waits for the
 server observer before resuming, preventing final sampling from racing resume.
 Shell syntax, embedded Python parsing and diff hygiene pass; native acceptance
 and the diagnostic app build remain pending.
+
+Build acceptance: TUF `UL7aM92G7H` exits zero for app `0243c010` / tree
+`d54c6f491ed2823bb406c71bd2bb70ef3341e276`; all 74 artifact files and the
+16-directory inventory verify against manifest
+`45ed51b73fa217503f539172c4388d13e75896444dca32e2684d1b22ab9c44e9`.
+QEMU 4190131/wrapper 4189501 are absent, all four decoded listener deltas
+are zero, and the private run/RAM workspace retire after 716.148 supervisor
+seconds with 10,605,535,232 peak scratch bytes. Both unchanged baseline
+parents are restored under the shared lock with their original inodes and
+every file reverified; the empty preservation directory retires. Three
+canonical app generations remain. Build, preservation and restoration
+capsules plus seven raw files verify on CTE and TUF; the build capsule is
+`video-mailbox-build-0243c010.json` (7,357 bytes, SHA-256
+`7848073f697a0aac516975441a119f7a8dce14ca61ecc9efa9aca9d96d44b5ee`).
+Harness `84c39a88` now replays this exact app; native queue acceptance pending.
+
+Native acceptance: TUF `JJVMGrnrDv` at harness `84c39a88` / tree
+`3ba01934023d55e9ec8d38b6b115236fa3631c5c` exits zero on that app. Both
+exact connection lifecycles retain at most one transmitted-unreceipted frame;
+104/41 mailbox samples retain at most one frame or refresh marker, with
+protobuf byte peaks 5,999/4,579. The all-stalled deliveries remain generations
+80/81, writer-complete and peer-unreceived. As connection 667 resumes,
+connection 666 retains generation 80 through 20 further offers; its refresh
+samples increase 3 to 22 while healthy delivery completions advance.
+
+Across 8,025 all-stalled milliseconds, capture/conversion/encode/pacing each
+occur three times, with three waits of at least 2.8 seconds and 60 ms process
+CPU. RSS grows 385,024 bytes; threads baseline/peak/final are 26/26/25 and
+FDs 30/34/30. After 9,119 ms stopped, the first viewer presents four fresh
+frames within 1,894 ms, then 17 distinct states across eight seconds with
+maximum sampled age 772 ms. The second is stopped 19,435 ms and recovers
+four fresh frames within 906 ms. Recovery maximum ages 9,585/19,862 ms
+include initial frozen pixels. Both exact TCP identities survive and both
+viewer resource bounds pass. The driver builds twice identically, SHA-256
+`9bf01e1addacd9c51df8703ea639716a6b958cb3e769d5943a8a88b4c1a1e788`.
+
+QEMU 4191925/wrapper 4190867 are absent; all owned application processes
+join, private run/RAM retire after 167.520 supervisor seconds with
+3,018,457,088 peak scratch bytes, and all four decoded listener deltas are
+zero. Capsule `video-mailbox-replay-84c39a88.json` (11,308 bytes, SHA-256
+`04a82fe0d9a09d41774816f8f8dbc2933f0fca2fa9f89a3e4f798d268a62665e`)
+binds the exact artifacts, observations and seven raw files. This is sampled
+single-display mailbox occupancy and exact active delivery ownership with
+tracing enabled, not transient heap/kernel-queue measurement, a multi-hour
+soak, packet-loss recovery, input latency, installed or other-platform
+acceptance. Those release obligations remain OPEN. No transmission-policy
+change was needed; a fresh ledger count follows the evidence update.

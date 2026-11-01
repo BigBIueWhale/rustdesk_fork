@@ -43,12 +43,14 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
-**Linux shared-capture stall and recovery verified (2026-11-01):** Two complete
+**Linux shared-capture queues and recovery verified (2026-11-01):** Two complete
 Flutter viewers retain their connections through simultaneous suspension and
-staged resume. Server capture/encode activity and CPU/resource use stay within
-the predefined bounds; both viewers recover current pixels. R-S11fl below records
-the measurements and artifacts. This is one Linux X11 cycle; other platforms,
-installed artifacts, packet loss, queue depths and soaks remain OPEN.
+staged resume. Exact delivery traces show one transmitted-unreceipted frame per
+connection; sampled single-display mailboxes retain at most one frame or refresh
+marker. Capture/encode activity and CPU/resource use stay bounded, and both viewers
+recover current pixels. R-S11fk/R-S11fl below record the measurements and artifacts.
+This is one Linux X11 cycle; other queues/platforms, installed artifacts, packet
+loss, input latency and soaks remain OPEN.
 
 **Native Linux theme correction verified (2026-11-01):** Patch `42dbfc74`
 requires a usable settings read before selecting the portal, restoring the GNOME
@@ -4088,27 +4090,36 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   viewer returns a receipt after frame validation and before decode/publication. Exact serialized-byte assertions
   pin the frame, receipt, and negotiation field numbers instead of trusting a same-schema round trip; focused Rust
   tests cover both completion orders, identity refusal, reconnect reset, capability selection, and generation
-  monotonicity. A real kernel-TCP regression proves local acceptance can precede any peer read, but none of this is
-  decode, render, presentation, focus/background recovery, or exact-current packaged-platform evidence.
+  monotonicity. A real kernel-TCP regression proves local acceptance can precede any peer read.
+  Complete-app replay `JJVMGrnrDv` below observes both actual delivery lifecycles: no successor
+  enqueue precedes matching writer completion and exact peer receipt. During all-stalled and
+  one-stalled intervals the stopped connection retains its original unreceipted generation despite
+  new mailbox offers. This supplements the separate pixel observations; receipts alone do not prove
+  presentation, and exact-current packaged-platform acceptance remains OPEN.
 - **R-S11fl/R-S11e-199 controlled-video shared capture pacing** — **PARTIAL / RELEASE-BLOCKING.** Per-generation
   target state permits the first valid exact peer receipt to advance shared capture without allowing local
   supersession to manufacture progress; one stalled viewer cannot impose the inherited all-viewer barrier. The
   focused Rust state regressions cover real blocked-wait wakeup, acknowledging-peer retirement, all-disconnected
   release, refresh interruption, retired-receipt refusal, and successor progress. The global source-name,
   documentation-wiring, and mutation duplicates are deleted while both focused Rust execution lanes remain.
-  Complete-app TUF `Eo3eDM1Dy4` at harness `8b0ec261` reuses app `16ba2033` and engine `ddb1541d`.
-  Both viewers remain kernel-stopped with frozen pixels while the source changes. Across 8,025 ms,
-  the server records three capture/conversion/encode/pacing rounds, three waits of at least 2.8 seconds
-  and 70 ms process CPU. Sampled server RSS grows 184,320 bytes; threads peak at the baseline 26 and
-  FDs at 34 versus baseline 30. The first viewer presents four fresh frames within 2,010 ms, then 17
-  distinct states over eight seconds while the other stays stopped, maximum sampled age 755 ms. The
-  second viewer resumes after 19,377 ms stopped and presents four fresh frames within 1,051 ms.
-  Recovery maxima of 9,600/19,991 ms include the expected initially frozen images. Both retain their
-  exact TCP identities and satisfy viewer resource-growth limits. All owned processes join, VM/RAM
-  retire and four listener deltas are zero. Receipt: `all-stalled-8b0ec261.json`; preceding one-stopped
-  acceptance remains in `viewer-isolation-1bb6b8ea.json`. This one-cycle Linux X11 evidence does not
-  establish queue depths, input latency, packet-loss recovery, soaks, installed packages, other platforms,
-  cross-version behavior or complete release acceptance; those remain OPEN.
+  Complete-app TUF `JJVMGrnrDv` at harness `84c39a88` uses diagnostic app `0243c010` and engine
+  `ddb1541d`. Both viewers remain kernel-stopped with frozen pixels while the source changes.
+  Across 8,025 ms the server records three capture/conversion/encode/pacing rounds, three waits of
+  at least 2.8 seconds and 60 ms process CPU. Sampled RSS grows 385,024 bytes; threads peak at the
+  baseline 26 and FDs at 34 versus baseline 30. The observer reconstructs exact delivery transitions
+  and samples 104/41 mailbox offers: each retains at most one frame or refresh marker, with protobuf
+  byte peaks 5,999/4,579. The slow connection's unreceipted generation stays unchanged through 20
+  additional offers while the healthy peer progresses; refresh samples increase from 3 to 22.
+  The first viewer presents four fresh frames within 1,894 ms, then 17 distinct states over eight
+  seconds while the other stays stopped, maximum sampled age 772 ms. The second resumes after
+  19,435 ms stopped and presents four fresh frames within 906 ms. Recovery maxima 9,585/19,862 ms
+  include initially frozen images. Both retain their exact TCP identities and pass viewer resource
+  limits. All owned processes join, VM/RAM retire and four listener deltas are zero. Receipt:
+  `video-mailbox-replay-84c39a88.json`; preceding resource and one-stopped acceptance remains in
+  `all-stalled-8b0ec261.json` and `viewer-isolation-1bb6b8ea.json`. Mailbox samples are coherent after
+  offers; they do not measure every transient allocation, heap size or kernel queue. This one-cycle,
+  single-display Linux X11 evidence leaves other queues, input latency, packet-loss recovery, soaks,
+  installed packages, other platforms, cross-version behavior and complete release acceptance OPEN.
 - **R-S11fm/R-S11e-200 desktop texture activation finality** — Source closed. A display slot publishes a new
   current texture only after that exact candidate’s asynchronous native activation/pointer acquisition succeeds;
   failure retires the candidate without displacing the prior live texture.

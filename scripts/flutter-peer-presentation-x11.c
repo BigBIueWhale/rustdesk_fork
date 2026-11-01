@@ -117,6 +117,7 @@ typedef struct {
     uint64_t deadline;
     AtspiAccessible *match;
     const AtspiRect *bounds;
+    int focused_text;
 } NamedControlScan;
 
 static int sleep_millis(unsigned int millis) {
@@ -556,7 +557,18 @@ static int scan_named_control_node(AtspiAccessible *accessible, unsigned int exp
                 scan->dialog_scopes += 1U;
                 dialog_scope = 1;
             }
-            if (scan->text_content == 0 && strcmp(name, scan->name) == 0 &&
+            int matches = scan->focused_text == 0 && strcmp(name, scan->name) == 0;
+            if (scan->focused_text && atspi_state_set_contains(states, ATSPI_STATE_FOCUSED) &&
+                atspi_state_set_contains(states, ATSPI_STATE_EDITABLE)) {
+                AtspiRole role = atspi_accessible_get_role(accessible, &error);
+                if (error != NULL) {
+                    g_free(name);
+                    g_object_unref(states);
+                    return named_control_refusal(scan, "focused-role-query", depth, error);
+                }
+                matches = role == ATSPI_ROLE_TEXT;
+            }
+            if (scan->text_content == 0 && matches &&
                 (scan->dialog_caption == 0 || dialog_scope != 0)) {
                 int inside = accessible_within_bounds(accessible, scan->bounds);
                 if (inside < 0) {
@@ -618,11 +630,11 @@ static int scan_named_control_node(AtspiAccessible *accessible, unsigned int exp
     return 0;
 }
 
-static int query_accessible(unsigned int expected_pid, const char *name, uint64_t deadline,
+static int query_accessible_with_focus(unsigned int expected_pid, const char *name, uint64_t deadline,
                               AtspiAccessible **match, int dialog_caption, int text_content,
-                              const AtspiRect *bounds) {
+                              const AtspiRect *bounds, int focused_text) {
     NamedControlScan scan = {.name = name, .deadline = deadline, .dialog_caption = dialog_caption,
-                            .text_content = text_content, .bounds = bounds};
+                            .text_content = text_content, .bounds = bounds, .focused_text = focused_text};
     AtspiAccessible *desktop;
     GError *error = NULL;
     gint children;
@@ -673,6 +685,13 @@ out:
     if (scan.match != NULL) g_object_unref(scan.match);
     g_object_unref(desktop);
     return status;
+}
+
+static int query_accessible(unsigned int expected_pid, const char *name, uint64_t deadline,
+                              AtspiAccessible **match, int dialog_caption, int text_content,
+                              const AtspiRect *bounds) {
+    return query_accessible_with_focus(expected_pid, name, deadline, match,
+                                       dialog_caption, text_content, bounds, 0);
 }
 
 static int query_named_accessible(unsigned int expected_pid, const char *name, uint64_t deadline,
@@ -3317,13 +3336,32 @@ static int enter_second_address(Display *display, Window main, unsigned int pid)
     GError *error = NULL;
     uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
     int result = -1;
+    AtspiRect bounds = {0}, rect = {0};
+    XWindowAttributes attributes;
+    Window child;
+    if (XGetWindowAttributes(display, main, &attributes) == 0 || attributes.map_state != IsViewable ||
+        XTranslateCoordinates(display, main, RootWindow(display, DefaultScreen(display)),
+                              0, 0, &bounds.x, &bounds.y, &child) == 0) goto out;
+    bounds.width = attributes.width;
+    bounds.height = attributes.height;
+    XRaiseWindow(display, main);
+    XSetInputFocus(display, main, RevertToParent, CurrentTime);
+    XSync(display, False);
     while (monotonic_millis() < deadline && field == NULL) {
-        if (query_named_accessible(pid, "Direct address", deadline, &field, 0) != 0) goto out;
+        /* Focus removes this field's hint/accessible name. Match the focused,
+         * editable non-password text role inside the exact main window. */
+        if (query_accessible_with_focus(pid, "focused address", deadline, &field,
+                                        0, 0, &bounds, 1) != 0) goto out;
         if (field == NULL && sleep_millis(100U) != 0) goto out;
     }
     if (field == NULL || atspi_accessible_get_role(field, &error) == ATSPI_ROLE_PASSWORD_TEXT ||
         error != NULL || (text = atspi_accessible_get_text_iface(field)) == NULL ||
-        click_main_control(display, main, pid, "Direct address") != 0) goto out;
+        read_accessible_rect(field, &rect) != 0 ||
+        XTestFakeMotionEvent(display, DefaultScreen(display), rect.x + rect.width / 2,
+                            rect.y + rect.height / 2, CurrentTime) == 0 ||
+        XTestFakeButtonEvent(display, 1U, True, CurrentTime) == 0 ||
+        XTestFakeButtonEvent(display, 1U, False, CurrentTime) == 0) goto out;
+    XSync(display, False);
     KeyCode control = XKeysymToKeycode(display, XK_Control_L);
     KeyCode shift = XKeysymToKeycode(display, XK_Shift_L);
     if (control == 0U || shift == 0U) goto out;

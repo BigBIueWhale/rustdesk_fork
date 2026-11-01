@@ -918,8 +918,8 @@ static int read_window_pid(Display *display, Window window, unsigned long *pid) 
     return 0;
 }
 
-static int inspect_viewer_candidate(Display *display, Window window, unsigned long expected_pid,
-                                    ViewerWindow *candidate) {
+static int inspect_viewer_candidate_unchecked(Display *display, Window window,
+                                              unsigned long expected_pid, ViewerWindow *candidate) {
     XWindowAttributes attributes;
     XClassHint hint = {0};
     Atom net_name = XInternAtom(display, "_NET_WM_NAME", False);
@@ -979,6 +979,49 @@ static int inspect_viewer_candidate(Display *display, Window window, unsigned lo
     XFree(hint.res_name);
     XFree(hint.res_class);
     return 1;
+}
+
+static Display *discovery_display;
+static Window discovery_window;
+static int discovery_window_gone;
+static XErrorHandler discovery_previous_handler;
+
+static int discovery_error(Display *display, XErrorEvent *error) {
+    if (display == discovery_display && error->resourceid == discovery_window &&
+        error->error_code == BadWindow) {
+        discovery_window_gone = 1;
+        return 0;
+    }
+    return discovery_previous_handler(display, error);
+}
+
+static int inspect_viewer_candidate(Display *display, Window window, unsigned long expected_pid,
+                                    ViewerWindow *candidate) {
+    /* A root-tree snapshot does not retain its windows. Trap only this candidate's
+     * disappearance during inspection on the controller's single Xlib thread. */
+    XSync(display, False);
+    discovery_display = display;
+    discovery_window = window;
+    discovery_window_gone = 0;
+    discovery_previous_handler = XSetErrorHandler(discovery_error);
+    int status = inspect_viewer_candidate_unchecked(display, window, expected_pid, candidate);
+    XSync(display, False);
+    XSetErrorHandler(discovery_previous_handler);
+    discovery_display = NULL;
+    return discovery_window_gone ? 0 : status;
+}
+
+static int check_retired_window_discovery(Display *display) {
+    ViewerWindow candidate = {0};
+    Window retired = XCreateSimpleWindow(display, RootWindow(display, DefaultScreen(display)),
+                                         0, 0, 1U, 1U, 0U, 0UL, 0UL);
+    if (retired == None) return -1;
+    XDestroyWindow(display, retired);
+    XSync(display, False);
+    if (inspect_viewer_candidate(display, retired, 0UL, &candidate) != 0 ||
+        !discovery_window_gone) return -1;
+    puts("FLUTTER_PEER_WINDOW_DISCOVERY_OK retired_candidate=refused exact_badwindow=true");
+    return 0;
 }
 
 static int find_viewer_window(Display *display, unsigned long expected_pid, ViewerWindow *viewer) {
@@ -3686,7 +3729,8 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (find_viewer_window(display, viewer_pid, &viewer) != 0) {
+    if (check_retired_window_discovery(display) != 0 ||
+        find_viewer_window(display, viewer_pid, &viewer) != 0) {
         fputs("FLUTTER_PEER_X11_FAIL exact remote window unavailable\n", stderr);
         XCloseDisplay(display);
         XCloseDisplay(source);

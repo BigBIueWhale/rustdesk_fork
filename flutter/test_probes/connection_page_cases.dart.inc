@@ -133,7 +133,7 @@ class _Harness {
     }
     await tester.pump(const Duration(seconds: 4));
     owner.dispose();
-    await Get.reset();
+    Get.reset();
     await tester.binding.setSurfaceSize(null);
   }
 }

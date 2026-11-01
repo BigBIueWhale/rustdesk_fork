@@ -127081,3 +127081,10 @@ container. Whole product library copies are verified before/after, with only
 two adapter installers appended in the disposable copy. No product source is
 changed. The focused eight-case result inventory and three parser controls are
 part of acceptance; parked listener/model scenarios are not selected.
+
+Preparation `136490a5`, TUF `38ntxFM7od`, stops at a fixture compile error:
+the pinned Get.reset API returns void, so the teardown cannot await it. No page
+case executes. Remove only that await and repeat the same scenarios. QEMU
+3851432 and wrapper 3850866 exit; RAM scratch retires with four zero listener
+deltas. Retained diagnostics: `connection-page-fixture.38ntxFM7od`. This is
+fixture correction, not product failure evidence or a changed acceptance condition.

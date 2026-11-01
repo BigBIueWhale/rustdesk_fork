@@ -147,7 +147,7 @@ DIRECT_ADDRESS_TESTS = {
     "shared Rust/Dart direct-address vectors",
     "hostname label and complete name bounds",
 }
-DIRECT_ADDRESS_TESTS |= {
+ADDRESS_RESTORE_TESTS = {
     f"{platform} address startup {scenario}"
     for platform in ("desktop", "mobile")
     for scenario in (
@@ -159,6 +159,7 @@ DIRECT_ADDRESS_TESTS |= {
         "isolates a replacement from late failure",
     )
 }
+DIRECT_ADDRESS_TESTS |= ADDRESS_RESTORE_TESTS
 MAXIMUM_BYTES = 8 * 1024 * 1024
 WINDOW_DISPATCH_TESTS = {
     "window dispatch preserves valid payload and sender",
@@ -1822,7 +1823,11 @@ def parse_result(path, profile="models"):
         expected_tests = len(FRAME_QUEUE_TESTS)
         expected_names = FRAME_QUEUE_TESTS
     elif profile == "direct-address":
-        expected_suites = {"address_validator_test.dart", "address_restore_probe_test.dart"}
+        expected_by_suite = {
+            "address_validator_test.dart": DIRECT_ADDRESS_TESTS - ADDRESS_RESTORE_TESTS,
+            "address_restore_probe_test.dart": ADDRESS_RESTORE_TESTS,
+        }
+        expected_suites = set(expected_by_suite)
         expected_tests = len(DIRECT_ADDRESS_TESTS)
         expected_names = DIRECT_ADDRESS_TESTS
     elif profile == "file-metadata":

@@ -127012,3 +127012,12 @@ Update only the address fixture's two-suite/45-case inventory and add its
 focused parser-control selection, matching the existing focused-profile pattern.
 The shared model parser investigation remains parked; no acceptance check or
 product/test case is removed. Rerun this narrow workload for integrated acceptance.
+
+At `5c72f022`, `zkURfsa88B` again passes all 45 behavioral cases. The focused
+parser controls expose one remaining fixture-integration error: the new two-suite
+profile checks the combined case names but has not registered their suite ownership,
+so the existing wrong-suite negative control fails. Register the two exact case
+sets through the parser's existing `expected_by_suite` path; preserve that negative
+control. Product and behavioral cases remain identical. This run also joins QEMU
+3845299/wrapper 3844832, retires RAM scratch and has four zero listener deltas;
+bounded diagnostics are retained as `address-restore-inventory.zkURfsa88B`.

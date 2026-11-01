@@ -127388,3 +127388,13 @@ Eight files / 102,543 bytes are hash-verified on CTE/TUF, under
 `.harness-state/side-outside-f8bf9f41/outer.log`. No owned VM remains. The current
 ledger replaces its seventeen-case snapshot with this accepted workload;
 historical receipts remain. Its fresh count follows.
+
+Fresh ledger count at `683d77f1`, TUF `tQ8GrQe5Ee`, passes at 385,335 tokens /
+1,763,847 bytes, input SHA-256
+`26ade8329827b69beda1e6d9fcd17828344230295c01c7b06fa887c3da9c468a`.
+Seven controls and the whole-input round trip pass. QEMU 3879755 and wrapper
+3878327 are absent after 30.668 supervisor seconds; 402,685,952 peak RAM bytes
+retire and all three listener deltas are zero. Both runs' fifteen evidence files
+total 212,234 bytes, hash-verified on CTE/TUF. This audit-only receipt preserves
+the counted ledger bytes. The selected native outside-release workflow reaches
+its checkpoint; the full release goal remains open, with no owned VM live.

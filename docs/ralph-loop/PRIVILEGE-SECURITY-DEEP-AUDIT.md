@@ -128009,3 +128009,14 @@ Seven bounded raw files (87,999 bytes) are hash-verified on both CTE and TUF:
 the run's serial/console/storage/three listener records and its separate outer
 log. All six native receipts and the outer result agree. Fresh ledger count
 follows; broader installed/native, final-package and release acceptance remains open.
+
+Fresh count at `2f3e8dff`, TUF `N621INGfrR`, passes at 387,199 tokens /
+1,772,843 bytes, input SHA-256
+`f07bb0939331c35b1c8b37a3f28aa1a6d313f1420c53c7d9c73a752d28ba3e1b`.
+All seven controls and the input round trip pass. QEMU 3944639 and wrapper
+3943218 are absent; 402,440,192 peak RAM bytes retire after 30.604 supervisor
+seconds, with three zero listener deltas. Serial SHA-256:
+`74333a11a9b43d43abb6b98ed8327356c0e842c81d8e817eea2ce73795c246be`.
+The native run and count retain fourteen raw files (198,528 bytes), verified
+on both hosts. This audit-only receipt preserves the counted ledger; no owned
+VM remains and the broad release goal remains active and incomplete.

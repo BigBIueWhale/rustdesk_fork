@@ -203,6 +203,12 @@ MENU_BUTTON_SUITES = {
         "connection menu exposes its description and button action",
         "connection menu responds across the outlined button interior",
         "connection menu shows its description on hover",
+        "menu entry live disabled state refuses actions and recovers",
+        "menu entry closes only its menu before opening a dialog",
+    } | {
+        f"menu entry {method} dismiss={dismiss} invokes once"
+        for method in ("pointer", "semantics", "keyboard")
+        for dismiss in ("false", "true")
     },
     "toolbar_button_probe_test.dart": {
         f"toolbar {variant} {case}"

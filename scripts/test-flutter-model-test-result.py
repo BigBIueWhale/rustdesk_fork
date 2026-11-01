@@ -247,7 +247,7 @@ class ResultTests(unittest.TestCase):
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (3, 25))
             return
         if SINGLE_PROFILE == "menu-button":
-            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (6, 53))
+            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (6, 61))
             return
         if SINGLE_PROFILE == "trackpad-speed":
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 16))
@@ -269,7 +269,7 @@ class ResultTests(unittest.TestCase):
         )
         self.assertEqual(self.parse(self.events("direct-address"), "direct-address"), (2, 45))
         self.assertEqual(self.parse(self.events("password-fields"), "password-fields"), (3, 25))
-        self.assertEqual(self.parse(self.events("menu-button"), "menu-button"), (6, 53))
+        self.assertEqual(self.parse(self.events("menu-button"), "menu-button"), (6, 61))
         self.assertEqual(self.parse(self.events("hold-drag"), "hold-drag"), (1, 17))
         self.assertEqual(self.parse(self.events("locales"), "locales"), (1, 10))
         self.assertEqual(self.parse(self.events("path-labels"), "path-labels"), (1, 16))

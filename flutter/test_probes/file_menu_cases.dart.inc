@@ -50,7 +50,8 @@ Widget _subject(TextDirection direction, String layout,
   );
 }
 
-final _entries = find.byWidgetPredicate((w) => w is mod_menu.PopupMenuItem);
+final _entries = find.byWidgetPredicate((w) =>
+    w is mod_menu.PopupMenuEntry && w is! mod_menu.PopupMenuDivider);
 
 Future<void> _closeMenu(WidgetTester tester) async {
   if (_entries.evaluate().isNotEmpty) {

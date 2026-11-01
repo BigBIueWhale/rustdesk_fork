@@ -47,7 +47,51 @@ Widget _subject(TextDirection direction, String layout,
   );
 }
 
-final _entries = find.byWidgetPredicate((w) => w is mod_menu.PopupMenuItem);
+final _entries = find.byWidgetPredicate((w) =>
+    w is mod_menu.PopupMenuEntry && w is! mod_menu.PopupMenuDivider);
+
+Future<BuildContext> _openButtonEntry(WidgetTester tester, RxBool enabled,
+    bool dismiss, List<String> events, {VoidCallback? action}) async {
+  late BuildContext page;
+  await tester.pumpWidget(MaterialApp(
+    theme: ThemeData(useMaterial3: false, platform: TargetPlatform.linux),
+    home: Builder(builder: (context) {
+      page = context;
+      return const Scaffold(body: Text('Underlying page'));
+    }),
+  ));
+  mod_menu.showMenu<String>(
+    context: page,
+    position: const RelativeRect.fromLTRB(40, 40, 400, 400),
+    items: MenuEntryButton<String>(
+      childBuilder: (style) => Text('Entry action', style: style),
+      proc: () {
+        events.add('action');
+        action?.call();
+      },
+      enabled: enabled,
+      dismissOnClicked: dismiss,
+      dismissCallback: () => events.add('dismiss'),
+    ).build(page, const MenuConfig(commonColor: Colors.blue, boxWidth: 180)),
+  ).then((_) => events.add('closed'));
+  await tester.pumpAndSettle();
+  return page;
+}
+
+Future<void> _activateEntry(WidgetTester tester, String method) async {
+  if (method == 'pointer') {
+    await tester.tap(find.text('Entry action'));
+  } else if (method == 'semantics') {
+    final node = tester.getSemantics(find.text('Entry action'));
+    tester.binding.pipelineOwner.semanticsOwner!
+        .performAction(node.id, ui.SemanticsAction.tap);
+  } else {
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+  }
+  await tester.pumpAndSettle();
+}
 
 Future<void> _closeMenu(WidgetTester tester) async {
   if (_entries.evaluate().isNotEmpty) {
@@ -58,6 +102,86 @@ Future<void> _closeMenu(WidgetTester tester) async {
 }
 
 void main() {
+  for (final method in ['pointer', 'semantics', 'keyboard']) {
+    for (final dismiss in [false, true]) {
+      testWidgets('menu entry $method dismiss=$dismiss invokes once',
+          (tester) async {
+        final events = <String>[];
+        await _openButtonEntry(tester, true.obs, dismiss, events);
+        try {
+          await _activateEntry(tester, method);
+          expect(events.where((event) => event == 'action'), hasLength(1));
+          expect(events.where((event) => event == 'dismiss'),
+              hasLength(dismiss ? 1 : 0));
+          expect(events.where((event) => event == 'closed'),
+              hasLength(dismiss ? 1 : 0));
+          expect(find.text('Entry action'),
+              dismiss ? findsNothing : findsOneWidget);
+          if (dismiss) expect(events.indexOf('dismiss'), lessThan(events.indexOf('action')));
+        } finally {
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pumpAndSettle();
+        }
+        expect(tester.takeException(), isNull);
+      }, semanticsEnabled: true);
+    }
+  }
+
+  testWidgets('menu entry live disabled state refuses actions and recovers',
+      (tester) async {
+    final enabled = true.obs;
+    final events = <String>[];
+    await _openButtonEntry(tester, enabled, false, events);
+    try {
+      enabled.value = false;
+      await tester.pumpAndSettle();
+      expect(tester.getSemantics(find.text('Entry action')), containsSemantics(
+        label: 'Entry action', isButton: true, hasEnabledState: true,
+        isEnabled: false, hasTapAction: false,
+      ));
+      await _activateEntry(tester, 'pointer');
+      await _activateEntry(tester, 'semantics');
+      await _activateEntry(tester, 'keyboard');
+      expect(events, isEmpty);
+      expect(find.text('Entry action'), findsOneWidget);
+      enabled.value = true;
+      await tester.pumpAndSettle();
+      expect(tester.getSemantics(find.text('Entry action')), containsSemantics(
+        label: 'Entry action', isButton: true, hasEnabledState: true,
+        isEnabled: true, hasTapAction: true,
+      ));
+      await _activateEntry(tester, 'semantics');
+      expect(events, ['action']);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    }
+    expect(tester.takeException(), isNull);
+  }, semanticsEnabled: true);
+
+  testWidgets('menu entry closes only its menu before opening a dialog',
+      (tester) async {
+    final events = <String>[];
+    late BuildContext page;
+    page = await _openButtonEntry(tester, true.obs, true, events, action: () {
+      showDialog<void>(context: page, builder: (_) =>
+          const AlertDialog(content: Text('New dialog')));
+    });
+    try {
+      await _activateEntry(tester, 'semantics');
+      expect(events, ['dismiss', 'action', 'closed']);
+      expect(find.text('Entry action'), findsNothing);
+      expect(find.text('New dialog'), findsOneWidget);
+      Navigator.of(page).pop();
+      await tester.pumpAndSettle();
+      expect(find.text('Underlying page'), findsOneWidget);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    }
+    expect(tester.takeException(), isNull);
+  }, semanticsEnabled: true);
+
   testWidgets('connection menu exposes its description and button action',
       (tester) async {
     final selected = <String>[];

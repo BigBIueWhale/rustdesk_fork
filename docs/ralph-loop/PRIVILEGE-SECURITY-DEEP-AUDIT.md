@@ -127616,3 +127616,14 @@ Both raw serial/console/storage/listener/outer records and bounded viewer logs
 are retained on CTE and TUF; larger terminal diagnostics remain on TUF.
 The reproduction is a meaningful checkpoint, with the selected scaling blocker
 still active and the broad release goal incomplete. Fresh ledger count follows.
+
+Fresh count at `09d117cb`, TUF `mi7pi2YKVc`, passes at 385,988 tokens /
+1,766,951 bytes, input SHA-256
+`3b33e145610037610c14c8902bd191cfd71660b60b26d25c94a62c803ac3e737`.
+Seven controls and the complete-input round trip pass. QEMU 3904365 and wrapper
+3902939 are absent; 402,694,144 peak RAM bytes retire after 31.009 supervisor
+seconds, and all three listener deltas are zero. Serial SHA-256:
+`5e0853f0da3d39e38260f0a16efcc22e1e997b9a434de632594300274a16681e`.
+The two native runs and count have 25 bounded evidence files, verified on both
+hosts. This audit-only receipt preserves the counted ledger bytes. No owned VM
+remains; the selected scaling failure still needs its correction and acceptance.

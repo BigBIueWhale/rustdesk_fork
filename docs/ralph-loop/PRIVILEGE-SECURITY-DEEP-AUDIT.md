@@ -129010,3 +129010,29 @@ the other stays stopped, and retain the existing final-resume/connection checks.
 This reuses app `16ba2033` and engine `ddb1541d`; no product edit or rebuild.
 Queue byte/depth bounds, soaks, network impairment, installed packages and other
 platforms remain outside this focused observation and OPEN. Native run pending.
+
+Acceptance: first replay TUF `Eo3eDM1Dy4` at `8b0ec261` / tree
+`2084875a71bdcf3edba8825194767b4902669a26` exits zero on the retained app/engine.
+Both viewers have frozen pixels and kernel T state while the source advances.
+The 8,025-ms server observation records three capture, conversion, encode and
+pacing events, with three acknowledgement waits of at least 2.8 seconds.
+Server process CPU is 70 ms. RSS changes 81,805,312 to 81,989,632 bytes;
+threads baseline/peak/final are 26/26/25 and FDs 30/34/30. Existing trace/shadow
+decode overhead is included; this is sampled resource evidence, not queue depth.
+
+The first viewer is frozen for 9,081 ms and presents four fresh frames within
+2,010 ms of resume. It then presents 17 distinct states over eight seconds,
+maximum sampled age 755 ms, while the other stays stopped. The second viewer
+is stopped for 19,377 ms and recovers four fresh frames in 1,051 ms. Recovery
+maxima 9,600 and 19,991 ms include their initially frozen images. Both original
+TCP connections survive, viewer resource-growth checks pass and both viewers,
+server, source and Xvfb instances join. The driver builds twice identically,
+SHA-256 `c8e7fb4056bca21e83e659305cb01aad7b8112d7f9ba9a44a20469de44d4d427`.
+
+QEMU 4188124/wrapper 4187069 are absent; the private run and RAM workspace
+retire after 164.027 supervisor seconds, with 3,015,991,296 peak allocated bytes.
+All four independently decoded listener deltas are zero. Capsule
+`all-stalled-8b0ec261.json` (8,792 bytes, SHA-256
+`0c0bbf621fe5b62bf43e98a6442d1ddda3169d0b3d9a47d6b06c6fa0777a3224`)
+and its seven raw files verify on both hosts. No production change was needed.
+The scope limitations above remain; a fresh ledger count follows this update.

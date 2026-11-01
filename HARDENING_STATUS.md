@@ -43,11 +43,12 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
-**Linux suspended-viewer isolation verified (2026-11-01):** Two complete Flutter
-viewers retain their connections while one is stopped for ten seconds. The other
-continues presenting current pixels; the stopped viewer recovers after resume.
-R-S11fl below records exact measurements and artifacts. This is one Linux X11
-cycle; other platforms, installed artifacts, packet loss, queues and soaks remain OPEN.
+**Linux shared-capture stall and recovery verified (2026-11-01):** Two complete
+Flutter viewers retain their connections through simultaneous suspension and
+staged resume. Server capture/encode activity and CPU/resource use stay within
+the predefined bounds; both viewers recover current pixels. R-S11fl below records
+the measurements and artifacts. This is one Linux X11 cycle; other platforms,
+installed artifacts, packet loss, queue depths and soaks remain OPEN.
 
 **Native Linux theme correction verified (2026-11-01):** Patch `42dbfc74`
 requires a usable settings read before selecting the portal, restoring the GNOME
@@ -4094,18 +4095,20 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   supersession to manufacture progress; one stalled viewer cannot impose the inherited all-viewer barrier. The
   focused Rust state regressions cover real blocked-wait wakeup, acknowledging-peer retirement, all-disconnected
   release, refresh interruption, retired-receipt refusal, and successor progress. The global source-name,
-  documentation-wiring, and mutation duplicates are deleted while both focused Rust execution lanes remain. A
-  historical portable Linux two-viewer run reached RGBA publication while a second viewer withheld receipt.
-  Complete-app TUF `Rc15AW6lIC` at harness `1bb6b8ea`, reusing app `16ba2033` and engine `ddb1541d`, now
-  verifies actual X11 pixels: one viewer remains kernel-stopped with frozen pixels for 10,010 ms while the
-  healthy viewer presents 21 distinct states over eight seconds, maximum sampled age 771 ms and maximum
-  gap between fresh observations 54 ms (not an inter-frame timing claim). After resume, the stopped viewer
-  presents four fresh frames within 1,113 ms; its initial old image reaches 10,623 ms during recovery.
-  Both retain their exact TCP identities and satisfy the predefined thread/FD/RSS growth bounds. Both
-  viewers, the server and their owned processes join; VM/RAM retire with four zero listener deltas.
-  Receipt: `viewer-isolation-1bb6b8ea.json`. This one-cycle process-suspension result does not establish
-  queue depths, all-stalled capture/encode bounds, input latency, packet-loss recovery, soak, installed
-  packages, other platforms, cross-version behavior or complete release acceptance; those remain OPEN.
+  documentation-wiring, and mutation duplicates are deleted while both focused Rust execution lanes remain.
+  Complete-app TUF `Eo3eDM1Dy4` at harness `8b0ec261` reuses app `16ba2033` and engine `ddb1541d`.
+  Both viewers remain kernel-stopped with frozen pixels while the source changes. Across 8,025 ms,
+  the server records three capture/conversion/encode/pacing rounds, three waits of at least 2.8 seconds
+  and 70 ms process CPU. Sampled server RSS grows 184,320 bytes; threads peak at the baseline 26 and
+  FDs at 34 versus baseline 30. The first viewer presents four fresh frames within 2,010 ms, then 17
+  distinct states over eight seconds while the other stays stopped, maximum sampled age 755 ms. The
+  second viewer resumes after 19,377 ms stopped and presents four fresh frames within 1,051 ms.
+  Recovery maxima of 9,600/19,991 ms include the expected initially frozen images. Both retain their
+  exact TCP identities and satisfy viewer resource-growth limits. All owned processes join, VM/RAM
+  retire and four listener deltas are zero. Receipt: `all-stalled-8b0ec261.json`; preceding one-stopped
+  acceptance remains in `viewer-isolation-1bb6b8ea.json`. This one-cycle Linux X11 evidence does not
+  establish queue depths, input latency, packet-loss recovery, soaks, installed packages, other platforms,
+  cross-version behavior or complete release acceptance; those remain OPEN.
 - **R-S11fm/R-S11e-200 desktop texture activation finality** — Source closed. A display slot publishes a new
   current texture only after that exact candidate’s asynchronous native activation/pointer acquisition succeeds;
   failure retires the candidate without displacing the prior live texture.

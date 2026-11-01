@@ -127255,3 +127255,14 @@ runs, 24 files / 707,610 bytes are hash-verified on CTE and TUF. Raw evidence is
 outer logs in `.harness-state/side-buttons-32b6b7b0` and the recorded clipboard
 control directories. No owned VM remains. The status ledger records the user
 pivot and this native acceptance checkpoint; its fresh count follows.
+
+Fresh ledger count at `c13faa89`, TUF `ncGdmZiycY`, passes at 385,044 tokens /
+1,762,540 bytes, input SHA-256
+`bfcfe0cf9bfa6a1022751250f9c32952788f98db2082547b7684e92448a0a470`.
+All seven controls and the complete input round trip pass. QEMU 3869402 and
+wrapper 3867981 are absent after 30.665 supervisor seconds; the 402,616,320-byte
+peak RAM workspace retires and all three listener deltas are zero. The complete
+31-file evidence set totals 817,324 bytes, hash-verified on CTE and TUF. This
+audit-only receipt leaves the counted ledger unchanged. Native side-button
+delivery reaches its positive workflow checkpoint; the broad release goal and
+the explicitly parked clipboard investigation remain open. No owned VM is live.

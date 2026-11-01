@@ -126208,3 +126208,30 @@ adds `gtk+-3.0`; no dependency or product change is needed. Native pixels and
 producer-limit checks have not run yet. The 59.048-second VM joins and retires
 3,740,790,784 peak RAM bytes with three zero listener deltas. Serial SHA-256:
 `0f852bf0a5ef621d0a16eb3a6330c087affe1a6b1d7284b953163d8b47df7be4`.
+
+At `76cd9218`, TUF `yEUlGGdzDf` passes the complete focused test in 62.537 seconds.
+The same 49,927,496-byte history passes under the 67,108,864-byte reader address
+space ceiling. Shell lookup returns the final identity; full streaming validation
+refuses corrupted earlier records, incomplete completion, oversized files and
+invalid sequence/clock forms. Unknown old synthetic pixels remain stale. The real
+source refuses `/dev/full`, preserves an inherited 128-byte soft/1,024-byte hard
+file limit and receives SIGXFSZ exactly at 128 bytes without completion. Its normal
+live process has a 64-MiB soft/hard ceiling. Two source builds are byte-identical:
+21,872 bytes, SHA-256 `d7dfa952ebfb6cf7a5da4488d5d04730b08bed7b3df430aa9cce9a2d2bb2cd74`.
+
+Actual full-HD X11 pixels pass: fresh identity 261 is 146 ms old; retained identity
+1 is refused at 11,061 ms despite a new observation envelope. The existing C oracle
+also accepts fresh/refuses stale pixels. Source cadence is 40,555 microseconds mean;
+all 2,160 sampled texture pixels change. The two-second Android freshness budget,
+source geometry and counter width are unchanged. QEMU 3607449 and wrapper 3605904
+exit; the 3,743,412,224-byte peak RAM workspace retires and all three listener deltas
+are zero. Serial is 13,922 bytes, SHA-256
+`3d492ece361981fe878a4abc253708a70f8886ab6bb15457a8eec88b437b1a06`.
+Comparison, source identities, commands and cleanup: `android-history-76cd9218.json`,
+16,657 bytes, SHA-256 `992844068306f3e56a15a8b0252e653ebcab8312b7cbdbe86733903245f55902`.
+
+This closes the bounded observer prerequisite. No product correction or many-hour
+Android behavior is claimed. The next decisive step is an uninterrupted emulator
+workload with bounded runtime logs, actual presentation and process-resource
+measurements, using the retained app/peer artifacts. Input-to-visible response,
+cross-platform/device acceptance and R-F5 remain open; no parked topic is reopened.

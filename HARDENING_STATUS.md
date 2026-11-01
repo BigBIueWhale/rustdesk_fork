@@ -6346,6 +6346,20 @@ snapshot, whole-app behavior or native privilege acceptance.
 
 ### Android runtime — intermittent presentation remains OPEN
 
+**Long-session observer prerequisite (`667bf62f`, `76cd9218`).** Live publication
+lookup reads a fixed 512-KiB window; shutdown streams the complete history and
+requires contiguous identities, increasing clocks and exact completion. The X11
+source enforces a 64-MiB file ceiling, preserves lower inherited limits and reports
+write failures. TUF `yEUlGGdzDf` passes 500,000 synthetic publications under a
+64-MiB reader address-space limit, corruption/incomplete/oversize refusal, real
+output-failure and inherited-limit checks, plus actual fresh/stale X11 pixels.
+The old reader rejects the same large history. The 62.537-second no-NIC run joins
+and retires RAM scratch with zero listener deltas. Retained comparison:
+`android-history-76cd9218.json`. This establishes observer capacity; uninterrupted
+multi-hour app freshness/resources, input-to-visible response and R-F5 remain OPEN.
+Next: admit a sustained emulator workload with bounded runtime logs and actual
+presentation/resource measurements, reusing the source-bound app/peer artifacts.
+
 **Current-source app/task-relaunch comparison (`f372aacf`).** TUF `k8M8wgR5WF`
 builds, inspects, installs and launches the exact-source app/test pair in
 1,012.981 seconds. The test-only x86_64 APK is 48,291,544 bytes, SHA-256

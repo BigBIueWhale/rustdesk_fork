@@ -129146,3 +129146,12 @@ tracing enabled, not transient heap/kernel-queue measurement, a multi-hour
 soak, packet-loss recovery, input latency, installed or other-platform
 acceptance. Those release obligations remain OPEN. No transmission-policy
 change was needed; a fresh ledger count follows the evidence update.
+
+Checkpoint completion: CTE `u3i67Em8xy` at `991743d6` exits zero and counts
+390,103 tokens / 1,786,379 bytes, SHA-256
+`4a552391a857f5f7777d8403b2caf40139de829d01c2b64d0b2104f2bca0fc12`,
+using the established method, seven controls and whole-input round trip.
+QEMU 1271222/wrapper 1269248 are absent; 402,735,104 peak RAM bytes retire
+in 30.764 supervisor seconds with three zero listener deltas. Receipt:
+`video-mailbox-ledger-991743d6.json`. This audit-only completion preserves
+the counted ledger. The broader release goal remains active and incomplete.

@@ -126791,3 +126791,12 @@ candidate) retain 32 evidence files totaling 354,900 bytes, hash-verified on CTE
 and TUF. Full authenticated idle expiry, activity resets and live-setting behavior,
 installed/other-platform and release acceptance remain OPEN. Fresh ledger counting
 follows the current-state update; all independently parked work stays parked.
+
+Fresh ledger count at `8ebd7f53`, TUF `HNk5OESdLQ`, passes at 383,284 tokens /
+1,754,320 bytes, SHA-256
+`cb4fbfe5b6b81519c357065797b9658eceb2afd72984f03c488033bb54367157`.
+Seven controls and the complete-input round trip pass. QEMU 3821647 and wrapper
+3820220 exit after 30.495 seconds; 402,604,032 peak RAM bytes retire, and all
+three listener deltas are zero. The complete 39-file evidence set totals 466,311
+bytes, hash-verified on CTE and TUF. This audit-only receipt leaves the counted
+ledger unchanged; no owned VM remains live.

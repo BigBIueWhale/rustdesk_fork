@@ -126470,5 +126470,5 @@ Fresh ledger count at `8f7311ec`, TUF `4zxdjZX71A`, passes in 30.214 seconds:
 The pinned method passes seven controls and whole-input round trip. QEMU
 3770433 and wrapper 3768807 exit, 402,518,016 peak RAM bytes retire and all
 three listener deltas are zero. All 31 baseline/preparation/candidate/count
-files total 429,586 bytes and are hash-verified on CTE/TUF. This audit-only
+files total 429,854 bytes and are hash-verified on CTE/TUF. This audit-only
 receipt leaves the counted ledger bytes unchanged. No owned VM remains live.

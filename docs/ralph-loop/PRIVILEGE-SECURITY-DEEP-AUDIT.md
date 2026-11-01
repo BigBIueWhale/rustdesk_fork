@@ -126442,3 +126442,24 @@ have no separate baseline execution claim. Run `ogrWoGyJjQ` was stopped before
 its tests ran, so it supplies no candidate verdict. QEMU 3746988 and wrapper
 3746500 exit, 562,692,096 peak RAM bytes retire and all four listener deltas are
 zero after 46.224 seconds. Retained directory: `cm-rate-cancelled.ogrWoGyJjQ`.
+
+Final source `4ebdfd22dc40e59968c7e8dc08abbef7c5098ee5`, TUF `zxrZD3VMzI`,
+passes all 47 cases, three scoped result-parser controls and source-copy checks
+with fresh Flutter bindings. Command: `bash scripts/smoke-verifier-vm-authority.sh
+--flutter-model-tests --file-progress`. The original three failing rate assertions
+pass alongside the new large-counter, zero-growth and between-sample reset
+controls. The surrounding native owners and event counters are doubles; elapsed
+time and the CM model are real. No full CM page, live transfer or installed/native
+application acceptance is claimed. Dart's [native integer wrap semantics](https://api.dart.dev/dart-core/int-class.html)
+explain the conversion order; no arbitrary byte-count ceiling was introduced.
+
+The final run completes in 270.048 seconds. QEMU 3748011 and wrapper 3747500
+exit, its 4,432,920,576-byte peak RAM workspace retires, and all four listener
+deltas are zero. The serial is 31,830 bytes, SHA-256
+`bf814b9cb7efe7f3d42d72dc576d2e01ce70024b84342f22e7871c84fc86df14`.
+All 24 raw/closure files for baseline, cancelled preparation and accepted
+candidate are hash-verified on CTE/TUF. The source change is limited to the CM
+rate calculation; completion, cancellation, native file operations and existing
+owner admission retain their prior behavior. This closes the selected reporting
+correction at the Dart model layer. Full CM/native integration and the separate
+terminal-state mapping remain open; Android and all other user parks remain.

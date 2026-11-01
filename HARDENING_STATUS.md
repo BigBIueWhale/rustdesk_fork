@@ -43,6 +43,12 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-01):** Android long-session/presentation follow-ups remain
+OPEN/PARKED. The two-hour run was stopped after five passing minute windows;
+its exact VM exited and RAM scratch retired. This is partial evidence, not
+completed soak acceptance. Work moved to connection-manager transfer-speed
+reporting. Do not resume the Android investigation automatically.
+
 **User pivot (2026-11-01):** Camera supplier/device-ownership correction remains
 OPEN/PARKED. The two reproduced supplier failures and successful native capture
 are retained; no product correction followed the read-only design review.
@@ -6357,17 +6363,28 @@ The old reader rejects the same large history. The 62.537-second no-NIC run join
 and retires RAM scratch with zero listener deltas. Retained comparison:
 `android-history-76cd9218.json`. This establishes observer capacity; uninterrupted
 multi-hour app freshness/resources, input-to-visible response and R-F5 remain OPEN.
-Next: admit a sustained emulator workload with bounded runtime logs and actual
-presentation/resource measurements, reusing the source-bound app/peer artifacts.
+The integrated workload below has partial evidence only; further execution is
+parked at the user's pivot.
 
-**Scheduled observation (`94c54123`).** `observe_duration` rejects each stale,
+**Scheduled observation (`94c54123`, `24a8ad3e`).** `observe_duration` rejects each stale,
 unknown, regressing or over-budget sample instead of waiting for later recovery.
 Absolute monotonic scheduling checks the final interval and keeps fixed-size age
-histograms. TUF `T1B8P7q4tV` passes a synthetic two-hour schedule and ten refusal
-cases; an actual 3,126-ms X11 observation takes four samples, with 158-ms maximum
-age and 1,001-ms maximum gap. This is native observer evidence. The two-hour
-Android workload, log-retention integration and process-resource observations
-remain unexecuted; no app freshness or release completion is claimed.
+histograms. TUF `RWJfstLFJO` passes the synthetic two-hour schedule, eleven refusal
+cases and real atomic frame-replacement reads. Actual X11 observation spans
+3,130 ms/four samples, with 163-ms maximum age. This is observer evidence.
+
+**Integrated two-hour control — partial; user-PARKED.** `fc8fc390` adds explicit
+`--soak` execution using retained app `f372aacf` and peer `b30f4811`. At `24a8ad3e`,
+TUF `mDJFQwJwGj` accepts three 16-MiB log buffers and passes five minute windows
+before the user's pivot: 301 observations, maximum image age 1,028 ms, observer
+age 99 ms and gap 1,024 ms. Minute p95 rises from 939 to 977 ms, within the
+declared 250-ms allowance. RSS rises 6,428 KiB above the warmed baseline and
+threads stay at 60. The run was deliberately cancelled; the remaining interval,
+final log retention and subsequent lifecycle checks did not execute. Both VMs
+join and RAM scratch retires with zero listener deltas. Exact source, commands,
+raw hashes and cancellation/cleanup are recorded in the audit entry
+“2026-11-01 — user pivot; connection-manager transfer-rate reporting”. No full
+soak, input-to-visible, device or R-F5 acceptance is claimed.
 
 **Current-source app/task-relaunch comparison (`f372aacf`).** TUF `k8M8wgR5WF`
 builds, inspects, installs and launches the exact-source app/test pair in
@@ -17233,6 +17250,21 @@ native bridge transport or installed application ran. Native byte-count precisio
 progress semantics, full-app/platform/resource acceptance, R-S0/R-F5 and release remain OPEN.
 The KDE command-line scan review is OPEN/PARKED at the user's pivot; no correction or
 new privilege-escalation claim was made. All other user parks remain unchanged.
+
+**CM transfer-speed reporting (`fefc402c`, `4ebdfd22`) — Dart model verified.**
+Each displayed job retains its own byte/time sample and reports bytes per actual
+elapsed second. First observations and counter decreases reset that baseline;
+one job's updates cannot advance another's sampling window. Division precedes
+scaling to avoid an overflowing integer intermediate. The unchanged-product
+baseline passes 44 cases and fails three rate assertions. The final 47-case
+suite passes, including those assertions plus large-counter, zero-growth and
+between-sample reset controls; three result-parser checks and exact source-copy
+checks also pass. Tests call the production CM model with real elapsed time,
+controlled event counters and server/chat owner doubles. Full CM-page rendering,
+native event transport, terminal-state semantics and platform/release acceptance
+remain OPEN. Runs `TaZ36KpKoN` / `zxrZD3VMzI` join and retire RAM scratch with
+zero listener deltas; exact evidence is in the audit entry
+“2026-11-01 — user pivot; connection-manager transfer-rate reporting”.
 
 **Folder-summary admission (`513aa1b5`) — Dart model/widget A/B verified; native integration OPEN.**
 `JobController.updateFolderFiles` admits a bounded three-field JSON object, positive

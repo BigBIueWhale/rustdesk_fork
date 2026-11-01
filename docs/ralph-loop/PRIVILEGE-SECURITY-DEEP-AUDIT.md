@@ -127041,3 +127041,13 @@ CTE and TUF. Raw records are `flutter-model-tests-*run.<id>.*` under
 `.harness-state/verifier-vm/`, with outer logs in `.harness-state/address-restore-*`.
 The current ledger records the user pivot and component result; its fresh count
 follows. No owned VM remains live.
+
+Fresh ledger count at `201896bf`, TUF `0t7L8kti3V`, passes at 384,313 tokens /
+1,759,172 bytes, input SHA-256
+`fee42ebaa4145952eba5cba865df751d0341d2d5ea93b594ea6f413bd35514c1`.
+Seven controls and the complete input round trip pass. QEMU 3848767 and wrapper
+3847315 exit after 31.370 supervisor seconds; 402,612,224 peak RAM bytes retire
+and all three listener deltas are zero. The complete 39-file evidence set totals
+699,324 bytes, hash-verified on CTE and TUF. This audit-only receipt leaves the
+counted ledger unchanged. The broad release goal remains open; this correction
+has reached its verified component checkpoint, with no owned VM remaining live.

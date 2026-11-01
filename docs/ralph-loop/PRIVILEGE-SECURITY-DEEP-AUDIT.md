@@ -127398,3 +127398,37 @@ retire and all three listener deltas are zero. Both runs' fifteen evidence files
 total 212,234 bytes, hash-verified on CTE/TUF. This audit-only receipt preserves
 the counted ledger bytes. The selected native outside-release workflow reaches
 its checkpoint; the full release goal remains open, with no owned VM live.
+
+### 2026-11-01 — user pivot; screenshot Save As runtime prerequisite
+
+The user directs work to another aspect. Native mouse checks have reached their
+recorded checkpoint; further mouse follow-ups remain open and are not selected.
+Select the R-S0/R-S11ee/R-S11ef screenshot request and Save As integration gap.
+This tests a required complete workflow beyond the accepted capture/PNG and
+Dart-with-doubles evidence, rather than extending the passed mouse cases.
+Independent parks, including screenshot Copy/Cancel and picker-cancellation
+handling, remain parked. CTE/TUF start at clean pushed `9452e796`, idle shared
+run lock, 50.7 GB available memory and 32.2 GB free RAM scratch.
+
+Read-only review finds a necessary native prerequisite: pinned file_picker 5.5.0
+calls `which` to select qarma, kdialog or zenity and throws when none exists.
+Its exact Linux source is retained in the authenticated presentation Pub closure.
+The Debian package generator has no dependency on any of those providers; the
+isolated runtime recipe also supplies none. Screenshot handling and the toolbar
+are unchanged from the retained `cf437894` app. This is a source finding, not yet
+an installed failure or proof that every desktop lacks the tools.
+
+Use `--screenshot-save-unavailable` to observe the real authenticated request,
+the received screenshot action dialog, Save As activation and the exact visible
+missing-zenity error. The fixture first proves all three providers absent and
+the actual lookup command present; it supplies no fake picker or FFI response.
+Require the same TCP connection, bounded viewer resources and joined teardown.
+A passing result establishes this negative path only, not saved PNG correctness.
+This isolates the prerequisite before attempting the full positive save workflow.
+The official GTK chooser contract separates accepting a filename from writing
+the file: https://docs.gtk.org/gtk3/class.FileChooserDialog.html.
+Debian Policy section 7.2 defines Depends for packages needed for significant
+functionality, and section 7.1 defines alternatives:
+https://www.debian.org/doc/debian-policy/ch-relationships.html.
+Debian publishes the GTK chooser provider as zenity:
+https://packages.debian.org/bookworm/zenity.

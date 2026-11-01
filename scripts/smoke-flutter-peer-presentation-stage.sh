@@ -16,7 +16,7 @@ fail() {
 readonly PEER_SCENARIO=${FLUTTER_PEER_SCENARIO:-focus-reconnect-resource}
 case "$PEER_SCENARIO" in
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
-  viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-retirement|mouse-input|mouse-retirement) EXPECTED_RESTARTS=0 ;;
+  viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
 esac
 readonly EXPECTED_RESTARTS
@@ -1241,6 +1241,16 @@ PY
     VIEWER_PID=$!
     VIEWER_START=$("$READY" --identity "$VIEWER_PID")
     controller_args=(:98 :99 "$VIEWER_PID" "$VIEWER_START")
+    if [ "$PEER_SCENARIO" = screenshot-save-unavailable ]; then
+      command -v which >/dev/null || fail 'file-picker executable lookup tool is absent'
+      for helper in qarma kdialog zenity; do
+        if command -v "$helper" >/dev/null; then
+          fail "missing-picker scenario unexpectedly has $helper"
+        fi
+      done
+      echo 'FLUTTER_PEER_SCREENSHOT_PICKER_ENV helpers=absent lookup=available'
+      controller_args+=(--screenshot-save-unavailable)
+    fi
     [ "$PEER_SCENARIO" != viewer-suspend ] || controller_args+=(--viewer-suspend)
     [ "$PEER_SCENARIO" != network-impairment ] || controller_args+=(--network-impairment)
     [ "$PEER_SCENARIO" != network-loss ] || controller_args+=(--network-loss)
@@ -1266,7 +1276,11 @@ PY
       <<<"$controller_output" || fail 'complete count-only password input verdict is missing'
     grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false$' \
       <<<"$controller_output" || fail 'real password prompt verdict is missing'
-    if [ "$PEER_SCENARIO" = mouse-retirement ]; then
+    if [ "$PEER_SCENARIO" = screenshot-save-unavailable ]; then
+      grep -Fxq 'FLUTTER_PEER_SCREENSHOT_SAVE_UNAVAILABLE_OK screenshot_received=true save=unavailable error=visible stable_connection=true' \
+        <<<"$controller_output" || fail 'native screenshot missing-picker result is absent'
+      viewer_result='viewer=joined xvfb=joined screenshot_received=true save=unavailable error=visible stable_connection=true'
+    elif [ "$PEER_SCENARIO" = mouse-retirement ]; then
       grep -Fxq 'FLUTTER_PEER_MOUSE_RETIREMENT_OK remote_buttons=3 local_button=preserved viewer_exit=abrupt native_releases=true fixture_buttons_released=true' \
         <<<"$controller_output" || fail 'native mouse retirement verdict is missing'
       viewer_result='viewer=joined xvfb=joined mouse_retirement=abrupt owned_buttons=3 foreign_button=preserved'

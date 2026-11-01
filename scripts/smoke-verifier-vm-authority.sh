@@ -51,6 +51,7 @@ FLUTTER_VIEWER_SUSPEND=0
 FLUTTER_CLIPBOARD_TEXT=0
 FLUTTER_KEYBOARD_INPUT=0
 FLUTTER_MOUSE_INPUT=0
+FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE=0
 FLUTTER_NETWORK_IMPAIRMENT=0
 FLUTTER_APP_COMMIT=
 FLUTTER_APP_EXPECTED_MANIFEST_SHA256=
@@ -661,6 +662,7 @@ case "$#:${1:-}" in
                 --keyboard-retirement) FLUTTER_KEYBOARD_INPUT=2 ;;
                 --mouse-input) FLUTTER_MOUSE_INPUT=1 ;;
                 --mouse-retirement) FLUTTER_MOUSE_INPUT=2 ;;
+                --screenshot-save-unavailable) FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE=1 ;;
                 *) exit 2 ;;
             esac
         fi
@@ -709,7 +711,7 @@ case "$#:${1:-}" in
         printf 'Original offline engine setup: %s --linux-flutter-engine-prepare\n' "${0##*/}" >&2
         printf 'Explicit offline engine integration build: %s --linux-flutter-engine-build\n' "${0##*/}" >&2
         printf 'Source-bound Linux app producer: %s --linux-flutter-app-build --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256\n' "${0##*/}" >&2
-        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement]\n' "${0##*/}" >&2
+        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable]\n' "${0##*/}" >&2
         printf 'Focused native Docker log-lifetime check: %s --android-runtime-log-tests\n' "${0##*/}" >&2
         printf 'Windows service-result file checks: %s --windows-service-result-tests\n' "${0##*/}" >&2
         printf 'Focused archive transaction fixtures: %s --fixed-archive-tests\n' "${0##*/}" >&2
@@ -803,6 +805,7 @@ readonly FLUTTER_NETWORK_IMPAIRMENT
 readonly FLUTTER_CLIPBOARD_TEXT
 readonly FLUTTER_KEYBOARD_INPUT
 readonly FLUTTER_MOUSE_INPUT
+readonly FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE
 readonly FLUTTER_TEST_PROFILE
 readonly RUST_TEST_PROFILE
 readonly FLUTTER_APP_ENGINE_COMMIT FLUTTER_APP_ENGINE_ARCHIVE_SHA256 FLUTTER_APP_ENGINE_MANIFEST_SHA256
@@ -5155,6 +5158,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     else
         guest_invocation+=" --linux-flutter-app-replay /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 $FLUTTER_APP_COMMIT $FLUTTER_APP_TREE $FLUTTER_APP_RECIPE_SHA256 $FLUTTER_APP_EXPECTED_MANIFEST_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
         [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || guest_invocation+=' --viewer-suspend'
+        [ "$FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE" -eq 0 ] || guest_invocation+=' --screenshot-save-unavailable'
         [ "$FLUTTER_CLIPBOARD_TEXT" -ne 1 ] || guest_invocation+=' --clipboard-text'
         [ "$FLUTTER_CLIPBOARD_TEXT" -ne 2 ] || guest_invocation+=' --clipboard-images'
         case "$FLUTTER_MOUSE_INPUT" in
@@ -8564,6 +8568,7 @@ elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
     printf '%s\n' "${app_artifact_receipts[0]}"
 elif [ "$MODE" = flutter-peer-presentation ]; then
     peer_scenario=focus-reconnect-resource
+    [ "$FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE" -eq 0 ] || peer_scenario=screenshot-save-unavailable
     [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || peer_scenario=viewer-suspend
     [ "$FLUTTER_CLIPBOARD_TEXT" -ne 1 ] || peer_scenario=clipboard-text
     [ "$FLUTTER_CLIPBOARD_TEXT" -ne 2 ] || peer_scenario=clipboard-images

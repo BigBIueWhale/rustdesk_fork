@@ -3084,6 +3084,55 @@ out:
     return status;
 }
 
+static int exercise_screenshot_save_unavailable(const ViewerWindow *viewer,
+                                                const ConnectionIdentity *connection,
+                                                const ProcessResources *baseline) {
+    static const char missing_picker[] =
+        "Exception: Couldn't find the executable zenity in the path.";
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    AtspiAccessible *show = NULL, *hide = NULL, *error_text = NULL;
+    ConnectionIdentity after = {{0}, {0}, 0UL};
+    ProcessResources resources = {0};
+    int result = -1;
+
+    if (query_named_accessible((unsigned int)viewer->pid, "Show toolbar", deadline, &show, 0) != 0 ||
+        query_named_accessible((unsigned int)viewer->pid, "Hide toolbar", deadline, &hide, 0) != 0 ||
+        (show == NULL) == (hide == NULL)) goto out;
+    if (show != NULL && activate_named_control((unsigned int)viewer->pid, "Show toolbar") != 0)
+        goto out;
+    if (activate_named_control((unsigned int)viewer->pid, "Control Actions") != 0 ||
+        activate_named_control((unsigned int)viewer->pid, "Take screenshot") != 0 ||
+        activate_named_control((unsigned int)viewer->pid, "Save as...") != 0) goto out;
+    puts("FLUTTER_PEER_SCREENSHOT_RESPONSE_OBSERVED actions=visible save_as=activated");
+    fflush(stdout);
+
+    deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    while (monotonic_millis() < deadline && error_text == NULL) {
+        if (query_named_accessible((unsigned int)viewer->pid, missing_picker,
+                                   deadline, &error_text, 1) != 0) goto out;
+        if (error_text == NULL && sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) goto out;
+    }
+    if (error_text == NULL || monotonic_millis() >= deadline ||
+        read_connection_identity(&after) != 0 || !same_connection(connection, &after) ||
+        read_process_resources(viewer->pid, &resources) != 0 ||
+        !resources_are_bounded(baseline, &resources)) goto out;
+    print_resources("screenshot-save-unavailable", 1U, &resources);
+    puts("FLUTTER_PEER_SCREENSHOT_SAVE_ERROR_OBSERVED helper=zenity error=visible "
+         "screenshot_actions=received saved_file=unproved");
+    result = 0;
+out:
+    if (show != NULL) g_object_unref(show);
+    if (hide != NULL) g_object_unref(hide);
+    if (error_text != NULL) g_object_unref(error_text);
+    if (result != 0) {
+        PasswordPromptScan diagnostic;
+        fputs("FLUTTER_PEER_X11_FAIL screenshot missing-picker scenario\n", stderr);
+        if (scan_password_prompt((unsigned int)viewer->pid, &diagnostic, 1) != 0)
+            fputs("FLUTTER_PEER_X11_FAIL screenshot accessibility diagnostic\n", stderr);
+    }
+    return result;
+}
+
 static int exercise_dialog_resize(Display *display, ViewerWindow *viewer,
                                     const ConnectionIdentity *connection,
                                     AtspiAccessible *previous_caption) {
@@ -3213,12 +3262,13 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--keyboard-input") != 0 &&
                                     strcmp(argv[5], "--mouse-input") != 0 &&
                                     strcmp(argv[5], "--mouse-retirement") != 0 &&
+                                    strcmp(argv[5], "--screenshot-save-unavailable") != 0 &&
                                     strcmp(argv[5], "--clipboard-text") != 0 &&
                                     strcmp(argv[5], "--clipboard-images") != 0 &&
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement]\n",
+              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable]\n",
               stderr);
         return 2;
     }
@@ -3377,11 +3427,13 @@ int main(int argc, char **argv) {
         int keyboard_input = strcmp(argv[5], "--keyboard-input") == 0;
         int mouse_input = strcmp(argv[5], "--mouse-input") == 0;
         int mouse_retirement = strcmp(argv[5], "--mouse-retirement") == 0;
+        int screenshot_unavailable = strcmp(argv[5], "--screenshot-save-unavailable") == 0;
         int clipboard_text = strcmp(argv[5], "--clipboard-text") == 0;
         int clipboard_images = strcmp(argv[5], "--clipboard-images") == 0;
         int partial_loss = strcmp(argv[5], "--network-loss") == 0;
         int network = partial_loss || strcmp(argv[5], "--network-impairment") == 0;
-        int suspension_status = mouse_retirement ? exercise_mouse_retirement(
+        int suspension_status = screenshot_unavailable ? exercise_screenshot_save_unavailable(
+            &viewer, &current_connection, &baseline_resources) : mouse_retirement ? exercise_mouse_retirement(
             source, display, &viewer, argv[4], &current_connection) : mouse_input ? exercise_mouse_input(
             source, display, &viewer, &current_connection, &baseline_resources) :
             keyboard_retirement ? exercise_keyboard_retirement(
@@ -3406,7 +3458,10 @@ int main(int argc, char **argv) {
         XCloseDisplay(display);
         XCloseDisplay(source);
         if (suspension_status != 0) return 1;
-        if (mouse_retirement) {
+        if (screenshot_unavailable) {
+            puts("FLUTTER_PEER_SCREENSHOT_SAVE_UNAVAILABLE_OK screenshot_received=true "
+                 "save=unavailable error=visible stable_connection=true");
+        } else if (mouse_retirement) {
             puts("FLUTTER_PEER_MOUSE_RETIREMENT_OK remote_buttons=3 local_button=preserved "
                  "viewer_exit=abrupt native_releases=true fixture_buttons_released=true");
         } else if (mouse_input) {

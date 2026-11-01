@@ -128317,3 +128317,77 @@ All 51 retained raw/evidence/retirement files total 944,274 bytes and match thei
 recorded hashes on both CTE and TUF. This audit-only receipt preserves the counted
 ledger bytes. No owned VM or transient workspace remains. The normal Close
 scenario reaches its native Linux checkpoint; further menu work stays parked.
+
+### 2026-11-01 — user pivot; native incorrect-password retry
+
+The user redirects work away from background-tab Close. Its harness commits
+`4789a87a` and `d733e148` remain, with the unrun address-locator adjustment
+preserved in stash `77d9608794fb33b4d5e19553505fdf2bf0364b62`.
+TUF runs `GYEnubjuxW` and `xgzQshy8FP` authenticate the first session but stop
+before opening the second: the first locator requires a hint removed by focus;
+the second requires focus when the main address field is unfocused and named.
+Both are fixture failures, not demonstrated application failures. No background
+Close executes. Both QEMU/wrapper pairs join, RAM scratch retires, and all eight
+listener deltas are zero. Their raw logs, source identities and bounded receipts
+are retained in `background-close-parked-d733e148.json` (17,760 bytes; SHA-256
+`365905b2cf5c6d76c49912eb4ee59e45c64836d1fa6a956557e8d381b0ad6121`).
+This work remains OPEN/PARKED; the prior normal Close checkpoint remains valid.
+
+Select R-S0/R-S2/R-S9/R-S13's complete viewer authentication workflow. Existing
+dialog components, Android recovery and Linux remembered-credential rotation
+do not establish a fresh Linux viewer's manually mistyped password, explicit
+retry and remember-off persistence together. The retained complete application
+can decide this gap without acquisition or another full build, ahead of another
+component-only UI change. Git comparison from app `a630f880` through harness
+`d188cf83e092b326deef9dc94c17ae80ce702b85` contains only documentation and these
+replay scripts; product/build inputs are unchanged.
+
+The existing CPace receiver refuses an incorrect confirmation before allocating
+an authenticated connection. The viewer's typed WAIT_4 failure permits deliberate
+replacement; the session and prompt round own that submission. No product edit
+is indicated. The native driver types the known wrong fixture password, requires
+a new empty focused prompt, observes thirty prompt/socket samples 100 ms apart,
+then types the valid password. The existing pixel oracle requires four current
+displayed frame identities; the joined viewer's peer record must retain no PRS.
+The server must independently record exactly one confirmation failure and no
+rate limit/shedding. One server generation serves the entire scenario.
+
+Research: [AT-SPI character count](https://docs.gtk.org/atspi2/method.Text.get_character_count.html)
+supports observing editor completion without retrieving the password value;
+[action invocation](https://docs.gtk.org/atspi2/method.Action.do_action.html)
+alone supplies no authentication verdict. The [kernel TCP table](https://docs.kernel.org/networking/proc_net_tcp.html)
+supplies connected socket ownership/state; inode-zero TIME_WAIT is excluded.
+Real server refusal, new prompt, retained process/window, actual frames and
+durable empty credential state provide the outcome evidence together.
+
+TUF `yrkev0XS6E` passes at harness `d188cf83`, tree
+`339a2bc32b3ddf15097f093325550bafc3d38874`, using unchanged app `a630f880`,
+manifest `6e53448f073347e3fcc1ef6fc3204b938a33067df1451f3f336c8cf668756bf5`
+and engine `63493887`. The rejection observation including typing and the stable
+sample interval takes 4,135 ms; this is not authentication-failure latency alone.
+Correct retry presents four fresh frames, maximum sampled age 371 ms, and the
+joined peer record's credential array is empty. The server records exactly one
+key-confirmation failure, zero shedding/rate limit and zero replacements.
+Viewer, server, source, Xvfb and containers join; QEMU 4011362 and wrapper
+4010265 are absent. The 3,010,416,640-byte peak RAM workspace retires after
+115.989 supervisor seconds. All four host-listener deltas are zero.
+Serial SHA-256:
+`2e5dc3ce1044ab46c8d732bed5ed599e1e0311faefb55fa8217790ef4047e3a1`.
+Exact command, artifacts, raw hashes and scope are in
+`password-retry-d188cf83.json` (10,314 bytes; SHA-256
+`bd1d72fb40c8ce3bc32f14bade2f22f238ba21f9bb7706ef1e506677161398e0`).
+
+The two parked failure bundles' 24 duplicate binaries match every corresponding
+retained app-manifest entry and canonical byte digest before removal. Exact
+terminal cleanup and idle-root ownership precede retirement: 115,998,432 logical /
+116,039,680 allocated bytes removed. Raw diagnostics, failure identity/checksum
+records and the small provider witnesses remain. The canonical app, engine and
+offline inputs remain. Receipt `background-close-duplicate-bundles-retired.json`
+is 11,620 bytes, SHA-256
+`79bfdd565159ec8723a60c4cb7f4d9e01a746e86e290c77f402fa9b4d10166ed`.
+
+This is one sequential Linux X11 authentication-recovery checkpoint, not complete
+pre-key security, long-duration retry/resource behavior, Unicode/device keyboards,
+cancellation races, installed privilege-boundary acceptance, other platforms or
+release readiness. Those obligations remain OPEN. Fresh ledger count and final
+evidence-copy verification follow; the broad goal remains active and incomplete.

@@ -43,6 +43,14 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-01):** Background-tab Close isolation remains OPEN/PARKED.
+Both attempted replays stop in address-field discovery before a second connection
+opens; neither establishes a product defect or exercises background Close.
+The unrun locator repair is preserved in stash `77d9608794fb33b4d5e19553505fdf2bf0364b62`.
+The completed single-session Close evidence remains. Work moved to native
+incorrect-password refusal and deliberate correct-password retry; do not resume
+the concurrent-tab investigation automatically.
+
 **User pivot (2026-11-01):** Further shared-menu validation is OPEN/PARKED.
 The completed button-entry correction and the already-running native accessible
 Forget replay are retained below. No additional pointer replay or menu correction
@@ -5918,6 +5926,23 @@ release-log capture, sustained resource bounds, installed authority/LPE acceptan
 full model checkpoint remain OPEN.
 The terminal parser's retained-input and CPU-work limits remain a separate OPEN
 item, parked at the user's request.
+
+**Incorrect-password retry — native Linux checkpoint (`d188cf83`).**
+TUF `yrkev0XS6E` reuses complete app `a630f880` and engine `63493887`.
+A manually entered incorrect password produces a blank, focused replacement
+prompt with Remember unchecked. Thirty observations spaced 100 ms apart find
+no retained connected socket and preserve the serving listener. The same viewer
+window/process then accepts correct input and presents four fresh remote frames
+(maximum sampled age 371 ms). After normal viewer exit, the peer record has an
+empty credential array. The real server records exactly one key-confirmation
+failure, no shedding or rate limit, and no serving-generation replacement.
+All processes/containers/VM join, RAM scratch retires, and four listener deltas
+are zero. No product correction or full rebuild was needed. Reproduce with
+`--credential-retry` and the source-bound command in
+`password-retry-d188cf83.json`; the audit records artifact and raw-log identities.
+This covers one sequential Linux X11 workflow, not long-duration retry behavior,
+cancellation races, device keyboards, installed authority, other platforms or
+complete authentication/release acceptance. Those remain OPEN.
 
 **Connection-password prompt lifetime: source corrected; dialog components and current bridge compilation accepted.**
 The prompt is published synchronously before its saved-preference read starts.

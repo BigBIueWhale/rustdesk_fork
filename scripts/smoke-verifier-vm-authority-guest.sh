@@ -14144,6 +14144,7 @@ run_flutter_peer_presentation() {
     local peer_scenario=focus-reconnect-resource peer_cycles=6
     if [ "$FLUTTER_VIEWER_ISOLATION" -eq 1 ]; then
         peer_scenario=viewer-isolation
+        peer_cycles=1
     elif [ "$FLUTTER_THEME_SAVE_FAILURE" -eq 1 ]; then
         peer_scenario=theme-save-failure
         peer_cycles=1

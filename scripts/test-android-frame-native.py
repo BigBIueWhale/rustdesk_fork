@@ -8,6 +8,7 @@ import hashlib
 import importlib.util
 import os
 from pathlib import Path
+import re
 import resource
 import signal
 import subprocess
@@ -368,6 +369,195 @@ int main(void) {
                 "observer aggregation artifact changed during execution")
         print(f"X11_OBSERVER_AGE_ARTIFACT=observed sha256={binary_digest} unchanged=before-after", flush=True)
 
+
+def test_soak_accounting(environment):
+    # Run the complete unchanged soak loop with a synthetic clock and observations.
+    # Process/resource/coordination adapters are doubles; this is not pixel acceptance.
+    controller = Path("/work/scripts/flutter-peer-presentation-x11.c").read_text()
+    loops = ""
+    for begin, end in (
+        ("static unsigned int latency_percentile(", "static int input_response_ready("),
+        ("static int exercise_viewer_soak(", "static int exercise_viewer_isolation("),
+    ):
+        require(controller.count(begin) == controller.count(end) == 1,
+                "soak function boundaries are ambiguous")
+        loops += controller[controller.index(begin):controller.index(end)]
+    fixture = r'''
+#define _GNU_SOURCE
+#include <errno.h>
+#include <fcntl.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+typedef void Display;
+typedef struct { unsigned long pid; } ViewerWindow;
+typedef struct { int failed; } SourceHistory;
+typedef struct { char local[1], remote[1]; unsigned long inode; } ConnectionIdentity;
+typedef struct { unsigned long long rss_kib; unsigned int threads, descriptors; } ProcessResources;
+#define FRESH_LIMIT_MS 1000U
+#define SAMPLE_INTERVAL_MS 40U
+static uint64_t clock_ms;
+static int64_t identity;
+static unsigned int mode, tail_samples, clock_faults;
+static int clock_fault_pending;
+static uint64_t monotonic_millis(void) {
+    if (clock_fault_pending) {
+        clock_fault_pending = 0;
+        clock_faults += 1U;
+        errno = EIO;
+        return mode == 8U ? 0U : 1000U + clock_ms - 100U;
+    }
+    return 1000U + clock_ms;
+}
+static int64_t viewer_state(Display *display, const ViewerWindow *viewer, uint64_t *captured) {
+    (void)display; (void)viewer;
+    if (clock_ms >= 240U * 60000U) {
+        unsigned int index = tail_samples++;
+        if (mode == 2U && index == 1474U) clock_ms += 39U;
+        if (mode >= 5U && mode <= 7U)
+            clock_ms += index == 999U ? 59U + mode - 5U : 20U;
+    }
+    *captured = (1000U + clock_ms) * 1000U;
+    return ++identity;
+}
+static int sleep_millis(unsigned int duration) {
+    if (mode == 1U && tail_samples == 1476U) duration = 1000U;
+    if (mode == 2U && tail_samples == 1475U) duration = 1001U;
+    if (mode == 3U && tail_samples == 1463U) duration = 1520U;
+    if (mode == 4U && tail_samples == 1500U) duration = 1040U;
+    clock_ms += duration;
+    if ((mode == 8U || mode == 9U) && tail_samples == 100U) clock_fault_pending = 1;
+    return 0;
+}
+static int x11_frame_age(SourceHistory *history, const char *directory, int64_t state,
+                         uint64_t captured, uint64_t *age) {
+    (void)history; (void)directory; (void)state; (void)captured;
+    *age = 30U;
+    return 0;
+}
+static int open_coord_root(void) { return 10; }
+static int fixture_open(const char *path, int flags) { (void)path; (void)flags; return 11; }
+static int fixture_close(int fd) { (void)fd; return 0; }
+static long fixture_syscall(long number, long pid, long flags) {
+    (void)number; (void)pid; (void)flags;
+    return 12;
+}
+static int isolation_marker(int coord, const char *name, int create) {
+    (void)coord; (void)name; (void)create;
+    return 0;
+}
+static int wait_isolation_marker(int coord, const char *name, unsigned int budget) {
+    (void)coord; (void)name; (void)budget;
+    return 0;
+}
+static int viewer_pidfd_alive(int fd) { (void)fd; return 1; }
+static int viewer_process_state(int process, unsigned long pid, const char *start, char *state) {
+    (void)process; (void)pid; (void)start;
+    *state = 'S';
+    return 0;
+}
+static int read_connection_identity(ConnectionIdentity *connection) {
+    memset(connection, 0, sizeof(*connection));
+    return 0;
+}
+static int same_connection(const ConnectionIdentity *before, const ConnectionIdentity *after) {
+    (void)before; (void)after;
+    return 1;
+}
+static int read_process_resources(unsigned long pid, ProcessResources *resources) {
+    (void)pid;
+    *resources = (ProcessResources){100U, 2U, 3U};
+    return 0;
+}
+static int resources_are_bounded(const ProcessResources *before, const ProcessResources *after) {
+    (void)before; (void)after;
+    return 1;
+}
+#define open fixture_open
+#define close fixture_close
+#define syscall fixture_syscall
+'''
+    fixture += loops + r'''
+int main(int argc, char **argv) {
+    if (argc != 2 || strlen(argv[1]) != 1U || argv[1][0] < '0' || argv[1][0] > '9' ||
+        dup2(STDOUT_FILENO, 3) != 3) return 2;
+    mode = (unsigned int)(argv[1][0] - '0');
+    ViewerWindow viewer = {7U};
+    SourceHistory history = {0};
+    ConnectionIdentity connection = {{0}, {0}, 0UL};
+    ProcessResources baseline = {100U, 2U, 3U};
+    int status = exercise_viewer_soak(NULL, &viewer, &history, "1", &connection, &baseline);
+    printf("X11_SOAK_ACCOUNTING_RESULT mode=%u status=%d tail_samples=%u clock_faults=%u\n",
+           mode, status, tail_samples, clock_faults);
+    return 0;
+}
+'''
+    source, binary = Path("/build/soak-accounting.c"), Path("/build/soak-accounting")
+    source.write_text(fixture)
+    subprocess.run(["/usr/bin/cc", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
+                    str(source), "-o", str(binary)], env=environment, check=True, timeout=30)
+    digest = hashlib.sha256(binary.read_bytes()).hexdigest()
+    print("X11_SOAK_ACCOUNTING_BUILD "
+          f"loops_sha256={hashlib.sha256(loops.encode()).hexdigest()} "
+          f"fixture_sha256={hashlib.sha256(source.read_bytes()).hexdigest()} "
+          f"binary_sha256={digest}", flush=True)
+    cases = (
+        ("ordinary", 0, 1500, 40),
+        ("boundary-tail", 0, 1476, 1000),
+        ("over-boundary-tail", -1, None, None),
+        ("unobserved-tail", -1, None, None),
+        ("qualified-before-sleep", 0, 1500, 40),
+        ("last-required-before-deadline", 0, 1000, 99),
+        ("last-required-at-deadline", -1, None, None),
+        ("last-required-after-deadline", -1, None, None),
+        ("failed-loop-entry-clock", -1, None, None),
+        ("backward-loop-entry-clock", -1, None, None),
+    )
+    passed = True
+    try:
+        for mode, (name, expected, samples, gap) in enumerate(cases):
+            result = subprocess.run([str(binary), str(mode)], env=environment,
+                                    capture_output=True, text=True, timeout=5)
+            require(result.returncode == 0 and len(result.stdout) <= 524288
+                    and len(result.stderr) <= 4096, "soak accounting fixture execution failed")
+            outcome = re.findall(
+                r"^X11_SOAK_ACCOUNTING_RESULT mode=(\d+) status=(-?\d+) "
+                r"tail_samples=(\d+) clock_faults=(\d+)$", result.stdout, re.M)
+            require(len(outcome) == 1 and int(outcome[0][0]) == mode,
+                    "soak accounting outcome is absent or ambiguous")
+            status, tail_samples, faults = map(int, outcome[0][1:])
+            windows = re.findall(
+                r"^FLUTTER_PEER_SOAK_WINDOW index=(\d+) elapsed_ms=(\d+) samples=(\d+) "
+                r"valid=(\d+) distinct=(\d+) p95_ms=(\d+) p99_ms=(\d+) maximum_age_ms=(\d+) "
+                r"maximum_gap_ms=(\d+) rss_kib=100 threads=2 fds=3 stable_connection=true$",
+                result.stdout, re.M)
+            windows = [tuple(map(int, row)) for row in windows]
+            require([row[0] for row in windows] == list(range(len(windows))),
+                    "soak accounting window order differs")
+            # All 240 preceding windows are healthy; only the final window is varied.
+            require(len(windows) >= 240 and all(
+                row[1:] == (60000, 1500, 1500, 1500, 30, 30, 30, 40)
+                for row in windows[:240]), "soak accounting healthy prefix differs")
+            case_passed = status == expected and len(windows) == (241 if expected == 0 else 240)
+            if expected == 0:
+                case_passed = case_passed and windows[-1][2:5] == (samples,) * 3
+                case_passed = case_passed and windows[-1][8] == gap
+            case_passed = case_passed and faults == (1 if mode >= 8 else 0)
+            print(f"X11_SOAK_ACCOUNTING_CASE name={name} status={status} expected={expected} "
+                  f"windows={len(windows)} tail_samples={tail_samples} clock_faults={faults} "
+                  f"maximum_gap_ms={windows[-1][8] if len(windows) == 241 else 'refused'} "
+                  f"passed={str(case_passed).lower()}", flush=True)
+            passed = passed and case_passed
+        require(passed, "soak window accounting differs from its declared bounds")
+    finally:
+        require(hashlib.sha256(binary.read_bytes()).hexdigest() == digest,
+                "soak accounting artifact changed during execution")
+        print(f"X11_SOAK_ACCOUNTING_ARTIFACT=observed sha256={digest} unchanged=before-after", flush=True)
+    print("X11_SOAK_ACCOUNTING=pass cases=10 scope=controller-aggregation inputs=synthetic "
+          "windows=241 deadline=exclusive tail=bounded clocks=checked", flush=True)
 
 
 def inspect_retained_android_frame(decoder):
@@ -772,6 +962,7 @@ def main():
     print("ANDROID_FRAME_NATIVE_X11_BUILD copies=2 equal=true controller=compiled "
           f"sha256={hashlib.sha256(oracle_bytes).hexdigest()} bytes={len(oracle_bytes)}", flush=True)
     test_observer_age(environment)
+    test_soak_accounting(environment)
     test_input_response(fixture, oracle_binaries[0], environment)
     children = []
     display = None

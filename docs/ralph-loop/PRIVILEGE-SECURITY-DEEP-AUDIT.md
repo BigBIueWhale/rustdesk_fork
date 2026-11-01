@@ -129457,3 +129457,38 @@ pre/during listener deltas. Neither live checkpoint establishes terminal soak
 acceptance. Keep both jobs, bounded evidence and active inputs; defer TUF sync
 until its joined retirement. This audit-only checkpoint preserves the counted
 ledger and both sealed execution archives. R-F5 and the release goal remain OPEN.
+
+### 2026-11-01 — long-session observation-window accounting
+
+Previous turns were verified waits on the original TUF display and CTE input
+jobs. At the one-hour input checkpoint, all 1,800 requests complete; the fifteen
+windows have p95 112–120 ms, p99 116–132 ms and maximum response 146 ms. Maximum
+p95/p99 increases over the fixed baseline are 5/6 ms. TUF reaches 137 display
+minutes with maximum sampled age 353 ms. Both exact process generations and RAM
+workspace identities remain live, with bounded scratch and three zero pre/during
+listener deltas on each host. Full-duration results and cleanup are pending.
+The product tree is unchanged between app `0243c010` and checkpoint `a02cc46d`;
+the intervening changes are harnesses and evidence records only.
+
+Review identifies an acceptance gap in `exercise_viewer_soak`: it records gaps
+only before acquired samples, omits the remaining interval after its final sleep,
+and admits a sample even when acquisition completes at or after the window end.
+Its loop-entry clock read is also unchecked. The existing synthetic clock/tail
+controls execute the two shorter observer loops, not this separate soak loop.
+The [Linux sleep contract](https://man7.org/linux/man-pages/man2/clock_nanosleep.2.html)
+allows scheduling delay after a requested sleep, so the nominal sampling interval
+cannot substitute for checking the observed window boundary. This is an observer
+accounting issue identified from source, not a reproduced RustDesk latency failure.
+
+Prepare ten focused cases executing the exact complete soak loop and percentile
+function with deterministic clock/pixel observations and explicit process/resource/
+coordination doubles. All 240 preceding windows remain healthy; only the final
+window varies. Cover an ordinary window, a 1,000 ms tail, 1,001/1,520 ms tails,
+sleep past an already-qualified window, the last required sample before/at/after
+the deadline, and failed/backward loop-entry clocks. This preparation changes no
+observer or product behavior. Native compilation and the unchanged-code failing
+comparison are pending the next free admitted VM; do not run the fixture on a
+host or interrupt either soak to make room. The current display run still supplies
+useful sampled ages, drift and resource observations, but cannot close strict
+final-window tail/deadline acceptance. Preserve its sealed source and the independent
+input soak; reconcile their complete evidence before deciding on further execution.

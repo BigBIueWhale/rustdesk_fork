@@ -1526,6 +1526,11 @@ PY
       cat /tmp/viewer.log >&2
       fail 'viewer used a Flutter messenger after engine retirement'
     fi
+    if [ "$PEER_SCENARIO" = credential-menu ]; then
+      grep -Fxq 'Failed to get documents directory: MissingPlatformDirectoryException(Unable to get application documents directory)' \
+        /tmp/viewer.log || fail 'saved-peer scenario did not exercise unavailable Documents'
+      printf 'FLUTTER_PEER_DOCUMENTS_UNAVAILABLE generation=%s observed=true\n' "$viewer_generation"
+    fi
     if [ "$viewer_generations" -gt 1 ]; then
       printf 'FLUTTER_PEER_CREDENTIAL_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
       mv /tmp/viewer.log "/tmp/viewer-generation-$viewer_generation.log"

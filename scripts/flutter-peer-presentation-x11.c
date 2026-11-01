@@ -3202,7 +3202,7 @@ static int open_saved_peer_menu(Display *display, Window main, const ViewerWindo
 }
 
 static int exercise_credential_menu(Display *display, ViewerWindow *viewer,
-                                    const ConnectionIdentity *connection) {
+                                    const ConnectionIdentity *connection, int accessible) {
     Window main = None;
     ConnectionIdentity after = {{0}, {0}, 0UL};
     const char *phase = "main-window";
@@ -3215,7 +3215,9 @@ static int exercise_credential_menu(Display *display, ViewerWindow *viewer,
     XSync(display, False);
     phase = "forget-action";
     if (open_saved_peer_menu(display, main, viewer) != 0 ||
-        click_main_control(display, main, (unsigned int)viewer->pid, "Forget password") != 0) goto out;
+        (accessible ? activate_named_control((unsigned int)viewer->pid, "Forget password") :
+            click_main_control(display, main, (unsigned int)viewer->pid, "Forget password")) != 0)
+        goto out;
     /* Observe the first menu retiring before reopening a newly built menu. */
     for (unsigned int pass = 0U; pass < 2U; ++pass) {
         uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
@@ -3240,7 +3242,8 @@ static int exercise_credential_menu(Display *display, ViewerWindow *viewer,
     }
     phase = "connection-preserved";
     if (read_connection_identity(&after) != 0 || !same_connection(connection, &after)) goto out;
-    puts("FLUTTER_PEER_CREDENTIAL_MENU_OK action=pointer next_menu=present forget=absent stable_connection=true");
+    printf("FLUTTER_PEER_CREDENTIAL_MENU_OK action=%s next_menu=present forget=absent stable_connection=true\n",
+           accessible ? "accessible" : "pointer");
     result = 0;
 out:
     if (result != 0) {
@@ -3682,6 +3685,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--credential-replace") != 0 &&
                                     strcmp(argv[5], "--credential-forget") != 0 &&
                                     strcmp(argv[5], "--credential-menu") != 0 &&
+                                    strcmp(argv[5], "--credential-menu-accessible") != 0 &&
                                     strcmp(argv[5], "--credential-empty") != 0 &&
                                     strcmp(argv[5], "--credential-restore") != 0 &&
                                     strcmp(argv[5], "--clipboard-text") != 0 &&
@@ -3689,7 +3693,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-empty|--credential-restore]\n",
+              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
         return 2;
     }
@@ -3698,7 +3702,9 @@ int main(int argc, char **argv) {
     int credential_empty = argc == 6 && strcmp(argv[5], "--credential-empty") == 0;
     int credential_replace = credential_forget ||
                              (argc == 6 && strcmp(argv[5], "--credential-replace") == 0);
-    int credential_menu = argc == 6 && strcmp(argv[5], "--credential-menu") == 0;
+    int credential_menu_accessible = argc == 6 && strcmp(argv[5], "--credential-menu-accessible") == 0;
+    int credential_menu = credential_menu_accessible ||
+                          (argc == 6 && strcmp(argv[5], "--credential-menu") == 0);
     int credential_restore = credential_menu ||
                              (argc == 6 && strcmp(argv[5], "--credential-restore") == 0);
     source_name = argv[1];
@@ -3884,7 +3890,8 @@ int main(int argc, char **argv) {
             else puts("FLUTTER_PEER_CREDENTIAL_RESTORED_OK password_input=absent prompt=absent");
         }
         if (result == 0 && credential_menu)
-            result = exercise_credential_menu(display, &viewer, &current_connection);
+            result = exercise_credential_menu(display, &viewer, &current_connection,
+                                              credential_menu_accessible);
         if (atspi_exit() != 0) result = -1;
         if (close_viewer(display, viewer.window) != 0) result = -1;
         XCloseDisplay(display);

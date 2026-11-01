@@ -14,9 +14,12 @@ fail() {
 [ "$#" -eq 1 ] \
   || fail 'expected one stage: input-check, atspi-check, pub-cache, pub-cache-check, build-drivers, prepare-sdk, build-app, server, or viewer'
 readonly PEER_SCENARIO=${FLUTTER_PEER_SCENARIO:-focus-reconnect-resource}
+MENU_ACTION=pointer
+[ "$PEER_SCENARIO" != credential-menu-accessible ] || MENU_ACTION=accessible
+readonly MENU_ACTION
 case "$PEER_SCENARIO" in
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
-  viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation|credential-forget|credential-menu) EXPECTED_RESTARTS=0 ;;
+  viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation|credential-forget|credential-menu|credential-menu-accessible) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
 esac
 readonly EXPECTED_RESTARTS
@@ -1279,6 +1282,7 @@ PY
     [ "$PEER_SCENARIO" != credential-restart ] || viewer_generations=2
     [ "$ROTATE_CREDENTIAL" -eq 0 ] || viewer_generations=3
     [ "$PEER_SCENARIO" != credential-menu ] || viewer_generations=3
+    [ "$PEER_SCENARIO" != credential-menu-accessible ] || viewer_generations=3
     for viewer_generation in $(seq 1 "$viewer_generations"); do
     (cd /app/bundle && exec env RUST_LOG=info,rustdesk::clipboard=debug "$APP" --connect 127.0.0.1) \
       >/tmp/viewer.log 2>&1 &
@@ -1292,11 +1296,13 @@ PY
       elif [ "$PEER_SCENARIO:$viewer_generation" = credential-forget:2 ]; then
         credential_phase=forget
         controller_args+=(--credential-forget)
-      elif [ "$PEER_SCENARIO:$viewer_generation" = credential-menu:2 ]; then
+      elif [ "$PEER_SCENARIO:$viewer_generation" = credential-menu:2 ] \
+        || [ "$PEER_SCENARIO:$viewer_generation" = credential-menu-accessible:2 ]; then
         credential_phase=menu
-        controller_args+=(--credential-menu)
+        controller_args+=("--$PEER_SCENARIO")
       elif [ "$PEER_SCENARIO:$viewer_generation" = credential-forget:3 ] \
-        || [ "$PEER_SCENARIO:$viewer_generation" = credential-menu:3 ]; then
+        || [ "$PEER_SCENARIO:$viewer_generation" = credential-menu:3 ] \
+        || [ "$PEER_SCENARIO:$viewer_generation" = credential-menu-accessible:3 ]; then
         credential_phase=empty
         controller_args+=(--credential-empty)
       elif [ "$PEER_SCENARIO:$viewer_generation" = credential-rotation:2 ]; then
@@ -1390,7 +1396,7 @@ PY
         grep -Fxq 'FLUTTER_PEER_CREDENTIAL_RESTORED_OK password_input=absent prompt=absent' \
           <<<"$controller_output" || fail 'fresh viewer did not restore its credential'
         if [ "$credential_phase" = menu ]; then
-          grep -Fxq 'FLUTTER_PEER_CREDENTIAL_MENU_OK action=pointer next_menu=present forget=absent stable_connection=true' \
+          grep -Fxq "FLUTTER_PEER_CREDENTIAL_MENU_OK action=$MENU_ACTION next_menu=present forget=absent stable_connection=true" \
             <<<"$controller_output" || fail 'saved-peer Forget action did not complete'
         fi
       fi
@@ -1400,7 +1406,7 @@ PY
         viewer_result='viewer=joined xvfb=joined credential_rotation=passed generations=3 password_entries=2 fresh_pixels=all'
       elif [ "$PEER_SCENARIO" = credential-forget ]; then
         viewer_result='viewer=joined xvfb=joined credential_forget=passed generations=3 password_entries=2 saved_credential=empty next_prompt=required'
-      elif [ "$PEER_SCENARIO" = credential-menu ]; then
+      elif [ "$PEER_SCENARIO" = credential-menu ] || [ "$PEER_SCENARIO" = credential-menu-accessible ]; then
         viewer_result='viewer=joined xvfb=joined credential_menu=passed generations=3 password_entries=1 saved_credential=empty next_prompt=required'
       fi
     elif [ "$PEER_SCENARIO" = view-scaling ]; then
@@ -1526,7 +1532,7 @@ PY
       cat /tmp/viewer.log >&2
       fail 'viewer used a Flutter messenger after engine retirement'
     fi
-    if [ "$PEER_SCENARIO" = credential-menu ]; then
+    if [ "$PEER_SCENARIO" = credential-menu ] || [ "$PEER_SCENARIO" = credential-menu-accessible ]; then
       grep -Fxq 'Failed to get documents directory: MissingPlatformDirectoryException(Unable to get application documents directory)' \
         /tmp/viewer.log || fail 'saved-peer scenario did not exercise unavailable Documents'
       printf 'FLUTTER_PEER_DOCUMENTS_UNAVAILABLE generation=%s observed=true\n' "$viewer_generation"
@@ -1535,7 +1541,8 @@ PY
       printf 'FLUTTER_PEER_CREDENTIAL_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
       mv /tmp/viewer.log "/tmp/viewer-generation-$viewer_generation.log"
     fi
-    if [ "$PEER_SCENARIO" = credential-forget ] || [ "$PEER_SCENARIO" = credential-menu ]; then
+    if [ "$PEER_SCENARIO" = credential-forget ] || [ "$PEER_SCENARIO" = credential-menu ] \
+      || [ "$PEER_SCENARIO" = credential-menu-accessible ]; then
       python3 - "$viewer_generation" <<'PY'
 import os, stat, sys, tomllib
 try:

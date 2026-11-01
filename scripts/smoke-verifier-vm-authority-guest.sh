@@ -280,6 +280,7 @@ case "$#:${8:-}" in
                 --credential-rotation) FLUTTER_CREDENTIAL_RESTART=2 ;;
                 --credential-forget) FLUTTER_CREDENTIAL_RESTART=3 ;;
                 --credential-menu) FLUTTER_CREDENTIAL_RESTART=4 ;;
+                --credential-menu-accessible) FLUTTER_CREDENTIAL_RESTART=5 ;;
                 *) exit 2 ;;
             esac
         fi
@@ -14036,6 +14037,7 @@ run_flutter_peer_presentation() {
         2) peer_args+=(--credential-rotation) ;;
         3) peer_args+=(--credential-forget) ;;
         4) peer_args+=(--credential-menu) ;;
+        5) peer_args+=(--credential-menu-accessible) ;;
     esac
     [ "$FLUTTER_CLIPBOARD_TEXT" -ne 1 ] || peer_args+=(--clipboard-text)
     [ "$FLUTTER_CLIPBOARD_TEXT" -ne 2 ] || peer_args+=(--clipboard-images)
@@ -14088,7 +14090,10 @@ run_flutter_peer_presentation() {
         fail 'Linux replay unexpectedly built an app'
     fi
     local peer_scenario=focus-reconnect-resource peer_cycles=6
-    if [ "$FLUTTER_CREDENTIAL_RESTART" -eq 4 ]; then
+    if [ "$FLUTTER_CREDENTIAL_RESTART" -eq 5 ]; then
+        peer_scenario=credential-menu-accessible
+        peer_cycles=1
+    elif [ "$FLUTTER_CREDENTIAL_RESTART" -eq 4 ]; then
         peer_scenario=credential-menu
         peer_cycles=1
     elif [ "$FLUTTER_CREDENTIAL_RESTART" -eq 3 ]; then

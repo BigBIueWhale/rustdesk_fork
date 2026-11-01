@@ -127453,3 +127453,19 @@ counts as an observation, and no product/action/authority check changes. QEMU
 3885791 and wrapper 3884727 are absent, all four listener deltas are zero and RAM
 scratch retires. The terminal marker becomes
 `screenshot-dialog-preparation.tprQXL8fLm` under the exact shared lock.
+
+Preparation `067b39d7`, TUF `EkCkTfQ4gb`, reaches screenshot/Save As again and
+observes the resulting Alert. The selectable body is an AT-SPI Text object with
+an empty accessible name, so a name-only oracle cannot inspect its contents.
+Add a distinct bounded text-content query within the exact Alert and PID; retain
+name matching unchanged for existing controls. Official AT-SPI specifies text
+contents separately from names and character offsets separately from UTF-8 bytes:
+https://docs.gtk.org/atspi2/method.Text.get_text.html and
+https://docs.gtk.org/atspi2/method.Text.get_character_count.html.
+Read at most 96 characters and compare the complete returned string to the exact
+expected error, with no substring or dialog-presence substitute. The earlier
+attempt remains incomplete, not a product-failure verdict. QEMU 3887746 and
+wrapper 3886682 are absent after 111.237 supervisor seconds; 3,011,158,016 peak
+RAM bytes retire and all four listener deltas are zero. The terminal marker is
+`screenshot-text-preparation.EkCkTfQ4gb`; serial SHA-256 is
+`49b635f6c153aab7cc0396210cead7f7355d609391ab5067877b78bba6a38e66`.

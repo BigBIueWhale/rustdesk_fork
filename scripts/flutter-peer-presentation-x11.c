@@ -111,6 +111,7 @@ typedef struct {
     unsigned int matches;
     unsigned int dialog_scopes;
     int dialog_caption;
+    int text_content;
     uint64_t deadline;
     AtspiAccessible *match;
 } NamedControlScan;
@@ -533,7 +534,7 @@ static int scan_named_control_node(AtspiAccessible *accessible, unsigned int exp
                 scan->dialog_scopes += 1U;
                 dialog_scope = 1;
             }
-            if (strcmp(name, scan->name) == 0 &&
+            if (scan->text_content == 0 && strcmp(name, scan->name) == 0 &&
                 (scan->dialog_caption == 0 || dialog_scope != 0)) {
                 scan->matches += 1U;
                 if (scan->match == NULL) {
@@ -542,6 +543,25 @@ static int scan_named_control_node(AtspiAccessible *accessible, unsigned int exp
             }
         }
         g_free(name);
+        if (scan->text_content != 0 && dialog_scope != 0) {
+            AtspiText *text = atspi_accessible_get_text_iface(accessible);
+            if (text != NULL) {
+                gint count = atspi_text_get_character_count(text, &error);
+                gchar *content = NULL;
+                if (error == NULL && count >= 0 && count <= (gint)ACCESSIBLE_NAME_LIMIT)
+                    content = atspi_text_get_text(text, 0, count, &error);
+                if (error == NULL && content != NULL && strcmp(content, scan->name) == 0) {
+                    scan->matches += 1U;
+                    if (scan->match == NULL) scan->match = g_object_ref(accessible);
+                }
+                g_free(content);
+                g_object_unref(text);
+                if (error != NULL || count < 0) {
+                    g_object_unref(states);
+                    return named_control_refusal(scan, "text-query", depth, error);
+                }
+            }
+        }
     }
     g_object_unref(states);
     if (scan->dialog_scopes > 1U) {
@@ -570,9 +590,10 @@ static int scan_named_control_node(AtspiAccessible *accessible, unsigned int exp
     return 0;
 }
 
-static int query_named_accessible(unsigned int expected_pid, const char *name, uint64_t deadline,
-                                   AtspiAccessible **match, int dialog_caption) {
-    NamedControlScan scan = {.name = name, .deadline = deadline, .dialog_caption = dialog_caption};
+static int query_accessible(unsigned int expected_pid, const char *name, uint64_t deadline,
+                              AtspiAccessible **match, int dialog_caption, int text_content) {
+    NamedControlScan scan = {.name = name, .deadline = deadline, .dialog_caption = dialog_caption,
+                            .text_content = text_content};
     AtspiAccessible *desktop;
     GError *error = NULL;
     gint children;
@@ -623,6 +644,11 @@ out:
     if (scan.match != NULL) g_object_unref(scan.match);
     g_object_unref(desktop);
     return status;
+}
+
+static int query_named_accessible(unsigned int expected_pid, const char *name, uint64_t deadline,
+                                   AtspiAccessible **match, int dialog_caption) {
+    return query_accessible(expected_pid, name, deadline, match, dialog_caption, 0);
 }
 
 static int query_dialog_caption(unsigned int expected_pid, uint64_t deadline,
@@ -3109,8 +3135,8 @@ static int exercise_screenshot_save_unavailable(const ViewerWindow *viewer,
     deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
     while (monotonic_millis() < deadline && error_text == NULL) {
         /* Replaced dialog nodes can invalidate a read; only a complete peer-bound scan counts. */
-        if (query_named_accessible((unsigned int)viewer->pid, missing_picker,
-                                   deadline, &error_text, 1) != 0)
+        if (query_accessible((unsigned int)viewer->pid, missing_picker,
+                             deadline, &error_text, 1, 1) != 0)
             g_clear_object(&error_text);
         if (error_text == NULL && sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) goto out;
     }

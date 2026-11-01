@@ -85,6 +85,7 @@ case "$#:${1:-}" in
         --mouse-retirement) PEER_SCENARIO=mouse-retirement ;;
         --screenshot-save-unavailable) PEER_SCENARIO=screenshot-save-unavailable ;;
         --view-scaling) PEER_SCENARIO=view-scaling ;;
+        --session-close) PEER_SCENARIO=session-close ;;
         --credential-restart) PEER_SCENARIO=credential-restart ;;
         --credential-rotation) PEER_SCENARIO=credential-rotation ;;
         --credential-forget) PEER_SCENARIO=credential-forget ;;
@@ -164,6 +165,11 @@ elif [ "$PEER_SCENARIO" = credential-restart ]; then
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined credential_restart=passed generations=2 password_entries=1 fresh_pixels=both'
+elif [ "$PEER_SCENARIO" = session-close ]; then
+  RUNTIME_CYCLES=1
+  SERVER_GENERATIONS='1'
+  SERVER_REPLACEMENTS=0
+  VIEWER_RESULT='viewer=joined xvfb=joined session_close=passed connected_sockets=0 listener=preserved main=usable'
 elif [ "$PEER_SCENARIO" = view-scaling ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

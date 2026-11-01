@@ -12,6 +12,7 @@ FLUTTER_KEYBOARD_INPUT=0
 FLUTTER_MOUSE_INPUT=0
 FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE=0
 FLUTTER_VIEW_SCALING=0
+FLUTTER_SESSION_CLOSE=0
 FLUTTER_CREDENTIAL_RESTART=0
 FLUTTER_NETWORK_IMPAIRMENT=0
 FLUTTER_APP_COMMIT=
@@ -276,6 +277,7 @@ case "$#:${8:-}" in
                 --mouse-retirement) FLUTTER_MOUSE_INPUT=2 ;;
                 --screenshot-save-unavailable) FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE=1 ;;
                 --view-scaling) FLUTTER_VIEW_SCALING=1 ;;
+                --session-close) FLUTTER_SESSION_CLOSE=1 ;;
                 --credential-restart) FLUTTER_CREDENTIAL_RESTART=1 ;;
                 --credential-rotation) FLUTTER_CREDENTIAL_RESTART=2 ;;
                 --credential-forget) FLUTTER_CREDENTIAL_RESTART=3 ;;
@@ -367,6 +369,7 @@ readonly FLUTTER_KEYBOARD_INPUT
 readonly FLUTTER_MOUSE_INPUT
 readonly FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE
 readonly FLUTTER_VIEW_SCALING
+readonly FLUTTER_SESSION_CLOSE
 readonly FLUTTER_CREDENTIAL_RESTART
 readonly RUST_TEST_SOURCE_ARCHIVE=${9:-}
 readonly RUST_TEST_SOURCE_COMMIT=${10:-}
@@ -14032,6 +14035,7 @@ run_flutter_peer_presentation() {
     [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || peer_args+=(--viewer-suspend)
     [ "$FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE" -eq 0 ] || peer_args+=(--screenshot-save-unavailable)
     [ "$FLUTTER_VIEW_SCALING" -eq 0 ] || peer_args+=(--view-scaling)
+    [ "$FLUTTER_SESSION_CLOSE" -eq 0 ] || peer_args+=(--session-close)
     case "$FLUTTER_CREDENTIAL_RESTART" in
         1) peer_args+=(--credential-restart) ;;
         2) peer_args+=(--credential-rotation) ;;
@@ -14104,6 +14108,9 @@ run_flutter_peer_presentation() {
         peer_cycles=1
     elif [ "$FLUTTER_CREDENTIAL_RESTART" -eq 1 ]; then
         peer_scenario=credential-restart
+        peer_cycles=1
+    elif [ "$FLUTTER_SESSION_CLOSE" -eq 1 ]; then
+        peer_scenario=session-close
         peer_cycles=1
     elif [ "$FLUTTER_VIEW_SCALING" -eq 1 ]; then
         peer_scenario=view-scaling

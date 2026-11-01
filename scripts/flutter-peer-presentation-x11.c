@@ -3140,6 +3140,126 @@ static int prepare_main_settings(Display *display, const ViewerWindow *viewer, W
     return 0;
 }
 
+/* Observe both halves in the fixture's shared, isolated network namespace.
+ * TIME_WAIT has no owning socket inode and is not a retained application session. */
+static int session_socket_counts(unsigned int *connected, unsigned int *listeners) {
+    FILE *stream = fopen("/proc/net/tcp", "r");
+    char line[512];
+    int result = -1;
+    *connected = *listeners = 0U;
+    if (stream == NULL) return -1;
+    if (fgets(line, sizeof(line), stream) == NULL) goto out;
+    while (fgets(line, sizeof(line), stream) != NULL) {
+        unsigned int slot, state;
+        unsigned long inode;
+        char local[32], remote[32];
+        if (strchr(line, '\n') == NULL ||
+            sscanf(line, " %u: %31s %31s %x %*s %*s %*s %*s %*s %lu",
+                   &slot, local, remote, &state, &inode) != 5) goto out;
+        if (strcmp(local, "0100007F:527E") != 0 &&
+            strcmp(remote, "0100007F:527E") != 0) continue;
+        if (state == 10U) *listeners += 1U;
+        else if (inode != 0UL) *connected += 1U;
+    }
+    if (ferror(stream) == 0) result = 0;
+out:
+    if (fclose(stream) != 0) result = -1;
+    return result;
+}
+
+static int remote_window_retired(Display *display, Window window) {
+    XWindowAttributes attributes;
+    XSync(display, False);
+    discovery_display = display;
+    discovery_window = window;
+    discovery_window_gone = 0;
+    discovery_previous_handler = XSetErrorHandler(discovery_error);
+    int found = XGetWindowAttributes(display, window, &attributes);
+    XSync(display, False);
+    XSetErrorHandler(discovery_previous_handler);
+    discovery_display = NULL;
+    if (discovery_window_gone) return 1;
+    if (found == 0) return -1;
+    return attributes.map_state != IsViewable;
+}
+
+static int exercise_session_close(Display *display, const ViewerWindow *viewer,
+                                    const char *start, const ConnectionIdentity *connection) {
+    Window main = None, current_main = None;
+    AtspiAccessible *show = NULL, *hide = NULL, *theme = NULL;
+    ConnectionIdentity before = {{0}, {0}, 0UL};
+    unsigned int connected = 0U, listeners = 0U, stable = 0U;
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS, closed_at = 0U;
+    int result = -1, process = -1;
+    char process_path[64], state;
+    if (snprintf(process_path, sizeof(process_path), "/proc/%lu", viewer->pid) <= 0)
+        goto out;
+    process = open(process_path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (process < 0 || viewer_process_state(process, viewer->pid, start, &state) != 0 ||
+        read_connection_identity(&before) != 0 || !same_connection(connection, &before) ||
+        session_socket_counts(&connected, &listeners) != 0 || connected != 2U || listeners != 1U ||
+        remote_window_retired(display, viewer->window) != 0) goto out;
+    if (activate_header_control(display, viewer->window, (unsigned int)viewer->pid,
+                                "New connection") != 0 ||
+        find_main_window(display, viewer->pid, &main) != 0) goto out;
+    XRaiseWindow(display, viewer->window);
+    XSetInputFocus(display, viewer->window, RevertToParent, CurrentTime);
+    XSync(display, False);
+    deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    if (query_named_accessible((unsigned int)viewer->pid, "Show toolbar", deadline, &show, 0) != 0 ||
+        query_named_accessible((unsigned int)viewer->pid, "Hide toolbar", deadline, &hide, 0) != 0 ||
+        (show == NULL) == (hide == NULL)) goto out;
+    if (show != NULL && activate_named_control((unsigned int)viewer->pid, "Show toolbar") != 0)
+        goto out;
+    if (query_named_accessible((unsigned int)viewer->pid, "Theme", deadline, &theme, 0) != 0 ||
+        theme != NULL) goto out;
+    puts("FLUTTER_PEER_SESSION_CLOSE_BEGIN connected_sockets=2 listener=1 remote_visible=true main_visible=true");
+    fflush(stdout);
+    closed_at = monotonic_millis();
+    if (click_main_control(display, viewer->window, (unsigned int)viewer->pid, "Close") != 0)
+        goto out;
+    deadline = closed_at + 5000U;
+    while (monotonic_millis() < deadline && stable < 10U) {
+        int retired = remote_window_retired(display, viewer->window);
+        if (retired < 0 || viewer_process_state(process, viewer->pid, start, &state) != 0 ||
+            session_socket_counts(&connected, &listeners) != 0 || listeners != 1U) goto out;
+        stable = retired && connected == 0U ? stable + 1U : 0U;
+        if (sleep_millis(100U) != 0) goto out;
+    }
+    if (stable != 10U || monotonic_millis() >= deadline ||
+        find_main_window(display, viewer->pid, &current_main) != 0 || current_main != main ||
+        activate_header_control(display, main, (unsigned int)viewer->pid, "Settings") != 0)
+        goto out;
+    deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    while (monotonic_millis() < deadline && theme == NULL) {
+        if (query_named_accessible((unsigned int)viewer->pid, "Theme", deadline, &theme, 0) != 0)
+            goto out;
+        if (theme == NULL && sleep_millis(100U) != 0) goto out;
+    }
+    if (theme == NULL || monotonic_millis() >= deadline ||
+        viewer_process_state(process, viewer->pid, start, &state) != 0 ||
+        session_socket_counts(&connected, &listeners) != 0 || connected != 0U || listeners != 1U)
+        goto out;
+    printf("FLUTTER_PEER_SESSION_CLOSE_OBSERVED elapsed_ms=%llu connected_sockets=0 listener=1 "
+           "stable_scans=10 remote=retired main=same settings=opened process=same\n",
+           (unsigned long long)(monotonic_millis() - closed_at));
+    result = 0;
+out:
+    if (result != 0) {
+        PasswordPromptScan diagnostic;
+        fprintf(stderr, "FLUTTER_PEER_X11_FAIL session close connected=%u listeners=%u stable=%u\n",
+                connected, listeners, stable);
+        if (scan_password_prompt((unsigned int)viewer->pid, &diagnostic, 1) != 0)
+            fputs("FLUTTER_PEER_X11_FAIL session close accessibility diagnostic\n", stderr);
+    }
+    g_clear_object(&show);
+    g_clear_object(&hide);
+    g_clear_object(&theme);
+    if (process >= 0 && close(process) != 0) result = -1;
+    if (main != None && close_viewer(display, main) != 0) result = -1;
+    return result;
+}
+
 static int open_saved_peer_menu(Display *display, Window main, const ViewerWindow *viewer) {
     const char prefix[] = "127.0.0.1@";
     const char suffix[] = " - Control Remote Desktop - RustDesk";
@@ -3681,6 +3801,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--mouse-retirement") != 0 &&
                                     strcmp(argv[5], "--screenshot-save-unavailable") != 0 &&
                                     strcmp(argv[5], "--view-scaling") != 0 &&
+                                    strcmp(argv[5], "--session-close") != 0 &&
                                     strcmp(argv[5], "--credential-enroll") != 0 &&
                                     strcmp(argv[5], "--credential-replace") != 0 &&
                                     strcmp(argv[5], "--credential-forget") != 0 &&
@@ -3693,7 +3814,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
+              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
         return 2;
     }
@@ -3910,11 +4031,13 @@ int main(int argc, char **argv) {
         int mouse_retirement = strcmp(argv[5], "--mouse-retirement") == 0;
         int screenshot_unavailable = strcmp(argv[5], "--screenshot-save-unavailable") == 0;
         int view_scaling = strcmp(argv[5], "--view-scaling") == 0;
+        int session_close = strcmp(argv[5], "--session-close") == 0;
         int clipboard_text = strcmp(argv[5], "--clipboard-text") == 0;
         int clipboard_images = strcmp(argv[5], "--clipboard-images") == 0;
         int partial_loss = strcmp(argv[5], "--network-loss") == 0;
         int network = partial_loss || strcmp(argv[5], "--network-impairment") == 0;
-        int suspension_status = view_scaling ? exercise_view_scaling(
+        int suspension_status = session_close ? exercise_session_close(
+            display, &viewer, argv[4], &current_connection) : view_scaling ? exercise_view_scaling(
             display, &viewer, &history, &current_connection, &baseline_resources) :
             screenshot_unavailable ? exercise_screenshot_save_unavailable(
             &viewer, &current_connection, &baseline_resources) : mouse_retirement ? exercise_mouse_retirement(
@@ -3937,12 +4060,15 @@ int main(int argc, char **argv) {
             fputs("FLUTTER_PEER_X11_FAIL private AT-SPI teardown\n", stderr);
             suspension_status = -1;
         }
-        if (!keyboard_retirement && !mouse_retirement &&
+        if (!keyboard_retirement && !mouse_retirement && !session_close &&
             close_viewer(display, viewer.window) != 0) suspension_status = -1;
         XCloseDisplay(display);
         XCloseDisplay(source);
         if (suspension_status != 0) return 1;
-        if (view_scaling) {
+        if (session_close) {
+            puts("FLUTTER_PEER_SESSION_CLOSE_OK action=pointer remote=retired connected_sockets=0 "
+                 "listener=preserved main=usable process=preserved");
+        } else if (view_scaling) {
             puts("FLUTTER_PEER_VIEW_SCALING_OK cases=6 styles=original,adaptive "
                  "geometry=pixel-witness pixels=fresh stable_connection=true resources=bounded");
         } else if (screenshot_unavailable) {

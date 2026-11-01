@@ -53,6 +53,7 @@ FLUTTER_KEYBOARD_INPUT=0
 FLUTTER_MOUSE_INPUT=0
 FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE=0
 FLUTTER_VIEW_SCALING=0
+FLUTTER_SESSION_CLOSE=0
 FLUTTER_CREDENTIAL_RESTART=0
 FLUTTER_NETWORK_IMPAIRMENT=0
 FLUTTER_APP_COMMIT=
@@ -670,6 +671,7 @@ case "$#:${1:-}" in
                 --mouse-retirement) FLUTTER_MOUSE_INPUT=2 ;;
                 --screenshot-save-unavailable) FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE=1 ;;
                 --view-scaling) FLUTTER_VIEW_SCALING=1 ;;
+                --session-close) FLUTTER_SESSION_CLOSE=1 ;;
                 --credential-restart) FLUTTER_CREDENTIAL_RESTART=1 ;;
                 --credential-rotation) FLUTTER_CREDENTIAL_RESTART=2 ;;
                 --credential-forget) FLUTTER_CREDENTIAL_RESTART=3 ;;
@@ -723,7 +725,7 @@ case "$#:${1:-}" in
         printf 'Original offline engine setup: %s --linux-flutter-engine-prepare\n' "${0##*/}" >&2
         printf 'Explicit offline engine integration build: %s --linux-flutter-engine-build\n' "${0##*/}" >&2
         printf 'Source-bound Linux app producer: %s --linux-flutter-app-build --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256\n' "${0##*/}" >&2
-        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--credential-restart|--credential-rotation|--credential-forget|--credential-menu|--credential-menu-accessible]\n' "${0##*/}" >&2
+        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--credential-restart|--credential-rotation|--credential-forget|--credential-menu|--credential-menu-accessible]\n' "${0##*/}" >&2
         printf 'Focused native Docker log-lifetime check: %s --android-runtime-log-tests\n' "${0##*/}" >&2
         printf 'Windows service-result file checks: %s --windows-service-result-tests\n' "${0##*/}" >&2
         printf 'Focused archive transaction fixtures: %s --fixed-archive-tests\n' "${0##*/}" >&2
@@ -821,6 +823,7 @@ readonly FLUTTER_KEYBOARD_INPUT
 readonly FLUTTER_MOUSE_INPUT
 readonly FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE
 readonly FLUTTER_VIEW_SCALING
+readonly FLUTTER_SESSION_CLOSE
 readonly FLUTTER_CREDENTIAL_RESTART
 readonly FLUTTER_TEST_PROFILE
 readonly RUST_TEST_PROFILE
@@ -5180,6 +5183,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || guest_invocation+=' --viewer-suspend'
         [ "$FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE" -eq 0 ] || guest_invocation+=' --screenshot-save-unavailable'
         [ "$FLUTTER_VIEW_SCALING" -eq 0 ] || guest_invocation+=' --view-scaling'
+        [ "$FLUTTER_SESSION_CLOSE" -eq 0 ] || guest_invocation+=' --session-close'
         case "$FLUTTER_CREDENTIAL_RESTART" in
             1) guest_invocation+=' --credential-restart' ;;
             2) guest_invocation+=' --credential-rotation' ;;
@@ -8608,6 +8612,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     peer_scenario=focus-reconnect-resource
     [ "$FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE" -eq 0 ] || peer_scenario=screenshot-save-unavailable
     [ "$FLUTTER_VIEW_SCALING" -eq 0 ] || peer_scenario=view-scaling
+    [ "$FLUTTER_SESSION_CLOSE" -eq 0 ] || peer_scenario=session-close
     case "$FLUTTER_CREDENTIAL_RESTART" in
         1) peer_scenario=credential-restart ;;
         2) peer_scenario=credential-rotation ;;

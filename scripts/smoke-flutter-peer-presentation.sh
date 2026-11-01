@@ -88,6 +88,7 @@ case "$#:${1:-}" in
         --credential-restart) PEER_SCENARIO=credential-restart ;;
         --credential-rotation) PEER_SCENARIO=credential-rotation ;;
         --credential-forget) PEER_SCENARIO=credential-forget ;;
+        --credential-menu) PEER_SCENARIO=credential-menu ;;
         *) die 'unknown app replay scenario' ;;
       esac
     fi
@@ -142,6 +143,11 @@ if [ "$PEER_SCENARIO" = network-impairment ] || [ "$PEER_SCENARIO" = network-los
   if [ "$PEER_SCENARIO" = network-loss ]; then
     VIEWER_RESULT='viewer=joined xvfb=joined impairment_cycles=3 stable_connection=true resources=bounded'
   fi
+elif [ "$PEER_SCENARIO" = credential-menu ]; then
+  RUNTIME_CYCLES=1
+  SERVER_GENERATIONS='1'
+  SERVER_REPLACEMENTS=0
+  VIEWER_RESULT='viewer=joined xvfb=joined credential_menu=passed generations=3 password_entries=1 saved_credential=empty next_prompt=required'
 elif [ "$PEER_SCENARIO" = credential-forget ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

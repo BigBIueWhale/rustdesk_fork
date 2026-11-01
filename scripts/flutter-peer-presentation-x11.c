@@ -3067,6 +3067,107 @@ static int prepare_main_settings(Display *display, const ViewerWindow *viewer, W
     return 0;
 }
 
+static int open_saved_peer_menu(Display *display, Window main, unsigned int pid) {
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    while (monotonic_millis() < deadline) {
+        AtspiAccessible *peer = NULL;
+        AtspiComponent *component;
+        AtspiRect *rect;
+        GError *error = NULL;
+        XWindowAttributes attributes;
+        Window child;
+        unsigned long actual_pid;
+        int origin_x, origin_y, valid;
+        if (query_named_accessible(pid, "127.0.0.1", deadline, &peer, 0) != 0) return -1;
+        if (peer == NULL) {
+            if (sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) return -1;
+            continue;
+        }
+        component = atspi_accessible_get_component_iface(peer);
+        g_object_unref(peer);
+        if (component == NULL) return -1;
+        rect = atspi_component_get_extents(component, ATSPI_COORD_TYPE_SCREEN, &error);
+        g_object_unref(component);
+        /* The default grid card has a 28-pixel More control immediately after
+         * its expanded address label. A real menu observation confirms the hit. */
+        valid = error == NULL && rect != NULL && rect->width > 0 && rect->height > 0 &&
+            read_window_pid(display, main, &actual_pid) == 0 && actual_pid == pid &&
+            XGetWindowAttributes(display, main, &attributes) != 0 &&
+            attributes.map_state == IsViewable &&
+            XTranslateCoordinates(display, main, RootWindow(display, DefaultScreen(display)),
+                0, 0, &origin_x, &origin_y, &child) != 0 &&
+            rect->x >= origin_x && rect->y >= origin_y &&
+            (int64_t)rect->x + rect->width + 28 <= (int64_t)origin_x + attributes.width &&
+            (int64_t)rect->y + rect->height <= (int64_t)origin_y + attributes.height &&
+            rect->x >= 0 && rect->y >= 0 &&
+            (int64_t)rect->x + rect->width + 28 <= DisplayWidth(display, DefaultScreen(display)) &&
+            (int64_t)rect->y + rect->height <= DisplayHeight(display, DefaultScreen(display));
+        if (valid) {
+            valid = XTestFakeMotionEvent(display, DefaultScreen(display),
+                        rect->x + rect->width + 14, rect->y + rect->height / 2, CurrentTime) != 0 &&
+                    XTestFakeButtonEvent(display, 1U, True, CurrentTime) != 0 &&
+                    XTestFakeButtonEvent(display, 1U, False, CurrentTime) != 0;
+            XSync(display, False);
+        }
+        g_clear_error(&error);
+        if (rect != NULL) g_boxed_free(ATSPI_TYPE_RECT, rect);
+        return valid && monotonic_millis() < deadline ? 0 : -1;
+    }
+    return -1;
+}
+
+static int exercise_credential_menu(Display *display, ViewerWindow *viewer,
+                                    const ConnectionIdentity *connection) {
+    Window main = None;
+    ConnectionIdentity after = {{0}, {0}, 0UL};
+    const char *phase = "main-window";
+    int result = -1;
+    if (activate_header_control(display, viewer->window, (unsigned int)viewer->pid,
+                                "New connection") != 0 ||
+        find_main_window(display, viewer->pid, &main) != 0) goto out;
+    XRaiseWindow(display, main);
+    XSetInputFocus(display, main, RevertToParent, CurrentTime);
+    XSync(display, False);
+    phase = "forget-action";
+    if (open_saved_peer_menu(display, main, (unsigned int)viewer->pid) != 0 ||
+        activate_named_control((unsigned int)viewer->pid, "Forget Password") != 0) goto out;
+    /* Observe the first menu retiring before reopening a newly built menu. */
+    for (unsigned int pass = 0U; pass < 2U; ++pass) {
+        uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+        unsigned int stable = 0U;
+        phase = pass == 0U ? "menu-retirement" : "forgotten-menu";
+        if (pass != 0U && open_saved_peer_menu(display, main, (unsigned int)viewer->pid) != 0)
+            goto out;
+        while (monotonic_millis() < deadline && stable < 3U) {
+            AtspiAccessible *forget = NULL, *favorite = NULL;
+            int observed = query_named_accessible((unsigned int)viewer->pid, "Forget Password",
+                                                  deadline, &forget, 0) == 0 &&
+                           query_named_accessible((unsigned int)viewer->pid, "Add to Favorites",
+                                                  deadline, &favorite, 0) == 0;
+            int expected = observed && forget == NULL && (favorite != NULL) == (pass != 0U);
+            g_clear_object(&forget);
+            g_clear_object(&favorite);
+            if (!observed) goto out;
+            stable = expected ? stable + 1U : 0U;
+            if (sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) goto out;
+        }
+        if (stable != 3U || monotonic_millis() >= deadline) goto out;
+    }
+    phase = "connection-preserved";
+    if (read_connection_identity(&after) != 0 || !same_connection(connection, &after)) goto out;
+    puts("FLUTTER_PEER_CREDENTIAL_MENU_OK action=activated next_menu=present forget=absent stable_connection=true");
+    result = 0;
+out:
+    if (result != 0) {
+        PasswordPromptScan diagnostic;
+        fprintf(stderr, "FLUTTER_PEER_CREDENTIAL_MENU_FAIL phase=%s\n", phase);
+        if (scan_password_prompt((unsigned int)viewer->pid, &diagnostic, 1) != 0)
+            fputs("FLUTTER_PEER_CREDENTIAL_MENU_FAIL diagnostic=unavailable\n", stderr);
+    }
+    if (main != None && close_viewer(display, main) != 0) result = -1;
+    return result;
+}
+
 static int exercise_dialog_theme(Display *display, const ViewerWindow *viewer, Window main,
                                   AtspiAccessible *caption, const ConnectionIdentity *connection) {
     ConnectionIdentity after = {{0}, {0}, 0UL};
@@ -3495,6 +3596,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--credential-enroll") != 0 &&
                                     strcmp(argv[5], "--credential-replace") != 0 &&
                                     strcmp(argv[5], "--credential-forget") != 0 &&
+                                    strcmp(argv[5], "--credential-menu") != 0 &&
                                     strcmp(argv[5], "--credential-empty") != 0 &&
                                     strcmp(argv[5], "--credential-restore") != 0 &&
                                     strcmp(argv[5], "--clipboard-text") != 0 &&
@@ -3502,7 +3604,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--credential-enroll|--credential-replace|--credential-forget|--credential-empty|--credential-restore]\n",
+              "VIEWER_START [--viewer-suspend|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-empty|--credential-restore]\n",
               stderr);
         return 2;
     }
@@ -3511,7 +3613,9 @@ int main(int argc, char **argv) {
     int credential_empty = argc == 6 && strcmp(argv[5], "--credential-empty") == 0;
     int credential_replace = credential_forget ||
                              (argc == 6 && strcmp(argv[5], "--credential-replace") == 0);
-    int credential_restore = argc == 6 && strcmp(argv[5], "--credential-restore") == 0;
+    int credential_menu = argc == 6 && strcmp(argv[5], "--credential-menu") == 0;
+    int credential_restore = credential_menu ||
+                             (argc == 6 && strcmp(argv[5], "--credential-restore") == 0);
     source_name = argv[1];
     viewer_name = argv[2];
     errno = 0;
@@ -3693,13 +3797,15 @@ int main(int argc, char **argv) {
                 prompt_scan.password_nodes != 0U) result = -1;
             else puts("FLUTTER_PEER_CREDENTIAL_RESTORED_OK password_input=absent prompt=absent");
         }
+        if (result == 0 && credential_menu)
+            result = exercise_credential_menu(display, &viewer, &current_connection);
         if (atspi_exit() != 0) result = -1;
         if (close_viewer(display, viewer.window) != 0) result = -1;
         XCloseDisplay(display);
         XCloseDisplay(source);
         if (result != 0) return 1;
         printf("FLUTTER_PEER_CREDENTIAL_PHASE_OK phase=%s fresh_pixels=4\n",
-               credential_restore ? "restore" : credential_forget ? "forget" :
+               credential_menu ? "menu" : credential_restore ? "restore" : credential_forget ? "forget" :
                credential_replace ? "replace" : "enroll");
         return 0;
     }

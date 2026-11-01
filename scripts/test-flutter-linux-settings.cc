@@ -3,6 +3,8 @@
 #include "flutter/shell/platform/linux/fl_settings.h"
 
 #include <gio/gio.h>
+#include <pwd.h>
+#include <unistd.h>
 #include <atomic>
 #include <cstdio>
 #include <future>
@@ -186,6 +188,10 @@ static void available(PortalMode mode) {
 
 int main(int argc, char** argv) {
   g_test_init(&argc, &argv, nullptr);
+  // The private bus authenticates the real numeric principal through NSS.
+  const struct passwd* principal = getpwuid(getuid());
+  g_assert_nonnull(principal);
+  g_assert_cmpuint(principal->pw_uid, ==, getuid());
   // Existing portal code logs unavailable optional keys at critical level.
   g_log_set_always_fatal(G_LOG_LEVEL_ERROR);
   g_autoptr(GTestDBus) bus = g_test_dbus_new(G_TEST_DBUS_NONE);

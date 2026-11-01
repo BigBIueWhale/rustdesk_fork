@@ -678,6 +678,7 @@ run_linux_flutter_engine_prepare() {
     local patch=$VERIFY_REPO/res/flutter/linux-accessibility-retirement.patch
     local test=$VERIFY_REPO/scripts/test-flutter-linux-accessible-retirement.cc
     local settings_test=$VERIFY_REPO/scripts/test-flutter-linux-settings.cc
+    local passwd=$ROOT/engine.passwd passwd_before
     local archive=/mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz
     local work=$ROOT/engine-prepare-work helper_before status=0
     local memory=2g memory_bytes=2147483648 cpus=2 nano_cpus=2000000000
@@ -738,12 +739,18 @@ run_linux_flutter_engine_prepare() {
     prepare_engine_xvfb
     mkdir "$work"
     chown 1000:1000 "$work"
+    printf '%s\n' 'root:x:0:0:root:/root:/usr/sbin/nologin' \
+        'engine-evidence:x:1000:1000:Engine evidence:/work/home:/usr/sbin/nologin' > "$passwd"
+    chown 1000:1000 "$passwd"
+    chmod 0400 "$passwd"
+    passwd_before="$(sha256sum "$passwd")"
     local -a mounts=(
         "${output_mounts[@]}"
         --mount "type=bind,source=$helper,target=/authority/prepare.py,readonly"
         --mount "type=bind,source=$patch,target=/authority/retirement.patch,readonly"
         --mount "type=bind,source=$test,target=/authority/node-test.cc,readonly"
         --mount "type=bind,source=$settings_test,target=/authority/settings-test.cc,readonly"
+        --mount "type=bind,source=$passwd,target=/etc/passwd,readonly,bind-recursive=disabled"
         --mount "type=bind,source=$VERIFY_REPO/scripts/pins.env,target=/authority/pins.env,readonly"
         --mount "type=bind,source=$VERIFY_REPO/scripts/smoke-xvfb-files.tsv,target=/authority/xvfb-files.tsv,readonly"
         --mount "type=bind,source=$ROOT/engine-xvfb/root,target=/xvfb-root,readonly,bind-recursive=disabled"
@@ -792,6 +799,7 @@ run_linux_flutter_engine_prepare() {
         "bind|$patch|/authority/retirement.patch|false" \
         "bind|$test|/authority/node-test.cc|false" \
         "bind|$settings_test|/authority/settings-test.cc|false" \
+        "bind|$passwd|/etc/passwd|false" \
         "bind|$VERIFY_REPO/scripts/pins.env|/authority/pins.env|false" \
         "bind|$VERIFY_REPO/scripts/smoke-xvfb-files.tsv|/authority/xvfb-files.tsv|false" \
         "bind|$ROOT/engine-xvfb/root|/xvfb-root|false" \
@@ -820,6 +828,7 @@ run_linux_flutter_engine_prepare() {
     [ "$(sha256sum "$helper" "$patch" "$test" "$settings_test" "$VERIFY_REPO/scripts/smoke-xvfb-prepare.sh" \
         "$VERIFY_REPO/scripts/smoke-xvfb-packages.tsv" "$VERIFY_REPO/scripts/smoke-xvfb-files.tsv")" = "$helper_before" ] \
         || fail 'engine preparation source changed'
+    [ "$(sha256sum "$passwd")" = "$passwd_before" ] || fail 'engine passwd fixture changed'
     setpriv --reuid=1000 --regid=1000 --clear-groups /bin/bash "$ENTRY_PREFLIGHT"
     stop_docker_authority
     for mountpoint in "${ENGINE_INPUT_MOUNTS[@]}"; do

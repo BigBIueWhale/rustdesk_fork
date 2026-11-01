@@ -128676,3 +128676,15 @@ tree. Engine prepare/build now select explicit 4/16 GiB guest profiles with a
 for media; 6 GiB host headroom, 1 GiB overhead, pre-boot hard-limit installation,
 live monitoring and joined cleanup remain. Existing profile checks add both valid
 selections and four wrong-memory refusals; native execution is pending.
+
+TUF `jtrBpMtTSa` reaches and compiles the native baseline but its private D-Bus
+daemon refuses the container's numeric UID 1000 because that UID has no passwd
+entry. This is fixture failure, not a product comparison. Add the same narrowly
+scoped read-only passwd fixture used by the native viewer, preserving numeric
+UID/GID, capabilities, namespace and network constraints; the test first checks
+the real NSS principal. No product check is relaxed. Serial SHA-256
+`0cabf72db9c45ad79faccf41837f4fff7143c5b8fb01e9b5fd9d6be77beee292`.
+QEMU 4048413 and wrapper 4046445 are absent, all four listener deltas are zero,
+and the 13,008,510,976-byte peak RAM workspace retired in 101.23 supervisor
+seconds. The bounded retained diagnostics are `settings-engine-nss-refusal.jtrBpMtTSa`.
+No full engine compilation or artifact publication ran.

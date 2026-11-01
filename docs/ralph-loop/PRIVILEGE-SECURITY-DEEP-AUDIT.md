@@ -127469,3 +127469,32 @@ wrapper 3886682 are absent after 111.237 supervisor seconds; 3,011,158,016 peak
 RAM bytes retire and all four listener deltas are zero. The terminal marker is
 `screenshot-text-preparation.EkCkTfQ4gb`; serial SHA-256 is
 `49b635f6c153aab7cc0396210cead7f7355d609391ab5067877b78bba6a38e66`.
+
+Preparation `2fcfa1ed09a87475a57a17489bf1296667617143`, tree
+`e09cfab9a01f081c87549b886f90756d4bddb1b7`, passes the complete negative-path
+check in TUF `sIgYuRM5YV`. Exact command is the recorded retained-app replay
+with final option `--screenshot-save-unavailable`; app/engine/manifest identities
+remain the `cf437894` / `63493887` tuple recorded above. All three providers are
+absent and the real lookup command is available. Actual Control actions and
+Take screenshot taps produce the received screenshot actions; Save As then
+displays exactly `Exception: Couldn't find the executable zenity in the path.`
+in the same viewer's visible Alert text. The authenticated TCP identity remains;
+RSS changes 360,756 to 364,240 KiB, threads 62 to 63 and descriptors remain 44.
+The app is unmodified/unbuilt and all three drivers compile twice identically.
+This proves the real missing-provider failure, not decoded/saved PNG correctness
+or a fresh package installation. QEMU 3889847 and wrapper 3888755 are absent,
+all four listener deltas are zero and 3,012,861,952 peak RAM bytes retire after
+109.966 supervisor seconds. Serial SHA-256:
+`4f31c68500cea9c2dd40fa1d6c143ee219f9eae6f395d7c5795bfc9b8b90ae64`.
+
+Correct the production Debian control generator by adding `zenity | kdialog`
+to Depends. Both are existing file_picker providers and published Debian
+packages; the alternative preserves an already-installed KDE provider instead
+of requiring both toolkits. A recommendation would permit the observed missing
+required functionality. No application or dependency-version change is needed.
+Run the existing focused `--debian-polkit-tests` because it executes this exact
+generator and serializes/reads its actual control archives; no new source-string
+test or broad ELF/package investigation is added. Positive real-chooser saving,
+PNG readback and fresh installed-artifact acceptance remain OPEN. The next
+decisive step needs an authenticated native chooser in the isolated runtime,
+then the real Save As dialog and independently checked saved image.

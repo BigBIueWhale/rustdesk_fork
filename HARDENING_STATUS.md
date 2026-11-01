@@ -43,6 +43,12 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-01):** Native file-browser UI navigation remains
+OPEN/PARKED. The unrun five-file scenario is preserved in stash
+`832a88e30e4148bf3ef798dacff650edb8054ddc`; the completed Dart/Rust listing
+evidence remains. Work moved to actual server password-attempt limiting.
+Do not resume the UI scenario automatically.
+
 **User pivot (2026-11-01):** Inactivity-timeout session validation remains
 OPEN/PARKED after read-only preparation. The completed bounds correction and its
 native initializer evidence remain; no authenticated expiry/activity-reset fixture
@@ -13561,8 +13567,24 @@ sandbox implementation and checker-repair history remain in Git.
   scratch retires with four zero listener deltas. The audit retains source/artifact
   identities and the earlier alias comparison. Production behavior is unchanged;
   the separate profile keeps this wait out of the 48 writer checks.
-  Network choke-point behavior, sustained flood/resource performance,
-  other-platform clocks/suspend, installed and release acceptance remain OPEN.
+  **Production server admission:** at `154f69db`, TUF `0FTOPYDehh` builds the
+  actual Linux server and existing CPace probe, then passes 21 keying outcomes
+  and twelve native socket EOFs. Correct-password access succeeds after nine
+  wrong passwords plus those EOFs; the tenth wrong password trips the source
+  block. Correct passwords from that source remain refused at the immediate,
+  20- and 40-second observations, while another source keys successfully.
+  Both sources key at the 64-second recovery observation, with the original
+  server PID/start identity and owned listener inode unchanged. The exact server
+  joins, followed by QEMU and bounded RAM retirement. Native run-admission
+  controls also pass; the peer publisher now uses its existing four-generation
+  cap without requiring deletion of the retained baseline. Command:
+  `bash scripts/smoke-verifier-vm-authority.sh --linux-server-limiter-tests`.
+  This exercises actual password derivation, CPace and server admission in a
+  networkless Linux VM; full application login and installed-service authority
+  remain outside it. Sustained flood/resource performance, other non-confirmation
+  network errors, other-platform clocks/suspend, installed and release acceptance
+  remain OPEN. Exact artifacts, receipts and the unattributed baseline endpoint
+  removal are retained in the audit journal.
   The current IPv4-only listener does not establish a remotely reachable alias bypass.
 - **Local IPC/CM authorization audit — ⚠️ SUPERSEDED 2026-07-08 by R-S11b/R-S11c.** The
   2026-07-01 pass remains useful only for its transport facts: owner-only channels are

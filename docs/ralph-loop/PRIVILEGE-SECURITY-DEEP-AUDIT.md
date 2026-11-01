@@ -126913,3 +126913,32 @@ run-admission fixture now preserves cached entries while admitting a distinct
 run; its app/engine, stale-run, lock and concurrency refusals remain. Preserve
 the useful prior artifact; do not move or delete it to make a build start.
 No product execution or native acceptance occurred in either refusal.
+
+Source `154f69db019c0254e9f3b7c94b569ff1040df562`, TUF `0FTOPYDehh`,
+passes the full native run-admission controls and all 21 CPace keying outcomes
+plus twelve EOFs. The production server builds in 165 seconds. Nine wrong
+passwords plus EOFs retain correct-password admission; the tenth failure blocks
+that source at immediate/20/40-second observations while another source keys.
+Recovery succeeds after 64,170 ms with server PID 8437/start 25432 and owned
+listener inode 28990 unchanged. No product correction is needed for these cases.
+Command: `bash scripts/smoke-verifier-vm-authority.sh --linux-server-limiter-tests`.
+Server SHA-256: `c28d8e52734de5eb3c530e14dc09c85bfb1c9d72adf81e9b96dec5e7a622b88d`.
+Probe SHA-256: `2fb7969b6800f67fb6ea21d84a303f1aca00f511c226cfcf1a87f345fc457af8`.
+Peer manifest SHA-256: `ac6304a5cbf603859373ea1fe314552be07b0f471274b52c9c68ff0d13681989`.
+Serial SHA-256: `844213eaf9c7507826527a340a16378540760a1ec49287c306b1514583938063`.
+
+QEMU 3835466 and wrapper 3834979 exit; supervisor lifetime is 328.811 seconds.
+The 5,962,919,936-byte peak RAM workspace retires. All four listener inventories
+show zero additions; the final snapshot records one unattributed baseline
+endpoint removal. No foreign process was inspected or changed. Eight retained
+evidence files total 227,030 bytes, hash-verified on CTE and TUF. The source-bound
+seven-file peer artifact remains on TUF alongside `b30f4811`, within the unchanged
+four-generation limit. No owned VM remains live. Exact logs use
+`android-peer-build-*run.0FTOPYDehh.*` in `.harness-state/verifier-vm/`; the outer
+receipt is `.harness-state/server-limiter-154f69db/outer.log`.
+
+This is current Linux production-server keying/admission evidence, not post-key
+application login, installed/root-service authority, sustained flood/resource,
+other non-confirmation errors, platform/suspend or release acceptance. The user
+pivot and verified scope are recorded in the current-state ledger; a fresh count
+follows. All independently parked topics remain parked; the broad goal is open.

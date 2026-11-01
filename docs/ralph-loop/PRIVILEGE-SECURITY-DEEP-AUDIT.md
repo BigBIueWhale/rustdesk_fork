@@ -128183,3 +128183,16 @@ the capsule binds them. Fresh ledger count follows.
 Shared-menu accessibility, the unexplained fresh-pixel failure, native Favorites,
 other platforms, failure/concurrency, installed privileged authority and current
 release acceptance remain OPEN. The latest pivot is honored; older parks remain.
+
+Fresh count at `2839764a`, TUF `C1mvZoO7fa`, passes at 387,996 tokens /
+1,776,748 bytes, input SHA-256
+`f3aff1ca2210575575e4fbcfc1dc1fa7bf7089694131407aa5b02058a5c6f677`.
+All seven controls and the complete-input round trip pass. QEMU 3985179 and
+wrapper 3983757 are absent; 402,776,064 peak RAM bytes retire after 30.647
+supervisor seconds with three zero listener deltas. Serial SHA-256:
+`134a97e5fa5ffaaaf52f6f22e91a07e22e1f2697d6384948c363dca23f96182f`.
+The native attempts, build, cleanup receipts and count retain 78 raw files
+(2,697,574 bytes), hash-verified on both hosts. This audit-only receipt preserves
+the counted ledger. No owned VM remains; the saved-peer correction and pointer
+Forget workflow reach a native Linux checkpoint. The broad goal remains active
+and incomplete, with the listed accessibility and other evidence gaps still open.

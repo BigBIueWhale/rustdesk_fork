@@ -3367,12 +3367,16 @@ static int exercise_input_latency(Display *source, Display *display, ViewerWindo
     int64_t expected = -1;
     unsigned int histogram[FRESH_LIMIT_MS + 1U] = {0}, maximum = 0U, trial = 0U;
     const char *phase = "setup";
-    Window focus;
+    Window focus, initial_focus;
     int revert;
     uint64_t began = monotonic_millis();
+    XGetInputFocus(source, &initial_focus, &revert);
+    /* Server/CM startup may have focused another window since the source started. */
+    XSetInputFocus(source, RootWindow(source, DefaultScreen(source)), RevertToParent, CurrentTime);
+    XSync(source, False);
     XGetInputFocus(source, &focus, &revert);
-    printf("FLUTTER_PEER_INPUT_LATENCY_SETUP source_focus=%lu source_root=%lu "
-           "source_released=%s viewer_released=%s\n", focus,
+    printf("FLUTTER_PEER_INPUT_LATENCY_SETUP initial_source_focus=%lu source_focus=%lu source_root=%lu "
+           "source_released=%s viewer_released=%s\n", initial_focus, focus,
            RootWindow(source, DefaultScreen(source)),
            keyboard_is_released(source) ? "true" : "false",
            keyboard_is_released(display) ? "true" : "false");

@@ -129320,3 +129320,17 @@ listener deltas are zero and RAM retires after 116.156 seconds with
 authenticated app; preserve their hashes and the small viewer log, then retire
 the exact duplicate bundle/private directory under the shared lock. Receipts:
 `input-latency-setup-failure-94db4103.json` and its retirement capsule.
+
+Diagnostic replay `HOlhrZWjBW` at `f9b9bcbc` identifies the exact setup failure:
+controlled-side focus is window 23068675, while the fixture receives keys at
+root window 1293; both keyboards are released. The test refuses before sending
+request zero. Xlib's input-focus contract above makes focus a shared X-server
+resource, so source startup cannot establish focus after later server/CM startup.
+Select and verify the fixture's root focus once after authentication, as the
+existing native keyboard scenario already does. Timed requests still originate
+only on the viewer; no controlled-side key injection or latency-limit change.
+Wrapper 1898412/QEMU 1899712 retire with four zero decoded listener deltas,
+114.914 supervisor seconds and 3,011,743,744 peak RAM bytes. The exact failure
+bundle is again hash-matched to the retained app, captured and retired under the
+shared lock. Receipts: `input-latency-focus-failure-f9b9bcbc.json` and its
+retirement capsule. Complete-peer input latency remains pending.

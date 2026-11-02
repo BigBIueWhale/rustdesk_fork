@@ -208,7 +208,7 @@ contain Map/Legacy/Legacy with required ownership and modes. Identical driver
 rebuilds, four zero listener deltas and VM/RAM/private retirement pass;
 `keyboard-restart-7bab3511.json` binds the evidence. No product change was needed.
 This is orderly viewer restart on equal-layout X11. Abrupt restart, save failures
-beyond the case below, Translate mode, physical devices, other platforms and
+beyond the case below, Translate-mode restart, physical devices, other platforms and
 installed acceptance remain OPEN.
 
 **Keyboard-mode save refusal/retry verified on Linux:** Replay `XoWxkWSZpx`
@@ -224,24 +224,25 @@ resources, four zero listener deltas and VM/RAM/private retirement pass.
 `keyboard-save-72af4272.json` binds this evidence. No product change was needed;
 other failure classes, concurrency, platforms and installed acceptance remain OPEN.
 
-**Translate Ctrl+A disconnect — reproduced, OPEN/STOP-SHIP (2026-11-03):**
-Replay `X3c59cYD2S` at `98a8dd43` reuses app `c9323bf1` / engine `ddb1541d`.
-Map passes all eleven native cases; Translate passes letters, shifted text,
-space, Return, Backspace and both arrows. Ctrl+A then produces only the Control
-press/release. The server reports `Translate sequence hotkeys require a physical
-keyboard mode`, stops its input worker and disconnects the authenticated session.
-The pinned Linux capture dependency ignores Control during character lookup;
-the client sends a Translate sequence, while receiver ownership correctly retains
-Control. `src/server/input_service.rs::translate_keyboard_mode` rejects that
-combination. This is a product failure, not missing evidence alone. No correction
-has been applied. Next: correct the Translate shortcut path while preserving
-character semantics and held-key ownership, then replay the same native failure
-on the rebuilt candidate. All three drivers rebuild identically; four listener
-deltas are zero and VM/RAM/private state retires. Twelve duplicate failure-bundle
-files match the canonical app and are deleted; bounded logs/provider evidence
-remain in `keyboard-translate-98a8dd43.json` and its referenced artifacts.
-The return-to-Map phase is unreached. Equal US X11 only; broader mode/platform
-and installed acceptance remain OPEN. Independently parked topics remain parked.
+**Linux Translate Ctrl+A disconnect — corrected and verified (2026-11-03):**
+`c6aed851` removes the Linux Translate handler's blanket hotkey rejection and
+uses the existing checked native text injector, preserving receiver-owned held
+modifiers and failure/retirement behavior. Baseline `X3c59cYD2S` on app
+`c9323bf1` passes Map and nine Translate cases, then rejects Ctrl+A and closes
+the connection. Corrected replay `zES9qwcOLV` uses freshly built app `c6aed851`
+with the same engine/provider and unchanged native observer. Map→Translate→Map
+passes all 33 cases / 84 native events, including Ctrl+A and subsequent typing,
+exact characters/modifiers/order and both keymaps released. The same window and
+authenticated connection remain; twelve fresh displayed counters have maximum
+sampled age 308 ms, and joined storage retains Map. All drivers rebuild
+identically; bounded resources, four zero listener deltas and VM/RAM/private
+retirement pass. `keyboard-translate-corrected-c6aed851.json` binds acceptance;
+`keyboard-translate-98a8dd43.json` retains the failing comparison. Build
+`J1J8D0Hqej` also passes thirteen widget and two native command tests; its
+manifest and cleanup are in `keyboard-translate-build-c6aed851.json`.
+Equal US X11 only: other shortcut combinations, input methods/layouts, physical
+devices, Translate restart, other platforms and installed/release acceptance
+remain OPEN. Independently parked topics remain parked.
 
 **User pivot (2026-11-02):** Custom quality/FPS native validation is OPEN/PARKED.
 Its unexecuted two-file draft is preserved in stash

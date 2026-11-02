@@ -131953,3 +131953,46 @@ Both hosts retain the manifest, complete inventory and completion record in
 `translate-build-retired-c619cb3e.*`; no duplicate archive is created. The build
 must use the existing authenticated inputs, zero-NIC VM, admitted RAM scratch,
 live resource monitor and exact joined cleanup. Native acceptance remains pending.
+
+Previous goal turn: progress; correction `c6aed851` was pushed and exact build
+`J1J8D0Hqej` launched. This continuation followed that same live wrapper/session
+through completion rather than restarting during buffered compilation. The
+full Linux app build passes thirteen widget and two native command cases,
+followed by successful Rust and Flutter release artifacts. These are build
+prerequisites, not the keyboard verdict. The retained app manifest is
+`1e8829b6fd4ab5e6dff89cf8a8e6f77f6a75f04d18225cff4e44aa6bfeb74e0d`,
+binding source tree `d5de29a0e0d8a0f0560b5f5a918b754df3164c2d`,
+75 files / 70,349,645 bytes including the manifest. Relative to app `c9323bf1`,
+only `libapp.so` and `librustdesk.so` differ. The source delta includes the
+already-reviewed macOS appearance changes as well as this Linux receiver fix;
+engine and input provider are unchanged. The whole build takes about 1,065
+seconds and does not execute the keyboard acceptance scenario.
+
+Build wrapper 1068510 and QEMU 1069140 are absent. All exact helpers, private
+state and RAM `run.lyk68yaz` / `29:40010` retire; all four listener deltas are
+zero. Peak RAM scratch is 11,890,724,864 bytes under 16 GiB, with minimum host
+available memory 15,962,214,400 bytes above the 6 GiB required headroom.
+Both hosts retain thirteen verified build records, including
+`keyboard-translate-build-c6aed851.json` (7,383 bytes, SHA-256
+`5d4fca19bb54e9a569876bc425f00f46f758543553b73175196e9d2625374d31`).
+
+Unchanged native replay `zES9qwcOLV` then passes on app/harness `c6aed851`.
+Map→Translate→Map each confirms the exclusive toolbar choice and passes all
+eleven native keyboard cases, including Ctrl+A and ordinary typing afterward:
+33 cases / 84 exact events overall. Both keymaps finish released, the same
+window and authenticated connection remain, and twelve fresh displayed counters
+have maximum sampled age 308 ms (phase maxima 295/308/279 ms). Joined storage
+retains Map. All three drivers rebuild identically and the pinned native input
+provider is unchanged before/after. No observer expectation is relaxed.
+
+Replay wrapper 1069999 and QEMU 1071062 are absent. Exact helpers, private
+state and RAM `run.hofqylub` / `29:40051` retire with four zero listener deltas.
+Peak RAM scratch is 3,013,808,128 bytes under 7 GiB. Both hosts retain thirteen
+verified replay records, including `keyboard-translate-corrected-c6aed851.json`
+(21,261 bytes, SHA-256
+`3bfd353f985a434349b0cdd4d77308fef7b3cb7707ef9daeea0bbbbcc0af89d2`).
+The demonstrated Linux Ctrl+A disconnect is corrected and natively verified.
+This does not establish other shortcut combinations, input methods/layouts,
+physical devices, Translate restart, other platforms or installed/release
+acceptance. The ledger records the scoped closure and retains those gaps;
+its fresh isolated count follows. Independent parks and the full goal remain.

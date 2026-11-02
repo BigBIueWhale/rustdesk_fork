@@ -131074,3 +131074,14 @@ Private state and RAM `run.j7xqr_k5` / `29:38750` retire; peak scratch is
 Both hosts retain that capsule and all seven raw records. The ledger records
 this checkpoint and the View mode pivot; its required fresh isolated count
 follows. All independent user parks and broader release gaps remain.
+
+Fresh count `diUvmT0tpO` at `4790b897` passes seven controls and the whole-input
+round trip: **394,232 tokens / 1,804,433 bytes**, SHA-256
+`00b15fe580bd8bed41989498276c43913e5a85cc5ba6d5cd3e32f8d731b9a421`.
+Wrapper 996643 and QEMU 998061 are absent; three listener deltas are zero,
+and private state plus RAM `run._097uics` / `29:38792` retire. Capsule
+`theme-windows-ledger-4790b897.json` is 5,011 bytes, SHA-256
+`cf8c3c90d3a76f779c730ac60c1752f7b8ca6b7834243e3a8bfad167a3ca9fd8`.
+Both hosts retain the count capsule and raw records. No owned job remains active.
+The cross-window theme check reaches its native checkpoint; View mode remains
+parked and the release goal remains incomplete.

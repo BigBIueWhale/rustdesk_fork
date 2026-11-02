@@ -598,7 +598,7 @@ class MyTheme {
       if (!await mainSetLocalOption(kCommConfKeyTheme, value)) return false;
       mode = getThemeModePreference();
       Get.changeThemeMode(mode);
-      if (!isWeb) await bind.mainChangeTheme(dark: mode.toShortString());
+      if (!isWeb) await bind.mainNotifyThemeChanged();
       // Synchronize the window theme of the system.
       updateSystemWindowTheme();
     } else {

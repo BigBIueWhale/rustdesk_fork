@@ -449,7 +449,7 @@ class _AppState extends State<App> with WidgetsBindingObserver {
       // Synchronize the window theme of the system.
       updateSystemWindowTheme();
       if (desktopType == DesktopType.main) {
-        bind.mainChangeTheme(dark: to.toShortString());
+        bind.mainNotifyThemeChanged();
       }
     };
     WidgetsBinding.instance.addObserver(this);
@@ -564,11 +564,8 @@ Widget _keepScaleBuilder(BuildContext context, Widget? child) {
 
 _registerEventHandler() {
   if (isDesktop && desktopType != DesktopType.main) {
-    platformFFI.registerEventHandler('theme', 'theme', (evt) async {
-      String? dark = evt['dark'];
-      if (dark != null) {
-        await MyTheme.changeDarkMode(MyTheme.themeModeFromString(dark));
-      }
+    platformFFI.registerEventHandler('theme', 'theme', (_) async {
+      await MyTheme.changeDarkMode(MyTheme.getThemeModePreference());
     });
     platformFFI.registerEventHandler('language', 'language', (_) async {
       reloadAllWindows();

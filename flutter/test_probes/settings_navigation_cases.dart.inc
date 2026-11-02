@@ -46,9 +46,9 @@ class _NativeSettings implements RustdeskImpl {
   Future<String> Function()? readBuildDate;
   String theme = 'light';
   final themeWrites = <String>[];
-  final themeBroadcasts = <String>[];
+  int themeNotifications = 0;
   Future<String> Function(String)? saveTheme;
-  Future<void> Function(String)? broadcastTheme;
+  Future<void> Function()? notifyTheme;
   String recordingDirectory = '/work/nonexistent-settings-recordings';
   final recordingWrites = <String>[];
   Future<void> Function(String)? saveRecordingDirectory;
@@ -150,10 +150,9 @@ class _NativeSettings implements RustdeskImpl {
         return writeOption(false, key as String, call.namedArguments[#value] as String);
       case #mainSupportRemoveWallpaper:
         return Future<bool>.value(false);
-      case #mainChangeTheme:
-        final mode = call.namedArguments[#dark] as String;
-        themeBroadcasts.add(mode);
-        return Future<void>.sync(() async => await broadcastTheme?.call(mode));
+      case #mainNotifyThemeChanged:
+        themeNotifications++;
+        return Future<void>.sync(() async => await notifyTheme?.call());
       case #mainGetSoundInputs:
         return Future<List<SoundInput>>.value([
           SoundInput(id: 'Mic A', label: 'Mic A'),
@@ -525,7 +524,7 @@ void main() {
     expect(disabled && stillDisabled, isTrue);
     expect(_themeRadio(tester, 'dark').groupValue, 'dark');
     expect(_themeRadio(tester, 'light').onChanged, isNotNull);
-    expect(native.themeBroadcasts, ['dark']);
+    expect(native.themeNotifications, 1);
     expect(tester.takeException(), isNull);
   });
 
@@ -537,32 +536,32 @@ void main() {
     await _settle(tester);
     final failed = find.text('Failed').evaluate().isNotEmpty;
     expect(native.theme, 'light');
-    expect(native.themeBroadcasts, isEmpty);
+    expect(native.themeNotifications, 0);
     native.saveTheme = null;
     await tester.tap(find.text('Dark'));
     await _settle(tester);
     expect(failed, isTrue);
     expect(native.themeWrites, ['dark', 'dark']);
-    expect(native.themeBroadcasts, ['dark']);
+    expect(native.themeNotifications, 1);
     expect(find.text('Failed'), findsNothing);
   });
 
   testWidgets('desktop theme notification failure stays local and permits retry',
       (tester) async {
     final escaped = <Object>[];
-    native.broadcastTheme = (_) => Future<void>.error(StateError('notification refused'));
+    native.notifyTheme = () => Future<void>.error(StateError('notification refused'));
     await _mountTheme(tester);
     runZonedGuarded(() => _themeRadio(tester, 'dark').onChanged!('dark'),
         (Object error, StackTrace stack) => escaped.add(error));
     await _settle(tester);
     final failed = find.text('Failed').evaluate().isNotEmpty;
-    native.broadcastTheme = null;
+    native.notifyTheme = null;
     await tester.tap(find.text('Dark'));
     await _settle(tester);
     expect(escaped, isEmpty);
     expect(failed, isTrue);
     expect(native.themeWrites, ['dark', 'dark']);
-    expect(native.themeBroadcasts, ['dark', 'dark']);
+    expect(native.themeNotifications, 2);
     expect(find.text('Failed'), findsNothing);
   });
 
@@ -586,7 +585,7 @@ void main() {
     await _settle(tester);
     expect(admitted, ['dark']);
     expect(native.theme, 'dark');
-    expect(native.themeBroadcasts, ['dark']);
+    expect(native.themeNotifications, 1);
     expect(tester.takeException(), isNull);
   });
 
@@ -598,7 +597,7 @@ void main() {
     stale('dark');
     await _settle(tester);
     expect(native.themeWrites, isEmpty);
-    expect(native.themeBroadcasts, isEmpty);
+    expect(native.themeNotifications, 0);
   });
 
   testWidgets('desktop theme publishes effective preference and follow system',
@@ -608,12 +607,12 @@ void main() {
     await tester.tap(find.text('Dark'));
     await _settle(tester);
     expect(_themeRadio(tester, 'light').groupValue, 'light');
-    expect(native.themeBroadcasts, ['light']);
+    expect(native.themeNotifications, 1);
     native.saveTheme = null;
     await tester.tap(find.text('Follow System'));
     await _settle(tester);
     expect(native.themeWrites, ['dark', defaultOptionTheme]);
-    expect(native.themeBroadcasts, ['light', 'system']);
+    expect(native.themeNotifications, 2);
     expect(_themeRadio(tester, 'system').groupValue, 'system');
     expect(tester.takeException(), isNull);
   });
@@ -659,31 +658,41 @@ void main() {
         expect(find.text(sample.expected.name), findsNothing);
         native.theme = preference;
 
-        Future<void> deliver(String value) async {
+        Future<void> deliver(String? value) async {
           expect(await dispatchSettingsProbeEvent(
-              jsonEncode({'name': 'theme', 'dark': value})), isTrue);
+              jsonEncode({'name': 'theme', if (value != null) 'dark': value})), isTrue);
           await _settle(tester);
         }
 
-        void expectCurrentTheme() {
-          expect(find.text(sample.expected.name), findsOneWidget);
-          final theme = sample.expected == Brightness.light
+        void expectCurrentTheme([Brightness? brightness]) {
+          final expected = brightness ?? sample.expected;
+          expect(find.text(expected.name), findsOneWidget);
+          final theme = expected == Brightness.light
               ? MyTheme.lightTheme : MyTheme.darkTheme;
           expect(tester.widget<ColoredBox>(find.byKey(const Key('received-theme')))
               .color, theme.scaffoldBackgroundColor);
           expect(native.theme, preference);
           expect(native.themeWrites, isEmpty);
-          expect(native.themeBroadcasts, isEmpty);
+          expect(native.themeNotifications, 0);
           expect(tester.takeException(), isNull);
         }
 
-        await deliver(sample.event);
+        await deliver(sample.stale == null ? null : sample.event);
         expectCurrentTheme();
         final stale = sample.stale;
         if (stale != null) {
           await deliver(stale);
           expectCurrentTheme();
         }
+        final changedBrightness = sample.system == Brightness.light
+            ? Brightness.dark : Brightness.light;
+        tester.platformDispatcher.platformBrightnessTestValue = changedBrightness;
+        await _settle(tester);
+        expectCurrentTheme(sample.preference == 'system'
+            ? changedBrightness : sample.expected);
+        tester.platformDispatcher.platformBrightnessTestValue = sample.system;
+        await _settle(tester);
+        expectCurrentTheme();
       } finally {
         for (final event in ['theme', 'language']) {
           PlatformFFI.instance.registerEventHandler(event, event, (_) {}, replace: true)

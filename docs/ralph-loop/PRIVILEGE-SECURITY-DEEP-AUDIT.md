@@ -131199,3 +131199,30 @@ exits 1 after 231 seconds. Both hosts retain the raw records, capture metadata,
 retirement receipt and `theme-ordering-init-672b8122.json` (13,025 bytes,
 SHA-256 `e07373aa6c1d3cc274a43ac60a818571fa122dd1d6f5a2b64ffd89814b6a4d26`).
 The product remains unchanged; the ordering hypothesis still needs execution.
+
+Run `ANyuhxg9wj` at `434c69ee` executes all 36 cases: 34 pass, including
+all four fresh-delivery controls; both delayed-Dark cases fail at the second
+visible-theme assertion after successful initial delivery. The actual registered
+handler, dispatcher, theme application and rendered widgets run. Native storage
+and OS brightness remain explicit doubles; this reproduces the receiver behavior,
+not the native worker schedule. Capsule `theme-ordering-baseline-434c69ee.json`
+(13,155 bytes, SHA-256
+`376fb3b9d64c9b30ab93f8dc1a8b7604704f9a1c685735b9b4fc9ed8f0a2dda1`)
+and the complete raw records are retained on both hosts. Wrapper 1024278 and
+QEMU 1024758 are absent; the helper disconnected, four listener deltas are zero,
+RAM `run.d7ybvsr4` / `29:38972` and exact private diagnostics retire. Scratch
+peaked at 6,380,847,104 bytes; outer execution took 230 seconds.
+
+The correction replaces the value-bearing `main_change_theme` API with
+`main_notify_theme_changed`. Rust broadcasts only the event name; the receiver
+reads the effective shared preference at delivery. LocalConfig publishes its
+cache only after the preference transaction succeeds, and the desktop multiwindow
+plugin creates engines in the same process. A delayed notification therefore
+cannot restore its old payload. Follow System is applied as `ThemeMode.system`,
+preserving Flutter's response to later brightness changes. The old API, argument
+and payload reader are removed together; the existing web stub is renamed.
+The two reproduced schedules remain in the regression. Four controls now receive
+the value-free event, and every receiver case checks subsequent brightness changes
+and restoration without another notification. Existing save failure, retry and
+ownership checks still require the exact notification count. Focused execution
+follows; complete native-app, other-platform and release acceptance remain OPEN.

@@ -1282,8 +1282,8 @@ class RustdeskImpl {
     return Future(() => js.context.callMethod('getByName', ['load_fav_peers']));
   }
 
-  Future<void> mainChangeTheme({required String dark, dynamic hint}) {
-    throw UnimplementedError("mainChangeTheme");
+  Future<void> mainNotifyThemeChanged({dynamic hint}) {
+    throw UnimplementedError("mainNotifyThemeChanged");
   }
 
   Future<void> mainChangeLanguage({required String lang, dynamic hint}) {

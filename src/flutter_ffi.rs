@@ -1568,8 +1568,8 @@ fn main_broadcast_message(data: &HashMap<&str, &str>) {
     }
 }
 
-pub fn main_change_theme(dark: String) {
-    main_broadcast_message(&HashMap::from([("name", "theme"), ("dark", &dark)]));
+pub fn main_notify_theme_changed() {
+    main_broadcast_message(&HashMap::from([("name", "theme")]));
 }
 
 pub fn main_change_language(lang: String) {

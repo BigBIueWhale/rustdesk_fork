@@ -131278,3 +131278,23 @@ authenticated inputs, immutable source and joined cleanup before publication.
 This prerequisite enables the newly corrected theme artifact. View mode's pending
 candidate and its native acceptance remain parked and preserved. No product edit
 is needed here. Build execution will validate this two-line orchestration repair.
+
+First admission `aYaKQeEOQe` at `163789cf` refuses the full four-generation
+app cache before QEMU launch or compilation. Wrapper 1027834 is absent; admitted
+RAM `run.knccjmwn` / `29:39082` and the four-entry private diagnostics retire.
+Both hosts retain `theme-native-build-admission-163789cf.json` (3,460 bytes,
+SHA-256 `74259e7596edfda6b47c7e23c2fac70bb2bd5d318e732933a168bc625e8fb716`)
+with the complete outer capture, storage record and retirement receipt.
+
+Retire superseded app `35f9ae68` after validating every file against its manifest
+and retaining that manifest and exact inventory. Accepted app `7e6f6459` differs
+only in `libapp.so`, corrects the menu-disposal failure, and retains the identical
+native library/engine. Shared run, cache and generation locks cover retirement;
+directory descriptors and exact entry identities confine deletion. This removes
+75 files / 70,308,685 logical bytes (70,520,832 allocated), leaving three
+generations. The old healthy baseline, parked View mode candidate, accepted app,
+canonical source/inputs and all runtime evidence remain. Both hosts retain
+`retired-app-35f9ae68.json` (44,350 bytes, SHA-256
+`9f3de218802b24fef8bbe21519517e037f4ecbe8a44f513a90c881b82a193ee7`) and
+its retirement receipt; the other three manifest hashes are unchanged. Resume
+the native theme build within the existing four-generation bound.

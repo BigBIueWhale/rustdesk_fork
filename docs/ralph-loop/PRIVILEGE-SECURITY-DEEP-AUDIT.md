@@ -130678,3 +130678,25 @@ than adding catalogue-only checks because it exercises the missing root/settings
 integration without rebuilding. Restart, Arabic and other platforms remain
 separate. All independent parks remain. Shell syntax and whitespace checks pass;
 isolated compilation and native execution follow.
+
+Replay `nOIZ8lS7U6` at `62cff9d8` compiles all three drivers twice identically;
+controller SHA-256 is
+`cae5142ba4748d3c072969e61ce7a8772e7661daa7fbbca197d71fd61d8bad4b`.
+The actual settings show Default/English, and three radio-bound observations
+confirm LTR. Selecting Hebrew changes both expected native labels, but the
+radio remains at exactly the English bounds through the direction deadline:
+row x=461/width=502, radio x=471/width=32. The run exits 1, reproducing the
+root/settings direction integration failure. Subsequent tooltip, fresh-frame,
+saved-preference and normal viewer-exit acceptance are unreached. No product
+correction or Arabic/restart/other-platform result is claimed. The next correction
+must connect the persisted language choice to the framework locale at both roots,
+including initial load, live refresh, default-language behavior and catalogue aliases.
+
+Wrapper 732300 and QEMU 733356 are absent; four listener deltas are zero and
+RAM `run.598ot0t8` / `29:38210` retires, with peak scratch 3,014,447,104 bytes
+under 7 GiB. Bounded capsule `language-direction-62cff9d8.json` is 23,026 bytes,
+SHA-256 `48d2cf348aa5a20a55b212478e823d4f2865987c231c7e37537ad09219cb88a1`.
+The viewer log and raw receipts remain. Under the shared lock, every private
+entry is inventoried, duplicate bundle files match the canonical app bytes and
+the exact failed-run directory retires; a separate receipt records that cleanup.
+The ledger records the reproduced failure and pivot; a fresh isolated count follows.

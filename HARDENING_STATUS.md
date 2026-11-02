@@ -43,6 +43,24 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**Native language-direction failure reproduced (2026-11-02):** Replay
+`nOIZ8lS7U6` at `62cff9d8` reuses app `7e6f6459` and engine `ddb1541d`.
+Default-English labels and left-side radio placement pass. Selecting Hebrew in
+the actual settings dropdown changes the observed labels, but the radio remains
+at its English coordinates (row x=461, width=502; radio x=471, width=32) through
+the direction deadline. The complete GetMaterialApp roots omit the selected locale;
+window rebuilds translate text without updating framework locale. Correction and
+native acceptance remain OPEN. Restart and other languages/platforms are untested.
+`language-direction-62cff9d8.json` binds the failure, twice-identical driver builds,
+four zero listener deltas and joined VM/RAM cleanup. Duplicate failure-bundle bytes
+were retired after comparison with the canonical app cache; bounded evidence remains.
+
+**User pivot (2026-11-02):** Differing-keyboard-layout work is OPEN/PARKED.
+Its unexecuted one-file observer draft is preserved in stash
+`4bcdb11c128c2f2a193f937b8c315716b8fa5ed4`; no differing-layout run or product
+change occurred. Work moved to language-setting direction above. The completed
+equal-layout keyboard result remains valid, and independent parks remain.
+
 **Native Linux keyboard-mode switching verified (2026-11-02):** Replay
 `7jeXoKHAiM` at `c352f6fd` reuses app `7e6f6459` and engine `ddb1541d`.
 Actual toolbar choices Map→Legacy→Map each have confirmed exclusive menu state

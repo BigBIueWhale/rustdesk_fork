@@ -130700,3 +130700,16 @@ The viewer log and raw receipts remain. Under the shared lock, every private
 entry is inventoried, duplicate bundle files match the canonical app bytes and
 the exact failed-run directory retires; a separate receipt records that cleanup.
 The ledger records the reproduced failure and pivot; a fresh isolated count follows.
+
+TUF count `U3pFiJPs7m` at `2027181a` passes seven controls and the complete-input
+round trip: **393,296 tokens / 1,800,286 bytes**, SHA-256
+`c25c259879870d012375569eeb4cdbf013a49b7ab7646690c3aa469391391627`.
+Wrapper 733696 and QEMU 735112 are absent, three listener deltas are zero and
+RAM `run.79zxc4da` / `29:38252` plus private state retire. Capsule
+`language-direction-ledger-2027181a.json` is 5,032 bytes, SHA-256
+`86f920347ac69baff504250a8a2dbb9941b507d78a4d4ac14c3e04590bbe7b18`.
+Both hosts retain the failure and count capsules and all associated raw receipts;
+the separate viewer log and exact retirement receipt are retained on both as well.
+No owned run remains active. The language integration failure is the current
+implementation target; the keyboard-layout draft and all independent parks remain
+parked. The release goal remains incomplete.

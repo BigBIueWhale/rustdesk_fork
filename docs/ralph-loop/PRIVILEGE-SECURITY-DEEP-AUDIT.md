@@ -131621,3 +131621,37 @@ All owned processes, private state and RAM scratch retire with three zero
 listener deltas. The selected component correction is complete; the next decisive
 macOS check requires a legitimate isolated target to compile the Swift receiver
 and observe real window appearance, OS changes, restart and failure behavior.
+
+### 2026-11-02 — held modifiers across native keyboard-mode changes
+
+Previous goal checkpoint: progress, with the macOS component correction and
+count reconciled. The intervening SSH clarification verified the existing
+password-authenticated connection; no key or reconnection service is present.
+Resume R-S0 native keyboard settings validation. Equal-layout Map/Legacy/Map
+typing already passed, but switching with held modifiers has no native evidence.
+This available retained-app scenario takes priority over additional macOS work
+that requires an unavailable legitimate target. Differing layouts, shared remote
+key ownership and all independent parked topics remain parked.
+
+`session_set_keyboard_mode` saves the supported choice before notifying peers;
+`save_keyboard_mode` persists before publishing the in-memory preference. Native
+grab retirement captures the previous mode and releases retained input events.
+The toolbar workflow can retire that grab before selecting a different mode,
+so source review alone cannot establish whether held input crosses the commit.
+No product defect is claimed. The extended existing native scenario holds left
+Control/Shift on the viewer, proves their two native presses and both keymaps,
+then activates the real toolbar choices while the viewer keys remain down.
+It records releases before selection, after selection and after confirmed menu
+state, releases only the fixture's viewer keys, and requires exactly two native
+releases, a quiet interval and both keyboards released before normal typing.
+The previous 33 typing cases, freshness, connection/resource and saved-mode
+checks remain. Both Map-to-Legacy and Legacy-to-Map transitions must pass.
+
+X.Org documents XTest key simulation and XQueryKeymap's logical-state bitmap:
+https://xorg.freedesktop.org/archive/current/doc/libXtst/xtestlib.html and
+https://xorg.freedesktop.org/X11R7.0/doc/PDF/xlib.pdf. These observations establish
+native X11 delivery and logical state, not physical-device behavior. Use retained
+app `c9323bf1` and engine `ddb1541d` in the admitted zero-NIC TUF VM; do not rebuild
+the app. The app's keyboard path matches current source; later changes concern
+macOS appearance and its component fixture. TUF source is clean and no owned
+VM/RAM job remains before admission. The observer compiles twice in isolation.

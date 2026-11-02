@@ -5095,6 +5095,117 @@ static int wait_keyboard_controls_retired(unsigned int pid, int toolbar) {
     return stable == 3U && monotonic_millis() < deadline ? 0 : -1;
 }
 
+typedef struct {
+    KeyCode local[2], remote[2];
+    unsigned int local_held, pressed, released;
+} KeyboardModeHold;
+
+static int observe_mode_hold(Display *source, const KeyboardModeHold *hold,
+                              unsigned int sequence, const char *phase,
+                              unsigned int *seen, int type) {
+    Window root = RootWindow(source, DefaultScreen(source));
+    unsigned int events = 0U;
+    while (XPending(source) != 0) {
+        XEvent event;
+        if (++events > 128U) return -1;
+        XNextEvent(source, &event);
+        if (event.type == MappingNotify) {
+            XRefreshKeyboardMapping(&event.xmapping);
+            continue;
+        }
+        if (event.type != KeyPress && event.type != KeyRelease) continue;
+        unsigned int bit = event.xkey.keycode == hold->remote[0] ? 1U :
+                           event.xkey.keycode == hold->remote[1] ? 2U : 0U;
+        printf("FLUTTER_PEER_MODE_HELD_EVENT sequence=%u phase=%s type=%d code=%u "
+               "state=%u synthetic=%d\n", sequence, phase, event.type,
+               event.xkey.keycode, event.xkey.state, event.xkey.send_event);
+        if (event.xkey.window != root || event.xkey.send_event || bit == 0U ||
+            (*seen & bit) != 0U || event.type != type ||
+            (type == KeyPress && bit != (*seen == 0U ? 1U : 2U))) return -1;
+        *seen |= bit;
+    }
+    return 0;
+}
+
+static int begin_mode_hold(Display *source, Display *display, const ViewerWindow *viewer,
+                            KeyboardModeHold *hold, unsigned int sequence) {
+    static const KeySym symbols[] = {XK_Control_L, XK_Shift_L};
+    Window root = RootWindow(source, DefaultScreen(source));
+    memset(hold, 0, sizeof(*hold));
+    XSelectInput(source, root, KeyPressMask | KeyReleaseMask);
+    XSetInputFocus(source, root, RevertToParent, CurrentTime);
+    XSync(source, False);
+    if (return_focus_with_pointer(display, viewer) != 0 ||
+        !keyboard_is_released(source) || !keyboard_is_released(display)) return -1;
+    for (unsigned int i = 0U; i < 2U; ++i) {
+        hold->local[i] = XKeysymToKeycode(display, symbols[i]);
+        hold->remote[i] = XKeysymToKeycode(source, symbols[i]);
+        if (hold->local[i] == 0U || hold->remote[i] == 0U ||
+            XTestFakeKeyEvent(display, hold->local[i], True, CurrentTime) == 0) return -1;
+        hold->local_held += 1U;
+        XSync(display, False);
+        if (sleep_millis(30U) != 0) return -1;
+    }
+    uint64_t deadline = monotonic_millis() + 5000U, complete = 0U;
+    while (monotonic_millis() < deadline) {
+        if (observe_mode_hold(source, hold, sequence, "before-menu", &hold->pressed, KeyPress) != 0)
+            return -1;
+        if (hold->pressed == 3U && complete == 0U) complete = monotonic_millis();
+        if (complete != 0U && monotonic_millis() - complete >= 100U) break;
+        if (sleep_millis(10U) != 0) return -1;
+    }
+    if (hold->pressed != 3U || monotonic_millis() >= deadline ||
+        !keyboard_matches(source, hold->remote, 2U) ||
+        !keyboard_matches(display, hold->local, 2U)) return -1;
+    printf("FLUTTER_PEER_MODE_HELD_BEGIN sequence=%u keys=control-left,shift-left "
+           "native_presses=2 held=both\n", sequence);
+    fflush(stdout);
+    return 0;
+}
+
+static int checkpoint_mode_hold(Display *source, Display *display, KeyboardModeHold *hold,
+                                 unsigned int sequence, const char *phase) {
+    if (observe_mode_hold(source, hold, sequence, phase, &hold->released, KeyRelease) != 0 ||
+        !keyboard_matches(display, hold->local, 2U)) return -1;
+    printf("FLUTTER_PEER_MODE_HELD_CHECKPOINT sequence=%u phase=%s "
+           "release_mask=%u viewer_held=2\n", sequence, phase, hold->released);
+    fflush(stdout);
+    return 0;
+}
+
+static int release_mode_hold(Display *display, KeyboardModeHold *hold) {
+    int result = 0;
+    /* Only the fixture's viewer-side keys are released here. */
+    while (hold->local_held != 0U) {
+        if (XTestFakeKeyEvent(display, hold->local[--hold->local_held], False, CurrentTime) == 0)
+            result = -1;
+    }
+    XSync(display, False);
+    return result;
+}
+
+static int finish_mode_hold(Display *source, Display *display, KeyboardModeHold *hold,
+                             unsigned int sequence) {
+    if (checkpoint_mode_hold(source, display, hold, sequence, "choice-confirmed") != 0 ||
+        release_mode_hold(display, hold) != 0) return -1;
+    uint64_t deadline = monotonic_millis() + 5000U, complete = 0U;
+    while (monotonic_millis() < deadline) {
+        if (observe_mode_hold(source, hold, sequence, "viewer-released", &hold->released, KeyRelease) != 0)
+            return -1;
+        if (hold->released == 3U && complete == 0U) complete = monotonic_millis();
+        if (complete != 0U && monotonic_millis() - complete >= 100U) break;
+        if (sleep_millis(10U) != 0) return -1;
+    }
+    if (hold->released != 3U || monotonic_millis() >= deadline ||
+        !keyboard_is_released(source) || !keyboard_is_released(display)) return -1;
+    printf("FLUTTER_PEER_MODE_HELD_OK sequence=%u native_presses=2 native_releases=2 "
+           "choice=confirmed released=both quiet_ms=100\n", sequence);
+    fflush(stdout);
+    XSelectInput(source, RootWindow(source, DefaultScreen(source)), NoEventMask);
+    XSync(source, False);
+    return 0;
+}
+
 static int exercise_keyboard_modes(Display *source, Display *display,
                                     const ViewerWindow *viewer, SourceHistory *history,
                                     const ConnectionIdentity *connection,
@@ -5102,14 +5213,23 @@ static int exercise_keyboard_modes(Display *source, Display *display,
     static const char *names[] = {"Map mode", "Legacy mode", "Map mode"};
     static const char *modes[] = {"map", "legacy", "map"};
     unsigned int pid = (unsigned int)viewer->pid, sequence = 0U;
+    KeyboardModeHold hold = {0};
     const char *phase = "select";
     for (; sequence < sizeof(names) / sizeof(names[0]); ++sequence) {
         uint64_t fresh = 0U, age = 0U;
+        phase = "held-modifiers";
+        if (sequence != 0U && begin_mode_hold(source, display, viewer, &hold, sequence) != 0)
+            goto failed;
         phase = "select";
-        if (quality_toolbar(pid) != 0 || activate_named_control(pid, "Keyboard settings") != 0 ||
-            activate_named_control(pid, names[sequence]) != 0) goto failed;
+        if (quality_toolbar(pid) != 0 || activate_named_control(pid, "Keyboard settings") != 0)
+            goto failed;
+        if (sequence != 0U &&
+            checkpoint_mode_hold(source, display, &hold, sequence, "before-choice") != 0) goto failed;
+        if (activate_named_control(pid, names[sequence]) != 0) goto failed;
         phase = "menu-retirement";
         if (wait_keyboard_controls_retired(pid, 0) != 0) goto failed;
+        if (sequence != 0U &&
+            checkpoint_mode_hold(source, display, &hold, sequence, "after-choice") != 0) goto failed;
         phase = "confirmed-choice";
         if (quality_toolbar(pid) != 0 || activate_named_control(pid, "Keyboard settings") != 0 ||
             keyboard_mode_selected(pid, names[sequence]) != 0 ||
@@ -5117,6 +5237,8 @@ static int exercise_keyboard_modes(Display *source, Display *display,
             wait_keyboard_controls_retired(pid, 0) != 0 ||
             activate_named_control(pid, "Hide toolbar") != 0 ||
             wait_keyboard_controls_retired(pid, 1) != 0) goto failed;
+        phase = "held-release";
+        if (sequence != 0U && finish_mode_hold(source, display, &hold, sequence) != 0) goto failed;
         phase = "native-keys";
         printf("FLUTTER_PEER_KEYBOARD_MODE_BEGIN sequence=%u mode=%s\n", sequence + 1U, modes[sequence]);
         fflush(stdout);
@@ -5131,6 +5253,10 @@ static int exercise_keyboard_modes(Display *source, Display *display,
     }
     return 0;
 failed:
+    if (release_mode_hold(display, &hold) != 0)
+        fputs("FLUTTER_PEER_X11_FAIL keyboard-mode fixture key cleanup\n", stderr);
+    XSelectInput(source, RootWindow(source, DefaultScreen(source)), NoEventMask);
+    XSync(source, False);
     fprintf(stderr, "FLUTTER_PEER_X11_FAIL keyboard-mode sequence=%u phase=%s\n", sequence + 1U, phase);
     PasswordPromptScan diagnostic;
     if (scan_password_prompt(pid, &diagnostic, 1) != 0)
@@ -6673,7 +6799,7 @@ int main(int argc, char **argv) {
                  "input=blocked-and-restored pixels=fresh same_window=true "
                  "stable_connection=true resources=bounded");
         } else if (keyboard_modes) {
-            puts("FLUTTER_PEER_KEYBOARD_MODES_OK modes=map,legacy,map cases=33 events=84 "
+            puts("FLUTTER_PEER_KEYBOARD_MODES_OK modes=map,legacy,map cases=33 events=84 held_transitions=2 "
                  "choice=confirmed native_key_events=true exact_text=true released=both "
                  "pixels=fresh same_window=true stable_connection=true resources=bounded");
         } else if (keyboard_input) {

@@ -1981,9 +1981,13 @@ PY
         [ "$(grep -Ec "^FLUTTER_PEER_KEYBOARD_MODE_OK sequence=$sequence mode=$mode cases=11 events=28 " <<<"$controller_output")" -eq 1 ] \
           || fail "keyboard mode phase $sequence is missing or duplicated"
       done
-      grep -Fxq 'FLUTTER_PEER_KEYBOARD_MODES_OK modes=map,legacy,map cases=33 events=84 choice=confirmed native_key_events=true exact_text=true released=both pixels=fresh same_window=true stable_connection=true resources=bounded' \
+      for sequence in 1 2; do
+        [ "$(grep -Fxc "FLUTTER_PEER_MODE_HELD_OK sequence=$sequence native_presses=2 native_releases=2 choice=confirmed released=both quiet_ms=100" <<<"$controller_output")" -eq 1 ] \
+          || fail "held keyboard mode transition $sequence is missing or duplicated"
+      done
+      grep -Fxq 'FLUTTER_PEER_KEYBOARD_MODES_OK modes=map,legacy,map cases=33 events=84 held_transitions=2 choice=confirmed native_key_events=true exact_text=true released=both pixels=fresh same_window=true stable_connection=true resources=bounded' \
         <<<"$controller_output" || fail 'native keyboard mode verdict is missing'
-      viewer_result='viewer=joined xvfb=joined keyboard_modes=3 keyboard_cases=33 storage=verified stable_connection=true resources=bounded'
+      viewer_result='viewer=joined xvfb=joined keyboard_modes=3 keyboard_cases=33 held_transitions=2 storage=verified stable_connection=true resources=bounded'
     elif [ "$PEER_SCENARIO" = keyboard-input ]; then
       for sequence in {1..11}; do
         [ "$(grep -Ec "^FLUTTER_PEER_KEYBOARD_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \

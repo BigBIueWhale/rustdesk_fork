@@ -131574,3 +131574,22 @@ umask 077 for subsequent synchronization; no confinement rule is weakened.
 Five bounded preflight records are retained on both hosts. Reconciliation also
 corrects its workspace receipt reader to validate both pathname and identity
 lines before any private-state mutation.
+
+Unchanged-product run `4Y3j1Wu5tt` at `ecf29c4d` passes the previous 36 cases
+and reproduces all four new failures. The repaired observer now receives the
+intended escaped `WINDOW_UNAVAILABLE` exception in the fourth case. All owned
+processes, RAM and exact private state retire with four zero listener deltas;
+both hosts retain thirteen records, including `macos-theme-baseline-ecf29c4d.json`
+(24,187 bytes, SHA-256
+`048941264e748d08b7be5ec1737f9d87bf71464c7e0ec9f7ab3084062163fde1`).
+
+The correction uses `ThemeMode` directly in the Dart channel instead of a
+two-value duplicate, sends the saved preference on startup and main/secondary
+changes, and awaits the reply. The generic rebuild's duplicate detached update
+is removed. Swift accepts only the three named values, sets nil for System,
+requires the named appearance for explicit choices, and returns errors for
+invalid arguments or absent windows/appearances. The receiver selects its own
+registrar's window; the request cannot supply another window. The vendored
+window-manager brightness setter has no application caller; no parallel live
+appearance writer was found. Reuse the same forty-case component scenario for
+correction acceptance; legitimate native macOS validation remains required.

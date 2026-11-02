@@ -1,9 +1,8 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/main.dart';
 import 'package:flutter_hbb/common.dart';
-
-enum SystemWindowTheme { light, dark }
 
 /// The platform channel for RustDesk.
 class RdPlatformChannel {
@@ -27,7 +26,7 @@ class RdPlatformChannel {
   }
 
   /// Change the theme of the system window
-  Future<void> changeSystemWindowTheme(SystemWindowTheme theme) {
+  Future<void> changeSystemWindowTheme(ThemeMode theme) {
     assert(isMacOS);
     if (kDebugMode) {
       print(

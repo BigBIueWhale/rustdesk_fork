@@ -122,7 +122,7 @@ Future<void> initEnv(String appType) async {
   // await Firebase.initializeApp();
   _registerEventHandler();
   // Update the system theme.
-  updateSystemWindowTheme();
+  await updateSystemWindowTheme();
 }
 
 void runMainApp() async {

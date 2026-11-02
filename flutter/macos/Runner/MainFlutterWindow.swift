@@ -36,6 +36,10 @@ class RelativeMouseState {
 }
 
 class MainFlutterWindow: NSWindow {
+    private enum WindowTheme: String {
+        case light, dark, system
+    }
+
     override func awakeFromNib() {
         rustdesk_core_main();
         let flutterViewController = FlutterViewController.init()
@@ -73,11 +77,6 @@ class MainFlutterWindow: NSWindow {
     override public func order(_ place: NSWindow.OrderingMode, relativeTo otherWin: Int) {
         super.order(place, relativeTo: otherWin)
         hiddenWindowAtLaunch()
-    }
-
-    /// Override window theme.
-    public func setWindowInterfaceMode(window: NSWindow, themeName: String) {
-        window.appearance = NSAppearance(named: themeName == "light" ? .aqua : .darkAqua)
     }
 
     private func enableNativeRelativeMouseMode(channel: FlutterMethodChannel) -> Bool {
@@ -184,13 +183,26 @@ class MainFlutterWindow: NSWindow {
             (call, result) -> Void in
                 switch call.method {
                 case "setWindowTheme":
-                    let arg = call.arguments as! [String: Any]
-                    let themeName = arg["themeName"] as? String
-                    guard let window = registrar.view?.window else {
-                        result(nil)
+                    guard let arg = call.arguments as? [String: Any],
+                          let themeName = arg["themeName"] as? String,
+                          let theme = WindowTheme(rawValue: themeName) else {
+                        result(FlutterError(code: "INVALID_THEME", message: "Expected light, dark or system", details: nil))
                         return
                     }
-                    self.setWindowInterfaceMode(window: window,themeName: themeName ?? "light")
+                    guard let window = registrar.view?.window else {
+                        result(FlutterError(code: "WINDOW_UNAVAILABLE", message: "Window is unavailable", details: nil))
+                        return
+                    }
+                    switch theme {
+                    case .system:
+                        window.appearance = nil
+                    case .light, .dark:
+                        guard let appearance = NSAppearance(named: theme == .light ? .aqua : .darkAqua) else {
+                            result(FlutterError(code: "APPEARANCE_UNAVAILABLE", message: "Appearance is unavailable", details: nil))
+                            return
+                        }
+                        window.appearance = appearance
+                    }
                     result(nil)
                     break;
                 case "terminate":

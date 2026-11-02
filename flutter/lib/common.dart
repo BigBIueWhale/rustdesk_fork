@@ -599,11 +599,10 @@ class MyTheme {
       mode = getThemeModePreference();
       Get.changeThemeMode(mode);
       if (!isWeb) await bind.mainNotifyThemeChanged();
-      // Synchronize the window theme of the system.
-      updateSystemWindowTheme();
     } else {
       Get.changeThemeMode(mode);
     }
+    await updateSystemWindowTheme();
     return true;
   }
 
@@ -3156,15 +3155,9 @@ String getWindowNameWithId(String id, {WindowType? overrideType}) {
 }
 
 Future<void> updateSystemWindowTheme() async {
-  // Set system window theme for macOS.
-  final userPreference = MyTheme.getThemeModePreference();
-  if (userPreference != ThemeMode.system) {
-    if (isMacOS) {
-      await RdPlatformChannel.instance.changeSystemWindowTheme(
-          userPreference == ThemeMode.light
-              ? SystemWindowTheme.light
-              : SystemWindowTheme.dark);
-    }
+  if (isMacOS) {
+    await RdPlatformChannel.instance
+        .changeSystemWindowTheme(MyTheme.getThemeModePreference());
   }
 }
 

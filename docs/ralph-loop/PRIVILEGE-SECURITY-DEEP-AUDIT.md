@@ -130961,3 +130961,16 @@ were checked against its retained manifest. Three canonical generations remain,
 including baseline `7e6f6459`; all source and historical evidence remain. Bounded
 manifest/inventory/retirement receipts are `retired-app-e8737b14*.json`. No host
 product or test executes. Language integration and all independent parks remain.
+
+Candidate build `7KIdgdBORe` at `0f5f686e` generates fresh bindings, then the
+Flutter fixture fails compilation: inherited field inference makes its fake model
+`FfiModel`, hiding the test-only `published` observations. No behavioral case or
+product build completes. Type that field explicitly. Source review also keeps the
+untouched coupled value from the active handler while saving into the freshly read
+record, so an external disk change cannot silently change the active mode during
+a cursor-only choice. Unrelated fresh record fields remain preserved.
+
+Wrapper 868058 and QEMU 868686 are absent, four listener deltas are zero, and RAM
+`run.x98m5i77` / `29:38586` retires with peak scratch 8,146,808,832 bytes under
+16 GiB. The bounded capsule `view-mode-app-0f5f686e.json` and exact retirement
+receipt retain compilation failure and cleanup; no app cache was published.

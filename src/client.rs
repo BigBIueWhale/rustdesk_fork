@@ -1951,6 +1951,8 @@ impl LoginConfigHandler {
         let revision = self.view_mode_revision.checked_add(1)
             .ok_or_else(|| anyhow!("View mode revision exhausted"))?;
         let mut config = PeerConfig::load_for_write(&self.id)?;
+        config.view_only.v = self.config.view_only.v;
+        config.show_my_cursor.v = self.config.view_only.v && self.config.show_my_cursor.v;
         match change {
             ViewModeChange::ViewOnly(enabled) => {
                 config.view_only.v = enabled;

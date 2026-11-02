@@ -54,7 +54,7 @@ class _Session implements FFI {
   @override
   SessionID clientOwnerId = Uuid().v4obj();
   @override
-  final ffiModel = _Model();
+  final _Model ffiModel = _Model();
   @override
   late final viewMode = SessionViewMode(WeakReference<FFI>(this), store: store);
   @override

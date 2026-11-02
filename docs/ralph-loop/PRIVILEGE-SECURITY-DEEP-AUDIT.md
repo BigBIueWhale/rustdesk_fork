@@ -131691,3 +131691,15 @@ Both hosts retain thirteen verified records including
 `041ccf65aa612e9ef5e03556e9232f8c2fe1d5256e475fa7bcad885e470dac88`).
 No product defect or patch is established by this passing scenario. The ledger
 records this limited native acceptance; its fresh isolated count follows.
+
+Count `TwGCznUJEd` at `7acb735e` passes seven controls and the whole-input
+round trip: **395,208 tokens / 1,808,874 bytes**, SHA-256
+`fdcfefe497de9ec21a0f2fe67c01055fe0c91fb012b27e1aa45f75abeda12b66`.
+Both hosts retain twelve verified files, including
+`keyboard-held-ledger-7acb735e.json` (4,797 bytes, SHA-256
+`3d3876780d10ee764f4678e968defaac1ae4ce3d146ff90c6ad66d8cd0dcae97`).
+All owned processes, private state and RAM retire with three zero listener deltas.
+This native held-modifier scenario is complete. Keyboard-mode restoration after
+a fresh viewer process remains an available next acceptance check; physical
+devices, other platforms and installed artifacts still require their own evidence.
+The broader release goal remains active, with independent user parks preserved.

@@ -131516,3 +131516,15 @@ This is source evidence, with no macOS runtime reproduction or correction in
 this slice. It remains a concrete open settings obligation alongside the broader
 platform evidence gaps. The ledger now records the accepted Linux checkpoint
 and this limit; its required fresh count follows.
+
+Fresh count `GiPgYqFHOW` at checkpoint `19a06de6` passes seven controls and
+the whole-input round trip: **394,858 tokens / 1,807,357 bytes**, SHA-256
+`334ddcfdcea3e6d82566a135d30bbda1ae87b5e8c150fefd4aa51bff449a4f73`.
+The count remains below the approximate 400,000-token budget. Both hosts retain
+twelve verified evidence files, including `theme-system-ledger-19a06de6.json`
+(4,791 bytes, SHA-256
+`7b74ecb5652a09fd1268b7d927692630fa424067c9f4fb13001bfb8ff9239bac`).
+Owned processes, private state and RAM scratch retire; three listener deltas
+are zero. Peak RAM scratch is 402,771,968 bytes. This closes the selected native
+Linux checkpoint and its documentation count; the broader release goal remains
+active with the platform and concurrency gaps above still open.

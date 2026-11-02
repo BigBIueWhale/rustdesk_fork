@@ -5208,6 +5208,10 @@ static int exercise_image_quality(Display *display, const ViewerWindow *viewer,
             (cases[sequence].name != NULL &&
              activate_named_control(pid, cases[sequence].name) != 0)) goto out;
         deadline = started + 10000U;
+        /* Menu activation returns before Flutter's post-frame callback and its
+         * accessibility-tree update. Retain the deadline during this settling
+         * interval; a successful complete scan is still required below. */
+        if (cases[sequence].name == NULL && sleep_millis(350U) != 0) goto out;
         int observed = 0;
         unsigned int stable = 0U;
         while (monotonic_millis() < deadline && stable < 3U) {

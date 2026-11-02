@@ -130466,3 +130466,18 @@ target/freshness/deadline conditions. No product correction is claimed.
 Wrapper 597040 and QEMU 598204 are absent, four listener deltas are zero, and
 RAM `run.0a13mbrr` / `29:37860` retires. The bounded capsule, viewer log and exact
 duplicate-artifact retirement receipt are retained as `quality-restart-615e2294*`.
+
+Second replay `BjSzW7QbMb` at `0891709a` encounters the same null-child traversal
+immediately after Show quality monitor, at depth 13. Removing Hide toolbar alone
+does not resolve the initial menu transition; no quality choice executes. Flutter
+3.24.5 `MenuItemButton._handleSelect` explicitly closes the menu and defers its
+callback until after a frame (upstream `packages/flutter/lib/src/material/menu_anchor.dart`).
+GNOME's `get_child_count` and `get_child_at_index` are separate calls, with no
+snapshot guarantee. Allow a 350-ms scheduling interval before the initial complete
+tree scan, inside the existing ten-second target deadline. Keep all query errors
+fatal and require three successful exact target observations; the interval itself
+proves nothing. References: https://github.com/flutter/flutter/blob/3.24.5/packages/flutter/lib/src/material/menu_anchor.dart
+and https://gnome.pages.gitlab.gnome.org/at-spi2-core/libatspi/method.Accessible.get_child_at_index.html.
+Wrapper 600626 and QEMU 601898 are absent; four listener deltas are zero; RAM
+`run.vi1fthmu` / `29:37902` retires. The bounded capsule/log and exact retirement
+receipt are retained as `quality-restart-0891709a*`. No product defect is inferred.

@@ -131735,3 +131735,24 @@ checks and bounded RAM retirement remain unchanged. No product failure is assume
 These are the same XTest/XQueryKeymap native observations documented in the prior
 entry; physical devices, cross-layout/other-platform and installed claims remain
 outside this focused scenario. No new app build is needed.
+
+Replay `sRL0oBHBFh` completes on 2026-11-03 at `7bab3511` in 127 seconds,
+without a product edit or rebuild. Three distinct viewer PIDs authenticate through
+the real prompt and exit zero in sequence. Initial Legacy is confirmed; Map is
+selected and saved, then restored and used before the second process selects
+Legacy. The third process restores and uses Legacy without a mode selection.
+All four native observations pass: 44 cases, 112 events, exact text/modifiers and
+press/release order, both keymaps clear, bounded resources and stable connection
+within each process. Sixteen displayed counters are fresh, maximum sampled age
+325 ms. Joined preference records contain Map/Legacy/Legacy with required private
+metadata. All three driver binaries reproduce identically from two builds.
+
+Wrapper 1057130 and QEMU 1058186 are absent; helpers, private state and RAM
+`run.wfcuzng8` / `29:39800` retire with four zero listener deltas. Peak RAM scratch
+is 3,019,374,592 bytes under 7 GiB. Both hosts retain thirteen verified records,
+including `keyboard-restart-7bab3511.json` (28,511 bytes, SHA-256
+`22210e9fdc1987078569db6f25f3753b675f2b5b6f6e164af0719c6d605311ad`).
+No product failure was demonstrated. The ledger records orderly equal-layout
+Linux viewer restoration only; abrupt restart, storage failure, other modes,
+physical devices/platforms and installed artifacts remain open. Its fresh
+isolated count follows.

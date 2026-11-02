@@ -179,8 +179,8 @@ All owned processes join, RAM scratch retires and four listener deltas are zero.
 `keyboard-modes-accepted-c352f6fd.json` binds the result. Product code is unchanged;
 the fixture now waits for menu/toolbar retirement before its focus-restoring click.
 This uses equal US X11/Xvfb layouts. Cross-layout behavior, switching with held
-keys beyond the scenario below, restart, physical devices, other platforms and
-installed acceptance remain OPEN.
+keys and restart beyond the scenarios below, physical devices, other platforms
+and installed acceptance remain OPEN.
 
 **Held keyboard-mode transitions verified on Linux:** Replay `9Sk3KTlSeg` at
 `e88d96cd` reuses app `c9323bf1` / engine `ddb1541d`. Both Map→Legacy and
@@ -195,6 +195,20 @@ listener deltas and VM/RAM/private cleanup pass. `keyboard-held-e88d96cd-retry.j
 binds this equal-layout X11 evidence. It does not establish the precise release
 ordering against the internal mode commit, physical devices or other platforms;
 those and the broader gaps above remain OPEN. No product change was needed.
+
+**Keyboard-mode restart restoration verified on Linux (2026-11-03):**
+Replay `sRL0oBHBFh` at `7bab3511` reuses app `c9323bf1` / engine `ddb1541d`.
+Three distinct viewer processes authenticate through the real prompt and join
+with exit zero in sequence. The first selects Map; the second confirms and types
+in restored Map before selecting Legacy; the third confirms and types in restored
+Legacy without a selection. All four native typing observations pass: 44 cases,
+112 events, exact text/modifiers/order and both keymaps released. Sixteen fresh
+displayed counters have maximum sampled age 325 ms. Joined preference files
+contain Map/Legacy/Legacy with required ownership and modes. Identical driver
+rebuilds, four zero listener deltas and VM/RAM/private retirement pass;
+`keyboard-restart-7bab3511.json` binds the evidence. No product change was needed.
+This is orderly viewer restart on equal-layout X11. Abrupt restart, save failures,
+Translate mode, physical devices, other platforms and installed acceptance remain OPEN.
 
 **User pivot (2026-11-02):** Custom quality/FPS native validation is OPEN/PARKED.
 Its unexecuted two-file draft is preserved in stash

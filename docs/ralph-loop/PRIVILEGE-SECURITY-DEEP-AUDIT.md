@@ -132374,3 +132374,15 @@ is 21,603 bytes, SHA-256
 `c1d96c4c3a9a669b79e740f9fee29f612970e48e3ef166d2588815da19f972e3`.
 No new artifact cache generation was created. The named ownership checkpoint
 is complete; full release acceptance and independent parks remain open.
+
+Fresh ledger count `RJs2mbdRvz` at `544e4f79` passes seven controls and the
+whole-input round trip: 396,910 tokens / 1,816,535 bytes, SHA-256
+`cdf3863cf725ebd93567fa484937299cf4ac8a2f47e006b5c11b0ac966bec10c`.
+Three listener deltas are zero; exact process/helper absence and VM/RAM/private
+retirement pass. Twelve bounded records are copied and hash-verified. Capsule
+`linux-exclusive-ledger-544e4f79.json` is 4,804 bytes, SHA-256
+`51cbea014c7dd946e036d045e1ce026183e09dacb66062463bb780062bcea348`.
+The next stronger acceptance condition for this boundary includes a retained
+active-desktop child during duplicate startup; the sessionless result does not
+establish that behavior. Reassess priority at this checkpoint and preserve the
+separately parked caller/admin and other topics. The complete goal remains active.

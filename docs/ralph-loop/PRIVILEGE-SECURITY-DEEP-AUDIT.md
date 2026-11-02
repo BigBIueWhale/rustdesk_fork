@@ -131610,3 +131610,14 @@ verified files including `macos-theme-corrected-f8d92225.json` (7,831 bytes,
 SHA-256 `52803fd1b5cdb4eb2095fc105e01dba20b9af87d666975bcf425a57a3be3ba6b`).
 The ledger replaces the source-only gap with this precise component checkpoint;
 its fresh isolated count follows. The broader release goal remains active.
+
+Count `BV65I2jTd3` at `341e04e7` passes seven controls and whole-input round
+trip: **394,975 tokens / 1,807,837 bytes**, SHA-256
+`da261badf592d73434548d83641dc542b2cd9786ffa63d1c65d7ed1faabcae35`.
+Both hosts retain twelve verified files, including `macos-theme-ledger-341e04e7.json`
+(4,789 bytes, SHA-256
+`a73d2bf8475e24f2d38d241243fb81838f151beac90bde84653b85e75aac084e`).
+All owned processes, private state and RAM scratch retire with three zero
+listener deltas. The selected component correction is complete; the next decisive
+macOS check requires a legitimate isolated target to compile the Swift receiver
+and observe real window appearance, OS changes, restart and failure behavior.

@@ -130532,3 +130532,14 @@ private state and RAM `run.is2bbmh6` / `29:37986` retire. Scratch peaks at
 verified on both hosts. All three failed-run capsules/logs/retirement receipts
 are likewise copied and verified; duplicate app bundles are retired. The current
 ledger records this result and pivot. A fresh isolated ledger count follows.
+
+TUF count `H6lHhz2WH5` at `4b8c0aef` passes seven tokenizer controls and the
+whole-input round trip: **392,617 tokens / 1,797,436 bytes**, SHA-256
+`8dfb3d589ba68825842820168560cb49e1b470e24e3df5ed67fc9da7bc68da06`.
+Wrapper 653825 and QEMU 655374 are absent; three listener deltas are zero;
+private state and RAM `run.21n0cph7` / `29:38028` retire. Capsule
+`quality-ledger-4b8c0aef.json` is 4,987 bytes, SHA-256
+`de5736950f1b0685389e91741dad1cef4de89ab609d1f70541ffe5884eb8aafd`,
+verified on both hosts. No owned run remains active. The selected Linux quality
+restart workflow has reached its native checkpoint; the overall release goal
+and all separately recorded open or parked acceptance requirements remain incomplete.

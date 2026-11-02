@@ -130786,3 +130786,34 @@ https://www.x.org/releases/current/doc/xextproto/xtest.pdf.
 Shell syntax and whitespace checks pass; isolated compilation and execution follow.
 Held-input transitions, save failure, restart restoration, all other input forms,
 mobile/other platforms and installed/release acceptance remain separate gaps.
+
+### 2026-11-02 — native Linux View mode accepted
+
+TUF `xLULyflt3A` at `5f3da6a8` exits zero with retained app `7e6f6459` and
+engine `ddb1541d`. The relevant toolbar, input/model and client source files are
+byte-identical between that app commit and this harness commit. All three native
+drivers compile twice identically; controller SHA-256 is
+`783335f7fee601972fec0731aa9f7bfbc274b4d73a0ddf55e85a59523e6157f7`.
+The real toolbar confirms unchecked/checked/unchecked/checked View mode. All
+twelve identical letter/primary-click/wheel-up stimuli pass: six positive cases
+produce twelve exact native press/release events, and six restricted cases produce
+zero events over individually measured 1002–1004 ms windows. Local held state and
+both displays' released keys/buttons are verified. Four displayed counters after
+each phase are current, with maximum ages 317/301/298/313 ms. The same viewer
+window and authenticated connection remain and resources stay bounded. The viewer
+exits zero; only afterward the private peer record is read and confirms true.
+
+No product correction or full application build was required. This establishes
+the selected healthy Linux X11/Xvfb workflow on the retained artifact. It does not
+establish the parked locale correction, held-input transitions, all input forms,
+save failure, process restart, physical devices, other platforms or installed/release
+acceptance. Those gaps and independent parks remain.
+
+Wrapper 760530 and QEMU 762161 are absent, four decoded listener deltas are zero,
+and private state plus RAM `run.lp7qmso8` / `29:38362` are absent. Scratch peaks
+at 3,012,485,120 bytes under 7 GiB. The outer receipt reports 127 seconds.
+`view-only-accepted-5f3da6a8.json` is 10,715 bytes, SHA-256
+`975381172e4d16bde52ec63dd0c0efbb263fe2f35f412aecdbd10a0a74011a08`.
+The capsule checks all twelve case identities, actual event counts/types, negative
+observation durations, phase counts, saved preference and exact cleanup. The ledger
+records the accepted scenario and language pivot; a fresh isolated count follows.

@@ -43,6 +43,26 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**Native Linux View mode verified (2026-11-02):** Replay `xLULyflt3A` at
+`5f3da6a8` reuses app `7e6f6459` and engine `ddb1541d`. Actual toolbar state
+is confirmed unchecked/checked/unchecked/checked. All twelve letter, primary-click
+and wheel-up cases pass: exact native press/release pairs in both control phases,
+zero controlled-side events during each one-second restricted observation.
+Local stimuli and released input state are confirmed. Sixteen post-phase displayed
+counters are current, maximum sampled age 317 ms; the same window/connection and
+resource bounds hold. The viewer exits zero and its private saved preference is true.
+All owned processes join, RAM scratch retires and four listener deltas are zero.
+`view-only-accepted-5f3da6a8.json` binds this retained-app evidence. Product code
+is unchanged. Held-input transitions, save failure, restart restoration, other input
+forms, physical devices, other platforms and installed/release acceptance remain OPEN.
+
+**User pivot (2026-11-02):** Language locale/direction integration is OPEN/PARKED.
+Correction `ee5e3c41` and fixture correction `217f0470` remain committed. The focused
+run compiles and passes thirteen of sixteen cases; an Arabic label expectation and
+two guarded callback conflicts prevent acceptance. No corrected native-app replay
+ran. Both failed attempts retain bounded evidence and have joined VM/RAM/private
+cleanup. Work moved to View mode above; all independent parked items remain parked.
+
 **Native language-direction failure reproduced (2026-11-02):** Replay
 `nOIZ8lS7U6` at `62cff9d8` reuses app `7e6f6459` and engine `ddb1541d`.
 Default-English labels and left-side radio placement pass. Selecting Hebrew in

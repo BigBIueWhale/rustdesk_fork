@@ -131905,3 +131905,13 @@ CTE and TUF hold seventeen hash-verified evidence files, including
 The current ledger records the reproduced disconnect as OPEN/STOP-SHIP. Its
 fresh isolated count follows; the selected Translate defect remains the next
 active product task, and the full release goal remains active.
+
+Count `B6SyB3yqfE` at `47c03fc4` passes seven controls and the whole-input
+round trip: **395,964 tokens / 1,812,290 bytes**, SHA-256
+`6b7ad249d44a590b3c6fd5cc1e7e611fd94045c85800fc3114c071b21b461315`.
+CTE and TUF retain twelve verified records, including
+`keyboard-translate-ledger-47c03fc4.json` (4,817 bytes, SHA-256
+`53e2f4e067db58b8068dca7d6817b5cec5c3c0d32b5843a0e3886fd8d4c49cad`).
+All owned processes, private state and RAM retire with three zero listener deltas.
+This completes the reproduction/evidence checkpoint; the demonstrated Translate
+disconnect still requires a product correction and candidate replay.

@@ -130413,3 +130413,16 @@ All failed-run capsules and bounded diagnostics are retained on both hosts, with
 their duplicated app bundles retired after exact hash checks. The current ledger
 records the user pivot, accepted language scope and unresolved exit observation;
 a fresh isolated token count follows.
+
+TUF count `Nc11SMlbLd` at `54279925` passes seven tokenizer controls and the
+complete input round trip: **392,276 tokens / 1,795,997 bytes**, SHA-256
+`19a3854f019af959d71d82c68b40373603bb49cbcd831bb50a82e47447ce3dd8`.
+Outer exit is zero. Three listener deltas are zero; wrapper 594878 and QEMU
+596294 are absent; private state and RAM `run.83527cmg` / `29:37832` retire.
+Peak scratch is 402,558,976 bytes under 4 GiB. Capsule
+`language-ledger-54279925.json` is 4,992 bytes, SHA-256
+`5739a6ce48ac72ed32dbeb05678e5c6e5cd0d568ada3ee337b8f6165f25f59b9`.
+The accepted language capsule and this count are verified on both hosts. No owned
+run remains live. Language restart reaches a native checkpoint; the next decisive
+language check is visible denied-save/preserved-choice/retry behavior, reusing the
+same app. The separately recorded rapid show/close finality failure remains OPEN.

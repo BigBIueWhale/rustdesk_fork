@@ -163,9 +163,6 @@ const kHideUsernameOnCard = "hide-username-on-card";
 const String kOptionHideHelpCards = "hide-help-cards";
 const String kOptionAllowDeepLinkPassword = "allow-deep-link-password";
 
-const String kOptionToggleViewOnly = "view-only";
-const String kOptionToggleShowMyCursor = "show-my-cursor";
-
 // R-X6: kOptionDisableFloatingWindow ("disable-floating-window") removed — the native
 // floating window is excised, so no UI toggles or reads it (left inert in config).
 

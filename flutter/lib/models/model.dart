@@ -47,6 +47,7 @@ import 'reconnect_schedule_authority.dart';
 import 'rgba_publication_order.dart';
 import 'session_event_queue.dart';
 import 'session_audio_mute.dart';
+import 'session_view_mode.dart';
 import 'session_stream_finality.dart';
 import 'package:flutter_hbb/utils/scale.dart';
 
@@ -854,9 +855,11 @@ class FfiModel with ChangeNotifier {
 
   _handleSyncPeerOption(Map<String, dynamic> evt, String peer) {
     final k = evt['k'];
-    final v = evt['v'];
-    if (k == kOptionToggleViewOnly) {
-      setViewOnly(peer, v as bool);
+    if (k == 'view-mode') {
+      parent.target?.viewMode.synchronize(ViewModeState(
+          viewOnly: evt['view_only'] as bool,
+          showMyCursor: evt['show_my_cursor'] as bool,
+          revision: int.parse(evt['revision'] as String)));
     } else if (k == 'keyboard_mode') {
       parent.target?.inputModel.updateKeyboardMode();
     } else if (k == 'input_source') {
@@ -1442,12 +1445,12 @@ class FfiModel with ChangeNotifier {
       }
     }
     if (connType == ConnType.defaultConn) {
-      setViewOnly(
-          peerId,
-          bind.sessionGetToggleOptionSync(
-              sessionId: expectedSessionId, arg: kOptionToggleViewOnly));
-      setShowMyCursor(bind.sessionGetToggleOptionSync(
-          sessionId: expectedSessionId, arg: kOptionToggleShowMyCursor));
+      try {
+        await parent.target?.viewMode.refresh();
+      } catch (error) {
+        debugPrint('Failed to read View mode: $error');
+      }
+      if (!_isCurrentSession(expectedSessionId)) return;
     }
     if (connType == ConnType.defaultConn || connType == ConnType.viewCamera) {
       _pi.setPlatformAdditions(evt['platform_additions']);
@@ -1768,7 +1771,7 @@ class FfiModel with ChangeNotifier {
     }
   }
 
-  void setViewOnly(String id, bool value) {
+  void setViewMode(String id, bool value, bool showMyCursor) {
     if (_compareVersion(_pi.version, '1.2.0') < 0) return;
     // tmp fix for https://github.com/rustdesk/rustdesk/pull/3706#issuecomment-1481242389
     // because below rx not used in mobile version, so not initialized, below code will cause crash
@@ -1783,16 +1786,10 @@ class FfiModel with ChangeNotifier {
     } catch (e) {
       //
     }
-    if (_viewOnly != value) {
-      if (value) parent.target?.inputModel.releaseHeldModifiers();
+    if (_viewOnly != value || _showMyCursor != showMyCursor) {
+      if (value && !_viewOnly) parent.target?.inputModel.releaseHeldModifiers();
       _viewOnly = value;
-      notifyListeners();
-    }
-  }
-
-  void setShowMyCursor(bool value) {
-    if (_showMyCursor != value) {
-      _showMyCursor = value;
+      _showMyCursor = showMyCursor;
       notifyListeners();
     }
   }
@@ -4626,6 +4623,7 @@ enum ConnType {
 /// Flutter state manager and data communication with the Rust core.
 class FFI {
   late final audioMute = SessionAudioMute(WeakReference<FFI>(this));
+  late final viewMode = SessionViewMode(WeakReference<FFI>(this));
 
   var id = '';
   var version = '';

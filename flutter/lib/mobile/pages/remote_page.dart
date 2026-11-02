@@ -6,6 +6,7 @@ import 'package:flutter_hbb/common/shared_state.dart';
 import 'package:flutter_hbb/common/widgets/toolbar.dart';
 import 'package:flutter_hbb/common/widgets/reverse_mouse_wheel.dart';
 import 'package:flutter_hbb/common/widgets/audio_mute.dart';
+import 'package:flutter_hbb/common/widgets/view_mode.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/mobile/widgets/floating_mouse.dart';
 import 'package:flutter_hbb/mobile/widgets/floating_mouse_widgets.dart';
@@ -1349,6 +1350,9 @@ void showOptions(
       ...cursorTogglesList,
       if (cursorToggles.isNotEmpty) const Divider(color: MyTheme.border),
       ...displayTogglesList,
+      if (gFFI.connType == ConnType.defaultConn && versionCmp(gFFI.ffiModel.pi.version, '1.2.0') >= 0)
+        ViewModeControl(
+            key: ValueKey((gFFI, gFFI.sessionId, gFFI.clientOwnerId)), ffi: gFFI),
       if (gFFI.connType == ConnType.defaultConn && gFFI.ffiModel.permissions['audio'] != false)
         AudioMuteControl(
             key: ValueKey((gFFI, gFFI.sessionId, gFFI.clientOwnerId)), ffi: gFFI),

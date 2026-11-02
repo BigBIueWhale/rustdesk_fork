@@ -427,6 +427,73 @@ pub fn session_set_audio_muted(
     session.save_audio_muted(muted)
 }
 
+pub struct ViewModeState {
+    pub view_only: bool,
+    pub show_my_cursor: bool,
+    pub revision: u64,
+}
+
+pub fn session_get_view_mode(
+    session_id: SessionID,
+    client_owner_id: SessionID,
+) -> Result<ViewModeState> {
+    let session = sessions::get_session_by_exact_ui_owner(&session_id, &client_owner_id)
+        .ok_or_else(|| anyhow!("Session owner is unavailable"))?;
+    let handler = session.lc.read().unwrap();
+    if handler.conn_type != ConnType::DEFAULT_CONN {
+        bail!("View mode requires a remote-control session");
+    }
+    Ok(ViewModeState {
+        view_only: handler.view_only.v,
+        show_my_cursor: handler.view_only.v && handler.show_my_cursor.v,
+        revision: handler.view_mode_revision,
+    })
+}
+
+pub fn session_set_view_only(
+    session_id: SessionID,
+    client_owner_id: SessionID,
+    enabled: bool,
+) -> Result<ViewModeState> {
+    set_view_mode(session_id, client_owner_id, crate::client::ViewModeChange::ViewOnly(enabled))
+}
+
+pub fn session_set_show_my_cursor(
+    session_id: SessionID,
+    client_owner_id: SessionID,
+    enabled: bool,
+) -> Result<ViewModeState> {
+    set_view_mode(session_id, client_owner_id, crate::client::ViewModeChange::ShowMyCursor(enabled))
+}
+
+fn set_view_mode(
+    session_id: SessionID,
+    client_owner_id: SessionID,
+    change: crate::client::ViewModeChange,
+) -> Result<ViewModeState> {
+    let session = sessions::get_session_by_exact_ui_owner(&session_id, &client_owner_id)
+        .ok_or_else(|| anyhow!("Session owner is unavailable"))?;
+    let sender = session.sender.read().unwrap().as_ref().cloned()
+        .ok_or_else(|| anyhow!("No active viewer connection round"))?;
+    let mut handler = session.lc.write().unwrap();
+    handler.save_view_mode(change, &sender)?;
+    let state = ViewModeState {
+        view_only: handler.view_only.v,
+        show_my_cursor: handler.show_my_cursor.v,
+        revision: handler.view_mode_revision,
+    };
+    drop(handler);
+    // Events and replies may arrive in either order. The saved revision prevents
+    // either from replacing a newer state, without nesting handler/registry locks.
+    session.push_event("sync_peer_option", &[
+        ("k", serde_json::json!("view-mode")),
+        ("view_only", serde_json::json!(state.view_only)),
+        ("show_my_cursor", serde_json::json!(state.show_my_cursor)),
+        ("revision", serde_json::json!(state.revision.to_string())),
+    ], &[]);
+    Ok(state)
+}
+
 pub fn session_toggle_option(session_id: SessionID, value: String) {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
         log::warn!("toggle option {}", &value);

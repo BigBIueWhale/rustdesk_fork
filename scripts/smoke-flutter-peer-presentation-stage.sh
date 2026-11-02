@@ -951,12 +951,12 @@ PY
         cd flutter
         /usr/bin/timeout --signal=TERM --kill-after=10s 120s \
           "$REAL_FLUTTER" --suppress-analytics --no-version-check test --no-pub \
-          --reporter=json test/audio_mute_test.dart > /tmp/audio-mute-tests.json \
-          || { tail -n 100 /tmp/audio-mute-tests.json; fail 'Mute widget tests failed'; }
-        cat /tmp/audio-mute-tests.json
-        python3 -B -I -S ../scripts/test-flutter-model-test-result.py --audio-mute
+          --reporter=json test/view_mode_test.dart > /tmp/view-mode-tests.json \
+          || { tail -n 100 /tmp/view-mode-tests.json; fail 'View mode widget tests failed'; }
+        cat /tmp/view-mode-tests.json
+        python3 -B -I -S ../scripts/test-flutter-model-test-result.py --view-mode
         python3 -B -I -S ../scripts/verify-flutter-model-test-result.py \
-          /tmp/audio-mute-tests.json --profile audio-mute
+          /tmp/view-mode-tests.json --profile view-mode
       )
       cargo build --locked --offline --features flutter,unix-file-copy-paste \
         --lib --release

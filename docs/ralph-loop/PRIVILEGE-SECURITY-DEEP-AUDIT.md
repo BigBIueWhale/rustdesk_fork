@@ -130932,3 +130932,32 @@ Both hosts retain all three replay capsules, separate viewer logs, exact-retirem
 receipts, raw run evidence, and the count capsule/raw records. No owned run remains
 active. The product correction and retry acceptance remain open; this turn reaches
 a native reproduction checkpoint. The full release goal remains incomplete.
+
+### 2026-11-02 — checked View mode implementation candidate
+
+Continue the reproduced R-S0 save failure. Explicit View only / Show my cursor
+operations now retain the exact UI owner, save the coupled fields together, and
+return their confirmed state and revision. Command admission reserves the existing
+bounded queue slot and byte budget before the store; store failure releases both
+without cache publication or command submission. Successful saves publish only the
+two selected cache fields. Peer-window events and replies carry the saved revision;
+Flutter ignores an older confirmation after a newer event. The generic toggle
+branches and optimistic desktop/mobile callbacks are removed. Both controls use
+one pending operation, report failure and retain the requested retry after menu
+disposal. Existing input/modifier and cursor effects remain in the publication path.
+
+Thirteen focused Flutter model/widget cases cover coupling, refusal/retry, bounded
+admission, exact owners, menu disposal, stale callbacks, reordered state and mobile
+presentation. Two native queue cases exercise failed-commit reservation release and
+closed-round refusal. They are preparation, not passing evidence. The app producer
+runs the focused Flutter cases after fresh bridge generation; compilation and the
+unchanged native save-failure replay remain required. The framework checkbox only
+changes its displayed value when rebuilt with confirmed state:
+https://api.flutter.dev/flutter/material/CheckboxMenuButton/onChanged.html.
+
+Before building, TUF's superseded intermediate app `e8737b14` was retired under the
+shared run lock after exact generation identity, closed inventory and every byte
+were checked against its retained manifest. Three canonical generations remain,
+including baseline `7e6f6459`; all source and historical evidence remain. Bounded
+manifest/inventory/retirement receipts are `retired-app-e8737b14*.json`. No host
+product or test executes. Language integration and all independent parks remain.

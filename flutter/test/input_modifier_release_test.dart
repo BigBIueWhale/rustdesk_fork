@@ -372,7 +372,7 @@ void main() {
     test('view only retires modifiers and refuses later new input', () {
       input
           .handleRawKeyEvent(rawEvent(LogicalKeyboardKey.altRight, down: true));
-      session.ffiModel.setViewOnly(session.id, true);
+      session.ffiModel.setViewMode(session.id, true, false);
       expect(backend.releases.single.$3, isNull);
       input.handleRawKeyEvent(
           rawEvent(LogicalKeyboardKey.altRight, down: false));

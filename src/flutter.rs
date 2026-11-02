@@ -3593,13 +3593,6 @@ pub fn try_sync_peer_option(
     _value: Option<serde_json::Value>,
 ) {
     let mut event = Vec::new();
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    if key == "view-only" {
-        event = vec![
-            ("k", json!(key.to_string())),
-            ("v", json!(session.lc.read().unwrap().view_only.v)),
-        ];
-    }
     if ["keyboard_mode", "input_source"].contains(&key) {
         event = vec![("k", json!(key.to_string())), ("v", json!(""))];
     }

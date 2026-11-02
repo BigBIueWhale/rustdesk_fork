@@ -1445,6 +1445,11 @@ impl PortForwardTarget {
     }
 }
 
+pub(crate) enum ViewModeChange {
+    ViewOnly(bool),
+    ShowMyCursor(bool),
+}
+
 /// Login config handler for [`Client`].
 #[derive(Default)]
 pub struct LoginConfigHandler {
@@ -1468,6 +1473,7 @@ pub struct LoginConfigHandler {
     pub connect_password: String,
     pub remember: bool,
     config: PeerConfig,
+    pub(crate) view_mode_revision: u64,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     clipboard_permission_revision: crate::clipboard::ViewerClipboardPermissionRevision,
     pub version: i64,
@@ -1826,6 +1832,10 @@ impl LoginConfigHandler {
     // `toggle_option()` is only called in a session.
     // Custom client advanced settings will not effect this function.
     pub fn toggle_option(&mut self, name: String) -> Option<Message> {
+        if matches!(name.as_str(), "view-only" | "show-my-cursor") {
+            log::error!("View mode requires a checked operation");
+            return None;
+        }
         let mut option = OptionMessage::default();
         let mut config = self.load_config();
         if name == "show-remote-cursor" {
@@ -1900,40 +1910,6 @@ impl LoginConfigHandler {
             config.show_quality_monitor.v = !config.show_quality_monitor.v;
         } else if name == "allow_swap_key" {
             config.allow_swap_key.v = !config.allow_swap_key.v;
-        } else if name == "view-only" {
-            config.view_only.v = !config.view_only.v;
-            let f = |b: bool| {
-                if b {
-                    BoolOption::Yes.into()
-                } else {
-                    BoolOption::No.into()
-                }
-            };
-            if config.view_only.v {
-                option.disable_keyboard = f(true);
-                option.disable_clipboard = f(true);
-                option.show_remote_cursor = f(true);
-                option.enable_file_transfer = f(false);
-                option.lock_after_session_end = f(false);
-            } else {
-                option.disable_keyboard = f(false);
-                option.disable_clipboard = f(self.get_toggle_option("disable-clipboard"));
-                option.show_remote_cursor = f(self.get_toggle_option("show-remote-cursor"));
-                option.enable_file_transfer = f(self.config.enable_file_copy_paste.v);
-                option.lock_after_session_end = f(self.config.lock_after_session_end.v);
-                if config.show_my_cursor.v {
-                    config.show_my_cursor.v = false;
-                    option.show_my_cursor = BoolOption::No.into();
-                }
-            }
-        } else if name == "show-my-cursor" {
-            config.show_my_cursor.v = !config.show_my_cursor.v;
-            option.show_my_cursor = if config.show_my_cursor.v {
-                BoolOption::Yes
-            } else {
-                BoolOption::No
-            }
-            .into();
         } else {
             let is_set = self
                 .options
@@ -1962,6 +1938,55 @@ impl LoginConfigHandler {
         let mut msg_out = Message::new();
         msg_out.set_misc(misc);
         Some(msg_out)
+    }
+
+    pub(crate) fn save_view_mode(
+        &mut self,
+        change: ViewModeChange,
+        sender: &ViewerCommandSender,
+    ) -> ResultType<()> {
+        if self.conn_type != ConnType::DEFAULT_CONN {
+            bail!("View mode requires a remote-control session");
+        }
+        let revision = self.view_mode_revision.checked_add(1)
+            .ok_or_else(|| anyhow!("View mode revision exhausted"))?;
+        let mut config = PeerConfig::load_for_write(&self.id)?;
+        match change {
+            ViewModeChange::ViewOnly(enabled) => {
+                config.view_only.v = enabled;
+                if !enabled { config.show_my_cursor.v = false; }
+            }
+            ViewModeChange::ShowMyCursor(enabled) => {
+                config.show_my_cursor.v = enabled;
+                if enabled { config.view_only.v = true; }
+            }
+        }
+        let view_only = config.view_only.v;
+        let f = |b| if b { BoolOption::Yes.into() } else { BoolOption::No.into() };
+        let mut misc = Misc::new();
+        misc.set_option(OptionMessage {
+            disable_keyboard: f(view_only),
+            disable_clipboard: f(view_only || self.config.disable_clipboard.v),
+            show_remote_cursor: f(view_only || self.config.show_remote_cursor.v),
+            enable_file_transfer: f(!view_only && self.config.enable_file_copy_paste.v),
+            lock_after_session_end: f(!view_only && self.config.lock_after_session_end.v),
+            show_my_cursor: f(config.show_my_cursor.v),
+            ..Default::default()
+        });
+        let mut message = Message::new();
+        message.set_misc(misc);
+        sender.send_view_mode_with_commit(message, || {
+            config.store(&self.id)?;
+            self.config.view_only = config.view_only;
+            self.config.show_my_cursor = config.show_my_cursor;
+            self.view_mode_revision = revision;
+            Ok(())
+        })?;
+        #[cfg(feature = "unix-file-copy-paste")]
+        if view_only {
+            crate::clipboard::try_empty_clipboard_files(crate::clipboard::ClipboardSide::Client, 0);
+        }
+        Ok(())
     }
 
     pub fn save_audio_muted(&mut self, muted: bool) -> ResultType<Message> {
@@ -4354,7 +4379,7 @@ impl ViewerCommandSender {
     }
 
     pub(crate) fn send(&self, data: Data) -> Result<(), ViewerCommandAdmissionError> {
-        self.send_with_commit(data, || {})
+        self.send_with_commit(data, || true)
     }
 
     pub(crate) fn send_display_selection_with_commit<F>(
@@ -4365,7 +4390,7 @@ impl ViewerCommandSender {
     where
         F: FnOnce(),
     {
-        self.send_with_commit(Data::DisplaySelection(command), commit)
+        self.send_with_commit(Data::DisplaySelection(command), || { commit(); true })
     }
 
     pub(crate) fn same_round(&self, other: &Self) -> bool {
@@ -4384,12 +4409,24 @@ impl ViewerCommandSender {
     where
         F: FnOnce(),
     {
-        self.send_with_commit(Data::KeyboardInput(command), commit)
+        self.send_with_commit(Data::KeyboardInput(command), || { commit(); true })
+    }
+
+    pub(crate) fn send_view_mode_with_commit<F>(&self, message: Message, commit: F) -> ResultType<()>
+    where
+        F: FnOnce() -> ResultType<()>,
+    {
+        let mut saved = Ok(());
+        self.send_with_commit(Data::Message(message), || {
+            saved = commit();
+            saved.is_ok()
+        }).map_err(|error| anyhow!(error.to_string()))?;
+        saved
     }
 
     fn send_with_commit<F>(&self, data: Data, commit: F) -> Result<(), ViewerCommandAdmissionError>
     where
-        F: FnOnce(),
+        F: FnOnce() -> bool,
     {
         if matches!(&data, Data::Close) {
             return self.close();
@@ -4467,10 +4504,9 @@ impl ViewerCommandSender {
             }
         };
 
-        // The queue slot and its byte budget are exact-round admission. The caller's
-        // infallible local ownership commit happens while the slot remains reserved,
-        // so the sole network loop cannot observe the command first.
-        commit();
+        // Reserve the exact round's slot and bytes before committing local state.
+        // A declined commit releases both reservations without publishing a command.
+        if !commit() { return Ok(()); }
         command_permit.send(QueuedViewerCommand {
             data,
             _bytes: bytes,
@@ -5030,6 +5066,37 @@ mod tests {
             DisplaySelectionCommand::selection(None, vec![0], DisplaySelectionRefresh::All,)
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn view_mode_failed_save_releases_command_reservations() {
+        let (sender, mut receiver) = viewer_command_channel();
+        let capacity = sender.commands.capacity();
+        let bytes = sender.bytes.available_permits();
+        let error = sender.send_view_mode_with_commit(Message::new(), || {
+            assert_eq!(sender.commands.capacity(), capacity - 1);
+            assert!(sender.bytes.available_permits() < bytes);
+            assert!(receiver.commands.try_recv().is_err());
+            bail!("preference write denied")
+        }).unwrap_err();
+        assert_eq!(error.to_string(), "preference write denied");
+        assert_eq!(sender.commands.capacity(), capacity);
+        assert_eq!(sender.bytes.available_permits(), bytes);
+        assert!(receiver.commands.try_recv().is_err());
+        sender.send_view_mode_with_commit(Message::new(), || Ok(())).unwrap();
+        assert!(matches!(receiver.commands.try_recv().unwrap().data, Data::Message(_)));
+    }
+
+    #[test]
+    fn view_mode_closed_round_does_not_save() {
+        let (sender, _receiver) = viewer_command_channel();
+        sender.close().unwrap();
+        let mut saved = false;
+        assert!(sender.send_view_mode_with_commit(Message::new(), || {
+            saved = true;
+            Ok(())
+        }).is_err());
+        assert!(!saved);
     }
 
     #[tokio::test(flavor = "current_thread")]

@@ -43,6 +43,19 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**Delayed theme notification correction — component evidence (2026-11-02):**
+`1000ebf4` removes the theme value from the native notification API. Secondary
+windows read the current shared preference when receiving the event, so delayed
+notifications cannot restore an older choice. Unchanged-product run `ANyuhxg9wj`
+passes 34 cases and fails both delayed-payload cases; corrected run `j9HHXLDLHo`
+passes all 36, including value-free notifications and subsequent system brightness
+changes. Actual Dart handlers, dispatcher and rendered widgets execute with
+native preference/platform doubles and freshly generated bindings. Save failure,
+retry and ownership controls remain passing. VM/RAM cleanup and four zero listener
+deltas pass; `theme-ordering-accepted-1000ebf4.json` binds the evidence. Exact
+native-app build/replay, native worker scheduling, other platforms and release
+acceptance remain OPEN. The retained-app native checkpoints below predate this fix.
+
 **Native Linux theme synchronization verified (2026-11-02):** Replay
 `AoPSJZs3kq` at `67fc42ce` reuses app `7e6f6459` and engine `ddb1541d`.
 Across twelve phases, actual main-window radio/pixel observations and the

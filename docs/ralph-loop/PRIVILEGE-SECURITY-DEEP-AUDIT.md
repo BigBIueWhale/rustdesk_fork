@@ -131226,3 +131226,23 @@ the value-free event, and every receiver case checks subsequent brightness chang
 and restoration without another notification. Existing save failure, retry and
 ownership checks still require the exact notification count. Focused execution
 follows; complete native-app, other-platform and release acceptance remain OPEN.
+
+Corrected run `j9HHXLDLHo` at `1000ebf4` passes all 36 cases in 12.891
+seconds of test execution (261 seconds including isolated preparation/cleanup).
+Both reproduced stale deliveries now preserve the current theme; the four
+value-free controls and subsequent brightness changes also pass. The unchanged
+save failure, retry, fixed-option and ownership controls pass. Fresh bridge
+generation changes the Rust, IO and Dart outputs; source-copy verification passes.
+This remains rendered Dart/component evidence with explicit native/platform
+doubles, not an exact native-app or native worker-scheduling acceptance result.
+
+Wrapper 1025167 and QEMU 1025649 are absent; private state and RAM
+`run.8mwl97vc` / `29:39013` retire, with four zero listener deltas. Scratch
+peaks at 6,381,830,144 bytes under 7 GiB. Both hosts retain the raw records,
+complete outer capture, retirement receipt and
+`theme-ordering-accepted-1000ebf4.json` (7,259 bytes, SHA-256
+`3e93ebdc762dfd3b0decf5f88f473a9ebd8b021b87a2ccf2e7557d74af1af316`).
+The ledger records the component correction and explicitly distinguishes the
+older retained-app native results. Its fresh isolated count follows. The next
+decisive step is a source-bound native app build and two-window theme replay;
+all independent user parks remain in force.

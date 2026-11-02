@@ -131822,3 +131822,15 @@ including `keyboard-save-72af4272.json` (21,218 bytes, SHA-256
 This is the native permission-denial/retry checkpoint, not acceptance of every
 storage failure, concurrent writer, mode, target platform or installed artifact.
 The ledger is updated with that scope; its fresh isolated count follows.
+
+Count `jno7c9SWaj` at `4c8f4241` passes seven controls and whole-input round
+trip: **395,659 tokens / 1,810,867 bytes**, SHA-256
+`6cae5e637baa6fabc4c50285e17bb78898063c8d7718346772002ec008f7c4a5`.
+Both hosts retain twelve verified records, including
+`keyboard-save-ledger-4c8f4241.json` (4,797 bytes, SHA-256
+`e84107a6fdb666c41e70974f41e391be26ff63c75e7fdbd625f30f6f3bad4aee`).
+All owned processes, private state and RAM retire with three zero listener deltas.
+The selected permission-denial/retry scenario is complete. Translate mode still
+lacks native character/shortcut evidence; it is an available keyboard acceptance
+check at the next release-priority review. The broader goal remains active and
+all independently parked topics remain parked.

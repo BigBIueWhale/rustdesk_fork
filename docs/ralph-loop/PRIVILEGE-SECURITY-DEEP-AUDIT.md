@@ -132204,3 +132204,25 @@ small private diagnostic inventory was hashed and retired under the shared
 lock. `keyboard-repeat-7b441f69.json` (14,626 bytes, SHA-256
 `44b14875e1181b452f195d5dcd930fca92a3e79e9aff082ef8374c4f83b830b2`)
 and twelve companion records retain this failed prerequisite.
+
+Corrected routing `afcefd31` completes native replay `BzOC5kinvI` on unchanged
+app `c6aed851` in 149 outer seconds. All twelve hold cases pass: read-only XKB
+settings are delay 660 ms / interval 40 ms, each hold is 1,000 ms, and each
+viewer XRecord count of ten presses matches ten exact controlled-side pairs.
+The observer requires at least five presses before release, the 500 ms drain /
+500 ms quiet window, exact text/modifier/order and both keymaps clear. The four
+Map/Legacy/Translate/Map phases also pass 44 ordinary cases / 112 events; repeat
+cases add 240 native events. Sixteen fresh frames have phase maxima
+308/294/317/307 ms. Window and authenticated connection remain, resource checks
+pass and the joined saved mode is Map. All three driver binaries rebuild twice
+identically; the app and pinned native provider are reused without rebuilding.
+
+Four verified listener deltas are zero. Exact wrapper/QEMU absence, helper
+absence and VM/RAM/private retirement pass under the shared lock. Peak scratch
+is 3,013,693,440 bytes, below its 7 GiB admission. Thirteen bounded records were
+copied to CTE and hash-verified. Capsule `keyboard-repeat-afcefd31.json` is
+33,365 bytes, SHA-256
+`5c5d279c05dc202e3f7b10e645803c5e83062bcd046c1fd6cdbd5b7afbe52de1`.
+This closes the named equal-layout Linux held-key scenario, not broader
+physical-device, layout, platform, installed or release acceptance. No product
+defect was demonstrated by this slice; all independently parked topics remain.

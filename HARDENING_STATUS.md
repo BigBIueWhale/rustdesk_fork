@@ -212,6 +212,21 @@ or app rebuild was needed. This is orderly viewer restart on equal-layout X11.
 Abrupt restart, save failures beyond the case below, physical devices, other
 platforms and installed acceptance remain OPEN.
 
+**Held-key repetition and release verified on Linux:** Replay `BzOC5kinvI`
+at `afcefd31` reuses app `c6aed851` / engine `ddb1541d`. Across actual
+Map→Legacy→Translate→Map choices, twelve one-second holds (a, Backspace, Left)
+each produce ten viewer-recorded presses and exactly ten native receiver pairs.
+At least five presses arrive while held; every case passes a 500 ms drain limit,
+500 ms quiet interval, exact text/order and both keymaps released. All 44 subsequent
+typing cases / 112 events pass. Sixteen fresh displayed counters have maximum
+sampled age 317 ms, with the same window/connection, bounded resources and joined
+saved Map state. Drivers rebuild identically; four listener deltas are zero and
+VM/RAM/private cleanup passes. `keyboard-repeat-afcefd31.json` binds this evidence;
+the initial guest argument-routing failure is retained separately in the audit.
+No product change or app rebuild was needed. This uses equal US X11/Xvfb layouts
+and synthetic held input. Physical devices, other layouts/platforms, longer or
+concurrent holds and installed/release acceptance remain OPEN; parks are unchanged.
+
 **Keyboard-mode save refusal/retry verified on Linux:** Replay `XoWxkWSZpx`
 at `72af4272` reuses app `c9323bf1` / engine `ddb1541d`. With the private peer
 directory unwritable and exclusive create refused by EACCES, selecting Legacy

@@ -130346,3 +130346,16 @@ four listener deltas are zero, and RAM `run.581gjboe` / `29:37664` retires.
 The same verified duplicate-artifact retirement completes under the shared lock.
 `language-restart-ee9e60f1.json` is 21,588 bytes, SHA-256
 `6545c9b2e2f535b3c0d411ebfe895f913d1fcc699655dffafee7140131fab583`.
+
+Third replay `uV1p8oauAm` at `45732c56` observes the initial default and the
+actual French choice plus translated main-window text. It then fails a native
+accessibility root-child query immediately after the fixture closes that window.
+Keep the same main window alive through the remote translated-tooltip observation,
+then close it once. The observer retains strict query errors. Read-only follow-up
+also identifies the English-only remote-title locator; fresh French/Portugal
+generations now require their exact catalogue suffix, preserving PID/class/address
+and unique-window checks. Neither adjustment changes product code or grants a pass.
+Wrapper 590198 and QEMU 591254 are absent, all four listener deltas are zero, and
+RAM `run.7zs14xww` / `29:37706` is gone. Verified duplicate diagnostics retire.
+`language-restart-45732c56.json` is 21,624 bytes, SHA-256
+`53c2ec1598713f405717366f531b0e7b12d49955856335f02c1c079de0dbbbbd`.

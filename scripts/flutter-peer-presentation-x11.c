@@ -978,6 +978,8 @@ static int read_window_pid(Display *display, Window window, unsigned long *pid) 
     return 0;
 }
 
+static const char *expected_remote_title_suffix = " - Control Remote Desktop - RustDesk";
+
 static int inspect_viewer_candidate_unchecked(Display *display, Window window,
                                               unsigned long expected_pid, ViewerWindow *candidate) {
     XWindowAttributes attributes;
@@ -1003,9 +1005,9 @@ static int inspect_viewer_candidate_unchecked(Display *display, Window window,
     }
     /* Saved peers add @hostname through getDesktopTabLabel. The exact process,
      * class, unique remote window and source pixels remain the identity checks. */
-    const char *suffix = strstr(title, " - Control Remote Desktop - RustDesk");
+    const char *suffix = strstr(title, expected_remote_title_suffix);
     if (strncmp(title, "127.0.0.1", 9U) != 0 || suffix == NULL ||
-        strcmp(suffix, " - Control Remote Desktop - RustDesk") != 0 ||
+        strcmp(suffix, expected_remote_title_suffix) != 0 ||
         (suffix != title + 9U && (title[9] != '@' || suffix <= title + 10U))) {
         return 0;
     }
@@ -4019,13 +4021,12 @@ static int exercise_language_restart(Display *display, const ViewerWindow *viewe
         if (click_main_control(display, main, pid, after_choice->choice) != 0 ||
             observe_language(pid, after_choice, generation, "changed") != 0) goto out;
     }
-    if (close_viewer(display, main) != 0) goto out;
-    main = None;
-    XRaiseWindow(display, viewer->window);
-    XSetInputFocus(display, viewer->window, RevertToParent, CurrentTime);
-    XSync(display, False);
+    /* Keep the settings window alive while querying the other window's label;
+     * destroying an accessibility root mid-query cannot establish translation. */
+    Window existing_main = main;
     if (activate_header_control(display, viewer->window, pid, after_choice->new_connection) != 0 ||
         find_main_window(display, viewer->pid, &main) != 0 ||
+        main != existing_main ||
         close_viewer(display, main) != 0) goto out;
     main = None;
     XRaiseWindow(display, viewer->window);
@@ -5714,6 +5715,10 @@ int main(int argc, char **argv) {
             if (strcmp(argv[5], language_phases[i]) == 0) language_generation = i + 1U;
     }
     int credential_enroll = argc == 6 && strcmp(argv[5], "--credential-enroll") == 0;
+    if (language_generation == 2U)
+        expected_remote_title_suffix = " - Contrôler un bureau à distance - RustDesk";
+    else if (language_generation == 3U)
+        expected_remote_title_suffix = " - Controle o Ambiente de Trabalho à distância - RustDesk";
     int credential_retry = argc == 6 && strcmp(argv[5], "--credential-retry") == 0;
     int credential_forget = argc == 6 && strcmp(argv[5], "--credential-forget") == 0;
     int credential_empty = argc == 6 && strcmp(argv[5], "--credential-empty") == 0;

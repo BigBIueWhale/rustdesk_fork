@@ -4834,6 +4834,78 @@ static int wait_mute_menu(unsigned int pid, int expected, int *checked) {
     return -1;
 }
 
+static int observe_mute_row(Display *display, unsigned int pid) {
+    AtspiAccessible *item = NULL;
+    AtspiStateSet *states = NULL;
+    AtspiRect rect;
+    GError *error = NULL;
+    XImage *pixels = NULL;
+    GdkPixbuf *picture = NULL;
+    gchar *png = NULL, *encoded = NULL;
+    gsize bytes = 0U;
+    int checked = -1, result = -1;
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    if (query_named_accessible(pid, "Mute", deadline, &item, 0) != 0) goto out;
+    if (item == NULL) {
+        if (open_mute_menu(pid, &checked) != 0 ||
+            query_named_accessible(pid, "Mute", deadline, &item, 0) != 0) goto out;
+    }
+    if (item == NULL || read_accessible_rect(item, &rect) != 0) goto out;
+    states = atspi_accessible_get_state_set(item);
+    if (states == NULL) goto out;
+    int cached_checked = atspi_state_set_contains(states, ATSPI_STATE_CHECKED);
+    g_clear_object(&states);
+    atspi_accessible_clear_cache(item);
+    states = atspi_accessible_get_state_set(item);
+    AtspiRole role = atspi_accessible_get_role(item, &error);
+    if (states == NULL || error != NULL) goto out;
+    printf("FLUTTER_PEER_AUDIO_MUTE_ROW role=%d cached_checked=%d checked=%d selected=%d "
+           "indeterminate=%d x=%d y=%d width=%d height=%d\n", (int)role,
+           cached_checked,
+           atspi_state_set_contains(states, ATSPI_STATE_CHECKED),
+           atspi_state_set_contains(states, ATSPI_STATE_SELECTED),
+           atspi_state_set_contains(states, ATSPI_STATE_INDETERMINATE),
+           rect.x, rect.y, rect.width, rect.height);
+    /* A bounded crop of this named row, including its leading checkbox. */
+    int x = rect.x >= 40 ? rect.x - 40 : 0;
+    int width = rect.width + rect.x - x;
+    if (x < 0 || rect.y < 0 || width <= 0 || width > 600 ||
+        rect.height <= 0 || rect.height > 96 ||
+        x + width > DisplayWidth(display, DefaultScreen(display)) ||
+        rect.y + rect.height > DisplayHeight(display, DefaultScreen(display))) goto out;
+    pixels = XGetImage(display, RootWindow(display, DefaultScreen(display)),
+                      x, rect.y, (unsigned int)width, (unsigned int)rect.height, AllPlanes, ZPixmap);
+    picture = gdk_pixbuf_new(GDK_COLORSPACE_RGB, FALSE, 8, width, rect.height);
+    if (pixels == NULL || picture == NULL) goto out;
+    guchar *target = gdk_pixbuf_get_pixels(picture);
+    int stride = gdk_pixbuf_get_rowstride(picture);
+    if (target == NULL || stride < width * 3) goto out;
+    for (int row = 0; row < rect.height; ++row) {
+        for (int column = 0; column < width; ++column) {
+            unsigned long pixel = XGetPixel(pixels, column, row);
+            guchar *rgb = target + row * stride + column * 3;
+            rgb[0] = x11_frame_component(pixel, pixels->red_mask);
+            rgb[1] = x11_frame_component(pixel, pixels->green_mask);
+            rgb[2] = x11_frame_component(pixel, pixels->blue_mask);
+        }
+    }
+    if (!gdk_pixbuf_save_to_buffer(picture, &png, &bytes, "png", &error, NULL) ||
+        error != NULL || bytes == 0U || bytes > 65536U) goto out;
+    encoded = g_base64_encode((const guchar *)png, bytes);
+    if (encoded == NULL) goto out;
+    printf("FLUTTER_PEER_AUDIO_MUTE_ROW_PNG bytes=%zu base64=%s\n", (size_t)bytes, encoded);
+    result = 0;
+out:
+    if (pixels != NULL) XDestroyImage(pixels);
+    g_clear_object(&picture);
+    g_clear_object(&states);
+    g_clear_object(&item);
+    g_clear_error(&error);
+    g_free(png);
+    g_free(encoded);
+    return result;
+}
+
 static int exercise_audio_mute(Display *display, const ViewerWindow *viewer,
                                SourceHistory *history, const ConnectionIdentity *connection,
                                const ProcessResources *baseline) {
@@ -4932,6 +5004,8 @@ out:
         PasswordPromptScan diagnostic;
         fprintf(stderr, "FLUTTER_PEER_X11_FAIL audio Mute phase=%s checked=%d directory_mode=%o\n",
                 phase, checked, (unsigned int)(original.st_mode & 07777));
+        if (observe_mute_row(display, pid) != 0)
+            fputs("FLUTTER_PEER_X11_FAIL audio Mute row diagnostic\n", stderr);
         if (scan_password_prompt(pid, &diagnostic, 1) != 0)
             fputs("FLUTTER_PEER_X11_FAIL audio Mute accessibility diagnostic\n", stderr);
     }

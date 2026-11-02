@@ -129991,3 +129991,23 @@ mask produced group-writable updated scripts. Correct only those changed files
 to repository modes 0755/0644; the second launch above uses identical committed
 bytes. Preserve the first 470-byte refusal log in the capsule inventory. Future
 TUF Git updates use mask 022. The safety gate and its requirements are unchanged.
+
+### 2026-11-02 — distinguish Mute storage, rendering and accessibility
+
+The previous goal turn made progress: it produced the first native Mute
+observation and changed the next action from save-denial reproduction to locating
+the healthy-control discrepancy. Continue that R-S0/R-F1 workflow. Add bounded
+failure observations without changing its acceptance predicates: a crop of the
+named Mute row, its native checked state before/after clearing the observer cache,
+and a Boolean-only parse of the owned peer file after the controller returns.
+No credential/document bytes are printed. GNOME documents cache clearing as
+discarding the accessible object's cached information
+(https://docs.gtk.org/atspi2/method.Accessible.clear_cache.html).
+
+The desktop submenu builds its option values in the enclosing widget build and
+rebuilds on hover. A native accessibility action can reopen without that pointer
+event. Flutter provides an explicit menu-open callback
+(https://api.flutter.dev/flutter/material/SubmenuButton/onOpen.html); a product
+change requires distinguishing that source hypothesis from stale observer state
+and actual storage first. The app/engine and all previous pass/fail conditions
+remain fixed for the diagnostic replay. No product change is included.

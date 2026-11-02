@@ -129731,3 +129731,22 @@ bounded evidence, exact private diagnostics (44 files, 61,923,563 bytes) retire
 under the shared lock; identity-checked read-only bundle directories receive
 owner write permission solely for deletion. Retirement receipt is
 `image-quality-menu-failure-52c1507e-retirement.json`.
+
+TUF `ixCZGPrNDd` passes the corrected full-peer replay on `6e9a7001`, outer
+exit zero, with unchanged app `0243c010` and engine `ddb1541d`. Actual menu
+selections produce targets 600/200/268/600/200 kbps; three successive visible
+confirmations finish in 874/810/590/809/810 ms. Each change then supplies four
+fresh distinct displayed counters within the fixed 2.5-second recovery budget.
+Sampled maximum ages are 386/289/343/481/1,281 ms; the last includes a transient
+old frame before qualifying fresh pixels. Do not claim every sampled age was
+below one second. Viewer FDs stay 45; RSS is 356,680–383,548 KiB and threads 56–65.
+One connection and server generation survive all changes; teardown joins.
+This proves live preset-to-encoder effects in the selected Linux software-display
+scenario. Custom sliders, save failures/restart, other platforms, physical scanout,
+subjective/compressed-image quality, throughput and installed acceptance remain open.
+
+Capsule `image-quality-full-peer-6e9a7001.json` is 8,513 bytes, SHA-256
+`18a83e0208c24303002903f0c46dad5190e4407fa9a6fa9b5c59a46076e06af8`.
+It verifies all seven raw files and four zero listener deltas. Wrapper 443756 and
+QEMU 444813 are absent; private run and RAM `run.8n74u4a_` (`29:37092`) retire.
+Elapsed time is 122.367 s; RAM scratch peaks at 3,011,809,280 bytes within 7 GiB.

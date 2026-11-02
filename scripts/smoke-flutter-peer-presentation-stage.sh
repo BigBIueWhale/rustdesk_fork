@@ -960,6 +960,24 @@ PY
       )
       cargo build --locked --offline --features flutter,unix-file-copy-paste \
         --lib --release
+      /usr/bin/timeout --signal=TERM --kill-after=10s 600s \
+        cargo test --locked --offline --color never --features flutter,unix-file-copy-paste \
+        --lib --release client::tests::view_mode_ -- --test-threads=1 \
+        > /tmp/view-mode-native-tests.log 2>&1 \
+        || { tail -n 100 /tmp/view-mode-native-tests.log; fail 'View mode command tests failed'; }
+      cat /tmp/view-mode-native-tests.log
+      for test_name in view_mode_failed_save_releases_command_reservations view_mode_closed_round_does_not_save; do
+        grep -Fxq "test client::tests::$test_name ... ok" /tmp/view-mode-native-tests.log \
+          || fail "View mode command case $test_name did not pass"
+      done
+      grep -Fq 'test result: ok. 2 passed; 0 failed; 0 ignored;' /tmp/view-mode-native-tests.log \
+        || fail 'View mode command test total differs'
+      view_mode_test_binary=$(sed -n 's/^ *Running unittests src\/lib.rs (\(target\/release\/deps\/librustdesk-[0-9a-f]*\))$/\1/p' /tmp/view-mode-native-tests.log)
+      [[ "$view_mode_test_binary" =~ ^target/release/deps/librustdesk-[0-9a-f]+$ ]] \
+        || fail 'View mode test artifact identity is missing or ambiguous'
+      verify_regular "$view_mode_test_binary"
+      printf 'VIEW_MODE_COMMAND_TESTS=pass tests=2 artifact_sha256=%s\n' \
+        "$(sha256sum "$view_mode_test_binary" | awk '{print $1}')"
       readonly CORE_LIB=$BUILD_SOURCE/target/release/liblibrustdesk.so
       verify_regular "$CORE_LIB"
       readelf --wide --dyn-syms "$CORE_LIB" \

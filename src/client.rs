@@ -1949,7 +1949,7 @@ impl LoginConfigHandler {
             bail!("View mode requires a remote-control session");
         }
         let revision = self.view_mode_revision.checked_add(1)
-            .ok_or_else(|| anyhow!("View mode revision exhausted"))?;
+            .ok_or_else(|| hbb_common::anyhow::anyhow!("View mode revision exhausted"))?;
         let mut config = PeerConfig::load_for_write(&self.id)?;
         config.view_only.v = self.config.view_only.v;
         config.show_my_cursor.v = self.config.view_only.v && self.config.show_my_cursor.v;
@@ -4422,7 +4422,7 @@ impl ViewerCommandSender {
         self.send_with_commit(Data::Message(message), || {
             saved = commit();
             saved.is_ok()
-        }).map_err(|error| anyhow!(error.to_string()))?;
+        }).map_err(|error| hbb_common::anyhow::anyhow!(error.to_string()))?;
         saved
     }
 

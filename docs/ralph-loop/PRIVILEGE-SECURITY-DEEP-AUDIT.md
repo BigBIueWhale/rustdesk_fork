@@ -130986,3 +130986,19 @@ Wrapper 869128 and QEMU 869756 are absent, four listener deltas are zero, and RA
 `run._tgez9sx` / `29:38627` retires. Peak scratch is 8,234,692,608 bytes under
 16 GiB. `view-mode-app-d2bd9d38.json` and its exact retirement receipt preserve
 the result; no candidate app generation was published.
+
+Third build `h8yqCjgRKV` at `10c52540` passes all thirteen focused cases and
+the result parser. The cursor case confirms one write and true/true model state
+before the following frame shows both checks, establishing the observation repair.
+Rust compilation then rejects the two newly added unqualified `anyhow!` calls;
+that import is non-Linux-only in this file. Use the existing qualified macro form.
+The next app producer also executes the two newly added native command-queue cases
+after core compilation, requiring both exact names, total and artifact digest.
+These cover failed-save reservation release/retry and closed-round refusal before
+the save callback. They have no passing claim before execution.
+
+Wrapper 888776 and QEMU 889713 are absent, all four listener deltas are zero,
+and RAM `run.gboe8qy6` / `29:38668` retires; peak scratch is 10,060,787,712 bytes
+under 16 GiB. Capsule `view-mode-app-10c52540.json` and its exact retirement
+receipt retain the Flutter pass, Rust errors and cleanup. No app was published;
+the original native failed-save/retry acceptance remains pending.

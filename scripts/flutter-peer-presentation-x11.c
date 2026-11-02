@@ -4044,10 +4044,10 @@ typedef struct {
     ino_t inode;
     off_t bytes;
     char sha256[65];
-} ThemeFileState;
+} ConfigFileState;
 
-static int read_theme_file(int directory, ThemeFileState *state) {
-    int fd = openat(directory, "RustDesk_local.toml", O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+static int read_config_file(int directory, const char *name, ConfigFileState *state) {
+    int fd = openat(directory, name, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
     struct stat before, after, named;
     GChecksum *checksum = NULL;
     int result = -1;
@@ -4067,7 +4067,7 @@ static int read_theme_file(int directory, ThemeFileState *state) {
         total += (size_t)count;
     }
     if (total != (size_t)before.st_size || fstat(fd, &after) != 0 ||
-        fstatat(directory, "RustDesk_local.toml", &named, AT_SYMLINK_NOFOLLOW) != 0 ||
+        fstatat(directory, name, &named, AT_SYMLINK_NOFOLLOW) != 0 ||
         after.st_dev != before.st_dev || after.st_ino != before.st_ino ||
         after.st_size != before.st_size || named.st_dev != before.st_dev ||
         named.st_ino != before.st_ino || named.st_mode != before.st_mode ||
@@ -4110,7 +4110,7 @@ static int exercise_theme_save_failure(Display *display, const ViewerWindow *vie
     int directory = -1, permissions_changed = 0, result = -1;
     unsigned int pid = (unsigned int)viewer->pid, connected = 0U, listeners = 0U;
     struct stat original, current;
-    ThemeFileState before = {0}, after = {0};
+    ConfigFileState before = {0}, after = {0};
     ConnectionIdentity final = {{0}, {0}, 0UL};
     uint64_t fresh = 0U, age = 0U;
     const char *phase = "initial-light";
@@ -4125,7 +4125,8 @@ static int exercise_theme_save_failure(Display *display, const ViewerWindow *vie
     phase = "write-refusal-setup";
     if (directory < 0 || fstat(directory, &original) != 0 || original.st_uid != geteuid() ||
         original.st_gid != getegid() || (original.st_mode & 07777) != 0700 ||
-        read_theme_file(directory, &before) != 0 || fchmod(directory, 0500) != 0) goto out;
+        read_config_file(directory, "RustDesk_local.toml", &before) != 0 ||
+        fchmod(directory, 0500) != 0) goto out;
     permissions_changed = 1;
     errno = 0;
     int probe = openat(directory, ".theme-write-probe", O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
@@ -4144,7 +4145,7 @@ static int exercise_theme_save_failure(Display *display, const ViewerWindow *vie
     phase = "visible-error";
     if (theme_error_visible(pid, 1) != 0) goto out;
     phase = "unchanged-file";
-    if (read_theme_file(directory, &after) != 0 ||
+    if (read_config_file(directory, "RustDesk_local.toml", &after) != 0 ||
         before.device != after.device || before.inode != after.inode || before.bytes != after.bytes ||
         strcmp(before.sha256, after.sha256) != 0 || fstat(directory, &current) != 0 ||
         current.st_dev != original.st_dev || current.st_ino != original.st_ino ||
@@ -4912,6 +4913,159 @@ out:
     return result;
 }
 
+static int quality_open_menu(unsigned int pid) {
+    return quality_toolbar(pid) == 0 &&
+           activate_named_control(pid, "Display settings") == 0 &&
+           activate_named_control(pid, "Image quality") == 0 ? 0 : -1;
+}
+
+static int quality_wait_bitrate(unsigned int pid, unsigned int bitrate) {
+    uint64_t started = monotonic_millis();
+    if (started == 0U || started > UINT64_MAX - 10000U) return -1;
+    uint64_t deadline = started + 10000U;
+    unsigned int stable = 0U;
+    while (monotonic_millis() < deadline && stable < 3U) {
+        int visible = quality_bitrate_visible(pid, bitrate, deadline);
+        if (visible < 0) return -1;
+        stable = visible ? stable + 1U : 0U;
+        if (sleep_millis(100U) != 0) return -1;
+    }
+    return stable == 3U && monotonic_millis() < deadline ? 0 : -1;
+}
+
+static int quality_menu_checked(unsigned int pid, const char *selected) {
+    static const char *names[] = {"Good image quality", "Balanced", "Optimize reaction time", "Custom"};
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    while (monotonic_millis() < deadline) {
+        int matches = 1;
+        for (unsigned int i = 0U; i < sizeof(names) / sizeof(names[0]); ++i) {
+            AtspiAccessible *item = NULL;
+            AtspiStateSet *states = NULL;
+            if (query_named_accessible(pid, names[i], deadline, &item, 0) != 0) return -1;
+            if (item != NULL) states = atspi_accessible_get_state_set(item);
+            if (states == NULL || !atspi_state_set_contains(states, ATSPI_STATE_ENABLED) ||
+                !atspi_state_set_contains(states, ATSPI_STATE_SENSITIVE) ||
+                atspi_state_set_contains(states, ATSPI_STATE_CHECKED) != (strcmp(names[i], selected) == 0))
+                matches = 0;
+            g_clear_object(&states);
+            g_clear_object(&item);
+        }
+        if (matches && monotonic_millis() < deadline) return 0;
+        if (sleep_millis(100U) != 0) return -1;
+    }
+    return -1;
+}
+
+static int exercise_image_quality_save_failure(Display *display, const ViewerWindow *viewer,
+                                                SourceHistory *history, const ConnectionIdentity *connection,
+                                                const ProcessResources *baseline) {
+    const char *path = "/tmp/viewer-home/.config/rustdesk/peers";
+    const char *phase = "baseline-best";
+    unsigned int pid = (unsigned int)viewer->pid, preserved_samples = 0U;
+    int directory = -1, permissions_changed = 0, result = -1;
+    struct stat original, current;
+    ConfigFileState before = {0}, after = {0};
+    ConnectionIdentity final = {{0}, {0}, 0UL};
+    ProcessResources resources = {0};
+    AtspiAccessible *error = NULL;
+    uint64_t deadline, fresh = 0U, age = 0U;
+    if (geteuid() == 0 || quality_toolbar(pid) != 0 ||
+        activate_named_control(pid, "Display settings") != 0 ||
+        activate_named_control(pid, "Show quality monitor") != 0 ||
+        quality_open_menu(pid) != 0 ||
+        activate_named_control(pid, "Good image quality") != 0 ||
+        quality_wait_bitrate(pid, 600U) != 0) goto out;
+    deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    if (query_named_accessible(pid, "Failed", deadline, &error, 0) != 0 || error != NULL)
+        goto out;
+    directory = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    phase = "deny-peer-save";
+    if (directory < 0 || fstat(directory, &original) != 0 || original.st_uid != geteuid() ||
+        original.st_gid != getegid() || (original.st_mode & 07777) != 0700 ||
+        read_config_file(directory, "127.0.0.1.toml", &before) != 0 ||
+        fchmod(directory, 0500) != 0) goto out;
+    permissions_changed = 1;
+    errno = 0;
+    int probe = openat(directory, ".quality-write-probe", O_WRONLY | O_CREAT | O_EXCL |
+                       O_NOFOLLOW | O_CLOEXEC, 0600);
+    int probe_error = errno;
+    if (probe >= 0) {
+        if (close(probe) != 0) fputs("FLUTTER_PEER_X11_FAIL quality probe close\n", stderr);
+        if (unlinkat(directory, ".quality-write-probe", 0) != 0)
+            fputs("FLUTTER_PEER_X11_FAIL quality probe cleanup\n", stderr);
+        goto out;
+    }
+    if (probe_error != EACCES || quality_open_menu(pid) != 0 ||
+        quality_menu_checked(pid, "Good image quality") != 0 ||
+        activate_named_control(pid, "Optimize reaction time") != 0) goto out;
+    phase = "failure-visible";
+    deadline = monotonic_millis() + 2500U;
+    while (monotonic_millis() < deadline && error == NULL) {
+        if (query_named_accessible(pid, "Failed", deadline, &error, 0) != 0) goto out;
+        if (error == NULL && sleep_millis(50U) != 0) goto out;
+    }
+    if (error == NULL || monotonic_millis() >= deadline) goto out;
+    g_clear_object(&error);
+    phase = "old-target-and-file-held";
+    uint64_t hold_started = monotonic_millis();
+    if (hold_started == 0U || hold_started > UINT64_MAX - 4000U) goto out;
+    deadline = hold_started + 4000U;
+    do {
+        if (quality_bitrate_visible(pid, 600U, deadline) != 1 ||
+            read_config_file(directory, "127.0.0.1.toml", &after) != 0 ||
+            before.device != after.device || before.inode != after.inode ||
+            before.bytes != after.bytes || strcmp(before.sha256, after.sha256) != 0 ||
+            fstat(directory, &current) != 0 || current.st_dev != original.st_dev ||
+            current.st_ino != original.st_ino || (current.st_mode & 07777) != 0500 ||
+            monotonic_millis() >= deadline || sleep_millis(100U) != 0) goto out;
+        ++preserved_samples;
+    } while (monotonic_millis() - hold_started < 3000U);
+    if (preserved_samples < 10U || monotonic_millis() >= deadline) goto out;
+    printf("FLUTTER_PEER_QUALITY_SAVE_REFUSED error=visible target_kbps=600 file=unchanged "
+           "kernel=EACCES hold_ms=%llu samples=%u\n",
+           (unsigned long long)(monotonic_millis() - hold_started), preserved_samples);
+    phase = "retry-low";
+    if (fchmod(directory, 0700) != 0) goto out;
+    permissions_changed = 0;
+    if (quality_open_menu(pid) != 0 || quality_menu_checked(pid, "Good image quality") != 0 ||
+        activate_named_control(pid, "Optimize reaction time") != 0 ||
+        quality_wait_bitrate(pid, 200U) != 0 || quality_open_menu(pid) != 0 ||
+        quality_menu_checked(pid, "Optimize reaction time") != 0 ||
+        activate_named_control(pid, "Display settings") != 0 ||
+        activate_named_control(pid, "Display settings") != 0 ||
+        activate_named_control(pid, "Show quality monitor") != 0 ||
+        activate_named_control(pid, "Hide toolbar") != 0) goto out;
+    deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    if (query_named_accessible(pid, "Failed", deadline, &error, 0) != 0 || error != NULL)
+        goto out;
+    phase = "retry-fresh-pixels";
+    if (wait_for_current_frames(display, viewer, history, RECOVERY_LIMIT_MS, 4U, &fresh, &age) != 0 ||
+        read_connection_identity(&final) != 0 || !same_connection(connection, &final) ||
+        read_process_resources(viewer->pid, &resources) != 0 ||
+        !resources_are_bounded(baseline, &resources)) goto out;
+    print_resources("image-quality-save", 1U, &resources);
+    printf("FLUTTER_PEER_QUALITY_SAVE_AFTER_PIXELS first_fresh_ms=%llu maximum_age_ms=%llu distinct=4\n",
+           (unsigned long long)fresh, (unsigned long long)age);
+    result = 0;
+out:
+    if (permissions_changed && fchmod(directory, 0700) != 0) {
+        fputs("FLUTTER_PEER_X11_FAIL peer directory permission restoration\n", stderr);
+        result = -1;
+    }
+    if (directory >= 0 && close(directory) != 0) result = -1;
+    g_clear_object(&error);
+    if (result == 0)
+        puts("FLUTTER_PEER_QUALITY_SAVE_FAILURE_OK failure=visible previous=preserved retry=low "
+             "radio=confirmed permissions=restored stable_connection=true fresh_pixels=4 resources=bounded");
+    else {
+        PasswordPromptScan diagnostic;
+        fprintf(stderr, "FLUTTER_PEER_X11_FAIL image-quality save failure/retry phase=%s\n", phase);
+        if (scan_password_prompt(pid, &diagnostic, 1) != 0)
+            fputs("FLUTTER_PEER_X11_FAIL quality save accessibility diagnostic\n", stderr);
+    }
+    return result;
+}
+
 static int exercise_screenshot_save_unavailable(const ViewerWindow *viewer,
                                                 const ConnectionIdentity *connection,
                                                 const ProcessResources *baseline) {
@@ -5182,6 +5336,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--screenshot-save-unavailable") != 0 &&
                                     strcmp(argv[5], "--view-scaling") != 0 &&
                                     strcmp(argv[5], "--image-quality") != 0 &&
+                                    strcmp(argv[5], "--image-quality-save-failure") != 0 &&
                                     strcmp(argv[5], "--session-close") != 0 &&
                                     strcmp(argv[5], "--background-close") != 0 &&
                                     strcmp(argv[5], "--theme-light") != 0 &&
@@ -5202,7 +5357,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--clipboard-images") != 0 &&
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
-        fputs("Additional full-peer scenario: --image-quality\n", stderr);
+        fputs("Additional full-peer scenarios: --image-quality, --image-quality-save-failure\n", stderr);
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
               "VIEWER_START [--viewer-suspend|--viewer-soak|--input-latency|--input-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
@@ -5446,6 +5601,16 @@ int main(int argc, char **argv) {
                                                strcmp(argv[5], "--isolation-slow") == 0);
         if (close(connection_fds) != 0) result = -1;
         connection_fds = -1;
+        if (atspi_exit() != 0) result = -1;
+        if (close_viewer(display, viewer.window) != 0) result = -1;
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return result == 0 ? 0 : 1;
+    }
+
+    if (argc == 6 && strcmp(argv[5], "--image-quality-save-failure") == 0) {
+        int result = exercise_image_quality_save_failure(display, &viewer, &history,
+                                                         &current_connection, &baseline_resources);
         if (atspi_exit() != 0) result = -1;
         if (close_viewer(display, viewer.window) != 0) result = -1;
         XCloseDisplay(display);

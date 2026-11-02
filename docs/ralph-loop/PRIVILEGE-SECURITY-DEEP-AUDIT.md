@@ -129763,3 +129763,20 @@ QEMU 447083 are absent, and RAM `run.5xy15oo9` (`29:37134`) retires.
 Receipt `image-quality-ledger-2f3195ca.json` is 3,832 bytes, SHA-256
 `a9a028aae9bd4c78cbe9c02f517e57b9d2886d1cd4554f684e1ac02596aac562`.
 No native-codec investigation is resumed by this completed settings checkpoint.
+
+### 2026-11-02 — preset save refusal and retry, full-peer acceptance
+
+Previous turn made progress: five full-peer preset changes passed and their
+source-bound evidence was retained. Select the adjacent R-S0 failure contract
+before expanding unrelated work: a failed save must not publish a new selection
+or encoder request, and healthy retry must work. `save_image_quality_preset`
+persists before cache/command publication; the actual toolbar awaits its checked
+bridge result and displays failure. Extend the existing replay with one focused
+scenario: establish Best/600 kbps; make only the disposable nonroot viewer's
+retained peer directory unwritable, independently prove EACCES, attempt Low,
+require visible failure and three seconds of unchanged file/encoder target;
+restore permissions, require the old radio selection, retry Low/200 kbps,
+confirm its radio and fresh pixels on the same connection, then parse the saved
+Low value after exact viewer exit. No product edits or full rebuild are needed.
+The retained-descriptor permission change follows fchmod(2),
+https://man7.org/linux/man-pages/man2/fchmod.2.html. CTE's input soak stays frozen.

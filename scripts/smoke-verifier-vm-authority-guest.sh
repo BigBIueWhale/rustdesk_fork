@@ -14,6 +14,7 @@ FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE=0
 FLUTTER_VIEW_SCALING=0
 FLUTTER_SESSION_CLOSE=0
 FLUTTER_IMAGE_QUALITY=0
+FLUTTER_IMAGE_QUALITY_SAVE_FAILURE=0
 FLUTTER_THEME_RESTART=0
 FLUTTER_THEME_APPEARANCE=0
 FLUTTER_THEME_SAVE_FAILURE=0
@@ -287,6 +288,7 @@ case "$#:${8:-}" in
                 --view-scaling) FLUTTER_VIEW_SCALING=1 ;;
                 --session-close) FLUTTER_SESSION_CLOSE=1 ;;
                 --image-quality) FLUTTER_IMAGE_QUALITY=1 ;;
+                --image-quality-save-failure) FLUTTER_IMAGE_QUALITY_SAVE_FAILURE=1 ;;
                 --background-close) FLUTTER_SESSION_CLOSE=2 ;;
                 --theme-restart) FLUTTER_THEME_RESTART=1 ;;
                 --theme-appearance) FLUTTER_THEME_APPEARANCE=1 ;;
@@ -389,6 +391,7 @@ readonly FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE
 readonly FLUTTER_VIEW_SCALING
 readonly FLUTTER_SESSION_CLOSE
 readonly FLUTTER_IMAGE_QUALITY
+readonly FLUTTER_IMAGE_QUALITY_SAVE_FAILURE
 readonly FLUTTER_THEME_RESTART
 readonly FLUTTER_THEME_APPEARANCE
 readonly FLUTTER_THEME_SAVE_FAILURE
@@ -14091,6 +14094,7 @@ run_flutter_peer_presentation() {
     [ "$FLUTTER_VIEW_SCALING" -eq 0 ] || peer_args+=(--view-scaling)
     [ "$FLUTTER_SESSION_CLOSE" -ne 1 ] || peer_args+=(--session-close)
     [ "$FLUTTER_IMAGE_QUALITY" -eq 0 ] || peer_args+=(--image-quality)
+    [ "$FLUTTER_IMAGE_QUALITY_SAVE_FAILURE" -eq 0 ] || peer_args+=(--image-quality-save-failure)
     [ "$FLUTTER_SESSION_CLOSE" -ne 2 ] || peer_args+=(--background-close)
     [ "$FLUTTER_THEME_RESTART" -eq 0 ] || peer_args+=(--theme-restart)
     [ "$FLUTTER_THEME_APPEARANCE" -eq 0 ] || peer_args+=(--theme-appearance)
@@ -14196,6 +14200,9 @@ run_flutter_peer_presentation() {
         peer_cycles=1
     elif [ "$FLUTTER_CREDENTIAL_RESTART" -eq 1 ]; then
         peer_scenario=credential-restart
+        peer_cycles=1
+    elif [ "$FLUTTER_IMAGE_QUALITY_SAVE_FAILURE" -eq 1 ]; then
+        peer_scenario=image-quality-save-failure
         peer_cycles=1
     elif [ "$FLUTTER_IMAGE_QUALITY" -eq 1 ]; then
         peer_scenario=image-quality

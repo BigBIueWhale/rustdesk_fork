@@ -131133,3 +131133,14 @@ private state plus RAM `run.yvgh0fjt` / `29:38820` retire. Scratch peaks at
 Both hosts retain the capsule and seven raw records. The ledger records this
 native checkpoint; a fresh isolated count follows. Broader gaps and user parks
 remain unchanged.
+
+Count `ZyyO0Bj9Ff` at `3abf278e` passes seven controls and the whole-input
+round trip: **394,391 tokens / 1,805,134 bytes**, SHA-256
+`4a7d510b211c284ceed6c2a3bd959b1dedfaef269e23fa330d394ad3326690d7`.
+Wrapper 1000247 and QEMU 1001665 are absent, all three listener deltas are zero,
+and private state plus RAM `run.trzzstxs` / `29:38862` retire. Capsule
+`theme-save-windows-ledger-3abf278e.json` is 5,035 bytes, SHA-256
+`eef8146ec21f6be3dcd32e0edbbcfc544acde6419f3d2e4a295a7d1faee7b0c1`;
+both hosts retain it and the raw records. No owned job remains. This closes the
+selected retained-Linux cross-window failed-save/retry evidence gap. Broader
+product/platform acceptance and the complete release goal remain open.

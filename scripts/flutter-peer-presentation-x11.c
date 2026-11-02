@@ -4247,11 +4247,14 @@ static int exercise_theme_appearance(Display *display, const ViewerWindow *viewe
                 goto out;
         }
     }
-    if (click_main_control(display, main, pid, "Follow system") != 0 ||
+    if (change_system_appearance(settings, 1) != 0 ||
         wait_for_theme_windows(display, main, viewer, history, connection,
-                               2U, 0, 0U, "system-reselected") != 0) goto out;
+                               1U, 1, 5000U, "explicit-before-system") != 0 ||
+        click_main_control(display, main, pid, "Follow system") != 0 ||
+        wait_for_theme_windows(display, main, viewer, history, connection,
+                               2U, 1, 0U, "system-reselected") != 0) goto out;
     for (unsigned int i = 0U; i < 2U; ++i) {
-        int dark = i == 0U;
+        int dark = i == 1U;
         if (change_system_appearance(settings, dark) != 0 ||
             wait_for_theme_windows(display, main, viewer, history, connection, 2U, dark, 0U,
                                    dark ? "system-dark-again" : "system-light-again") != 0) goto out;
@@ -4278,11 +4281,11 @@ out:
     g_clear_object(&settings);
     if (schema != NULL) g_settings_schema_unref(schema);
     if (result == 0)
-        puts("FLUTTER_PEER_THEME_APPEARANCE_OK system_transitions=4 explicit_holds=4 "
+        puts("FLUTTER_PEER_THEME_APPEARANCE_OK system_transitions=4 explicit_holds=5 "
              "hold_ms=5000 choices=3 stable_connection=true fresh_pixels=4");
     if (result == 0)
-        puts("FLUTTER_PEER_THEME_WINDOWS_OK phases=12 windows=2 remote_fresh_pixels=48 "
-             "remote_explicit_holds=4 hold_ms=5000 same_window=true stable_connection=true");
+        puts("FLUTTER_PEER_THEME_WINDOWS_OK phases=13 windows=2 remote_fresh_pixels=52 "
+             "remote_explicit_holds=5 hold_ms=5000 same_window=true stable_connection=true");
     return result;
 }
 

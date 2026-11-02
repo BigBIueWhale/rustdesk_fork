@@ -131354,3 +131354,28 @@ hosts retain the raw records and `theme-native-ledger-3b81c895.json`
 `6e2e9bf3a8975cd9e1ee20cebb1189953019cc1e755a91ace17e8c5bd78628c0`).
 No owned job remains active. The native corrected-theme checkpoint is complete;
 the explicitly listed remaining acceptance gaps and full release goal stay open.
+
+### 2026-11-02 — Follow System reselection after an explicit-theme OS change
+
+The preceding native-theme goal turn made progress; the intervening SSH response
+verified the user's password-only connection preference without changing product
+state. Continue R-S0 settings correctness with a missing transition in the retained
+app: select Follow System after the OS changed while an explicit theme was active.
+This reuses the accepted app and current native driver rather than another build
+or unrelated component coverage. Independent user parks remain in force.
+
+The main App replaces the platform brightness callback and returns before
+notifying the Flutter binding for an explicit preference. Flutter's documented
+MaterialApp System mode reads MediaQuery brightness; WidgetsBindingObserver is
+the provided brightness-change notification surface. These facts suggest stale
+brightness on reselection, but do not yet establish a native defect. Sources:
+https://api.flutter.dev/flutter/material/MaterialApp/themeMode.html and
+https://api.flutter.dev/flutter/widgets/WidgetsBindingObserver/didChangePlatformBrightness.html.
+
+The existing replay restored OS Light before selecting System. Extend it by
+changing the OS to Dark and observing the explicit Dark choice for five seconds,
+then select System and require Dark in both main and remote windows. Subsequent
+OS Light/Dark changes must still work on the same connection. All previous
+explicit-choice holds remain; thirteen phases now require 52 fresh remote
+counters and five holds. The product is unchanged. Native execution on app
+`c619cb3e` will decide the hypothesis before any product correction.

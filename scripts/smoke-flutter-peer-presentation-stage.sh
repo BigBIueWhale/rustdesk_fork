@@ -1871,10 +1871,10 @@ PY
         <<<"$controller_output" || fail 'native theme save failure/retry or remote-window result is absent'
       viewer_result='viewer=joined xvfb=joined theme_save_failure=passed previous=preserved retry=durable pixels=verified'
     elif [ "$PEER_SCENARIO" = theme-appearance ]; then
-      grep -Fxq 'FLUTTER_PEER_THEME_APPEARANCE_OK system_transitions=4 explicit_holds=4 hold_ms=5000 choices=3 stable_connection=true fresh_pixels=4' \
+      grep -Fxq 'FLUTTER_PEER_THEME_APPEARANCE_OK system_transitions=4 explicit_holds=5 hold_ms=5000 choices=3 stable_connection=true fresh_pixels=4' \
         <<<"$controller_output" \
-        && [ "$(grep -c '^FLUTTER_PEER_THEME_REMOTE_OBSERVED ' <<<"$controller_output")" -eq 12 ] \
-        && grep -Fxq 'FLUTTER_PEER_THEME_WINDOWS_OK phases=12 windows=2 remote_fresh_pixels=48 remote_explicit_holds=4 hold_ms=5000 same_window=true stable_connection=true' \
+        && [ "$(grep -c '^FLUTTER_PEER_THEME_REMOTE_OBSERVED ' <<<"$controller_output")" -eq 13 ] \
+        && grep -Fxq 'FLUTTER_PEER_THEME_WINDOWS_OK phases=13 windows=2 remote_fresh_pixels=52 remote_explicit_holds=5 hold_ms=5000 same_window=true stable_connection=true' \
         <<<"$controller_output" || fail 'native live appearance or remote-window result is absent'
       viewer_result='viewer=joined xvfb=joined theme_appearance=passed system=live explicit=preserved pixels=verified'
     elif [ "$PEER_SCENARIO" = credential-retry ]; then

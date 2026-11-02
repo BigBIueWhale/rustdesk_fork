@@ -129890,3 +129890,38 @@ installation or execution. Existing ordinary-user isolation, shared admission,
 bounded RAM scratch, monitored limits and joined cleanup remain. The new stage
 has a 64-package/64-MiB output ceiling. Shell syntax and diff checks pass; actual
 acquisition and fullscreen runtime acceptance are still pending at preparation.
+
+CTE acquisition `N0Nqx6WCsE` on `7a6c5a6c` passes. Signed snapshot APT downloads
+Openbox and 33 dependencies missing from the recorded devcheck image, without
+installing or executing them. The archive is 25,731,063 bytes, SHA-256
+`548b09ad76bc7334c2b56f19f15bdbf3b99b1a23d2e9029f6585048b0042f546`;
+manifest SHA-256 is
+`b3aa0c5bc8d955aca3b4655966339767b1c1e74828f96323879152dd4092845c`.
+Independent retained-archive inspection confirms the exact 36 regular members,
+all 34 package sizes/hashes, publisher-pinned Openbox and recorded base contract.
+Pin this test-only candidate for the offline consumer. Its libraries belong to
+the window-manager fixture, not RustDesk's product dependency graph.
+
+Capsule `window-manager-acquisition-7a6c5a6c.json` is 13,914 bytes, SHA-256
+`d20ea7ca39ee14ea04c15aa6ba594c6c05a17949edec1c642c86e729e8731a6e`.
+It binds the native acquisition receipt, serial/outer logs, launch, source and
+candidate inventory. Wrapper 1588146 and QEMU 1592892 are absent; private run
+and RAM `run.ccoljdfi` (`29:11677`) retire. The acquisition reports no added host
+listeners. Total storage supervision lasts 98.049 seconds and observes a
+4,088,037,376-byte RAM peak within the unchanged 16-GiB scratch limit.
+The candidate is copied and digest-verified on TUF at
+`online/candidates/window-manager`, identity `66306:81048182`.
+
+The earlier TUF attempt `QKU1LfXGgK` refused the missing inert Buildx input
+before QEMU creation. Its empty RAM reservation and three private control files
+are retired under the shared lock; receipt
+`window-manager-preflight-7a6c5a6c.json` retains the evidence. Reusing CTE's
+authenticated acquisition tools avoids copying another 147 MB of tools to TUF.
+
+Fullscreen runtime acceptance remains OPEN. The next consumer must run Openbox
+only in the private viewer container, keep its libraries separate from RustDesk's
+loader path, and join its exact process before Xvfb retirement. The native viewer
+finder currently searches direct root children; managed windows need the bounded
+EWMH client list with the same exact process/title/class checks. The scenario
+must distinguish actual state/geometry from the requested Flutter state, exercise
+toolbar entry/exit and external exit, and preserve connection and fresh pixels.

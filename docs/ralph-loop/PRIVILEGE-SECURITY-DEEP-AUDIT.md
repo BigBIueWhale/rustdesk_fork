@@ -130817,3 +130817,16 @@ at 3,012,485,120 bytes under 7 GiB. The outer receipt reports 127 seconds.
 The capsule checks all twelve case identities, actual event counts/types, negative
 observation durations, phase counts, saved preference and exact cleanup. The ledger
 records the accepted scenario and language pivot; a fresh isolated count follows.
+
+TUF count `SbnD9eVWFy` at `75be27e9` passes seven controls and the whole-input
+round trip: **393,626 tokens / 1,801,762 bytes**, SHA-256
+`ee39b370a6224e06744cec04b95bb5d72614f4a65ce6ca86dc18c6731c6c04e7`.
+Wrapper 780920 and QEMU 782824 are absent, three listener deltas are zero, and
+private state plus RAM `run.i6xwjd8l` / `29:38404` retire. Capsule
+`view-only-ledger-75be27e9.json` is 4,996 bytes, SHA-256
+`9d7d72fdb37769b1209357a1f6e14122977a1bc9af92c3e6a827ed9836aad95d`.
+Both hosts retain the accepted View mode capsule, count capsule and their raw
+receipts, plus the parked locale attempts and retirement receipts. No owned run
+remains active. This live View mode workflow reaches its native checkpoint;
+full-process restoration and failure handling remain unproved. The language
+integration and all independent user parks remain. The release goal is incomplete.

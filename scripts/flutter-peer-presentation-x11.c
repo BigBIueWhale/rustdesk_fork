@@ -4152,6 +4152,56 @@ static int change_system_appearance(GSettings *settings, int dark) {
     return result;
 }
 
+static int wait_for_theme_windows(Display *display, Window main, const ViewerWindow *viewer,
+                                   SourceHistory *history, const ConnectionIdentity *connection,
+                                   unsigned int expected, int dark, unsigned int hold_ms,
+                                   const char *phase) {
+    ConnectionIdentity after = {{0}, {0}, 0UL};
+    unsigned long pid = 0UL;
+    unsigned int luminance = 0U, stable = 0U, samples = 0U;
+    uint64_t matched = 0U, fresh = 0U, age = 0U;
+    int result = -1;
+    if (main == viewer->window ||
+        wait_for_theme(display, main, (unsigned int)viewer->pid, expected, dark,
+                       hold_ms, 1U, phase) != 0 ||
+        read_window_pid(display, viewer->window, &pid) != 0 || pid != viewer->pid) return -1;
+    /* Read displayed root pixels only after bringing this exact window to the front. */
+    XRaiseWindow(display, viewer->window);
+    XSetInputFocus(display, viewer->window, RevertToParent, CurrentTime);
+    XSync(display, False);
+    uint64_t start = monotonic_millis(), deadline = start + DIALOG_CONTROL_WAIT_MS + hold_ms;
+    while (monotonic_millis() < deadline) {
+        if (main_header_luminance(display, viewer->window, &luminance) != 0) goto out;
+        ++samples;
+        int matches = dark ? luminance <= 100U : luminance >= 160U;
+        if (!matches) {
+            if (matched != 0U && hold_ms != 0U) goto out;
+            stable = 0U;
+        } else {
+            if (matched == 0U) matched = monotonic_millis();
+            ++stable;
+            if (stable >= 3U && monotonic_millis() - matched >= hold_ms) break;
+        }
+        if (sleep_millis(100U) != 0) goto out;
+    }
+    if (monotonic_millis() >= deadline || stable < 3U ||
+        wait_for_current_frames(display, viewer, history, AUTH_WAIT_MS, 4U, &fresh, &age) != 0 ||
+        read_connection_identity(&after) != 0 || !same_connection(connection, &after)) goto out;
+    printf("FLUTTER_PEER_THEME_REMOTE_OBSERVED phase=%s dark=%s window=%lu luminance=%u "
+           "native_pixels=true samples=%u hold_ms=%u maximum_age_ms=%llu distinct=4 "
+           "stable_connection=true\n", phase, dark ? "true" : "false", viewer->window,
+           luminance, samples, hold_ms, (unsigned long long)age);
+    result = 0;
+out:
+    if (result != 0)
+        fprintf(stderr, "FLUTTER_PEER_X11_FAIL remote theme phase=%s dark=%d luminance=%u\n",
+                phase, dark, luminance);
+    XRaiseWindow(display, main);
+    XSetInputFocus(display, main, RevertToParent, CurrentTime);
+    XSync(display, False);
+    return result;
+}
+
 static int exercise_theme_appearance(Display *display, const ViewerWindow *viewer,
                                      SourceHistory *history, const ConnectionIdentity *connection) {
     Window main = None;
@@ -4177,30 +4227,34 @@ static int exercise_theme_appearance(Display *display, const ViewerWindow *viewe
     XRaiseWindow(display, main);
     XSetInputFocus(display, main, RevertToParent, CurrentTime);
     XSync(display, False);
-    if (wait_for_theme(display, main, pid, 2U, 0, 0U, 1U, "system-initial") != 0) goto out;
+    if (wait_for_theme_windows(display, main, viewer, history, connection,
+                               2U, 0, 0U, "system-initial") != 0) goto out;
     for (unsigned int i = 0U; i < 2U; ++i) {
         int dark = i == 0U;
         if (change_system_appearance(settings, dark) != 0 ||
-            wait_for_theme(display, main, pid, 2U, dark, 0U, 1U,
-                           dark ? "system-dark" : "system-light") != 0) goto out;
+            wait_for_theme_windows(display, main, viewer, history, connection, 2U, dark, 0U,
+                                   dark ? "system-dark" : "system-light") != 0) goto out;
     }
     for (unsigned int choice = 0U; choice < 2U; ++choice) {
         if (click_main_control(display, main, pid, choice == 0U ? "Light" : "Dark") != 0 ||
-            wait_for_theme(display, main, pid, choice, choice == 1U, 0U, 1U,
-                           "explicit-selected") != 0) goto out;
+            wait_for_theme_windows(display, main, viewer, history, connection,
+                                   choice, choice == 1U, 0U, "explicit-selected") != 0) goto out;
         for (unsigned int i = 0U; i < 2U; ++i) {
             if (change_system_appearance(settings, i == 0U) != 0 ||
-                wait_for_theme(display, main, pid, choice, choice == 1U, 5000U, 1U,
-                               i == 0U ? "explicit-os-dark" : "explicit-os-light") != 0) goto out;
+                wait_for_theme_windows(display, main, viewer, history, connection,
+                                       choice, choice == 1U, 5000U,
+                                       i == 0U ? "explicit-os-dark" : "explicit-os-light") != 0)
+                goto out;
         }
     }
     if (click_main_control(display, main, pid, "Follow system") != 0 ||
-        wait_for_theme(display, main, pid, 2U, 0, 0U, 1U, "system-reselected") != 0) goto out;
+        wait_for_theme_windows(display, main, viewer, history, connection,
+                               2U, 0, 0U, "system-reselected") != 0) goto out;
     for (unsigned int i = 0U; i < 2U; ++i) {
         int dark = i == 0U;
         if (change_system_appearance(settings, dark) != 0 ||
-            wait_for_theme(display, main, pid, 2U, dark, 0U, 1U,
-                           dark ? "system-dark-again" : "system-light-again") != 0) goto out;
+            wait_for_theme_windows(display, main, viewer, history, connection, 2U, dark, 0U,
+                                   dark ? "system-dark-again" : "system-light-again") != 0) goto out;
     }
     if (close_viewer(display, main) != 0) goto out;
     main = None;
@@ -4226,6 +4280,9 @@ out:
     if (result == 0)
         puts("FLUTTER_PEER_THEME_APPEARANCE_OK system_transitions=4 explicit_holds=4 "
              "hold_ms=5000 choices=3 stable_connection=true fresh_pixels=4");
+    if (result == 0)
+        puts("FLUTTER_PEER_THEME_WINDOWS_OK phases=12 windows=2 remote_fresh_pixels=48 "
+             "remote_explicit_holds=4 hold_ms=5000 same_window=true stable_connection=true");
     return result;
 }
 

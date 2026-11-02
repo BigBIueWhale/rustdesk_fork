@@ -1869,7 +1869,10 @@ PY
       viewer_result='viewer=joined xvfb=joined theme_save_failure=passed previous=preserved retry=durable pixels=verified'
     elif [ "$PEER_SCENARIO" = theme-appearance ]; then
       grep -Fxq 'FLUTTER_PEER_THEME_APPEARANCE_OK system_transitions=4 explicit_holds=4 hold_ms=5000 choices=3 stable_connection=true fresh_pixels=4' \
-        <<<"$controller_output" || fail 'native live appearance result is absent'
+        <<<"$controller_output" \
+        && [ "$(grep -c '^FLUTTER_PEER_THEME_REMOTE_OBSERVED ' <<<"$controller_output")" -eq 12 ] \
+        && grep -Fxq 'FLUTTER_PEER_THEME_WINDOWS_OK phases=12 windows=2 remote_fresh_pixels=48 remote_explicit_holds=4 hold_ms=5000 same_window=true stable_connection=true' \
+        <<<"$controller_output" || fail 'native live appearance or remote-window result is absent'
       viewer_result='viewer=joined xvfb=joined theme_appearance=passed system=live explicit=preserved pixels=verified'
     elif [ "$PEER_SCENARIO" = credential-retry ]; then
       [ "$(grep -Ec '^FLUTTER_PEER_PASSWORD_REJECTED_OK replacement_prompt=blank remember=false connected_sockets=0 listener=preserved samples=[0-9]+ interval_ms=100 idle_ms=[0-9]+ tcp_active_opens=0 tcp_passive_opens=0 wrong_opens=1 elapsed_ms=[0-9]+$' <<<"$controller_output")" -eq 1 ] \

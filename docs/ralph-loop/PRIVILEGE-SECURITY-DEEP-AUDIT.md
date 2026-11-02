@@ -131002,3 +131002,53 @@ and RAM `run.gboe8qy6` / `29:38668` retires; peak scratch is 10,060,787,712 byte
 under 16 GiB. Capsule `view-mode-app-10c52540.json` and its exact retirement
 receipt retain the Flutter pass, Rust errors and cleanup. No app was published;
 the original native failed-save/retry acceptance remains pending.
+
+### 2026-11-02 — user pivot; theme synchronization between open windows
+
+The user requests a pivot. View mode / Show my cursor correction and acceptance
+are OPEN/PARKED. Fourth build `uRaKGkDRPY` at `0ccb2a7e` passes all thirteen
+Flutter cases, both native queue tests and full Linux Flutter compilation. The
+outer wrapper rejects an obsolete Mute-test receipt. Its exit remains 1; the app
+is retained unpublished under the exact pending generation, manifest SHA-256
+`2e422b8475ce43c3b35cec5c5f836c2b83e277f6af3a46d6d0bdf4a201e22480`.
+Wrapper repair, artifact publication and native failed-save/retry replay are
+parked. No further correction or acceptance is claimed.
+
+Wrapper 959188 and QEMU 962314 are absent, all four decoded listener deltas are
+zero, and RAM `run.yxc8xjr7` / `29:38709` is gone. Under the shared run lock,
+the exact private diagnostics directory is inventoried and retired while the
+pending app remains unchanged. Capsule `view-mode-app-0ccb2a7e.json` is 16,598
+bytes, SHA-256 `9b6d28ba9ed2e74862acf961c89f5f341e7eb6fb5bb1088c51fc3becb0c28e0f`;
+its separate retirement receipt and all seven raw records are retained on both
+hosts. Peak scratch was 11,889,897,472 bytes under 16 GiB. There is no live build.
+
+Select the independent R-S0 appearance workflow: an already-open remote window
+must follow explicit Light/Dark and live Follow System changes from the main
+settings window. Earlier native evidence checks main-window pixels and remote
+frame freshness, but does not observe the remote window's theme. This is an
+evidence gap, not a demonstrated product defect. It is a narrow complete-app
+check using retained app `7e6f6459` and engine `ddb1541d`; it takes priority over
+expanding concurrent-writer tests because the actual cross-window delivery and
+visible effect can be decided directly without another application build.
+
+Source follows `MyTheme.changeDarkMode`, `main_change_theme` /
+`main_broadcast_message`, the secondary-window theme event handler and
+`_AppState`'s platform-brightness callback. Explicit choices persist before the
+broadcast; Follow System supplies live platform changes. The retained app's
+theme functions and tab colors remain unchanged; later app-root locale and
+View mode edits are outside this artifact's acceptance. Flutter defines explicit
+Light/Dark as independent of system brightness and System as following it:
+https://api.flutter.dev/flutter/material/MaterialApp/themeMode.html.
+
+The existing appearance replay now observes the exact remote window after each
+of twelve main-window observations. It raises that window before reading root
+pixels, requires three matching samples, holds each explicit choice for five
+seconds through all four OS-change phases, and checks four fresh displayed
+counters plus the same connection every time. Main-window radio/pixel assertions
+remain. This avoids interpreting an obscured window's backing pixels as actual
+presentation; Xlib's image semantics are documented at
+https://x.org/releases/current/doc/libX11/libX11/libX11.pdf.
+Expected evidence is twelve remote observations, 48 additional fresh counters,
+four held explicit choices, unchanged window/connection, final saved System and
+joined isolation cleanup. Product code is unchanged. Native execution follows;
+other platforms/providers, concurrent changes and release acceptance remain OPEN.

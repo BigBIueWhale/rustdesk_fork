@@ -43,18 +43,17 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
-**Follow System reselection — native defect reproduced; correction pending validation:**
-`A8WwgRWH64` reuses app `c619cb3e` with the OS changed to Dark during an explicit
-theme choice. Ten main/remote phases pass; selecting Follow System then leaves
-the main window Light (sampled luminance 224). The earlier twelve-phase replay
-returned the OS to Light before reselection and did not cover this transition.
-The correction removes the App's replacement brightness callback and passes
-the saved theme preference to all app roots, preserving Flutter's System mode
-and normal brightness notifications. The expanded thirteen-phase native replay
-must pass on the corrected app before acceptance. Baseline logs and exact
-cleanup are bound by `theme-system-reselection-baseline-58d9c14a.json`; the VM
-and RAM workspace retire with four zero endpoint deltas. Other platform,
-concurrency and release obligations remain OPEN.
+**Follow System reselection — verified native Linux correction (2026-11-02):**
+`c0ce6463` removes the App's replacement brightness callback and passes the saved
+theme preference to all app roots, preserving Flutter's System mode and normal
+brightness notifications. Baseline `A8WwgRWH64` on app `c619cb3e` passes ten
+phases, then renders Light when System is reselected with OS Dark. Corrected
+app `c9323bf1` passes that transition and the complete thirteen-phase replay
+below. Its build `8K5xFpBNGf` passes thirteen widget and two native command
+tests; only `libapp.so` differs among the baseline's payload files. The Rust
+library, engine and remaining payload files are identical. The audit and
+`theme-system-build-c9323bf1.json` retain exact source, artifact and cleanup
+evidence; other platform, concurrency and release obligations remain OPEN.
 
 **Delayed theme notification correction (2026-11-02):**
 `1000ebf4` removes the theme value from the native notification API. Secondary
@@ -70,27 +69,33 @@ below; forced native worker reordering, concurrent writers, other failure classe
 providers/platforms and installed/release acceptance remain OPEN.
 
 **Native Linux theme synchronization verified (2026-11-02):** Replay
-`ywjaAfGMJO` uses corrected app `c619cb3e` and engine `ddb1541d`. Its full build
-`lKe5Pgvez8` passes thirteen widget and two native command tests, seals 75 files,
-and validates the shared producer's obsolete receipt-check removal. Twelve native
-main/remote-window phases agree: Follow System follows four OS changes, and
-explicit Light/Dark survive four five-second observations after OS changes.
-The same remote window/connection remains; 48 additional displayed counters are
-fresh (maximum sampled age 326 ms), and joined storage retains System. Drivers
-rebuild twice identically; all owned processes, RAM scratch and private state
-retire with four zero listener deltas. `theme-native-build-c619cb3e.json` and
-`theme-native-appearance-c619cb3e.json` bind this corrected-artifact checkpoint.
+`GczjjRBVla` at harness `f13a50e7` uses app `c9323bf1` and engine `ddb1541d`.
+Thirteen main/remote phases agree: System follows four OS changes, explicit
+Light/Dark survive five five-second holds, and System reselection uses current
+OS Dark. The independent monitor observes all nine OS notifications. The same
+remote window/connection remains; 52 fresh frame observations have maximum
+sampled age 319 ms, and joined storage retains System. Drivers reproduce
+identically; VM/RAM/private cleanup and four zero listener deltas pass.
+`theme-system-appearance-f13a50e7.json` binds this result. The prior candidate
+run passed all pixel phases but stopped at the wrapper's obsolete eight-event
+expectation; the audit preserves that failure and the two-count correction.
 
-**Cross-window theme save failure/retry verified:** Replay `cWctzaltv0` reuses
+**Cross-window theme save failure/retry verified:** Replay `7BcrDr6IGA` reuses
 the same corrected app/engine. Real EACCES leaves both windows Light,
 reports the failure and preserves exact saved file identity/bytes. Four-second
 held observations remain Light. Restored access permits Dark retry in both
 windows, clears the error and saves Dark after process join. Four remote phases
-observe sixteen fresh counters, maximum age 328 ms, on the same window and
+observe sixteen fresh frames, maximum age 317 ms, on the same window and
 connection. Drivers rebuild identically; VM/RAM/private cleanup and four zero
-listener deltas pass. `theme-native-save-failure-c619cb3e.json` binds this evidence.
+listener deltas pass. `theme-system-save-failure-f13a50e7.json` binds this evidence.
 The component reordering reproduction and these native integration runs cover
 distinct layers; the broader gaps above remain.
+
+**macOS appearance reset remains OPEN:** source review finds that explicit choices
+set `NSWindow.appearance`, while System sends no reset through the two-value
+platform channel. AppKit uses `nil` to restore inherited appearance. This separate
+path needs correction and native verification; no macOS execution is claimed.
+The audit records the exact sources and Apple's appearance contract.
 
 **User pivot (2026-11-02):** View mode / Show my cursor work is OPEN/PARKED.
 Candidate `0ccb2a7e` completes the Linux Flutter app build with thirteen focused

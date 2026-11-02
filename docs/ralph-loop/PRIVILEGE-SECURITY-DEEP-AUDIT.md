@@ -131450,8 +131450,8 @@ Build `8K5xFpBNGf` at `c9323bf1` completes successfully. Thirteen widget cases
 and both native command cases pass. The closed app inventory contains 75 files /
 70,353,741 bytes, manifest SHA-256
 `680bf367fc4e14c97ea4aef06690346e8265474e5a57ccef6280769957e9c49a`.
-Only `bundle/lib/libapp.so` differs from failing baseline `c619cb3e`; the Rust
-library, engine and every other artifact file are byte-identical. The complete
+Only `bundle/lib/libapp.so` differs among failing baseline `c619cb3e`'s payload
+files; the Rust library, engine and remaining payload files are byte-identical. The complete
 product-source diff is `flutter/lib/main.dart`. Wrapper 1038815 and QEMU
 1039444 are absent; RAM `run.t1ear8at` / `29:39342` and private state retire,
 with four zero listener deltas. Scratch peaks at 11,889,131,520 bytes under
@@ -131479,3 +131479,40 @@ retain sixteen records including `theme-system-appearance-monitor-c9323bf1.json`
 `6573f98c092d0e7a8f9ffec208fcde0840ac84f80ce38b3467f73d6a8acc385b`).
 No app rebuild is needed for this fixture correction. Native save-failure/retry
 and the full release goal remain open.
+
+Replay `GczjjRBVla` at `f13a50e7` passes completely on the same `c9323bf1`
+app. All thirteen main/remote phases agree, including the reproduced reselection
+and subsequent Light/Dark changes; five explicit holds and nine independent
+OS notifications pass. The same window/connection supplies 52 fresh phase
+observations, maximum age 319 ms. Joined storage retains System. Wrapper
+1041755 and QEMU 1042811 are absent; RAM `run._ebvkvyh` / `29:39425` and
+private state retire with four zero listener deltas. Both hosts retain thirteen
+records including `theme-system-appearance-f13a50e7.json` (15,614 bytes,
+SHA-256 `c547529729f1f914faa46f7dd92af0a7c2cc6d7e3f3b927d4995353691e43d20`).
+
+Replay `7BcrDr6IGA` on that same app passes all four real save-failure/retry
+phases. EACCES preserves both Light windows, the selected radio and exact saved
+file identity/bytes while showing an error; a four-second hold remains Light.
+Restored access permits Dark retry in both windows, clears the error and saves
+Dark after process join. Sixteen fresh phase observations have maximum age
+317 ms on the same window/connection. Wrapper 1043595 and QEMU 1044653 are
+absent; RAM `run.nxz_20n5` / `29:39467` and private state retire with four zero
+listener deltas. Both hosts retain thirteen records including
+`theme-system-save-failure-f13a50e7.json` (9,003 bytes, SHA-256
+`5249b0762e5492530fa095a8b046f35b98b60ffb2852b8e86095c330926d43f5`).
+Every replay driver reproduced twice identically. This completes the selected
+Linux keyfile-provider/main-and-remote-window checkpoint; forced native worker
+reordering, concurrent writers, other providers/platforms, installed behavior,
+independent reproduction and full release acceptance remain open.
+
+Related macOS source review identifies a separate remaining appearance-reset
+path. `common.dart::updateSystemWindowTheme` skips System;
+`utils/platform_channel.dart::SystemWindowTheme` has only Light/Dark; and
+`macos/Runner/MainFlutterWindow.swift::setWindowInterfaceMode` assigns a non-nil
+`NSWindow.appearance`. Apple documents nil as inheriting the ancestor appearance:
+https://developer.apple.com/documentation/appkit/nsappearancecustomization/appearance.
+Consequently the current source has no explicit-to-System native-window reset.
+This is source evidence, with no macOS runtime reproduction or correction in
+this slice. It remains a concrete open settings obligation alongside the broader
+platform evidence gaps. The ledger now records the accepted Linux checkpoint
+and this limit; its required fresh count follows.

@@ -131256,3 +131256,25 @@ retain raw records and `theme-ordering-ledger-f94c23ee.json` (4,799 bytes,
 SHA-256 `a86f8b47efd0948175120f25dfbe72ce0692182f6a4dc90ed0384d9b77114005`).
 No owned job remains active. The source correction and focused component
 checkpoint are complete; native-app acceptance and the release goal remain open.
+
+### 2026-11-02 — native app validation of the theme notification correction
+
+The previous turn is progress: both reproduced receiver failures pass after
+`1000ebf4`, with 36 focused rendered cases and joined cleanup. Continue R-S0
+with a native app containing that correction. Another component run would leave
+the important remaining integration gap unchanged. The required result is a
+source-bound app build followed by the existing main/remote-window appearance
+and real save-failure/retry scenarios, observing pixels, radios, persistence and
+connection freshness. Native worker-scheduling coverage remains a distinct gap.
+
+The shared app producer still requires an obsolete ten-case Mute receipt even
+though its exact current recipe runs thirteen View mode Flutter cases and two
+native command tests. Remove this redundant outer receipt check. The recipe's
+bounded test commands, exact result parser, named native cases and fail-on-error
+behavior remain; the guest requires the build's successful exit and exact
+source/recipe-bound prepared-artifact receipt before reporting completion. The
+host continues to require that receipt, the exact VM result, cloud-init success,
+authenticated inputs, immutable source and joined cleanup before publication.
+This prerequisite enables the newly corrected theme artifact. View mode's pending
+candidate and its native acceptance remain parked and preserved. No product edit
+is needed here. Build execution will validate this two-line orchestration repair.

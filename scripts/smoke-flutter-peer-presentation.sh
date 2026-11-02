@@ -298,7 +298,7 @@ elif [ "$PEER_SCENARIO" = keyboard-restart ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
-  VIEWER_RESULT='viewer=joined xvfb=joined keyboard_restart=passed generations=3 keyboard_cases=44 storage=verified pixels=fresh'
+  VIEWER_RESULT='viewer=joined xvfb=joined keyboard_restart=passed generations=4 keyboard_cases=66 storage=verified pixels=fresh'
 elif [ "$PEER_SCENARIO" = keyboard-modes ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

@@ -5517,14 +5517,15 @@ static int exercise_keyboard_restart(Display *source, Display *display,
                                       const ViewerWindow *viewer, SourceHistory *history,
                                       const ConnectionIdentity *connection,
                                       const ProcessResources *baseline, unsigned int generation) {
-    static const char *before[] = {"Legacy mode", "Map mode", "Legacy mode"};
-    static const char *after[] = {"Map mode", "Legacy mode", "Legacy mode"};
-    static const char *modes[] = {"map", "legacy", "legacy"};
+    static const char *before[] = {"Legacy mode", "Map mode", "Translate mode beta", "Legacy mode"};
+    static const char *after[] = {"Map mode", "Translate mode beta", "Legacy mode", "Legacy mode"};
+    static const char *modes[] = {"map", "translate", "legacy", "legacy"};
     unsigned int pid = (unsigned int)viewer->pid, observations = 0U;
-    if (generation < 1U || generation > 3U) return -1;
-    for (unsigned int step = 0U; step < (generation == 3U ? 1U : 2U); ++step) {
+    if (generation < 1U || generation > 4U) return -1;
+    for (unsigned int step = 0U; step < (generation == 4U ? 1U : 2U); ++step) {
         const char *selected = step == 0U ? before[generation - 1U] : after[generation - 1U];
-        const char *mode = strcmp(selected, "Map mode") == 0 ? "map" : "legacy";
+        const char *mode = strcmp(selected, "Map mode") == 0 ? "map" :
+                           strcmp(selected, "Translate mode beta") == 0 ? "translate" : "legacy";
         if (quality_toolbar(pid) != 0 || activate_named_control(pid, "Keyboard settings") != 0)
             return -1;
         if (step == 1U && (activate_named_control(pid, selected) != 0 ||
@@ -6603,6 +6604,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--keyboard-modes") != 0 &&
                                     strcmp(argv[5], "--keyboard-save-failure") != 0 &&
                                     strcmp(argv[5], "--keyboard-translate") != 0 &&
+                                    strcmp(argv[5], "--keyboard-restart-translate") != 0 &&
                                     strcmp(argv[5], "--keyboard-legacy") != 0 &&
                                     strcmp(argv[5], "--keyboard-map") != 0 &&
                                     strcmp(argv[5], "--keyboard-restore") != 0 &&
@@ -6645,7 +6647,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("Additional full-peer scenarios: --image-quality, --image-quality-save-failure, --audio-mute, "
-              "--keyboard-legacy, --keyboard-map, --keyboard-restore, "
+              "--keyboard-legacy, --keyboard-map, --keyboard-restart-translate, --keyboard-restore, "
               "--keyboard-save-failure, "
               "--keyboard-translate, "
               "--quality-best, --quality-low, --quality-balanced, --quality-restore, "
@@ -6673,8 +6675,9 @@ int main(int argc, char **argv) {
             "--quality-best", "--quality-low", "--quality-balanced", "--quality-restore"};
         for (unsigned int i = 0U; i < 4U; ++i)
             if (strcmp(argv[5], quality_phases[i]) == 0) quality_generation = i + 1U;
-        static const char *keyboard_phases[] = {"--keyboard-map", "--keyboard-legacy", "--keyboard-restore"};
-        for (unsigned int i = 0U; i < 3U; ++i)
+        static const char *keyboard_phases[] = {
+            "--keyboard-map", "--keyboard-restart-translate", "--keyboard-legacy", "--keyboard-restore"};
+        for (unsigned int i = 0U; i < 4U; ++i)
             if (strcmp(argv[5], keyboard_phases[i]) == 0) keyboard_generation = i + 1U;
     }
     if (language_direction) language_generation = 1U;

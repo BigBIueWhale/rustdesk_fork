@@ -1569,7 +1569,7 @@ PY
     [ "$PEER_SCENARIO" != theme-restart ] || viewer_generations=4
     [ "$PEER_SCENARIO" != language-restart ] || viewer_generations=4
     [ "$PEER_SCENARIO" != quality-restart ] || viewer_generations=4
-    [ "$PEER_SCENARIO" != keyboard-restart ] || viewer_generations=3
+    [ "$PEER_SCENARIO" != keyboard-restart ] || viewer_generations=4
     if [ "$PEER_SCENARIO" = theme-appearance ]; then
       # Use GLib's real shared file backend, read by the unmodified native engine.
       # An absent portal must leave the engine able to follow GNOME settings.
@@ -1617,7 +1617,7 @@ PY
       language_phases=(french portugal english restore)
       controller_args+=("--language-${language_phases[viewer_generation - 1]}")
     elif [ "$PEER_SCENARIO" = keyboard-restart ]; then
-      keyboard_phases=(map legacy restore)
+      keyboard_phases=(map restart-translate legacy restore)
       controller_args+=("--keyboard-${keyboard_phases[viewer_generation - 1]}")
     elif [ "$PEER_SCENARIO" = quality-restart ]; then
       quality_phases=(best low balanced restore)
@@ -1785,10 +1785,12 @@ PY
       <<<"$controller_output" || fail 'real password prompt verdict is missing'
     fi
     if [ "$PEER_SCENARIO" = keyboard-restart ]; then
-      keyboard_before=(legacy map legacy)
-      keyboard_after=(map legacy legacy)
+      keyboard_before=(legacy map translate legacy)
+      keyboard_after=(map translate legacy legacy)
       keyboard_observations=1
-      [ "$viewer_generation" -ne 2 ] || keyboard_observations=2
+      if [ "$viewer_generation" -eq 2 ] || [ "$viewer_generation" -eq 3 ]; then
+        keyboard_observations=2
+      fi
       grep -Fxq "FLUTTER_PEER_KEYBOARD_RESTORED generation=$viewer_generation mode=${keyboard_before[viewer_generation - 1]} choice=confirmed before_write=true" \
         <<<"$controller_output" || fail 'restored keyboard choice is absent'
       grep -Fxq "FLUTTER_PEER_KEYBOARD_RESTART_PHASE_OK generation=$viewer_generation selected=${keyboard_after[viewer_generation - 1]} observations=$keyboard_observations choice=confirmed input=verified pixels=fresh resources=bounded" \
@@ -1799,7 +1801,7 @@ PY
         [ "$(grep -Ec "^FLUTTER_PEER_KEYBOARD_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq "$keyboard_observations" ] \
           || fail "keyboard restart case $sequence is missing or duplicated"
       done
-      viewer_result='viewer=joined xvfb=joined keyboard_restart=passed generations=3 keyboard_cases=44 storage=verified pixels=fresh'
+      viewer_result='viewer=joined xvfb=joined keyboard_restart=passed generations=4 keyboard_cases=66 storage=verified pixels=fresh'
     elif [ "$PEER_SCENARIO" = quality-restart ]; then
       quality_after=(best low balanced balanced)
       quality_observations=2
@@ -2232,7 +2234,7 @@ try:
     if sys.argv[2] in ('keyboard-modes', 'keyboard-translate'):
         field, expected = 'keyboard_mode', 'map'
     elif sys.argv[2] == 'keyboard-restart':
-        field, expected = 'keyboard_mode', ('map', 'legacy', 'legacy')[int(sys.argv[1]) - 1]
+        field, expected = 'keyboard_mode', ('map', 'translate', 'legacy', 'legacy')[int(sys.argv[1]) - 1]
     elif sys.argv[2] == 'keyboard-save-failure':
         field, expected = 'keyboard_mode', 'legacy'
     elif sys.argv[2] in ('view-only', 'view-only-save-failure'):

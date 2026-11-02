@@ -132092,3 +132092,33 @@ Both hosts retain twelve verified records, including
 All owned processes, private state and RAM retire with three zero listener deltas.
 The selected compound-shortcut native checkpoint is complete; the full release
 objective remains active with the broader gaps and independent parks preserved.
+
+### 2026-11-03 — restore Translate mode after viewer restart
+
+Previous goal turn: progress; seven compound-shortcut cases and the existing
+Map/Translate/Map observations passed on retained app `c6aed851`. Continue the
+explicit R-S0 Translate restart gap before another unrelated settings variation.
+`src/client.rs::save_keyboard_mode` persists the supported value before publishing
+it; `Session::get_keyboard_mode` returns the supported saved preference after
+peer information arrives. Flutter refreshes its input model after that peer
+information. The existing three-process restart fixture already observes Map
+and Legacy. No new product defect is assumed.
+
+Extend that fixture to four distinct, freshly authenticated viewer processes:
+select Map; restore/type Map and select/type Translate; restore/type Translate
+before selecting/typing Legacy; restore/type Legacy without changing it. Each
+restored choice must be exclusive before any selection, each process must join
+with zero exit before its preference file is checked, and all six typing phases
+must pass eleven native cases / 28 events plus four fresh displayed counters.
+The existing observer still requires exact text/modifiers/order, released keys,
+stable per-process window/connection identity and resource bounds. All prior
+mode restoration assertions remain, with Translate inserted before Legacy.
+The internal Translate-selection flag is distinct from the live Translate
+scenario. This changes only three fixture/orchestration files; reuse app `c6aed851`
+and its pinned manifest/provider/engine without rebuilding it.
+
+CTE/TUF start clean at `25c3ab00`, with no owned private/RAM job and about
+45 GiB available memory. Compile the three drivers twice and execute in the
+admitted zero-NIC bounded-RAM VM, retaining the same password-only SSH transport,
+listener audit and joined cleanup. Equal US X11/orderly viewer restart only;
+physical devices, abrupt failure, other platforms and independent parks remain.

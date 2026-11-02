@@ -132291,3 +132291,22 @@ are copied and hash-verified on CTE. Capsule
 `linux-namespace-build-fdbab046.json` is 6,681 bytes, SHA-256
 `bfc5bb5e4918672826391d40d8bf4e6c619f6dead8ecf4aff94763c250055e80`.
 The artifact prerequisite is complete; installed collision acceptance follows.
+
+Native `hnH9L1Hq4J` at fixture `120b3030` passes all 24 cases in 48 reported
+outer seconds, using current service binary SHA-256
+`b1208dbac45922e5ee141cf1107b61d2bd62cff694d71cea6d57c6c223f2b72a`.
+All twelve refused starts exit 1 before readiness without changing their
+non-socket entry, directory sentinel, symlink target or retired public namespace.
+All twelve recovery supervisors reach active/running, own the three endpoints
+by SO_PEERCRED, stop with success/exit zero and are reaped; their service cgroups
+retire. The complete production/build-input comparison against `fdbab046` passes
+before and after execution. No product defect is demonstrated by these cases.
+
+Wrapper/QEMU/helper absence and private/RAM retirement pass under the shared
+lock; three listener deltas are zero and peak RAM scratch is 4,086,026,240 bytes.
+Twelve bounded records were copied and hash-verified on CTE. Capsule
+`linux-namespace-120b3030.json` is 34,376 bytes, SHA-256
+`755d91e83d2cb00677f229d152a5f38cf4fe7b5f6e9595a85a4c6e37a621c036`.
+The selected installed-layout preservation/recovery checkpoint is complete.
+Final packages, concurrent namespace replacement, actual action authority and
+other-platform execution remain separate acceptance gaps; all user parks remain.

@@ -4620,6 +4620,22 @@ retired and the public temporary namespace unchanged. This adds installed-layout
 R-S11bs evidence; genuine-image incumbents, non-root actors, races, privileged
 action authorization, final packages and other-platform acceptance remain OPEN.
 
+**Installed non-socket endpoint preservation (`120b3030`).** TUF `hnH9L1Hq4J`
+passes 24 cases on freshly built service artifact `fdbab046` and the shipped unit.
+For each of the three privileged endpoints, a regular file, FIFO, sentinel-bearing
+directory and symlink cause startup to refuse before readiness. All twelve
+obstructions retain their exact identity, type, ownership, mode, link count,
+size, change times and regular-file contents; the symlink target and abandoned
+public namespace remain unchanged. After each exact fixture removal, a new
+supervisor starts and owns all three sockets by kernel peer credentials, then
+exits zero and is reaped. Every service cgroup retires. Three listener deltas
+are zero and VM/RAM/private cleanup passes. `linux-namespace-120b3030.json`
+binds native evidence; `linux-namespace-build-fdbab046.json` binds the source,
+seven payload files, build controls and cleanup. No product correction was needed.
+This is sessionless installed-layout execution with fixture-created obstructions,
+not proof an unprivileged actor can populate the protected parent. Final Debian
+artifacts, namespace races, action authorization and other platforms remain OPEN.
+
 **IPC / option CLI — component acceptance; installed acceptance OPEN.**
 At `ad638445`, TUF `1VEEFlN8jX` passes all **176 listener/transport, 32 CLI,
 10 Windows selector, 22 main-protocol, 8 main-transaction, 8 main-peer, 4 URL-loop,

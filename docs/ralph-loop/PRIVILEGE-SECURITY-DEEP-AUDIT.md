@@ -131655,3 +131655,39 @@ app `c9323bf1` and engine `ddb1541d` in the admitted zero-NIC TUF VM; do not reb
 the app. The app's keyboard path matches current source; later changes concern
 macOS appearance and its component fixture. TUF source is clean and no owned
 VM/RAM job remains before admission. The observer compiles twice in isolation.
+
+Initial run `bziaGdulSQ` stops at the foreign-principal entry check, before
+observer compilation or app launch. Git synchronization with umask 077 left the
+changed workload wrapper at 0700; the unrelated-principal guest check cannot read
+it. After joined shutdown, preserve thirteen bounded records on both hosts and
+retire the exact inventoried private directory under retained descriptors.
+`keyboard-held-e88d96cd.json` is 14,770 bytes, SHA-256
+`dd051b7f3bd35121bdf70465ad6072f7ce6a2921368c3a020aed4ddc0f07b251`.
+Restore only the two changed scripts from 0700 to 0755 after comparing their bytes
+with their tracked 100755 Git objects. Use umask 022 for subsequent Git source
+synchronization: it avoids both group write and unreadable guest fixtures.
+Evidence and scratch creation retain their explicit private modes. No preflight
+expectation or confinement rule changes; repeat the same app and scenario.
+
+Retry `9Sk3KTlSeg` passes at unchanged harness `e88d96cd`, app `c9323bf1`
+and engine `ddb1541d`. All three native drivers compile twice with identical
+bytes. Both transitions observe two native modifier presses and the two held
+keymaps. Before-choice checkpoints have release mask zero; after-choice and
+confirmed-choice checkpoints have mask three while the viewer's two keys remain
+held. Each transition receives exactly two matching native releases and no extra
+key events in the quiet interval. Viewer fixture releases then leave both keymaps
+clear. This proves the actual toolbar workflow, not precise ordering against the
+internal preference commit or an artificially forced backend-mode race.
+
+All 33 ordinary keyboard cases pass with 84 native events and exact
+text/modifiers/order. The same window and authenticated connection remain;
+twelve fresh displayed counters have maximum sampled age 312 ms. The viewer
+exits successfully and joined private storage retains Map. The full replay
+completes in 118 seconds without rebuilding the app. Wrapper 1053478 and QEMU
+1054536 are absent; all owned helper processes, private state and RAM retire.
+Peak RAM scratch is 3,014,438,912 bytes under 7 GiB; four listener deltas are zero.
+Both hosts retain thirteen verified records including
+`keyboard-held-e88d96cd-retry.json` (23,803 bytes, SHA-256
+`041ccf65aa612e9ef5e03556e9232f8c2fe1d5256e475fa7bcad885e470dac88`).
+No product defect or patch is established by this passing scenario. The ledger
+records this limited native acceptance; its fresh isolated count follows.

@@ -179,7 +179,22 @@ All owned processes join, RAM scratch retires and four listener deltas are zero.
 `keyboard-modes-accepted-c352f6fd.json` binds the result. Product code is unchanged;
 the fixture now waits for menu/toolbar retirement before its focus-restoring click.
 This uses equal US X11/Xvfb layouts. Cross-layout behavior, switching with held
-keys, restart, physical devices, other platforms and installed acceptance remain OPEN.
+keys beyond the scenario below, restart, physical devices, other platforms and
+installed acceptance remain OPEN.
+
+**Held keyboard-mode transitions verified on Linux:** Replay `9Sk3KTlSeg` at
+`e88d96cd` reuses app `c9323bf1` / engine `ddb1541d`. Both Map→Legacy and
+Legacy→Map begin with native left-Control/left-Shift presses and both keymaps
+held. No releases are observed before selecting the new choice; both are observed
+after selection while the viewer keys remain held. Exact releases, a quiet
+interval and both final keymaps pass. All three normal typing phases also pass
+(33 cases), including input after each held-key transition.
+The same window/connection remains; twelve fresh counters have maximum sampled
+age 312 ms, and joined storage retains Map. Identical driver rebuilds, four zero
+listener deltas and VM/RAM/private cleanup pass. `keyboard-held-e88d96cd-retry.json`
+binds this equal-layout X11 evidence. It does not establish the precise release
+ordering against the internal mode commit, physical devices or other platforms;
+those and the broader gaps above remain OPEN. No product change was needed.
 
 **User pivot (2026-11-02):** Custom quality/FPS native validation is OPEN/PARKED.
 Its unexecuted two-file draft is preserved in stash

@@ -132226,3 +132226,18 @@ copied to CTE and hash-verified. Capsule `keyboard-repeat-afcefd31.json` is
 This closes the named equal-layout Linux held-key scenario, not broader
 physical-device, layout, platform, installed or release acceptance. No product
 defect was demonstrated by this slice; all independently parked topics remain.
+
+Fresh ledger count `KZLdsBXZ9g` at `26bc0b07` passes seven token controls and
+the whole-input byte round trip. The updated ledger is 396,448 tokens /
+1,814,401 bytes, SHA-256
+`3b1037817ae7442e4576ef487c281f55d4039d779d79d8e008832dffb24de587`,
+within the approximate 400,000-token budget. Three listener deltas are zero;
+VM/RAM/private/helper retirement and exact process absence pass. Twelve records
+were copied and hash-verified. Capsule `keyboard-repeat-ledger-26bc0b07.json`
+is 4,804 bytes, SHA-256
+`6ad9d9679a833c7afc92f4f898b4e43daeb70c075ec86b86a8dd4ba96dd2257d`.
+The selected native held-key checkpoint is complete; the full release objective
+remains open. The next acceptance gap for this behavior is equivalent supported-
+platform/native-device evidence, subject to existing parks and real environment
+availability. Reassess release priority at this checkpoint rather than rerun
+the passed equal-layout scenario without a relevant change or new concern.

@@ -129713,3 +129713,21 @@ four fresh distinct displayed counters with the same connection and bounded
 viewer resources. The product publishes target bitrate only after encoder
 quality application succeeds. This checks live preset effects, not custom
 sliders, restart persistence, physical scanout or installed/platform acceptance.
+
+The first entry attempt refused before creating a VM because the remote edit
+left the launcher group-writable. The five edited harness files were restored
+to their expected owner-controlled modes; subsequent edits use umask 077.
+Replay `rU29OnQXWf` then reached authenticated fresh pixels but failed before
+selecting any preset: the fixture requested untranslated `Image Quality`, while
+`en.rs` and the native tree expose `Image quality`. The native monitor is one
+merged accessibility name, not separate row nodes. The corrected observer uses
+the translated label and exact newline-delimited target/value/next-row text in
+one visible node of the exact viewer process. Flutter's documented semantics
+merging agrees: https://api.flutter.dev/flutter/widgets/MergeSemantics-class.html.
+This is a harness correction; no product defect or preset acceptance is claimed.
+Failure capsule `image-quality-menu-failure-52c1507e.json` binds raw diagnostics,
+four zero listener deltas, joined wrapper/QEMU and retired RAM. After retaining
+bounded evidence, exact private diagnostics (44 files, 61,923,563 bytes) retire
+under the shared lock; identity-checked read-only bundle directories receive
+owner write permission solely for deletion. Retirement receipt is
+`image-quality-menu-failure-52c1507e-retirement.json`.

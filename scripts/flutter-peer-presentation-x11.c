@@ -128,6 +128,7 @@ typedef struct {
     AtspiAccessible *match;
     const AtspiRect *bounds;
     int focused_text;
+    int name_fragment;
 } NamedControlScan;
 
 static int sleep_millis(unsigned int millis) {
@@ -567,7 +568,9 @@ static int scan_named_control_node(AtspiAccessible *accessible, unsigned int exp
                 scan->dialog_scopes += 1U;
                 dialog_scope = 1;
             }
-            int matches = scan->focused_text == 0 && strcmp(name, scan->name) == 0;
+            int matches = scan->focused_text == 0 &&
+                (scan->name_fragment ? strstr(name, scan->name) != NULL
+                                     : strcmp(name, scan->name) == 0);
             if (scan->focused_text && atspi_state_set_contains(states, ATSPI_STATE_FOCUSED) &&
                 atspi_state_set_contains(states, ATSPI_STATE_EDITABLE)) {
                 AtspiRole role = atspi_accessible_get_role(accessible, &error);
@@ -642,9 +645,10 @@ static int scan_named_control_node(AtspiAccessible *accessible, unsigned int exp
 
 static int query_accessible_with_focus(unsigned int expected_pid, const char *name, uint64_t deadline,
                               AtspiAccessible **match, int dialog_caption, int text_content,
-                              const AtspiRect *bounds, int focused_text) {
+                              const AtspiRect *bounds, int focused_text, int name_fragment) {
     NamedControlScan scan = {.name = name, .deadline = deadline, .dialog_caption = dialog_caption,
-                            .text_content = text_content, .bounds = bounds, .focused_text = focused_text};
+                            .text_content = text_content, .bounds = bounds, .focused_text = focused_text,
+                            .name_fragment = name_fragment};
     AtspiAccessible *desktop;
     GError *error = NULL;
     gint children;
@@ -701,7 +705,7 @@ static int query_accessible(unsigned int expected_pid, const char *name, uint64_
                               AtspiAccessible **match, int dialog_caption, int text_content,
                               const AtspiRect *bounds) {
     return query_accessible_with_focus(expected_pid, name, deadline, match,
-                                       dialog_caption, text_content, bounds, 0);
+                                       dialog_caption, text_content, bounds, 0, 0);
 }
 
 static int query_named_accessible(unsigned int expected_pid, const char *name, uint64_t deadline,
@@ -4291,7 +4295,7 @@ static int enter_second_address(Display *display, Window main, unsigned int pid)
         /* Focus removes this field's hint/accessible name. Match the focused,
          * editable non-password text role inside the exact main window. */
         if (query_accessible_with_focus(pid, "focused address", deadline, &field,
-                                        0, 0, &bounds, 1) != 0) goto out;
+                                        0, 0, &bounds, 1, 0) != 0) goto out;
         if (field == NULL && sleep_millis(100U) != 0) goto out;
     }
     if (field == NULL || atspi_accessible_get_role(field, &error) == ATSPI_ROLE_PASSWORD_TEXT ||
@@ -4792,28 +4796,32 @@ out:
 }
 
 static int quality_bitrate_visible(unsigned int pid, unsigned int bitrate, uint64_t deadline) {
-    AtspiAccessible *label = NULL, *value = NULL;
-    AtspiRect label_rect, value_rect;
-    char expected[32];
+    AtspiAccessible *monitor = NULL;
+    AtspiRect rect;
+    GError *error = NULL;
+    gchar *name = NULL;
+    char expected[64];
     int result = -1;
-    int length = snprintf(expected, sizeof(expected), "%ukb", bitrate);
+    int length = snprintf(expected, sizeof(expected), "\nTarget Bitrate\n%ukb\nCodec\n", bitrate);
     if (length <= 0 || (size_t)length >= sizeof(expected) ||
-        query_named_accessible(pid, "Target Bitrate", deadline, &label, 0) != 0 ||
-        query_named_accessible(pid, expected, deadline, &value, 0) != 0) goto out;
+        query_accessible_with_focus(pid, "\nTarget Bitrate\n", deadline, &monitor,
+                                    0, 0, NULL, 0, 1) != 0) goto out;
     result = 0;
-    if (label == NULL || value == NULL) goto out;
-    if (read_accessible_rect(label, &label_rect) != 0 ||
-        read_accessible_rect(value, &value_rect) != 0) {
-        result = -1;
-        goto out;
-    }
-    /* Require the value next to the actual monitor label, not another named node. */
-    result = value_rect.x >= (int64_t)label_rect.x + label_rect.width &&
-             value_rect.y < (int64_t)label_rect.y + label_rect.height &&
-             label_rect.y < (int64_t)value_rect.y + value_rect.height;
+    if (monitor == NULL) goto out;
+    result = -1;
+    name = atspi_accessible_get_name(monitor, &error);
+    if (error != NULL || name == NULL ||
+        strnlen(name, ACCESSIBLE_NAME_LIMIT + 1U) > ACCESSIBLE_NAME_LIMIT ||
+        read_accessible_rect(monitor, &rect) != 0) goto out;
+    /* Flutter merges the monitor rows into one accessible name. Match complete
+     * label/value lines inside that unique visible node, including the next row. */
+    const char *row = strstr(name, "\nTarget Bitrate\n");
+    if (row == NULL || strstr(row + 1, "\nTarget Bitrate\n") != NULL) goto out;
+    result = rect.width > 0 && rect.height > 0 && strstr(row, expected) == row;
 out:
-    g_clear_object(&label);
-    g_clear_object(&value);
+    g_clear_error(&error);
+    g_free(name);
+    g_clear_object(&monitor);
     return result;
 }
 
@@ -4834,7 +4842,8 @@ static int exercise_image_quality(Display *display, const ViewerWindow *viewer,
         ConnectionIdentity after = {{0}, {0}, 0UL};
         ProcessResources resources = {0};
         uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
-        if (query_named_accessible(pid, "Target Bitrate", deadline, &monitor, 0) != 0)
+        if (query_accessible_with_focus(pid, "\nTarget Bitrate\n", deadline, &monitor,
+                                        0, 0, NULL, 0, 1) != 0)
             goto out;
         int unexpectedly_visible = monitor != NULL;
         g_clear_object(&monitor);
@@ -4843,7 +4852,7 @@ static int exercise_image_quality(Display *display, const ViewerWindow *viewer,
             activate_named_control(pid, "Show quality monitor") != 0 ||
             quality_toolbar(pid) != 0 ||
             activate_named_control(pid, "Display settings") != 0 ||
-            activate_named_control(pid, "Image Quality") != 0) goto out;
+            activate_named_control(pid, "Image quality") != 0) goto out;
         uint64_t started = monotonic_millis();
         if (started == 0U || started > UINT64_MAX - 10000U ||
             activate_named_control(pid, cases[sequence].name) != 0) goto out;

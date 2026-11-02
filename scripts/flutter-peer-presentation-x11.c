@@ -4968,7 +4968,7 @@ static int exercise_keyboard_modes(Display *source, Display *display,
         uint64_t deadline, fresh = 0U, age = 0U;
         unsigned int absent = 0U;
         phase = "select";
-        if (quality_toolbar(pid) != 0 || activate_named_control(pid, "Keyboard Settings") != 0 ||
+        if (quality_toolbar(pid) != 0 || activate_named_control(pid, "Keyboard settings") != 0 ||
             activate_named_control(pid, names[sequence]) != 0) goto failed;
         phase = "menu-retirement";
         deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
@@ -4981,9 +4981,9 @@ static int exercise_keyboard_modes(Display *source, Display *display,
         }
         if (absent != 3U) goto failed;
         phase = "confirmed-choice";
-        if (quality_toolbar(pid) != 0 || activate_named_control(pid, "Keyboard Settings") != 0 ||
+        if (quality_toolbar(pid) != 0 || activate_named_control(pid, "Keyboard settings") != 0 ||
             keyboard_mode_selected(pid, names[sequence]) != 0 ||
-            activate_named_control(pid, "Keyboard Settings") != 0 ||
+            activate_named_control(pid, "Keyboard settings") != 0 ||
             activate_named_control(pid, "Hide toolbar") != 0) goto failed;
         phase = "native-keys";
         printf("FLUTTER_PEER_KEYBOARD_MODE_BEGIN sequence=%u mode=%s\n", sequence + 1U, modes[sequence]);
@@ -5836,7 +5836,7 @@ int main(int argc, char **argv) {
               "--quality-best, --quality-low, --quality-balanced, --quality-restore, "
               "--language-french, --language-portugal, --language-english, --language-restore\n", stderr);
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--viewer-soak|--input-latency|--input-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
+              "VIEWER_START [--viewer-suspend|--viewer-soak|--input-latency|--input-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
         return 2;
     }

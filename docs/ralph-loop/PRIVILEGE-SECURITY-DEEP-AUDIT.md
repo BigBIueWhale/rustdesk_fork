@@ -130543,6 +130543,7 @@ private state and RAM `run.21n0cph7` / `29:38028` retire. Capsule
 verified on both hosts. No owned run remains active. The selected Linux quality
 restart workflow has reached its native checkpoint; the overall release goal
 and all separately recorded open or parked acceptance requirements remain incomplete.
+
 ### 2026-11-02 — user pivot; native keyboard-mode switching
 
 The user directs another pivot. Custom quality/FPS native work remains OPEN/PARKED:
@@ -130578,3 +130579,15 @@ execution follow. This scenario uses equal US X11 layouts. It does not establish
 cross-layout translation, held-key mode changes, restart restoration, physical
 keyboards, other platforms or installed/release acceptance. Existing independent
 input-confinement, shared-key and other parked investigations remain parked.
+
+First replay `uCYn52O2Z1` at `9655a3d7` compiles all three native drivers twice
+identically. Authentication and initial current pixels pass, but the observer
+searches for the translation key `Keyboard Settings`; `src/lang/en.rs` supplies
+the displayed `Keyboard settings`. No mode selection executes. Correct that
+locator; this is not a product defect or keyboard-mode acceptance. Wrapper
+725610 and QEMU 726666 are absent, four listener deltas are zero, and RAM
+`run.dg_gvnkv` / `29:38056` retires. The exact duplicate diagnostics are retired
+under the shared lock after matching their app bytes to the canonical cache.
+`keyboard-modes-9655a3d7.json` (22,504 bytes, SHA-256
+`f9221d1ef7f2f253638122453c0d70053774a1ca33f3fee546fcf076332376ee`),
+its viewer log and retirement receipt retain the failure.

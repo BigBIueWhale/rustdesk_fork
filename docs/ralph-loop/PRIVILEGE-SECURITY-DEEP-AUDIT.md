@@ -132031,3 +132031,32 @@ and makes no physical-device or other-layout claim. Only fixture-owned local
 keys are released on failure. Three drivers must compile twice identically
 inside the admitted zero-NIC bounded-RAM VM before execution. Independent parks
 remain in force; this is missing acceptance evidence, not an assumed new defect.
+
+Replay `fvKHXAJQcH` at `91f0bb40` passes the 22 standard Map/Translate cases
+and left Ctrl+Shift+Z, then stops at an extra native Shift_L press after the
+right Control/Shift presses. The observer stops before observing the character
+or subsequent releases; it does not demonstrate a server-initiated disconnect
+or incorrect shortcut text. Source explains the event: `_xdo_get_key_modifiers`
+in `libs/libxdo-sys-stub/native/xdo.c` chooses the first modifier-map entry and
+omits only that exact code when preheld. Its `_xdo_text_pair` owns the added
+left-Shift pair while preserving right Shift. Existing native component fixture
+`scripts/test-xdo-scratch-key.c::held_modifiers`, profile 3, explicitly requires
+that four-event schedule with the alternate Shift held. This behavior predates
+the Translate correction; the new observer's six-event right-side expectation
+assumed a physical-only schedule for semantic text injection.
+
+Correct that observer to require the eight-event right-side schedule: retained
+Control_R/Shift_R, temporary Shift_L down, the exact Z pair with Ctrl+Shift
+state and control text, Shift_L up, then the original right-side releases.
+NoSymbol input entries denote receiver-generated expected events and inject
+nothing locally. All other cases and exact pairing/text/state checks remain;
+the seven shortcut cases now require 34 events. This does not claim side-specific
+application bindings or all input methods are equivalent. A native replay must
+establish the complete schedule before accepting this functional scenario.
+
+The failed-run VM and all exact helpers join; RAM scratch retires and four
+listener deltas are zero. Seventeen bounded files are hash-verified on both
+hosts, including `keyboard-shortcuts-91f0bb40.json` (33,576 bytes, SHA-256
+`b65c7bc6024765a3e8d9566b96659376e8906c92dc49957b7cb885e137495056`).
+The duplicate failure app bundle is verified against the pinned manifest and
+canonical app before descriptor-relative retirement; canonical inputs remain.

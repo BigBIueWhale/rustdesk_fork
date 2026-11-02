@@ -2026,9 +2026,9 @@ PY
           [ "$(grep -Ec "^FLUTTER_PEER_SHORTCUT_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
             || fail "Translate shortcut $sequence is missing or duplicated"
         done
-        [ "$(grep -c '^FLUTTER_PEER_SHORTCUT_EVENT ' <<<"$controller_output")" -eq 32 ] \
+        [ "$(grep -c '^FLUTTER_PEER_SHORTCUT_EVENT ' <<<"$controller_output")" -eq 34 ] \
           || fail 'Translate native shortcut event total differs'
-        grep -Fxq 'FLUTTER_PEER_KEYBOARD_TRANSLATE_OK modes=map,translate,map cases=33 events=84 shortcut_cases=7 shortcut_events=32 choice=confirmed native_key_events=true exact_text=true released=both pixels=fresh same_window=true stable_connection=true resources=bounded' \
+        grep -Fxq 'FLUTTER_PEER_KEYBOARD_TRANSLATE_OK modes=map,translate,map cases=33 events=84 shortcut_cases=7 shortcut_events=34 choice=confirmed native_key_events=true exact_text=true released=both pixels=fresh same_window=true stable_connection=true resources=bounded' \
           <<<"$controller_output" || fail 'native Translate mode verdict is missing'
         viewer_result='viewer=joined xvfb=joined keyboard_translate=passed keyboard_cases=33 shortcut_cases=7 storage=verified stable_connection=true resources=bounded'
       else

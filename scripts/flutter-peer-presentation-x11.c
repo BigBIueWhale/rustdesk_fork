@@ -3099,7 +3099,7 @@ static int exercise_keyboard_shortcuts(Display *source, Display *display,
     static const struct {
         const char *name;
         unsigned int count;
-        Step steps[6];
+        Step steps[8];
     } cases[] = {
         {"left-control-shift-z", 6U, {
             {XK_Control_L, XK_Control_L, KeyPress, 0U, ""},
@@ -3108,11 +3108,14 @@ static int exercise_keyboard_shortcuts(Display *source, Display *display,
             {XK_z, XK_Z, KeyRelease, ControlMask | ShiftMask, "\032"},
             {XK_Shift_L, XK_Shift_L, KeyRelease, ControlMask | ShiftMask, ""},
             {XK_Control_L, XK_Control_L, KeyRelease, ControlMask, ""}}},
-        {"right-control-shift-z", 6U, {
+        {"right-control-shift-z", 8U, {
             {XK_Control_R, XK_Control_R, KeyPress, 0U, ""},
             {XK_Shift_R, XK_Shift_R, KeyPress, ControlMask, ""},
+            /* Native text entry preserves right Shift and owns a temporary left-Shift pair. */
+            {NoSymbol, XK_Shift_L, KeyPress, ControlMask | ShiftMask, ""},
             {XK_z, XK_Z, KeyPress, ControlMask | ShiftMask, "\032"},
             {XK_z, XK_Z, KeyRelease, ControlMask | ShiftMask, "\032"},
+            {NoSymbol, XK_Shift_L, KeyRelease, ControlMask | ShiftMask, ""},
             {XK_Shift_R, XK_Shift_R, KeyRelease, ControlMask | ShiftMask, ""},
             {XK_Control_R, XK_Control_R, KeyRelease, ControlMask, ""}}},
         {"right-control-a", 4U, {
@@ -3156,6 +3159,7 @@ static int exercise_keyboard_shortcuts(Display *source, Display *display,
         uint64_t start = monotonic_millis(), complete = 0U;
         for (unsigned int i = 0U; i < cases[sequence].count; ++i) {
             const Step *step = &cases[sequence].steps[i];
+            if (step->input == NoSymbol) continue;
             KeyCode code = XKeysymToKeycode(display, step->input);
             int press = step->type == KeyPress;
             if (code < 8U || local_held[code] == press ||
@@ -7120,7 +7124,7 @@ int main(int argc, char **argv) {
                  "pixels=fresh same_window=true stable_connection=true resources=bounded");
         } else if (keyboard_translate) {
             puts("FLUTTER_PEER_KEYBOARD_TRANSLATE_OK modes=map,translate,map cases=33 events=84 "
-                 "shortcut_cases=7 shortcut_events=32 "
+                 "shortcut_cases=7 shortcut_events=34 "
                  "choice=confirmed native_key_events=true exact_text=true released=both "
                  "pixels=fresh same_window=true stable_connection=true resources=bounded");
         } else if (keyboard_modes) {

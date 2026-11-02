@@ -5206,29 +5206,113 @@ static int finish_mode_hold(Display *source, Display *display, KeyboardModeHold 
     return 0;
 }
 
+static int exercise_keyboard_save_refusal(Display *source, Display *display,
+                                           const ViewerWindow *viewer, SourceHistory *history,
+                                           const ConnectionIdentity *connection,
+                                           const ProcessResources *baseline) {
+    unsigned int pid = (unsigned int)viewer->pid;
+    int directory = -1, permissions_changed = 0, result = -1;
+    struct stat original = {0}, current;
+    ConfigFileState before = {0}, after = {0};
+    AtspiAccessible *error = NULL;
+    const char *phase = "map-baseline";
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS, fresh = 0U, age = 0U;
+    if (geteuid() == 0 || quality_toolbar(pid) != 0 ||
+        activate_named_control(pid, "Keyboard settings") != 0 ||
+        keyboard_mode_selected(pid, "Map mode") != 0 ||
+        query_named_accessible(pid, "Failed", deadline, &error, 0) != 0 || error != NULL) goto out;
+    phase = "deny-write";
+    directory = open("/tmp/viewer-home/.config/rustdesk/peers",
+                     O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (directory < 0 || fstat(directory, &original) != 0 ||
+        original.st_uid != geteuid() || original.st_gid != getegid() ||
+        (original.st_mode & 07777) != 0700 ||
+        read_config_file(directory, "127.0.0.1.toml", &before) != 0 ||
+        fchmod(directory, 0500) != 0) goto out;
+    permissions_changed = 1;
+    errno = 0;
+    int probe = openat(directory, ".keyboard-write-probe", O_WRONLY | O_CREAT | O_EXCL |
+                       O_NOFOLLOW | O_CLOEXEC, 0600);
+    int probe_error = errno;
+    if (probe >= 0) {
+        if (close(probe) != 0) fputs("FLUTTER_PEER_X11_FAIL keyboard probe close\n", stderr);
+        if (unlinkat(directory, ".keyboard-write-probe", 0) != 0)
+            fputs("FLUTTER_PEER_X11_FAIL keyboard probe cleanup\n", stderr);
+        goto out;
+    }
+    if (probe_error != EACCES || activate_named_control(pid, "Legacy mode") != 0 ||
+        wait_keyboard_controls_retired(pid, 0) != 0) goto out;
+    phase = "failure-visible";
+    deadline = monotonic_millis() + 2500U;
+    while (monotonic_millis() < deadline && error == NULL) {
+        if (query_named_accessible(pid, "Failed", deadline, &error, 0) != 0) goto out;
+        if (error == NULL && sleep_millis(50U) != 0) goto out;
+    }
+    if (error == NULL || monotonic_millis() >= deadline) goto out;
+    g_clear_object(&error);
+    phase = "previous-mode-and-input";
+    if (activate_named_control(pid, "Keyboard settings") != 0 ||
+        keyboard_mode_selected(pid, "Map mode") != 0 ||
+        activate_named_control(pid, "Keyboard settings") != 0 ||
+        wait_keyboard_controls_retired(pid, 0) != 0 ||
+        activate_named_control(pid, "Hide toolbar") != 0 ||
+        wait_keyboard_controls_retired(pid, 1) != 0 ||
+        exercise_keyboard_input(source, display, viewer, connection, baseline) != 0 ||
+        wait_for_current_frames(display, viewer, history, RECOVERY_LIMIT_MS, 4U, &fresh, &age) != 0)
+        goto out;
+    phase = "file-preserved";
+    if (read_config_file(directory, "127.0.0.1.toml", &after) != 0 ||
+        before.device != after.device || before.inode != after.inode ||
+        before.bytes != after.bytes || strcmp(before.sha256, after.sha256) != 0 ||
+        fstat(directory, &current) != 0 || current.st_dev != original.st_dev ||
+        current.st_ino != original.st_ino || (current.st_mode & 07777) != 0500) goto out;
+    printf("FLUTTER_PEER_KEYBOARD_SAVE_REFUSED kernel=EACCES error=visible mode=map "
+           "file=unchanged cases=11 events=28 released=both distinct=4 maximum_age_ms=%llu\n",
+           (unsigned long long)age);
+    fflush(stdout);
+    phase = "restore-permissions";
+    if (fchmod(directory, 0700) != 0) goto out;
+    permissions_changed = 0;
+    result = 0;
+out:
+    if (permissions_changed && fchmod(directory, 0700) != 0) {
+        fputs("FLUTTER_PEER_X11_FAIL keyboard directory restoration\n", stderr);
+        result = -1;
+    }
+    if (directory >= 0 && close(directory) != 0) result = -1;
+    g_clear_object(&error);
+    if (result != 0)
+        fprintf(stderr, "FLUTTER_PEER_X11_FAIL keyboard save phase=%s\n", phase);
+    return result;
+}
+
 static int exercise_keyboard_modes(Display *source, Display *display,
                                     const ViewerWindow *viewer, SourceHistory *history,
                                     const ConnectionIdentity *connection,
-                                    const ProcessResources *baseline) {
+                                    const ProcessResources *baseline, int save_failure) {
     static const char *names[] = {"Map mode", "Legacy mode", "Map mode"};
     static const char *modes[] = {"map", "legacy", "map"};
     unsigned int pid = (unsigned int)viewer->pid, sequence = 0U;
     KeyboardModeHold hold = {0};
     const char *phase = "select";
-    for (; sequence < sizeof(names) / sizeof(names[0]); ++sequence) {
+    for (; sequence < (save_failure ? 2U : 3U); ++sequence) {
         uint64_t fresh = 0U, age = 0U;
+        phase = "save-refusal";
+        if (save_failure && sequence == 1U &&
+            exercise_keyboard_save_refusal(source, display, viewer, history, connection, baseline) != 0)
+            goto failed;
         phase = "held-modifiers";
-        if (sequence != 0U && begin_mode_hold(source, display, viewer, &hold, sequence) != 0)
+        if (!save_failure && sequence != 0U && begin_mode_hold(source, display, viewer, &hold, sequence) != 0)
             goto failed;
         phase = "select";
         if (quality_toolbar(pid) != 0 || activate_named_control(pid, "Keyboard settings") != 0)
             goto failed;
-        if (sequence != 0U &&
+        if (!save_failure && sequence != 0U &&
             checkpoint_mode_hold(source, display, &hold, sequence, "before-choice") != 0) goto failed;
         if (activate_named_control(pid, names[sequence]) != 0) goto failed;
         phase = "menu-retirement";
         if (wait_keyboard_controls_retired(pid, 0) != 0) goto failed;
-        if (sequence != 0U &&
+        if (!save_failure && sequence != 0U &&
             checkpoint_mode_hold(source, display, &hold, sequence, "after-choice") != 0) goto failed;
         phase = "confirmed-choice";
         if (quality_toolbar(pid) != 0 || activate_named_control(pid, "Keyboard settings") != 0 ||
@@ -5238,7 +5322,8 @@ static int exercise_keyboard_modes(Display *source, Display *display,
             activate_named_control(pid, "Hide toolbar") != 0 ||
             wait_keyboard_controls_retired(pid, 1) != 0) goto failed;
         phase = "held-release";
-        if (sequence != 0U && finish_mode_hold(source, display, &hold, sequence) != 0) goto failed;
+        if (!save_failure && sequence != 0U && finish_mode_hold(source, display, &hold, sequence) != 0)
+            goto failed;
         phase = "native-keys";
         printf("FLUTTER_PEER_KEYBOARD_MODE_BEGIN sequence=%u mode=%s\n", sequence + 1U, modes[sequence]);
         fflush(stdout);
@@ -5250,6 +5335,15 @@ static int exercise_keyboard_modes(Display *source, Display *display,
                "choice=confirmed released=both distinct=4 maximum_age_ms=%llu stable_connection=true\n",
                sequence + 1U, modes[sequence], (unsigned long long)age);
         fflush(stdout);
+    }
+    if (save_failure) {
+        AtspiAccessible *error = NULL;
+        phase = "retry-error-cleared";
+        int found = query_named_accessible(pid, "Failed", monotonic_millis() + DIALOG_CONTROL_WAIT_MS,
+                                           &error, 0);
+        int clear = found == 0 && error == NULL;
+        g_clear_object(&error);
+        if (!clear) goto failed;
     }
     return 0;
 failed:
@@ -6352,6 +6446,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--keyboard-retirement") != 0 &&
                                     strcmp(argv[5], "--keyboard-input") != 0 &&
                                     strcmp(argv[5], "--keyboard-modes") != 0 &&
+                                    strcmp(argv[5], "--keyboard-save-failure") != 0 &&
                                     strcmp(argv[5], "--keyboard-legacy") != 0 &&
                                     strcmp(argv[5], "--keyboard-map") != 0 &&
                                     strcmp(argv[5], "--keyboard-restore") != 0 &&
@@ -6395,6 +6490,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("Additional full-peer scenarios: --image-quality, --image-quality-save-failure, --audio-mute, "
               "--keyboard-legacy, --keyboard-map, --keyboard-restore, "
+              "--keyboard-save-failure, "
               "--quality-best, --quality-low, --quality-balanced, --quality-restore, "
               "--language-french, --language-portugal, --language-english, --language-restore, "
               "--language-direction\n", stderr);
@@ -6781,7 +6877,8 @@ int main(int argc, char **argv) {
     if (argc == 6) {
         int keyboard_retirement = strcmp(argv[5], "--keyboard-retirement") == 0;
         int keyboard_input = strcmp(argv[5], "--keyboard-input") == 0;
-        int keyboard_modes = strcmp(argv[5], "--keyboard-modes") == 0;
+        int keyboard_save_failure = strcmp(argv[5], "--keyboard-save-failure") == 0;
+        int keyboard_modes = keyboard_save_failure || strcmp(argv[5], "--keyboard-modes") == 0;
         int view_only_save_failure = strcmp(argv[5], "--view-only-save-failure") == 0;
         int view_only = view_only_save_failure || strcmp(argv[5], "--view-only") == 0;
         int mouse_input = strcmp(argv[5], "--mouse-input") == 0;
@@ -6799,7 +6896,8 @@ int main(int argc, char **argv) {
             source, display, &viewer, &history, &current_connection, &baseline_resources,
             view_only_save_failure) :
             keyboard_modes ? exercise_keyboard_modes(
-            source, display, &viewer, &history, &current_connection, &baseline_resources) :
+            source, display, &viewer, &history, &current_connection, &baseline_resources,
+            keyboard_save_failure) :
             background_close ? exercise_background_close(
             source, display, &viewer, &history, argv[4], &current_connection) :
             image_quality ? exercise_image_quality(
@@ -6862,6 +6960,10 @@ int main(int argc, char **argv) {
             puts("FLUTTER_PEER_VIEW_ONLY_OK phases=4 input_cases=12 choices=confirmed "
                  "input=blocked-and-restored pixels=fresh same_window=true "
                  "stable_connection=true resources=bounded");
+        } else if (keyboard_save_failure) {
+            puts("FLUTTER_PEER_KEYBOARD_SAVE_FAILURE_OK failure=visible previous=map retry=legacy "
+                 "error=cleared permissions=restored cases=33 events=84 released=both "
+                 "pixels=fresh same_window=true stable_connection=true resources=bounded");
         } else if (keyboard_modes) {
             puts("FLUTTER_PEER_KEYBOARD_MODES_OK modes=map,legacy,map cases=33 events=84 held_transitions=2 "
                  "choice=confirmed native_key_events=true exact_text=true released=both "

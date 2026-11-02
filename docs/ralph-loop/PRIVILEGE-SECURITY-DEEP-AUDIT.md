@@ -131768,3 +131768,35 @@ The selected orderly restart scenario is complete. Native keyboard-mode save
 refusal/retry remains an available R-S0 check: the prior choice and usable input
 must survive a failed preference write, with truthful feedback and successful
 retry. The broader goal and all independent parks remain unchanged.
+
+### 2026-11-03 — native keyboard-mode save refusal and retry
+
+Previous turn: progress; orderly mode restoration and the fresh count are
+complete. Select the remaining R-S0 failed-save behavior before adding another
+healthy keyboard-mode variation. The actual `save_keyboard_mode` persists before
+publishing its cache; `session_set_keyboard_mode` returns that result before
+notification; the toolbar catches errors and shows Failed. Native evidence must
+still establish that failure preserves the previous mode and usable input, and
+that an identical retry applies and persists the new choice. No defect is assumed.
+
+Extend the existing keyboard-mode scenario with real directory write denial,
+using the retained app `c9323bf1` / engine `ddb1541d`. Establish Map and ordinary
+typing first. Open and validate the exact private peer directory/file, retain
+their identities and the file digest, and change only that fixture directory
+from 0700 to 0500. An exclusive create must return EACCES before the real Legacy
+menu action is attempted. Linux documents this missing-parent-write case at
+https://man7.org/linux/man-pages/man2/open.2.html. Require visible failure,
+exclusive Map menu state, eleven native typing cases and fresh displayed counters
+while writes remain denied. The file identity/bytes and directory identity/mode
+must remain unchanged. Restore the retained directory to 0700 on every exit;
+then retry Legacy and require its menu state, normal typing, fresh pixels, error
+absence and joined saved state. This produces 33 typing cases / 84 native events
+across baseline, refusal and retry. No controlled-side input is manufactured.
+
+Use the same admitted zero-NIC VM and bounded RAM workspace, preserving identical
+driver rebuilds, source-bound app reuse, listener checks and exact joins. TUF/CTE
+are clean at `9311bf75`, no owned VM/private/RAM run remains, and approximately
+45 GiB is available before admission. The existing held-mode path retains its
+separate scenario; no physical-device, other-error-class, other-platform,
+installed or broader immunity claim follows from this focused check. All
+independently parked topics remain parked.

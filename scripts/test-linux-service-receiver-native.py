@@ -2071,12 +2071,13 @@ def network_shutdown(value, record, probe_sha):
             os.close(fd)
 
 
-def startup_namespace(commit, binary_sha, incumbents=False):
+def startup_namespace(commit, binary_sha, incumbents=False, collisions=False):
     parent = Path("/run/RustDesk-service")
     legacy = Path("/tmp/RustDesk-service")
     target = WORK / "startup-link-target"
+    collision_target = WORK / "endpoint-link-target"
     unit = Path("/etc/systemd/system/rustdesk.service")
-    if any(os.path.lexists(p) for p in (parent, legacy, target, unit)):
+    if any(os.path.lexists(p) for p in (parent, legacy, target, collision_target, unit)):
         raise RuntimeError("startup fixture requires absent owned paths")
 
     def fixture(path):
@@ -2089,11 +2090,15 @@ def startup_namespace(commit, binary_sha, incumbents=False):
 
     def snapshot(path):
         result = {}
-        for entry in [path, *sorted(path.iterdir())]:
+        entries = [path]
+        if stat.S_ISDIR(path.lstat().st_mode):
+            entries.extend(sorted(path.iterdir()))
+        for entry in entries:
             st = entry.lstat()
             result[entry.name] = [st.st_dev, st.st_ino, st.st_uid, st.st_gid,
                                   st.st_mode, st.st_nlink, st.st_size, st.st_mtime_ns,
-                                  st.st_ctime_ns, digest(entry) if stat.S_ISREG(st.st_mode) else None]
+                                  st.st_ctime_ns, digest(entry) if stat.S_ISREG(st.st_mode) else None,
+                                  os.readlink(entry) if stat.S_ISLNK(st.st_mode) else None]
         return result
 
     def link_identity():
@@ -2108,8 +2113,8 @@ def startup_namespace(commit, binary_sha, incumbents=False):
         return (st.st_dev, st.st_ino, st.st_uid, st.st_gid, st.st_mode,
                 st.st_nlink, st.st_mtime_ns, st.st_ctime_ns)
 
-    def occupy(path):
-        if path.exists():
+    def remove_stale_socket(path):
+        if os.path.lexists(path):
             old = socket_identity(path)
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
                 peer.settimeout(1)
@@ -2122,6 +2127,9 @@ def startup_namespace(commit, binary_sha, incumbents=False):
             if socket_identity(path) != old:
                 raise RuntimeError("fixture stale socket changed")
             path.unlink()
+
+    def occupy(path):
+        remove_stale_socket(path)
         listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             listener.bind(str(path))
@@ -2183,16 +2191,28 @@ def startup_namespace(commit, binary_sha, incumbents=False):
     previous = None
     phases = ("foreign-owner", "symlink", "fresh", "restart")
     prefix = "LINUX_SERVICE_STARTUP"
-    if incumbents:
+    if incumbents or collisions:
         parent.mkdir(mode=0o711)
         parent.chmod(0o711)
+    if incumbents:
         phases = tuple(f"{kind}-{endpoint}" for endpoint in ("service", "password", "credential")
                        for kind in ("live", "recovered"))
         prefix = "LINUX_SERVICE_INCUMBENT"
+    elif collisions:
+        collision_target.write_bytes(b"endpoint-target-preserve\n")
+        collision_target.chmod(0o640)
+        os.chown(collision_target, 4002, 4002)
+        target_before = snapshot(collision_target)
+        phases = tuple(f"{recovery}{kind}-{endpoint}"
+                       for endpoint in ("service", "password", "credential")
+                       for kind in ("file", "fifo", "directory", "symlink")
+                       for recovery in ("", "recovered-"))
+        prefix = "LINUX_SERVICE_COLLISION"
     try:
         for phase in phases:
             live = phase.startswith("live-")
-            refused = phase in ("foreign-owner", "symlink") or live
+            collision = collisions and not phase.startswith("recovered-")
+            refused = phase in ("foreign-owner", "symlink") or live or collision
             listener = None
             connections = None
             if phase == "foreign-owner":
@@ -2209,6 +2229,23 @@ def startup_namespace(commit, binary_sha, incumbents=False):
                 occupied = parent / ("ipc" + suffix)
                 listener = occupy(occupied)
                 before = socket_identity(occupied)
+            elif collision:
+                kind, endpoint_name = phase.split("-")
+                suffix = {"service": "_service", "password": "_service_password",
+                          "credential": "_service_credential"}[endpoint_name]
+                occupied = parent / ("ipc" + suffix)
+                remove_stale_socket(occupied)
+                if kind == "directory":
+                    fixture(occupied)
+                elif kind == "symlink":
+                    occupied.symlink_to(collision_target)
+                elif kind == "fifo":
+                    os.mkfifo(occupied, 0o644)
+                else:
+                    occupied.write_bytes(b"endpoint-file-preserve\n")
+                    occupied.chmod(0o644)
+                os.chown(occupied, 4002, 4002, follow_symlinks=False)
+                before = snapshot(occupied)
             reference = ServiceUnitResultReference()
             pidfd = None
             try:
@@ -2262,8 +2299,11 @@ def startup_namespace(commit, binary_sha, incumbents=False):
                         raise RuntimeError("stopped service process was not reaped")
                 if snapshot(legacy) != legacy_before:
                     raise RuntimeError("service changed the abandoned public namespace")
+                if collisions and snapshot(collision_target) != target_before:
+                    raise RuntimeError("service changed the endpoint symlink target")
                 if refused:
-                    actual = socket_identity(occupied) if live else snapshot(target if phase == "symlink" else parent)
+                    actual = socket_identity(occupied) if live else snapshot(
+                        occupied if collision else target if phase == "symlink" else parent)
                     if actual != before or (phase == "symlink" and link_identity() != link_before):
                         raise RuntimeError("refused service mutated a foreign namespace")
                     if live:
@@ -2272,6 +2312,9 @@ def startup_namespace(commit, binary_sha, incumbents=False):
                     {"phase": phase, "start_exit": started.returncode, "ready": observed,
                      "terminal": terminal, "elapsed_seconds": time.monotonic() - began,
                      "legacy_unchanged": True, "namespace_unchanged": refused,
+                     "collision_unchanged": collision,
+                     "preserved_objects": before if collision else None,
+                     "symlink_target_unchanged": collisions,
                      "incumbent_probes": connections,
                      "supervisor": previous if not refused else None}, sort_keys=True), flush=True)
                 run(["/usr/bin/systemctl", "reset-failed", "rustdesk.service"])
@@ -2289,15 +2332,23 @@ def startup_namespace(commit, binary_sha, incumbents=False):
                 parent.unlink()
                 (target / "preserve").unlink()
                 target.rmdir()
+            elif collision:
+                if snapshot(occupied) != before:
+                    raise RuntimeError("fixture collision changed before retirement")
+                if kind == "directory":
+                    (occupied / "preserve").unlink()
+                    occupied.rmdir()
+                else:
+                    occupied.unlink()
             print(f"{prefix}_CASE=pass phase={phase}", flush=True)
     finally:
         stop()
-    total = 6 if incumbents else 4
+    total = 24 if collisions else 6 if incumbents else 4
     print(f"{prefix}_NATIVE=pass cases={total} refusals={total // 2} starts={total // 2} source={commit} "
           f"binary_sha256={binary_sha} fixture=installed-layout unit=shipped legacy=unchanged cleanup=joined", flush=True)
 
 
-def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False):
+def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False, collisions=False):
     guard()
     checked = run(["/usr/bin/setpriv", "--reuid=1000", "--regid=1000", "--clear-groups",
                    "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
@@ -2326,8 +2377,8 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
     if "not found" in run(["/usr/bin/ldd", str(PROBE)]).stdout:
         raise RuntimeError("network probe runtime dependency is missing")
     run(["/usr/bin/systemctl", "is-active", "systemd-logind.service", "polkit.service"])
-    if startup or incumbent:
-        startup_namespace(commit, spec["sha256"], incumbents=incumbent)
+    if startup or incumbent or collisions:
+        startup_namespace(commit, spec["sha256"], incumbents=incumbent, collisions=collisions)
         return
     pam = pam_module()
     confdir = WORK / "pam"
@@ -2633,6 +2684,8 @@ if __name__ == "__main__":
         tests(sys.argv[1:6], startup=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--incumbent":
         tests(sys.argv[1:6], incumbent=True)
+    elif len(sys.argv) == 7 and sys.argv[-1] == "--collisions":
+        tests(sys.argv[1:6], collisions=True)
     elif len(sys.argv) == 6:
         tests(sys.argv[1:])
     else:

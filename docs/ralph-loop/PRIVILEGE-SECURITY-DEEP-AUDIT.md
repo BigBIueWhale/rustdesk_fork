@@ -132241,3 +132241,53 @@ remains open. The next acceptance gap for this behavior is equivalent supported-
 platform/native-device evidence, subject to existing parks and real environment
 availability. Reassess release priority at this checkpoint rather than rerun
 the passed equal-layout scenario without a relevant change or new concern.
+
+### 2026-11-03 — installed Linux non-socket endpoint preservation
+
+Previous goal turn: progress; native held-key repetition/release passed and its
+evidence/ledger were reconciled. At this checkpoint select the R-S11a/R-S11bs
+installed namespace gap over another viewer preference case. Existing complete
+service runs cover foreign parents and live socket incumbents; non-socket
+preservation is established only by the component suite. No new defect is
+assumed. Read `src/ipc/fs.rs` parent validation, retained bind reservation and
+no-follow socket-type check, installed service readiness/stop fixture and the
+shipped systemd unit. Linux documents distinct pathname socket objects and
+directory/socket access semantics at https://man7.org/linux/man-pages/man7/unix.7.html.
+A missing/refused connection cannot authorize removal of an arbitrary pathname;
+the service must preserve non-socket collisions and remain usable after their
+explicit removal.
+
+The closed `--linux-service-collision-tests` profile places a regular file,
+FIFO, sentinel-bearing directory or symlink at each of `_service`,
+`_service_password` and `_service_credential`. All objects are fixture-owned
+inside the zero-NIC VM, with UID/GID 4002 entries under the protected root parent.
+Each of twelve refused starts must precede readiness and preserve no-follow
+identity, type, ownership, mode, link count, size, change times and regular-file
+bytes; the link target and retired public namespace must remain unchanged.
+Only after that proof does the fixture remove its own obstruction. Each of
+twelve subsequent starts must own all three sockets by kernel peer credentials,
+stop with exit zero and be reaped; every service cgroup must retire. This does
+not claim an unprivileged actor can populate the protected directory, exercise
+action authority, or win a concurrent namespace race. The separately parked
+caller/administrator profile remains parked, as do all independent topics.
+
+The retained `154f69db` service binary predates seven changed product files;
+the complete production-input comparison correctly prevents reuse. Do not
+weaken it to the IPC file subset. Start the already available bounded
+`--linux-service-build` profile at clean `fdbab046` on TUF to obtain the exact
+current artifact needed by this validation. TUF has about 45 GiB available
+memory and two retained peer generations; the existing four-generation cap,
+RAM admission/monitor, immutable inputs and exact joins remain. Keep TUF source
+and refs unchanged through the live build; local fixture editing is independent.
+
+Build `Y5eQR1t4xB` passes at `fdbab046`, tree
+`e77c65a3dd84eb024b75eb45b448de7b126f976f`, in 260 reported outer seconds.
+The bounded profile's existing file-type/source controls pass. The seven inert
+payload files and manifest match the published hashes; manifest SHA-256 is
+`dd2efb69c8d276ec3db7bdc6e9765b35102ca36a6dd06155b27937262e7ffe32`.
+Four listener deltas are zero; exact wrapper/QEMU/helper absence and private/RAM
+retirement pass. Peak RAM scratch is 5,859,373,056 bytes. Thirteen bounded records
+are copied and hash-verified on CTE. Capsule
+`linux-namespace-build-fdbab046.json` is 6,681 bytes, SHA-256
+`bfc5bb5e4918672826391d40d8bf4e6c619f6dead8ecf4aff94763c250055e80`.
+The artifact prerequisite is complete; installed collision acceptance follows.

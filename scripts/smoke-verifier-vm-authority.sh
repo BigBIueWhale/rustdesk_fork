@@ -509,7 +509,7 @@ case "$#:${1:-}" in
             || { echo 'host network test input/run overrides are forbidden' >&2; exit 2; }
         MODE=host-network-tests
         ;;
-    5:--linux-service-receiver-tests|5:--linux-service-convergence-failure-tests|5:--linux-service-notification-failure-tests|5:--linux-service-network-drain-tests|5:--linux-service-authorization-timeout-tests|5:--linux-service-startup-tests|5:--linux-service-incumbent-tests)
+    5:--linux-service-receiver-tests|5:--linux-service-convergence-failure-tests|5:--linux-service-notification-failure-tests|5:--linux-service-network-drain-tests|5:--linux-service-authorization-timeout-tests|5:--linux-service-startup-tests|5:--linux-service-incumbent-tests|5:--linux-service-collision-tests)
         [ "$2" = --peer-commit ] && [ "$4" = --peer-manifest-sha256 ] \
             && [[ "$3" =~ ^[0-9a-f]{40}$ ]] && [[ "$5" =~ ^[0-9a-f]{64}$ ]] \
             && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -527,6 +527,8 @@ case "$#:${1:-}" in
             LINUX_RECEIVER_PROFILE=startup
         elif [ "$1" = --linux-service-incumbent-tests ]; then
             LINUX_RECEIVER_PROFILE=incumbent
+        elif [ "$1" = --linux-service-collision-tests ]; then
+            LINUX_RECEIVER_PROFILE=collision
         fi
         ANDROID_RUNTIME_PEER_COMMIT=$3
         ANDROID_RUNTIME_PEER_MANIFEST_SHA256=$5
@@ -824,6 +826,7 @@ case "$#:${1:-}" in
         printf 'Installed Linux authorization deadline: %s --linux-service-authorization-timeout-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Installed Linux IPC startup: %s --linux-service-startup-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Installed Linux live IPC preservation: %s --linux-service-incumbent-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
+        printf 'Installed Linux non-socket IPC preservation: %s --linux-service-collision-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Exact CM read-tick ownership: %s --cm-read-tick-tests\n' "${0##*/}" >&2
         printf 'Native CM transfer outcome logs: %s --cm-file-log-tests\n' "${0##*/}" >&2
         printf 'Native inactivity timeout bounds: %s --idle-timeout-tests\n' "${0##*/}" >&2
@@ -5138,6 +5141,8 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
         linux_receiver_guest_flag=--linux-service-startup-tests
     elif [ "$LINUX_RECEIVER_PROFILE" = incumbent ]; then
         linux_receiver_guest_flag=--linux-service-incumbent-tests
+    elif [ "$LINUX_RECEIVER_PROFILE" = collision ]; then
+        linux_receiver_guest_flag=--linux-service-collision-tests
     fi
     guest_invocation+=" $linux_receiver_guest_flag $ANDROID_RUNTIME_PEER_COMMIT $ANDROID_RUNTIME_PEER_TREE $ANDROID_RUNTIME_PEER_MANIFEST_SHA256 $FOCUSED_TEST_COMMIT"
 elif [ "$MODE" = linux-flutter-artifact-tests ]; then
@@ -5844,7 +5849,16 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
     linux_receiver_binary_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/rustdesk" | /usr/bin/awk '{print $1}')
     linux_receiver_probe_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/probe_client" | /usr/bin/awk '{print $1}')
     require_exact_fixed_receipt 'verify-linux-service-password-ipc: source checks passed' 'supplementary password IPC source checks'
-    if [ "$LINUX_RECEIVER_PROFILE" = incumbent ]; then
+    if [ "$LINUX_RECEIVER_PROFILE" = collision ]; then
+        for endpoint in service password credential; do
+            for kind in file fifo directory symlink; do
+                for phase in "$kind-$endpoint" "recovered-$kind-$endpoint"; do
+                    require_exact_fixed_receipt "LINUX_SERVICE_COLLISION_CASE=pass phase=$phase" 'installed Linux non-socket IPC preservation and recovery'
+                done
+            done
+        done
+        require_exact_fixed_receipt "LINUX_SERVICE_COLLISION_NATIVE=pass cases=24 refusals=12 starts=12 source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha fixture=installed-layout unit=shipped legacy=unchanged cleanup=joined" 'installed Linux non-socket IPC finality'
+    elif [ "$LINUX_RECEIVER_PROFILE" = incumbent ]; then
         for phase in live-service recovered-service live-password recovered-password live-credential recovered-credential; do
             require_exact_fixed_receipt "LINUX_SERVICE_INCUMBENT_CASE=pass phase=$phase" 'installed Linux live IPC preservation and recovery'
         done
@@ -9482,7 +9496,12 @@ elif [ "$MODE" = ledger-token-count ]; then
     printf 'LEDGER_TOKEN_COUNT_OUTER=pass host_uid=%s commit=%s tree=%s input_sha256=%s recipe_sha256=%s network=none listeners=no-harness-addition inputs=readonly product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$ledger_input_sha" "$ledger_recipe_sha" "$vm_elapsed_seconds"
 elif [ "$MODE" = linux-service-receiver-tests ]; then
-    if [ "$LINUX_RECEIVER_PROFILE" = incumbent ]; then
+    if [ "$LINUX_RECEIVER_PROFILE" = collision ]; then
+        printf 'LINUX_SERVICE_COLLISION_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s cases=24 refusals=12 starts=12 fixture=installed-layout unit=shipped legacy=unchanged network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
+            "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \
+            "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" "$linux_receiver_binary_sha" "$vm_elapsed_seconds"
+    elif [ "$LINUX_RECEIVER_PROFILE" = incumbent ]; then
         printf 'LINUX_SERVICE_INCUMBENT_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s cases=6 refusals=3 starts=3 fixture=installed-layout unit=shipped legacy=unchanged network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
             "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \

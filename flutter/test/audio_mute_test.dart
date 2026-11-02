@@ -172,16 +172,29 @@ void main() {
   testWidgets('mute failure survives menu dismissal and retries the same intent', (tester) async {
     final session = _Session();
     var failures = 0;
-    await _show(tester, session, failure: () => failures++);
+    final menu = MenuController();
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: MenuAnchor(
+        controller: menu,
+        menuChildren: [AudioMuteControl(ffi: session, translateText: (s) => s,
+            showFailure: () => failures++)],
+        builder: (context, controller, child) => TextButton(
+            onPressed: controller.open, child: const Text('Display settings'))))));
+    menu.open();
+    await tester.pumpAndSettle();
     final write = Completer<bool>();
     session.store.onWrite = (_) => write.future;
-    _box(tester).onChanged!(true);
-    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.tap(find.text('Mute'));
+    await tester.pumpAndSettle();
+    expect(menu.isOpen, false);
+    expect(find.byType(AudioMuteControl), findsNothing);
+    expect(session.store.writes.length, 1);
+    expect(session.audioMute.busy, true);
     write.completeError(StateError('denied'));
     await tester.pump();
     expect(failures, 1);
     expect(session.audioMute.failed, true);
-    await _show(tester, session);
+    menu.open();
+    await tester.pumpAndSettle();
     expect(_box(tester).value, false);
     expect(find.text('Failed'), findsOneWidget);
     session.store.onWrite = null;

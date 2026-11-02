@@ -130160,3 +130160,56 @@ engine artifacts and historical run evidence remain available. Receipt
 `4f559f7773810fe7f8b994716919830147148cd0a35144a86c2eeb122ba41b79`;
 the retained manifest still hashes to
 `6e53448f073347e3fcc1ef6fc3204b938a33067df1451f3f336c8cf668756bf5`.
+
+### 2026-11-02 — Mute build acceptance and deferred menu selection
+
+TUF `ZbhyZV59SW` builds source `35f9ae68` successfully. All ten production
+Mute model/widget cases and the three result-parser controls pass before Rust
+compilation. Closed app manifest
+`3affef0c4678ed8e32edacfefc7446f90e700164bfe652e3c521827658f824d1`
+binds 75 files / 70,308,685 bytes including itself. Relative to `e8737b14`, only
+`libapp.so` and `librustdesk.so` differ. Outer exit is zero; wrapper 580601 and
+QEMU 581229 are absent, all four listener deltas are zero, and RAM
+`run.7c23jgsh` identity `29:37456` retires. Peak scratch is 10,697,216,000 bytes
+under its 16 GiB bound. Capsule `audio-mute-save-build-35f9ae68.json` is
+22,265 bytes, SHA-256
+`0c6be326c9fb4eb43ca8e18cf5de52b5bee3d0df2244b5dd0ab4b7d9de2efece`,
+verified on both hosts.
+
+Unchanged native scenario `CtSJn0LEee` stops during the first healthy Mute
+selection. ATSPI reports an activated Tap, then a transient child-query failure
+while looking for the toolbar; the final checkbox image and saved Boolean both
+remain false. No denied-save or retry condition is reached. This is not a
+completed native save verdict. The retained controller binary is unchanged:
+`86d2630ed0551f67899f1cf4fe864e5597bda5dd7f93245b7c880666042db09e`.
+The old widget tests invoked its callback directly and removed the widget only
+after admission, so they did not exercise the framework's actual selection order.
+
+Flutter 3.47.5 `_MenuItemButtonState._handleSelect` closes the menu and schedules
+`onPressed` in a post-frame callback:
+https://github.com/flutter/flutter/blob/3.47.5/packages/flutter/lib/src/material/menu_anchor.dart#L1222-L1233.
+Consequently the new control's mounted/epoch guard can discard an actual selection
+after menu disposal. Capture the exact FFI/session/client owner, preference model,
+operation revision and failure presenter in the built callback. Check the current
+session, revision and pending capacity at admission without requiring the menu to
+survive. Read/listener ownership still follows widget lifetime. The existing
+menu-dismissal test now opens a real MenuAnchor, taps Mute, proves menu disposal
+and one still-pending write, then checks visible retained failure and same-intent
+retry after reopening. This correction's execution remains pending.
+
+Failed-run wrapper 581999 and QEMU 583058 are absent; four listener deltas are
+zero, and RAM `run.8lrzcsfa` / `29:37497` is gone. Under the shared lock, retain
+the bounded capsule, row image and viewer log, verify duplicated bundle bytes
+against the canonical app cache, then retire the exact private diagnostics.
+`audio-mute-save-replay-35f9ae68.json` is 21,897 bytes, SHA-256
+`ad875a80f1f89e1b6eaa1a344509bee489f58a44b255250892512a11afa117da`;
+its separate retirement receipt and diagnostics are verified on both hosts.
+
+For the next candidate, retire only superseded TUF app cache `16ba2033` after
+full manifest/inventory validation and retention. This removes 75 files /
+70,300,493 logical bytes (70,512,640 allocated) and leaves three generations,
+including the Mute comparisons. Theme source, engine and native evidence remain.
+`retired-app-16ba2033.json` is 28,060 bytes, SHA-256
+`3dab82b811741e42451b8aa43977a44b306609ea9b8699eb9f1b62d8dd329bbf`;
+its retained manifest still hashes to
+`7332aeead7d26660ae0749adbfd22d2d576db47f73fde5238a9ebd185ba97aa6`.

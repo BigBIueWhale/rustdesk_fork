@@ -63,26 +63,6 @@ class _AudioMuteControlState extends State<AudioMuteControl> {
     }
   }
 
-  Future<void> _choose(bool? muted, int epoch, int revision) async {
-    if (!_current(epoch) || _preferences.busy || revision != _preferences.revision) return;
-    final preferences = _preferences;
-    final ffi = _ffi;
-    final session = _session;
-    final owner = _owner;
-    final showFailure = widget.showFailure ?? () => showToast(translate('Failed'));
-    try {
-      if (muted == null) {
-        await preferences.refresh();
-      } else {
-        await preferences.save(muted);
-      }
-    } catch (error) {
-      debugPrint('Failed to apply Mute preference: $error');
-      // The menu may have closed, but this exact session still owns the result.
-      if (ffi.isCurrentSessionOwner(session, owner)) showFailure();
-    }
-  }
-
   @override
   void dispose() {
     _epoch++;
@@ -93,12 +73,31 @@ class _AudioMuteControlState extends State<AudioMuteControl> {
   @override
   Widget build(BuildContext context) {
     final text = widget.translateText ?? translate;
-    final epoch = _epoch;
-    final revision = _preferences.revision;
-    final value = _preferences.value;
-    final enabled = _current(epoch) && !_preferences.busy;
-    final retry = _preferences.retryValue;
-    void choose(bool? value) => _choose(value, epoch, revision);
+    final ffi = _ffi;
+    final session = _session;
+    final owner = _owner;
+    final preferences = _preferences;
+    final revision = preferences.revision;
+    final value = preferences.value;
+    final enabled = _current(_epoch) && !preferences.busy;
+    final retry = preferences.retryValue;
+    final showFailure = widget.showFailure ?? () => showToast(translate('Failed'));
+    // MenuItemButton invokes the selection after closing and disposing its menu.
+    // The captured session and operation revision own that deferred selection.
+    Future<void> choose(bool? muted) async {
+      if (!ffi.isCurrentSessionOwner(session, owner) || preferences.busy ||
+          revision != preferences.revision) return;
+      try {
+        if (muted == null) {
+          await preferences.refresh();
+        } else {
+          await preferences.save(muted);
+        }
+      } catch (error) {
+        debugPrint('Failed to apply Mute preference: $error');
+        if (ffi.isCurrentSessionOwner(session, owner)) showFailure();
+      }
+    }
     return Column(mainAxisSize: MainAxisSize.min, children: [
       if (value != null && isMobile) CheckboxListTile(
           contentPadding: EdgeInsets.zero,

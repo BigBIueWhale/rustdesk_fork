@@ -131113,3 +131113,23 @@ and joined-process saved Dark checks remain. The intended result is four ordered
 remote phases and sixteen additional fresh counters; compilation/native execution
 follow. View mode and all independent user parks remain; other failure classes,
 concurrent writers, providers/platforms and installed/release acceptance are OPEN.
+
+Replay `2pQdgTlsu5` at `6e835a88` passes all four ordered phases on app
+`7e6f6459` / engine `ddb1541d`. The remote header remains luminance 219 through
+baseline, failed save and the 41-sample/four-second hold, then becomes 57 after
+successful retry. Main-window radio/pixels agree. EACCES, visible failure,
+unchanged file identity/bytes, restored directory permissions and cleared error
+all pass; joined storage retains Dark. Sixteen additional counters are current,
+maximum age 317 ms; the four final counters reach at most 288 ms. Window and
+connection identities stay unchanged. No product correction or app rebuild occurs.
+
+The controller builds twice identically with SHA-256
+`5aae17d25a8001b3d9c20a801a89968308aff4784de75e0ba74b700cf5bce2d2`.
+Wrapper 998402 and QEMU 999460 are absent, four listener deltas are zero, and
+private state plus RAM `run.yvgh0fjt` / `29:38820` retire. Scratch peaks at
+3,013,070,848 bytes under 7 GiB; outer elapsed time is 121 seconds. Capsule
+`theme-save-windows-accepted-6e835a88.json` is 9,203 bytes, SHA-256
+`67eba3052989e0c209e0802a8064d36b02e222acf1cf386fc8629c4872ca9623`.
+Both hosts retain the capsule and seven raw records. The ledger records this
+native checkpoint; a fresh isolated count follows. Broader gaps and user parks
+remain unchanged.

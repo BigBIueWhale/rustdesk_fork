@@ -56,6 +56,16 @@ processes, RAM scratch and private state retire with four zero listener deltas.
 unchanged. Later locale/View mode candidates, concurrent settings, other
 providers/platforms and installed/release acceptance remain OPEN.
 
+**Cross-window theme save failure/retry verified:** Replay `2pQdgTlsu5` at
+`6e835a88` reuses the same app/engine. Real EACCES leaves both windows Light,
+reports the failure and preserves exact saved file identity/bytes. Four-second
+held observations remain Light. Restored access permits Dark retry in both
+windows, clears the error and saves Dark after process join. Four remote phases
+observe sixteen fresh counters, maximum age 317 ms, on the same window and
+connection. Drivers rebuild identically; VM/RAM/private cleanup and four zero
+listener deltas pass. `theme-save-windows-accepted-6e835a88.json` binds this
+additional retained-app evidence. Other failure classes and the gaps above remain.
+
 **User pivot (2026-11-02):** View mode / Show my cursor work is OPEN/PARKED.
 Candidate `0ccb2a7e` completes the Linux Flutter app build with thirteen focused
 Flutter tests and two native command-queue tests passing. Run `uRaKGkDRPY`

@@ -3960,11 +3960,14 @@ static const LanguageChoice language_choices[] = {
 
 static int observe_language(unsigned int pid, const LanguageChoice *choice,
                              unsigned int generation, const char *phase) {
-    const char *labels[] = {choice->choice, choice->language, choice->light};
+    char control[256];
+    int length = snprintf(control, sizeof(control), "%s\n%s", choice->language, choice->choice);
+    if (length < 0 || (size_t)length >= sizeof(control)) return -1;
+    const char *labels[] = {control, choice->light};
     uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
     while (monotonic_millis() < deadline) {
         int present = 1;
-        for (unsigned int i = 0U; i < 3U; ++i) {
+        for (unsigned int i = 0U; i < 2U; ++i) {
             AtspiAccessible *label = NULL;
             if (query_named_accessible(pid, labels[i], deadline, &label, 0) != 0) return -1;
             if (label == NULL) present = 0;
@@ -3972,7 +3975,7 @@ static int observe_language(unsigned int pid, const LanguageChoice *choice,
         }
         if (present && monotonic_millis() < deadline) {
             printf("FLUTTER_PEER_LANGUAGE_OBSERVED generation=%u phase=%s selected=%s "
-                   "native_labels=3 visible=true\n", generation, phase, choice->key);
+                   "native_nodes=2 visible=true\n", generation, phase, choice->key);
             fflush(stdout);
             return 0;
         }
@@ -3996,12 +3999,15 @@ static int exercise_language_restart(Display *display, const ViewerWindow *viewe
     Window main = None;
     uint64_t fresh = 0U, age = 0U;
     int result = -1;
+    char control[256];
+    int length = snprintf(control, sizeof(control), "%s\n%s", before->language, before->choice);
+    if (length < 0 || (size_t)length >= sizeof(control)) return -1;
     if (activate_header_control(display, viewer->window, pid, before->new_connection) != 0 ||
         find_main_window(display, viewer->pid, &main) != 0 ||
         activate_header_control(display, main, pid, before->settings) != 0 ||
         observe_language(pid, before, generation, "restored") != 0) goto out;
     if (generation < 4U) {
-        if (click_main_control(display, main, pid, before->choice) != 0 ||
+        if (click_main_control(display, main, pid, control) != 0 ||
             sleep_millis(350U) != 0) goto out;
         /* DropdownButton focuses its selected item. Move through the actual menu,
          * then require and activate the named target; an index alone cannot pass. */

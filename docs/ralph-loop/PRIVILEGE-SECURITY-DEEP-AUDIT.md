@@ -130315,3 +130315,21 @@ Preparation changes the controller and existing replay plumbing only. Shell synt
 and whitespace checks pass; compilation and native execution are pending. Failure
 feedback, concurrent writers, mobile/other platforms and installed acceptance stay
 OPEN. Do not infer these outcomes from component translation tests.
+
+First TUF replay `r5xoqjKrtv` at `2474459a` compiles all three drivers twice
+with byte equality; controller SHA-256 is
+`561c52bd4334fa472b8ddefa7af747f92afaaab21da2b636560cc26fe8a9e600`.
+The real connection authenticates and settings opens, but the observer waits for
+a standalone Default label. Native diagnostics instead show the merged
+`Language\nDefault` button. No language selection executes; this is a locator
+failure, not a demonstrated product defect. Correct the observer to require that
+exact combined label plus Light, and use its native bounds to open the dropdown.
+The requirement for exact choice and translated text is retained.
+
+Outer exit is 1. Wrapper 587395 and QEMU 588451 are absent; four listener deltas
+are zero; RAM `run.vcj_z83u` / `29:37622` is gone. Under the shared lock,
+retain bounded evidence, verify all duplicated app bytes against canonical `7e6f6459`,
+then retire the exact failed-run diagnostics. Capsule
+`language-restart-2474459a.json` is 21,578 bytes, SHA-256
+`66b09e8b14ed597edde9e26f205013e2e9408b8b096daa61e3403519ba68205e`;
+its separate retirement receipt and viewer log retain the failed observation.

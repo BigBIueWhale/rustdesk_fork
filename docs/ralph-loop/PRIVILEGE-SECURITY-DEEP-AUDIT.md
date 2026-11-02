@@ -130647,3 +130647,34 @@ viewer logs, retirement receipts and all raw run/count evidence. No owned run
 remains active. The selected live keyboard-mode scenario reaches its native
 checkpoint; full-process restoration and differing-layout behavior are separate
 remaining acceptance gaps. The overall release goal remains incomplete.
+
+### 2026-11-02 — user pivot; native language direction
+
+The user requests a pivot. Differing-keyboard-layout work remains OPEN/PARKED;
+its unexecuted one-file observer draft is preserved in stash
+`4bcdb11c128c2f2a193f937b8c315716b8fa5ed4`. No differing-layout run or product
+change occurred. The earlier equal-layout keyboard pass remains valid.
+
+Select R-S0 language-setting integration. The existing native language acceptance
+covers only left-to-right catalogues, while the framework-locale component
+evidence explicitly leaves complete GetMaterialApp roots and settings open.
+`main.dart`'s two roots provide supportedLocales but no selected locale;
+the desktop language callback persists the choice and reloads windows, and
+RefreshWrapper rebuilds without updating Flutter's locale. Flutter documents
+that a null MaterialApp locale uses the system locale, and widget localization
+owns reading direction:
+https://api.flutter.dev/flutter/material/MaterialApp/locale.html and
+https://api.flutter.dev/flutter/flutter_localizations/GlobalWidgetsLocalizations/textDirection.html.
+This is a source-supported integration concern, not yet a native failure.
+
+The focused `--language-direction` replay reuses app `7e6f6459` / engine
+`ddb1541d`. It confirms default-English labels and native radio placement,
+chooses Hebrew through the actual settings dropdown, confirms translated labels,
+and requires the same radio's native bounds in the rightmost quarter of its row.
+Three observations establish each direction. Success additionally requires the
+remote translated tooltip, unchanged connection, bounded resources, four current
+frames, zero-exit viewer join and saved Hebrew preference. This has higher value
+than adding catalogue-only checks because it exercises the missing root/settings
+integration without rebuilding. Restart, Arabic and other platforms remain
+separate. All independent parks remain. Shell syntax and whitespace checks pass;
+isolated compilation and native execution follow.

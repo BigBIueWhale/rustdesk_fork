@@ -26,7 +26,7 @@ MENU_ACTION=pointer
 [ "$PEER_SCENARIO" != credential-menu-accessible ] || MENU_ACTION=accessible
 readonly MENU_ACTION
 case "$PEER_SCENARIO" in
-  session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|language-restart|quality-restart|viewer-isolation|viewer-soak|input-latency|input-soak|image-quality|image-quality-save-failure|audio-mute) EXPECTED_RESTARTS=0 ;;
+  session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|language-restart|language-direction|quality-restart|viewer-isolation|viewer-soak|input-latency|input-soak|image-quality|image-quality-save-failure|audio-mute) EXPECTED_RESTARTS=0 ;;
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
   viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-modes|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation|credential-forget|credential-menu|credential-menu-accessible) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
@@ -1590,6 +1590,8 @@ PY
     if [ "$PEER_SCENARIO" = theme-restart ]; then
       theme_phases=(light dark system restore)
       controller_args+=("--theme-${theme_phases[viewer_generation - 1]}")
+    elif [ "$PEER_SCENARIO" = language-direction ]; then
+      controller_args+=(--language-direction)
     elif [ "$PEER_SCENARIO" = language-restart ]; then
       language_phases=(french portugal english restore)
       controller_args+=("--language-${language_phases[viewer_generation - 1]}")
@@ -1763,6 +1765,14 @@ PY
       [ "$(grep -Ec "^FLUTTER_PEER_QUALITY_RESTART_OBSERVATION generation=$viewer_generation " <<<"$controller_output")" -eq "$quality_observations" ] \
         || fail 'native quality restart observation count differs'
       viewer_result='viewer=joined xvfb=joined quality_restart=passed generations=4 choices=best,low,balanced storage=verified encoder_bitrate=confirmed pixels=fresh'
+    elif [ "$PEER_SCENARIO" = language-direction ]; then
+      grep -Fxq 'FLUTTER_PEER_LANGUAGE_PHASE_OK generation=1 restored=default selected=he native_labels=true remote_label=true stable_connection=true fresh_pixels=4 resources=bounded' \
+        <<<"$controller_output" || fail 'native language direction result is absent'
+      [ "$(grep -Ec '^FLUTTER_PEER_LANGUAGE_DIRECTION_OK selected=default direction=ltr row_x=[0-9]+ row_width=[0-9]+ radio_x=[0-9]+ radio_width=[0-9]+ samples=3$' <<<"$controller_output")" -eq 1 ] \
+        || fail 'native initial language direction differs'
+      [ "$(grep -Ec '^FLUTTER_PEER_LANGUAGE_DIRECTION_OK selected=he direction=rtl row_x=[0-9]+ row_width=[0-9]+ radio_x=[0-9]+ radio_width=[0-9]+ samples=3$' <<<"$controller_output")" -eq 1 ] \
+        || fail 'native Hebrew language direction differs'
+      viewer_result='viewer=joined xvfb=joined language_direction=passed selected=he direction=rtl labels=verified storage=verified pixels=fresh'
     elif [ "$PEER_SCENARIO" = language-restart ]; then
       language_before=(default fr pt-pt en)
       language_after=(fr pt-pt en en)
@@ -2027,7 +2037,8 @@ PY
       mv /tmp/viewer.log "/tmp/viewer-generation-$viewer_generation.log"
     fi
     if [ "$PEER_SCENARIO" = theme-restart ] || [ "$PEER_SCENARIO" = theme-appearance ] \
-      || [ "$PEER_SCENARIO" = theme-save-failure ] || [ "$PEER_SCENARIO" = language-restart ]; then
+      || [ "$PEER_SCENARIO" = theme-save-failure ] || [ "$PEER_SCENARIO" = language-restart ] \
+      || [ "$PEER_SCENARIO" = language-direction ]; then
       python3 - "$viewer_generation" "$PEER_SCENARIO" <<'PY'
 import os, stat, sys, tomllib
 try:
@@ -2043,7 +2054,9 @@ try:
         if len(data) != metadata.st_size:
             raise ValueError()
     key, receipt = 'theme', 'THEME'
-    if sys.argv[2] == 'language-restart':
+    if sys.argv[2] == 'language-direction':
+        key, receipt, expected = 'lang', 'LANGUAGE', 'he'
+    elif sys.argv[2] == 'language-restart':
         key, receipt = 'lang', 'LANGUAGE'
         expected = ('fr', 'pt-pt', 'en', 'en')[int(sys.argv[1]) - 1]
     elif sys.argv[2] == 'theme-save-failure':

@@ -3986,6 +3986,55 @@ static const LanguageChoice language_choices[] = {
     {"en", "English (en)", "New connection", "Settings", "Language", "Light", 9U},
 };
 
+static const LanguageChoice hebrew_choice = {
+    "he", "עברית (he)", "חיבור חדש", "הגדרות", "שפה", "בהיר", 19U
+};
+
+static int read_accessible_rect(AtspiAccessible *control, AtspiRect *rect);
+
+static int observe_language_direction(unsigned int pid, const LanguageChoice *choice, int rtl) {
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    AtspiRect row = {0}, button = {0};
+    unsigned int stable = 0U;
+    while (monotonic_millis() < deadline) {
+        AtspiAccessible *label = NULL, *radio = NULL;
+        GError *error = NULL;
+        int valid = 0;
+        if (query_named_accessible(pid, choice->light, deadline, &label, 0) != 0) return -1;
+        if (label != NULL) {
+            gint count = atspi_accessible_get_child_count(label, &error);
+            if (error == NULL && count == 1)
+                radio = atspi_accessible_get_child_at_index(label, 0, &error);
+            if (error == NULL && radio != NULL) {
+                AtspiRole role = atspi_accessible_get_role(radio, &error);
+                unsigned int owner = error == NULL ? atspi_accessible_get_process_id(radio, &error) : 0U;
+                valid = error == NULL && role == ATSPI_ROLE_RADIO_BUTTON && owner == pid &&
+                    read_accessible_rect(label, &row) == 0 && read_accessible_rect(radio, &button) == 0 &&
+                    button.x >= row.x && button.y >= row.y &&
+                    (int64_t)button.x + button.width <= (int64_t)row.x + row.width &&
+                    (int64_t)button.y + button.height <= (int64_t)row.y + row.height;
+            }
+        }
+        g_clear_error(&error);
+        g_clear_object(&radio);
+        g_clear_object(&label);
+        int64_t center = 2LL * ((int64_t)button.x - row.x) + button.width;
+        int matches = valid && (rtl ? center > 3LL * row.width / 2 : center < row.width / 2);
+        stable = matches ? stable + 1U : 0U;
+        if (stable == 3U && monotonic_millis() < deadline) {
+            printf("FLUTTER_PEER_LANGUAGE_DIRECTION_OK selected=%s direction=%s "
+                   "row_x=%d row_width=%d radio_x=%d radio_width=%d samples=3\n",
+                   choice->key, rtl ? "rtl" : "ltr", row.x, row.width, button.x, button.width);
+            return 0;
+        }
+        if (sleep_millis(100U) != 0) return -1;
+    }
+    fprintf(stderr, "FLUTTER_PEER_X11_FAIL language direction selected=%s expected=%s "
+            "row_x=%d row_width=%d radio_x=%d radio_width=%d\n",
+            choice->key, rtl ? "rtl" : "ltr", row.x, row.width, button.x, button.width);
+    return -1;
+}
+
 static int observe_language(unsigned int pid, const LanguageChoice *choice,
                              unsigned int generation, const char *phase) {
     char control[256];
@@ -4017,10 +4066,14 @@ static int observe_language(unsigned int pid, const LanguageChoice *choice,
 static int exercise_language_restart(Display *display, const ViewerWindow *viewer,
                                       SourceHistory *history, unsigned int generation,
                                       const ConnectionIdentity *connection,
-                                      const ProcessResources *baseline) {
+                                      const ProcessResources *baseline, int direction_case) {
     if (generation < 1U || generation > 4U) return -1;
     const LanguageChoice *before = &language_choices[generation - 1U];
     const LanguageChoice *after_choice = generation < 4U ? &language_choices[generation] : before;
+    if (direction_case) {
+        if (generation != 1U) return -1;
+        after_choice = &hebrew_choice;
+    }
     unsigned int pid = (unsigned int)viewer->pid, connected = 0U, listeners = 0U;
     ConnectionIdentity after = {{0}, {0}, 0UL};
     ProcessResources resources = {0};
@@ -4034,6 +4087,7 @@ static int exercise_language_restart(Display *display, const ViewerWindow *viewe
         find_main_window(display, viewer->pid, &main) != 0 ||
         activate_header_control(display, main, pid, before->settings) != 0 ||
         observe_language(pid, before, generation, "restored") != 0) goto out;
+    if (direction_case && observe_language_direction(pid, before, 0) != 0) goto out;
     if (generation < 4U) {
         if (click_main_control(display, main, pid, control) != 0 ||
             sleep_millis(350U) != 0) goto out;
@@ -4047,6 +4101,7 @@ static int exercise_language_restart(Display *display, const ViewerWindow *viewe
         if (click_main_control(display, main, pid, after_choice->choice) != 0 ||
             observe_language(pid, after_choice, generation, "changed") != 0) goto out;
     }
+    if (direction_case && observe_language_direction(pid, after_choice, 1) != 0) goto out;
     /* Keep the settings window alive while querying the other window's label;
      * destroying an accessibility root mid-query cannot establish translation. */
     Window existing_main = main;
@@ -5829,6 +5884,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--language-portugal") != 0 &&
                                     strcmp(argv[5], "--language-english") != 0 &&
                                     strcmp(argv[5], "--language-restore") != 0 &&
+                                    strcmp(argv[5], "--language-direction") != 0 &&
                                     strcmp(argv[5], "--theme-appearance") != 0 &&
                                     strcmp(argv[5], "--theme-save-failure") != 0 &&
                                     strcmp(argv[5], "--credential-retry") != 0 &&
@@ -5845,7 +5901,8 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("Additional full-peer scenarios: --image-quality, --image-quality-save-failure, --audio-mute, "
               "--quality-best, --quality-low, --quality-balanced, --quality-restore, "
-              "--language-french, --language-portugal, --language-english, --language-restore\n", stderr);
+              "--language-french, --language-portugal, --language-english, --language-restore, "
+              "--language-direction\n", stderr);
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
               "VIEWER_START [--viewer-suspend|--viewer-soak|--input-latency|--input-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
@@ -5854,6 +5911,7 @@ int main(int argc, char **argv) {
     unsigned int theme_generation = 0U;
     unsigned int language_generation = 0U;
     unsigned int quality_generation = 0U;
+    int language_direction = argc == 6 && strcmp(argv[5], "--language-direction") == 0;
     if (argc == 6) {
         static const char *phases[] = {"--theme-light", "--theme-dark", "--theme-system", "--theme-restore"};
         for (unsigned int i = 0U; i < 4U; ++i)
@@ -5867,6 +5925,7 @@ int main(int argc, char **argv) {
         for (unsigned int i = 0U; i < 4U; ++i)
             if (strcmp(argv[5], quality_phases[i]) == 0) quality_generation = i + 1U;
     }
+    if (language_direction) language_generation = 1U;
     int credential_enroll = argc == 6 && strcmp(argv[5], "--credential-enroll") == 0;
     if (language_generation == 2U)
         expected_remote_title_suffix = " - Contrôler un bureau à distance - RustDesk";
@@ -6151,7 +6210,7 @@ int main(int argc, char **argv) {
 
     if (language_generation != 0U) {
         int result = exercise_language_restart(display, &viewer, &history, language_generation,
-                                               &current_connection, &baseline_resources);
+                                               &current_connection, &baseline_resources, language_direction);
         if (atspi_exit() != 0) result = -1;
         if (close_viewer(display, viewer.window) != 0) result = -1;
         XCloseDisplay(display);

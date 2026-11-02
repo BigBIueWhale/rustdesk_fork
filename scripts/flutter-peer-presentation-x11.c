@@ -5134,8 +5134,13 @@ static int observe_view_only_input(Display *source, Display *display,
                 }
                 if (event.type != KeyPress && event.type != KeyRelease &&
                     event.type != ButtonPress && event.type != ButtonRelease) continue;
-                printf("FLUTTER_PEER_VIEW_ONLY_EVENT sequence=%u input=%s event=%u type=%d\n",
-                       sequence, names[i], received + 1U, event.type);
+                int key_event = event.type == KeyPress || event.type == KeyRelease;
+                printf("FLUTTER_PEER_VIEW_ONLY_EVENT sequence=%u input=%s event=%u type=%d "
+                       "window=%lu expected_window=%lu code=%u state=%u synthetic=%d\n",
+                       sequence, names[i], received + 1U, event.type, event.xany.window, root,
+                       key_event ? event.xkey.keycode : event.xbutton.button,
+                       key_event ? event.xkey.state : event.xbutton.state, event.xany.send_event);
+                fflush(stdout);
                 if (blocked || received >= 2U) goto finished;
                 if (i == 0U) {
                     KeySym symbol = NoSymbol;

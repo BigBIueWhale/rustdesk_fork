@@ -130872,3 +130872,12 @@ This is fixture failure, not an accepted product reproduction. Wrapper 808048 an
 QEMU 809608 are absent, four listener deltas are zero, and RAM `run.9umpmdus` /
 `29:38432` retires. The exact private directory retires after its inventory and
 canonical app-byte comparison; the capsule, viewer log and raw receipts remain.
+
+Second run `b9kDZybpLZ` at `d9e58bd1` passes the initial native letter, then
+rejects the first normal click's native event. The save-failure phase is unreached.
+Its existing event log records one ButtonPress but omits the fields that failed;
+record window, button/key, state and synthetic flag before the unchanged assertion.
+The cause is unresolved; do not classify this as a product or fixture defect yet.
+Wrapper 862995 and QEMU 864221 are absent; four listener deltas are zero and RAM
+`run.nxy5hgzm` / `29:38474` retires. Exact duplicate diagnostics retire after
+inventory and canonical app-byte comparison; bounded evidence remains.

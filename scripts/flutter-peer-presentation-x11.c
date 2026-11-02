@@ -3134,8 +3134,8 @@ static int main_header_luminance(Display *display, Window window, unsigned int *
     return 0;
 }
 
-static int activate_header_control(Display *display, Window window, unsigned int expected_pid,
-                                     const char *tooltip) {
+static int observe_header_control(Display *display, Window window, unsigned int expected_pid,
+                                    const char *tooltip, int activate) {
     XWindowAttributes attributes;
     Window child;
     unsigned long pid;
@@ -3158,11 +3158,11 @@ static int activate_header_control(Display *display, Window window, unsigned int
         if (query_named_accessible(expected_pid, tooltip, deadline, &label, 0) != 0) return -1;
         if (label != NULL) {
             g_object_unref(label);
-            if (XTestFakeButtonEvent(display, 1U, True, CurrentTime) == 0 ||
-                XTestFakeButtonEvent(display, 1U, False, CurrentTime) == 0) return -1;
+            if (activate && (XTestFakeButtonEvent(display, 1U, True, CurrentTime) == 0 ||
+                XTestFakeButtonEvent(display, 1U, False, CurrentTime) == 0)) return -1;
             XSync(display, False);
-            printf("FLUTTER_PEER_HEADER_ACTIVATION control=\"%s\" visible_tooltip=true "
-                   "native_pointer=true\n", tooltip);
+            printf("FLUTTER_PEER_HEADER_%s control=\"%s\" visible_tooltip=true "
+                   "native_pointer=true\n", activate ? "ACTIVATION" : "OBSERVATION", tooltip);
             fflush(stdout);
             return monotonic_millis() < deadline ? 0 : -1;
         }
@@ -3171,6 +3171,11 @@ static int activate_header_control(Display *display, Window window, unsigned int
     fprintf(stderr, "FLUTTER_PEER_X11_FAIL actual header tooltip unavailable control=\"%s\"\n",
             tooltip);
     return -1;
+}
+
+static int activate_header_control(Display *display, Window window, unsigned int expected_pid,
+                                     const char *tooltip) {
+    return observe_header_control(display, window, expected_pid, tooltip, 1);
 }
 
 static int click_main_control(Display *display, Window main, unsigned int expected_pid,
@@ -4024,7 +4029,7 @@ static int exercise_language_restart(Display *display, const ViewerWindow *viewe
     /* Keep the settings window alive while querying the other window's label;
      * destroying an accessibility root mid-query cannot establish translation. */
     Window existing_main = main;
-    if (activate_header_control(display, viewer->window, pid, after_choice->new_connection) != 0 ||
+    if (observe_header_control(display, viewer->window, pid, after_choice->new_connection, 0) != 0 ||
         find_main_window(display, viewer->pid, &main) != 0 ||
         main != existing_main ||
         close_viewer(display, main) != 0) goto out;

@@ -130359,3 +130359,28 @@ Wrapper 590198 and QEMU 591254 are absent, all four listener deltas are zero, an
 RAM `run.7zs14xww` / `29:37706` is gone. Verified duplicate diagnostics retire.
 `language-restart-45732c56.json` is 21,624 bytes, SHA-256
 `53c2ec1598713f405717366f531b0e7b12d49955856335f02c1c079de0dbbbbd`.
+
+Replay `ZUdg1XZ7Ey` at `8dfca91a` passes all four language phases: default→French,
+French→Portugal, Portugal→English, and fresh-process English restoration. Main
+labels and remote tooltips are correct; all sixteen post-settings frames are
+current (maximum sampled ages 273/284/263/301 ms) on each unchanged connection,
+with bounded resources. The first three processes exit zero and their saved
+language values match. The fourth process does not exit within the unchanged
+15-second close deadline, so outer exit is 1 and whole-run acceptance remains OPEN.
+
+The translated-tooltip observer also clicked New Connection a second time, then
+immediately closed the already-open main window. Source `AddButton` dispatches
+`kWindowMainWindowOnTop`; its receiver starts asynchronous `windowOnTop` with
+show/focus/active-window registration. Window existence cannot acknowledge that
+operation. Remove this unnecessary second activation from the language observation:
+hover and require the exact visible tooltip, then close the existing windows.
+Keep the final exit gate unchanged. This tests the language effect without issuing
+another unrelated window request; it is not a product shutdown correction.
+The observed rapid show/close finality failure and its causation remain OPEN for
+a dedicated follow-up, even if the language-only observation subsequently passes.
+
+Wrapper 591593 and QEMU 592651 are absent; four listener deltas are zero; RAM
+`run.6aelndsf` / `29:37748` is gone. Verified duplicate diagnostics retire under
+the shared lock. `language-restart-8dfca91a.json` retains the partial observations,
+25,227 bytes, SHA-256
+`462508dfeadc1ae1d07e1adb649f1b1adf73289447125dc8f0551988a2b0785c`.

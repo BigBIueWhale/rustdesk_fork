@@ -197,19 +197,20 @@ ordering against the internal mode commit, physical devices or other platforms;
 those and the broader gaps above remain OPEN. No product change was needed.
 
 **Keyboard-mode restart restoration verified on Linux (2026-11-03):**
-Replay `sRL0oBHBFh` at `7bab3511` reuses app `c9323bf1` / engine `ddb1541d`.
-Three distinct viewer processes authenticate through the real prompt and join
-with exit zero in sequence. The first selects Map; the second confirms and types
-in restored Map before selecting Legacy; the third confirms and types in restored
-Legacy without a selection. All four native typing observations pass: 44 cases,
-112 events, exact text/modifiers/order and both keymaps released. Sixteen fresh
-displayed counters have maximum sampled age 325 ms. Joined preference files
-contain Map/Legacy/Legacy with required ownership and modes. Identical driver
-rebuilds, four zero listener deltas and VM/RAM/private retirement pass;
-`keyboard-restart-7bab3511.json` binds the evidence. No product change was needed.
-This is orderly viewer restart on equal-layout X11. Abrupt restart, save failures
-beyond the case below, Translate-mode restart, physical devices, other platforms and
-installed acceptance remain OPEN.
+Replay `m15DSrP0OO` at `175f8b93` reuses app `c6aed851` / engine `ddb1541d`.
+Four distinct viewer processes authenticate through the real prompt and join
+with exit zero in sequence. They select Map; restore/type Map then select/type
+Translate; restore/type Translate then select/type Legacy; restore/type Legacy
+without a selection. Each restored choice is exclusive before any write. All
+six native typing observations pass: 66 cases / 168 events, exact text/modifiers/
+order and both keymaps released. Twenty-four fresh displayed counters have
+maximum sampled age 305 ms. Joined preference files contain Map/Translate/
+Legacy/Legacy with required ownership and modes. Identical driver rebuilds,
+bounded resources, four zero listener deltas and VM/RAM/private retirement pass;
+`keyboard-translate-restart-175f8b93.json` binds the evidence. No product change
+or app rebuild was needed. This is orderly viewer restart on equal-layout X11.
+Abrupt restart, save failures beyond the case below, physical devices, other
+platforms and installed acceptance remain OPEN.
 
 **Keyboard-mode save refusal/retry verified on Linux:** Replay `XoWxkWSZpx`
 at `72af4272` reuses app `c9323bf1` / engine `ddb1541d`. With the private peer
@@ -252,7 +253,7 @@ correction are retained in the audit. `keyboard-shortcuts-e3f83515.json` binds
 the passed run, identical driver rebuilds, four zero listener deltas and complete
 VM/RAM/private retirement. No product change or app rebuild was needed.
 Equal US X11 only: application-specific/side-specific shortcut bindings, combinations
-beyond those named, input methods/layouts, physical devices, Translate restart,
+beyond those named, input methods/layouts, physical devices,
 other platforms and installed/release acceptance remain OPEN. Independent parks remain.
 
 **User pivot (2026-11-02):** Custom quality/FPS native validation is OPEN/PARKED.

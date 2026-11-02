@@ -132122,3 +132122,24 @@ CTE/TUF start clean at `25c3ab00`, with no owned private/RAM job and about
 admitted zero-NIC bounded-RAM VM, retaining the same password-only SSH transport,
 listener audit and joined cleanup. Equal US X11/orderly viewer restart only;
 physical devices, abrupt failure, other platforms and independent parks remain.
+
+Replay `m15DSrP0OO` at `175f8b93` passes in about 147 seconds on retained
+app `c6aed851`. All four distinct viewer PIDs authenticate through the actual
+prompt and join with zero exit. Six native typing phases pass 66 cases / 168
+events, including restored Translate and Ctrl+A before any new selection. All
+restored choices are exclusive; exact text/modifiers/order, released keymaps and
+per-process window/connection/resource checks pass. Twenty-four current displayed
+counters have maximum sampled age 305 ms. Joined saved modes are Map/Translate/
+Legacy/Legacy. Three drivers rebuild identically and the native input provider
+matches its unchanged pinned digest before/after.
+
+Wrapper 1078819 and QEMU 1079875 are absent. Exact helpers, private state and
+RAM `run.piu180ss` / `29:40233` retire with four zero listener deltas. Peak
+scratch is 3,013,914,624 bytes under 7 GiB. Both hosts retain thirteen verified
+records, including `keyboard-translate-restart-175f8b93.json` (39,476 bytes,
+SHA-256 `05a69b9a9c65a44abab53974884941f1ddfd58af0e5db7a84258b580b0b68391`).
+The current ledger replaces the narrower three-generation restart summary with
+this Map/Translate/Legacy evidence from the retained app; historical receipts remain
+retained. No product change was needed. Abrupt failure, physical devices, other
+platforms, installed acceptance and independent parks remain open. The fresh
+ledger count follows; the full release goal is still active.

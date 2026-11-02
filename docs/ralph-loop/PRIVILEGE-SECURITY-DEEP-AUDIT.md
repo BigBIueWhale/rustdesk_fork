@@ -129869,3 +129869,24 @@ using the pinned method, seven controls and exact round-trip. Capsule
 `9070ff68297bf9495cd2e53d42cf26d8148453c604c8f7244e8296d06f7f73c8`.
 Exit is zero; all three listener deltas are zero, wrapper 1494012 and QEMU
 1495505 are absent, and private/RAM `run.ytpjdlem` (`29:11649`) have retired.
+
+### 2026-11-02 — fullscreen native window-manager prerequisite
+
+The previous turn made progress by reconciling the terminal preset replay and
+tracing the fullscreen state/event path. Continue the selected R-S0 workflow.
+Use Openbox 3.6.1-10 in the disposable viewer environment; it implements the
+native EWMH state transition needed to distinguish requested and effective
+fullscreen, including a window-manager exit initiated outside the application.
+Debian's publisher page pins the 315,528-byte package to SHA-256
+`ce0f2b4e6743334a2df4b6a87172c86a3c56139bf9dfadd04e32635041eb56dd`:
+https://packages.debian.org/bookworm/amd64/openbox/download.
+
+Add one explicit acquisition candidate through the existing online-fetch VM.
+Signed timestamped Debian metadata independently verifies the package and resolves
+only dependencies missing from the exact devcheck image. Retain that base/image
+package-manifest identity, dependency hashes and archive contract; the candidate
+is not a release input or an installation. The stage downloads without package
+installation or execution. Existing ordinary-user isolation, shared admission,
+bounded RAM scratch, monitored limits and joined cleanup remain. The new stage
+has a 64-package/64-MiB output ceiling. Shell syntax and diff checks pass; actual
+acquisition and fullscreen runtime acceptance are still pending at preparation.

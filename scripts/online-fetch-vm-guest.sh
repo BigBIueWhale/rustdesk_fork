@@ -300,7 +300,7 @@ case "$REQUEST" in
     --maintenance-promote-win-helper-certified-candidate|\
     --maintenance-discover-devcheck-image|--maintenance-stage-pa-runtime-candidate|\
     --maintenance-stage-polkit-runtime-candidate|--maintenance-stage-ledger-tokenizer|\
-    --maintenance-stage-xrandr-runtime-candidate|\
+    --maintenance-stage-xrandr-runtime-candidate|--maintenance-stage-window-manager-candidate|\
     --maintenance-build-devcheck-image-candidate|\
     --maintenance-promote-devcheck-image-candidate|\
     --maintenance-build-apple-check-image-candidate|\

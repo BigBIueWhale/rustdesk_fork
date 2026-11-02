@@ -3438,6 +3438,67 @@ maintenance_stage_polkit_runtime_candidate() {
         "$DEV_CHECK_IMAGE_ID" "$package_count" "$archive_size" "$archive_sha" "$candidate"
 }
 
+maintenance_stage_window_manager_candidate() {
+    require_devcheck_image_pins
+    require_image_pin WINDOW_MANAGER_VERSION
+    require_image_pin WINDOW_MANAGER_SIZE
+    require_image_pin WINDOW_MANAGER_SHA256
+    local output="$ONLINE_FETCH_TMP/window-manager-output"
+    local parent="$ONLINE_CANDIDATE_ROOT/window-manager"
+    local part="$parent/.window-manager-candidate.tar.gz.part"
+    local candidate="$parent/window-manager-candidate.tar.gz"
+    local archive_size archive_sha package_count directory
+    for directory in "$ONLINE_CANDIDATE_ROOT" "$parent"; do
+        if [ ! -e "$directory" ] && [ ! -L "$directory" ]; then
+            /usr/bin/install -d -m 0700 -- "$directory"
+        fi
+        [ -d "$directory" ] && [ ! -L "$directory" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' "$directory")" = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+            || die "window-manager candidate directory authority differs: $directory"
+    done
+    [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
+        && [ ! -e "$part" ] && [ ! -L "$part" ] \
+        || die 'window-manager candidate already exists; inspect it before another acquisition'
+    /usr/bin/install -d -m 0700 -- "$output"
+    verify_or_load_devcheck_image
+    online_docker_run_archive_acquisition \
+        --mount "type=bind,source=$SCRIPT_DIR/stage-window-manager-candidate.sh,target=/stage-window-manager-candidate.sh,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$output,target=/outputs,bind-recursive=disabled" \
+        --env "WM_UID=$ONLINE_FETCH_UID" --env "WM_GID=$ONLINE_FETCH_GID" \
+        --env "WM_BASE=$DEV_CHECK_IMAGE_ID" \
+        --env "WM_DPKG_MANIFEST_SHA256=$SHA256_DEV_CHECK_DPKG_MANIFEST" \
+        --env "WM_DEBIAN_SNAPSHOT=$DEV_CHECK_DEBIAN_SNAPSHOT" \
+        --env "WM_SECURITY_SNAPSHOT=$DEV_CHECK_SECURITY_SNAPSHOT" \
+        --env "WM_VERSION=$WINDOW_MANAGER_VERSION" \
+        --env "WM_SIZE=$WINDOW_MANAGER_SIZE" \
+        --env "WM_SHA256=$WINDOW_MANAGER_SHA256" \
+        "$DEV_CHECK_IMAGE_ID" \
+        /bin/bash --noprofile --norc /stage-window-manager-candidate.sh /outputs \
+        || die 'signed window-manager candidate acquisition failed'
+    [ -f "$output/manifest.tsv" ] && [ ! -L "$output/manifest.tsv" ] \
+        && [ -f "$output/contract" ] && [ ! -L "$output/contract" ] \
+        && [ -d "$output/packages" ] && [ ! -L "$output/packages" ] \
+        || die 'window-manager candidate output differs'
+    package_count="$(/usr/bin/find "$output/packages" -maxdepth 1 -type f -name '*.deb' | /usr/bin/wc -l)"
+    [ "$package_count" -gt 0 ] && [ "$package_count" -le 64 ] \
+        && [ "$package_count" -eq "$(/usr/bin/wc -l < "$output/manifest.tsv")" ] \
+        || die 'window-manager candidate manifest cardinality differs'
+    (
+        cd "$output"
+        /usr/bin/tar --sort=name --format=gnu --mtime="@$DEV_CHECK_SOURCE_DATE_EPOCH" \
+            --owner=0 --group=0 --numeric-owner -cf - contract manifest.tsv packages/*.deb
+    ) | /usr/bin/gzip -n >"$part" || die 'window-manager archive creation failed'
+    archive_size="$(/usr/bin/stat -c '%s' "$part")"
+    [ "$archive_size" -gt 0 ] && [ "$archive_size" -le 67108864 ] \
+        || die 'window-manager candidate archive exceeds its bound'
+    archive_sha="$(/usr/bin/sha256sum "$part" | /usr/bin/cut -d ' ' -f 1)"
+    /usr/bin/chmod 0400 -- "$part"
+    online_image_provenance maintenance-rename-noreplace --source "$part" --destination "$candidate" \
+        || die 'window-manager candidate publication failed'
+    printf 'WINDOW_MANAGER_CANDIDATE=staged base=%s packages=%s bytes=%s sha256=%s path=%s\n' \
+        "$DEV_CHECK_IMAGE_ID" "$package_count" "$archive_size" "$archive_sha" "$candidate"
+}
+
 maintenance_stage_xrandr_runtime_candidate() {
     require_devcheck_image_pins
     require_image_pin XRANDR_RUNTIME_VERSION
@@ -8548,6 +8609,11 @@ main() {
         --maintenance-discover-devcheck-image)
             [ "$#" -eq 1 ] || die "--maintenance-discover-devcheck-image takes no arguments"
             maintenance_discover_devcheck_image
+            return 0
+            ;;
+        --maintenance-stage-window-manager-candidate)
+            [ "$#" -eq 1 ] || die "--maintenance-stage-window-manager-candidate takes no arguments"
+            maintenance_stage_window_manager_candidate
             return 0
             ;;
         --maintenance-stage-xrandr-runtime-candidate)

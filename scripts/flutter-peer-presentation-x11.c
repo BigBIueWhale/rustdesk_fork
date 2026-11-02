@@ -3086,6 +3086,152 @@ static int exercise_keyboard_input(Display *source, Display *display,
     return 0;
 }
 
+static int exercise_keyboard_shortcuts(Display *source, Display *display,
+                                       const ViewerWindow *viewer,
+                                       const ConnectionIdentity *connection,
+                                       const ProcessResources *baseline) {
+    typedef struct {
+        KeySym input, output;
+        int type;
+        unsigned int state;
+        const char *text;
+    } Step;
+    static const struct {
+        const char *name;
+        unsigned int count;
+        Step steps[6];
+    } cases[] = {
+        {"left-control-shift-z", 6U, {
+            {XK_Control_L, XK_Control_L, KeyPress, 0U, ""},
+            {XK_Shift_L, XK_Shift_L, KeyPress, ControlMask, ""},
+            {XK_z, XK_Z, KeyPress, ControlMask | ShiftMask, "\032"},
+            {XK_z, XK_Z, KeyRelease, ControlMask | ShiftMask, "\032"},
+            {XK_Shift_L, XK_Shift_L, KeyRelease, ControlMask | ShiftMask, ""},
+            {XK_Control_L, XK_Control_L, KeyRelease, ControlMask, ""}}},
+        {"right-control-shift-z", 6U, {
+            {XK_Control_R, XK_Control_R, KeyPress, 0U, ""},
+            {XK_Shift_R, XK_Shift_R, KeyPress, ControlMask, ""},
+            {XK_z, XK_Z, KeyPress, ControlMask | ShiftMask, "\032"},
+            {XK_z, XK_Z, KeyRelease, ControlMask | ShiftMask, "\032"},
+            {XK_Shift_R, XK_Shift_R, KeyRelease, ControlMask | ShiftMask, ""},
+            {XK_Control_R, XK_Control_R, KeyRelease, ControlMask, ""}}},
+        {"right-control-a", 4U, {
+            {XK_Control_R, XK_Control_R, KeyPress, 0U, ""},
+            {XK_a, XK_a, KeyPress, ControlMask, "\001"},
+            {XK_a, XK_a, KeyRelease, ControlMask, "\001"},
+            {XK_Control_R, XK_Control_R, KeyRelease, ControlMask, ""}}},
+        {"alt-a", 4U, {
+            {XK_Alt_L, XK_Alt_L, KeyPress, 0U, ""},
+            {XK_a, XK_a, KeyPress, Mod1Mask, "a"},
+            {XK_a, XK_a, KeyRelease, Mod1Mask, "a"},
+            {XK_Alt_L, XK_Alt_L, KeyRelease, Mod1Mask, ""}}},
+        {"super-a", 4U, {
+            {XK_Super_L, XK_Super_L, KeyPress, 0U, ""},
+            {XK_a, XK_a, KeyPress, Mod4Mask, "a"},
+            {XK_a, XK_a, KeyRelease, Mod4Mask, "a"},
+            {XK_Super_L, XK_Super_L, KeyRelease, Mod4Mask, ""}}},
+        {"held-control-a-c", 6U, {
+            {XK_Control_L, XK_Control_L, KeyPress, 0U, ""},
+            {XK_a, XK_a, KeyPress, ControlMask, "\001"},
+            {XK_a, XK_a, KeyRelease, ControlMask, "\001"},
+            {XK_c, XK_c, KeyPress, ControlMask, "\003"},
+            {XK_c, XK_c, KeyRelease, ControlMask, "\003"},
+            {XK_Control_L, XK_Control_L, KeyRelease, ControlMask, ""}}},
+        {"after-shortcuts", 2U, {
+            {XK_z, XK_z, KeyPress, 0U, "z"},
+            {XK_z, XK_z, KeyRelease, 0U, "z"}}},
+    };
+    Window root = RootWindow(source, DefaultScreen(source));
+    unsigned char local_held[256] = {0};
+    unsigned int sequence = 0U;
+    int result = -1;
+    XSelectInput(source, root, KeyPressMask | KeyReleaseMask);
+    XSetInputFocus(source, root, RevertToParent, CurrentTime);
+    XSync(source, False);
+    if (return_focus_with_pointer(display, viewer) != 0 ||
+        !keyboard_is_released(source) || !keyboard_is_released(display)) goto out;
+    for (; sequence < sizeof(cases) / sizeof(cases[0]); ++sequence) {
+        unsigned char native_held[256] = {0};
+        unsigned int received = 0U, events = 0U;
+        uint64_t start = monotonic_millis(), complete = 0U;
+        for (unsigned int i = 0U; i < cases[sequence].count; ++i) {
+            const Step *step = &cases[sequence].steps[i];
+            KeyCode code = XKeysymToKeycode(display, step->input);
+            int press = step->type == KeyPress;
+            if (code < 8U || local_held[code] == press ||
+                XTestFakeKeyEvent(display, code, press, CurrentTime) == 0) goto out;
+            local_held[code] = (unsigned char)press;
+            XSync(display, False);
+            if (i + 1U < cases[sequence].count && sleep_millis(30U) != 0) goto out;
+        }
+        while (monotonic_millis() - start < 5000U) {
+            while (XPending(source) != 0) {
+                XEvent event;
+                if (++events > 128U) goto out;
+                XNextEvent(source, &event);
+                if (event.type == MappingNotify) {
+                    XRefreshKeyboardMapping(&event.xmapping);
+                    continue;
+                }
+                if (event.type != KeyPress && event.type != KeyRelease) continue;
+                if (received >= cases[sequence].count) goto out;
+                const Step *wanted = &cases[sequence].steps[received];
+                KeySym symbol = NoSymbol;
+                char text[16];
+                int size = XLookupString(&event.xkey, text, sizeof(text), &symbol, NULL);
+                unsigned int code = event.xkey.keycode;
+                int press = event.type == KeyPress;
+                printf("FLUTTER_PEER_SHORTCUT_EVENT case=%u event=%u type=%d code=%u "
+                       "symbol=%lu state=%u bytes=%d synthetic=%d\n", sequence + 1U,
+                       received + 1U, event.type, code, (unsigned long)symbol,
+                       event.xkey.state, size, event.xkey.send_event);
+                if (event.xkey.window != root || event.xkey.send_event ||
+                    code < 8U || code > 255U || native_held[code] == press ||
+                    event.type != wanted->type || symbol != wanted->output ||
+                    (event.xkey.state & 255U) != wanted->state || size < 0 ||
+                    (size_t)size != strlen(wanted->text) ||
+                    memcmp(text, wanted->text, (size_t)size) != 0) goto out;
+                native_held[code] = (unsigned char)press;
+                if (++received == cases[sequence].count) complete = monotonic_millis();
+            }
+            if (complete != 0U && monotonic_millis() - complete >= 100U) break;
+            if (sleep_millis(10U) != 0) goto out;
+        }
+        Window focus;
+        int revert;
+        ConnectionIdentity after = {{0}, {0}, 0UL};
+        ProcessResources resources;
+        ViewerWindow current = {0};
+        XGetInputFocus(source, &focus, &revert);
+        if (received != cases[sequence].count || complete == 0U ||
+            monotonic_millis() - start >= 5000U || focus != root ||
+            !keyboard_is_released(source) || !keyboard_is_released(display) ||
+            find_viewer_window(display, viewer->pid, &current) != 0 ||
+            current.window != viewer->window || read_connection_identity(&after) != 0 ||
+            !same_connection(connection, &after) ||
+            read_process_resources(viewer->pid, &resources) != 0 ||
+            !resources_are_bounded(baseline, &resources)) goto out;
+        for (unsigned int code = 0U; code < 256U; ++code)
+            if (native_held[code] || local_held[code]) goto out;
+        print_resources("shortcut", sequence + 1U, &resources);
+        printf("FLUTTER_PEER_SHORTCUT_CASE_OK sequence=%u name=%s events=%u "
+               "exact_text=true exact_modifiers=true paired=true released=both stable_connection=true\n",
+               sequence + 1U, cases[sequence].name, received);
+        fflush(stdout);
+    }
+    result = 0;
+out:
+    for (unsigned int code = 8U; code < 256U; ++code)
+        if (local_held[code] && XTestFakeKeyEvent(display, code, False, CurrentTime) == 0)
+            result = -1;
+    XSync(display, False);
+    XSelectInput(source, root, NoEventMask);
+    XSync(source, False);
+    if (result != 0)
+        fprintf(stderr, "FLUTTER_PEER_X11_FAIL shortcut sequence=%u\n", sequence + 1U);
+    return result;
+}
+
 static int find_main_window(Display *display, unsigned long expected_pid, Window *window) {
     Window root = RootWindow(display, DefaultScreen(display));
     Atom net_name = XInternAtom(display, "_NET_WM_NAME", False);
@@ -5330,6 +5476,9 @@ static int exercise_keyboard_modes(Display *source, Display *display,
         printf("FLUTTER_PEER_KEYBOARD_MODE_BEGIN sequence=%u mode=%s\n", sequence + 1U, modes[sequence]);
         fflush(stdout);
         if (exercise_keyboard_input(source, display, viewer, connection, baseline) != 0) goto failed;
+        phase = "compound-shortcuts";
+        if (translate && sequence == 1U &&
+            exercise_keyboard_shortcuts(source, display, viewer, connection, baseline) != 0) goto failed;
         phase = "displayed-freshness";
         if (wait_for_current_frames(display, viewer, history, RECOVERY_LIMIT_MS, 4U,
                                      &fresh, &age) != 0) goto failed;
@@ -6971,6 +7120,7 @@ int main(int argc, char **argv) {
                  "pixels=fresh same_window=true stable_connection=true resources=bounded");
         } else if (keyboard_translate) {
             puts("FLUTTER_PEER_KEYBOARD_TRANSLATE_OK modes=map,translate,map cases=33 events=84 "
+                 "shortcut_cases=7 shortcut_events=32 "
                  "choice=confirmed native_key_events=true exact_text=true released=both "
                  "pixels=fresh same_window=true stable_connection=true resources=bounded");
         } else if (keyboard_modes) {

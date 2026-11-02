@@ -288,7 +288,7 @@ elif [ "$PEER_SCENARIO" = keyboard-translate ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
-  VIEWER_RESULT='viewer=joined xvfb=joined keyboard_translate=passed keyboard_cases=33 storage=verified stable_connection=true resources=bounded'
+  VIEWER_RESULT='viewer=joined xvfb=joined keyboard_translate=passed keyboard_cases=33 shortcut_cases=7 storage=verified stable_connection=true resources=bounded'
 elif [ "$PEER_SCENARIO" = keyboard-save-failure ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

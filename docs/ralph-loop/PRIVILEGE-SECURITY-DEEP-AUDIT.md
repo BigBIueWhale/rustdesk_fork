@@ -132008,3 +132008,26 @@ The reproduced Ctrl+A failure is resolved at this native Linux checkpoint.
 Compound shortcuts are a useful next acceptance boundary for the same retained
 app; no rebuild is needed for fixture-only coverage. The full release objective
 remains active, with all independent parks and broader evidence gaps preserved.
+
+### 2026-11-03 — native Translate compound shortcuts
+
+Previous goal checkpoint: progress; the corrected Linux Ctrl+A path and its
+fresh ledger count completed. The current draft extends that same R-S0 input
+boundary before an unrelated setting or repeated simple mode check. Reuse app
+`c6aed851` and its pinned manifest/engine; no product rebuild is required.
+TUF is clean at `4c9c5aba`, has no owned private/RAM run and about 45 GiB
+available memory. The existing password-only SSH master remains the transport.
+
+Seven added cases exercise left and right Ctrl+Shift+Z, right Ctrl+A, Alt+A,
+Super+A, A then C while Control remains held, and ordinary typing afterward.
+The source X11 observer requires all 32 native events in exact order, with
+expected symbols, text and modifier state, balanced keycodes, no duplicate pair
+during the quiet interval and both final keymaps released. Connection/window
+identity and process bounds remain checked. The original 33 cases / 84 events,
+three exclusive mode choices, twelve fresh frames and joined saved Map state
+remain required. X.Org's XTEST and XLookupString references above support the
+native-event and fixed Latin-1 observer semantics; this retains equal US layouts
+and makes no physical-device or other-layout claim. Only fixture-owned local
+keys are released on failure. Three drivers must compile twice identically
+inside the admitted zero-NIC bounded-RAM VM before execution. Independent parks
+remain in force; this is missing acceptance evidence, not an assumed new defect.

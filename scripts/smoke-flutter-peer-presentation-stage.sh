@@ -1677,6 +1677,7 @@ PY
     [ "$PEER_SCENARIO" != keyboard-modes ] || controller_args+=(--keyboard-modes)
     [ "$PEER_SCENARIO" != keyboard-save-failure ] || controller_args+=(--keyboard-save-failure)
     [ "$PEER_SCENARIO" != keyboard-translate ] || controller_args+=(--keyboard-translate)
+    [ "$PEER_SCENARIO" != keyboard-repeat ] || controller_args+=(--keyboard-repeat)
     [ "$PEER_SCENARIO" != view-only ] || controller_args+=(--view-only)
     [ "$PEER_SCENARIO" != view-only-save-failure ] || controller_args+=(--view-only-save-failure)
     [ "$PEER_SCENARIO" != keyboard-retirement ] || controller_args+=(--keyboard-retirement)

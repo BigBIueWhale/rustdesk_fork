@@ -132194,3 +132194,13 @@ Reuse app `c6aed851`, pinned engine and provider; compile only the three drivers
 twice in the admitted zero-NIC bounded-RAM VM. This is equal US X11 synthetic
 held input, not physical-device, other-layout, other-platform or installed
 acceptance. Independent parks remain in force.
+
+Initial repeat run `z5B3tSCpcf` at `7b441f69` exits during guest argument
+admission, before driver compilation or app execution: the guest's closed
+scenario parser lacks the new flag. Add the explicit guest routing and stage
+controller argument; no product result is claimed. Four listener deltas are
+zero, wrapper/QEMU/helpers are absent and RAM scratch has retired. The exact
+small private diagnostic inventory was hashed and retired under the shared
+lock. `keyboard-repeat-7b441f69.json` (14,626 bytes, SHA-256
+`44b14875e1181b452f195d5dcd930fca92a3e79e9aff082ef8374c4f83b830b2`)
+and twelve companion records retain this failed prerequisite.

@@ -17,6 +17,7 @@ FLUTTER_IMAGE_QUALITY=0
 FLUTTER_IMAGE_QUALITY_SAVE_FAILURE=0
 FLUTTER_AUDIO_MUTE=0
 FLUTTER_THEME_RESTART=0
+FLUTTER_LANGUAGE_RESTART=0
 FLUTTER_THEME_APPEARANCE=0
 FLUTTER_THEME_SAVE_FAILURE=0
 FLUTTER_VIEWER_ISOLATION=0
@@ -293,6 +294,7 @@ case "$#:${8:-}" in
                 --audio-mute) FLUTTER_AUDIO_MUTE=1 ;;
                 --background-close) FLUTTER_SESSION_CLOSE=2 ;;
                 --theme-restart) FLUTTER_THEME_RESTART=1 ;;
+                --language-restart) FLUTTER_LANGUAGE_RESTART=1 ;;
                 --theme-appearance) FLUTTER_THEME_APPEARANCE=1 ;;
                 --theme-save-failure) FLUTTER_THEME_SAVE_FAILURE=1 ;;
                 --viewer-isolation) FLUTTER_VIEWER_ISOLATION=1 ;;
@@ -396,6 +398,7 @@ readonly FLUTTER_IMAGE_QUALITY
 readonly FLUTTER_IMAGE_QUALITY_SAVE_FAILURE
 readonly FLUTTER_AUDIO_MUTE
 readonly FLUTTER_THEME_RESTART
+readonly FLUTTER_LANGUAGE_RESTART
 readonly FLUTTER_THEME_APPEARANCE
 readonly FLUTTER_THEME_SAVE_FAILURE
 readonly FLUTTER_VIEWER_ISOLATION
@@ -14101,6 +14104,7 @@ run_flutter_peer_presentation() {
     [ "$FLUTTER_AUDIO_MUTE" -eq 0 ] || peer_args+=(--audio-mute)
     [ "$FLUTTER_SESSION_CLOSE" -ne 2 ] || peer_args+=(--background-close)
     [ "$FLUTTER_THEME_RESTART" -eq 0 ] || peer_args+=(--theme-restart)
+    [ "$FLUTTER_LANGUAGE_RESTART" -eq 0 ] || peer_args+=(--language-restart)
     [ "$FLUTTER_THEME_APPEARANCE" -eq 0 ] || peer_args+=(--theme-appearance)
     [ "$FLUTTER_THEME_SAVE_FAILURE" -eq 0 ] || peer_args+=(--theme-save-failure)
     [ "$FLUTTER_VIEWER_ISOLATION" -eq 0 ] || peer_args+=(--viewer-isolation)
@@ -14183,6 +14187,9 @@ run_flutter_peer_presentation() {
         peer_cycles=1
     elif [ "$FLUTTER_THEME_APPEARANCE" -eq 1 ]; then
         peer_scenario=theme-appearance
+        peer_cycles=1
+    elif [ "$FLUTTER_LANGUAGE_RESTART" -eq 1 ]; then
+        peer_scenario=language-restart
         peer_cycles=1
     elif [ "$FLUTTER_THEME_RESTART" -eq 1 ]; then
         peer_scenario=theme-restart

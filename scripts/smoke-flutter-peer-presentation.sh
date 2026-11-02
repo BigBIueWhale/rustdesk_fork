@@ -95,6 +95,7 @@ case "$#:${1:-}" in
         --session-close) PEER_SCENARIO=session-close ;;
         --background-close) PEER_SCENARIO=background-close ;;
         --theme-restart) PEER_SCENARIO=theme-restart ;;
+        --language-restart) PEER_SCENARIO=language-restart ;;
         --theme-appearance) PEER_SCENARIO=theme-appearance ;;
         --theme-save-failure) PEER_SCENARIO=theme-save-failure ;;
         --credential-retry) PEER_SCENARIO=credential-retry ;;
@@ -194,6 +195,11 @@ elif [ "$PEER_SCENARIO" = theme-appearance ]; then
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined theme_appearance=passed system=live explicit=preserved pixels=verified'
+elif [ "$PEER_SCENARIO" = language-restart ]; then
+  RUNTIME_CYCLES=1
+  SERVER_GENERATIONS='1'
+  SERVER_REPLACEMENTS=0
+  VIEWER_RESULT='viewer=joined xvfb=joined language_restart=passed generations=4 choices=fr,pt-pt,en labels=verified storage=verified pixels=fresh'
 elif [ "$PEER_SCENARIO" = theme-restart ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

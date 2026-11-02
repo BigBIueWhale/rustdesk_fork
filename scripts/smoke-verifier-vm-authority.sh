@@ -58,6 +58,7 @@ FLUTTER_IMAGE_QUALITY_SAVE_FAILURE=0
 FLUTTER_AUDIO_MUTE=0
 FLUTTER_SESSION_CLOSE=0
 FLUTTER_THEME_RESTART=0
+FLUTTER_LANGUAGE_RESTART=0
 FLUTTER_THEME_APPEARANCE=0
 FLUTTER_THEME_SAVE_FAILURE=0
 FLUTTER_VIEWER_ISOLATION=0
@@ -687,6 +688,7 @@ case "$#:${1:-}" in
                 --session-close) FLUTTER_SESSION_CLOSE=1 ;;
                 --background-close) FLUTTER_SESSION_CLOSE=2 ;;
                 --theme-restart) FLUTTER_THEME_RESTART=1 ;;
+                --language-restart) FLUTTER_LANGUAGE_RESTART=1 ;;
                 --theme-appearance) FLUTTER_THEME_APPEARANCE=1 ;;
                 --theme-save-failure) FLUTTER_THEME_SAVE_FAILURE=1 ;;
                 --viewer-isolation) FLUTTER_VIEWER_ISOLATION=1 ;;
@@ -759,6 +761,7 @@ case "$#:${1:-}" in
         printf 'Focused native framebuffer check: %s --android-frame-tests\n' "${0##*/}" >&2
         printf 'Active-session quality presets: use --image-quality or --image-quality-save-failure with the source-bound Linux app replay arguments above.\n' >&2
         printf 'Active-session Mute persistence and save refusal: use --audio-mute with the source-bound Linux app replay arguments above.\n' >&2
+        printf 'Native language selection across viewer restarts: use --language-restart with the source-bound Linux app replay arguments above.\n' >&2
         printf 'Focused production X11 enumeration/capture check: %s --x11-display-tests\n' "${0##*/}" >&2
         printf 'Focused macOS cursor adapter compilation: %s --apple-conform --cursor-compile\n' "${0##*/}" >&2
         printf 'Focused macOS file-mode compilation: %s --apple-conform --file-mode-compile\n' "${0##*/}" >&2
@@ -852,6 +855,7 @@ readonly FLUTTER_IMAGE_QUALITY
 readonly FLUTTER_IMAGE_QUALITY_SAVE_FAILURE
 readonly FLUTTER_AUDIO_MUTE
 readonly FLUTTER_THEME_RESTART
+readonly FLUTTER_LANGUAGE_RESTART
 readonly FLUTTER_THEME_APPEARANCE
 readonly FLUTTER_THEME_SAVE_FAILURE
 readonly FLUTTER_VIEWER_ISOLATION
@@ -5239,6 +5243,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         [ "$FLUTTER_AUDIO_MUTE" -eq 0 ] || guest_invocation+=' --audio-mute'
         [ "$FLUTTER_SESSION_CLOSE" -ne 2 ] || guest_invocation+=' --background-close'
         [ "$FLUTTER_THEME_RESTART" -eq 0 ] || guest_invocation+=' --theme-restart'
+        [ "$FLUTTER_LANGUAGE_RESTART" -eq 0 ] || guest_invocation+=' --language-restart'
         [ "$FLUTTER_THEME_APPEARANCE" -eq 0 ] || guest_invocation+=' --theme-appearance'
         [ "$FLUTTER_THEME_SAVE_FAILURE" -eq 0 ] || guest_invocation+=' --theme-save-failure'
         [ "$FLUTTER_VIEWER_ISOLATION" -eq 0 ] || guest_invocation+=' --viewer-isolation'
@@ -8696,6 +8701,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     [ "$FLUTTER_SESSION_CLOSE" -ne 1 ] || peer_scenario=session-close
     [ "$FLUTTER_SESSION_CLOSE" -ne 2 ] || peer_scenario=background-close
     [ "$FLUTTER_THEME_RESTART" -eq 0 ] || peer_scenario=theme-restart
+    [ "$FLUTTER_LANGUAGE_RESTART" -eq 0 ] || peer_scenario=language-restart
     [ "$FLUTTER_THEME_APPEARANCE" -eq 0 ] || peer_scenario=theme-appearance
     [ "$FLUTTER_THEME_SAVE_FAILURE" -eq 0 ] || peer_scenario=theme-save-failure
     [ "$FLUTTER_VIEWER_ISOLATION" -eq 0 ] || peer_scenario=viewer-isolation

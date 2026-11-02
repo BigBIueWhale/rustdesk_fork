@@ -130277,3 +130277,41 @@ sealed shell body: inherited descriptors are closed and host IP socket creation
 is kernel-denied throughout the harness process tree. This and the independently
 checked exact owned-process/private/RAM retirement establish the count's cleanup;
 the actual external endpoint changes remain recorded in its capsule.
+
+### 2026-11-02 — user pivot; native language selection and restart
+
+The user asks to pivot. Further Mute audio-output and restart acceptance is
+OPEN/PARKED; retain the completed local-preference evidence above. The intervening
+audio preparation only researched the existing private PulseAudio fixture and
+copied its authenticated 33,561,135-byte candidate to TUF, SHA-256
+`50f18b087a3ecfb69f8221546136101733cc1415cdb42778af70261bf2376115`.
+The copy is a checked 0400 input under the existing candidate root; no audio
+fixture integration, new product change or VM run followed. Independently parked
+audio-worker cancellation and fullscreen work remain parked.
+
+Select the R-S0 language-setting workflow: current production translation lookup
+has component evidence, while full-app choice/application and restart persistence
+remain unproved. This required user workflow takes priority over further catalogue
+cleanup and reuses the accepted app `7e6f6459` and engine `ddb1541d` without a build.
+The source path is `_GeneralState.language`, checked `mainSetLocalOption`, native
+`main_set_local_option`, and the existing multi-window rebuild/language event.
+
+The focused native scenario changes Default/English to French, European Portuguese
+and explicit English over four fully joined viewer generations. Each generation
+must authenticate through the real password prompt, observe the previous language
+in three visible native accessibility labels, make the next choice through the
+actual dropdown, observe translated settings and remote-window controls, and keep
+the same connection with four current frames and bounded resources. After each
+viewer exits, inspect only the saved language field in its private 0600 local
+record; the next fresh process must restore it. No application preference is
+written by the fixture. The Portugal label distinguishes its catalogue from Brazil.
+AT-SPI text establishes exposed UI text, not independent OCR or physical scanout.
+
+Flutter's pinned DropdownButton source focuses the selected menu item and scrolls
+on keyboard focus changes; the controller navigates that actual menu and requires
+the named target before activation. Reference:
+https://github.com/flutter/flutter/blob/3.47.5/packages/flutter/lib/src/material/dropdown.dart.
+Preparation changes the controller and existing replay plumbing only. Shell syntax
+and whitespace checks pass; compilation and native execution are pending. Failure
+feedback, concurrent writers, mobile/other platforms and installed acceptance stay
+OPEN. Do not infer these outcomes from component translation tests.

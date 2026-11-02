@@ -26,7 +26,7 @@ MENU_ACTION=pointer
 [ "$PEER_SCENARIO" != credential-menu-accessible ] || MENU_ACTION=accessible
 readonly MENU_ACTION
 case "$PEER_SCENARIO" in
-  session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|viewer-isolation|viewer-soak|input-latency|input-soak|image-quality|image-quality-save-failure|audio-mute) EXPECTED_RESTARTS=0 ;;
+  session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|language-restart|viewer-isolation|viewer-soak|input-latency|input-soak|image-quality|image-quality-save-failure|audio-mute) EXPECTED_RESTARTS=0 ;;
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
   viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation|credential-forget|credential-menu|credential-menu-accessible) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
@@ -1547,6 +1547,7 @@ PY
     [ "$PEER_SCENARIO" != credential-menu ] || viewer_generations=3
     [ "$PEER_SCENARIO" != credential-menu-accessible ] || viewer_generations=3
     [ "$PEER_SCENARIO" != theme-restart ] || viewer_generations=4
+    [ "$PEER_SCENARIO" != language-restart ] || viewer_generations=4
     if [ "$PEER_SCENARIO" = theme-appearance ]; then
       # Use GLib's real shared file backend, read by the unmodified native engine.
       # An absent portal must leave the engine able to follow GNOME settings.
@@ -1588,6 +1589,9 @@ PY
     if [ "$PEER_SCENARIO" = theme-restart ]; then
       theme_phases=(light dark system restore)
       controller_args+=("--theme-${theme_phases[viewer_generation - 1]}")
+    elif [ "$PEER_SCENARIO" = language-restart ]; then
+      language_phases=(french portugal english restore)
+      controller_args+=("--language-${language_phases[viewer_generation - 1]}")
     elif [ "$viewer_generations" -gt 1 ]; then
       if [ "$viewer_generation" -eq 1 ]; then
         credential_phase=enroll
@@ -1739,13 +1743,19 @@ PY
       emit_runtime_logs VIEWER "$HOME/.local/share/logs"
       exit "$controller_status"
     fi
-    if [ "$PEER_SCENARIO" = theme-restart ] || [ "$viewer_generation" -eq 1 ] || { [ "$ROTATE_CREDENTIAL" -eq 1 ] && [ "$viewer_generation" -eq 2 ]; }; then
+    if [ "$PEER_SCENARIO" = theme-restart ] || [ "$PEER_SCENARIO" = language-restart ] || [ "$viewer_generation" -eq 1 ] || { [ "$ROTATE_CREDENTIAL" -eq 1 ] && [ "$viewer_generation" -eq 2 ]; }; then
     grep -q '^FLUTTER_PEER_PASSWORD_INPUT_OK characters=22 observed_without_value=true$' \
       <<<"$controller_output" || fail 'complete count-only password input verdict is missing'
     grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false$' \
       <<<"$controller_output" || fail 'real password prompt verdict is missing'
     fi
-    if [ "$PEER_SCENARIO" = theme-restart ]; then
+    if [ "$PEER_SCENARIO" = language-restart ]; then
+      language_before=(default fr pt-pt en)
+      language_after=(fr pt-pt en en)
+      grep -Fxq "FLUTTER_PEER_LANGUAGE_PHASE_OK generation=$viewer_generation restored=${language_before[viewer_generation - 1]} selected=${language_after[viewer_generation - 1]} native_labels=true remote_label=true stable_connection=true fresh_pixels=4 resources=bounded" \
+        <<<"$controller_output" || fail 'native language generation result is absent'
+      viewer_result='viewer=joined xvfb=joined language_restart=passed generations=4 choices=fr,pt-pt,en labels=verified storage=verified pixels=fresh'
+    elif [ "$PEER_SCENARIO" = theme-restart ]; then
       theme_changed=true
       [ "$viewer_generation" -ne 4 ] || theme_changed=false
       grep -Fxq "FLUTTER_PEER_THEME_PHASE_OK generation=$viewer_generation restored=true changed=$theme_changed connected_sockets=2 stable_connection=true fresh_pixels=4" \
@@ -1979,13 +1989,15 @@ PY
     if [ "$viewer_generations" -gt 1 ]; then
       if [ "$PEER_SCENARIO" = theme-restart ]; then
         printf 'FLUTTER_PEER_THEME_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
+      elif [ "$PEER_SCENARIO" = language-restart ]; then
+        printf 'FLUTTER_PEER_LANGUAGE_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
       else
         printf 'FLUTTER_PEER_CREDENTIAL_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
       fi
       mv /tmp/viewer.log "/tmp/viewer-generation-$viewer_generation.log"
     fi
     if [ "$PEER_SCENARIO" = theme-restart ] || [ "$PEER_SCENARIO" = theme-appearance ] \
-      || [ "$PEER_SCENARIO" = theme-save-failure ]; then
+      || [ "$PEER_SCENARIO" = theme-save-failure ] || [ "$PEER_SCENARIO" = language-restart ]; then
       python3 - "$viewer_generation" "$PEER_SCENARIO" <<'PY'
 import os, stat, sys, tomllib
 try:
@@ -2000,19 +2012,23 @@ try:
         data = source.read(131073)
         if len(data) != metadata.st_size:
             raise ValueError()
-    if sys.argv[2] == 'theme-save-failure':
+    key, receipt = 'theme', 'THEME'
+    if sys.argv[2] == 'language-restart':
+        key, receipt = 'lang', 'LANGUAGE'
+        expected = ('fr', 'pt-pt', 'en', 'en')[int(sys.argv[1]) - 1]
+    elif sys.argv[2] == 'theme-save-failure':
         expected = 'dark'
     elif sys.argv[2] == 'theme-appearance':
         expected = ''
     else:
         expected = ('light', 'dark', '', '')[int(sys.argv[1]) - 1]
-    value = tomllib.loads(data.decode('utf-8')).get('options', {}).get('theme', '')
+    value = tomllib.loads(data.decode('utf-8')).get('options', {}).get(key, '')
     if value != expected:
         raise ValueError()
-    print('FLUTTER_PEER_THEME_STORAGE_OK generation=' + sys.argv[1]
+    print('FLUTTER_PEER_' + receipt + '_STORAGE_OK generation=' + sys.argv[1]
           + ' selected=' + (expected or 'system') + ' process=joined')
 except (OSError, ValueError, KeyError, TypeError):
-    raise SystemExit('fixture theme storage state differs') from None
+    raise SystemExit('fixture local preference storage state differs') from None
 PY
     fi
     if [ "$PEER_SCENARIO" = audio-mute ]; then

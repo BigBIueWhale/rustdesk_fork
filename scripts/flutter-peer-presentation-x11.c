@@ -3946,6 +3946,108 @@ out:
     return result;
 }
 
+typedef struct {
+    const char *key, *choice, *new_connection, *settings, *language, *light;
+    unsigned int index;
+} LanguageChoice;
+
+static const LanguageChoice language_choices[] = {
+    {"default", "Default", "New connection", "Settings", "Language", "Light", 0U},
+    {"fr", "Français", "Nouvelle connexion", "Paramètres", "Langue", "Clair", 3U},
+    {"pt-pt", "Português (Portugal)", "Nova ligação", "Configurações", "Linguagem", "Claro", 10U},
+    {"en", "English", "New connection", "Settings", "Language", "Light", 1U},
+};
+
+static int observe_language(unsigned int pid, const LanguageChoice *choice,
+                             unsigned int generation, const char *phase) {
+    const char *labels[] = {choice->choice, choice->language, choice->light};
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    while (monotonic_millis() < deadline) {
+        int present = 1;
+        for (unsigned int i = 0U; i < 3U; ++i) {
+            AtspiAccessible *label = NULL;
+            if (query_named_accessible(pid, labels[i], deadline, &label, 0) != 0) return -1;
+            if (label == NULL) present = 0;
+            g_clear_object(&label);
+        }
+        if (present && monotonic_millis() < deadline) {
+            printf("FLUTTER_PEER_LANGUAGE_OBSERVED generation=%u phase=%s selected=%s "
+                   "native_labels=3 visible=true\n", generation, phase, choice->key);
+            fflush(stdout);
+            return 0;
+        }
+        if (sleep_millis(100U) != 0) return -1;
+    }
+    fprintf(stderr, "FLUTTER_PEER_X11_FAIL language generation=%u phase=%s expected=%s\n",
+            generation, phase, choice->key);
+    return -1;
+}
+
+static int exercise_language_restart(Display *display, const ViewerWindow *viewer,
+                                      SourceHistory *history, unsigned int generation,
+                                      const ConnectionIdentity *connection,
+                                      const ProcessResources *baseline) {
+    if (generation < 1U || generation > 4U) return -1;
+    const LanguageChoice *before = &language_choices[generation - 1U];
+    const LanguageChoice *after_choice = generation < 4U ? &language_choices[generation] : before;
+    unsigned int pid = (unsigned int)viewer->pid, connected = 0U, listeners = 0U;
+    ConnectionIdentity after = {{0}, {0}, 0UL};
+    ProcessResources resources = {0};
+    Window main = None;
+    uint64_t fresh = 0U, age = 0U;
+    int result = -1;
+    if (activate_header_control(display, viewer->window, pid, before->new_connection) != 0 ||
+        find_main_window(display, viewer->pid, &main) != 0 ||
+        activate_header_control(display, main, pid, before->settings) != 0 ||
+        observe_language(pid, before, generation, "restored") != 0) goto out;
+    if (generation < 4U) {
+        if (click_main_control(display, main, pid, before->choice) != 0 ||
+            sleep_millis(350U) != 0) goto out;
+        /* DropdownButton focuses its selected item. Move through the actual menu,
+         * then require and activate the named target; an index alone cannot pass. */
+        unsigned int steps = before->index < after_choice->index
+            ? after_choice->index - before->index : before->index - after_choice->index;
+        KeySym direction = before->index < after_choice->index ? XK_Down : XK_Up;
+        for (unsigned int i = 0U; i < steps; ++i)
+            if (fake_key(display, direction) != 0 || sleep_millis(100U) != 0) goto out;
+        if (activate_named_control(pid, after_choice->choice) != 0 ||
+            observe_language(pid, after_choice, generation, "changed") != 0) goto out;
+    }
+    if (close_viewer(display, main) != 0) goto out;
+    main = None;
+    XRaiseWindow(display, viewer->window);
+    XSetInputFocus(display, viewer->window, RevertToParent, CurrentTime);
+    XSync(display, False);
+    if (activate_header_control(display, viewer->window, pid, after_choice->new_connection) != 0 ||
+        find_main_window(display, viewer->pid, &main) != 0 ||
+        close_viewer(display, main) != 0) goto out;
+    main = None;
+    XRaiseWindow(display, viewer->window);
+    XSetInputFocus(display, viewer->window, RevertToParent, CurrentTime);
+    XSync(display, False);
+    if (wait_for_current_frames(display, viewer, history, AUTH_WAIT_MS, 4U, &fresh, &age) != 0 ||
+        session_socket_counts(&connected, &listeners) != 0 || connected != 2U || listeners != 1U ||
+        read_connection_identity(&after) != 0 || !same_connection(connection, &after) ||
+        read_process_resources(viewer->pid, &resources) != 0 ||
+        !resources_are_bounded(baseline, &resources)) goto out;
+    print_resources("language", generation, &resources);
+    printf("FLUTTER_PEER_LANGUAGE_PIXELS generation=%u first_fresh_ms=%llu maximum_age_ms=%llu distinct=4\n",
+           generation, (unsigned long long)fresh, (unsigned long long)age);
+    result = 0;
+out:
+    if (result != 0) {
+        PasswordPromptScan diagnostic;
+        if (scan_password_prompt(pid, &diagnostic, 1) != 0)
+            fputs("FLUTTER_PEER_X11_FAIL language accessibility diagnostic\n", stderr);
+    }
+    if (main != None && close_viewer(display, main) != 0) result = -1;
+    if (result == 0)
+        printf("FLUTTER_PEER_LANGUAGE_PHASE_OK generation=%u restored=%s selected=%s "
+               "native_labels=true remote_label=true stable_connection=true fresh_pixels=4 resources=bounded\n",
+               generation, before->key, after_choice->key);
+    return result;
+}
+
 static int change_system_appearance(GSettings *settings, int dark) {
     const char *value = dark ? "Adwaita-dark" : "Adwaita";
     gchar *before = g_settings_get_string(settings, "gtk-theme");
@@ -5569,6 +5671,10 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--theme-dark") != 0 &&
                                     strcmp(argv[5], "--theme-system") != 0 &&
                                     strcmp(argv[5], "--theme-restore") != 0 &&
+                                    strcmp(argv[5], "--language-french") != 0 &&
+                                    strcmp(argv[5], "--language-portugal") != 0 &&
+                                    strcmp(argv[5], "--language-english") != 0 &&
+                                    strcmp(argv[5], "--language-restore") != 0 &&
                                     strcmp(argv[5], "--theme-appearance") != 0 &&
                                     strcmp(argv[5], "--theme-save-failure") != 0 &&
                                     strcmp(argv[5], "--credential-retry") != 0 &&
@@ -5583,17 +5689,23 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--clipboard-images") != 0 &&
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
-        fputs("Additional full-peer scenarios: --image-quality, --image-quality-save-failure, --audio-mute\n", stderr);
+        fputs("Additional full-peer scenarios: --image-quality, --image-quality-save-failure, --audio-mute, "
+              "--language-french, --language-portugal, --language-english, --language-restore\n", stderr);
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
               "VIEWER_START [--viewer-suspend|--viewer-soak|--input-latency|--input-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
         return 2;
     }
     unsigned int theme_generation = 0U;
+    unsigned int language_generation = 0U;
     if (argc == 6) {
         static const char *phases[] = {"--theme-light", "--theme-dark", "--theme-system", "--theme-restore"};
         for (unsigned int i = 0U; i < 4U; ++i)
             if (strcmp(argv[5], phases[i]) == 0) theme_generation = i + 1U;
+        static const char *language_phases[] = {
+            "--language-french", "--language-portugal", "--language-english", "--language-restore"};
+        for (unsigned int i = 0U; i < 4U; ++i)
+            if (strcmp(argv[5], language_phases[i]) == 0) language_generation = i + 1U;
     }
     int credential_enroll = argc == 6 && strcmp(argv[5], "--credential-enroll") == 0;
     int credential_retry = argc == 6 && strcmp(argv[5], "--credential-retry") == 0;
@@ -5856,6 +5968,16 @@ int main(int argc, char **argv) {
 
     if (argc == 6 && strcmp(argv[5], "--theme-save-failure") == 0) {
         int result = exercise_theme_save_failure(display, &viewer, &history, &current_connection);
+        if (atspi_exit() != 0) result = -1;
+        if (close_viewer(display, viewer.window) != 0) result = -1;
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return result == 0 ? 0 : 1;
+    }
+
+    if (language_generation != 0U) {
+        int result = exercise_language_restart(display, &viewer, &history, language_generation,
+                                               &current_connection, &baseline_resources);
         if (atspi_exit() != 0) result = -1;
         if (close_viewer(display, viewer.window) != 0) result = -1;
         XCloseDisplay(display);

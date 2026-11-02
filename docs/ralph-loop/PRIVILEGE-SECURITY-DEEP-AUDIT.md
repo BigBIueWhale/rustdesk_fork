@@ -130974,3 +130974,15 @@ Wrapper 868058 and QEMU 868686 are absent, four listener deltas are zero, and RA
 `run.x98m5i77` / `29:38586` retires with peak scratch 8,146,808,832 bytes under
 16 GiB. The bounded capsule `view-mode-app-0f5f686e.json` and exact retirement
 receipt retain compilation failure and cleanup; no app cache was published.
+
+Second build `gaZ13EMNJo` at `d2bd9d38` compiles the fresh bindings and passes
+twelve of thirteen focused cases. The cursor-choice widget case sees the old
+checkboxes after one pump. Add separate assertions for the single write and paired
+model publication before observing the next frame; retain the expected true/true
+values. The observed cause remains provisional until that rerun passes. Failure,
+retry after menu disposal, owner replacement, reordered replies and mobile cases
+already pass. Full Rust/app compilation and native replay are still unreached.
+Wrapper 869128 and QEMU 869756 are absent, four listener deltas are zero, and RAM
+`run._tgez9sx` / `29:38627` retires. Peak scratch is 8,234,692,608 bytes under
+16 GiB. `view-mode-app-d2bd9d38.json` and its exact retirement receipt preserve
+the result; no candidate app generation was published.

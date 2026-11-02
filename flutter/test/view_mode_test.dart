@@ -241,9 +241,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Show my cursor'));
     await tester.pump();
+    expect(session.store.writes.length, 1);
+    expect(session.ffiModel.published.last, (true, true));
+    await tester.pump();
     expect(tester.widgetList<CheckboxMenuButton>(find.byType(CheckboxMenuButton))
         .map((b) => b.value), [true, true]);
-    expect(session.store.writes.length, 1);
   });
 
   testWidgets('view mode replacement rejects late failure and old selection', (tester) async {

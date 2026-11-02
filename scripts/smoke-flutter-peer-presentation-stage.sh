@@ -26,7 +26,7 @@ MENU_ACTION=pointer
 [ "$PEER_SCENARIO" != credential-menu-accessible ] || MENU_ACTION=accessible
 readonly MENU_ACTION
 case "$PEER_SCENARIO" in
-  keyboard-restart|keyboard-save-failure|keyboard-translate) EXPECTED_RESTARTS=0 ;;
+  keyboard-restart|keyboard-save-failure|keyboard-translate|keyboard-repeat) EXPECTED_RESTARTS=0 ;;
   session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|language-restart|language-direction|quality-restart|viewer-isolation|viewer-soak|input-latency|input-soak|image-quality|image-quality-save-failure|audio-mute) EXPECTED_RESTARTS=0 ;;
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
   view-only|view-only-save-failure) EXPECTED_RESTARTS=0 ;;
@@ -2011,6 +2011,23 @@ PY
       grep -Fxq 'FLUTTER_PEER_KEYBOARD_SAVE_FAILURE_OK failure=visible previous=map retry=legacy error=cleared permissions=restored cases=33 events=84 released=both pixels=fresh same_window=true stable_connection=true resources=bounded' \
         <<<"$controller_output" || fail 'native keyboard save failure/retry verdict is missing'
       viewer_result='viewer=joined xvfb=joined keyboard_save_failure=passed keyboard_cases=33 previous=preserved retry=durable pixels=fresh'
+    elif [ "$PEER_SCENARIO" = keyboard-repeat ]; then
+      repeat_modes=(map legacy translate map)
+      for phase in 1 2 3 4; do
+        [ "$(grep -Ec "^FLUTTER_PEER_KEYBOARD_MODE_OK sequence=$phase mode=${repeat_modes[phase - 1]} cases=11 events=28 " <<<"$controller_output")" -eq 1 ] \
+          || fail "keyboard repeat phase $phase is missing or duplicated"
+        for sequence in 1 2 3; do
+          [ "$(grep -Ec "^FLUTTER_PEER_REPEAT_CASE_OK phase=$phase sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
+            || fail "keyboard repeat case $phase/$sequence is missing or duplicated"
+        done
+      done
+      for sequence in {1..11}; do
+        [ "$(grep -Ec "^FLUTTER_PEER_KEYBOARD_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 4 ] \
+          || fail "post-repeat keyboard case $sequence is missing or duplicated"
+      done
+      grep -Fxq 'FLUTTER_PEER_KEYBOARD_REPEAT_OK modes=map,legacy,translate,map repeat_cases=12 cases=44 events=112 choice=confirmed counts=matched released=both pixels=fresh same_window=true stable_connection=true resources=bounded' \
+        <<<"$controller_output" || fail 'native held-key repeat verdict is missing'
+      viewer_result='viewer=joined xvfb=joined keyboard_repeat=passed repeat_cases=12 keyboard_cases=44 storage=verified pixels=fresh'
     elif [ "$PEER_SCENARIO" = keyboard-modes ] || [ "$PEER_SCENARIO" = keyboard-translate ]; then
       for sequence in {1..11}; do
         [ "$(grep -Ec "^FLUTTER_PEER_KEYBOARD_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 3 ] \
@@ -2212,6 +2229,7 @@ PY
       || [ "$PEER_SCENARIO" = keyboard-restart ] \
       || [ "$PEER_SCENARIO" = keyboard-save-failure ] \
       || [ "$PEER_SCENARIO" = keyboard-translate ] \
+      || [ "$PEER_SCENARIO" = keyboard-repeat ] \
       || [ "$PEER_SCENARIO" = keyboard-modes ] || [ "$PEER_SCENARIO" = view-only ] \
       || [ "$PEER_SCENARIO" = view-only-save-failure ]; then
       python3 - "$viewer_generation" "$PEER_SCENARIO" <<'PY'
@@ -2231,7 +2249,7 @@ try:
         assert len(data) == metadata.st_size
     expected = ('best', 'low', 'balanced', 'balanced')[int(sys.argv[1]) - 1] if sys.argv[2] == 'quality-restart' else 'low'
     field = 'image_quality'
-    if sys.argv[2] in ('keyboard-modes', 'keyboard-translate'):
+    if sys.argv[2] in ('keyboard-modes', 'keyboard-translate', 'keyboard-repeat'):
         field, expected = 'keyboard_mode', 'map'
     elif sys.argv[2] == 'keyboard-restart':
         field, expected = 'keyboard_mode', ('map', 'translate', 'legacy', 'legacy')[int(sys.argv[1]) - 1]
@@ -2244,7 +2262,7 @@ finally:
     os.close(parent)
 if sys.argv[2] in ('view-only', 'view-only-save-failure'):
     print('FLUTTER_PEER_VIEW_ONLY_STORAGE_OK selected=true process=joined')
-elif sys.argv[2] in ('keyboard-modes', 'keyboard-translate'):
+elif sys.argv[2] in ('keyboard-modes', 'keyboard-translate', 'keyboard-repeat'):
     print('FLUTTER_PEER_KEYBOARD_MODE_STORAGE_OK selected=map process=joined')
 elif sys.argv[2] == 'keyboard-restart':
     print('FLUTTER_PEER_KEYBOARD_MODE_STORAGE_OK generation=' + sys.argv[1] + ' selected=' + expected + ' process=joined')

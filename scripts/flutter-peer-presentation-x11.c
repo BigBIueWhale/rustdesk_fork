@@ -10,8 +10,11 @@
  */
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
+#include <X11/XKBlib.h>
+#include <X11/Xproto.h>
 #include <X11/Xutil.h>
 #include <X11/extensions/XTest.h>
+#include <X11/extensions/record.h>
 #include <X11/extensions/XInput2.h>
 #include <X11/keysym.h>
 #include <atspi/atspi.h>
@@ -3236,6 +3239,205 @@ out:
     return result;
 }
 
+typedef struct {
+    KeyCode key;
+    XID client;
+    unsigned int presses, releases;
+    int started, ended, held, failed;
+} RepeatInputRecord;
+
+static void record_repeat_input(XPointer closure, XRecordInterceptData *data) {
+    RepeatInputRecord *record = (RepeatInputRecord *)closure;
+    if (data->category == XRecordStartOfData) {
+        if (record->started++) record->failed = 1;
+    } else if (data->category == XRecordEndOfData) {
+        if (record->ended++) record->failed = 1;
+    } else if (data->category == XRecordFromServer) {
+        xEvent event;
+        _Static_assert(sizeof(event) == 32U, "core event wire size differs");
+        if (!record->started || record->ended || data->client_swapped ||
+            data->id_base == 0U || data->data == NULL || data->data_len != 8U) {
+            record->failed = 1;
+        } else {
+            memcpy(&event, data->data, sizeof(event));
+            int press = event.u.u.type == KeyPress;
+            if (record->client == 0U) record->client = data->id_base;
+            if (data->id_base != record->client || event.u.u.detail != record->key ||
+                (event.u.u.type != KeyPress && event.u.u.type != KeyRelease) ||
+                (event.u.keyButtonPointer.state & 255U) != 0U || record->held == press ||
+                record->presses + record->releases >= 256U) {
+                record->failed = 1;
+            } else {
+                record->held = press;
+                if (press) ++record->presses;
+                else ++record->releases;
+            }
+        }
+    } else {
+        record->failed = 1;
+    }
+    XRecordFreeData(data);
+}
+
+static int exercise_keyboard_repeat(Display *source, Display *display,
+                                     const ViewerWindow *viewer,
+                                     const ConnectionIdentity *connection,
+                                     const ProcessResources *baseline, unsigned int phase) {
+    static const struct { const char *name; KeySym symbol; const char *text; } cases[] = {
+        {"letter", XK_a, "a"}, {"backspace", XK_BackSpace, "\b"}, {"left", XK_Left, ""},
+    };
+    unsigned int delay = 0U, interval = 0U, sequence = 0U;
+    int major = 0, minor = 0, result = -1, local_held = 0, recording = 0;
+    Display *data = NULL;
+    XRecordContext context = 0;
+    XRecordRange *range = NULL;
+    RepeatInputRecord record = {0};
+    Window root = RootWindow(source, DefaultScreen(source));
+    XKeyboardState controls;
+    if (!XRecordQueryVersion(display, &major, &minor) || major != 1 ||
+        !XkbGetAutoRepeatRate(display, XkbUseCoreKbd, &delay, &interval) ||
+        delay < 50U || delay > 2000U || interval < 10U || interval > 250U ||
+        !XGetKeyboardControl(display, &controls) || controls.global_auto_repeat != AutoRepeatModeOn)
+        goto out;
+    XSelectInput(source, root, KeyPressMask | KeyReleaseMask);
+    XSetInputFocus(source, root, RevertToParent, CurrentTime);
+    XSync(source, False);
+    if (return_focus_with_pointer(display, viewer) != 0 ||
+        !keyboard_is_released(source) || !keyboard_is_released(display)) goto out;
+    for (; sequence < sizeof(cases) / sizeof(cases[0]); ++sequence) {
+        record = (RepeatInputRecord){.key = XKeysymToKeycode(display, cases[sequence].symbol)};
+        if (record.key < 8U ||
+            !((unsigned char)controls.auto_repeats[record.key / 8U] & (1U << (record.key % 8U))))
+            goto out;
+        range = XRecordAllocRange();
+        data = XOpenDisplay(DisplayString(display));
+        if (range == NULL || data == NULL) goto out;
+        range->delivered_events.first = KeyPress;
+        range->delivered_events.last = KeyRelease;
+        XRecordClientSpec clients = XRecordAllClients;
+        context = XRecordCreateContext(display, 0, &clients, 1, &range, 1);
+        XFree(range);
+        range = NULL;
+        if (context == 0U) goto out;
+        XSync(display, False);
+        if (!XRecordEnableContextAsync(data, context, record_repeat_input, (XPointer)&record)) goto out;
+        recording = 1;
+        if (record.started != 1 || record.failed) goto out;
+        unsigned int presses = 0U, releases = 0U, events = 0U, code = 0U;
+        int remote_held = 0;
+        uint64_t start = monotonic_millis(), released_at = 0U;
+        uint64_t hold_ms = delay + 6U * interval + 100U;
+        if (!XTestFakeKeyEvent(display, record.key, True, CurrentTime)) goto out;
+        local_held = 1;
+        XSync(display, False);
+        while (monotonic_millis() - start < hold_ms + 2000U) {
+            uint64_t now = monotonic_millis();
+            if (local_held && !keyboard_matches(display, &record.key, 1U)) goto out;
+            if (local_held && now - start >= hold_ms) {
+                if (presses < 5U) goto out;
+                if (!XTestFakeKeyEvent(display, record.key, False, CurrentTime)) goto out;
+                local_held = 0;
+                XSync(display, False);
+                released_at = monotonic_millis();
+            }
+            XRecordProcessReplies(data);
+            if (record.failed || record.ended) goto out;
+            while (XPending(source) != 0) {
+                XEvent event;
+                if (++events > 512U) goto out;
+                XNextEvent(source, &event);
+                if (event.type == MappingNotify) {
+                    XRefreshKeyboardMapping(&event.xmapping);
+                    continue;
+                }
+                if (event.type != KeyPress && event.type != KeyRelease) continue;
+                KeySym symbol = NoSymbol;
+                char text[16];
+                int size = XLookupString(&event.xkey, text, sizeof(text), &symbol, NULL);
+                int press = event.type == KeyPress;
+                if (code == 0U) code = event.xkey.keycode;
+                printf("FLUTTER_PEER_REPEAT_EVENT phase=%u case=%u event=%u type=%d code=%u "
+                       "symbol=%lu state=%u bytes=%d synthetic=%d\n", phase, sequence + 1U,
+                       presses + releases + 1U, event.type, event.xkey.keycode,
+                       (unsigned long)symbol, event.xkey.state, size, event.xkey.send_event);
+                if (event.xkey.window != root || event.xkey.send_event || code < 8U || code > 255U ||
+                    event.xkey.keycode != code || remote_held == press ||
+                    symbol != cases[sequence].symbol || (event.xkey.state & 255U) != 0U ||
+                    size < 0 || (size_t)size != strlen(cases[sequence].text) ||
+                    memcmp(text, cases[sequence].text, (size_t)size) != 0 ||
+                    (released_at != 0U && monotonic_millis() - released_at >= 500U)) goto out;
+                remote_held = press;
+                if (press) ++presses;
+                else ++releases;
+            }
+            if (released_at != 0U && monotonic_millis() - released_at >= 1000U) break;
+            if (sleep_millis(5U) != 0) goto out;
+        }
+        if (!XRecordDisableContext(display, context)) goto out;
+        XSync(display, False);
+        uint64_t drain = monotonic_millis() + 1000U;
+        while (!record.ended && monotonic_millis() < drain) {
+            XRecordProcessReplies(data);
+            if (!record.ended && sleep_millis(5U) != 0) goto out;
+        }
+        if (record.failed || record.ended != 1 || record.held || remote_held || local_held ||
+            record.presses < 5U || record.presses > 64U || record.presses != record.releases ||
+            presses != record.presses || releases != presses || released_at == 0U ||
+            monotonic_millis() - start >= hold_ms + 2000U) goto out;
+        recording = 0;
+        if (!XRecordFreeContext(display, context)) goto out;
+        context = 0;
+        XCloseDisplay(data);
+        data = NULL;
+        Window focus;
+        int revert;
+        ConnectionIdentity after = {{0}, {0}, 0UL};
+        ProcessResources resources;
+        ViewerWindow current = {0};
+        XGetInputFocus(source, &focus, &revert);
+        if (focus != root || !keyboard_is_released(source) || !keyboard_is_released(display) ||
+            find_viewer_window(display, viewer->pid, &current) != 0 ||
+            current.window != viewer->window || read_connection_identity(&after) != 0 ||
+            !same_connection(connection, &after) ||
+            read_process_resources(viewer->pid, &resources) != 0 ||
+            !resources_are_bounded(baseline, &resources)) goto out;
+        print_resources("key-repeat", sequence + 1U, &resources);
+        printf("FLUTTER_PEER_REPEAT_CASE_OK phase=%u sequence=%u name=%s viewer_presses=%u "
+               "remote_pairs=%u hold_ms=%llu delay_ms=%u interval_ms=%u drain_limit_ms=500 "
+               "quiet_ms=500 exact_text=true released=both stable_connection=true\n",
+               phase, sequence + 1U, cases[sequence].name, record.presses, presses,
+               (unsigned long long)hold_ms, delay, interval);
+        fflush(stdout);
+    }
+    result = 0;
+out:
+    if (local_held && !XTestFakeKeyEvent(display, record.key, False, CurrentTime)) result = -1;
+    XSync(display, False);
+    if (context != 0U) {
+        if (recording) {
+            if (!XRecordDisableContext(display, context)) result = -1;
+            XSync(display, False);
+            uint64_t deadline = monotonic_millis() + 1000U;
+            while (!record.ended && monotonic_millis() < deadline) {
+                XRecordProcessReplies(data);
+                if (!record.ended && sleep_millis(5U) != 0) break;
+            }
+            if (record.ended != 1) result = -1;
+        }
+        if (!XRecordFreeContext(display, context)) result = -1;
+        XSync(display, False);
+    }
+    if (range != NULL) XFree(range);
+    if (data != NULL) XCloseDisplay(data);
+    XSelectInput(source, root, NoEventMask);
+    XSync(source, False);
+    if (result != 0)
+        fprintf(stderr, "FLUTTER_PEER_X11_FAIL key-repeat phase=%u case=%u viewer_presses=%u "
+                "viewer_releases=%u record_failed=%d\n", phase, sequence + 1U,
+                record.presses, record.releases, record.failed);
+    return result;
+}
+
 static int find_main_window(Display *display, unsigned long expected_pid, Window *window) {
     Window root = RootWindow(display, DefaultScreen(display));
     Atom net_name = XInternAtom(display, "_NET_WM_NAME", False);
@@ -5440,14 +5642,15 @@ static int exercise_keyboard_modes(Display *source, Display *display,
                                     const ViewerWindow *viewer, SourceHistory *history,
                                     const ConnectionIdentity *connection,
                                     const ProcessResources *baseline, int save_failure,
-                                    int translate) {
-    const char *names[] = {"Map mode", translate ? "Translate mode beta" : "Legacy mode", "Map mode"};
-    const char *modes[] = {"map", translate ? "translate" : "legacy", "map"};
-    int held_transitions = !save_failure && !translate;
+                                    int translate, int repeat) {
+    const char *names[] = {"Map mode", translate ? "Translate mode beta" : "Legacy mode",
+                          repeat ? "Translate mode beta" : "Map mode", "Map mode"};
+    const char *modes[] = {"map", translate ? "translate" : "legacy", repeat ? "translate" : "map", "map"};
+    int held_transitions = !save_failure && !translate && !repeat;
     unsigned int pid = (unsigned int)viewer->pid, sequence = 0U;
     KeyboardModeHold hold = {0};
     const char *phase = "select";
-    for (; sequence < (save_failure ? 2U : 3U); ++sequence) {
+    for (; sequence < (repeat ? 4U : save_failure ? 2U : 3U); ++sequence) {
         uint64_t fresh = 0U, age = 0U;
         phase = "save-refusal";
         if (save_failure && sequence == 1U &&
@@ -5479,6 +5682,10 @@ static int exercise_keyboard_modes(Display *source, Display *display,
         phase = "native-keys";
         printf("FLUTTER_PEER_KEYBOARD_MODE_BEGIN sequence=%u mode=%s\n", sequence + 1U, modes[sequence]);
         fflush(stdout);
+        phase = "key-repeat";
+        if (repeat && exercise_keyboard_repeat(source, display, viewer, connection, baseline,
+                                               sequence + 1U) != 0) goto failed;
+        phase = "native-keys";
         if (exercise_keyboard_input(source, display, viewer, connection, baseline) != 0) goto failed;
         phase = "compound-shortcuts";
         if (translate && sequence == 1U &&
@@ -6604,6 +6811,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--keyboard-modes") != 0 &&
                                     strcmp(argv[5], "--keyboard-save-failure") != 0 &&
                                     strcmp(argv[5], "--keyboard-translate") != 0 &&
+                                    strcmp(argv[5], "--keyboard-repeat") != 0 &&
                                     strcmp(argv[5], "--keyboard-restart-translate") != 0 &&
                                     strcmp(argv[5], "--keyboard-legacy") != 0 &&
                                     strcmp(argv[5], "--keyboard-map") != 0 &&
@@ -6649,7 +6857,7 @@ int main(int argc, char **argv) {
         fputs("Additional full-peer scenarios: --image-quality, --image-quality-save-failure, --audio-mute, "
               "--keyboard-legacy, --keyboard-map, --keyboard-restart-translate, --keyboard-restore, "
               "--keyboard-save-failure, "
-              "--keyboard-translate, "
+              "--keyboard-translate, --keyboard-repeat, "
               "--quality-best, --quality-low, --quality-balanced, --quality-restore, "
               "--language-french, --language-portugal, --language-english, --language-restore, "
               "--language-direction\n", stderr);
@@ -7039,7 +7247,8 @@ int main(int argc, char **argv) {
         int keyboard_input = strcmp(argv[5], "--keyboard-input") == 0;
         int keyboard_save_failure = strcmp(argv[5], "--keyboard-save-failure") == 0;
         int keyboard_translate = strcmp(argv[5], "--keyboard-translate") == 0;
-        int keyboard_modes = keyboard_save_failure || keyboard_translate || strcmp(argv[5], "--keyboard-modes") == 0;
+        int keyboard_repeat = strcmp(argv[5], "--keyboard-repeat") == 0;
+        int keyboard_modes = keyboard_save_failure || keyboard_translate || keyboard_repeat || strcmp(argv[5], "--keyboard-modes") == 0;
         int view_only_save_failure = strcmp(argv[5], "--view-only-save-failure") == 0;
         int view_only = view_only_save_failure || strcmp(argv[5], "--view-only") == 0;
         int mouse_input = strcmp(argv[5], "--mouse-input") == 0;
@@ -7058,7 +7267,7 @@ int main(int argc, char **argv) {
             view_only_save_failure) :
             keyboard_modes ? exercise_keyboard_modes(
             source, display, &viewer, &history, &current_connection, &baseline_resources,
-            keyboard_save_failure, keyboard_translate) :
+            keyboard_save_failure, keyboard_translate, keyboard_repeat) :
             background_close ? exercise_background_close(
             source, display, &viewer, &history, argv[4], &current_connection) :
             image_quality ? exercise_image_quality(
@@ -7124,6 +7333,10 @@ int main(int argc, char **argv) {
         } else if (keyboard_save_failure) {
             puts("FLUTTER_PEER_KEYBOARD_SAVE_FAILURE_OK failure=visible previous=map retry=legacy "
                  "error=cleared permissions=restored cases=33 events=84 released=both "
+                 "pixels=fresh same_window=true stable_connection=true resources=bounded");
+        } else if (keyboard_repeat) {
+            puts("FLUTTER_PEER_KEYBOARD_REPEAT_OK modes=map,legacy,translate,map repeat_cases=12 "
+                 "cases=44 events=112 choice=confirmed counts=matched released=both "
                  "pixels=fresh same_window=true stable_connection=true resources=bounded");
         } else if (keyboard_translate) {
             puts("FLUTTER_PEER_KEYBOARD_TRANSLATE_OK modes=map,translate,map cases=33 events=84 "

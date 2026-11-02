@@ -132153,3 +132153,44 @@ Both hosts retain twelve verified records, including
 All owned processes, private state and RAM retire with three zero listener deltas.
 Orderly Translate restart acceptance is complete at this Linux checkpoint;
 the full objective and its remaining required evidence stay open.
+
+### 2026-11-03 — native held-key repeat and release
+
+Previous goal turn: progress; orderly Map/Translate/Legacy restoration passed
+on retained app `c6aed851`. Continue R-S0 basic input correctness with held-key
+repeat before another preference variation. Existing native cases press and
+release individual keys; they do not establish repeated delivery while a key
+stays down or cessation after release. Linux dispatch converts non-modifier
+downs into checked complete presses (`src/server/connection.rs:9378-9398`),
+while semantic text uses its existing checked injector. The pinned Linux rdev
+grabber reads core KeyPress/KeyRelease events from its keyboard grab. No new
+product defect is assumed.
+
+X.Org's XKB specification describes server-generated repeat pairs and separate
+per-client detectable-repeat semantics:
+https://xorg.freedesktop.org/archive/X11R7.7/doc/libX11/XKB/xkblib.html.
+XRecord's delivered-events stream observes the core events sent to the grab
+client, including repeats; a separate asynchronous data connection drains to
+EndOfData before retirement:
+https://xorg.freedesktop.org/archive/current/doc/libXtst/recordlib.html.
+Use that independent viewer-event count, not an assumed repeat rate or a raw
+device-event count, as the native receiver's exact expected count. Require one
+recorded client, correct key/state and balanced viewer pairs. Existing private
+XKB repeat settings are read and admitted within explicit bounds, never changed.
+
+The new closed `--keyboard-repeat` scenario selects Map/Legacy/Translate/Map.
+Each phase holds letter a, Backspace and Left once, for the admitted repeat delay
+plus six intervals and 100 ms. At least five correct native presses must arrive
+while the viewer key is still held. After release, at most 500 ms is allowed for
+drain, followed by 500 ms with no key event; viewer and receiver counts must match
+exactly with balanced native pairs and both keymaps clear. Ordinary typing then
+runs unchanged (44 cases / 112 events across four phases), with fresh frames,
+stable window/connection, resource bounds and joined saved Map state. Twelve
+hold cases use bounded event counts and cleanup releases only the fixture's key.
+The recording context and data connection remain owned through drain/close.
+
+CTE/TUF start clean at `b6de6cf0`, no owned job, about 45 GiB available memory.
+Reuse app `c6aed851`, pinned engine and provider; compile only the three drivers
+twice in the admitted zero-NIC bounded-RAM VM. This is equal US X11 synthetic
+held input, not physical-device, other-layout, other-platform or installed
+acceptance. Independent parks remain in force.

@@ -130920,3 +130920,15 @@ the separate viewer log and retirement receipt retain the failure and cleanup.
 The ledger records the reproduced defect and unresolved initial-input observation;
 fresh isolated token counting follows. Language integration and all other user
 parks remain; the View mode correction is the active implementation target.
+
+TUF count `ePBsXJVgjp` at `21f48ce2` passes seven controls and the whole-input
+round trip: **393,858 tokens / 1,802,770 bytes**, SHA-256
+`db02d9bfb3fff8c355ca8941f11fc90f1428128e63e65baf978528c8e24e173f`.
+Wrapper 865971 and QEMU 867389 are absent; three listener deltas are zero and RAM
+`run._z_h35ft` / `29:38558` plus private state retire. Capsule
+`view-only-save-ledger-21f48ce2.json` is 5,016 bytes, SHA-256
+`45321a7b95d407018558c224d50939c6ceedb7208cf0a8b65c187cf66eba1f7c`.
+Both hosts retain all three replay capsules, separate viewer logs, exact-retirement
+receipts, raw run evidence, and the count capsule/raw records. No owned run remains
+active. The product correction and retry acceptance remain open; this turn reaches
+a native reproduction checkpoint. The full release goal remains incomplete.

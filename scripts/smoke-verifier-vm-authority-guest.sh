@@ -286,6 +286,7 @@ case "$#:${8:-}" in
                 --keyboard-input) FLUTTER_KEYBOARD_INPUT=1 ;;
                 --keyboard-retirement) FLUTTER_KEYBOARD_INPUT=2 ;;
                 --keyboard-modes) FLUTTER_KEYBOARD_INPUT=3 ;;
+                --view-only) FLUTTER_KEYBOARD_INPUT=4 ;;
                 --mouse-input) FLUTTER_MOUSE_INPUT=1 ;;
                 --mouse-retirement) FLUTTER_MOUSE_INPUT=2 ;;
                 --screenshot-save-unavailable) FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE=1 ;;
@@ -14136,6 +14137,7 @@ run_flutter_peer_presentation() {
         1) peer_args+=(--keyboard-input) ;;
         2) peer_args+=(--keyboard-retirement) ;;
         3) peer_args+=(--keyboard-modes) ;;
+        4) peer_args+=(--view-only) ;;
     esac
     local -a impairment_supervisor=()
     if [ "$FLUTTER_NETWORK_IMPAIRMENT" -ne 0 ]; then
@@ -14252,6 +14254,9 @@ run_flutter_peer_presentation() {
         peer_cycles=1
     elif [ "$FLUTTER_MOUSE_INPUT" -eq 1 ]; then
         peer_scenario=mouse-input
+        peer_cycles=1
+    elif [ "$FLUTTER_KEYBOARD_INPUT" -eq 4 ]; then
+        peer_scenario=view-only
         peer_cycles=1
     elif [ "$FLUTTER_KEYBOARD_INPUT" -eq 3 ]; then
         peer_scenario=keyboard-modes

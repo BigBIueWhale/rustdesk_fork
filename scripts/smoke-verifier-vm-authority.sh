@@ -680,6 +680,7 @@ case "$#:${1:-}" in
                 --keyboard-input) FLUTTER_KEYBOARD_INPUT=1 ;;
                 --keyboard-retirement) FLUTTER_KEYBOARD_INPUT=2 ;;
                 --keyboard-modes) FLUTTER_KEYBOARD_INPUT=3 ;;
+                --view-only) FLUTTER_KEYBOARD_INPUT=4 ;;
                 --mouse-input) FLUTTER_MOUSE_INPUT=1 ;;
                 --mouse-retirement) FLUTTER_MOUSE_INPUT=2 ;;
                 --screenshot-save-unavailable) FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE=1 ;;
@@ -753,7 +754,7 @@ case "$#:${1:-}" in
         printf 'Original offline engine setup: %s --linux-flutter-engine-prepare\n' "${0##*/}" >&2
         printf 'Explicit offline engine integration build: %s --linux-flutter-engine-build\n' "${0##*/}" >&2
         printf 'Source-bound Linux app producer: %s --linux-flutter-app-build --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256\n' "${0##*/}" >&2
-        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend|--viewer-isolation|--viewer-soak|--input-latency|--input-soak|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-restart|--theme-appearance|--theme-save-failure|--credential-retry|--credential-restart|--credential-rotation|--credential-forget|--credential-menu|--credential-menu-accessible]\n' "${0##*/}" >&2
+        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend|--viewer-isolation|--viewer-soak|--input-latency|--input-soak|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-restart|--theme-appearance|--theme-save-failure|--credential-retry|--credential-restart|--credential-rotation|--credential-forget|--credential-menu|--credential-menu-accessible]\n' "${0##*/}" >&2
         printf 'Focused native Docker log-lifetime check: %s --android-runtime-log-tests\n' "${0##*/}" >&2
         printf 'Windows service-result file checks: %s --windows-service-result-tests\n' "${0##*/}" >&2
         printf 'Focused archive transaction fixtures: %s --fixed-archive-tests\n' "${0##*/}" >&2
@@ -5276,6 +5277,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
             1) guest_invocation+=' --keyboard-input' ;;
             2) guest_invocation+=' --keyboard-retirement' ;;
             3) guest_invocation+=' --keyboard-modes' ;;
+            4) guest_invocation+=' --view-only' ;;
         esac
         case "$FLUTTER_NETWORK_IMPAIRMENT" in
             1) guest_invocation+=' --network-impairment' ;;
@@ -8738,6 +8740,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         1) peer_scenario=keyboard-input ;;
         2) peer_scenario=keyboard-retirement ;;
         3) peer_scenario=keyboard-modes ;;
+        4) peer_scenario=view-only ;;
     esac
     case "$FLUTTER_NETWORK_IMPAIRMENT" in
         1) peer_scenario=network-impairment ;;

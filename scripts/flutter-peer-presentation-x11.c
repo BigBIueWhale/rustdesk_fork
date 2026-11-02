@@ -5072,6 +5072,159 @@ failed:
     return -1;
 }
 
+static int view_only_menu_state(unsigned int pid, int expected) {
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    unsigned int stable = 0U;
+    while (monotonic_millis() < deadline && stable < 3U) {
+        AtspiAccessible *item = NULL;
+        AtspiStateSet *states = NULL;
+        if (query_named_accessible(pid, "View mode", deadline, &item, 0) != 0) return -1;
+        if (item != NULL) {
+            atspi_accessible_clear_cache(item);
+            states = atspi_accessible_get_state_set(item);
+        }
+        int matches = states != NULL &&
+            atspi_state_set_contains(states, ATSPI_STATE_CHECKABLE) &&
+            atspi_state_set_contains(states, ATSPI_STATE_ENABLED) &&
+            atspi_state_set_contains(states, ATSPI_STATE_SENSITIVE) &&
+            atspi_state_set_contains(states, ATSPI_STATE_CHECKED) == expected;
+        g_clear_object(&states);
+        g_clear_object(&item);
+        stable = matches ? stable + 1U : 0U;
+        if (sleep_millis(100U) != 0) return -1;
+    }
+    return stable == 3U && monotonic_millis() < deadline ? 0 : -1;
+}
+
+static int observe_view_only_input(Display *source, Display *display,
+                                   const ViewerWindow *viewer, unsigned int sequence,
+                                   int blocked) {
+    static const char *names[] = {"key", "click", "wheel"};
+    Window root = RootWindow(source, DefaultScreen(source)), focus;
+    KeyCode key = XKeysymToKeycode(display, XK_a);
+    int revert, result = -1;
+    if (key == 0U || return_focus_with_pointer(display, viewer) != 0 ||
+        sleep_millis(250U) != 0 || !keyboard_is_released(source) ||
+        !keyboard_is_released(display) || !mouse_buttons_match(source, 0U) ||
+        !mouse_buttons_match(display, 0U)) return -1;
+    XSetInputFocus(source, root, RevertToParent, CurrentTime);
+    XSelectInput(source, root, KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask);
+    XSync(source, False);
+    for (unsigned int i = 0U; i < 3U; ++i) {
+        unsigned int button = i == 1U ? 1U : 4U, received = 0U, events = 0U;
+        uint64_t start = monotonic_millis(), complete = 0U;
+        int pressed = i == 0U ? XTestFakeKeyEvent(display, key, True, CurrentTime) :
+                               XTestFakeButtonEvent(display, button, True, CurrentTime);
+        XSync(display, False);
+        int held = i == 0U ? keyboard_matches(display, &key, 1U) :
+                            mouse_buttons_match(display, button);
+        int released = i == 0U ? XTestFakeKeyEvent(display, key, False, CurrentTime) :
+                                XTestFakeButtonEvent(display, button, False, CurrentTime);
+        XSync(display, False);
+        if (!pressed || !held || !released) goto finished;
+        /* Each negative stimulus has a full one-second native observation window. */
+        while (monotonic_millis() - start < (blocked ? 1000U : 5000U)) {
+            while (XPending(source) != 0) {
+                XEvent event;
+                if (++events > 128U) goto finished;
+                XNextEvent(source, &event);
+                if (event.type == MappingNotify) {
+                    XRefreshKeyboardMapping(&event.xmapping);
+                    continue;
+                }
+                if (event.type != KeyPress && event.type != KeyRelease &&
+                    event.type != ButtonPress && event.type != ButtonRelease) continue;
+                printf("FLUTTER_PEER_VIEW_ONLY_EVENT sequence=%u input=%s event=%u type=%d\n",
+                       sequence, names[i], received + 1U, event.type);
+                if (blocked || received >= 2U) goto finished;
+                if (i == 0U) {
+                    KeySym symbol = NoSymbol;
+                    char text[16];
+                    if (event.type != (received == 0U ? KeyPress : KeyRelease) ||
+                        event.xkey.window != root || event.xkey.send_event ||
+                        (event.xkey.state & 255U) != 0U ||
+                        XLookupString(&event.xkey, text, sizeof(text), &symbol, NULL) != 1 ||
+                        symbol != XK_a || text[0] != 'a') goto finished;
+                } else if (event.type != (received == 0U ? ButtonPress : ButtonRelease) ||
+                           event.xbutton.window != root || event.xbutton.send_event ||
+                           event.xbutton.button != button ||
+                           event.xbutton.state != (received == 0U ? 0U : 1U << (button + 7U))) {
+                    goto finished;
+                }
+                if (++received == 2U) complete = monotonic_millis();
+            }
+            if (!blocked && complete != 0U && monotonic_millis() - complete >= 100U) break;
+            if (sleep_millis(10U) != 0) goto finished;
+        }
+        XGetInputFocus(source, &focus, &revert);
+        if (focus != root || received != (blocked ? 0U : 2U) ||
+            (!blocked && (complete == 0U || monotonic_millis() - start >= 5000U)) ||
+            !keyboard_is_released(source) || !keyboard_is_released(display) ||
+            !mouse_buttons_match(source, 0U) || !mouse_buttons_match(display, 0U)) goto finished;
+        XGetInputFocus(display, &focus, &revert);
+        if (focus != viewer->window) goto finished;
+        printf("FLUTTER_PEER_VIEW_ONLY_INPUT_OK sequence=%u input=%s view_only=%d events=%u "
+               "elapsed_ms=%llu local_stimulus=confirmed released=both\n", sequence, names[i],
+               blocked, received, (unsigned long long)(monotonic_millis() - start));
+        fflush(stdout);
+    }
+    result = 0;
+finished:
+    XSelectInput(source, root, NoEventMask);
+    XSync(source, False);
+    return result;
+}
+
+static int exercise_view_only(Display *source, Display *display,
+                               const ViewerWindow *viewer, SourceHistory *history,
+                               const ConnectionIdentity *connection,
+                               const ProcessResources *baseline) {
+    unsigned int pid = (unsigned int)viewer->pid, sequence = 0U;
+    const char *phase = "menu";
+    for (; sequence < 4U; ++sequence) {
+        int blocked = (int)(sequence % 2U);
+        uint64_t fresh = 0U, age = 0U;
+        ConnectionIdentity after = {{0}, {0}, 0UL};
+        ProcessResources resources;
+        ViewerWindow current = {0};
+        phase = "menu";
+        if (quality_toolbar(pid) != 0 || activate_named_control(pid, "Keyboard settings") != 0)
+            goto failed;
+        if (sequence != 0U) {
+            if (view_only_menu_state(pid, !blocked) != 0 ||
+                activate_named_control(pid, "View mode") != 0 ||
+                wait_keyboard_controls_retired(pid, 0) != 0 ||
+                activate_named_control(pid, "Keyboard settings") != 0) goto failed;
+        }
+        phase = "confirmed-choice";
+        if (view_only_menu_state(pid, blocked) != 0 ||
+            activate_named_control(pid, "Keyboard settings") != 0 ||
+            wait_keyboard_controls_retired(pid, 0) != 0 ||
+            activate_named_control(pid, "Hide toolbar") != 0 ||
+            wait_keyboard_controls_retired(pid, 1) != 0) goto failed;
+        phase = "native-input";
+        if (observe_view_only_input(source, display, viewer, sequence + 1U, blocked) != 0) goto failed;
+        phase = "displayed-freshness";
+        if (wait_for_current_frames(display, viewer, history, RECOVERY_LIMIT_MS, 4U, &fresh, &age) != 0 ||
+            find_viewer_window(display, viewer->pid, &current) != 0 || current.window != viewer->window ||
+            read_connection_identity(&after) != 0 || !same_connection(connection, &after) ||
+            read_process_resources(viewer->pid, &resources) != 0 ||
+            !resources_are_bounded(baseline, &resources)) goto failed;
+        print_resources("view-only", sequence + 1U, &resources);
+        printf("FLUTTER_PEER_VIEW_ONLY_PHASE_OK sequence=%u view_only=%d cases=3 distinct=4 "
+               "maximum_age_ms=%llu stable_connection=true\n", sequence + 1U, blocked,
+               (unsigned long long)age);
+        fflush(stdout);
+    }
+    return 0;
+failed:
+    fprintf(stderr, "FLUTTER_PEER_X11_FAIL view-only sequence=%u phase=%s\n", sequence + 1U, phase);
+    PasswordPromptScan diagnostic;
+    if (scan_password_prompt(pid, &diagnostic, 1) != 0)
+        fputs("FLUTTER_PEER_X11_FAIL view-only accessibility diagnostic\n", stderr);
+    return -1;
+}
+
 static int mute_menu_state(unsigned int pid, int *checked) {
     uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
     while (monotonic_millis() < deadline) {
@@ -5863,6 +6016,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--keyboard-retirement") != 0 &&
                                     strcmp(argv[5], "--keyboard-input") != 0 &&
                                     strcmp(argv[5], "--keyboard-modes") != 0 &&
+                                    strcmp(argv[5], "--view-only") != 0 &&
                                     strcmp(argv[5], "--mouse-input") != 0 &&
                                     strcmp(argv[5], "--mouse-retirement") != 0 &&
                                     strcmp(argv[5], "--screenshot-save-unavailable") != 0 &&
@@ -5904,7 +6058,7 @@ int main(int argc, char **argv) {
               "--language-french, --language-portugal, --language-english, --language-restore, "
               "--language-direction\n", stderr);
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--viewer-soak|--input-latency|--input-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
+              "VIEWER_START [--viewer-suspend|--viewer-soak|--input-latency|--input-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
         return 2;
     }
@@ -6273,6 +6427,7 @@ int main(int argc, char **argv) {
         int keyboard_retirement = strcmp(argv[5], "--keyboard-retirement") == 0;
         int keyboard_input = strcmp(argv[5], "--keyboard-input") == 0;
         int keyboard_modes = strcmp(argv[5], "--keyboard-modes") == 0;
+        int view_only = strcmp(argv[5], "--view-only") == 0;
         int mouse_input = strcmp(argv[5], "--mouse-input") == 0;
         int mouse_retirement = strcmp(argv[5], "--mouse-retirement") == 0;
         int screenshot_unavailable = strcmp(argv[5], "--screenshot-save-unavailable") == 0;
@@ -6284,7 +6439,9 @@ int main(int argc, char **argv) {
         int clipboard_images = strcmp(argv[5], "--clipboard-images") == 0;
         int partial_loss = strcmp(argv[5], "--network-loss") == 0;
         int network = partial_loss || strcmp(argv[5], "--network-impairment") == 0;
-        int suspension_status = keyboard_modes ? exercise_keyboard_modes(
+        int suspension_status = view_only ? exercise_view_only(
+            source, display, &viewer, &history, &current_connection, &baseline_resources) :
+            keyboard_modes ? exercise_keyboard_modes(
             source, display, &viewer, &history, &current_connection, &baseline_resources) :
             background_close ? exercise_background_close(
             source, display, &viewer, &history, argv[4], &current_connection) :
@@ -6344,6 +6501,10 @@ int main(int argc, char **argv) {
         } else if (keyboard_retirement) {
             puts("FLUTTER_PEER_KEYBOARD_RETIREMENT_OK remote_keys=2 local_key=preserved "
                  "viewer_exit=abrupt native_releases=true fixture_keys_released=true");
+        } else if (view_only) {
+            puts("FLUTTER_PEER_VIEW_ONLY_OK phases=4 input_cases=12 choices=confirmed "
+                 "input=blocked-and-restored pixels=fresh same_window=true "
+                 "stable_connection=true resources=bounded");
         } else if (keyboard_modes) {
             puts("FLUTTER_PEER_KEYBOARD_MODES_OK modes=map,legacy,map cases=33 events=84 "
                  "choice=confirmed native_key_events=true exact_text=true released=both "

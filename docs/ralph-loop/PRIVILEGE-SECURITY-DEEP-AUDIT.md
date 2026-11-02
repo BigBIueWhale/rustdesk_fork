@@ -130740,3 +130740,49 @@ GetMaterialApp with production resolver/builder, covering startup, live RTL/LTR
 changes with navigator/element preservation, return to Default and live platform
 changes, catalogue aliases, unavailable framework languages and every advertised
 delegate. Existing ten locale cases remain. Focused isolated verification follows.
+
+### 2026-11-02 — user pivot; native View mode input suppression
+
+The user requests another pivot. Language locale/direction integration is
+OPEN/PARKED, including its committed correction `ee5e3c41` and test correction
+`217f0470`. The first focused run failed to compile because it awaited void
+`Get.reset()`. The corrected fixture compiles; `AFtORHZQRs` passes thirteen of
+sixteen cases. The navigator case cannot find its expected Arabic cancel label;
+the automatic-system and all-delegates cases encounter guarded callback conflicts.
+These failures are retained without further locale edits or execution. No complete
+native correction is accepted. Both attempts have four zero listener deltas,
+absent wrapper/QEMU generations and retired RAM/private workspaces. Capsules
+`locale-component-ee5e3c41.json` and `locale-component-217f0470.json`, their
+retirement receipts and all raw records are retained on CTE and TUF.
+
+Select R-S0's ordinary session View mode workflow. Existing input evidence covers
+working input and component refusals, but does not establish that the live toolbar
+choice actually suppresses and restores native keyboard/click/wheel effects while
+presentation continues. This direct functional check takes priority over further
+component-only input tests and reuses app `7e6f6459` / engine `ddb1541d`. The later
+locale correction is outside this retained app's scope; no current full-app or
+locale acceptance is inferred. All independent parks remain.
+
+Source review follows `_KeyboardMenu.viewMode`, `FfiModel.setViewOnly` and
+`LoginConfigHandler::{toggle_option,get_option_message,get_toggle_option}`.
+The actual choice changes the viewer model and sends the restrictive peer options;
+turning it off restores the saved option values. The new `--view-only` scenario
+observes unchecked/checked/unchecked/checked menu state, three stable observations
+per phase, then injects the same letter, primary click and wheel-up stimuli through
+the viewer X server. It confirms local held state and both keyboards/buttons
+released, requires exact controlled-side press/release events in both active
+phases, and zero such events for a full second per stimulus in each restricted
+phase. Each phase also requires four current displayed counters, the same window
+and authenticated connection, and bounded resources. Normal viewer exit precedes
+checking the private saved true preference. No preference seeding or product edit
+is involved. The native positive phases also validate the otherwise silent sink.
+
+The AT-SPI state contract distinguishes checkable/checked and enabled/sensitive:
+https://gnome.pages.gitlab.gnome.org/at-spi2-core/libatspi/enum.StateType.html.
+XTEST input is observed through the independent source display's real events,
+not inferred from injection success; local held-state checks supplement the
+protocol's synthetic device input:
+https://www.x.org/releases/current/doc/xextproto/xtest.pdf.
+Shell syntax and whitespace checks pass; isolated compilation and execution follow.
+Held-input transitions, save failure, restart restoration, all other input forms,
+mobile/other platforms and installed/release acceptance remain separate gaps.

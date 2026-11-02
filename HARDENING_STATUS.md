@@ -43,21 +43,25 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
-**Session Mute menu corrected; save failure remains OPEN (2026-11-02):** The
-desktop submenu now refreshes its option values when opened (`cce0f30f`). The
-unchanged native scenario previously displayed Mute unchecked after saving true;
-the source-bound `e8737b14` app passes both healthy mute/unmute selections with
-corresponding file changes. The same run then proves kernel EACCES and unchanged
-saved bytes, but the checkbox changes to muted without a visible failure. This
-confirms a separate R-S0 settings-outcome defect; the overall scenario fails.
-`audio-mute-menu-e8737b14.json` binds the native observations, retained row image,
-artifacts and joined cleanup. Only `libapp.so` differs from baseline `0243c010`;
-the Rust library, engine and scenario drivers are byte-identical. Both build and
-replay retire their bounded RAM and owned processes with zero listener deltas;
-duplicate private diagnostics are retired after evidence preservation. A checked,
-result-bearing Mute operation and failure/retry acceptance are next. Audio-output
-effects, restart persistence, installed/mobile/other-platform acceptance remain
-OPEN. Fullscreen/window-state work remains independently parked.
+**Session Mute save/failure/retry verified on Linux (2026-11-02):** The shared
+desktop/mobile control publishes the confirmed native preference and retains one
+pending operation, failure and retry intent for its exact session owner. Explicit
+native Mute get/set operations replace the generic void toggle; successful storage
+precedes cache publication and command submission (`35f9ae68`). The callback remains
+valid after the menu closes, while retired owners and superseded callbacks are
+rejected (`7e6f6459`). All ten focused model/widget cases pass, including an actual
+closing-menu tap, plus three result-parser controls. The unchanged full-peer native
+scenario passes healthy mute/unmute, real EACCES with visible failure, unchanged
+checkbox and exact saved file, then successful retry and stored true after process
+join. Four fresh frames follow on the same connection, with bounded resources.
+`audio-mute-save-accepted-7e6f6459.json` binds that source-bound app, unchanged engine
+and drivers, zero listener deltas and joined VM/RAM cleanup. The audit retains the
+failing baselines and build identities; the earlier submenu refresh correction
+remains (`cce0f30f`). This confirms local preference persistence and UI outcome,
+not remote delivery or audio suppression. Actual audio-output effects, restart
+persistence, installed/mobile/other-platform acceptance remain OPEN; audio effect
+and retained preference on a fresh viewer are the next decisive observations.
+Fullscreen/window-state work remains independently parked.
 
 **Healthy Linux display and input soaks pass (2026-11-02):** Separate complete-peer
 runs finish their fixed baselines and four additional hours. Display records

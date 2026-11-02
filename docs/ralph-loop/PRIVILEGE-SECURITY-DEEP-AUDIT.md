@@ -130213,3 +130213,46 @@ including the Mute comparisons. Theme source, engine and native evidence remain.
 `3dab82b811741e42451b8aa43977a44b306609ea9b8699eb9f1b62d8dd329bbf`;
 its retained manifest still hashes to
 `7332aeead7d26660ae0749adbfd22d2d576db47f73fde5238a9ebd185ba97aa6`.
+
+### 2026-11-02 — native Mute save/failure/retry accepted
+
+Source `7e6f6459` passes all ten Mute model/widget cases, now including the real
+closing MenuAnchor, and three parser controls. The tests finish in 10.442 seconds
+with no skip. TUF build `pKkQkIb0Cq` exits zero and seals app manifest
+`fe1ba681195aa32c492bd0f8c23be3af70bd13cbbd2a0115f7f66026ac7fcda9`
+(75 files / 70,308,685 bytes including the manifest). Only `libapp.so` differs
+from candidate `35f9ae68`; the native library and engine are byte-identical.
+Wrapper 583475 and QEMU 584103 are absent; four listener deltas are zero; private
+state and RAM `run.xif_s2_z` / `29:37539` retire. Peak scratch is 10,698,002,432
+bytes under 16 GiB. Capsule `audio-mute-menu-owner-build-7e6f6459.json` is
+22,255 bytes, SHA-256
+`3cbb7ac8ed882abcd1676586bde5306798f373ff936b038a229d9e98f6b570f1`.
+
+Unchanged native scenario `2ebvc806fp` exits zero on that exact app and retained
+engine `ddb1541d`. The same three driver binaries still reproduce byte-for-byte
+across their independent builds. Two healthy mute/unmute selections change both
+checkbox and saved file. A real kernel EACCES then yields visible Failed, checked
+false and unchanged file identity/bytes/digest. Restoring 0700 permits the same
+desired Mute action to save true. The joined viewer's stored Boolean remains true;
+four distinct fresh frames follow on the same authenticated TCP connection, first
+at 52 ms and maximum sampled age 291 ms. Resource bounds pass. No observer change
+was needed for this successful replay; the prior transient ATSPI query failure
+remains a failed observation, not a passing native save claim.
+
+All owned viewer/server/source/display/container processes join. Outer wrapper
+584874 and QEMU 585931 are absent; all four listener deltas are zero; private
+state and RAM `run.jprc1nq3` / `29:37580` retire. Peak scratch is 3,017,183,232
+bytes under 7 GiB. Capsule `audio-mute-save-accepted-7e6f6459.json` is 7,298 bytes,
+SHA-256 `e299c1f3c7476bdb0de2d94df8e564060021513243a9853776135564d96d01d9`.
+Both build and replay capsules are verified on CTE and TUF. No run remains live.
+
+This closes the demonstrated Linux menu and denied-save UI defects for this
+scenario. It does not establish remote command delivery or actual audio silence,
+restart persistence, concurrent separate viewer writers, crash/durability failures,
+installed artifacts or other native platforms. The full-peer environment has no
+audio playback daemon, so waveform behavior cannot be inferred from these results.
+The next decisive Mute checks are real audio output and a fresh viewer's retained
+preference; the authenticated private PulseAudio candidate and existing native
+null-sink/sine probes are available for that work. Independently parked audio-worker
+cancellation and fullscreen work remain parked. The ledger is updated; its fresh
+isolated count follows this evidence checkpoint.

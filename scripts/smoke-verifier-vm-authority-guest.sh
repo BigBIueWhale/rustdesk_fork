@@ -288,6 +288,7 @@ case "$#:${8:-}" in
                 --keyboard-modes) FLUTTER_KEYBOARD_INPUT=3 ;;
                 --keyboard-restart) FLUTTER_KEYBOARD_INPUT=6 ;;
                 --keyboard-save-failure) FLUTTER_KEYBOARD_INPUT=7 ;;
+                --keyboard-translate) FLUTTER_KEYBOARD_INPUT=8 ;;
                 --view-only) FLUTTER_KEYBOARD_INPUT=4 ;;
                 --view-only-save-failure) FLUTTER_KEYBOARD_INPUT=5 ;;
                 --mouse-input) FLUTTER_MOUSE_INPUT=1 ;;
@@ -14142,6 +14143,7 @@ run_flutter_peer_presentation() {
         3) peer_args+=(--keyboard-modes) ;;
         6) peer_args+=(--keyboard-restart) ;;
         7) peer_args+=(--keyboard-save-failure) ;;
+        8) peer_args+=(--keyboard-translate) ;;
         4) peer_args+=(--view-only) ;;
         5) peer_args+=(--view-only-save-failure) ;;
     esac
@@ -14260,6 +14262,9 @@ run_flutter_peer_presentation() {
         peer_cycles=1
     elif [ "$FLUTTER_MOUSE_INPUT" -eq 1 ]; then
         peer_scenario=mouse-input
+        peer_cycles=1
+    elif [ "$FLUTTER_KEYBOARD_INPUT" -eq 8 ]; then
+        peer_scenario=keyboard-translate
         peer_cycles=1
     elif [ "$FLUTTER_KEYBOARD_INPUT" -eq 7 ]; then
         peer_scenario=keyboard-save-failure

@@ -5289,9 +5289,11 @@ out:
 static int exercise_keyboard_modes(Display *source, Display *display,
                                     const ViewerWindow *viewer, SourceHistory *history,
                                     const ConnectionIdentity *connection,
-                                    const ProcessResources *baseline, int save_failure) {
-    static const char *names[] = {"Map mode", "Legacy mode", "Map mode"};
-    static const char *modes[] = {"map", "legacy", "map"};
+                                    const ProcessResources *baseline, int save_failure,
+                                    int translate) {
+    const char *names[] = {"Map mode", translate ? "Translate mode beta" : "Legacy mode", "Map mode"};
+    const char *modes[] = {"map", translate ? "translate" : "legacy", "map"};
+    int held_transitions = !save_failure && !translate;
     unsigned int pid = (unsigned int)viewer->pid, sequence = 0U;
     KeyboardModeHold hold = {0};
     const char *phase = "select";
@@ -5302,17 +5304,17 @@ static int exercise_keyboard_modes(Display *source, Display *display,
             exercise_keyboard_save_refusal(source, display, viewer, history, connection, baseline) != 0)
             goto failed;
         phase = "held-modifiers";
-        if (!save_failure && sequence != 0U && begin_mode_hold(source, display, viewer, &hold, sequence) != 0)
+        if (held_transitions && sequence != 0U && begin_mode_hold(source, display, viewer, &hold, sequence) != 0)
             goto failed;
         phase = "select";
         if (quality_toolbar(pid) != 0 || activate_named_control(pid, "Keyboard settings") != 0)
             goto failed;
-        if (!save_failure && sequence != 0U &&
+        if (held_transitions && sequence != 0U &&
             checkpoint_mode_hold(source, display, &hold, sequence, "before-choice") != 0) goto failed;
         if (activate_named_control(pid, names[sequence]) != 0) goto failed;
         phase = "menu-retirement";
         if (wait_keyboard_controls_retired(pid, 0) != 0) goto failed;
-        if (!save_failure && sequence != 0U &&
+        if (held_transitions && sequence != 0U &&
             checkpoint_mode_hold(source, display, &hold, sequence, "after-choice") != 0) goto failed;
         phase = "confirmed-choice";
         if (quality_toolbar(pid) != 0 || activate_named_control(pid, "Keyboard settings") != 0 ||
@@ -5322,7 +5324,7 @@ static int exercise_keyboard_modes(Display *source, Display *display,
             activate_named_control(pid, "Hide toolbar") != 0 ||
             wait_keyboard_controls_retired(pid, 1) != 0) goto failed;
         phase = "held-release";
-        if (!save_failure && sequence != 0U && finish_mode_hold(source, display, &hold, sequence) != 0)
+        if (held_transitions && sequence != 0U && finish_mode_hold(source, display, &hold, sequence) != 0)
             goto failed;
         phase = "native-keys";
         printf("FLUTTER_PEER_KEYBOARD_MODE_BEGIN sequence=%u mode=%s\n", sequence + 1U, modes[sequence]);
@@ -6447,6 +6449,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--keyboard-input") != 0 &&
                                     strcmp(argv[5], "--keyboard-modes") != 0 &&
                                     strcmp(argv[5], "--keyboard-save-failure") != 0 &&
+                                    strcmp(argv[5], "--keyboard-translate") != 0 &&
                                     strcmp(argv[5], "--keyboard-legacy") != 0 &&
                                     strcmp(argv[5], "--keyboard-map") != 0 &&
                                     strcmp(argv[5], "--keyboard-restore") != 0 &&
@@ -6491,6 +6494,7 @@ int main(int argc, char **argv) {
         fputs("Additional full-peer scenarios: --image-quality, --image-quality-save-failure, --audio-mute, "
               "--keyboard-legacy, --keyboard-map, --keyboard-restore, "
               "--keyboard-save-failure, "
+              "--keyboard-translate, "
               "--quality-best, --quality-low, --quality-balanced, --quality-restore, "
               "--language-french, --language-portugal, --language-english, --language-restore, "
               "--language-direction\n", stderr);
@@ -6878,7 +6882,8 @@ int main(int argc, char **argv) {
         int keyboard_retirement = strcmp(argv[5], "--keyboard-retirement") == 0;
         int keyboard_input = strcmp(argv[5], "--keyboard-input") == 0;
         int keyboard_save_failure = strcmp(argv[5], "--keyboard-save-failure") == 0;
-        int keyboard_modes = keyboard_save_failure || strcmp(argv[5], "--keyboard-modes") == 0;
+        int keyboard_translate = strcmp(argv[5], "--keyboard-translate") == 0;
+        int keyboard_modes = keyboard_save_failure || keyboard_translate || strcmp(argv[5], "--keyboard-modes") == 0;
         int view_only_save_failure = strcmp(argv[5], "--view-only-save-failure") == 0;
         int view_only = view_only_save_failure || strcmp(argv[5], "--view-only") == 0;
         int mouse_input = strcmp(argv[5], "--mouse-input") == 0;
@@ -6897,7 +6902,7 @@ int main(int argc, char **argv) {
             view_only_save_failure) :
             keyboard_modes ? exercise_keyboard_modes(
             source, display, &viewer, &history, &current_connection, &baseline_resources,
-            keyboard_save_failure) :
+            keyboard_save_failure, keyboard_translate) :
             background_close ? exercise_background_close(
             source, display, &viewer, &history, argv[4], &current_connection) :
             image_quality ? exercise_image_quality(
@@ -6963,6 +6968,10 @@ int main(int argc, char **argv) {
         } else if (keyboard_save_failure) {
             puts("FLUTTER_PEER_KEYBOARD_SAVE_FAILURE_OK failure=visible previous=map retry=legacy "
                  "error=cleared permissions=restored cases=33 events=84 released=both "
+                 "pixels=fresh same_window=true stable_connection=true resources=bounded");
+        } else if (keyboard_translate) {
+            puts("FLUTTER_PEER_KEYBOARD_TRANSLATE_OK modes=map,translate,map cases=33 events=84 "
+                 "choice=confirmed native_key_events=true exact_text=true released=both "
                  "pixels=fresh same_window=true stable_connection=true resources=bounded");
         } else if (keyboard_modes) {
             puts("FLUTTER_PEER_KEYBOARD_MODES_OK modes=map,legacy,map cases=33 events=84 held_transitions=2 "

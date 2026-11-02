@@ -131834,3 +131834,37 @@ The selected permission-denial/retry scenario is complete. Translate mode still
 lacks native character/shortcut evidence; it is an available keyboard acceptance
 check at the next release-priority review. The broader goal remains active and
 all independently parked topics remain parked.
+
+### 2026-11-03 — Translate keyboard-mode native acceptance
+
+Previous goal checkpoint: progress; keyboard-mode permission-denial/retry and
+its ledger count completed. The password-only SSH clarification also verified
+the existing background master and absence of the rejected key/service setup;
+it did not change product acceptance. Continue R-S0 functional acceptance with
+the exposed Translate mode before repeating healthy Map/Legacy observations.
+Translate uses Unicode sequences for printable presses and physical mappings
+otherwise (`src/keyboard.rs::translate_keyboard_mode`); the controlled receiver
+uses the checked text injector or physical-key path. No defect is assumed.
+
+The focused replay selects Map, Translate, then Map through the actual toolbar,
+confirms exclusive choices and runs the existing eleven native key cases in
+each phase. Equal US X11 layouts keep the Latin-1/control observer applicable:
+letters, shifted letters/punctuation, space, Return, Backspace, arrows, Ctrl+A
+and post-Control typing must produce the expected text, modifiers and complete
+pairs, with both keymaps released. The selected implementation's text injector
+reuses already-held required modifiers; this fixture's pair/order expectation
+does not generalize to other layouts or input methods. X.Org documents native
+XTEST press/release requests and XLookupString's modifier/Latin-1 semantics at
+https://xorg.freedesktop.org/archive/current/doc/libXtst/xtestlib.html and
+https://xorg.freedesktop.org/archive/current/doc/libX11/libX11/libX11.html.
+Retain mapping refresh, duplicate-event rejection, fresh displayed counters,
+connection/window identity, resource bounds and joined saved Map state.
+
+Reuse app `c9323bf1` / engine `ddb1541d`; later product differences concern
+macOS appearance and leave the exercised Linux keyboard path unchanged. CTE
+and TUF start clean at `d92cb0e6`, with no owned private/RAM run and about
+45 GiB available memory. Compile the observer twice and execute only in the
+admitted zero-NIC bounded-RAM VM. No layout change, held-mode transition,
+physical-device, other-platform or installed claim is added; independent parks
+remain. The five fixture/orchestration edits add one closed scenario and retain
+existing Map/Legacy and failed-save checks.

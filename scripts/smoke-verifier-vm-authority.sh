@@ -682,6 +682,7 @@ case "$#:${1:-}" in
                 --keyboard-modes) FLUTTER_KEYBOARD_INPUT=3 ;;
                 --keyboard-restart) FLUTTER_KEYBOARD_INPUT=6 ;;
                 --keyboard-save-failure) FLUTTER_KEYBOARD_INPUT=7 ;;
+                --keyboard-translate) FLUTTER_KEYBOARD_INPUT=8 ;;
                 --view-only) FLUTTER_KEYBOARD_INPUT=4 ;;
                 --view-only-save-failure) FLUTTER_KEYBOARD_INPUT=5 ;;
                 --mouse-input) FLUTTER_MOUSE_INPUT=1 ;;
@@ -770,6 +771,7 @@ case "$#:${1:-}" in
         printf 'Quality presets: use --image-quality, --quality-restart or --image-quality-save-failure with the source-bound Linux app replay arguments above.\n' >&2
         printf 'Keyboard restoration: use --keyboard-restart with the source-bound Linux app replay arguments above.\n' >&2
         printf 'Keyboard save refusal/retry: use --keyboard-save-failure with the source-bound Linux app replay arguments above.\n' >&2
+        printf 'Translate keyboard mode: use --keyboard-translate with the source-bound Linux app replay arguments above.\n' >&2
         printf 'Active-session Mute persistence and save refusal: use --audio-mute with the source-bound Linux app replay arguments above.\n' >&2
         printf 'Native language selection across viewer restarts: use --language-restart with the source-bound Linux app replay arguments above.\n' >&2
         printf 'Native Hebrew language direction: use --language-direction with the source-bound Linux app replay arguments above.\n' >&2
@@ -5284,6 +5286,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
             3) guest_invocation+=' --keyboard-modes' ;;
             6) guest_invocation+=' --keyboard-restart' ;;
             7) guest_invocation+=' --keyboard-save-failure' ;;
+            8) guest_invocation+=' --keyboard-translate' ;;
             4) guest_invocation+=' --view-only' ;;
             5) guest_invocation+=' --view-only-save-failure' ;;
         esac
@@ -8748,6 +8751,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         3) peer_scenario=keyboard-modes ;;
         6) peer_scenario=keyboard-restart ;;
         7) peer_scenario=keyboard-save-failure ;;
+        8) peer_scenario=keyboard-translate ;;
         4) peer_scenario=view-only ;;
         5) peer_scenario=view-only-save-failure ;;
     esac

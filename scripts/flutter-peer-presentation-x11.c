@@ -5220,7 +5220,11 @@ static int exercise_view_only_save_failure(Display *source, Display *display,
         current.st_ino != original.st_ino || (current.st_mode & 07777) != 0500 ||
         activate_named_control(pid, "Keyboard settings") != 0) goto out;
     deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
-    if (query_named_accessible(pid, "View mode", deadline, &item, 0) != 0 || item == NULL) goto out;
+    while (monotonic_millis() < deadline && item == NULL) {
+        if (query_named_accessible(pid, "View mode", deadline, &item, 0) != 0) goto out;
+        if (item == NULL && sleep_millis(50U) != 0) goto out;
+    }
+    if (item == NULL || monotonic_millis() >= deadline) goto out;
     atspi_accessible_clear_cache(item);
     states = atspi_accessible_get_state_set(item);
     if (states == NULL || !atspi_state_set_contains(states, ATSPI_STATE_CHECKABLE)) goto out;

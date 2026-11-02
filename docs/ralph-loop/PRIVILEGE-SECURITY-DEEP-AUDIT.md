@@ -130861,3 +130861,14 @@ https://man7.org/linux/man-pages/man2/open.2.html and
 https://man7.org/linux/man-pages/man2/fchmod.2.html.
 Shell syntax and whitespace checks pass. The existing native input acceptance
 and all user parks remain; the new run has no acceptance claim before execution.
+
+First run `CtDHafOsFb` at `37fb85ca` compiles all native drivers twice
+identically and passes the initial normal/restricted phases. After the failed-save
+attempt it reopens Keyboard settings, but immediately queries View mode before
+the new menu tree appears; `checked=-1` stops classification. The diagnostic tree
+subsequently contains that control. Add a bounded wait for its appearance using
+the existing deadline; preserve all expected state, file and native-input assertions.
+This is fixture failure, not an accepted product reproduction. Wrapper 808048 and
+QEMU 809608 are absent, four listener deltas are zero, and RAM `run.9umpmdus` /
+`29:38432` retires. The exact private directory retires after its inventory and
+canonical app-byte comparison; the capsule, viewer log and raw receipts remain.

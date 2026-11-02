@@ -131298,3 +131298,48 @@ canonical source/inputs and all runtime evidence remain. Both hosts retain
 `9f3de218802b24fef8bbe21519517e037f4ecbe8a44f513a90c881b82a193ee7`) and
 its retirement receipt; the other three manifest hashes are unchanged. Resume
 the native theme build within the existing four-generation bound.
+
+Build `lKe5Pgvez8` at `c619cb3e` succeeds, validating the shared producer's
+receipt correction. Thirteen widget cases and two native command cases pass;
+Rust 1.75 and Flutter 3.47.5 compile the app against engine `ddb1541d`.
+The retained manifest is 13,067 bytes, SHA-256
+`d6426d64ae6694edae90a19c2e6569816fb73cd2c6c6bdb260476144083f0563`;
+all 75 files / 70,353,741 bytes match its closed inventory. Build inputs and
+engine bytes are reverified after execution. Wrapper 1028461 and QEMU 1029095
+are absent; RAM `run.5gh2u4lp` / `29:39119` and private state retire, with
+four zero listener deltas. Scratch peaks at 11,888,652,288 bytes under 16 GiB.
+Both hosts retain the manifest, complete raw records and
+`theme-native-build-c619cb3e.json` (7,089 bytes, SHA-256
+`13ad5e59ef7469c9bee62e42696b41d049df592e1ce46c74ff86c580a8bd6d62`).
+
+Replay `ywjaAfGMJO` reuses that exact app without rebuilding it. All twelve
+main/remote-window theme phases pass, including four native OS transitions and
+four five-second explicit-choice holds. The same remote window and authenticated
+connection remain; all 48 additional displayed counters are fresh, maximum sampled
+age 326 ms. Joined storage retains System. Three native drivers each rebuild
+twice identically. Wrapper 1029990 and QEMU 1031046 are absent; RAM
+`run.4y_twhsi` / `29:39160` and private state retire with four zero listener
+deltas. Both hosts retain `theme-native-appearance-c619cb3e.json` (14,827 bytes,
+SHA-256 `d22f54040d9af47a393e8dbe44c9dbc5b45a3fe5bdbb0ffbcdd24f3981298d8f`),
+the raw evidence and retirement receipt. Outer elapsed time is 168 seconds.
+
+Replay `cWctzaltv0` reuses the same app for real EACCES save failure/retry.
+Both windows remain Light through refusal and the four-second hold; the error
+is visible and saved file identity/bytes are unchanged. Restored access permits
+Dark in both windows, clears the error and persists Dark after process join.
+Sixteen additional displayed counters are fresh, maximum age 328 ms, on the
+same window and connection. Drivers reproduce identically. Wrapper 1031833 and
+QEMU 1032892 are absent; RAM `run.hf7tox63` / `29:39202` and private state
+retire with four zero listener deltas. Both hosts retain
+`theme-native-save-failure-c619cb3e.json` (9,003 bytes, SHA-256
+`ba293c825ecdc0e43b2b214db5c2e3a1dbfe3b22274a8d1b5254367cef813465`), the
+raw evidence and retirement receipt. Outer elapsed time is 128 seconds.
+
+These runs complete the selected corrected-app Linux integration checkpoint.
+Forced reordered deliveries remain component evidence with native/platform
+doubles; the native runs exercise the real bridge, preference store, multiple
+engines, OS appearance, pixels and failure/retry paths. Forced native worker
+reordering, concurrent writers, other failure classes, providers/platforms and
+installed/release acceptance remain open. Independent user parks remain. The
+ledger replaces the older retained-app checkpoint with this current evidence
+and corrects the stale shared-wrapper park; a fresh isolated count follows.

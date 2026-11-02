@@ -43,7 +43,7 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
-**Delayed theme notification correction — component evidence (2026-11-02):**
+**Delayed theme notification correction (2026-11-02):**
 `1000ebf4` removes the theme value from the native notification API. Secondary
 windows read the current shared preference when receiving the event, so delayed
 notifications cannot restore an older choice. Unchanged-product run `ANyuhxg9wj`
@@ -51,40 +51,41 @@ passes 34 cases and fails both delayed-payload cases; corrected run `j9HHXLDLHo`
 passes all 36, including value-free notifications and subsequent system brightness
 changes. Actual Dart handlers, dispatcher and rendered widgets execute with
 native preference/platform doubles and freshly generated bindings. Save failure,
-retry and ownership controls remain passing. VM/RAM cleanup and four zero listener
-deltas pass; `theme-ordering-accepted-1000ebf4.json` binds the evidence. Exact
-native-app build/replay, native worker scheduling, other platforms and release
-acceptance remain OPEN. The retained-app native checkpoints below predate this fix.
-
-**Native Linux theme synchronization verified (2026-11-02):** Replay
-`AoPSJZs3kq` at `67fc42ce` reuses app `7e6f6459` and engine `ddb1541d`.
-Across twelve phases, actual main-window radio/pixel observations and the
-already-open remote window's pixels agree. Follow System follows four native
-OS changes; explicit Light/Dark survive four five-second remote observations
-after those changes. The same remote window/connection remains, all 48 additional
-displayed counters are fresh (maximum sampled age 330 ms), and final joined
-storage retains System. Native drivers rebuild twice identically; all owned
-processes, RAM scratch and private state retire with four zero listener deltas.
-`theme-windows-accepted-67fc42ce.json` binds this checkpoint. Product code is
-unchanged. Later locale/View mode candidates, concurrent settings, other
+retry and ownership controls remain passing. `theme-ordering-accepted-1000ebf4.json`
+binds that component evidence. Native integration on the corrected app is verified
+below; forced native worker reordering, concurrent writers, other failure classes,
 providers/platforms and installed/release acceptance remain OPEN.
 
-**Cross-window theme save failure/retry verified:** Replay `2pQdgTlsu5` at
-`6e835a88` reuses the same app/engine. Real EACCES leaves both windows Light,
+**Native Linux theme synchronization verified (2026-11-02):** Replay
+`ywjaAfGMJO` uses corrected app `c619cb3e` and engine `ddb1541d`. Its full build
+`lKe5Pgvez8` passes thirteen widget and two native command tests, seals 75 files,
+and validates the shared producer's obsolete receipt-check removal. Twelve native
+main/remote-window phases agree: Follow System follows four OS changes, and
+explicit Light/Dark survive four five-second observations after OS changes.
+The same remote window/connection remains; 48 additional displayed counters are
+fresh (maximum sampled age 326 ms), and joined storage retains System. Drivers
+rebuild twice identically; all owned processes, RAM scratch and private state
+retire with four zero listener deltas. `theme-native-build-c619cb3e.json` and
+`theme-native-appearance-c619cb3e.json` bind this corrected-artifact checkpoint.
+
+**Cross-window theme save failure/retry verified:** Replay `cWctzaltv0` reuses
+the same corrected app/engine. Real EACCES leaves both windows Light,
 reports the failure and preserves exact saved file identity/bytes. Four-second
 held observations remain Light. Restored access permits Dark retry in both
 windows, clears the error and saves Dark after process join. Four remote phases
-observe sixteen fresh counters, maximum age 317 ms, on the same window and
+observe sixteen fresh counters, maximum age 328 ms, on the same window and
 connection. Drivers rebuild identically; VM/RAM/private cleanup and four zero
-listener deltas pass. `theme-save-windows-accepted-6e835a88.json` binds this
-additional retained-app evidence. Other failure classes and the gaps above remain.
+listener deltas pass. `theme-native-save-failure-c619cb3e.json` binds this evidence.
+The component reordering reproduction and these native integration runs cover
+distinct layers; the broader gaps above remain.
 
 **User pivot (2026-11-02):** View mode / Show my cursor work is OPEN/PARKED.
 Candidate `0ccb2a7e` completes the Linux Flutter app build with thirteen focused
 Flutter tests and two native command-queue tests passing. Run `uRaKGkDRPY`
 then fails the outer wrapper's obsolete Mute-test receipt check; the candidate
-remains unpublished. Wrapper repair and native failed-save/retry acceptance
-are parked. The exact pending app is preserved; all owned processes, RAM scratch
+remains unpublished. Its native failed-save/retry acceptance remains parked;
+the shared producer receipt correction is validated by the later theme build.
+The exact pending app is preserved; all owned processes, RAM scratch
 and the private diagnostics directory have retired, with four zero listener
 deltas. `view-mode-app-0ccb2a7e.json` and its retirement receipt bind the result.
 Work moves to theme synchronization between the main and open remote windows.

@@ -28,7 +28,7 @@ readonly MENU_ACTION
 case "$PEER_SCENARIO" in
   session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|language-restart|quality-restart|viewer-isolation|viewer-soak|input-latency|input-soak|image-quality|image-quality-save-failure|audio-mute) EXPECTED_RESTARTS=0 ;;
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
-  viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation|credential-forget|credential-menu|credential-menu-accessible) EXPECTED_RESTARTS=0 ;;
+  viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-modes|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation|credential-forget|credential-menu|credential-menu-accessible) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
 esac
 readonly EXPECTED_RESTARTS
@@ -1648,6 +1648,7 @@ PY
     [ "$PEER_SCENARIO" != clipboard-text ] || controller_args+=(--clipboard-text)
     [ "$PEER_SCENARIO" != clipboard-images ] || controller_args+=(--clipboard-images)
     [ "$PEER_SCENARIO" != keyboard-input ] || controller_args+=(--keyboard-input)
+    [ "$PEER_SCENARIO" != keyboard-modes ] || controller_args+=(--keyboard-modes)
     [ "$PEER_SCENARIO" != keyboard-retirement ] || controller_args+=(--keyboard-retirement)
     [ "$PEER_SCENARIO" != mouse-input ] || controller_args+=(--mouse-input)
     [ "$PEER_SCENARIO" != mouse-retirement ] || controller_args+=(--mouse-retirement)
@@ -1907,6 +1908,20 @@ PY
       grep -Fxq 'FLUTTER_PEER_KEYBOARD_RETIREMENT_OK remote_keys=2 local_key=preserved viewer_exit=abrupt native_releases=true fixture_keys_released=true' \
         <<<"$controller_output" || fail 'native keyboard retirement verdict is missing'
       viewer_result='viewer=joined xvfb=joined keyboard_retirement=abrupt owned_keys=2 foreign_key=preserved'
+    elif [ "$PEER_SCENARIO" = keyboard-modes ]; then
+      for sequence in {1..11}; do
+        [ "$(grep -Ec "^FLUTTER_PEER_KEYBOARD_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 3 ] \
+          || fail "keyboard mode case $sequence is missing or duplicated"
+      done
+      for sequence in 1 2 3; do
+        mode=map
+        [ "$sequence" -ne 2 ] || mode=legacy
+        [ "$(grep -Ec "^FLUTTER_PEER_KEYBOARD_MODE_OK sequence=$sequence mode=$mode cases=11 events=28 " <<<"$controller_output")" -eq 1 ] \
+          || fail "keyboard mode phase $sequence is missing or duplicated"
+      done
+      grep -Fxq 'FLUTTER_PEER_KEYBOARD_MODES_OK modes=map,legacy,map cases=33 events=84 choice=confirmed native_key_events=true exact_text=true released=both pixels=fresh same_window=true stable_connection=true resources=bounded' \
+        <<<"$controller_output" || fail 'native keyboard mode verdict is missing'
+      viewer_result='viewer=joined xvfb=joined keyboard_modes=3 keyboard_cases=33 storage=verified stable_connection=true resources=bounded'
     elif [ "$PEER_SCENARIO" = keyboard-input ]; then
       for sequence in {1..11}; do
         [ "$(grep -Ec "^FLUTTER_PEER_KEYBOARD_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
@@ -2068,7 +2083,8 @@ finally:
 print('FLUTTER_PEER_AUDIO_MUTE_STORAGE_OK muted=true process=joined permissions=restored')
 PY
     fi
-    if [ "$PEER_SCENARIO" = image-quality-save-failure ] || [ "$PEER_SCENARIO" = quality-restart ]; then
+    if [ "$PEER_SCENARIO" = image-quality-save-failure ] || [ "$PEER_SCENARIO" = quality-restart ] \
+      || [ "$PEER_SCENARIO" = keyboard-modes ]; then
       python3 - "$viewer_generation" "$PEER_SCENARIO" <<'PY'
 import os, stat, sys, tomllib
 directory = '/tmp/viewer-home/.config/rustdesk/peers'
@@ -2085,10 +2101,15 @@ try:
         data = source.read(131073)
         assert len(data) == metadata.st_size
     expected = ('best', 'low', 'balanced', 'balanced')[int(sys.argv[1]) - 1] if sys.argv[2] == 'quality-restart' else 'low'
-    assert tomllib.loads(data.decode('utf-8'))['image_quality'] == expected
+    field = 'image_quality'
+    if sys.argv[2] == 'keyboard-modes':
+        field, expected = 'keyboard_mode', 'map'
+    assert tomllib.loads(data.decode('utf-8'))[field] == expected
 finally:
     os.close(parent)
-if sys.argv[2] == 'quality-restart':
+if sys.argv[2] == 'keyboard-modes':
+    print('FLUTTER_PEER_KEYBOARD_MODE_STORAGE_OK selected=map process=joined')
+elif sys.argv[2] == 'quality-restart':
     print('FLUTTER_PEER_QUALITY_STORAGE_OK generation=' + sys.argv[1] + ' selected=' + expected + ' process=joined')
 else:
     print('FLUTTER_PEER_QUALITY_STORAGE_OK selected=low process=joined permissions=restored')

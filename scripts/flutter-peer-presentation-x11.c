@@ -4931,6 +4931,81 @@ out:
     return result;
 }
 
+static int keyboard_mode_selected(unsigned int pid, const char *selected) {
+    static const char *names[] = {"Legacy mode", "Map mode", "Translate mode beta"};
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    unsigned int stable = 0U;
+    while (monotonic_millis() < deadline && stable < 3U) {
+        int matches = 1;
+        for (unsigned int i = 0U; i < sizeof(names) / sizeof(names[0]); ++i) {
+            AtspiAccessible *item = NULL;
+            AtspiStateSet *states = NULL;
+            if (query_named_accessible(pid, names[i], deadline, &item, 0) != 0) return -1;
+            if (item != NULL) states = atspi_accessible_get_state_set(item);
+            if (states == NULL || !atspi_state_set_contains(states, ATSPI_STATE_CHECKABLE) ||
+                !atspi_state_set_contains(states, ATSPI_STATE_ENABLED) ||
+                !atspi_state_set_contains(states, ATSPI_STATE_SENSITIVE) ||
+                atspi_state_set_contains(states, ATSPI_STATE_CHECKED) != (strcmp(names[i], selected) == 0))
+                matches = 0;
+            g_clear_object(&states);
+            g_clear_object(&item);
+        }
+        stable = matches ? stable + 1U : 0U;
+        if (sleep_millis(100U) != 0) return -1;
+    }
+    return stable == 3U && monotonic_millis() < deadline ? 0 : -1;
+}
+
+static int exercise_keyboard_modes(Display *source, Display *display,
+                                    const ViewerWindow *viewer, SourceHistory *history,
+                                    const ConnectionIdentity *connection,
+                                    const ProcessResources *baseline) {
+    static const char *names[] = {"Map mode", "Legacy mode", "Map mode"};
+    static const char *modes[] = {"map", "legacy", "map"};
+    unsigned int pid = (unsigned int)viewer->pid, sequence = 0U;
+    const char *phase = "select";
+    for (; sequence < sizeof(names) / sizeof(names[0]); ++sequence) {
+        uint64_t deadline, fresh = 0U, age = 0U;
+        unsigned int absent = 0U;
+        phase = "select";
+        if (quality_toolbar(pid) != 0 || activate_named_control(pid, "Keyboard Settings") != 0 ||
+            activate_named_control(pid, names[sequence]) != 0) goto failed;
+        phase = "menu-retirement";
+        deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+        while (monotonic_millis() < deadline && absent < 3U) {
+            AtspiAccessible *item = NULL;
+            if (query_named_accessible(pid, names[sequence], deadline, &item, 0) != 0) goto failed;
+            absent = item == NULL ? absent + 1U : 0U;
+            g_clear_object(&item);
+            if (sleep_millis(100U) != 0) goto failed;
+        }
+        if (absent != 3U) goto failed;
+        phase = "confirmed-choice";
+        if (quality_toolbar(pid) != 0 || activate_named_control(pid, "Keyboard Settings") != 0 ||
+            keyboard_mode_selected(pid, names[sequence]) != 0 ||
+            activate_named_control(pid, "Keyboard Settings") != 0 ||
+            activate_named_control(pid, "Hide toolbar") != 0) goto failed;
+        phase = "native-keys";
+        printf("FLUTTER_PEER_KEYBOARD_MODE_BEGIN sequence=%u mode=%s\n", sequence + 1U, modes[sequence]);
+        fflush(stdout);
+        if (exercise_keyboard_input(source, display, viewer, connection, baseline) != 0) goto failed;
+        phase = "displayed-freshness";
+        if (wait_for_current_frames(display, viewer, history, RECOVERY_LIMIT_MS, 4U,
+                                     &fresh, &age) != 0) goto failed;
+        printf("FLUTTER_PEER_KEYBOARD_MODE_OK sequence=%u mode=%s cases=11 events=28 "
+               "choice=confirmed released=both distinct=4 maximum_age_ms=%llu stable_connection=true\n",
+               sequence + 1U, modes[sequence], (unsigned long long)age);
+        fflush(stdout);
+    }
+    return 0;
+failed:
+    fprintf(stderr, "FLUTTER_PEER_X11_FAIL keyboard-mode sequence=%u phase=%s\n", sequence + 1U, phase);
+    PasswordPromptScan diagnostic;
+    if (scan_password_prompt(pid, &diagnostic, 1) != 0)
+        fputs("FLUTTER_PEER_X11_FAIL keyboard-mode accessibility diagnostic\n", stderr);
+    return -1;
+}
+
 static int mute_menu_state(unsigned int pid, int *checked) {
     uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
     while (monotonic_millis() < deadline) {
@@ -5721,6 +5796,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--isolation-healthy") != 0 &&
                                     strcmp(argv[5], "--keyboard-retirement") != 0 &&
                                     strcmp(argv[5], "--keyboard-input") != 0 &&
+                                    strcmp(argv[5], "--keyboard-modes") != 0 &&
                                     strcmp(argv[5], "--mouse-input") != 0 &&
                                     strcmp(argv[5], "--mouse-retirement") != 0 &&
                                     strcmp(argv[5], "--screenshot-save-unavailable") != 0 &&
@@ -6126,6 +6202,7 @@ int main(int argc, char **argv) {
     if (argc == 6) {
         int keyboard_retirement = strcmp(argv[5], "--keyboard-retirement") == 0;
         int keyboard_input = strcmp(argv[5], "--keyboard-input") == 0;
+        int keyboard_modes = strcmp(argv[5], "--keyboard-modes") == 0;
         int mouse_input = strcmp(argv[5], "--mouse-input") == 0;
         int mouse_retirement = strcmp(argv[5], "--mouse-retirement") == 0;
         int screenshot_unavailable = strcmp(argv[5], "--screenshot-save-unavailable") == 0;
@@ -6137,7 +6214,9 @@ int main(int argc, char **argv) {
         int clipboard_images = strcmp(argv[5], "--clipboard-images") == 0;
         int partial_loss = strcmp(argv[5], "--network-loss") == 0;
         int network = partial_loss || strcmp(argv[5], "--network-impairment") == 0;
-        int suspension_status = background_close ? exercise_background_close(
+        int suspension_status = keyboard_modes ? exercise_keyboard_modes(
+            source, display, &viewer, &history, &current_connection, &baseline_resources) :
+            background_close ? exercise_background_close(
             source, display, &viewer, &history, argv[4], &current_connection) :
             image_quality ? exercise_image_quality(
             display, &viewer, &history, &current_connection, &baseline_resources, 0U) :
@@ -6195,6 +6274,10 @@ int main(int argc, char **argv) {
         } else if (keyboard_retirement) {
             puts("FLUTTER_PEER_KEYBOARD_RETIREMENT_OK remote_keys=2 local_key=preserved "
                  "viewer_exit=abrupt native_releases=true fixture_keys_released=true");
+        } else if (keyboard_modes) {
+            puts("FLUTTER_PEER_KEYBOARD_MODES_OK modes=map,legacy,map cases=33 events=84 "
+                 "choice=confirmed native_key_events=true exact_text=true released=both "
+                 "pixels=fresh same_window=true stable_connection=true resources=bounded");
         } else if (keyboard_input) {
             puts("FLUTTER_PEER_KEYBOARD_INPUT_OK cases=11 events=28 actual_peer=true "
                  "native_key_events=true exact_text=true released=both same_window=true "

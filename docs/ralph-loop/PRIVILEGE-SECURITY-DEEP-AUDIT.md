@@ -130543,3 +130543,38 @@ private state and RAM `run.21n0cph7` / `29:38028` retire. Capsule
 verified on both hosts. No owned run remains active. The selected Linux quality
 restart workflow has reached its native checkpoint; the overall release goal
 and all separately recorded open or parked acceptance requirements remain incomplete.
+### 2026-11-02 — user pivot; native keyboard-mode switching
+
+The user directs another pivot. Custom quality/FPS native work remains OPEN/PARKED:
+its unexecuted two-file controller/source draft is preserved in stash
+`2b7f208acb6cdd5ad893a312d7997854d341b65e`. No Custom run or product change
+occurred. Do not resume it automatically; all independently parked work remains parked.
+
+Select R-S0 keyboard-mode functionality, whose complete toolbar/native-input
+integration is explicitly unproved in the settings ledger. Actual remote input
+is a core workflow, and the existing accepted eleven-case native observer can
+exercise it without another app build. This takes priority over more settings
+component tests. Reuse app `7e6f6459`, engine `ddb1541d`, and the bounded,
+zero-NIC TUF replay profile. The new scenario selects Map, Legacy, then Map through
+the actual toolbar, confirms each exclusive choice in a newly opened menu, and
+runs the existing eleven native key-event cases after each selection. Require
+exact characters/modifiers/press-release order, both keyboards released, the same
+window/connection, bounded resources and four current displayed counters per
+phase. After a zero-exit viewer join, require the private saved mode to be Map.
+No preference seeding or product edit is part of this preparation.
+
+Source review follows `RemoteToolbar.keyboardMode`, the typed FFI setter and
+`LoginConfigHandler::save_keyboard_mode`: fresh durable persistence precedes
+cached mode publication, then the current input model refreshes. The pinned
+Flutter 3.47.5 Linux accessibility bridge exposes Tap and checked state; its menu
+activation closes the menu before the post-frame callback. The scenario waits
+for complete menu retirement before reopening, under the original bounded waits.
+Primary references:
+https://github.com/flutter/flutter/blob/3.47.5/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc
+and https://github.com/flutter/flutter/blob/3.47.5/packages/flutter/lib/src/material/menu_anchor.dart.
+
+Shell syntax and whitespace checks pass; isolated C compilation and native
+execution follow. This scenario uses equal US X11 layouts. It does not establish
+cross-layout translation, held-key mode changes, restart restoration, physical
+keyboards, other platforms or installed/release acceptance. Existing independent
+input-confinement, shared-key and other parked investigations remain parked.

@@ -679,6 +679,7 @@ case "$#:${1:-}" in
                 --clipboard-images) FLUTTER_CLIPBOARD_TEXT=2 ;;
                 --keyboard-input) FLUTTER_KEYBOARD_INPUT=1 ;;
                 --keyboard-retirement) FLUTTER_KEYBOARD_INPUT=2 ;;
+                --keyboard-modes) FLUTTER_KEYBOARD_INPUT=3 ;;
                 --mouse-input) FLUTTER_MOUSE_INPUT=1 ;;
                 --mouse-retirement) FLUTTER_MOUSE_INPUT=2 ;;
                 --screenshot-save-unavailable) FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE=1 ;;
@@ -5271,6 +5272,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         case "$FLUTTER_KEYBOARD_INPUT" in
             1) guest_invocation+=' --keyboard-input' ;;
             2) guest_invocation+=' --keyboard-retirement' ;;
+            3) guest_invocation+=' --keyboard-modes' ;;
         esac
         case "$FLUTTER_NETWORK_IMPAIRMENT" in
             1) guest_invocation+=' --network-impairment' ;;
@@ -8731,6 +8733,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     case "$FLUTTER_KEYBOARD_INPUT" in
         1) peer_scenario=keyboard-input ;;
         2) peer_scenario=keyboard-retirement ;;
+        3) peer_scenario=keyboard-modes ;;
     esac
     case "$FLUTTER_NETWORK_IMPAIRMENT" in
         1) peer_scenario=network-impairment ;;

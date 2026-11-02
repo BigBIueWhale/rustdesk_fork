@@ -129962,3 +129962,32 @@ carry completion/error and awaited errors can be handled explicitly
 or returning from a void bridge is not evidence that its setting committed.
 Shell syntax and diff checks pass at preparation. Native execution is pending;
 no product source or generated bridge changes in this preparation.
+
+TUF replay `w07nGU4Tn9` on preparation `fe1f23de` exits 1 in `healthy-mute`.
+All three drivers compile twice with byte equality. The real prompt authenticates
+and the initial current-pixel check succeeds. One Mute activation reaches the
+production Rust bridge, but repeated native menu observations report unchecked
+through the five-second observation. The test stops before reading the peer file,
+changing directory permissions or exercising save refusal/retry. This does not
+yet distinguish stale menu/accessibility state from failed setting application;
+no sound-delivery or product-fix claim follows. The next decisive observation is
+the saved Boolean and visible/native checkbox state after that same first action.
+The previously selected waveform/output acceptance remains required afterward.
+
+Capsule `audio-mute-baseline-fe1f23de.json` is 22,191 bytes, SHA-256
+`02d7542a305d566f4f8d9a169876349e5184d3356c2693239631e3f5f4211379`.
+It binds the command, app/engine/source, raw logs, complete retained inventory and
+four strictly decoded zero listener deltas. Wrapper 453272 and QEMU 454330 are
+absent. RAM `run.j95_ra8d` (`29:37289`) retires after a 3,013,365,760-byte peak
+within the unchanged 7-GiB scratch allowance; storage supervision lasts 114.253 s.
+After preserving bounded logs and verifying duplicate bundle bytes against the
+canonical app cache, retire 44 private files / 62,013,188 bytes under the shared
+lock. `audio-mute-baseline-fe1f23de-retirement.json` records exact private/RAM
+absence. The capsule, retirement record and 80,179-byte viewer log are copied to
+CTE and digest-verified. Both run roots are idle.
+
+The first launch refused entry before VM creation because TUF's Git checkout
+mask produced group-writable updated scripts. Correct only those changed files
+to repository modes 0755/0644; the second launch above uses identical committed
+bytes. Preserve the first 470-byte refusal log in the capsule inventory. Future
+TUF Git updates use mask 022. The safety gate and its requirements are unchanged.

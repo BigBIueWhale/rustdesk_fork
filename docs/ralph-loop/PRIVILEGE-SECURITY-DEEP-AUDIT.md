@@ -130605,3 +130605,32 @@ Wrapper 726944 and QEMU 728002 are absent, four listener deltas are zero and RAM
 byte comparison. `keyboard-modes-fd60bae2.json` is 23,467 bytes, SHA-256
 `1946f02770335035395a012bdf53c5231702f56dce3fa7fd504407ac994a0946`;
 the separate log/retirement receipt preserves the partial observation.
+
+### 2026-11-02 — native Linux keyboard-mode switching accepted
+
+TUF `7jeXoKHAiM` at `c352f6fd` exits zero with the unchanged `7e6f6459` app
+and `ddb1541d` engine. All three native drivers compile twice identically;
+controller SHA-256 is
+`31918f3bbc426239ee024250150a1aa4cbeccaa456a69c6e3b1ce1f859a0071c`.
+Actual toolbar choices Map→Legacy→Map each confirm exclusive menu state, then
+pass all eleven existing key cases: 33 sequences and 84 native controlled-side
+events with exact text, modifier state and matched press/release order. Both
+keyboards end released, window/connection identity stays fixed and resources
+remain bounded. Four current displayed counters follow each phase, sampled
+age maxima 312/311/275 ms. The viewer exits zero and the private TOML stores Map.
+The added menu-retirement observation prevents the prior fixture's unintended
+Trackpad speed dialog. No product correction or application rebuild is needed.
+
+This establishes the selected Linux X11/Xvfb workflow on equal US layouts, not
+cross-layout behavior, held-key switching, restart restoration, physical devices,
+other platforms or installed/release acceptance. All independent parked items,
+including the new Custom quality/FPS draft, remain parked.
+
+Wrapper 728290 and QEMU 729346 are absent, all four listener deltas are zero,
+private state and RAM `run.v63_nugg` / `29:38140` retire. Scratch peaks at
+3,013,509,120 bytes under 7 GiB; the outer receipt reports 118 seconds.
+`keyboard-modes-accepted-c352f6fd.json` is 16,212 bytes, SHA-256
+`99880fa9a9db49d583dbbde33a44c30f209cb4833c926df5c336828628749aca`.
+Both failed attempts retain bounded capsules/logs/retirement receipts; their
+duplicate app bundles are removed after exact canonical comparison. The ledger
+records the native result and user pivot; a fresh isolated token count follows.

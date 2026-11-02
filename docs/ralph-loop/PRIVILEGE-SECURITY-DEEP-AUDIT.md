@@ -130039,3 +130039,15 @@ absent, RAM `run.ombt9pxa` (`29:37331`) retires, and exact private diagnostics
 retire under the shared lock after preservation and duplicate-bundle verification.
 The separate retirement receipt records absence. Storage supervision lasts
 117.546 seconds with a 3,013,251,072-byte RAM-scratch peak. No active run remains.
+
+The `cce0f30f` app build refuses before VM creation because an older preflight
+requires an empty app cache. This contradicts the later shared
+`vm_artifact_cache_admit` contract, which explicitly retains up to four generations
+for comparison. TUF has three source-bound apps, including this scenario's baseline.
+Delete only the earlier emptiness check. Root identity/ownership, the shared run
+lock, existing four-generation admission before output creation, exact-commit
+collision refusal and exclusive publication remain. No cache moves, duplicate
+archives or baseline deletion are needed. This is a necessary build prerequisite
+for the Mute correction; the shared admission implementation is unchanged.
+The 389-byte refusal log remains at `.harness-state/audio-mute-build-cce0f30f`;
+wrapper 510101 is terminal and no private run or RAM workspace was created.

@@ -1441,8 +1441,6 @@ reserve_verifier_run() {
             && [ "$(/usr/bin/readlink -f -- "$FLUTTER_APP_STATE_ROOT")" = "$FLUTTER_APP_STATE_ROOT" ] \
             && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$FLUTTER_APP_STATE_ROOT")" = "$HOST_UID:$HOST_GID:700" ] \
             || fail 'Linux Flutter app artifact state authority differs'
-        [ -z "$(/usr/bin/find "$FLUTTER_APP_STATE_ROOT" -mindepth 1 -maxdepth 1 -print -quit)" ] \
-            || fail 'an earlier Linux Flutter app artifact remains; reuse it or explicitly reconcile it before building another'
     fi
     if [ "${MODE:-}" = android-peer-build ] && { [ -e "$ANDROID_ARTIFACT_STATE_ROOT" ] || [ -L "$ANDROID_ARTIFACT_STATE_ROOT" ]; }; then
         [ -d "$ANDROID_ARTIFACT_STATE_ROOT" ] && [ ! -L "$ANDROID_ARTIFACT_STATE_ROOT" ] \

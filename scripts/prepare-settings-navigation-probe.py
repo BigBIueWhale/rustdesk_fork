@@ -24,9 +24,16 @@ SUPPORT = {
         '  _globalFFI = parent;\n}\n'
         '\nvoid installSettingsProbeAndroid(bool android) {\n'
         '  isAndroid = android;\n'
+        '  isMacOS = false;\n'
         '  isLinux = !android;\n'
         '  isDesktop = !android;\n'
-        '  isMobile = android;\n}\n'),
+        '  isMobile = android;\n}\n'
+        '\nvoid installSettingsProbeMacOS() {\n'
+        '  isAndroid = false;\n'
+        '  isMacOS = true;\n'
+        '  isLinux = false;\n'
+        '  isDesktop = true;\n'
+        '  isMobile = false;\n}\n'),
 }
 
 
@@ -47,7 +54,7 @@ def main():
         target = project / relative
         expected = original
         if relative == 'lib/common.dart':
-            for name in ('isAndroid', 'isLinux', 'isDesktop'):
+            for name in ('isAndroid', 'isMacOS', 'isLinux', 'isDesktop'):
                 declaration = f'final {name} = {name}_;'.encode()
                 if expected.count(declaration) != 1:
                     raise ValueError(f'settings platform declaration differs: {name}')

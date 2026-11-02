@@ -269,7 +269,7 @@ class ResultTests(unittest.TestCase):
                              (1, {"locales": 16, "screenshot-save": 12,
                                   "draggable-divider": 22, "file-columns": 13,
                                   "file-progress": 52, "peer-search": 36,
-                                  "desktop-theme": 36, "custom-scale": 42}[SINGLE_PROFILE]))
+                                  "desktop-theme": 40, "custom-scale": 42}[SINGLE_PROFILE]))
             return
         self.assertEqual(
             self.parse(self.events("models"), "models"),
@@ -307,8 +307,8 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("file-search"), "file-search"), (1, 12))
         self.assertEqual(self.parse(self.events("file-navigation"), "file-navigation"), (7, 125))
         self.assertEqual(self.parse(self.events("terminal-output"), "terminal-output"), (2, 37))
-        self.assertEqual(self.parse(self.events("settings-navigation"), "settings-navigation"), (1, 66))
-        self.assertEqual(self.parse(self.events("desktop-theme"), "desktop-theme"), (1, 36))
+        self.assertEqual(self.parse(self.events("settings-navigation"), "settings-navigation"), (1, 70))
+        self.assertEqual(self.parse(self.events("desktop-theme"), "desktop-theme"), (1, 40))
         self.assertEqual(self.parse(self.events("modifier-release"), "modifier-release"), (5, 121))
         self.assertEqual(self.parse(self.events("connect-password"), "connect-password"), (1, 14))
         self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (10, 117))

@@ -131528,3 +131528,33 @@ Owned processes, private state and RAM scratch retire; three listener deltas
 are zero. Peak RAM scratch is 402,771,968 bytes. This closes the selected native
 Linux checkpoint and its documentation count; the broader release goal remains
 active with the platform and concurrency gaps above still open.
+
+### 2026-11-02 — macOS native appearance preference delivery
+
+Previous turn: progress; the Linux native checkpoint and fresh ledger count are
+committed and reconciled. Select the concrete macOS R-S0 settings gap before
+expanding speculative concurrency coverage. Current source omits System in
+`updateSystemWindowTheme`, has only two channel values, skips native updates in
+the secondary-window `changeDarkMode` branch, and does not await the main-window
+native reply. The Swift receiver force-casts arguments, substitutes Light for a
+missing name and Dark for unknown names, and silently succeeds without a window.
+
+The intended operation carries the saved Light/Dark/System preference to each
+owning window. System clears its native appearance override; invalid requests
+or unavailable windows return an explicit failure, and a settings action awaits
+that result so failure remains visible and retryable. Apple defines nil as
+inherited appearance:
+https://developer.apple.com/documentation/appkit/nsappearancecustomization/appearance.
+Flutter's macOS channel handler runs on the UI thread:
+https://docs.flutter.dev/platform-integration/platform-channels.
+The vendored multiwindow constructor attaches the content controller before
+registering the application's channel; the main window does likewise.
+
+Four new focused cases execute actual Dart settings/channel/event code with an
+explicit macOS platform double and mock native reply, preserving the previous
+36 cases. They cover System startup, all three main-window choices and pending
+reply ownership, secondary-window updates without persistence, and native failure
+with retry. First run unchanged product code. TUF inspection confirms Linux on
+ASUS hardware, the retained Debian VM and no Apple-related offline inputs; no
+authorized isolated macOS environment is available here. These component cases
+cannot establish Swift compilation, AppKit appearance or installed macOS behavior.

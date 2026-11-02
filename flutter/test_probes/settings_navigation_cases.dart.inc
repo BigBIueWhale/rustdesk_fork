@@ -374,6 +374,25 @@ void main() {
   late FilePicker previousPicker;
   late _DirectoryPicker picker;
 
+  List<String> macOSWindowChannel(WidgetTester tester,
+      {Future<void> Function(String)? apply}) {
+    installSettingsProbeMacOS();
+    const channel = MethodChannel('org.rustdesk.rustdesk/host');
+    final calls = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel,
+        (call) async {
+      expect(call.method, 'setWindowTheme');
+      final name = (call.arguments as Map)['themeName'] as String;
+      expect(['light', 'dark', 'system'], contains(name));
+      calls.add(name);
+      await apply?.call(name);
+      return null;
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null));
+    return calls;
+  }
+
   setUp(() {
     Get.testMode = true;
     isTest = true;
@@ -615,6 +634,95 @@ void main() {
     expect(native.themeNotifications, 2);
     expect(_themeRadio(tester, 'system').groupValue, 'system');
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('desktop theme macOS startup restores system appearance',
+      (tester) async {
+    final calls = macOSWindowChannel(tester);
+    native.theme = defaultOptionTheme;
+    await updateSystemWindowTheme();
+    expect(calls, ['system']);
+    expect(native.themeWrites, isEmpty);
+    expect(native.themeNotifications, 0);
+  });
+
+  testWidgets('desktop theme macOS main sends saved choices and waits for native reply',
+      (tester) async {
+    final applied = Completer<void>();
+    final calls = macOSWindowChannel(tester,
+        apply: (name) async {
+          if (name == 'system') await applied.future;
+        });
+    await _mountTheme(tester);
+    for (final choice in ['Dark', 'Light']) {
+      await tester.tap(find.text(choice));
+      await _settle(tester);
+    }
+    await tester.tap(find.text('Follow System'));
+    await _settle(tester);
+    final waiting = _themeRadio(tester, 'system').onChanged == null;
+    applied.complete();
+    await _settle(tester);
+    expect(calls, ['dark', 'light', 'system']);
+    expect(waiting, isTrue);
+    expect(native.themeWrites, ['dark', 'light', defaultOptionTheme]);
+    expect(_themeRadio(tester, 'system').groupValue, 'system');
+    expect(_themeRadio(tester, 'system').onChanged, isNotNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('desktop theme macOS receiver updates native appearance without writes',
+      (tester) async {
+    final calls = macOSWindowChannel(tester);
+    desktopType = DesktopType.remote;
+    application.installSettingsProbeEventHandlers();
+    try {
+      await tester.pumpWidget(GetMaterialApp(
+        theme: MyTheme.lightTheme,
+        darkTheme: MyTheme.darkTheme,
+        home: const SizedBox.shrink(),
+      ));
+      await _settle(tester);
+      for (final choice in ['dark', 'light', defaultOptionTheme]) {
+        native.theme = choice;
+        expect(await dispatchSettingsProbeEvent('{"name":"theme"}'), isTrue);
+        await _settle(tester);
+      }
+      expect(calls, ['dark', 'light', 'system']);
+      expect(native.themeWrites, isEmpty);
+      expect(native.themeNotifications, 0);
+      expect(tester.takeException(), isNull);
+    } finally {
+      for (final event in ['theme', 'language']) {
+        PlatformFFI.instance.registerEventHandler(event, event, (_) {}, replace: true)
+            ?.cancel();
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+      desktopType = null;
+    }
+  });
+
+  testWidgets('desktop theme macOS native failure is visible and retryable',
+      (tester) async {
+    var refuse = true;
+    final escaped = <Object>[];
+    final calls = macOSWindowChannel(tester, apply: (_) async {
+      if (refuse) throw PlatformException(code: 'WINDOW_UNAVAILABLE');
+    });
+    await _mountTheme(tester);
+    runZonedGuarded(() => _themeRadio(tester, 'dark').onChanged!('dark'),
+        (Object error, StackTrace stack) => escaped.add(error));
+    await _settle(tester);
+    final failed = find.text('Failed').evaluate().isNotEmpty;
+    refuse = false;
+    await tester.tap(find.text('Dark'));
+    await _settle(tester);
+    expect(escaped, isEmpty);
+    expect(failed, isTrue);
+    expect(calls, ['dark', 'dark']);
+    expect(native.theme, 'dark');
+    expect(native.themeWrites, ['dark', 'dark']);
+    expect(find.text('Failed'), findsNothing);
   });
 
   for (final sample in [

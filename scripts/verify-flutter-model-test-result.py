@@ -1247,6 +1247,10 @@ SETTINGS_NAVIGATION_TESTS = {
     "desktop theme close drains admitted save and retires callbacks",
     "desktop theme fixed preference rejects retained callbacks",
     "desktop theme publishes effective preference and follow system",
+    "desktop theme macOS startup restores system appearance",
+    "desktop theme macOS main sends saved choices and waits for native reply",
+    "desktop theme macOS receiver updates native appearance without writes",
+    "desktop theme macOS native failure is visible and retryable",
     *{f"desktop theme receiver {case}" for case in (
         "applies current light", "applies current dark",
         "follows system light", "follows system dark",

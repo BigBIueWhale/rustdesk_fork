@@ -129780,3 +129780,23 @@ confirm its radio and fresh pixels on the same connection, then parse the saved
 Low value after exact viewer exit. No product edits or full rebuild are needed.
 The retained-descriptor permission change follows fchmod(2),
 https://man7.org/linux/man-pages/man2/fchmod.2.html. CTE's input soak stays frozen.
+
+### 2026-11-02 — unchanged-checkout healthy input soak accepted
+
+CTE `6erBmhWAIE` completes on unchanged `b5f70992` and exits zero. All 7,320
+unique requests match actual viewer-root pixels in 62–155 ms. Independent
+recomputation of all 61 windows confirms p95 114–134 ms, p99 115–149 ms and
+maximum drift 17/27 ms from the fixed 117/122 ms baseline. Viewer FDs remain 46,
+RSS 356,524–390,084 KiB and threads 51–55; all 244 server CPU/resource windows
+pass, with maximum CPU 1,420 ms. The source/clock/input/pixel/cleanup checks retain
+their original criteria. This closes the selected healthy Linux input soak,
+not physical scanout, impairment recovery, other workloads/platforms or release.
+
+Capsule `input-soak-frozen-b5f70992.json` is 22,849 bytes, SHA-256
+`a17b36a659ee249bcf81a02ac07d4af949cf9306a98f1de625ed3f26c52392d5`.
+It binds all seven raw files, exact launch/source-freeze controls, individual
+measurements and recomputed windows. Wrapper 4125770 and QEMU 4127110 are absent;
+private run and RAM `run.zzji2bdj` (`29:10951`) retire, and all four strictly
+decoded listener deltas are zero. Duration including provisioning/cleanup is
+14,767.590 s; scratch peaks at 3,024,113,664 bytes within 7 GiB.
+Only after this capsule was published was CTE fast-forwarded to current master.

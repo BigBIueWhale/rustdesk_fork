@@ -43,16 +43,16 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
-**Healthy Linux display soak passes (2026-11-01):** The corrected full-peer run
-completes a one-minute baseline and four additional hours: 303,735 valid sampled
-ages, maximum 338 ms, fixed-baseline p95/p99 drift 5/4 ms and maximum observation
-gap 62 ms, including final-window tails. Resources remain bounded, all processes
-join, RAM retires and outer exit is zero. This establishes the selected healthy
-Linux X11/Xvfb software-display condition; physical scanout, network recovery,
-installed artifacts and other platforms remain OPEN. The previous input guest
-completed 7,320 trials, but host-source edits invalidated outer acceptance.
-Its unchanged-checkout replacement is running on CTE; canonical input-soak
-acceptance remains OPEN until terminal evidence and cleanup are verified.
+**Healthy Linux display and input soaks pass (2026-11-02):** Separate complete-peer
+runs finish their fixed baselines and four additional hours. Display records
+303,735 valid sampled ages, maximum 338 ms, p95/p99 drift 5/4 ms and maximum
+observation gap 62 ms, including window tails. Input records 7,320 unique requests
+with matching displayed responses in 62–155 ms; independently recomputed p95/p99
+drift is 17/27 ms. Both retain one connection and bounded resources, exit zero,
+join every owned process and retire RAM. The replacement input run preserves
+its admitted checkout throughout, closing the earlier source-consistency failure.
+These are healthy Linux X11/Xvfb software-display conditions; physical scanout,
+network recovery, installed artifacts and other platforms remain OPEN.
 
 **Linux shared-capture queues and recovery verified (2026-11-01):** Two complete
 Flutter viewers retain their connections through simultaneous suspension and
@@ -3324,29 +3324,27 @@ seven historical discrepancies reproduce, three controls pass and all ten
 corrected cases pass. Receipt `soak-accounting-ab-bf2d1147.json` retains this native
 accounting comparison; the corrected full-duration capsule binds the same controller.
 
-**Healthy Linux input soak — guest observations; outer acceptance OPEN.** CTE
-`xmA4oGPG17`, harness `23739a5e`, reuses app `0243c010` / engine `ddb1541d`.
-All 7,320 unique XTEST requests receive matching viewer-root pixels within
-61–153 ms over a four-minute baseline and four additional hours. Recomputing
-all 61 windows from raw measurements gives p95 112–123 ms and p99 115–135 ms;
-the fixed baseline is 115/126 ms, with maximum upward drift 8/9 ms. Viewer
-descriptors stay at 46, RSS spans 364,900–392,140 KiB and threads 51–53.
-The server records 14,636 samples over 14,640,850 ms, with peak window CPU
-1,360 ms and resources within their predeclared bounds. Guest peers join;
-wrapper/QEMU are absent, RAM retires and all four decoded listener deltas are
-zero. Scratch peaks at 3,023,826,944 bytes within 7 GiB.
+**Healthy Linux input soak — complete-peer acceptance.** CTE `6erBmhWAIE`
+finishes on unchanged harness `b5f70992`, reusing app `0243c010` and engine
+`ddb1541d`. All 7,320 unique XTEST requests receive matching viewer-root pixels
+in 62–155 ms over a four-minute baseline and four additional hours. Independent
+recomputation of all 61 windows gives p95 114–134 ms and p99 115–149 ms;
+the fixed 117/122 ms baseline yields maximum upward drift 17/27 ms. Viewer FDs
+stay 46, RSS spans 356,524–390,084 KiB and threads 51–55. All 244 server windows
+satisfy the declared CPU/resource bounds, with maximum window CPU 1,420 ms.
+Outer exit is zero, source and local Git refs remain unchanged through acceptance,
+all processes join, RAM retires and four strictly decoded listener deltas are zero.
+Scratch peaks at 3,024,113,664 bytes within 7 GiB. Receipt:
+`input-soak-frozen-b5f70992.json`, with individual measurements in its hashed log.
+This closes the selected healthy Linux software-display input-soak condition;
+physical scanout, impairment recovery, installed artifacts and other platforms
+remain OPEN.
 
-Outer exit is **one**, because the host launcher, presentation controller and
-this ledger changed after source admission. The sealed guest archive preserves
-the measured execution but does not satisfy the host's unchanged-source gate;
-later postflight checks did not complete. Receipt
-`input-soak-guest-evidence-23739a5e.json` explicitly preserves that failure and
-the raw measurements. Exact retained diagnostics are reconciled and retired in
-`input-soak-private-retired-23739a5e.json` (5,777,636 regular-file bytes).
-Canonical acceptance requires a fresh unchanged-checkout run using the same
-authenticated app/engine. No product defect is demonstrated by this host
-source-consistency failure. Physical scanout, impairment recovery, installed
-artifacts and other-platform acceptance remain OPEN.
+Earlier `xmA4oGPG17` guest observations remain historical in
+`input-soak-guest-evidence-23739a5e.json`: outer exit one correctly rejected host
+source edits during execution. Its private diagnostics were retired in
+`input-soak-private-retired-23739a5e.json`. The accepted unchanged-checkout replay
+supersedes that failed acceptance attempt without relabeling it a pass.
 
 **Shared R-F5 acceptance remains OPEN.** Execute exact current peer artifacts through
 capture, encode, transport, decode and actual presentation; measure frame age and

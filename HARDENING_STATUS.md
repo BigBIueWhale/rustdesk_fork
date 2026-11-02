@@ -240,9 +240,20 @@ retirement pass. `keyboard-translate-corrected-c6aed851.json` binds acceptance;
 `keyboard-translate-98a8dd43.json` retains the failing comparison. Build
 `J1J8D0Hqej` also passes thirteen widget and two native command tests; its
 manifest and cleanup are in `keyboard-translate-build-c6aed851.json`.
-Equal US X11 only: other shortcut combinations, input methods/layouts, physical
-devices, Translate restart, other platforms and installed/release acceptance
-remain OPEN. Independently parked topics remain parked.
+Additional replay `Zg1togddPU` at fixture `e3f83515` reuses the same app and
+passes seven compound-shortcut cases: left/right Ctrl+Shift+Z, right Ctrl+A,
+Alt+A, Super+A, A/C with Control continuously held and subsequent ordinary typing.
+The original 33 cases also pass: 40 cases / 118 native events overall, exact
+text/modifier state, balanced keys, unchanged connection/window and twelve fresh
+counters with maximum sampled age 298 ms. Joined storage retains Map. The
+right-side case explicitly observes the text injector's temporary left-Shift
+pair while preserving right Shift; the initial observer assumption and its
+correction are retained in the audit. `keyboard-shortcuts-e3f83515.json` binds
+the passed run, identical driver rebuilds, four zero listener deltas and complete
+VM/RAM/private retirement. No product change or app rebuild was needed.
+Equal US X11 only: application-specific/side-specific shortcut bindings, combinations
+beyond those named, input methods/layouts, physical devices, Translate restart,
+other platforms and installed/release acceptance remain OPEN. Independent parks remain.
 
 **User pivot (2026-11-02):** Custom quality/FPS native validation is OPEN/PARKED.
 Its unexecuted two-file draft is preserved in stash

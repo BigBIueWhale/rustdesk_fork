@@ -132060,3 +132060,25 @@ hosts, including `keyboard-shortcuts-91f0bb40.json` (33,576 bytes, SHA-256
 `b65c7bc6024765a3e8d9566b96659376e8906c92dc49957b7cb885e137495056`).
 The duplicate failure app bundle is verified against the pinned manifest and
 canonical app before descriptor-relative retirement; canonical inputs remain.
+
+Corrected observer replay `Zg1togddPU` at `e3f83515` passes in about 128
+seconds on unchanged app `c6aed851`, engine `ddb1541d` and provider24. All
+seven shortcut cases / 34 native events pass, including the complete right-side
+temporary-modifier schedule and held-Control A/C. The original three modes pass
+33 cases / 84 events as well: 40 cases / 118 events overall. Exact text, modifier
+state, event order, balanced codes and both released keymaps pass. The same
+authenticated connection/window remains; twelve fresh displayed counters have
+phase maximum ages 292/293/298 ms, and joined storage retains Map. All three
+drivers compile twice identically; the protected provider's bytes remain unchanged.
+
+Wrapper 1075228 and QEMU 1076286 are absent; exact helpers, private state and
+RAM `run.9gukv3i4` / `29:40163` retire under the shared lock. All four listener
+deltas are zero. Peak scratch is 3,013,169,152 bytes under 7 GiB; canonical app
+and offline inputs remain. Both hosts retain thirteen verified evidence files,
+including `keyboard-shortcuts-e3f83515.json` (27,743 bytes, SHA-256
+`e12f1f80a401163df4579c45448063019ce24369247cc981df7ed854434effcc`).
+This closes the selected native-delivery cases, not application-specific bindings,
+other combinations/layouts, physical devices, Translate restart, other platforms
+or installed acceptance. No new product defect or product correction is claimed.
+The ledger records that scope and awaits its fresh isolated count. The goal and
+independent parks remain; Translate restart is still an available native gap.

@@ -132143,3 +132143,13 @@ this Map/Translate/Legacy evidence from the retained app; historical receipts re
 retained. No product change was needed. Abrupt failure, physical devices, other
 platforms, installed acceptance and independent parks remain open. The fresh
 ledger count follows; the full release goal is still active.
+
+Count `gIhjqqwdIb` at `1e69efe0` passes seven controls and the whole-input
+round trip: **396,194 tokens / 1,813,275 bytes**, SHA-256
+`2df3c01e2fd1e8050e08bf578e4e54e5cd50e5f19aed2427554a71c688f41a56`.
+Both hosts retain twelve verified records, including
+`keyboard-translate-restart-ledger-1e69efe0.json` (4,848 bytes, SHA-256
+`65db166fa03faf9c92352da397584be8e048fc9c840ca3323d9f678ba6d0aa49`).
+All owned processes, private state and RAM retire with three zero listener deltas.
+Orderly Translate restart acceptance is complete at this Linux checkpoint;
+the full objective and its remaining required evidence stay open.

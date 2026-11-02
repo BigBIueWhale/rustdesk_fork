@@ -131593,3 +131593,20 @@ registrar's window; the request cannot supply another window. The vendored
 window-manager brightness setter has no application caller; no parallel live
 appearance writer was found. Reuse the same forty-case component scenario for
 correction acceptance; legitimate native macOS validation remains required.
+
+Corrected run `WCYT4wRC8l` at `f8d92225` passes all forty cases, including
+the four unchanged regressions. System reaches the channel at startup and after
+explicit main-window choices; the radio remains busy until the native reply;
+secondary delivery changes native appearance without persistence or rebroadcast;
+and a native error stays within the settings action, appears visibly and clears
+after retry. Fresh binding generation and exact production-copy checks pass.
+The Swift receiver is source-reviewed, not compiled or executed by this Linux
+component run. Actual AppKit rendering, OS appearance changes, all window roles,
+startup/restart, native error paths and current installed artifacts remain open.
+
+All owned processes, private state and RAM retire with four zero listener deltas.
+Peak RAM scratch is 6,382,309,376 bytes under 7 GiB. Both hosts retain thirteen
+verified files including `macos-theme-corrected-f8d92225.json` (7,831 bytes,
+SHA-256 `52803fd1b5cdb4eb2095fc105e01dba20b9af87d666975bcf425a57a3be3ba6b`).
+The ledger replaces the source-only gap with this precise component checkpoint;
+its fresh isolated count follows. The broader release goal remains active.

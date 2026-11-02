@@ -91,11 +91,17 @@ listener deltas pass. `theme-system-save-failure-f13a50e7.json` binds this evide
 The component reordering reproduction and these native integration runs cover
 distinct layers; the broader gaps above remain.
 
-**macOS appearance reset remains OPEN:** source review finds that explicit choices
-set `NSWindow.appearance`, while System sends no reset through the two-value
-platform channel. AppKit uses `nil` to restore inherited appearance. This separate
-path needs correction and native verification; no macOS execution is claimed.
-The audit records the exact sources and Apple's appearance contract.
+**macOS appearance reset — component correction verified; native OPEN:**
+`f8d92225` sends Light/Dark/System through the native channel on startup and
+main/secondary-window changes, awaiting completion. Swift clears the window's
+appearance for System and rejects invalid arguments or unavailable windows and
+appearances. The redundant detached rebuild update is removed. Unchanged-product
+run `4Y3j1Wu5tt` passes 36 existing cases and fails four macOS channel cases;
+corrected `WCYT4wRC8l` passes all 40, including pending native completion and
+visible failure/retry. Actual Dart settings/event/channel code executes with
+native/platform doubles; `macos-theme-corrected-f8d92225.json` binds evidence and
+joined cleanup. Swift compilation, AppKit pixels/OS changes, startup/restart and
+current-app native/installed acceptance remain OPEN; no macOS execution is claimed.
 
 **User pivot (2026-11-02):** View mode / Show my cursor work is OPEN/PARKED.
 Candidate `0ccb2a7e` completes the Linux Flutter app build with thirteen focused

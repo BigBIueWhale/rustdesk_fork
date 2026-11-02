@@ -131428,3 +131428,14 @@ Both hosts retain `retired-app-0243c010.json` (44,473 bytes, SHA-256
 and its retirement receipt. Canonical inputs, source and historical runtime
 evidence remain. The ledger now records the reproduced failure and pending
 correction; its required fresh isolated count precedes the new native build.
+
+Count `bS8775rfYF` at `c0ce6463` passes seven controls and the whole-input
+round trip: **394,777 tokens / 1,807,064 bytes**, SHA-256
+`df821dcf2356360ae934ff421ec4612977605c58100f09b666f7f1e92afe876d`.
+All owned processes, private state and RAM scratch retire; three listener deltas
+are zero. Both hosts retain twelve evidence files, including
+`theme-system-ledger-c0ce6463.json` (4,792 bytes, SHA-256
+`a9a681654ae8e872a4c50a8d0ee3921ef46d08d7e320e6d1a58f70ae7435ba01`).
+Next run the source-bound native app build, then the identical thirteen-phase
+appearance replay and existing save-failure/retry check. The correction remains
+pending native validation; the goal remains active.

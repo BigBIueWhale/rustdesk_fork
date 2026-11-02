@@ -131085,3 +131085,31 @@ and private state plus RAM `run._097uics` / `29:38792` retire. Capsule
 Both hosts retain the count capsule and raw records. No owned job remains active.
 The cross-window theme check reaches its native checkpoint; View mode remains
 parked and the release goal remains incomplete.
+
+### 2026-11-02 — theme failure and retry in both open windows
+
+The previous turn is progress: the retained native app passes twelve cross-window
+theme phases. Continue R-S0 with the corresponding save failure before expanding
+concurrent-writer schedules. The existing failed-save scenario verifies the main
+window and durable file, but not the remote window's theme. Reuse its real EACCES
+fixture and the accepted two-window observer; no product edit or app build is
+needed to decide whether failure preserves both visible states and retry updates
+both through the actual broadcast/event path.
+
+`MyTheme.changeDarkMode` returns after a rejected `mainSetLocalOption`, before
+either `Get.changeThemeMode` or `mainChangeTheme`; the settings page retains its
+inline failure. The test still changes only its nonroot guest-owned configuration
+directory through a retained descriptor and proves a fresh creation is denied;
+`fchmod` targets the open object, and `openat` supplies the actual EACCES outcome:
+https://man7.org/linux/man-pages/man2/fchmod.2.html and
+https://man7.org/linux/man-pages/man2/open.2.html.
+
+Observe baseline Light, failed Dark, held failure and successful Dark retry in
+both windows. Each remote observation requires three matching pixel samples,
+four current displayed counters and the same authenticated connection. The held
+failure additionally observes four seconds in each window. Existing visible
+error, exact unchanged file identity/bytes, permission restoration, cleared error
+and joined-process saved Dark checks remain. The intended result is four ordered
+remote phases and sixteen additional fresh counters; compilation/native execution
+follow. View mode and all independent user parks remain; other failure classes,
+concurrent writers, providers/platforms and installed/release acceptance are OPEN.

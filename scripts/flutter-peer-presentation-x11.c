@@ -4366,7 +4366,8 @@ static int exercise_theme_save_failure(Display *display, const ViewerWindow *vie
     XSetInputFocus(display, main, RevertToParent, CurrentTime);
     XSync(display, False);
     if (click_main_control(display, main, pid, "Light") != 0 ||
-        wait_for_theme(display, main, pid, 0U, 0, 0U, 1U, "save-baseline") != 0 ||
+        wait_for_theme_windows(display, main, viewer, history, connection,
+                               0U, 0, 0U, "save-baseline") != 0 ||
         theme_error_visible(pid, 0) != 0 || sleep_millis(1500U) != 0) goto out;
     directory = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     phase = "write-refusal-setup";
@@ -4386,9 +4387,11 @@ static int exercise_theme_save_failure(Display *display, const ViewerWindow *vie
     }
     phase = "failed-choice-pixels";
     if (probe_error != EACCES || click_main_control(display, main, pid, "Dark") != 0 ||
-        wait_for_theme(display, main, pid, 0U, 0, 0U, 1U, "failed-save") != 0 ||
+        wait_for_theme_windows(display, main, viewer, history, connection,
+                               0U, 0, 0U, "failed-save") != 0 ||
         /* Observe the persistent inline error after the three-second toast retires. */
-        wait_for_theme(display, main, pid, 0U, 0, 4000U, 1U, "failed-save-held") != 0) goto out;
+        wait_for_theme_windows(display, main, viewer, history, connection,
+                               0U, 0, 4000U, "failed-save-held") != 0) goto out;
     phase = "visible-error";
     if (theme_error_visible(pid, 1) != 0) goto out;
     phase = "unchanged-file";
@@ -4402,7 +4405,8 @@ static int exercise_theme_save_failure(Display *display, const ViewerWindow *vie
     if (fchmod(directory, 0700) != 0) goto out;
     permissions_changed = 0;
     if (click_main_control(display, main, pid, "Dark") != 0 ||
-        wait_for_theme(display, main, pid, 1U, 1, 0U, 1U, "save-retry") != 0 ||
+        wait_for_theme_windows(display, main, viewer, history, connection,
+                               1U, 1, 0U, "save-retry") != 0 ||
         theme_error_visible(pid, 0) != 0 || close_viewer(display, main) != 0) goto out;
     main = None;
     XRaiseWindow(display, viewer->window);
@@ -4421,10 +4425,12 @@ out:
     }
     if (directory >= 0 && close(directory) != 0) result = -1;
     if (main != None && close_viewer(display, main) != 0) result = -1;
-    if (result == 0)
+    if (result == 0) {
         puts("FLUTTER_PEER_THEME_SAVE_FAILURE_OK failure=visible previous=preserved retry=dark "
              "error=cleared permissions=restored stable_connection=true fresh_pixels=4");
-    else fprintf(stderr, "FLUTTER_PEER_X11_FAIL native theme save failure/retry phase=%s\n", phase);
+        puts("FLUTTER_PEER_THEME_SAVE_WINDOWS_OK phases=4 windows=2 remote_fresh_pixels=16 "
+             "refused=light retry=dark same_window=true stable_connection=true");
+    } else fprintf(stderr, "FLUTTER_PEER_X11_FAIL native theme save failure/retry phase=%s\n", phase);
     return result;
 }
 

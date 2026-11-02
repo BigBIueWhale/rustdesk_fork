@@ -1865,7 +1865,10 @@ PY
       grep -Fxq 'FLUTTER_PEER_THEME_SAVE_REFUSED error=visible pixels=light radio=light file=unchanged kernel=EACCES' \
         <<<"$controller_output" \
         && grep -Fxq 'FLUTTER_PEER_THEME_SAVE_FAILURE_OK failure=visible previous=preserved retry=dark error=cleared permissions=restored stable_connection=true fresh_pixels=4' \
-        <<<"$controller_output" || fail 'native theme save failure/retry result is absent'
+        <<<"$controller_output" \
+        && [ "$(grep -c '^FLUTTER_PEER_THEME_REMOTE_OBSERVED ' <<<"$controller_output")" -eq 4 ] \
+        && grep -Fxq 'FLUTTER_PEER_THEME_SAVE_WINDOWS_OK phases=4 windows=2 remote_fresh_pixels=16 refused=light retry=dark same_window=true stable_connection=true' \
+        <<<"$controller_output" || fail 'native theme save failure/retry or remote-window result is absent'
       viewer_result='viewer=joined xvfb=joined theme_save_failure=passed previous=preserved retry=durable pixels=verified'
     elif [ "$PEER_SCENARIO" = theme-appearance ]; then
       grep -Fxq 'FLUTTER_PEER_THEME_APPEARANCE_OK system_transitions=4 explicit_holds=4 hold_ms=5000 choices=3 stable_connection=true fresh_pixels=4' \

@@ -5264,6 +5264,52 @@ failed:
     return -1;
 }
 
+static int exercise_keyboard_restart(Display *source, Display *display,
+                                      const ViewerWindow *viewer, SourceHistory *history,
+                                      const ConnectionIdentity *connection,
+                                      const ProcessResources *baseline, unsigned int generation) {
+    static const char *before[] = {"Legacy mode", "Map mode", "Legacy mode"};
+    static const char *after[] = {"Map mode", "Legacy mode", "Legacy mode"};
+    static const char *modes[] = {"map", "legacy", "legacy"};
+    unsigned int pid = (unsigned int)viewer->pid, observations = 0U;
+    if (generation < 1U || generation > 3U) return -1;
+    for (unsigned int step = 0U; step < (generation == 3U ? 1U : 2U); ++step) {
+        const char *selected = step == 0U ? before[generation - 1U] : after[generation - 1U];
+        const char *mode = strcmp(selected, "Map mode") == 0 ? "map" : "legacy";
+        if (quality_toolbar(pid) != 0 || activate_named_control(pid, "Keyboard settings") != 0)
+            return -1;
+        if (step == 1U && (activate_named_control(pid, selected) != 0 ||
+            wait_keyboard_controls_retired(pid, 0) != 0 ||
+            activate_named_control(pid, "Keyboard settings") != 0)) return -1;
+        if (keyboard_mode_selected(pid, selected) != 0 ||
+            activate_named_control(pid, "Keyboard settings") != 0 ||
+            wait_keyboard_controls_retired(pid, 0) != 0 ||
+            activate_named_control(pid, "Hide toolbar") != 0 ||
+            wait_keyboard_controls_retired(pid, 1) != 0) return -1;
+        if (step == 0U) {
+            printf("FLUTTER_PEER_KEYBOARD_RESTORED generation=%u mode=%s choice=confirmed before_write=true\n",
+                   generation, mode);
+            fflush(stdout);
+            if (generation == 1U) continue;
+        }
+        uint64_t fresh = 0U, age = 0U;
+        ConnectionIdentity current = {{0}, {0}, 0UL};
+        if (exercise_keyboard_input(source, display, viewer, connection, baseline) != 0 ||
+            wait_for_current_frames(display, viewer, history, RECOVERY_LIMIT_MS, 4U, &fresh, &age) != 0 ||
+            read_connection_identity(&current) != 0 || !same_connection(connection, &current)) return -1;
+        observations += 1U;
+        printf("FLUTTER_PEER_KEYBOARD_RESTART_OBSERVED generation=%u phase=%s mode=%s "
+               "cases=11 events=28 distinct=4 maximum_age_ms=%llu released=both stable_connection=true\n",
+               generation, step == 0U ? "restored" : "selected", mode, (unsigned long long)age);
+        fflush(stdout);
+    }
+    printf("FLUTTER_PEER_KEYBOARD_RESTART_PHASE_OK generation=%u selected=%s observations=%u "
+           "choice=confirmed input=verified pixels=fresh resources=bounded\n",
+           generation, modes[generation - 1U], observations);
+    fflush(stdout);
+    return 0;
+}
+
 static int view_only_menu_state(unsigned int pid, int expected) {
     uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
     unsigned int stable = 0U;
@@ -6306,6 +6352,9 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--keyboard-retirement") != 0 &&
                                     strcmp(argv[5], "--keyboard-input") != 0 &&
                                     strcmp(argv[5], "--keyboard-modes") != 0 &&
+                                    strcmp(argv[5], "--keyboard-legacy") != 0 &&
+                                    strcmp(argv[5], "--keyboard-map") != 0 &&
+                                    strcmp(argv[5], "--keyboard-restore") != 0 &&
                                     strcmp(argv[5], "--view-only") != 0 &&
                                     strcmp(argv[5], "--view-only-save-failure") != 0 &&
                                     strcmp(argv[5], "--mouse-input") != 0 &&
@@ -6345,6 +6394,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("Additional full-peer scenarios: --image-quality, --image-quality-save-failure, --audio-mute, "
+              "--keyboard-legacy, --keyboard-map, --keyboard-restore, "
               "--quality-best, --quality-low, --quality-balanced, --quality-restore, "
               "--language-french, --language-portugal, --language-english, --language-restore, "
               "--language-direction\n", stderr);
@@ -6356,6 +6406,7 @@ int main(int argc, char **argv) {
     unsigned int theme_generation = 0U;
     unsigned int language_generation = 0U;
     unsigned int quality_generation = 0U;
+    unsigned int keyboard_generation = 0U;
     int language_direction = argc == 6 && strcmp(argv[5], "--language-direction") == 0;
     if (argc == 6) {
         static const char *phases[] = {"--theme-light", "--theme-dark", "--theme-system", "--theme-restore"};
@@ -6369,6 +6420,9 @@ int main(int argc, char **argv) {
             "--quality-best", "--quality-low", "--quality-balanced", "--quality-restore"};
         for (unsigned int i = 0U; i < 4U; ++i)
             if (strcmp(argv[5], quality_phases[i]) == 0) quality_generation = i + 1U;
+        static const char *keyboard_phases[] = {"--keyboard-map", "--keyboard-legacy", "--keyboard-restore"};
+        for (unsigned int i = 0U; i < 3U; ++i)
+            if (strcmp(argv[5], keyboard_phases[i]) == 0) keyboard_generation = i + 1U;
     }
     if (language_direction) language_generation = 1U;
     int credential_enroll = argc == 6 && strcmp(argv[5], "--credential-enroll") == 0;
@@ -6636,6 +6690,16 @@ int main(int argc, char **argv) {
 
     if (argc == 6 && strcmp(argv[5], "--theme-save-failure") == 0) {
         int result = exercise_theme_save_failure(display, &viewer, &history, &current_connection);
+        if (atspi_exit() != 0) result = -1;
+        if (close_viewer(display, viewer.window) != 0) result = -1;
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return result == 0 ? 0 : 1;
+    }
+
+    if (keyboard_generation != 0U) {
+        int result = exercise_keyboard_restart(source, display, &viewer, &history, &current_connection,
+                                                &baseline_resources, keyboard_generation);
         if (atspi_exit() != 0) result = -1;
         if (close_viewer(display, viewer.window) != 0) result = -1;
         XCloseDisplay(display);

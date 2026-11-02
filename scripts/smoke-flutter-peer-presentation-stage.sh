@@ -26,6 +26,7 @@ MENU_ACTION=pointer
 [ "$PEER_SCENARIO" != credential-menu-accessible ] || MENU_ACTION=accessible
 readonly MENU_ACTION
 case "$PEER_SCENARIO" in
+  keyboard-restart) EXPECTED_RESTARTS=0 ;;
   session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|language-restart|language-direction|quality-restart|viewer-isolation|viewer-soak|input-latency|input-soak|image-quality|image-quality-save-failure|audio-mute) EXPECTED_RESTARTS=0 ;;
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
   view-only|view-only-save-failure) EXPECTED_RESTARTS=0 ;;
@@ -1568,6 +1569,7 @@ PY
     [ "$PEER_SCENARIO" != theme-restart ] || viewer_generations=4
     [ "$PEER_SCENARIO" != language-restart ] || viewer_generations=4
     [ "$PEER_SCENARIO" != quality-restart ] || viewer_generations=4
+    [ "$PEER_SCENARIO" != keyboard-restart ] || viewer_generations=3
     if [ "$PEER_SCENARIO" = theme-appearance ]; then
       # Use GLib's real shared file backend, read by the unmodified native engine.
       # An absent portal must leave the engine able to follow GNOME settings.
@@ -1614,6 +1616,9 @@ PY
     elif [ "$PEER_SCENARIO" = language-restart ]; then
       language_phases=(french portugal english restore)
       controller_args+=("--language-${language_phases[viewer_generation - 1]}")
+    elif [ "$PEER_SCENARIO" = keyboard-restart ]; then
+      keyboard_phases=(map legacy restore)
+      controller_args+=("--keyboard-${keyboard_phases[viewer_generation - 1]}")
     elif [ "$PEER_SCENARIO" = quality-restart ]; then
       quality_phases=(best low balanced restore)
       controller_args+=("--quality-${quality_phases[viewer_generation - 1]}")
@@ -1771,13 +1776,29 @@ PY
       emit_runtime_logs VIEWER "$HOME/.local/share/logs"
       exit "$controller_status"
     fi
-    if [ "$PEER_SCENARIO" = theme-restart ] || [ "$PEER_SCENARIO" = language-restart ] || [ "$PEER_SCENARIO" = quality-restart ] || [ "$viewer_generation" -eq 1 ] || { [ "$ROTATE_CREDENTIAL" -eq 1 ] && [ "$viewer_generation" -eq 2 ]; }; then
+    if [ "$PEER_SCENARIO" = theme-restart ] || [ "$PEER_SCENARIO" = language-restart ] || [ "$PEER_SCENARIO" = quality-restart ] || [ "$PEER_SCENARIO" = keyboard-restart ] || [ "$viewer_generation" -eq 1 ] || { [ "$ROTATE_CREDENTIAL" -eq 1 ] && [ "$viewer_generation" -eq 2 ]; }; then
     grep -q '^FLUTTER_PEER_PASSWORD_INPUT_OK characters=22 observed_without_value=true$' \
       <<<"$controller_output" || fail 'complete count-only password input verdict is missing'
     grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false$' \
       <<<"$controller_output" || fail 'real password prompt verdict is missing'
     fi
-    if [ "$PEER_SCENARIO" = quality-restart ]; then
+    if [ "$PEER_SCENARIO" = keyboard-restart ]; then
+      keyboard_before=(legacy map legacy)
+      keyboard_after=(map legacy legacy)
+      keyboard_observations=1
+      [ "$viewer_generation" -ne 2 ] || keyboard_observations=2
+      grep -Fxq "FLUTTER_PEER_KEYBOARD_RESTORED generation=$viewer_generation mode=${keyboard_before[viewer_generation - 1]} choice=confirmed before_write=true" \
+        <<<"$controller_output" || fail 'restored keyboard choice is absent'
+      grep -Fxq "FLUTTER_PEER_KEYBOARD_RESTART_PHASE_OK generation=$viewer_generation selected=${keyboard_after[viewer_generation - 1]} observations=$keyboard_observations choice=confirmed input=verified pixels=fresh resources=bounded" \
+        <<<"$controller_output" || fail 'native keyboard restart generation result is absent'
+      [ "$(grep -Ec "^FLUTTER_PEER_KEYBOARD_RESTART_OBSERVED generation=$viewer_generation " <<<"$controller_output")" -eq "$keyboard_observations" ] \
+        || fail 'native keyboard restart observation count differs'
+      for sequence in {1..11}; do
+        [ "$(grep -Ec "^FLUTTER_PEER_KEYBOARD_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq "$keyboard_observations" ] \
+          || fail "keyboard restart case $sequence is missing or duplicated"
+      done
+      viewer_result='viewer=joined xvfb=joined keyboard_restart=passed generations=3 keyboard_cases=44 storage=verified pixels=fresh'
+    elif [ "$PEER_SCENARIO" = quality-restart ]; then
       quality_after=(best low balanced balanced)
       quality_observations=2
       [ "$viewer_generation" -ne 4 ] || quality_observations=1
@@ -2087,6 +2108,8 @@ PY
         printf 'FLUTTER_PEER_LANGUAGE_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
       elif [ "$PEER_SCENARIO" = quality-restart ]; then
         printf 'FLUTTER_PEER_QUALITY_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
+      elif [ "$PEER_SCENARIO" = keyboard-restart ]; then
+        printf 'FLUTTER_PEER_KEYBOARD_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
       else
         printf 'FLUTTER_PEER_CREDENTIAL_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
       fi
@@ -2153,6 +2176,7 @@ print('FLUTTER_PEER_AUDIO_MUTE_STORAGE_OK muted=true process=joined permissions=
 PY
     fi
     if [ "$PEER_SCENARIO" = image-quality-save-failure ] || [ "$PEER_SCENARIO" = quality-restart ] \
+      || [ "$PEER_SCENARIO" = keyboard-restart ] \
       || [ "$PEER_SCENARIO" = keyboard-modes ] || [ "$PEER_SCENARIO" = view-only ] \
       || [ "$PEER_SCENARIO" = view-only-save-failure ]; then
       python3 - "$viewer_generation" "$PEER_SCENARIO" <<'PY'
@@ -2174,6 +2198,8 @@ try:
     field = 'image_quality'
     if sys.argv[2] == 'keyboard-modes':
         field, expected = 'keyboard_mode', 'map'
+    elif sys.argv[2] == 'keyboard-restart':
+        field, expected = 'keyboard_mode', ('map', 'legacy', 'legacy')[int(sys.argv[1]) - 1]
     elif sys.argv[2] in ('view-only', 'view-only-save-failure'):
         field, expected = 'view_only', True
     assert tomllib.loads(data.decode('utf-8'))[field] == expected
@@ -2183,6 +2209,8 @@ if sys.argv[2] in ('view-only', 'view-only-save-failure'):
     print('FLUTTER_PEER_VIEW_ONLY_STORAGE_OK selected=true process=joined')
 elif sys.argv[2] == 'keyboard-modes':
     print('FLUTTER_PEER_KEYBOARD_MODE_STORAGE_OK selected=map process=joined')
+elif sys.argv[2] == 'keyboard-restart':
+    print('FLUTTER_PEER_KEYBOARD_MODE_STORAGE_OK generation=' + sys.argv[1] + ' selected=' + expected + ' process=joined')
 elif sys.argv[2] == 'quality-restart':
     print('FLUTTER_PEER_QUALITY_STORAGE_OK generation=' + sys.argv[1] + ' selected=' + expected + ' process=joined')
 else:

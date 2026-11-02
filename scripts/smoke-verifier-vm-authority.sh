@@ -680,6 +680,7 @@ case "$#:${1:-}" in
                 --keyboard-input) FLUTTER_KEYBOARD_INPUT=1 ;;
                 --keyboard-retirement) FLUTTER_KEYBOARD_INPUT=2 ;;
                 --keyboard-modes) FLUTTER_KEYBOARD_INPUT=3 ;;
+                --keyboard-restart) FLUTTER_KEYBOARD_INPUT=6 ;;
                 --view-only) FLUTTER_KEYBOARD_INPUT=4 ;;
                 --view-only-save-failure) FLUTTER_KEYBOARD_INPUT=5 ;;
                 --mouse-input) FLUTTER_MOUSE_INPUT=1 ;;
@@ -766,6 +767,7 @@ case "$#:${1:-}" in
         printf 'Focused native Linux app-capsule check: %s --linux-flutter-artifact-tests\n' "${0##*/}" >&2
         printf 'Focused native framebuffer check: %s --android-frame-tests\n' "${0##*/}" >&2
         printf 'Quality presets: use --image-quality, --quality-restart or --image-quality-save-failure with the source-bound Linux app replay arguments above.\n' >&2
+        printf 'Keyboard restoration: use --keyboard-restart with the source-bound Linux app replay arguments above.\n' >&2
         printf 'Active-session Mute persistence and save refusal: use --audio-mute with the source-bound Linux app replay arguments above.\n' >&2
         printf 'Native language selection across viewer restarts: use --language-restart with the source-bound Linux app replay arguments above.\n' >&2
         printf 'Native Hebrew language direction: use --language-direction with the source-bound Linux app replay arguments above.\n' >&2
@@ -5278,6 +5280,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
             1) guest_invocation+=' --keyboard-input' ;;
             2) guest_invocation+=' --keyboard-retirement' ;;
             3) guest_invocation+=' --keyboard-modes' ;;
+            6) guest_invocation+=' --keyboard-restart' ;;
             4) guest_invocation+=' --view-only' ;;
             5) guest_invocation+=' --view-only-save-failure' ;;
         esac
@@ -8740,6 +8743,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         1) peer_scenario=keyboard-input ;;
         2) peer_scenario=keyboard-retirement ;;
         3) peer_scenario=keyboard-modes ;;
+        6) peer_scenario=keyboard-restart ;;
         4) peer_scenario=view-only ;;
         5) peer_scenario=view-only-save-failure ;;
     esac

@@ -131703,3 +131703,35 @@ This native held-modifier scenario is complete. Keyboard-mode restoration after
 a fresh viewer process remains an available next acceptance check; physical
 devices, other platforms and installed artifacts still require their own evidence.
 The broader release goal remains active, with independent user parks preserved.
+
+### 2026-11-02 — native keyboard-mode restoration across viewer processes
+
+Previous turn: progress; both held-modifier transitions and the fresh ledger
+count are complete. Select the remaining R-S0 keyboard preference restoration
+gap: a saved file and same-process menu selection do not prove that a fresh
+viewer restores and uses the saved choice. This available full-app check takes
+priority over more timing variations of the now-passing held-key scenario.
+All independent parks remain, including differing layouts and shared remote-key
+ownership. TUF and CTE start clean at `b2310b2f`, no owned private/RAM runs remain,
+and TUF has approximately 45 GiB available RAM before normal admission.
+
+`LoginConfigHandler::initialize` loads the peer config before session use;
+`Session::get_keyboard_mode` validates its saved mode against peer capabilities.
+An empty preference falls back to the first supported enum value, Legacy.
+`save_keyboard_mode` persists the selected supported mode before cache publication.
+Use the existing joined viewer-restart harness and retained app `c9323bf1` /
+engine `ddb1541d`. Generation one confirms the default Legacy choice, selects Map
+and types. Generation two confirms and types in restored Map before selecting
+and typing in Legacy. Generation three confirms and types in restored Legacy
+without a setting write. Each selected/restored mode uses eleven native cases,
+exact text/modifiers/press-release order, released keymaps and four fresh displayed
+counters: four observations, 44 cases and 112 native events in total.
+
+The actual password prompt is exercised in each process; the previous process
+must exit and join before the next launch. Exact private preference-file metadata
+and the expected mode are checked after every join. The source/engine artifacts,
+twice-identical driver builds, resource bounds, zero-NIC isolation, host endpoint
+checks and bounded RAM retirement remain unchanged. No product failure is assumed.
+These are the same XTest/XQueryKeymap native observations documented in the prior
+entry; physical devices, cross-layout/other-platform and installed claims remain
+outside this focused scenario. No new app build is needed.

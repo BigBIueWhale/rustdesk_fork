@@ -43,19 +43,43 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
-**View mode save failure reproduced (2026-11-02):** Native Linux replay
+**Native Linux theme synchronization verified (2026-11-02):** Replay
+`AoPSJZs3kq` at `67fc42ce` reuses app `7e6f6459` and engine `ddb1541d`.
+Across twelve phases, actual main-window radio/pixel observations and the
+already-open remote window's pixels agree. Follow System follows four native
+OS changes; explicit Light/Dark survive four five-second remote observations
+after those changes. The same remote window/connection remains, all 48 additional
+displayed counters are fresh (maximum sampled age 330 ms), and final joined
+storage retains System. Native drivers rebuild twice identically; all owned
+processes, RAM scratch and private state retire with four zero listener deltas.
+`theme-windows-accepted-67fc42ce.json` binds this checkpoint. Product code is
+unchanged. Later locale/View mode candidates, concurrent settings, other
+providers/platforms and installed/release acceptance remain OPEN.
+
+**User pivot (2026-11-02):** View mode / Show my cursor work is OPEN/PARKED.
+Candidate `0ccb2a7e` completes the Linux Flutter app build with thirteen focused
+Flutter tests and two native command-queue tests passing. Run `uRaKGkDRPY`
+then fails the outer wrapper's obsolete Mute-test receipt check; the candidate
+remains unpublished. Wrapper repair and native failed-save/retry acceptance
+are parked. The exact pending app is preserved; all owned processes, RAM scratch
+and the private diagnostics directory have retired, with four zero listener
+deltas. `view-mode-app-0ccb2a7e.json` and its retirement receipt bind the result.
+Work moves to theme synchronization between the main and open remote windows.
+
+**View mode baseline save failure reproduced (2026-11-02):** Native Linux replay
 `11PkXxJ7Hl` at `9722aae2` uses retained app `7e6f6459` / engine `ddb1541d`.
 Normal input and enabled View mode pass first. With private preference writes
 denied by real EACCES, attempting to disable View mode shows no error, unchecks
 the control and delivers a native key press, while the previous saved file's
 identity and bytes remain unchanged. `save_config` logs storage failure then
-publishes its cache; the void toggle still sends the option. Correction, retry
-and native acceptance remain OPEN. `view-only-save-9722aae2.json` binds the
+publishes its cache; the void toggle still sends the option. The checked
+implementation above is compiled; native correction/retry acceptance remains
+OPEN/PARKED. `view-only-save-9722aae2.json` binds the
 reproduction, identical driver rebuilds, four zero listener deltas and joined
 VM/RAM cleanup. One initial menu-observation failure was repaired; a separate
 initial click mismatch remains unresolved and retained with added diagnostics.
-Next: checked, owned View mode/Show my cursor mutations that publish only after
-successful persistence, followed by the same native failure/retry scenario.
+On a specific resumption, validate the retained candidate and replay the same
+native failure/retry scenario; do not rebuild the completed app by default.
 
 **Native Linux View mode verified (2026-11-02):** Replay `xLULyflt3A` at
 `5f3da6a8` reuses app `7e6f6459` and engine `ddb1541d`. Actual toolbar state

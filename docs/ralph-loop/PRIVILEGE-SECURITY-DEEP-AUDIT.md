@@ -131052,3 +131052,25 @@ Expected evidence is twelve remote observations, 48 additional fresh counters,
 four held explicit choices, unchanged window/connection, final saved System and
 joined isolation cleanup. Product code is unchanged. Native execution follows;
 other platforms/providers, concurrent changes and release acceptance remain OPEN.
+
+TUF replay `AoPSJZs3kq` at `67fc42ce` passes. All three native drivers compile
+twice with byte equality; controller SHA-256 is
+`d39660e81fc364b7832258157387d535f40f4c99db38acacf35c78316e50bd37`.
+The twelve ordered main/remote observations agree on both explicit choices and
+Follow System. Remote header luminance is 217–219 for Light and 57 for Dark;
+the same X11 window (4194352) remains. All four explicit-choice holds contain
+51 matching samples across five seconds. Each phase observes four current
+displayed counters, maximum age 330 ms across the 48 samples; four final frames
+also pass, maximum age 323 ms. The authenticated connection is unchanged.
+The viewer exits zero and its private saved preference is System. This validates
+the retained Linux X11 app's cross-window workflow; no product correction or
+full application rebuild was needed.
+
+Wrapper 994788 and QEMU 995855 are absent; four decoded listener deltas are zero.
+Private state and RAM `run.j7xqr_k5` / `29:38750` retire; peak scratch is
+3,013,001,216 bytes under 7 GiB. The outer receipt reports 160 seconds.
+`theme-windows-accepted-67fc42ce.json` is 12,628 bytes, SHA-256
+`16fe4983df1353dba66bc4fc76190b022055b399d9ead70fb3d9cfdc157581f6`.
+Both hosts retain that capsule and all seven raw records. The ledger records
+this checkpoint and the View mode pivot; its required fresh isolated count
+follows. All independent user parks and broader release gaps remain.

@@ -131868,3 +131868,40 @@ admitted zero-NIC bounded-RAM VM. No layout change, held-mode transition,
 physical-device, other-platform or installed claim is added; independent parks
 remain. The five fixture/orchestration edits add one closed scenario and retain
 existing Map/Legacy and failed-save checks.
+
+Replay `X3c59cYD2S` at `98a8dd43` reproduces an actual R-S0 failure in
+about two minutes. All three drivers compile twice with identical bytes. Map
+passes eleven cases / 28 events and four fresh frames, maximum sampled age
+306 ms. Translate passes its first nine cases, then Ctrl+A yields Control down
+and Control up without the letter. The receiver logs `remote input dispatch
+failed; stopping worker for cleanup: Translate sequence hotkeys require a
+physical keyboard mode`; the viewer subsequently reports a peer reset. The
+third Map phase is not reached. This is neither an event-order-only mismatch nor
+a missing-menu observation. No product correction is claimed.
+
+The pinned `rdev` revision `f9b60b1dd0f3300a1b797d7a74c116683cd232c8`,
+retained as `online/inputs/cargo-vendor/rdev-0.5.0-2`, removes the Control
+mask before Unicode lookup (`src/linux/keyboard.rs:271-273`). The client creates
+the Translate sequence at `src/keyboard.rs:1335-1347,1476-1478`. Receiver
+`InputKeyOwnership::dispatch_action` adds retained physical modifiers before
+native dispatch (`src/server/connection.rs:3467-3487`); the Linux Translate
+branch rejects that legitimate combination (`src/server/input_service.rs:2910-2915`).
+The failure does not justify stripping ownership modifiers or weakening worker
+retirement. The next correction must preserve character/shortcut semantics and
+held-key ownership, then pass this unchanged native replay on a rebuilt app.
+Review Linux's current checked text injection and existing Legacy hotkey path
+before deciding whether the correction belongs in semantic injection or client
+event construction; other platforms and independently parked layouts remain open.
+
+Wrapper 1064615 and QEMU 1065678 are absent. Exact owned helpers, private state
+and RAM `run.mi5i92fm` / `29:39940` retire with four zero listener deltas.
+Peak RAM scratch is 3,015,094,272 bytes under 7 GiB. Before private retirement,
+all twelve duplicate app files match both the pinned manifest and retained
+canonical files; they are deleted rather than archived. The bounded viewer log,
+failure identity/checksums and 25,576-byte input provider are retained separately.
+CTE and TUF hold seventeen hash-verified evidence files, including
+`keyboard-translate-98a8dd43.json` (31,762 bytes, SHA-256
+`045143e44d63f99f74972ae7d4d0aa58dd4ef5c5138967ed2894ad8cdd1a813f`).
+The current ledger records the reproduced disconnect as OPEN/STOP-SHIP. Its
+fresh isolated count follows; the selected Translate defect remains the next
+active product task, and the full release goal remains active.

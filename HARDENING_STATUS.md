@@ -224,6 +224,25 @@ resources, four zero listener deltas and VM/RAM/private retirement pass.
 `keyboard-save-72af4272.json` binds this evidence. No product change was needed;
 other failure classes, concurrency, platforms and installed acceptance remain OPEN.
 
+**Translate Ctrl+A disconnect — reproduced, OPEN/STOP-SHIP (2026-11-03):**
+Replay `X3c59cYD2S` at `98a8dd43` reuses app `c9323bf1` / engine `ddb1541d`.
+Map passes all eleven native cases; Translate passes letters, shifted text,
+space, Return, Backspace and both arrows. Ctrl+A then produces only the Control
+press/release. The server reports `Translate sequence hotkeys require a physical
+keyboard mode`, stops its input worker and disconnects the authenticated session.
+The pinned Linux capture dependency ignores Control during character lookup;
+the client sends a Translate sequence, while receiver ownership correctly retains
+Control. `src/server/input_service.rs::translate_keyboard_mode` rejects that
+combination. This is a product failure, not missing evidence alone. No correction
+has been applied. Next: correct the Translate shortcut path while preserving
+character semantics and held-key ownership, then replay the same native failure
+on the rebuilt candidate. All three drivers rebuild identically; four listener
+deltas are zero and VM/RAM/private state retires. Twelve duplicate failure-bundle
+files match the canonical app and are deleted; bounded logs/provider evidence
+remain in `keyboard-translate-98a8dd43.json` and its referenced artifacts.
+The return-to-Map phase is unreached. Equal US X11 only; broader mode/platform
+and installed acceptance remain OPEN. Independently parked topics remain parked.
+
 **User pivot (2026-11-02):** Custom quality/FPS native validation is OPEN/PARKED.
 Its unexecuted two-file draft is preserved in stash
 `2b7f208acb6cdd5ad893a312d7997854d341b65e`; no Custom run or product change

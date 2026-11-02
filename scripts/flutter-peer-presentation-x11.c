@@ -5158,17 +5158,34 @@ out:
 
 static int exercise_image_quality(Display *display, const ViewerWindow *viewer,
                                   SourceHistory *history, const ConnectionIdentity *connection,
-                                  const ProcessResources *baseline) {
+                                  const ProcessResources *baseline, unsigned int generation) {
     /* The source is 640x480. These are encoder targets for the three shipped
      * presets, observed through server TestDelay telemetry in the real viewer. */
-    static const struct { const char *name; unsigned int bitrate; } cases[] = {
+    struct QualityCase { const char *name; unsigned int bitrate; };
+    static const struct QualityCase live_cases[] = {
         {"Good image quality", 600U}, {"Optimize reaction time", 200U},
         {"Balanced", 268U}, {"Good image quality", 600U},
         {"Optimize reaction time", 200U},
     };
+    static const struct QualityCase restart_choices[] = {
+        {"Good image quality", 600U}, {"Optimize reaction time", 200U},
+        {"Balanced", 268U},
+    };
+    static const unsigned int restored_targets[] = {268U, 600U, 200U, 268U};
+    static const char *saved_choices[] = {"best", "low", "balanced", "balanced"};
+    struct QualityCase restart_cases[2] = {{NULL, 0U}, {NULL, 0U}};
+    const struct QualityCase *cases = live_cases;
+    unsigned int count = sizeof(live_cases) / sizeof(live_cases[0]);
+    if (generation > 4U) return -1;
+    if (generation != 0U) {
+        restart_cases[0].bitrate = restored_targets[generation - 1U];
+        if (generation < 4U) restart_cases[1] = restart_choices[generation - 1U];
+        cases = restart_cases;
+        count = generation == 4U ? 1U : 2U;
+    }
     unsigned int pid = (unsigned int)viewer->pid;
     int result = -1;
-    for (unsigned int sequence = 0U; sequence < sizeof(cases) / sizeof(cases[0]); ++sequence) {
+    for (unsigned int sequence = 0U; sequence < count; ++sequence) {
         AtspiAccessible *monitor = NULL;
         ConnectionIdentity after = {{0}, {0}, 0UL};
         ProcessResources resources = {0};
@@ -5180,13 +5197,16 @@ static int exercise_image_quality(Display *display, const ViewerWindow *viewer,
         g_clear_object(&monitor);
         if (unexpectedly_visible || quality_toolbar(pid) != 0 ||
             activate_named_control(pid, "Display settings") != 0 ||
-            activate_named_control(pid, "Show quality monitor") != 0 ||
-            quality_toolbar(pid) != 0 ||
-            activate_named_control(pid, "Display settings") != 0 ||
-            activate_named_control(pid, "Image quality") != 0) goto out;
+            activate_named_control(pid, "Show quality monitor") != 0) goto out;
+        if (cases[sequence].name != NULL) {
+            if (quality_toolbar(pid) != 0 ||
+                activate_named_control(pid, "Display settings") != 0 ||
+                activate_named_control(pid, "Image quality") != 0) goto out;
+        } else if (activate_named_control(pid, "Hide toolbar") != 0) goto out;
         uint64_t started = monotonic_millis();
         if (started == 0U || started > UINT64_MAX - 10000U ||
-            activate_named_control(pid, cases[sequence].name) != 0) goto out;
+            (cases[sequence].name != NULL &&
+             activate_named_control(pid, cases[sequence].name) != 0)) goto out;
         deadline = started + 10000U;
         int observed = 0;
         unsigned int stable = 0U;
@@ -5225,7 +5245,12 @@ static int exercise_image_quality(Display *display, const ViewerWindow *viewer,
             !same_connection(connection, &after) ||
             read_process_resources(viewer->pid, &resources) != 0 ||
             !resources_are_bounded(baseline, &resources)) goto out;
-        printf("FLUTTER_PEER_IMAGE_QUALITY_CASE_OK sequence=%u target_kbps=%u "
+        if (generation != 0U)
+            printf("FLUTTER_PEER_QUALITY_RESTART_OBSERVATION generation=%u phase=%s ",
+                   generation, sequence == 0U ? "restored" : "selected");
+        else
+            printf("FLUTTER_PEER_IMAGE_QUALITY_CASE_OK ");
+        printf("sequence=%u target_kbps=%u "
                "confirmation_ms=%llu stable_scans=3 distinct=4 maximum_age_ms=%llu\n",
                sequence + 1U, cases[sequence].bitrate,
                (unsigned long long)(confirmed - started), (unsigned long long)maximum_age);
@@ -5233,6 +5258,11 @@ static int exercise_image_quality(Display *display, const ViewerWindow *viewer,
         fflush(stdout);
     }
     result = 0;
+    if (generation != 0U)
+        printf("FLUTTER_PEER_QUALITY_RESTART_PHASE_OK generation=%u selected=%s "
+               "observations=%u encoder_bitrate=confirmed pixels=fresh "
+               "stable_connection=true resources=bounded\n",
+               generation, saved_choices[generation - 1U], count);
 out:
     if (result != 0) {
         PasswordPromptScan diagnostic;
@@ -5675,6 +5705,10 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--screenshot-save-unavailable") != 0 &&
                                     strcmp(argv[5], "--view-scaling") != 0 &&
                                     strcmp(argv[5], "--image-quality") != 0 &&
+                                    strcmp(argv[5], "--quality-best") != 0 &&
+                                    strcmp(argv[5], "--quality-low") != 0 &&
+                                    strcmp(argv[5], "--quality-balanced") != 0 &&
+                                    strcmp(argv[5], "--quality-restore") != 0 &&
                                     strcmp(argv[5], "--image-quality-save-failure") != 0 &&
                                     strcmp(argv[5], "--audio-mute") != 0 &&
                                     strcmp(argv[5], "--session-close") != 0 &&
@@ -5702,6 +5736,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("Additional full-peer scenarios: --image-quality, --image-quality-save-failure, --audio-mute, "
+              "--quality-best, --quality-low, --quality-balanced, --quality-restore, "
               "--language-french, --language-portugal, --language-english, --language-restore\n", stderr);
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
               "VIEWER_START [--viewer-suspend|--viewer-soak|--input-latency|--input-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
@@ -5710,6 +5745,7 @@ int main(int argc, char **argv) {
     }
     unsigned int theme_generation = 0U;
     unsigned int language_generation = 0U;
+    unsigned int quality_generation = 0U;
     if (argc == 6) {
         static const char *phases[] = {"--theme-light", "--theme-dark", "--theme-system", "--theme-restore"};
         for (unsigned int i = 0U; i < 4U; ++i)
@@ -5718,6 +5754,10 @@ int main(int argc, char **argv) {
             "--language-french", "--language-portugal", "--language-english", "--language-restore"};
         for (unsigned int i = 0U; i < 4U; ++i)
             if (strcmp(argv[5], language_phases[i]) == 0) language_generation = i + 1U;
+        static const char *quality_phases[] = {
+            "--quality-best", "--quality-low", "--quality-balanced", "--quality-restore"};
+        for (unsigned int i = 0U; i < 4U; ++i)
+            if (strcmp(argv[5], quality_phases[i]) == 0) quality_generation = i + 1U;
     }
     int credential_enroll = argc == 6 && strcmp(argv[5], "--credential-enroll") == 0;
     if (language_generation == 2U)
@@ -5991,6 +6031,16 @@ int main(int argc, char **argv) {
         return result == 0 ? 0 : 1;
     }
 
+    if (quality_generation != 0U) {
+        int result = exercise_image_quality(display, &viewer, &history, &current_connection,
+                                             &baseline_resources, quality_generation);
+        if (atspi_exit() != 0) result = -1;
+        if (close_viewer(display, viewer.window) != 0) result = -1;
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return result == 0 ? 0 : 1;
+    }
+
     if (language_generation != 0U) {
         int result = exercise_language_restart(display, &viewer, &history, language_generation,
                                                &current_connection, &baseline_resources);
@@ -6069,7 +6119,7 @@ int main(int argc, char **argv) {
         int suspension_status = background_close ? exercise_background_close(
             source, display, &viewer, &history, argv[4], &current_connection) :
             image_quality ? exercise_image_quality(
-            display, &viewer, &history, &current_connection, &baseline_resources) :
+            display, &viewer, &history, &current_connection, &baseline_resources, 0U) :
             session_close ? exercise_session_close(
             display, &viewer, argv[4], &current_connection) : view_scaling ? exercise_view_scaling(
             display, &viewer, &history, &current_connection, &baseline_resources) :

@@ -26,7 +26,7 @@ MENU_ACTION=pointer
 [ "$PEER_SCENARIO" != credential-menu-accessible ] || MENU_ACTION=accessible
 readonly MENU_ACTION
 case "$PEER_SCENARIO" in
-  session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|language-restart|viewer-isolation|viewer-soak|input-latency|input-soak|image-quality|image-quality-save-failure|audio-mute) EXPECTED_RESTARTS=0 ;;
+  session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|language-restart|quality-restart|viewer-isolation|viewer-soak|input-latency|input-soak|image-quality|image-quality-save-failure|audio-mute) EXPECTED_RESTARTS=0 ;;
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
   viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation|credential-forget|credential-menu|credential-menu-accessible) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
@@ -1548,6 +1548,7 @@ PY
     [ "$PEER_SCENARIO" != credential-menu-accessible ] || viewer_generations=3
     [ "$PEER_SCENARIO" != theme-restart ] || viewer_generations=4
     [ "$PEER_SCENARIO" != language-restart ] || viewer_generations=4
+    [ "$PEER_SCENARIO" != quality-restart ] || viewer_generations=4
     if [ "$PEER_SCENARIO" = theme-appearance ]; then
       # Use GLib's real shared file backend, read by the unmodified native engine.
       # An absent portal must leave the engine able to follow GNOME settings.
@@ -1592,6 +1593,9 @@ PY
     elif [ "$PEER_SCENARIO" = language-restart ]; then
       language_phases=(french portugal english restore)
       controller_args+=("--language-${language_phases[viewer_generation - 1]}")
+    elif [ "$PEER_SCENARIO" = quality-restart ]; then
+      quality_phases=(best low balanced restore)
+      controller_args+=("--quality-${quality_phases[viewer_generation - 1]}")
     elif [ "$viewer_generations" -gt 1 ]; then
       if [ "$viewer_generation" -eq 1 ]; then
         credential_phase=enroll
@@ -1743,13 +1747,22 @@ PY
       emit_runtime_logs VIEWER "$HOME/.local/share/logs"
       exit "$controller_status"
     fi
-    if [ "$PEER_SCENARIO" = theme-restart ] || [ "$PEER_SCENARIO" = language-restart ] || [ "$viewer_generation" -eq 1 ] || { [ "$ROTATE_CREDENTIAL" -eq 1 ] && [ "$viewer_generation" -eq 2 ]; }; then
+    if [ "$PEER_SCENARIO" = theme-restart ] || [ "$PEER_SCENARIO" = language-restart ] || [ "$PEER_SCENARIO" = quality-restart ] || [ "$viewer_generation" -eq 1 ] || { [ "$ROTATE_CREDENTIAL" -eq 1 ] && [ "$viewer_generation" -eq 2 ]; }; then
     grep -q '^FLUTTER_PEER_PASSWORD_INPUT_OK characters=22 observed_without_value=true$' \
       <<<"$controller_output" || fail 'complete count-only password input verdict is missing'
     grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false$' \
       <<<"$controller_output" || fail 'real password prompt verdict is missing'
     fi
-    if [ "$PEER_SCENARIO" = language-restart ]; then
+    if [ "$PEER_SCENARIO" = quality-restart ]; then
+      quality_after=(best low balanced balanced)
+      quality_observations=2
+      [ "$viewer_generation" -ne 4 ] || quality_observations=1
+      grep -Fxq "FLUTTER_PEER_QUALITY_RESTART_PHASE_OK generation=$viewer_generation selected=${quality_after[viewer_generation - 1]} observations=$quality_observations encoder_bitrate=confirmed pixels=fresh stable_connection=true resources=bounded" \
+        <<<"$controller_output" || fail 'native quality restart generation result is absent'
+      [ "$(grep -Ec "^FLUTTER_PEER_QUALITY_RESTART_OBSERVATION generation=$viewer_generation " <<<"$controller_output")" -eq "$quality_observations" ] \
+        || fail 'native quality restart observation count differs'
+      viewer_result='viewer=joined xvfb=joined quality_restart=passed generations=4 choices=best,low,balanced storage=verified encoder_bitrate=confirmed pixels=fresh'
+    elif [ "$PEER_SCENARIO" = language-restart ]; then
       language_before=(default fr pt-pt en)
       language_after=(fr pt-pt en en)
       grep -Fxq "FLUTTER_PEER_LANGUAGE_PHASE_OK generation=$viewer_generation restored=${language_before[viewer_generation - 1]} selected=${language_after[viewer_generation - 1]} native_labels=true remote_label=true stable_connection=true fresh_pixels=4 resources=bounded" \
@@ -1991,6 +2004,8 @@ PY
         printf 'FLUTTER_PEER_THEME_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
       elif [ "$PEER_SCENARIO" = language-restart ]; then
         printf 'FLUTTER_PEER_LANGUAGE_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
+      elif [ "$PEER_SCENARIO" = quality-restart ]; then
+        printf 'FLUTTER_PEER_QUALITY_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
       else
         printf 'FLUTTER_PEER_CREDENTIAL_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
       fi
@@ -2053,9 +2068,9 @@ finally:
 print('FLUTTER_PEER_AUDIO_MUTE_STORAGE_OK muted=true process=joined permissions=restored')
 PY
     fi
-    if [ "$PEER_SCENARIO" = image-quality-save-failure ]; then
-      python3 - <<'PY'
-import os, stat, tomllib
+    if [ "$PEER_SCENARIO" = image-quality-save-failure ] || [ "$PEER_SCENARIO" = quality-restart ]; then
+      python3 - "$viewer_generation" "$PEER_SCENARIO" <<'PY'
+import os, stat, sys, tomllib
 directory = '/tmp/viewer-home/.config/rustdesk/peers'
 parent = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
 try:
@@ -2069,10 +2084,14 @@ try:
         assert 0 < metadata.st_size <= 131072
         data = source.read(131073)
         assert len(data) == metadata.st_size
-    assert tomllib.loads(data.decode('utf-8'))['image_quality'] == 'low'
+    expected = ('best', 'low', 'balanced', 'balanced')[int(sys.argv[1]) - 1] if sys.argv[2] == 'quality-restart' else 'low'
+    assert tomllib.loads(data.decode('utf-8'))['image_quality'] == expected
 finally:
     os.close(parent)
-print('FLUTTER_PEER_QUALITY_STORAGE_OK selected=low process=joined permissions=restored')
+if sys.argv[2] == 'quality-restart':
+    print('FLUTTER_PEER_QUALITY_STORAGE_OK generation=' + sys.argv[1] + ' selected=' + expected + ' process=joined')
+else:
+    print('FLUTTER_PEER_QUALITY_STORAGE_OK selected=low process=joined permissions=restored')
 PY
     fi
     if [ "$PEER_SCENARIO" = credential-forget ] || [ "$PEER_SCENARIO" = credential-menu ] \

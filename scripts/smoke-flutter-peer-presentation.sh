@@ -90,6 +90,7 @@ case "$#:${1:-}" in
         --screenshot-save-unavailable) PEER_SCENARIO=screenshot-save-unavailable ;;
         --view-scaling) PEER_SCENARIO=view-scaling ;;
         --image-quality) PEER_SCENARIO=image-quality ;;
+        --quality-restart) PEER_SCENARIO=quality-restart ;;
         --image-quality-save-failure) PEER_SCENARIO=image-quality-save-failure ;;
         --audio-mute) PEER_SCENARIO=audio-mute ;;
         --session-close) PEER_SCENARIO=session-close ;;
@@ -230,6 +231,11 @@ elif [ "$PEER_SCENARIO" = image-quality-save-failure ]; then
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined image_quality_save_failure=passed previous=preserved retry=durable pixels=fresh stable_connection=true'
+elif [ "$PEER_SCENARIO" = quality-restart ]; then
+  RUNTIME_CYCLES=1
+  SERVER_GENERATIONS='1'
+  SERVER_REPLACEMENTS=0
+  VIEWER_RESULT='viewer=joined xvfb=joined quality_restart=passed generations=4 choices=best,low,balanced storage=verified encoder_bitrate=confirmed pixels=fresh'
 elif [ "$PEER_SCENARIO" = image-quality ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

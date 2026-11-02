@@ -130426,3 +130426,32 @@ The accepted language capsule and this count are verified on both hosts. No owne
 run remains live. Language restart reaches a native checkpoint; the next decisive
 language check is visible denied-save/preserved-choice/retry behavior, reusing the
 same app. The separately recorded rapid show/close finality failure remains OPEN.
+
+### 2026-11-02 — pivot to quality restoration across viewer restarts
+
+Honor the user's requested pivot: leave rapid main-window show/close finality
+OPEN/PARKED after source review only. No reproduction or product correction
+follows that review. Select R-S0 image-quality restoration across complete viewer
+restarts, distinct from the independently parked quality save-failure/radio-state
+investigation. Mute, fullscreen and other parked topics remain parked.
+
+Live preset effects already pass; the missing native restart behavior is the
+selected useful checkpoint. Reuse app `7e6f6459` and engine `ddb1541d`. The existing
+full-peer driver now supports four fresh authenticated viewer generations.
+Before any quality choice, require three stable observations of the restored
+server-reported encoder target: Balanced 268, Best 600, Low 200, Balanced 268 kbps
+for the existing 640x480 source. The first three generations then select Best,
+Low and Balanced through the actual toolbar and confirm their targets. All seven
+observations require four current displayed frames, unchanged connection identity
+and bounded resources. Each viewer must exit zero before its private saved quality
+is read and the next process starts. The fixture never seeds a quality preference.
+
+Source research follows `toolbarImageQuality`, the typed preset export,
+`LoginConfigHandler::save_image_quality_preset` and `get_option_message`: storage
+precedes publication, while the next connection derives its login option from
+the loaded quality. This native scenario tests their complete integration. It
+reuses the existing monitor, pixel observer and bounded zero-NIC replay profile;
+no new dependency, product build or host test execution is needed. Shell syntax
+and whitespace checks pass; isolated compilation/execution are pending. This
+measures actual encoder targets and frame freshness, not subjective visual
+quality, radio-state correctness, physical scanout or full release acceptance.

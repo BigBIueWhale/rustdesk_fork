@@ -14,6 +14,7 @@ FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE=0
 FLUTTER_VIEW_SCALING=0
 FLUTTER_SESSION_CLOSE=0
 FLUTTER_IMAGE_QUALITY=0
+FLUTTER_QUALITY_RESTART=0
 FLUTTER_IMAGE_QUALITY_SAVE_FAILURE=0
 FLUTTER_AUDIO_MUTE=0
 FLUTTER_THEME_RESTART=0
@@ -290,6 +291,7 @@ case "$#:${8:-}" in
                 --view-scaling) FLUTTER_VIEW_SCALING=1 ;;
                 --session-close) FLUTTER_SESSION_CLOSE=1 ;;
                 --image-quality) FLUTTER_IMAGE_QUALITY=1 ;;
+                --quality-restart) FLUTTER_QUALITY_RESTART=1 ;;
                 --image-quality-save-failure) FLUTTER_IMAGE_QUALITY_SAVE_FAILURE=1 ;;
                 --audio-mute) FLUTTER_AUDIO_MUTE=1 ;;
                 --background-close) FLUTTER_SESSION_CLOSE=2 ;;
@@ -399,6 +401,7 @@ readonly FLUTTER_IMAGE_QUALITY_SAVE_FAILURE
 readonly FLUTTER_AUDIO_MUTE
 readonly FLUTTER_THEME_RESTART
 readonly FLUTTER_LANGUAGE_RESTART
+readonly FLUTTER_QUALITY_RESTART
 readonly FLUTTER_THEME_APPEARANCE
 readonly FLUTTER_THEME_SAVE_FAILURE
 readonly FLUTTER_VIEWER_ISOLATION
@@ -14100,6 +14103,7 @@ run_flutter_peer_presentation() {
     [ "$FLUTTER_VIEW_SCALING" -eq 0 ] || peer_args+=(--view-scaling)
     [ "$FLUTTER_SESSION_CLOSE" -ne 1 ] || peer_args+=(--session-close)
     [ "$FLUTTER_IMAGE_QUALITY" -eq 0 ] || peer_args+=(--image-quality)
+    [ "$FLUTTER_QUALITY_RESTART" -eq 0 ] || peer_args+=(--quality-restart)
     [ "$FLUTTER_IMAGE_QUALITY_SAVE_FAILURE" -eq 0 ] || peer_args+=(--image-quality-save-failure)
     [ "$FLUTTER_AUDIO_MUTE" -eq 0 ] || peer_args+=(--audio-mute)
     [ "$FLUTTER_SESSION_CLOSE" -ne 2 ] || peer_args+=(--background-close)
@@ -14217,6 +14221,9 @@ run_flutter_peer_presentation() {
         peer_cycles=1
     elif [ "$FLUTTER_IMAGE_QUALITY_SAVE_FAILURE" -eq 1 ]; then
         peer_scenario=image-quality-save-failure
+        peer_cycles=1
+    elif [ "$FLUTTER_QUALITY_RESTART" -eq 1 ]; then
+        peer_scenario=quality-restart
         peer_cycles=1
     elif [ "$FLUTTER_IMAGE_QUALITY" -eq 1 ]; then
         peer_scenario=image-quality

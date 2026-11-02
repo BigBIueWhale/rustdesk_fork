@@ -54,6 +54,7 @@ FLUTTER_MOUSE_INPUT=0
 FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE=0
 FLUTTER_VIEW_SCALING=0
 FLUTTER_IMAGE_QUALITY=0
+FLUTTER_QUALITY_RESTART=0
 FLUTTER_IMAGE_QUALITY_SAVE_FAILURE=0
 FLUTTER_AUDIO_MUTE=0
 FLUTTER_SESSION_CLOSE=0
@@ -683,6 +684,7 @@ case "$#:${1:-}" in
                 --screenshot-save-unavailable) FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE=1 ;;
                 --view-scaling) FLUTTER_VIEW_SCALING=1 ;;
                 --image-quality) FLUTTER_IMAGE_QUALITY=1 ;;
+                --quality-restart) FLUTTER_QUALITY_RESTART=1 ;;
                 --image-quality-save-failure) FLUTTER_IMAGE_QUALITY_SAVE_FAILURE=1 ;;
                 --audio-mute) FLUTTER_AUDIO_MUTE=1 ;;
                 --session-close) FLUTTER_SESSION_CLOSE=1 ;;
@@ -759,7 +761,7 @@ case "$#:${1:-}" in
         printf 'Real VM boot from a private read-only base copy: %s --base-readonly-test\n' "${0##*/}" >&2
         printf 'Focused native Linux app-capsule check: %s --linux-flutter-artifact-tests\n' "${0##*/}" >&2
         printf 'Focused native framebuffer check: %s --android-frame-tests\n' "${0##*/}" >&2
-        printf 'Active-session quality presets: use --image-quality or --image-quality-save-failure with the source-bound Linux app replay arguments above.\n' >&2
+        printf 'Quality presets: use --image-quality, --quality-restart or --image-quality-save-failure with the source-bound Linux app replay arguments above.\n' >&2
         printf 'Active-session Mute persistence and save refusal: use --audio-mute with the source-bound Linux app replay arguments above.\n' >&2
         printf 'Native language selection across viewer restarts: use --language-restart with the source-bound Linux app replay arguments above.\n' >&2
         printf 'Focused production X11 enumeration/capture check: %s --x11-display-tests\n' "${0##*/}" >&2
@@ -856,6 +858,7 @@ readonly FLUTTER_IMAGE_QUALITY_SAVE_FAILURE
 readonly FLUTTER_AUDIO_MUTE
 readonly FLUTTER_THEME_RESTART
 readonly FLUTTER_LANGUAGE_RESTART
+readonly FLUTTER_QUALITY_RESTART
 readonly FLUTTER_THEME_APPEARANCE
 readonly FLUTTER_THEME_SAVE_FAILURE
 readonly FLUTTER_VIEWER_ISOLATION
@@ -5239,6 +5242,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         [ "$FLUTTER_VIEW_SCALING" -eq 0 ] || guest_invocation+=' --view-scaling'
         [ "$FLUTTER_SESSION_CLOSE" -ne 1 ] || guest_invocation+=' --session-close'
         [ "$FLUTTER_IMAGE_QUALITY" -eq 0 ] || guest_invocation+=' --image-quality'
+        [ "$FLUTTER_QUALITY_RESTART" -eq 0 ] || guest_invocation+=' --quality-restart'
         [ "$FLUTTER_IMAGE_QUALITY_SAVE_FAILURE" -eq 0 ] || guest_invocation+=' --image-quality-save-failure'
         [ "$FLUTTER_AUDIO_MUTE" -eq 0 ] || guest_invocation+=' --audio-mute'
         [ "$FLUTTER_SESSION_CLOSE" -ne 2 ] || guest_invocation+=' --background-close'
@@ -8696,6 +8700,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     [ "$FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE" -eq 0 ] || peer_scenario=screenshot-save-unavailable
     [ "$FLUTTER_VIEW_SCALING" -eq 0 ] || peer_scenario=view-scaling
     [ "$FLUTTER_IMAGE_QUALITY" -eq 0 ] || peer_scenario=image-quality
+    [ "$FLUTTER_QUALITY_RESTART" -eq 0 ] || peer_scenario=quality-restart
     [ "$FLUTTER_IMAGE_QUALITY_SAVE_FAILURE" -eq 0 ] || peer_scenario=image-quality-save-failure
     [ "$FLUTTER_AUDIO_MUTE" -eq 0 ] || peer_scenario=audio-mute
     [ "$FLUTTER_SESSION_CLOSE" -ne 1 ] || peer_scenario=session-close

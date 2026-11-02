@@ -13,6 +13,7 @@ import 'package:flutter_hbb/desktop/pages/desktop_home_page.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_setting_page.dart';
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
 import 'package:flutter_hbb/generated_bridge.dart';
+import 'package:flutter_hbb/main.dart' as application;
 import 'package:flutter_hbb/models/model.dart';
 import 'package:flutter_hbb/models/native_model.dart';
 import 'package:flutter_hbb/models/server_model.dart';
@@ -616,6 +617,82 @@ void main() {
     expect(_themeRadio(tester, 'system').groupValue, 'system');
     expect(tester.takeException(), isNull);
   });
+
+  for (final sample in [
+    (name: 'applies current light', preference: 'light', event: 'light',
+      system: Brightness.dark, expected: Brightness.light, stale: null),
+    (name: 'applies current dark', preference: 'dark', event: 'dark',
+      system: Brightness.light, expected: Brightness.dark, stale: null),
+    (name: 'follows system light', preference: defaultOptionTheme, event: 'system',
+      system: Brightness.light, expected: Brightness.light, stale: null),
+    (name: 'follows system dark', preference: defaultOptionTheme, event: 'system',
+      system: Brightness.dark, expected: Brightness.dark, stale: null),
+    (name: 'ignores delayed system brightness after explicit choice',
+      preference: 'light', event: 'light', system: Brightness.dark,
+      expected: Brightness.light, stale: 'dark'),
+    (name: 'ignores delayed explicit choice after follow system',
+      preference: defaultOptionTheme, event: 'system', system: Brightness.light,
+      expected: Brightness.light, stale: 'dark'),
+  ]) {
+    testWidgets('desktop theme receiver ${sample.name}', (tester) async {
+      desktopType = DesktopType.remote;
+      tester.platformDispatcher.platformBrightnessTestValue = sample.system;
+      application.installSettingsProbeEventHandlers();
+      try {
+        native.theme = sample.expected == Brightness.light ? 'dark' : 'light';
+        await tester.pumpWidget(GetMaterialApp(
+          theme: MyTheme.lightTheme,
+          darkTheme: MyTheme.darkTheme,
+          themeMode: MyTheme.currentThemeMode(),
+          home: Builder(builder: (context) {
+            final theme = Theme.of(context);
+            return ColoredBox(
+              key: const Key('received-theme'),
+              color: theme.scaffoldBackgroundColor,
+              child: Text(theme.brightness.name),
+            );
+          }),
+        ));
+        await _settle(tester);
+        expect(find.text(sample.expected.name), findsNothing);
+        native.theme = sample.preference;
+
+        Future<void> deliver(String value) async {
+          expect(await dispatchSettingsProbeEvent(
+              jsonEncode({'name': 'theme', 'dark': value})), isTrue);
+          await _settle(tester);
+        }
+
+        void expectCurrentTheme() {
+          expect(find.text(sample.expected.name), findsOneWidget);
+          final theme = sample.expected == Brightness.light
+              ? MyTheme.lightTheme : MyTheme.darkTheme;
+          expect(tester.widget<ColoredBox>(find.byKey(const Key('received-theme')))
+              .color, theme.scaffoldBackgroundColor);
+          expect(native.theme, sample.preference);
+          expect(native.themeWrites, isEmpty);
+          expect(native.themeBroadcasts, isEmpty);
+          expect(tester.takeException(), isNull);
+        }
+
+        await deliver(sample.event);
+        expectCurrentTheme();
+        final stale = sample.stale;
+        if (stale != null) {
+          await deliver(stale);
+          expectCurrentTheme();
+        }
+      } finally {
+        for (final event in ['theme', 'language']) {
+          platformFFI.registerEventHandler(event, event, (_) {}, replace: true)
+              ?.cancel();
+        }
+        await tester.pumpWidget(const SizedBox.shrink());
+        tester.platformDispatcher.clearPlatformBrightnessTestValue();
+        desktopType = null;
+      }
+    });
+  }
 
   for (final option in _mobileBooleans) {
     SettingsTile tile(WidgetTester tester) =>

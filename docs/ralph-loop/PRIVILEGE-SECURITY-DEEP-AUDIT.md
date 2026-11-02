@@ -131144,3 +131144,33 @@ and private state plus RAM `run.trzzstxs` / `29:38862` retire. Capsule
 both hosts retain it and the raw records. No owned job remains. This closes the
 selected retained-Linux cross-window failed-save/retry evidence gap. Broader
 product/platform acceptance and the complete release goal remain open.
+
+### 2026-11-02 — delayed theme notifications after a newer preference
+
+The previous retained-app checkpoint is progress. Resume its concurrent-update
+gap under R-S0 after restoring the user-requested password-only SSH connection.
+No SSH key or reconnect service remains; host SSH configuration was unchanged.
+Prefer a focused ordering reproduction over another healthy-provider replay:
+`main.dart` submits system-brightness notifications without awaiting them, while
+`MyTheme.changeDarkMode` independently submits explicit choices after saving.
+`main_change_theme` broadcasts the submitted value and the secondary-window
+handler applies that value without reading the current preference.
+
+The pinned FRB 1.80.1 default handler executes normal calls on its worker pool;
+there is no source guarantee that those independent tasks complete in submission
+order. See https://raw.githubusercontent.com/fzyzcjy/flutter_rust_bridge/v1.80.1/frb_rust/src/handler.rs
+and https://cjycode.com/flutter_rust_bridge/v1/feature/worker_pool.html.
+This establishes a possible schedule, not a reproduced native race. Flutter's
+explicit modes ignore system brightness; System follows it:
+https://api.flutter.dev/flutter/material/MaterialApp/themeMode.html.
+
+Six added cases use the actual secondary-window registration, global dispatcher,
+theme application and GetMaterialApp, with explicit native preference and OS
+brightness doubles. Four controls require an observable change from the opposite
+theme. Two then deliver an older Dark payload after current Light or Follow
+System and require the current visible theme to remain. Dispatch must be admitted
+and drained; no receiver-side save or rebroadcast is permitted. Private-copy
+wrappers expose only registration/dispatch; source equality checks remain.
+The existing desktop-theme shard now expects 36 cases (66 in the full settings
+cohort). Product code is unchanged. Isolated execution follows; no failure or
+correction is claimed yet, and native scheduling/platform acceptance remains open.

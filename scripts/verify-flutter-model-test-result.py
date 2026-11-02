@@ -1247,6 +1247,11 @@ SETTINGS_NAVIGATION_TESTS = {
     "desktop theme close drains admitted save and retires callbacks",
     "desktop theme fixed preference rejects retained callbacks",
     "desktop theme publishes effective preference and follow system",
+    *{f"desktop theme receiver {case}" for case in (
+        "applies current light", "applies current dark",
+        "follows system light", "follows system dark",
+        "ignores delayed system brightness after explicit choice",
+        "ignores delayed explicit choice after follow system")},
     *{f"mobile boolean {key} {case}"
       for key in ("enable-abr", "allow-auto-disconnect", "allow-auto-record-incoming",
                   "allow-auto-record-outgoing", "enable-show-terminal-extra-keys")

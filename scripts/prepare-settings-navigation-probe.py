@@ -10,7 +10,15 @@ import sys
 SUPPORT = {
     'lib/models/native_model.dart': (
         '\nvoid installSettingsProbeBinding(RustdeskImpl binding) {\n'
-        '  PlatformFFI.instance._ffiBind = binding;\n}\n'),
+        '  PlatformFFI.instance._ffiBind = binding;\n}\n'
+        '\nFuture<bool> dispatchSettingsProbeEvent(String message) async {\n'
+        '  final dispatcher = PlatformFFI.instance._eventDispatcher;\n'
+        '  final accepted = dispatcher.dispatch(message);\n'
+        '  await dispatcher.idle();\n'
+        '  return accepted;\n}\n'),
+    'lib/main.dart': (
+        '\nvoid installSettingsProbeEventHandlers() {\n'
+        '  _registerEventHandler();\n}\n'),
     'lib/common.dart': (
         '\nvoid installSettingsProbeParent(FFI parent) {\n'
         '  _globalFFI = parent;\n}\n'

@@ -4796,6 +4796,148 @@ out:
     return result;
 }
 
+static int mute_menu_state(unsigned int pid, int *checked) {
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    while (monotonic_millis() < deadline) {
+        AtspiAccessible *item = NULL;
+        AtspiStateSet *states = NULL;
+        AtspiRect rect;
+        if (query_named_accessible(pid, "Mute", deadline, &item, 0) != 0) return -1;
+        if (item != NULL) states = atspi_accessible_get_state_set(item);
+        int valid = states != NULL &&
+            atspi_state_set_contains(states, ATSPI_STATE_ENABLED) &&
+            atspi_state_set_contains(states, ATSPI_STATE_SENSITIVE) &&
+            read_accessible_rect(item, &rect) == 0;
+        if (valid) *checked = atspi_state_set_contains(states, ATSPI_STATE_CHECKED);
+        g_clear_object(&states);
+        g_clear_object(&item);
+        if (valid && monotonic_millis() < deadline) return 0;
+        if (sleep_millis(100U) != 0) return -1;
+    }
+    return -1;
+}
+
+static int open_mute_menu(unsigned int pid, int *checked) {
+    return quality_toolbar(pid) == 0 &&
+        activate_named_control(pid, "Display settings") == 0 &&
+        mute_menu_state(pid, checked) == 0 ? 0 : -1;
+}
+
+static int wait_mute_menu(unsigned int pid, int expected, int *checked) {
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    while (monotonic_millis() < deadline) {
+        if (open_mute_menu(pid, checked) != 0) return -1;
+        if (*checked == expected && monotonic_millis() < deadline) return 0;
+        if (activate_named_control(pid, "Display settings") != 0 ||
+            sleep_millis(100U) != 0) return -1;
+    }
+    return -1;
+}
+
+static int exercise_audio_mute(Display *display, const ViewerWindow *viewer,
+                               SourceHistory *history, const ConnectionIdentity *connection,
+                               const ProcessResources *baseline) {
+    const char *phase = "healthy-mute";
+    unsigned int pid = (unsigned int)viewer->pid;
+    int directory = -1, permissions_changed = 0, result = -1, checked = -1;
+    struct stat original = {0}, current;
+    ConfigFileState muted = {0}, before = {0}, after = {0};
+    AtspiAccessible *error = NULL;
+    ConnectionIdentity final = {{0}, {0}, 0UL};
+    ProcessResources resources = {0};
+    uint64_t fresh = 0U, age = 0U;
+
+    if (geteuid() == 0 || open_mute_menu(pid, &checked) != 0 || checked != 0 ||
+        activate_named_control(pid, "Mute") != 0 || wait_mute_menu(pid, 1, &checked) != 0 ||
+        checked != 1 || activate_named_control(pid, "Display settings") != 0) goto out;
+    phase = "read-muted-file";
+    directory = open("/tmp/viewer-home/.config/rustdesk/peers",
+                     O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (directory < 0 || fstat(directory, &original) != 0 ||
+        original.st_uid != geteuid() || original.st_gid != getegid() ||
+        (original.st_mode & 07777) != 0700 ||
+        read_config_file(directory, "127.0.0.1.toml", &muted) != 0) goto out;
+    phase = "healthy-unmute";
+    if (open_mute_menu(pid, &checked) != 0 || checked != 1 ||
+        activate_named_control(pid, "Mute") != 0 || wait_mute_menu(pid, 0, &checked) != 0 ||
+        checked != 0 || activate_named_control(pid, "Display settings") != 0 ||
+        read_config_file(directory, "127.0.0.1.toml", &before) != 0 ||
+        strcmp(before.sha256, muted.sha256) == 0) goto out;
+    puts("FLUTTER_PEER_AUDIO_MUTE_HEALTHY toggles=2 checked=true,false file=changed");
+    fflush(stdout);
+    phase = "deny-save";
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    if (query_named_accessible(pid, "Failed", deadline, &error, 0) != 0 || error != NULL ||
+        fchmod(directory, 0500) != 0) goto out;
+    permissions_changed = 1;
+    errno = 0;
+    int probe = openat(directory, ".mute-write-probe", O_WRONLY | O_CREAT | O_EXCL |
+                       O_NOFOLLOW | O_CLOEXEC, 0600);
+    int probe_error = errno;
+    if (probe >= 0) {
+        if (close(probe) != 0) fputs("FLUTTER_PEER_X11_FAIL mute probe close\n", stderr);
+        if (unlinkat(directory, ".mute-write-probe", 0) != 0)
+            fputs("FLUTTER_PEER_X11_FAIL mute probe cleanup\n", stderr);
+        goto out;
+    }
+    if (probe_error != EACCES || open_mute_menu(pid, &checked) != 0 || checked != 0 ||
+        activate_named_control(pid, "Mute") != 0) goto out;
+    phase = "denied-outcome";
+    deadline = monotonic_millis() + 2500U;
+    while (monotonic_millis() < deadline && error == NULL) {
+        if (query_named_accessible(pid, "Failed", deadline, &error, 0) != 0) goto out;
+        if (error == NULL && sleep_millis(50U) != 0) goto out;
+    }
+    int error_visible = error != NULL && monotonic_millis() < deadline;
+    g_clear_object(&error);
+    if (read_config_file(directory, "127.0.0.1.toml", &after) != 0 ||
+        fstat(directory, &current) != 0 || current.st_dev != original.st_dev ||
+        current.st_ino != original.st_ino || (current.st_mode & 07777) != 0500 ||
+        open_mute_menu(pid, &checked) != 0) goto out;
+    int file_preserved = before.device == after.device && before.inode == after.inode &&
+        before.bytes == after.bytes && strcmp(before.sha256, after.sha256) == 0;
+    printf("FLUTTER_PEER_AUDIO_MUTE_DENIED kernel=EACCES error_visible=%d "
+           "checked=%d previous=0 file_preserved=%d\n", error_visible, checked, file_preserved);
+    fflush(stdout);
+    if (!error_visible || checked != 0 || !file_preserved) goto out;
+    phase = "retry";
+    if (fchmod(directory, 0700) != 0) goto out;
+    permissions_changed = 0;
+    if (activate_named_control(pid, "Mute") != 0 || wait_mute_menu(pid, 1, &checked) != 0 ||
+        checked != 1 || activate_named_control(pid, "Display settings") != 0 ||
+        activate_named_control(pid, "Hide toolbar") != 0 ||
+        read_config_file(directory, "127.0.0.1.toml", &after) != 0 ||
+        strcmp(before.sha256, after.sha256) == 0) goto out;
+    phase = "fresh-pixels";
+    if (wait_for_current_frames(display, viewer, history, RECOVERY_LIMIT_MS, 4U, &fresh, &age) != 0 ||
+        read_connection_identity(&final) != 0 || !same_connection(connection, &final) ||
+        read_process_resources(viewer->pid, &resources) != 0 ||
+        !resources_are_bounded(baseline, &resources)) goto out;
+    print_resources("audio-mute", 1U, &resources);
+    printf("FLUTTER_PEER_AUDIO_MUTE_PIXELS first_fresh_ms=%llu maximum_age_ms=%llu distinct=4\n",
+           (unsigned long long)fresh, (unsigned long long)age);
+    result = 0;
+out:
+    if (permissions_changed && fchmod(directory, 0700) != 0) {
+        fputs("FLUTTER_PEER_X11_FAIL mute directory restoration\n", stderr);
+        result = -1;
+    }
+    if (directory >= 0 && close(directory) != 0) result = -1;
+    g_clear_object(&error);
+    if (result == 0)
+        puts("FLUTTER_PEER_AUDIO_MUTE_OK healthy_toggles=2 failure=visible previous=preserved "
+             "retry=checked file=changed permissions=restored stable_connection=true "
+             "fresh_pixels=4 resources=bounded");
+    else {
+        PasswordPromptScan diagnostic;
+        fprintf(stderr, "FLUTTER_PEER_X11_FAIL audio Mute phase=%s checked=%d directory_mode=%o\n",
+                phase, checked, (unsigned int)(original.st_mode & 07777));
+        if (scan_password_prompt(pid, &diagnostic, 1) != 0)
+            fputs("FLUTTER_PEER_X11_FAIL audio Mute accessibility diagnostic\n", stderr);
+    }
+    return result;
+}
+
 static int quality_bitrate_visible(unsigned int pid, unsigned int bitrate, uint64_t deadline) {
     AtspiAccessible *monitor = NULL;
     AtspiRect rect;
@@ -5346,6 +5488,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--view-scaling") != 0 &&
                                     strcmp(argv[5], "--image-quality") != 0 &&
                                     strcmp(argv[5], "--image-quality-save-failure") != 0 &&
+                                    strcmp(argv[5], "--audio-mute") != 0 &&
                                     strcmp(argv[5], "--session-close") != 0 &&
                                     strcmp(argv[5], "--background-close") != 0 &&
                                     strcmp(argv[5], "--theme-light") != 0 &&
@@ -5366,7 +5509,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--clipboard-images") != 0 &&
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
-        fputs("Additional full-peer scenarios: --image-quality, --image-quality-save-failure\n", stderr);
+        fputs("Additional full-peer scenarios: --image-quality, --image-quality-save-failure, --audio-mute\n", stderr);
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
               "VIEWER_START [--viewer-suspend|--viewer-soak|--input-latency|--input-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
@@ -5610,6 +5753,16 @@ int main(int argc, char **argv) {
                                                strcmp(argv[5], "--isolation-slow") == 0);
         if (close(connection_fds) != 0) result = -1;
         connection_fds = -1;
+        if (atspi_exit() != 0) result = -1;
+        if (close_viewer(display, viewer.window) != 0) result = -1;
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return result == 0 ? 0 : 1;
+    }
+
+    if (argc == 6 && strcmp(argv[5], "--audio-mute") == 0) {
+        int result = exercise_audio_mute(display, &viewer, &history,
+                                         &current_connection, &baseline_resources);
         if (atspi_exit() != 0) result = -1;
         if (close_viewer(display, viewer.window) != 0) result = -1;
         XCloseDisplay(display);

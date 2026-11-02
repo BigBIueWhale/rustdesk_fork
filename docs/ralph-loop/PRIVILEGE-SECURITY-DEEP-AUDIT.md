@@ -129925,3 +129925,40 @@ finder currently searches direct root children; managed windows need the bounded
 EWMH client list with the same exact process/title/class checks. The scenario
 must distinguish actual state/geometry from the requested Flutter state, exercise
 toolbar entry/exit and external exit, and preserve connection and fresh pixels.
+
+### 2026-11-02 — user pivot to session Mute correctness
+
+The user explicitly requests another pivot. Fullscreen/window-state acceptance is
+OPEN/PARKED: authenticated Openbox acquisition is complete, but no fullscreen
+consumer, runtime baseline or product correction has been made. No VM is active
+on either host at this pivot. Preserve its bounded candidate and existing evidence;
+do not resume fullscreen automatically. Every independently parked topic remains
+parked, including preset-save failure and stalled audio-worker cancellation.
+
+Select the R-S0/R-F1 remote-session Mute workflow. Existing audio mailbox and
+playback evidence does not exercise this user-facing setting. Checking its actual
+save/outcome behavior has higher immediate value than another component-only
+decoder test: the current toolbar discards its asynchronous operation result,
+`session_toggle_option` returns no error, and `LoginConfigHandler::save_config`
+logs storage failure before publishing the candidate anyway. The toggle then
+returns an option message for dispatch. This is a source-established failure-path
+concern, not yet a reproduced native UI defect or a sound-delivery claim.
+
+Add only `--audio-mute` to the existing source-bound full-peer replay. Reuse app
+`0243c010` and engine `ddb1541d`. The scenario drives the real checkbox through
+healthy mute/unmute, observes stored bytes, proves kernel EACCES in the owned
+guest peer directory, requires visible failure and unchanged confirmed state/file,
+then restores access and retries. Successful acceptance also requires four fresh
+displayed counters, the same authenticated TCP connection, bounded resources,
+joined viewer storage parsing and normal VM/RAM retirement. Permission restoration
+uses the retained directory descriptor on failure as well. Physical audio output,
+restart persistence, mobile and installed acceptance remain separate obligations.
+
+Primary API review: Flutter's checkbox callback requests a state change; the
+parent-supplied value determines the rendered state
+(https://api.flutter.dev/flutter/material/Checkbox/onChanged.html). Dart futures
+carry completion/error and awaited errors can be handled explicitly
+(https://api.dart.dev/dart-async/Future-class.html). Therefore clicking a control
+or returning from a void bridge is not evidence that its setting committed.
+Shell syntax and diff checks pass at preparation. Native execution is pending;
+no product source or generated bridge changes in this preparation.

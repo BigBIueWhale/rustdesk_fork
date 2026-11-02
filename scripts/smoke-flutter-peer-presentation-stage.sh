@@ -26,7 +26,7 @@ MENU_ACTION=pointer
 [ "$PEER_SCENARIO" != credential-menu-accessible ] || MENU_ACTION=accessible
 readonly MENU_ACTION
 case "$PEER_SCENARIO" in
-  session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|viewer-isolation|viewer-soak|input-latency|input-soak|image-quality|image-quality-save-failure) EXPECTED_RESTARTS=0 ;;
+  session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|viewer-isolation|viewer-soak|input-latency|input-soak|image-quality|image-quality-save-failure|audio-mute) EXPECTED_RESTARTS=0 ;;
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
   viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation|credential-forget|credential-menu|credential-menu-accessible) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
@@ -1619,6 +1619,7 @@ PY
     [ "$PEER_SCENARIO" != session-close ] || controller_args+=(--session-close)
     [ "$PEER_SCENARIO" != image-quality ] || controller_args+=(--image-quality)
     [ "$PEER_SCENARIO" != image-quality-save-failure ] || controller_args+=(--image-quality-save-failure)
+    [ "$PEER_SCENARIO" != audio-mute ] || controller_args+=(--audio-mute)
     [ "$PEER_SCENARIO" != background-close ] || controller_args+=(--background-close)
     [ "$PEER_SCENARIO" != credential-retry ] || controller_args+=(--credential-retry)
     [ "$PEER_SCENARIO" != theme-appearance ] || controller_args+=(--theme-appearance)
@@ -1795,6 +1796,10 @@ PY
       grep -Fxq 'FLUTTER_PEER_SESSION_CLOSE_OK action=pointer remote=retired connected_sockets=0 listener=preserved main=usable process=preserved' \
         <<<"$controller_output" || fail 'native session-close result is absent'
       viewer_result='viewer=joined xvfb=joined session_close=passed connected_sockets=0 listener=preserved main=usable'
+    elif [ "$PEER_SCENARIO" = audio-mute ]; then
+      grep -Fxq 'FLUTTER_PEER_AUDIO_MUTE_OK healthy_toggles=2 failure=visible previous=preserved retry=checked file=changed permissions=restored stable_connection=true fresh_pixels=4 resources=bounded' \
+        <<<"$controller_output" || fail 'native Mute persistence/refusal result is absent'
+      viewer_result='viewer=joined xvfb=joined audio_mute=passed failure=visible retry=durable pixels=fresh stable_connection=true'
     elif [ "$PEER_SCENARIO" = image-quality-save-failure ]; then
       grep -Fxq 'FLUTTER_PEER_QUALITY_SAVE_FAILURE_OK failure=visible previous=preserved retry=low radio=confirmed permissions=restored stable_connection=true fresh_pixels=4 resources=bounded' \
         <<<"$controller_output" || fail 'native image-quality save failure/retry result is absent'
@@ -1974,6 +1979,28 @@ try:
           + ' selected=' + (expected or 'system') + ' process=joined')
 except (OSError, ValueError, KeyError, TypeError):
     raise SystemExit('fixture theme storage state differs') from None
+PY
+    fi
+    if [ "$PEER_SCENARIO" = audio-mute ]; then
+      python3 - <<'PY'
+import os, stat, tomllib
+directory = '/tmp/viewer-home/.config/rustdesk/peers'
+parent = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+try:
+    metadata = os.fstat(parent)
+    assert (metadata.st_uid, metadata.st_gid, stat.S_IMODE(metadata.st_mode)) == (os.geteuid(), os.getegid(), 0o700)
+    descriptor = os.open('127.0.0.1.toml', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+    with os.fdopen(descriptor, 'rb') as source:
+        metadata = os.fstat(source.fileno())
+        assert stat.S_ISREG(metadata.st_mode) and metadata.st_nlink == 1
+        assert (metadata.st_uid, metadata.st_gid, stat.S_IMODE(metadata.st_mode)) == (os.geteuid(), os.getegid(), 0o600)
+        assert 0 < metadata.st_size <= 131072
+        data = source.read(131073)
+        assert len(data) == metadata.st_size
+    assert tomllib.loads(data.decode('utf-8'))['disable_audio'] is True
+finally:
+    os.close(parent)
+print('FLUTTER_PEER_AUDIO_MUTE_STORAGE_OK muted=true process=joined permissions=restored')
 PY
     fi
     if [ "$PEER_SCENARIO" = image-quality-save-failure ]; then

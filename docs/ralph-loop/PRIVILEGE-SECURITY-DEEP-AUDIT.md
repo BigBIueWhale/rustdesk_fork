@@ -131439,3 +131439,43 @@ are zero. Both hosts retain twelve evidence files, including
 Next run the source-bound native app build, then the identical thirteen-phase
 appearance replay and existing save-failure/retry check. The correction remains
 pending native validation; the goal remains active.
+
+### 2026-11-02 — native validation of Follow System ownership
+
+The preceding turn made progress: it reproduced the native reselection failure,
+implemented `c0ce6463`, counted the changed ledger and started one exact build.
+Continue that live job and its required replays; no unrelated parked work resumes.
+
+Build `8K5xFpBNGf` at `c9323bf1` completes successfully. Thirteen widget cases
+and both native command cases pass. The closed app inventory contains 75 files /
+70,353,741 bytes, manifest SHA-256
+`680bf367fc4e14c97ea4aef06690346e8265474e5a57ccef6280769957e9c49a`.
+Only `bundle/lib/libapp.so` differs from failing baseline `c619cb3e`; the Rust
+library, engine and every other artifact file are byte-identical. The complete
+product-source diff is `flutter/lib/main.dart`. Wrapper 1038815 and QEMU
+1039444 are absent; RAM `run.t1ear8at` / `29:39342` and private state retire,
+with four zero listener deltas. Scratch peaks at 11,889,131,520 bytes under
+16 GiB. Both hosts retain thirteen files including
+`theme-system-build-c9323bf1.json` (7,223 bytes, SHA-256
+`602075abe06fd5c552ebe838f2e4bd13c0b3a0930e43ca3cdb96008872f9ec40`).
+
+Replay `A77aSzezBv` passes all thirteen actual main/remote phases. The formerly
+failing System reselection now renders Dark in both windows; subsequent OS
+Light/Dark changes work. Five explicit holds and 52 fresh frame observations
+pass on the same window/connection, maximum sampled phase age 326 ms. All three
+drivers match the failing baseline byte-for-byte. The independent native monitor
+observes the correct nine alternating OS notifications, ending Dark. The wrapper
+then rejects them against its obsolete four-Dark/four-Light/eight-total counts.
+The first scenario edit missed this separate expectation. Correct it to five
+Dark, four Light and nine total; retain every pixel, selection, notification and
+persistence assertion. Final joined preference verification was not reached, so
+the full replay remains unaccepted and must rerun on the same retained app.
+
+Wrapper 1040341 and QEMU 1041401 are absent; RAM `run.f0mfs1qd` / `29:39383`
+and exact private diagnostics retire, with four zero listener deltas. Duplicate
+failure binaries match the retained app manifest before deletion. Both hosts
+retain sixteen records including `theme-system-appearance-monitor-c9323bf1.json`
+(31,395 bytes, SHA-256
+`6573f98c092d0e7a8f9ffec208fcde0840ac84f80ce38b3467f73d6a8acc385b`).
+No app rebuild is needed for this fixture correction. Native save-failure/retry
+and the full release goal remain open.

@@ -1711,9 +1711,9 @@ PY
       cat /tmp/theme-monitor.log
       echo 'FLUTTER_PEER_THEME_NATIVE_MONITOR_END joined=true'
       if [ "$controller_status" -eq 0 ]; then
-        [ "$(grep -Fxc "gtk-theme: 'Adwaita-dark'" /tmp/theme-monitor.log)" -eq 4 ] \
+        [ "$(grep -Fxc "gtk-theme: 'Adwaita-dark'" /tmp/theme-monitor.log)" -eq 5 ] \
           && [ "$(grep -Fxc "gtk-theme: 'Adwaita'" /tmp/theme-monitor.log)" -eq 4 ] \
-          && [ "$(wc -l </tmp/theme-monitor.log)" -eq 8 ] \
+          && [ "$(wc -l </tmp/theme-monitor.log)" -eq 9 ] \
           || fail 'independent native appearance notifications differ'
       fi
     fi

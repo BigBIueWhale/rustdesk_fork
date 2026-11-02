@@ -43,6 +43,29 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**Native Linux language selection and restart verified (2026-11-02):** Replay
+`KmxcPNjxGA` at `5f80d142` reuses app `7e6f6459` and engine `ddb1541d`.
+Real dropdown choices switch Default/English→French→European Portuguese→English.
+Four complete viewer generations verify restored/changed main-window text and
+translated remote tooltips; each process exits zero with the expected language
+in its private saved record. Each connection authenticates through the actual
+password prompt and stays unchanged during settings work. Sixteen post-settings
+frames are current, maximum sampled age 304 ms; resource bounds pass. All owned
+processes join, RAM scratch retires, and four listener deltas are zero. Evidence:
+`language-restart-accepted-5f80d142.json`. This adds native functional evidence
+without a product change or full rebuild. Failure/concurrency cases, other languages,
+mobile/other platforms, installed artifacts and physical scanout remain OPEN.
+The earlier `ZUdg1XZ7Ey` run's last viewer failed to exit after a second asynchronous
+New Connection request followed immediately by Close. That rapid show/close
+finality failure and its causation remain OPEN; the accepted language scenario
+only hovers over the translated tooltip and retains the unchanged exit deadline.
+
+**User pivot (2026-11-02):** Further Mute audio-output and restart validation is
+OPEN/PARKED. The local-preference evidence below remains valid; subsequent audio
+work only researched and copied the authenticated PulseAudio input to TUF.
+No audio fixture integration or new audio run followed. Work moved to the native
+language-setting workflow above. Do not resume Mute follow-ups automatically.
+
 **Session Mute save/failure/retry verified on Linux (2026-11-02):** The shared
 desktop/mobile control publishes the confirmed native preference and retains one
 pending operation, failure and retry intent for its exact session owner. Explicit
@@ -59,8 +82,8 @@ and drivers, zero listener deltas and joined VM/RAM cleanup. The audit retains t
 failing baselines and build identities; the earlier submenu refresh correction
 remains (`cce0f30f`). This confirms local preference persistence and UI outcome,
 not remote delivery or audio suppression. Actual audio-output effects, restart
-persistence, installed/mobile/other-platform acceptance remain OPEN; audio effect
-and retained preference on a fresh viewer are the next decisive observations.
+persistence, installed/mobile/other-platform acceptance remain OPEN/PARKED at the
+user's subsequent pivot; the completed local-preference result remains valid.
 Fullscreen/window-state work remains independently parked.
 
 **Healthy Linux display and input soaks pass (2026-11-02):** Separate complete-peer

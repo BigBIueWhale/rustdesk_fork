@@ -130384,3 +130384,32 @@ Wrapper 591593 and QEMU 592651 are absent; four listener deltas are zero; RAM
 the shared lock. `language-restart-8dfca91a.json` retains the partial observations,
 25,227 bytes, SHA-256
 `462508dfeadc1ae1d07e1adb649f1b1adf73289447125dc8f0551988a2b0785c`.
+
+### 2026-11-02 — native Linux language selection and restart accepted
+
+TUF `KmxcPNjxGA` at harness `5f80d142` exits zero, reusing unchanged app
+`7e6f6459`, manifest
+`fe1ba681195aa32c492bd0f8c23be3af70bd13cbbd2a0115f7f66026ac7fcda9`,
+and engine `ddb1541d`. The controller reproduces byte-for-byte across two builds,
+SHA-256 `bccbadd620fcedb1bc38eefa7dc57cc119f766a94b869798aec7df30950dd04c`.
+No product build or preference seeding occurs. All four real password-prompt
+authentications, seven restored/changed text observations, four translated remote
+tooltips, four same-connection freshness/resource phases, four zero-exit process
+joins and four saved-language checks pass. The choices are French, European
+Portuguese and English; the fourth process restores English without another write.
+Post-settings sampled frame-age maxima are 286/304/293/304 ms, with four distinct
+frames per generation. This establishes the named Linux UI/persistence workflow;
+AT-SPI text is not OCR or physical scanout. Failure/concurrency cases, other
+languages/platforms, installed artifacts and global release acceptance stay OPEN.
+The earlier rapid show/close exit failure remains OPEN, without a product fix claim.
+
+All owned viewer/server/display/container processes join. Wrapper 593030 and
+QEMU 594087 are absent; all four listener deltas are zero; private state and RAM
+`run.feulr55i` / `29:37790` retire. Peak scratch is 3,012,263,936 bytes under 7 GiB.
+The outer receipt records 136 seconds. `language-restart-accepted-5f80d142.json`
+is 10,425 bytes, SHA-256
+`d6799b1d21e67772001f2aeec211e99d9438f51b62b261a94384f170e0b40dfc`.
+All failed-run capsules and bounded diagnostics are retained on both hosts, with
+their duplicated app bundles retired after exact hash checks. The current ledger
+records the user pivot, accepted language scope and unresolved exit observation;
+a fresh isolated token count follows.

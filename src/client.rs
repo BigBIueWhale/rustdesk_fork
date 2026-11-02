@@ -1852,14 +1852,6 @@ impl LoginConfigHandler {
                 BoolOption::No
             })
             .into();
-        } else if name == "disable-audio" {
-            config.disable_audio.v = !config.disable_audio.v;
-            option.disable_audio = (if config.disable_audio.v {
-                BoolOption::Yes
-            } else {
-                BoolOption::No
-            })
-            .into();
         } else if name == "disable-clipboard" {
             config.disable_clipboard.v = !config.disable_clipboard.v;
             option.disable_clipboard = (if config.disable_clipboard.v {
@@ -1970,6 +1962,24 @@ impl LoginConfigHandler {
         let mut msg_out = Message::new();
         msg_out.set_misc(misc);
         Some(msg_out)
+    }
+
+    pub fn save_audio_muted(&mut self, muted: bool) -> ResultType<Message> {
+        if self.conn_type != ConnType::DEFAULT_CONN {
+            bail!("Audio mute requires a remote-control session");
+        }
+        let mut config = PeerConfig::load_for_write(&self.id)?;
+        config.disable_audio.v = muted;
+        config.store(&self.id)?;
+        self.config.disable_audio = config.disable_audio;
+        let mut misc = Misc::new();
+        misc.set_option(OptionMessage {
+            disable_audio: (if muted { BoolOption::Yes } else { BoolOption::No }).into(),
+            ..Default::default()
+        });
+        let mut message = Message::new();
+        message.set_misc(misc);
+        Ok(message)
     }
 
     /// Get [`PeerConfig`] of the current [`LoginConfigHandler`].

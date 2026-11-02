@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common/widgets/audio_input.dart';
+import 'package:flutter_hbb/common/widgets/audio_mute.dart';
 import 'package:flutter_hbb/common/widgets/dialog.dart';
 import 'package:flutter_hbb/common/widgets/toolbar.dart';
 import 'package:flutter_hbb/common/widgets/reverse_mouse_wheel.dart';
@@ -1458,6 +1459,9 @@ class _DisplayMenuState extends State<_DisplayMenu> {
         if (ffi.connType == ConnType.defaultConn) cursorToggles(),
         Divider(),
         toggles(),
+        if (ffi.connType == ConnType.defaultConn && ffiModel.permissions['audio'] != false)
+          AudioMuteControl(
+              key: ValueKey((ffi, ffi.sessionId, ffi.clientOwnerId)), ffi: ffi),
       ];
       // privacy mode
       final privacyModeState = PrivacyModeState.find(id);

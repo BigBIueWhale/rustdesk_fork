@@ -944,6 +944,19 @@ PY
       [ "$codegen_status" -eq 0 ] || fail "Flutter bridge generation exited $codegen_status"
       ! grep -Fq '[SEVERE]' "$codegen_log" \
         || fail 'Flutter bridge generation emitted a severe diagnostic'
+      sed -i 's/ffi.NativeFunction<ffi.Bool Function(DartPort/ffi.NativeFunction<ffi.Uint8 Function(DartPort/g' \
+        flutter/lib/generated_bridge.dart
+      (
+        cd flutter
+        /usr/bin/timeout --signal=TERM --kill-after=10s 120s \
+          "$REAL_FLUTTER" --suppress-analytics --no-version-check test --no-pub \
+          --reporter=json test/audio_mute_test.dart > /tmp/audio-mute-tests.json \
+          || { tail -n 100 /tmp/audio-mute-tests.json; fail 'Mute widget tests failed'; }
+        cat /tmp/audio-mute-tests.json
+        python3 -B -I -S ../scripts/test-flutter-model-test-result.py --audio-mute
+        python3 -B -I -S ../scripts/verify-flutter-model-test-result.py \
+          /tmp/audio-mute-tests.json --profile audio-mute
+      )
       cargo build --locked --offline --features flutter,unix-file-copy-paste \
         --lib --release
       readonly CORE_LIB=$BUILD_SOURCE/target/release/liblibrustdesk.so
@@ -960,8 +973,6 @@ PY
       readelf --wide --dyn-syms "$CORE_LIB" \
         | grep -Eq '[[:space:]]rustdesk_core_main$' \
         || fail 'verified Rust core export disappeared after the example build'
-      sed -i 's/ffi.NativeFunction<ffi.Bool Function(DartPort/ffi.NativeFunction<ffi.Uint8 Function(DartPort/g' \
-        flutter/lib/generated_bridge.dart
       (
         cd flutter
         rm -rf build/linux

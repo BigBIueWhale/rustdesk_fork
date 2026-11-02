@@ -130115,3 +130115,48 @@ is zero, all three listener deltas are zero, wrapper 1938330 and QEMU 1939787 ar
 absent, and private/RAM state retires. Capsule `audio-mute-ledger-b9095ea9.json`
 is 4,509 bytes, SHA-256
 `55ed148598ef5236b193f052568576e997e6576d767af22ac7c5f4df6730e335`.
+
+### 2026-11-02 — implement confirmed session Mute preference
+
+The previous turn made progress: two native healthy toggles accept the menu
+correction, and the unchanged scenario reaches a real denied-save discrepancy.
+Continue that R-S0/R-F1 defect. Replace the Mute branch of the generic void toggle
+with explicit boolean get/set operations requiring the exact native UI owner and
+a Remote session. Fresh checked peer loading and successful persistence precede
+publication of only `disable_audio`. The session handler lock preserves save,
+cache publication and command-submission order. The result confirms the local
+preference; existing command-queue failure handling and connection retirement
+remain, and remote delivery or speaker output is not inferred from that result.
+
+Desktop and mobile share a Mute control backed by one session-owned pending
+operation, confirmed value and failed/retry state. Both owner identifiers are
+captured before awaits; stale callbacks and late publication cannot target a
+replacement. Menu dismissal removes its listener while admitted work remains
+owned, and a failure can still notify its current session. Refresh/read failure
+does not write a default. The browser adapter checks its existing synchronous
+JavaScript readback; native owner guarantees are not claimed for that backend.
+
+Flutter documents that CheckboxMenuButton closes on activation by default
+(https://api.flutter.dev/flutter/material/CheckboxMenuButton/closeOnActivate.html),
+which is why failure state must outlive the menu. ChangeNotifier supplies the
+shared state notification mechanism
+(https://api.flutter.dev/flutter/foundation/ChangeNotifier-class.html), and awaiting
+Dart futures propagates errors to the caller's handler
+(https://api.dart.dev/dart-async/Future-class.html). Ten focused production
+model/widget cases cover confirmation, failure/retry, duplicate admission,
+replacement, disposal and menu dismissal with controlled backend futures. They
+run inside the existing app-build VM after fresh bridge generation and before
+Rust compilation; strict named-result parsing and its three controls precede
+artifact acceptance. Compilation and native refusal/retry remain pending.
+
+The next build requires a cache slot. Classify TUF `a630f880` as a superseded
+historical app replay cache; preserve current Mute baselines `0243c010` and
+`e8737b14`. Under the shared run lock, verify all 75 regular files against its
+closed manifest, retain that complete manifest and exact inventory, then retire
+only that generation: 70,300,365 logical / 70,512,640 allocated file bytes. Three
+canonical generations remain. Source, authenticated toolchains/offline inputs,
+engine artifacts and historical run evidence remain available. Receipt
+`retired-app-a630f880.json` is 28,007 bytes, SHA-256
+`4f559f7773810fe7f8b994716919830147148cd0a35144a86c2eeb122ba41b79`;
+the retained manifest still hashes to
+`6e53448f073347e3fcc1ef6fc3204b938a33067df1451f3f336c8cf668756bf5`.

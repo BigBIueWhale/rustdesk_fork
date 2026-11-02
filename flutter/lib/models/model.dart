@@ -46,6 +46,7 @@ import 'presentation_recovery.dart';
 import 'reconnect_schedule_authority.dart';
 import 'rgba_publication_order.dart';
 import 'session_event_queue.dart';
+import 'session_audio_mute.dart';
 import 'session_stream_finality.dart';
 import 'package:flutter_hbb/utils/scale.dart';
 
@@ -4624,6 +4625,8 @@ enum ConnType {
 
 /// Flutter state manager and data communication with the Rust core.
 class FFI {
+  late final audioMute = SessionAudioMute(WeakReference<FFI>(this));
+
   var id = '';
   var version = '';
   var connType = ConnType.defaultConn;

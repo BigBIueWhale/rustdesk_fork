@@ -8668,6 +8668,8 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         'VERIFIER_VM_CLOUD_INIT=pass' \
         'Android emulator runtime cloud-init completion marker'
 elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
+    require_exact_fixed_receipt 'FLUTTER_AUDIO_MUTE_TEST_JSON=pass suites=1 tests=10' \
+        'Mute widget ownership, confirmation and retry cases'
     mapfile -t app_artifact_receipts < <(
         /usr/bin/grep -Eo \
             "LINUX_FLUTTER_APP_PREPARED=pass commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE pending=[.]linux-flutter-pending-[0-9a-f]{64} manifest_sha256=[0-9a-f]{64} recipe_sha256=$FLUTTER_APP_RECIPE_SHA256 epoch=$SOURCE_DATE_EPOCH_PIN drivers=excluded network=none containers=joined" \

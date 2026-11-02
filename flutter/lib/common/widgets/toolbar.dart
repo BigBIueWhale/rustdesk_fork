@@ -641,19 +641,6 @@ Future<List<TToggleMenu>> toolbarDisplayToggle(
         ffi.qualityMonitorModel.checkShowQualityMonitor(sessionId);
       },
       child: Text(translate('Show quality monitor'))));
-  // mute
-  if (isDefaultConn && perms['audio'] != false) {
-    final option = 'disable-audio';
-    final value =
-        bind.sessionGetToggleOptionSync(sessionId: sessionId, arg: option);
-    v.add(TToggleMenu(
-        value: value,
-        onChanged: (value) {
-          if (value == null) return;
-          bind.sessionToggleOption(sessionId: sessionId, value: option);
-        },
-        child: Text(translate('Mute'))));
-  }
   // file copy and paste
   // If the version is less than 1.2.4, file copy and paste is supported on Windows only.
   final isSupportIfPeer_1_2_3 = versionCmp(pi.version, '1.2.4') < 0 &&

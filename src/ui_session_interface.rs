@@ -581,6 +581,15 @@ impl<T: InvokeUiSession> Session<T> {
         Ok(value)
     }
 
+    pub fn save_audio_muted(&self, muted: bool) -> ResultType<bool> {
+        let mut handler = self.lc.write().unwrap();
+        let message = handler.save_audio_muted(muted)?;
+        // Keep preference publication and command submission ordered across writers.
+        // This confirms the local preference, not remote delivery or speaker output.
+        self.send(Data::Message(message));
+        Ok(muted)
+    }
+
     pub fn toggle_option(&self, name: String) {
         let msg = self.lc.write().unwrap().toggle_option(name.clone());
         #[cfg(all(target_os = "windows", not(feature = "flutter")))]

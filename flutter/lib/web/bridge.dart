@@ -393,6 +393,31 @@ class RustdeskImpl {
     return false;
   }
 
+  Future<bool> sessionGetAudioMuted(
+      {required UuidValue sessionId, required UuidValue clientOwnerId, dynamic hint}) async {
+    final value = js.context.callMethod('getByName', ['option:toggle', 'disable-audio']);
+    if (value == 'true') return true;
+    if (value == 'false') return false;
+    throw StateError('Mute preference is unavailable');
+  }
+
+  Future<bool> sessionSetAudioMuted(
+      {required UuidValue sessionId, required UuidValue clientOwnerId,
+      required bool muted, dynamic hint}) async {
+    final current = js.context.callMethod('getByName', ['option:toggle', 'disable-audio']);
+    if (current != 'true' && current != 'false') {
+      throw StateError('Mute preference is unavailable');
+    }
+    if ((current == 'true') != muted) {
+      js.context.callMethod('setByName', ['option:toggle', 'disable-audio']);
+    }
+    final effective = js.context.callMethod('getByName', ['option:toggle', 'disable-audio']);
+    if (effective != (muted ? 'true' : 'false')) {
+      throw StateError('Mute preference was not confirmed');
+    }
+    return muted;
+  }
+
   Future<void> sessionToggleOption(
       {required UuidValue sessionId, required String value, dynamic hint}) {
     return Future(

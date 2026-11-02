@@ -1839,8 +1839,22 @@ MODEL_TESTS = {
 }
 
 
+AUDIO_MUTE_TESTS = {
+    "mute reads and explicit writes retain both owner identifiers",
+    "mute failure and mismatched confirmation preserve the prior value",
+    "mute coalesces pending reads and refuses overlapping writes",
+    "mute retired read cannot publish into a replacement owner",
+    "mute admitted save retains capacity through owner retirement",
+    "mute disposal retains pending ownership without late notifications",
+    "mute checkbox waits for confirmation and rejects stale callbacks",
+    "mute failure survives menu dismissal and retries the same intent",
+    "mute replacement retires old callbacks and late failure presentation",
+    "mute failed initial read retries without writing a default",
+}
+
+
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "help-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "connection-page", "status-refresh", "peer-data", "file-progress", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "help-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "connection-page", "status-refresh", "peer-data", "file-progress", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality", "audio-mute"}, "test profile is unknown")
     expected_suites = set(MODEL_TESTS)
     expected_by_suite = None
     if profile == "frame-queue":
@@ -1932,6 +1946,10 @@ def parse_result(path, profile="models"):
         expected_by_suite = COMBO_BOX_SUITES
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())
+        expected_tests = len(expected_names)
+    elif profile == "audio-mute":
+        expected_suites = {"audio_mute_test.dart"}
+        expected_names = AUDIO_MUTE_TESTS
         expected_tests = len(expected_names)
     elif profile == "image-quality":
         expected_by_suite = IMAGE_QUALITY_SUITES
@@ -2159,7 +2177,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "help-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "connection-page", "status-refresh", "peer-data", "file-progress", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "help-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "connection-page", "status-refresh", "peer-data", "file-progress", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality", "audio-mute"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -2192,6 +2210,7 @@ def main():
         "auto-disconnect": "FLUTTER_AUTO_DISCONNECT_TEST_JSON",
         "combo-box": "FLUTTER_COMBO_BOX_TEST_JSON",
         "image-quality": "FLUTTER_IMAGE_QUALITY_TEST_JSON",
+        "audio-mute": "FLUTTER_AUDIO_MUTE_TEST_JSON",
         "keyboard-layout": "FLUTTER_KEYBOARD_LAYOUT_TEST_JSON",
         "directory-ordering": "FLUTTER_DIRECTORY_ORDERING_TEST_JSON",
         "file-navigation": "FLUTTER_FILE_NAVIGATION_TEST_JSON",

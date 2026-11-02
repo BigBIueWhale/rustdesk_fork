@@ -404,6 +404,29 @@ pub fn session_set_connect_password(
     SyncReturn(accepted)
 }
 
+pub fn session_get_audio_muted(
+    session_id: SessionID,
+    client_owner_id: SessionID,
+) -> Result<bool> {
+    let session = sessions::get_session_by_exact_ui_owner(&session_id, &client_owner_id)
+        .ok_or_else(|| anyhow!("Session owner is unavailable"))?;
+    let handler = session.lc.read().unwrap();
+    if handler.conn_type != ConnType::DEFAULT_CONN {
+        bail!("Audio mute requires a remote-control session");
+    }
+    Ok(handler.disable_audio.v)
+}
+
+pub fn session_set_audio_muted(
+    session_id: SessionID,
+    client_owner_id: SessionID,
+    muted: bool,
+) -> Result<bool> {
+    let session = sessions::get_session_by_exact_ui_owner(&session_id, &client_owner_id)
+        .ok_or_else(|| anyhow!("Session owner is unavailable"))?;
+    session.save_audio_muted(muted)
+}
+
 pub fn session_toggle_option(session_id: SessionID, value: String) {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
         log::warn!("toggle option {}", &value);

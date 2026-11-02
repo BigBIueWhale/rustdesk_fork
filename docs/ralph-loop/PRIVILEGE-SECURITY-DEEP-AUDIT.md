@@ -132310,3 +132310,15 @@ Twelve bounded records were copied and hash-verified on CTE. Capsule
 The selected installed-layout preservation/recovery checkpoint is complete.
 Final packages, concurrent namespace replacement, actual action authority and
 other-platform execution remain separate acceptance gaps; all user parks remain.
+
+Fresh count `xblUIrQQz4` at `cb86469a` passes all seven controls and the
+whole-input round trip: 396,701 tokens / 1,815,590 bytes, ledger SHA-256
+`8973a4b0d059281e0f64feaef74623ec49a4394ce07b18f9e6e13bcd31d702dc`.
+Three listener deltas are zero; all owned processes and RAM/private scratch
+retire. Twelve records are copied and hash-verified. Capsule
+`linux-namespace-ledger-cb86469a.json` is 4,805 bytes, SHA-256
+`50d945f891c402c8c8c3aa3e25ee43328f3944b9b2c4e56337a9c3a570b7647f`.
+The new reusable service artifact retains 117,271,898 bytes including its
+manifest on TUF; disposable build and replay data have been removed. This
+checkpoint advances installed privilege-boundary evidence while preserving
+ordinary successful startup. The complete release objective remains active.

@@ -130011,3 +130011,31 @@ event. Flutter provides an explicit menu-open callback
 change requires distinguishing that source hypothesis from stale observer state
 and actual storage first. The app/engine and all previous pass/fail conditions
 remain fixed for the diagnostic replay. No product change is included.
+
+Diagnostic TUF replay `mD8GV6JqZZ` on `47bd0aeb` reproduces the same first-toggle
+failure. The retained peer file parses as `disable_audio=true`; the real Mute
+row is visibly unchecked, and its native checkbox role reports checked=false
+both before and after clearing the observer cache. The 268x24 crop is retained
+as `audio-mute-47bd0aeb.row.png` (1,024 bytes, SHA-256
+`1c70246b15470d76be4f9509f8dd502962b60607445b722e166238a20700f656`).
+This establishes a user-visible state discrepancy, not merely an observer-cache
+artifact. The stored Boolean is read after controller return; no sample proves
+waveform delivery or live storage timing. Save denial/retry are still unreached.
+
+Correct the menu's refresh event: `_IconSubmenuButtonState` rebuilds its supplied
+children when the submenu opens, in addition to existing hover updates. Thus
+keyboard/accessibility opening reads the current settings even without pointer
+movement. This shared menu owner is the direct prerequisite for the selected
+Mute workflow; no independent parked menu scenario is reopened. The one-line
+product correction leaves storage, option dispatch and all acceptance predicates
+unchanged. Build the exact new application and repeat the existing Mute scenario
+to validate this correction and reach the separate persistence-error boundary.
+
+Capsule `audio-mute-diagnostic-47bd0aeb.json` is 21,682 bytes, SHA-256
+`dfcea1f5e232213f8a5bdbd6261b249fef33190853cb4cf7923abcf81c06fe19`.
+All three drivers again compile twice identically. Outer exit is 1; all four
+strictly decoded listener deltas are zero. Wrapper 495736 and QEMU 497639 are
+absent, RAM `run.ombt9pxa` (`29:37331`) retires, and exact private diagnostics
+retire under the shared lock after preservation and duplicate-bundle verification.
+The separate retirement receipt records absence. Storage supervision lasts
+117.546 seconds with a 3,013,251,072-byte RAM-scratch peak. No active run remains.

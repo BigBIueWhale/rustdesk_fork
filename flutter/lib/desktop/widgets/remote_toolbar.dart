@@ -2764,6 +2764,7 @@ class _IconSubmenuButtonState extends State<_IconSubmenuButton> {
             menuStyle:
                 widget.menuStyle ?? _ToolbarTheme.defaultMenuStyle(context),
             style: _ToolbarTheme.defaultMenuButtonStyle,
+            onOpen: () => setState(() {}),
             onHover: (value) => setState(() {
                   hover = value;
                 }),

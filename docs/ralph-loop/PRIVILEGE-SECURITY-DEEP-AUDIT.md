@@ -131246,3 +131246,13 @@ The ledger records the component correction and explicitly distinguishes the
 older retained-app native results. Its fresh isolated count follows. The next
 decisive step is a source-bound native app build and two-window theme replay;
 all independent user parks remain in force.
+
+Count `p5mrzOGcMb` at `f94c23ee` passes seven controls and the whole-input
+round trip: **394,594 tokens / 1,806,100 bytes**, SHA-256
+`1b3deecf6ff5611ecb0e26a62d949ef70f3b2a5c5c643dd449bd68f6949e4c56`.
+Wrapper 1026085 and QEMU 1027501 are absent, three listener deltas are zero,
+and private state plus RAM `run._wh0yxk7` / `29:39054` retire. Both hosts
+retain raw records and `theme-ordering-ledger-f94c23ee.json` (4,799 bytes,
+SHA-256 `a86f8b47efd0948175120f25dfbe72ce0692182f6a4dc90ed0384d9b77114005`).
+No owned job remains active. The source correction and focused component
+checkpoint are complete; native-app acceptance and the release goal remain open.

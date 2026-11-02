@@ -43,6 +43,22 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**Session Mute menu corrected; save failure remains OPEN (2026-11-02):** The
+desktop submenu now refreshes its option values when opened (`cce0f30f`). The
+unchanged native scenario previously displayed Mute unchecked after saving true;
+the source-bound `e8737b14` app passes both healthy mute/unmute selections with
+corresponding file changes. The same run then proves kernel EACCES and unchanged
+saved bytes, but the checkbox changes to muted without a visible failure. This
+confirms a separate R-S0 settings-outcome defect; the overall scenario fails.
+`audio-mute-menu-e8737b14.json` binds the native observations, retained row image,
+artifacts and joined cleanup. Only `libapp.so` differs from baseline `0243c010`;
+the Rust library, engine and scenario drivers are byte-identical. Both build and
+replay retire their bounded RAM and owned processes with zero listener deltas;
+duplicate private diagnostics are retired after evidence preservation. A checked,
+result-bearing Mute operation and failure/retry acceptance are next. Audio-output
+effects, restart persistence, installed/mobile/other-platform acceptance remain
+OPEN. Fullscreen/window-state work remains independently parked.
+
 **Healthy Linux display and input soaks pass (2026-11-02):** Separate complete-peer
 runs finish their fixed baselines and four additional hours. Display records
 303,735 valid sampled ages, maximum 338 ms, p95/p99 drift 5/4 ms and maximum

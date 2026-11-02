@@ -130051,3 +130051,58 @@ archives or baseline deletion are needed. This is a necessary build prerequisite
 for the Mute correction; the shared admission implementation is unchanged.
 The 389-byte refusal log remains at `.harness-state/audio-mute-build-cce0f30f`;
 wrapper 510101 is terminal and no private run or RAM workspace was created.
+
+### 2026-11-02 — native Mute menu correction and confirmed save failure
+
+Continue the selected R-S0/R-F1 Mute workflow. TUF build `UUo2MT3Q8P` on
+`e8737b14643015d35df446a88ea0537a81b2f51e` succeeds in 716 outer seconds.
+The published app manifest is
+`5a0e7a81c1531f2a33764e19909156cbdbe6ad684ef7ed3d5f9dc0596ace9aca`.
+Its closed inventory has 75 regular files / 70,304,589 bytes including the
+manifest. Only `bundle/lib/libapp.so` differs from baseline `0243c010`; every
+other artifact byte, including the Rust library and engine, is unchanged.
+The complete product-source diff is the one menu-open callback. Build capsule
+`audio-mute-build-e8737b14.json` is 22,152 bytes, SHA-256
+`cf46800de4717e4c9a07f9e71c9c53a0eb06f06e864d7094fd7f9ac76ade3179`.
+Four strictly decoded listener deltas are zero. Wrapper 529202 and QEMU 531682
+are absent; private state and RAM `run.c3umlmk2` (`29:37373`) retire. Scratch
+peaks at 10,606,579,712 bytes within the unchanged 16-GiB build allowance.
+The earlier empty-cache prerequisite removal admits the fourth generation;
+the four-generation bound and exclusive publication remain intact.
+
+Replay `TNRSWzWZbG` uses that exact app, engine `ddb1541d`, and the identical
+native scenario. All three drivers compile twice identically; controller digest
+`86d2630ed0551f67899f1cf4fe864e5597bda5dd7f93245b7c880666042db09e`
+matches the diagnostic baseline. Both healthy Mute selections now pass, including
+checked true/false readback and changed saved bytes. This closes the reproduced
+healthy-menu discrepancy for these Linux X11/Xvfb actions.
+
+The same run reaches the previously unexecuted storage boundary. An actual
+write probe returns EACCES after the owned peer directory becomes 0500. The Mute
+action preserves the prior file inode/bytes/hash, but the visible checkbox becomes
+checked and no Failed control appears within the 2.5-second observation. Clearing
+the accessible cache retains checked=true; the row image also shows a check.
+The Boolean-only parse after controller return remains `disable_audio=false`.
+The scenario exits 1 at `denied-outcome`; retry, final fresh-pixel/resource checks
+and audio waveform effects are not accepted. Do not credit the checked menu as
+proof of actual audio suppression or remote option acknowledgement.
+
+Capsule `audio-mute-menu-e8737b14.json` is 21,784 bytes, SHA-256
+`9d6e7c56b5828b87d9104d2d88a4d859ea2aa496bd9789622d813d0335c3a92d`.
+The 1,141-byte row image and 54,379-byte viewer log accompany it. The capsule,
+retirement receipt, image and log are copied to CTE and digest-verified, as is the
+build capsule. Wrapper 577850 and QEMU 578906 are absent; all four strictly decoded
+listener deltas are zero. RAM `run.hiwmhdn3` (`29:37414`) retires after a
+3,013,382,144-byte peak and 111.518-second supervision. Exact private diagnostics
+retire under the shared lock after bounded evidence preservation and duplicate
+bundle comparison with the canonical new app cache. Both hosts are idle.
+
+Remaining selected work is the result-bearing Mute save/apply boundary and its
+native refusal/retry and audio-effect acceptance. R-S0 requires truthful outcomes
+and specified persistence; the existing test chooses the repository's established
+persist-before-publish preference behavior. A correction must define local
+playback state, durable preference and remote command outcome coherently, preserve
+exact session ownership and ordering, and avoid a silent temporary-only mode.
+The generic void toggle and logging-only save do not provide that contract.
+No persistence/API correction is included in this checkpoint. Independently
+parked topics remain parked; the goal remains active.

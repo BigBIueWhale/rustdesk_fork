@@ -131174,3 +131174,16 @@ wrappers expose only registration/dispatch; source equality checks remain.
 The existing desktop-theme shard now expects 36 cases (66 in the full settings
 cohort). Product code is unchanged. Isolated execution follows; no failure or
 correction is claimed yet, and native scheduling/platform acceptance remains open.
+
+The first isolated run `eLagcIh6zx` at `c0b15820` fails while compiling the
+probe: its cleanup referenced `platformFFI` without importing that symbol.
+Use the already-imported `PlatformFFI.instance` instead. No behavioral case ran.
+Fresh bridge generation and private-copy preparation completed. Wrapper 1022387,
+QEMU 1022867 and virtiofsd 1022834 are absent; four listener deltas are zero;
+RAM `run.yhwuuwmt` / `29:38890` and the exact private inventory retire under
+the shared lock. Scratch peaked at 6,296,371,200 bytes under 7 GiB; the outer
+capture is complete and exits 1 after 237 seconds. Both hosts retain seven raw
+records and `theme-ordering-compile-c0b15820.json` (12,989 bytes, SHA-256
+`e8ed2d6bece82f9c352558211846fd397194a6566520cf1d843e9a9b3f716640`),
+its retirement receipt and capture metadata. Rerun the same focused cases after
+this test-only name correction; no product conclusion follows from compilation.

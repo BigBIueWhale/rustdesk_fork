@@ -684,7 +684,7 @@ void main() {
         }
       } finally {
         for (final event in ['theme', 'language']) {
-          platformFFI.registerEventHandler(event, event, (_) {}, replace: true)
+          PlatformFFI.instance.registerEventHandler(event, event, (_) {}, replace: true)
               ?.cancel();
         }
         await tester.pumpWidget(const SizedBox.shrink());

@@ -131343,3 +131343,14 @@ reordering, concurrent writers, other failure classes, providers/platforms and
 installed/release acceptance remain open. Independent user parks remain. The
 ledger replaces the older retained-app checkpoint with this current evidence
 and corrects the stale shared-wrapper park; a fresh isolated count follows.
+
+Count `jdKOA9AEcr` at `3b81c895` passes seven controls and the whole-input
+round trip: **394,586 tokens / 1,806,145 bytes**, SHA-256
+`1f90ac818d1cdae18695a9e0c17a41341683e20ef640a71d47566a5648302f23`.
+Wrapper 1033743 and QEMU 1035159 are absent; all three listener deltas are
+zero, and private state plus RAM `run.gjje54a9` / `29:39244` retire. Both
+hosts retain the raw records and `theme-native-ledger-3b81c895.json`
+(4,793 bytes, SHA-256
+`6e2e9bf3a8975cd9e1ee20cebb1189953019cc1e755a91ace17e8c5bd78628c0`).
+No owned job remains active. The native corrected-theme checkpoint is complete;
+the explicitly listed remaining acceptance gaps and full release goal stay open.

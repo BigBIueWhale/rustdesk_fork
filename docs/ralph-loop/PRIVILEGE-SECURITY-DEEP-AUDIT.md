@@ -130634,3 +130634,16 @@ private state and RAM `run.v63_nugg` / `29:38140` retire. Scratch peaks at
 Both failed attempts retain bounded capsules/logs/retirement receipts; their
 duplicate app bundles are removed after exact canonical comparison. The ledger
 records the native result and user pivot; a fresh isolated token count follows.
+
+TUF count `0PDree3SvE` at `523aa73e` passes seven tokenizer controls and the
+whole-input round trip: **392,992 tokens / 1,799,030 bytes**, SHA-256
+`db9375e7a40415325d52504ed1224097ded327648bccd799ce4227d1393ea2be`.
+Wrapper 730145 and QEMU 731568 are absent, three listener deltas are zero and
+private state plus RAM `run.gt0atvpr` / `29:38182` retire. Capsule
+`keyboard-ledger-523aa73e.json` is 4,992 bytes, SHA-256
+`1c33ae97e31248550de65ff3d12fbe12d15b7152305f38b641a4431dd23a9850`.
+Both hosts retain the accepted keyboard capsule, both failed-attempt capsules,
+viewer logs, retirement receipts and all raw run/count evidence. No owned run
+remains active. The selected live keyboard-mode scenario reaches its native
+checkpoint; full-process restoration and differing-layout behavior are separate
+remaining acceptance gaps. The overall release goal remains incomplete.

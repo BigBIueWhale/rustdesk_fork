@@ -131756,3 +131756,15 @@ No product failure was demonstrated. The ledger records orderly equal-layout
 Linux viewer restoration only; abrupt restart, storage failure, other modes,
 physical devices/platforms and installed artifacts remain open. Its fresh
 isolated count follows.
+
+Count `HJcd93Ure2` at `7c2742df` passes seven controls and whole-input round
+trip: **395,441 tokens / 1,809,907 bytes**, SHA-256
+`911a942eb6776a28a7949944c72cf89c745b3da58390f498c8c340e9cae06479`.
+Both hosts retain twelve verified records, including
+`keyboard-restart-ledger-7c2742df.json` (4,809 bytes, SHA-256
+`fefdcab375dcade079509f4b94fe79ab27b19c98431b1be3992e0a348de72bdd`).
+All owned processes, private state and RAM retire with three zero listener deltas.
+The selected orderly restart scenario is complete. Native keyboard-mode save
+refusal/retry remains an available R-S0 check: the prior choice and usable input
+must survive a failed preference write, with truthful feedback and successful
+retry. The broader goal and all independent parks remain unchanged.

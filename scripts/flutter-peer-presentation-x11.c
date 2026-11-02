@@ -4956,6 +4956,24 @@ static int keyboard_mode_selected(unsigned int pid, const char *selected) {
     return stable == 3U && monotonic_millis() < deadline ? 0 : -1;
 }
 
+static int wait_keyboard_controls_retired(unsigned int pid, int toolbar) {
+    static const char *names[] = {"Map mode", "Legacy mode", "Trackpad speed", "Hide toolbar"};
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    unsigned int stable = 0U;
+    while (monotonic_millis() < deadline && stable < 3U) {
+        int absent = 1;
+        for (unsigned int i = 0U; i < (toolbar ? 4U : 3U); ++i) {
+            AtspiAccessible *item = NULL;
+            if (query_named_accessible(pid, names[i], deadline, &item, 0) != 0) return -1;
+            if (item != NULL) absent = 0;
+            g_clear_object(&item);
+        }
+        stable = absent ? stable + 1U : 0U;
+        if (sleep_millis(100U) != 0) return -1;
+    }
+    return stable == 3U && monotonic_millis() < deadline ? 0 : -1;
+}
+
 static int exercise_keyboard_modes(Display *source, Display *display,
                                     const ViewerWindow *viewer, SourceHistory *history,
                                     const ConnectionIdentity *connection,
@@ -4965,26 +4983,19 @@ static int exercise_keyboard_modes(Display *source, Display *display,
     unsigned int pid = (unsigned int)viewer->pid, sequence = 0U;
     const char *phase = "select";
     for (; sequence < sizeof(names) / sizeof(names[0]); ++sequence) {
-        uint64_t deadline, fresh = 0U, age = 0U;
-        unsigned int absent = 0U;
+        uint64_t fresh = 0U, age = 0U;
         phase = "select";
         if (quality_toolbar(pid) != 0 || activate_named_control(pid, "Keyboard settings") != 0 ||
             activate_named_control(pid, names[sequence]) != 0) goto failed;
         phase = "menu-retirement";
-        deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
-        while (monotonic_millis() < deadline && absent < 3U) {
-            AtspiAccessible *item = NULL;
-            if (query_named_accessible(pid, names[sequence], deadline, &item, 0) != 0) goto failed;
-            absent = item == NULL ? absent + 1U : 0U;
-            g_clear_object(&item);
-            if (sleep_millis(100U) != 0) goto failed;
-        }
-        if (absent != 3U) goto failed;
+        if (wait_keyboard_controls_retired(pid, 0) != 0) goto failed;
         phase = "confirmed-choice";
         if (quality_toolbar(pid) != 0 || activate_named_control(pid, "Keyboard settings") != 0 ||
             keyboard_mode_selected(pid, names[sequence]) != 0 ||
             activate_named_control(pid, "Keyboard settings") != 0 ||
-            activate_named_control(pid, "Hide toolbar") != 0) goto failed;
+            wait_keyboard_controls_retired(pid, 0) != 0 ||
+            activate_named_control(pid, "Hide toolbar") != 0 ||
+            wait_keyboard_controls_retired(pid, 1) != 0) goto failed;
         phase = "native-keys";
         printf("FLUTTER_PEER_KEYBOARD_MODE_BEGIN sequence=%u mode=%s\n", sequence + 1U, modes[sequence]);
         fflush(stdout);

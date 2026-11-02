@@ -130591,3 +130591,17 @@ under the shared lock after matching their app bytes to the canonical cache.
 `keyboard-modes-9655a3d7.json` (22,504 bytes, SHA-256
 `f9221d1ef7f2f253638122453c0d70053774a1ca33f3fee546fcf076332376ee`),
 its viewer log and retirement receipt retain the failure.
+
+Second replay `hcqVLBSCgQ` at `fd60bae2` selects Map and confirms its exclusive
+menu state. The first native letter receives no events; the failure tree shows
+the Trackpad speed dialog open. The observer immediately clicked the center to
+restore focus after invoking menu/toolbar closure. This supports a fixture
+transition race, not a demonstrated Map-mode defect. Require three complete
+scans with both mode entries and Trackpad speed absent before hiding the toolbar,
+then require Hide toolbar absent as well before the existing focus/input action.
+All key/text/modifier, timing and connection assertions remain unchanged.
+Wrapper 726944 and QEMU 728002 are absent, four listener deltas are zero and RAM
+`run.2z7zducn` / `29:38098` retires. Duplicate diagnostics retire after canonical
+byte comparison. `keyboard-modes-fd60bae2.json` is 23,467 bytes, SHA-256
+`1946f02770335035395a012bdf53c5231702f56dce3fa7fd504407ac994a0946`;
+the separate log/retirement receipt preserves the partial observation.

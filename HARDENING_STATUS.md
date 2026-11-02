@@ -43,6 +43,19 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**Follow System reselection — native defect reproduced; correction pending validation:**
+`A8WwgRWH64` reuses app `c619cb3e` with the OS changed to Dark during an explicit
+theme choice. Ten main/remote phases pass; selecting Follow System then leaves
+the main window Light (sampled luminance 224). The earlier twelve-phase replay
+returned the OS to Light before reselection and did not cover this transition.
+The correction removes the App's replacement brightness callback and passes
+the saved theme preference to all app roots, preserving Flutter's System mode
+and normal brightness notifications. The expanded thirteen-phase native replay
+must pass on the corrected app before acceptance. Baseline logs and exact
+cleanup are bound by `theme-system-reselection-baseline-58d9c14a.json`; the VM
+and RAM workspace retire with four zero endpoint deltas. Other platform,
+concurrency and release obligations remain OPEN.
+
 **Delayed theme notification correction (2026-11-02):**
 `1000ebf4` removes the theme value from the native notification API. Secondary
 windows read the current shared preference when receiving the event, so delayed

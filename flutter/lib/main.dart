@@ -245,7 +245,7 @@ void runMultiWindow(
   _runApp(
     title,
     widget,
-    MyTheme.currentThemeMode(),
+    MyTheme.getThemeModePreference(),
   );
   // we do not hide titlebar on win7 because of the frame overflow.
   if (kUseCompatibleUiMode) {
@@ -300,7 +300,7 @@ void runConnectionManagerScreen() async {
   _runApp(
     '',
     const DesktopServerPage(),
-    MyTheme.currentThemeMode(),
+    MyTheme.getThemeModePreference(),
   );
   final hide = await bind.cmShouldHide();
   gFFI.serverModel.hideCm = hide;
@@ -432,26 +432,6 @@ class _AppState extends State<App> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.window.onPlatformBrightnessChanged = () {
-      final userPreference = MyTheme.getThemeModePreference();
-      if (userPreference != ThemeMode.system) return;
-      WidgetsBinding.instance.handlePlatformBrightnessChanged();
-      final systemIsDark =
-          WidgetsBinding.instance.platformDispatcher.platformBrightness ==
-              Brightness.dark;
-      final ThemeMode to;
-      if (systemIsDark) {
-        to = ThemeMode.dark;
-      } else {
-        to = ThemeMode.light;
-      }
-      Get.changeThemeMode(to);
-      // Synchronize the window theme of the system.
-      updateSystemWindowTheme();
-      if (desktopType == DesktopType.main) {
-        bind.mainNotifyThemeChanged();
-      }
-    };
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _updateOrientation());
   }
@@ -507,7 +487,7 @@ class _AppState extends State<App> with WidgetsBindingObserver {
               : bind.mainGetAppNameSync(),
           theme: MyTheme.lightTheme,
           darkTheme: MyTheme.darkTheme,
-          themeMode: MyTheme.currentThemeMode(),
+          themeMode: MyTheme.getThemeModePreference(),
           home: isDesktop
               ? const DesktopTabPage()
               : isWeb

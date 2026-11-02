@@ -131379,3 +131379,52 @@ OS Light/Dark changes must still work on the same connection. All previous
 explicit-choice holds remain; thirteen phases now require 52 fresh remote
 counters and five holds. The product is unchanged. Native execution on app
 `c619cb3e` will decide the hypothesis before any product correction.
+
+Replay `A8WwgRWH64` at `58d9c14a` reproduces the defect on that unchanged
+native app. Ten main/remote phases pass, including five five-second explicit
+holds and 40 additional fresh counters (maximum 314 ms). After the OS changes
+to Dark and the user selects Follow System, the main header remains Light,
+luminance 224; the expected Dark assertion times out. The remaining phases
+are not reached. Native GSettings, bridge, application and actual pixels run.
+This is distinct from the previous delayed-notification component reproduction.
+
+Wrapper 1035646 and QEMU 1036702 are absent. Four listener deltas are zero;
+RAM `run.kzipnqwp` / `29:39272` retires, peak 3,017,453,568 bytes under 7 GiB.
+The complete capture exits 1 in 178 seconds. Both hosts retain sixteen records,
+including the viewer diagnostic log and `theme-system-reselection-baseline-58d9c14a.json`
+(28,947 bytes, SHA-256
+`1fb10f86fa0a549bea3b429b6b44c49677468b5a1ebe01b816381904a4ce259f`).
+Failure copies match the retained app and provider; their duplicate binaries
+retire with the exact private inventory. Reconciliation first refused the
+1.3-MB serial log against a 1-MiB copy bound, then deletion encountered a
+read-only bundle parent. The bounded copy allowance becomes 2 MiB for this run;
+retained directory descriptors authorize only exact owned cleanup, including
+the already-retired inventory prefix. The retirement receipt records both
+conditions. No owned run remains.
+
+The correction deletes the App's platform brightness callback replacement and
+passes `MyTheme.getThemeModePreference()` to main/mobile, multiwindow and CM
+app roots. Follow System remains `ThemeMode.system`, rather than freezing the
+startup brightness. Flutter owns its dispatcher callback and updates MediaQuery
+even while Light/Dark is explicit. Preference changes retain their value-free
+native notification; OS brightness no longer needs a cross-window notification.
+`currentThemeMode()` retains its resolved-mode semantics for other callers.
+Pinned framework `6a19cca56475dbfba1478ee68d7bd0c2ef891da1` installs the
+brightness callback in `rendering/binding.dart`, dispatches observers through
+`widgets/binding.dart`, refreshes MediaQuery in `widgets/media_query.dart`, and
+selects the System theme from that data in `material/app.dart`:
+https://github.com/flutter/flutter/tree/6a19cca56475dbfba1478ee68d7bd0c2ef891da1/packages/flutter/lib/src.
+The unchanged expanded native replay is the decisive correction check; no
+claim of corrected native behavior is made before it passes.
+
+To admit the next build within four cached generations, retire superseded app
+`0243c010`, preserving accepted baseline `7e6f6459`, the parked View mode
+candidate and reproduced baseline `c619cb3e`. Its complete manifest and every
+file are checked under the shared run/cache/generation locks before exact
+descriptor-relative deletion; the other three manifests remain unchanged.
+This removes 75 files / 70,304,589 logical bytes (70,516,736 allocated).
+Both hosts retain `retired-app-0243c010.json` (44,473 bytes, SHA-256
+`6d28c3694cf8efe1877164ca7c7c1dec17812ab4a52ea258c0337a3c57842875`)
+and its retirement receipt. Canonical inputs, source and historical runtime
+evidence remain. The ledger now records the reproduced failure and pending
+correction; its required fresh isolated count precedes the new native build.

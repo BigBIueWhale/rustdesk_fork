@@ -131800,3 +131800,25 @@ are clean at `9311bf75`, no owned VM/private/RAM run remains, and approximately
 separate scenario; no physical-device, other-error-class, other-platform,
 installed or broader immunity claim follows from this focused check. All
 independently parked topics remain parked.
+
+Replay `XoWxkWSZpx` passes at `72af4272` in 119 seconds without an app
+rebuild or product change. All drivers compile twice with identical bytes. The
+Map baseline passes first; under real directory write denial the exclusive probe
+returns EACCES, Failed becomes visible, exclusive Map menu state remains, and
+eleven native typing cases pass while writes are still denied. The saved record
+retains its exact device/inode, length and SHA-256; the retained directory keeps
+its identity and 0500 mode through observation. After restoring 0700, Legacy
+retry succeeds, the error is absent, eleven further typing cases pass and the
+joined saved record contains Legacy. All three phases total 33 cases / 84 native
+events, with exact characters/modifiers/order and both keymaps released. Twelve
+displayed counters are fresh, maximum sampled age 315 ms; the same viewer and
+authenticated connection remain with bounded resources.
+
+Wrapper 1060834 and QEMU 1061892 are absent. All helpers, private state and RAM
+`run.8beqre17` / `29:39870` retire with four zero listener deltas. Peak RAM scratch
+is 3,016,138,752 bytes under 7 GiB. Both hosts retain thirteen verified records,
+including `keyboard-save-72af4272.json` (21,218 bytes, SHA-256
+`9f643baf88498d1bdb809c88a6a7ab5f951db1377ce41c2c5737550a428a5bb9`).
+This is the native permission-denial/retry checkpoint, not acceptance of every
+storage failure, concurrent writer, mode, target platform or installed artifact.
+The ledger is updated with that scope; its fresh isolated count follows.

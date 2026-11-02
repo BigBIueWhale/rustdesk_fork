@@ -207,8 +207,22 @@ displayed counters have maximum sampled age 325 ms. Joined preference files
 contain Map/Legacy/Legacy with required ownership and modes. Identical driver
 rebuilds, four zero listener deltas and VM/RAM/private retirement pass;
 `keyboard-restart-7bab3511.json` binds the evidence. No product change was needed.
-This is orderly viewer restart on equal-layout X11. Abrupt restart, save failures,
-Translate mode, physical devices, other platforms and installed acceptance remain OPEN.
+This is orderly viewer restart on equal-layout X11. Abrupt restart, save failures
+beyond the case below, Translate mode, physical devices, other platforms and
+installed acceptance remain OPEN.
+
+**Keyboard-mode save refusal/retry verified on Linux:** Replay `XoWxkWSZpx`
+at `72af4272` reuses app `c9323bf1` / engine `ddb1541d`. With the private peer
+directory unwritable and exclusive create refused by EACCES, selecting Legacy
+shows Failed, preserves exclusive Map state and leaves the saved file's identity
+and bytes unchanged. Native typing and fresh pixels pass while writes remain
+denied. Restored access permits Legacy retry; its menu state and input pass,
+the error is absent, and the joined saved preference is Legacy. Three phases
+pass 33 cases / 84 native events; twelve fresh counters have maximum sampled
+age 315 ms on the same window/connection. Identical driver rebuilds, bounded
+resources, four zero listener deltas and VM/RAM/private retirement pass.
+`keyboard-save-72af4272.json` binds this evidence. No product change was needed;
+other failure classes, concurrency, platforms and installed acceptance remain OPEN.
 
 **User pivot (2026-11-02):** Custom quality/FPS native validation is OPEN/PARKED.
 Its unexecuted two-file draft is preserved in stash

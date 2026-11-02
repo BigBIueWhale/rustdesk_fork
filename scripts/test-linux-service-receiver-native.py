@@ -2071,7 +2071,7 @@ def network_shutdown(value, record, probe_sha):
             os.close(fd)
 
 
-def startup_namespace(commit, binary_sha, incumbents=False, collisions=False):
+def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, exclusive=False):
     parent = Path("/run/RustDesk-service")
     legacy = Path("/tmp/RustDesk-service")
     target = WORK / "startup-link-target"
@@ -2173,6 +2173,71 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False):
             ["/usr/bin/systemctl", "show", "rustdesk.service",
              "--property=ActiveState,SubState,Result,MainPID,ExecMainCode,ExecMainStatus,NRestarts,ActiveEnterTimestampMonotonic,InvocationID"]).stdout.splitlines())
 
+    def duplicate_launches(pid, pidfd, expected_unit):
+        namespace = snapshot(parent)
+        runtime = Path("/run/rustdesk")
+        lease = runtime / "service-supervisor.lock"
+
+        def lease_identity():
+            st = lease.lstat()
+            if (not stat.S_ISREG(st.st_mode) or st.st_nlink != 1
+                    or (st.st_uid, st.st_gid, stat.S_IMODE(st.st_mode)) != (0, 0, 0o600)):
+                raise RuntimeError("supervisor lease authority differs")
+            return [st.st_dev, st.st_ino, st.st_uid, st.st_gid, st.st_mode,
+                    st.st_nlink, st.st_size, digest(lease)]
+
+        lease_before = lease_identity()
+        with lease.open("rb") as stream:
+            try:
+                fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                pass
+            else:
+                raise RuntimeError("ready supervisor does not retain its lifecycle lease")
+        outcomes = []
+        for count in (1, 2):
+            children = []
+            began = time.monotonic()
+            try:
+                for _ in range(count):
+                    children.append(subprocess.Popen(
+                        ["/usr/bin/rustdesk", "--service"], env=ENV,
+                        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT))
+                for child in children:
+                    output, _ = child.communicate(timeout=10)
+                    if (child.returncode != 1 or len(output) > 131072
+                            or b"Another Linux service supervisor owns the lifecycle lease" not in output):
+                        raise RuntimeError(f"duplicate did not refuse its occupied lease: {child.returncode} {output[-4096:]!r}")
+                    try:
+                        os.waitpid(child.pid, os.WNOHANG)
+                    except ChildProcessError:
+                        pass
+                    else:
+                        raise RuntimeError("duplicate process was not reaped")
+                    outcomes.append({"pid": child.pid, "batch": count, "exit": child.returncode,
+                                     "output": output.decode("utf-8", errors="strict"), "reaped": True})
+            finally:
+                for child in children:
+                    if child.poll() is None:
+                        child.kill()
+                    child.communicate(timeout=10)
+            if (select.select([pidfd], [], [], 0)[0] or properties() != expected_unit
+                    or snapshot(parent) != namespace or lease_identity() != lease_before
+                    or sorted(p.name for p in runtime.iterdir()) != ["service-supervisor.lock"]
+                    or Path("/sys/fs/cgroup/system.slice/rustdesk.service/cgroup.procs").read_text().split() != [str(pid)]):
+                raise RuntimeError("duplicate launch disturbed the incumbent service generation")
+            for postfix in ("_service", "_service_password", "_service_credential"):
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+                    peer.settimeout(5)
+                    peer.connect(str(parent / ("ipc" + postfix)))
+                    if struct.unpack("3i", peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12)) != (pid, 0, 0):
+                        raise RuntimeError("duplicate launch replaced an incumbent endpoint")
+            print("LINUX_SERVICE_EXCLUSIVE_BATCH=" + json.dumps(
+                {"count": count, "elapsed_seconds": time.monotonic() - began,
+                 "incumbent": pid, "unit": expected_unit, "namespace": namespace,
+                 "lease": lease_before, "outcomes": outcomes[-count:]}, sort_keys=True), flush=True)
+        return outcomes
+
     def stop():
         run(["/usr/bin/systemctl", "stop", "rustdesk.service"], timeout=40)
         deadline = time.monotonic() + 5
@@ -2191,6 +2256,9 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False):
     previous = None
     phases = ("foreign-owner", "symlink", "fresh", "restart")
     prefix = "LINUX_SERVICE_STARTUP"
+    if exclusive:
+        phases = ("exclusive-first", "exclusive-restart")
+        prefix = "LINUX_SERVICE_EXCLUSIVE"
     if incumbents or collisions:
         parent.mkdir(mode=0o711)
         parent.chmod(0o711)
@@ -2215,6 +2283,7 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False):
             refused = phase in ("foreign-owner", "symlink") or live or collision
             listener = None
             connections = None
+            duplicates = None
             if phase == "foreign-owner":
                 fixture(parent)
                 before = snapshot(parent)
@@ -2288,6 +2357,8 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False):
                                 raise RuntimeError("ready endpoint belongs to a different principal or process")
                     if Path("/run/rustdesk/service-child.record").exists():
                         raise RuntimeError("sessionless startup unexpectedly launched a desktop child")
+                    if exclusive:
+                        duplicates = duplicate_launches(pid, pidfd, observed)
                 stop()
                 terminal = properties()
                 if not refused and (not select.select([pidfd], [], [], 0)[0]
@@ -2316,6 +2387,7 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False):
                      "preserved_objects": before if collision else None,
                      "symlink_target_unchanged": collisions,
                      "incumbent_probes": connections,
+                     "duplicates": duplicates,
                      "supervisor": previous if not refused else None}, sort_keys=True), flush=True)
                 run(["/usr/bin/systemctl", "reset-failed", "rustdesk.service"])
             finally:
@@ -2343,12 +2415,16 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False):
             print(f"{prefix}_CASE=pass phase={phase}", flush=True)
     finally:
         stop()
+    if exclusive:
+        print(f"{prefix}_NATIVE=pass generations=2 duplicates=6 refused=6 source={commit} "
+              f"binary_sha256={binary_sha} fixture=installed-layout unit=shipped legacy=unchanged cleanup=joined", flush=True)
+        return
     total = 24 if collisions else 6 if incumbents else 4
     print(f"{prefix}_NATIVE=pass cases={total} refusals={total // 2} starts={total // 2} source={commit} "
           f"binary_sha256={binary_sha} fixture=installed-layout unit=shipped legacy=unchanged cleanup=joined", flush=True)
 
 
-def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False, collisions=False):
+def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False, collisions=False, exclusive=False):
     guard()
     checked = run(["/usr/bin/setpriv", "--reuid=1000", "--regid=1000", "--clear-groups",
                    "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
@@ -2377,8 +2453,8 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
     if "not found" in run(["/usr/bin/ldd", str(PROBE)]).stdout:
         raise RuntimeError("network probe runtime dependency is missing")
     run(["/usr/bin/systemctl", "is-active", "systemd-logind.service", "polkit.service"])
-    if startup or incumbent or collisions:
-        startup_namespace(commit, spec["sha256"], incumbents=incumbent, collisions=collisions)
+    if startup or incumbent or collisions or exclusive:
+        startup_namespace(commit, spec["sha256"], incumbents=incumbent, collisions=collisions, exclusive=exclusive)
         return
     pam = pam_module()
     confdir = WORK / "pam"
@@ -2686,6 +2762,8 @@ if __name__ == "__main__":
         tests(sys.argv[1:6], incumbent=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--collisions":
         tests(sys.argv[1:6], collisions=True)
+    elif len(sys.argv) == 7 and sys.argv[-1] == "--exclusive":
+        tests(sys.argv[1:6], exclusive=True)
     elif len(sys.argv) == 6:
         tests(sys.argv[1:])
     else:

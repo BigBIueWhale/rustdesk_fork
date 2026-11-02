@@ -132322,3 +132322,35 @@ The new reusable service artifact retains 117,271,898 bytes including its
 manifest on TUF; disposable build and replay data have been removed. This
 checkpoint advances installed privilege-boundary evidence while preserving
 ordinary successful startup. The complete release objective remains active.
+
+### 2026-11-03 — installed supervisor exclusivity
+
+Previous goal turn: progress; installed non-socket preservation and recovery
+passed with exact cleanup and a fresh ledger count. Select genuine duplicate
+supervisor launch acceptance under R-S0/R-S11ca over another viewer preference
+case. The current installed namespace evidence covers foreign objects and
+unrelated root listeners, but not a second real service image competing with
+the live supervisor. The independently parked caller/admin authorization profile
+remains parked. No new defect is assumed.
+
+Read the runtime lease acquisition, startup ordering, systemd notification code,
+shipped unit and installed fixture. Linux flock documentation
+(https://man7.org/linux/man-pages/man2/flock.2.html) establishes independent-open
+nonblocking refusal and lock lifetime through the retained open description;
+systemd Type=notify documentation
+(https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html)
+distinguishes actual readiness from process creation. The production supervisor
+takes its root-only lease before child recovery or privileged IPC startup.
+
+The new closed `--linux-service-exclusive-tests` profile reuses source-matched
+artifact `fdbab046`. In each of two orderly service generations, launch one
+duplicate and then a batch of two without an intervening wait. Every exact
+installed binary must exit 1 with the occupied-lease diagnostic and be reaped.
+The incumbent must retain its exact PID, invocation/readiness/restart state,
+IPC namespace identity and socket peer credentials; its cgroup must contain
+only the original supervisor. Check the lease identity, permissions and contents,
+not its ctime: acquisition intentionally reapplies its existing 0600 mode.
+Both successful generations must stop cleanly and be reaped; the second proves
+ownership can be reacquired after the first retires. These are sessionless
+installed-layout cases, not arbitrary-principal action authorization, controlled
+lock-race scheduling, crash recovery or final-package acceptance.

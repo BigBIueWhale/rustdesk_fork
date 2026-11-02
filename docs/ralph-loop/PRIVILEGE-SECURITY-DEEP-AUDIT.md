@@ -130256,3 +130256,24 @@ preference; the authenticated private PulseAudio candidate and existing native
 null-sink/sine probes are available for that work. Independently parked audio-worker
 cancellation and fullscreen work remain parked. The ledger is updated; its fresh
 isolated count follows this evidence checkpoint.
+
+Fresh CTE count `pXLiDFuuHC` at `b6953487` measures the complete revised ledger
+at 391,914 tokens / 1,794,319 bytes, SHA-256
+`4b0c7fa51a4207582654a7eeb9830ab6b9aa4620d998c35af9db69e13518c3f6`.
+The fixed tokenizer's seven controls and whole-input byte round trip pass; outer
+exit is zero. Wrapper 2560142 and QEMU 2561666 are absent, and private state plus
+RAM `run.fawjf_tq` / `29:11747` retire. Peak scratch is 402,690,048 bytes under
+4 GiB. Capsule `audio-mute-ledger-b6953487.json` is 6,421 bytes, SHA-256
+`eb57767edd46f6da9d716f80c6663172ae9fbfb3c439b71c9ca49ac52a589b5f`.
+
+The first two listener inventories have zero deltas; the final global inventory
+has four added loopback TCP endpoints and one removed baseline endpoint. Do not
+claim zero deltas for this count. Read-only `ss` maps the additions to separate
+QEMU PIDs; subsequent live observations bind two to parent 2526664 and working
+directory `/home/user/Desktop/scan/kernel-upgrade/vm`, while the other two have
+already exited. The removed endpoint is not retrospectively attributed. No other
+project state is changed. The retained fixed-bootstrap receipt matches the exact
+sealed shell body: inherited descriptors are closed and host IP socket creation
+is kernel-denied throughout the harness process tree. This and the independently
+checked exact owned-process/private/RAM retirement establish the count's cleanup;
+the actual external endpoint changes remain recorded in its capsule.

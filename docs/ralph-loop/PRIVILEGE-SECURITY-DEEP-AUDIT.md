@@ -130455,3 +130455,14 @@ no new dependency, product build or host test execution is needed. Shell syntax
 and whitespace checks pass; isolated compilation/execution are pending. This
 measures actual encoder targets and frame freshness, not subjective visual
 quality, radio-state correctness, physical scanout or full release acceptance.
+
+First replay `Eg7NR2RjeD` at `615e2294` compiles all drivers twice identically,
+then stops before any preset selection: immediately after Hide toolbar, the
+strict accessibility traversal encounters a disappearing child at depth 9. No
+restored encoder target or restart acceptance is established. Keep the toolbar
+visible during the initial target observation; hiding it is only needed later
+for unobscured pixel samples. Preserve the strict query-error handling and all
+target/freshness/deadline conditions. No product correction is claimed.
+Wrapper 597040 and QEMU 598204 are absent, four listener deltas are zero, and
+RAM `run.0a13mbrr` / `29:37860` retires. The bounded capsule, viewer log and exact
+duplicate-artifact retirement receipt are retained as `quality-restart-615e2294*`.

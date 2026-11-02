@@ -5202,7 +5202,7 @@ static int exercise_image_quality(Display *display, const ViewerWindow *viewer,
             if (quality_toolbar(pid) != 0 ||
                 activate_named_control(pid, "Display settings") != 0 ||
                 activate_named_control(pid, "Image quality") != 0) goto out;
-        } else if (activate_named_control(pid, "Hide toolbar") != 0) goto out;
+        }
         uint64_t started = monotonic_millis();
         if (started == 0U || started > UINT64_MAX - 10000U ||
             (cases[sequence].name != NULL &&

@@ -132082,3 +132082,13 @@ other combinations/layouts, physical devices, Translate restart, other platforms
 or installed acceptance. No new product defect or product correction is claimed.
 The ledger records that scope and awaits its fresh isolated count. The goal and
 independent parks remain; Translate restart is still an available native gap.
+
+Count `KYHjcQqh1t` at `92dec91a` passes seven controls and the whole-input
+round trip: **396,186 tokens / 1,813,219 bytes**, SHA-256
+`af185518b3c2c0725af0a8a7f6510b273017b57f8c295d5b0e69774b72a77fc8`.
+Both hosts retain twelve verified records, including
+`keyboard-shortcuts-ledger-92dec91a.json` (4,817 bytes, SHA-256
+`1cf962aa723511d816ad37112589492928177f661263afc7206ef91ee3421e3a`).
+All owned processes, private state and RAM retire with three zero listener deltas.
+The selected compound-shortcut native checkpoint is complete; the full release
+objective remains active with the broader gaps and independent parks preserved.

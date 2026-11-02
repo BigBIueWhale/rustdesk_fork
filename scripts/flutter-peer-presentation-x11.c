@@ -4777,6 +4777,132 @@ out:
     return result;
 }
 
+static int quality_toolbar(unsigned int pid) {
+    AtspiAccessible *show = NULL, *hide = NULL;
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    int result = -1;
+    if (query_named_accessible(pid, "Show toolbar", deadline, &show, 0) != 0 ||
+        query_named_accessible(pid, "Hide toolbar", deadline, &hide, 0) != 0 ||
+        (show == NULL) == (hide == NULL)) goto out;
+    result = show == NULL ? 0 : activate_named_control(pid, "Show toolbar");
+out:
+    g_clear_object(&show);
+    g_clear_object(&hide);
+    return result;
+}
+
+static int quality_bitrate_visible(unsigned int pid, unsigned int bitrate, uint64_t deadline) {
+    AtspiAccessible *label = NULL, *value = NULL;
+    AtspiRect label_rect, value_rect;
+    char expected[32];
+    int result = -1;
+    int length = snprintf(expected, sizeof(expected), "%ukb", bitrate);
+    if (length <= 0 || (size_t)length >= sizeof(expected) ||
+        query_named_accessible(pid, "Target Bitrate", deadline, &label, 0) != 0 ||
+        query_named_accessible(pid, expected, deadline, &value, 0) != 0) goto out;
+    result = 0;
+    if (label == NULL || value == NULL) goto out;
+    if (read_accessible_rect(label, &label_rect) != 0 ||
+        read_accessible_rect(value, &value_rect) != 0) {
+        result = -1;
+        goto out;
+    }
+    /* Require the value next to the actual monitor label, not another named node. */
+    result = value_rect.x >= (int64_t)label_rect.x + label_rect.width &&
+             value_rect.y < (int64_t)label_rect.y + label_rect.height &&
+             label_rect.y < (int64_t)value_rect.y + value_rect.height;
+out:
+    g_clear_object(&label);
+    g_clear_object(&value);
+    return result;
+}
+
+static int exercise_image_quality(Display *display, const ViewerWindow *viewer,
+                                  SourceHistory *history, const ConnectionIdentity *connection,
+                                  const ProcessResources *baseline) {
+    /* The source is 640x480. These are encoder targets for the three shipped
+     * presets, observed through server TestDelay telemetry in the real viewer. */
+    static const struct { const char *name; unsigned int bitrate; } cases[] = {
+        {"Good image quality", 600U}, {"Optimize reaction time", 200U},
+        {"Balanced", 268U}, {"Good image quality", 600U},
+        {"Optimize reaction time", 200U},
+    };
+    unsigned int pid = (unsigned int)viewer->pid;
+    int result = -1;
+    for (unsigned int sequence = 0U; sequence < sizeof(cases) / sizeof(cases[0]); ++sequence) {
+        AtspiAccessible *monitor = NULL;
+        ConnectionIdentity after = {{0}, {0}, 0UL};
+        ProcessResources resources = {0};
+        uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+        if (query_named_accessible(pid, "Target Bitrate", deadline, &monitor, 0) != 0)
+            goto out;
+        int unexpectedly_visible = monitor != NULL;
+        g_clear_object(&monitor);
+        if (unexpectedly_visible || quality_toolbar(pid) != 0 ||
+            activate_named_control(pid, "Display settings") != 0 ||
+            activate_named_control(pid, "Show quality monitor") != 0 ||
+            quality_toolbar(pid) != 0 ||
+            activate_named_control(pid, "Display settings") != 0 ||
+            activate_named_control(pid, "Image Quality") != 0) goto out;
+        uint64_t started = monotonic_millis();
+        if (started == 0U || started > UINT64_MAX - 10000U ||
+            activate_named_control(pid, cases[sequence].name) != 0) goto out;
+        deadline = started + 10000U;
+        int observed = 0;
+        unsigned int stable = 0U;
+        while (monotonic_millis() < deadline && stable < 3U) {
+            observed = quality_bitrate_visible(pid, cases[sequence].bitrate, deadline);
+            if (observed < 0) goto out;
+            stable = observed ? stable + 1U : 0U;
+            if (sleep_millis(100U) != 0) goto out;
+        }
+        uint64_t confirmed = monotonic_millis();
+        if (stable != 3U || confirmed < started || confirmed >= deadline) goto out;
+        /* Retire the overlay before sampling the counter pixels it can occlude. */
+        if (quality_toolbar(pid) != 0 ||
+            activate_named_control(pid, "Display settings") != 0 ||
+            activate_named_control(pid, "Show quality monitor") != 0 ||
+            activate_named_control(pid, "Hide toolbar") != 0) goto out;
+        deadline = monotonic_millis() + RECOVERY_LIMIT_MS;
+        unsigned int distinct = 0U;
+        int64_t previous = -1;
+        uint64_t maximum_age = 0U;
+        while (monotonic_millis() < deadline && distinct < 4U) {
+            uint8_t pixels[X11_FRAME_BYTES];
+            uint64_t captured_us = 0U, age = 0U;
+            int64_t state = x11_frame_capture(display, viewer->window, pixels, &captured_us);
+            int fresh = x11_frame_age(history, "/coord", state, captured_us, &age) == 0;
+            if (history->failed) goto out;
+            if (fresh && age > maximum_age) maximum_age = age;
+            if (fresh && age <= FRESH_LIMIT_MS && state > previous &&
+                monotonic_millis() < deadline) {
+                previous = state;
+                distinct += 1U;
+            }
+            if (distinct < 4U && sleep_millis(SAMPLE_INTERVAL_MS) != 0) goto out;
+        }
+        if (distinct != 4U || read_connection_identity(&after) != 0 ||
+            !same_connection(connection, &after) ||
+            read_process_resources(viewer->pid, &resources) != 0 ||
+            !resources_are_bounded(baseline, &resources)) goto out;
+        printf("FLUTTER_PEER_IMAGE_QUALITY_CASE_OK sequence=%u target_kbps=%u "
+               "confirmation_ms=%llu stable_scans=3 distinct=4 maximum_age_ms=%llu\n",
+               sequence + 1U, cases[sequence].bitrate,
+               (unsigned long long)(confirmed - started), (unsigned long long)maximum_age);
+        print_resources("image-quality", sequence + 1U, &resources);
+        fflush(stdout);
+    }
+    result = 0;
+out:
+    if (result != 0) {
+        PasswordPromptScan diagnostic;
+        fputs("FLUTTER_PEER_X11_FAIL native image-quality scenario\n", stderr);
+        if (scan_password_prompt(pid, &diagnostic, 1) != 0)
+            fputs("FLUTTER_PEER_X11_FAIL image-quality accessibility diagnostic\n", stderr);
+    }
+    return result;
+}
+
 static int exercise_screenshot_save_unavailable(const ViewerWindow *viewer,
                                                 const ConnectionIdentity *connection,
                                                 const ProcessResources *baseline) {
@@ -5046,6 +5172,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--mouse-retirement") != 0 &&
                                     strcmp(argv[5], "--screenshot-save-unavailable") != 0 &&
                                     strcmp(argv[5], "--view-scaling") != 0 &&
+                                    strcmp(argv[5], "--image-quality") != 0 &&
                                     strcmp(argv[5], "--session-close") != 0 &&
                                     strcmp(argv[5], "--background-close") != 0 &&
                                     strcmp(argv[5], "--theme-light") != 0 &&
@@ -5066,6 +5193,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--clipboard-images") != 0 &&
                                     strcmp(argv[5], "--network-impairment") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
+        fputs("Additional full-peer scenario: --image-quality\n", stderr);
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
               "VIEWER_START [--viewer-suspend|--viewer-soak|--input-latency|--input-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
@@ -5383,6 +5511,7 @@ int main(int argc, char **argv) {
         int mouse_retirement = strcmp(argv[5], "--mouse-retirement") == 0;
         int screenshot_unavailable = strcmp(argv[5], "--screenshot-save-unavailable") == 0;
         int view_scaling = strcmp(argv[5], "--view-scaling") == 0;
+        int image_quality = strcmp(argv[5], "--image-quality") == 0;
         int session_close = strcmp(argv[5], "--session-close") == 0;
         int background_close = strcmp(argv[5], "--background-close") == 0;
         int clipboard_text = strcmp(argv[5], "--clipboard-text") == 0;
@@ -5391,6 +5520,8 @@ int main(int argc, char **argv) {
         int network = partial_loss || strcmp(argv[5], "--network-impairment") == 0;
         int suspension_status = background_close ? exercise_background_close(
             source, display, &viewer, &history, argv[4], &current_connection) :
+            image_quality ? exercise_image_quality(
+            display, &viewer, &history, &current_connection, &baseline_resources) :
             session_close ? exercise_session_close(
             display, &viewer, argv[4], &current_connection) : view_scaling ? exercise_view_scaling(
             display, &viewer, &history, &current_connection, &baseline_resources) :
@@ -5426,6 +5557,9 @@ int main(int argc, char **argv) {
         } else if (session_close) {
             puts("FLUTTER_PEER_SESSION_CLOSE_OK action=pointer remote=retired connected_sockets=0 "
                  "listener=preserved main=usable process=preserved");
+        } else if (image_quality) {
+            puts("FLUTTER_PEER_IMAGE_QUALITY_OK cases=5 presets=best,low,balanced "
+                 "encoder_bitrate=confirmed pixels=fresh stable_connection=true resources=bounded");
         } else if (view_scaling) {
             puts("FLUTTER_PEER_VIEW_SCALING_OK cases=6 styles=original,adaptive "
                  "geometry=pixel-witness pixels=fresh stable_connection=true resources=bounded");

@@ -89,6 +89,7 @@ case "$#:${1:-}" in
         --mouse-retirement) PEER_SCENARIO=mouse-retirement ;;
         --screenshot-save-unavailable) PEER_SCENARIO=screenshot-save-unavailable ;;
         --view-scaling) PEER_SCENARIO=view-scaling ;;
+        --image-quality) PEER_SCENARIO=image-quality ;;
         --session-close) PEER_SCENARIO=session-close ;;
         --background-close) PEER_SCENARIO=background-close ;;
         --theme-restart) PEER_SCENARIO=theme-restart ;;
@@ -211,6 +212,11 @@ elif [ "$PEER_SCENARIO" = session-close ]; then
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined session_close=passed connected_sockets=0 listener=preserved main=usable'
+elif [ "$PEER_SCENARIO" = image-quality ]; then
+  RUNTIME_CYCLES=1
+  SERVER_GENERATIONS='1'
+  SERVER_REPLACEMENTS=0
+  VIEWER_RESULT='viewer=joined xvfb=joined image_quality=5 encoder_bitrate=confirmed pixels=fresh stable_connection=true'
 elif [ "$PEER_SCENARIO" = view-scaling ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

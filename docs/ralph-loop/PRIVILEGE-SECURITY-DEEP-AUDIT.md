@@ -129693,3 +129693,23 @@ wrapper 432960/QEMU 434377 are absent and RAM `run.y59iak72` (`29:37022`)
 retires. Duration is 51.598 seconds; peak scratch is 402,350,080 bytes.
 Receipt `display-soak-ledger-f9f7ed95.json` is 3,832 bytes, SHA-256
 `faa6ca424138996ebb7b9832b23b203594b718b0e456ab8ce0ccb7b91cf8dbe5`.
+
+### 2026-11-02 — user pivot to active-session image-quality effects
+
+The user says "Well, pleaae pivot". The libvpx resize-cleanup investigation is
+OPEN/PARKED after read-only source/upstream review; no native fixture, backport,
+dependency change or runtime reproduction was produced. Retained CTE review
+`native-codec-review-b5f70992.json` binds the source observation and its limits.
+Do not resume that investigation automatically. Existing independently parked
+topics remain parked. CTE's already-running input soak continues unchanged.
+
+Select R-S0's required settings functionality: named image-quality presets have
+component coverage, but full-viewer-to-encoder effects remain unexecuted.
+Add one native full-peer replay using the existing authenticated app `0243c010`
+and engine `ddb1541d`. Drive the actual menu through five changes among all three
+presets; require server-reported encoder targets 600/200/268/600/200 kbps for the
+640x480 source, three successive visible confirmations within ten seconds, then
+four fresh distinct displayed counters with the same connection and bounded
+viewer resources. The product publishes target bitrate only after encoder
+quality application succeeds. This checks live preset effects, not custom
+sliders, restart persistence, physical scanout or installed/platform acceptance.

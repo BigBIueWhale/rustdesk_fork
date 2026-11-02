@@ -53,6 +53,7 @@ FLUTTER_KEYBOARD_INPUT=0
 FLUTTER_MOUSE_INPUT=0
 FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE=0
 FLUTTER_VIEW_SCALING=0
+FLUTTER_IMAGE_QUALITY=0
 FLUTTER_SESSION_CLOSE=0
 FLUTTER_THEME_RESTART=0
 FLUTTER_THEME_APPEARANCE=0
@@ -678,6 +679,7 @@ case "$#:${1:-}" in
                 --mouse-retirement) FLUTTER_MOUSE_INPUT=2 ;;
                 --screenshot-save-unavailable) FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE=1 ;;
                 --view-scaling) FLUTTER_VIEW_SCALING=1 ;;
+                --image-quality) FLUTTER_IMAGE_QUALITY=1 ;;
                 --session-close) FLUTTER_SESSION_CLOSE=1 ;;
                 --background-close) FLUTTER_SESSION_CLOSE=2 ;;
                 --theme-restart) FLUTTER_THEME_RESTART=1 ;;
@@ -751,6 +753,7 @@ case "$#:${1:-}" in
         printf 'Real VM boot from a private read-only base copy: %s --base-readonly-test\n' "${0##*/}" >&2
         printf 'Focused native Linux app-capsule check: %s --linux-flutter-artifact-tests\n' "${0##*/}" >&2
         printf 'Focused native framebuffer check: %s --android-frame-tests\n' "${0##*/}" >&2
+        printf 'Active-session quality presets: use --image-quality with the source-bound Linux app replay arguments above.\n' >&2
         printf 'Focused production X11 enumeration/capture check: %s --x11-display-tests\n' "${0##*/}" >&2
         printf 'Focused macOS cursor adapter compilation: %s --apple-conform --cursor-compile\n' "${0##*/}" >&2
         printf 'Focused macOS file-mode compilation: %s --apple-conform --file-mode-compile\n' "${0##*/}" >&2
@@ -840,6 +843,7 @@ readonly FLUTTER_MOUSE_INPUT
 readonly FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE
 readonly FLUTTER_VIEW_SCALING
 readonly FLUTTER_SESSION_CLOSE
+readonly FLUTTER_IMAGE_QUALITY
 readonly FLUTTER_THEME_RESTART
 readonly FLUTTER_THEME_APPEARANCE
 readonly FLUTTER_THEME_SAVE_FAILURE
@@ -5225,6 +5229,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         [ "$FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE" -eq 0 ] || guest_invocation+=' --screenshot-save-unavailable'
         [ "$FLUTTER_VIEW_SCALING" -eq 0 ] || guest_invocation+=' --view-scaling'
         [ "$FLUTTER_SESSION_CLOSE" -ne 1 ] || guest_invocation+=' --session-close'
+        [ "$FLUTTER_IMAGE_QUALITY" -eq 0 ] || guest_invocation+=' --image-quality'
         [ "$FLUTTER_SESSION_CLOSE" -ne 2 ] || guest_invocation+=' --background-close'
         [ "$FLUTTER_THEME_RESTART" -eq 0 ] || guest_invocation+=' --theme-restart'
         [ "$FLUTTER_THEME_APPEARANCE" -eq 0 ] || guest_invocation+=' --theme-appearance'
@@ -8676,6 +8681,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     peer_scenario=focus-reconnect-resource
     [ "$FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE" -eq 0 ] || peer_scenario=screenshot-save-unavailable
     [ "$FLUTTER_VIEW_SCALING" -eq 0 ] || peer_scenario=view-scaling
+    [ "$FLUTTER_IMAGE_QUALITY" -eq 0 ] || peer_scenario=image-quality
     [ "$FLUTTER_SESSION_CLOSE" -ne 1 ] || peer_scenario=session-close
     [ "$FLUTTER_SESSION_CLOSE" -ne 2 ] || peer_scenario=background-close
     [ "$FLUTTER_THEME_RESTART" -eq 0 ] || peer_scenario=theme-restart

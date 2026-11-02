@@ -26,7 +26,7 @@ MENU_ACTION=pointer
 [ "$PEER_SCENARIO" != credential-menu-accessible ] || MENU_ACTION=accessible
 readonly MENU_ACTION
 case "$PEER_SCENARIO" in
-  session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|viewer-isolation|viewer-soak|input-latency|input-soak) EXPECTED_RESTARTS=0 ;;
+  session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|viewer-isolation|viewer-soak|input-latency|input-soak|image-quality) EXPECTED_RESTARTS=0 ;;
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
   viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation|credential-forget|credential-menu|credential-menu-accessible) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
@@ -1617,6 +1617,7 @@ PY
     [ "$PEER_SCENARIO" != input-soak ] || controller_args+=(--input-soak)
     [ "$PEER_SCENARIO" != view-scaling ] || controller_args+=(--view-scaling)
     [ "$PEER_SCENARIO" != session-close ] || controller_args+=(--session-close)
+    [ "$PEER_SCENARIO" != image-quality ] || controller_args+=(--image-quality)
     [ "$PEER_SCENARIO" != background-close ] || controller_args+=(--background-close)
     [ "$PEER_SCENARIO" != credential-retry ] || controller_args+=(--credential-retry)
     [ "$PEER_SCENARIO" != theme-appearance ] || controller_args+=(--theme-appearance)
@@ -1793,6 +1794,14 @@ PY
       grep -Fxq 'FLUTTER_PEER_SESSION_CLOSE_OK action=pointer remote=retired connected_sockets=0 listener=preserved main=usable process=preserved' \
         <<<"$controller_output" || fail 'native session-close result is absent'
       viewer_result='viewer=joined xvfb=joined session_close=passed connected_sockets=0 listener=preserved main=usable'
+    elif [ "$PEER_SCENARIO" = image-quality ]; then
+      for sequence in {1..5}; do
+        [ "$(grep -Ec "^FLUTTER_PEER_IMAGE_QUALITY_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
+          || fail "image-quality case $sequence is absent or duplicated"
+      done
+      grep -Fxq 'FLUTTER_PEER_IMAGE_QUALITY_OK cases=5 presets=best,low,balanced encoder_bitrate=confirmed pixels=fresh stable_connection=true resources=bounded' \
+        <<<"$controller_output" || fail 'native image-quality result is absent'
+      viewer_result='viewer=joined xvfb=joined image_quality=5 encoder_bitrate=confirmed pixels=fresh stable_connection=true'
     elif [ "$PEER_SCENARIO" = view-scaling ]; then
       for sequence in {1..6}; do
         [ "$(grep -Ec "^FLUTTER_PEER_VIEW_SCALE_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \

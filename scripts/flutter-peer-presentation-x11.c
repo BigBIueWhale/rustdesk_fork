@@ -632,18 +632,21 @@ static int scan_named_control_node(AtspiAccessible *accessible, unsigned int exp
     for (gint index = 0; index < children; ++index) {
         AtspiAccessible *child = atspi_accessible_get_child_at_index(accessible, index, &error);
         int status;
-        if (error != NULL || child == NULL) {
+        /* Count and indexed lookup are separate calls. Discard this entire
+         * observation when a child retires between them; never use its match. */
+        if (error == NULL && child == NULL) return 1;
+        if (error != NULL) {
             if (child != NULL) g_object_unref(child);
             return named_control_refusal(scan, "child-query", depth, error);
         }
         status = scan_named_control_node(child, expected_pid, depth + 1U, scan, dialog_scope);
         g_object_unref(child);
-        if (status != 0) return -1;
+        if (status != 0) return status;
     }
     return 0;
 }
 
-static int query_accessible_with_focus(unsigned int expected_pid, const char *name, uint64_t deadline,
+static int query_accessible_once(unsigned int expected_pid, const char *name, uint64_t deadline,
                               AtspiAccessible **match, int dialog_caption, int text_content,
                               const AtspiRect *bounds, int focused_text, int name_fragment) {
     NamedControlScan scan = {.name = name, .deadline = deadline, .dialog_caption = dialog_caption,
@@ -680,7 +683,10 @@ static int query_accessible_with_focus(unsigned int expected_pid, const char *na
             application_status = scan_named_control_node(application, expected_pid, 0U, &scan, 0);
         }
         g_object_unref(application);
-        if (application_status != 0) goto out;
+        if (application_status != 0) {
+            if (application_status == 1) status = 1;
+            goto out;
+        }
     }
     reason = applications != 1U ? "application-count" : "deadline";
     if (applications == 1U && monotonic_millis() < deadline) {
@@ -689,7 +695,7 @@ static int query_accessible_with_focus(unsigned int expected_pid, const char *na
         status = 0;
     }
 out:
-    if (status != 0) {
+    if (status < 0) {
         fprintf(stderr, "FLUTTER_PEER_CONTROL_QUERY_SUMMARY control=\"%s\" reason=%s "
                 "applications=%u nodes=%u matches=%u error_code=%d\n",
                 name, reason, applications, scan.nodes, scan.matches,
@@ -699,6 +705,21 @@ out:
     if (scan.match != NULL) g_object_unref(scan.match);
     g_object_unref(desktop);
     return status;
+}
+
+static int query_accessible_with_focus(unsigned int expected_pid, const char *name, uint64_t deadline,
+                              AtspiAccessible **match, int dialog_caption, int text_content,
+                              const AtspiRect *bounds, int focused_text, int name_fragment) {
+    while (monotonic_millis() < deadline) {
+        int status = query_accessible_once(expected_pid, name, deadline, match,
+            dialog_caption, text_content, bounds, focused_text, name_fragment);
+        if (status != 1) return status;
+        fprintf(stderr, "FLUTTER_PEER_CONTROL_TREE_CHANGED control=\"%s\" incomplete=discarded\n", name);
+        if (sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) return -1;
+    }
+    *match = NULL;
+    fprintf(stderr, "FLUTTER_PEER_CONTROL_QUERY_FAIL control=\"%s\" reason=unstable-tree-deadline\n", name);
+    return -1;
 }
 
 static int query_accessible(unsigned int expected_pid, const char *name, uint64_t deadline,
@@ -5208,10 +5229,6 @@ static int exercise_image_quality(Display *display, const ViewerWindow *viewer,
             (cases[sequence].name != NULL &&
              activate_named_control(pid, cases[sequence].name) != 0)) goto out;
         deadline = started + 10000U;
-        /* Menu activation returns before Flutter's post-frame callback and its
-         * accessibility-tree update. Retain the deadline during this settling
-         * interval; a successful complete scan is still required below. */
-        if (cases[sequence].name == NULL && sleep_millis(350U) != 0) goto out;
         int observed = 0;
         unsigned int stable = 0U;
         while (monotonic_millis() < deadline && stable < 3U) {

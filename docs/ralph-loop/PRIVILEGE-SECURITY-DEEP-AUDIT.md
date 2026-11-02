@@ -130481,3 +130481,22 @@ and https://gnome.pages.gitlab.gnome.org/at-spi2-core/libatspi/method.Accessible
 Wrapper 600626 and QEMU 601898 are absent; four listener deltas are zero; RAM
 `run.vi1fthmu` / `29:37902` retires. The bounded capsule/log and exact retirement
 receipt are retained as `quality-restart-0891709a*`. No product defect is inferred.
+
+Third replay `ycOiC56xE9` at `cc2f2c23` confirms initial Balanced and selected
+Best, then restores Best in a fresh process and selects Low. Both generations
+exit zero with correct saved values; sixteen displayed frames are current,
+maximum sampled age 370 ms. The third process confirms its target but encounters
+the same null-child observation while retiring the monitor menu, before its pixel
+phase. The fixed initial delay does not solve the general observation race.
+
+Correct the scanner's observation model: an indexed child that returns null
+without an API error invalidates the whole scan. Release its partial match and
+restart from the application root after the existing polling interval, under the
+original absolute deadline. A partial scan can never activate a control or count
+as a target observation. Duplicate controls, foreign PID, API errors, traversal
+bounds and deadline exhaustion still fail. Remove the fixed 350-ms workaround.
+The same native quality scenario exercises complete scans across real menu
+replacement; no product source or expected quality changes.
+Wrapper 616830 and QEMU 618250 are absent, all four listener deltas are zero and
+RAM `run.zmubbtof` / `29:37944` retires. The bounded capsule/log and checked duplicate
+retirement are retained as `quality-restart-cc2f2c23*`.

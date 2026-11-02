@@ -5175,10 +5175,94 @@ finished:
     return result;
 }
 
+static int exercise_view_only_save_failure(Display *source, Display *display,
+                                           const ViewerWindow *viewer) {
+    unsigned int pid = (unsigned int)viewer->pid;
+    int directory = -1, permissions_changed = 0, result = -1, checked = -1;
+    struct stat original = {0}, current;
+    ConfigFileState before = {0}, after = {0};
+    AtspiAccessible *error = NULL, *item = NULL;
+    AtspiStateSet *states = NULL;
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    const char *phase = "deny-save";
+    if (geteuid() == 0 || view_only_menu_state(pid, 1) != 0 ||
+        query_named_accessible(pid, "Failed", deadline, &error, 0) != 0 || error != NULL) goto out;
+    directory = open("/tmp/viewer-home/.config/rustdesk/peers",
+                     O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (directory < 0 || fstat(directory, &original) != 0 ||
+        original.st_uid != geteuid() || original.st_gid != getegid() ||
+        (original.st_mode & 07777) != 0700 ||
+        read_config_file(directory, "127.0.0.1.toml", &before) != 0 ||
+        fchmod(directory, 0500) != 0) goto out;
+    permissions_changed = 1;
+    errno = 0;
+    int probe = openat(directory, ".view-only-write-probe", O_WRONLY | O_CREAT | O_EXCL |
+                       O_NOFOLLOW | O_CLOEXEC, 0600);
+    int probe_error = errno;
+    if (probe >= 0) {
+        if (close(probe) != 0) fputs("FLUTTER_PEER_X11_FAIL view-only probe close\n", stderr);
+        if (unlinkat(directory, ".view-only-write-probe", 0) != 0)
+            fputs("FLUTTER_PEER_X11_FAIL view-only probe cleanup\n", stderr);
+        goto out;
+    }
+    if (probe_error != EACCES || activate_named_control(pid, "View mode") != 0 ||
+        wait_keyboard_controls_retired(pid, 0) != 0) goto out;
+    phase = "denied-outcome";
+    deadline = monotonic_millis() + 2500U;
+    while (monotonic_millis() < deadline && error == NULL) {
+        if (query_named_accessible(pid, "Failed", deadline, &error, 0) != 0) goto out;
+        if (error == NULL && sleep_millis(50U) != 0) goto out;
+    }
+    int error_visible = error != NULL && monotonic_millis() < deadline;
+    g_clear_object(&error);
+    if (read_config_file(directory, "127.0.0.1.toml", &after) != 0 ||
+        fstat(directory, &current) != 0 || current.st_dev != original.st_dev ||
+        current.st_ino != original.st_ino || (current.st_mode & 07777) != 0500 ||
+        activate_named_control(pid, "Keyboard settings") != 0) goto out;
+    deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    if (query_named_accessible(pid, "View mode", deadline, &item, 0) != 0 || item == NULL) goto out;
+    atspi_accessible_clear_cache(item);
+    states = atspi_accessible_get_state_set(item);
+    if (states == NULL || !atspi_state_set_contains(states, ATSPI_STATE_CHECKABLE)) goto out;
+    checked = atspi_state_set_contains(states, ATSPI_STATE_CHECKED);
+    g_clear_object(&states);
+    g_clear_object(&item);
+    int file_preserved = before.device == after.device && before.inode == after.inode &&
+        before.bytes == after.bytes && strcmp(before.sha256, after.sha256) == 0;
+    if (activate_named_control(pid, "Keyboard settings") != 0 ||
+        wait_keyboard_controls_retired(pid, 0) != 0 ||
+        activate_named_control(pid, "Hide toolbar") != 0 ||
+        wait_keyboard_controls_retired(pid, 1) != 0) goto out;
+    int input_preserved = observe_view_only_input(source, display, viewer, 5U, 1) == 0;
+    printf("FLUTTER_PEER_VIEW_ONLY_DENIED kernel=EACCES error_visible=%d checked=%d "
+           "previous=1 file_preserved=%d input_preserved=%d\n", error_visible, checked,
+           file_preserved, input_preserved);
+    fflush(stdout);
+    if (!error_visible || checked != 1 || !file_preserved || !input_preserved) goto out;
+    phase = "restore-for-retry";
+    if (fchmod(directory, 0700) != 0) goto out;
+    permissions_changed = 0;
+    if (quality_toolbar(pid) != 0 || activate_named_control(pid, "Keyboard settings") != 0 ||
+        view_only_menu_state(pid, 1) != 0) goto out;
+    result = 0;
+out:
+    if (permissions_changed && fchmod(directory, 0700) != 0) {
+        fputs("FLUTTER_PEER_X11_FAIL view-only directory restoration\n", stderr);
+        result = -1;
+    }
+    if (directory >= 0 && close(directory) != 0) result = -1;
+    g_clear_object(&error);
+    g_clear_object(&item);
+    g_clear_object(&states);
+    if (result != 0)
+        fprintf(stderr, "FLUTTER_PEER_X11_FAIL view-only save phase=%s checked=%d\n", phase, checked);
+    return result;
+}
+
 static int exercise_view_only(Display *source, Display *display,
                                const ViewerWindow *viewer, SourceHistory *history,
                                const ConnectionIdentity *connection,
-                               const ProcessResources *baseline) {
+                               const ProcessResources *baseline, int save_failure) {
     unsigned int pid = (unsigned int)viewer->pid, sequence = 0U;
     const char *phase = "menu";
     for (; sequence < 4U; ++sequence) {
@@ -5191,8 +5275,10 @@ static int exercise_view_only(Display *source, Display *display,
         if (quality_toolbar(pid) != 0 || activate_named_control(pid, "Keyboard settings") != 0)
             goto failed;
         if (sequence != 0U) {
-            if (view_only_menu_state(pid, !blocked) != 0 ||
-                activate_named_control(pid, "View mode") != 0 ||
+            if (view_only_menu_state(pid, !blocked) != 0) goto failed;
+            if (save_failure && sequence == 2U &&
+                exercise_view_only_save_failure(source, display, viewer) != 0) goto failed;
+            if (activate_named_control(pid, "View mode") != 0 ||
                 wait_keyboard_controls_retired(pid, 0) != 0 ||
                 activate_named_control(pid, "Keyboard settings") != 0) goto failed;
         }
@@ -5216,6 +5302,9 @@ static int exercise_view_only(Display *source, Display *display,
                (unsigned long long)age);
         fflush(stdout);
     }
+    if (save_failure)
+        puts("FLUTTER_PEER_VIEW_ONLY_SAVE_FAILURE_OK failure=visible previous=preserved "
+             "retry=applied permissions=restored");
     return 0;
 failed:
     fprintf(stderr, "FLUTTER_PEER_X11_FAIL view-only sequence=%u phase=%s\n", sequence + 1U, phase);
@@ -6017,6 +6106,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--keyboard-input") != 0 &&
                                     strcmp(argv[5], "--keyboard-modes") != 0 &&
                                     strcmp(argv[5], "--view-only") != 0 &&
+                                    strcmp(argv[5], "--view-only-save-failure") != 0 &&
                                     strcmp(argv[5], "--mouse-input") != 0 &&
                                     strcmp(argv[5], "--mouse-retirement") != 0 &&
                                     strcmp(argv[5], "--screenshot-save-unavailable") != 0 &&
@@ -6058,7 +6148,7 @@ int main(int argc, char **argv) {
               "--language-french, --language-portugal, --language-english, --language-restore, "
               "--language-direction\n", stderr);
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--viewer-soak|--input-latency|--input-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
+              "VIEWER_START [--viewer-suspend|--viewer-soak|--input-latency|--input-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--view-only-save-failure|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
         return 2;
     }
@@ -6427,7 +6517,8 @@ int main(int argc, char **argv) {
         int keyboard_retirement = strcmp(argv[5], "--keyboard-retirement") == 0;
         int keyboard_input = strcmp(argv[5], "--keyboard-input") == 0;
         int keyboard_modes = strcmp(argv[5], "--keyboard-modes") == 0;
-        int view_only = strcmp(argv[5], "--view-only") == 0;
+        int view_only_save_failure = strcmp(argv[5], "--view-only-save-failure") == 0;
+        int view_only = view_only_save_failure || strcmp(argv[5], "--view-only") == 0;
         int mouse_input = strcmp(argv[5], "--mouse-input") == 0;
         int mouse_retirement = strcmp(argv[5], "--mouse-retirement") == 0;
         int screenshot_unavailable = strcmp(argv[5], "--screenshot-save-unavailable") == 0;
@@ -6440,7 +6531,8 @@ int main(int argc, char **argv) {
         int partial_loss = strcmp(argv[5], "--network-loss") == 0;
         int network = partial_loss || strcmp(argv[5], "--network-impairment") == 0;
         int suspension_status = view_only ? exercise_view_only(
-            source, display, &viewer, &history, &current_connection, &baseline_resources) :
+            source, display, &viewer, &history, &current_connection, &baseline_resources,
+            view_only_save_failure) :
             keyboard_modes ? exercise_keyboard_modes(
             source, display, &viewer, &history, &current_connection, &baseline_resources) :
             background_close ? exercise_background_close(

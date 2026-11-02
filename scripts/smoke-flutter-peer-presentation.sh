@@ -86,6 +86,7 @@ case "$#:${1:-}" in
         --keyboard-input) PEER_SCENARIO=keyboard-input ;;
         --keyboard-modes) PEER_SCENARIO=keyboard-modes ;;
         --view-only) PEER_SCENARIO=view-only ;;
+        --view-only-save-failure) PEER_SCENARIO=view-only-save-failure ;;
         --keyboard-retirement) PEER_SCENARIO=keyboard-retirement ;;
         --mouse-input) PEER_SCENARIO=mouse-input ;;
         --mouse-retirement) PEER_SCENARIO=mouse-retirement ;;
@@ -274,11 +275,12 @@ elif [ "$PEER_SCENARIO" = keyboard-retirement ]; then
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined keyboard_retirement=abrupt owned_keys=2 foreign_key=preserved'
-elif [ "$PEER_SCENARIO" = view-only ]; then
+elif [ "$PEER_SCENARIO" = view-only ] || [ "$PEER_SCENARIO" = view-only-save-failure ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined view_only_phases=4 input_cases=12 storage=verified stable_connection=true resources=bounded'
+  [ "$PEER_SCENARIO" != view-only-save-failure ] || VIEWER_RESULT='viewer=joined xvfb=joined view_only_phases=4 input_cases=15 save_failure=verified storage=verified stable_connection=true resources=bounded'
 elif [ "$PEER_SCENARIO" = keyboard-modes ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

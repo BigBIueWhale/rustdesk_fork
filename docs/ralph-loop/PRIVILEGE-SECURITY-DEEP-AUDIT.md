@@ -130830,3 +130830,34 @@ receipts, plus the parked locale attempts and retirement receipts. No owned run
 remains active. This live View mode workflow reaches its native checkpoint;
 full-process restoration and failure handling remain unproved. The language
 integration and all independent user parks remain. The release goal is incomplete.
+
+### 2026-11-02 — View mode save failure preparation
+
+The previous turn is progress: the complete native healthy View mode workflow
+passes. Continue R-S0 with save failure before restart expansion. Source shows
+`LoginConfigHandler::save_config` logging a failed store then replacing its cache;
+`toggle_option` still returns the peer message, the session sends it, and the void
+FFI setter cannot communicate the failure. The desktop callback subsequently
+reads that cache and publishes it. A real failed-save observation has higher value
+than further healthy permutations because it can decide this concrete mismatch
+between durable state, displayed state and active input behavior.
+
+`--view-only-save-failure` extends the accepted scenario at the attempted
+true-to-false transition. After healthy input and restricted-input phases, the
+native nonroot observer holds the exact private peer-directory descriptor,
+records the saved file identity/hash, changes only that guest directory to 0500,
+and proves a fresh create fails with EACCES. It uses the actual View mode control,
+observes the error/checkbox/file and the same native input stimuli, and requires
+all previous effects preserved. Permission restoration precedes retry; the rest
+of the original scenario must still pass and save true after normal viewer exit.
+The observer restores the held directory's mode on failure too. This does not
+modify a host directory or any unrelated user's data. No product correction has
+been made; isolated baseline compilation/execution follows.
+
+The Linux API contracts support descriptor-relative creation and permission
+changes to the retained object, with actual EACCES required rather than inferred
+from a chmod return:
+https://man7.org/linux/man-pages/man2/open.2.html and
+https://man7.org/linux/man-pages/man2/fchmod.2.html.
+Shell syntax and whitespace checks pass. The existing native input acceptance
+and all user parks remain; the new run has no acceptance claim before execution.

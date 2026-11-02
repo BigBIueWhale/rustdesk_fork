@@ -28,7 +28,7 @@ readonly MENU_ACTION
 case "$PEER_SCENARIO" in
   session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|language-restart|language-direction|quality-restart|viewer-isolation|viewer-soak|input-latency|input-soak|image-quality|image-quality-save-failure|audio-mute) EXPECTED_RESTARTS=0 ;;
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
-  view-only) EXPECTED_RESTARTS=0 ;;
+  view-only|view-only-save-failure) EXPECTED_RESTARTS=0 ;;
   viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-modes|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation|credential-forget|credential-menu|credential-menu-accessible) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
 esac
@@ -1653,6 +1653,7 @@ PY
     [ "$PEER_SCENARIO" != keyboard-input ] || controller_args+=(--keyboard-input)
     [ "$PEER_SCENARIO" != keyboard-modes ] || controller_args+=(--keyboard-modes)
     [ "$PEER_SCENARIO" != view-only ] || controller_args+=(--view-only)
+    [ "$PEER_SCENARIO" != view-only-save-failure ] || controller_args+=(--view-only-save-failure)
     [ "$PEER_SCENARIO" != keyboard-retirement ] || controller_args+=(--keyboard-retirement)
     [ "$PEER_SCENARIO" != mouse-input ] || controller_args+=(--mouse-input)
     [ "$PEER_SCENARIO" != mouse-retirement ] || controller_args+=(--mouse-retirement)
@@ -1920,7 +1921,7 @@ PY
       grep -Fxq 'FLUTTER_PEER_KEYBOARD_RETIREMENT_OK remote_keys=2 local_key=preserved viewer_exit=abrupt native_releases=true fixture_keys_released=true' \
         <<<"$controller_output" || fail 'native keyboard retirement verdict is missing'
       viewer_result='viewer=joined xvfb=joined keyboard_retirement=abrupt owned_keys=2 foreign_key=preserved'
-    elif [ "$PEER_SCENARIO" = view-only ]; then
+    elif [ "$PEER_SCENARIO" = view-only ] || [ "$PEER_SCENARIO" = view-only-save-failure ]; then
       for sequence in 1 2 3 4; do
         enabled=0
         [ "$((sequence % 2))" -ne 0 ] || enabled=1
@@ -1934,6 +1935,17 @@ PY
       grep -Fxq 'FLUTTER_PEER_VIEW_ONLY_OK phases=4 input_cases=12 choices=confirmed input=blocked-and-restored pixels=fresh same_window=true stable_connection=true resources=bounded' \
         <<<"$controller_output" || fail 'native view-only verdict is missing'
       viewer_result='viewer=joined xvfb=joined view_only_phases=4 input_cases=12 storage=verified stable_connection=true resources=bounded'
+      if [ "$PEER_SCENARIO" = view-only-save-failure ]; then
+        for input in key click wheel; do
+          [ "$(grep -Ec "^FLUTTER_PEER_VIEW_ONLY_INPUT_OK sequence=5 input=$input view_only=1 events=0 " <<<"$controller_output")" -eq 1 ] \
+            || fail "view-only denied input $input is missing or duplicated"
+        done
+        grep -Fxq 'FLUTTER_PEER_VIEW_ONLY_DENIED kernel=EACCES error_visible=1 checked=1 previous=1 file_preserved=1 input_preserved=1' \
+          <<<"$controller_output" || fail 'view-only save refusal did not preserve state'
+        grep -Fxq 'FLUTTER_PEER_VIEW_ONLY_SAVE_FAILURE_OK failure=visible previous=preserved retry=applied permissions=restored' \
+          <<<"$controller_output" || fail 'view-only save retry verdict is missing'
+        viewer_result='viewer=joined xvfb=joined view_only_phases=4 input_cases=15 save_failure=verified storage=verified stable_connection=true resources=bounded'
+      fi
     elif [ "$PEER_SCENARIO" = keyboard-modes ]; then
       for sequence in {1..11}; do
         [ "$(grep -Ec "^FLUTTER_PEER_KEYBOARD_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 3 ] \
@@ -2113,7 +2125,8 @@ print('FLUTTER_PEER_AUDIO_MUTE_STORAGE_OK muted=true process=joined permissions=
 PY
     fi
     if [ "$PEER_SCENARIO" = image-quality-save-failure ] || [ "$PEER_SCENARIO" = quality-restart ] \
-      || [ "$PEER_SCENARIO" = keyboard-modes ] || [ "$PEER_SCENARIO" = view-only ]; then
+      || [ "$PEER_SCENARIO" = keyboard-modes ] || [ "$PEER_SCENARIO" = view-only ] \
+      || [ "$PEER_SCENARIO" = view-only-save-failure ]; then
       python3 - "$viewer_generation" "$PEER_SCENARIO" <<'PY'
 import os, stat, sys, tomllib
 directory = '/tmp/viewer-home/.config/rustdesk/peers'
@@ -2133,12 +2146,12 @@ try:
     field = 'image_quality'
     if sys.argv[2] == 'keyboard-modes':
         field, expected = 'keyboard_mode', 'map'
-    elif sys.argv[2] == 'view-only':
+    elif sys.argv[2] in ('view-only', 'view-only-save-failure'):
         field, expected = 'view_only', True
     assert tomllib.loads(data.decode('utf-8'))[field] == expected
 finally:
     os.close(parent)
-if sys.argv[2] == 'view-only':
+if sys.argv[2] in ('view-only', 'view-only-save-failure'):
     print('FLUTTER_PEER_VIEW_ONLY_STORAGE_OK selected=true process=joined')
 elif sys.argv[2] == 'keyboard-modes':
     print('FLUTTER_PEER_KEYBOARD_MODE_STORAGE_OK selected=map process=joined')

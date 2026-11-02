@@ -131996,3 +131996,15 @@ This does not establish other shortcut combinations, input methods/layouts,
 physical devices, Translate restart, other platforms or installed/release
 acceptance. The ledger records the scoped closure and retains those gaps;
 its fresh isolated count follows. Independent parks and the full goal remain.
+
+Count `gK9A8NnMjW` at `b25fb22f` passes seven controls and the whole-input
+round trip: **395,987 tokens / 1,812,324 bytes**, SHA-256
+`3bc9a2415c477c989a22a4b810f827c002a4b7b126e648d8c6d7701f01150346`.
+Both hosts retain twelve verified records, including
+`keyboard-translate-accepted-ledger-b25fb22f.json` (4,852 bytes, SHA-256
+`9cf64513a8e642ba7775c1fcb7a727ecdc8a12fdab9fc772ab4bb0d40b1f3d13`).
+All owned processes, private state and RAM retire with three zero listener deltas.
+The reproduced Ctrl+A failure is resolved at this native Linux checkpoint.
+Compound shortcuts are a useful next acceptance boundary for the same retained
+app; no rebuild is needed for fixture-only coverage. The full release objective
+remains active, with all independent parks and broader evidence gaps preserved.

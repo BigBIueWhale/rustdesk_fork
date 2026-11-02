@@ -129750,3 +129750,16 @@ Capsule `image-quality-full-peer-6e9a7001.json` is 8,513 bytes, SHA-256
 It verifies all seven raw files and four zero listener deltas. Wrapper 443756 and
 QEMU 444813 are absent; private run and RAM `run.8n74u4a_` (`29:37092`) retire.
 Elapsed time is 122.367 s; RAM scratch peaks at 3,011,809,280 bytes within 7 GiB.
+
+The successful replay capsule and seven raw files are copied and digest-verified
+on CTE at `.harness-state/tuf-image-quality-6e9a7001` (114,712 bytes), outside
+its busy canonical run root. Its input soak and frozen checkout remain untouched.
+Fresh isolated ledger count `LYHGzMIzQU` on `2f3195ca` reports 391,630 tokens /
+1,792,929 bytes, SHA-256
+`d5604b3ab714a22fdcd77ad0db9e1c20e0b1fe3969fd86f2d1218b6e24c3f155`,
+with pinned tiktoken 0.12.0/cl100k_base/encode_ordinary, seven controls and exact
+round-trip. Exit is zero; three listener deltas are zero, wrapper 445666 and
+QEMU 447083 are absent, and RAM `run.5xy15oo9` (`29:37134`) retires.
+Receipt `image-quality-ledger-2f3195ca.json` is 3,832 bytes, SHA-256
+`a9a028aae9bd4c78cbe9c02f517e57b9d2886d1cd4554f684e1ac02596aac562`.
+No native-codec investigation is resumed by this completed settings checkpoint.

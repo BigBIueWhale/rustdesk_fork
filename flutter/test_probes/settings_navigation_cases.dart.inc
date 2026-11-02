@@ -623,18 +623,20 @@ void main() {
       system: Brightness.dark, expected: Brightness.light, stale: null),
     (name: 'applies current dark', preference: 'dark', event: 'dark',
       system: Brightness.light, expected: Brightness.dark, stale: null),
-    (name: 'follows system light', preference: defaultOptionTheme, event: 'system',
+    (name: 'follows system light', preference: 'system', event: 'system',
       system: Brightness.light, expected: Brightness.light, stale: null),
-    (name: 'follows system dark', preference: defaultOptionTheme, event: 'system',
+    (name: 'follows system dark', preference: 'system', event: 'system',
       system: Brightness.dark, expected: Brightness.dark, stale: null),
     (name: 'ignores delayed system brightness after explicit choice',
       preference: 'light', event: 'light', system: Brightness.dark,
       expected: Brightness.light, stale: 'dark'),
     (name: 'ignores delayed explicit choice after follow system',
-      preference: defaultOptionTheme, event: 'system', system: Brightness.light,
+      preference: 'system', event: 'system', system: Brightness.light,
       expected: Brightness.light, stale: 'dark'),
   ]) {
     testWidgets('desktop theme receiver ${sample.name}', (tester) async {
+      final preference = sample.preference == 'system'
+          ? defaultOptionTheme : sample.preference;
       desktopType = DesktopType.remote;
       tester.platformDispatcher.platformBrightnessTestValue = sample.system;
       application.installSettingsProbeEventHandlers();
@@ -655,7 +657,7 @@ void main() {
         ));
         await _settle(tester);
         expect(find.text(sample.expected.name), findsNothing);
-        native.theme = sample.preference;
+        native.theme = preference;
 
         Future<void> deliver(String value) async {
           expect(await dispatchSettingsProbeEvent(
@@ -669,7 +671,7 @@ void main() {
               ? MyTheme.lightTheme : MyTheme.darkTheme;
           expect(tester.widget<ColoredBox>(find.byKey(const Key('received-theme')))
               .color, theme.scaffoldBackgroundColor);
-          expect(native.theme, sample.preference);
+          expect(native.theme, preference);
           expect(native.themeWrites, isEmpty);
           expect(native.themeBroadcasts, isEmpty);
           expect(tester.takeException(), isNull);

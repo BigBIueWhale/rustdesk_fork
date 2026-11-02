@@ -131187,3 +131187,15 @@ records and `theme-ordering-compile-c0b15820.json` (12,989 bytes, SHA-256
 `e8ed2d6bece82f9c352558211846fd397194a6566520cf1d843e9a9b3f716640`),
 its retirement receipt and capture metadata. Rerun the same focused cases after
 this test-only name correction; no product conclusion follows from compilation.
+
+The next run `BYCkI1MoN2` at `672b8122` compiles but fails during test
+registration: `defaultOptionTheme` reads the native binding before `setUp`
+installs it. Resolve that value inside each test body, after setup. No behavioral
+case ran. Wrapper 1023327 and QEMU 1023807 are absent; the owned virtiofsd
+has disconnected and no matching live helper remains. Four listener deltas are
+zero; RAM `run.cpz8w14i` / `29:38931` and the exact private inventory retire.
+Scratch peaked at 6,380,716,032 bytes under 7 GiB; the complete outer capture
+exits 1 after 231 seconds. Both hosts retain the raw records, capture metadata,
+retirement receipt and `theme-ordering-init-672b8122.json` (13,025 bytes,
+SHA-256 `e07373aa6c1d3cc274a43ac60a818571fa122dd1d6f5a2b64ffd89814b6a4d26`).
+The product remains unchanged; the ordering hypothesis still needs execution.

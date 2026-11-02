@@ -381,9 +381,9 @@ void main() {
     final calls = <String>[];
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel,
         (call) async {
-      expect(call.method, 'setWindowTheme');
+      expectSync(call.method, 'setWindowTheme');
       final name = (call.arguments as Map)['themeName'] as String;
-      expect(['light', 'dark', 'system'], contains(name));
+      expectSync(['light', 'dark', 'system'], contains(name));
       calls.add(name);
       await apply?.call(name);
       return null;

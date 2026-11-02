@@ -131558,3 +131558,19 @@ with retry. First run unchanged product code. TUF inspection confirms Linux on
 ASUS hardware, the retained Debian VM and no Apple-related offline inputs; no
 authorized isolated macOS environment is available here. These component cases
 cannot establish Swift compilation, AppKit appearance or installed macOS behavior.
+
+Run `3iogxdpasQ` at `db33b47e` passes all previous 36 cases and reproduces
+the three missing-delivery cases. The fourth case catches an asynchronous test
+assertion conflict rather than the intended platform failure; use `expectSync`
+inside the channel callback and repeat the unchanged-product baseline. Wrapper
+1047491 and QEMU 1047971 are absent; RAM `run.022u50d6` / `29:39537` retires
+with four zero listener deltas. Exact failed-private diagnostics are inventoried
+and retired under retained directory descriptors. Both hosts retain thirteen
+records, including `macos-theme-baseline-db33b47e-retry.json` (26,176 bytes,
+SHA-256 `69494257324f40bb8c40f851bc7e1d404830c41dbf77e945be9ad761ce2b3b41`).
+An earlier attempt stopped before VM admission because Git synchronization used
+TUF's group-writable umask. Restore only the verified entry file to 0755 and use
+umask 077 for subsequent synchronization; no confinement rule is weakened.
+Five bounded preflight records are retained on both hosts. Reconciliation also
+corrects its workspace receipt reader to validate both pathname and identity
+lines before any private-state mutation.

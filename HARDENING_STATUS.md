@@ -4636,6 +4636,19 @@ This is sessionless installed-layout execution with fixture-created obstructions
 not proof an unprivileged actor can populate the protected parent. Final Debian
 artifacts, namespace races, action authorization and other platforms remain OPEN.
 
+**Installed supervisor exclusivity (`541f8436`).** TUF `r4CZyCVTvs` reuses
+service artifact `fdbab046` and the shipped unit. Across two orderly service
+generations, six genuine duplicate launches (single and two-process batches)
+exit 1 with the occupied-lease diagnostic and are reaped. Each incumbent retains
+its PID, invocation/readiness/restart state, IPC namespace, socket peer credentials
+and lease identity/permissions/contents. Both stop cleanly, are reaped and retire
+their cgroups; the second start reacquires ownership. Three listener deltas are
+zero and VM/RAM/private cleanup passes. `linux-exclusive-541f8436.json` binds
+the result. No product correction or rebuild was needed. This adds sessionless
+debug/headless installed-layout evidence to R-S11c-27b below; active desktops,
+controlled race scheduling, crash recovery, final packages and other platforms
+remain OPEN, with the separately parked authorization profile unchanged.
+
 **IPC / option CLI — component acceptance; installed acceptance OPEN.**
 At `ad638445`, TUF `1VEEFlN8jX` passes all **176 listener/transport, 32 CLI,
 10 Windows selector, 22 main-protocol, 8 main-transaction, 8 main-peer, 4 URL-loop,

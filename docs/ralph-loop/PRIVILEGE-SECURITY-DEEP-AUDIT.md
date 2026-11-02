@@ -132327,7 +132327,7 @@ ordinary successful startup. The complete release objective remains active.
 
 Previous goal turn: progress; installed non-socket preservation and recovery
 passed with exact cleanup and a fresh ledger count. Select genuine duplicate
-supervisor launch acceptance under R-S0/R-S11ca over another viewer preference
+supervisor launch acceptance under R-S0 and ledger R-S11c-27b over another viewer preference
 case. The current installed namespace evidence covers foreign objects and
 unrelated root listeners, but not a second real service image competing with
 the live supervisor. The independently parked caller/admin authorization profile
@@ -132354,3 +132354,23 @@ Both successful generations must stop cleanly and be reaped; the second proves
 ownership can be reacquired after the first retires. These are sessionless
 installed-layout cases, not arbitrary-principal action authorization, controlled
 lock-race scheduling, crash recovery or final-package acceptance.
+
+Native `r4CZyCVTvs` at fixture `541f8436` passes in 43 reported outer seconds
+(48.080 capture seconds). Supervisors 7862 and 7884 retain distinct systemd
+invocations through their duplicate batches. All six duplicates exit 1 with the
+specific lifecycle-lease refusal and are reaped; each batch completes in about
+11 ms. Incumbent namespace/socket, lease and unit checks pass, followed by two
+clean stops, exact process reaping and service-cgroup retirement. The second
+generation starts without fixture removal of the old protected endpoints. No
+product defect or product change is demonstrated by these cases.
+
+The existing complete production/build-input comparison against artifact
+`fdbab046` passes before and after execution. Wrapper 1092767, QEMU 1094496
+and owned helpers are absent. RAM workspace `run.htg6sc26` (29:40500) and
+private scratch are absent under the shared lock; peak RAM scratch is
+4,055,212,032 bytes. All three listener deltas are zero. Twelve bounded records
+are copied and hash-verified on CTE. Capsule `linux-exclusive-541f8436.json`
+is 21,603 bytes, SHA-256
+`c1d96c4c3a9a669b79e740f9fee29f612970e48e3ef166d2588815da19f972e3`.
+No new artifact cache generation was created. The named ownership checkpoint
+is complete; full release acceptance and independent parks remain open.

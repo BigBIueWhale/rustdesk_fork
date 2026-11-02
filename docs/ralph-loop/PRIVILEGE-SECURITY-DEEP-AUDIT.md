@@ -130333,3 +130333,16 @@ then retire the exact failed-run diagnostics. Capsule
 `language-restart-2474459a.json` is 21,578 bytes, SHA-256
 `66b09e8b14ed597edde9e26f205013e2e9408b8b096daa61e3403519ba68205e`;
 its separate retirement receipt and viewer log retain the failed observation.
+
+Second replay `INFhlYq03b` at `ee9e60f1` observes the exact combined default
+label and opens the real dropdown. The next locator is still wrong: production
+`ui_interface::get_langs` sorts language keys and appends each code to its display
+name. The fixture had used the unsorted `LANGS` constants. Correct its three
+expected names/indices to the actual adapter and click the target's native bounds;
+the dropdown's native nodes omit enabled/sensitive state, so the existing strict
+AT-SPI action helper is not the appropriate pointer driver. No product change or
+successful language switch is claimed. Wrapper 588822 and QEMU 589878 are absent,
+four listener deltas are zero, and RAM `run.581gjboe` / `29:37664` retires.
+The same verified duplicate-artifact retirement completes under the shared lock.
+`language-restart-ee9e60f1.json` is 21,588 bytes, SHA-256
+`6545c9b2e2f535b3c0d411ebfe895f913d1fcc699655dffafee7140131fab583`.

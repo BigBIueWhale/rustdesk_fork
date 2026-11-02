@@ -3953,9 +3953,9 @@ typedef struct {
 
 static const LanguageChoice language_choices[] = {
     {"default", "Default", "New connection", "Settings", "Language", "Light", 0U},
-    {"fr", "Français", "Nouvelle connexion", "Paramètres", "Langue", "Clair", 3U},
-    {"pt-pt", "Português (Portugal)", "Nova ligação", "Configurações", "Linguagem", "Claro", 10U},
-    {"en", "English", "New connection", "Settings", "Language", "Light", 1U},
+    {"fr", "Français (fr)", "Nouvelle connexion", "Paramètres", "Langue", "Clair", 16U},
+    {"pt-pt", "Português (Portugal) (pt-pt)", "Nova ligação", "Configurações", "Linguagem", "Claro", 35U},
+    {"en", "English (en)", "New connection", "Settings", "Language", "Light", 9U},
 };
 
 static int observe_language(unsigned int pid, const LanguageChoice *choice,
@@ -4009,14 +4009,14 @@ static int exercise_language_restart(Display *display, const ViewerWindow *viewe
     if (generation < 4U) {
         if (click_main_control(display, main, pid, control) != 0 ||
             sleep_millis(350U) != 0) goto out;
-        /* DropdownButton focuses its selected item. Move through the actual menu,
-         * then require and activate the named target; an index alone cannot pass. */
+        /* get_langs sorts keys and appends their codes. DropdownButton focuses its
+         * selected item; require the exact named target after native navigation. */
         unsigned int steps = before->index < after_choice->index
             ? after_choice->index - before->index : before->index - after_choice->index;
         KeySym direction = before->index < after_choice->index ? XK_Down : XK_Up;
         for (unsigned int i = 0U; i < steps; ++i)
             if (fake_key(display, direction) != 0 || sleep_millis(100U) != 0) goto out;
-        if (activate_named_control(pid, after_choice->choice) != 0 ||
+        if (click_main_control(display, main, pid, after_choice->choice) != 0 ||
             observe_language(pid, after_choice, generation, "changed") != 0) goto out;
     }
     if (close_viewer(display, main) != 0) goto out;

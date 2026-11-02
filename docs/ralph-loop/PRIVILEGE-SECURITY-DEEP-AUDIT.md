@@ -130106,3 +130106,12 @@ exact session ownership and ordering, and avoid a silent temporary-only mode.
 The generic void toggle and logging-only save do not provide that contract.
 No persistence/API correction is included in this checkpoint. Independently
 parked topics remain parked; the goal remains active.
+
+Fresh CTE count `bY7fxbZKkf` at `b9095ea9` measures the revised ledger at
+391,857 tokens / 1,793,978 bytes, SHA-256
+`ee8191f085484588bbe7ed974b3b5d4eebb735294671f48cb7587bb6b050c640`.
+The fixed tokenizer's seven controls and whole-input round trip pass. Outer exit
+is zero, all three listener deltas are zero, wrapper 1938330 and QEMU 1939787 are
+absent, and private/RAM state retires. Capsule `audio-mute-ledger-b9095ea9.json`
+is 4,509 bytes, SHA-256
+`55ed148598ef5236b193f052568576e997e6576d767af22ac7c5f4df6730e335`.

@@ -130500,3 +130500,35 @@ replacement; no product source or expected quality changes.
 Wrapper 616830 and QEMU 618250 are absent, all four listener deltas are zero and
 RAM `run.zmubbtof` / `29:37944` retires. The bounded capsule/log and checked duplicate
 retirement are retained as `quality-restart-cc2f2c23*`.
+
+### 2026-11-02 — native Linux quality restart accepted
+
+TUF `xZp6BSefOe` at `e80d4e4b` exits zero, reusing app `7e6f6459`, manifest
+`fe1ba681195aa32c492bd0f8c23be3af70bd13cbbd2a0115f7f66026ac7fcda9`,
+and engine `ddb1541d`. The controller compiles twice with byte equality,
+SHA-256 `4a57a37288563bf5b7deab46d6898a5ce5ef410733e3ff248e9d997e8ab2e1c5`.
+Four real password authentications, seven restored/selected target observations,
+28 current displayed counters, four zero-exit viewer joins and four private
+saved-quality checks pass. Restored targets are 268/600/200/268 kbps, selected
+targets 600/200/268; each observation retains the exact connection and bounded
+resources. Maximum sampled frame age is 549 ms. One incomplete Show-toolbar
+accessibility scan is discarded and then completes successfully, exercising the
+new rescan path. No fixed settling delay or product change remains.
+
+The actual Flutter version is 3.47.5. Its `MenuItemButton._handleSelect` retains
+the post-frame ordering examined in the earlier 3.24.5 reference; the current
+source additionally defines menu opening/closing animations. Matching primary
+reference: https://github.com/flutter/flutter/blob/3.47.5/packages/flutter/lib/src/material/menu_anchor.dart.
+The acceptance is native Linux X11/Xvfb encoder-target, persistence and displayed
+freshness evidence, not subjective quality, radio-state, save-failure, physical
+scanout, other-platform, installed or full release acceptance. Independently
+parked investigations, including rapid window show/close, remain parked.
+
+Wrapper 642563 and QEMU 644478 are absent; all four listener deltas are zero;
+private state and RAM `run.is2bbmh6` / `29:37986` retire. Scratch peaks at
+3,012,681,728 bytes under 7 GiB; the outer receipt reports 127 seconds.
+`quality-restart-accepted-e80d4e4b.json` is 10,457 bytes, SHA-256
+`80160ba84f941f6a763e2b62a455f91d54350db57662d24e3a2f4a6dba0dd2f1`,
+verified on both hosts. All three failed-run capsules/logs/retirement receipts
+are likewise copied and verified; duplicate app bundles are retired. The current
+ledger records this result and pivot. A fresh isolated ledger count follows.

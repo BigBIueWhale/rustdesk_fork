@@ -130881,3 +130881,42 @@ The cause is unresolved; do not classify this as a product or fixture defect yet
 Wrapper 862995 and QEMU 864221 are absent; four listener deltas are zero and RAM
 `run.nxy5hgzm` / `29:38474` retires. Exact duplicate diagnostics retire after
 inventory and canonical app-byte comparison; bounded evidence remains.
+
+### 2026-11-02 — native View mode save failure reproduced
+
+Third run `11PkXxJ7Hl` at `9722aae2` uses unchanged app `7e6f6459` and engine
+`ddb1541d`. All three drivers compile twice identically; controller SHA-256 is
+`d25d8f36ba3a2b38739454ab11689e16a67f19f76bba505c9bbbf35da47999e7`.
+The initial normal/restricted phases pass all six input observations and eight
+fresh displayed counters, maximum ages 292/279 ms. The failed-save phase proves
+create EACCES with the private directory at 0500. The actual true-to-false choice
+has `error_visible=0 checked=0 previous=1 file_preserved=1 input_preserved=0`.
+A native `a` press reaches the controlled root window (1293), keycode 38, state 0,
+send_event false, where the previous View mode would have suppressed it. The exact
+prior file identity, length and SHA-256 remain. This reproduces the missing save
+failure propagation and state preservation; retry/final acceptance are unreached.
+The preceding normal-click mismatch does not recur, but its cause remains open;
+the extra diagnostics and unchanged event assertions remain.
+
+Source binds this to `LoginConfigHandler::save_config` publishing after ignored
+store failure, the ordinary toggle returning/sending an option, and the desktop
+callback reading the changed cache. Mobile's callback publishes the requested
+Boolean after the same void call. Desktop Show my cursor also invokes View mode
+through that path. The correction must cover both coupled settings and desktop/
+mobile callers through checked operations with exact session ownership; preserve
+the actual mode/cursor coupling, legitimate peer-option effects and other-window
+synchronization. Successful persistence must precede cache publication and command
+submission, while failures preserve the previous state and remain retryable. A
+new generic whole-record or optimistic UI fallback would not satisfy this model.
+Keep the real native regression unchanged for the correction. No product patch
+or full build is claimed in this reproduction checkpoint.
+
+Wrapper 864530 and QEMU 865598 are absent; four listener deltas are zero and RAM
+`run.ltph6f_a` / `29:38516` retires, peak scratch 3,015,909,376 bytes under 7 GiB.
+The exact failed-run directory retires after inventory and canonical byte checks.
+Capsule `view-only-save-9722aae2.json` is 27,850 bytes, SHA-256
+`3466febcec04b3727929bce33bcafe0d5d85db7429e5fc20d3d8a1db20de4e43`;
+the separate viewer log and retirement receipt retain the failure and cleanup.
+The ledger records the reproduced defect and unresolved initial-input observation;
+fresh isolated token counting follows. Language integration and all other user
+parks remain; the View mode correction is the active implementation target.

@@ -43,6 +43,20 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**View mode save failure reproduced (2026-11-02):** Native Linux replay
+`11PkXxJ7Hl` at `9722aae2` uses retained app `7e6f6459` / engine `ddb1541d`.
+Normal input and enabled View mode pass first. With private preference writes
+denied by real EACCES, attempting to disable View mode shows no error, unchecks
+the control and delivers a native key press, while the previous saved file's
+identity and bytes remain unchanged. `save_config` logs storage failure then
+publishes its cache; the void toggle still sends the option. Correction, retry
+and native acceptance remain OPEN. `view-only-save-9722aae2.json` binds the
+reproduction, identical driver rebuilds, four zero listener deltas and joined
+VM/RAM cleanup. One initial menu-observation failure was repaired; a separate
+initial click mismatch remains unresolved and retained with added diagnostics.
+Next: checked, owned View mode/Show my cursor mutations that publish only after
+successful persistence, followed by the same native failure/retry scenario.
+
 **Native Linux View mode verified (2026-11-02):** Replay `xLULyflt3A` at
 `5f3da6a8` reuses app `7e6f6459` and engine `ddb1541d`. Actual toolbar state
 is confirmed unchecked/checked/unchecked/checked. All twelve letter, primary-click

@@ -370,30 +370,36 @@ void _runApp(
 ) {
   final botToastBuilder = BotToastInit();
   runApp(RefreshWrapper(
-    builder: (context) => GetMaterialApp(
-      navigatorKey: globalKey,
-      debugShowCheckedModeBanner: false,
-      title: title,
-      theme: MyTheme.lightTheme,
-      darkTheme: MyTheme.darkTheme,
-      themeMode: themeMode,
-      home: home,
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: supportedLocales,
-      navigatorObservers: [
-        // FirebaseAnalyticsObserver(analytics: analytics),
-        BotToastNavigatorObserver(),
-      ],
-      builder: (context, child) {
-        child = _keepScaleBuilder(context, child);
-        child = botToastBuilder(context, child);
-        return child;
-      },
-    ),
+    builder: (context) {
+      final resolveLocale = appLocaleResolver(
+          bind.mainGetLocalOption(key: kCommConfKeyLang));
+      return GetMaterialApp(
+        navigatorKey: globalKey,
+        debugShowCheckedModeBanner: false,
+        title: title,
+        theme: MyTheme.lightTheme,
+        darkTheme: MyTheme.darkTheme,
+        themeMode: themeMode,
+        home: home,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: supportedLocales,
+        locale: resolveLocale(null, supportedLocales),
+        localeListResolutionCallback: resolveLocale,
+        navigatorObservers: [
+          // FirebaseAnalyticsObserver(analytics: analytics),
+          BotToastNavigatorObserver(),
+        ],
+        builder: localizedAppBuilder((context, child) {
+          child = _keepScaleBuilder(context, child);
+          child = botToastBuilder(context, child);
+          return child;
+        }),
+      );
+    },
   ));
 }
 
@@ -481,6 +487,8 @@ class _AppState extends State<App> with WidgetsBindingObserver {
     // final analytics = FirebaseAnalytics.instance;
     final botToastBuilder = BotToastInit();
     return RefreshWrapper(builder: (context) {
+      final resolveLocale = appLocaleResolver(
+          bind.mainGetLocalOption(key: kCommConfKeyLang));
       return MultiProvider(
         providers: [
           // global configuration
@@ -511,11 +519,13 @@ class _AppState extends State<App> with WidgetsBindingObserver {
             GlobalCupertinoLocalizations.delegate,
           ],
           supportedLocales: supportedLocales,
+          locale: resolveLocale(null, supportedLocales),
+          localeListResolutionCallback: resolveLocale,
           navigatorObservers: [
             // FirebaseAnalyticsObserver(analytics: analytics),
             BotToastNavigatorObserver(),
           ],
-          builder: isAndroid
+          builder: localizedAppBuilder(isAndroid
               ? (context, child) => AccessibilityListener(
                     child: MediaQuery(
                       data: MediaQuery.of(context).copyWith(
@@ -536,7 +546,7 @@ class _AppState extends State<App> with WidgetsBindingObserver {
                   } else {
                     return workaroundWindowBorder(context, child);
                   }
-                },
+                }),
         ),
       );
     });

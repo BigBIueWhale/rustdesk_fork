@@ -45,6 +45,12 @@ REVERSE_WHEEL_TESTS = {
 }
 
 LOCALE_TESTS = {
+    "configured locale overrides platform at startup",
+    "configured locale changes preserve navigator ownership",
+    "automatic locale resumes live system selection",
+    "configured catalogue aliases resolve framework locales",
+    "unsupported configured languages use framework English",
+    "all supported framework locales load their delegates",
     "framework locale resolves Kazakh language",
     "framework locale resolves Kazakh region",
     "framework locale resolves Vietnamese language",

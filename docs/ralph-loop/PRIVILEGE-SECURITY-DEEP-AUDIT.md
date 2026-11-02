@@ -130713,3 +130713,30 @@ the separate viewer log and exact retirement receipt are retained on both as wel
 No owned run remains active. The language integration failure is the current
 implementation target; the keyboard-layout draft and all independent parks remain
 parked. The release goal remains incomplete.
+
+### 2026-11-02 — language locale and direction correction
+
+Continue the reproduced R-S0 failure. Inspection of pinned Get 4.7.2 shows that
+GetMaterialApp captures its initial explicit locale in Get.locale and overrides
+Directionality from that cache. Flutter 3.24.5/3.47.5 WidgetsApp resolves a
+non-null explicit locale during build; a null locale retains its earlier system
+resolution until a platform event. Merely adding a changing locale argument or
+only a resolution callback would therefore leave live changes incomplete.
+Primary source: https://raw.githubusercontent.com/flutter/flutter/3.24.5/packages/flutter/lib/src/widgets/app.dart
+and https://raw.githubusercontent.com/flutter/flutter/3.47.5/packages/flutter/lib/src/widgets/app.dart;
+Get source is the authenticated get-4.7.2 cache's get_material_app.dart.
+
+Both roots now capture the confirmed language on each normal window rebuild.
+One resolver supplies their explicit locale and callback, consulting actual
+platform preferences for Default and mapping the catalogue's saved aliases for
+explicit choices. A shared builder derives direction from resolved widget
+localizations, including the context supplied to the existing builder. Navigator
+keys, session ownership and settings persistence are unchanged. No Get reassemble,
+window replacement or language write is introduced. Six available framework
+languages are added; Esperanto is removed from advertised framework delegates
+because Flutter supplies none. Esperanto/Sardinian application catalogues remain;
+their framework controls use English. The six new rendered cases use real
+GetMaterialApp with production resolver/builder, covering startup, live RTL/LTR
+changes with navigator/element preservation, return to Default and live platform
+changes, catalogue aliases, unavailable framework languages and every advertised
+delegate. Existing ten locale cases remain. Focused isolated verification follows.

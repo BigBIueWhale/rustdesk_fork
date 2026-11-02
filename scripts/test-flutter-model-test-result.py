@@ -260,7 +260,7 @@ class ResultTests(unittest.TestCase):
             return
         if SINGLE_PROFILE is not None:
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE),
-                             (1, {"locales": 10, "screenshot-save": 12,
+                             (1, {"locales": 16, "screenshot-save": 12,
                                   "draggable-divider": 22, "file-columns": 13,
                                   "file-progress": 52, "peer-search": 36,
                                   "desktop-theme": 30, "custom-scale": 42}[SINGLE_PROFILE]))
@@ -277,7 +277,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("password-fields"), "password-fields"), (3, 25))
         self.assertEqual(self.parse(self.events("menu-button"), "menu-button"), (6, 61))
         self.assertEqual(self.parse(self.events("hold-drag"), "hold-drag"), (1, 17))
-        self.assertEqual(self.parse(self.events("locales"), "locales"), (1, 10))
+        self.assertEqual(self.parse(self.events("locales"), "locales"), (1, 16))
         self.assertEqual(self.parse(self.events("path-labels"), "path-labels"), (1, 16))
         self.assertEqual(self.parse(self.events("setting-checkbox"), "setting-checkbox"), (1, 8))
         self.assertEqual(self.parse(self.events("draggable-divider"), "draggable-divider"), (1, 22))

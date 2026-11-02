@@ -60,7 +60,7 @@ void _testGetLocale(String name, Future<void> Function(WidgetTester) body) {
     } finally {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
-      await Get.reset();
+      Get.reset();
       tester.binding.platformDispatcher.clearLocalesTestValue();
     }
   });

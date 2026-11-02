@@ -4935,6 +4935,7 @@ static int quality_wait_bitrate(unsigned int pid, unsigned int bitrate) {
 
 static int quality_menu_checked(unsigned int pid, const char *selected) {
     static const char *names[] = {"Good image quality", "Balanced", "Optimize reaction time", "Custom"};
+    int checked[4] = {-1, -1, -1, -1}, selected_flags[4] = {-1, -1, -1, -1};
     uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
     while (monotonic_millis() < deadline) {
         int matches = 1;
@@ -4943,6 +4944,8 @@ static int quality_menu_checked(unsigned int pid, const char *selected) {
             AtspiStateSet *states = NULL;
             if (query_named_accessible(pid, names[i], deadline, &item, 0) != 0) return -1;
             if (item != NULL) states = atspi_accessible_get_state_set(item);
+            checked[i] = states == NULL ? -1 : atspi_state_set_contains(states, ATSPI_STATE_CHECKED);
+            selected_flags[i] = states == NULL ? -1 : atspi_state_set_contains(states, ATSPI_STATE_SELECTED);
             if (states == NULL || !atspi_state_set_contains(states, ATSPI_STATE_ENABLED) ||
                 !atspi_state_set_contains(states, ATSPI_STATE_SENSITIVE) ||
                 atspi_state_set_contains(states, ATSPI_STATE_CHECKED) != (strcmp(names[i], selected) == 0))
@@ -4950,9 +4953,15 @@ static int quality_menu_checked(unsigned int pid, const char *selected) {
             g_clear_object(&states);
             g_clear_object(&item);
         }
-        if (matches && monotonic_millis() < deadline) return 0;
+        if (matches && monotonic_millis() < deadline) {
+            printf("FLUTTER_PEER_QUALITY_RADIO_OK selected=\"%s\" exclusive=true\n", selected);
+            return 0;
+        }
         if (sleep_millis(100U) != 0) return -1;
     }
+    for (unsigned int i = 0U; i < sizeof(names) / sizeof(names[0]); ++i)
+        fprintf(stderr, "FLUTTER_PEER_QUALITY_RADIO_OBSERVED name=\"%s\" checked=%d selected=%d expected=%d\n",
+                names[i], checked[i], selected_flags[i], strcmp(names[i], selected) == 0);
     return -1;
 }
 

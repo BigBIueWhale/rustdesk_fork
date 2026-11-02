@@ -129800,3 +129800,24 @@ private run and RAM `run.zzji2bdj` (`29:10951`) retire, and all four strictly
 decoded listener deltas are zero. Duration including provisioning/cleanup is
 14,767.590 s; scratch peaks at 3,024,113,664 bytes within 7 GiB.
 Only after this capsule was published was CTE fast-forwarded to current master.
+
+The first preset-save attempt `Gaeg1jDtVl` stopped at the foreign-principal
+harness preflight: umask 077 had made edited shell sources 0700. Restore the
+five changed sources to 0755/0644; use umask 022 for ordinary repository edits
+and retain explicit 0700/0400 for private evidence. The same committed replay
+then passes that preflight. Its failed-run capsule is
+`image-quality-save-preflight-a854db3b.json`; 3,375,852 private-file bytes retire
+after joined QEMU and RAM cleanup. This supersedes the earlier overly broad
+umask-077 editing note; no entry check was relaxed.
+
+Replay `rfCGaHPM7Z` reaches confirmed Best/600 kbps, but its reopened menu does
+not satisfy the expected exclusive Best radio state. It stops before attempting
+the denied Low save, so failure/retry acceptance remains unexecuted. The native
+tree has directly labelled radio nodes, matching the observer's shape. Retain
+the exact condition and add checked/selected diagnostics to distinguish stale
+product state from an observer error. No product defect is claimed yet.
+`image-quality-save-radio-a854db3b.json` (19,968 bytes, SHA-256
+`59cf6749353f3c79bdccc33adf072b5174127e1847472026a31bbe7d81761cf9`)
+binds the failure, raw logs, four zero listener deltas and exact joined processes.
+The diagnostic copy retires under the shared lock; its separate retirement
+receipt confirms private-tree absence. RAM `run.ks217tqz` (`29:37204`) is absent.

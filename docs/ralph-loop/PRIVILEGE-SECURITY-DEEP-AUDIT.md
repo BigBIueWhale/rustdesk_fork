@@ -129821,3 +129821,51 @@ product state from an observer error. No product defect is claimed yet.
 binds the failure, raw logs, four zero listener deltas and exact joined processes.
 The diagnostic copy retires under the shared lock; its separate retirement
 receipt confirms private-tree absence. RAM `run.ks217tqz` (`29:37204`) is absent.
+
+### 2026-11-02 — pivot to fullscreen/window-state correctness
+
+Leave the image-quality save-failure investigation OPEN/PARKED and work on a
+separate R-S0 workflow: fullscreen entry/exit with usable window controls and
+an intact authenticated session. The earlier libvpx investigation and other
+independently parked topics remain parked. Do not resume either investigation
+automatically.
+
+The already-started diagnostic replay `P8Rw8VG9NN` on `2642f171` finishes with
+outer exit 1 in `deny-peer-save`, before the denied Low save. It emits no radio
+state diagnostics; the cause remains unclassified and no product defect or
+failure/retry acceptance is claimed. Capsule
+`image-quality-save-parked-2642f171.json` is 19,941 bytes, SHA-256
+`334911689b33c652284cb0141332cd00d98591d4615d3d2fe1969c4bb7b5f03f`.
+Wrapper 450474 and QEMU 451531 are absent, all four strictly decoded listener
+deltas are zero, and RAM `run.pc7fzli4` (`29:37246`) has retired. Exact private
+diagnostics retire under the shared lock after bounded evidence preservation;
+`image-quality-save-parked-2642f171-retirement.json` records their absence.
+Both canonical host run roots are idle; no replacement quality replay starts.
+
+Fullscreen source review traces the actual toolbar through `StateGlobal`,
+`WindowController`, the vendored Linux plugin and GTK. `setFullscreen` publishes
+the requested UI state before native confirmation. Linux emits real
+`enter-full-screen`/`leave-full-screen` events, but `RemotePage` changes the shared
+fullscreen state in those callbacks only on macOS. GTK explicitly treats
+fullscreen as a request and directs clients to observe window-state events:
+https://docs.gtk.org/gtk3/method.Window.fullscreen.html.
+This identifies a state-consistency question, not a reproduced native defect.
+No product patch is justified yet. The decisive next check needs an authenticated
+guest window manager: drive the actual toolbar, observe native state and geometry,
+exercise an external exit, and confirm the toolbar/tab bar, fresh pixels and exact
+connection survive. The current full-peer stage starts Xvfb without a window
+manager; its previous pixel passes do not establish that contract. This small
+environment prerequisite is needed before changing the state model, and takes
+priority over adding more component-only settings evidence.
+
+Complete the previous acceptance bookkeeping: the accepted CTE input-soak capsule
+and raw/control evidence were copied to TUF at
+`.harness-state/cte-input-soak-frozen-b5f70992`, identity `66306:82487336`, with all
+14 files / 1,309,683 bytes digest-verified. CTE ledger count `PLuC8xPrlg` on
+`2642f171` passes: 391,606 tokens / 1,792,790 bytes, input SHA-256
+`61201ed638d45d887a646bb39c551ede8f42891901744ea51859d275cc69d974`,
+using the pinned method, seven controls and exact round-trip. Capsule
+`input-soak-ledger-2642f171.json` is 3,835 bytes, SHA-256
+`9070ff68297bf9495cd2e53d42cf26d8148453c604c8f7244e8296d06f7f73c8`.
+Exit is zero; all three listener deltas are zero, wrapper 1494012 and QEMU
+1495505 are absent, and private/RAM `run.ytpjdlem` (`29:11649`) have retired.

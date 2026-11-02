@@ -131915,3 +131915,41 @@ CTE and TUF retain twelve verified records, including
 All owned processes, private state and RAM retire with three zero listener deltas.
 This completes the reproduction/evidence checkpoint; the demonstrated Translate
 disconnect still requires a product correction and candidate replay.
+
+### 2026-11-03 — correct Linux Translate shortcut dispatch
+
+Previous goal turn: progress; native replay established the Ctrl+A disconnect
+and its receiver-side cause. Continue this demonstrated R-S0 failure before
+another mode variation. Linux's current `EnigoXdo::key_sequence_result` validates
+the text, resolves each character using a fresh mapping and calls the checked
+native text injector. `xdo_enter_text_scalar` reads the actual held-key bitmap;
+`_xdo_get_key_modifiers` reuses held required modifiers; `_xdo_text_pair` owns
+and retires only the additional keys it pressed. Native XTEST pairs retain
+existing modifier state. The same path already implements Linux Legacy
+character shortcuts. X.Org's XTEST specification remains the primary API
+reference recorded above. No new authority or mode is needed.
+
+Delete the Linux Translate branch's blanket hotkey rejection and send its
+sequences through that existing checked injector. Keep the original semantic
+character, receiver-owned modifier state, scalar validation, native failure
+propagation and exact retirement. Changing the character to a physical position
+would discard Translate semantics; removing the ownership modifier would
+discard the requested shortcut. Neither is the correction. The macOS and
+Windows branches retain their platform-specific implementations and gaps.
+The unchanged Map/Translate/Map replay must now deliver Ctrl+A, ordinary typing
+afterward and the return-to-Map phase on the same authenticated connection,
+then prove released keys, current frames, durable selection and cleanup.
+
+A fresh source-bound app is necessary because the native receiver changed.
+The last identical build profile took 1,052 seconds; this is an isolated
+integration job, not a new inner-loop test. TUF starts clean at `5ec45fb5`,
+with no owned private/RAM job and about 45 GiB available memory. The bounded
+cache held four generations. Retire only obsolete theme-failure app `c619cb3e`,
+whose corrected `c9323bf1` and failure evidence remain, after verifying its
+entire pinned manifest and exact file identities/hashes under the shared lock.
+Seventy-five files / 70,353,741 bytes and 70,639,616 allocated bytes are retired;
+the parked `0ccb2a7e`, baseline `7e6f6459` and current `c9323bf1` remain.
+Both hosts retain the manifest, complete inventory and completion record in
+`translate-build-retired-c619cb3e.*`; no duplicate archive is created. The build
+must use the existing authenticated inputs, zero-NIC VM, admitted RAM scratch,
+live resource monitor and exact joined cleanup. Native acceptance remains pending.

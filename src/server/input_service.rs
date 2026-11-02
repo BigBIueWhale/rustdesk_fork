@@ -2908,12 +2908,7 @@ fn translate_keyboard_mode(
                 process_seq(en, seq)?;
             }
             #[cfg(target_os = "linux")]
-            {
-                if has_hotkey_modifiers(evt) {
-                    bail!("Translate sequence hotkeys require a physical keyboard mode");
-                }
-                process_seq(en, seq)?;
-            }
+            process_seq(en, seq)?;
             #[cfg(target_os = "windows")]
             {
                 if has_hotkey_modifiers(evt) {

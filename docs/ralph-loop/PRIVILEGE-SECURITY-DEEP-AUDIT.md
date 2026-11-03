@@ -132449,3 +132449,25 @@ Three listener deltas are zero; owned processes/helpers, RAM scratch and the
 inspected 19-node private directory retire. Twelve evidence records are copied
 and hash-verified. Capsule `linux-desktop-diagnostic-37c26d51.json` is 25,106 bytes,
 SHA-256 `ecd6d66d5c1702c01313f0cbc1c3a209e40db3cdc95df3a5523e2028fe16cb19`.
+
+Accepted replay `AriJBD8N3d` at `c1479c68` passes both desktop generations
+in 49 reported outer seconds (54.255 capture seconds). Supervisors 7882/8057
+retain their respective UID-4001 children 7894/8069, exact durable records and
+listeners through all six duplicate refusals. Both existing keyed UID-4002
+connections receive decrypted current-protocol PeerInfo after their held login
+is released. Normal unit stop reaps both exact process pairs and retires both
+cgroups; the same desktop supports the second generation. The credential remains
+unchanged after its initial root provisioning, and PAM/Xvfb/users retire. No
+product defect was demonstrated or product code changed.
+
+Complete source/build-input comparison against `fdbab046` passes before and
+after. Wrapper 1100901, QEMU 1102626 and owned helpers are absent; RAM workspace
+`run.2e4x68vb` (29:40612) and private scratch are absent under the shared lock.
+Peak RAM scratch is 4,093,456,384 bytes; all three listener deltas are zero.
+Twelve bounded records are copied and hash-verified on CTE. Capsule
+`linux-desktop-accepted-c1479c68.json` is 25,857 bytes, SHA-256
+`14fe50de8e0a53e7d928af035c4f4cf749dc1bd701b073f73bb2fcc674b8f1ec`.
+No artifact rebuild or new cache generation was needed. The active-desktop
+ownership/login checkpoint is complete. Reassess release priorities now;
+controlled crash/race and exact final-artifact acceptance remain separate gaps,
+and all independent user parks remain in force.

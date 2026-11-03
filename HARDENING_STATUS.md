@@ -4636,18 +4636,24 @@ This is sessionless installed-layout execution with fixture-created obstructions
 not proof an unprivileged actor can populate the protected parent. Final Debian
 artifacts, namespace races, action authorization and other platforms remain OPEN.
 
-**Installed supervisor exclusivity (`541f8436`).** TUF `r4CZyCVTvs` reuses
-service artifact `fdbab046` and the shipped unit. Across two orderly service
-generations, six genuine duplicate launches (single and two-process batches)
-exit 1 with the occupied-lease diagnostic and are reaped. Each incumbent retains
-its PID, invocation/readiness/restart state, IPC namespace, socket peer credentials
-and lease identity/permissions/contents. Both stop cleanly, are reaped and retire
-their cgroups; the second start reacquires ownership. Three listener deltas are
-zero and VM/RAM/private cleanup passes. `linux-exclusive-541f8436.json` binds
-the result. No product correction or rebuild was needed. This adds sessionless
-debug/headless installed-layout evidence to R-S11c-27b below; active desktops,
-controlled race scheduling, crash recovery, final packages and other platforms
-remain OPEN, with the separately parked authorization profile unchanged.
+**Installed supervisor exclusivity (`541f8436`, `c1479c68`).** Artifact
+`fdbab046` and the shipped unit pass sessionless `r4CZyCVTvs` and real
+logind/X11 desktop `AriJBD8N3d`. Each run covers two orderly generations and
+six duplicate launches (single and two-process batches): all exit 1 with the
+occupied-lease diagnostic and are reaped. Incumbent process/unit state,
+IPC namespace, socket peer credentials and lease identity/permissions/contents
+remain intact. The desktop run additionally preserves each exact UID-4001 child
+and record metadata/bytes. Two UID-4002 connections complete CPace before the
+duplicates, then receive current-protocol PeerInfo for their subsequently released
+encrypted login on the same connections. Both service trees retire cleanly;
+restart reacquires ownership, and PAM/Xvfb/user cleanup passes. Three listener
+deltas per run are zero, with VM/RAM/private cleanup. Capsules
+`linux-exclusive-541f8436.json` and `linux-desktop-accepted-c1479c68.json`
+bind evidence. The audit retains the failed cgroup-cardinality assumption and
+its diagnostic correction; transient commands do not change retained ownership.
+No product correction or rebuild was needed. This is debug/headless installed-
+layout R-S11c-27b evidence. Pixels/input, controlled races, crash recovery, final
+packages and other platforms remain OPEN; the authorization profile stays parked.
 
 **IPC / option CLI — component acceptance; installed acceptance OPEN.**
 At `ad638445`, TUF `1VEEFlN8jX` passes all **176 listener/transport, 32 CLI,
@@ -10202,7 +10208,7 @@ sandbox implementation and checker-repair history remain in Git.
   | ID | Disposition and evidence boundary |
   | --- | --- |
   | R-S11c-27a | Source: retained direct child and supervisor-death binding. |
-  | R-S11c-27b | Source: root-only lease, durable identity record and pidfd-first recovery. |
+  | R-S11c-27b | Source: root-only lease, durable identity record and pidfd-first recovery. Current installed-layout sessionless/active-desktop exclusivity and retained-connection login evidence is recorded above; crash recovery and final artifacts remain OPEN. |
   | R-S11c-27c | Source: bounded retained-child TERM/KILL/reap; uncertainty preserves ownership and record. |
   | R-S11c-27d | Historical focused behavior: parent death, lease release, stale-record removal and exact live-record recovery. |
   | R-S11c-27e | Historical focused behavior: executed-inode identity across rename/unlink, without pathname/argv authority. |

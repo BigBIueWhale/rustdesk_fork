@@ -5871,7 +5871,7 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
     linux_receiver_probe_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/probe_client" | /usr/bin/awk '{print $1}')
     require_exact_fixed_receipt 'verify-linux-service-password-ipc: source checks passed' 'supplementary password IPC source checks'
     if [ "$LINUX_RECEIVER_PROFILE" = recovery-refusal ]; then
-        for phase in live-no-pidfd generation generation-no-pidfd portable-role portable-role-no-pidfd; do
+        for phase in live-no-pidfd generation-pidfd generation-no-pidfd portable-role-pidfd portable-role-no-pidfd; do
             require_exact_fixed_receipt "LINUX_SERVICE_RECOVERY_REFUSAL_CASE=pass case=$phase" 'Linux exact live-record refusal'
         done
         linux_receiver_readiness_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/smoke_readiness" | /usr/bin/awk '{print $1}')

@@ -2222,9 +2222,9 @@ def recovery_refusals(commit, binary_sha, probe_sha, readiness_spec):
         if watch < 0 or libc.inotify_add_watch(watch, b"/run", 0x100 | 0x200 | 0x40 | 0x80) < 0:
             raise RuntimeError("cannot observe protected namespace creation")
         cases = (("live-no-pidfd", actors[0], generation, True, "Kernel lacks required pidfd_open for live Linux service child"),
-                 ("generation", actors[0], str(uuid.uuid4()), False, "service generation is absent or duplicated"),
+                 ("generation-pidfd", actors[0], str(uuid.uuid4()), False, "service generation is absent or duplicated"),
                  ("generation-no-pidfd", actors[0], str(uuid.uuid4()), True, "Refusing ambiguous Linux service child recovery without pidfd"),
-                 ("portable-role", actors[1], generation, False, "exact service-owned role marker is absent"),
+                 ("portable-role-pidfd", actors[1], generation, False, "exact service-owned role marker is absent"),
                  ("portable-role-no-pidfd", actors[1], generation, True, "Refusing ambiguous Linux service child recovery without pidfd"))
         for label, actor, recorded_generation, unavailable, reason in cases:
             body = ("version=1\n" + f"pid={actor['process'].pid}\nstart_time={actor['start']}\n"
@@ -2275,6 +2275,9 @@ def recovery_refusals(commit, binary_sha, probe_sha, readiness_spec):
         run(["/usr/bin/systemctl", "daemon-reload"])
         started = True
         run(["/usr/bin/systemctl", "start", "rustdesk.service"])
+        control_events = protected_events()
+        if not any(mask & (0x100 | 0x80) for mask in control_events):
+            raise RuntimeError("namespace observer missed the normal startup control")
         record = ready()
         value = "Receiver-recovery-control-2026!"
         change(0, value, True)
@@ -2292,6 +2295,9 @@ def recovery_refusals(commit, binary_sha, probe_sha, readiness_spec):
         finally:
             for fd in pidfds:
                 os.close(fd)
+        print("LINUX_SERVICE_RECOVERY_CONTROL_OBSERVED=" + json.dumps(
+            {"record": record, "namespace_events": control_events, "processes_reaped": True,
+             "cgroup_absent": True, "record_absent": True}, sort_keys=True), flush=True)
         print(f"LINUX_SERVICE_RECOVERY_REFUSAL_NATIVE=pass cases=5 refused=5 actors=2 control=installed-cpace "
               f"source={commit} binary_sha256={binary_sha} readiness_sha256={readiness_spec['sha256']} "
               "fixture=debug-live-record namespace=inotify cleanup=joined", flush=True)

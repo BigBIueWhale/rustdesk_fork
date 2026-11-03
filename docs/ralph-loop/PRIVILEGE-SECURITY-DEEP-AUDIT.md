@@ -132605,3 +132605,18 @@ These are debug exact-binary refusal cases, with an installed positive control;
 native kernel ENOSYS injection, unverifiable records, other malformed/stale/race
 classes, final package/alternate-init/platform acceptance and independent review
 remain separate requirements. Execution is pending.
+
+Run `oX7yJOfl6R` at `ada46d7a` passes all five native refusals, both actors'
+typed parked observations, installed CPace control and cleanup. The outer fixed-
+substring receipt helper then counts `generation` inside `generation-no-pidfd`
+as a duplicate (and the analogous portable labels collide). This is a reporting
+failure, not a product failure. Rename the two native-pidfd cases explicitly;
+leave the shared helper/parser and acceptance conditions unchanged. The replay
+also requires the existing inotify observer to see the positive control's actual
+namespace creation, confirming its observation path is operational.
+Three listener deltas are zero; exact wrapper/QEMU/helpers and RAM scratch
+retire. The inspected 19-node private diagnostic tree is captured and retired
+by retained directory descriptors under the shared lock. Twelve bounded records
+are copied and hash-verified. Capsule `linux-recovery-ada46d7a.json` is
+17,131 bytes, SHA-256
+`689f063aab0d8cc9f442cf07c135538581fd450d237d4aaa60624ac100c68e14`.

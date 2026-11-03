@@ -50,6 +50,7 @@ X11_FOCUS_ONLY=0
 X11_CAPTURE_MAPPING_ONLY=0
 X11_CONTEXTS_ONLY=0
 X11_MONITOR_TOPOLOGY_ONLY=0
+X11_CURSOR_IMAGE_ONLY=0
 LINUX_RECEIVER_PROFILE=focused
 PEER_BUILD_PROFILE=default
 SERVER_GUESS_LIMITER=0
@@ -153,6 +154,7 @@ case "$#:${8:-}" in
             --capture-mapping) X11_CAPTURE_MAPPING_ONLY=1 ;;
             --contexts) X11_CONTEXTS_ONLY=1 ;;
             --monitor-topology) X11_MONITOR_TOPOLOGY_ONLY=1 ;;
+            --cursor-image) X11_CURSOR_IMAGE_ONLY=1 ;;
             *) exit 2 ;;
         esac
         ;;
@@ -2110,6 +2112,10 @@ run_android_frame_tests() {
     if [ "$X11_MONITOR_TOPOLOGY_ONLY" -eq 1 ]; then
         native_receipt='X11_MONITOR_TOPOLOGY_SHARD=pass source=production-public-capture monitors=2 pointer=fixture-calibrated server=owned-and-joined network=none uid=4000 cleanup=joined whole_app=false'
     fi
+    if [ "$X11_CURSOR_IMAGE_ONLY" -eq 1 ]; then
+        native_script=test-linux-cursor-image.py
+        native_receipt='LINUX_CURSOR_IMAGE_NATIVE=pass registrations=128 shapes=128 images=finalized gtk=real xfixes=real codec=double scope=component network=none cleanup=joined'
+    fi
     local -a mounts command phases=(prepare native)
     local loader_installed=$ROOT/xdo-loader-installed loader_variant loader_source loader_digest
     local stage_profile_output stage_profile_expected
@@ -2119,7 +2125,7 @@ run_android_frame_tests() {
             phases=(prepare loader-build native)
         fi
         if [ "$X11_CAPTURE_MAPPING_ONLY" -eq 1 ] || [ "$X11_CONTEXTS_ONLY" -eq 1 ] \
-            || [ "$X11_MONITOR_TOPOLOGY_ONLY" -eq 1 ]; then
+            || [ "$X11_MONITOR_TOPOLOGY_ONLY" -eq 1 ] || [ "$X11_CURSOR_IMAGE_ONLY" -eq 1 ]; then
             phases=(prepare native)
         fi
     fi
@@ -2226,7 +2232,7 @@ DEBIAN_SYSTEMD_RUNTIME_LIBS_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED
             elif [ "$phase" = native ] && [ "$X11_CAPTURE_MAPPING_ONLY" -eq 1 ]; then
                 command+=(--capture-mapping)
             elif [ "$phase" = native ] && [ "$MODE" = x11-display-tests ] \
-                && [ "${X11_CLIPBOARD_ONLY:-0}" -eq 0 ]; then
+                && [ "${X11_CLIPBOARD_ONLY:-0}" -eq 0 ] && [ "$X11_CURSOR_IMAGE_ONLY" -eq 0 ]; then
                 # Reuse only the exact pinned libc already compiled in the owned
                 # loader phase; the native component receives no writable cache.
                 mounts+=(--mount "type=bind,src=$work/loader-build/liblibc.rlib,dst=/focus-input/liblibc.rlib,readonly,bind-recursive=disabled")
@@ -2272,7 +2278,7 @@ DEBIAN_SYSTEMD_RUNTIME_LIBS_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED
             if [ "$MODE" = x11-display-tests ] && [ "${X11_CLIPBOARD_ONLY:-0}" -eq 0 ] \
                 && [ "$X11_KEY_INPUT_ONLY" -eq 0 ] && [ "$X11_FOCUS_ONLY" -eq 0 ] \
                 && [ "$X11_CAPTURE_MAPPING_ONLY" -eq 0 ] && [ "$X11_CONTEXTS_ONLY" -eq 0 ] \
-                && [ "$X11_MONITOR_TOPOLOGY_ONLY" -eq 0 ]; then
+                && [ "$X11_MONITOR_TOPOLOGY_ONLY" -eq 0 ] && [ "$X11_CURSOR_IMAGE_ONLY" -eq 0 ]; then
                 [ "$(grep -Fxc 'X11_LAYOUT_NATIVE=pass xvfb_depths=24,16 stride_16_odd=1284 pixels=actual capture=production-shm public=production-buffer network=none uid=4000 cleanup=joined' "$output")" -eq 1 ] \
                     || fail 'X11 capture-layout native result is absent or duplicated'
             fi
@@ -2293,6 +2299,8 @@ DEBIAN_SYSTEMD_RUNTIME_LIBS_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED
         printf 'X11_CONTEXTS_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
     elif [ "$X11_MONITOR_TOPOLOGY_ONLY" -eq 1 ]; then
         printf 'X11_MONITOR_TOPOLOGY_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
+    elif [ "$X11_CURSOR_IMAGE_ONLY" -eq 1 ]; then
+        printf 'LINUX_CURSOR_IMAGE_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
     elif [ "$MODE" = x11-display-tests ]; then
         printf 'X11_DISPLAY_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
     else

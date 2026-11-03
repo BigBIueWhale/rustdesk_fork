@@ -37,6 +37,7 @@ X11_FOCUS_ONLY=0
 X11_CAPTURE_MAPPING_ONLY=0
 X11_CONTEXTS_ONLY=0
 X11_MONITOR_TOPOLOGY_ONLY=0
+X11_CURSOR_IMAGE_ONLY=0
 LINUX_RECEIVER_PROFILE=focused
 PEER_BUILD_PROFILE=default
 SERVER_GUESS_LIMITER=0
@@ -581,6 +582,7 @@ case "$#:${1:-}" in
             --capture-mapping) X11_CAPTURE_MAPPING_ONLY=1 ;;
             --contexts) X11_CONTEXTS_ONLY=1 ;;
             --monitor-topology) X11_MONITOR_TOPOLOGY_ONLY=1 ;;
+            --cursor-image) X11_CURSOR_IMAGE_ONLY=1 ;;
             *) echo 'unknown X11 shard' >&2; exit 2 ;;
         esac
         ;;
@@ -2058,6 +2060,8 @@ android_frame_input_inventory() {
     )
     if [ "$MODE" = x11-display-tests ]; then
         files+=("$SCRIPT_DIR/test-x11-display-native.py" "$SCRIPT_DIR/test-x11-display.rs"
+            "$SCRIPT_DIR/test-linux-cursor-image.py" "$SCRIPT_DIR/test-linux-cursor-image.cc"
+            "$REPO_ROOT/flutter/third_party/flutter_custom_cursor/linux/flutter_custom_cursor_plugin.cc"
             "$SCRIPT_DIR/test-x11-monitor-topology.c"
             "$SCRIPT_DIR/test-x11-thread-context.rs"
             "$SCRIPT_DIR/fixtures/x11-thread-context-before-retry.rs"
@@ -4894,6 +4898,9 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
     fi
     if [ "$MODE" = x11-display-tests ]; then
         lifecycle_payload_grafts+=(
+            "repo/scripts/test-linux-cursor-image.py=$SCRIPT_DIR/test-linux-cursor-image.py"
+            "repo/scripts/test-linux-cursor-image.cc=$SCRIPT_DIR/test-linux-cursor-image.cc"
+            "repo/flutter/third_party/flutter_custom_cursor/linux/flutter_custom_cursor_plugin.cc=$REPO_ROOT/flutter/third_party/flutter_custom_cursor/linux/flutter_custom_cursor_plugin.cc"
             "repo/scripts/test-x11-display-native.py=$SCRIPT_DIR/test-x11-display-native.py"
             "repo/scripts/test-x11-display.rs=$SCRIPT_DIR/test-x11-display.rs"
             "repo/scripts/test-x11-monitor-topology.c=$SCRIPT_DIR/test-x11-monitor-topology.c"
@@ -5209,6 +5216,8 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
         guest_invocation+=' --contexts'
     elif [ "$X11_MONITOR_TOPOLOGY_ONLY" -eq 1 ]; then
         guest_invocation+=' --monitor-topology'
+    elif [ "$X11_CURSOR_IMAGE_ONLY" -eq 1 ]; then
+        guest_invocation+=' --cursor-image'
     fi
 elif [ "$MODE" = hbb-common-fs ]; then
     guest_invocation+=" --hbb-common-fs /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
@@ -6336,6 +6345,14 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_FOCUS_ONLY" -eq 1 ]; then
         'X11_FOCUS_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined' \
         'focus guest finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'focus guest completion'
+elif [ "$MODE" = x11-display-tests ] && [ "$X11_CURSOR_IMAGE_ONLY" -eq 1 ]; then
+    require_exact_fixed_receipt \
+        'LINUX_CURSOR_IMAGE_NATIVE=pass registrations=128 shapes=128 images=finalized gtk=real xfixes=real codec=double scope=component network=none cleanup=joined' \
+        'native cursor image ownership and presentation'
+    require_exact_fixed_receipt \
+        'LINUX_CURSOR_IMAGE_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined' \
+        'native cursor guest finality'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'cursor guest completion'
 elif [ "$MODE" = x11-display-tests ] && [ "$X11_MONITOR_TOPOLOGY_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt \
         'X11_MONITOR_TOPOLOGY_READY=pass monitors=2 root=1280x480 geometry=640x480+0+0,640x480+640+0 pixels=red,blue pointer=left-right-left' \
@@ -9707,6 +9724,9 @@ elif [ "$MODE" = x11-display-tests ]; then
             "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
     elif [ "$X11_MONITOR_TOPOLOGY_ONLY" -eq 1 ]; then
         printf 'X11_MONITOR_TOPOLOGY_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=x11-capture-component full_app_acceptance=false cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
+    elif [ "$X11_CURSOR_IMAGE_ONLY" -eq 1 ]; then
+        printf 'LINUX_CURSOR_IMAGE_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=native-cursor-component full_app_acceptance=false cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
     else
         printf 'X11_DISPLAY_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=x11-native-owner-and-capture-components full_app_acceptance=false cleanup=joined elapsed_seconds=%s\n' \

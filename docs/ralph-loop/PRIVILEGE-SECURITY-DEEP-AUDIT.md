@@ -133817,3 +133817,14 @@ inspected commit, reports 47,380,440 KiB available memory and has no RAM run mar
 Only read-only inspection ran for this cursor checkpoint. No application build,
 cursor test, cache mutation, host service change or instruction-file edit occurred.
 The required fresh documentation count follows in the admitted no-NIC RAM VM.
+
+Ledger verification `2NV7s2IRxR` at `506f9b2e` passes seven controls and the
+whole-input round trip in 27 outer seconds: **395,700 tokens / 1,809,610 bytes**,
+input SHA-256 `647cf4a529e045fbbba4787f918211932dad6ecc85fecf26a77339b7f4c12fca`.
+All three listener deltas are zero; exact wrapper/QEMU/helper and private/RAM
+retirement are verified under the shared lock. RAM scratch peaks at 402,735,104
+bytes. Twelve bounded evidence files are copied and hash-verified on CTE.
+`cursor-ownership-ledger-506f9b2e.json` is 4,809 bytes, SHA-256
+`a168769e5dfed0e0669bf415cc1249d771eb84772f79307a4cd9e8c68721ee9e`.
+This closes documentation verification only. Native cursor reproduction and
+correction are the selected next work; no owned job remains.

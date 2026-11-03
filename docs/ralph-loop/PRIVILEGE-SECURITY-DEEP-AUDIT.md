@@ -135312,3 +135312,16 @@ reference comparison needed path-prefix normalization: the table uses the
 section's existing evidence-directory convention. After resolving that prefix,
 the complete eight-file set is identical; no evidence file is deleted. Fresh
 isolated ledger counting and exact cleanup are the remaining checkpoint work.
+
+Count `OSS2Azxcks` at `23953948` passes seven controls and the complete-input
+round trip: 398,188 tokens / 1,820,491 bytes, SHA-256
+`e52d458adfa5251962517610bb7f39ab8c29697fb335e0f39c8e273a955f8bbf`.
+This removes 1,404 tokens and leaves 1,812 below the budget. The 28-second
+transaction records three zero listener deltas and exact process/helper/private/
+RAM retirement; scratch peaks at 402,702,336 bytes. Twelve bounded evidence
+files match on CTE/TUF. `installer-ledger-consolidation-23953948.json` includes
+the document comparison and eight retained evidence identities: 6,906 bytes,
+SHA-256 `acf95a4ea6671b5d8d3d744f80b708947ee0cfdc91c9906e2d2192bbfecc7b45`.
+This audit-only receipt leaves the counted ledger unchanged. No owned job remains;
+the documentation slice is complete, wider document-role work and release remain
+open, and concurrent logging remains parked.

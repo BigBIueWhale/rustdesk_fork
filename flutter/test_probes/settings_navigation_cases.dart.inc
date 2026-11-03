@@ -42,21 +42,21 @@ class _WakeRemote extends DBusRemoteObject {
       String? interface, String name, Iterable<DBusValue> values,
       {DBusSignature? replySignature, bool noReplyExpected = false,
       bool noAutoStart = false, bool allowInteractiveAuthorization = false}) async {
-    expect(interface, 'org.freedesktop.ScreenSaver');
+    expectSync(interface, 'org.freedesktop.ScreenSaver');
     calls.add(name);
     if (name == 'Inhibit') {
-      expect(values.map((v) => v.asString()).toList(), ['RustDesk', 'wakelock']);
-      expect(replySignature, DBusSignature.uint32);
+      expectSync(values.map((v) => v.asString()).toList(), ['RustDesk', 'wakelock']);
+      expectSync(replySignature, DBusSignature.uint32);
       final cookie = nextCookie++;
       active.add(cookie);
       await acquisition?.future;
       return DBusMethodSuccessResponse([DBusUint32(cookie)]);
     }
-    expect(name, 'UnInhibit');
-    expect(replySignature, DBusSignature.empty);
+    expectSync(name, 'UnInhibit');
+    expectSync(replySignature, DBusSignature.empty);
     final cookie = values.single.asUint32();
     await release?.future;
-    expect(active.remove(cookie), isTrue, reason: 'release must own its exact cookie');
+    expectSync(active.remove(cookie), isTrue, reason: 'release must own its exact cookie');
     return DBusMethodSuccessResponse([]);
   }
 

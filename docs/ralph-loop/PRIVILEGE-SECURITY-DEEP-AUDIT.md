@@ -132982,3 +132982,15 @@ Primary contract: https://specifications.freedesktop.org/idle-inhibit/0.1/index.
 defines the returned Inhibit cookie, matching UnInhibit and bus-disconnect release.
 The authenticated local wakelock_plus 1.2.1 implementation establishes the exact
 dependency behavior; no dependency update or host service is needed.
+
+Initial run `g5WpwKBRI9` at `98e53932` is a fixture failure, not a product
+reproduction: four wake-lock tests use Flutter's guarded `expect` from the
+asynchronous D-Bus callback during `pumpAndSettle`. Forty-one cases pass,
+including the disabled-preference control. Use `expectSync` in that callback,
+as the existing asynchronous channel fixture does; preserve every behavioral
+assertion and the unchanged product. Wrapper/QEMU/helpers and RAM workspace
+are absent, all four listener deltas are zero, and exact private retirement
+passes under the shared lock. Peak RAM scratch is 6,381,985,792 bytes.
+Thirteen bounded evidence files are copied and hash-verified. Capsule
+`viewer-wake-baseline-98e53932.json` is 17,443 bytes, SHA-256
+`ab2db712199a1640e6151b41ab16e8d413d4b034d77be2cf63c95c39804e8b43`.

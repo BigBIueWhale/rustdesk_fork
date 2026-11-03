@@ -132647,3 +132647,13 @@ No new cache generation or rebuild was needed. The selected refusal checkpoint
 is verified at its stated debug/native layer; the broader requirements and parks
 remain open as recorded above. Reassess the next highest-value permitted release
 item; do not repeat these passing cases without a relevant change or concern.
+
+Fresh ledger count `jaTkv2fxhw` at `ca01126b` passes seven controls and the
+whole-input round trip: 397,735 tokens / 1,820,354 bytes, SHA-256
+`1f8bc7a81a69b41a5935dfc061f5fe90d5f1f66ff186e261bb2cd2319174258d`.
+Three listener deltas are zero; exact process/helper, VM/RAM and private-scratch
+retirement pass. Twelve bounded records were copied and hash-verified. Capsule
+`linux-recovery-ledger-ca01126b.json` is 4,800 bytes, SHA-256
+`293ce828f0c1eee003b95b98118f3712e8282be5a4293db2dabda863cd01926d`.
+No owned job remains. This turn made progress; the full release goal remains
+active, with exact final-artifact and broader acceptance still unproved.

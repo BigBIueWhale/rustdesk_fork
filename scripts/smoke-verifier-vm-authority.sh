@@ -1671,13 +1671,13 @@ linux_receiver_input_inventory() {
 
 ANDROID_OWNER_KOTLIN_JARS=()
 append_android_owner_kotlin_jar() {
-    local group=$1 artifact=$2 version=$3 root
+    local group=$1 artifact=$2 version=$3 extension=${4:-jar} root
     local -a matches=()
     root="$ONLINE_INPUTS/gradle-home/caches/modules-2/files-2.1/$group/$artifact/$version"
     [ -d "$root" ] && [ ! -L "$root" ] \
         || fail "focused Android owner-state artifact root is absent: $group:$artifact:$version"
     mapfile -t matches < <(/usr/bin/find "$root" -mindepth 2 -maxdepth 2 -type f \
-        -name "$artifact-$version.jar" -print | LC_ALL=C /usr/bin/sort)
+        -name "$artifact-$version.$extension" -print | LC_ALL=C /usr/bin/sort)
     [ "${#matches[@]}" -eq 1 ] \
         || fail "expected one focused Android owner-state artifact: $group:$artifact:$version"
     ANDROID_OWNER_KOTLIN_JARS+=("${matches[0]}")
@@ -1691,6 +1691,7 @@ if [ "$MODE" = android-owner-tests ]; then
     append_android_owner_kotlin_jar org.jetbrains.intellij.deps trove4j "$ANDROID_KOTLIN_COMPILER_TROVE_VERSION"
     append_android_owner_kotlin_jar org.jetbrains.kotlinx kotlinx-coroutines-core-jvm "$ANDROID_KOTLIN_COMPILER_COROUTINES_VERSION"
     append_android_owner_kotlin_jar org.jetbrains annotations "$ANDROID_KOTLIN_COMPILER_ANNOTATIONS_VERSION"
+    append_android_owner_kotlin_jar com.github.getActivity XXPermissions "$ANDROID_XXPERMISSIONS_VERSION" aar
 fi
 readonly -a ANDROID_OWNER_KOTLIN_JARS
 
@@ -3361,7 +3362,7 @@ elif [ "$MODE" = android-owner-tests ]; then
              "$VERIFIER_VM_VIRTIOFSD_PACKAGE_VERSION" ] \
         && [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Architecture)" = amd64 ] \
         || fail 'authenticated virtiofsd package identity differs'
-    [ "${#ANDROID_OWNER_KOTLIN_JARS[@]}" -eq 8 ] \
+    [ "${#ANDROID_OWNER_KOTLIN_JARS[@]}" -eq 9 ] \
         || fail 'focused Android owner-state Kotlin compiler closure differs'
     android_owner_input_inventory >/dev/null \
         || fail 'cannot inventory focused Android owner-state inputs'

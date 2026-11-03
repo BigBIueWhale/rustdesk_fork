@@ -144,8 +144,20 @@ owner_result="$(
   'ANDROID_OWNER_STATE_TEST=pass scenarios=8 assertions=206 kotlin=2.0.21' ] \
     || { echo "Android owner-state result differs: $owner_result" >&2; exit 1; }
 printf '%s\n' "$voice_result" "$owner_result"
+permission_artifacts() {
+    /usr/bin/find "$WORK_ROOT/classes" -type f -name 'AndroidPermissionCallback*.class' -print0 \
+        | LC_ALL=C /usr/bin/sort -z | /usr/bin/xargs -0 -r /usr/bin/sha256sum
+}
+permission_before="$(permission_artifacts)"
+[ -n "$permission_before" ] || { echo 'permission callback classes are absent' >&2; exit 1; }
+permission_status=0
 /usr/bin/timeout --signal=TERM --kill-after=2s 10s \
     /usr/bin/java -ea -Xms16m -Xmx64m -Djava.io.tmpdir="$WORK_ROOT" \
         -cp "$WORK_ROOT/classes:$TEST_CLASSPATH" \
-        com.carriez.flutter_hbb.AndroidPermissionCallbackTestKt
+        com.carriez.flutter_hbb.AndroidPermissionCallbackTestKt || permission_status=$?
+[ "$permission_before" = "$(permission_artifacts)" ] \
+    || { echo 'permission callback classes changed during execution' >&2; exit 1; }
+printf '%s\n' "$permission_before"
+printf 'ANDROID_PERMISSION_CALLBACK_ARTIFACTS=unchanged exit=%s\n' "$permission_status"
+[ "$permission_status" -eq 0 ] || exit "$permission_status"
 printf 'ANDROID_OWNER_STATE_SUITE=pass classes=8 scenarios=19 assertions=309 kotlin=2.0.21\n'

@@ -135598,3 +135598,16 @@ closing device or full-workflow acceptance. The next decisive step is exact-APK
 Android grant/deny/cancel-to-Flutter completion and subsequent-request usability,
 including storage-settings resume; no installed outcome or measured two-minute
 device delay is claimed by these component cases. No owned job remains.
+
+Fresh ledger count 0rgNMAktq4 at 87e1b8bf passes seven controls and the
+complete byte round trip: 398,936 tokens / 1,823,883 bytes, input SHA-256
+8fa215e85bc0544cfb50b816b2039d4c70113992a750b7c951993b7eb1cb6c45.
+The ledger remains 1,064 tokens below budget. All 42 workload modes, 81
+admissions and five refusals pass. Three listener deltas are zero, exact
+process/helper/private/RAM retirement passes, and scratch peaks at 402,780,160
+bytes. Twelve bounded evidence files match CTE/TUF;
+permission-ledger-87e1b8bf.json is 5,098 bytes, SHA-256
+a4aa65cb2f5416514514b11aeb1e6b4b9767036625d220c8f0b945bff789585e.
+This audit-only receipt leaves the counted ledger unchanged. The selected
+permission callback correction is verified at the component checkpoint;
+exact-APK native workflow acceptance remains the next open step.

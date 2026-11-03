@@ -58,6 +58,22 @@ independent parks remain.
 The prior wake build completed and retired its owned resources; its native
 wake-lock fixture remains unexecuted.
 
+**Recent-computer search — named Linux native cases pass (2026-11-03).**
+`TsGwt5Zl5S` at `dbec5300` reuses app `f043c5ae` / engine `ddb1541d`.
+Eight full-app phases observe three explicit non-credential peer fixtures:
+initial presence, alias, hostname, address and username matching, no matches,
+mixed case/surrounding whitespace, and clearing. Real pointer/keyboard input,
+field readback and three successive visible AT-SPI card observations establish
+each result. The same remote connection survives; four subsequent displayed
+counters have maximum sampled age 317 ms. Three native drivers rebuild
+identically, four listener deltas are zero, and VM/RAM/private cleanup passes.
+`recent-search-dbec5300.json` binds this 115-second run. Fixture preparation
+failures are retained separately in the audit; no product correction was needed.
+This verifies the named cards through native accessibility, not exact glyph
+pixels (two baseline cards are partly clipped), new-peer persistence, arbitrary
+row inventories, large-list performance, shared-controller lifetime, other
+platforms or installed/release acceptance. Those and all user parks remain OPEN.
+
 **Outgoing-session wake lock — component correction verified (2026-11-03):**
 `af9f4b2c` serializes platform transitions, retaining latest session demand
 and publishing completed state only after the plugin Future succeeds.

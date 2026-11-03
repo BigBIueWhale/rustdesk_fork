@@ -133557,3 +133557,32 @@ pass. Four listener deltas are zero, and exact VM/RAM/private cleanup passes;
 seventeen bounded files are retained on both hosts. Capsule
 `recent-search-d9a2b18f.json`: 23,059 bytes, SHA-256
 `a2e132a79cc9c95f5e6fc1750fa093656c5f3a675ed59cc0f065bd2a362c36fa`.
+
+`FSjNSL4Tgu` at `a882f6ef` again passes the initial card set, then stops at
+the fixture's unnecessary fixed 220x140 semantic rectangle requirement. Use
+positive observed geometry within the proved main bounds and print the actual
+dimensions; search semantics and expected masks are unchanged. Four listener
+deltas and exact retirement pass. `recent-search-a882f6ef.json`: 23,033 bytes,
+SHA-256 `c7a77f9c6005af102d53b8a20723bb3b1cc5d6afa111b85473013127a3354eb2`.
+Seventeen bounded records are copied and verified.
+
+**Accepted native result:** `TsGwt5Zl5S` at `dbec5300` completes in 115 outer
+seconds on retained app `f043c5ae` / engine `ddb1541d`. All eight phases pass,
+with expected masks 7/1/2/1/2/0/1/7, three stable scans apiece and exact native
+field readback after each typed query. Hover discloses the actual Search tooltip;
+native click opens the field. Actual rectangles explain the previous refusal:
+two baseline cards are vertically clipped to 220x97; the first-row fixture is
+220x140. This is visible accessibility/card integration, not glyph completeness.
+The same TCP connection remains and four post-search displayed counters are
+current, maximum sampled age 317 ms. Three native drivers rebuild identically.
+No product patch was required. Creation/persistence of new peers, arbitrary row
+inventories, large lists, shared-controller lifetime, mobile/other platforms,
+installed artifacts and complete R-G2/R-S0/release acceptance remain OPEN.
+
+All four listener deltas are zero; wrapper/QEMU/helpers and private/RAM state
+retire. RAM scratch peak is 3,015,491,584 bytes; no new app build or retained VM
+image is created. Thirteen bounded records are copied and hash-verified on CTE.
+Capsule `recent-search-dbec5300.json`: 8,395 bytes, SHA-256
+`a7a3f025a32be6b81ae5722c99385a002dca215aca2b4cbbf0f192e1a6d05b7a`.
+The live ledger records this limited acceptance. Its prescribed fresh whole-file
+token count follows. All independent user parks remain in force.

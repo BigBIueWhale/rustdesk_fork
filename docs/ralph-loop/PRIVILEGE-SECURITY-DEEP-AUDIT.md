@@ -134726,3 +134726,17 @@ https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android14
 The pinned image's small ZIP metadata identifies the Default/AOSP API-34 x86_64
 image. Python and shell parsing/diff review pass. Native execution follows; no
 backup/transfer acceptance is claimed by this implementation checkpoint.
+
+First replay `bmeT02ko5l` at `60ff6662` stops before emulator execution: the
+retained APK's package/signature and manifest checks pass, but AAPT2 cannot mmap
+the platform android.jar through the sealed input projection (ENODEV). Copy and
+byte-compare that authenticated input into the existing container RAM workspace
+before linking the small control APK. No product change or full APK build is needed.
+Shell syntax and diff checks pass; native backup/restore remains pending.
+
+The 192-second run's five listener deltas are zero. Exact wrapper/QEMU/helper and
+RAM absence plus descriptor-relative private retirement pass under the shared lock;
+peak scratch is 4,376,076,288 bytes. Fourteen bounded files match on CTE/TUF.
+`android-backup-native-60ff6662.json`: 15,042 bytes, SHA-256
+`cd0349a5d819c80699a0629107143ea9e799b3a5d0fe8b3b6c74b53571e1a1d6`.
+No owned job remains. Continue the same native acceptance with the control repair.

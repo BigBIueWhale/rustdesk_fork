@@ -4,11 +4,15 @@ set -euo pipefail
 [ "$#" -eq 3 ] || exit 2
 readonly SOURCE=$1 SDK=$2 OUTPUT=$3
 readonly TOOLS=$SDK/build-tools/34.0.0
-readonly PLATFORM=$SDK/platforms/android-34/android.jar
+readonly PLATFORM_INPUT=$SDK/platforms/android-34/android.jar
 WORK=$(mktemp -d /tmp/android-backup-control.XXXXXXXXXX)
 readonly WORK
 trap 'rm -rf -- "$WORK"' EXIT
 [ ! -e "$OUTPUT" ] && [ ! -L "$OUTPUT" ] || exit 1
+readonly PLATFORM=$WORK/android.jar
+# AAPT2 needs mmap; the sealed input projection supports reads, not file mappings.
+cp --reflink=never -- "$PLATFORM_INPUT" "$PLATFORM"
+cmp -- "$PLATFORM_INPUT" "$PLATFORM"
 mkdir "$WORK/classes" "$WORK/dex"
 cat >"$WORK/AndroidManifest.xml" <<'XML'
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.rustdesk.backupcontrol">

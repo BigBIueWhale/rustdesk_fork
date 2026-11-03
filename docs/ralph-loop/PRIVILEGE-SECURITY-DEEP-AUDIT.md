@@ -134330,3 +134330,19 @@ maximized placement; its platform-specific coordinate conventions are not change
 https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-windowplacement.
 TUF has 47,407,180 KiB available RAM; the existing bounded position-test profile,
 no-NIC VM, resource monitor and joined retirement are retained.
+
+Initial `FQFo0yjNG4` at `1d304e21` passes sixteen existing controls but cannot
+compile the new native doubles because they omit the generated optional `hint`.
+After matching those signatures, unchanged-product `AnRl1WGlHg` at `63df8b40`
+passes seventeen cases and fails the two new maximized/fullscreen cases: an
+absent peer record serializes 0x0 instead of the available 960x540 normal frame.
+Ordinary saves pass for both window types, all three offsets and all three record
+shapes. Both runs have four zero listener deltas and exact process/private/RAM
+retirement; twenty-six bounded files are hash-verified on CTE. Capsules
+`window-position-before-1d304e21.json` and `window-position-baseline-63df8b40.json`
+distinguish the fixture failure from behavioral evidence.
+
+The product correction uses `pos.width` and `pos.height` for the respective
+missing peer dimensions. All prior-field precedence, coordinate handling,
+window-state flags, ordinary saving and storage APIs stay the same. Replay the
+identical nineteen-case shard on this correction before accepting it.

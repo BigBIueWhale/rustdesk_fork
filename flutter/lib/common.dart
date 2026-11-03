@@ -2084,8 +2084,8 @@ Future _saveSessionWindowPosition(WindowType windowType, int windowId,
           id: peerId, k: windowFramePrefix + windowType.name);
       var lpos = LastWindowPosition.loadFromString(peerPos);
       return LastWindowPosition(
-              lpos?.width ?? pos.offsetWidth,
-              lpos?.height ?? pos.offsetHeight,
+              lpos?.width ?? pos.width,
+              lpos?.height ?? pos.height,
               lpos?.offsetWidth ?? pos.offsetWidth,
               lpos?.offsetHeight ?? pos.offsetHeight,
               isMaximized,

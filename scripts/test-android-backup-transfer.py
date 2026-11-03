@@ -148,6 +148,13 @@ def main():
         if "Selected transport" not in selected:
             raise RuntimeError("local backup transport selection failed")
         text("bmgr", "init", TRANSPORT, timeout=90)
+        # Non-incremental requests omit PM metadata unless explicitly requested.
+        # Restore requires it to validate package versions and signing identities.
+        metadata = text("bmgr", "backupnow", "--monitor-verbose", "--non-incremental",
+                        "@pm@", timeout=180)
+        print(f"ANDROID_BACKUP_METADATA output={metadata!r}", flush=True)
+        if "Package @pm@ with result: Success" not in metadata:
+            raise RuntimeError("package-manager restore metadata was not backed up")
         for package in (CONTROL, APP):
             result = text("bmgr", "backupnow", "--monitor-verbose", "--non-incremental",
                           package, timeout=180)
@@ -175,7 +182,7 @@ def main():
         for package, uid in ((CONTROL, control_uid), (APP, app_uid)):
             app_shell(uid, "rm", *[fixture(package, domain) for domain in DOMAINS])
             verify_data(package, uid, False)
-            restored = text("bmgr", "restore", "1", package, timeout=180)
+            restored = text("bmgr", "restore", "1", package, "--monitor-verbose", timeout=180)
             print(f"ANDROID_BACKUP_RESTORE package={package} output={restored!r}", flush=True)
             if "restoreFinished: 0" not in restored:
                 raise RuntimeError("local D2D restore did not finish successfully")

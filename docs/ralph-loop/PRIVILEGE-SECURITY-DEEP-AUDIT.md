@@ -134810,3 +134810,21 @@ Fifteen bounded files match on CTE/TUF; peak scratch is 4,375,965,696 bytes.
 `android-backup-native-52b4aef3.json`: 17,495 bytes, SHA-256
 `fc740bf757802019adc46fa192751b5c7e5fef56674e15c15d901b3588c3d87e`.
 The full native acceptance remains open pending the corrected replay.
+
+Replay `kziOeEgpF3` at `53133488` proves the exact RustDesk ERROR_PREFLIGHT
+event, transport-package rejection and absent archive, with all nine readable
+fixtures and a successful nine-domain control archive. Control restore returns
+-1000 before the remaining checks. Android's KeyValueBackupTask deliberately skips
+PM metadata for non-incremental requests unless @pm@ is explicit; its restore
+engine requires that metadata for signature/version checks. Add a checked @pm@
+backup after transport initialization and retain verbose restore events. This
+repairs the fixture's restore prerequisites without changing app or platform policy.
+Source: services/backup/java/com/android/server/backup/{keyvalue/KeyValueBackupTask,
+restore/PerformUnifiedRestoreTask}.java in the Android-14 tree linked above.
+
+Five zero listener deltas and exact process/helper/private/RAM retirement pass.
+Fifteen bounded files match on CTE/TUF; peak scratch is 4,375,441,408 bytes.
+`android-backup-native-53133488.json`: 18,286 bytes, SHA-256
+`9e959aa3806c4f83c061b10b78865bfd4b8f54e4803ee4d62a257a59107738cc`.
+The native new-backup exclusion substep is observed; complete restore/cloud and
+post-backup launch acceptance remain pending.

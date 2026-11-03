@@ -83,8 +83,8 @@ class ResultTests(unittest.TestCase):
             suites = sorted(result.TAB_SELECTION_SUITES)
             names = sorted(set().union(*result.TAB_SELECTION_SUITES.values()))
         elif profile == "connection-page":
-            suites = ["connection_page_probe_test.dart"]
-            names = sorted(result.CONNECTION_PAGE_TESTS)
+            suites = sorted(result.CONNECTION_PAGE_SUITES)
+            names = sorted(set().union(*result.CONNECTION_PAGE_SUITES.values()))
         elif profile == "status-refresh":
             suites = sorted(result.STATUS_REFRESH_SUITES)
             names = sorted(set().union(*result.STATUS_REFRESH_SUITES.values()))
@@ -185,6 +185,9 @@ class ResultTests(unittest.TestCase):
                 suite_id = int(name.startswith(("desktop address startup ", "mobile address startup ")))
             if profile == "floating-position":
                 suite_id = int(name in result.WINDOW_POSITION_TESTS)
+            if profile == "connection-page":
+                suite_id = next(i for i, suite in enumerate(suites)
+                                if name in result.CONNECTION_PAGE_SUITES[suite])
             if profile == "models":
                 suite_id = suites.index(model_cases[test_id][0])
             if profile in ("credential-dialog", "terminal-output", "file-navigation", "modifier-release", "peer-data", "tab-selection", "status-refresh", "audio-input", "trackpad-speed", "reconnect", "credential-badge", "menu-button", "help-button", "password-fields", "combo-box", "image-quality"):
@@ -230,7 +233,7 @@ class ResultTests(unittest.TestCase):
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (5, 121))
             return
         if SINGLE_PROFILE == "connection-page":
-            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (1, 8))
+            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 18))
             return
         if SINGLE_PROFILE == "floating-position":
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 19))

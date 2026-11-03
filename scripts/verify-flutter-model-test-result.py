@@ -387,6 +387,20 @@ CONNECTION_PAGE_TESTS = {
     "connection page rejects an invalid target keyboard=false",
     "connection page rejects an invalid target keyboard=true",
 }
+CONNECTION_PAGE_SUITES = {
+    "connection_page_probe_test.dart": CONNECTION_PAGE_TESTS,
+    "mobile_navigation_probe_test.dart": {
+        f"mobile {kind} {case}"
+        for kind in ("Remote", "Camera")
+        for case in (
+            "loading Cancel closes its current page",
+            "loading Cancel preserves the preceding page",
+            "hidden loading Cancel preserves the covering page",
+            "retired loading Cancel preserves a replacement session",
+            "Back can close an ended session view",
+        )
+    },
+}
 STATUS_REFRESH_SUITES = {
     "server_status_refresh_loop_test.dart": STATUS_REFRESH_TESTS,
     "listener_status_probe_test.dart": {
@@ -1972,8 +1986,9 @@ def parse_result(path, profile="models"):
         expected_names = set().union(*expected_by_suite.values())
         expected_tests = len(expected_names)
     elif profile == "connection-page":
-        expected_suites = {"connection_page_probe_test.dart"}
-        expected_names = CONNECTION_PAGE_TESTS
+        expected_by_suite = CONNECTION_PAGE_SUITES
+        expected_suites = set(expected_by_suite)
+        expected_names = set().union(*expected_by_suite.values())
         expected_tests = len(expected_names)
     elif profile == "status-refresh":
         expected_by_suite = STATUS_REFRESH_SUITES

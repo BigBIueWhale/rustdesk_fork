@@ -9050,8 +9050,8 @@ else
         widget_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/desktop/pages/connection_page.dart" | /usr/bin/awk '{print $1}')"
         widget_tests_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test_probes/connection_page_cases.dart.inc" | /usr/bin/awk '{print $1}')"
         require_exact_fixed_receipt \
-            "FLUTTER_CONNECTION_PAGE_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=8 flutter=$FLUTTER_VERSION widget=$widget_sha256 tests_source=$widget_tests_sha256 source=readonly network=none cleanup=joined" \
-            'complete desktop connection-page receipt'
+            "FLUTTER_CONNECTION_PAGE_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=2 tests=18 flutter=$FLUTTER_VERSION widget=$widget_sha256 tests_source=$widget_tests_sha256 source=readonly network=none cleanup=joined" \
+            'desktop and mobile connection-page receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
         lifecycle_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/models/server_status_refresh_loop.dart" | /usr/bin/awk '{print $1}')"
         lifecycle_tests_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test/server_status_refresh_loop_test.dart" | /usr/bin/awk '{print $1}')"

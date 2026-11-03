@@ -11931,7 +11931,7 @@ run_flutter_model_tests() {
             memory=3g
             memory_bytes=3221225472
             result_prefix=FLUTTER_CONNECTION_PAGE_TEST_JSON
-            expected_result='suites=1 tests=8'
+            expected_result='suites=2 tests=18'
         elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
             memory=3g
             memory_bytes=3221225472
@@ -12782,7 +12782,7 @@ run_flutter_model_tests() {
                     test_concurrency=1
                 elif [ "$FLUTTER_TEST_PROFILE" = connection-page ]; then
                     python3 -B -I -S /source/scripts/prepare-connection-page-probe.py prepare
-                    tests=(test_probes/connection_page_probe_test.dart)
+                    tests=(test_probes/connection_page_probe_test.dart test_probes/mobile_navigation_probe_test.dart)
                     test_budget=120s
                     test_concurrency=1
                 elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
@@ -13508,6 +13508,7 @@ run_flutter_model_tests() {
     fi
     if [ "$FLUTTER_TEST_PROFILE" = connection-page ]; then
         grep -E '^CONNECTION_PAGE_SOURCE=' "$output"
+        grep -E '^MOBILE_NAVIGATION_SOURCE=' "$output"
     fi
     if [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
         grep -E '^(ADDRESS_RESTORE_|RDP_PORT_SOURCE=|\{)' "$output"
@@ -13643,7 +13644,7 @@ run_flutter_model_tests() {
         local widget_sha256 widget_tests_sha256
         widget_sha256="$(sha256sum "$source_root/flutter/lib/desktop/pages/connection_page.dart" | awk '{print $1}')"
         widget_tests_sha256="$(sha256sum "$source_root/flutter/test_probes/connection_page_cases.dart.inc" | awk '{print $1}')"
-        printf 'FLUTTER_CONNECTION_PAGE_TESTS_VM=pass commit=%s tree=%s suites=1 tests=8 flutter=3.24.5 widget=%s tests_source=%s source=readonly network=none cleanup=joined\n' \
+        printf 'FLUTTER_CONNECTION_PAGE_TESTS_VM=pass commit=%s tree=%s suites=2 tests=18 flutter=3.24.5 widget=%s tests_source=%s source=readonly network=none cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$widget_sha256" "$widget_tests_sha256"
     elif [ "$FLUTTER_TEST_PROFILE" = status-refresh ]; then
         local lifecycle_sha256 widget_sha256 widget_tests_sha256

@@ -133062,3 +133062,36 @@ passes. Twelve bounded records are copied and verified. Capsule
 `dbeb200b40ec7d772068d4f4e06d8982c6f3c90252c7f78b6dde5ebf6a60b035`.
 This completes the selected component checkpoint. The full release goal stays
 active, with target-native integration and all independent user parks preserved.
+
+### 2026-11-03 — wake-lock native integration prerequisite
+
+Previous goal turn: progress. Both ordering failures were reproduced and
+corrected; 47 component cases passed. Continue the same R-S0 requirement
+toward native application evidence before expanding hypothetical failure
+cases. The existing native harness supplies real X11 windows, authenticated
+peers and private D-Bus/AT-SPI. Cached full apps predate the correction;
+the smallest necessary prerequisite is one source-bound corrected app build,
+using the retained `ddb1541d` engine and existing authenticated inputs.
+The last same-profile build took 1,065 seconds, so this is an integration
+job, with stage observation and exact process ownership, not an inner-loop test.
+
+The app cache was full. Source comparison shows current `c6aed851` retains
+the Linux theme correction in `c9323bf1`, plus later accepted input changes;
+the intervening Dart theme changes address macOS. Retire only superseded
+`c9323bf1`, preserving current `c6aed851`, parked `0ccb2a7e` and baseline
+`7e6f6459`. Under the shared run lock, all 75 files and the exact manifest
+were checked before descriptor-relative retirement: 70,353,741 file bytes /
+70,639,616 allocated bytes. Both hosts retain the manifest, complete inventory
+and completion record in `viewer-wake-build-retired-c9323bf1.*`. Historical
+native theme evidence remains retained. No cache ceiling or VM resource bound
+is expanded; TUF has no owned job and about 45 GiB available RAM before admission.
+
+Native scenario research must distinguish explicit UnInhibit from automatic
+bus-disconnect release. Linux ordinary tab/window close can hide and retain
+the window engine (`tabbar_widget.dart`), making live-sender retirement the
+relevant observation. Any controlled service used to delay replies must retain
+sender/cookie identity, report transport/disconnect events and be joined;
+it cannot prove physical screen power or a real desktop provider by itself.
+Primary contracts: https://specifications.freedesktop.org/idle-inhibit/0.1/index.html
+and https://docs.gtk.org/gio/method.DBusConnection.register_object.html .
+Provider/device acceptance and independently parked topics remain OPEN.

@@ -629,8 +629,8 @@ case "$#:${1:-}" in
         [ "$2" = --artifact-commit ] && [ "$4" = --apk-sha256 ] \
             && [ "$6" = --test-apk-sha256 ] && [ "$8" = --scenario ] \
             || { echo 'invalid Android emulator runtime argument order' >&2; exit 2; }
-        [ "$9" = recents ] \
-            || { echo 'peer-lifecycle requires an exact peer commit and manifest digest' >&2; exit 2; }
+        { [ "$9" = recents ] || [ "$9" = backup-transfer ]; } \
+            || { echo 'this Android replay requires a peer commit and manifest digest' >&2; exit 2; }
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'Android emulator runtime input/run overrides are forbidden' >&2; exit 2; }
@@ -8561,6 +8561,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     require_exact_fixed_receipt \
         'ANDROID_EMULATOR_INSTRUMENTATION_SMOKE=pass target=com.carriez.flutter_hbb runner=ControlledCmStopInstrumentation process=main result=ok' \
         'Android runtime instrumentation execution receipt'
+    if [ "$ANDROID_RUNTIME_SCENARIO" != backup-transfer ]; then
     mapfile -t android_recents_build_receipts < <(
         /usr/bin/grep -Eo \
             'ANDROID_RECENTS_GESTURE_BUILD=pass sha256=[0-9a-f]{64} source_sha256=[0-9a-f]{64} android_jar_sha256=[0-9a-f]{64} d8_sha256=[0-9a-f]{64} copies=2 equality=byte-identical network=none output=private-bind' \
@@ -8685,6 +8686,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         esac
         android_recents_task_ids="${android_recents_task_ids:+$android_recents_task_ids }$android_recents_task_id"
     done
+    fi
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
     require_exact_fixed_receipt \
         'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=loopback-only transport=grpc-stream network=container-none' \
@@ -8823,6 +8825,11 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         [ "${#android_controlled_cm_receipts[@]}" -eq 1 ] \
             || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android controlled-CM lifecycle receipt is absent or duplicated'; }
         android_runtime_peer=production-loopback-cpace-controlled-cm
+    elif [ "$ANDROID_RUNTIME_SCENARIO" = backup-transfer ]; then
+        require_exact_fixed_receipt \
+            "ANDROID_BACKUP_NATIVE=pass domains=9 control=transferred-restored app=excluded-restored-empty cloud=refused selinux=Enforcing apk_sha256=$ANDROID_RUNTIME_APK_SHA256 cleanup=fixtures-removed" \
+            'native Android backup and transfer exclusion'
+        android_runtime_peer=absent
     else
         mapfile -t android_recents_receipts < <(
             /usr/bin/grep -Eo \
@@ -10022,6 +10029,8 @@ elif [ "$MODE" = android-emulator-app ]; then
 elif [ "$MODE" = android-emulator-runtime ]; then
     if [ "$ANDROID_RUNTIME_SCENARIO" = recents ]; then
         android_runtime_product=real-retained-apk-direct-uiautomation-recents-ten-cycle
+    elif [ "$ANDROID_RUNTIME_SCENARIO" = backup-transfer ]; then
+        android_runtime_product=real-retained-apk-local-backup-transfer-restore-nine-domains
     elif [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; then
         android_runtime_product=real-retained-apk-controlled-cm-task-relaunch-and-ui-stop
     else

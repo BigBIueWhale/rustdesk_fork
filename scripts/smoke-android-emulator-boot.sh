@@ -10,7 +10,7 @@ fail() {
 
 [ "$#" -eq 4 ] || [ "$#" -eq 5 ] || [ "$#" -eq 6 ] \
     || [ "$#" -eq 7 ] || [ "$#" -eq 8 ] \
-    || fail 'usage: smoke-android-emulator-boot.sh EMULATOR_ZIP SYSTEM_IMAGE_ZIP ADB WORK_ROOT [RUNTIME_TEST_APK [launch|recents|lifecycle|peer-lifecycle|controlled-cm [RECENTS_GESTURE_JAR [--soak]]]]'
+    || fail 'usage: smoke-android-emulator-boot.sh EMULATOR_ZIP SYSTEM_IMAGE_ZIP ADB WORK_ROOT [RUNTIME_TEST_APK [launch|backup-transfer|recents|lifecycle|peer-lifecycle|controlled-cm [RECENTS_GESTURE_JAR [--soak]]]]'
 readonly EMULATOR_ZIP=$1
 readonly SYSTEM_IMAGE_ZIP=$2
 readonly INPUT_ADB=$3
@@ -38,12 +38,13 @@ elif [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = lifecycle ]; then
     readonly WORKLOAD=app-lifecycle
 elif [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = recents ]; then
     readonly WORKLOAD=app-recents
-elif [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = launch ]; then
+elif [ -n "$RUNTIME_TEST_APK" ] \
+     && { [ "$APP_SCENARIO" = launch ] || [ "$APP_SCENARIO" = backup-transfer ]; }; then
     readonly WORKLOAD=app
 elif [ -z "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = launch ]; then
     readonly WORKLOAD=boot
 else
-    fail 'the Android app scenario differs from launch, recents, lifecycle, peer-lifecycle, or controlled-cm'
+    fail 'unknown Android app scenario'
 fi
 if [ -n "$STORAGE_KEY_PROBE" ]; then
     [ "$WORKLOAD" = boot ] && [ "$STORAGE_KEY_PROBE" = /storage-probe/storage-key-probe.apk ] \
@@ -4667,6 +4668,26 @@ PY
         LIFECYCLE_RECEIPT_READY=1
         fi
     fi
+fi
+
+if [ "$APP_SCENARIO" = backup-transfer ]; then
+    [ "${RUSTDESK_ANDROID_BACKUP_CONTROL_APK:-}" = /inputs/backup-control.apk ] \
+        && [ "$(stat -c '%u:%g:%a:%h' /inputs/backup-control.apk)" = 1000:1000:400:1 ] \
+        || fail 'backup control APK authority differs'
+    timeout --signal=TERM --kill-after=2s 900s \
+        python3 -I -B -S "$SCRIPT_DIR/test-android-backup-transfer.py" \
+        --adb "$ADB" --serial "$SERIAL" --control-apk /inputs/backup-control.apk \
+        --apk-sha256 "$APK_SHA256" \
+        || fail 'native Android backup/transfer exclusion failed'
+    timeout --signal=TERM --kill-after=2s 60s \
+        "$ADB" -s "$SERIAL" shell am start -W -n "$APP_ACTIVITY" >/dev/null \
+        || fail 'post-backup application launch failed'
+    wait_resumed_activity || fail 'post-backup MainActivity did not resume'
+    APP_PID="$(adb_shell_value pidof "$APP_PACKAGE")"
+    [[ "$APP_PID" =~ ^[1-9][0-9]*$ ]] || fail 'post-backup application process is absent'
+    sleep 5
+    [ "$(adb_shell_value pidof "$APP_PACKAGE")" = "$APP_PID" ] \
+        || fail 'post-backup application process did not survive rendering'
 fi
 
 if [ "$WORKLOAD" = boot ]; then

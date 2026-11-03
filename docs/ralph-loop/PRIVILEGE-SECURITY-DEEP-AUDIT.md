@@ -134693,3 +134693,36 @@ zero listener deltas and 402,755,584 bytes peak scratch. Twelve bounded files
 match on CTE/TUF. `android-backup-ledger-94acbbd7.json` is 4,801 bytes, SHA-256
 `2417296153c892f458c757a4a98731114e72b2f15ed2214339574c9196aa4199`.
 This audit-only receipt preserves the counted ledger. No owned job remains.
+
+## 2026-11-03 — native Android backup/transfer acceptance
+
+Previous goal turn is PROGRESS: corrected APK `aca3df16` passes packaging and
+Android 14 launch; its backup/restore behavior is still unproved. Continue R-S9
+at the native boundary before choosing another product patch. The retained APK
+and its companion are reused; no fifth APK-cache generation or full rebuild is
+needed. Mobile navigation and all independent parks remain parked.
+
+Add a dedicated `--android-emulator-runtime --scenario backup-transfer` replay.
+Its small control app targets API 33 with allowBackup=false and no exclusions.
+The control creates synthetic data in all nine storage domains through Android
+Context APIs. The exact candidate receives matching non-secret files under its
+application UID; each fixture is read back under that UID, Android labels are
+restored, and SELinux remains enforcing. Only the disposable AOSP emulator uses
+its root testing interface; neither host gains authority or changes services.
+
+The local test transport must successfully transfer and restore all nine control
+files. The candidate's successful transfer archive must contain metadata only;
+after exact fixture removal its restore must leave those files absent. Cloud mode
+must refuse the candidate and create no archive. Exact APK hashes, bounded archive
+digests/member inventories, command results, fixture cleanup, app relaunch and
+joined VM cleanup form the acceptance record. A skipped package, unreadable fixture
+or empty control cannot pass. This is offline framework evidence; manufacturer
+devices, older Android and external backup services retain their separate gaps.
+
+Research is bound to the API-34 sources listed above; LocalTransportService uses
+its package files directory and LocalTransport's full archive is `1/_full/PACKAGE`.
+Android 14 Bmgr source confirms the backup/restore terminal status strings:
+https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android14-release/cmds/bmgr/src/com/android/commands/bmgr/Bmgr.java.
+The pinned image's small ZIP metadata identifies the Default/AOSP API-34 x86_64
+image. Python and shell parsing/diff review pass. Native execution follows; no
+backup/transfer acceptance is claimed by this implementation checkpoint.

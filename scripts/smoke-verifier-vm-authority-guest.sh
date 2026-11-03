@@ -275,7 +275,7 @@ case "$#:${8:-}" in
         MODE=android-emulator-app
         ;;
     17:--android-emulator-runtime)
-        [ "${17}" = recents ] || exit 2
+        [ "${17}" = recents ] || [ "${17}" = backup-transfer ] || exit 2
         MODE=android-emulator-runtime
         ;;
     20:--android-emulator-runtime|21:--android-emulator-runtime)
@@ -11012,8 +11012,8 @@ run_android_emulator_runtime() {
     [[ "$ANDROID_RUNTIME_TEST_APK_SHA256" =~ ^[0-9a-f]{64}$ ]] \
         || fail 'Android emulator runtime instrumentation digest is malformed'
     case "$ANDROID_RUNTIME_SCENARIO" in
-        recents|peer-lifecycle|controlled-cm) ;;
-        *) fail 'Android emulator runtime scenario differs from recents, peer-lifecycle, or controlled-cm' ;;
+        recents|backup-transfer|peer-lifecycle|controlled-cm) ;;
+        *) fail 'unknown Android emulator runtime scenario' ;;
     esac
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ] \
        || [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; then
@@ -11070,6 +11070,7 @@ run_android_emulator_runtime() {
             || fail "Android emulator runtime workload metadata differs: $workload"
     done
     for workload in pins.env lib.sh online-android-sdk-output.py \
+        AndroidBackupControl.java build-android-backup-control.sh test-android-backup-transfer.py \
         build-x11-frame-source.py \
         android-peer-soak.py \
         android-peer-artifact.py \
@@ -11094,6 +11095,9 @@ run_android_emulator_runtime() {
         "$source_root/scripts/pins.env" \
         "$source_root/scripts/lib.sh" \
         "$source_root/scripts/android-emulator-runtime-check.sh" \
+        "$source_root/scripts/AndroidBackupControl.java" \
+        "$source_root/scripts/build-android-backup-control.sh" \
+        "$source_root/scripts/test-android-backup-transfer.py" \
         "$source_root/scripts/android-peer-artifact.py" \
         "$source_root/scripts/publish-artifact-result.py" \
         "$source_root/scripts/AndroidRecentsDismiss.java" \
@@ -11464,6 +11468,7 @@ run_android_emulator_runtime() {
         || fail 'Android runtime instrumentation execution receipt is absent'
     [ "$(grep -c '^ANDROID_EMULATOR_INSTRUMENTATION_SMOKE=' "$output")" -eq 1 ] \
         || fail 'Android runtime instrumentation execution receipt is duplicated'
+    if [ "$ANDROID_RUNTIME_SCENARIO" != backup-transfer ]; then
     recents_build_receipt="$(grep -E \
         '^ANDROID_RECENTS_GESTURE_BUILD=pass sha256=[0-9a-f]{64} source_sha256=[0-9a-f]{64} android_jar_sha256=[0-9a-f]{64} d8_sha256=[0-9a-f]{64} copies=2 equality=byte-identical network=none output=private-bind$' \
         "$output")" \
@@ -11581,6 +11586,7 @@ run_android_emulator_runtime() {
         esac
         recents_task_ids="${recents_task_ids:+$recents_task_ids }$recents_task_id"
     done
+    fi
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
     frame_endpoint_receipt="$(grep -Fx \
         'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=loopback-only transport=grpc-stream network=container-none' \
@@ -11711,6 +11717,11 @@ run_android_emulator_runtime() {
                 || fail "Android controlled-CM receipt is duplicated: $marker"
         done
         runtime_peer=production-loopback-cpace-controlled-cm
+    elif [ "$ANDROID_RUNTIME_SCENARIO" = backup-transfer ]; then
+        [ "$(grep -Fxc "ANDROID_BACKUP_NATIVE=pass domains=9 control=transferred-restored app=excluded-restored-empty cloud=refused selinux=Enforcing apk_sha256=$ANDROID_RUNTIME_APK_SHA256 cleanup=fixtures-removed" "$output")" -eq 1 ] \
+            && [ "$(grep -c '^ANDROID_BACKUP_NATIVE=' "$output")" -eq 1 ] \
+            || fail 'native Android backup acceptance receipt differs'
+        runtime_peer=absent
     else
         focused_recents_receipt="$(grep -E \
             "^ANDROID_EMULATOR_RECENTS=pass task_removals=10 actions=10 open_actions=10 task_ids=distinct open=ui-automation-app-switch-key-display-0 driver=android14-ui-automation-direct events=12 steps=10 step_ms=16 wait_for_animations=false runtime_uiautomator_sha256=$recents_runtime_uiautomator_sha256 driver_sha256=$recents_driver_sha256 framework_anr=absent service=never-started relaunch=resumed apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined$" \
@@ -11741,6 +11752,9 @@ run_android_emulator_runtime() {
           "$source_root/scripts/pins.env" \
           "$source_root/scripts/lib.sh" \
           "$source_root/scripts/android-emulator-runtime-check.sh" \
+          "$source_root/scripts/AndroidBackupControl.java" \
+          "$source_root/scripts/build-android-backup-control.sh" \
+          "$source_root/scripts/test-android-backup-transfer.py" \
           "$source_root/scripts/android-peer-artifact.py" \
           "$source_root/scripts/publish-artifact-result.py" \
           "$source_root/scripts/AndroidRecentsDismiss.java" \
@@ -11810,10 +11824,14 @@ run_android_emulator_runtime() {
         || fail 'cannot retire the sealed Android runtime input mount'
     SEALED_INPUTS_MOUNTED=0
     printf '%s\n' "$entry_receipt" "$apk_receipt" "$instrumentation_receipt" \
-        "$recents_build_receipt" "$recents_driver_receipt" \
-        "${recents_open_action_receipts[@]}" \
-        "${recents_action_receipts[@]}" "${recents_outcome_receipts[@]}" \
         "$renderer_receipt" "$runtime_receipt"
+    if [ "$ANDROID_RUNTIME_SCENARIO" = backup-transfer ]; then
+        grep '^ANDROID_BACKUP_' "$output"
+    else
+    printf '%s\n' "$recents_build_receipt" "$recents_driver_receipt" \
+        "${recents_open_action_receipts[@]}" \
+        "${recents_action_receipts[@]}" "${recents_outcome_receipts[@]}"
+    fi
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ] \
        || [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; then
         printf '%s\n' "$peer_artifact_receipt"
@@ -11831,7 +11849,7 @@ run_android_emulator_runtime() {
     elif [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; then
         printf '%s\n' "$controlled_cm_receipt" "$controlled_stop_receipt" \
             "$controlled_lifecycle_receipt"
-    else
+    elif [ "$ANDROID_RUNTIME_SCENARIO" = recents ]; then
         printf '%s\n' "$focused_recents_receipt"
     fi
     printf '%s\n' "$check_receipt"

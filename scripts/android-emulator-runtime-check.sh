@@ -9,7 +9,7 @@ die() {
 }
 
 [ "$#" -eq 6 ] || [ "$#" -eq 10 ] || [ "$#" -eq 11 ] \
-    || die 'usage: android-emulator-runtime-check.sh APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT recents | APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT {peer-lifecycle|controlled-cm} PEER_ROOT PEER_COMMIT PEER_TREE MANIFEST_SHA256 [--soak]'
+    || die 'usage: android-emulator-runtime-check.sh APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT {recents|backup-transfer} | APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT {peer-lifecycle|controlled-cm} PEER_ROOT PEER_COMMIT PEER_TREE MANIFEST_SHA256 [--soak]'
 readonly APK=$1
 readonly APK_SHA256=$2
 readonly TEST_APK=$3
@@ -26,14 +26,14 @@ if [ "$#" -eq 11 ]; then
         || die 'the two-hour soak requires peer-lifecycle'
 fi
 case "$RUNTIME_SCENARIO" in
-    recents) [ "$#" -eq 6 ] || die 'Recents-only replay accepts no peer authority' ;;
+    recents|backup-transfer) [ "$#" -eq 6 ] || die 'this replay accepts no peer authority' ;;
     peer-lifecycle|controlled-cm)
         { [ "$#" -eq 10 ] || [ "$#" -eq 11 ]; } && [[ "$PEER_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
             && [[ "$PEER_TREE" =~ ^[0-9a-f]{40}$ ]] \
             && [[ "$PEER_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]] \
             || die 'peer replay requires exact source and manifest authority'
         ;;
-    *) die 'the Android runtime scenario differs from recents, peer-lifecycle, or controlled-cm' ;;
+    *) die 'unknown Android runtime scenario' ;;
 esac
 readonly RUN_UID="$(id -u)"
 readonly RUN_GID="$(id -g)"
@@ -539,6 +539,7 @@ readonly RUNTIME_LOG=$WORKSPACE/runtime.log
 readonly OBSERVER_LOG=$WORKSPACE/observer.log
 readonly RECENTS_DRIVER_ROOT=$WORKSPACE/recents-driver
 readonly RECENTS_DRIVER_JAR=$RECENTS_DRIVER_ROOT/recents-dismiss.jar
+readonly BACKUP_CONTROL_APK=$RECENTS_DRIVER_ROOT/backup-control.apk
 readonly OBSERVER_ROOT=$WORKSPACE/observer
 readonly FRAME_SOURCE_ROOT=$WORKSPACE/frame-source
 readonly FRAME_SOURCE=$FRAME_SOURCE_ROOT/frame-source
@@ -588,6 +589,7 @@ VERIFY_CONTAINER="$(vm_docker create \
     --security-opt=apparmor=docker-default \
     --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=2g \
     --env HOME=/tmp/recents-driver-home \
+    --env "RUNTIME_SCENARIO=$RUNTIME_SCENARIO" \
     --mount "type=bind,source=$APK,target=/verify/app.apk,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$REPO_ROOT,target=/source,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
@@ -603,6 +605,10 @@ VERIFY_CONTAINER="$(vm_docker create \
         python3 -I -S /source/scripts/verify-android-apk-manifest.py \
             --apk /verify/app.apk \
             --aapt2 /online/android-sdk/build-tools/'"$ANDROID_BUILD_TOOLS"'/aapt2
+        if [ "$RUNTIME_SCENARIO" = backup-transfer ]; then
+            /bin/bash /source/scripts/build-android-backup-control.sh \
+                /source /online/android-sdk /driver/backup-control.apk
+        else
         for pass in a b; do
             mkdir -m 0700 "/driver/classes-$pass"
             javac -encoding UTF-8 -source 8 -target 8 \
@@ -625,6 +631,7 @@ VERIFY_CONTAINER="$(vm_docker create \
             "$(sha256sum /driver/recents-dismiss.jar | cut -d " " -f 1)" \
             '"$RECENTS_DRIVER_SOURCE_SHA256"' '"$ANDROID_PLATFORM_JAR_SHA256"' \
             '"$ANDROID_D8_SHA256"'
+        fi
     ')"
 [[ "$VERIFY_CONTAINER" =~ ^[0-9a-f]{64}$ ]] \
     || die 'APK verifier container ID is malformed'
@@ -654,6 +661,13 @@ case "${apk_receipts[0]}" in
     *"sha256=$APK_SHA256"*) ;;
     *) die 'runtime-test APK verifier reported a different digest' ;;
 esac
+if [ "$RUNTIME_SCENARIO" = backup-transfer ]; then
+    [ "$(stat -c '%u:%g:%a:%h' -- "$BACKUP_CONTROL_APK")" = 1000:1000:400:1 ] \
+        && [ "$(stat -c '%s' -- "$BACKUP_CONTROL_APK")" -le 4194304 ] \
+        || die 'backup control artifact metadata differs'
+    readonly BACKUP_CONTROL_SHA256="$(sha256sum "$BACKUP_CONTROL_APK" | cut -d ' ' -f 1)"
+    grep '^ANDROID_BACKUP_CONTROL_BUILD=pass ' "$VERIFY_LOG"
+else
 mapfile -t recents_driver_build_receipts < <(grep -E \
     "^ANDROID_RECENTS_GESTURE_BUILD=pass sha256=[0-9a-f]{64} source_sha256=$RECENTS_DRIVER_SOURCE_SHA256 android_jar_sha256=$ANDROID_PLATFORM_JAR_SHA256 d8_sha256=$ANDROID_D8_SHA256 copies=2 equality=byte-identical network=none output=private-bind$" \
     "$VERIFY_LOG" || true)
@@ -672,6 +686,7 @@ RECENTS_DRIVER_SHA256=${BASH_REMATCH[1]}
          "$RECENTS_DRIVER_SHA256" ] \
     || die 'Recents gesture-driver artifact differs from its build receipt'
 readonly RECENTS_DRIVER_SHA256
+fi
 [ "$(vm_docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' \
     "$VERIFY_CONTAINER")" = exited:0 ] \
     || die 'APK verifier container did not exit cleanly'
@@ -770,9 +785,16 @@ runtime_mounts=(
     --mount "type=bind,source=$ADB,target=/inputs/adb,readonly,bind-recursive=disabled"
     --mount "type=bind,source=$APK,target=/inputs/app.apk,readonly,bind-recursive=disabled"
     --mount "type=bind,source=$TEST_APK,target=/inputs/test.apk,readonly,bind-recursive=disabled"
-    --mount "type=bind,source=$RECENTS_DRIVER_JAR,target=/inputs/recents-dismiss.jar,readonly,bind-recursive=disabled"
 )
 runtime_environment=(--env RUSTDESK_ANDROID_INSTRUMENTATION_APK=/inputs/test.apk)
+gesture_arguments=()
+if [ "$RUNTIME_SCENARIO" = backup-transfer ]; then
+    runtime_mounts+=(--mount "type=bind,source=$BACKUP_CONTROL_APK,target=/inputs/backup-control.apk,readonly,bind-recursive=disabled")
+    runtime_environment+=(--env RUSTDESK_ANDROID_BACKUP_CONTROL_APK=/inputs/backup-control.apk)
+else
+    runtime_mounts+=(--mount "type=bind,source=$RECENTS_DRIVER_JAR,target=/inputs/recents-dismiss.jar,readonly,bind-recursive=disabled")
+    gesture_arguments=(/inputs/recents-dismiss.jar)
+fi
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ] \
    || [ "$RUNTIME_SCENARIO" = controlled-cm ]; then
     runtime_mounts+=(
@@ -824,7 +846,7 @@ RUNTIME_CONTAINER="$(vm_docker create \
         /source/scripts/smoke-android-emulator-boot.sh \
         /inputs/emulator.zip /inputs/system-image.zip /inputs/adb \
         /tmp/android-emulator-app /inputs/app.apk "$RUNTIME_SCENARIO" \
-        /inputs/recents-dismiss.jar "${soak_arguments[@]}")"
+        "${gesture_arguments[@]}" "${soak_arguments[@]}")"
 [[ "$RUNTIME_CONTAINER" =~ ^[0-9a-f]{64}$ ]] \
     || die 'Android runtime container ID is malformed'
 runtime_authority="$(vm_docker inspect --format \
@@ -847,12 +869,14 @@ runtime_namespace="$(vm_docker inspect --format \
     "$RUNTIME_CONTAINER")"
 [ "$runtime_namespace" = 'false||private||private' ] \
     || die "Android runtime container namespace authority differs: $runtime_namespace"
+if [ "$RUNTIME_SCENARIO" != backup-transfer ]; then
 runtime_driver_mounts="$(vm_docker inspect --format \
     '{{range .Mounts}}{{printf "%s\t%s\t%s\t%t\n" .Type .Source .Destination .RW}}{{end}}' \
     "$RUNTIME_CONTAINER" | awk -F '\t' '$3 == "/inputs/recents-dismiss.jar" { print }')"
 [ "$runtime_driver_mounts" = \
   "bind	$RECENTS_DRIVER_JAR	/inputs/recents-dismiss.jar	false" ] \
     || die 'Android Recents gesture-driver mount authority differs'
+fi
 if [ "$RUNTIME_SCENARIO" = controlled-cm ]; then
     runtime_peer_mounts="$(vm_docker inspect --format \
         '{{range .Mounts}}{{printf "%s\t%s\t%s\t%t\n" .Type .Source .Destination .RW}}{{end}}' \
@@ -1361,6 +1385,7 @@ instrumentation_receipt='ANDROID_EMULATOR_INSTRUMENTATION_SMOKE=pass target=com.
 [ "$(grep -Fxc "$instrumentation_receipt" "$RUNTIME_LOG" || true)" -eq 1 ] \
     && [ "$(grep -c '^ANDROID_EMULATOR_INSTRUMENTATION_SMOKE=' "$RUNTIME_LOG" || true)" -eq 1 ] \
     || die 'the matching instrumentation package did not execute in the app main process'
+if [ "$RUNTIME_SCENARIO" != backup-transfer ]; then
 mapfile -t recents_driver_stage_receipts < <(grep -E \
     "^ANDROID_RECENTS_GESTURE_DRIVER=pass sha256=$RECENTS_DRIVER_SHA256 framework=android14-ui-automation-direct open=ui-automation-app-switch-key-display-0 events=12 steps=10 step_ms=16 wait_for_animations=false runtime_uiautomator_sha256=[0-9a-f]{64} device_path=/data/local/tmp/rustdesk-recents-dismiss\.jar$" \
     "$RUNTIME_LOG" || true)
@@ -1465,6 +1490,7 @@ for lifecycle_cycle in $(seq 1 "$expected_recents_cycles"); do
     esac
     recents_task_ids="${recents_task_ids:+$recents_task_ids }$cycle_task_id"
 done
+fi
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ] \
    || [ "$RUNTIME_SCENARIO" = controlled-cm ]; then
 mapfile -t controlled_cm_receipts < <(grep -Fx \
@@ -1519,6 +1545,11 @@ mapfile -t controlled_lifecycle_receipts < <(grep -Fx \
 [ "${#controlled_lifecycle_receipts[@]}" -eq 1 ] \
     && [ "$(grep -c '^ANDROID_EMULATOR_CONTROLLED_CM=' "$RUNTIME_LOG")" -eq 1 ] \
     || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android controlled-CM lifecycle receipt is absent or duplicated'; }
+elif [ "$RUNTIME_SCENARIO" = backup-transfer ]; then
+    backup_receipt="ANDROID_BACKUP_NATIVE=pass domains=9 control=transferred-restored app=excluded-restored-empty cloud=refused selinux=Enforcing apk_sha256=$APK_SHA256 cleanup=fixtures-removed"
+    [ "$(grep -Fxc "$backup_receipt" "$RUNTIME_LOG")" -eq 1 ] \
+        && [ "$(grep -c '^ANDROID_BACKUP_NATIVE=' "$RUNTIME_LOG")" -eq 1 ] \
+        || die 'native Android backup acceptance receipt differs'
 else
 mapfile -t focused_recents_receipts < <(grep -E \
     "^ANDROID_EMULATOR_RECENTS=pass task_removals=10 actions=10 open_actions=10 task_ids=distinct open=ui-automation-app-switch-key-display-0 driver=android14-ui-automation-direct events=12 steps=10 step_ms=16 wait_for_animations=false runtime_uiautomator_sha256=$RECENTS_RUNTIME_UIAUTOMATOR_SHA256 driver_sha256=$RECENTS_DRIVER_SHA256 framework_anr=absent service=never-started relaunch=resumed apk_sha256=$APK_SHA256 vm_network=none container_network=none cleanup=joined$" \
@@ -1590,19 +1621,28 @@ verify_sha256 "$ADB" "$SHA256_ANDROID_PLATFORM_TOOLS_ADB_37_0_1"
     && [ "$(sha256sum "$ANDROID_D8" | awk '{ print $1 }')" = \
          "$ANDROID_D8_SHA256" ] \
     || die 'a Recents gesture-driver SDK input changed during execution'
+if [ "$RUNTIME_SCENARIO" = backup-transfer ]; then
+    [ "$(sha256sum "$BACKUP_CONTROL_APK" | cut -d ' ' -f 1)" = "$BACKUP_CONTROL_SHA256" ] \
+        || die 'backup control artifact changed during execution'
+else
 [ "$(stat -c '%u:%g:%a:%h' -- "$RECENTS_DRIVER_JAR")" = 1000:1000:400:1 ] \
     && [ "$(sha256sum "$RECENTS_DRIVER_JAR" | awk '{ print $1 }')" = \
          "$RECENTS_DRIVER_SHA256" ] \
     || die 'Recents gesture-driver artifact changed during execution'
+fi
 verify_image android-builder "$ANDROID_BUILDER_CONFIG_ID"
 verify_image devcheck "$DEV_CHECK_IMAGE_CONFIG_ID"
 printf '%s\n' "${apk_receipts[0]}" "$instrumentation_receipt" \
-    "${recents_driver_build_receipts[0]}" \
+    "${renderer_receipts[0]}" "${runtime_receipts[0]}"
+if [ "$RUNTIME_SCENARIO" = backup-transfer ]; then
+    grep '^ANDROID_BACKUP_' "$RUNTIME_LOG"
+else
+printf '%s\n' "${recents_driver_build_receipts[0]}" \
     "${recents_driver_stage_receipts[0]}" \
-    "${renderer_receipts[0]}" "${runtime_receipts[0]}" \
     "${recents_open_action_receipts[@]}" \
     "${recents_dismiss_action_receipts[@]}" \
     "${recents_dismiss_outcome_receipts[@]}"
+fi
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
     printf '%s\n' "${endpoint_receipts[0]}" "${frame_parser_receipts[0]}" \
         "${frame_observer_self_test_receipts[0]}" \
@@ -1624,6 +1664,8 @@ elif [ "$RUNTIME_SCENARIO" = controlled-cm ]; then
         "${controlled_stop_receipts[0]}" "${controlled_restart_receipts[0]}" \
         "${controlled_lifecycle_receipts[0]}"
     runtime_peer=production-loopback-cpace-controlled-cm
+elif [ "$RUNTIME_SCENARIO" = backup-transfer ]; then
+    runtime_peer=absent
 else
     printf '%s\n' "${focused_recents_receipts[0]}"
     runtime_peer=absent

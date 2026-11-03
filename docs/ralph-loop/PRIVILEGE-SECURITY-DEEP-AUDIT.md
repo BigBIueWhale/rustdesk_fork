@@ -132471,3 +132471,13 @@ No artifact rebuild or new cache generation was needed. The active-desktop
 ownership/login checkpoint is complete. Reassess release priorities now;
 controlled crash/race and exact final-artifact acceptance remain separate gaps,
 and all independent user parks remain in force.
+
+Fresh ledger count `4N8e0BKssa` at `3d058338` passes seven controls and the
+whole-input round trip: 397,042 tokens / 1,817,144 bytes, SHA-256
+`508f9fc8d692d813d07adc725dc70b03cc45ad1620097a64d186e77f9186098c`.
+Three listener deltas are zero; exact process/helper absence and VM/RAM/private
+retirement pass. Twelve records are copied and hash-verified. Capsule
+`linux-desktop-ledger-3d058338.json` is 4,795 bytes, SHA-256
+`d69a3a459df25db07572242c81e000bc962ebab202faada3da48fc5a5e0ea088`.
+No owned job remains. This checkpoint is complete; the full release goal stays
+active with its remaining native, platform, artifact and review requirements.

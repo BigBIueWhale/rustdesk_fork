@@ -134958,3 +134958,12 @@ is 6,381,019,136 bytes. Thirteen bounded files match on CTE/TUF.
 `ce98cfb36c27fef56f980faefa4bdd9180e12d966f9d3e719c5f8623dea3e821`.
 No owned job remains. Record the checkpoint in the ledger and obtain its fresh
 isolated count. The overall release goal remains active and incomplete.
+
+Fresh ledger count `SBRnwdWEaH` at `9941a6a0` passes all seven controls and the
+whole-input round trip: 399,016 tokens / 1,824,293 bytes, SHA-256
+`f323e446a744f1e6c0ac95f349d74cffaf0bae1cf5ecb322932760435901832d`.
+The 27-second count retires exact processes/helpers/private/RAM state, with three
+zero listener deltas and 402,759,680 bytes peak scratch. Twelve bounded files
+match on CTE/TUF. `terminal-retry-ledger-9941a6a0.json`: 4,801 bytes, SHA-256
+`00fcbb4fd8989fea4832d9d608c21de013df2dd6a8e133400201b398c4d6044e`.
+This audit-only addition preserves the counted ledger. No owned job remains.

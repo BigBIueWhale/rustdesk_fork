@@ -18,6 +18,7 @@ import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 
 import '../../common.dart';
+import '../../common/mobile_connection_navigation.dart';
 import '../../common/widgets/overlay.dart';
 import '../../common/widgets/dialog.dart';
 import '../../common/widgets/remote_input.dart';
@@ -75,6 +76,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
 
   InputModel get inputModel => gFFI.inputModel;
   late final SessionID sessionId;
+  late final FFI _viewFfi;
+  MobileConnectionRoute? _routeOwner;
 
   final TextEditingController _textController =
       TextEditingController(text: initText);
@@ -88,7 +91,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    sessionId = gFFI.start(
+    _viewFfi = gFFI;
+    sessionId = _viewFfi.start(
       widget.id,
       password: widget.password,
     );
@@ -96,10 +100,14 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     _presentationReadyRegistration = gFFI.ffiModel
         .registerPresentationReadyCallback(sessionId, _presentationReady);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
+      final route = _routeOwner;
+      if (!mounted ||
+          route == null ||
+          !route.isCurrent ||
+          !_viewFfi.isCurrentSession(sessionId)) return;
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
-      gFFI.dialogManager
-          .showLoading(translate('Connecting...'), onCancel: closeConnection);
+      _viewFfi.dialogManager.showLoading(translate('Connecting...'),
+          onCancel: _viewFfi.viewCloseCallback(sessionId, mobileRoute: route));
     });
     WakelockManager.enable(_uniqueKey);
     _physicalFocusNode.requestFocus();
@@ -126,7 +134,23 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route == null || !route.isCurrent) return;
+    _routeOwner = _viewFfi.bindMobileConnectionRoute(sessionId, route);
+  }
+
+  void _confirmCloseConnection() {
+    final route = _routeOwner;
+    if (route == null || !route.isCurrent) return;
+    clientClose(sessionId, _viewFfi, mobileRoute: route);
+  }
+
+  @override
   Future<void> dispose() async {
+    final route = _routeOwner;
+    if (route != null) _viewFfi.unbindMobileConnectionRoute(route);
     WidgetsBinding.instance.removeObserver(this);
     final presentationReadyRegistration = _presentationReadyRegistration;
     _presentationReadyRegistration = null;
@@ -422,7 +446,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
 
     return WillPopScope(
       onWillPop: () async {
-        clientClose(sessionId, gFFI);
+        _confirmCloseConnection();
         return false;
       },
       child: BlockableOverlay(
@@ -524,9 +548,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                     IconButton(
                       color: Colors.white,
                       icon: Icon(Icons.clear),
-                      onPressed: () {
-                        clientClose(sessionId, gFFI);
-                      },
+                      onPressed: _confirmCloseConnection,
                     ),
                     IconButton(
                       color: Colors.white,

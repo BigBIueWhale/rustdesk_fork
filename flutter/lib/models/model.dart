@@ -4685,9 +4685,16 @@ class FFI {
       isCurrentSession(expectedSessionId) &&
       clientOwnerId == expectedClientOwnerId;
 
+  bool get _usesMobileConnectionRoute =>
+      !isDesktop &&
+      (connType == ConnType.terminal ||
+          (isMobile &&
+              (connType == ConnType.defaultConn ||
+                  connType == ConnType.viewCamera)));
+
   MobileConnectionRoute? bindMobileConnectionRoute(
       SessionID expectedSessionId, ModalRoute<dynamic> route) {
-    if (sessionId != expectedSessionId || connType != ConnType.terminal) {
+    if (sessionId != expectedSessionId || !_usesMobileConnectionRoute) {
       return null;
     }
     final navigator = route.navigator;
@@ -4710,7 +4717,7 @@ class FFI {
     final closeMobileView = _mobileView.closeCallback(route: mobileRoute);
     return () {
       if (sessionId != expectedSessionId) return;
-      if (!isDesktop && connType == ConnType.terminal) {
+      if (_usesMobileConnectionRoute) {
         closeMobileView();
         return;
       }

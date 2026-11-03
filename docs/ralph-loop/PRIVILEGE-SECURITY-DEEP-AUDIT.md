@@ -135137,3 +135137,35 @@ private/RAM retirement; peak scratch is 402,771,968 bytes. Twelve bounded eviden
 files match on CTE/TUF. `file-log-restarts-ledger-269293a3.json`: 4,813 bytes,
 SHA-256 `a55a106ce1165d806abdd562a34b3ff9c0369f33cfb24730ef66f4621ed1ea01`.
 No owned job remains. This audit-only receipt preserves the counted ledger.
+
+### 2026-11-03 — real file-logger initialization and process exit
+
+The previous turn was progress: `b6hUHwiQZf` establishes sequential builder
+retention and leaves clean synchronized `e7f48ee5`. Continue R-S0 log-storage
+acceptance by closing the difference between that fixture and application startup.
+The fixture retains LoggerHandle and explicitly shuts down; core_main, Windows
+service startup and Flutter initialization discard init_log's returned handle.
+This ownership difference takes priority over more builder-only scenarios.
+
+Pinned flexi_logger 0.27.4 documents handle shutdown, but its direct file state is
+lazy: shutdown acts only on Active state, and the first write creates the writer
+and rotation/cleanup state. Therefore immediate handle drop alone is not evidence
+of lost records. The current public documentation also cautions about handle
+lifetime (https://docs.rs/flexi_logger/latest/flexi_logger/struct.LoggerHandle.html);
+the exact vendored implementation governs this version-specific investigation.
+
+Extend the same real-file/process assertions with a second path through public
+init_log. Each child starts the actual global file logger, drops its handle as the
+application does, attempts initialization under a second role name, checks that
+the second call creates no replacement directory, emits its unique record through
+log::info!, and exits without an explicit shutdown/flush. The parent joins every
+child and checks exact recent retention/current content/unrelated preservation.
+
+The focused Cargo test profile disables debug assertions so the production
+file-logging branch compiles; the new case exists only in that configuration and
+is required by the exact four-case inventory. Cargo documents that this profile
+setting controls cfg(debug_assertions):
+https://doc.rust-lang.org/cargo/reference/profiles.html#debug-assertions.
+This is still a nonoptimized library test artifact, not an installed/release app.
+No product logging change is made. All parked topics remain parked. Execution
+and exact artifact/cleanup evidence are pending.

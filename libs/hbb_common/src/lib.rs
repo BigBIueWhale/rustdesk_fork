@@ -557,11 +557,33 @@ mod test {
 
     #[test]
     fn file_logging_restarts_preserve_recent_records() {
+        check_log_restarts(false);
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[test]
+    fn file_logging_startup_preserves_recent_records() {
+        check_log_restarts(true);
+    }
+
+    fn check_log_restarts(global: bool) {
         const DIRECTORY_ENV: &str = "RUSTDESK_LOG_RESTART_TEST_DIRECTORY";
         const RECORD_ENV: &str = "RUSTDESK_LOG_RESTART_TEST_RECORD";
         const MARKER: &str = "restart-record-";
         if let Some(path) = std::env::var_os(DIRECTORY_ENV) {
             let record: usize = std::env::var(RECORD_ENV).unwrap().parse().unwrap();
+            if global {
+                let path = std::path::PathBuf::from(path);
+                let name = path.file_name().unwrap().to_str().unwrap();
+                let handle = init_log(false, name);
+                assert!(handle.is_some(), "the release file logger must start");
+                drop(handle);
+                let other_name = format!("{name}-second-init");
+                assert!(init_log(false, &other_name).is_none());
+                assert!(!config::Config::log_path().join(other_name).exists());
+                log::info!("{MARKER}{record}");
+                return;
+            }
             let (logger, handle) = file_logger(false, path.into()).unwrap().build().unwrap();
             logger.log(
                 &log::Record::builder()
@@ -574,7 +596,19 @@ mod test {
             return;
         }
 
-        let directory = LogDirectory::new();
+        let directory = if global {
+            let path = config::Config::log_path()
+                .join(format!("startup-regression-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir(&path).unwrap();
+            LogDirectory(path)
+        } else {
+            LogDirectory::new()
+        };
+        let test_name = if global {
+            "test::file_logging_startup_preserves_recent_records"
+        } else {
+            "test::file_logging_restarts_preserve_recent_records"
+        };
         let unrelated = directory.0.join("unrelated_r2000-01-01_00-00-00.log");
         std::fs::write(&unrelated, b"preserve this log family").unwrap();
         let executable = std::env::current_exe().unwrap();
@@ -583,7 +617,7 @@ mod test {
             let output = std::process::Command::new(&executable)
                 .args([
                     "--exact",
-                    "test::file_logging_restarts_preserve_recent_records",
+                    test_name,
                     "--test-threads=1",
                 ])
                 .env(DIRECTORY_ENV, &directory.0)
@@ -616,7 +650,8 @@ mod test {
                 .ends_with(&format!("{MARKER}{record}\n")));
             assert_eq!(std::fs::read(&unrelated).unwrap(), b"preserve this log family");
         }
-        println!("FILE_LOG_RESTART processes=40 restarts=39 files=32 oldest=8 newest=39 bytes={total} unrelated=preserved children=joined");
+        let source = if global { "STARTUP" } else { "RESTART" };
+        println!("FILE_LOG_{source} processes=40 restarts=39 files=32 oldest=8 newest=39 bytes={total} unrelated=preserved children=joined");
     }
 
     #[test]

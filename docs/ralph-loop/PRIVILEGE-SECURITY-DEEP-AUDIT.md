@@ -134928,3 +134928,13 @@ identical for the replay. Four zero listener deltas and exact process/helper/
 private/RAM retirement pass; thirteen bounded files match on CTE/TUF.
 `terminal-retry-fixed-58c6cdcb.json`: 16,012 bytes, SHA-256
 `bac5171d729f245e450cc9af826896a2b824598af6d3f123c652a75b626dbff4`.
+
+Replay `RIeG20oOlG` at `c8ef98dd` exports all fifteen named product cases passing
+in 8.3 seconds. The parser's two negative-control groups pass; its success-control
+dispatch still lacks the newly selected reconnect profile and raises KeyError.
+Add the explicit two-suite/fifteen-case expectation. The full harness remains
+unaccepted until replay, although the component correction is now observed.
+Four zero listener deltas and exact process/helper/private/RAM retirement pass;
+thirteen bounded files match on CTE/TUF. `terminal-retry-fixed-c8ef98dd.json`:
+15,307 bytes, SHA-256
+`1ae68c62dd5463bbe0d382611b0783055d636799344a712a9aca32ed8d135d83`.

@@ -276,6 +276,9 @@ class ResultTests(unittest.TestCase):
         if SINGLE_PROFILE == "trackpad-speed":
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 16))
             return
+        if SINGLE_PROFILE == "reconnect":
+            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 15))
+            return
         if SINGLE_PROFILE is not None:
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE),
                              (1, {"locales": 16, "screenshot-save": 12,

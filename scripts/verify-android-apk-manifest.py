@@ -62,8 +62,8 @@ class Node:
     line: int | None = None
 
 
-def run_aapt2(aapt2, apk):
-    cmd = [str(aapt2), "dump", "xmltree", str(apk), "--file", "AndroidManifest.xml"]
+def run_aapt2(aapt2, apk, xml_file="AndroidManifest.xml"):
+    cmd = [str(aapt2), "dump", "xmltree", str(apk), "--file", xml_file]
     return subprocess.run(cmd, check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
@@ -309,9 +309,71 @@ def validate_manifest(tree):
         return errors
     if attr_bool(errors, "application", app.attrs, "allowBackup") is not False:
         errors.append("application: allowBackup must be false")
+    if attr_bool(errors, "application", app.attrs, "fullBackupContent") is not False:
+        errors.append("application: fullBackupContent must be false")
+    if type(app.attrs.get("dataExtractionRules")) is not int:
+        errors.append("application: dataExtractionRules must reference the backup exclusion resource")
+    if "backupAgent" in app.attrs:
+        errors.append("application: custom backup agents are not permitted")
 
     validate_components(errors, app)
     return errors
+
+
+def validate_backup_rules(tree):
+    errors = []
+    if len(tree.children) != 1 or tree.children[0].tag != "data-extraction-rules":
+        return ["backup rules: expected one data-extraction-rules root"]
+    rules = tree.children[0]
+    if rules.attrs or sorted(node.tag for node in rules.children) != ["cloud-backup", "device-transfer"]:
+        return ["backup rules: expected only cloud-backup and device-transfer policies"]
+    domains = {
+        "root", "file", "database", "sharedpref", "external",
+        "device_root", "device_file", "device_database", "device_sharedpref",
+    }
+    for policy in rules.children:
+        excluded = set()
+        for node in policy.children:
+            domain = node.attrs.get("domain")
+            if (node.tag != "exclude" or node.children or domain not in domains
+                    or node.attrs != {"domain": domain, "path": "."} or domain in excluded):
+                errors.append(f"backup rules: {policy.tag} must exclude each complete storage domain exactly once")
+                break
+            excluded.add(domain)
+        if policy.attrs or excluded != domains:
+            errors.append(f"backup rules: {policy.tag} has incomplete or conditional exclusions")
+    return errors
+
+
+def validate_apk_backup(aapt2, apk, manifest_tree):
+    app = next(node for node in walk(manifest_tree) if node.tag == "application")
+    resource_id = app.attrs["dataExtractionRules"]
+    proc = subprocess.run([str(aapt2), "dump", "resources", str(apk)],
+                          check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if proc.returncode != 0:
+        return ["backup rules: cannot decode APK resource table: " + proc.stderr]
+    # Resolve the manifest's resource ID, including its complete configuration set.
+    # Checking a file by name alone would also accept an unreferenced policy.
+    entries = []
+    selected = None
+    for line in proc.stdout.splitlines():
+        text = line.strip()
+        indent = len(line) - len(line.lstrip())
+        if selected is not None and text and indent <= selected:
+            selected = None
+        match = re.match(r"resource (0x[0-9a-fA-F]+) xml/data_extraction_rules(?:\s|$)", text)
+        if match:
+            entries.append((int(match.group(1), 16), []))
+            selected = indent
+        elif selected is not None and text:
+            entries[-1][1].append(text)
+    expected = [(resource_id, ["() (file) res/xml/data_extraction_rules.xml type=XML"])]
+    if entries != expected:
+        return ["backup rules: manifest must select the single unqualified data_extraction_rules XML resource"]
+    proc = run_aapt2(aapt2, apk, "res/xml/data_extraction_rules.xml")
+    if proc.returncode != 0:
+        return ["backup rules: cannot decode compiled exclusions: " + proc.stderr]
+    return validate_backup_rules(parse_xmltree(proc.stdout))
 
 
 def main():
@@ -333,7 +395,10 @@ def main():
             print(proc.stderr, file=sys.stderr, end="")
         return proc.returncode
 
-    errors = validate_manifest(parse_xmltree(proc.stdout))
+    tree = parse_xmltree(proc.stdout)
+    errors = validate_manifest(tree)
+    if not errors:
+        errors.extend(validate_apk_backup(args.aapt2, args.apk, tree))
     if errors:
         for error in errors:
             print(error, file=sys.stderr)

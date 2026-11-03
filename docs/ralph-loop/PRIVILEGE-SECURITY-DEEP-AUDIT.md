@@ -134565,3 +134565,53 @@ reconnect cycles with actual peer-connection counts. It does not establish the
 new ended-session-view regression or all hidden/replacement-route cases; those
 need explicit observations with the corrected APK. Complete native teardown,
 Android/iOS device and release acceptance remain open. The goal stays active.
+
+## 2026-11-03 — user pivot; Android backup and transfer exclusion
+
+The user directs a different aspect. Mobile Remote/Camera native navigation is
+OPEN/PARKED; the component correction remains accepted at its recorded layer.
+Build `GUYycVuzhk` finishes at frozen `fd258e8b`: APK verification, Android 14
+x86_64 install, resumed activity, SwiftShader rendering and instrumentation-process
+smoke pass. This does not execute native navigation/owner retirement. The app is
+48,309,864 bytes, SHA-256
+`c25cd79c9eca613019915d1d2d16ab7f871ce867ea90f8d750d11839d6e5bb15`;
+the matching test APK is 110,287 bytes, SHA-256
+`dfde71ea75357ab95e531c4278905a247a58f68fd03505ba899f713bb77b1740`.
+Both stay on TUF; thirteen bounded evidence files match on CTE/TUF. Four listener
+deltas are zero and exact wrapper/QEMU/helper/private/RAM absence is reconciled
+under the shared lock. Peak scratch is 7,331,725,312 bytes, elapsed 1,007 seconds.
+`mobile-android-build-fd258e8b.json`: 8,959 bytes, SHA-256
+`653f1cda4ad0159e6278e4f10b95ba2f67935d86dd5bf2cadec29bc2595bbb49`.
+
+Select the separate R-S9/R-X6 backup-exclusion requirement. The current Android
+manifest declares allowBackup=false but neither fullBackupContent nor
+dataExtractionRules. Android's documented API-31+ manufacturer variation permits
+device-to-device transfer despite allowBackup=false. This is a concrete missing
+platform policy, not an observed credential disclosure or local escalation.
+It takes priority over further layout work because the policy protects the
+credential-bearing store and the authenticated Android build inputs are available.
+Language/locale integration was mentioned before checking the ledger; its existing
+park is preserved and no work on that topic occurred. All independent parks remain.
+
+Primary references and design implications:
+- https://developer.android.com/about/versions/12/behavior-changes-12#backup-restore
+  distinguishes cloud and device transfer and documents the allowBackup variation.
+- https://developer.android.com/identity/data/autobackup specifies separate policies,
+  nine credential/device-protected/external storage domains, recursive directory
+  exclusions, and the default inclusion when a transfer section is omitted.
+- https://android.googlesource.com/platform/prebuilts/fullsdk/platforms/android-26/+/refs/heads/main/data/res/values/attrs_manifest.xml
+  defines fullBackupContent as reference-or-boolean, including explicit opt-out.
+
+The correction keeps allowBackup=false, sets fullBackupContent=false for older
+Android, and references one unqualified resource excluding every complete domain
+from both cloud backup and device transfer. It changes no storage location or
+credential format. The existing final-APK validator checks the manifest flags,
+absence of a custom backup agent, actual resource-ID binding, single default
+configuration and compiled policy contents. A detached XML file or a permissive
+qualified resource must not pass. Existing signed-build/emulator callers use this
+same validator. No separate backup mechanism or migration mode is introduced.
+
+The immediate checkpoint is exact-source APK resource/link validation plus normal
+install/launch/rendering, using the bounded no-NIC TUF VM. Actual transfer exclusion
+on manufacturer devices and complete release acceptance remain open; a compiled
+policy and launch do not establish those behaviors. No host services change.

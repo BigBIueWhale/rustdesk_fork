@@ -133743,3 +133743,13 @@ was created, queried or published, and no archive was downloaded. TUF is clean a
 the inspected commit, has 47,383,120 KiB available memory and no private/RAM run
 markers. The only planned VM work is the required fresh ledger metric after this
 documentation update; no application rebuild is needed for this source review.
+
+Final ledger count `sGqrqUsYt1` at `492ac9c2` passes seven controls and the
+whole-input round trip in 28 outer seconds: **395,391 tokens / 1,808,202 bytes**,
+input SHA-256 `9f8ac18953649aa366a4fea7b383272f60f26d015fdccb0de6dcb051dd356160`.
+Three listener deltas are zero; exact wrapper/QEMU/helpers and private/RAM state
+retire. Scratch peaks at 402,735,104 bytes; twelve bounded records are copied and
+hash-verified on CTE. Capsule `source-delivery-ledger-492ac9c2.json` is 4,803 bytes,
+SHA-256 `556985d58f0fb56acc288d8e44ee018a2a1baefd1d9434b9237505eabae293d4`.
+This verifies documentation size and isolated cleanup only. The source-delivery
+review checkpoint is complete; product/release acceptance remains OPEN.

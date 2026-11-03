@@ -134139,3 +134139,29 @@ listener deltas and 402,612,224 bytes peak RAM scratch. Twelve bounded evidence
 files match on CTE/TUF. `theme-startup-ledger-cca31f4d.json`: 4,795 bytes,
 SHA-256 `056821a181af2ee72069393617b7c7becd27b5c15b82f041b6a7e3f2db744c9c`.
 This audit-only receipt leaves the counted ledger unchanged. No owned job remains.
+
+## 2026-11-03 — mobile theme dialog save ownership
+
+Previous goal turn: progress; four native theme restart generations pass. Review
+of the remaining overlapping-save gap finds a concrete mobile dialog boundary:
+`showThemeSettings` leaves choices enabled during writes, has no callback-time
+fixed-option/owner check, and tests the parent overlay context after completion.
+`OverlayDialogManager.show` passes `overlayState.context`, so that context may
+remain mounted after this specific dialog retires. The existing `DialogClose`
+already exposes exact ownership through `isCurrent`; no shared manager change
+is needed. Prioritize this required settings workflow over more passing desktop
+theme permutations. Mouse, cursor, mobile Boolean/language and other parks remain.
+
+Add seven rendered mobile-dialog cases to the existing focused theme shard:
+overlapping clicks, failed save/retry, retired callback, pending save across
+dismiss/reopen, fixed-option change, three legitimate choices and cancellation.
+Run the unchanged product first, then require one admitted save, disabled pending
+choices, exact-dialog completion and visible retry without cancelling admitted
+storage work. The fixture executes the actual mobile dialog and overlay manager
+with explicit native/platform doubles in the no-NIC Linux VM; this is component
+evidence, not Android/iOS persistence or device acceptance. No full app rebuild
+or unrelated parked test is needed for this first decision.
+Flutter's mounted flag describes its particular context, and StatefulBuilder
+state must outlive builder calls:
+https://api.flutter.dev/flutter/widgets/BuildContext/mounted.html
+https://api.flutter.dev/flutter/widgets/StatefulBuilder-class.html.

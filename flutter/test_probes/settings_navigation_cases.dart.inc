@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
+import 'package:flutter_hbb/common/widgets/overlay.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/mobile/pages/settings_page.dart' as mobile;
 import 'package:flutter_hbb/desktop/pages/desktop_home_page.dart';
@@ -413,6 +414,38 @@ Future<void> _mountTheme(WidgetTester tester) async {
 Radio<String> _themeRadio(WidgetTester tester, String value) =>
     tester.widget<Radio<String>>(find.byWidgetPredicate(
         (widget) => widget is Radio<String> && widget.value == value));
+
+Future<OverlayDialogManager> _mountMobileTheme(WidgetTester tester) async {
+  installSettingsProbeAndroid(true);
+  final overlay = BlockableOverlayState();
+  final manager = OverlayDialogManager();
+  manager.setOverlayState(overlay);
+  await tester.binding.setSurfaceSize(const Size(400, 600));
+  await tester.pumpWidget(GetMaterialApp(
+    navigatorKey: globalKey,
+    theme: MyTheme.lightTheme,
+    darkTheme: MyTheme.darkTheme,
+    themeMode: MyTheme.getThemeModePreference(),
+    home: Scaffold(body: BlockableOverlay(
+      state: overlay, underlying: const SizedBox.expand(),
+    )),
+  ));
+  mobile.showThemeSettings(manager);
+  await _settle(tester);
+  addTearDown(() async {
+    manager.dismissAll();
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 4));
+    await tester.binding.setSurfaceSize(null);
+  });
+  return manager;
+}
+
+Finder _mobileThemeChoice(ThemeMode value) => find.byWidgetPredicate(
+    (widget) => widget is RadioListTile<ThemeMode> && widget.value == value);
+
+RadioListTile<ThemeMode> _mobileThemeRadio(WidgetTester tester, ThemeMode value) =>
+    tester.widget<RadioListTile<ThemeMode>>(_mobileThemeChoice(value));
 
 void _expectSelection(WidgetTester tester, SettingsTabKey tab) {
   final dynamic state = tester.state(find.byType(DesktopSettingPage));
@@ -826,6 +859,126 @@ void main() {
     expect(native.themeWrites, ['dark', defaultOptionTheme]);
     expect(native.themeNotifications, 2);
     expect(_themeRadio(tester, 'system').groupValue, 'system');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('mobile theme owns one save across clicks and rebuilds', (tester) async {
+    final save = Completer<String>();
+    native.saveTheme = (_) => save.future;
+    await _mountMobileTheme(tester);
+    final stale = _mobileThemeRadio(tester, ThemeMode.dark).onChanged!;
+    await tester.tap(_mobileThemeChoice(ThemeMode.dark));
+    await _settle(tester);
+    final disabled = ThemeMode.values.every(
+        (mode) => _mobileThemeRadio(tester, mode).onChanged == null);
+    await tester.tap(_mobileThemeChoice(ThemeMode.system));
+    stale(ThemeMode.system);
+    await _settle(tester);
+    final admitted = List<String>.of(native.themeWrites);
+    save.complete('dark');
+    await _settle(tester);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(disabled, isTrue);
+    expect(admitted, ['dark']);
+    expect(native.theme, 'dark');
+    expect(find.byType(CustomAlertDialog), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('mobile theme failed save remains visible and permits retry', (tester) async {
+    native.saveTheme = (_) => Future<String>.error(StateError('write refused'));
+    await _mountMobileTheme(tester);
+    await tester.tap(_mobileThemeChoice(ThemeMode.dark));
+    await _settle(tester);
+    final failed = find.descendant(of: find.byType(CustomAlertDialog),
+        matching: find.text('Failed')).evaluate().isNotEmpty;
+    final before = native.theme;
+    final retryEnabled = _mobileThemeRadio(tester, ThemeMode.dark).onChanged != null;
+    native.saveTheme = null;
+    await tester.tap(_mobileThemeChoice(ThemeMode.dark));
+    await _settle(tester);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(before, 'light');
+    expect(failed && retryEnabled, isTrue);
+    expect(native.themeWrites, ['dark', 'dark']);
+    expect(native.theme, 'dark');
+    expect(find.byType(CustomAlertDialog), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('mobile theme dismissed dialog refuses retained callback', (tester) async {
+    final manager = await _mountMobileTheme(tester);
+    final stale = _mobileThemeRadio(tester, ThemeMode.dark).onChanged!;
+    manager.dismissAll();
+    await _settle(tester);
+    final escaped = <Object>[];
+    runZonedGuarded(() => stale(ThemeMode.dark),
+        (Object error, StackTrace stack) => escaped.add(error));
+    await _settle(tester);
+    expect(native.themeWrites, isEmpty);
+    expect(escaped, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('mobile theme admitted save drains after dialog replacement', (tester) async {
+    final save = Completer<String>();
+    native.saveTheme = (_) => save.future;
+    final manager = await _mountMobileTheme(tester);
+    final stale = _mobileThemeRadio(tester, ThemeMode.dark).onChanged!;
+    final escaped = <Object>[];
+    runZonedGuarded(() => stale(ThemeMode.dark),
+        (Object error, StackTrace stack) => escaped.add(error));
+    await _settle(tester);
+    manager.dismissAll();
+    await _settle(tester);
+    mobile.showThemeSettings(manager);
+    await _settle(tester);
+    save.complete('dark');
+    await _settle(tester);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(native.themeWrites, ['dark']);
+    expect(native.theme, 'dark');
+    expect(find.byType(CustomAlertDialog), findsOneWidget);
+    expect(escaped, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('mobile theme fixed preference rejects retained callback', (tester) async {
+    await _mountMobileTheme(tester);
+    final stale = _mobileThemeRadio(tester, ThemeMode.dark).onChanged!;
+    native.fixedOptions.add(kCommConfKeyTheme);
+    stale(ThemeMode.dark);
+    await _settle(tester);
+    expect(native.themeWrites, isEmpty);
+    expect(native.theme, 'light');
+    expect(find.byType(CustomAlertDialog), findsOneWidget);
+  });
+
+  testWidgets('mobile theme saves light dark and follow system choices', (tester) async {
+    final manager = await _mountMobileTheme(tester);
+    for (final mode in [ThemeMode.dark, ThemeMode.light, ThemeMode.system]) {
+      if (mode != ThemeMode.dark) {
+        mobile.showThemeSettings(manager);
+        await _settle(tester);
+      }
+      await tester.tap(_mobileThemeChoice(mode));
+      await _settle(tester);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(MyTheme.getThemeModePreference(), mode);
+      expect(find.byType(CustomAlertDialog), findsNothing);
+    }
+    expect(native.themeWrites, ['dark', 'light', defaultOptionTheme]);
+    expect(native.themeNotifications, 3);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('mobile theme dismissal preserves the saved choice', (tester) async {
+    final manager = await _mountMobileTheme(tester);
+    manager.dismissAll();
+    await _settle(tester);
+    expect(native.themeWrites, isEmpty);
+    expect(native.theme, 'light');
+    expect(find.byType(CustomAlertDialog), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

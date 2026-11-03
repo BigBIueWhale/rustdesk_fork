@@ -148,7 +148,7 @@ class ResultTests(unittest.TestCase):
             names = sorted(result.SETTINGS_NAVIGATION_TESTS)
             if profile == "desktop-theme":
                 names = [name for name in names
-                         if name.startswith(("desktop home", "desktop theme", "recording directory", "settings "))]
+                         if name.startswith(("desktop home", "desktop theme", "mobile theme", "recording directory", "settings "))]
         elif profile == "terminal-output":
             suites = sorted(result.TERMINAL_OUTPUT_TESTS)
             names = sorted(set().union(*result.TERMINAL_OUTPUT_TESTS.values()))
@@ -269,7 +269,7 @@ class ResultTests(unittest.TestCase):
                              (1, {"locales": 16, "screenshot-save": 12,
                                   "draggable-divider": 22, "file-columns": 13,
                                   "file-progress": 52, "peer-search": 36,
-                                  "desktop-theme": 47, "custom-scale": 42}[SINGLE_PROFILE]))
+                                  "desktop-theme": 54, "custom-scale": 42}[SINGLE_PROFILE]))
             return
         self.assertEqual(
             self.parse(self.events("models"), "models"),
@@ -307,8 +307,8 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("file-search"), "file-search"), (1, 12))
         self.assertEqual(self.parse(self.events("file-navigation"), "file-navigation"), (7, 125))
         self.assertEqual(self.parse(self.events("terminal-output"), "terminal-output"), (2, 37))
-        self.assertEqual(self.parse(self.events("settings-navigation"), "settings-navigation"), (1, 77))
-        self.assertEqual(self.parse(self.events("desktop-theme"), "desktop-theme"), (1, 47))
+        self.assertEqual(self.parse(self.events("settings-navigation"), "settings-navigation"), (1, 84))
+        self.assertEqual(self.parse(self.events("desktop-theme"), "desktop-theme"), (1, 54))
         self.assertEqual(self.parse(self.events("modifier-release"), "modifier-release"), (5, 121))
         self.assertEqual(self.parse(self.events("connect-password"), "connect-password"), (1, 14))
         self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (10, 117))

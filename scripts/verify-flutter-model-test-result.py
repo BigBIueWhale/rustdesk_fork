@@ -1254,6 +1254,13 @@ SETTINGS_NAVIGATION_TESTS = {
     "desktop theme close drains admitted save and retires callbacks",
     "desktop theme fixed preference rejects retained callbacks",
     "desktop theme publishes effective preference and follow system",
+    "mobile theme owns one save across clicks and rebuilds",
+    "mobile theme failed save remains visible and permits retry",
+    "mobile theme dismissed dialog refuses retained callback",
+    "mobile theme admitted save drains after dialog replacement",
+    "mobile theme fixed preference rejects retained callback",
+    "mobile theme saves light dark and follow system choices",
+    "mobile theme dismissal preserves the saved choice",
     "desktop theme macOS startup restores system appearance",
     "desktop theme macOS main sends saved choices and waits for native reply",
     "desktop theme macOS receiver updates native appearance without writes",
@@ -2099,7 +2106,7 @@ def parse_result(path, profile="models"):
         expected_names = SETTINGS_NAVIGATION_TESTS
         if profile == "desktop-theme":
             expected_names = {name for name in expected_names
-                              if name.startswith(("desktop home", "desktop theme", "recording directory", "settings "))}
+                              if name.startswith(("desktop home", "desktop theme", "mobile theme", "recording directory", "settings "))}
         expected_tests = len(expected_names)
     elif profile == "terminal-output":
         expected_by_suite = TERMINAL_OUTPUT_TESTS

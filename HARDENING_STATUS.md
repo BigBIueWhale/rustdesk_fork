@@ -4725,6 +4725,27 @@ debug/headless installed-layout group-stop behavior, not kernel-stalled drain,
 signal/wait errors, concurrent admitted mutations, Remote pixels, final packages,
 other init systems/platforms or independent review. Those remain OPEN.
 
+**Post-reap cleanup retry corrected (`e0c73321`).** Baseline `5Oc6qQtEVt`
+on `fdbab046` reproduces a numeric-PID TERM after the child is already reaped:
+a root fixture removes the exact record at successful wait4 exit, and error
+cleanup signals that absent PID again, returning ESRCH. Termination now reads
+the retained Child's exit status before signaling; a reaped child permits only
+record cleanup, while inspection/removal errors remain errors. Corrected build
+`ucV1OpdZq3` and replay `AJQ8LuAUHy` pass: the same fault produces zero
+post-reap TERM calls, service exit 1, unchanged credential and complete
+process/cgroup/PAM/Xvfb/user retirement. Real CPace succeeds before the fault.
+The `linux-record-cleanup-{86c4fc22,build-e0c73321,accepted-e0c73321}.json`
+capsules bind baseline, exact binary and native evidence; VM/RAM/private cleanup
+and listener comparisons pass. This fixes a demonstrated lifecycle safety bug
+under a controlled root-only storage fault; no unprivileged record-write trigger
+or actual wrong-process signal is claimed. Arbitrary I/O/kernel failure,
+final-package, other-platform and independent-review acceptance remain OPEN.
+Same-artifact regression `JO4qAZvARA` retains the stopped child/record through
+four seconds of pending TERM, retires the tree cleanly in 8.265 seconds without
+automatic restart, then completes CPace after explicit fresh startup and stops
+normally. `linux-record-cleanup-stop-e0c73321.json` binds both generations and
+their complete cleanup. The existing stopped-child fixture is unchanged.
+
 **IPC / option CLI — component acceptance; installed acceptance OPEN.**
 At `ad638445`, TUF `1VEEFlN8jX` passes all **176 listener/transport, 32 CLI,
 10 Windows selector, 22 main-protocol, 8 main-transaction, 8 main-peer, 4 URL-loop,
@@ -10280,7 +10301,7 @@ sandbox implementation and checker-repair history remain in Git.
   | --- | --- |
   | R-S11c-27a | Source: retained direct child and supervisor-death binding. Current combined application/systemd crash retirement passes above; independent mechanism and final-artifact acceptance remain OPEN. |
   | R-S11c-27b | Source: root-only lease, durable identity record and pidfd-first recovery. Current installed-layout sessionless/active-desktop exclusivity, retained-connection login and automatic supervisor-crash recovery pass above; arbitrary live-record recovery and final artifacts remain OPEN. |
-  | R-S11c-27c | Current debug/headless installed-layout `0SV5IJiy9f`: stopped child and exact record remain owned through the TERM-pending observation; ordinary stop retires the tree within 8.259 seconds and fresh startup completes CPace. Kernel-stalled/error/uncertain drain and final-artifact acceptance remain OPEN. |
+  | R-S11c-27c | `e0c73321` fixes the reproduced post-reap TERM retry; native `AJQ8LuAUHy` passes the exact record-removal fault. Same-artifact `JO4qAZvARA` preserves stopped-child/record ownership, retires the tree in 8.265 seconds and completes fresh-start CPace. Other I/O/kernel failures, uncertain drain and final-artifact acceptance remain OPEN. |
   | R-S11c-27d | Historical focused behavior: parent death, lease release, stale-record removal and exact live-record recovery. |
   | R-S11c-27e | Historical focused behavior: executed-inode identity across rename/unlink, without pathname/argv authority. |
   | R-S11c-27f | Historical debug/container: manual/non-systemd restart, graceful/forced stop and unrelated portable survival. |

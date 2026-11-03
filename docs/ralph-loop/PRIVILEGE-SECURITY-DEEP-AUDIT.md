@@ -132877,3 +132877,58 @@ retain the Child, but its cached terminal status cannot confer signaling
 authority on retry. Native validation requires rebuilding this exact source,
 replaying the identical fault criterion, and checking the existing stopped-child
 graceful/forced shutdown and fresh-start scenario on that same artifact.
+
+Corrected build `ucV1OpdZq3` at `e0c73321` passes in 256 outer seconds
+(260.191 capture seconds), including the existing file-type/source behavioral
+controls. Artifact manifest SHA-256 is
+`b04d19948bec8bb5e1604699d2cded956725e4558dd8d4d492a6ac8505a0bb60`;
+the binary is 87,531,560 bytes, SHA-256
+`46d5b6d858ee3422ac05cbec5ad2adfb0efc52bb4d4c7d52dcc12ff00e656654`.
+The probe remains byte-identical to the baseline; readiness probe SHA-256 is
+`23d55c7f3c3ec8f4b8267c4a8c90a01f6773ab8f67ef9c3bed3cbe19aaf4fe80`.
+Seven payload files plus manifest total 117,273,106 bytes. Rust 1.75, builder,
+vendor and VM inputs remain pinned. This uses the fourth retained peer-cache
+generation; no additional cache generation can be admitted without reconciliation.
+
+Wrapper 1128736/QEMU 1129209 and helpers are absent; RAM `run.d4wm5q0w`
+(29:40976)/private scratch retire. Peak RAM scratch is 5,851,627,520 bytes and
+four listener deltas are zero. Thirteen bounded records are copied and verified.
+`linux-record-cleanup-build-e0c73321.json` is 6,727 bytes, SHA-256
+`5f3b888f48112c002543fc6345811c59f0c70ae1aa40dc0fbcafa4de5ad23fe4`.
+This establishes the exact corrected binary prerequisite, not native acceptance.
+
+Corrected native replay `AJQ8LuAUHy` at `e0c73321` passes the identical fault
+criterion in 42 outer seconds (47.764 capture seconds). Supervisor 7890 first
+successfully signals and reaps child 7898. The root fixture removes its verified
+record at wait4 exit; all 116 main-thread syscall entries then contain zero
+post-reap TERM attempts. Service exit remains 1, the credential is unchanged,
+and exact process/cgroup/PAM/Xvfb/user retirement passes. Real CPace succeeds
+before injection. The reproduction and acceptance criterion were not weakened.
+
+Wrapper 1129575/QEMU 1131316 and helpers are absent; RAM `run.7tp6lqld`
+(29:41005)/private scratch retire, with three zero listener deltas and peak RAM
+scratch 4,064,391,168 bytes. Twelve bounded records are copied and hash-verified.
+`linux-record-cleanup-accepted-e0c73321.json` is 6,182 bytes, SHA-256
+`c892811eb2dad32f4838c5d44b90df2e3b2c515727710951ec957766a13a6084`.
+The selected post-reap retry is corrected at the debug/headless installed-layout
+layer. This is not proof of unprivileged fault injection, an actual PID-reuse
+hit, arbitrary storage/kernel failures, final packaging or other platforms.
+
+Same-artifact stopped-child regression `JO4qAZvARA` passes in 54 outer seconds
+(60.410 capture seconds). All fifteen child threads stay stopped; 38 samples
+cover 4.035545 seconds of pending TERM with exact child/record ownership.
+The first tree retires cleanly in 8.264669 seconds, with zero automatic restarts.
+Explicit fresh startup preserves the credential and completes CPace; ordinary
+final stop and both process/cgroup/record/PAM/Xvfb/user retirements pass.
+No fixture CONT/KILL assists shutdown. The existing regression is unchanged.
+
+Wrapper 1131878/QEMU 1133612 and helpers are absent; RAM `run.7zpdhn4h`
+(29:41033)/private scratch retire. Three listener deltas are zero; peak RAM
+scratch is 4,109,479,936 bytes. Twelve bounded records are copied and verified.
+`linux-record-cleanup-stop-e0c73321.json` is 10,657 bytes, SHA-256
+`741cb5c760048163498207cfc6b409cc1af50b7a995489b3cc13eaa22fa9b6d0`.
+The reproduced defect and nearest shutdown regression reach a verified native
+checkpoint. The full release goal remains active, with independent user parks
+unchanged. No owned build/test job remains. Count the materially updated ledger
+in isolation, then reassess permitted release blockers using this evidence;
+do not expand an error matrix merely because more hypothetical faults exist.

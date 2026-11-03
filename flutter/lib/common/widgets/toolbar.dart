@@ -184,7 +184,7 @@ List<TTextMenu> toolbarControls(BuildContext context, String id, FFI ffi) {
       TTextMenu(
           child: Text(translate('Restart remote device')),
           onPressed: () =>
-              showRestartRemoteDevice(pi, id, sessionId, ffi.dialogManager)),
+              showRestartRemoteDevice(pi, id, sessionId, ffi)),
     );
   }
   // insertLock

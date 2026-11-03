@@ -1420,7 +1420,7 @@ class RustdeskImpl {
   }
 
   Future<void> sessionRestartRemoteDevice(
-      {required UuidValue sessionId, dynamic hint}) {
+      {required UuidValue sessionId, required UuidValue clientOwnerId, dynamic hint}) {
     return Future(() => js.context.callMethod('setByName', ['restart']));
   }
 

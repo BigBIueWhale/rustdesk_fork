@@ -1966,10 +1966,11 @@ pub fn session_send_mouse(session_id: SessionID, msg: String) {
     }
 }
 
-pub fn session_restart_remote_device(session_id: SessionID) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.restart_remote_device();
-    }
+pub fn session_restart_remote_device(
+    session_id: SessionID,
+    client_owner_id: SessionID,
+) -> ResultType<()> {
+    sessions::request_remote_restart_for_exact_ui_owner(&session_id, &client_owner_id)
 }
 
 pub fn session_get_conn_session_id(session_id: SessionID) -> SyncReturn<String> {

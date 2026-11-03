@@ -4111,6 +4111,24 @@ pub mod sessions {
         })
     }
 
+    pub fn request_remote_restart_for_exact_ui_owner(
+        session_id: &SessionID,
+        client_owner_id: &SessionID,
+    ) -> ResultType<()> {
+        let sessions = SESSIONS.read().unwrap();
+        for session in sessions.values() {
+            let handlers = session.ui_handler.session_handlers.read().unwrap();
+            if let Some(handler) = handlers.get(session_id) {
+                if handler.client_owner_id.as_ref() != Some(client_owner_id) {
+                    bail!("Remote restart is not owned by this UI client");
+                }
+                // Keep the owner registered until the command's admission has completed.
+                return session.restart_remote_device();
+            }
+        }
+        bail!("Remote restart session is no longer active")
+    }
+
     pub fn request_video_refresh_for_exact_ui_owner(
         session_id: &SessionID,
         client_owner_id: &SessionID,

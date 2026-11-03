@@ -16,6 +16,6 @@ timeout --signal=TERM --kill-after=5s 25s \
     "$test_executable" flutter::restart_tests:: --color never --test-threads=1 \
     || execution_status=$?
 [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
-printf 'REMOTE_RESTART_ARTIFACT=complete sha256=%s executable=%s tests=5 exit_code=%s unchanged=before-after execution_seconds=%s\n' \
+printf 'REMOTE_RESTART_ARTIFACT=complete sha256=%s executable=%s tests=9 exit_code=%s unchanged=before-after execution_seconds=%s\n' \
     "$artifact_sha" "$test_executable" "$execution_status" "$((SECONDS - execution_started))"
 exit "$execution_status"

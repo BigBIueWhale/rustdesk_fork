@@ -1480,7 +1480,6 @@ pub struct LoginConfigHandler {
     features: Option<Features>,
     pub session_id: u64, // used for local <-> server communication
     pub supported_encoding: SupportedEncoding,
-    pub restarting_remote_device: bool,
     pub received: bool,
     pub custom_fps: Arc<Mutex<Option<usize>>>,
     pub last_auto_fps: Option<usize>,
@@ -1566,7 +1565,6 @@ impl LoginConfigHandler {
         }
         self.session_id = sid;
         self.supported_encoding = Default::default();
-        self.restarting_remote_device = false;
         self.received = false;
         self.selected_windows_session_id = None;
         self.record_state = false;
@@ -2482,14 +2480,6 @@ impl LoginConfigHandler {
             supported_decoding: hbb_common::protobuf::MessageField::some(decoding),
             ..Default::default()
         });
-        let mut msg_out = Message::new();
-        msg_out.set_misc(misc);
-        msg_out
-    }
-
-    pub fn restart_remote_device(&self) -> Message {
-        let mut misc = Misc::new();
-        misc.set_restart_remote_device(true);
         let mut msg_out = Message::new();
         msg_out.set_misc(misc);
         msg_out
@@ -4260,6 +4250,7 @@ enum ViewerCommandTerminal {
 
 struct ViewerCommandControl {
     keyboard_round: uuid::Uuid,
+    restart_requested: AtomicBool,
     terminal: Mutex<ViewerCommandTerminal>,
     changed: hbb_common::tokio::sync::watch::Sender<ViewerCommandTerminal>,
 }
@@ -4291,6 +4282,7 @@ fn viewer_command_channel_with_limits(
         hbb_common::tokio::sync::watch::channel(ViewerCommandTerminal::Open);
     let control = Arc::new(ViewerCommandControl {
         keyboard_round: uuid::Uuid::new_v4(),
+        restart_requested: AtomicBool::new(false),
         terminal: Mutex::new(ViewerCommandTerminal::Open),
         changed,
     });
@@ -4382,6 +4374,21 @@ impl ViewerCommandSender {
 
     pub(crate) fn send(&self, data: Data) -> Result<(), ViewerCommandAdmissionError> {
         self.send_with_commit(data, || true)
+    }
+
+    pub(crate) fn request_remote_restart(&self) -> Result<(), ViewerCommandAdmissionError> {
+        let mut misc = Misc::new();
+        misc.set_restart_remote_device(true);
+        let mut message = Message::new();
+        message.set_misc(misc);
+        self.send_with_commit(Data::Message(message), || {
+            self.control.restart_requested.store(true, Ordering::Release);
+            true
+        })
+    }
+
+    pub(crate) fn restart_requested(&self) -> bool {
+        self.control.restart_requested.load(Ordering::Acquire)
     }
 
     pub(crate) fn send_display_selection_with_commit<F>(

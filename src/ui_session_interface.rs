@@ -806,11 +806,17 @@ impl<T: InvokeUiSession> Session<T> {
         }
     }
 
-    pub fn restart_remote_device(&self) {
-        let mut lc = self.lc.write().unwrap();
-        lc.restarting_remote_device = true;
-        let msg = lc.restart_remote_device();
-        self.send(Data::Message(msg));
+    pub fn restart_remote_device(&self) -> ResultType<()> {
+        if self.lc.read().unwrap().conn_type != ConnType::DEFAULT_CONN {
+            bail!("Remote restart requires a remote-control session");
+        }
+        let sender = self.sender.read().unwrap();
+        let sender = sender
+            .as_ref()
+            .ok_or_else(|| anyhow!("No active viewer connection round"))?;
+        sender
+            .request_remote_restart()
+            .map_err(|error| anyhow!(error.to_string()))
     }
 
     pub fn send_note(&self, note: String) {
@@ -922,7 +928,11 @@ impl<T: InvokeUiSession> Session<T> {
     }
 
     pub fn is_restarting_remote_device(&self) -> bool {
-        self.lc.read().unwrap().restarting_remote_device
+        self.sender
+            .read()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|sender| sender.restart_requested())
     }
 
     #[inline]

@@ -135043,3 +135043,25 @@ For Flutter, mounted is required for setState but does not establish current
 dialog/session ownership; retain exact entry/owner checks across async results:
 https://api.flutter.dev/flutter/widgets/State/mounted.html.
 Neither local admission nor a disconnected peer proves that an OS reboot succeeded.
+
+Baseline `ScVztWvzGZ` at `f0fb02a4` reproduces all four refusal/state failures;
+the accepted one-command control passes. Complete-parent compilation takes 109
+seconds and the five cases 0.01 seconds. Test artifact SHA-256:
+`0e7b910b1130ab1d794ea2d747a5ea9d25aa519e1af25e9ed39127fc7d0b920f`.
+Four listener deltas are zero; exact processes/helpers/private/RAM state retires
+under the shared lock after evidence retention. Peak scratch is 6,299,607,040
+bytes. Thirteen bounded files match on CTE/TUF. `restart-native-baseline-f0fb02a4.json`:
+14,509 bytes, SHA-256
+`cf8e778381f120fbd96803d245f0a1fd37a70f0b15ee50a351283faf14c4f312`.
+
+The candidate removes the persistent LoginConfigHandler restarting flag and its
+message-construction method. Restart intent belongs to the actual command round,
+is set only after count/byte admission, and cannot survive replacement. The
+fallible native action requires Remote mode; its exported owner-aware operation
+retains registry/handler guards through admission. The shared confirmation waits
+for that result, prevents duplicate pending submissions and shows failure/retry
+without closing a replacement dialog. Both desktop menu callers are updated.
+Five baseline cases are retained unchanged, with four added outcome/retry,
+round-replacement, non-Remote and actual exported-owner cases. Nine rendered
+dialog cases are prepared. Candidate execution and generated Dart/native result
+delivery remain pending; this is not installed reboot or platform acceptance.

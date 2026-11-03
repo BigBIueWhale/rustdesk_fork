@@ -7,6 +7,7 @@ import 'package:flutter_hbb/common/shared_state.dart';
 import 'package:flutter_hbb/common/widgets/auto_disconnect_timeout_dialog.dart';
 import 'package:flutter_hbb/common/widgets/connect_password_dialog.dart';
 import 'package:flutter_hbb/common/widgets/password_text_field.dart';
+import 'package:flutter_hbb/common/widgets/remote_restart_dialog.dart';
 import 'package:flutter_hbb/common/widgets/setting_widgets.dart';
 import 'package:flutter_hbb/common/widgets/trackpad_speed_dialog.dart';
 import 'package:flutter_hbb/consts.dart';
@@ -262,35 +263,22 @@ void enterConnectPasswordDialog(
   }
 }
 
-void showRestartRemoteDevice(PeerInfo pi, String id, SessionID sessionId,
-    OverlayDialogManager dialogManager) async {
-  final res = await dialogManager
-      .show<bool>((setState, close, context) => CustomAlertDialog(
-            title: Row(children: [
-              Icon(Icons.warning_rounded, color: Colors.redAccent, size: 28),
-              Flexible(
-                  child: Text(translate("Restart remote device"))
-                      .paddingOnly(left: 10)),
-            ]),
-            content: Text(
-                "${translate('Are you sure you want to restart')} \n${pi.username}@${pi.hostname}($id) ?"),
-            actions: [
-              dialogButton(
-                "Cancel",
-                icon: Icon(Icons.close_rounded),
-                onPressed: close,
-                isOutline: true,
-              ),
-              dialogButton(
-                "OK",
-                icon: Icon(Icons.done_rounded),
-                onPressed: () => close(true),
-              ),
-            ],
-            onCancel: close,
-            onSubmit: () => close(true),
-          ));
-  if (res == true) bind.sessionRestartRemoteDevice(sessionId: sessionId);
+Future<void> showRestartRemoteDevice(
+    PeerInfo pi, String id, SessionID sessionId, FFI ffi) async {
+  final owner = ffi.clientOwnerId;
+  bool current() => ffi.isCurrentSessionOwner(sessionId, owner);
+  if (!current()) return;
+  final target = '${pi.username}@${pi.hostname}($id)';
+  await ffi.dialogManager.show<void>((_, close, __) => RemoteRestartDialog(
+        target: target,
+        requestRestart: () async {
+          if (!current()) throw StateError('Restart session is no longer current');
+          await bind.sessionRestartRemoteDevice(
+              sessionId: sessionId, clientOwnerId: owner);
+        },
+        close: close,
+        translateText: translate,
+      ), tag: 'remote-restart:$sessionId:$owner');
 }
 
 

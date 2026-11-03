@@ -5477,6 +5477,10 @@ run_focused_rust_tests() {
                 flutter::restart_tests::retired_receiver_preserves_restart_state
                 flutter::restart_tests::full_round_preserves_restart_state
                 flutter::restart_tests::accepted_restart_publishes_one_command_and_state
+                flutter::restart_tests::admission_failure_is_returned_and_new_round_can_retry
+                flutter::restart_tests::replacement_round_does_not_inherit_restart_state
+                flutter::restart_tests::non_remote_session_cannot_submit_restart
+                flutter::restart_tests::export_requires_the_registered_ui_owner_through_admission
             )
         elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
             container_name=rustdesk-viewer-credential-tests
@@ -8140,7 +8144,7 @@ PY
             || fail 'viewer CLI binary check receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = remote-restart ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'remote restart summary count differs'
-        [ "$(grep -Ec '^REMOTE_RESTART_ARTIFACT=complete sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=5 exit_code=0 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^REMOTE_RESTART_ARTIFACT=complete sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=9 exit_code=0 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'REMOTE_RESTART_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'remote restart artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
@@ -9023,8 +9027,8 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = remote-restart ]; then
             grep -E '^test flutter::restart_tests::.* \.\.\. ok$|^REMOTE_RESTART_(ARTIFACT|BUILD)=' "$output"
-            [ "$tests_passed" -eq 5 ] || fail 'remote restart total differs'
-            printf 'REMOTE_RESTART_VM=pass commit=%s tree=%s tests=5 target=linux-x86_64 scope=production-viewer-restart-admission rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            [ "$tests_passed" -eq 9 ] || fail 'remote restart total differs'
+            printf 'REMOTE_RESTART_VM=pass commit=%s tree=%s tests=9 target=linux-x86_64 scope=production-viewer-restart-admission rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
             grep -E '^test (client::tests::r_(s11hj_viewer_|p14).*|flutter::viewer_credential_bridge_tests::.*) \.\.\. ok$|^VIEWER_CREDENTIAL_(ARTIFACT|BUILD)=' "$output"

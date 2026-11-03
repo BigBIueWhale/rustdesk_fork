@@ -132946,7 +132946,7 @@ acceptance and the nearest shutdown regression. The full release goal is active.
 Adjacent source question for the next investigation: before OwnedServiceChild
 registration, `ServiceChildBootstrap::wait_for_stop` calls raw waitpid with
 WUNTRACED. Unexpected exit/signal status is reaped there, then
-`spawn_service_child` calls `stop_unregistered_service_child`, which invokes
+its caller invokes `stop_unregistered_service_child`, which invokes
 Child::kill before wait. That raw reap does not populate Rust Child's cached
 status. Determine with native startup-failure reproduction whether this attempts
 another post-reap signal. The accepted record-cleanup correction does not cover
@@ -132954,3 +132954,31 @@ this separate pre-registration path. No native reproduction or PID-reuse outcome
 is yet claimed; this concrete source path takes priority over speculative fault
 matrix expansion. The peer cache is full, so another build needs exact artifact
 retention reconciliation first; reproduction can reuse the current binary.
+
+### 2026-11-03 — user pivot; outgoing viewer keep-awake ownership
+
+The user explicitly pivots away from the service startup investigation. Leave
+it OPEN/PARKED; no startup fixture, product edit or runtime run follows. The
+completed record-cleanup fix remains verified. Select R-S0's required outgoing
+session keep-awake behavior, separate from the parked mobile setting-save and
+window-state investigations. A concrete asynchronous ordering problem is visible
+in the actual manager and pinned Linux plugin, making this higher value than
+another healthy settings replay.
+
+`WakelockManager` publishes its enabled boolean before the platform Future
+completes and calls disable independently. In wakelock_plus 1.2.1, Inhibit's
+returned cookie is stored only after its reply; disable with no cookie does
+nothing. An enable/disable overlap can therefore leave a live inhibitor after
+the last owner retires. A pending release followed by a new owner can likewise
+overlap the plugin's cookie mutation. First reproduce with the actual manager
+and unmodified pinned plugin, a controlled D-Bus remote-object double and the
+existing native preference double. Three controls cover ordinary ownership,
+multiple owners and disabled preference; two cases delay acquisition/release.
+The existing desktop settings profile supplies the isolated Flutter runtime.
+This is component ordering evidence, not actual OS power inhibition or physical
+display acceptance. No product correction is proposed before reproduction.
+
+Primary contract: https://specifications.freedesktop.org/idle-inhibit/0.1/index.html
+defines the returned Inhibit cookie, matching UnInhibit and bus-disconnect release.
+The authenticated local wakelock_plus 1.2.1 implementation establishes the exact
+dependency behavior; no dependency update or host service is needed.

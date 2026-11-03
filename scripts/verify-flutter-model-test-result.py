@@ -1230,6 +1230,11 @@ PEER_LOADER_TESTS = {
     "peer loader clear retires a pending request and its failure",
 }
 SETTINGS_NAVIGATION_TESTS = {
+    "settings wake lock ordinary owner releases its cookie",
+    "settings wake lock retains the remaining owner",
+    "settings wake lock respects disabled outgoing preference",
+    "settings wake lock retirement waits for pending acquisition",
+    "settings wake lock replacement waits for pending release",
     "settings toast default expiry preserves pointer input",
     "settings toast newest message replaces older text and lifetime",
     "settings toast same-frame burst displays only its latest message",

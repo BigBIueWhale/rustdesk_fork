@@ -43,6 +43,12 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-03):** Linux service-child startup-failure cleanup is
+OPEN/PARKED after source review only. The completed post-reap record-cleanup
+fix and native regression remain accepted at their stated layer. No startup
+fixture or product change followed the pivot. Work moves to desktop outgoing
+session keep-awake ownership; do not resume the startup investigation automatically.
+
 **Follow System reselection — verified native Linux correction (2026-11-02):**
 `c0ce6463` removes the App's replacement brightness callback and passes the saved
 theme preference to all app roots, preserving Flutter's System mode and normal

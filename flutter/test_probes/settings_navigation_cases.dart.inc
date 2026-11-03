@@ -25,6 +25,9 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:settings_ui/settings_ui.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+// Drain asynchronous plugin calls between the explicitly held D-Bus replies.
+Future<void> _settleWake() => Future<void>.delayed(Duration.zero);
+
 class _WakeRemote extends DBusRemoteObject {
   _WakeRemote()
       : super(DBusClient(DBusAddress('unix:path=/nonexistent-wake-fixture')),
@@ -466,8 +469,7 @@ void main() {
     isTest = false;
   });
 
-  (_WakeRemote, WakelockPlusLinuxPlugin, List<UniqueKey>) wakeFixture(
-      WidgetTester tester) {
+  (_WakeRemote, WakelockPlusLinuxPlugin, List<UniqueKey>) wakeFixture() {
     PackageInfo.setMockInitialValues(appName: 'RustDesk', packageName: 'rustdesk',
         version: '1', buildNumber: '1', buildSignature: '');
     final remote = _WakeRemote();
@@ -478,7 +480,7 @@ void main() {
     addTearDown(() async {
       remote.finishPending();
       for (final key in keys) WakelockManager.disable(key);
-      await tester.pumpAndSettle();
+      await _settleWake();
       await plugin.toggle(enable: false);
       // Retire only this double's remaining cookies after a failed assertion.
       for (final cookie in remote.active.toList()) {
@@ -491,83 +493,83 @@ void main() {
     return (remote, plugin, keys);
   }
 
-  testWidgets('settings wake lock ordinary owner releases its cookie', (tester) async {
-    final (remote, plugin, keys) = wakeFixture(tester);
+  test('settings wake lock ordinary owner releases its cookie', () async {
+    final (remote, plugin, keys) = wakeFixture();
     WakelockManager.enable(keys.first);
-    await tester.pumpAndSettle();
+    await _settleWake();
     expect(await plugin.enabled, isTrue);
     expect(remote.active, {1});
     WakelockManager.disable(keys.first);
-    await tester.pumpAndSettle();
+    await _settleWake();
     expect(await plugin.enabled, isFalse);
     expect(remote.active, isEmpty);
     expect(remote.calls, ['Inhibit', 'UnInhibit']);
   });
 
-  testWidgets('settings wake lock retains the remaining owner', (tester) async {
-    final (remote, plugin, keys) = wakeFixture(tester);
+  test('settings wake lock retains the remaining owner', () async {
+    final (remote, plugin, keys) = wakeFixture();
     WakelockManager.enable(keys.first);
     WakelockManager.enable(keys.first);
     WakelockManager.enable(keys.last);
-    await tester.pumpAndSettle();
+    await _settleWake();
     expect(remote.calls, ['Inhibit']);
     WakelockManager.disable(keys.first);
-    await tester.pumpAndSettle();
+    await _settleWake();
     expect(await plugin.enabled, isTrue);
     expect(remote.active, {1});
     WakelockManager.disable(keys.last);
-    await tester.pumpAndSettle();
+    await _settleWake();
     expect(remote.calls, ['Inhibit', 'UnInhibit']);
     expect(remote.active, isEmpty);
   });
 
-  testWidgets('settings wake lock respects disabled outgoing preference', (tester) async {
-    final (remote, plugin, keys) = wakeFixture(tester);
+  test('settings wake lock respects disabled outgoing preference', () async {
+    final (remote, plugin, keys) = wakeFixture();
     native.keepAwake = 'N';
     WakelockManager.enable(keys.first);
-    await tester.pumpAndSettle();
+    await _settleWake();
     WakelockManager.disable(keys.first);
-    await tester.pumpAndSettle();
+    await _settleWake();
     expect(remote.calls, isEmpty);
     expect(await plugin.enabled, isFalse);
   });
 
-  testWidgets('settings wake lock retirement waits for pending acquisition', (tester) async {
-    final (remote, plugin, keys) = wakeFixture(tester);
+  test('settings wake lock retirement waits for pending acquisition', () async {
+    final (remote, plugin, keys) = wakeFixture();
     remote.acquisition = Completer<void>();
     WakelockManager.enable(keys.first);
-    await tester.pumpAndSettle();
+    await _settleWake();
     expect(remote.calls, ['Inhibit']);
     expect(remote.active, {1});
     WakelockManager.disable(keys.first);
-    await tester.pumpAndSettle();
+    await _settleWake();
     expect(remote.calls, ['Inhibit']);
     remote.acquisition!.complete();
-    await tester.pumpAndSettle();
+    await _settleWake();
     expect(remote.calls, ['Inhibit', 'UnInhibit']);
     expect(remote.active, isEmpty);
     expect(await plugin.enabled, isFalse);
   });
 
-  testWidgets('settings wake lock replacement waits for pending release', (tester) async {
-    final (remote, plugin, keys) = wakeFixture(tester);
+  test('settings wake lock replacement waits for pending release', () async {
+    final (remote, plugin, keys) = wakeFixture();
     WakelockManager.enable(keys.first);
-    await tester.pumpAndSettle();
+    await _settleWake();
     remote.release = Completer<void>();
     WakelockManager.disable(keys.first);
-    await tester.pumpAndSettle();
+    await _settleWake();
     expect(remote.calls, ['Inhibit', 'UnInhibit']);
     WakelockManager.enable(keys.last);
-    await tester.pumpAndSettle();
+    await _settleWake();
     final beforeReply = List<String>.of(remote.calls);
     remote.release!.complete();
-    await tester.pumpAndSettle();
+    await _settleWake();
     expect(beforeReply, ['Inhibit', 'UnInhibit']);
     expect(remote.calls, ['Inhibit', 'UnInhibit', 'Inhibit']);
     expect(remote.active, {2});
     expect(await plugin.enabled, isTrue);
     WakelockManager.disable(keys.last);
-    await tester.pumpAndSettle();
+    await _settleWake();
     expect(remote.active, isEmpty);
   });
 

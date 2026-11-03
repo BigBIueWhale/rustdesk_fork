@@ -132994,3 +132994,15 @@ passes under the shared lock. Peak RAM scratch is 6,381,985,792 bytes.
 Thirteen bounded evidence files are copied and hash-verified. Capsule
 `viewer-wake-baseline-98e53932.json` is 17,443 bytes, SHA-256
 `ab2db712199a1640e6151b41ab16e8d413d4b034d77be2cf63c95c39804e8b43`.
+
+Run `378qWaIVV8` at `f4f0a5a5` reaches the VM deadline before terminal
+test output is exported. No behavioral result or exact hang cause is claimed.
+The five new cases render no widgets: move them to ordinary asynchronous
+`test` cases, with an event-turn drain between controlled replies, avoiding
+the widget clock for manager/plugin lifecycle and teardown. All assertions,
+reply gates and product code stay unchanged. Wrapper/QEMU/helpers and RAM
+retire; four listener deltas are zero; failed private diagnostics are inventoried
+and retired under the shared lock. Peak RAM scratch is 6,378,774,528 bytes.
+Thirteen bounded files are copied and verified. `viewer-wake-baseline-f4f0a5a5.json`
+is 13,301 bytes, SHA-256
+`d326ff4f440702e7d27b59816ef1276610e7b3a960d7faf974e03a06bafa264a`.

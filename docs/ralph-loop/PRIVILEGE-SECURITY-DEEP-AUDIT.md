@@ -134292,3 +134292,13 @@ Thirty-two bounded evidence files match on CTE/TUF. Pair capsule
 `c6e807d843168b13c749522fabe41930bd314c43602f668efdfee0b73c7a1b87`.
 Its retirement receipt binds restoration and duplicate cleanup. No owned job
 remains; fresh ledger counting follows the status update.
+
+Fresh count `nEUB4hUGTp` at `594c8f1f` passes seven controls and the whole-input
+round trip: 397,545 tokens / 1,817,546 bytes, SHA-256
+`fe9366edbaae75aff69e8a96e4b343d6a637c9b36f1f4bfe9d896454c61ba2df`.
+The 27-second outer run retires exact processes/private/RAM state, with three
+zero listener deltas and 402,812,928 bytes peak RAM scratch. Twelve bounded
+evidence files match on CTE/TUF. `engine-repro-ledger-594c8f1f.json`: 4,793 bytes,
+SHA-256 `cc26b054a2f1b4200e712a3b2833d7da022814550165a04cabd1b749aabe044c`.
+This audit-only receipt preserves the counted ledger. No owned job remains;
+the complete release-hardening goal is still active and all user parks remain.

@@ -102,6 +102,7 @@ case "$#:${1:-}" in
         --audio-mute) PEER_SCENARIO=audio-mute ;;
         --session-close) PEER_SCENARIO=session-close ;;
         --monitor-switch) PEER_SCENARIO=monitor-switch ;;
+        --recent-search) PEER_SCENARIO=recent-search ;;
         --monitor-burst) PEER_SCENARIO=monitor-burst ;;
         --wake-lock) PEER_SCENARIO=wake-lock ;;
         --background-close) PEER_SCENARIO=background-close ;;
@@ -242,6 +243,11 @@ elif [ "$PEER_SCENARIO" = monitor-burst ]; then
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined monitor_burst=passed phases=5 clicks=66 pixels=fresh pointer=matched stable_connection=true'
+elif [ "$PEER_SCENARIO" = recent-search ]; then
+  RUNTIME_CYCLES=1
+  SERVER_GENERATIONS='1'
+  SERVER_REPLACEMENTS=0
+  VIEWER_RESULT='viewer=joined xvfb=joined recent_search=passed cases=8 rows=3 native_input=true stable_connection=true'
 elif [ "$PEER_SCENARIO" = monitor-switch ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

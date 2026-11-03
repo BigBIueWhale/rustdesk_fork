@@ -133471,3 +133471,34 @@ retire. Twelve bounded records are copied and hash-verified. Capsule
 `c75fe83d289571b49011d7f33b5ec4c4cdc5d571204ef82b186ccfd7ff721082`.
 No owned job remains. This completes the selected documentation checkpoint;
 the full release goal and the named publication-conformance gaps remain open.
+
+### 2026-11-03 — native Recent-computer search
+
+Select R-G2/R-S0 saved-peer usability after the documentation checkpoint. The
+accepted `223e76cb` component evidence leaves full peer-card/native integration
+open; healthy text clipboard already has native acceptance. Recent search is
+distinct from parked Favorites/rename/autocomplete, sorting and shared-controller
+lifetime investigations. Those and the monitor/wake/service-cleanup parks remain.
+
+Source review follows `PeerTabPage`/`PeerSearchBar`, `RecentPeersView.matchPeers`,
+`Peer` and `PeerConfig::peers/load_list_info` through real local configuration,
+event publication and card rendering. Search covers address, alias, username and
+hostname; trimming/case folding belong to the production view. The existing native
+driver already authenticates the viewer and observes exact-process/window AT-SPI
+controls, native XTest input and displayed remote counters.
+
+The focused `--recent-search` scenario adds two non-credential loopback peer
+fixtures before app startup; the actual connection supplies the third record.
+Eight phases require the exact expected visible card set in three successive
+observations: all, alias, hostname, address, username, no matches, mixed case with
+surrounding whitespace, and cleared query. Native key input and field readback
+precede each search observation. The same remote connection must remain alive
+and display four current counters after the main window closes. This establishes
+native accessibility/card integration if it passes, not glyph rasterization,
+large-list performance, mobile/platform parity or full release acceptance.
+
+Preparation changes only the isolated fixture/dispatchers and this audit.
+Shell syntax and diff whitespace pass. TUF is clean at `e7717ef0`, has
+47,387,036 KiB available memory and no owned run/RAM workspace. Reuse app
+`f043c5ae` and engine `ddb1541d` in the canonical no-NIC bounded-RAM VM; no full
+app build or host product execution is needed. Native execution follows.

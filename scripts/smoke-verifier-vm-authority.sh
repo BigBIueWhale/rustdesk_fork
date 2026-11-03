@@ -60,6 +60,7 @@ FLUTTER_IMAGE_QUALITY_SAVE_FAILURE=0
 FLUTTER_AUDIO_MUTE=0
 FLUTTER_SESSION_CLOSE=0
 FLUTTER_MONITOR_SWITCH=0
+FLUTTER_RECENT_SEARCH=0
 FLUTTER_THEME_RESTART=0
 FLUTTER_LANGUAGE_RESTART=0
 FLUTTER_THEME_APPEARANCE=0
@@ -715,6 +716,7 @@ case "$#:${1:-}" in
                 --audio-mute) FLUTTER_AUDIO_MUTE=1 ;;
                 --session-close) FLUTTER_SESSION_CLOSE=1 ;;
                 --monitor-switch) FLUTTER_MONITOR_SWITCH=1 ;;
+                --recent-search) FLUTTER_RECENT_SEARCH=1 ;;
                 --monitor-burst) FLUTTER_MONITOR_SWITCH=2 ;;
                 --wake-lock) FLUTTER_SESSION_CLOSE=3 ;;
                 --background-close) FLUTTER_SESSION_CLOSE=2 ;;
@@ -897,6 +899,7 @@ readonly FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE
 readonly FLUTTER_VIEW_SCALING
 readonly FLUTTER_SESSION_CLOSE
 readonly FLUTTER_MONITOR_SWITCH
+readonly FLUTTER_RECENT_SEARCH
 readonly FLUTTER_IMAGE_QUALITY
 readonly FLUTTER_IMAGE_QUALITY_SAVE_FAILURE
 readonly FLUTTER_AUDIO_MUTE
@@ -5307,6 +5310,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         [ "$FLUTTER_VIEW_SCALING" -eq 0 ] || guest_invocation+=' --view-scaling'
         [ "$FLUTTER_SESSION_CLOSE" -ne 1 ] || guest_invocation+=' --session-close'
         [ "$FLUTTER_MONITOR_SWITCH" -ne 1 ] || guest_invocation+=' --monitor-switch'
+        [ "$FLUTTER_RECENT_SEARCH" -eq 0 ] || guest_invocation+=' --recent-search'
         [ "$FLUTTER_MONITOR_SWITCH" -ne 2 ] || guest_invocation+=' --monitor-burst'
         [ "$FLUTTER_SESSION_CLOSE" -ne 3 ] || guest_invocation+=' --wake-lock'
         [ "$FLUTTER_IMAGE_QUALITY" -eq 0 ] || guest_invocation+=' --image-quality'
@@ -8847,6 +8851,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     [ "$FLUTTER_AUDIO_MUTE" -eq 0 ] || peer_scenario=audio-mute
     [ "$FLUTTER_SESSION_CLOSE" -ne 1 ] || peer_scenario=session-close
     [ "$FLUTTER_MONITOR_SWITCH" -ne 1 ] || peer_scenario=monitor-switch
+    [ "$FLUTTER_RECENT_SEARCH" -eq 0 ] || peer_scenario=recent-search
     [ "$FLUTTER_MONITOR_SWITCH" -ne 2 ] || peer_scenario=monitor-burst
     [ "$FLUTTER_SESSION_CLOSE" -ne 3 ] || peer_scenario=wake-lock
     [ "$FLUTTER_SESSION_CLOSE" -ne 2 ] || peer_scenario=background-close

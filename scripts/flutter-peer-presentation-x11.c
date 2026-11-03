@@ -4790,6 +4790,7 @@ out:
 }
 
 #include "flutter-peer-wakelock.h"
+#include "flutter-peer-recent-search.h"
 static int wake_session_close = 0;
 
 static int exercise_session_close(Display *display, const ViewerWindow *viewer,
@@ -7041,6 +7042,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--audio-mute") != 0 &&
                                     strcmp(argv[5], "--session-close") != 0 &&
                                     strcmp(argv[5], "--monitor-switch") != 0 &&
+                                    strcmp(argv[5], "--recent-search") != 0 &&
                                     strcmp(argv[5], "--monitor-burst") != 0 &&
                                     strcmp(argv[5], "--wake-lock") != 0 &&
                                     strcmp(argv[5], "--background-close") != 0 &&
@@ -7397,6 +7399,15 @@ int main(int argc, char **argv) {
     if (language_generation != 0U) {
         int result = exercise_language_restart(display, &viewer, &history, language_generation,
                                                &current_connection, &baseline_resources, language_direction);
+        if (atspi_exit() != 0) result = -1;
+        if (close_viewer(display, viewer.window) != 0) result = -1;
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return result == 0 ? 0 : 1;
+    }
+
+    if (argc == 6 && strcmp(argv[5], "--recent-search") == 0) {
+        int result = exercise_recent_search(display, &viewer, &history, &current_connection);
         if (atspi_exit() != 0) result = -1;
         if (close_viewer(display, viewer.window) != 0) result = -1;
         XCloseDisplay(display);

@@ -27,6 +27,7 @@ MENU_ACTION=pointer
 readonly MENU_ACTION
 case "$PEER_SCENARIO" in
   monitor-switch|monitor-burst) EXPECTED_RESTARTS=0 ;;
+  recent-search) EXPECTED_RESTARTS=0 ;;
   wake-lock) EXPECTED_RESTARTS=0 ;;
   keyboard-restart|keyboard-save-failure|keyboard-translate|keyboard-repeat) EXPECTED_RESTARTS=0 ;;
   session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|language-restart|language-direction|quality-restart|viewer-isolation|viewer-soak|input-latency|input-soak|image-quality|image-quality-save-failure|audio-mute) EXPECTED_RESTARTS=0 ;;
@@ -529,7 +530,7 @@ PY
       && [ -z "$(find /out -mindepth 1 -print -quit)" ] \
       || fail 'driver output must be a fresh private directory'
     for input in flutter-peer-source-x11.c flutter-peer-presentation-x11.c \
-        x11-frame-oracle.h flutter-peer-wakelock.h test-x11-frame-oracle.c smoke-bind-loopback.c; do
+        x11-frame-oracle.h flutter-peer-wakelock.h flutter-peer-recent-search.h test-x11-frame-oracle.c smoke-bind-loopback.c; do
       verify_regular "/source/scripts/$input"
     done
     /usr/bin/cc -std=c11 -O2 -Wall -Wextra -Werror \
@@ -1635,6 +1636,25 @@ PY
       set +o noclobber
       echo 'FLUTTER_PEER_MONITOR_ENV toolbar=inline preference=fixture-initialized app=not-started'
     fi
+    if [ "$PEER_SCENARIO" = recent-search ]; then
+      # Two non-credential fixture records; the live connection creates the third.
+      # This seeds search inputs, not acceptance of the rename/settings workflow.
+      mkdir -m 0700 -p "$HOME/.config/rustdesk/peers"
+      python3 - <<'PY'
+import os, pathlib
+root = pathlib.Path('/tmp/viewer-home/.config/rustdesk/peers')
+for address, alias, user, host in (
+    ('127.0.0.2', 'North desk', 'amber', 'granite'),
+    ('127.0.0.3', 'South desk', 'beryl', 'quartz'),
+):
+    data = ('[info]\nusername = "' + user + '"\nhostname = "' + host
+            + '"\nplatform = "Linux"\n[options]\nalias = "' + alias + '"\n').encode()
+    fd = os.open(root / (address + '.toml'), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, 'wb') as output:
+        output.write(data)
+print('FLUTTER_PEER_RECENT_SEARCH_ENV seeded=2 credentials=absent app=not-started')
+PY
+    fi
     for viewer_generation in $(seq 1 "$viewer_generations"); do
     viewer_environment=()
     [ "$PEER_SCENARIO" != theme-appearance ] || viewer_environment+=(G_MESSAGES_DEBUG=all)
@@ -1709,6 +1729,7 @@ PY
     [ "$PEER_SCENARIO" != view-scaling ] || controller_args+=(--view-scaling)
     [ "$PEER_SCENARIO" != session-close ] || controller_args+=(--session-close)
     [ "$PEER_SCENARIO" != monitor-switch ] || controller_args+=(--monitor-switch)
+    [ "$PEER_SCENARIO" != recent-search ] || controller_args+=(--recent-search)
     [ "$PEER_SCENARIO" != monitor-burst ] || controller_args+=(--monitor-burst)
     [ "$PEER_SCENARIO" != wake-lock ] || controller_args+=(--wake-lock)
     [ "$PEER_SCENARIO" != image-quality ] || controller_args+=(--image-quality)
@@ -1954,6 +1975,16 @@ PY
       grep -Fxq "FLUTTER_PEER_ISOLATION_OK role=$isolation_role stable_connection=true resources=bounded" \
         <<<"$controller_output" || fail 'native two-viewer isolation result is absent'
       viewer_result="viewer=joined xvfb=joined isolation=$isolation_role stable_connection=true resources=bounded"
+    elif [ "$PEER_SCENARIO" = recent-search ]; then
+      grep -Fxq 'FLUTTER_PEER_RECENT_SEARCH_OK cases=8 rows=3 fields=address,alias,hostname,username case_whitespace=passed no_matches=passed clear=passed native_input=true visible_accessibility=true stable_connection=true fresh_pixels=4' \
+        <<<"$controller_output" || fail 'native Recent search verdict is absent'
+      [ "$(grep -c '^FLUTTER_PEER_RECENT_SEARCH_CASE ' <<<"$controller_output")" -eq 8 ] \
+        || fail 'Recent search case inventory differs'
+      for sequence in 1 2 3 4 5 6 7 8; do
+        [ "$(grep -Ec "^FLUTTER_PEER_RECENT_SEARCH_CASE sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
+          || fail 'Recent search case is absent or duplicated'
+      done
+      viewer_result='viewer=joined xvfb=joined recent_search=passed cases=8 rows=3 native_input=true stable_connection=true'
     elif [ "$PEER_SCENARIO" = theme-save-failure ]; then
       grep -Fxq 'FLUTTER_PEER_THEME_SAVE_REFUSED error=visible pixels=light radio=light file=unchanged kernel=EACCES' \
         <<<"$controller_output" \

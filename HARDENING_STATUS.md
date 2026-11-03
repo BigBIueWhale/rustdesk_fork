@@ -48,12 +48,20 @@ The nineteen-case component result below remains valid. The earlier Linux app
 build at `2ed4dd37` completes with thirteen widget/two native command checks,
 all payload hashes verified and VM/RAM retirement; `window-app-build-2ed4dd37.json`
 retains the receipt. No window-manager scenario ran. Work moves to R-S0 mobile
-Remote/Camera cancellation and
-route ownership. Source review finds their initial loading Cancel uses the
-global `closeConnection`, which pops to Home; their close confirmations lack
-the exact route binding already used by Terminal. The overlay's existing
-entry-retirement checks must be included in the reproduction. No new mobile
-failure or correction is established yet. All independent parks remain.
+Remote/Camera cancellation and route ownership. All independent parks remain.
+
+**Mobile Remote/Camera close ownership — component correction verified.**
+`e8447792` binds loading Cancel, Back and toolbar Close to the page's exact route
+and session, extending Terminal's existing ownership model. Baseline `2gg02qW2PB`
+at `2c7698d2` reproduces four failures on each page: preceding/covering pages and
+a replacement session's page are removed by Cancel, and Back cannot dismiss an
+ended session's view. Replay `ji9KWn7RnC` passes the unchanged eighteen cases
+(ten mobile, eight desktop controls), three parser controls and exact-source
+postconditions in 253 seconds. `mobile-navigation-fixed-e8447792.json` binds
+the results, four zero listener deltas and exact process/private/RAM retirement.
+Actual pages, dialogs, FFI navigation and Navigator run; native session admission/
+retirement, platform channels and preferences are doubles. Android/iOS device,
+native teardown and complete release acceptance remain OPEN.
 
 **User pivot (2026-11-03):** Release-input promotion is OPEN/PARKED after
 read-only investigation. The Debian recipe still selects stock Flutter 3.24.5;
@@ -6461,8 +6469,9 @@ and generic messages invoke only an explicitly supplied action. Password submiss
 its session/prompt-round check. Reconnect countdowns render time without submitting actions.
 
 `FFI::viewCloseCallback` captures the view action before publication. Desktop actions retain
-live UUID, exact Get registration and window-role checks. Other mobile/web views retain the
-global-owner check. Credential cancel/accepted-loading, reconnect loading, errors, no-display,
+live UUID, exact Get registration and window-role checks. Mobile Remote/Camera now use the
+exact route binding described above; other mobile/web views retain the global-owner check.
+Credential cancel/accepted-loading, reconnect loading, errors, no-display,
 image-wait and explicit close confirmation use the captured action.
 
 Mobile terminals use their own per-peer FFI and a page-captured session UUID. The FFI-owned

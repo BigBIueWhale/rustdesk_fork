@@ -134449,3 +134449,61 @@ bounded files match on CTE/TUF. `mobile-route-ledger-4c8332af.json`: 4,793 bytes
 SHA-256 `87a10822748eeb5b9db01bbb77d4b115f2420e24476171576508231a5d829ba4`.
 This audit-only receipt preserves the counted ledger. No owned job remains;
 mobile navigation is the selected continuation and the overall goal stays active.
+
+## 2026-11-03 — mobile Remote/Camera close ownership: component A/B accepted
+
+Continue the selected R-S0 mobile navigation correction. Window persistence and
+independent parks remain unchanged. The real Remote/Camera pages use the global
+pop-to-Home loading Cancel, while confirmed close requires a live native session.
+The existing Terminal route owner provides the required local abstraction: exact
+route/session, current-page admission, replacement/unbind revocation, and a view
+lifetime that can outlast its connection. Loading Cancel, Back and toolbar Close
+must all use this ownership; an old or hidden page cannot select another page.
+
+Primary Flutter API research: `ModalRoute.of` acquires the enclosing route and
+tracks current-route changes; `Route.isCurrent` denotes the topmost active route;
+`State.dispose` terminates the state lifetime. Bind in `didChangeDependencies`,
+capture before publishing callbacks, and unbind synchronously at disposal:
+https://api.flutter.dev/flutter/widgets/ModalRoute/of.html,
+https://api.flutter.dev/flutter/widgets/Route/isCurrent.html,
+https://api.flutter.dev/flutter/widgets/State/dispose.html.
+
+Fixture `427ddb46` extends the existing connection-page shard to two suites and
+eighteen cases. Actual page widgets, FFI navigation, dialogs and Navigator run
+with native session admission/retirement, preference/translation calls, platform
+channels and Android platform selection explicitly doubled. All library source
+is compared before/after, allowing only the declared injection/platform hooks
+and generated bridge. Existing overlay-entry retirement remains in the path.
+Setup run `ZsLpBXxrLM` fails compilation because pinned Get.reset returns void;
+`2c7698d2` removes that test-only await. It establishes no mobile behavior.
+
+Baseline `2gg02qW2PB` at `2c7698d2` then executes all eighteen cases: ten pass,
+eight fail. On each mobile page, Cancel removes a preceding page, a covering
+page, or a replacement session's page; confirmed Back cannot dismiss an ended
+session's view. Ordinary loading Cancel and all eight desktop controls pass.
+`mobile-navigation-baseline-2c7698d2.json` retains exact case failures, source,
+four zero listener deltas and joined cleanup (16,664 bytes, SHA-256
+`61a4ff748b9aa60bc03e4736916239b629dddc04527b9e82e48ef592239ca46a`).
+
+Product `e8447792` captures the page's FFI and exact route, supplies its close
+callback to initial loading and both confirmation controls, and unbinds before
+disposal. FFI admits native-mobile Remote/Camera alongside non-desktop Terminal.
+Web Remote/Camera retain their existing desktop-page path; the platform predicate
+does not send those unbound pages into mobile route closure. Session UUID remains
+required, but native connection retirement alone does not revoke a visible view.
+
+Replay `ji9KWn7RnC` uses the unchanged fixture and passes eighteen cases, three
+focused parser controls and exact-source postconditions in 253 seconds. All
+eight baseline failures now pass. Capsule `mobile-navigation-fixed-e8447792.json`:
+6,185 bytes, SHA-256
+`6f45efad1a69351120b3eb726495b5cbe5da4ae8fac5b82acec93181f4e1494b`.
+The fixture leaves background canvas view-style reads unavailable; production
+catches/logs that condition in both A/B runs. This is navigation component
+evidence, not healthy native preference/rendering, native teardown, Android/iOS
+device or complete release acceptance. Those remain open.
+
+All three runs retire their exact processes, private diagnostics and RAM
+workspace; four listener deltas per run are zero. Thirteen bounded evidence
+files per run match on CTE/TUF. Accepted peak RAM scratch is 6,381,105,152 bytes;
+no full app rebuild, new persistent image or host service change was needed.
+No owned job remains. Fresh ledger counting follows; the overall goal is active.

@@ -132523,3 +132523,32 @@ complete product/build-input matching remain unchanged. This acceptance is
 installed-layout debug/headless lifecycle/login evidence, not final packages,
 presented pixels/input, arbitrary stale-record recovery, power loss, non-systemd
 init behavior, or full R-S0/release closure. Execution is pending.
+
+Accepted run `kljRzPGxIE` at `f4a443dc` passes in 55 outer seconds
+(59.837 capture seconds). Supervisor 7905 and UID-4001 child 7913 retire
+after the supervisor-only pidfd SIGKILL: receiver EOF at 0.002497 seconds and
+both exact processes exited/reaped at 0.002568 seconds. The shipped unit
+automatically changes NRestarts from 0 to 1 and starts supervisor 8080/child
+8087 with a fresh invocation and generation. Runtime directory 23:1103 and
+lease 23:1106 retain their identity and protected ownership/mode; the durable
+credential is unchanged. All three privileged sockets prove fresh root owner
+8080. The fresh child owns a different direct listener and returns actual
+decrypted Remote PeerInfo after mutual CPace. The recovery probe completes
+at 5.352299 seconds, including its normal post-message observation timeout;
+this is an upper bound on successful login, not a measured pixel latency.
+The further three-second stability observation passes, followed by clean
+ordinary stop, exact reaping and cgroup/record/PAM/Xvfb/user retirement.
+No product defect was demonstrated and product code is unchanged.
+
+Complete production/build-input matching against `fdbab046` passes before
+and after. Wrapper 1105200, QEMU 1106925 and owned helpers are absent under
+the shared lock; RAM workspace `run.jkfo0h1i` (29:40668) and private scratch
+are absent. Peak RAM scratch is 4,054,806,528 bytes; all three host listener
+deltas are zero. Twelve bounded records were copied and hash-verified on CTE.
+Capsule `linux-crash-f4a443dc.json` is 11,923 bytes, SHA-256
+`8de5ea36f725e3101398b67e33a0cfeafa8275af0c91f933157ab0b6e4c1c510`.
+No rebuild or new artifact-cache generation was required. The selected
+installed-layout crash checkpoint is complete; independent mechanism,
+live/ambiguous record refusal, alternate init systems, exact final packages,
+other platforms and broader release acceptance remain open. Reassess the
+next permitted release requirement at this checkpoint and preserve all parks.

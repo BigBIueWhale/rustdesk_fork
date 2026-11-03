@@ -4655,6 +4655,23 @@ No product correction or rebuild was needed. This is debug/headless installed-
 layout R-S11c-27b evidence. Pixels/input, controlled races, crash recovery, final
 packages and other platforms remain OPEN; the authorization profile stays parked.
 
+**Installed automatic crash recovery (`f4a443dc`).** TUF `kljRzPGxIE` uses
+the same `fdbab046` artifact, shipped unit and actual logind/X11 desktop. A
+pidfd-directed SIGKILL targets only the supervisor. Its exact UID-4001 child
+and supervisor are reaped within 2.6 ms; an accepted child-owned prekey TCP
+connection reaches receiver EOF within 2.5 ms. With no fixture start/restart or
+child signal, systemd starts exactly one fresh supervisor/child/generation.
+Runtime directory and lease identity, protected ownership and credential persist;
+all three privileged endpoints belong to the fresh supervisor. UID-4002 CPace
+and actual Remote PeerInfo logins pass before and after; the recovery probe
+finishes within 5.36 seconds. A further three-second stability observation and
+ordinary stop pass, with exact process/cgroup/record/PAM/Xvfb/user retirement.
+Three host listener deltas are zero and VM/RAM/private cleanup passes.
+`linux-crash-f4a443dc.json` binds evidence. No product correction or rebuild was
+needed. This verifies the combined application/systemd installed-layout crash
+path, not independent parent-death attribution, live stale-record recovery,
+pixels/input, final packages, other init systems or other platforms; those remain OPEN.
+
 **IPC / option CLI — component acceptance; installed acceptance OPEN.**
 At `ad638445`, TUF `1VEEFlN8jX` passes all **176 listener/transport, 32 CLI,
 10 Windows selector, 22 main-protocol, 8 main-transaction, 8 main-peer, 4 URL-loop,
@@ -10202,18 +10219,19 @@ sandbox implementation and checker-repair history remain in Git.
   per-item narratives. `service-lifecycle-ledger-cb37144b.json` retains the classification
   and exact comparison; no new product or installed execution is claimed.
 
-  All current installed/artifact acceptance remains OPEN. The index distinguishes source
+  Full installed/final-artifact acceptance remains OPEN; the focused installed-layout
+  checkpoints above establish only their named conditions. The index distinguishes source
   disposition, historical observations, superseded behavior and missing execution:
 
   | ID | Disposition and evidence boundary |
   | --- | --- |
-  | R-S11c-27a | Source: retained direct child and supervisor-death binding. |
-  | R-S11c-27b | Source: root-only lease, durable identity record and pidfd-first recovery. Current installed-layout sessionless/active-desktop exclusivity and retained-connection login evidence is recorded above; crash recovery and final artifacts remain OPEN. |
+  | R-S11c-27a | Source: retained direct child and supervisor-death binding. Current combined application/systemd crash retirement passes above; independent mechanism and final-artifact acceptance remain OPEN. |
+  | R-S11c-27b | Source: root-only lease, durable identity record and pidfd-first recovery. Current installed-layout sessionless/active-desktop exclusivity, retained-connection login and automatic supervisor-crash recovery pass above; arbitrary live-record recovery and final artifacts remain OPEN. |
   | R-S11c-27c | Source: bounded retained-child TERM/KILL/reap; uncertainty preserves ownership and record. |
   | R-S11c-27d | Historical focused behavior: parent death, lease release, stale-record removal and exact live-record recovery. |
   | R-S11c-27e | Historical focused behavior: executed-inode identity across rename/unlink, without pathname/argv authority. |
   | R-S11c-27f | Historical debug/container: manual/non-systemd restart, graceful/forced stop and unrelated portable survival. |
-  | R-S11c-27g | Historical debug behavior: supervisor crash, parent-death exit, preserved evidence and fresh recovered generation. |
+  | R-S11c-27g | Current debug/headless installed-layout `kljRzPGxIE`: supervisor SIGKILL, old child/connection retirement, one automatic fresh generation and real Remote login pass. Combined systemd/application evidence; final artifacts and independent parent-death attribution remain OPEN. |
   | R-S11c-27h | Source plus historical elevated-container behavior: descriptor-bound UID/GID/groups, bounded environment, empty live capabilities and no-new-privileges. |
   | R-S11c-27i | Historical runtime: seven malformed/ambiguous record classes refused without signal or replacement authority. |
   | R-S11c-27j | Historical separate-Docker behavior: the unrelated sibling survived until its own harness drained it. |

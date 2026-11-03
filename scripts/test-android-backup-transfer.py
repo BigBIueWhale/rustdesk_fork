@@ -47,7 +47,7 @@ def main():
         return result.stdout
 
     def shell(*command, data=None, timeout=30):
-        return adb("exec-out", shlex.join(command), data=data, timeout=timeout)
+        return adb("shell", "-T", shlex.join(command), data=data, timeout=timeout)
 
     def text(*command, timeout=30):
         return shell(*command, timeout=timeout).decode().replace("\r", "").strip()
@@ -60,14 +60,37 @@ def main():
             raise RuntimeError(f"package UID differs: {package}: {state!r}")
         return matches[0]
 
+    actors = {}
+
+    def app_shell(uid, *command, data=None):
+        return shell("su", actors[uid], *command, data=data)
+
+    def bind_app_identity(package, uid):
+        pid = text("pidof", package)
+        if not re.fullmatch(r"[1-9][0-9]*", pid):
+            raise RuntimeError(f"application process differs: {package}: {pid!r}")
+        state = text("cat", f"/proc/{pid}/status")
+        fields = dict(re.findall(r"^(Uid|Gid|Groups):[ \t]*([0-9 \t]+)$", state, re.MULTILINE))
+        uids, gids, groups = (fields.get(key, "").split() for key in ("Uid", "Gid", "Groups"))
+        if (uids != [uid] * 4 or len(gids) != 4 or len(set(gids)) != 1
+                or not 0 < len(groups) <= 10 or "0" in gids + groups):
+            raise RuntimeError(f"application process credentials differ: {package}: {fields!r}")
+        who = ",".join([uid, gids[0], *groups])
+        if (text("su", who, "id", "-u") != uid
+                or text("su", who, "id", "-g") != gids[0]
+                or set(text("su", who, "id", "-G").split()) != set(gids + groups)):
+            raise RuntimeError("fixture reader did not enter the application UID/groups")
+        actors[uid] = who
+        print(f"ANDROID_BACKUP_IDENTITY package={package} uid={uid} gid={gids[0]} groups={','.join(groups)}", flush=True)
+
     def verify_data(package, uid, present):
         for domain in DOMAINS:
             path = fixture(package, domain)
             if present:
-                if shell("su", uid, "cat", path) != payload(domain):
+                if app_shell(uid, "cat", path) != payload(domain):
                     raise RuntimeError(f"fixture unreadable or changed: {package}/{domain}")
-            elif text("su", uid, "sh", "-c", f"test ! -e {shlex.quote(path)}; echo $?") != "0":
-                raise RuntimeError(f"fixture still present: {package}/{domain}")
+            else:
+                app_shell(uid, "sh", "-c", f"test ! -e {shlex.quote(path)}")
 
     def archive(package):
         path = f"/data/user/0/com.android.localtransport/files/1/_full/{package}"
@@ -105,16 +128,15 @@ def main():
         if "Status: ok" not in started:
             raise RuntimeError("positive-control Activity did not start")
         control_uid, app_uid = package_uid(CONTROL), package_uid(APP)
-        for uid in (control_uid, app_uid):
-            if text("su", uid, "id", "-u") != uid:
-                raise RuntimeError("fixture reader did not enter the application UID")
+        for package, uid in ((CONTROL, control_uid), (APP, app_uid)):
+            bind_app_identity(package, uid)
         verify_data(CONTROL, control_uid, True)
         verify_data(APP, app_uid, False)
         for domain in DOMAINS:
             path = fixture(APP, domain)
             parent = str(pathlib.PurePosixPath(path).parent)
             command = f"umask 077; mkdir -p {shlex.quote(parent)} && cat > {shlex.quote(path)}"
-            shell("su", app_uid, "sh", "-c", command, data=payload(domain))
+            app_shell(app_uid, "sh", "-c", command, data=payload(domain))
         # Reapply Android's own labels after test-UID fixture creation. SELinux stays enforcing.
         shell("restorecon", "-R", f"/data/user/0/{APP}", f"/data/user_de/0/{APP}")
         verify_data(APP, app_uid, True)
@@ -141,7 +163,7 @@ def main():
                   - {f"apps/{APP}/_manifest", f"apps/{APP}/_meta", "apps", f"apps/{APP}"}):
                 raise RuntimeError("excluded application data reached the transfer archive")
         for package, uid in ((CONTROL, control_uid), (APP, app_uid)):
-            shell("su", uid, "rm", *[fixture(package, domain) for domain in DOMAINS])
+            app_shell(uid, "rm", *[fixture(package, domain) for domain in DOMAINS])
             verify_data(package, uid, False)
             restored = text("bmgr", "restore", "1", package, timeout=180)
             print(f"ANDROID_BACKUP_RESTORE package={package} output={restored!r}", flush=True)

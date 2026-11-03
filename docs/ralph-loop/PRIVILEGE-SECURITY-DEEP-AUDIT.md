@@ -134765,3 +134765,22 @@ deltas are zero, exact process/helper/private/RAM retirement passes, and fifteen
 bounded evidence files match on CTE/TUF. Peak scratch is 4,636,536,832 bytes.
 `android-backup-native-537905fa.json`: 15,548 bytes, SHA-256
 `8d590cd9d9adf23be3b86d0e77ee388e2085b4fc831b2779b9e045c38b593c9c`.
+
+Replay `rYP6IaxJSG` at `814e523b` passes both package identities, then refuses
+the control external-storage fixture read. UID-only su does not reproduce the
+running application's group identity; exec-out also obscures command failure.
+Bind UID/GID/supplementary groups from each exact app process, check the resulting
+identity, and use non-PTY shell v2 with remote exit status and separate stderr.
+The Android 14 su source documents its UID/GID/group argument; adb's manual
+documents -T and the default exit-status/stdout/stderr channel. Sources:
+https://android.googlesource.com/platform/system/extras/+/refs/heads/android14-release/su/su.cpp
+https://android.googlesource.com/platform/packages/modules/adb/+/refs/heads/android14-release/docs/user/adb.1.md.
+This is synthetic-data policy testing; su retains its test SELinux domain and
+does not establish production application sandbox or privilege acceptance.
+
+Five listener deltas are zero and exact process/helper/private/RAM retirement
+passes. Fifteen bounded files match on CTE/TUF; peak scratch is 4,375,834,624 bytes.
+`android-backup-native-814e523b.json`: 15,585 bytes, SHA-256
+`485c5e704a594d902337887d9a09b01ec6049edc0c6e89e7370b32f34a3c7837`.
+Native backup remains pending. The fixture repair passes Python parsing and diff
+review; no product change or extra APK-cache generation is involved.

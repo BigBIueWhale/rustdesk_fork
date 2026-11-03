@@ -133511,3 +133511,14 @@ are zero; exact wrapper/QEMU/helpers, RAM and private diagnostics retire under
 the shared lock. Capsule `recent-search-de0ef563.json` retains the failure and
 complete console provenance (14,796 bytes, SHA-256
 `fa635964f9d51b30c249a21f6862adc6551fdcb898c0faefe5ccfd3d09a7a8a9`).
+
+Run `Y9u7kIo7SO` at `1cba0b91` builds three native drivers twice identically,
+authenticates and presents four current counters, then stops before search cases.
+The fixture inspected the window title cached before authentication, which has
+no hostname. Reread the live exact-window title with a bounded wait before deriving
+the connected peer's merged card label; retain failure diagnostics for setup too.
+No product search failure is established. Four listener deltas are zero and all
+owned processes/RAM/private state retire. Twelve redundant bundle files match the
+retained app before deletion. Capsule `recent-search-1cba0b91.json` is 22,898 bytes,
+SHA-256 `b755951433123f58670751977c76695de209307b64ec28519d015f9a2c6fe1b4`;
+seventeen bounded evidence files are copied and verified on CTE.

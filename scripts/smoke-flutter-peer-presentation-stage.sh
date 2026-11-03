@@ -1637,7 +1637,7 @@ PY
       echo 'FLUTTER_PEER_MONITOR_ENV toolbar=inline preference=fixture-initialized app=not-started'
     fi
     if [ "$PEER_SCENARIO" = recent-search ]; then
-      # Two non-credential fixture records; the live connection creates the third.
+      # Three non-credential fixture records, including the live connection.
       # This seeds search inputs, not acceptance of the rename/settings workflow.
       mkdir -m 0700 -p "$HOME/.config/rustdesk/peers"
       python3 - <<'PY'
@@ -1646,13 +1646,14 @@ root = pathlib.Path('/tmp/viewer-home/.config/rustdesk/peers')
 for address, alias, user, host in (
     ('127.0.0.2', 'North desk', 'amber', 'granite'),
     ('127.0.0.3', 'South desk', 'beryl', 'quartz'),
+    ('127.0.0.1', 'Control desk', 'cedar', 'slate'),
 ):
     data = ('[info]\nusername = "' + user + '"\nhostname = "' + host
             + '"\nplatform = "Linux"\n[options]\nalias = "' + alias + '"\n').encode()
     fd = os.open(root / (address + '.toml'), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, 'wb') as output:
         output.write(data)
-print('FLUTTER_PEER_RECENT_SEARCH_ENV seeded=2 credentials=absent app=not-started')
+print('FLUTTER_PEER_RECENT_SEARCH_ENV seeded=3 credentials=absent app=not-started')
 PY
     fi
     for viewer_generation in $(seq 1 "$viewer_generations"); do

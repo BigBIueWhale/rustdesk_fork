@@ -133522,3 +133522,16 @@ owned processes/RAM/private state retire. Twelve redundant bundle files match th
 retained app before deletion. Capsule `recent-search-1cba0b91.json` is 22,898 bytes,
 SHA-256 `b755951433123f58670751977c76695de209307b64ec28519d015f9a2c6fe1b4`;
 seventeen bounded evidence files are copied and verified on CTE.
+
+`63HUu9rS3c` at `ae3115ce` shows the live first-connection title also omits
+the hostname; that setup assumption was wrong. No search case ran. Remove the
+title dependency entirely: initialize all three non-credential records explicitly
+and identify the visible merged cards by their unique newline-delimited aliases.
+Native address/alias/hostname/username matching assertions are unchanged. This
+does not claim creation or persistence of a new Recent entry. Drivers compile
+identically and initial current frames pass; four listener deltas remain zero.
+Exact processes, RAM and private diagnostics retire, with duplicate app files
+verified against the retained manifest. Capsule `recent-search-ae3115ce.json`
+is 22,887 bytes, SHA-256
+`91f18c66edf30d47f6d5381ddb70f1d565cadb73c377d19ab19691c36e83c1b5`;
+seventeen bounded files are copied and verified.

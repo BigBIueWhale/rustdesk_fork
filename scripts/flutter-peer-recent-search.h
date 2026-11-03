@@ -10,7 +10,7 @@ static int recent_rows(unsigned int pid, const AtspiRect *bounds, unsigned int e
         for (unsigned int i = 0U; i < 3U; ++i) {
             AtspiAccessible *row = NULL;
             int status = query_accessible_with_focus(pid, names[i], deadline, &row,
-                                                     0, 0, bounds, 0, 0);
+                                                     0, 0, bounds, 0, 1);
             if (row != NULL) actual |= 1U << i;
             g_clear_object(&row);
             if (status != 0) return -1;
@@ -93,26 +93,9 @@ static int exercise_recent_search(Display *display, const ViewerWindow *viewer,
     unsigned int connected, listeners, phase = 0U;
     uint64_t fresh, age;
     int result = -1;
-    const char prefix[] = "127.0.0.1@";
-    const char suffix[] = " - Control Remote Desktop - RustDesk";
-    char current_label[ACCESSIBLE_NAME_LIMIT + 1U], title[512];
-    const char *host = NULL, *end = NULL;
-    Atom name = XInternAtom(display, "_NET_WM_NAME", False);
-    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
-    while (monotonic_millis() < deadline) {
-        if (read_text_property(display, viewer->window, name, title, sizeof(title)) != 0) goto out;
-        if (strncmp(title, prefix, sizeof(prefix) - 1U) == 0) {
-            host = title + sizeof(prefix) - 1U;
-            end = strstr(host, suffix);
-            if (end != NULL && end != host && strcmp(end, suffix) == 0 && end - host <= 64) break;
-        }
-        if (sleep_millis(100U) != 0) goto out;
-    }
-    if (host == NULL || end == NULL || monotonic_millis() >= deadline) goto out;
-    int length = snprintf(current_label, sizeof(current_label), "unknown@%.*s\n127.0.0.1",
-                          (int)(end - host), host);
-    if (length < 0 || (size_t)length >= sizeof(current_label)) goto out;
-    const char *names[] = {"amber@granite\nNorth desk", "beryl@quartz\nSouth desk", current_label};
+    /* Grid cards merge host and alias into one accessible label. Match each
+     * unique alias after the separator, independently of the connection title. */
+    const char *names[] = {"\nNorth desk", "\nSouth desk", "\nControl desk"};
     if (activate_header_control(display, viewer->window, (unsigned int)viewer->pid,
                                 "New connection") != 0 ||
         find_main_window(display, viewer->pid, &main) != 0 ||

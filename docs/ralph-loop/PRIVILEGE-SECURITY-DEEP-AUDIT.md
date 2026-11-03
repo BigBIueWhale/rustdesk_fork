@@ -134386,43 +134386,6 @@ evidence files match on CTE/TUF. `window-position-ledger-7984638b.json`:
 `db9f95ef63724993f2f12285ea069420f528cc4d747cabf30a9a5ed5f06401a8`.
 This audit-only receipt preserves the counted ledger. No owned job remains.
 
-### 2026-11-03 — user pivot; terminal connection-error retry classification
-
-The user directs a different aspect. Android imported-backup restore acceptance
-is OPEN/PARKED before execution. Its six unfinished harness edits are preserved
-in stash `d30327499554c4fef473a52e47e5f256218c4d4d`; the accepted Android-14
-new-backup checkpoint above remains valid. No owned job was pending at the pivot.
-All independent parks remain. The ledger's preceding selection of backup work
-is historical; this entry records the current user-directed selection.
-
-Selected R-S0/R-G6: preserve the native terminal/retry decision through Flutter
-connection-error presentation. `src/client.rs::check_if_retry` excludes offline
-errors, and `src/flutter.rs::Session::msgbox` publishes its explicit hasRetry
-decision. `FfiModel::handleMsgBox` overrides a false decision after PeerInfo when
-display text equals Remote desktop is offline, retaining a 30-second rendezvous-
-server heuristic despite the direct-only product. A peer close reason reaches
-the normal native classifier through `src/client/io_loop.rs`. This is a UI
-classification inconsistency, not a claim of privilege escalation or an observed
-native-session failure. It takes priority over further audio-device acceptance:
-the conflicting decisions are concrete and the existing bounded Flutter lane
-can distinguish them without acquiring an environment or rebuilding an app.
-
-The intended result is one retry decision: native true keeps the existing bounded
-recovery schedule; native false retires a predecessor and keeps the error terminal
-regardless of text or prior PeerInfo. Four added rendered/model cases cover both
-states, replacement and explicit-true recovery; eleven existing controls remain.
-Run the identical cases before/after removing the obsolete UI override. Session,
-input and event delivery are controlled doubles; this does not establish native
-peer recovery, impairment/soak or platform/release acceptance.
-
-Research: Dart Timer.cancel guarantees a cancelled timer will not invoke its
-callback; the existing generation check separately rejects captured callbacks.
-Flutter WidgetTester.pump advances test clock time, permitting a bounded idle
-observation. Primary references: https://api.flutter.dev/flutter/dart-async/Timer/cancel.html
-and https://api.flutter.dev/flutter/flutter_test/WidgetTester/pump.html.
-Current source requirements, retry producer/consumer and existing cases were
-reviewed before preparation. Product remains unchanged for the baseline.
-
 ## 2026-11-03 — user pivot; mobile Remote/Camera route ownership
 
 The user requests a different aspect. Peer-window native close/reopen acceptance
@@ -134900,3 +134863,40 @@ zero listener deltas and 402,759,680 bytes peak scratch. Twelve bounded files
 match on CTE/TUF. `android-backup-native-ledger-71426e94.json`: 4,828 bytes,
 SHA-256 `bf27ee36a1818443828dc0d37b0e103a80bb069c6aaa480139dc670112bdacb3`.
 This audit-only receipt preserves the counted ledger. No owned job remains.
+
+### 2026-11-03 — user pivot; terminal connection-error retry classification
+
+The user directs a different aspect. Android imported-backup restore acceptance
+is OPEN/PARKED before execution. Its six unfinished harness edits are preserved
+in stash `d30327499554c4fef473a52e47e5f256218c4d4d`; the accepted Android-14
+new-backup checkpoint above remains valid. No owned job was pending at the pivot.
+All independent parks remain. The ledger's preceding selection of backup work
+is historical; this entry records the current user-directed selection.
+
+Selected R-S0/R-G6: preserve the native terminal/retry decision through Flutter
+connection-error presentation. `src/client.rs::check_if_retry` excludes offline
+errors, and `src/flutter.rs::Session::msgbox` publishes its explicit hasRetry
+decision. `FfiModel::handleMsgBox` overrides a false decision after PeerInfo when
+display text equals Remote desktop is offline, retaining a 30-second rendezvous-
+server heuristic despite the direct-only product. A peer close reason reaches
+the normal native classifier through `src/client/io_loop.rs`. This is a UI
+classification inconsistency, not a claim of privilege escalation or an observed
+native-session failure. It takes priority over further audio-device acceptance:
+the conflicting decisions are concrete and the existing bounded Flutter lane
+can distinguish them without acquiring an environment or rebuilding an app.
+
+The intended result is one retry decision: native true keeps the existing bounded
+recovery schedule; native false retires a predecessor and keeps the error terminal
+regardless of text or prior PeerInfo. Four added rendered/model cases cover both
+states, replacement and explicit-true recovery; eleven existing controls remain.
+Run the identical cases before/after removing the obsolete UI override. Session,
+input and event delivery are controlled doubles; this does not establish native
+peer recovery, impairment/soak or platform/release acceptance.
+
+Research: Dart Timer.cancel guarantees a cancelled timer will not invoke its
+callback; the existing generation check separately rejects captured callbacks.
+Flutter WidgetTester.pump advances test clock time, permitting a bounded idle
+observation. Primary references: https://api.flutter.dev/flutter/dart-async/Timer/cancel.html
+and https://api.flutter.dev/flutter/flutter_test/WidgetTester/pump.html.
+Current source requirements, retry producer/consumer and existing cases were
+reviewed before preparation. Product remains unchanged for the baseline.

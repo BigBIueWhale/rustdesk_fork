@@ -301,7 +301,6 @@ class FfiModel with ChangeNotifier {
   Timer? _timer;
   final _reconnectScheduleAuthority = ReconnectScheduleAuthority();
   var _reconnects = 1;
-  DateTime? _offlineReconnectStartTime;
   bool _viewOnly = false;
   bool _showMyCursor = false;
   int? _eventListenerGeneration;
@@ -472,7 +471,6 @@ class FfiModel with ChangeNotifier {
     _inputBlocked = false;
     _touchMode = false;
     _reconnects = 1;
-    _offlineReconnectStartTime = null;
     _viewOnly = false;
     _showMyCursor = false;
     _timer?.cancel();
@@ -646,7 +644,6 @@ class FfiModel with ChangeNotifier {
       _timer = null;
       _reconnectScheduleAuthority.acceptConnected();
       _reconnects = 1;
-      _offlineReconnectStartTime = null;
       setConnectionType(peerId, evt['stream_type'] ?? '');
     } else if (name == 'switch_display') {
       // switch display is kept for backward compatibility
@@ -1088,7 +1085,6 @@ class FfiModel with ChangeNotifier {
       _timer?.cancel();
       _timer = null;
       _reconnects = 1;
-      _offlineReconnectStartTime = null;
       // R-S13/A3 (prompt-before-keying): the CPace keying needs the box's password up front;
       // a bare-ID first connect has none, so the keying fails and routes here. Enter it →
       // store + reconnect → key with it. `text` carries the reason (a wrong password, or a box
@@ -1109,44 +1105,9 @@ class FfiModel with ChangeNotifier {
       showPrivacyFailedDialog(
           sessionId, type, title, text, link, hasRetry, dialogManager);
     } else {
-      var hasRetry = evt['hasRetry'] == 'true';
-      if (!hasRetry) {
-        hasRetry = shouldAutoRetryOnOffline(type, title, text);
-      }
+      final hasRetry = evt['hasRetry'] == 'true';
       showMsgBox(sessionId, type, title, text, link, hasRetry, dialogManager);
     }
-  }
-
-  /// Auto-retry check for "Remote desktop is offline" error.
-  /// returns true to auto-retry, false otherwise.
-  bool shouldAutoRetryOnOffline(
-    String type,
-    String title,
-    String text,
-  ) {
-    if (type == 'error' &&
-        title == 'Connection Error' &&
-        text == 'Remote desktop is offline' &&
-        _pi.isSet.isTrue) {
-      // Auto retry for ~30s (server's peer offline threshold) when controlled peer's account changes
-      // (e.g., signout, switch user, login into OS) causes temporary offline via websocket/tcp connection.
-      // The actual wait may exceed 30s (e.g., 20s elapsed + 16s next retry = 36s), which is acceptable
-      // since the controlled side reconnects quickly after account changes.
-      // Uses time-based check instead of _reconnects count because user can manually retry.
-      // https://github.com/rustdesk/rustdesk/discussions/14048
-      if (_offlineReconnectStartTime == null) {
-        // First offline, record time and start retry
-        _offlineReconnectStartTime = DateTime.now();
-        return true;
-      } else {
-        final elapsed =
-            DateTime.now().difference(_offlineReconnectStartTime!).inSeconds;
-        if (elapsed < 30) {
-          return true;
-        }
-      }
-    }
-    return false;
   }
 
   handleToast(Map<String, dynamic> evt, SessionID sessionId, String peerId) {
@@ -1222,7 +1183,6 @@ class FfiModel with ChangeNotifier {
       _reconnects = min(_reconnects * 2, 30);
     } else {
       _reconnects = 1;
-      _offlineReconnectStartTime = null;
     }
   }
 
@@ -1434,7 +1394,6 @@ class FfiModel with ChangeNotifier {
       }
       if (displays.isNotEmpty) {
         _reconnects = 1;
-        _offlineReconnectStartTime = null;
         waitForFirstImage.value = true;
         isRefreshing = false;
       }

@@ -135611,3 +135611,49 @@ a4aa65cb2f5416514514b11aeb1e6b4b9767036625d220c8f0b945bff789585e.
 This audit-only receipt leaves the counted ledger unchanged. The selected
 permission callback correction is verified at the component checkpoint;
 exact-APK native workflow acceptance remains the next open step.
+
+## 2026-11-04 — user pivot; X11 release-evidence consolidation
+
+The user directs a different aspect. Android permission dialog/channel/workflow
+acceptance is now OPEN/PARKED; the accepted Kotlin correction remains valid.
+The unfinished, unwired native fixture is preserved in stash
+7c39f66c29be5abf64b2e6f306389341082074b6. No permission scenario ran.
+The inherited current-source APK build is allowed to finish as an owned resource
+and reusable artifact; it does not reopen native permission acceptance.
+
+Selected work is the binding release-ledger consolidation: the last exact count
+leaves only 1,064 tokens below the 400,000-token budget. Five X11 entries repeat
+run metadata and acceptance limits already present in this audit. A compact
+current-state table retains each implementation, decisive observation, source and
+raw-evidence reference. It explicitly separates received-byte injections from
+real server responses, ownership observation from uncontrolled memory access,
+component capture from whole-product presentation, and historical source-bound
+results from current installed/release acceptance. This is documentation work;
+it neither resumes parked product investigations nor upgrades an acceptance claim.
+
+Classification at 33fc2bdb: the original contiguous X11 section is 9,289 bytes;
+the replacement is 4,943 bytes, including the lane and CTE location. Removed
+duplicate material comprises full commit/tree strings, raw-log hashes/sizes,
+execution times, repeated cleanup narration and repeated shared limitations.
+All five sources and raw serial paths remain in the table. All seven removed
+SHA-256 strings are already retained verbatim in this audit. The five actual
+serial files on CTE still match their recorded hashes (68,434 / 71,124 / 75,520 /
+75,479 / 67,363 bytes respectively). They are not present at the equivalent TUF
+paths; the ledger now specifies CTE. Rejected fixtures remain expressly excluded.
+The table preserves monitor lifetime, payload/setup bounds, pixel layout/stride,
+atom failure/name behavior, every distinct evidence limitation and the open
+native/installed/release/independent-review obligations. The adjacent Windows
+and behavioral-acceptance sections remain unchanged. No normative requirement,
+product source, executable test, live instruction file or raw evidence is edited.
+
+Before this pivot, the permission APK preparation retired only superseded
+fd258e8b's four-file test APK generation, after exact inventory/hash verification
+against its source-bound capsule and with the shared run lock held. It reclaimed
+48,420,357 file bytes; comparison generations 1ee23828, f372aacf and aca3df16
+remain. The new build is source-frozen at 33fc2bdb. Both hosts retain matching
+permission-apk-retire-fd258e8b.json (1,372 bytes, SHA-256
+1c4ffaeab7bb4c10f388415fbabc4980c6fd7de4db2b396ed64f10c43e4ad0f3)
+and permission-apk-retired-fd258e8b.json (278 bytes, SHA-256
+95f3e0964d6ecf84c8c4f0aa2c693f30847d522bcc94d37da004073b4664de47).
+No source or canonical offline input was removed. The build and fresh ledger
+count require their own final receipts before this checkpoint is complete.

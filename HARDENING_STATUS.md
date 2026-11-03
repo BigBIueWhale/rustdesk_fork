@@ -43,13 +43,19 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
-**User pivot (2026-11-04):** Further floating-panel native/device/session work is
+**User pivot (2026-11-04):** Android permission native-workflow acceptance is
+OPEN/PARKED; the accepted Kotlin callback correction below remains valid.
+The unfinished native fixture is preserved in stash
+`7c39f66c29be5abf64b2e6f306389341082074b6`. Work moves to release-ledger
+consolidation, retaining named X11 component results and every open acceptance gap.
+
+**Earlier pivot (2026-11-04):** Further floating-panel native/device/session work is
 OPEN/PARKED; its accepted component correction remains valid. The already-running
 Linux app build at `27bf28eb` completes with thirteen widget/two native command
 checks and all 74 payload hashes verified. `floating-app-build-27bf28eb.json`
 binds that reusable artifact, four zero listener deltas and exact VM/RAM retirement;
 no native panel scenario ran. PE/linker validation, concurrent logging and all
-independent parks remain. Work moves to Android permission-denial completion.
+independent parks remain.
 
 **Android permission denial — Kotlin component correction verified.**
 `c868c6eb` reports false through the existing exact-request callback for ordinary
@@ -4056,137 +4062,36 @@ artifacts and raw evidence: `session-close-df57c746.json` in the verifier eviden
 directory and the audit journal. Concurrent tabs, native cleanup failures, other
 platforms, installed authority and release acceptance remain OPEN.
 
-**X11 monitor reply ownership — SOURCE CORRECTED; NATIVE COMPONENT A/B ACCEPTED.**
-`libs/scrap/src/x11/iter.rs` previously returned a monitor cursor after freeing
-its backing RandR reply. Each screen now owns that reply until exhaustion or
-drop; queries are checked, reply/error allocations are retired exactly, and a
-query error terminates enumeration explicitly. Both public `Display::all` and
-`Display::primary` propagate the error rather than returning partial success.
-The focused `--x11-display-tests` profile compiles the production enumeration
-modules and both public callers against the pinned Rust/XCB image and real
-two-screen Xvfb. Its historical-source comparison observes free-before-use and
-null-reply misuse without allowing an uncontrolled dangling read; corrected
-cases cover repeated enumeration, early drop and real BadWindow rejection.
-Exact source `c9b54e686ed0eaf0bf4332e0b4608aea85bd5e1f`, tree
-`a8de929fc37c30a494b032e0229299d4fc150f4f`, passed the complete isolated
-transaction in 43 seconds. The historical iterator exited 42 on invalid
-release/use ordering and 43 on null-reply misuse; corrected cases passed with
-exact reply/error retirement and explicit first/second-root error propagation.
-The host listener audit found no additions or pre-existing process drift;
-input rechecks and joined cleanup passed and the scratch root self-retired.
-Raw serial is `evidence/x11-display-c9b54e68.serial.log` (68,434 bytes, SHA-256
-`20894826ae6331d426c6f42c95532940011490c0e4e48f213e7af53a5cd477dc`).
-The initial `a9f0fc1c` fixture startup failure is retained, not counted as a pass.
-This is instrumented component evidence, not full-product
-capture, installed-service proof, allocator-exploit proof, the original
-Android/Windows cause, or LPE closure. The subsequent root-layout correction
-is described below.
+**X11 enumeration and capture — named native components accepted; full-product
+and installed acceptance OPEN.** The five source-bound checkpoints below exercise
+production `libs/scrap/src/x11/` modules and public callers with real XCB/Xvfb
+through `--x11-display-tests` inside zero-NIC VMs.
+They establish only their named historical artifacts and cases. Source and input
+rechecks, unchanged host listeners/no pre-existing process drift, joined owners
+and scratch retirement pass for each accepted run.
 
-**X11 reply-payload bounds — SOURCE CORRECTED; NATIVE COMPONENT A/B ACCEPTED.**
-The previous GetAtomName accessor and RandR monitor cursor trusted nested
-lengths after reply ownership was fixed. Production now checks the exact
-32-byte atom header and padded name payload before making a slice, and checks
-the RandR aggregate length plus every monitor/output span before an owned
-reply's checked offset cursor reads a monitor. Obsolete generated cursor/name
-accessors are absent from production FFI. Exact source
-`5354638ff50c3d6ea1a6563588c15ce8258fed87`, tree
-`5b94fe5802d6f0d54a2b426906dfb923d6c86fbe`, passed the 46-second
-zero-NIC focused transaction. Seven actual-XCB-reply header injections stopped
-the previous code at guarded unchecked access (atom exit 44, monitor exit 45)
-before any uncontrolled out-of-bounds read. Corrected code rejected each
-shape for 32 repetitions with exact reply/error retirement, fused enumeration,
-and both public callers including second-root refusal. An internally coherent
-zero-output shape injected into an actual reply passed alongside both real
-Xvfb screens. Host listener inventories had no additions or pre-existing
-process drift; guest/VM owners joined and the successful scratch root
-self-retired. Raw serial is `evidence/x11-bounds-after-5354638f.serial.log`
-(71,124 bytes, SHA-256
-`08a63758d607d648ee36cb7b720366d77bde44ac402af368b1bc52d59f51dff0`).
-The abandoned SetMonitor-based positive fixture closed its XCB connection
-locally with request-length error 4 before server mutation and is not counted
-as a server-created monitor result. This is instrumented component evidence,
-not a hostile-server wire reproduction, full-product capture, proof of
-installed-service behavior, the original Android/Windows display cause, or
-LPE closure. Root-layout behavior is assessed separately below.
+| Surface / accepted source | Current implementation and observed behavior | Raw evidence |
+| --- | --- | --- |
+| Monitor-reply ownership — `c9b54e68` | Each screen owns its RandR reply through exhaustion/drop; query failure retires reply/error storage and terminates enumeration. Both `Display::all` and `Display::primary` propagate errors, including second-root failure, without partial success. The guarded historical iterator exits 42 on free-before-use and 43 on null-reply misuse; repeated two-screen enumeration, early drop and real BadWindow pass after correction. The observer defers allocator release: it proves ordering, not uncontrolled dangling reads or allocator exploitability. | `evidence/x11-display-c9b54e68.serial.log` |
+| Reply-payload bounds — `5354638f` | Atom names require the exact 32-byte header and padded payload extent. RandR enumeration validates aggregate length and each monitor/output span before using a checked offset; obsolete unchecked accessor/cursor FFI is absent. Seven received-header injections stop the historical code at guarded unchecked access (exits 44/45); corrected cases reject each shape for 32 repetitions with exact retirement, fused enumeration and both public callers. A coherent zero-output header injected into an actual reply passes beside the real screens. This is received-byte injection, not a server-created outputless monitor. | `evidence/x11-bounds-after-5354638f.serial.log` |
+| Root pixel layout and capture stride — `65919cdc` | Setup pixmap depth, root visual and byte order select only exact supported TrueColor BGRA/RGBA32 or little-endian RGB565; missing, duplicate, invalid or unsupported layouts fail without a BGRA fallback. Scanline padding determines allocation and public stride; GetImage must match size/depth/visual, and empty/oversized dimensions refuse before allocation. Real 24-bit and 16-bit Xvfb roots yield drawn red pixels through production MIT-SHM capture; the 641-pixel 16-bit root requires 1,284-byte rows, not 1,282. Unsupported-format classification is separate from these real-server cases. | `evidence/x11-layout-final-65919cdc.serial.log` |
+| Setup-record bounds — `7dea1686` | An eight-byte-prefix-first parser bounds the success header, vendor padding, formats, screens, depths, visuals and final offset against the setup length; validated owned records replace unchecked generated cursors before RandR requests. Seven post-read setup faults reject sixteen times each without a monitor query; the historical cursor still admits shortened declared length. Both real capture/stride controls remain valid. This tests XCB-returned storage, not malicious raw-wire delivery. | `evidence/x11-setup-7dea1686.serial.log` |
+| Atom-query finality and names — `4e859a26` | One RAII owner retains replies/errors through direct explicit-length name copying with the existing lossy UTF-8 conversion. A real BadAtom formerly became a successful Display with one leaked error; 32 corrected repetitions retire the atom/error/enclosing monitor immediately and fuse enumeration, including public second-root failure. Atom0 makes no request; actual UTF-8/non-UTF-8 names pass. Xvfb truncates embedded NUL, so NUL preservation is separately proved by 32 labelled received-byte injections into actual replies after baseline `ce734b3f` fails. The fixture uses scrap's Rust 2018 edition and retains earlier monitor-lifetime/error controls. | `evidence/x11-name-after-4e859a26.serial.log` |
 
-**X11 root pixel layout and padded capture — SOURCE CORRECTED; NATIVE COMPONENT
-ACCEPTED.** Enumeration no longer guesses BGRA after a geometry query fails.
-For each root it selects the setup pixmap format by depth, the root visual by
-ID, and the image byte order, and accepts only layouts represented exactly by
-the capture converter (TrueColor BGRA/RGBA32 or little-endian RGB565). Missing,
-duplicate, non-TrueColor, unsupported, or invalid setup formats fail explicitly.
-The same scanline padding sets the shared-memory allocation and public pixel
-buffer stride; GetImage must return that exact size, depth, and visual. Empty or
-oversized dimensions fail before allocation. Exact source
-`65919cdc36a9b08160865d5fff6f7b9c6663ac64`, tree
-`ec09be8f6192832ad23ed3899f94e01dbccf9d27`, passed the 44-second zero-NIC
-focused transaction. Real Xvfb 24-bit and 16-bit roots yielded drawn red
-pixels through production MIT-SHM capture and the public pixel buffer; the
-odd-width 641-pixel 16-bit screen required and reported a 1,284-byte padded
-row, whereas width-times-two would have allocated only 1,282. Unsupported
-layout classification is checked separately, not misrepresented as a hostile
-X-server run. Host listener inventories had no additions or process drift,
-guest/VM owners joined, and successful scratch retired. Raw serial is
-`evidence/x11-layout-final-65919cdc.serial.log` (75,520 bytes, SHA-256
-`ca11a40fcf2abe411bcd2ba67296615fb53d549788afd2e474666a0e7575a0e1`);
-outer log SHA-256 is `6b9dac3600e99e8f0fe24cd113d0c229fca3a5b7b038814ec701fb30484cb910`.
-This is component capture/stride evidence, not hostile-server setup parsing,
-full-product presentation, installed-service behavior, the reported
-Android/Windows latency cause, or local-privilege-escalation closure.
+Paths resolve under `.harness-state/verifier-vm/` on CTE. Exact commits/trees,
+artifact and raw-log digests, primary protocol/libxcb research, execution times
+and rejected fixture attempts remain in the audit's X11 entries and Git at
+`33fc2bdb`. The initial lifetime fixture failure, rejected SetMonitor fixture
+and setup compile failure are not acceptance; SetMonitor closed the client
+connection with request-length error 4 before server mutation.
 
-**X11 setup-record bounds — SOURCE CORRECTED; NATIVE COMPONENT ACCEPTED.**
-The former `xcb_setup_roots_iterator` and nested format/depth/visual cursors
-trusted server-supplied counts without checking each record against the setup
-reply's total length. `libs/scrap/src/x11/iter.rs` now reads the eight-byte
-prefix first, bounds the success header, vendor padding, formats, screens,
-depths, visuals, and final layout against that one length, and owns the
-validated root/format records before issuing RandR requests. The obsolete
-unchecked cursor FFI is absent from production. The inspected upstream libxcb
-[setup reader](https://gitlab.freedesktop.org/xorg/lib/libxcb/-/blob/master/src/xcb_conn.c)
-allocates `8 + 4 * length` bytes before exposing the setup; its
-[blocking reader](https://gitlab.freedesktop.org/xorg/lib/libxcb/-/blob/master/src/xcb_in.c)
-returns the requested length only after a complete read. Exact source
-`7dea168655fe9641113e93cd74ca6940a4987809`, tree
-`6f4a6d5f50bffdfaa31b5cc89962bd6e3bbff2ca`, passed the 41-second
-zero-NIC focused transaction. A real two-screen Xvfb/XCB connection with
-post-read injected setup faults rejected seven header/nested-count/trailing
-shapes sixteen times each before any monitor query; the former generated
-root cursor still admitted the shortened-length case while the corrected
-iterator rejected it. Both real 24-bit and odd-width 16-bit MIT-SHM capture
-cases continued to produce red pixels and the correct stride. The harness
-requires the exact new native receipt. Host listener inventories were
-unchanged, process drift was zero, all owners joined, and scratch self-retired.
-Raw serial is `evidence/x11-setup-7dea1686.serial.log` (75,479 bytes,
-SHA-256 `652423d1834471ba16f6510d23204b401b690eb200a5baaa750a5af6f260660a`);
-outer log SHA-256 is
-`b7a6263d3abee555776131e78bf21d2a5727ceaf9b11a600ee387ccc7a7c895e`.
-This is XCB-returned component parsing evidence, not a malicious server's
-raw-wire test, full-product presentation, installed-service behavior,
-Android/Windows causation, or local-privilege-escalation closure.
-
-**X11 atom-query finality — SOURCE CORRECTED; NATIVE COMPONENT A/B ACCEPTED.**
-The production helper returned an empty name when GetAtomName failed and leaked
-the error allocation. Exact `a4d5dee1` reproduced a real server BadAtom becoming
-a successful Display with one unfreed error. Replies/errors now have one RAII
-owner through name conversion, and atom-query failure immediately retires the
-enclosing monitor reply and terminates enumeration explicitly. The production
-helper copies the explicit-length byte slice directly into its owned Rust name,
-preserving the existing lossy UTF-8 conversion without an intermediate CString.
-The native fixture compiles with scrap's Rust 2018 edition and passes 32 real
-BadAtom failures, immediate reply/error retirement, fused enumeration and both
-public callers including second-root failure. Separate cases cover atom0 without
-a request and actual UTF-8/non-UTF-8 names. This Xvfb server truncates an interned
-embedded-NUL name; it did not deliver a client rejection. A labelled received-byte
-injection into an actual XCB reply failed at `ce734b3f` and now preserves NUL
-across 32 repetitions with exact cleanup.
-Exact `4e859a2618603e720d5220395d9b35ee99c49e7c`, tree
-`9872054c9de60896c465d12dc315e21c80d0b57e`, passed the complete transaction in
-52 seconds, including all earlier monitor-lifetime/error cases. Raw serial is
-`evidence/x11-name-after-4e859a26.serial.log` (67,363 bytes, SHA-256
-`1db6242eded9ca06a39aa3ffc675717f60e1d7dfe7b69f87c53f42f69c030df1`).
-Inputs and host listeners were unchanged, cleanup joined and scratch self-retired.
-This is instrumented component evidence, not full-product capture, malformed-
-reply bounds, original display-hang causation, installed-service behavior or LPE.
+**OPEN:** hostile-server raw-wire/setup parsing, current full-product capture
+and presentation, installed privileged receivers, other target environments,
+sustained behavior, exact release artifacts and independent review. These
+component results do not establish Android/Windows display-delay causation,
+local privilege-escalation immunity or complete R-S0/R-F5 acceptance. The
+separate X11 shared-memory/publication requirements R-S11fw/R-S11fx and the
+full-peer acceptance requirement R-S11gc remain binding.
 
 The Windows first-video path now avoids the decoder worker's former nested Tokio runtime, second OS thread, synchronous
 join, and ignored IPC result. Remote and View Camera connections share a process-wide Tokio `OnceCell` initialization

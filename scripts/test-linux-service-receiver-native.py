@@ -2334,11 +2334,28 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, ex
                     if child.poll() is None:
                         child.kill()
                     child.communicate(timeout=10)
-            if (select.select([pidfd], [], [], 0)[0] or properties() != expected_unit
-                    or snapshot(parent) != namespace or lease_identity() != lease_before
-                    or sorted(p.name for p in runtime.iterdir()) != expected_entries
-                    or set(Path("/sys/fs/cgroup/system.slice/rustdesk.service/cgroup.procs").read_text().split()) != expected_processes
-                    or (record and (child_record() != record or snapshot(runtime / "service-child.record") != child_before))):
+            expected = {"exited": False, "unit": expected_unit, "namespace": namespace,
+                        "lease": lease_before, "entries": expected_entries,
+                        "processes": sorted(expected_processes), "child": record, "child_record": child_before}
+            actual = {"exited": bool(select.select([pidfd], [], [], 0)[0]), "unit": properties(),
+                      "namespace": snapshot(parent), "lease": lease_identity(),
+                      "entries": sorted(p.name for p in runtime.iterdir()),
+                      "processes": sorted(set(Path("/sys/fs/cgroup/system.slice/rustdesk.service/cgroup.procs").read_text().split())),
+                      "child": child_record() if record else None,
+                      "child_record": snapshot(runtime / "service-child.record") if record else None}
+            if actual != expected:
+                processes = {}
+                for candidate in actual["processes"]:
+                    proc = Path("/proc") / candidate
+                    try:
+                        processes[candidate] = {"exe": os.readlink(proc / "exe"),
+                                                "cmdline": (proc / "cmdline").read_bytes().decode("utf-8", errors="replace"),
+                                                "stat": (proc / "stat").read_text()}
+                    except (FileNotFoundError, ProcessLookupError):
+                        processes[candidate] = {"exited_during_observation": True}
+                print(prefix + "_PRESERVATION_FAILURE=" + json.dumps(
+                    {"count": count, "expected": expected, "actual": actual,
+                     "process_details": processes, "outcomes": outcomes[-count:]}, sort_keys=True), flush=True)
                 raise RuntimeError("duplicate launch disturbed the incumbent service generation")
             for postfix in ("_service", "_service_password", "_service_credential"):
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:

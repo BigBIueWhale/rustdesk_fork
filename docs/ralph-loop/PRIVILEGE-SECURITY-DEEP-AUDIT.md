@@ -132417,3 +132417,16 @@ same live desktop must permit a fresh supervised generation and login. Exact
 PAM/Xvfb/user cleanup follows. This proves the named ownership/login condition,
 not pixels, input, adverse-network recovery, forced race schedules, crash recovery,
 final packages or other-platform acceptance.
+
+Initial desktop run `Fj8W7SD8Dd` at `9002130f` passes the first generation:
+three duplicates refuse, the retained connection returns actual PeerInfo, and
+the child/supervisor stop cleanly. The second generation authenticates and passes
+its first duplicate, then the combined preservation assertion fails after the
+two-process batch. The assertion did not retain which field changed. Add exact
+expected/actual field and cgroup-process diagnostics before classifying a product
+defect; do not weaken acceptance based on that incomplete output.
+All owned host processes/helpers and RAM scratch retired; three listener deltas
+are zero. The inspected 19-node private diagnostics are retired by retained
+directory descriptors after bounded evidence capture. Twelve records were copied
+and hash-verified. Capsule `linux-desktop-exclusive-9002130f.json` is 19,670 bytes,
+SHA-256 `3f95147379e85734f2482bd938a1080ccb9066ab835dbba40751abf44e814467`.

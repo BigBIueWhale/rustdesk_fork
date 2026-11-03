@@ -135455,3 +135455,24 @@ and cached dimensions disappear. The three call sites and keyboard fixture's
 no-op override follow the explicit signature. All test bodies/assertions and
 execution settings remain unchanged; only that fixture override gains Size.
 Corrected replay is required before acceptance.
+
+Replay `Bp6RfimOCm` at `f08e0ba3` passes all 23 rendered/parser-position
+cases and three result-parser controls, exact source/input postconditions and
+complete outer acceptance in 250 seconds. The same panel State remains mounted
+through shrink/re-expand; both drag directions and all earlier keyboard and
+saved-position controls pass. Source comparison confirms the sole test-file
+change is the keyboard fixture override's Size parameter: before SHA-256
+`c6e55d8b245bc32ff6724575a1391dd3c400048c684760edbd6d936939588a10`,
+after `efb24989f1614d3c94c726205320d7cb3e0bb620ec4be95154222e0d63142333`.
+Execution recipe and result admission are byte-identical between both sources.
+
+Four listener deltas are zero and exact QEMU/helper/private/RAM retirement
+passes. Scratch peaks at 6,383,951,872 bytes within the admitted RAM workspace;
+no disposable build payload remains on disk. Thirteen bounded evidence files
+match CTE/TUF. `floating-viewport-fixed-f08e0ba3.json` is 8,453 bytes,
+SHA-256 `9f0899b725090389b3c3a3f58cdb3ed093b7664b0937f16e0a124af38ae7124b`.
+This closes the named Flutter component correction. Real Android/iOS rotation,
+platform keyboard delivery, native preference persistence, full-session and
+release acceptance remain open. No owned job remains. The ledger records the
+PE pivot, corrected bridge-generation dependency and this component result;
+its required fresh isolated count is next.

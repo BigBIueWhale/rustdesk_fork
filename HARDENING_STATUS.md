@@ -43,6 +43,25 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-04):** Further PE/linker artifact validation is
+OPEN/PARKED. The accepted empty-REPRO component correction below remains valid.
+The subsequent authenticated LLVM archive inspection was read-only and created
+no extracted tools or VM. Work moved to floating-panel viewport ownership;
+concurrent logging and all independent parks remain.
+
+**Floating-panel viewport ownership — Flutter component correction verified.**
+`f08e0ba3` passes each panel's local viewport into position adjustment and
+rechecks iOS placement on build and drag, using current widget dimensions.
+Baseline `AGqO167HRA` at `7e667815` reproduces standard/iOS resize and iOS
+drag containment failures, with twenty controls passing. Replay `Bp6RfimOCm`
+passes all 23 cases and three parser controls in 250 outer seconds. Test bodies,
+assertions and execution recipe are unchanged; the keyboard fixture's override
+only gains the explicit Size parameter. `floating-viewport-{before-7e667815,
+fixed-f08e0ba3}.json` bind source, outcomes, four zero listener deltas per run
+and exact process/private/RAM retirement. Actual Flutter widgets and pointer
+gestures run; viewport changes and persistence are controlled. Physical mobile
+rotation, native keyboard/storage, complete-session and release acceptance remain OPEN.
+
 **PE reproducibility markers — build component corrected.** `ad2b4f24` accepts
 the documented empty REPRO entry and counts it without authorizing payload writes.
 Baseline `8b01af88` passes existing controls then refuses the first valid empty
@@ -56,8 +75,9 @@ installation, cold release equality and full seven-suite integration remain OPEN
 
 **User pivot (2026-11-03):** Remote-restart work is OPEN/PARKED. Baseline
 `f0fb02a4` reproduces four admission/state failures with one successful-command
-control. Candidate `f4f544cf` fails fresh bridge generation on `ResultType<()>`
-before tests; its correction is unverified. Nine rendered cases and their lane
+control. Candidate `f4f544cf` initially fails fresh bridge generation on `ResultType<()>`.
+The type-equivalent `Result<()>` spelling at `7e667815` restores generation for
+the panel shard; restart behavior remains unverified. Nine rendered cases and their lane
 (`94124746`) are also unexecuted. `restart-native-candidate-f4f544cf.json`
 retains the failure and exact VM/RAM retirement. Native connection-error retry
 remains independently parked with two unexecuted bridge tests in stash

@@ -134439,3 +134439,13 @@ Before that build, the four-generation app cache was admitted by retiring only
 `window-app-retired-f043c5ae.json` retain the decision and completed retirement.
 The earlier `0ccb2a7e`, `7e6f6459` and `9f78434c` generations remain alongside
 the new `2ed4dd37` app. Canonical inputs and unrelated data are unchanged.
+
+Fresh count `jYmY8h1Utq` at `4c8332af` passes seven controls and the complete
+input round trip: 398,005 tokens / 1,819,613 bytes, SHA-256
+`c3838af19f80aea5802e1602ecbcca908d109bf572f5edaef258068127cc0a78`.
+The 28-second run has three zero listener deltas and joined exact process,
+private and RAM retirement; peak RAM scratch is 402,681,856 bytes. Twelve
+bounded files match on CTE/TUF. `mobile-route-ledger-4c8332af.json`: 4,793 bytes,
+SHA-256 `87a10822748eeb5b9db01bbb77d4b115f2420e24476171576508231a5d829ba4`.
+This audit-only receipt preserves the counted ledger. No owned job remains;
+mobile navigation is the selected continuation and the overall goal stays active.

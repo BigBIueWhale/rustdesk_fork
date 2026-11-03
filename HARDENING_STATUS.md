@@ -43,15 +43,18 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
-**User pivot (2026-11-03):** Further outgoing-session keep-awake work is
-OPEN/PARKED. Its already-started app build completed and all owned VM/RAM
-resources retired; the new native wake-lock fixture remains unexecuted.
-Work moves to R-S11go/R-S11gq monitor switching: real display selection,
-presented content and input geometry must agree. The native two-monitor
-topology/capture prerequisite and one retained Linux full-app left/right/left
-chooser/pixel/pointer scenario pass. Broader native/release acceptance remains
-OPEN (R-S11go below). Linux service-child startup-failure
-cleanup and all independent user parks remain unchanged.
+**User pivot (2026-11-03):** Monitor-selection work is OPEN/PARKED.
+Retained app `f043c5ae` passes ordinary left/right/left selection, but native
+burst replay `0vebGh5CF0` ends on the wrong monitor after sixteen injected
+clicks ending on the left. `monitor-burst-97d9eab8.json` binds the failure;
+the unverified caller correction is preserved in stash
+`03ed0880cdbe32b69630cab4bfa44fc7cf722247`. No corrected-app build or replay
+has run. R-S11go below retains the acceptance boundary.
+Work moves to the documentation-architecture requirement: condense recent UI
+evidence into current results, limitations and retained references. Keep-awake,
+Linux service-child startup-failure cleanup and all independent parks remain.
+The prior wake build completed and retired its owned resources; its native
+wake-lock fixture remains unexecuted.
 
 **Outgoing-session wake lock — component correction verified (2026-11-03):**
 `af9f4b2c` serializes platform transitions, retaining latest session demand
@@ -67,65 +70,31 @@ passes; `viewer-wake-accepted-af9f4b2c.json` binds evidence. Actual desktop
 session integration, D-Bus/provider behavior, screen power, uncertain outcomes,
 other platforms and installed/release acceptance remain OPEN.
 
-**Follow System reselection — verified native Linux correction (2026-11-02):**
-`c0ce6463` removes the App's replacement brightness callback and passes the saved
-theme preference to all app roots, preserving Flutter's System mode and normal
-brightness notifications. Baseline `A8WwgRWH64` on app `c619cb3e` passes ten
-phases, then renders Light when System is reselected with OS Dark. Corrected
-app `c9323bf1` passes that transition and the complete thirteen-phase replay
-below. Its build `8K5xFpBNGf` passes thirteen widget and two native command
-tests; only `libapp.so` differs among the baseline's payload files. The Rust
-library, engine and remaining payload files are identical. The audit and
-`theme-system-build-c9323bf1.json` retain exact source, artifact and cleanup
-evidence; other platform, concurrency and release obligations remain OPEN.
+**Theme settings — named Linux native scenarios pass; broader acceptance OPEN.**
+`c0ce6463` restores Flutter's System mode and brightness notifications;
+`1000ebf4` makes secondary windows read the current shared preference instead
+of trusting delayed notification values. `f8d92225` awaits macOS channel
+completion for startup/main/secondary Light/Dark/System changes; Swift clears
+the appearance for System and rejects invalid or unavailable targets.
 
-**Delayed theme notification correction (2026-11-02):**
-`1000ebf4` removes the theme value from the native notification API. Secondary
-windows read the current shared preference when receiving the event, so delayed
-notifications cannot restore an older choice. Unchanged-product run `ANyuhxg9wj`
-passes 34 cases and fails both delayed-payload cases; corrected run `j9HHXLDLHo`
-passes all 36, including value-free notifications and subsequent system brightness
-changes. Actual Dart handlers, dispatcher and rendered widgets execute with
-native preference/platform doubles and freshly generated bindings. Save failure,
-retry and ownership controls remain passing. `theme-ordering-accepted-1000ebf4.json`
-binds that component evidence. Native integration on the corrected app is verified
-below; forced native worker reordering, concurrent writers, other failure classes,
-providers/platforms and installed/release acceptance remain OPEN.
+| Layer and evidence | Accepted behavior |
+| --- | --- |
+| Linux build, `theme-system-build-c9323bf1.json` | App `c9323bf1` passes thirteen widget and two native command tests. Only `libapp.so` differs from baseline `c619cb3e`; Rust, engine and other payload files match. Baseline `A8WwgRWH64` renders Light when System is reselected with OS Dark after ten passing phases. |
+| Dart component, `theme-ordering-accepted-1000ebf4.json` | Baseline `ANyuhxg9wj` passes 34 cases and fails both delayed-value cases; corrected `j9HHXLDLHo` passes 36. Actual handlers, dispatcher and rendered widgets use native preference/platform doubles and regenerated bindings. Save failure, retry, ownership and subsequent OS brightness changes pass. |
+| Linux full app, `theme-system-appearance-f13a50e7.json` | `GczjjRBVla` uses app `c9323bf1` / engine `ddb1541d`: thirteen main/remote phases, four System-followed OS changes, five five-second explicit-mode holds, correct System reselection and all nine independently observed notifications. Fifty-two fresh frame samples have maximum age 319 ms; joined storage retains System. |
+| Linux full app, `theme-system-save-failure-f13a50e7.json` | `7BcrDr6IGA`, same app/engine: real EACCES reports failure, keeps both windows Light through four-second observations and preserves saved identity/bytes. Restored access permits Dark retry, clears the error and saves Dark after join. Sixteen fresh frames have maximum age 317 ms. |
+| Dart macOS-channel component, `macos-theme-corrected-f8d92225.json` | Baseline `4Y3j1Wu5tt` passes 36 cases and fails four channel cases; corrected `WCYT4wRC8l` passes 40, including awaiting completion and visible failure/retry. Native/platform doubles; no macOS execution. |
 
-**Native Linux theme synchronization verified (2026-11-02):** Replay
-`GczjjRBVla` at harness `f13a50e7` uses app `c9323bf1` and engine `ddb1541d`.
-Thirteen main/remote phases agree: System follows four OS changes, explicit
-Light/Dark survive five five-second holds, and System reselection uses current
-OS Dark. The independent monitor observes all nine OS notifications. The same
-remote window/connection remains; 52 fresh frame observations have maximum
-sampled age 319 ms, and joined storage retains System. Drivers reproduce
-identically; VM/RAM/private cleanup and four zero listener deltas pass.
-`theme-system-appearance-f13a50e7.json` binds this result. The prior candidate
-run passed all pixel phases but stopped at the wrapper's obsolete eight-event
-expectation; the audit preserves that failure and the two-count correction.
+Both Linux app replays preserve the same window/connection, rebuild drivers
+identically, leave four zero listener deltas and join VM/RAM/private cleanup.
+Component/build artifacts and cleanup are retained in their named capsules.
+The superseded wrapper event-count repair remains in the audit, not acceptance.
 
-**Cross-window theme save failure/retry verified:** Replay `7BcrDr6IGA` reuses
-the same corrected app/engine. Real EACCES leaves both windows Light,
-reports the failure and preserves exact saved file identity/bytes. Four-second
-held observations remain Light. Restored access permits Dark retry in both
-windows, clears the error and saves Dark after process join. Four remote phases
-observe sixteen fresh frames, maximum age 317 ms, on the same window and
-connection. Drivers rebuild identically; VM/RAM/private cleanup and four zero
-listener deltas pass. `theme-system-save-failure-f13a50e7.json` binds this evidence.
-The component reordering reproduction and these native integration runs cover
-distinct layers; the broader gaps above remain.
-
-**macOS appearance reset — component correction verified; native OPEN:**
-`f8d92225` sends Light/Dark/System through the native channel on startup and
-main/secondary-window changes, awaiting completion. Swift clears the window's
-appearance for System and rejects invalid arguments or unavailable windows and
-appearances. The redundant detached rebuild update is removed. Unchanged-product
-run `4Y3j1Wu5tt` passes 36 existing cases and fails four macOS channel cases;
-corrected `WCYT4wRC8l` passes all 40, including pending native completion and
-visible failure/retry. Actual Dart settings/event/channel code executes with
-native/platform doubles; `macos-theme-corrected-f8d92225.json` binds evidence and
-joined cleanup. Swift compilation, AppKit pixels/OS changes, startup/restart and
-current-app native/installed acceptance remain OPEN; no macOS execution is claimed.
+**OPEN:** forced native worker reordering, concurrent writers, other failure
+classes/providers/platforms and installed/release acceptance. macOS still needs
+Swift compilation, AppKit pixels/OS changes, startup/restart and current-app
+native/installed evidence. Component reordering and full-app integration establish
+their respective layers only.
 
 **User pivot (2026-11-02):** View mode / Show my cursor work is OPEN/PARKED.
 Candidate `0ccb2a7e` completes the Linux Flutter app build with thirteen focused
@@ -191,109 +160,38 @@ Its unexecuted one-file observer draft is preserved in stash
 change occurred. Work moved to language-setting direction above. The completed
 equal-layout keyboard result remains valid, and independent parks remain.
 
-**Native Linux keyboard-mode switching verified (2026-11-02):** Replay
-`7jeXoKHAiM` at `c352f6fd` reuses app `7e6f6459` and engine `ddb1541d`.
-Actual toolbar choices Map→Legacy→Map each have confirmed exclusive menu state
-and pass the eleven-case native keyboard observer: 33 sequences and 84 received
-events with exact characters, modifiers and press/release order. Both keyboards
-end released; the same viewer window and authenticated connection remain, with
-bounded resources. Twelve post-phase displayed counters are current, maximum
-sampled age 312 ms. The viewer exits zero and its private saved mode is Map.
-All owned processes join, RAM scratch retires and four listener deltas are zero.
-`keyboard-modes-accepted-c352f6fd.json` binds the result. Product code is unchanged;
-the fixture now waits for menu/toolbar retirement before its focus-restoring click.
-This uses equal US X11/Xvfb layouts. Cross-layout behavior, switching with held
-keys and restart beyond the scenarios below, physical devices, other platforms
-and installed acceptance remain OPEN.
+**Keyboard settings — named Linux native scenarios pass; broader acceptance OPEN.**
+`c6aed851` fixes Translate Ctrl+A disconnect by removing blanket hotkey
+rejection and using the checked native text injector, preserving receiver-owned
+held modifiers and failure/retirement semantics. Baseline `X3c59cYD2S` on app
+`c9323bf1` passes Map and nine Translate cases, then rejects Ctrl+A and
+disconnects (`keyboard-translate-98a8dd43.json`). The corrected build passes
+thirteen widget and two native command tests
+(`keyboard-translate-build-c6aed851.json`).
 
-**Held keyboard-mode transitions verified on Linux:** Replay `9Sk3KTlSeg` at
-`e88d96cd` reuses app `c9323bf1` / engine `ddb1541d`. Both Map→Legacy and
-Legacy→Map begin with native left-Control/left-Shift presses and both keymaps
-held. No releases are observed before selecting the new choice; both are observed
-after selection while the viewer keys remain held. Exact releases, a quiet
-interval and both final keymaps pass. All three normal typing phases also pass
-(33 cases), including input after each held-key transition.
-The same window/connection remains; twelve fresh counters have maximum sampled
-age 312 ms, and joined storage retains Map. Identical driver rebuilds, four zero
-listener deltas and VM/RAM/private cleanup pass. `keyboard-held-e88d96cd-retry.json`
-binds this equal-layout X11 evidence. It does not establish the precise release
-ordering against the internal mode commit, physical devices or other platforms;
-those and the broader gaps above remain OPEN. No product change was needed.
+All native rows below use engine `ddb1541d`, equal US X11/Xvfb layouts and
+synthetic input. They verify exact text/modifiers/event order and final released
+keymaps, bounded resources, identical driver rebuilds, four zero listener deltas
+and joined VM/RAM/private cleanup. Each live phase preserves its window and
+authenticated connection; the restart row deliberately replaces the viewer.
+Capsules bind exact harness/app identities and raw observations.
 
-**Keyboard-mode restart restoration verified on Linux (2026-11-03):**
-Replay `m15DSrP0OO` at `175f8b93` reuses app `c6aed851` / engine `ddb1541d`.
-Four distinct viewer processes authenticate through the real prompt and join
-with exit zero in sequence. They select Map; restore/type Map then select/type
-Translate; restore/type Translate then select/type Legacy; restore/type Legacy
-without a selection. Each restored choice is exclusive before any write. All
-six native typing observations pass: 66 cases / 168 events, exact text/modifiers/
-order and both keymaps released. Twenty-four fresh displayed counters have
-maximum sampled age 305 ms. Joined preference files contain Map/Translate/
-Legacy/Legacy with required ownership and modes. Identical driver rebuilds,
-bounded resources, four zero listener deltas and VM/RAM/private retirement pass;
-`keyboard-translate-restart-175f8b93.json` binds the evidence. No product change
-or app rebuild was needed. This is orderly viewer restart on equal-layout X11.
-Abrupt restart, save failures beyond the case below, physical devices, other
-platforms and installed acceptance remain OPEN.
+| Evidence / app | Accepted behavior; maximum sampled displayed-frame age |
+| --- | --- |
+| `keyboard-modes-accepted-c352f6fd.json` / `7e6f6459` | Map→Legacy→Map has exclusive menu state; 33 cases / 84 events, twelve fresh frames, saved Map and exit zero. 312 ms. |
+| `keyboard-held-e88d96cd-retry.json` / `c9323bf1` | Both mode transitions release receiver left Control/Shift after the choice while viewer keys remain held, with no earlier release. Quiet interval, final keymaps and 33 typing cases pass; twelve fresh frames and saved Map. 312 ms. Precise release ordering against the internal mode commit is unproved. |
+| `keyboard-translate-restart-175f8b93.json` / `c6aed851` | Four distinct viewers authenticate through the prompt and exit zero. Map/Translate/Legacy restore exclusively before another write; six typing observations total 66 cases / 168 events. Twenty-four fresh frames; saved Map/Translate/Legacy/Legacy with required ownership/modes. 305 ms. Orderly restart only. |
+| `keyboard-repeat-afcefd31.json` / `c6aed851` | Map→Legacy→Translate→Map: twelve one-second a/Backspace/Left holds each yield ten recorded viewer presses and ten receiver pairs, at least five while held. Each passes 500-ms drain and quiet intervals; 44 subsequent typing cases / 112 events, sixteen fresh frames and saved Map. 317 ms. |
+| `keyboard-save-72af4272.json` / `c9323bf1` | Real EACCES refuses Legacy, shows Failed, preserves exclusive Map and saved identity/bytes; typing and fresh pixels continue. Restored access permits Legacy retry, clears the error and saves Legacy. Three phases, 33 cases / 84 events and twelve fresh frames. 315 ms. |
+| `keyboard-translate-corrected-c6aed851.json` / `c6aed851` | `zES9qwcOLV` replays the unchanged baseline observer/provider: Map→Translate→Map passes 33 cases / 84 events including Ctrl+A and subsequent typing; twelve fresh frames and saved Map. 308 ms. |
+| `keyboard-shortcuts-e3f83515.json` / `c6aed851` | Seven compound cases cover left/right Ctrl+Shift+Z, right Ctrl+A, Alt+A, Super+A, A/C with Control held and subsequent typing. With the original cases: 40 cases / 118 events, twelve fresh frames and saved Map. 298 ms. Right Shift remains held through the injector's temporary left-Shift pair. |
 
-**Held-key repetition and release verified on Linux:** Replay `BzOC5kinvI`
-at `afcefd31` reuses app `c6aed851` / engine `ddb1541d`. Across actual
-Map→Legacy→Translate→Map choices, twelve one-second holds (a, Backspace, Left)
-each produce ten viewer-recorded presses and exactly ten native receiver pairs.
-At least five presses arrive while held; every case passes a 500 ms drain limit,
-500 ms quiet interval, exact text/order and both keymaps released. All 44 subsequent
-typing cases / 112 events pass. Sixteen fresh displayed counters have maximum
-sampled age 317 ms, with the same window/connection, bounded resources and joined
-saved Map state. Drivers rebuild identically; four listener deltas are zero and
-VM/RAM/private cleanup passes. `keyboard-repeat-afcefd31.json` binds this evidence;
-the initial guest argument-routing failure is retained separately in the audit.
-No product change or app rebuild was needed. This uses equal US X11/Xvfb layouts
-and synthetic held input. Physical devices, other layouts/platforms, longer or
-concurrent holds and installed/release acceptance remain OPEN; parks are unchanged.
-
-**Keyboard-mode save refusal/retry verified on Linux:** Replay `XoWxkWSZpx`
-at `72af4272` reuses app `c9323bf1` / engine `ddb1541d`. With the private peer
-directory unwritable and exclusive create refused by EACCES, selecting Legacy
-shows Failed, preserves exclusive Map state and leaves the saved file's identity
-and bytes unchanged. Native typing and fresh pixels pass while writes remain
-denied. Restored access permits Legacy retry; its menu state and input pass,
-the error is absent, and the joined saved preference is Legacy. Three phases
-pass 33 cases / 84 native events; twelve fresh counters have maximum sampled
-age 315 ms on the same window/connection. Identical driver rebuilds, bounded
-resources, four zero listener deltas and VM/RAM/private retirement pass.
-`keyboard-save-72af4272.json` binds this evidence. No product change was needed;
-other failure classes, concurrency, platforms and installed acceptance remain OPEN.
-
-**Linux Translate Ctrl+A disconnect — corrected and verified (2026-11-03):**
-`c6aed851` removes the Linux Translate handler's blanket hotkey rejection and
-uses the existing checked native text injector, preserving receiver-owned held
-modifiers and failure/retirement behavior. Baseline `X3c59cYD2S` on app
-`c9323bf1` passes Map and nine Translate cases, then rejects Ctrl+A and closes
-the connection. Corrected replay `zES9qwcOLV` uses freshly built app `c6aed851`
-with the same engine/provider and unchanged native observer. Map→Translate→Map
-passes all 33 cases / 84 native events, including Ctrl+A and subsequent typing,
-exact characters/modifiers/order and both keymaps released. The same window and
-authenticated connection remain; twelve fresh displayed counters have maximum
-sampled age 308 ms, and joined storage retains Map. All drivers rebuild
-identically; bounded resources, four zero listener deltas and VM/RAM/private
-retirement pass. `keyboard-translate-corrected-c6aed851.json` binds acceptance;
-`keyboard-translate-98a8dd43.json` retains the failing comparison. Build
-`J1J8D0Hqej` also passes thirteen widget and two native command tests; its
-manifest and cleanup are in `keyboard-translate-build-c6aed851.json`.
-Additional replay `Zg1togddPU` at fixture `e3f83515` reuses the same app and
-passes seven compound-shortcut cases: left/right Ctrl+Shift+Z, right Ctrl+A,
-Alt+A, Super+A, A/C with Control continuously held and subsequent ordinary typing.
-The original 33 cases also pass: 40 cases / 118 native events overall, exact
-text/modifier state, balanced keys, unchanged connection/window and twelve fresh
-counters with maximum sampled age 298 ms. Joined storage retains Map. The
-right-side case explicitly observes the text injector's temporary left-Shift
-pair while preserving right Shift; the initial observer assumption and its
-correction are retained in the audit. `keyboard-shortcuts-e3f83515.json` binds
-the passed run, identical driver rebuilds, four zero listener deltas and complete
-VM/RAM/private retirement. No product change or app rebuild was needed.
-Equal US X11 only: application-specific/side-specific shortcut bindings, combinations
-beyond those named, input methods/layouts, physical devices,
-other platforms and installed/release acceptance remain OPEN. Independent parks remain.
+**OPEN:** differing layouts (independently PARKED), input methods, physical
+devices, other platforms and installed/release acceptance; application-specific
+or side-specific shortcut bindings and unnamed combinations; longer/concurrent
+holds; abrupt restart; save failures beyond EACCES and concurrent settings.
+Only the named retained artifacts/scenarios are accepted. Historical fixture
+repairs remain in the audit; no new runtime acceptance is asserted here.
 
 **User pivot (2026-11-02):** Custom quality/FPS native validation is OPEN/PARKED.
 Its unexecuted two-file draft is preserved in stash
@@ -14921,8 +14819,9 @@ Exact-current zero-interface QEMU execution, Windows peer/service behavior, and 
 
 ### R-S11go/R-S11e-227 — ordered exact-owner display-selection finality (2026-08-13)
 
-**Source implemented; named Dart evidence and one retained Linux full-app scenario
-pass; broader native/release acceptance OPEN.** The viewer model and
+**OPEN/PARKED: rapid selection has a reproduced final-choice failure; the caller
+correction is unverified.** Named Dart evidence and ordinary Linux full-app
+selection pass within their scopes below. The viewer model and
 `src/{client.rs,client/io_loop.rs,flutter.rs,flutter_ffi.rs,ui_session_interface.rs}`,
 with `src/server/connection.rs` and `flutter/lib/common.dart`, implement one
 connection-session/UI-owner display-selection transaction. Dart snapshots an
@@ -14944,6 +14843,7 @@ Evidence paths are relative to `.harness-state/verifier-vm/`.
 
 | Evidence | Observation and limit |
 | --- | --- |
+| `monitor-burst-97d9eab8.json`, run `0vebGh5CF0` | Retained app `f043c5ae` passes the left baseline, then shows fresh right-monitor frames after sixteen injected clicks ending on the left: 49 wrong-display observations, maximum observed age 308 ms. XTEST injection does not prove every click was consumed. The caller skips a choice equal to committed state despite a pending choice; its unverified correction is stashed as `03ed0880cdbe32b69630cab4bfa44fc7cf722247`. Four listener deltas are zero and owned VM/RAM/private state retires. Corrected-app build and the same `--monitor-burst` replay remain required on resumption. |
 | `monitor-switch-34429165.json`, run `DYNUOcKfwO` | The 109-second isolated replay reuses app `f043c5ae` and engine `ddb1541d`. The actual chooser selects left/right/left; twelve advancing display-specific counters are fresh (maximum sampled age 293 ms). Six native remote pointer targets match the exact 640-pixel monitor offset and 120/24-pixel displacement, preserving window/TCP identity and resource bounds. Topology, processes, container and VM/RAM/private state retire; four listener deltas are zero. Synthetic equal-size X11 monitors only: initial absolute viewport calibration, physical/mixed-DPI displays, topology changes, rapid selection, other platforms and installed/release acceptance remain OPEN. Reproduce retained-app replay with `--monitor-switch`. |
 | `monitor-topology-0e186c64.json`, run `a1NOOvm5Pa` | The 40-second isolated lane configures two named 640×480 RandR monitors at (0,0)/(640,0) on one 1280×480 Xvfb root. Production public enumeration/capture returns exact names, primary/origin/dimensions and distinct red/blue first/center/last pixels. Independent XTest/XQueryPointer and XGetImage calibrate left/right/left coordinates and colors. The fixture explicitly restores the automatic monitor; Xvfb, container, VM/RAM/private cleanup passes with three zero listener deltas. This establishes the topology/capture prerequisite, not Flutter chooser, remote input, changing-frame presentation, physical displays or full-application acceptance. Reproduce with `--x11-display-tests --monitor-topology`. |
 | `display-selection-checker-removed-a7677551.json` | The 1,817-line source-text checker and four entrypoints are deleted. The existing zero-NIC authority transaction passed in 96 seconds, including syntax checks of the edited scripts and joined cleanup. Product and executable regressions were unchanged and were not replayed. |

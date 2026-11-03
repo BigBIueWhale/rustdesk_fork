@@ -133333,3 +133333,43 @@ Four listener deltas are zero and exact processes/helpers plus VM/RAM state
 retire. Failure bundle duplicates match the retained app; seventeen bounded
 records are copied before exact private retirement.
 `monitor-burst-78b8d93f.json` binds the result and cleanup.
+
+### 2026-11-03 — monitor burst failure retained at user pivot
+
+Replay `0vebGh5CF0` at `97d9eab8` reuses app `f043c5ae` and engine
+`ddb1541d`. The left baseline passes four fresh frames and two pointer targets.
+The first sixteen-click batch ends on the left, but subsequent observations
+contain 49 right-monitor frames; last observed counter 141 and maximum observed
+age 308 ms show continuing updates from the wrong display. This is a reproduced
+final-choice failure, not a frozen-frame result. XTEST completion alone does not
+prove every injected click was consumed by the app. Source review finds that
+`_MonitorMenu.onPressed` skips the committed display while another choice can
+be pending, preventing that last choice from entering the existing queue.
+
+The user's pivot parks further monitor work. Preserve the unverified one-file
+caller correction in stash `03ed0880cdbe32b69630cab4bfa44fc7cf722247`;
+no corrected-app build or replay has run. Existing ordinary-switch acceptance
+remains scoped to that scenario. All four drivers reproduced identically;
+four listener deltas are zero, owned processes/helpers and VM/RAM/private state
+retired, and duplicate failure payloads matched the retained app before removal.
+Seventeen bounded records are retained. Capsule `monitor-burst-97d9eab8.json`
+is 24,839 bytes, SHA-256
+`c56bc510fcfa6b6bd3b4d957e98cec18dd79c232753ca4787b37fe117e092ffa`.
+
+### 2026-11-03 — condense current UI evidence for release decisions
+
+Select the binding documentation-architecture requirement after the user pivot.
+The live ledger was 399,462 tokens against its approximate 400,000-token budget;
+reducing repeated execution history enables truthful status updates without
+erasing release blockers. This is a useful prerequisite ahead of expanding more
+UI evidence while the selected product issue and independent topics are parked.
+
+Classify only the recent theme and keyboard verdict blocks: retain correction
+semantics, baseline failures, named artifact references, decisive observations
+and every open acceptance category; consolidate common environment/cleanup
+facts and delete superseded fixture-repair narration already in this audit/Git.
+Two evidence tables distinguish component, build and actual native results.
+Do not alter requirements, product code, tests, live instructions or parked work.
+Update current monitor status separately so the completed failure is not hidden
+behind the older ordinary-selection pass. This is documentation work, not new
+product acceptance. Whole-document classification/compression remains OPEN.

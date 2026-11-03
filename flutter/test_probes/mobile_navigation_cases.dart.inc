@@ -137,7 +137,7 @@ class _Harness {
     messenger.setMockMethodCallHandler(const MethodChannel('mChannel'), null);
     messenger.setMockMethodCallHandler(const MethodChannel('flutter_keyboard_visibility'), null);
     await tester.binding.setSurfaceSize(null);
-    await Get.reset();
+    Get.reset();
     isTest = false;
   }
 }

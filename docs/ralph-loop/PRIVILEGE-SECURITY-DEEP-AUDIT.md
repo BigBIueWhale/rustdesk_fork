@@ -133281,3 +133281,13 @@ rapid queued selections, other platforms, installed artifacts or release
 acceptance. No product correction was necessary. The next decisive monitor
 scenario is rapid successive selection with final displayed/input ownership;
 all independent user parks remain unchanged.
+
+Fresh ledger count `ZRXEM1lKXw` at `396dbab2` passes seven controls and the
+whole-input round trip in 27 outer seconds: 399,462 tokens / 1,827,973 bytes,
+SHA-256 `3aac30cd52bf6aab88f4e1b5f7f3e18f30a78ce4e45bafff4cd8510b37832b57`.
+Three listener deltas are zero, exact processes/helpers and VM/RAM/private
+state retire, and twelve bounded records are copied and hash-verified.
+`monitor-switch-ledger-396dbab2.json` is 4,801 bytes, SHA-256
+`5ad67d596b544e13c5c96a712beeceaed20934badf816d34c79c2f48fff61f35`.
+No owned job remains. This completes the selected monitor-switching checkpoint;
+the broader release goal remains active and incomplete.

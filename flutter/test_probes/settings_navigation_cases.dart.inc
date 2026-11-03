@@ -288,6 +288,13 @@ class _SettingsParent implements FFI {
   late final ServerModel serverModel = ServerModel(WeakReference(this));
 
   @override
+  Future<bool> invokeMethod(String method, [dynamic arguments]) async {
+    expectSync(method, 'enable_soft_keyboard');
+    expectSync(arguments, isTrue);
+    return true;
+  }
+
+  @override
   dynamic noSuchMethod(Invocation call) =>
       throw UnsupportedError('Unexpected settings parent call: ${call.memberName}');
 }

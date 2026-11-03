@@ -134684,3 +134684,12 @@ is 9,355 bytes, SHA-256
 No owned job remains. The ledger records this packaging/launch checkpoint while
 native backup/transfer acceptance and all independent parks remain open. Its fresh
 isolated token count follows. The overall goal stays active and incomplete.
+
+Fresh count `lNfdgLOD9F` at `94acbbd7` passes seven controls and the complete
+input round trip: 398,493 tokens / 1,821,857 bytes, SHA-256
+`8dd57779ac95d7fae8fd3368a4225d00b5c8d29da32eb5f8ab77e9d2c40a42c4`.
+The 27-second run retires exact processes/helpers/private/RAM state with three
+zero listener deltas and 402,755,584 bytes peak scratch. Twelve bounded files
+match on CTE/TUF. `android-backup-ledger-94acbbd7.json` is 4,801 bytes, SHA-256
+`2417296153c892f458c757a4a98731114e72b2f15ed2214339574c9196aa4199`.
+This audit-only receipt preserves the counted ledger. No owned job remains.

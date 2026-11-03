@@ -134615,3 +134615,14 @@ The immediate checkpoint is exact-source APK resource/link validation plus norma
 install/launch/rendering, using the bounded no-NIC TUF VM. Actual transfer exclusion
 on manufacturer devices and complete release acceptance remain open; a compiled
 policy and launch do not establish those behaviors. No host services change.
+
+Correction `ba738346` is pushed. XML/Python parsing and whitespace review pass;
+these are inspection checks, not runtime acceptance. Integration `L4KCuYjgMl`
+is running on frozen TUF `ba738346`, execution handle 40974, wrapper 1385232,
+QEMU 1385802; control `.harness-state/android-backup-build-ba738346-control`.
+At 239 seconds both exact processes are live and no terminal status exists.
+Poll that handle; do not duplicate the build or change TUF before reconciliation.
+The source/archive, compiled-policy and emulator outcomes remain pending. Update
+the current ledger and obtain its fresh isolated count after the job retires.
+The unchanged ledger retains its prior counted identity; this audit records the
+user's newer pivot immediately. The overall goal remains active.

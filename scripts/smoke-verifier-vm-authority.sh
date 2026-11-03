@@ -36,6 +36,7 @@ X11_KEY_INPUT_ONLY=0
 X11_FOCUS_ONLY=0
 X11_CAPTURE_MAPPING_ONLY=0
 X11_CONTEXTS_ONLY=0
+X11_MONITOR_TOPOLOGY_ONLY=0
 LINUX_RECEIVER_PROFILE=focused
 PEER_BUILD_PROFILE=default
 SERVER_GUESS_LIMITER=0
@@ -577,6 +578,7 @@ case "$#:${1:-}" in
             --focus) X11_FOCUS_ONLY=1 ;;
             --capture-mapping) X11_CAPTURE_MAPPING_ONLY=1 ;;
             --contexts) X11_CONTEXTS_ONLY=1 ;;
+            --monitor-topology) X11_MONITOR_TOPOLOGY_ONLY=1 ;;
             *) echo 'unknown X11 shard' >&2; exit 2 ;;
         esac
         ;;
@@ -2049,6 +2051,7 @@ android_frame_input_inventory() {
     )
     if [ "$MODE" = x11-display-tests ]; then
         files+=("$SCRIPT_DIR/test-x11-display-native.py" "$SCRIPT_DIR/test-x11-display.rs"
+            "$SCRIPT_DIR/test-x11-monitor-topology.c"
             "$SCRIPT_DIR/test-x11-thread-context.rs"
             "$SCRIPT_DIR/fixtures/x11-thread-context-before-retry.rs"
             "$SCRIPT_DIR/test-x11-enigo-route.rs"
@@ -4886,6 +4889,7 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
         lifecycle_payload_grafts+=(
             "repo/scripts/test-x11-display-native.py=$SCRIPT_DIR/test-x11-display-native.py"
             "repo/scripts/test-x11-display.rs=$SCRIPT_DIR/test-x11-display.rs"
+            "repo/scripts/test-x11-monitor-topology.c=$SCRIPT_DIR/test-x11-monitor-topology.c"
             "repo/scripts/test-x11-thread-context.rs=$SCRIPT_DIR/test-x11-thread-context.rs"
             "repo/scripts/fixtures/x11-thread-context-before-retry.rs=$SCRIPT_DIR/fixtures/x11-thread-context-before-retry.rs"
             "repo/scripts/test-x11-enigo-route.rs=$SCRIPT_DIR/test-x11-enigo-route.rs"
@@ -5196,6 +5200,8 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
         guest_invocation+=' --capture-mapping'
     elif [ "$X11_CONTEXTS_ONLY" -eq 1 ]; then
         guest_invocation+=' --contexts'
+    elif [ "$X11_MONITOR_TOPOLOGY_ONLY" -eq 1 ]; then
+        guest_invocation+=' --monitor-topology'
     fi
 elif [ "$MODE" = hbb-common-fs ]; then
     guest_invocation+=" --hbb-common-fs /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
@@ -6320,6 +6326,23 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_FOCUS_ONLY" -eq 1 ]; then
         'X11_FOCUS_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined' \
         'focus guest finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'focus guest completion'
+elif [ "$MODE" = x11-display-tests ] && [ "$X11_MONITOR_TOPOLOGY_ONLY" -eq 1 ]; then
+    require_exact_fixed_receipt \
+        'X11_MONITOR_TOPOLOGY_READY=pass monitors=2 root=1280x480 geometry=640x480+0+0,640x480+640+0 pixels=red,blue pointer=left-right-left' \
+        'two-monitor geometry and independent pixel/pointer calibration'
+    require_exact_fixed_receipt \
+        'X11_MONITOR_CAPTURE=pass monitors=2 origin=exact dimensions=640x480 pixels=red,blue samples=first-center-last source=production-public-capture' \
+        'production capture of distinct monitors on one root'
+    require_exact_fixed_receipt \
+        'X11_MONITOR_TOPOLOGY_RETIRED=pass monitors=automatic-single' \
+        'exact monitor retirement'
+    require_exact_fixed_receipt \
+        'X11_MONITOR_TOPOLOGY_SHARD=pass source=production-public-capture monitors=2 pointer=fixture-calibrated server=owned-and-joined network=none uid=4000 cleanup=joined whole_app=false' \
+        'monitor topology result and joined cleanup'
+    require_exact_fixed_receipt \
+        'X11_MONITOR_TOPOLOGY_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined' \
+        'monitor topology guest finality'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'monitor topology completion'
 elif [ "$MODE" = x11-display-tests ] && [ "$X11_CONTEXTS_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt \
         'X11_CONTEXT_SEQUENCE=pass phases=4 workers=8 queries=4096 preludes=2 focus=independent-reference input_focus=preserved nondefault_focus=accepted final_focus=restored children=joined' \
@@ -9668,6 +9691,9 @@ elif [ "$MODE" = x11-display-tests ]; then
             "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
     elif [ "$X11_CONTEXTS_ONLY" -eq 1 ]; then
         printf 'X11_CONTEXTS_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=x11-native-context-component full_app_acceptance=false cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
+    elif [ "$X11_MONITOR_TOPOLOGY_ONLY" -eq 1 ]; then
+        printf 'X11_MONITOR_TOPOLOGY_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=x11-capture-component full_app_acceptance=false cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
     else
         printf 'X11_DISPLAY_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=x11-native-owner-and-capture-components full_app_acceptance=false cleanup=joined elapsed_seconds=%s\n' \

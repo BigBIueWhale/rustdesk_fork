@@ -1579,6 +1579,30 @@ fn main() -> io::Result<()> {
     }
     #[cfg(corrected)]
     {
+        if scenario == "monitor-topology" {
+            use crate::common::TraitCapturer;
+            let mut displays = common::Display::all()?;
+            assert_eq!(displays.len(), 2);
+            displays.sort_by_key(|display| display.origin());
+            for (side, display) in displays.into_iter().enumerate() {
+                assert_eq!(display.origin(), (side as i32 * 640, 0));
+                assert_eq!((display.width(), display.height()), (640, 480));
+                assert_eq!(display.is_primary(), side == 0);
+                assert_eq!(display.name(), if side == 0 {
+                    "RustDesk-test-left"
+                } else { "RustDesk-test-right" });
+                let mut capture = common::Capturer::new(display)?;
+                let Frame::PixelBuffer(frame) = capture.frame(std::time::Duration::ZERO)?;
+                assert_eq!((frame.width(), frame.height(), frame.stride()), (640, 480, 2560));
+                let color = if side == 0 { [0, 0, 255] } else { [255, 0, 0] };
+                for offset in [0, (239 * 640 + 317) * 4, (640 * 480 - 1) * 4] {
+                    assert_eq!(&frame.data()[offset..offset + 3], &color);
+                }
+            }
+            finish_case(0);
+            println!("X11_MONITOR_CAPTURE=pass monitors=2 origin=exact dimensions=640x480 pixels=red,blue samples=first-center-last source=production-public-capture");
+            return Ok(());
+        }
         if scenario == "capture-mapping" {
             capture_mapping_cases(&server)?;
             println!("X11_DISPLAY_COMPONENT=pass scenario=capture-mapping replies=exact errors=explicit cleanup=joined");

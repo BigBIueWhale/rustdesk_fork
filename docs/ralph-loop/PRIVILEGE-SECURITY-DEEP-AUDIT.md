@@ -133166,3 +133166,28 @@ VM/RAM/private cleanup. Twelve bounded records were copied and hash-verified;
 `monitor-pivot-ledger-28c28cce.json` is 4,797 bytes, SHA-256
 `d3a8ad57550d925bd2e7643a84e332dde392fe70746f5b080deff46dd7c00622`.
 No owned job remains. The broader release goal remains active and incomplete.
+
+### 2026-11-03 — monitor topology prerequisite
+
+The previous turn completed the user-directed pivot and reconciled the old build;
+it did not validate monitor switching. Continue R-S11go/R-S11gq with a concrete
+prerequisite: two named monitors on one 1280x480 X11 root, distinct red/blue
+pixels captured by the production public capture implementation, and an
+independent XTest/XQueryPointer coordinate calibration. This topology fits the
+single-root pointer model; two separate X screens would exercise a different
+configuration. Xserver's `RRMonitorInitList` admits explicit nonzero monitor
+geometry and suppresses the automatic monitor when its output belongs to the
+client-defined monitor:
+https://raw.githubusercontent.com/mirror/xserver/master/randr/rrmonitor.c .
+libXrandr allocation/set/free contracts were checked in its upstream source:
+https://sources.debian.org/src/libxrandr/2:1.5.1-1/src/XrrMonitor.c/ .
+
+Add `--x11-display-tests --monitor-topology` to the existing bounded zero-NIC
+VM lane. The C fixture verifies fresh topology, paints/reads both regions,
+checks left/right/left root coordinates and explicitly restores the automatic
+monitor. The Rust fixture enumerates both monitors through production code and
+checks first/center/last pixel samples from each real capture. Existing Xvfb,
+dependency pins, resource limits and joined cleanup are reused. No product
+code changes. Preparation is unexecuted until the recorded isolated run below;
+this cannot establish Flutter chooser, network, remote input, presentation or
+physical-display acceptance. Keep-awake and all independent parks stay parked.

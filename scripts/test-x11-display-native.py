@@ -1718,7 +1718,7 @@ def capture_mapping(binary, environment):
 def component_main(component):
     require(os.getuid() == 4000 and os.getgid() == 4000 and Path("/.dockerenv").is_file(),
             "component shard requires the isolated nonroot container")
-    require(component in ("capture-mapping", "contexts"), "unknown X11 component")
+    require(component in ("capture-mapping", "contexts", "monitor-topology"), "unknown X11 component")
     root = Path("/work")
     environment = {"PATH": "/usr/local/cargo/bin:/usr/bin:/bin", "LC_ALL": "C",
                    "HOME": "/tmp", "DISPLAY": ":98", "XKB_CONFIG_ROOT": "/usr/share/X11/xkb",
@@ -1732,8 +1732,19 @@ def component_main(component):
         providers, _ = native_xdo(root, environment, historical_destructor=False)
     else:
         binary = build_display_fixture(root, environment, "corrected")
+    if component == "monitor-topology":
+        topology = Path("/build/monitor-topology")
+        source = root / "scripts/test-x11-monitor-topology.c"
+        subprocess.run(["cc", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
+                        str(source), "-lX11", "-lXrandr", "-lXtst", "-o", str(topology)],
+                       env=environment, check=True, timeout=20)
+        print("X11_MONITOR_TOPOLOGY_BUILD "
+              f"source_sha256={hashlib.sha256(source.read_bytes()).hexdigest()} "
+              f"binary_sha256={hashlib.sha256(topology.read_bytes()).hexdigest()}", flush=True)
     require(not Path("/tmp/.X11-unix/X98").exists(), "component display already exists")
     screens = ["-screen", "0", "640x480x24"]
+    if component == "monitor-topology":
+        screens = ["-screen", "0", "1280x480x24"]
     if component == "contexts":
         screens += ["-screen", "1", "800x600x24"]
     with open("/tmp/x11-component-xvfb.log", "xb") as log:
@@ -1747,6 +1758,17 @@ def component_main(component):
                 time.sleep(0.01)
             if component == "contexts":
                 thread_contexts(root, environment, checksum, logging, providers["corrected"], concurrency_only=True)
+            elif component == "monitor-topology":
+                for command, receipt in [
+                    ([str(topology), "prepare"], "X11_MONITOR_TOPOLOGY_READY=pass monitors=2 root=1280x480 geometry=640x480+0+0,640x480+640+0 pixels=red,blue pointer=left-right-left"),
+                    ([str(binary), "monitor-topology"], "X11_MONITOR_CAPTURE=pass monitors=2 origin=exact dimensions=640x480 pixels=red,blue samples=first-center-last source=production-public-capture"),
+                    ([str(topology), "retire"], "X11_MONITOR_TOPOLOGY_RETIRED=pass monitors=automatic-single"),
+                ]:
+                    result = subprocess.run(command, env=environment, capture_output=True,
+                                            text=True, timeout=10)
+                    require(result.returncode == 0 and result.stdout == receipt + "\n"
+                            and not result.stderr, f"monitor topology stage differs: {result}")
+                    print(receipt, flush=True)
             else:
                 capture_mapping(binary, environment)
         finally:
@@ -1764,6 +1786,8 @@ def component_main(component):
         Path("/build/thread-contexts").unlink()
     else:
         binary.unlink()
+    if component == "monitor-topology":
+        topology.unlink()
     for name in ("tcp", "tcp6"):
         require(not any(row.split()[3] == "0A" for row in Path("/proc/net", name).read_text().splitlines()[1:]),
                 "component shard retained TCP")
@@ -1772,6 +1796,9 @@ def component_main(component):
     if component == "contexts":
         print("X11_CONTEXTS_SHARD=pass source=production-context-and-input-query "
               "server=owned-and-joined network=none uid=4000 cleanup=joined whole_app=false", flush=True)
+    elif component == "monitor-topology":
+        print("X11_MONITOR_TOPOLOGY_SHARD=pass source=production-public-capture monitors=2 "
+              "pointer=fixture-calibrated server=owned-and-joined network=none uid=4000 cleanup=joined whole_app=false", flush=True)
     else:
         print("X11_CAPTURE_MAPPING_SHARD=pass source=production-capture-and-public-wrapper "
               "kernel=actual server=owned-and-joined network=none uid=4000 cleanup=joined whole_app=false", flush=True)
@@ -2111,9 +2138,10 @@ def main():
 
 if __name__ == "__main__":
     require(sys.argv in ([sys.argv[0]], [sys.argv[0], "--key-input"], [sys.argv[0], "--focus"],
-                        [sys.argv[0], "--capture-mapping"], [sys.argv[0], "--contexts"]),
+                        [sys.argv[0], "--capture-mapping"], [sys.argv[0], "--contexts"],
+                        [sys.argv[0], "--monitor-topology"]),
             "unknown native shard")
-    if sys.argv[1:] in (["--capture-mapping"], ["--contexts"]):
+    if sys.argv[1:] in (["--capture-mapping"], ["--contexts"], ["--monitor-topology"]):
         component_main(sys.argv[1][2:])
     elif sys.argv[1:] == ["--focus"]:
         focus_main()

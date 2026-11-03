@@ -132932,3 +132932,25 @@ checkpoint. The full release goal remains active, with independent user parks
 unchanged. No owned build/test job remains. Count the materially updated ledger
 in isolation, then reassess permitted release blockers using this evidence;
 do not expand an error matrix merely because more hypothetical faults exist.
+
+Fresh ledger count `yAZ9PnLQYx` at `9cf4e563` passes seven controls and the
+whole-input round trip: 398,767 tokens / 1,824,807 bytes, SHA-256
+`bbf6f7eb1cc17d722c8ffe74af2875d0935fd7ea71c96332c48d097b1e7c042d`.
+Three listener deltas are zero and process/helper, VM/RAM/private cleanup passes.
+Twelve bounded records are copied and verified. Capsule
+`linux-record-cleanup-ledger-9cf4e563.json` is 4,824 bytes, SHA-256
+`71df7e8f560adfabe76f7ecfe4a2ab9d5974c046634b3e5af135fec241454a4a`.
+This turn made progress: baseline reproduction, product correction, native
+acceptance and the nearest shutdown regression. The full release goal is active.
+
+Adjacent source question for the next investigation: before OwnedServiceChild
+registration, `ServiceChildBootstrap::wait_for_stop` calls raw waitpid with
+WUNTRACED. Unexpected exit/signal status is reaped there, then
+`spawn_service_child` calls `stop_unregistered_service_child`, which invokes
+Child::kill before wait. That raw reap does not populate Rust Child's cached
+status. Determine with native startup-failure reproduction whether this attempts
+another post-reap signal. The accepted record-cleanup correction does not cover
+this separate pre-registration path. No native reproduction or PID-reuse outcome
+is yet claimed; this concrete source path takes priority over speculative fault
+matrix expansion. The peer cache is full, so another build needs exact artifact
+retention reconciliation first; reproduction can reuse the current binary.

@@ -8827,7 +8827,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         android_runtime_peer=production-loopback-cpace-controlled-cm
     elif [ "$ANDROID_RUNTIME_SCENARIO" = backup-transfer ]; then
         require_exact_fixed_receipt \
-            "ANDROID_BACKUP_NATIVE=pass domains=9 control=transferred-restored app=excluded-restored-empty cloud=refused selinux=Enforcing apk_sha256=$ANDROID_RUNTIME_APK_SHA256 cleanup=fixtures-removed" \
+            "ANDROID_BACKUP_NATIVE=pass domains=9 control=transferred-restored app=preflight-rejected-no-archive restore=control-only cloud=refused selinux=Enforcing apk_sha256=$ANDROID_RUNTIME_APK_SHA256 cleanup=fixtures-removed" \
             'native Android backup and transfer exclusion'
         android_runtime_peer=absent
     else

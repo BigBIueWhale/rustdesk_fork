@@ -11718,7 +11718,7 @@ run_android_emulator_runtime() {
         done
         runtime_peer=production-loopback-cpace-controlled-cm
     elif [ "$ANDROID_RUNTIME_SCENARIO" = backup-transfer ]; then
-        [ "$(grep -Fxc "ANDROID_BACKUP_NATIVE=pass domains=9 control=transferred-restored app=excluded-restored-empty cloud=refused selinux=Enforcing apk_sha256=$ANDROID_RUNTIME_APK_SHA256 cleanup=fixtures-removed" "$output")" -eq 1 ] \
+        [ "$(grep -Fxc "ANDROID_BACKUP_NATIVE=pass domains=9 control=transferred-restored app=preflight-rejected-no-archive restore=control-only cloud=refused selinux=Enforcing apk_sha256=$ANDROID_RUNTIME_APK_SHA256 cleanup=fixtures-removed" "$output")" -eq 1 ] \
             && [ "$(grep -c '^ANDROID_BACKUP_NATIVE=' "$output")" -eq 1 ] \
             || fail 'native Android backup acceptance receipt differs'
         runtime_peer=absent

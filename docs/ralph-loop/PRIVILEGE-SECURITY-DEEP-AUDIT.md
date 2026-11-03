@@ -134784,3 +134784,29 @@ passes. Fifteen bounded files match on CTE/TUF; peak scratch is 4,375,834,624 by
 `485c5e704a594d902337887d9a09b01ec6049edc0c6e89e7370b32f34a3c7837`.
 Native backup remains pending. The fixture repair passes Python parsing and diff
 review; no product change or extra APK-cache generation is involved.
+
+Replay `dlcSz1Egjy` at `52b4aef3` reaches native backup. Both packages' nine
+fixtures are readable with their actual UID/groups. All nine control payloads
+appear byte-exact in the inspected 11,264-byte archive (SHA-256
+`aab879d7acc68a627217d5118f7fb4354d16ea3e04fed13dc219b18019f24649`).
+RustDesk receives transport-package rejection. The fixture's metadata-only archive
+expectation was incorrect for an empty payload: API-34 LocalTransport rejects
+size <= 0 during checkFullBackupSize, while PerformFullTransportBackupTask reports
+that preflight status through the monitor and package observer. This is a source-
+supported explanation, not yet a native observation of that exact refusal branch.
+
+The repaired acceptance requires the exact app-specific ERROR_PREFLIGHT monitor
+event, transport-package rejection and archive absence together. The positive
+control must still restore all nine files; an app restore request must leave its
+fixtures absent, and the relaunched app must be refused in cloud mode. It does not
+claim an app archive was restored or prove rejection of an older imported archive.
+Primary Android-14 sources: services/backup/java/com/android/server/backup/fullbackup/
+PerformFullTransportBackupTask.java, packages/LocalTransport/src/com/android/localtransport/
+LocalTransport.java and cmds/bmgr/src/com/android/commands/bmgr/Bmgr.java at
+https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android14-release/.
+
+Five listener deltas are zero; process/helper/private/RAM retirement passes.
+Fifteen bounded files match on CTE/TUF; peak scratch is 4,375,965,696 bytes.
+`android-backup-native-52b4aef3.json`: 17,495 bytes, SHA-256
+`fc740bf757802019adc46fa192751b5c7e5fef56674e15c15d901b3588c3d87e`.
+The full native acceptance remains open pending the corrected replay.

@@ -1546,7 +1546,7 @@ mapfile -t controlled_lifecycle_receipts < <(grep -Fx \
     && [ "$(grep -c '^ANDROID_EMULATOR_CONTROLLED_CM=' "$RUNTIME_LOG")" -eq 1 ] \
     || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android controlled-CM lifecycle receipt is absent or duplicated'; }
 elif [ "$RUNTIME_SCENARIO" = backup-transfer ]; then
-    backup_receipt="ANDROID_BACKUP_NATIVE=pass domains=9 control=transferred-restored app=excluded-restored-empty cloud=refused selinux=Enforcing apk_sha256=$APK_SHA256 cleanup=fixtures-removed"
+    backup_receipt="ANDROID_BACKUP_NATIVE=pass domains=9 control=transferred-restored app=preflight-rejected-no-archive restore=control-only cloud=refused selinux=Enforcing apk_sha256=$APK_SHA256 cleanup=fixtures-removed"
     [ "$(grep -Fxc "$backup_receipt" "$RUNTIME_LOG")" -eq 1 ] \
         && [ "$(grep -c '^ANDROID_BACKUP_NATIVE=' "$RUNTIME_LOG")" -eq 1 ] \
         || die 'native Android backup acceptance receipt differs'

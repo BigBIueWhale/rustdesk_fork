@@ -149,19 +149,29 @@ def main():
             raise RuntimeError("local backup transport selection failed")
         text("bmgr", "init", TRANSPORT, timeout=90)
         for package in (CONTROL, APP):
-            result = text("bmgr", "backupnow", "--non-incremental", package, timeout=180)
+            result = text("bmgr", "backupnow", "--monitor-verbose", "--non-incremental",
+                          package, timeout=180)
             print(f"ANDROID_BACKUP_RESULT package={package} output={result!r}", flush=True)
-            if f"Package {package} with result: Success" not in result:
-                raise RuntimeError("D2D backup did not execute successfully")
-            files = archive(package)
             if package == CONTROL:
+                if f"Package {package} with result: Success" not in result:
+                    raise RuntimeError("control D2D backup did not execute successfully")
+                files = archive(package)
                 for domain in DOMAINS:
                     name = f"apps/{package}/{domain}/rd_backup_{domain}.xml"
                     if files.get(name) != payload(domain):
                         raise RuntimeError(f"positive control did not transfer {domain}")
-            elif (f"apps/{APP}/_manifest" not in files or set(files)
-                  - {f"apps/{APP}/_manifest", f"apps/{APP}/_meta", "apps", f"apps/{APP}"}):
-                raise RuntimeError("excluded application data reached the transfer archive")
+            else:
+                # API 34 LocalTransport rejects zero-size full backups at preflight.
+                # The package-specific monitor event distinguishes that path from
+                # an unavailable transport, ineligible package, or agent failure.
+                event = (r"^=> Event\{BACKUP_MANAGER_POLICY / ERROR_PREFLIGHT : package = "
+                         + re.escape(APP) + r"\(v[0-9]+\), other keys = "
+                         r"android\.app\.backup\.extra\.LOG_PREFLIGHT_ERROR\}$")
+                if (len(re.findall(event, result, re.MULTILINE)) != 1
+                        or f"Package {APP} with result: Transport rejected package because it wasn't able to process it at the time" not in result):
+                    raise RuntimeError("excluded backup lacks its exact preflight refusal")
+                shell("sh", "-c", f"test ! -e /data/user/0/com.android.localtransport/files/1/_full/{APP}")
+                print(f"ANDROID_BACKUP_ARCHIVE package={APP} state=absent preflight=transport-package-rejected", flush=True)
         for package, uid in ((CONTROL, control_uid), (APP, app_uid)):
             app_shell(uid, "rm", *[fixture(package, domain) for domain in DOMAINS])
             verify_data(package, uid, False)
@@ -170,6 +180,9 @@ def main():
             if "restoreFinished: 0" not in restored:
                 raise RuntimeError("local D2D restore did not finish successfully")
             verify_data(package, uid, package == CONTROL)
+        resumed = text("am", "start", "-W", "-n", APP + "/.MainActivity", timeout=60)
+        if "Status: ok" not in resumed:
+            raise RuntimeError("application did not resume before the cloud-backup refusal check")
         text("settings", "put", "secure", "backup_local_transport_parameters", "is_device_transfer=false,is_encrypted=true")
         text("bmgr", "init", TRANSPORT, timeout=90)
         cloud_path = f"/data/user/0/com.android.localtransport/files/1/_full/{APP}"
@@ -191,7 +204,7 @@ def main():
         adb("wait-for-device")
         if text("id", "-u") != "2000":
             raise RuntimeError("disposable Android shell did not drop root")
-    print(f"ANDROID_BACKUP_NATIVE=pass domains=9 control=transferred-restored app=excluded-restored-empty cloud=refused selinux=Enforcing apk_sha256={args.apk_sha256} cleanup=fixtures-removed", flush=True)
+    print(f"ANDROID_BACKUP_NATIVE=pass domains=9 control=transferred-restored app=preflight-rejected-no-archive restore=control-only cloud=refused selinux=Enforcing apk_sha256={args.apk_sha256} cleanup=fixtures-removed", flush=True)
 
 
 if __name__ == "__main__":

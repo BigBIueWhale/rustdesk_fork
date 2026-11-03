@@ -133674,3 +133674,13 @@ bytes on the same host and pinned builder with independent generated state.
 It does not establish engine rebuild equality, final Debian/Android/Windows
 artifacts, independent-operator reproduction, signing, installed behavior or
 complete R-B2/R-B10/release acceptance. Those and all user parks remain OPEN.
+
+Final ledger count `c6eHhvNXit` at `de3eabe6` passes seven controls and the
+whole-input byte round trip in 28 outer seconds: **395,116 tokens / 1,806,954
+bytes**, input SHA-256
+`e71a80b6f4578e9b5fdb5c14322dd597be86ea344d83394c41ab3b0acce3bb51`.
+All three listener deltas are zero; exact processes, VM, RAM and private state
+retire. Twelve bounded records are copied and verified. Capsule
+`linux-repro-ledger-de3eabe6.json`: 4,787 bytes, SHA-256
+`9318f23d2f409e9e36f3f3ba30fc612f3c8ad7a849d3898ed7388e72ae939c47`.
+The application double-build checkpoint is complete; no owned job remains.

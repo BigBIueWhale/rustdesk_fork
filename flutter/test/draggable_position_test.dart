@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common/widgets/overlay.dart' as overlay;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart';
 
 const _keys = [
   overlay.DraggablePositions.kChatWindow,
@@ -36,6 +37,61 @@ class _MemoryPosition extends overlay.DraggableKeyPosition {
   void tryAdjust(double w, double h, double scale) {}
 }
 
+class _ViewportPosition extends overlay.DraggableKeyPosition {
+  factory _ViewportPosition(Offset initial) => _ViewportPosition._([initial]);
+
+  _ViewportPosition._(List<Offset> saved)
+      : _saved = saved,
+        super('viewport-position',
+            readOption: (_) => '${saved.single.dx},${saved.single.dy}') {
+    load();
+  }
+
+  final List<Offset> _saved;
+
+  @override
+  void update(Offset value) {
+    // Exercise the real position/clamping code with an in-memory store.
+    _saved[0] = value;
+    load();
+  }
+}
+
+Future<void> _viewportPanel(WidgetTester tester, _ViewportPosition position,
+    String kind, Size viewport) async {
+  await tester.pumpWidget(GetMaterialApp(
+    home: Align(
+      alignment: Alignment.topLeft,
+      child: SizedBox(
+        width: viewport.width,
+        height: viewport.height,
+        child: MediaQuery(
+          data: MediaQueryData(size: viewport),
+          child: kind == 'ios'
+              ? overlay.IOSDraggable(position: position, width: 120, height: 80,
+                  builder: (_) => const SizedBox.expand(key: ValueKey('panel')))
+              : overlay.Draggable(position: position, width: 120, height: 80,
+                  checkScreenSize: true,
+                  builder: (_, onPanUpdate) => GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onPanUpdate: onPanUpdate,
+                    child: const SizedBox.expand(key: ValueKey('panel')),
+                  )),
+        ),
+      ),
+    ),
+  ));
+}
+
+void _expectInside(WidgetTester tester, Size viewport) {
+  final rect = tester.getRect(find.byKey(const ValueKey('panel')));
+  expect(rect.left, greaterThanOrEqualTo(0));
+  expect(rect.top, greaterThanOrEqualTo(0));
+  expect(rect.right, lessThanOrEqualTo(viewport.width));
+  expect(rect.bottom, lessThanOrEqualTo(viewport.height));
+  expect(tester.takeException(), isNull);
+}
+
 Future<void> _keyboardPanel(WidgetTester tester, _MemoryPosition position,
     String kind, double inset, {double height = 80}) async {
   await tester.pumpWidget(MaterialApp(
@@ -62,6 +118,41 @@ void _expectPanel(WidgetTester tester, _MemoryPosition position, double y) {
 
 void main() {
   for (final kind in ['standard', 'ios']) {
+    testWidgets('floating $kind panel follows its local viewport on resize',
+        (tester) async {
+      addTearDown(Get.reset);
+      final position = _ViewportPosition(const Offset(600, 450));
+      const large = Size(800, 600);
+      const small = Size(320, 240);
+      await _viewportPanel(tester, position, kind, large);
+      final panelType = kind == 'ios' ? overlay.IOSDraggable : overlay.Draggable;
+      final state = tester.state(find.byType(panelType));
+      _expectInside(tester, large);
+      await _viewportPanel(tester, position, kind, small);
+      expect(tester.state(find.byType(panelType)), same(state));
+      _expectInside(tester, small);
+      final adjusted = position.pos;
+      await _viewportPanel(tester, position, kind, large);
+      expect(position.pos, adjusted);
+      _expectInside(tester, large);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('floating $kind panel keeps dragged controls in its local viewport',
+        (tester) async {
+      addTearDown(Get.reset);
+      final position = _ViewportPosition(const Offset(40, 40));
+      const viewport = Size(320, 240);
+      await _viewportPanel(tester, position, kind, viewport);
+      await tester.drag(find.byKey(const ValueKey('panel')), const Offset(500, 500));
+      await tester.pump();
+      _expectInside(tester, viewport);
+      await tester.drag(find.byKey(const ValueKey('panel')), const Offset(-500, -500));
+      await tester.pump();
+      _expectInside(tester, viewport);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
     testWidgets('floating $kind panel avoids the first keyboard inset and restores',
         (tester) async {
       final position = _MemoryPosition(const Offset(40, 450));

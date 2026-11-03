@@ -1651,6 +1651,8 @@ FLOATING_POSITION_TESTS = {
     *(f'floating {kind} panel {case}'
       for kind in ('standard', 'ios')
       for case in (
+          'follows its local viewport on resize',
+          'keeps dragged controls in its local viewport',
           'avoids the first keyboard inset and restores',
           'opens above an already visible keyboard',
           'keeps its top reachable in a short viewport',

@@ -241,7 +241,7 @@ class ResultTests(unittest.TestCase):
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 18))
             return
         if SINGLE_PROFILE == "floating-position":
-            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 19))
+            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 23))
             return
         if SINGLE_PROFILE == "direct-address":
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 45))
@@ -320,7 +320,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("trackpad-speed"), "trackpad-speed"), (2, 16))
         self.assertEqual(self.parse(self.events("virtual-mouse-buttons"), "virtual-mouse-buttons"), (1, 17))
         self.assertEqual(self.parse(self.events("virtual-joystick"), "virtual-joystick"), (1, 8))
-        self.assertEqual(self.parse(self.events("floating-position"), "floating-position"), (2, 19))
+        self.assertEqual(self.parse(self.events("floating-position"), "floating-position"), (2, 23))
         self.assertEqual(self.parse(self.events("clipboard-keystrokes"), "clipboard-keystrokes"), (1, 12))
         self.assertEqual(self.parse(self.events("file-search"), "file-search"), (1, 12))
         self.assertEqual(self.parse(self.events("file-navigation"), "file-navigation"), (7, 125))

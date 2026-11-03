@@ -135398,3 +135398,32 @@ are zero; exact process/helper/private/RAM retirement passes, with scratch peak
 `pe-repro-ledger-afe10367.json`: 5,089 bytes, SHA-256
 `5c08be361b9535826119ba8a6afd8c43a06d1415caa126841168c886ba6cf7a6`.
 This audit-only receipt preserves the counted ledger. No owned job remains.
+
+## 2026-11-04 — user pivot: floating panel viewport ownership
+
+The direct user pivot parks further PE/linker artifact work OPEN; the accepted
+empty-REPRO component correction remains valid. Read-only LLVM archive inspection
+created no executable, extracted tree or VM. Concurrent logging and independent
+parks remain. Select R-S0 floating-control usability: an already-open panel must
+remain reachable as its local viewport changes, without reopening the session.
+This actual UI path takes priority over further build-artifact work after the pivot.
+
+Source review finds shared position adjustment reads Get.context rather than the
+panel's local MediaQuery, and IOSDraggable invokes that adjustment only at initial
+mount. Its pan callback also permits positions outside the viewport. Add four
+rendered cases for standard/iOS panels: shrink and re-expand a local viewport
+while retaining the exact State, and drag toward both extremes. Existing keyboard
+and saved-position cases remain. Position persistence is an in-memory adapter;
+the actual adjustment and widgets run. No product correction is made for baseline.
+The existing floating-position shard supplies isolated Flutter execution and
+joined RAM/VM retirement; update its exact expected inventory to 23 cases.
+
+Flutter's MediaQuery documentation establishes that a lookup uses that context's
+subtree and subscribes to changes. The State contract preserves State for the
+same type/key while replacing widget configuration:
+https://api.flutter.dev/flutter/widgets/MediaQuery-class.html
+https://api.flutter.dev/flutter/widgets/State/didUpdateWidget.html
+Required success is rendered containment after resize/drag, preservation when
+already in bounds, and retained keyboard restoration controls. Physical device
+rotation, platform keyboard delivery, full-session routing and release acceptance
+remain separate open evidence boundaries.

@@ -133210,3 +133210,13 @@ Twelve bounded evidence records are copied and hash-verified. Capsule
 Next, integrate the now-verified shared-root topology into the retained app
 replay, preserving the distinct display identities through actual frame and
 input observations. Existing artifact and resource bounds remain unchanged.
+
+Fresh ledger count `uZC3smTZ3w` at `7ad461fa` passes seven controls and the
+whole-input round trip in 28 outer seconds: 399,281 tokens / 1,827,131 bytes,
+SHA-256 `38c594f489ba0ae94827903d641ab1d2f98e428d805e5411353e801117cb33ce`.
+Three listener deltas are zero, exact processes/helpers and VM/RAM/private
+scratch retire, and twelve bounded records are copied and verified. Capsule
+`monitor-topology-ledger-7ad461fa.json` is 4,808 bytes, SHA-256
+`c7271cbb173e3dc96dc5cd4babf63d033205f8f8e72f1d11a0cd49b5632b5e75`.
+This completes the selected topology prerequisite; the full release goal remains
+active, with no owned job left running and all user parks preserved.

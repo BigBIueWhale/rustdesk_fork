@@ -43,10 +43,20 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
-**User pivot (2026-11-03):** Android imported-backup restore acceptance is
+**User pivot (2026-11-03):** Native connection-error retry work is OPEN/PARKED.
+Two unexecuted Flutter-bridge regressions are preserved in stash
+`ac067e981c1ddac8edc7826379f586a8ff13b3d6`; the verified component correction
+below remains valid. Work moves to remote-restart command outcomes (R-S0).
+Source review finds that `Session::restart_remote_device` sets its restarting
+flag before the void command sender can reject admission; the FFI/UI receives
+no result. Correct admission, session ownership and truthful failure presentation
+need focused behavioral evidence. No restart test or product change has run.
+All independent parks remain.
+
+**Earlier pivot (2026-11-03):** Android imported-backup restore acceptance is
 OPEN/PARKED before execution; its six unfinished harness edits are preserved in
 stash `d30327499554c4fef473a52e47e5f256218c4d4d`. The accepted new-backup
-checkpoint below remains valid. Work moves to connection-error handling.
+checkpoint below remains valid.
 
 **Terminal connection errors — Flutter component correction verified.**
 `58c6cdcb` removes the shared model's obsolete offline-message retry override

@@ -134967,3 +134967,43 @@ zero listener deltas and 402,759,680 bytes peak scratch. Twelve bounded files
 match on CTE/TUF. `terminal-retry-ledger-9941a6a0.json`: 4,801 bytes, SHA-256
 `00fcbb4fd8989fea4832d9d608c21de013df2dd6a8e133400201b398c4d6044e`.
 This audit-only addition preserves the counted ledger. No owned job remains.
+
+### 2026-11-03 — user pivot; remote-restart command outcomes
+
+The user directs another aspect. Native connection-error retry classification is
+OPEN/PARKED. Its only unfinished changes are two unexecuted tests and their import
+in src/flutter.rs, preserved in stash
+`ac067e981c1ddac8edc7826379f586a8ff13b3d6`. No native regression or product change
+ran after the previous checkpoint. The verified Flutter retry correction remains
+valid; all independent parks remain. No owned job was pending at the pivot.
+
+Select R-S0 remote-restart command outcomes. This is a distinct application action,
+not a resumption of connection-error classification, generic dialog machinery,
+credential authorization or installed service work. It takes priority over another
+presentation-only change because source inspection identifies a concrete mismatch
+between command admission and the state used to describe the remote outcome.
+
+Reviewed chain: toolbarControls captures its session ID and opens
+showRestartRemoteDevice; a true dialog result calls sessionRestartRemoteDevice.
+DialogClose already retires its exact entry before completing its future, so
+repeated or dismissed callbacks alone are not evidence of duplicate restart.
+The native export resolves that UI session through the session registry.
+Session::restart_remote_device sets lc.restarting_remote_device=true and then calls
+the void Interface::send. That sender can refuse an absent/closed round or failed
+admission while reporting only to the log. The export and Dart call return no
+admission outcome. The receive loop later uses that flag to describe EOF as a
+remote restart. These are source observations, not an observed reboot, wrong-peer
+action, or privilege-escalation claim. The controlled-side dispatcher independently
+restricts restart to Remote and the restart permission; it is unchanged.
+
+The next decisive check should exercise the production viewer command path with
+an absent round, a retired receiver and a live receiver, observing both the
+restarting flag and exact command receipt. No reboot sink is needed for those
+admission checks. Then bind the UI result to the original live session and show
+truthful refusal while preserving a successful retry. Local queue admission must
+not be described as proof of transport delivery or successful operating-system
+restart. Actual installed/device outcomes remain separate required evidence.
+
+No product or harness edit is made at this research checkpoint. The selected
+behavioral cases and correction remain open. Update the current selection in the
+ledger and obtain its required fresh isolated count; the release goal remains active.

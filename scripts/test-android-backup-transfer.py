@@ -54,10 +54,11 @@ def main():
 
     def package_uid(package):
         state = text("cmd", "package", "list", "packages", "-U", "--user", "0", package)
-        match = re.fullmatch(r"package:" + re.escape(package) + r" uid:(\d+)", state)
-        if match is None or not 10000 <= int(match[1]) < 20000:
+        matches = re.findall(r"^package:" + re.escape(package) + r" uid:(\d+)$",
+                             state, re.MULTILINE)
+        if len(matches) != 1 or not 10000 <= int(matches[0]) < 20000:
             raise RuntimeError(f"package UID differs: {package}: {state!r}")
-        return match[1]
+        return matches[0]
 
     def verify_data(package, uid, present):
         for domain in DOMAINS:

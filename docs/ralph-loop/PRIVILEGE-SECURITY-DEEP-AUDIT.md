@@ -134756,3 +134756,12 @@ including the complete runtime failure log, match on CTE/TUF.
 `android-backup-native-a2b367aa.json`: 15,579 bytes, SHA-256
 `14cfe4afde592d1b48790b82fe9bcb742bade669d7cf20d7aacec1f2a66f5f4b`.
 No owned job remains; no native backup-exclusion pass is claimed.
+
+Replay `FV4YC0WZ6h` at `537905fa` reaches the explicit package query. Android's
+documented substring filter returns the app and its test companion; requiring
+one output line was a fixture error. Select exactly one full package-name record,
+rejecting absent/duplicate matches. Native backup has not run yet. Five listener
+deltas are zero, exact process/helper/private/RAM retirement passes, and fifteen
+bounded evidence files match on CTE/TUF. Peak scratch is 4,636,536,832 bytes.
+`android-backup-native-537905fa.json`: 15,548 bytes, SHA-256
+`8d590cd9d9adf23be3b86d0e77ee388e2085b4fc831b2779b9e045c38b593c9c`.

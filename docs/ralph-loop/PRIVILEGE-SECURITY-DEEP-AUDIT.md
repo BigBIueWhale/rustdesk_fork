@@ -133991,3 +133991,13 @@ No product correction is needed for these paced schedules. Rapid unacknowledged
 events, physical devices, relative mode, cross-window/owner handoff, actual
 application actions, other platforms and current-release acceptance remain OPEN.
 Cursor and all independent parks remain. No owned job is live; fresh ledger count follows.
+
+Fresh ledger count `IgXeucfvs5` at `56bbc356` passes seven controls and the
+whole-input round trip: 396,563 tokens / 1,813,408 bytes, SHA-256
+`c66adb992866118e13a33aa5f69ee6beb2aba9a1c3c3bb9ec2dca0e7634848f6`.
+The 28-second outer run joins wrapper/QEMU/helpers and retires private/RAM state;
+scratch peaks at 402,743,296 bytes and all three listener deltas are zero.
+Twelve evidence files are copied and hash-verified on CTE.
+`mouse-chords-ledger-56bbc356.json`: 4,792 bytes, SHA-256
+`7e62ce451e660a1c5a140871366a2d4357d40095f439c79e3b5076ae38f51716`.
+This audit-only receipt leaves the counted ledger unchanged. No owned job remains.

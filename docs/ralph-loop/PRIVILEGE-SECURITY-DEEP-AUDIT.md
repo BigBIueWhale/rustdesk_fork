@@ -134938,3 +134938,23 @@ Four zero listener deltas and exact process/helper/private/RAM retirement pass;
 thirteen bounded files match on CTE/TUF. `terminal-retry-fixed-c8ef98dd.json`:
 15,307 bytes, SHA-256
 `1ae68c62dd5463bbe0d382611b0783055d636799344a712a9aca32ed8d135d83`.
+
+Final replay `ViYYiJC93p` at `101d0449` passes all fifteen named product cases,
+three selected parser controls and exact-source/input postconditions in 241
+outer seconds. Tests and result inventory are byte-identical to baseline; product
+source is unchanged since `58c6cdcb`. The actual model and rendered dialog accept
+explicit retry, preserve terminal errors before/after PeerInfo, retire a pending
+retry and reject its captured callback. Existing countdown/backoff, owner reset,
+keyed-event and credential-suppression controls pass. Session/input/event inputs
+remain doubles; full native peer and installed/platform/R-S0/R-F5 acceptance stay
+open. No additional product correction was needed after the initial deletion.
+
+All four snapshots add zero endpoints; the final snapshot records two removed
+pre-existing endpoints. Those changes are unattributed; no owner was inspected or
+changed, and no global host-invariance claim is made. Exact wrapper/QEMU/helper,
+private-directory and RAM retirement pass under the shared lock. Peak RAM scratch
+is 6,381,019,136 bytes. Thirteen bounded files match on CTE/TUF.
+`terminal-retry-accepted-101d0449.json`: 7,235 bytes, SHA-256
+`ce98cfb36c27fef56f980faefa4bdd9180e12d966f9d3e719c5f8623dea3e821`.
+No owned job remains. Record the checkpoint in the ledger and obtain its fresh
+isolated count. The overall release goal remains active and incomplete.

@@ -43,6 +43,26 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-03):** Android imported-backup restore acceptance is
+OPEN/PARKED before execution; its six unfinished harness edits are preserved in
+stash `d30327499554c4fef473a52e47e5f256218c4d4d`. The accepted new-backup
+checkpoint below remains valid. Work moves to connection-error handling.
+
+**Terminal connection errors — Flutter component correction verified.**
+`58c6cdcb` removes the shared model's obsolete offline-message retry override
+and its wall-clock state. Native hasRetry=false now remains terminal after
+PeerInfo and retires an existing retry; explicit true retains bounded recovery.
+The unchanged-product baseline fails those two cases with thirteen controls
+passing. At `101d0449`, all fifteen identical model/rendered-dialog cases and
+three parser controls pass, with exact-source/input postconditions and joined
+VM/RAM cleanup. `terminal-retry-accepted-101d0449.json` binds the evidence.
+The harness now scopes parser controls to reconnect and exports case results
+before validation; the audit retains two intermediate parser failures.
+No endpoint is added; two pre-existing endpoints disappear in the final snapshot,
+unattributed and untouched. Session/input/native events are doubles. Actual peer
+recovery, desktop/mobile installed behavior and R-S0/R-F5/release acceptance
+remain OPEN. Independent parks remain.
+
 **User pivot (2026-11-03):** Mobile Remote/Camera native close acceptance is
 OPEN/PARKED. The component result below remains valid. APK `fd258e8b` passes
 build, manifest/signature checks, Android 14 install/launch/rendering and the

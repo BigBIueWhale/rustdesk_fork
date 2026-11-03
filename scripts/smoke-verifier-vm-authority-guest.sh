@@ -9705,7 +9705,7 @@ run_android_owner_tests() {
     [ "$(grep -c '^ANDROID_PERMISSION_CALLBACK_CASE=pass name=' "$output")" -eq 4 ] \
         && grep -Fxq 'ANDROID_PERMISSION_CALLBACK_TEST=pass scenarios=4 assertions=4 xxpermissions=18.5' "$output" \
         || fail 'Android permission callback results are incomplete'
-    grep '^ANDROID_PERMISSION_CALLBACK_' "$output"
+    grep -E '^(ANDROID_PERMISSION_CALLBACK_|[0-9a-f]{64}  /tmp/android-owner-state-test/classes/.*/AndroidPermissionCallback.*\.class$)' "$output"
     [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
         || fail 'focused Android owner-state container did not exit cleanly'
     "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null

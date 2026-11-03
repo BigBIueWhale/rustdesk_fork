@@ -135542,3 +135542,39 @@ Pins select those existing bytes; no app dependency or acquisition is added.
 The nearest integration control is the existing fifteen short Kotlin owner cases.
 The whole Android framework/MethodChannel, system dialog, exact APK and device
 acceptance remain open; this preparation claims no runtime result yet.
+
+The inherited full Linux build completes at 27bf28eb in run 3Ic9D0Y1fu:
+1055 outer seconds, thirteen widget/two native command checks, all 74 payload
+hashes and directory inventory verified. Payload size is 70,344,770 bytes;
+manifest SHA-256 c1b49165e06828d0dd6eb7b796dbe2e9ceb67923d329eaa77325326fcb086dfb.
+Four listener deltas are zero, and exact wrapper/QEMU/helper/private/RAM
+retirement is verified before changing TUF's checkout. Peak RAM scratch is
+11,893,567,488 bytes. Fourteen bounded evidence files match CTE/TUF;
+floating-app-build-27bf28eb.json is 6,266 bytes, SHA-256
+c9f56ce936cb7d0377e8d9bd7b7e60f0e259645eab42c06a7dad1dfdd2d891b8.
+This is app-build acceptance only; the user-parked panel native task stays open.
+
+Baseline source is 2b554b43, following the preparation's complete compiler/AAR
+input inventory and before/after compiled-callback artifact binding. The latter
+retains every matching production/test class hash on success and failure; the
+candidate guest forwarding also retains those hashes on successful execution.
+No callback assertion or execution recipe is changed for the correction.
+
+Baseline RZiCSRp650 at 2b554b43 runs all four callback cases: full and
+partial grant pass, while ordinary and permanent denial report an empty result
+list instead of false. All fifteen owner/voice controls pass. The two compiled
+callback/test class hashes are unchanged across execution; the actual library
+default executes. The merged stdout/stderr places the exception prefix before
+the grant receipt; all four named outcomes remain present and are retained.
+Four listener deltas are zero, QEMU exits zero, and exact process/helper/RAM
+retirement is verified. The failed run's bounded private diagnostics are
+inventoried and then retired under the shared lock; its authenticated helper
+hash matches the pin. Peak RAM scratch is 2,523,967,488 bytes. Thirteen bounded
+evidence files match CTE/TUF; permission-before-2b554b43.json is 15,022 bytes,
+SHA-256 292cbe36c9ec667f6f30d563fb60a00da611dda90619e94e4ac404a1b82c92cc.
+
+The correction implements both library callbacks: grants retain allGranted;
+ordinary/permanent denial returns false. The original main-looper dispatch,
+channel and exact request identity remain. Identical cases must pass before
+component acceptance; native Android dialog/channel and complete workflow
+acceptance remain open even after that result.

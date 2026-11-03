@@ -134828,3 +134828,29 @@ Fifteen bounded files match on CTE/TUF; peak scratch is 4,375,441,408 bytes.
 `9e959aa3806c4f83c061b10b78865bfd4b8f54e4803ee4d62a257a59107738cc`.
 The native new-backup exclusion substep is observed; complete restore/cloud and
 post-backup launch acceptance remain pending.
+
+Replay `rpGA8oiR0v` at `2918e1a5` passes the complete native transaction in
+392 seconds. Explicit PM metadata backup succeeds. Both packages' nine fixtures
+are readable under their recorded UID/groups. All nine control files appear
+byte-exact in the 11,264-byte archive and after actual Android restore. The archive
+SHA-256 is `3f2fdfa407f879fb662aba706eeb557af97016c420c3b8f35a6780754527edfc`.
+RustDesk's exact ERROR_PREFLIGHT event and transport-package rejection accompany
+archive absence; its restore request finishes without restoring any fixture.
+After real app relaunch, cloud mode reports Backup is not allowed and creates no
+app archive. Control uninstall, fixture removal, adbd return to UID 2000, enforcing
+SELinux, final resumed MainActivity, stable process and rendering all pass.
+
+This establishes new-backup exclusion on the pinned AOSP-14 LocalTransport with
+the retained test APK. It does not directly measure a numeric zero-size payload;
+the reviewed framework branch explains the observed preflight rejection. No app
+archive was restored. Imported older archives, OEM/device/older-Android/external-
+service behavior, final release artifacts and complete mobile privilege/storage
+acceptance remain open. No independent park is reopened.
+
+The original APK pair and checksum files retain their hashes and metadata. Exact
+wrapper/QEMU/helper/private/RAM absence and five zero listener deltas pass under
+the shared lock. Peak RAM scratch is 4,375,506,944 bytes. Fourteen bounded evidence
+files match on CTE/TUF. `android-backup-native-2918e1a5.json`: 14,381 bytes, SHA-256
+`46b6d59d2c80535f2db43c368ed1417729ad34de8cd223fcd95efee2fa6de203`.
+No owned job remains. Update the ledger to this native checkpoint and obtain its
+fresh isolated count. The broader goal remains active and incomplete.

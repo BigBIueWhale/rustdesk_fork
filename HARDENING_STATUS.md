@@ -51,7 +51,7 @@ instrumentation-process smoke; no native route/owner-retirement case ran.
 and exact process/private/RAM retirement. Work moves to R-S9 Android backup
 and device-transfer exclusion; all independent parks remain.
 
-**Android backup/transfer exclusion — compiled APK and launch verified.**
+**Android backup/transfer exclusion — Android 14 native checkpoint verified.**
 `ba738346` adds explicit cloud/device-transfer exclusions for all nine storage
 domains and the older full-backup opt-out, retaining allowBackup=false. Android
 documents manufacturer cases where that flag alone permits device transfer.
@@ -62,8 +62,23 @@ Android 14 install/launch/rendering and instrumentation-process smoke. The guest
 retained build/runtime summaries but filtered individual backup-check detail lines;
 the audit records that limit and the subsequent forwarding correction. Capsule
 `android-backup-build-aca3df16.json` binds exact artifacts, four zero listener
-deltas and process/private/RAM retirement. Actual backup/restore/transfer, older
-Android, manufacturer devices and complete release acceptance remain OPEN.
+deltas and process/private/RAM retirement.
+
+Replay `rpGA8oiR0v` at `2918e1a5` reuses that exact APK. Synthetic fixtures in all
+nine domains are readable under recorded application UID/groups. Android's D2D
+LocalTransport transfers all nine control files, whose bytes are checked in the
+archive and after actual restore. RustDesk produces its package-specific preflight
+transport rejection and no archive; its restore request leaves every fixture
+absent. The relaunched app is refused in cloud mode without creating an archive,
+then passes normal launch/rendering with SELinux enforcing. The control's
+allowBackup=false also demonstrates why that flag alone is insufficient for D2D.
+`android-backup-native-2918e1a5.json` binds detailed native receipts, unchanged APK
+hashes, five zero listener deltas and exact process/helper/private/RAM retirement.
+This is offline AOSP-14 test-APK evidence. It does not restore an app archive or
+prove rejection of an older imported archive, manufacturer-device behavior,
+older Android, external backup services, final release artifacts or complete
+mobile storage/privilege acceptance; those remain OPEN. No full rebuild or new
+APK-cache generation was needed; the audit records fixture repairs and limits.
 
 **User pivot (2026-11-03):** Peer-window close/reopen acceptance is OPEN/PARKED.
 The nineteen-case component result below remains valid. The earlier Linux app

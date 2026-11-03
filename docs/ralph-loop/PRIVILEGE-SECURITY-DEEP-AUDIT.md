@@ -133245,3 +133245,15 @@ unprivileged app lane (1000); the component lane retains UID 4000. The topology
 is explicitly retired after server/source joins. Disposable storage and network
 bounds are unchanged. This entry records implementation awaiting isolated
 execution; keep-awake and all independent user parks remain unchanged.
+
+First replay `lhV6Pstixr` at `cfc45697` fails in the fixture's first chooser
+lookup: it requests the key `Select Monitor`, whereas `src/lang/en.rs` supplies
+the displayed English text `Select monitor`. Correct that exact lookup. All
+four drivers compile twice identically and initial authenticated current pixels
+pass (four frames, maximum observed age 321 ms). No monitor switch was reached;
+no product defect is established. Topology explicitly retires, four listener
+deltas are zero, and wrapper/QEMU/helpers plus VM/RAM state retire. Retained
+failure bundle duplicates match the pinned app and are removed under the shared
+lock after preserving bounded diagnostics. `monitor-switch-cfc45697.json`
+binds this fixture failure and cleanup; the next replay keeps the same app,
+topology, thresholds and input oracle.

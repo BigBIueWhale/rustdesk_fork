@@ -5430,7 +5430,7 @@ static int exercise_monitor_switch(Display *source, Display *display,
         ViewerWindow current = {0};
         phase = "chooser";
         if (quality_toolbar(pid) != 0 ||
-            activate_named_control(pid, "Select Monitor") != 0 ||
+            activate_named_control(pid, "Select monitor") != 0 ||
             activate_named_control(pid, side ? "#2 monitor" : "#1 monitor") != 0 ||
             activate_named_control(pid, "Hide toolbar") != 0) goto failed;
         phase = "fresh-selected-pixels";

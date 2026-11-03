@@ -24,6 +24,8 @@ spec.loader.exec_module(result)
 SINGLE_PROFILE = None
 if len(sys.argv) > 1 and sys.argv[1] in ("--direct-address", "--connection-page"):
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
+if len(sys.argv) > 1 and sys.argv[1] == "--floating-position":
+    SINGLE_PROFILE = sys.argv.pop(1)[2:]
 if len(sys.argv) > 1 and sys.argv[1] in ("--screenshot-save", "--locales", "--draggable-divider", "--file-columns", "--trackpad-speed", "--menu-button", "--help-button", "--password-fields", "--file-progress", "--peer-search", "--audio-input", "--peer-data", "--combo-box", "--image-quality", "--audio-mute", "--view-mode", "--desktop-theme", "--status-refresh", "--custom-scale", "--modifier-release"):
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
 
@@ -229,6 +231,9 @@ class ResultTests(unittest.TestCase):
             return
         if SINGLE_PROFILE == "connection-page":
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (1, 8))
+            return
+        if SINGLE_PROFILE == "floating-position":
+            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 19))
             return
         if SINGLE_PROFILE == "direct-address":
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 45))

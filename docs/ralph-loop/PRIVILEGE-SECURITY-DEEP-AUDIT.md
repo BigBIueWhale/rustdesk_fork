@@ -134346,3 +134346,14 @@ The product correction uses `pos.width` and `pos.height` for the respective
 missing peer dimensions. All prior-field precedence, coordinate handling,
 window-state flags, ordinary saving and storage APIs stay the same. Replay the
 identical nineteen-case shard on this correction before accepting it.
+
+Corrected-source `0ambkxxGje` returns successfully from Flutter, then fails three
+unrelated `models` inventory self-checks because this position profile invokes
+the parser controls without a profile argument. It therefore retains no accepted
+case inventory or source postconditions. `window-position-fixed-e2ef87f6.json`
+records that limitation, four zero listener deltas and exact process/private/RAM
+retirement; thirteen bounded files are copied to CTE. Select `--floating-position`
+for this shard's existing parser controls, including its exact two-suite/nineteen-
+case inventory. This repairs the focused invocation; the independently parked
+general-model parser failures are unchanged. Repeat the unchanged product/tests
+to obtain a complete acceptance receipt.

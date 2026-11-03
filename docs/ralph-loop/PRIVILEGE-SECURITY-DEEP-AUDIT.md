@@ -133191,3 +133191,22 @@ dependency pins, resource limits and joined cleanup are reused. No product
 code changes. Preparation is unexecuted until the recorded isolated run below;
 this cannot establish Flutter chooser, network, remote input, presentation or
 physical-display acceptance. Keep-awake and all independent parks stay parked.
+
+Isolated run `a1NOOvm5Pa` at `0e186c64` passes in 40 outer seconds. Both
+production display descriptors have the expected names, origins, dimensions and
+primary flag; each real MIT-SHM capture has the expected stride and distinct
+first/center/last pixel samples. The independent C fixture observes exact
+left/right/left pointer coordinates and colors, then restores one automatic
+monitor. This supplies the required shared-root topology for the next full-app
+chooser/input replay; it does not test that replay itself. No product change or
+new product defect is claimed. The unrelated retained Rust fixture warnings
+remain unchanged; the new C fixture compiles with `-Wall -Wextra -Werror`.
+
+Exact wrapper/QEMU/helpers are absent; RAM/private workspaces retire and all
+three listener deltas are zero. Peak RAM scratch is 3,874,283,520 bytes.
+Twelve bounded evidence records are copied and hash-verified. Capsule
+`monitor-topology-0e186c64.json` is 5,041 bytes, SHA-256
+`029260a8785ad4dfb99e7ed334aaf1d343d86e707997e04dadbf66302a30fc53`.
+Next, integrate the now-verified shared-root topology into the retained app
+replay, preserving the distinct display identities through actual frame and
+input observations. Existing artifact and resource bounds remain unchanged.

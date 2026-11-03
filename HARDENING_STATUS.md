@@ -47,10 +47,10 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 OPEN/PARKED. Its already-started app build completed and all owned VM/RAM
 resources retired; the new native wake-lock fixture remains unexecuted.
 Work moves to R-S11go/R-S11gq monitor switching: real display selection,
-presented content and input geometry must agree. Initial source/evidence
-review identifies missing full-application multi-monitor acceptance, not a
-new reproduced defect. Linux service-child startup-failure cleanup and all
-independent user parks remain unchanged.
+presented content and input geometry must agree. The native two-monitor
+topology/capture prerequisite passes; complete chooser/presentation/remote-input
+acceptance remains OPEN (R-S11go below). Linux service-child startup-failure
+cleanup and all independent user parks remain unchanged.
 
 **Outgoing-session wake lock — component correction verified (2026-11-03):**
 `af9f4b2c` serializes platform transitions, retaining latest session demand
@@ -14943,6 +14943,7 @@ Evidence paths are relative to `.harness-state/verifier-vm/`.
 
 | Evidence | Observation and limit |
 | --- | --- |
+| `monitor-topology-0e186c64.json`, run `a1NOOvm5Pa` | The 40-second isolated lane configures two named 640×480 RandR monitors at (0,0)/(640,0) on one 1280×480 Xvfb root. Production public enumeration/capture returns exact names, primary/origin/dimensions and distinct red/blue first/center/last pixels. Independent XTest/XQueryPointer and XGetImage calibrate left/right/left coordinates and colors. The fixture explicitly restores the automatic monitor; Xvfb, container, VM/RAM/private cleanup passes with three zero listener deltas. This establishes the topology/capture prerequisite, not Flutter chooser, remote input, changing-frame presentation, physical displays or full-application acceptance. Reproduce with `--x11-display-tests --monitor-topology`. |
 | `display-selection-checker-removed-a7677551.json` | The 1,817-line source-text checker and four entrypoints are deleted. The existing zero-NIC authority transaction passed in 96 seconds, including syntax checks of the edited scripts and joined cleanup. Product and executable regressions were unchanged and were not replayed. |
 | `flutter-model-tests-run.wsETbwBgjB.serial.log`, source `d63f45ae` | Fresh generated bridges and 23 suites/258 Dart tests passed in 311 integration seconds, with three parser methods and joined isolated cleanup. Production selection/session/frame queues ran with controlled callbacks; native FFI, complete callers, browsers, peers and installed authority were not exercised. |
 | `frame-error-finality-57028a75.json`, candidate `b9d741c0` | The current 26-case queue shard and three parser methods pass; both new regressions fail on the old queue. This is the queue component result described under R-S11gr, not a full-model or renderer result. |

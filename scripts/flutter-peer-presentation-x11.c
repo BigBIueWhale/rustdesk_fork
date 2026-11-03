@@ -5410,6 +5410,124 @@ out:
     return result;
 }
 
+static int exercise_monitor_switch(Display *source, Display *display,
+                                    const ViewerWindow *viewer, SourceHistory *history,
+                                    const ConnectionIdentity *connection,
+                                    const ProcessResources *baseline) {
+    static const int dx[2] = {-47, 73}, dy[2] = {37, 61};
+    int reference_x[2] = {0}, reference_y[2] = {0};
+    unsigned int pid = (unsigned int)viewer->pid, sequence = 0U;
+    const char *phase = "topology";
+    if (ScreenCount(source) != 1 || DisplayWidth(source, 0) != 1280 ||
+        DisplayHeight(source, 0) != 480) goto failed;
+    for (; sequence < 3U; ++sequence) {
+        unsigned int side = sequence == 1U;
+        uint64_t maximum_age = 0U, started, deadline;
+        unsigned int distinct = 0U, minimum = 0U, maximum = 0U;
+        int64_t previous = -1;
+        ConnectionIdentity after = {{0}, {0}, 0UL};
+        ProcessResources resources = {0};
+        ViewerWindow current = {0};
+        phase = "chooser";
+        if (quality_toolbar(pid) != 0 ||
+            activate_named_control(pid, "Select Monitor") != 0 ||
+            activate_named_control(pid, side ? "#2 monitor" : "#1 monitor") != 0 ||
+            activate_named_control(pid, "Hide toolbar") != 0) goto failed;
+        phase = "fresh-selected-pixels";
+        started = monotonic_millis();
+        deadline = started + RECOVERY_LIMIT_MS;
+        while (monotonic_millis() < deadline && distinct < 4U) {
+            uint8_t pixels[X11_FRAME_BYTES];
+            uint64_t captured_us = 0U, age = 0U;
+            int64_t state = x11_frame_capture(display, viewer->window, pixels, &captured_us);
+            int fresh = x11_frame_age(history, "/coord", state, captured_us, &age) == 0;
+            if (history->failed) goto failed;
+            if (fresh && state >= 0 && ((uint32_t)state & 1U) == side &&
+                age <= FRESH_LIMIT_MS && state > previous &&
+                counter_width_interval(pixels, (uint32_t)state, viewer->width,
+                                       &minimum, &maximum) == 0 &&
+                maximum - minimum <= 100U && minimum + maximum >= 1240U &&
+                minimum + maximum <= 1320U && monotonic_millis() < deadline) {
+                previous = state;
+                ++distinct;
+                if (age > maximum_age) maximum_age = age;
+            }
+            if (distinct < 4U && sleep_millis(SAMPLE_INTERVAL_MS) != 0) goto failed;
+        }
+        if (distinct != 4U) {
+            fprintf(stderr, "FLUTTER_PEER_MONITOR_PIXELS_FAILED side=%u distinct=%u "
+                    "last=%lld width_interval=%u..%u\n", side, distinct,
+                    (long long)previous, minimum, maximum);
+            goto failed;
+        }
+        phase = "remote-pointer";
+        XRaiseWindow(display, viewer->window);
+        XSetInputFocus(display, viewer->window, RevertToParent, CurrentTime);
+        for (unsigned int point = 0U; point < 2U; ++point) {
+            Window child;
+            int x = -1, y = -1, before_x, before_y, local_x, local_y;
+            unsigned int mask = 0U, stable = 0U;
+            if (mouse_snapshot(source, &before_x, &before_y, &mask) != 0 || mask != 0U ||
+                !XTranslateCoordinates(display, viewer->window, DefaultRootWindow(display),
+                    (int)viewer->width / 2 + dx[point], (int)viewer->height / 2 + dy[point],
+                    &local_x, &local_y, &child) ||
+                !XTestFakeMotionEvent(display, DefaultScreen(display), local_x, local_y, CurrentTime))
+                goto failed;
+            XSync(display, False);
+            deadline = monotonic_millis() + RECOVERY_LIMIT_MS;
+            while (monotonic_millis() < deadline && stable < 3U) {
+                if (mouse_snapshot(source, &x, &y, &mask) != 0 || mask != 0U) goto failed;
+                int matched;
+                if (sequence == 0U && point == 0U) {
+                    matched = x >= 0 && x < 640 && y >= 0 && y < 480 &&
+                              (x != before_x || y != before_y);
+                    if (stable != 0U && (x != reference_x[0] || y != reference_y[0])) stable = 0U;
+                    reference_x[0] = x;
+                    reference_y[0] = y;
+                } else {
+                    int expected_x = sequence == 0U ? reference_x[0] + dx[1] - dx[0] :
+                                                     reference_x[point] + (int)side * 640;
+                    int expected_y = sequence == 0U ? reference_y[0] + dy[1] - dy[0] :
+                                                     reference_y[point];
+                    matched = x == expected_x && y == expected_y &&
+                              x >= (int)side * 640 && x < ((int)side + 1) * 640 && y >= 0 && y < 480;
+                }
+                stable = matched ? stable + 1U : 0U;
+                if (stable < 3U && sleep_millis(25U) != 0) goto failed;
+            }
+            if (stable != 3U || monotonic_millis() >= deadline) {
+                fprintf(stderr, "FLUTTER_PEER_MONITOR_POINTER_FAILED sequence=%u point=%u "
+                        "root=%d,%d baseline=%d,%d offset=%u\n", sequence + 1U, point + 1U,
+                        x, y, reference_x[point], reference_y[point], side * 640U);
+                goto failed;
+            }
+            if (sequence == 0U) { reference_x[point] = x; reference_y[point] = y; }
+            printf("FLUTTER_PEER_MONITOR_POINTER_OK sequence=%u point=%u root=%d,%d "
+                   "origin=%u,0 stable_scans=3\n", sequence + 1U, point + 1U, x, y, side * 640U);
+        }
+        phase = "identity-and-resources";
+        if (find_viewer_window(display, viewer->pid, &current) != 0 ||
+            current.window != viewer->window || current.width != viewer->width ||
+            current.height != viewer->height || read_connection_identity(&after) != 0 ||
+            !same_connection(connection, &after) ||
+            read_process_resources(viewer->pid, &resources) != 0 ||
+            !resources_are_bounded(baseline, &resources)) goto failed;
+        printf("FLUTTER_PEER_MONITOR_CASE_OK sequence=%u side=%s parity=%u distinct=4 "
+               "width_interval=%u..%u maximum_age_ms=%llu elapsed_ms=%llu pointer_targets=2\n",
+               sequence + 1U, side ? "right" : "left", side, minimum, maximum,
+               (unsigned long long)maximum_age, (unsigned long long)(monotonic_millis() - started));
+        print_resources("monitor-switch", sequence + 1U, &resources);
+        fflush(stdout);
+    }
+    return 0;
+failed:
+    fprintf(stderr, "FLUTTER_PEER_MONITOR_SWITCH_FAILED sequence=%u phase=%s\n", sequence + 1U, phase);
+    PasswordPromptScan diagnostic;
+    if (scan_password_prompt(pid, &diagnostic, 1) != 0)
+        fputs("FLUTTER_PEER_MONITOR_SWITCH_FAILED diagnostic=unavailable\n", stderr);
+    return -1;
+}
+
 static int keyboard_mode_selected(unsigned int pid, const char *selected) {
     static const char *names[] = {"Legacy mode", "Map mode", "Translate mode beta"};
     uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
@@ -6837,6 +6955,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--image-quality-save-failure") != 0 &&
                                     strcmp(argv[5], "--audio-mute") != 0 &&
                                     strcmp(argv[5], "--session-close") != 0 &&
+                                    strcmp(argv[5], "--monitor-switch") != 0 &&
                                     strcmp(argv[5], "--wake-lock") != 0 &&
                                     strcmp(argv[5], "--background-close") != 0 &&
                                     strcmp(argv[5], "--theme-light") != 0 &&
@@ -7264,6 +7383,7 @@ int main(int argc, char **argv) {
         int screenshot_unavailable = strcmp(argv[5], "--screenshot-save-unavailable") == 0;
         int view_scaling = strcmp(argv[5], "--view-scaling") == 0;
         int image_quality = strcmp(argv[5], "--image-quality") == 0;
+        int monitor_switch = strcmp(argv[5], "--monitor-switch") == 0;
         wake_session_close = strcmp(argv[5], "--wake-lock") == 0;
         int session_close = wake_session_close || strcmp(argv[5], "--session-close") == 0;
         int background_close = strcmp(argv[5], "--background-close") == 0;
@@ -7271,7 +7391,9 @@ int main(int argc, char **argv) {
         int clipboard_images = strcmp(argv[5], "--clipboard-images") == 0;
         int partial_loss = strcmp(argv[5], "--network-loss") == 0;
         int network = partial_loss || strcmp(argv[5], "--network-impairment") == 0;
-        int suspension_status = view_only ? exercise_view_only(
+        int suspension_status = monitor_switch ? exercise_monitor_switch(
+            source, display, &viewer, &history, &current_connection, &baseline_resources) :
+            view_only ? exercise_view_only(
             source, display, &viewer, &history, &current_connection, &baseline_resources,
             view_only_save_failure) :
             keyboard_modes ? exercise_keyboard_modes(
@@ -7310,7 +7432,10 @@ int main(int argc, char **argv) {
         XCloseDisplay(display);
         XCloseDisplay(source);
         if (suspension_status != 0) return 1;
-        if (background_close) {
+        if (monitor_switch) {
+            puts("FLUTTER_PEER_MONITOR_SWITCH_OK monitors=2 phases=left,right,left fresh_frames=12 "
+                 "pointer_targets=6 stable_connection=true same_window=true resources=bounded");
+        } else if (background_close) {
             puts("FLUTTER_PEER_BACKGROUND_CLOSE_OK action=pointer first=retired second=preserved "
                  "pixels=fresh final_close=passed main=usable");
         } else if (session_close) {

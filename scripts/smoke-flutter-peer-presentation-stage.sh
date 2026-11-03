@@ -26,6 +26,7 @@ MENU_ACTION=pointer
 [ "$PEER_SCENARIO" != credential-menu-accessible ] || MENU_ACTION=accessible
 readonly MENU_ACTION
 case "$PEER_SCENARIO" in
+  monitor-switch) EXPECTED_RESTARTS=0 ;;
   wake-lock) EXPECTED_RESTARTS=0 ;;
   keyboard-restart|keyboard-save-failure|keyboard-translate|keyboard-repeat) EXPECTED_RESTARTS=0 ;;
   session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|language-restart|language-direction|quality-restart|viewer-isolation|viewer-soak|input-latency|input-soak|image-quality|image-quality-save-failure|audio-mute) EXPECTED_RESTARTS=0 ;;
@@ -35,6 +36,9 @@ case "$PEER_SCENARIO" in
   *) fail 'unknown peer runtime scenario' ;;
 esac
 readonly EXPECTED_RESTARTS
+DRIVERS=(flutter-peer-source-x11 flutter-peer-presentation-x11 smoke-bind-loopback.so)
+[ "$PEER_SCENARIO" != monitor-switch ] || DRIVERS+=(test-x11-monitor-topology)
+readonly DRIVERS
 LONG_SOAK=0
 INPUT_RESPONSE=0
 case "$PEER_SCENARIO" in viewer-soak|input-soak) LONG_SOAK=1 ;; esac
@@ -221,8 +225,8 @@ verify_runtime_bundle() {
   verify_regular /app.sha256
   [ -z "$(find /out /app -xdev ! -type d ! -type f -print -quit)" ] \
     || fail 'runtime app or driver tree contains a link or special object'
-  [ "$(find /out -xdev -type f | wc -l)" -eq 4 ] \
-    && [ "$(wc -l < /out/manifest.sha256)" -eq 3 ] \
+  [ "$(find /out -xdev -type f | wc -l)" -eq "$((${#DRIVERS[@]} + 1))" ] \
+    && [ "$(wc -l < /out/manifest.sha256)" -eq "${#DRIVERS[@]}" ] \
     && [ "$(find /app -xdev -type f | wc -l)" -eq "$(wc -l < /app.sha256)" ] \
     || fail 'runtime app or driver inventory differs'
   (cd /out && sha256sum --check --strict manifest.sha256 >/dev/null)
@@ -544,21 +548,27 @@ PY
         /source/scripts/smoke-bind-loopback.c \
         -Wl,-z,relro,-z,now,-z,noexecstack -ldl \
         -o "/tmp/drivers.$pass/smoke-bind-loopback.so"
+      if [ "$PEER_SCENARIO" = monitor-switch ]; then
+        verify_regular /source/scripts/test-x11-monitor-topology.c
+        /usr/bin/cc -std=c11 -O2 -Wall -Wextra -Werror -DMONITOR_FIXTURE_UID=1000 \
+          /source/scripts/test-x11-monitor-topology.c \
+          $(pkg-config --cflags --libs x11 xrandr xtst) \
+          -o "/tmp/drivers.$pass/test-x11-monitor-topology"
+      fi
     done
-    for driver in flutter-peer-source-x11 flutter-peer-presentation-x11 smoke-bind-loopback.so; do
+    for driver in "${DRIVERS[@]}"; do
       cmp -s "/tmp/drivers.1/$driver" "/tmp/drivers.2/$driver" \
         || fail "driver compilation is not byte reproducible: $driver"
       install -m 0500 "/tmp/drivers.2/$driver" "/out/$driver"
     done
-    (cd /out && sha256sum flutter-peer-source-x11 flutter-peer-presentation-x11 \
-      smoke-bind-loopback.so) > /out/manifest.sha256
+    (cd /out && sha256sum "${DRIVERS[@]}") > /out/manifest.sha256
     while read -r digest driver; do
       printf 'LINUX_FLUTTER_DRIVER_ARTIFACT=pass name=%s sha256=%s builds=2 equality=bytes\n' \
         "$driver" "$digest"
     done < /out/manifest.sha256
     chmod 0400 /out/manifest.sha256
     chmod 0500 /out
-    printf 'LINUX_FLUTTER_DRIVERS_COMPILED=pass files=3 builds=2 equality=bytes app=unbuilt\n'
+    printf 'LINUX_FLUTTER_DRIVERS_COMPILED=pass files=%s builds=2 equality=bytes app=unbuilt\n' "${#DRIVERS[@]}"
     ;;
 
   prepare-sdk)
@@ -1126,8 +1136,14 @@ PY
       [ "$(tcp_listener_count)" -eq 0 ] && [ "$(udp_socket_count)" -eq 0 ] \
         || fail "controlled server generation $generation retained a socket after teardown"
     }
-    start_xvfb :98 640x480x24 /tmp/server-xvfb.log
+    source_geometry=640x480x24
+    [ "$PEER_SCENARIO" != monitor-switch ] || source_geometry=1280x480x24
+    start_xvfb :98 "$source_geometry" /tmp/server-xvfb.log
+    if [ "$PEER_SCENARIO" = monitor-switch ]; then
+      /out/test-x11-monitor-topology prepare
+    fi
     source_args=()
+    [ "$PEER_SCENARIO" != monitor-switch ] || source_args+=(--two-monitors)
     [ "$INPUT_RESPONSE" -eq 0 ] || source_args+=(--input-response "$COORD")
     set -o noclobber
     RUSTDESK_PRESENTATION_TRACE=1 "$SOURCE_FIXTURE" "${source_args[@]}" >"$COORD/frame-source.log" 2>&1 &
@@ -1475,6 +1491,9 @@ PY
     SOURCE_PID= SOURCE_START=
     grep -q '^FLUTTER_PEER_SOURCE_COMPLETE ' "$COORD/frame-source.log" \
       || { cat "$COORD/frame-source.log" >&2; fail 'source fixture did not close exactly'; }
+    if [ "$PEER_SCENARIO" = monitor-switch ]; then
+      /out/test-x11-monitor-topology retire
+    fi
     "$READY" --stop "$XVFB_PID" "$XVFB_START"
     wait "$XVFB_PID" 2>/dev/null || true
     XVFB_PID= XVFB_START=
@@ -1677,6 +1696,7 @@ PY
     [ "$PEER_SCENARIO" != input-soak ] || controller_args+=(--input-soak)
     [ "$PEER_SCENARIO" != view-scaling ] || controller_args+=(--view-scaling)
     [ "$PEER_SCENARIO" != session-close ] || controller_args+=(--session-close)
+    [ "$PEER_SCENARIO" != monitor-switch ] || controller_args+=(--monitor-switch)
     [ "$PEER_SCENARIO" != wake-lock ] || controller_args+=(--wake-lock)
     [ "$PEER_SCENARIO" != image-quality ] || controller_args+=(--image-quality)
     [ "$PEER_SCENARIO" != image-quality-save-failure ] || controller_args+=(--image-quality-save-failure)
@@ -1953,6 +1973,14 @@ PY
         && grep -Fxq 'FLUTTER_PEER_SESSION_CLOSE_OK action=pointer remote=retired connected_sockets=0 listener=preserved main=usable process=preserved' \
         <<<"$controller_output" || fail 'native wake-lock retirement result is absent'
       viewer_result='viewer=joined xvfb=joined wake_lock=passed release=explicit sender=live provider=joined'
+    elif [ "$PEER_SCENARIO" = monitor-switch ]; then
+      for sequence in 1 2 3; do
+        [ "$(grep -Ec "^FLUTTER_PEER_MONITOR_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
+          || fail "monitor case $sequence is absent or duplicated"
+      done
+      grep -Fxq 'FLUTTER_PEER_MONITOR_SWITCH_OK monitors=2 phases=left,right,left fresh_frames=12 pointer_targets=6 stable_connection=true same_window=true resources=bounded' \
+        <<<"$controller_output" || fail 'native monitor switching result is absent'
+      viewer_result='viewer=joined xvfb=joined monitor_switch=passed phases=3 pixels=fresh pointer=matched stable_connection=true'
     elif [ "$PEER_SCENARIO" = session-close ]; then
       grep -Fxq 'FLUTTER_PEER_SESSION_CLOSE_OK action=pointer remote=retired connected_sockets=0 listener=preserved main=usable process=preserved' \
         <<<"$controller_output" || fail 'native session-close result is absent'

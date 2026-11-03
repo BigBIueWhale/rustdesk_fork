@@ -101,6 +101,7 @@ case "$#:${1:-}" in
         --image-quality-save-failure) PEER_SCENARIO=image-quality-save-failure ;;
         --audio-mute) PEER_SCENARIO=audio-mute ;;
         --session-close) PEER_SCENARIO=session-close ;;
+        --monitor-switch) PEER_SCENARIO=monitor-switch ;;
         --wake-lock) PEER_SCENARIO=wake-lock ;;
         --background-close) PEER_SCENARIO=background-close ;;
         --theme-restart) PEER_SCENARIO=theme-restart ;;
@@ -235,6 +236,11 @@ elif [ "$PEER_SCENARIO" = wake-lock ]; then
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined wake_lock=passed release=explicit sender=live provider=joined'
+elif [ "$PEER_SCENARIO" = monitor-switch ]; then
+  RUNTIME_CYCLES=1
+  SERVER_GENERATIONS='1'
+  SERVER_REPLACEMENTS=0
+  VIEWER_RESULT='viewer=joined xvfb=joined monitor_switch=passed phases=3 pixels=fresh pointer=matched stable_connection=true'
 elif [ "$PEER_SCENARIO" = session-close ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
@@ -1280,6 +1286,7 @@ else
   echo '== compile only current native test drivers, twice, without building the app =='
   run_owned_container "$WORKSPACE/drivers.cid" \
     --pull=never --network=none --read-only --user "$HOST_UID:$HOST_GID" \
+    --env "FLUTTER_PEER_SCENARIO=$PEER_SCENARIO" \
     --cap-drop=ALL --security-opt=no-new-privileges \
     --pids-limit=128 --memory=1g --memory-swap=1g --cpus=2 \
     --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=64m \

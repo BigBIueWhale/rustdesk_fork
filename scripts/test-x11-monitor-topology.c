@@ -8,6 +8,10 @@
 #include <string.h>
 #include <unistd.h>
 
+#ifndef MONITOR_FIXTURE_UID
+#define MONITOR_FIXTURE_UID 4000
+#endif
+
 static const char *names[2] = {"RustDesk-test-left", "RustDesk-test-right"};
 static int errors;
 
@@ -50,7 +54,7 @@ static int automatic_matches(Display *display, Window root, RROutput *output) {
 }
 
 int main(int argc, char **argv) {
-    if (getuid() != 4000 || getgid() != 4000 || geteuid() != getuid() ||
+    if (getuid() != MONITOR_FIXTURE_UID || getgid() != MONITOR_FIXTURE_UID || geteuid() != getuid() ||
         getegid() != getgid() || getenv("DISPLAY") == NULL ||
         strcmp(getenv("DISPLAY"), ":98") != 0 || argc != 2 ||
         (strcmp(argv[1], "prepare") != 0 && strcmp(argv[1], "retire") != 0)) {

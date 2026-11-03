@@ -133220,3 +133220,28 @@ scratch retire, and twelve bounded records are copied and verified. Capsule
 `c7271cbb173e3dc96dc5cd4babf63d033205f8f8e72f1d11a0cd49b5632b5e75`.
 This completes the selected topology prerequisite; the full release goal remains
 active, with no owned job left running and all user parks preserved.
+
+### 2026-11-03 — full-application monitor selection
+
+Continue R-S11go/R-S11gq from the accepted shared-root topology. This closes
+more consequential missing ordinary viewing/input evidence than extending
+appearance controls. Reuse app `f043c5ae` and engine `ddb1541d`; no app rebuild.
+The new `--monitor-switch` replay drives the real chooser left/right/left on
+one authenticated connection. One ordered source counter publishes even frames
+only on the left and odd frames only on the right. Each phase requires four
+advancing selected-display frames aged at most 1,000 ms within a 2,500-ms
+observation window, a pixel-derived original-width interval, two remote pointer
+targets, unchanged native window/connection and existing resource ceilings.
+
+Pointer injection occurs only on the viewer's X server. The first left phase
+calibrates two positions with an exact 120/24 pixel displacement; later phases
+must reproduce those coordinates plus the selected monitor's exact 640-pixel
+root offset. This measures monitor-relative mapping, not independent absolute
+calibration of the initial viewport origin. Xlib documents root-relative
+`XQueryPointer` results and server-side `XTranslateCoordinates` conversion:
+https://xorg.freedesktop.org/archive/current/doc/libX11/libX11/libX11.html .
+Reuse the topology fixture with its build-time UID fixed to the existing
+unprivileged app lane (1000); the component lane retains UID 4000. The topology
+is explicitly retired after server/source joins. Disposable storage and network
+bounds are unchanged. This entry records implementation awaiting isolated
+execution; keep-awake and all independent user parks remain unchanged.

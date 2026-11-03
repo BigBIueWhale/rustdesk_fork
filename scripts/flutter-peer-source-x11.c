@@ -114,7 +114,7 @@ static int state_code_bar_is_white(uint32_t state, unsigned int row, unsigned in
 
 static int root_state_code_matches(Display *display, Window root, const Visual *visual,
                                    uint32_t state, unsigned int width,
-                                   unsigned int code_height) {
+                                   unsigned int code_height, unsigned int origin_x) {
     unsigned int row, bar;
     for (row = 0U; row < STATE_CODE_ROWS; ++row) {
         for (bar = 0U; bar < STATE_CODE_BARS; ++bar) {
@@ -122,7 +122,7 @@ static int root_state_code_matches(Display *display, Window root, const Visual *
                              (STATE_CODE_BARS * 2U);
             const uint8_t *color =
                 state_code_bar_is_white(state, row, bar) != 0 ? code_white : code_black;
-            if (!root_pixel_matches(display, root, (int)x,
+            if (!root_pixel_matches(display, root, (int)(origin_x + x),
                                     (int)((row * 2U + 1U) * code_height /
                                           (STATE_CODE_ROWS * 2U)),
                                     rgb_pixel(visual, color))) {
@@ -250,6 +250,7 @@ int main(int argc, char **argv) {
     unsigned int source_width = SOURCE_WIDTH;
     unsigned int source_height = SOURCE_HEIGHT;
     unsigned int frame_interval_ms = FRAME_INTERVAL_MS;
+    unsigned int monitors = 1U;
     ResponseInput response = {0};
     int input_response = 0, interactive = 0, response_ready = 0;
     const char *response_directory = NULL;
@@ -263,11 +264,13 @@ int main(int argc, char **argv) {
         source_width = 1920U;
         source_height = 1080U;
         frame_interval_ms = 33U;
+    } else if (argc == 2 && strcmp(argv[1], "--two-monitors") == 0) {
+        monitors = 2U;
     } else if (argc == 3 && strcmp(argv[1], "--input-response") == 0) {
         input_response = 1;
         response_directory = argv[2];
     } else if (argc != 1) {
-        fputs("FLUTTER_PEER_SOURCE_FAIL usage: frame-source [--full-hd|--input-response DIRECTORY]\n", stderr);
+        fputs("FLUTTER_PEER_SOURCE_FAIL usage: frame-source [--full-hd|--two-monitors|--input-response DIRECTORY]\n", stderr);
         return 1;
     }
     if (getrlimit(RLIMIT_FSIZE, &output_limit) != 0) {
@@ -309,7 +312,7 @@ int main(int argc, char **argv) {
     }
 
     screen = DefaultScreen(display);
-    if ((unsigned int)DisplayWidth(display, screen) != source_width ||
+    if ((unsigned int)DisplayWidth(display, screen) != source_width * monitors ||
         (unsigned int)DisplayHeight(display, screen) != source_height) {
         fputs("FLUTTER_PEER_SOURCE_FAIL screen dimensions differ\n", stderr);
         XCloseDisplay(display);
@@ -328,7 +331,7 @@ int main(int argc, char **argv) {
     }
     attributes.override_redirect = True;
     attributes.background_pixel = rgb_pixel(visual, palette[0]);
-    window = XCreateWindow(display, root, 0, 0, source_width, source_height, 0,
+    window = XCreateWindow(display, root, 0, 0, source_width * monitors, source_height, 0,
                            DefaultDepth(display, screen), InputOutput, visual,
                            CWOverrideRedirect | CWBackPixel, &attributes);
     if (window == 0) {
@@ -388,6 +391,9 @@ int main(int argc, char **argv) {
     }
 
     while (stop_requested == 0) {
+        /* One ordered publication history: even identities belong only to the
+         * left monitor, odd identities only to the right. Each advances at 4 Hz. */
+        unsigned int origin_x = (frame % monitors) * source_width;
         unsigned int low = frame & 15U;
         unsigned int high = (frame >> 4U) & 15U;
         unsigned int row, bar;
@@ -442,15 +448,15 @@ int main(int argc, char **argv) {
             break;
         }
         XCopyArea(display, back_buffer, window, graphics, 0, 0, source_width, source_height,
-                  0, 0);
+                  (int)origin_x, 0);
         XSync(display, False);
-        if (!root_pixel_matches(display, root, (int)(source_width / 4U),
+        if (!root_pixel_matches(display, root, (int)(origin_x + source_width / 4U),
                                 (int)(source_height / 2U),
                                 rgb_pixel(visual, palette[low])) ||
-            !root_pixel_matches(display, root, (int)(source_width * 3U / 4U),
+            !root_pixel_matches(display, root, (int)(origin_x + source_width * 3U / 4U),
                                 (int)(source_height / 2U),
                                 rgb_pixel(visual, palette[high])) ||
-            !root_state_code_matches(display, root, visual, frame, source_width, code_height)) {
+            !root_state_code_matches(display, root, visual, frame, source_width, code_height, origin_x)) {
             fprintf(stderr, "FLUTTER_PEER_SOURCE_FAIL source window occluded frame=%u\n", frame);
             exit_status = 1;
             break;
@@ -479,7 +485,7 @@ int main(int argc, char **argv) {
             break;
         }
         ++frame;
-        if (!interactive && sleep_millis(frame_interval_ms) != 0) {
+        if (!interactive && frame % monitors == 0U && sleep_millis(frame_interval_ms) != 0) {
             fputs("FLUTTER_PEER_SOURCE_FAIL frame pacing\n", stderr);
             if (texture != NULL) XDestroyImage(texture);
             XFreePixmap(display, back_buffer);

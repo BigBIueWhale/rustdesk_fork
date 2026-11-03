@@ -132620,3 +132620,30 @@ by retained directory descriptors under the shared lock. Twelve bounded records
 are copied and hash-verified. Capsule `linux-recovery-ada46d7a.json` is
 17,131 bytes, SHA-256
 `689f063aab0d8cc9f442cf07c135538581fd450d237d4aaa60624ac100c68e14`.
+
+Accepted replay `Spe5rPjrqj` at `da985dbc` passes all five refusals and the
+installed control in 43 outer seconds (48.115 capture seconds). Exact root
+service-role fixture 7873 and ordinary UID-4002 server 7891 retain process identity
+and real typed parked responses throughout. Each refusal exits 1 in approximately
+21 ms including subsequent observation, preserves the record metadata/bytes and
+creates no privileged IPC parent. Kernel inotify reports IN_CREATE|IN_ISDIR for
+the normal control, establishing the same watch observes actual directory
+creation. The API's directory-event and overflow semantics are documented at
+https://man7.org/linux/man-pages/man7/inotify.7.html; overflow fails the fixture.
+Both actors exit through pidfd-directed fixture shutdown and are waited. The
+shipped unit then selects supervisor 7972/child 7980, completes mutual CPace,
+and retires both exact processes, cgroup and record. PAM/Xvfb/users retire.
+No product defect was demonstrated and no product code changed.
+
+Complete product/build-input matching, now explicitly including the retained
+readiness-probe source, passes before and after. Wrapper 1111411, QEMU 1113145
+and owned helpers are absent under the shared lock; RAM workspace `run.lhesgxn6`
+(29:40752) and private scratch are absent. Peak RAM scratch is 4,075,560,960 bytes;
+all three listener deltas are zero. Twelve bounded records are copied and
+hash-verified on CTE. Capsule `linux-recovery-accepted-da985dbc.json` is
+13,595 bytes, SHA-256
+`6744d39d22bd954b33a7211470784621bf1d54f8fcfca99ee25431f51bc61b05`.
+No new cache generation or rebuild was needed. The selected refusal checkpoint
+is verified at its stated debug/native layer; the broader requirements and parks
+remain open as recorded above. Reassess the next highest-value permitted release
+item; do not repeat these passing cases without a relevant change or concern.

@@ -4672,6 +4672,23 @@ needed. This verifies the combined application/systemd installed-layout crash
 path, not independent parent-death attribution, live stale-record recovery,
 pixels/input, final packages, other init systems or other platforms; those remain OPEN.
 
+**Live-record recovery refusal (`da985dbc`).** TUF `Spe5rPjrqj` passes five
+exact-binary cases on `fdbab046`: live matching record with pidfds forced
+unavailable, wrong generation with native/unavailable pidfds, and ordinary-server
+role with native/unavailable pidfds. Each supervisor exits 1, preserves exact
+record metadata/bytes, and leaves the root service-role fixture and unrelated
+UID-4002 server responsive to typed parked-state probes. Kernel inotify observes
+no protected IPC parent creation, then observes the installed positive control's
+real creation. After exact fixture retirement, the shipped unit starts a selected
+desktop child, completes CPace and retires its process tree/cgroup/record.
+PAM/Xvfb/user, VM/RAM/private cleanup and three zero listener deltas pass.
+`linux-recovery-accepted-da985dbc.json` binds evidence; the audit retains the first
+run's outer receipt-name collision and correction. Debug hooks construct the live
+record and unavailable-pidfd branch; no product change or rebuild was needed.
+Kernel ENOSYS injection, unverifiable/other record classes, final packages and
+other init/platform acceptance remain OPEN. Root-created records do not imply
+unprivileged write access to the protected runtime directory.
+
 **IPC / option CLI — component acceptance; installed acceptance OPEN.**
 At `ad638445`, TUF `1VEEFlN8jX` passes all **176 listener/transport, 32 CLI,
 10 Windows selector, 22 main-protocol, 8 main-transaction, 8 main-peer, 4 URL-loop,
@@ -10245,7 +10262,7 @@ sandbox implementation and checker-repair history remain in Git.
   | R-S11c-27r | Source/package plus historical runsvdir/runsv/supervisor/child ownership and recovery; exact-artifact VM reproduction remains OPEN. |
   | R-S11c-27s | Release wiring only; execution OPEN. The gate binds cold A==B pass-A `.deb`, commit/package identity, authenticated devcheck archive, installed systemd lifecycle and stable post-run inputs before publication, through the common no-NIC VM after Docker is joined. No current final `.deb` has passed. |
   | R-S11c-27t/R-T4 | Source/gate: owner loss remains selectable throughout headless CM bootstrap; post-bootstrap completion is bounded and terminal-first. Native/package/device lifecycle remains OPEN. |
-  | R-S11c-27u | Source: pidfd-unavailable live/mismatched/unverifiable recovery refuses before IPC or replacement and preserves the record. Updated exact-binary refusal and installed execution remain OPEN. |
+  | R-S11c-27u | Current debug exact-binary `Spe5rPjrqj` verifies live/no-pidfd and wrong-generation/ordinary-role native/unavailable-pidfd refusals, preserved records and live actors, with installed CPace positive control. Unverifiable records, kernel ENOSYS and final-artifact acceptance remain OPEN. |
 
   The systemd installed lifecycle is a release-only common-VM scenario. Named real-VM
   evidence for its numeric-nonroot library-staging profile covers staging only; it does
@@ -10735,7 +10752,7 @@ sandbox implementation and checker-repair history remain in Git.
   Current APK/device, native Apple/Windows installed-platform evidence, and external R-V3 review remain open; this
   slice is not overall completion.
 - **R-S11ca/R-S11e-93 — Linux crash recovery signals only through a stable pidfd — SOURCE
-  IMPLEMENTED; EXACT-BINARY REFUSAL AND INSTALLED-ARTIFACT EVIDENCE OPEN.** The root
+  IMPLEMENTED; FIVE DEBUG EXACT-BINARY REFUSALS VERIFIED; FINAL-ARTIFACT EVIDENCE OPEN.** The root
   `--service` supervisor recovers `/run/rustdesk/service-child.record` through an opened
   pidfd and complete identity revalidation before each descriptor-bound signal. The
   revalidate-then-numeric-PID signal and wait helpers are deleted: PID reuse can occur
@@ -10747,10 +10764,12 @@ sandbox implementation and checker-repair history remain in Git.
   No-record startup and shutdown through the supervisor's retained Rust `Child` remain
   supported. The debug-only unsupported-pidfd fixture is inert in release; its required
   outcome is service exit 1, unchanged record bytes/metadata, no temporary record, and
-  survival of the retained child and unrelated UID-4000 portable server. Fixture cleanup
-  is exact-record and pidfd-bound. The updated actual-binary refusal fixture has not
-  established current installed behavior. See Appendix C #220 and the parent R-S11c-27
-  lifecycle matrix.
+  survival of the retained child and unrelated portable server. Current `Spe5rPjrqj`
+  verifies the five named cases and UID-4002 portable actor above, with genuine typed
+  responses, kernel namespace observation and installed CPace positive control.
+  Fixture cleanup is exact-record and pidfd-bound. Native ENOSYS injection,
+  unverifiable/other record cases and final installed artifacts remain OPEN.
+  See Appendix C #220 and the parent R-S11c-27 lifecycle matrix.
 
 - **R-S11cb/R-S11e-94 — Linux stable service credential ownership and nondumpable runtime
   replica — SOURCE IMPLEMENTED; NATIVE INSTALLED-SERVICE AND ARTIFACT EVIDENCE OPEN.**

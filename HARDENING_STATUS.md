@@ -53,16 +53,19 @@ remains independently parked with two unexecuted bridge tests in stash
 `ac067e981c1ddac8edc7826379f586a8ff13b3d6`; its accepted Flutter correction
 below remains valid. All other independent parks remain.
 
-**File-log process restarts — Linux component verified.** Work moves to R-S0
-log-storage correctness. At `4b62ff2f`, forty sequential, joined logger processes
-retain exactly the newest 32 records (31 archives plus current), preserve another
-log family and keep fixture bytes bounded after every exit. Both existing size/
-retention controls also pass: three tests in 0.13 seconds, 130 outer seconds.
-`file-log-restarts-4b62ff2f.json` binds source, artifact, four zero listener deltas
-and exact process/private/RAM retirement. Product logging is unchanged. This
-executes the production builder with real files, not full-app startup, concurrent
-writers, crashes, daily rollover, privileged namespaces or other platforms.
-Those acceptance gaps remain OPEN; single-record and Windows-log work stay parked.
+**File-log process restarts — Linux component verified.** `4b62ff2f` verifies
+forty sequential builder processes: exactly the newest 32 records (31 archives
+plus current), bounded fixture bytes and preservation of another log family.
+`46e498c5` adds forty processes through actual init_log with its file branch
+compiled: immediate handle drop does not lose the subsequent record, and repeated
+initialization creates no replacement destination. Both restart paths and existing
+size/retention controls pass: four cases in 0.19 seconds, 130 outer seconds.
+`file-log-startup-46e498c5.json` binds source, artifact, four zero listener deltas
+and exact process/private/RAM retirement; the earlier capsule remains valid.
+Product logging is unchanged. This nonoptimized library artifact does not prove
+full-app/installed startup, concurrent writers, crashes, daily rollover, privileged
+namespaces or other platforms. Those remain OPEN; single-record and Windows-log
+work stay parked. Concurrent live writers are the next distinct evidence gap.
 
 **Earlier pivot (2026-11-03):** Android imported-backup restore acceptance is
 OPEN/PARKED before execution; its six unfinished harness edits are preserved in

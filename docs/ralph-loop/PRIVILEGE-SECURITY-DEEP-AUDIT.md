@@ -135169,3 +135169,29 @@ https://doc.rust-lang.org/cargo/reference/profiles.html#debug-assertions.
 This is still a nonoptimized library test artifact, not an installed/release app.
 No product logging change is made. All parked topics remain parked. Execution
 and exact artifact/cleanup evidence are pending.
+
+Native checkpoint (2026-11-04 local): `U6ME7BZqDJ` at `46e498c5` passes all
+four cases in 0.19 seconds (130 outer seconds). Forty public-init processes drop
+the handle before their first record, refuse a second destination through Once,
+and exit without explicit flush/shutdown. Every joined exit preserves the exact
+newest records and unrelated log family; final state has records 8–39 in 32 files,
+2,942 fixture bytes. The forty builder processes retain their unchanged 2,334-byte
+result. Existing size/retention controls also pass unchanged. Immediate handle
+drop is therefore not a demonstrated loss defect for this pinned direct-mode path.
+No product correction is needed from this result.
+
+The actual Rust 1.75 artifact, unchanged before/between/after execution, hashes to
+`5e78423db1a51fb600320c95761cbc45ef0256bbe1dc75ec921e2bd37f97587d`.
+Four listener deltas are zero. Exact wrapper/QEMU/helpers, private directory and
+RAM workspace retire under the shared lock; peak scratch is 3,510,128,640 bytes.
+Thirteen bounded files match on CTE/TUF. `file-log-startup-46e498c5.json`:
+5,977 bytes, SHA-256
+`a52350a03ffb961262742e439b52c674ac9969468933cbd851808596cfd5b3b3`.
+
+This supplies the actual global-logger initialization/normal-exit component
+evidence missing from the previous case. Full application, installed/release,
+concurrent-writer, crash and daily-rollover acceptance remains open. Concurrent
+live writers are the next distinct evidence gap, subject to a real application
+path establishing shared log-family ownership before claiming a product defect.
+Update the ledger and obtain its fresh isolated count. No owned job remains;
+independent parked work remains parked and the overall release goal is incomplete.

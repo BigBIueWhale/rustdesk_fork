@@ -2189,6 +2189,7 @@ fn remove_reaped_service_child_record(
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ServiceChildTermination {
     Absent,
+    Reaped,
     Graceful,
     Forced,
 }
@@ -2204,6 +2205,16 @@ fn terminate_child_with_timeouts(
         return Ok(ServiceChildTermination::Absent);
     };
     let pid = owned_child.record.pid;
+    if let Some(status) = owned_child.process.try_wait().map_err(|err| {
+        anyhow!(
+            "Failed to inspect exact {label} child pid {pid} before signaling: {err}; preserving ownership and recovery record"
+        )
+    })? {
+        log::info!("{label} child already exited with {status}");
+        remove_reaped_service_child_record(runtime, owned_child, label)?;
+        drop(child.take());
+        return Ok(ServiceChildTermination::Reaped);
+    }
     if signal_child(owned_child, hbb_common::libc::SIGTERM, label)
         && wait_child_exit(owned_child, graceful_timeout, label).map_err(|err| {
             anyhow!("{err}; preserving exact {label} child pid {pid} ownership and recovery record")

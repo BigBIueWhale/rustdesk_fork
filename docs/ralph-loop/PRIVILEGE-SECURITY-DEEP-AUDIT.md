@@ -132849,3 +132849,31 @@ status is present. The application's raw SIGTERM bypasses that protection.
 Execution must decide the actual retry behavior before a product correction.
 All independent user parks remain in force; no new artifact build is needed
 for this baseline, which reuses source-matched `fdbab046`.
+
+Baseline `5Oc6qQtEVt` at `86c4fc22` fails the intended criterion in 45.321
+capture seconds. Real CPace succeeds. The trace observes a successful TERM,
+successful wait4 reaping child 7899, the exact record fault, then another TERM
+while that PID is absent; its return is -ESRCH. Supervisor 7891 exits 1, the
+service cgroup retires and the durable credential is unchanged. All 118 observed
+syscall entries came from the actual supervisor lifecycle thread. This confirms
+the post-reap signaling defect, not an unprivileged trigger or wrong-process hit.
+The exception runs guest cleanup but skips its final desktop-retirement receipt.
+
+Wrapper 1126735/QEMU 1128469 and owned helpers are absent; RAM `run.31dwu53d`
+(29:40948) is retired, and all three host listener deltas are zero. Peak RAM
+scratch is 4,095,385,600 bytes. Failed private diagnostics were inventoried and
+retired by exact directory identities under the shared lock after preserving
+`linux-record-cleanup-86c4fc22.json` (10,602 bytes, SHA-256
+`124a051c249e246ab97a9654d44344370e3f004ad72507bb9c2e0a356fa17eda`).
+Twelve bounded evidence records are copied and hash-verified on CTE.
+
+Correction: `terminate_child_with_timeouts` consults its exclusively owned
+`Child::try_wait` before raw TERM. A terminal/cached status enters record-only
+cleanup and returns the explicit Reaped outcome; an inspection error preserves
+ownership and returns before signaling. A still-unreaped direct child follows
+the existing TERM/wait/KILL/wait sequence. No duplicate lifecycle flag or pidfd
+compatibility mode is introduced. Record-removal errors remain errors and may
+retain the Child, but its cached terminal status cannot confer signaling
+authority on retry. Native validation requires rebuilding this exact source,
+replaying the identical fault criterion, and checking the existing stopped-child
+graceful/forced shutdown and fresh-start scenario on that same artifact.

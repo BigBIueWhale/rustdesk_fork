@@ -26,6 +26,7 @@ MENU_ACTION=pointer
 [ "$PEER_SCENARIO" != credential-menu-accessible ] || MENU_ACTION=accessible
 readonly MENU_ACTION
 case "$PEER_SCENARIO" in
+  wake-lock) EXPECTED_RESTARTS=0 ;;
   keyboard-restart|keyboard-save-failure|keyboard-translate|keyboard-repeat) EXPECTED_RESTARTS=0 ;;
   session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|language-restart|language-direction|quality-restart|viewer-isolation|viewer-soak|input-latency|input-soak|image-quality|image-quality-save-failure|audio-mute) EXPECTED_RESTARTS=0 ;;
   focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
@@ -521,7 +522,7 @@ PY
       && [ -z "$(find /out -mindepth 1 -print -quit)" ] \
       || fail 'driver output must be a fresh private directory'
     for input in flutter-peer-source-x11.c flutter-peer-presentation-x11.c \
-        x11-frame-oracle.h test-x11-frame-oracle.c smoke-bind-loopback.c; do
+        x11-frame-oracle.h flutter-peer-wakelock.h test-x11-frame-oracle.c smoke-bind-loopback.c; do
       verify_regular "/source/scripts/$input"
     done
     /usr/bin/cc -std=c11 -O2 -Wall -Wextra -Werror \
@@ -1532,6 +1533,7 @@ PY
       || fail 'viewer private session directories differ'
     mkdir -m 1777 /tmp/.X11-unix
     XVFB_PID= XVFB_START= VIEWER_PID= VIEWER_START= APPEARANCE_PID= APPEARANCE_START=
+    WAKE_PID= WAKE_START=
     cleanup_viewer() {
       local status=$? cleanup_status=0
       trap - EXIT HUP INT TERM
@@ -1539,6 +1541,12 @@ PY
         && "$READY" --is-running "$VIEWER_PID" "$VIEWER_START"; then
         "$READY" --stop "$VIEWER_PID" "$VIEWER_START" || cleanup_status=$?
         wait "$VIEWER_PID" 2>/dev/null || true
+      fi
+      if [ -n "$WAKE_PID" ] && [ -n "$WAKE_START" ]; then
+        if "$READY" --is-running "$WAKE_PID" "$WAKE_START"; then
+          "$READY" --stop "$WAKE_PID" "$WAKE_START" || cleanup_status=$?
+        fi
+        wait "$WAKE_PID" 2>/dev/null || true
       fi
       if [ -n "$APPEARANCE_PID" ] && [ -n "$APPEARANCE_START" ]; then
         if "$READY" --is-running "$APPEARANCE_PID" "$APPEARANCE_START"; then
@@ -1559,6 +1567,13 @@ PY
     trap 'exit 130' INT
     trap 'exit 143' TERM
     start_xvfb "$VIEWER_DISPLAY" 1280x800x24 /tmp/viewer-xvfb.log
+    if [ "$PEER_SCENARIO" = wake-lock ]; then
+      "$CONTROLLER" --wake-service >/tmp/wake-service.log 2>&1 &
+      WAKE_PID=$!
+      WAKE_START=$("$READY" --identity "$WAKE_PID")
+      "$READY" --wait-log "$WAKE_PID" "$WAKE_START" /tmp/wake-service.log \
+        'WAKE_SERVICE_READY transport=private-dbus reply=held' 'private wake-lock provider'
+    fi
     listener_is_exact || fail 'shared namespace lost the exact loopback server listener'
     [ "$(udp_socket_count)" -eq 0 ] || fail 'shared namespace has a UDP socket before connect'
     viewer_generations=1
@@ -1662,6 +1677,7 @@ PY
     [ "$PEER_SCENARIO" != input-soak ] || controller_args+=(--input-soak)
     [ "$PEER_SCENARIO" != view-scaling ] || controller_args+=(--view-scaling)
     [ "$PEER_SCENARIO" != session-close ] || controller_args+=(--session-close)
+    [ "$PEER_SCENARIO" != wake-lock ] || controller_args+=(--wake-lock)
     [ "$PEER_SCENARIO" != image-quality ] || controller_args+=(--image-quality)
     [ "$PEER_SCENARIO" != image-quality-save-failure ] || controller_args+=(--image-quality-save-failure)
     [ "$PEER_SCENARIO" != audio-mute ] || controller_args+=(--audio-mute)
@@ -1703,6 +1719,24 @@ PY
     set -e
     [ "$LONG_SOAK" -eq 0 ] || exec 3>&-
     printf '%s\n' "$controller_output"
+    if [ "$PEER_SCENARIO" = wake-lock ]; then
+      "$READY" --is-running "$WAKE_PID" "$WAKE_START" || fail 'wake provider exited early'
+      if [ "$controller_status" -eq 0 ]; then
+        gdbus call --session --timeout 3 --dest org.freedesktop.ScreenSaver \
+          --object-path /org/freedesktop/ScreenSaver \
+          --method org.rustdesk.TestWakeLock.Stop >/dev/null
+        wake_deadline=$((SECONDS + 5))
+        while "$READY" --is-running "$WAKE_PID" "$WAKE_START"; do
+          [ "$SECONDS" -lt "$wake_deadline" ] || fail 'wake provider did not retire'
+          sleep 0.05
+        done
+        wait "$WAKE_PID" || fail 'wake provider retirement failed'
+        WAKE_PID= WAKE_START=
+        echo 'FLUTTER_PEER_WAKE_PROVIDER_JOINED exit=0'
+      fi
+      [ "$(stat -c %s /tmp/wake-service.log)" -le 8192 ] || fail 'wake provider log exceeds bound'
+      cat /tmp/wake-service.log
+    fi
     if [ "$PEER_SCENARIO" = theme-appearance ]; then
       "$READY" --is-running "$APPEARANCE_PID" "$APPEARANCE_START" \
         || fail 'independent native appearance observer exited early'
@@ -1913,6 +1947,12 @@ PY
       grep -Fxq 'FLUTTER_PEER_BACKGROUND_CLOSE_OK action=pointer first=retired second=preserved pixels=fresh final_close=passed main=usable' \
         <<<"$controller_output" || fail 'native background-close result is absent'
       viewer_result='viewer=joined xvfb=joined background_close=passed active_connection=preserved pixels=fresh final_close=passed'
+    elif [ "$PEER_SCENARIO" = wake-lock ]; then
+      grep -Fxq 'FLUTTER_PEER_WAKE_OK acquisition=delayed retirement=explicit-uninhibit owner=live-exact-viewer cookie=matched transport=private-dbus' \
+        <<<"$controller_output" \
+        && grep -Fxq 'FLUTTER_PEER_SESSION_CLOSE_OK action=pointer remote=retired connected_sockets=0 listener=preserved main=usable process=preserved' \
+        <<<"$controller_output" || fail 'native wake-lock retirement result is absent'
+      viewer_result='viewer=joined xvfb=joined wake_lock=passed release=explicit sender=live provider=joined'
     elif [ "$PEER_SCENARIO" = session-close ]; then
       grep -Fxq 'FLUTTER_PEER_SESSION_CLOSE_OK action=pointer remote=retired connected_sockets=0 listener=preserved main=usable process=preserved' \
         <<<"$controller_output" || fail 'native session-close result is absent'

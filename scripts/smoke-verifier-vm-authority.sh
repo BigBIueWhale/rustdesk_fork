@@ -711,6 +711,7 @@ case "$#:${1:-}" in
                 --image-quality-save-failure) FLUTTER_IMAGE_QUALITY_SAVE_FAILURE=1 ;;
                 --audio-mute) FLUTTER_AUDIO_MUTE=1 ;;
                 --session-close) FLUTTER_SESSION_CLOSE=1 ;;
+                --wake-lock) FLUTTER_SESSION_CLOSE=3 ;;
                 --background-close) FLUTTER_SESSION_CLOSE=2 ;;
                 --theme-restart) FLUTTER_THEME_RESTART=1 ;;
                 --language-restart) FLUTTER_LANGUAGE_RESTART=1 ;;
@@ -775,7 +776,7 @@ case "$#:${1:-}" in
         printf 'Original offline engine setup: %s --linux-flutter-engine-prepare\n' "${0##*/}" >&2
         printf 'Explicit offline engine integration build: %s --linux-flutter-engine-build\n' "${0##*/}" >&2
         printf 'Source-bound Linux app producer: %s --linux-flutter-app-build --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256\n' "${0##*/}" >&2
-        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend|--viewer-isolation|--viewer-soak|--input-latency|--input-soak|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--view-only-save-failure|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-restart|--theme-appearance|--theme-save-failure|--credential-retry|--credential-restart|--credential-rotation|--credential-forget|--credential-menu|--credential-menu-accessible]\n' "${0##*/}" >&2
+        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend|--viewer-isolation|--viewer-soak|--input-latency|--input-soak|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--view-only-save-failure|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--wake-lock|--background-close|--theme-restart|--theme-appearance|--theme-save-failure|--credential-retry|--credential-restart|--credential-rotation|--credential-forget|--credential-menu|--credential-menu-accessible]\n' "${0##*/}" >&2
         printf 'Focused native Docker log-lifetime check: %s --android-runtime-log-tests\n' "${0##*/}" >&2
         printf 'Windows service-result file checks: %s --windows-service-result-tests\n' "${0##*/}" >&2
         printf 'Focused archive transaction fixtures: %s --fixed-archive-tests\n' "${0##*/}" >&2
@@ -5295,6 +5296,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         [ "$FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE" -eq 0 ] || guest_invocation+=' --screenshot-save-unavailable'
         [ "$FLUTTER_VIEW_SCALING" -eq 0 ] || guest_invocation+=' --view-scaling'
         [ "$FLUTTER_SESSION_CLOSE" -ne 1 ] || guest_invocation+=' --session-close'
+        [ "$FLUTTER_SESSION_CLOSE" -ne 3 ] || guest_invocation+=' --wake-lock'
         [ "$FLUTTER_IMAGE_QUALITY" -eq 0 ] || guest_invocation+=' --image-quality'
         [ "$FLUTTER_QUALITY_RESTART" -eq 0 ] || guest_invocation+=' --quality-restart'
         [ "$FLUTTER_IMAGE_QUALITY_SAVE_FAILURE" -eq 0 ] || guest_invocation+=' --image-quality-save-failure'
@@ -8815,6 +8817,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     [ "$FLUTTER_IMAGE_QUALITY_SAVE_FAILURE" -eq 0 ] || peer_scenario=image-quality-save-failure
     [ "$FLUTTER_AUDIO_MUTE" -eq 0 ] || peer_scenario=audio-mute
     [ "$FLUTTER_SESSION_CLOSE" -ne 1 ] || peer_scenario=session-close
+    [ "$FLUTTER_SESSION_CLOSE" -ne 3 ] || peer_scenario=wake-lock
     [ "$FLUTTER_SESSION_CLOSE" -ne 2 ] || peer_scenario=background-close
     [ "$FLUTTER_THEME_RESTART" -eq 0 ] || peer_scenario=theme-restart
     [ "$FLUTTER_LANGUAGE_RESTART" -ne 1 ] || peer_scenario=language-restart

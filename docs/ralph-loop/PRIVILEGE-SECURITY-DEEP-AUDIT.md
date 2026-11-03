@@ -133095,3 +133095,25 @@ it cannot prove physical screen power or a real desktop provider by itself.
 Primary contracts: https://specifications.freedesktop.org/idle-inhibit/0.1/index.html
 and https://docs.gtk.org/gio/method.DBusConnection.register_object.html .
 Provider/device acceptance and independently parked topics remain OPEN.
+
+The native `--wake-lock` scenario is prepared while build `jjQDFvY2wp`
+remains owned by wrapper 1285040 at source `f043c5ae`; TUF checkout/refs
+stay frozen. The existing controller gains one private D-Bus fixture mode.
+It retains one sender/cookie and the pending Inhibit invocation, observes
+NameOwnerChanged separately, and returns the delayed reply only after the
+real UI closes the authenticated remote session. The observer then requires
+exact-cookie UnInhibit while D-Bus still identifies the sender as the original
+live viewer PID. Native window/socket retirement and main-window usability
+controls remain. The provider is explicitly stopped and joined, with failure
+cleanup owned by the existing viewer stage. No new dependency or listener
+topology is introduced; provider callbacks use the GLib main context and
+the documented transferred invocation ownership:
+https://docs.gtk.org/gio/callback.DBusInterfaceMethodCallFunc.html and
+https://docs.gtk.org/gio/method.DBusMethodInvocation.return_value.html .
+
+This fixture is not compiled or executed yet. After the current build joins
+and is reconciled, run it against retained baseline app `c6aed851` first,
+then the corrected artifact with the same scenario. A client disconnect,
+fixture setup error or missing invocation cannot count as a product ordering
+failure or a passing release. Real desktop power providers, physical screen
+behavior and the separate release/replacement overlap still need native evidence.

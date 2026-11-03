@@ -101,6 +101,7 @@ case "$#:${1:-}" in
         --image-quality-save-failure) PEER_SCENARIO=image-quality-save-failure ;;
         --audio-mute) PEER_SCENARIO=audio-mute ;;
         --session-close) PEER_SCENARIO=session-close ;;
+        --wake-lock) PEER_SCENARIO=wake-lock ;;
         --background-close) PEER_SCENARIO=background-close ;;
         --theme-restart) PEER_SCENARIO=theme-restart ;;
         --language-restart) PEER_SCENARIO=language-restart ;;
@@ -229,6 +230,11 @@ elif [ "$PEER_SCENARIO" = background-close ]; then
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined background_close=passed active_connection=preserved pixels=fresh final_close=passed'
+elif [ "$PEER_SCENARIO" = wake-lock ]; then
+  RUNTIME_CYCLES=1
+  SERVER_GENERATIONS='1'
+  SERVER_REPLACEMENTS=0
+  VIEWER_RESULT='viewer=joined xvfb=joined wake_lock=passed release=explicit sender=live provider=joined'
 elif [ "$PEER_SCENARIO" = session-close ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

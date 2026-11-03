@@ -4789,6 +4789,9 @@ out:
     return result;
 }
 
+#include "flutter-peer-wakelock.h"
+static int wake_session_close = 0;
+
 static int exercise_session_close(Display *display, const ViewerWindow *viewer,
                                     const char *start, const ConnectionIdentity *connection) {
     Window main = None, current_main = None;
@@ -4821,6 +4824,7 @@ static int exercise_session_close(Display *display, const ViewerWindow *viewer,
         theme != NULL) goto out;
     puts("FLUTTER_PEER_SESSION_CLOSE_BEGIN connected_sockets=2 listener=1 remote_visible=true main_visible=true");
     fflush(stdout);
+    if (wake_session_close && observe_wake(viewer->pid, 0) != 0) goto out;
     closed_at = monotonic_millis();
     if (click_main_control(display, viewer->window, (unsigned int)viewer->pid, "Close") != 0)
         goto out;
@@ -4832,8 +4836,10 @@ static int exercise_session_close(Display *display, const ViewerWindow *viewer,
         stable = retired && connected == 0U ? stable + 1U : 0U;
         if (sleep_millis(100U) != 0) goto out;
     }
-    if (stable != 10U || monotonic_millis() >= deadline ||
-        find_main_window(display, viewer->pid, &current_main) != 0 || current_main != main ||
+    if (stable != 10U || monotonic_millis() >= deadline) goto out;
+    if (wake_session_close && (observe_wake(viewer->pid, 0) != 0 ||
+        release_wake_reply() != 0 || observe_wake(viewer->pid, 1) != 0)) goto out;
+    if (find_main_window(display, viewer->pid, &current_main) != 0 || current_main != main ||
         activate_header_control(display, main, (unsigned int)viewer->pid, "Settings") != 0)
         goto out;
     deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
@@ -6778,6 +6784,7 @@ static int exercise_rejected_password(Display *display, const ViewerWindow *view
 }
 
 int main(int argc, char **argv) {
+    if (argc == 2 && strcmp(argv[1], "--wake-service") == 0) return run_wake_service();
     const char *source_name;
     const char *viewer_name;
     char *end = NULL;
@@ -6830,6 +6837,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--image-quality-save-failure") != 0 &&
                                     strcmp(argv[5], "--audio-mute") != 0 &&
                                     strcmp(argv[5], "--session-close") != 0 &&
+                                    strcmp(argv[5], "--wake-lock") != 0 &&
                                     strcmp(argv[5], "--background-close") != 0 &&
                                     strcmp(argv[5], "--theme-light") != 0 &&
                                     strcmp(argv[5], "--theme-dark") != 0 &&
@@ -6862,7 +6870,7 @@ int main(int argc, char **argv) {
               "--language-french, --language-portugal, --language-english, --language-restore, "
               "--language-direction\n", stderr);
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--viewer-soak|--input-latency|--input-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--view-only-save-failure|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
+              "VIEWER_START [--viewer-suspend|--viewer-soak|--input-latency|--input-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--view-only-save-failure|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--wake-lock|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
         return 2;
     }
@@ -7256,7 +7264,8 @@ int main(int argc, char **argv) {
         int screenshot_unavailable = strcmp(argv[5], "--screenshot-save-unavailable") == 0;
         int view_scaling = strcmp(argv[5], "--view-scaling") == 0;
         int image_quality = strcmp(argv[5], "--image-quality") == 0;
-        int session_close = strcmp(argv[5], "--session-close") == 0;
+        wake_session_close = strcmp(argv[5], "--wake-lock") == 0;
+        int session_close = wake_session_close || strcmp(argv[5], "--session-close") == 0;
         int background_close = strcmp(argv[5], "--background-close") == 0;
         int clipboard_text = strcmp(argv[5], "--clipboard-text") == 0;
         int clipboard_images = strcmp(argv[5], "--clipboard-images") == 0;
@@ -7307,6 +7316,9 @@ int main(int argc, char **argv) {
         } else if (session_close) {
             puts("FLUTTER_PEER_SESSION_CLOSE_OK action=pointer remote=retired connected_sockets=0 "
                  "listener=preserved main=usable process=preserved");
+            if (wake_session_close)
+                puts("FLUTTER_PEER_WAKE_OK acquisition=delayed retirement=explicit-uninhibit "
+                     "owner=live-exact-viewer cookie=matched transport=private-dbus");
         } else if (image_quality) {
             puts("FLUTTER_PEER_IMAGE_QUALITY_OK cases=5 presets=best,low,balanced "
                  "encoder_bitrate=confirmed pixels=fresh stable_connection=true resources=bounded");

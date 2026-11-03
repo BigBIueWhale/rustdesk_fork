@@ -313,6 +313,7 @@ case "$#:${8:-}" in
                 --screenshot-save-unavailable) FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE=1 ;;
                 --view-scaling) FLUTTER_VIEW_SCALING=1 ;;
                 --session-close) FLUTTER_SESSION_CLOSE=1 ;;
+                --wake-lock) FLUTTER_SESSION_CLOSE=3 ;;
                 --image-quality) FLUTTER_IMAGE_QUALITY=1 ;;
                 --quality-restart) FLUTTER_QUALITY_RESTART=1 ;;
                 --image-quality-save-failure) FLUTTER_IMAGE_QUALITY_SAVE_FAILURE=1 ;;
@@ -14142,6 +14143,7 @@ run_flutter_peer_presentation() {
     [ "$FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE" -eq 0 ] || peer_args+=(--screenshot-save-unavailable)
     [ "$FLUTTER_VIEW_SCALING" -eq 0 ] || peer_args+=(--view-scaling)
     [ "$FLUTTER_SESSION_CLOSE" -ne 1 ] || peer_args+=(--session-close)
+    [ "$FLUTTER_SESSION_CLOSE" -ne 3 ] || peer_args+=(--wake-lock)
     [ "$FLUTTER_IMAGE_QUALITY" -eq 0 ] || peer_args+=(--image-quality)
     [ "$FLUTTER_QUALITY_RESTART" -eq 0 ] || peer_args+=(--quality-restart)
     [ "$FLUTTER_IMAGE_QUALITY_SAVE_FAILURE" -eq 0 ] || peer_args+=(--image-quality-save-failure)
@@ -14278,6 +14280,9 @@ run_flutter_peer_presentation() {
         peer_cycles=1
     elif [ "$FLUTTER_IMAGE_QUALITY" -eq 1 ]; then
         peer_scenario=image-quality
+        peer_cycles=1
+    elif [ "$FLUTTER_SESSION_CLOSE" -eq 3 ]; then
+        peer_scenario=wake-lock
         peer_cycles=1
     elif [ "$FLUTTER_SESSION_CLOSE" -eq 2 ]; then
         peer_scenario=background-close

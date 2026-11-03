@@ -134854,3 +134854,12 @@ files match on CTE/TUF. `android-backup-native-2918e1a5.json`: 14,381 bytes, SHA
 `46b6d59d2c80535f2db43c368ed1417729ad34de8cd223fcd95efee2fa6de203`.
 No owned job remains. Update the ledger to this native checkpoint and obtain its
 fresh isolated count. The broader goal remains active and incomplete.
+
+Fresh ledger count `fyBGrBqbNW` at `71426e94` passes seven controls and the
+whole-input round trip: 398,730 tokens / 1,822,947 bytes, SHA-256
+`0ef5dd91912e7900e2cf1265413cda502d03cedf58cc4a2775581fbfe12d0d15`.
+The 28-second run retires exact processes/helpers/private/RAM state with three
+zero listener deltas and 402,759,680 bytes peak scratch. Twelve bounded files
+match on CTE/TUF. `android-backup-native-ledger-71426e94.json`: 4,828 bytes,
+SHA-256 `bf27ee36a1818443828dc0d37b0e103a80bb069c6aaa480139dc670112bdacb3`.
+This audit-only receipt preserves the counted ledger. No owned job remains.

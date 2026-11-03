@@ -134048,3 +134048,12 @@ other platforms and current-release acceptance remain OPEN. The next distinct
 input boundary is focus/cancellation during a held drag; do not repeat passed
 burst schedules without a relevant change. Cursor and every independent park
 remain parked. Fresh ledger count follows; no owned runtime job remains live.
+
+Fresh ledger count `nhdN4FYXfE` at `ce2f6ec7` passes seven controls and the
+whole-input round trip: 396,913 tokens / 1,814,867 bytes, SHA-256
+`16ed8bc2d98fbb1fd3f9b132f77bafe985bff856871900be554ed027f4f8252c`.
+All three listener deltas are zero; exact process/private/RAM retirement passes.
+Peak RAM scratch is 402,808,832 bytes; twelve evidence files match on CTE/TUF.
+`mouse-burst-ledger-ce2f6ec7.json`: 4,789 bytes, SHA-256
+`2dfc535cea0c3a07a500552e2f5249dbe103cd9a0e69ff24fda619df854a3f80`.
+The counted ledger is unchanged by this audit-only receipt. No owned job remains.

@@ -2071,7 +2071,117 @@ def network_shutdown(value, record, probe_sha):
             os.close(fd)
 
 
-def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, exclusive=False):
+def exclusive_desktop(commit, binary_sha, probe_sha):
+    pam = pam_module()
+    confdir = WORK / "pam"
+    confdir.mkdir(mode=0o700)
+    (confdir / "rustdesk-logind-fixture").write_text("session required pam_systemd.so\n")
+    actor = None
+    users = []
+    try:
+        for uid in (4001, 4002):
+            try:
+                pwd.getpwuid(uid)
+            except KeyError:
+                run(["/usr/sbin/useradd", "--uid", str(uid), "--user-group", "--create-home",
+                     "--shell", "/usr/sbin/nologin", f"rdreceiver{uid}"])
+                users.append(uid)
+            else:
+                raise RuntimeError("desktop exclusivity fixture UID already exists")
+        actor = subprocess.Popen(["/usr/bin/python3", "-B", "-I", "-S", str(Path(__file__)), "--pam-actor"],
+                                 env=ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        opened = pam.reply(actor)
+        session = opened["session"]
+        pam.properties({"process": actor, "session": session, "uid": 4001, "type": "x11"}, "active")
+        deadline = time.monotonic() + 5
+        while not Path("/tmp/.X11-unix/X77").is_socket():
+            if actor.poll() is not None or time.monotonic() >= deadline:
+                raise RuntimeError("PAM-owned desktop did not start")
+            time.sleep(0.05)
+        startup_namespace(commit, binary_sha, exclusive=True, desktop_probe_sha=probe_sha)
+        if actor.poll() is not None:
+            raise RuntimeError("desktop actor exited during supervisor exclusivity test")
+        pam.properties({"process": actor, "session": session, "uid": 4001, "type": "x11"}, "active")
+    finally:
+        try:
+            if actor is not None:
+                if actor.poll() is None:
+                    actor.stdin.write(b"quit\n")
+                    actor.stdin.flush()
+                if actor.wait(timeout=10) != 0:
+                    raise RuntimeError("desktop exclusivity PAM actor cleanup failed")
+                actor.stdin.close()
+                actor.stdout.close()
+        finally:
+            for uid in users:
+                run(["/usr/bin/systemctl", "stop", f"user@{uid}.service", f"user-runtime-dir@{uid}.service"])
+                run(["/usr/sbin/userdel", f"rdreceiver{uid}"])
+    if Path("/tmp/.X11-unix/X77").exists() or pam.sessions():
+        raise RuntimeError("desktop exclusivity left an X11 or PAM session")
+    print("LINUX_SERVICE_DESKTOP_SESSION=retired logind=actual x11=owned users=removed", flush=True)
+
+
+def login_across_duplicates(value, record, action):
+    listener = direct_listener(record)
+    if listener is None:
+        raise RuntimeError("duplicate test requires a serving child")
+    before = credential()
+    probe = None
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as proxy:
+            proxy.bind(("127.0.0.1", 0))
+            proxy.listen(1)
+            proxy.settimeout(5)
+            probe = subprocess.Popen(
+                ["/usr/bin/setpriv", "--reuid=4002", "--regid=4002", "--clear-groups",
+                 "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
+                 str(PROBE), f"127.0.0.1:{proxy.getsockname()[1]}", "--password-stdin", "ok", "login"],
+                env=ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            probe.stdin.write(value + "\n")
+            probe.stdin.close()
+            probe.stdin = None
+            downstream, _ = proxy.accept()
+            with downstream, socket.create_connection(("127.0.0.1", 21118), timeout=5) as upstream:
+                for source, destination in ((downstream, upstream), (upstream, downstream),
+                                            (downstream, upstream), (upstream, downstream)):
+                    destination.sendall(wire_frame(source))
+                login = wire_frame(downstream)
+                downstream.sendall(wire_frame(upstream))
+                # The keyed stream and encrypted login exist before the duplicate launches.
+                # Only release the login afterward; its decrypted response must come from
+                # this same retained connection, not a fresh authentication attempt.
+                if probe.poll() is not None or child_record() != record:
+                    raise RuntimeError("duplicate login barrier lost its child or peer")
+                duplicates = action()
+                if probe.poll() is not None or child_record() != record or direct_listener(record) != listener:
+                    raise RuntimeError("duplicate startup replaced the keyed connection owner")
+                upstream.sendall(login)
+                downstream.sendall(wire_frame(upstream))
+                stdout, stderr = probe.communicate(timeout=5)
+        lines = stdout.splitlines()
+        if (probe.returncode != 0 or stderr or len(lines) != 3
+                or lines[0] != "probe_client: keying ok=true (expected=ok)"
+                or lines[-1] != "probe_client: PASS"
+                or "[REMOTE-LOGIN-ADMITTED peer-info]" not in lines[1]
+                or "Some(TestDelay(" not in lines[1] or "READ_ERR" in lines[1]
+                or "REMOTE-LOGIN-REJECTED" in lines[1]
+                or credential() != before or child_record() != record or direct_listener(record) != listener):
+            raise RuntimeError(f"held connection did not admit a real desktop login: {stdout[-4096:]} {stderr[-4096:]}")
+        return duplicates, {"record": record, "listener_inode": listener, "probe_pid": probe.pid,
+                            "probe_exit": probe.returncode, "probe_stdout": stdout,
+                            "probe_stderr": stderr, "login_released_after_duplicates": True,
+                            "durable_unchanged": True}
+    finally:
+        if probe is not None:
+            if probe.poll() is None:
+                probe.kill()
+                probe.communicate(timeout=5)
+            for pipe in (probe.stdin, probe.stdout, probe.stderr):
+                if pipe is not None:
+                    pipe.close()
+
+
+def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, exclusive=False, desktop_probe_sha=None):
     parent = Path("/run/RustDesk-service")
     legacy = Path("/tmp/RustDesk-service")
     target = WORK / "startup-link-target"
@@ -2173,10 +2283,13 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, ex
             ["/usr/bin/systemctl", "show", "rustdesk.service",
              "--property=ActiveState,SubState,Result,MainPID,ExecMainCode,ExecMainStatus,NRestarts,ActiveEnterTimestampMonotonic,InvocationID"]).stdout.splitlines())
 
-    def duplicate_launches(pid, pidfd, expected_unit):
+    def duplicate_launches(pid, pidfd, expected_unit, record=None):
         namespace = snapshot(parent)
         runtime = Path("/run/rustdesk")
         lease = runtime / "service-supervisor.lock"
+        child_before = snapshot(runtime / "service-child.record") if record else None
+        expected_entries = ["service-child.record", "service-supervisor.lock"] if record else ["service-supervisor.lock"]
+        expected_processes = {str(pid), str(record["pid"])} if record else {str(pid)}
 
         def lease_identity():
             st = lease.lstat()
@@ -2223,8 +2336,9 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, ex
                     child.communicate(timeout=10)
             if (select.select([pidfd], [], [], 0)[0] or properties() != expected_unit
                     or snapshot(parent) != namespace or lease_identity() != lease_before
-                    or sorted(p.name for p in runtime.iterdir()) != ["service-supervisor.lock"]
-                    or Path("/sys/fs/cgroup/system.slice/rustdesk.service/cgroup.procs").read_text().split() != [str(pid)]):
+                    or sorted(p.name for p in runtime.iterdir()) != expected_entries
+                    or set(Path("/sys/fs/cgroup/system.slice/rustdesk.service/cgroup.procs").read_text().split()) != expected_processes
+                    or (record and (child_record() != record or snapshot(runtime / "service-child.record") != child_before))):
                 raise RuntimeError("duplicate launch disturbed the incumbent service generation")
             for postfix in ("_service", "_service_password", "_service_credential"):
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
@@ -2232,10 +2346,11 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, ex
                     peer.connect(str(parent / ("ipc" + postfix)))
                     if struct.unpack("3i", peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12)) != (pid, 0, 0):
                         raise RuntimeError("duplicate launch replaced an incumbent endpoint")
-            print("LINUX_SERVICE_EXCLUSIVE_BATCH=" + json.dumps(
+            print(prefix + "_BATCH=" + json.dumps(
                 {"count": count, "elapsed_seconds": time.monotonic() - began,
                  "incumbent": pid, "unit": expected_unit, "namespace": namespace,
-                 "lease": lease_before, "outcomes": outcomes[-count:]}, sort_keys=True), flush=True)
+                 "lease": lease_before, "outcomes": outcomes[-count:],
+                 "child": record, "child_record": child_before}, sort_keys=True), flush=True)
         return outcomes
 
     def stop():
@@ -2254,11 +2369,13 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, ex
     shutil.copyfile(MEDIA / "repo/res/rustdesk.service", unit)
     run(["/usr/bin/systemctl", "daemon-reload"])
     previous = None
+    previous_child = None
+    desktop_credential = None
     phases = ("foreign-owner", "symlink", "fresh", "restart")
     prefix = "LINUX_SERVICE_STARTUP"
     if exclusive:
         phases = ("exclusive-first", "exclusive-restart")
-        prefix = "LINUX_SERVICE_EXCLUSIVE"
+        prefix = "LINUX_SERVICE_DESKTOP_EXCLUSIVE" if desktop_probe_sha else "LINUX_SERVICE_EXCLUSIVE"
     if incumbents or collisions:
         parent.mkdir(mode=0o711)
         parent.chmod(0o711)
@@ -2284,6 +2401,7 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, ex
             listener = None
             connections = None
             duplicates = None
+            network = None
             if phase == "foreign-owner":
                 fixture(parent)
                 before = snapshot(parent)
@@ -2317,6 +2435,7 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, ex
                 before = snapshot(occupied)
             reference = ServiceUnitResultReference()
             pidfd = None
+            child_pidfd = None
             try:
                 previous_ready = properties()["ActiveEnterTimestampMonotonic"]
                 began = time.monotonic()
@@ -2355,9 +2474,24 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, ex
                             credentials = struct.unpack("3i", peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
                             if credentials != (pid, 0, 0):
                                 raise RuntimeError("ready endpoint belongs to a different principal or process")
-                    if Path("/run/rustdesk/service-child.record").exists():
+                    if desktop_probe_sha:
+                        current_child = ready(previous_child)
+                        if current_child["supervisor"] != pid:
+                            raise RuntimeError("desktop child belongs to a different supervisor")
+                        previous_child = current_child
+                        child_pidfd = os.pidfd_open(current_child["pid"])
+                        value = "Receiver-exclusive-desktop-2026!"
+                        if desktop_credential is None:
+                            change(0, value, True)
+                            desktop_credential = credential()
+                        elif credential() != desktop_credential:
+                            raise RuntimeError("desktop service restart changed its credential")
+                        keyed(value, phase, current_child, desktop_probe_sha)
+                        duplicates, network = login_across_duplicates(
+                            value, current_child, lambda: duplicate_launches(pid, pidfd, observed, current_child))
+                    elif Path("/run/rustdesk/service-child.record").exists():
                         raise RuntimeError("sessionless startup unexpectedly launched a desktop child")
-                    if exclusive:
+                    elif exclusive:
                         duplicates = duplicate_launches(pid, pidfd, observed)
                 stop()
                 terminal = properties()
@@ -2368,6 +2502,11 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, ex
                     fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
                     if int(fields[19]) == identity[1]:
                         raise RuntimeError("stopped service process was not reaped")
+                if child_pidfd is not None:
+                    if (not select.select([child_pidfd], [], [], 0)[0]
+                            or Path(f"/proc/{current_child['pid']}").exists()
+                            or credential() != desktop_credential):
+                        raise RuntimeError("desktop child did not retire or durable credential changed")
                 if snapshot(legacy) != legacy_before:
                     raise RuntimeError("service changed the abandoned public namespace")
                 if collisions and snapshot(collision_target) != target_before:
@@ -2388,12 +2527,15 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, ex
                      "symlink_target_unchanged": collisions,
                      "incumbent_probes": connections,
                      "duplicates": duplicates,
+                     "network": network,
                      "supervisor": previous if not refused else None}, sort_keys=True), flush=True)
                 run(["/usr/bin/systemctl", "reset-failed", "rustdesk.service"])
             finally:
                 reference.close()
                 if pidfd is not None:
                     os.close(pidfd)
+                if child_pidfd is not None:
+                    os.close(child_pidfd)
                 if listener is not None:
                     # Leave the exact socket pathname for production stale-socket recovery.
                     listener.close()
@@ -2416,15 +2558,16 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, ex
     finally:
         stop()
     if exclusive:
+        desktop_result = f" logind=actual child=supervised logins=2 probe_sha256={desktop_probe_sha}" if desktop_probe_sha else ""
         print(f"{prefix}_NATIVE=pass generations=2 duplicates=6 refused=6 source={commit} "
-              f"binary_sha256={binary_sha} fixture=installed-layout unit=shipped legacy=unchanged cleanup=joined", flush=True)
+              f"binary_sha256={binary_sha} fixture=installed-layout unit=shipped legacy=unchanged cleanup=joined{desktop_result}", flush=True)
         return
     total = 24 if collisions else 6 if incumbents else 4
     print(f"{prefix}_NATIVE=pass cases={total} refusals={total // 2} starts={total // 2} source={commit} "
           f"binary_sha256={binary_sha} fixture=installed-layout unit=shipped legacy=unchanged cleanup=joined", flush=True)
 
 
-def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False, collisions=False, exclusive=False):
+def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False, collisions=False, exclusive=False, desktop_exclusive=False):
     guard()
     checked = run(["/usr/bin/setpriv", "--reuid=1000", "--regid=1000", "--clear-groups",
                    "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
@@ -2453,6 +2596,9 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
     if "not found" in run(["/usr/bin/ldd", str(PROBE)]).stdout:
         raise RuntimeError("network probe runtime dependency is missing")
     run(["/usr/bin/systemctl", "is-active", "systemd-logind.service", "polkit.service"])
+    if desktop_exclusive:
+        exclusive_desktop(commit, spec["sha256"], probe_spec["sha256"])
+        return
     if startup or incumbent or collisions or exclusive:
         startup_namespace(commit, spec["sha256"], incumbents=incumbent, collisions=collisions, exclusive=exclusive)
         return
@@ -2764,6 +2910,8 @@ if __name__ == "__main__":
         tests(sys.argv[1:6], collisions=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--exclusive":
         tests(sys.argv[1:6], exclusive=True)
+    elif len(sys.argv) == 7 and sys.argv[-1] == "--desktop-exclusive":
+        tests(sys.argv[1:6], desktop_exclusive=True)
     elif len(sys.argv) == 6:
         tests(sys.argv[1:])
     else:

@@ -132386,3 +132386,34 @@ The next stronger acceptance condition for this boundary includes a retained
 active-desktop child during duplicate startup; the sessionless result does not
 establish that behavior. Reassess priority at this checkpoint and preserve the
 separately parked caller/admin and other topics. The complete goal remains active.
+
+### 2026-11-03 — desktop child survives duplicate supervisor launches
+
+Previous goal turn: progress; sessionless installed exclusivity passed. Continue
+with the missing active-desktop condition under R-S0 and ledger R-S11c-27b,
+ahead of further viewer preference scenarios. The existing installed fixture
+can register a real pam_systemd X11 session and let the shipped unit select its
+UID-4001 child. This needs no administrator-authorization profile or product build.
+The fixture provisions its initial credential through the existing root-owned
+operation solely to exercise serving continuity; parked credential/admin topics
+remain parked.
+
+Reviewed exact child launch/record validation, installed startup/stop observers,
+PAM/Xvfb actor ownership, retained probe login protocol and closed wrapper routing.
+Primary references: systemd v252 pam_systemd documentation
+(https://www.freedesktop.org/software/systemd/man/252/pam_systemd.html) for actual
+logind registration and session/runtime lifetime, and Linux pidfd_open
+(https://man7.org/linux/man-pages/man2/pidfd_open.2.html) for exact process exit
+observation. PID file contents alone do not prove a live supervised child.
+
+The closed `--linux-service-desktop-exclusive-tests` profile reuses `fdbab046`.
+Each of two service generations must preserve the exact non-root child, durable
+record metadata/bytes and listener through six total duplicate launches. A real
+UID-4002 probe completes CPace before each duplicate batch; its encrypted login
+is held until afterward. Require an actual decrypted current-protocol PeerInfo
+on that same retained connection, not the probe's permitted headless error.
+Both child/supervisor generations must retire through normal unit stop, and the
+same live desktop must permit a fresh supervised generation and login. Exact
+PAM/Xvfb/user cleanup follows. This proves the named ownership/login condition,
+not pixels, input, adverse-network recovery, forced race schedules, crash recovery,
+final packages or other-platform acceptance.

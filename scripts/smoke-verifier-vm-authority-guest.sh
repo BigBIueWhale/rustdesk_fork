@@ -222,7 +222,7 @@ case "$#:${8:-}" in
             || "${13}" = --installer-package || "${13}" = --linux-password-admission \
             || "${13}" = --pake-allocation || "${13}" = --pake-timing || "${13}" = --pake-backend-default || "${13}" = --pake-backend-serial || "${13}" = --main-config-key || "${13}" = --language-selection || "${13}" = --windows-pointer || "${13}" = --linux-resource-limits || "${13}" = --linux-xrandr-query || "${13}" = --resolution-restoration \
             || "${13}" = --linux-resolution-lifetime || "${13}" = --audio-mailbox \
-            || "${13}" = --recording-output || "${13}" = --viewer-video || "${13}" = --video-qos || "${13}" = --video-vpx || "${13}" = --video-qos-controller || "${13}" = --option-ack || "${13}" = --resolution-parent || "${13}" = --file-receive-caller || "${13}" = --viewer-credentials || "${13}" = --viewer-resume || "${13}" = --local-file-listing \
+            || "${13}" = --recording-output || "${13}" = --viewer-video || "${13}" = --video-qos || "${13}" = --video-vpx || "${13}" = --video-qos-controller || "${13}" = --option-ack || "${13}" = --resolution-parent || "${13}" = --file-receive-caller || "${13}" = --remote-restart || "${13}" = --viewer-credentials || "${13}" = --viewer-resume || "${13}" = --local-file-listing \
             || "${13}" = --clipboard-filetime || "${13}" = --audio-buffer || "${13}" = --fusermount-fd \
             || "${13}" = --fusermount-process || "${13}" = --file-block || "${13}" = --control-egress || "${13}" = --android-key-modifiers \
             || "${13}" = --clipboard-response || "${13}" = --cliprdr-read || "${13}" = --android-client-drain || "${13}" = --cm-read-tick || "${13}" = --cm-file-log || "${13}" = --idle-timeout ]] || exit 2
@@ -3235,7 +3235,7 @@ generate_focused_rust_flutter_bridge() {
     local load_output container_status=0 inspect namespace_inspect freshness_line
     local codegen_memory=8g
     local codegen_memory_bytes=8589934592
-    if [[ "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log || "$RUST_TEST_PROFILE" = idle-timeout || "$RUST_TEST_PROFILE" = option-ack ]]; then
+    if [[ "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = remote-restart || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log || "$RUST_TEST_PROFILE" = idle-timeout || "$RUST_TEST_PROFILE" = option-ack ]]; then
         codegen_memory=3g
         codegen_memory_bytes=3221225472
     fi
@@ -3481,7 +3481,7 @@ generate_focused_rust_flutter_bridge() {
     CONTAINER_ID=
     "$CLIENT" --host "unix://$SOCK" image rm "$DEB_BUILDER_CONFIG_ID" >/dev/null
     rm -rf -- "$codegen_source" "$codegen_work"
-    if [[ "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log || "$RUST_TEST_PROFILE" = idle-timeout || "$RUST_TEST_PROFILE" = option-ack ]]; then
+    if [[ "$RUST_TEST_PROFILE" = remote-restart || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log || "$RUST_TEST_PROFILE" = idle-timeout || "$RUST_TEST_PROFILE" = option-ack ]]; then
         [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
             && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
             || fail 'bridge preparation left a container or image before storage retirement'
@@ -3492,6 +3492,8 @@ generate_focused_rust_flutter_bridge() {
             printf 'LOCAL_FILE_LISTING_BRIDGE_STORAGE=pass tools=retired builder_image=absent trim=guest-root-only\n'
         elif [ "$RUST_TEST_PROFILE" = viewer-resume ]; then
             printf 'VIEWER_RESUME_BRIDGE_STORAGE=pass tools=retired builder_image=absent trim=guest-root-only\n'
+        elif [ "$RUST_TEST_PROFILE" = remote-restart ]; then
+            printf 'REMOTE_RESTART_BRIDGE_STORAGE=pass tools=retired builder_image=absent trim=guest-root-only\n'
         elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
             printf 'VIEWER_CREDENTIAL_BRIDGE_STORAGE=pass tools=retired builder_image=absent trim=guest-root-only\n'
         elif [ "$RUST_TEST_PROFILE" = android-client-drain ]; then
@@ -5460,6 +5462,22 @@ run_focused_rust_tests() {
                 cli_command::tests::retired_server_key_arguments_are_rejected
                 common::tests::retired_server_key_option_remains_pinned_empty
             )
+        elif [ "$RUST_TEST_PROFILE" = remote-restart ]; then
+            container_name=rustdesk-remote-restart-tests
+            memory=5g
+            memory_bytes=5368709120
+            source_fingerprints=(
+                Cargo.lock Cargo.toml src/lib.rs src/client.rs
+                src/flutter.rs src/flutter_restart_tests.rs src/flutter_ffi.rs src/ui_session_interface.rs
+                scripts/run-remote-restart-tests.sh scripts/linux-parent-test-build.sh
+            )
+            required_tests=(
+                flutter::restart_tests::absent_round_preserves_restart_state
+                flutter::restart_tests::closed_round_preserves_restart_state
+                flutter::restart_tests::retired_receiver_preserves_restart_state
+                flutter::restart_tests::full_round_preserves_restart_state
+                flutter::restart_tests::accepted_restart_publishes_one_command_and_state
+            )
         elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
             container_name=rustdesk-viewer-credential-tests
             memory=5g
@@ -6016,7 +6034,7 @@ run_focused_rust_tests() {
         || fail 'cannot extract the exact focused-test source archive'
     chown -R 1000:1000 "$source_root"
     if [ "$MODE" = android-rust-lifecycle-tests ] \
-        && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log || "$RUST_TEST_PROFILE" = idle-timeout || "$RUST_TEST_PROFILE" = option-ack ]]; then
+        && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = remote-restart || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log || "$RUST_TEST_PROFILE" = idle-timeout || "$RUST_TEST_PROFILE" = option-ack ]]; then
         install -o 1000 -g 1000 -m 0444 /dev/null \
             "$source_root/src/bridge_generated.rs"
         install -o 1000 -g 1000 -m 0444 /dev/null \
@@ -6153,7 +6171,7 @@ run_focused_rust_tests() {
             || fail "Debian-builder image receipt differs: $load_output"
     else
         if [ "$MODE" = android-rust-lifecycle-tests ] \
-            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log || "$RUST_TEST_PROFILE" = idle-timeout || "$RUST_TEST_PROFILE" = option-ack ]]; then
+            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = remote-restart || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log || "$RUST_TEST_PROFILE" = idle-timeout || "$RUST_TEST_PROFILE" = option-ack ]]; then
             bridge_inputs=(
                 "$rust_archive:$SIZE_RUST_1_75:$SHA256_RUST_1_75"
                 "$flutter_archive:$SIZE_FLUTTER_3_24_5:$SHA256_FLUTTER_3_24_5"
@@ -6174,7 +6192,7 @@ run_focused_rust_tests() {
                 || fail "sealed Android Rust bridge input differs: $path"
         done
         if [ "$MODE" = android-rust-lifecycle-tests ] \
-            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log || "$RUST_TEST_PROFILE" = idle-timeout || "$RUST_TEST_PROFILE" = option-ack ]]; then
+            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = remote-restart || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log || "$RUST_TEST_PROFILE" = idle-timeout || "$RUST_TEST_PROFILE" = option-ack ]]; then
             [ "$(stat -c '%u:%g:%a:%h:%s' -- "$frb_codegen")" = \
               "1000:1000:500:1:$SIZE_FLUTTER_PEER_FRB_CODEGEN" ] \
                 && [ "$(sha256sum "$frb_codegen" | awk '{ print $1 }')" = \
@@ -6194,7 +6212,7 @@ run_focused_rust_tests() {
         fi
         local file_bridge_sources_before=
         if [ "$MODE" = android-rust-lifecycle-tests ] \
-            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log || "$RUST_TEST_PROFILE" = idle-timeout || "$RUST_TEST_PROFILE" = option-ack ]]; then
+            && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = remote-restart || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log || "$RUST_TEST_PROFILE" = idle-timeout || "$RUST_TEST_PROFILE" = option-ack ]]; then
             generate_focused_rust_flutter_bridge
             bridge_mounts=(
                 --mount "type=bind,source=$ROOT/focused-rust-bridge/bridge_generated.rs,target=/source/src/bridge_generated.rs,readonly"
@@ -6301,7 +6319,7 @@ run_focused_rust_tests() {
         printf 'INPUT_LIFETIME_PROVIDER_PREPARED=pass sha256=%s root=disposable-guest-only execution=nonroot fixed_path=/usr/lib/rustdesk-fork/libxdo.so.3\n' "$input_provider_sha"
     fi
 
-    if { [ "$MODE" = android-rust-lifecycle-tests ] && [[ "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = option-ack ]]; } \
+    if { [ "$MODE" = android-rust-lifecycle-tests ] && [[ "$RUST_TEST_PROFILE" = remote-restart || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = option-ack ]]; } \
        || { [ "$MODE" = hbb-common-fs ] && [ "$RUST_TEST_PROFILE" = config-options ]; }; then
         printf '%s\n' 727573746465736b2d76696577657231 >"$ROOT/viewer.machine-id"
         chown 1000:1000 "$ROOT/viewer.machine-id"
@@ -6917,6 +6935,10 @@ run_focused_rust_tests() {
                             /bin/bash /source/scripts/run-viewer-resume-tests.sh
                             exit 0
                         fi
+                        if [ "$RUST_TEST_PROFILE" = remote-restart ]; then
+                            /bin/bash /source/scripts/run-remote-restart-tests.sh
+                            exit 0
+                        fi
                         if [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
                             /bin/bash /source/scripts/run-viewer-credential-tests.sh
                             exit 0
@@ -7422,7 +7444,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
             } | LC_ALL=C sort)" ] \
             || fail 'native whiteboard container mount authority differs'
     fi
-    if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
+    if [ "$MODE" = android-rust-lifecycle-tests ] && [[ "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = remote-restart ]]; then
         inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
             '{{range $i, $m := .Mounts}}{{if $i}}{{println}}{{end}}{{$m.Type}}|{{$m.Source}}|{{$m.Destination}}|{{$m.RW}}{{end}}' "$CONTAINER_ID" | LC_ALL=C sort)"
         [ "$inspect" = "$(printf '%s\n' \
@@ -7481,11 +7503,11 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         printf 'WHITEBOARD_HELPER_PROFILE=whiteboard-helper-lifetime stage=container-start cases=8 bridge=absent backend=x11\n'
     fi
     if [ "$MODE" = android-rust-lifecycle-tests ] \
-        && [[ "$RUST_TEST_PROFILE" = clipboard-filetime || "$RUST_TEST_PROFILE" = recording-output || "$RUST_TEST_PROFILE" = viewer-video || "$RUST_TEST_PROFILE" = video-qos || "$RUST_TEST_PROFILE" = video-qos-controller || "$RUST_TEST_PROFILE" = video-vpx || "$RUST_TEST_PROFILE" = option-ack || "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log || "$RUST_TEST_PROFILE" = idle-timeout ]]; then
+        && [[ "$RUST_TEST_PROFILE" = clipboard-filetime || "$RUST_TEST_PROFILE" = recording-output || "$RUST_TEST_PROFILE" = viewer-video || "$RUST_TEST_PROFILE" = video-qos || "$RUST_TEST_PROFILE" = video-qos-controller || "$RUST_TEST_PROFILE" = video-vpx || "$RUST_TEST_PROFILE" = option-ack || "$RUST_TEST_PROFILE" = resolution-parent || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = remote-restart || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log || "$RUST_TEST_PROFILE" = idle-timeout ]]; then
         local -a parent_start_status
         if "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" 2>&1 \
             | tee "$output" \
-            | awk '/^(RECORDING_OUTPUT(_PARENT)?|VIEWER_VIDEO|VIDEO_QOS(_CONTROLLER)?|VIDEO_VPX|OPTION_ACK|OPTION_WIRE|RESOLUTION_PARENT|FILE_RECEIVE_PARENT|VIEWER_CREDENTIAL|VIEWER_RESUME|LOCAL_FILE_LISTING|ANDROID_CLIENT_DRAIN|CM_READ_TICK)_BUILD=started / { print; fflush() } /^test common::record::tests::/ { print "RECORDING_OUTPUT_PROGRESS=" $0; fflush() } /^RECORDING_OUTPUT_FAILURE=/ { print; fflush() }'; then
+            | awk '/^(RECORDING_OUTPUT(_PARENT)?|VIEWER_VIDEO|VIDEO_QOS(_CONTROLLER)?|VIDEO_VPX|OPTION_ACK|OPTION_WIRE|RESOLUTION_PARENT|FILE_RECEIVE_PARENT|REMOTE_RESTART|VIEWER_CREDENTIAL|VIEWER_RESUME|LOCAL_FILE_LISTING|ANDROID_CLIENT_DRAIN|CM_READ_TICK)_BUILD=started / { print; fflush() } /^test common::record::tests::/ { print "RECORDING_OUTPUT_PROGRESS=" $0; fflush() } /^RECORDING_OUTPUT_FAILURE=/ { print; fflush() }'; then
             parent_start_status=("${PIPESTATUS[@]}")
         else
             parent_start_status=("${PIPESTATUS[@]}")
@@ -8116,6 +8138,11 @@ PY
         [ "$(grep -Fxc 'VIEWER_RESUME_CLI_CHECK=pass target=rustdesk features=linux-pkg-config,cli runtime=unexecuted' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'VIEWER_RESUME_CLI_CHECK=pass' "$output")" -eq 1 ] \
             || fail 'viewer CLI binary check receipt differs'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = remote-restart ]; then
+        [ "${#result_lines[@]}" -eq 1 ] || fail 'remote restart summary count differs'
+        [ "$(grep -Ec '^REMOTE_RESTART_ARTIFACT=complete sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=5 exit_code=0 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'REMOTE_RESTART_ARTIFACT=' "$output")" -eq 1 ] \
+            || fail 'remote restart artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
         [ "${#result_lines[@]}" -eq 3 ] || fail 'viewer credential summary count differs'
         [ "$(grep -Ec '^VIEWER_CREDENTIAL_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=10 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
@@ -8667,7 +8694,7 @@ PY
       )" ] \
         || fail 'focused Rust-test source inputs changed during execution'
     if [ "$MODE" = android-rust-lifecycle-tests ] \
-        && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log || "$RUST_TEST_PROFILE" = idle-timeout || "$RUST_TEST_PROFILE" = option-ack ]]; then
+        && [[ "$RUST_TEST_PROFILE" = integration || "$RUST_TEST_PROFILE" = file-receive-caller || "$RUST_TEST_PROFILE" = remote-restart || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = viewer-resume || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log || "$RUST_TEST_PROFILE" = idle-timeout || "$RUST_TEST_PROFILE" = option-ack ]]; then
         post_pub_receipt="$(
             setpriv --reuid=1000 --regid=1000 --clear-groups \
                 env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
@@ -8716,6 +8743,10 @@ PY
                 "$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.io.rs" | cut -d ' ' -f 1)"
         elif [ "$RUST_TEST_PROFILE" = viewer-resume ]; then
             printf 'VIEWER_RESUME_BRIDGE=pass rust_sha256=%s io_sha256=%s unchanged=before-after\n' \
+                "$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.rs" | cut -d ' ' -f 1)" \
+                "$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.io.rs" | cut -d ' ' -f 1)"
+        elif [ "$RUST_TEST_PROFILE" = remote-restart ]; then
+            printf 'REMOTE_RESTART_BRIDGE=pass rust_sha256=%s io_sha256=%s unchanged=before-after\n' \
                 "$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.rs" | cut -d ' ' -f 1)" \
                 "$(sha256sum "$ROOT/focused-rust-bridge/bridge_generated.io.rs" | cut -d ' ' -f 1)"
         elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
@@ -8989,6 +9020,11 @@ PY
             grep -E '^test (client::io_loop::file_resume_tests::.*|port_forward::tests::.*|ui_session_interface::port_forward_mapping_tests::.*|cli_command::tests::.*|common::tests::retired_server_key_option_remains_pinned_empty) \.\.\. ok$|^VIEWER_RESUME_(ARTIFACT|BUILD|CLI_CHECK|COMPLETE|LIVE)=' "$output"
             [ "$tests_passed" -eq 24 ] || fail 'viewer connection total differs'
             printf 'VIEWER_RESUME_VM=pass commit=%s tree=%s tests=24 target=linux-x86_64 scope=production-viewer-connection-callers-and-cli-parser rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = remote-restart ]; then
+            grep -E '^test flutter::restart_tests::.* \.\.\. ok$|^REMOTE_RESTART_(ARTIFACT|BUILD)=' "$output"
+            [ "$tests_passed" -eq 5 ] || fail 'remote restart total differs'
+            printf 'REMOTE_RESTART_VM=pass commit=%s tree=%s tests=5 target=linux-x86_64 scope=production-viewer-restart-admission rust=1.75.0 features=linux-pkg-config,flutter vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = viewer-credentials ]; then
             grep -E '^test (client::tests::r_(s11hj_viewer_|p14).*|flutter::viewer_credential_bridge_tests::.*) \.\.\. ok$|^VIEWER_CREDENTIAL_(ARTIFACT|BUILD)=' "$output"

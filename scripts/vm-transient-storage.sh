@@ -123,6 +123,7 @@ elif [ "${MODE:-}" = linux-pa-authority-tests ] \
     || [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:clipboard-filetime ] \
     || [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:resolution-parent ] \
     || [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:viewer-credentials ] \
+    || [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:remote-restart ] \
     || [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:viewer-resume ] \
     || [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:local-file-listing ] \
     || [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:android-client-drain ] \

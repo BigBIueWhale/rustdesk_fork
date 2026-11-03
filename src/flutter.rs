@@ -4835,6 +4835,10 @@ mod viewer_credential_bridge_tests {
 mod keyboard_input_tests;
 
 #[cfg(test)]
+#[path = "flutter_restart_tests.rs"]
+mod restart_tests;
+
+#[cfg(test)]
 mod mobile_session_lifecycle_tests {
     use super::*;
     use crate::client::io_loop::{viewer_video_refresh_channel, ViewerVideoRefreshRequest};

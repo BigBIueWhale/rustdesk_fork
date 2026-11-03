@@ -135018,3 +135018,28 @@ evidence files match on CTE/TUF. `restart-selection-ledger-6f19d88e.json`:
 `697a21ac02921c5b4e63ad1a875bb1d70886c32b6a1b3df6bf0340cd9c30a878`.
 No product was executed and no owned job remains. This audit-only receipt leaves
 the counted ledger unchanged.
+
+Remote-restart baseline preparation continues the selected action. Five tests
+compile against the complete Rust/Flutter library and call the production Session
+method with actual bounded viewer command channels: absent sender, closed round,
+dropped receiver, 256 queued commands and successful one-command submission. They
+observe the restarting state and, for success, the exact protobuf command and no
+second command. No network peer or operating-system reboot sink executes.
+The same tests will be replayed after correction; baseline execution is pending.
+
+The dedicated --remote-restart-tests selection reuses the existing parent-library
+VM, authenticated toolchain/dependencies, fresh bindings, nonroot container,
+6 GiB guest/5 GiB container and bounded RAM storage profile. It runs only those
+five cases instead of unrelated credential, file-transfer or keyboard tests.
+All prior profile behavior is retained. Source/diff and shell-syntax review pass.
+
+Design research: Tokio 1.44.2's bounded Sender::try_reserve obtains capacity
+without waiting and returns a permit whose unused capacity is released on drop:
+https://raw.githubusercontent.com/tokio-rs/tokio/tokio-1.44.2/tokio/src/sync/mpsc/bounded.rs.
+The fork's send_with_commit already reserves count/bytes and holds its round's
+terminal lock before committing and publishing, including receiver retirement.
+Use that existing order for restart state, with an explicit fallible action result.
+For Flutter, mounted is required for setState but does not establish current
+dialog/session ownership; retain exact entry/owner checks across async results:
+https://api.flutter.dev/flutter/widgets/State/mounted.html.
+Neither local admission nor a disconnected peer proves that an OS reboot succeeded.

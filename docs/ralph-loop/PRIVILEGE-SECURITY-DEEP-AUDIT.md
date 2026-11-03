@@ -133257,3 +133257,27 @@ failure bundle duplicates match the pinned app and are removed under the shared
 lock after preserving bounded diagnostics. `monitor-switch-cfc45697.json`
 binds this fixture failure and cleanup; the next replay keeps the same app,
 topology, thresholds and input oracle.
+
+Corrected replay `DYNUOcKfwO` at `34429165` passes in 109 outer seconds,
+using unchanged app `f043c5ae` and engine `ddb1541d`. All four native drivers
+compile twice with byte equality. The actual chooser selects left/right/left;
+four advancing parity-specific frames per phase have maximum sampled ages
+293/101/107 ms. Pixel-derived width intervals are 624–650 pixels around the
+640-pixel source. Native root pointer targets are (273,263)/(393,287), then
+(913,263)/(1033,287), then the original pair: exact 640-pixel monitor offset
+and 120/24-pixel displacement. Each target holds for three observations.
+Window and authenticated TCP identity persist. Viewer RSS samples remain
+367,056–407,112 KiB, threads 56–65 and descriptors 45, within existing ceilings.
+
+The source and server join, the fixture restores one automatic monitor, and
+Xvfb/container/VM processes retire. Four listener deltas are zero; peak temporary
+RAM scratch is 3,017,306,112 bytes and its workspace plus private state are
+absent. Thirteen bounded records are copied and hash-verified. Capsule
+`monitor-switch-34429165.json` is 8,281 bytes, SHA-256
+`2d0ada4487553c629bd2fe7280be0f70693da8d25a6843eba663187a818c7ab5`.
+This closes the selected equal-size X11 chooser/freshness/relative-input scenario,
+not initial absolute viewport calibration, physical/mixed-DPI displays, hotplug,
+rapid queued selections, other platforms, installed artifacts or release
+acceptance. No product correction was necessary. The next decisive monitor
+scenario is rapid successive selection with final displayed/input ownership;
+all independent user parks remain unchanged.

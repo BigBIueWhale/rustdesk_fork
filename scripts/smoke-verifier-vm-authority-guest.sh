@@ -12077,7 +12077,7 @@ run_flutter_model_tests() {
             memory=3g
             memory_bytes=3221225472
             result_prefix=FLUTTER_RECONNECT_TEST_JSON
-            expected_result='suites=2 tests=11'
+            expected_result='suites=2 tests=15'
         elif [ "$FLUTTER_TEST_PROFILE" = file-progress ]; then
             memory=1792m
             memory_bytes=1879048192
@@ -13812,7 +13812,7 @@ run_flutter_model_tests() {
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = reconnect ]; then
-        printf 'FLUTTER_RECONNECT_TESTS_VM=pass commit=%s tree=%s suites=2 tests=11 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-reconnect-tests cleanup=joined\n' \
+        printf 'FLUTTER_RECONNECT_TESTS_VM=pass commit=%s tree=%s suites=2 tests=15 flutter=3.24.5 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-reconnect-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"

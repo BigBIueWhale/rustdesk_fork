@@ -133415,3 +133415,15 @@ No product, fixture, requirement or live instruction changes; no parked runtime
 topic is resumed. Diff/source-history review establishes this documentation
 correction only. Native process containment, exact release transport/builds,
 R-S0/R-F5, independent reproduction and external review remain OPEN.
+
+Fresh count `5VKqUkAlws` at `927fbe0b` passes seven controls and the complete
+UTF-8 byte round trip in 28 outer seconds: 398,012 tokens / 1,820,721 bytes,
+SHA-256 `b4abbf3e7bba4bd15c39c01bcaf4c3043fc44ef91a961eb829c276e4636f3db3`.
+The ledger is 570 tokens smaller. All three listener deltas are zero; exact
+wrapper/QEMU/helper retirement and VM/RAM/private absence are reconciled.
+Twelve bounded records are copied and hash-verified. Capsule
+`retired-verifier-ledger-927fbe0b.json` is 4,808 bytes, SHA-256
+`2fefd1b279c8f6c8eefaa41e0fabdd64bf6bb23d5f738ddff2e89e943d2e6bba`.
+Source-history/diff review and unchanged product/specification/instruction
+comparisons pass. No owned job remains. The release goal stays active;
+the newly explicit fixture-conformance obligations require future resolution.

@@ -133459,3 +133459,15 @@ requirements and live instructions are unchanged; diff review and whitespace
 checks pass. No new fixture or product execution is justified by this prose edit.
 The prescribed isolated whole-ledger count follows; full release acceptance and
 all independent user parks remain OPEN.
+
+Final comparison reduces the selected entries from 22,151 to 5,795 bytes and
+preserves every byte outside them. Fresh isolated count `lHOZvJusFr` at
+`75b37d18` passes seven controls and the whole-input round trip in 29 outer
+seconds: 394,512 tokens / 1,804,365 bytes, down 3,500 tokens. Input SHA-256:
+`96a29e70911fdfcfd2fe593e2ffe731d24a656a46f332410f74e6ede5313d13c`.
+Three listener deltas are zero; wrapper/QEMU/helpers and VM/RAM/private state
+retire. Twelve bounded records are copied and hash-verified. Capsule
+`publication-ledger-75b37d18.json` is 4,788 bytes, SHA-256
+`c75fe83d289571b49011d7f33b5ec4c4cdc5d571204ef82b186ccfd7ff721082`.
+No owned job remains. This completes the selected documentation checkpoint;
+the full release goal and the named publication-conformance gaps remain open.

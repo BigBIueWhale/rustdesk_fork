@@ -2074,17 +2074,25 @@ PY
         <<<"$controller_output" || fail 'native mouse retirement verdict is missing'
       viewer_result='viewer=joined xvfb=joined mouse_retirement=abrupt owned_buttons=3 foreign_button=preserved'
     elif [ "$PEER_SCENARIO" = mouse-input ]; then
-      for sequence in {1..21}; do
+      for sequence in {1..31}; do
         [ "$(grep -Ec "^FLUTTER_PEER_MOUSE_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
           || fail "mouse case $sequence is absent or duplicated"
       done
-      for sequence in 9 11 13 18 20; do
+      for sequence in 9 11 13 18 20 22 24 26 28 30; do
         [ "$(grep -Ec "^FLUTTER_PEER_MOUSE_OUTSIDE_HELD sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
           || fail "mouse outside-held observation $sequence is absent or duplicated"
       done
       for sequence in 15 16; do
         [ "$(grep -Ec "^FLUTTER_PEER_MOUSE_SIDE_HELD sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
           || fail "mouse side-button hold $sequence is absent or duplicated"
+      done
+      for sequence in 22 24 26 28 30; do
+        [ "$(grep -Ec "^FLUTTER_PEER_MOUSE_BLUR_HELD sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
+          || fail "mouse held-button focus loss $sequence is absent or duplicated"
+      done
+      for sequence in 23 25 27 29 31; do
+        [ "$(grep -Ec "^FLUTTER_PEER_MOUSE_FOCUS_RETURN sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
+          || fail "mouse focus return $sequence is absent or duplicated"
       done
       for sequence in 1 2 3; do
         [ "$(grep -Ec "^FLUTTER_PEER_MOUSE_CHORD_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
@@ -2101,9 +2109,9 @@ PY
         [ "$(grep -Ec "^FLUTTER_PEER_MOUSE_BURST_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
           || fail "mouse burst case $sequence is absent or duplicated"
       done
-      grep -Fxq 'FLUTTER_PEER_MOUSE_INPUT_OK cases=21 button_events=42 drag_moves=2 wheel_directions=4 outside_releases=5 reentries=5 side_buttons=2 chord_cases=3 chord_events=20 burst_cases=6 burst_events=160 actual_peer=true native_events=true released=both same_window=true stable_connection=true resources=bounded' \
+      grep -Fxq 'FLUTTER_PEER_MOUSE_INPUT_OK cases=31 button_events=62 drag_moves=2 wheel_directions=4 outside_releases=10 reentries=10 side_buttons=2 focus_losses=5 focus_returns=5 chord_cases=3 chord_events=20 burst_cases=6 burst_events=160 actual_peer=true native_events=true released=both same_window=true stable_connection=true resources=bounded' \
         <<<"$controller_output" || fail 'native mouse input verdict is missing'
-      viewer_result='viewer=joined xvfb=joined mouse_cases=21 mouse_chords=3 mouse_bursts=6 stable_connection=true resources=bounded'
+      viewer_result='viewer=joined xvfb=joined mouse_cases=31 mouse_focus=5 mouse_chords=3 mouse_bursts=6 stable_connection=true resources=bounded'
     elif [ "$PEER_SCENARIO" = keyboard-retirement ]; then
       grep -Fxq 'FLUTTER_PEER_KEYBOARD_RETIREMENT_OK remote_keys=2 local_key=preserved viewer_exit=abrupt native_releases=true fixture_keys_released=true' \
         <<<"$controller_output" || fail 'native keyboard retirement verdict is missing'

@@ -134057,3 +134057,27 @@ Peak RAM scratch is 402,808,832 bytes; twelve evidence files match on CTE/TUF.
 `mouse-burst-ledger-ce2f6ec7.json`: 4,789 bytes, SHA-256
 `2dfc535cea0c3a07a500552e2f5249dbe103cd9a0e69ff24fda619df854a3f80`.
 The counted ledger is unchanged by this audit-only receipt. No owned job remains.
+
+## 2026-11-03 — native mouse release across focus loss
+
+Previous goal turn: progress. Six unacknowledged mouse-burst schedules pass on
+the full Linux peer. Continue R-F1/R-S0's remaining focus boundary: after a held
+drag loses viewer focus, releasing outside must leave no stuck button, and input
+must work after returning. This ordinary desktop interruption is more valuable
+than additional in-focus permutations or unrelated UI cleanup. Cursor and all
+independent parks remain parked; no privileged-receiver work is reopened.
+
+Extend the existing mouse workload with five focus-loss/reentry pairs, one for
+each supported button. Observe native remote hold and in-image movement before
+mapping a separate fixture window and assigning focus to it. Require that exact
+focus before/after a 200-ms interval and during release observation. Move the
+still-pressed viewer pointer beyond the complete window and release there; demand
+the exact native pair, both displays clear and no extra events during the quiet
+interval. Return focus without a hidden fixture click, remove the owned focus
+window, reenter and require a fresh click for the same button. The same window/
+TCP and resource limits apply. Existing mouse/chord/burst controls remain.
+XSetInputFocus generates native focus events and XGetInputFocus supplies readback:
+https://www.x.org/releases/X11R7.5/doc/man/man3/XSetInputFocus.3.html.
+This is focus-loss/release acceptance, not an assertion that focus loss itself
+must release a button or that Flutter cancellation/minimization has executed.
+Reuse app `9f78434c` / engine `ddb1541d`; no application build is needed.

@@ -2978,7 +2978,7 @@ static int exercise_mouse_input(Display *source, Display *display,
                                 const ViewerWindow *viewer,
                                 const ConnectionIdentity *connection,
                                 const ProcessResources *baseline) {
-    enum { MOUSE_CLICK, MOUSE_DRAG, MOUSE_EXIT, MOUSE_REENTER, MOUSE_SIDE };
+    enum { MOUSE_CLICK, MOUSE_DRAG, MOUSE_EXIT, MOUSE_REENTER, MOUSE_SIDE, MOUSE_BLUR };
     static const struct { const char *name; unsigned int button; int action; } cases[] = {
         {"left-click", 1U, MOUSE_CLICK}, {"middle-click", 2U, MOUSE_CLICK},
         {"right-click", 3U, MOUSE_CLICK}, {"left-drag", 1U, MOUSE_DRAG},
@@ -2991,8 +2991,14 @@ static int exercise_mouse_input(Display *source, Display *display,
         {"left-after-side-buttons", 1U, MOUSE_CLICK},
         {"back-release-outside", 8U, MOUSE_EXIT}, {"back-reentry", 8U, MOUSE_REENTER},
         {"forward-release-outside", 9U, MOUSE_EXIT}, {"forward-reentry", 9U, MOUSE_REENTER},
+        {"left-blurred-release", 1U, MOUSE_BLUR}, {"left-focus-return", 1U, MOUSE_REENTER},
+        {"middle-blurred-release", 2U, MOUSE_BLUR}, {"middle-focus-return", 2U, MOUSE_REENTER},
+        {"right-blurred-release", 3U, MOUSE_BLUR}, {"right-focus-return", 3U, MOUSE_REENTER},
+        {"back-blurred-release", 8U, MOUSE_BLUR}, {"back-focus-return", 8U, MOUSE_REENTER},
+        {"forward-blurred-release", 9U, MOUSE_BLUR}, {"forward-focus-return", 9U, MOUSE_REENTER},
     };
     Window root = RootWindow(source, DefaultScreen(source)), child;
+    Window focus_sink = None;
     unsigned char mapping[32];
     int origin_x, origin_y, result = -1;
     int center_x, center_y;
@@ -3025,6 +3031,19 @@ static int exercise_mouse_input(Display *source, Display *display,
         ConnectionIdentity after = {{0}, {0}, 0UL};
         ProcessResources resources;
         ViewerWindow current = {0};
+        Window focus;
+        int revert;
+        if (focus_sink != None) {
+            if (cases[i].action != MOUSE_REENTER) goto finished;
+            XRaiseWindow(display, viewer->window);
+            XSetInputFocus(display, viewer->window, RevertToParent, CurrentTime);
+            XDestroyWindow(display, focus_sink);
+            focus_sink = None;
+            XSync(display, False);
+            XGetInputFocus(display, &focus, &revert);
+            if (focus != viewer->window) goto finished;
+            printf("FLUTTER_PEER_MOUSE_FOCUS_RETURN sequence=%u native_focus=viewer sink=retired\n", i + 1U);
+        }
         if (cases[i].action == MOUSE_REENTER) {
             if (XTestFakeMotionEvent(display, DefaultScreen(display),
                                     origin_x, origin_y, CurrentTime) == 0) goto finished;
@@ -3062,7 +3081,7 @@ static int exercise_mouse_input(Display *source, Display *display,
                 XSync(display, False);
                 if (wait_mouse_drag(source, button, previous_x, previous_y, 1, &end_x, &end_y) != 0) goto finished;
             }
-        } else if (cases[i].action == MOUSE_EXIT) {
+        } else if (cases[i].action == MOUSE_EXIT || cases[i].action == MOUSE_BLUR) {
             XWindowAttributes attributes, root_attributes;
             int window_x, window_y;
             Window actual_root, actual_child;
@@ -3071,6 +3090,22 @@ static int exercise_mouse_input(Display *source, Display *display,
                 XGetWindowAttributes(display, attributes.root, &root_attributes) == 0 ||
                 !XTranslateCoordinates(display, viewer->window, attributes.root, 0, 0,
                                        &window_x, &window_y, &child)) goto finished;
+            if (cases[i].action == MOUSE_BLUR) {
+                int previous_x = end_x, previous_y = end_y;
+                if (XTestFakeMotionEvent(display, DefaultScreen(display),
+                                        origin_x + 40, origin_y + 30, CurrentTime) == 0) goto finished;
+                XSync(display, False);
+                if (wait_mouse_drag(source, button, previous_x, previous_y, 1, &end_x, &end_y) != 0)
+                    goto finished;
+                focus_sink = create_focus_sink(display);
+                if (focus_sink == None) goto finished;
+                XGetInputFocus(display, &focus, &revert);
+                if (focus != focus_sink || sleep_millis(200U) != 0) goto finished;
+                XGetInputFocus(display, &focus, &revert);
+                if (focus != focus_sink || !mouse_buttons_match(display, button)) goto finished;
+                printf("FLUTTER_PEER_MOUSE_BLUR_HELD sequence=%u button=%u "
+                       "native_focus=sink viewer_button=held hold_ms=200\n", i + 1U, button);
+            }
             outside_x = window_x + attributes.width / 2;
             outside_y = window_y + attributes.height + 10;
             if (outside_x < 0 || outside_x >= root_attributes.width || outside_y < 0 ||
@@ -3091,6 +3126,10 @@ static int exercise_mouse_input(Display *source, Display *display,
         injected_held = 0U;
         XSync(display, False);
         while (monotonic_millis() - start < 5000U) {
+            if (focus_sink != None) {
+                XGetInputFocus(display, &focus, &revert);
+                if (focus != focus_sink) goto finished;
+            }
             while (XPending(source) != 0) {
                 XEvent event;
                 if (++events > 128U) goto finished;
@@ -3123,10 +3162,12 @@ static int exercise_mouse_input(Display *source, Display *display,
         }
         if (received != 2U || complete == 0U || monotonic_millis() - start >= 5000U ||
             (cases[i].action == MOUSE_DRAG && held_moves < 2U) ||
+            (cases[i].action == MOUSE_BLUR && held_moves < 1U) ||
             mouse_snapshot(source, &end_x, &end_y, &mask) != 0 || mask != 0U ||
             mouse_snapshot(display, &local_x, &local_y, &mask) != 0 || mask != 0U ||
             !mouse_buttons_match(source, 0U) || !mouse_buttons_match(display, 0U) ||
-            (cases[i].action == MOUSE_EXIT && (local_x != outside_x || local_y != outside_y)) ||
+            ((cases[i].action == MOUSE_EXIT || cases[i].action == MOUSE_BLUR) &&
+             (local_x != outside_x || local_y != outside_y)) ||
             find_viewer_window(display, viewer->pid, &current) != 0 || current.window != viewer->window ||
             read_connection_identity(&after) != 0 || !same_connection(connection, &after) ||
             read_process_resources(viewer->pid, &resources) != 0 ||
@@ -3147,6 +3188,10 @@ finished:
     /* Retire only fixture-injected viewer input; never manufacture controlled-side releases. */
     if (injected_held != 0U) {
         if (XTestFakeButtonEvent(display, injected_held, False, CurrentTime) == 0) result = -1;
+        XSync(display, False);
+    }
+    if (focus_sink != None) {
+        XDestroyWindow(display, focus_sink);
         XSync(display, False);
     }
     XSelectInput(source, root, NoEventMask);
@@ -7742,8 +7787,8 @@ int main(int argc, char **argv) {
             puts("FLUTTER_PEER_MOUSE_RETIREMENT_OK remote_buttons=3 local_button=preserved "
                  "viewer_exit=abrupt native_releases=true fixture_buttons_released=true");
         } else if (mouse_input) {
-            puts("FLUTTER_PEER_MOUSE_INPUT_OK cases=21 button_events=42 drag_moves=2 "
-                 "wheel_directions=4 outside_releases=5 reentries=5 side_buttons=2 chord_cases=3 chord_events=20 burst_cases=6 burst_events=160 "
+            puts("FLUTTER_PEER_MOUSE_INPUT_OK cases=31 button_events=62 drag_moves=2 "
+                 "wheel_directions=4 outside_releases=10 reentries=10 side_buttons=2 focus_losses=5 focus_returns=5 chord_cases=3 chord_events=20 burst_cases=6 burst_events=160 "
                  "actual_peer=true native_events=true released=both "
                  "same_window=true stable_connection=true resources=bounded");
         } else if (keyboard_retirement) {

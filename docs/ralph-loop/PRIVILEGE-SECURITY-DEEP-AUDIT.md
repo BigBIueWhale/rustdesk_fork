@@ -132481,3 +132481,45 @@ retirement pass. Twelve records are copied and hash-verified. Capsule
 `d69a3a459df25db07572242c81e000bc962ebab202faada3da48fc5a5e0ea088`.
 No owned job remains. This checkpoint is complete; the full release goal stays
 active with its remaining native, platform, artifact and review requirements.
+
+### 2026-11-03 — installed supervisor crash and automatic recovery
+
+Previous release checkpoint: progress. The intervening SSH inspection confirms
+the existing password-authenticated connection, with no dedicated key or TUF
+reconnect service; no SSH change is needed or authorized by this slice.
+Select current-artifact crash recovery under R-S0/R-S11c-27a/b/g, ahead of
+additional viewer preferences: active-desktop duplicate ownership now passes,
+while unexpected supervisor death and usable automatic restoration remain
+unverified on the retained current service binary. Caller/admin authorization,
+credential review, network impairment and other independent parks stay parked.
+
+Reviewed ServiceRuntime recovery, parent-death arming after credential changes,
+exact child publication, shipped unit, native desktop/probe fixture and both
+closed VM dispatchers. Primary references: systemd 252 service restart semantics
+(https://www.freedesktop.org/software/systemd/man/252/systemd.service.html),
+runtime-directory preservation
+(https://www.freedesktop.org/software/systemd/man/252/systemd.exec.html),
+cgroup termination
+(https://www.freedesktop.org/software/systemd/man/252/systemd.kill.html), and
+Linux parent-death signal lifetime
+(https://man7.org/linux/man-pages/man2/PR_SET_PDEATHSIG.2const.html).
+The shipped on-failure policy should restart after SIGKILL and preserve runtime
+state; its cgroup cleanup supplements application parent-death binding. A combined
+installed run cannot independently attribute child exit to either mechanism.
+
+Add a closed `--linux-service-crash-tests` scenario, reusing `fdbab046` without
+rebuilding. In the actual PAM/logind X11 desktop, prove a UID-4001 child and a
+UID-4002 CPace/Remote PeerInfo login. Provision the initial fixture credential
+through root solely as test setup. Retain both exact process descriptors and
+prove an accepted prekey TCP socket belongs to the child. Send SIGKILL only to
+the supervisor through its pidfd; require receiver EOF and exact old-process
+exit/reaping within ten seconds. Issue no subsequent start/restart or child signal.
+Require one automatic restart, fresh supervisor/child/generation/invocation,
+preserved runtime/lease identity and credential, fresh privileged endpoint owners,
+and another actual Remote PeerInfo login within 35 seconds. Observe stability
+for three additional seconds, then require clean ordinary stop and joined
+process/cgroup/record/PAM/Xvfb/user retirement. Host storage/listener guards and
+complete product/build-input matching remain unchanged. This acceptance is
+installed-layout debug/headless lifecycle/login evidence, not final packages,
+presented pixels/input, arbitrary stale-record recovery, power loss, non-systemd
+init behavior, or full R-S0/release closure. Execution is pending.

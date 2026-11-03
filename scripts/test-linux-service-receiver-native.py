@@ -2071,7 +2071,7 @@ def network_shutdown(value, record, probe_sha):
             os.close(fd)
 
 
-def exclusive_desktop(commit, binary_sha, probe_sha):
+def installed_desktop(scenario):
     pam = pam_module()
     confdir = WORK / "pam"
     confdir.mkdir(mode=0o700)
@@ -2087,7 +2087,7 @@ def exclusive_desktop(commit, binary_sha, probe_sha):
                      "--shell", "/usr/sbin/nologin", f"rdreceiver{uid}"])
                 users.append(uid)
             else:
-                raise RuntimeError("desktop exclusivity fixture UID already exists")
+                raise RuntimeError("desktop fixture UID already exists")
         actor = subprocess.Popen(["/usr/bin/python3", "-B", "-I", "-S", str(Path(__file__)), "--pam-actor"],
                                  env=ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         opened = pam.reply(actor)
@@ -2098,9 +2098,9 @@ def exclusive_desktop(commit, binary_sha, probe_sha):
             if actor.poll() is not None or time.monotonic() >= deadline:
                 raise RuntimeError("PAM-owned desktop did not start")
             time.sleep(0.05)
-        startup_namespace(commit, binary_sha, exclusive=True, desktop_probe_sha=probe_sha)
+        scenario()
         if actor.poll() is not None:
-            raise RuntimeError("desktop actor exited during supervisor exclusivity test")
+            raise RuntimeError("desktop actor exited during service test")
         pam.properties({"process": actor, "session": session, "uid": 4001, "type": "x11"}, "active")
     finally:
         try:
@@ -2109,7 +2109,7 @@ def exclusive_desktop(commit, binary_sha, probe_sha):
                     actor.stdin.write(b"quit\n")
                     actor.stdin.flush()
                 if actor.wait(timeout=10) != 0:
-                    raise RuntimeError("desktop exclusivity PAM actor cleanup failed")
+                    raise RuntimeError("desktop PAM actor cleanup failed")
                 actor.stdin.close()
                 actor.stdout.close()
         finally:
@@ -2117,8 +2117,220 @@ def exclusive_desktop(commit, binary_sha, probe_sha):
                 run(["/usr/bin/systemctl", "stop", f"user@{uid}.service", f"user-runtime-dir@{uid}.service"])
                 run(["/usr/sbin/userdel", f"rdreceiver{uid}"])
     if Path("/tmp/.X11-unix/X77").exists() or pam.sessions():
-        raise RuntimeError("desktop exclusivity left an X11 or PAM session")
+        raise RuntimeError("desktop fixture left an X11 or PAM session")
     print("LINUX_SERVICE_DESKTOP_SESSION=retired logind=actual x11=owned users=removed", flush=True)
+
+
+def supervisor_crash(commit, binary_sha, probe_sha):
+    unit = Path("/etc/systemd/system/rustdesk.service")
+    runtime = Path("/run/rustdesk")
+    parent = Path("/run/RustDesk-service")
+    record_path = runtime / "service-child.record"
+    cgroup = Path("/sys/fs/cgroup/system.slice/rustdesk.service")
+    if any(os.path.lexists(p) for p in (unit, runtime, parent, cgroup)):
+        raise RuntimeError("crash fixture requires absent service state")
+    shutil.copyfile(MEDIA / "repo/res/rustdesk.service", unit)
+    run(["/usr/bin/systemctl", "daemon-reload"])
+    value = "Receiver-supervisor-crash-2026!"
+    reference = ServiceUnitResultReference()
+    retained = []
+
+    def properties():
+        return dict(line.split("=", 1) for line in run(
+            ["/usr/bin/systemctl", "show", "rustdesk.service",
+             "--property=ActiveState,SubState,Result,MainPID,ExecMainCode,ExecMainStatus,NRestarts,InvocationID"]).stdout.splitlines())
+
+    def authority(path, mode, directory=False):
+        st = path.lstat()
+        kind = stat.S_ISDIR if directory else stat.S_ISREG
+        if (not kind(st.st_mode) or (st.st_uid, st.st_gid, stat.S_IMODE(st.st_mode)) != (0, 0, mode)
+                or (not directory and st.st_nlink != 1)):
+            raise RuntimeError(f"crash fixture authority differs: {path}")
+        return [st.st_dev, st.st_ino, st.st_uid, st.st_gid, st.st_mode]
+
+    def retain(record):
+        result = {}
+        for role, pid in (("supervisor", record["supervisor"]), ("child", record["pid"])):
+            proc = Path("/proc") / str(pid)
+            fd = os.pidfd_open(pid)
+            retained.append(fd)
+            fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+            if fields[0] in (b"Z", b"X") or select.select([fd], [], [], 0)[0]:
+                raise RuntimeError("crash fixture retained an exited process")
+            start = int(fields[19])
+            if role == "child" and start != record["start"]:
+                raise RuntimeError("crash fixture child identity changed")
+            if role == "supervisor" and (digest(proc / "exe") != binary_sha
+                    or (proc / "cmdline").read_bytes() != b"/usr/bin/rustdesk\0--service\0"):
+                raise RuntimeError("crash fixture supervisor image or role differs")
+            result[role] = {"pid": pid, "start": start, "pidfd": fd}
+        if child_record() != record:
+            raise RuntimeError("crash fixture lost its selected child")
+        return result
+
+    def retired(identities):
+        result = {}
+        for role, identity in identities.items():
+            try:
+                fields = Path(f"/proc/{identity['pid']}/stat").read_bytes().rsplit(b") ", 1)[1].split()
+                reaped = int(fields[19]) != identity["start"]
+            except (FileNotFoundError, ProcessLookupError):
+                reaped = True
+            result[role] = {"exited": bool(select.select([identity["pidfd"]], [], [], 0)[0]), "reaped": reaped}
+        return result
+
+    def all_retired(identities):
+        return all(v["exited"] and v["reaped"] for v in retired(identities).values())
+
+    def endpoints(record):
+        authority(parent, 0o711, directory=True)
+        observed = {}
+        for suffix in ("_service", "_service_password", "_service_credential"):
+            endpoint = parent / ("ipc" + suffix)
+            st = endpoint.lstat()
+            if (not stat.S_ISSOCK(st.st_mode)
+                    or (st.st_uid, st.st_gid, stat.S_IMODE(st.st_mode)) != (0, 0, 0o666)):
+                raise RuntimeError("crash fixture service socket authority differs")
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+                peer.settimeout(3)
+                peer.connect(str(endpoint))
+                credentials = struct.unpack("3i", peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+                if credentials != (record["supervisor"], 0, 0):
+                    raise RuntimeError("crash fixture endpoint has a different owner")
+            observed[suffix] = {"device": st.st_dev, "inode": st.st_ino, "peer": credentials}
+        return observed
+
+    def login(record, phase):
+        deadline = time.monotonic() + 10
+        listener = direct_listener(record)
+        while listener is None and time.monotonic() < deadline:
+            time.sleep(0.05)
+            listener = direct_listener(record)
+        if listener is None:
+            raise RuntimeError("crash fixture child never opened its listener")
+        before = credential()
+        result = run(["/usr/bin/setpriv", "--reuid=4002", "--regid=4002", "--clear-groups",
+                      "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
+                      str(PROBE), "127.0.0.1:21118", "--password-stdin", "ok", "login"],
+                     input=value + "\n", timeout=15)
+        lines = result.stdout.splitlines()
+        if (result.stderr or len(lines) != 3 or lines[0] != "probe_client: keying ok=true (expected=ok)"
+                or lines[-1] != "probe_client: PASS" or "[REMOTE-LOGIN-ADMITTED peer-info]" not in lines[1]
+                or "READ_ERR" in lines[1] or "REMOTE-LOGIN-REJECTED" in lines[1]
+                or credential() != before or child_record() != record or direct_listener(record) != listener):
+            raise RuntimeError(f"crash fixture desktop login failed: {result.stdout[-4096:]} {result.stderr[-4096:]}")
+        print("LINUX_SERVICE_CRASH_LOGIN_OBSERVED=" + json.dumps(
+            {"phase": phase, "record": record, "listener_inode": listener,
+             "stdout": result.stdout, "stderr": result.stderr, "exit": result.returncode}, sort_keys=True), flush=True)
+        print(f"LINUX_SERVICE_CRASH_LOGIN=pass phase={phase} uid=4002 cpace=mutual remote=peer-info probe_sha256={probe_sha}", flush=True)
+        return listener
+
+    try:
+        run(["/usr/bin/systemctl", "start", "rustdesk.service"])
+        old = ready()
+        old_processes = retain(old)
+        before = properties()
+        if (before["ActiveState"], before["SubState"], before["Result"], before["NRestarts"]) != ("active", "running", "success", "0"):
+            raise RuntimeError(f"crash fixture initial service state differs: {before}")
+        old_endpoints = endpoints(old)
+        runtime_before = authority(runtime, 0o700, directory=True)
+        lease_before = authority(runtime / "service-supervisor.lock", 0o600)
+        old_record = {"identity": authority(record_path, 0o600), "sha256": digest(record_path)}
+        change(0, value, True)
+        durable = credential()
+        old_listener = login(old, "before")
+        with socket.create_connection(("127.0.0.1", 21118), timeout=5) as peer:
+            port = peer.getsockname()[1]
+            accepted = None
+            deadline = time.monotonic() + 2
+            while accepted is None and time.monotonic() < deadline:
+                owned = set()
+                for fd in Path(f"/proc/{old['pid']}/fd").iterdir():
+                    try:
+                        owned.add(os.readlink(fd))
+                    except FileNotFoundError:
+                        continue
+                for line in Path("/proc/net/tcp").read_text().splitlines()[1:]:
+                    fields = line.split()
+                    if (len(fields) >= 10 and fields[1] == "0100007F:527E"
+                            and fields[2] == f"0100007F:{port:04X}" and fields[3] == "01"
+                            and f"socket:[{fields[9]}]" in owned):
+                        accepted = int(fields[9])
+                if accepted is None:
+                    time.sleep(0.01)
+            if accepted is None or child_record() != old or properties() != before:
+                raise RuntimeError("crash fixture lacks an accepted exact-child connection")
+            print("LINUX_SERVICE_CRASH_INJECTION=" + json.dumps(
+                {"record": old, "unit": before, "accepted_socket": accepted,
+                 "listener_inode": old_listener, "signal": "SIGKILL", "target": "supervisor-pidfd"},
+                sort_keys=True), flush=True)
+            began = time.monotonic()
+            signal.pidfd_send_signal(old_processes["supervisor"]["pidfd"], signal.SIGKILL)
+            # No service start/restart or child signal is issued after this injection.
+            peer.settimeout(10)
+            if peer.recv(1) != b"":
+                raise RuntimeError("crashed prekey connection returned application data")
+            eof_seconds = time.monotonic() - began
+        while not all_retired(old_processes) and time.monotonic() - began < 10:
+            time.sleep(0.02)
+        if not all_retired(old_processes):
+            raise RuntimeError(f"crash left an old process: {retired(old_processes)}")
+        retirement_seconds = time.monotonic() - began
+        print("LINUX_SERVICE_CRASH_RETIREMENT=" + json.dumps(
+            {"processes": retired(old_processes), "eof_seconds": eof_seconds,
+             "retirement_seconds": retirement_seconds}, sort_keys=True), flush=True)
+        recovered = ready(old)
+        new_processes = retain(recovered)
+        after = properties()
+        if (after["ActiveState"] != "active" or after["SubState"] != "running" or after["Result"] != "success"
+                or after["NRestarts"] != "1" or after["InvocationID"] == before["InvocationID"]
+                or authority(runtime, 0o700, directory=True) != runtime_before
+                or authority(runtime / "service-supervisor.lock", 0o600) != lease_before
+                or credential() != durable):
+            raise RuntimeError(f"automatic crash recovery changed authority or restarted repeatedly: {after}")
+        new_endpoints = endpoints(recovered)
+        new_listener = login(recovered, "recovered")
+        recovery_seconds = time.monotonic() - began
+        if new_listener == old_listener or recovery_seconds >= 35:
+            raise RuntimeError("crash recovery did not restore a fresh usable listener within 35 seconds")
+        # Span more than RestartSec after the login, catching an immediately failing generation.
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            if properties() != after or child_record() != recovered or direct_listener(recovered) != new_listener:
+                raise RuntimeError("recovered service generation was unstable")
+            time.sleep(0.2)
+        run(["/usr/bin/systemctl", "stop", "rustdesk.service"], timeout=40)
+        terminal = properties()
+        deadline = time.monotonic() + 5
+        while (cgroup.exists() or not all_retired(new_processes)) and time.monotonic() < deadline:
+            time.sleep(0.02)
+        if (terminal["ActiveState"] != "inactive" or terminal["SubState"] != "dead"
+                or terminal["Result"] != "success" or terminal["MainPID"] != "0"
+                or terminal["ExecMainCode"] != "1" or terminal["ExecMainStatus"] != "0"
+                or cgroup.exists() or record_path.exists() or not all_retired(new_processes)
+                or credential() != durable):
+            raise RuntimeError(f"recovered service did not stop and reap cleanly: {terminal}")
+        print("LINUX_SERVICE_CRASH_OBSERVED=" + json.dumps(
+            {"before": before, "after": after, "terminal": terminal, "old": old, "recovered": recovered,
+             "old_record": old_record, "runtime_identity": runtime_before, "lease_identity": lease_before,
+             "old_endpoints": old_endpoints, "new_endpoints": new_endpoints,
+             "old_listener": old_listener, "new_listener": new_listener, "accepted_socket": accepted,
+             "eof_seconds": eof_seconds, "retirement_seconds": retirement_seconds, "recovery_seconds": recovery_seconds,
+             "old_retired": retired(old_processes), "new_retired": retired(new_processes),
+             "durable_unchanged": True, "cgroup_absent": True, "record_absent": True}, sort_keys=True), flush=True)
+        print(f"LINUX_SERVICE_CRASH_NATIVE=pass generations=2 crashes=1 restarts=1 logins=2 source={commit} "
+              f"binary_sha256={binary_sha} probe_sha256={probe_sha} fixture=installed-layout unit=shipped "
+              "logind=actual child=supervised signal=supervisor-pidfd cleanup=joined", flush=True)
+    except BaseException:
+        print(run(["/usr/bin/journalctl", "--unit=rustdesk.service", "--no-pager", "-n", "60"]).stdout, flush=True)
+        raise
+    finally:
+        try:
+            run(["/usr/bin/systemctl", "stop", "rustdesk.service"], timeout=40)
+        finally:
+            reference.close()
+            for fd in retained:
+                os.close(fd)
 
 
 def login_across_duplicates(value, record, action):
@@ -2588,7 +2800,7 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, ex
           f"binary_sha256={binary_sha} fixture=installed-layout unit=shipped legacy=unchanged cleanup=joined", flush=True)
 
 
-def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False, collisions=False, exclusive=False, desktop_exclusive=False):
+def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False, collisions=False, exclusive=False, desktop_exclusive=False, crash=False):
     guard()
     checked = run(["/usr/bin/setpriv", "--reuid=1000", "--regid=1000", "--clear-groups",
                    "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
@@ -2617,8 +2829,11 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
     if "not found" in run(["/usr/bin/ldd", str(PROBE)]).stdout:
         raise RuntimeError("network probe runtime dependency is missing")
     run(["/usr/bin/systemctl", "is-active", "systemd-logind.service", "polkit.service"])
+    if crash:
+        installed_desktop(lambda: supervisor_crash(commit, spec["sha256"], probe_spec["sha256"]))
+        return
     if desktop_exclusive:
-        exclusive_desktop(commit, spec["sha256"], probe_spec["sha256"])
+        installed_desktop(lambda: startup_namespace(commit, spec["sha256"], exclusive=True, desktop_probe_sha=probe_spec["sha256"]))
         return
     if startup or incumbent or collisions or exclusive:
         startup_namespace(commit, spec["sha256"], incumbents=incumbent, collisions=collisions, exclusive=exclusive)
@@ -2933,6 +3148,8 @@ if __name__ == "__main__":
         tests(sys.argv[1:6], exclusive=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--desktop-exclusive":
         tests(sys.argv[1:6], desktop_exclusive=True)
+    elif len(sys.argv) == 7 and sys.argv[-1] == "--crash":
+        tests(sys.argv[1:6], crash=True)
     elif len(sys.argv) == 6:
         tests(sys.argv[1:])
     else:

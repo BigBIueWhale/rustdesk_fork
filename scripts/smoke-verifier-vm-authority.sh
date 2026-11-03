@@ -509,7 +509,7 @@ case "$#:${1:-}" in
             || { echo 'host network test input/run overrides are forbidden' >&2; exit 2; }
         MODE=host-network-tests
         ;;
-    5:--linux-service-receiver-tests|5:--linux-service-convergence-failure-tests|5:--linux-service-notification-failure-tests|5:--linux-service-network-drain-tests|5:--linux-service-authorization-timeout-tests|5:--linux-service-startup-tests|5:--linux-service-incumbent-tests|5:--linux-service-collision-tests|5:--linux-service-exclusive-tests|5:--linux-service-desktop-exclusive-tests)
+    5:--linux-service-receiver-tests|5:--linux-service-convergence-failure-tests|5:--linux-service-notification-failure-tests|5:--linux-service-network-drain-tests|5:--linux-service-authorization-timeout-tests|5:--linux-service-startup-tests|5:--linux-service-incumbent-tests|5:--linux-service-collision-tests|5:--linux-service-exclusive-tests|5:--linux-service-desktop-exclusive-tests|5:--linux-service-crash-tests)
         [ "$2" = --peer-commit ] && [ "$4" = --peer-manifest-sha256 ] \
             && [[ "$3" =~ ^[0-9a-f]{40}$ ]] && [[ "$5" =~ ^[0-9a-f]{64}$ ]] \
             && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -533,6 +533,8 @@ case "$#:${1:-}" in
             LINUX_RECEIVER_PROFILE=exclusive
         elif [ "$1" = --linux-service-desktop-exclusive-tests ]; then
             LINUX_RECEIVER_PROFILE=desktop-exclusive
+        elif [ "$1" = --linux-service-crash-tests ]; then
+            LINUX_RECEIVER_PROFILE=crash
         fi
         ANDROID_RUNTIME_PEER_COMMIT=$3
         ANDROID_RUNTIME_PEER_MANIFEST_SHA256=$5
@@ -833,6 +835,7 @@ case "$#:${1:-}" in
         printf 'Installed Linux non-socket IPC preservation: %s --linux-service-collision-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Installed Linux exclusive supervisor ownership: %s --linux-service-exclusive-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Installed Linux desktop supervisor ownership: %s --linux-service-desktop-exclusive-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
+        printf 'Installed Linux automatic crash recovery: %s --linux-service-crash-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Exact CM read-tick ownership: %s --cm-read-tick-tests\n' "${0##*/}" >&2
         printf 'Native CM transfer outcome logs: %s --cm-file-log-tests\n' "${0##*/}" >&2
         printf 'Native inactivity timeout bounds: %s --idle-timeout-tests\n' "${0##*/}" >&2
@@ -5153,6 +5156,8 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
         linux_receiver_guest_flag=--linux-service-exclusive-tests
     elif [ "$LINUX_RECEIVER_PROFILE" = desktop-exclusive ]; then
         linux_receiver_guest_flag=--linux-service-desktop-exclusive-tests
+    elif [ "$LINUX_RECEIVER_PROFILE" = crash ]; then
+        linux_receiver_guest_flag=--linux-service-crash-tests
     fi
     guest_invocation+=" $linux_receiver_guest_flag $ANDROID_RUNTIME_PEER_COMMIT $ANDROID_RUNTIME_PEER_TREE $ANDROID_RUNTIME_PEER_MANIFEST_SHA256 $FOCUSED_TEST_COMMIT"
 elif [ "$MODE" = linux-flutter-artifact-tests ]; then
@@ -5859,7 +5864,13 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
     linux_receiver_binary_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/rustdesk" | /usr/bin/awk '{print $1}')
     linux_receiver_probe_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/probe_client" | /usr/bin/awk '{print $1}')
     require_exact_fixed_receipt 'verify-linux-service-password-ipc: source checks passed' 'supplementary password IPC source checks'
-    if [ "$LINUX_RECEIVER_PROFILE" = desktop-exclusive ]; then
+    if [ "$LINUX_RECEIVER_PROFILE" = crash ]; then
+        for phase in before recovered; do
+            require_exact_fixed_receipt "LINUX_SERVICE_CRASH_LOGIN=pass phase=$phase uid=4002 cpace=mutual remote=peer-info probe_sha256=$linux_receiver_probe_sha" 'installed Linux crash recovery login'
+        done
+        require_exact_fixed_receipt "LINUX_SERVICE_CRASH_NATIVE=pass generations=2 crashes=1 restarts=1 logins=2 source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha probe_sha256=$linux_receiver_probe_sha fixture=installed-layout unit=shipped logind=actual child=supervised signal=supervisor-pidfd cleanup=joined" 'installed Linux automatic crash recovery'
+        require_exact_fixed_receipt 'LINUX_SERVICE_DESKTOP_SESSION=retired logind=actual x11=owned users=removed' 'owned desktop session retirement'
+    elif [ "$LINUX_RECEIVER_PROFILE" = desktop-exclusive ]; then
         for phase in exclusive-first exclusive-restart; do
             require_exact_fixed_receipt "LINUX_SERVICE_DESKTOP_EXCLUSIVE_CASE=pass phase=$phase" 'installed Linux desktop supervisor ownership'
             require_exact_fixed_receipt "LINUX_RECEIVER_CPACE=pass phase=$phase uid=4002 server=supervised-child listener=owned key_confirmation=mutual probe_sha256=$linux_receiver_probe_sha" 'desktop ownership network readiness'
@@ -9518,7 +9529,12 @@ elif [ "$MODE" = ledger-token-count ]; then
     printf 'LEDGER_TOKEN_COUNT_OUTER=pass host_uid=%s commit=%s tree=%s input_sha256=%s recipe_sha256=%s network=none listeners=no-harness-addition inputs=readonly product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$ledger_input_sha" "$ledger_recipe_sha" "$vm_elapsed_seconds"
 elif [ "$MODE" = linux-service-receiver-tests ]; then
-    if [ "$LINUX_RECEIVER_PROFILE" = desktop-exclusive ]; then
+    if [ "$LINUX_RECEIVER_PROFILE" = crash ]; then
+        printf 'LINUX_SERVICE_CRASH_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s generations=2 crashes=1 restarts=1 logins=2 fixture=installed-layout unit=shipped logind=actual child=supervised network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
+            "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \
+            "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" "$linux_receiver_binary_sha" "$vm_elapsed_seconds"
+    elif [ "$LINUX_RECEIVER_PROFILE" = desktop-exclusive ]; then
         printf 'LINUX_SERVICE_DESKTOP_EXCLUSIVE_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s generations=2 duplicates=6 refused=6 logind=actual child=supervised logins=2 fixture=installed-layout unit=shipped legacy=unchanged network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
             "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \

@@ -134740,3 +134740,19 @@ peak scratch is 4,376,076,288 bytes. Fourteen bounded files match on CTE/TUF.
 `android-backup-native-60ff6662.json`: 15,042 bytes, SHA-256
 `cd0349a5d819c80699a0629107143ea9e799b3a5d0fe8b3b6c74b53571e1a1d6`.
 No owned job remains. Continue the same native acceptance with the control repair.
+
+Replay `GlkiEXJs1Y` at `a2b367aa` passes the control build and reaches Android
+install/launch/rendering and instrumentation-process smoke. The native helper
+then rejects its control-package UID parser before any backup. Replace parsing of
+human diagnostic `dumpsys` fields with `cmd package list packages -U --user 0`,
+requiring one exact package/UID record and preserving the application-UID read
+proof. Android 14 PackageManagerShellCommand.runListPackages defines that output:
+https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android14-release/services/core/java/com/android/server/pm/PackageManagerShellCommand.java.
+Python parsing and diff review pass; the backup result remains pending.
+
+The 247-second run has five zero listener deltas and exact process/helper/private/
+RAM retirement. Peak scratch is 4,375,572,480 bytes. Fifteen bounded evidence files,
+including the complete runtime failure log, match on CTE/TUF.
+`android-backup-native-a2b367aa.json`: 15,579 bytes, SHA-256
+`14cfe4afde592d1b48790b82fe9bcb742bade669d7cf20d7aacec1f2a66f5f4b`.
+No owned job remains; no native backup-exclusion pass is claimed.

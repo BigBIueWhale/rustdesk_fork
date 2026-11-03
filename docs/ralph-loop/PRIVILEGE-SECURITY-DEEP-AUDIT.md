@@ -135488,3 +135488,57 @@ Twelve bounded evidence files match CTE/TUF. Capsule
 `2eb3f28cb62c95062d07409583838157d056d3b8a1c83d9d8f1f1383fb7f1b75`.
 This audit-only receipt preserves the counted ledger. No owned job remains;
 the panel component checkpoint is complete, with device/session acceptance open.
+
+## 2026-11-04 — user pivot: Android permission-denial completion
+
+The direct user pivot parks further floating-panel device/session acceptance;
+the accepted component correction remains valid. The already-running Linux app
+build at 27bf28eb is allowed to finish and retire, with no new panel scenario.
+Its bounded artifact is a reusable prerequisite, not native panel acceptance.
+Before that launch, the shared-lock cache review refused an attempted duplicate
+classification: 2ed4dd37 and 9f78434c have the same file counts/sizes but different
+libapp and cursor-plugin bytes. No deletion occurred on that refusal. Complete
+inventories and hashes then authorized retirement of superseded 9f78434c,
+freeing 70,353,741 file bytes while retaining the newer pre-panel app, designated
+7e6f6459 baseline and untouched pending 0ccb2a7e generation. The three bounded
+floating-app-retire/retired-9f78434c records retain the decision and exact removal.
+
+Selected R-S0/R-G7 Android OS-permission onboarding, independently of parked
+service-stop/capture and backup work. A completed denial must return false to
+the exact request immediately, allowing its caller and subsequent requests to
+continue without waiting for the 120-second missing-callback deadline. Existing
+grant behavior, request UUID/type matching, timeout and OS consent remain.
+This takes priority over further UI geometry coverage because source inspection
+identifies a concrete missing native completion on a routine user choice.
+
+common.kt requestPermission currently supplies a SAM lambda implementing only
+OnPermissionCallback.onGranted. The exact app dependency is XXPermissions 18.5;
+its onDenied default is empty. PermissionFragment delivers an all-denied request
+only through that callback, so Flutter's shared pending owner otherwise survives
+until its timer. AndroidPermissionRequestCoordinator's five tests supply their
+own completion; they cannot observe this missing producer event.
+
+Primary references: Android's runtime-permission guide requires usable denial
+handling (https://developer.android.com/training/permissions/requesting).
+XXPermissions 18.5's OnPermissionCallback.java, IPermissionInterceptor.java and
+PermissionFragment.java under
+https://github.com/getActivity/XXPermissions/tree/18.5/library/src/main/java/com/hjq/permissions
+establish the distinct grant/denial callbacks and the default no-op. Source
+reasoning is not an observed two-minute device delay or proof of every settings
+workflow. The manual storage-settings resume path remains independently relevant.
+
+Baseline preparation moves the existing unchanged SAM into the small production
+androidPermissionCallback factory; requestPermission still owns the same main-
+looper, channel, type and UUID delivery. Four compiled cases invoke the actual
+library interface for grant, partial grant, denial and permanent denial and
+require exactly the correct Boolean result. The existing bounded Kotlin VM lane
+links the real 18.5 classes.jar, never a copied interface or replacement library.
+Its authenticated existing AAR is 80,560 bytes, SHA-256
+9fa58a47c7362e467a475d716bbd4111dc23d6c50fffffc478c11b74bbe881f5,
+matching its retained publisher Gradle module metadata. The bounded classes.jar
+is 85,233 bytes, SHA-256
+8d411e8e96f0868a03f6d61194010c50badad2c82e8854bb1eeffdd277672eea.
+Pins select those existing bytes; no app dependency or acquisition is added.
+The nearest integration control is the existing fifteen short Kotlin owner cases.
+The whole Android framework/MethodChannel, system dialog, exact APK and device
+acceptance remain open; this preparation claims no runtime result yet.

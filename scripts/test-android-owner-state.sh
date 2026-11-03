@@ -18,6 +18,7 @@ readonly WORK_ROOT="$2"
 readonly KOTLIN_SOURCE_ROOT="$REPO_ROOT/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb"
 readonly KOTLIN_TEST_ROOT="$REPO_ROOT/flutter/android/app/src/test/kotlin/com/carriez/flutter_hbb"
 readonly -a PRODUCTION_SOURCES=(
+    "$KOTLIN_SOURCE_ROOT/AndroidPermissionCallback.kt"
     "$KOTLIN_SOURCE_ROOT/ControlledConnectionType.kt"
     "$KOTLIN_SOURCE_ROOT/ControlledCaptureOwnerState.kt"
     "$KOTLIN_SOURCE_ROOT/ControlledInputOwner.kt"
@@ -27,6 +28,7 @@ readonly -a PRODUCTION_SOURCES=(
     "$KOTLIN_SOURCE_ROOT/VoiceCallOwnerState.kt"
 )
 readonly -a TEST_SOURCES=(
+    "$KOTLIN_TEST_ROOT/AndroidPermissionCallbackTest.kt"
     "$KOTLIN_TEST_ROOT/AndroidOwnerStateTest.kt"
     "$KOTLIN_TEST_ROOT/VoiceCallOwnerStateTest.kt"
 )
@@ -41,13 +43,13 @@ for source in "${PRODUCTION_SOURCES[@]}" "${TEST_SOURCES[@]}"; do
 done
 
 resolve_jar() {
-    local group=$1 artifact=$2 version=$3 size=$4 digest=$5 root
+    local group=$1 artifact=$2 version=$3 size=$4 digest=$5 extension=${6:-jar} root
     local -a matches=()
     root="$GRADLE_HOME/caches/modules-2/files-2.1/$group/$artifact/$version"
     [ -d "$root" ] && [ ! -L "$root" ] \
         || { echo "Kotlin compiler artifact root is absent: $group:$artifact:$version" >&2; return 1; }
     mapfile -t matches < <(/usr/bin/find "$root" -mindepth 2 -maxdepth 2 -type f \
-        -name "$artifact-$version.jar" -print | LC_ALL=C /usr/bin/sort)
+        -name "$artifact-$version.$extension" -print | LC_ALL=C /usr/bin/sort)
     [ "${#matches[@]}" -eq 1 ] \
         || { echo "expected one Kotlin compiler artifact: $group:$artifact:$version" >&2; return 1; }
     [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "${matches[0]}")" = \
@@ -84,8 +86,27 @@ annotations="$(resolve_jar org.jetbrains annotations \
     "$SHA256_ANDROID_KOTLIN_COMPILER_ANNOTATIONS")"
 
 /usr/bin/install -d -m 0700 -- "$WORK_ROOT" "$WORK_ROOT/classes"
+permission_aar="$(resolve_jar com.github.getActivity XXPermissions \
+    "$ANDROID_XXPERMISSIONS_VERSION" "$SIZE_ANDROID_XXPERMISSIONS_AAR" \
+    "$SHA256_ANDROID_XXPERMISSIONS_AAR" aar)"
+/usr/bin/python3 -I -S - "$permission_aar" "$WORK_ROOT/xxpermissions.jar" \
+    "$SIZE_ANDROID_XXPERMISSIONS_CLASSES" "$SHA256_ANDROID_XXPERMISSIONS_CLASSES" <<'PY'
+import hashlib
+import pathlib
+import sys
+import zipfile
+
+source, destination, size, digest = sys.argv[1:]
+with zipfile.ZipFile(source) as archive:
+    entries = [entry for entry in archive.infolist() if entry.filename == "classes.jar"]
+    assert len(entries) == 1 and entries[0].file_size == int(size)
+    contents = archive.read(entries[0])
+assert len(contents) == int(size) and hashlib.sha256(contents).hexdigest() == digest
+with pathlib.Path(destination).open("xb") as output:
+    output.write(contents)
+PY
 readonly COMPILER_CLASSPATH="$compiler:$stdlib:$script_runtime:$reflect:$daemon:$trove:$coroutines:$annotations"
-readonly TEST_CLASSPATH="$stdlib:$annotations"
+readonly TEST_CLASSPATH="$stdlib:$annotations:$WORK_ROOT/xxpermissions.jar"
 
 compile_status=0
 /usr/bin/timeout --signal=TERM --kill-after=5s 60s \
@@ -123,4 +144,8 @@ owner_result="$(
   'ANDROID_OWNER_STATE_TEST=pass scenarios=8 assertions=206 kotlin=2.0.21' ] \
     || { echo "Android owner-state result differs: $owner_result" >&2; exit 1; }
 printf '%s\n' "$voice_result" "$owner_result"
-printf 'ANDROID_OWNER_STATE_SUITE=pass classes=7 scenarios=15 assertions=305 kotlin=2.0.21\n'
+/usr/bin/timeout --signal=TERM --kill-after=2s 10s \
+    /usr/bin/java -ea -Xms16m -Xmx64m -Djava.io.tmpdir="$WORK_ROOT" \
+        -cp "$WORK_ROOT/classes:$TEST_CLASSPATH" \
+        com.carriez.flutter_hbb.AndroidPermissionCallbackTestKt
+printf 'ANDROID_OWNER_STATE_SUITE=pass classes=8 scenarios=19 assertions=309 kotlin=2.0.21\n'

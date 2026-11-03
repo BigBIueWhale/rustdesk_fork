@@ -64,14 +64,14 @@ fun isSupportVoiceCall(): Boolean {
 fun requestPermission(context: Context, type: String, id: String) {
     XXPermissions.with(context)
         .permission(type)
-        .request { _, all ->
+        .request(androidPermissionCallback { granted ->
             Handler(Looper.getMainLooper()).post {
                 MainActivity.flutterMethodChannel?.invokeMethod(
                     "on_android_permission_result",
-                    mapOf("type" to type, "id" to id, "result" to all)
+                    mapOf("type" to type, "id" to id, "result" to granted)
                 )
             }
-        }
+        })
 }
 
 fun startAction(context: Context, action: String) {

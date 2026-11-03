@@ -9492,14 +9492,14 @@ run_android_rust_target_check() {
 
 stage_android_owner_kotlin_jar() {
     local source_home=$1 staged_home=$2 group=$3 artifact=$4 version=$5
-    local size=$6 digest=$7 source_root relative destination
+    local size=$6 digest=$7 extension=${8:-jar} source_root relative destination
     local -a matches=()
 
     source_root="$source_home/caches/modules-2/files-2.1/$group/$artifact/$version"
     [ -d "$source_root" ] && [ ! -L "$source_root" ] \
         || fail "sealed Android owner-state artifact root is absent: $group:$artifact:$version"
     mapfile -t matches < <(find "$source_root" -mindepth 2 -maxdepth 2 -type f \
-        -name "$artifact-$version.jar" -print | LC_ALL=C sort)
+        -name "$artifact-$version.$extension" -print | LC_ALL=C sort)
     [ "${#matches[@]}" -eq 1 ] \
         || fail "expected one sealed Android owner-state artifact: $group:$artifact:$version"
     [ ! -L "${matches[0]}" ] \
@@ -9558,6 +9558,9 @@ run_android_owner_tests() {
     source_before="$source_archive_sha:$(sha256sum \
         "$source_root/scripts/pins.env" \
         "$source_root/scripts/test-android-owner-state.sh" \
+        "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/AndroidPermissionCallback.kt" \
+        "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/common.kt" \
+        "$source_root/flutter/android/app/src/test/kotlin/com/carriez/flutter_hbb/AndroidPermissionCallbackTest.kt" \
         "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledConnectionType.kt" \
         "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledCaptureOwnerState.kt" \
         "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledInputOwner.kt" \
@@ -9615,6 +9618,9 @@ run_android_owner_tests() {
     stage_android_owner_kotlin_jar "$gradle_home" "$staged_gradle_home" \
         org.jetbrains annotations "$ANDROID_KOTLIN_COMPILER_ANNOTATIONS_VERSION" \
         "$SIZE_ANDROID_KOTLIN_COMPILER_ANNOTATIONS" "$SHA256_ANDROID_KOTLIN_COMPILER_ANNOTATIONS"
+    stage_android_owner_kotlin_jar "$gradle_home" "$staged_gradle_home" \
+        com.github.getActivity XXPermissions "$ANDROID_XXPERMISSIONS_VERSION" \
+        "$SIZE_ANDROID_XXPERMISSIONS_AAR" "$SHA256_ANDROID_XXPERMISSIONS_AAR" aar
     find "$staged_gradle_home" -type d -exec chmod 0555 {} +
     [ -z "$(find "$staged_gradle_home" -xdev \
         \( \( ! -type d -a ! -type f \) \
@@ -9691,11 +9697,15 @@ run_android_owner_tests() {
     [ "$(stat -c '%s' -- "$output")" -le 65536 ] \
         || fail 'focused Android owner-state output exceeds its bound'
     result_line="$(grep -Fx \
-        'ANDROID_OWNER_STATE_SUITE=pass classes=7 scenarios=15 assertions=305 kotlin=2.0.21' \
+        'ANDROID_OWNER_STATE_SUITE=pass classes=8 scenarios=19 assertions=309 kotlin=2.0.21' \
         "$output")" \
         || { tail -n 160 "$output" >&2; fail 'focused Android owner-state success receipt is absent'; }
     [ "$(grep -Fc 'ANDROID_OWNER_STATE_SUITE=' "$output")" -eq 1 ] \
         || fail 'focused Android owner-state success receipt is duplicated'
+    [ "$(grep -c '^ANDROID_PERMISSION_CALLBACK_CASE=pass name=' "$output")" -eq 4 ] \
+        && grep -Fxq 'ANDROID_PERMISSION_CALLBACK_TEST=pass scenarios=4 assertions=4 xxpermissions=18.5' "$output" \
+        || fail 'Android permission callback results are incomplete'
+    grep '^ANDROID_PERMISSION_CALLBACK_' "$output"
     [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
         || fail 'focused Android owner-state container did not exit cleanly'
     "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
@@ -9705,6 +9715,9 @@ run_android_owner_tests() {
       "$source_archive_sha:$(sha256sum \
           "$source_root/scripts/pins.env" \
           "$source_root/scripts/test-android-owner-state.sh" \
+          "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/AndroidPermissionCallback.kt" \
+          "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/common.kt" \
+          "$source_root/flutter/android/app/src/test/kotlin/com/carriez/flutter_hbb/AndroidPermissionCallbackTest.kt" \
           "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledConnectionType.kt" \
           "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledCaptureOwnerState.kt" \
           "$source_root/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledInputOwner.kt" \
@@ -9722,7 +9735,7 @@ run_android_owner_tests() {
     umount "$inputs" || fail 'cannot retire the sealed Android owner-state input mount'
     SEALED_INPUTS_MOUNTED=0
     printf '%s\n' "$result_line"
-    printf 'ANDROID_OWNER_STATE_VM=pass commit=%s tree=%s classes=7 scenarios=15 assertions=305 kotlin=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none compiler_inputs=verified-copy-readonly root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+    printf 'ANDROID_OWNER_STATE_VM=pass commit=%s tree=%s classes=8 scenarios=19 assertions=309 kotlin=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none compiler_inputs=verified-copy-readonly root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
         "$ANDROID_OWNER_SOURCE_COMMIT" "$ANDROID_OWNER_SOURCE_TREE" \
         "$ANDROID_KOTLIN_VERSION" "$ANDROID_BUILDER_IMAGE_ID" \
         "$ANDROID_BUILDER_CONFIG_ID"

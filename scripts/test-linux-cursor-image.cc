@@ -59,6 +59,16 @@ static bool cursor_matches(GdkDisplay* display, unsigned int width,
                  cursor->xhot == 3 && cursor->yhot == 5;
   for (unsigned int i = 0; matches && i < width * height; ++i)
     matches = static_cast<uint32_t>(cursor->pixels[i]) == color;
+  if (!matches) {
+    static bool reported = false;
+    if (!reported) {
+      printf("CURSOR_IMAGE_MISMATCH width=%u height=%u hotx=%u hoty=%u x=%d y=%d "
+             "first_pixel=%08lx expected_pixel=%08x\n", cursor->width, cursor->height,
+             cursor->xhot, cursor->yhot, cursor->x, cursor->y,
+             cursor->width && cursor->height ? cursor->pixels[0] : 0UL, color);
+      reported = true;
+    }
+  }
   XFree(cursor);
   return matches;
 }
@@ -119,8 +129,7 @@ int main() {
     g_assert_cmpuint(plugin.cache->size(), ==, 1);
     GdkCursor* cursor = plugin.cache->at(args.fields["name"].text);
     gdk_window_set_cursor(surface, cursor);
-    g_assert_true(cursor_matches(display, 32, 24, argb));
-    ++visible;
+    if (cursor_matches(display, 32, 24, argb)) ++visible;
     gdk_window_set_cursor(surface, nullptr);
     gdk_display_sync(display);
     g_assert_true(delete_custom_cursor(&plugin, &args));
@@ -139,5 +148,5 @@ int main() {
   gtk_widget_destroy(window);
   gdk_display_sync(display);
   puts("CURSOR_IMAGE_CLEANUP=pass images=finalized window=destroyed");
-  return released == kRegistrations ? 0 : 1;
+  return released == kRegistrations && visible == kRegistrations ? 0 : 1;
 }

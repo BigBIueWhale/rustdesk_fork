@@ -133535,3 +133535,13 @@ verified against the retained manifest. Capsule `recent-search-ae3115ce.json`
 is 22,887 bytes, SHA-256
 `91f18c66edf30d47f6d5381ddb70f1d565cadb73c377d19ab19691c36e83c1b5`;
 seventeen bounded files are copied and verified.
+
+`Dc4LYFdDAP` at `ea5ba831` stops at existing exact remote-window discovery:
+the third fixture's alias changes the live connection title. Move that fixture
+from `127.0.0.1` to unused guest-loopback `127.0.0.4`; keep the existing discovery
+predicate intact. The three named fixture cards are the observed inventory;
+creation of the separate live peer is outside this search scenario. No search
+or authentication result is claimed for this attempt. Four listener deltas are
+zero; exact cleanup and duplicate-artifact checks pass. Seventeen bounded files
+are retained on both hosts. `recent-search-ea5ba831.json`: 23,181 bytes, SHA-256
+`a90c4de755e8bf0fb4cd2f1f48e47c993550ee03b94348ce70c0ea1dd104b300`.

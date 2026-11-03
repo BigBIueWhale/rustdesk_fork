@@ -1637,7 +1637,7 @@ PY
       echo 'FLUTTER_PEER_MONITOR_ENV toolbar=inline preference=fixture-initialized app=not-started'
     fi
     if [ "$PEER_SCENARIO" = recent-search ]; then
-      # Three non-credential fixture records, including the live connection.
+      # Three non-credential records independent of the live connection.
       # This seeds search inputs, not acceptance of the rename/settings workflow.
       mkdir -m 0700 -p "$HOME/.config/rustdesk/peers"
       python3 - <<'PY'
@@ -1646,7 +1646,7 @@ root = pathlib.Path('/tmp/viewer-home/.config/rustdesk/peers')
 for address, alias, user, host in (
     ('127.0.0.2', 'North desk', 'amber', 'granite'),
     ('127.0.0.3', 'South desk', 'beryl', 'quartz'),
-    ('127.0.0.1', 'Control desk', 'cedar', 'slate'),
+    ('127.0.0.4', 'Control desk', 'cedar', 'slate'),
 ):
     data = ('[info]\nusername = "' + user + '"\nhostname = "' + host
             + '"\nplatform = "Linux"\n[options]\nalias = "' + alias + '"\n').encode()

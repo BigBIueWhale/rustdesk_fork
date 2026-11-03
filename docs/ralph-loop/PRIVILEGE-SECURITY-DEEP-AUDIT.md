@@ -133157,3 +133157,12 @@ orchestration; first establish the controlled multi-display topology and observe
 without expanding resource limits. This checkpoint is source/evidence review:
 no new product defect, correction, monitor runtime pass or release acceptance
 is claimed. All other user parks remain unchanged.
+
+Fresh ledger count `xD63meBWeY` at `28c28cce` passes seven controls and the
+whole-input round trip: 399,097 tokens / 1,826,346 bytes, SHA-256
+`6364ff06a456cdd72479277eccd534b0d9c970e2eaf0fa06e42dcca6b8513b3d`.
+The 29-second transaction has three zero listener deltas and joined process,
+VM/RAM/private cleanup. Twelve bounded records were copied and hash-verified;
+`monitor-pivot-ledger-28c28cce.json` is 4,797 bytes, SHA-256
+`d3a8ad57550d925bd2e7643a84e332dde392fe70746f5b080deff46dd7c00622`.
+No owned job remains. The broader release goal remains active and incomplete.

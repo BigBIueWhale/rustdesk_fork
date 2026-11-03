@@ -135387,3 +135387,14 @@ The required ledger count will also exercise the storage selector inventory:
 existing refusal controls. Update those exact expected totals together; resource
 budgets and refusals are unchanged. Native Windows/installed and complete-release
 acceptance remain open. No owned job remains; concurrent logging stays parked.
+
+Count `mtqtQjb1XU` at `afe10367` passes seven controls and whole-input round trip:
+398,377 tokens / 1,821,344 bytes, SHA-256
+`e5965866242958aadcb37b76598029f57dfa5e96690df55773422595ff6af904`.
+The same execution passes all 81 workload selections and five refusals across
+42 modes, including the PE mode's fixed-archive profile. Three listener deltas
+are zero; exact process/helper/private/RAM retirement passes, with scratch peak
+402,710,528 bytes. Twelve bounded files match on CTE/TUF. Capsule
+`pe-repro-ledger-afe10367.json`: 5,089 bytes, SHA-256
+`5c08be361b9535826119ba8a6afd8c43a06d1415caa126841168c886ba6cf7a6`.
+This audit-only receipt preserves the counted ledger. No owned job remains.

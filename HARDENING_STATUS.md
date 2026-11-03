@@ -43,6 +43,27 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-03):** Connecting from a filtered Recent-computer card
+remains OPEN/PARKED after read-only preparation; no new fixture, product patch
+or connection replay ran. The completed search cases below remain valid.
+Work moved to Linux application build reproducibility. All independent parks remain.
+
+**Linux application reproducibility — exact-source double build passes (2026-11-03).**
+Independent no-NIC runs `G8C9spTcwm` and `xM3cmb8D8T` build commit `9f78434c`
+from fresh generated state using the same pinned inputs and retained engine
+`ddb1541d`. All 74 payload files (70,340,674 bytes), directory inventories and
+complete manifests are identical. Each build passes thirteen widget and two
+native command checks. The payload also matches previously tested app `f043c5ae`.
+`linux-repro-pair-9f78434c.json` binds both runs, manifests and comparison;
+the shared app-manifest SHA-256 is
+`a366e2066d1e46e9ae16aece2bdfa45d58ac745bac6b3f6117b7cb3250f82cd0`.
+Eight listener deltas are zero, and both VM/RAM/private workspaces retire.
+Superseded cache `c6aed851` and build A's duplicate payload are removed after
+verification; build B is retained within the four-generation cache limit.
+This closes the named unpackaged Linux app comparison only. The engine was
+reused; complete Debian/Android/Windows release artifacts, engine reproduction,
+independent-operator reproduction and installed/release acceptance remain OPEN.
+
 **User pivot (2026-11-03):** Monitor-selection work is OPEN/PARKED.
 Retained app `f043c5ae` passes ordinary left/right/left selection, but native
 burst replay `0vebGh5CF0` ends on the wrong monitor after sixteen injected

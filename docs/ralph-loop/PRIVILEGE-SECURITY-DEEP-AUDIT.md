@@ -133597,3 +133597,80 @@ Twelve bounded records are copied and verified. Capsule
 `10a2b23db8f8313f881bf1704d551a6cf5ee7bb33b45f0e9b1551563dfd8da64`.
 The named native Recent-search checkpoint is complete; no owned job remains.
 Broader product/release acceptance and every independent park remain OPEN.
+
+## 2026-11-03 — user pivot: Linux application byte reproducibility
+
+The user asks to focus on a different aspect. The proposed connection from a
+filtered Recent-computer card remains OPEN/PARKED after read-only preparation;
+no new fixture, product edit or connection replay ran. Existing search evidence
+and every independent park remain. Select R-B2's missing exact-source artifact
+comparison ahead of another saved-computer UI scenario: two actual application
+builds can establish a release prerequisite without expanding a source verifier.
+
+Acceptance requires the same committed source, pinned build context and complete
+payload inventory to produce identical bytes from independently generated state.
+Each pass uses a fresh no-NIC VM and private build/source/compiler directories;
+the second begins only after the first's processes and RAM workspace retire.
+The retained authenticated engine is an input, not a second engine build.
+The existing producer runs the release Rust and Flutter compilers, regenerates
+the bridge/plugins, preserves lockfiles, fixes SOURCE_DATE_EPOCH and verifies
+its inputs before and after compilation. No product or harness change is needed.
+
+Research: the [Reproducible Builds definition](https://reproducible-builds.org/docs/definition/)
+requires identical specified artifacts under the same source, environment and
+instructions. The [exact pinned Flutter AOT implementation](https://github.com/flutter/flutter/blob/6a19cca56475dbfba1478ee68d7bd0c2ef891da1/packages/flutter_tools/lib/src/base/build.dart#L123)
+passes `--deterministic`; that flag is supporting context, not an equality result.
+The [Rust path-remapping documentation](https://doc.rust-lang.org/rustc/remap-source-paths.html)
+identifies compiler paths as another reproducibility input. These runs hold
+container-visible build paths fixed; they do not establish arbitrary-path equality.
+
+Before admission, TUF has 47,395,644 KiB available memory, no private/RAM run
+markers and no owned VM. The four-generation app cache is full. Under the shared
+lock, exact descriptor-relative inventory and SHA verification precede retirement
+of superseded `c6aed851`: 75 files including its manifest, 70,349,645 bytes.
+Retained `f043c5ae`, baseline `7e6f6459` and parked `0ccb2a7e` keep their exact
+generation identities. `repro-old-c6aed851-retirement.json` retains the decision
+and manifest identity. No source, canonical input or unrelated host data is removed.
+
+Both builds execute commit `9f78434cc37dc7422d47b3f53e0a28f855f0c0d7`, tree
+`4ff230c16c9f772bec892864a485173f9bc2e7a8`, with engine `ddb1541d`, Rust 1.75,
+Flutter 3.47.5 and epoch 1700000000. Their identical command is recorded in each
+capsule: `scripts/smoke-verifier-vm-authority.sh --linux-flutter-app-build` plus
+the exact engine commit/archive/manifest pins. The source-bound recipe is
+`a698100f38c76f17bde650377a977cb116995f4768f24366f75be080d084adc3`.
+
+| Pass | Run | Capture duration | Evidence capsule SHA-256 |
+| --- | --- | --- | --- |
+| A | `G8C9spTcwm` | 1,061.65 s | `2b035891df3461fd3f67173d1af22dd5083c11d5bacb6cf9297d3c649bc8d1d4` |
+| B | `xM3cmb8D8T` | 1,052.63 s | `b6f0a88bc791cb63ff19805bbab8ff55ca1175b62e48219a7193b63195894b7b` |
+
+The capsules are `linux-repro-a-9f78434c.json` (7,367 bytes) and
+`linux-repro-b-9f78434c.json` (7,406 bytes), under `.harness-state/verifier-vm/`.
+Each pass succeeds with thirteen actual widget cases and two native command
+cases. Native test binaries also match; this does not substitute for the payload
+comparison. All **74 payload files / 70,340,674 bytes**, directory inventories,
+contexts and complete 13,067-byte manifests match. Shared manifest SHA-256:
+`a366e2066d1e46e9ae16aece2bdfa45d58ac745bac6b3f6117b7cb3250f82cd0`.
+Every payload file also matches retained app `f043c5ae`, which has no production
+source difference from this commit. There is no new product patch to validate.
+
+Pass A's duplicate payload is exactly verified and retired before pass B;
+its manifest and raw evidence remain. The 702-byte retirement receipt has SHA-256
+`f93de096dcf1bc60a611a70d4757c2b57cc8c56048187011a885563918bb966c`.
+Pass B is retained as the fourth generation. The complete comparison capsule,
+`linux-repro-pair-9f78434c.json`, is 4,453 bytes, SHA-256
+`6befad82d172b7f0bb5fc8b9339c6136b92a769d99d851083cf6a70837349cbe`.
+
+Both exact wrappers/QEMU processes and their helpers retire; guest containers,
+private directories and RAM workspaces join cleanup. All eight host listener
+deltas are zero. Maximum scratch allocation is 11,891,228,672 bytes within the
+16-GiB admitted workspace; no disposable VM disk image remains. Thirty-one bounded records
+are copied and hash-verified on CTE, including manifests, raw logs, cleanup,
+cache retirements and the comparison. The live ledger records this checkpoint;
+its required fresh whole-file token count follows.
+
+This establishes repeated unpackaged Linux x86-64 application/readiness-probe
+bytes on the same host and pinned builder with independent generated state.
+It does not establish engine rebuild equality, final Debian/Android/Windows
+artifacts, independent-operator reproduction, signing, installed behavior or
+complete R-B2/R-B10/release acceptance. Those and all user parks remain OPEN.

@@ -255,20 +255,21 @@ class PEImage:
                 raise PEFormatError(f"debug directory overlaps {structure[2]}")
 
         entries = debug_size // 28
+        repro_entries = 0
         timestamps: list[ByteRange] = []
         payloads: list[tuple[ByteRange, int, int]] = []
         for index in range(entries):
             entry = directory + index * 28
             timestamps.append((entry + 4, entry + 8, f"debug entry {index} timestamp"))
             debug_type = _u32(self.data, entry + 12, "debug type")
+            if debug_type == IMAGE_DEBUG_TYPE_REPRO:
+                repro_entries += 1
             data_size = _u32(self.data, entry + 16, "debug data size")
             data_rva = _u32(self.data, entry + 20, "debug data RVA")
             data_offset = _u32(self.data, entry + 24, "debug raw-data pointer")
             if data_size == 0:
                 if data_rva != 0 or data_offset != 0:
                     raise PEFormatError(f"debug entry {index} has an inconsistent empty payload")
-                if debug_type == IMAGE_DEBUG_TYPE_REPRO:
-                    raise PEFormatError("IMAGE_DEBUG_TYPE_REPRO has no payload")
                 continue
             if data_rva == 0 or data_offset == 0:
                 raise PEFormatError(f"debug entry {index} has a nonempty payload without both mappings")
@@ -300,7 +301,7 @@ class PEImage:
             for payload, debug_type, index in payloads
             if debug_type == IMAGE_DEBUG_TYPE_REPRO
         ]
-        return entries, len(repro_ranges), timestamps + repro_ranges
+        return entries, repro_entries, timestamps + repro_ranges
 
 
 def canonicalize_bytes(source: bytes) -> tuple[bytes, tuple[int, int]]:

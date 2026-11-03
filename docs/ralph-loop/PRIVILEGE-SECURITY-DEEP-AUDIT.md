@@ -135241,3 +135241,35 @@ and unrelated-family preservation. Pipe coordination replaces timing sleeps;
 the resident is released/joined even if a short-child operation returns an error.
 The existing four controls remain. Product logging is unchanged; baseline
 execution and exact-artifact cleanup are pending. All independent parks remain.
+
+Baseline `4fGBSARpVr` at `1401acc9` reproduces the failure. The resident's initial
+record is observed before the forty short children start. All forty exit zero;
+the resident then accepts its finish command, emits the final record and exits
+zero. The parent joins it and reads the remaining files: resident_final=false,
+newest=true, files=32. The fresh resident record assertion fails. The later bound
+and unrelated-file assertions are not reached and are not claimed as passing for
+this case. The four earlier builder/startup/size/retention controls pass unchanged.
+Five-case execution takes 0.26 seconds; the outer transaction takes 131 seconds.
+The artifact SHA-256, unchanged before/after, is
+`9bff5e4007972b87c1ca7ad7003b8e06d125668974315e0c14f5444bbcf860f8`.
+
+The guest failure export includes the artifact-start line both in its explicit
+metadata preface and in the diagnostic tail. Reconciliation checks both identical
+copies, the sole five named outcomes and the matching exit-101 artifact receipt;
+this duplication is not another test execution. Four listener deltas are zero.
+Exact wrapper/QEMU/helper absence and RAM retirement pass. The bounded retained
+private diagnostics are inventoried and retired under the shared lock. Peak RAM
+scratch is 3,510,874,112 bytes; thirteen evidence files match on CTE/TUF.
+`file-log-overlap-1401acc9.json`: 14,695 bytes, SHA-256
+`74da132ffa010d1aa774b3697f103226af56f6eed0e2da3524eb014c29bd110f`.
+
+The source mechanism is shared pathname rotation/cleanup combined with an older
+process's retained writer handle. The test establishes lost fresh output, not a
+complete installed GUI failure or a privilege-escalation result. This changes the
+next action from additional acceptance sampling to correcting writer/retention
+ownership. Merely adding a PID to filenames would split retention into unbounded
+historical process families; merely appending would still leave per-process
+rotation state and stale open handles during another writer's rotation. Preserve
+the real existing cases and this failing case while designing the shared ownership
+and bounded retirement model. The current implementation remains uncorrected.
+No owned job remains; other parked work stays parked and the release goal is active.

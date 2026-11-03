@@ -65,7 +65,20 @@ and exact process/private/RAM retirement; the earlier capsule remains valid.
 Product logging is unchanged. This nonoptimized library artifact does not prove
 full-app/installed startup, concurrent writers, crashes, daily rollover, privileged
 namespaces or other platforms. Those remain OPEN; single-record and Windows-log
-work stay parked. Concurrent live writers are the next distinct evidence gap.
+work stay parked. Concurrent loss below remains OPEN.
+
+**Concurrent log retention — OPEN, reproduced.** Linux permits multiple primary
+UI processes, whose role/executable log family is shared. At `1401acc9`, one
+resident logger remains alive while forty other actual-init processes write and
+exit. Its initial record is visible; its fresh final record is absent from all
+retained logs, while the newest short-lived record survives. All children join.
+The new case fails and the four earlier controls pass in 0.26 seconds (131 outer
+seconds). `file-log-overlap-1401acc9.json` binds the actual library artifact,
+four zero listener deltas and exact process/private/RAM retirement. Product
+logging is unchanged; correction is pending. This is an ordinary-user Linux
+logger-component failure, not installed/full-UI or privilege-boundary evidence.
+Next: give live writers stable ownership through rotation/retention while keeping
+storage bounded across starts; process-specific names alone do not establish that.
 
 **Earlier pivot (2026-11-03):** Android imported-backup restore acceptance is
 OPEN/PARKED before execution; its six unfinished harness edits are preserved in

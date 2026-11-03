@@ -2878,6 +2878,102 @@ finished:
     return result;
 }
 
+static int exercise_mouse_bursts(Display *source, Display *display,
+                                  const ViewerWindow *viewer,
+                                  const ConnectionIdentity *connection,
+                                  const ProcessResources *baseline) {
+    static const struct {
+        unsigned int count;
+        int steps[10];
+        unsigned int before[10];
+    } cases[] = {
+        {4U, {1, 3, -1, -3}, {0U, 256U, 1280U, 1024U}},
+        {6U, {1, 2, 3, -2, -1, -3}, {0U, 256U, 768U, 1792U, 1280U, 1024U}},
+        {10U, {1, 2, 3, 8, 9, -1, -8, -3, -9, -2},
+         {0U, 256U, 768U, 1792U, 1792U, 1792U, 1536U, 1536U, 512U, 512U}},
+    };
+    const unsigned long delays[] = {0UL, 5UL};
+    Window root = RootWindow(source, DefaultScreen(source));
+    unsigned int held = 0U;
+    int result = -1;
+    for (unsigned int timing = 0U; timing < 2U; ++timing) {
+        for (unsigned int i = 0U; i < 3U; ++i) {
+            unsigned int sequence = timing * 3U + i + 1U;
+            unsigned int wanted = cases[i].count * 4U, received = 0U, events = 0U;
+            uint64_t start = monotonic_millis(), complete = 0U;
+            if (!mouse_buttons_match(source, 0U) || !mouse_buttons_match(display, 0U)) goto finished;
+            for (unsigned int step = 0U; step < wanted; ++step) {
+                int transition = cases[i].steps[step % cases[i].count];
+                int down = transition > 0;
+                unsigned int button = (unsigned int)(down ? transition : -transition);
+                unsigned int bit = 1U << button;
+                if (((held & bit) != 0U) == down ||
+                    XTestFakeButtonEvent(display, button, down, delays[timing]) == 0) goto finished;
+                held = down ? held | bit : held & ~bit;
+            }
+            /* One local flush after the whole burst; no remote event gates an injection. */
+            XSync(display, False);
+            if (held != 0U || !mouse_buttons_match(display, 0U)) goto finished;
+            printf("FLUTTER_PEER_MOUSE_BURST_SENT sequence=%u events=%u delay_ms=%lu "
+                   "repeats=4 remote_waits=0 viewer_released=true\n", sequence, wanted, delays[timing]);
+            do {
+                while (XPending(source) != 0) {
+                    XEvent event;
+                    if (++events > 512U) goto finished;
+                    XNextEvent(source, &event);
+                    if (event.type != ButtonPress && event.type != ButtonRelease) continue;
+                    if (received >= wanted) goto finished;
+                    unsigned int step = received % cases[i].count;
+                    int transition = cases[i].steps[step];
+                    unsigned int button = (unsigned int)(transition > 0 ? transition : -transition);
+                    printf("FLUTTER_PEER_MOUSE_BURST_EVENT sequence=%u event=%u type=%d button=%u "
+                           "state=%u synthetic=%d\n", sequence, received + 1U, event.type,
+                           event.xbutton.button, event.xbutton.state, event.xbutton.send_event);
+                    if (event.xbutton.window != root || event.xbutton.send_event ||
+                        event.type != (transition > 0 ? ButtonPress : ButtonRelease) ||
+                        event.xbutton.button != button || event.xbutton.state != cases[i].before[step]) {
+                        fprintf(stderr, "FLUTTER_PEER_X11_FAIL mouse burst=%u event=%u expected_button=%u "
+                                "expected_type=%d expected_state=%u\n", sequence, received + 1U,
+                                button, transition > 0 ? ButtonPress : ButtonRelease, cases[i].before[step]);
+                        goto finished;
+                    }
+                    if (++received == wanted) complete = monotonic_millis();
+                }
+                if (complete != 0U) {
+                    if (!mouse_buttons_match(source, 0U) || !mouse_buttons_match(display, 0U)) goto finished;
+                    if (monotonic_millis() - complete >= 100U) break;
+                }
+                if (sleep_millis(10U) != 0) goto finished;
+            } while (monotonic_millis() - start < 5000U);
+            ConnectionIdentity after = {{0}, {0}, 0UL};
+            ProcessResources resources;
+            ViewerWindow current = {0};
+            if (received != wanted || complete == 0U || monotonic_millis() - start >= 5000U ||
+                find_viewer_window(display, viewer->pid, &current) != 0 || current.window != viewer->window ||
+                read_connection_identity(&after) != 0 || !same_connection(connection, &after) ||
+                read_process_resources(viewer->pid, &resources) != 0 ||
+                !resources_are_bounded(baseline, &resources)) {
+                fprintf(stderr, "FLUTTER_PEER_X11_FAIL mouse burst=%u received=%u expected=%u\n",
+                        sequence, received, wanted);
+                goto finished;
+            }
+            print_resources("mouse-burst", sequence, &resources);
+            printf("FLUTTER_PEER_MOUSE_BURST_CASE_OK sequence=%u events=%u delay_ms=%lu repeats=4 "
+                   "elapsed_ms=%llu released=both quiet_ms=100 stable_connection=true\n", sequence,
+                   received, delays[timing], (unsigned long long)(monotonic_millis() - start));
+            fflush(stdout);
+        }
+    }
+    result = 0;
+finished:
+    for (unsigned int b = 1U; b <= 9U; ++b) {
+        if ((held & (1U << b)) != 0U &&
+            XTestFakeButtonEvent(display, b, False, CurrentTime) == 0) result = -1;
+    }
+    XSync(display, False);
+    return result;
+}
+
 static int exercise_mouse_input(Display *source, Display *display,
                                 const ViewerWindow *viewer,
                                 const ConnectionIdentity *connection,
@@ -3046,6 +3142,7 @@ static int exercise_mouse_input(Display *source, Display *display,
         fflush(stdout);
     }
     result = exercise_mouse_chords(source, display, viewer, connection, baseline);
+    if (result == 0) result = exercise_mouse_bursts(source, display, viewer, connection, baseline);
 finished:
     /* Retire only fixture-injected viewer input; never manufacture controlled-side releases. */
     if (injected_held != 0U) {
@@ -7646,7 +7743,7 @@ int main(int argc, char **argv) {
                  "viewer_exit=abrupt native_releases=true fixture_buttons_released=true");
         } else if (mouse_input) {
             puts("FLUTTER_PEER_MOUSE_INPUT_OK cases=21 button_events=42 drag_moves=2 "
-                 "wheel_directions=4 outside_releases=5 reentries=5 side_buttons=2 chord_cases=3 chord_events=20 "
+                 "wheel_directions=4 outside_releases=5 reentries=5 side_buttons=2 chord_cases=3 chord_events=20 burst_cases=6 burst_events=160 "
                  "actual_peer=true native_events=true released=both "
                  "same_window=true stable_connection=true resources=bounded");
         } else if (keyboard_retirement) {

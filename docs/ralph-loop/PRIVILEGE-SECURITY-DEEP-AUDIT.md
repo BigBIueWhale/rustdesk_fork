@@ -134001,3 +134001,25 @@ Twelve evidence files are copied and hash-verified on CTE.
 `mouse-chords-ledger-56bbc356.json`: 4,792 bytes, SHA-256
 `7e62ce451e660a1c5a140871366a2d4357d40095f439c79e3b5076ae38f51716`.
 This audit-only receipt leaves the counted ledger unchanged. No owned job remains.
+
+## 2026-11-03 — native mouse burst ordering
+
+Previous goal turn: progress. Three full-peer overlapping-button schedules pass,
+but their per-event remote observation/quiet interval serializes the producer.
+Continue R-F1/R-S0 remote input with the explicit remaining ordering gap, ahead
+of unrelated UI cleanup. Cursor and every independent parked topic stay parked.
+Current CTE/TUF are clean at `530e4f33`; TUF has no owned run/RAM marker and
+47,375,560 KiB available memory. Reuse app `9f78434c` / engine `ddb1541d`.
+
+The Linux ordinary-button Flutter path and Back/Forward GTK method channel are
+distinct. Add six native burst schedules: the same two/three/five-button sequences,
+four repetitions per batch, at zero and five milliseconds requested XTEST spacing.
+Queue each complete batch before one local XSync; never wait for a remote event
+between injections. Require all 160 transitions in exact order with native
+pre-event button state, no extra transitions through a 100-ms quiet interval,
+final release on both X servers and the same window/connection/resource bounds.
+The controlled observer injects nothing. Existing paced cases remain controls.
+The five-second batch deadline and bounded event/log inventory remain finite.
+XTEST's delay applies before each event and orders subsequent requests from the
+same client; it is not a remote acknowledgement or measured device timing:
+https://www.x.org/releases/X11R7.7/doc/libXtst/xtestlib.pdf.

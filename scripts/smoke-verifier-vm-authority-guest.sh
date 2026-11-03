@@ -317,6 +317,7 @@ case "$#:${8:-}" in
                 --view-scaling) FLUTTER_VIEW_SCALING=1 ;;
                 --session-close) FLUTTER_SESSION_CLOSE=1 ;;
                 --monitor-switch) FLUTTER_MONITOR_SWITCH=1 ;;
+                --monitor-burst) FLUTTER_MONITOR_SWITCH=2 ;;
                 --wake-lock) FLUTTER_SESSION_CLOSE=3 ;;
                 --image-quality) FLUTTER_IMAGE_QUALITY=1 ;;
                 --quality-restart) FLUTTER_QUALITY_RESTART=1 ;;
@@ -14157,7 +14158,8 @@ run_flutter_peer_presentation() {
     [ "$FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE" -eq 0 ] || peer_args+=(--screenshot-save-unavailable)
     [ "$FLUTTER_VIEW_SCALING" -eq 0 ] || peer_args+=(--view-scaling)
     [ "$FLUTTER_SESSION_CLOSE" -ne 1 ] || peer_args+=(--session-close)
-    [ "$FLUTTER_MONITOR_SWITCH" -eq 0 ] || peer_args+=(--monitor-switch)
+    [ "$FLUTTER_MONITOR_SWITCH" -ne 1 ] || peer_args+=(--monitor-switch)
+    [ "$FLUTTER_MONITOR_SWITCH" -ne 2 ] || peer_args+=(--monitor-burst)
     [ "$FLUTTER_SESSION_CLOSE" -ne 3 ] || peer_args+=(--wake-lock)
     [ "$FLUTTER_IMAGE_QUALITY" -eq 0 ] || peer_args+=(--image-quality)
     [ "$FLUTTER_QUALITY_RESTART" -eq 0 ] || peer_args+=(--quality-restart)
@@ -14233,7 +14235,7 @@ run_flutter_peer_presentation() {
             || fail 'actual Linux Flutter app preparation receipt is absent or duplicated'
     else
     [ "$(grep -Fxc "LINUX_FLUTTER_APP_ADMITTED=pass harness_commit=$FLUTTER_PEER_SOURCE_COMMIT app_commit=$FLUTTER_APP_COMMIT app_tree=$FLUTTER_APP_TREE manifest_sha256=$FLUTTER_APP_MANIFEST_SHA256 execution=vm-private build=absent" "$output")" -eq 1 ] \
-        && [ "$(grep -Fxc "LINUX_FLUTTER_DRIVERS_COMPILED=pass files=$((3 + FLUTTER_MONITOR_SWITCH)) builds=2 equality=bytes app=unbuilt" "$output")" -eq 1 ] \
+        && [ "$(grep -Fxc "LINUX_FLUTTER_DRIVERS_COMPILED=pass files=$((3 + (FLUTTER_MONITOR_SWITCH != 0))) builds=2 equality=bytes app=unbuilt" "$output")" -eq 1 ] \
         || fail 'Linux replay app admission or native driver compilation receipt differs'
     if grep -Eq '^LINUX_FLUTTER_APP_COMPILED=|^FLUTTER_PEER_BUILD_PHASE=' "$output"; then
         fail 'Linux replay unexpectedly built an app'
@@ -14295,6 +14297,9 @@ run_flutter_peer_presentation() {
         peer_cycles=1
     elif [ "$FLUTTER_IMAGE_QUALITY" -eq 1 ]; then
         peer_scenario=image-quality
+        peer_cycles=1
+    elif [ "$FLUTTER_MONITOR_SWITCH" -eq 2 ]; then
+        peer_scenario=monitor-burst
         peer_cycles=1
     elif [ "$FLUTTER_MONITOR_SWITCH" -eq 1 ]; then
         peer_scenario=monitor-switch

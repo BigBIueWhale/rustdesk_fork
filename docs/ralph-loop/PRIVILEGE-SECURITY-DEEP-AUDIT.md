@@ -133291,3 +133291,31 @@ state retire, and twelve bounded records are copied and hash-verified.
 `5ad67d596b544e13c5c96a712beeceaed20934badf816d34c79c2f48fff61f35`.
 No owned job remains. This completes the selected monitor-switching checkpoint;
 the broader release goal remains active and incomplete.
+
+### 2026-11-03 — rapid monitor-selection finality
+
+The preceding turn made progress: retained-app ordinary left/right/left
+selection, fresh pixels, relative remote pointer mapping and joined cleanup
+passed. Continue R-S11go/R-S11gq with rapid final-choice ownership, a more
+decisive next check than extending appearance coverage. Source review identifies
+a hypothesis: `_MonitorMenu.onPressed` ignores a choice equal to the currently
+committed display even when a different selection may be in flight. This is
+not yet a reproduced product defect. `openMonitorInTheSameTab` awaits native
+admission before committing topology; the bounded selection queue cannot retain
+a choice that its caller never submits.
+
+Add retained-app `--monitor-burst`, enabling the shipped inline-monitor
+preference only in the fresh isolated viewer profile before app startup. This
+is fixture initialization, not acceptance of the settings workflow. After a
+left baseline, inject four alternating batches of 16/17/16/17 pointer clicks
+through the actual monitor buttons, finishing left/right/right/left. Even
+batches return to their starting display and specifically challenge a lost
+final choice. Each batch must finish X-server processing within 250 ms without
+waiting for admission or intervening frames. XTEST documents synthetic input
+and request ordering, not application consumption:
+https://xorg.freedesktop.org/archive/X11R7.7/doc/libXtst/xtestlib.html .
+The existing exact-display fresh-frame, relative pointer, connection/window
+identity and resource observations decide each resulting state. Do not claim
+all injected clicks became native selection transactions or prove queue
+overlap solely from XSync. Reuse the same app, engine, topology and resource
+bounds; no product edit or native pass is claimed before execution.

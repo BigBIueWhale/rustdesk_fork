@@ -26,7 +26,7 @@ MENU_ACTION=pointer
 [ "$PEER_SCENARIO" != credential-menu-accessible ] || MENU_ACTION=accessible
 readonly MENU_ACTION
 case "$PEER_SCENARIO" in
-  monitor-switch) EXPECTED_RESTARTS=0 ;;
+  monitor-switch|monitor-burst) EXPECTED_RESTARTS=0 ;;
   wake-lock) EXPECTED_RESTARTS=0 ;;
   keyboard-restart|keyboard-save-failure|keyboard-translate|keyboard-repeat) EXPECTED_RESTARTS=0 ;;
   session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|language-restart|language-direction|quality-restart|viewer-isolation|viewer-soak|input-latency|input-soak|image-quality|image-quality-save-failure|audio-mute) EXPECTED_RESTARTS=0 ;;
@@ -37,7 +37,10 @@ case "$PEER_SCENARIO" in
 esac
 readonly EXPECTED_RESTARTS
 DRIVERS=(flutter-peer-source-x11 flutter-peer-presentation-x11 smoke-bind-loopback.so)
-[ "$PEER_SCENARIO" != monitor-switch ] || DRIVERS+=(test-x11-monitor-topology)
+TWO_MONITORS=0
+case "$PEER_SCENARIO" in monitor-switch|monitor-burst) TWO_MONITORS=1 ;; esac
+readonly TWO_MONITORS
+[ "$TWO_MONITORS" -eq 0 ] || DRIVERS+=(test-x11-monitor-topology)
 readonly DRIVERS
 LONG_SOAK=0
 INPUT_RESPONSE=0
@@ -548,7 +551,7 @@ PY
         /source/scripts/smoke-bind-loopback.c \
         -Wl,-z,relro,-z,now,-z,noexecstack -ldl \
         -o "/tmp/drivers.$pass/smoke-bind-loopback.so"
-      if [ "$PEER_SCENARIO" = monitor-switch ]; then
+      if [ "$TWO_MONITORS" -eq 1 ]; then
         verify_regular /source/scripts/test-x11-monitor-topology.c
         /usr/bin/cc -std=c11 -O2 -Wall -Wextra -Werror -DMONITOR_FIXTURE_UID=1000 \
           /source/scripts/test-x11-monitor-topology.c \
@@ -1137,13 +1140,13 @@ PY
         || fail "controlled server generation $generation retained a socket after teardown"
     }
     source_geometry=640x480x24
-    [ "$PEER_SCENARIO" != monitor-switch ] || source_geometry=1280x480x24
+    [ "$TWO_MONITORS" -eq 0 ] || source_geometry=1280x480x24
     start_xvfb :98 "$source_geometry" /tmp/server-xvfb.log
-    if [ "$PEER_SCENARIO" = monitor-switch ]; then
+    if [ "$TWO_MONITORS" -eq 1 ]; then
       /out/test-x11-monitor-topology prepare
     fi
     source_args=()
-    [ "$PEER_SCENARIO" != monitor-switch ] || source_args+=(--two-monitors)
+    [ "$TWO_MONITORS" -eq 0 ] || source_args+=(--two-monitors)
     [ "$INPUT_RESPONSE" -eq 0 ] || source_args+=(--input-response "$COORD")
     set -o noclobber
     RUSTDESK_PRESENTATION_TRACE=1 "$SOURCE_FIXTURE" "${source_args[@]}" >"$COORD/frame-source.log" 2>&1 &
@@ -1491,7 +1494,7 @@ PY
     SOURCE_PID= SOURCE_START=
     grep -q '^FLUTTER_PEER_SOURCE_COMPLETE ' "$COORD/frame-source.log" \
       || { cat "$COORD/frame-source.log" >&2; fail 'source fixture did not close exactly'; }
-    if [ "$PEER_SCENARIO" = monitor-switch ]; then
+    if [ "$TWO_MONITORS" -eq 1 ]; then
       /out/test-x11-monitor-topology retire
     fi
     "$READY" --stop "$XVFB_PID" "$XVFB_START"
@@ -1623,6 +1626,15 @@ PY
       APPEARANCE_START=$("$READY" --identity "$APPEARANCE_PID")
       echo 'FLUTTER_PEER_THEME_OS_ENV backend=keyfile portal=absent initial=light'
     fi
+    if [ "$PEER_SCENARIO" = monitor-burst ]; then
+      # Fixture initialization only: select the shipped inline-monitor preference
+      # before any app process starts. This is not settings-UI acceptance.
+      mkdir -m 0700 -p "$HOME/.config/rustdesk"
+      set -o noclobber
+      printf '[options]\nshow_monitors_toolbar = "Y"\n' > "$HOME/.config/rustdesk/RustDesk_default.toml"
+      set +o noclobber
+      echo 'FLUTTER_PEER_MONITOR_ENV toolbar=inline preference=fixture-initialized app=not-started'
+    fi
     for viewer_generation in $(seq 1 "$viewer_generations"); do
     viewer_environment=()
     [ "$PEER_SCENARIO" != theme-appearance ] || viewer_environment+=(G_MESSAGES_DEBUG=all)
@@ -1697,6 +1709,7 @@ PY
     [ "$PEER_SCENARIO" != view-scaling ] || controller_args+=(--view-scaling)
     [ "$PEER_SCENARIO" != session-close ] || controller_args+=(--session-close)
     [ "$PEER_SCENARIO" != monitor-switch ] || controller_args+=(--monitor-switch)
+    [ "$PEER_SCENARIO" != monitor-burst ] || controller_args+=(--monitor-burst)
     [ "$PEER_SCENARIO" != wake-lock ] || controller_args+=(--wake-lock)
     [ "$PEER_SCENARIO" != image-quality ] || controller_args+=(--image-quality)
     [ "$PEER_SCENARIO" != image-quality-save-failure ] || controller_args+=(--image-quality-save-failure)
@@ -1973,6 +1986,15 @@ PY
         && grep -Fxq 'FLUTTER_PEER_SESSION_CLOSE_OK action=pointer remote=retired connected_sockets=0 listener=preserved main=usable process=preserved' \
         <<<"$controller_output" || fail 'native wake-lock retirement result is absent'
       viewer_result='viewer=joined xvfb=joined wake_lock=passed release=explicit sender=live provider=joined'
+    elif [ "$PEER_SCENARIO" = monitor-burst ]; then
+      for sequence in 1 2 3 4 5; do
+        [ "$(grep -Ec "^FLUTTER_PEER_MONITOR_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
+          || fail "monitor burst result $sequence is absent or duplicated"
+      done
+      [ "$(grep -c '^FLUTTER_PEER_MONITOR_BURST_SENT ' <<<"$controller_output")" -eq 4 ] \
+        && grep -Fxq 'FLUTTER_PEER_MONITOR_BURST_OK monitors=2 bursts=4 clicks=66 phases=5 fresh_frames=20 pointer_targets=10 stable_connection=true same_window=true resources=bounded' \
+        <<<"$controller_output" || fail 'native monitor burst result is absent'
+      viewer_result='viewer=joined xvfb=joined monitor_burst=passed phases=5 clicks=66 pixels=fresh pointer=matched stable_connection=true'
     elif [ "$PEER_SCENARIO" = monitor-switch ]; then
       for sequence in 1 2 3; do
         [ "$(grep -Ec "^FLUTTER_PEER_MONITOR_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \

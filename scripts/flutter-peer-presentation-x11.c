@@ -5410,18 +5410,77 @@ out:
     return result;
 }
 
+static int click_monitor_burst(Display *display, const ViewerWindow *viewer,
+                               unsigned int first, unsigned int clicks, unsigned int sequence) {
+    AtspiRect buttons[2];
+    Window child;
+    int origin_x, origin_y, result = -1, held = 0;
+    unsigned int mask;
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    if (first > 1U || clicks < 2U || clicks > 17U ||
+        !XTranslateCoordinates(display, viewer->window, DefaultRootWindow(display),
+                               0, 0, &origin_x, &origin_y, &child)) return -1;
+    for (unsigned int side = 0U; side < 2U; ++side) {
+        AtspiAccessible *button = NULL;
+        AtspiStateSet *states = NULL;
+        if (query_named_accessible((unsigned int)viewer->pid, side ? "2" : "1",
+                                   deadline, &button, 0) != 0) return -1;
+        if (button != NULL) states = atspi_accessible_get_state_set(button);
+        int valid = states != NULL && atspi_state_set_contains(states, ATSPI_STATE_ENABLED) &&
+            atspi_state_set_contains(states, ATSPI_STATE_SENSITIVE) &&
+            read_accessible_rect(button, &buttons[side]) == 0;
+        g_clear_object(&states);
+        g_clear_object(&button);
+        if (!valid || buttons[side].x < origin_x || buttons[side].y < origin_y ||
+            (int64_t)buttons[side].x + buttons[side].width > (int64_t)origin_x + viewer->width ||
+            (int64_t)buttons[side].y + buttons[side].height > (int64_t)origin_y + viewer->height)
+            return -1;
+    }
+    if ((int64_t)buttons[0].x + buttons[0].width > buttons[1].x) return -1;
+    int x, y;
+    if (mouse_snapshot(display, &x, &y, &mask) != 0 || mask != 0U) return -1;
+    uint64_t started = monotonic_millis();
+    /* Send a bounded batch through the actual X input path without awaiting
+     * Dart admission or intervening frames. XSync proves X-server processing,
+     * not app consumption; selected pixels and remote input decide the result. */
+    for (unsigned int index = 0U; index < clicks; ++index) {
+        AtspiRect *button = &buttons[(first + index) % 2U];
+        if (!XTestFakeMotionEvent(display, DefaultScreen(display),
+                                 button->x + button->width / 2,
+                                 button->y + button->height / 2, CurrentTime) ||
+            !XTestFakeButtonEvent(display, 1U, True, CurrentTime)) goto out;
+        held = 1;
+        if (!XTestFakeButtonEvent(display, 1U, False, CurrentTime)) goto out;
+        held = 0;
+    }
+    XSync(display, False);
+    uint64_t elapsed = monotonic_millis() - started;
+    AtspiRect *last = &buttons[(first + clicks - 1U) % 2U];
+    if (elapsed > 250U || mouse_snapshot(display, &x, &y, &mask) != 0 || mask != 0U ||
+        x != last->x + last->width / 2 || y != last->y + last->height / 2) goto out;
+    printf("FLUTTER_PEER_MONITOR_BURST_SENT sequence=%u clicks=%u first=%u final=%u "
+           "elapsed_ms=%llu button=released waits_for_frames=0\n", sequence, clicks,
+           first, (first + clicks - 1U) % 2U, (unsigned long long)elapsed);
+    result = 0;
+out:
+    if (held && !XTestFakeButtonEvent(display, 1U, False, CurrentTime)) result = -1;
+    XSync(display, False);
+    return result;
+}
+
 static int exercise_monitor_switch(Display *source, Display *display,
                                     const ViewerWindow *viewer, SourceHistory *history,
                                     const ConnectionIdentity *connection,
-                                    const ProcessResources *baseline) {
+                                    const ProcessResources *baseline, int burst) {
     static const int dx[2] = {-47, 73}, dy[2] = {37, 61};
     int reference_x[2] = {0}, reference_y[2] = {0};
     unsigned int pid = (unsigned int)viewer->pid, sequence = 0U;
     const char *phase = "topology";
     if (ScreenCount(source) != 1 || DisplayWidth(source, 0) != 1280 ||
         DisplayHeight(source, 0) != 480) goto failed;
-    for (; sequence < 3U; ++sequence) {
-        unsigned int side = sequence == 1U;
+    const unsigned int sides[5] = {0U, 0U, 1U, 1U, 0U};
+    for (; sequence < (burst ? 5U : 3U); ++sequence) {
+        unsigned int side = burst ? sides[sequence] : sequence == 1U;
         uint64_t maximum_age = 0U, started, deadline;
         unsigned int distinct = 0U, minimum = 0U, maximum = 0U;
         int64_t previous = -1;
@@ -5429,10 +5488,15 @@ static int exercise_monitor_switch(Display *source, Display *display,
         ProcessResources resources = {0};
         ViewerWindow current = {0};
         phase = "chooser";
-        if (quality_toolbar(pid) != 0 ||
-            activate_named_control(pid, "Select monitor") != 0 ||
-            activate_named_control(pid, side ? "#2 monitor" : "#1 monitor") != 0 ||
-            activate_named_control(pid, "Hide toolbar") != 0) goto failed;
+        if (quality_toolbar(pid) != 0) goto failed;
+        if (burst) {
+            if (sequence == 0U) {
+                if (activate_named_control(pid, "1") != 0) goto failed;
+            } else if (click_monitor_burst(display, viewer, 1U - sides[sequence - 1U],
+                       sequence % 2U == 1U ? 16U : 17U, sequence) != 0) goto failed;
+        } else if (activate_named_control(pid, "Select monitor") != 0 ||
+                   activate_named_control(pid, side ? "#2 monitor" : "#1 monitor") != 0) goto failed;
+        if (activate_named_control(pid, "Hide toolbar") != 0) goto failed;
         phase = "fresh-selected-pixels";
         started = monotonic_millis();
         deadline = started + RECOVERY_LIMIT_MS;
@@ -6956,6 +7020,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--audio-mute") != 0 &&
                                     strcmp(argv[5], "--session-close") != 0 &&
                                     strcmp(argv[5], "--monitor-switch") != 0 &&
+                                    strcmp(argv[5], "--monitor-burst") != 0 &&
                                     strcmp(argv[5], "--wake-lock") != 0 &&
                                     strcmp(argv[5], "--background-close") != 0 &&
                                     strcmp(argv[5], "--theme-light") != 0 &&
@@ -7383,7 +7448,8 @@ int main(int argc, char **argv) {
         int screenshot_unavailable = strcmp(argv[5], "--screenshot-save-unavailable") == 0;
         int view_scaling = strcmp(argv[5], "--view-scaling") == 0;
         int image_quality = strcmp(argv[5], "--image-quality") == 0;
-        int monitor_switch = strcmp(argv[5], "--monitor-switch") == 0;
+        int monitor_burst = strcmp(argv[5], "--monitor-burst") == 0;
+        int monitor_switch = monitor_burst || strcmp(argv[5], "--monitor-switch") == 0;
         wake_session_close = strcmp(argv[5], "--wake-lock") == 0;
         int session_close = wake_session_close || strcmp(argv[5], "--session-close") == 0;
         int background_close = strcmp(argv[5], "--background-close") == 0;
@@ -7392,7 +7458,7 @@ int main(int argc, char **argv) {
         int partial_loss = strcmp(argv[5], "--network-loss") == 0;
         int network = partial_loss || strcmp(argv[5], "--network-impairment") == 0;
         int suspension_status = monitor_switch ? exercise_monitor_switch(
-            source, display, &viewer, &history, &current_connection, &baseline_resources) :
+            source, display, &viewer, &history, &current_connection, &baseline_resources, monitor_burst) :
             view_only ? exercise_view_only(
             source, display, &viewer, &history, &current_connection, &baseline_resources,
             view_only_save_failure) :
@@ -7432,7 +7498,10 @@ int main(int argc, char **argv) {
         XCloseDisplay(display);
         XCloseDisplay(source);
         if (suspension_status != 0) return 1;
-        if (monitor_switch) {
+        if (monitor_burst) {
+            puts("FLUTTER_PEER_MONITOR_BURST_OK monitors=2 bursts=4 clicks=66 phases=5 fresh_frames=20 "
+                 "pointer_targets=10 stable_connection=true same_window=true resources=bounded");
+        } else if (monitor_switch) {
             puts("FLUTTER_PEER_MONITOR_SWITCH_OK monitors=2 phases=left,right,left fresh_frames=12 "
                  "pointer_targets=6 stable_connection=true same_window=true resources=bounded");
         } else if (background_close) {

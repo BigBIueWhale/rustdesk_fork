@@ -34,7 +34,7 @@ class _MemoryPosition extends overlay.DraggableKeyPosition {
 
   // These cases start inside the screen and isolate keyboard layout from storage.
   @override
-  void tryAdjust(double w, double h, double scale) {}
+  void tryAdjust(double w, double h, double scale, Size size) {}
 }
 
 class _ViewportPosition extends overlay.DraggableKeyPosition {

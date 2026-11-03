@@ -135438,3 +135438,20 @@ This prerequisite repairs the shared generator for the selected panel tests.
 The attempted run retires QEMU, helper, private state and RAM, with four zero
 listener deltas. `floating-viewport-baseline-75943a1f.json` retains the failure,
 source, command and cleanup; thirteen bounded evidence files match CTE/TUF.
+
+At `7e667815`, fresh bridge generation succeeds and baseline `AGqO167HRA`
+executes all 23 cases. Twenty pass; standard/iOS local-viewport shrink and iOS
+drag containment fail. Their rendered right edges are 720, 719 and 659 logical
+pixels against a 320-pixel viewport. The same panel State survives the resize.
+`floating-viewport-before-7e667815.json` binds results, source and all four zero
+listener deltas; exact processes, private workspace and bounded RAM retire.
+Thirteen bounded files match CTE/TUF. The FRB v1 result contract confirms anyhow
+support: https://cjycode.com/flutter_rust_bridge/v1/feature/lang_exceptions.html.
+
+The correction requires callers to supply their own viewport to tryAdjust.
+IOSDraggable uses current widget dimensions, adjusts on every build and clamps
+drag positions before notifying its model. The old initial-mount-only adjustment
+and cached dimensions disappear. The three call sites and keyboard fixture's
+no-op override follow the explicit signature. All test bodies/assertions and
+execution settings remain unchanged; only that fixture override gains Size.
+Corrected replay is required before acceptance.

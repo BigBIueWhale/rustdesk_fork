@@ -1059,7 +1059,8 @@ makeMobileActionsOverlayEntry(VoidCallback? onHide, {FFI? ffi}) {
     if (draggablePositions.mobileActions.isInvalid()) {
       draggablePositions.mobileActions.update(computeOverlayPosition());
     } else {
-      draggablePositions.mobileActions.tryAdjust(overlayW, overlayH, scale);
+      draggablePositions.mobileActions
+          .tryAdjust(overlayW, overlayH, scale, MediaQuery.of(context).size);
     }
     return DraggableMobileActions(
       scale: scale,

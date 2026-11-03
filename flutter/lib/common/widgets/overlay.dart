@@ -286,10 +286,8 @@ class DraggableKeyPosition {
     _triggerStore();
   }
 
-  // Adjust position to keep it in the screen
-  // Only used for desktop and web desktop
-  tryAdjust(double w, double h, double scale) {
-    final size = MediaQuery.of(Get.context!).size;
+  // Adjust position to keep it in the owning viewport.
+  tryAdjust(double w, double h, double scale, Size size) {
     w = w * scale;
     h = h * scale;
     double x = _pos.dx;
@@ -404,7 +402,8 @@ class _DraggableState extends State<Draggable> {
 
   checkScreenSize() {
     // Ensure the draggable always stays within current screen bounds
-    widget.position.tryAdjust(widget.width, widget.height, 1);
+    widget.position.tryAdjust(
+        widget.width, widget.height, 1, MediaQuery.of(context).size);
   }
 
   checkKeyboard() {
@@ -475,22 +474,17 @@ class IOSDraggable extends StatefulWidget {
   final Widget Function(BuildContext) builder;
 
   @override
-  IOSDraggableState createState() =>
-      IOSDraggableState(chatModel, width, height);
+  IOSDraggableState createState() => IOSDraggableState(chatModel);
 }
 
 class IOSDraggableState extends State<IOSDraggable> {
   late ChatModel? _chatModel;
-  late double _width;
-  late double _height;
   bool _keyboardVisible = false;
   double _saveHeight = 0;
   double _lastBottomHeight = 0;
 
-  IOSDraggableState(ChatModel? chatModel, double w, double h) {
+  IOSDraggableState(ChatModel? chatModel) {
     _chatModel = chatModel;
-    _width = w;
-    _height = h;
   }
 
   DraggableKeyPosition get position => widget.position;
@@ -513,7 +507,7 @@ class IOSDraggableState extends State<IOSDraggable> {
 
     // onKeyboardVisible
     if (currentVisible) {
-      final sumHeight = bottomHeight + _height;
+      final sumHeight = bottomHeight + widget.height;
       final contextHeight = MediaQuery.of(context).size.height;
       final y = contextHeight > sumHeight ? contextHeight - sumHeight : 0.0;
       if (position.pos.dy > y) {
@@ -528,14 +522,10 @@ class IOSDraggableState extends State<IOSDraggable> {
   }
 
   @override
-  void initState() {
-    super.initState();
-    position.tryAdjust(_width, _height, 1);
-  }
-
-  @override
   Widget build(BuildContext context) {
     checkKeyboard();
+    position.tryAdjust(
+        widget.width, widget.height, 1, MediaQuery.of(context).size);
     return Stack(
       children: [
         Positioned(
@@ -545,13 +535,15 @@ class IOSDraggableState extends State<IOSDraggable> {
             onPanUpdate: (details) {
               setState(() {
                 position.update(position.pos + details.delta);
+                position.tryAdjust(
+                    widget.width, widget.height, 1, MediaQuery.of(context).size);
               });
               _chatModel?.setChatWindowPosition(position.pos);
             },
             child: Material(
               child: Container(
-                width: _width,
-                height: _height,
+                width: widget.width,
+                height: widget.height,
                 decoration:
                     BoxDecoration(border: Border.all(color: MyTheme.border)),
                 child: widget.builder(context),

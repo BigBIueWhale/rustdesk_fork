@@ -133376,7 +133376,7 @@ product acceptance. Whole-document classification/compression remains OPEN.
 
 Review preserves all fourteen capsule references in the two condensed blocks;
 their referenced JSON files remain readable. The blocks shrink from 11,839 to
-6,583 bytes; the whole ledger, including the new monitor failure, shrinks from
+6,584 bytes; the whole ledger, including the new monitor failure, shrinks from
 1,827,973 to 1,823,612 bytes. Diff review and `git diff --check` pass.
 Fresh isolated count `pdLx3DxSst` at `5b7a1a3c` passes seven controls and the
 whole-input round trip in 28 outer seconds: 398,582 tokens, down 880, input

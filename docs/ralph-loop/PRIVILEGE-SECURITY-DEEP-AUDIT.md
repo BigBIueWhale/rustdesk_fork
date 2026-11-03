@@ -134626,3 +134626,23 @@ The source/archive, compiled-policy and emulator outcomes remain pending. Update
 the current ledger and obtain its fresh isolated count after the job retires.
 The unchanged ledger retains its prior counted identity; this audit records the
 user's newer pivot immediately. The overall goal remains active.
+
+Build `L4KCuYjgMl` terminates with exit 1 after 763 seconds: APK compilation and
+package/signature checks pass, but the new backup-resource validator rejects
+the resource binding before emulator launch/publication. Its fixed source-path
+assumption is wrong for release resource optimization: the retained prior APK's
+XML members have shortened paths. AAPT2 explicitly supports both path shortening
+and name collapse (https://developer.android.com/tools/aapt2#optimize).
+The correction resolves the manifest ID to its single unqualified XML file and
+validates that file's complete exclusions. It preserves rejection of aliases,
+qualified alternatives, missing sections/domains and partial-directory exclusions.
+Eight small real AAPT2 link/optimize cases run before the expensive app build.
+Their execution and a fresh full-APK result are pending; Python/shell parsing and
+diff inspection pass. The product policy itself is unchanged in this correction.
+
+The failed run's four listener deltas are zero. Exact wrapper/QEMU/helper/RAM
+absence and descriptor-relative private retirement are reconciled under the shared
+lock. Peak scratch is 7,330,308,096 bytes. Thirteen bounded files match on CTE/TUF;
+`android-backup-build-ba738346.json` is 13,864 bytes, SHA-256
+`5aa91244e2f6ef5f31278088214bbaebdd278343b65b5254f3ce02e66d6b37df`.
+No owned job remains. R-S9 native backup/device-transfer acceptance stays open.

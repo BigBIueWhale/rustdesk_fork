@@ -141,6 +141,12 @@ if [ "$APK_MODE" = warm ]; then
     export GRADLE_USER_HOME="$RUSTDESK_GRADLE_WARM_HOME"
 fi
 
+if [ "$APK_MODE" = emulator-test ]; then
+    python3 -I -B -S /src/scripts/test-android-backup-apk.py \
+        --aapt2 "$ANDROID_BUILD_SDK/build-tools/34.0.0/aapt2" \
+        --android-jar "$ANDROID_BUILD_SDK/platforms/android-34/android.jar"
+fi
+
 TC=/tmp/tc; mkdir -p "$TC"
 # Install Rust and its Android cross-std before expanding Flutter and LLVM. The installer
 # payloads have no consumer after installation and must not overlap those larger toolchains.

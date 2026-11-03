@@ -361,16 +361,23 @@ def validate_apk_backup(aapt2, apk, manifest_tree):
         indent = len(line) - len(line.lstrip())
         if selected is not None and text and indent <= selected:
             selected = None
-        match = re.match(r"resource (0x[0-9a-fA-F]+) xml/data_extraction_rules(?:\s|$)", text)
-        if match:
-            entries.append((int(match.group(1), 16), []))
+        match = re.match(r"resource (0x[0-9a-fA-F]+) (\S+)(?:\s|$)", text)
+        if match and int(match.group(1), 16) == resource_id:
+            entries.append((match.group(2), []))
             selected = indent
         elif selected is not None and text:
             entries[-1][1].append(text)
-    expected = [(resource_id, ["() (file) res/xml/data_extraction_rules.xml type=XML"])]
-    if entries != expected:
-        return ["backup rules: manifest must select the single unqualified data_extraction_rules XML resource"]
-    proc = run_aapt2(aapt2, apk, "res/xml/data_extraction_rules.xml")
+    if len(entries) != 1 or not entries[0][0].startswith("xml/") or len(entries[0][1]) != 1:
+        return ["backup rules: manifest must select one unqualified XML resource"]
+    # AAPT2 optimization may collapse names and shorten APK member paths. The
+    # manifest ID and resource table, not the source filename, select the policy.
+    match = re.fullmatch(r"\(\) \(file\) (res/\S+\.xml) type=XML", entries[0][1][0])
+    if match is None:
+        return ["backup rules: selected resource must be an unconditional XML file"]
+    xml_file = match.group(1)
+    if any(part in {"", ".", ".."} for part in xml_file.split("/")):
+        return ["backup rules: invalid compiled XML member path"]
+    proc = run_aapt2(aapt2, apk, xml_file)
     if proc.returncode != 0:
         return ["backup rules: cannot decode compiled exclusions: " + proc.stderr]
     return validate_backup_rules(parse_xmltree(proc.stdout))

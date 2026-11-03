@@ -443,6 +443,7 @@ vm_docker start --attach "$BUILD_CONTAINER" >"$BUILD_LOG" 2>&1 || build_status=$
 [ "$(vm_docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' \
     "$BUILD_CONTAINER")" = exited:0 ] \
     || die 'x86_64 APK build container did not exit cleanly'
+grep -E '^ANDROID_BACKUP_APK_(CASE|CHECK)=' "$BUILD_LOG"
 vm_docker rm "$BUILD_CONTAINER" >/dev/null
 BUILD_CONTAINER=
 verify_android_sdk_root \
@@ -505,6 +506,7 @@ verify_status=0
 vm_docker start --attach "$VERIFY_CONTAINER" >"$VERIFY_LOG" 2>&1 || verify_status=$?
 [ "$verify_status" -eq 0 ] \
     || { tail -n 200 "$VERIFY_LOG" >&2; die "x86_64 APK verification exited with status $verify_status"; }
+grep -F 'ok Android APK manifest authority:' "$VERIFY_LOG"
 mapfile -t apk_receipts < <(grep -E \
     '^ANDROID_EMULATOR_APK=pass sha256=[0-9a-f]{64} package=com\.carriez\.flutter_hbb abi=x86_64 native_libraries=[1-9][0-9]* signer=[0-9A-F]{64} signing=test-only$' \
     "$VERIFY_LOG" || true)

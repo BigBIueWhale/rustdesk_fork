@@ -43,6 +43,28 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-03):** Mobile Remote/Camera native close acceptance is
+OPEN/PARKED. The component result below remains valid. APK `fd258e8b` passes
+build, manifest/signature checks, Android 14 install/launch/rendering and the
+instrumentation-process smoke; no native route/owner-retirement case ran.
+`mobile-android-build-fd258e8b.json` binds artifacts, four zero listener deltas
+and exact process/private/RAM retirement. Work moves to R-S9 Android backup
+and device-transfer exclusion; all independent parks remain.
+
+**Android backup/transfer exclusion — compiled APK and launch verified.**
+`ba738346` adds explicit cloud/device-transfer exclusions for all nine storage
+domains and the older full-backup opt-out, retaining allowBackup=false. Android
+documents manufacturer cases where that flag alone permits device transfer.
+`aca3df16` resolves optimized resource IDs/paths in the final-APK validator,
+preserving complete exclusions and refusal of qualified alternatives/custom agents.
+Run `uc4W1PSIF6` passes the required eight AAPT2 resource controls, final-APK checks,
+Android 14 install/launch/rendering and instrumentation-process smoke. The guest
+retained build/runtime summaries but filtered individual backup-check detail lines;
+the audit records that limit and the subsequent forwarding correction. Capsule
+`android-backup-build-aca3df16.json` binds exact artifacts, four zero listener
+deltas and process/private/RAM retirement. Actual backup/restore/transfer, older
+Android, manufacturer devices and complete release acceptance remain OPEN.
+
 **User pivot (2026-11-03):** Peer-window close/reopen acceptance is OPEN/PARKED.
 The nineteen-case component result below remains valid. The earlier Linux app
 build at `2ed4dd37` completes with thirteen widget/two native command checks,

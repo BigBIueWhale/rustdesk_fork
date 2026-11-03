@@ -134646,3 +134646,41 @@ lock. Peak scratch is 7,330,308,096 bytes. Thirteen bounded files match on CTE/T
 `android-backup-build-ba738346.json` is 13,864 bytes, SHA-256
 `5aa91244e2f6ef5f31278088214bbaebdd278343b65b5254f3ce02e66d6b37df`.
 No owned job remains. R-S9 native backup/device-transfer acceptance stays open.
+
+The next native check can use Android 14's offline LocalTransport with synthetic
+non-secret fixtures. Its `is_device_transfer` parameter sets the D2D transport
+flag; BackupEligibilityRules ignores allowBackup for non-system target-31+ apps
+in that mode, and the new eligibility rules default enabled. This permits a
+positive transfer control without an external backup service. Acceptance must
+prove the control's data reached the transport and the corrected app's data did
+not, with successful fixture creation/readability and inspected archive contents;
+a skipped package or empty setup cannot pass. This is design research only.
+Primary API-34 source at
+https://android.googlesource.com/platform/prebuilts/fullsdk/sources/+/88c7ff1cd72d6305ec59f97aadc2198cc2dc3592/android-34/
+contains `com/android/localtransport/{LocalTransport,LocalTransportParameters}.java`,
+`com/android/server/backup/utils/BackupEligibilityRules.java`,
+`com/android/server/backup/UserBackupManagerService.java` and
+`android/util/FeatureFlagUtils.java`. Manufacturer-device and older-version
+acceptance remain independent obligations.
+
+Corrected-source build `uc4W1PSIF6` at `aca3df16` passes in 1,004 seconds.
+Its source-bound fail-fast build requires all eight AAPT2 link/optimize controls
+and the final compiled backup-policy validator before Android 14 install, launch,
+SwiftShader rendering and instrumentation-process smoke. The guest wrapper retained
+the mandatory build/runtime success summaries but filtered the individual backup
+detail lines; no independently retained per-case output is claimed. Forward those
+bounded detail lines on future runs. That logging correction passes shell parsing
+and diff review; it does not justify another full build of the unchanged product.
+
+The APK is 48,310,500 bytes, SHA-256
+`28c7bc382a45cc662a7e5193bc942365974e169ea353260601b17583affdb8d4`;
+the matching test APK is 110,287 bytes, SHA-256
+`3e82ebad5c5bac3c9c44657b10a18aa2f74b052556293f4e253c1d55de751a29`.
+Both remain on TUF. Thirteen bounded evidence files match on CTE/TUF. Exact
+wrapper/QEMU/helper/private/RAM absence and four zero listener deltas pass;
+peak scratch is 7,331,704,832 bytes. Capsule `android-backup-build-aca3df16.json`
+is 9,355 bytes, SHA-256
+`86df17690b83ea57eed89868d543edbb724737f159536fbc629bacf44e0e627e`.
+No owned job remains. The ledger records this packaging/launch checkpoint while
+native backup/transfer acceptance and all independent parks remain open. Its fresh
+isolated token count follows. The overall goal stays active and incomplete.

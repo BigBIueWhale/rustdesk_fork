@@ -132688,3 +132688,39 @@ The child-only case must not count a manager restart as successful supervisor
 recovery. TUF has 47,215,244 KiB available RAM and 31 GiB free shared memory;
 the unchanged admission/monitor and joined cleanup remain mandatory. Execution
 is pending. Existing password-only SSH is used; no SSH configuration changes.
+
+Run `dWYcT4RQuI` at `830acf07` passes the child-only scenario in 52 outer
+seconds (56.689 capture seconds). Supervisor 7895 retains its exact process,
+generation, unit invocation and privileged socket identities; manager restarts
+remain zero. Child 7903 is reaped within 0.327207 seconds and its accepted TCP
+connection reaches EOF within 0.001424 seconds. Fresh child 8056 receives the
+supervisor-owned runtime credential and completes actual CPace/Remote PeerInfo;
+the recovery probe completes within 3.645480 seconds, including the probe's
+normal three-second observation timeout. These are process/protocol timings,
+not rendered-image or surviving-connection recovery measurements. The subsequent
+three-second stability period and normal service stop pass, with exact process,
+cgroup, child-record, PAM, Xvfb and user retirement. No product defect or product
+change is claimed. Complete product/build-input matching passes before and after.
+
+Under the shared lock, wrapper 1115712 and QEMU 1117453 return pidfd ESRCH;
+owned helpers are absent. RAM workspace `run.agro_3cp` (29:40808) and private
+scratch are absent. Peak RAM scratch is 4,108,791,808 bytes; three endpoint
+deltas are zero. Twelve bounded records are copied and hash-verified on CTE.
+Capsule `linux-child-crash-830acf07.json` is 11,941 bytes, SHA-256
+`38fe744dc5e342555dd9508a4e7ba5fc0641dcebf644e6cb443bfc9cd4275a99`.
+
+The justified shared-fixture regression `dKlhv0UJaX` at the same commit passes
+the original supervisor-only crash scenario in 52 outer seconds (56.930 capture
+seconds): old supervisor 7893/child 7901 retire within 2.48 ms; exactly one manager
+restart creates supervisor 8068/child 8075 with a new generation and invocation.
+Both real CPace/Remote PeerInfo logins pass; recovery probe completion is
+5.371593 seconds. Stability, normal stop and full guest cleanup pass. Wrapper
+1118046/QEMU 1119782/helpers and RAM `run.2nuqm_a2` (29:40836)/private scratch
+are absent; three endpoint deltas are zero. Peak RAM scratch is 4,099,682,304
+bytes. Twelve bounded records are copied and hash-verified. Capsule
+`linux-crash-control-830acf07.json` is 11,952 bytes, SHA-256
+`dd12dc92783913c4180d4961236769b08853e5b17356efd5d3d1f9a0e6f8c328`.
+No new artifact/cache generation was created. The selected native checkpoint
+is complete at its stated layer; final-package, rendered, alternate-init,
+other-platform and independent-review obligations remain open. All user parks
+remain in force. The ledger update requires its fresh isolated count next.

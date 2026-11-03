@@ -4689,6 +4689,26 @@ Kernel ENOSYS injection, unverifiable/other record classes, final packages and
 other init/platform acceptance remain OPEN. Root-created records do not imply
 unprivileged write access to the protected runtime directory.
 
+**Installed child crash recovery (`830acf07`).** TUF `dWYcT4RQuI` reuses
+`fdbab046`, the shipped unit and an actual logind/X11 desktop. A retained-pidfd
+SIGKILL targets only the UID-4001 child. Its accepted prekey connection reaches
+EOF within 1.43 ms and the exact child is reaped within 328 ms. The original
+supervisor/start identity, generation, unit invocation and all three privileged
+socket identities remain; systemd reports zero restarts. Runtime/lease authority
+and durable credential are preserved. The supervisor launches a fresh child,
+record and listener; real UID-4002 CPace/Remote PeerInfo logins pass before and
+after, with the recovery probe complete within 3.65 seconds. A further three-
+second stability observation and ordinary stop pass, including process/cgroup/
+record/PAM/Xvfb/user retirement. Three listener deltas are zero and VM/RAM/private
+cleanup passes. `linux-child-crash-830acf07.json` binds the result. Shared-fixture
+regression `dKlhv0UJaX` also passes the original supervisor-crash scenario with
+exactly one automatic service restart and both authenticated logins;
+`linux-crash-control-830acf07.json` binds that control and joined cleanup.
+No product change or rebuild was needed. This is debug/headless installed-layout lifecycle
+evidence; it does not measure rendered recovery, prove continuous connection
+survival, or close final-package, other-init/platform and independent-review
+acceptance. Those remain OPEN, and package/authorization parks remain unchanged.
+
 **IPC / option CLI — component acceptance; installed acceptance OPEN.**
 At `ad638445`, TUF `1VEEFlN8jX` passes all **176 listener/transport, 32 CLI,
 10 Windows selector, 22 main-protocol, 8 main-transaction, 8 main-peer, 4 URL-loop,

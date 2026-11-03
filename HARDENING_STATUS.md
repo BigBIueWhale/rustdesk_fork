@@ -67,7 +67,7 @@ full-app/installed startup, concurrent writers, crashes, daily rollover, privile
 namespaces or other platforms. Those remain OPEN; single-record and Windows-log
 work stay parked. Concurrent loss below remains OPEN.
 
-**Concurrent log retention — OPEN, reproduced.** Linux permits multiple primary
+**Concurrent log retention — OPEN/PARKED (user pivot, 2026-11-04).** Linux permits multiple primary
 UI processes, whose role/executable log family is shared. At `1401acc9`, one
 resident logger remains alive while forty other actual-init processes write and
 exit. Its initial record is visible; its fresh final record is absent from all
@@ -77,8 +77,9 @@ seconds). `file-log-overlap-1401acc9.json` binds the actual library artifact,
 four zero listener deltas and exact process/private/RAM retirement. Product
 logging is unchanged; correction is pending. This is an ordinary-user Linux
 logger-component failure, not installed/full-UI or privilege-boundary evidence.
-Next: give live writers stable ownership through rotation/retention while keeping
-storage bounded across starts; process-specific names alone do not establish that.
+When resumed: give live writers stable ownership through rotation/retention while
+keeping storage bounded across starts; process-specific names alone do not establish
+that. Current work is the requested documentation/current-state consolidation.
 
 **Earlier pivot (2026-11-03):** Android imported-backup restore acceptance is
 OPEN/PARKED before execution; its six unfinished harness edits are preserved in
@@ -1475,41 +1476,68 @@ The obsolete string/mutation checker remains deleted. Complete app/functions,
 the full Apple matrix, linking, native filesystem behavior, signed artifacts
 and installed acceptance remain OPEN.
 
-Windows §12.2 and R-B8/R-B10/R-B11/R-B11a/§12.3 state the admitted verifier-VM boundary,
-sole acquisition authority, immutable host baseline and exact creator-owned retirement. Historical
-host inventories, direct-host recipes and package/network reversal exceptions are deleted.
-Pinned toolchains, golden identity, offline media, independent passes and artifact integrity remain.
-**Windows provisioning and native acceptance remain OPEN:** both wrappers admit the verifier VM
-before repository helpers. Golden provisioning has no NIC; its exact production XML parser rejects
-interfaces and passthrough while retaining loopback VNC, disk identity and creator-owned finality.
-Source `2dd98e4c` passed 14 production byte-parser cases and two former-normalization counterexamples,
-seven XML parser fixtures, eight helper runtime decisions and supplementary source gates as UID 4000
-in the no-NIC VM in 111 seconds, with unchanged host listeners and joined cleanup. Retained
-`authority-smoke-run.3dL4xK6xUx.serial.log` SHA-256
-`95db1859406f0205f0b0f338f03c50c269bc329efeea3b794a70b9217a332240` binds Linux parser/helper evidence,
-not actual libvirt launch or Windows installation. `win-guest-setup.ps1` now routes all native setup
-commands through `Invoke-SetupProcess`, which waits for the tree and requires a zero exit before
-continuing. Launch failure, missing status and nonzero/reboot-required exits refuse this single-pass
-setup. Fixed OS tool paths, exact unique Build Tools selection and `--noWeb` replace ambient/arbitrary
-execution and VS network fallback; failed vcpkg extraction/rename can no longer be ignored.
-`windows-golden-inspect.sh` now has one marker assertion: bounded binary comparison requires exact
-ASCII v4 bytes with final CRLF and EOF, and pipeline failure refuses. The producer writes explicit
-bytes; `verify-windows-golden.sh` consumes assertion status. Inventory mode, normalized text capture,
-log-based verdicts and complete-toolchain claims are deleted. Real libguestfs reading and Windows
-byte production remain UNEXECUTED. The historical v3
-golden hash remains pinned; a v4 image must actually be provisioned and certified before replacement.
-`test-windows-guest-setup.ps1` extracts the production launcher and prepares native exit0/7/3010/1641
-and missing-executable continuation tests; these are UNEXECUTED because Windows inputs/golden are
-absent; native installer readiness remains OPEN.
-The fixed MSI packager uses Cargo `OUT_DIR`, required bounded `SOURCE_DATE_EPOCH` and locked
-Rust Brotli/MD5; the generic Python generator and unpinned Brotli dependency are deleted. Source
-`25637dc1` passed six actual encoder/decoder integration tests with Cargo 1.75 `--offline --locked`
-and full pinned vendor in 113 seconds; no-route canary/source gate passed, executable digest stayed
-fixed, host listeners were unchanged and cleanup joined. Retained
-`android-rust-lifecycle-tests-run.EGmGTf5yjE.serial.log` SHA-256
-`1e0938684558497e551b77a46f12e7f6cee202411190950a0eda7bbd40ab7791` binds this Linux component run.
-Native Windows packaging/installation, VS/vcpkg/Flutter acquisition, complete offline closure,
-cold equality, document-role restoration and the Windows harness replay below remain OPEN.
+**Windows preparation and installer — component evidence; native acceptance OPEN.**
+
+Windows §12.2/§12.3 and R-B8/R-B10/R-B11/R-B11a retain the verifier-VM boundary,
+sole acquisition authority, immutable host baseline, pinned toolchains/golden
+identity/offline media, independent passes, artifact integrity and exact owned
+retirement. Both wrappers admit the VM before repository helpers. Golden
+provisioning has no NIC; its XML parser rejects interfaces/passthrough while
+retaining loopback VNC, disk identity and creator-owned finality.
+
+`win-guest-setup.ps1` uses fixed OS paths, unique Build Tools selection and
+`--noWeb`; its process owner waits for the setup tree and requires exit zero.
+Launch/missing-status errors, nonzero/reboot-required exits and vcpkg
+extraction/rename failures stop setup. The golden marker is an exact bounded
+ASCII-v4 comparison, including final CRLF and EOF; pipeline failure refuses.
+Actual Windows marker production and libguestfs reading remain UNEXECUTED.
+The historical v3 golden hash stays pinned until a v4 image is provisioned and
+certified. Missing Windows inputs/golden also leave the prepared launcher
+exit-0/7/3010/1641 and missing-executable cases UNEXECUTED.
+
+The fixed MSI packager uses Cargo's private `OUT_DIR`, bounded required
+`SOURCE_DATE_EPOCH` and locked Rust Brotli/MD5. The Windows wrapper has one
+protected MSI entry regardless of filename, with `args_os()`, four closed
+invocation forms and explicit invalid-argument refusal. There is no user-cache
+launcher. Explicit elevation/current-executable UAC relaunch and the direct MSI
+API remain; Linux component execution does not validate those Windows paths.
+
+| Component / source | Behavior and retained Linux evidence | Receipt |
+| --- | --- | --- |
+| Provisioning parsers/helpers, `2dd98e4c` | Fourteen byte-parser cases plus two normalization counterexamples, seven XML fixtures and eight helper decisions passed in isolated UID-4000 execution. This did not launch libvirt or install Windows. | `authority-smoke-run.3dL4xK6xUx.serial.log` |
+| Protected wrapper, `9dc753b4` | Filename-selected extraction/child launch and the timestamp cache/UI/dependencies are removed. Seven package/extraction cases and two CLI/status tests passed; occupied, matching, symlink and hard-link destinations remained intact. Offline locked Cargo accepted the pruned graph. | `installer-wrapper-9dc753b4.json` |
+| OS arguments, `0613ff17` | Borrowed OS strings reach the closed parser without fallible Unicode conversion. Eighteen component cases passed, including four raw non-Unicode Unix values and four additional Unicode refusals. Native Windows argv and the four unpaired-surrogate cases remain unrun. | `installer-os-args-0613ff17.json` |
+| Package publication, `233689ce` | Exclusive sibling creation, streamed write/sync/close and rename publish `data.bin`; prepublication errors clean staging and report cleanup failure. No truncate fallback or second compressed-body copy. Three baseline failures became eighteen passing cases with identical tests: invalid input and real partial-write/EFBIG preserve prior output; hard-link/open-reader aliases and symlink targets remain intact; new bytes decode and staging retires. Private output-directory ownership is a caller precondition; hostile replacement and crash durability remain unproved. | `installer-generation-233689ce.json` |
+| Payload decoder, `acf3b0ae` | One borrowed fixed-MSI package validates field boundaries, canonical path/trailer, checksum syntax and exact input end before installation. The Brotli loop uses fallible reserve and the shared 2-GiB ceiling before growth, requires one complete stream without trailing bytes, and checks MSI header/checksum before filesystem effects. Extraction uses exclusive creation/sync; the privileged caller owns private staging/cleanup. The identical truncated-input regression changed from 103 panics in 127 prefixes to zero; all fifteen cases at this snapshot passed, including explicit refusal, small-cap/stream checks and round-trip/file/link/error controls. | `installer-decoder-acf3b0ae.json` |
+
+These totals belong to the named source snapshots, not a fresh aggregate run.
+Receipts retain exact artifacts, source comparisons, raw failures/results and
+joined cleanup with unchanged host listeners. Historical six-case packager runs
+at `25637dc1` and `38d8d005` remain in
+`android-rust-lifecycle-tests-run.EGmGTf5yjE.serial.log` and
+`android-rust-lifecycle-tests-run.ujjVxCiGBE.serial.log`; neither executed the
+seven retained `scripts/verify-windows-harness.py --self-test` suites. Their
+isolated replay remains OPEN. Duplicate self-mutation checks are removed;
+the existing source guards and seven harness/artifact suites remain.
+
+**Accepted component resource profile (`bcd69d18`).**
+`--installer-package-tests` uses a 4-GiB guest, 6-GiB bounded RAM scratch,
+4-GiB QEMU file ceiling, 6-GiB host headroom and 1-GiB overhead. The container
+has 2 GiB, two Cargo jobs, no incremental cache/debug information and 256-MiB
+temporary tmpfs. Shared locking, live monitoring, exact joins and no disk
+fallback remain mandatory. `installer-package-resources-bcd69d18.json` retains
+the passing six-case transaction and failed resource experiments. This Linux
+profile does not establish Windows VM/golden storage acceptance.
+
+**OPEN:** Windows inputs and VS/vcpkg/Flutter acquisition/offline closure;
+admitted golden provisioning, real libvirt/setup/marker execution and v4
+certification; current Windows compilation, canonical/renamed invocation,
+native argv, UAC success/denial, MSI install/update/cleanup and installed
+unauthorized-principal/settings behavior; the seven harness suites; current
+whole-app/cross-version artifacts, cold release equality, independent reproduction
+and external review. Fixture MSI bytes do not prove an installable package.
+R-S0 and release acceptance remain open. No product, test or acceptance status
+changes in this documentation consolidation; all independent parks remain.
 
 A source/model check is supplementary unless it executes the behavior it claims to establish. Gates must not treat
 exact requirement, ledger, README, comment, test-name, other-verifier, or historical-receipt wording as product
@@ -1518,129 +1546,6 @@ they distinguish required behavior from the dangerous behavior. Delete duplicate
 self-loading mutation machinery, stale fixtures, and ceremonial tests that establish neither. Native, installed,
 artifact, performance, resource, lifecycle, and reproducibility claims require the isolated runtime evidence named
 by their requirements and the STOP-SHIP matrices below.
-
-`scripts/verify-windows-harness.py --self-test` no longer mutates its source inputs and reruns
-its own validator four times. Existing source guards and seven bounded harness/artifact suites
-remain; their isolated replay is **OPEN**. Source `38d8d005` passed the source contracts and six
-encoder/decoder tests in the unchanged installer-package VM lane in 103 seconds, with fixed
-executable digest, no host listener addition and joined cleanup. Retained
-`android-rust-lifecycle-tests-run.ujjVxCiGBE.serial.log` SHA-256
-`2209adceabf64a953d1a0eb84e6da4fa7f3b8d3f5821f4c8acaeb4e6fedf8819` binds that run.
-The lane omits `--self-test`; it establishes neither the seven suites nor native Windows acceptance.
-
-**Installer component resources — bounded RAM lane accepted; Windows product acceptance OPEN.**
-Current `bcd69d18` gives only `--installer-package-tests` a strict 4-GiB guest,
-6-GiB RAM scratch and 4-GiB QEMU file ceiling, with the existing 6-GiB headroom,
-1-GiB overhead, shared lock, monitor, joins and no disk fallback. Its fixed
-container uses 2 GiB, two Cargo jobs, no incremental cache/debug information and
-a 256-MiB `/tmp` tmpfs. The old generic allocation refused before QEMU:
-39,936 MiB required versus 21,557 MiB available. A first 2-GiB guest/1-GiB
-container experiment hit its cgroup ceiling during Cargo resolution and ran
-no tests; it is retained as unaccepted. The corrected complete transaction passes
-all six unchanged encoder/decoder cases in 91 outer seconds (94.736 supervisor),
-with a stable executable digest, 3,298,676,736-byte RAM scratch peak, zero endpoint
-deltas and joined RAM/private-root retirement. All portable sources, root lock
-and Windows source guard are byte-identical to `06f51621`. Source/raw/artifact,
-failed experiment and cleanup evidence are retained in
-`.harness-state/verifier-vm/installer-package-resources-bcd69d18.json`.
-This restores the Linux component gate; it does not run Windows or close the
-seven harness suites, installed/MSI lifecycle, cold artifacts or release review.
-The subsequent wrapper source correction is recorded below; native Windows
-acceptance remains outstanding.
-
-**Windows installer wrapper — one protected entry; native acceptance OPEN.**
-`9dc753b4` removes filename-selected generic extraction and child execution from
-`libs/portable/src/main.rs`. Every Windows invocation parses the closed installer
-arguments and enters the protected MSI flow; renaming the wrapper cannot select
-a user-cache launcher. The old timestamp cache, replacement writer, spinner/UI
-assets, unused dependencies and stale nested lock are deleted. The MSI wire
-encoder, exclusive extraction body and complete Windows protected-installation
-module remain byte-identical to `94a95ff3`. Global build epoch handling remains
-with the build transaction; the unused cache-metadata producer/test is removed.
-
-The bounded installer VM lane passes seven real Linux encoder/extraction cases
-and both retained command-line/status tests in 103 outer seconds. Occupied,
-matching-content, symlink and hard-link destinations are refused without changing
-their contents/targets; package round trips, deterministic generation and error
-controls pass. Both executed artifacts have stable before/after hashes. Locked
-offline Cargo accepts the pruned graph using unchanged authenticated vendor input.
-Source/raw/artifacts, endpoint observations and joined RAM/private-root retirement
-are retained in `.harness-state/verifier-vm/installer-wrapper-9dc753b4.json`.
-This establishes shared component behavior and source removal. Windows compilation,
-renamed/canonical setup, UAC success/denial, MSI install/update/cleanup and installed
-negative-principal execution remain OPEN, as do cold artifacts and release review.
-
-**Installer OS argument decoding — Linux parser PASS; Windows entrypoint acceptance OPEN.**
-Product `0613ff17` changes the wrapper's command-line input to `args_os()` and its
-closed parser to borrowed `OsString` values. Invalid OS strings reach explicit
-refusal without Unicode conversion; the four accepted invocation forms and the
-complete protected-installation module are unchanged. Rust 1.75's `Args::next`
-unwraps a fallible Unicode conversion; the former entrypoint selected that iterator.
-The existing installer VM passes all eighteen component tests in 112 outer seconds,
-including the extended command-line test's four raw non-Unicode Unix values and
-four additional Unicode refusals. Its sixteen package cases and executable digest
-are unchanged; both executed artifacts retain before/after identity. The existing
-4-GiB guest/2-GiB container/6-GiB RAM-scratch profile and every limit remain unchanged.
-Exact source/artifacts, cases, endpoints and joined cleanup are retained in
-`.harness-state/verifier-vm/installer-os-args-0613ff17.json`.
-This executes the shared parser, not the Windows entrypoint. The four Windows
-unpaired-surrogate cases, native argv collection, UAC/MSI/installed behavior and
-release acceptance remain OPEN; no empirical old/new Windows comparison is claimed.
-
-**Installer generated package publication — Linux native A/B PASS; Windows acceptance OPEN.**
-Product `233689ce` replaces `generate`'s early `File::create(data.bin)` with one exclusively
-created sibling in Cargo's private `OUT_DIR`. The unchanged encoder streams to that file;
-successful write and sync precede close and rename into `data.bin`. Prepublication errors
-remove the staging file and return the primary error, augmented if cleanup fails. There is
-no truncate fallback or second full compressed-body copy. Decoder, extraction, Windows
-protected installation and the wire encoder body remain unchanged. The only dependency
-addition is a Linux test binding to already-locked `libc` for child-only failure injection.
-
-At `cdbc333c`, three new regressions fail while all fifteen existing component/CLI controls
-pass: invalid input damages the published output, successful generation mutates retained
-hard-link/open-reader aliases and follows an output symlink, and a real eight-byte write
-followed by `EFBIG` leaves the old output damaged. The same test module and recipe pass all
-eighteen cases at `233689ce`, including unchanged input/link targets, decoded new-package
-bytes, preserved prior output and retired staging files. Only the exact joined test child
-changes its signal disposition and file-size limit; the parent observes its real write count.
-
-The baseline and correction take 115.139/142.356 supervisor seconds; the successful outer
-run takes 136 seconds. The existing 4-GiB guest, 2-GiB container, 6-GiB RAM scratch,
-4-GiB QEMU ceiling, headroom and isolation are unchanged. Both VM/RAM/private roots retire,
-each run's four endpoint snapshots have zero additions/removals, and source freezes before,
-during and after each run agree. `.harness-state/verifier-vm/installer-generation-233689ce.json`
-retains artifacts, every named A/B result, failure observations and cleanup evidence.
-This proves shared build-component behavior. Native Windows compilation/publication,
-UAC/MSI lifecycle, installed principals/settings, cold release equality and review remain OPEN.
-
-**Installer payload decoder — fixed MSI, explicit errors and output bound; Windows acceptance OPEN.**
-Product `acf3b0ae` replaces the generic infallible file-list/startup-path reader
-with one borrowed `InstallerPackage`. The constructor checks every field boundary,
-the canonical MSI path and trailer, checksum syntax and exact end of input;
-malformed/truncated packages return errors before the installer flow is entered.
-Generic path normalization, lossy strings, file-list allocation and parser panics
-are removed. The encoder and decoder share format constants; the wire encoder's
-function body is byte-identical to baseline. Windows extraction/cleanup names only the fixed root MSI.
-
-The production Brotli loop checks output against the shared 2-GiB MSI ceiling
-before vector growth, uses fallible reserve, and requires a complete single stream
-with no trailing compressed bytes. MSI-header/checksum validation precedes any
-prefix or output-file creation by the extraction method; exclusive file creation
-and sync remain. The privileged caller still owns private staging and error cleanup.
-Elevation, explicit current-executable UAC relaunch and the direct MSI API remain.
-
-At test baseline `fe08aa9e`, the real decoder panicked on 103 of 127 truncated
-prefixes while seven existing controls passed. The byte-identical regression at
-`acf3b0ae` reports zero panics; a separate case requires explicit errors on every
-truncated prefix. All 15 current Linux component/CLI cases pass in 131 outer
-seconds, including exact-envelope refusal, small-cap decompression and complete-
-stream checks, invalid-body refusal before filesystem effects, plus the retained
-round-trip, deterministic-generation, file/link refusal and error controls.
-Executed artifacts, raw A/B output, scope, source freezes and joined RAM/private-
-root retirement are in `.harness-state/verifier-vm/installer-decoder-acf3b0ae.json`.
-This is component execution and source closure. Windows compilation/installation,
-UAC and MSI lifecycle, installed principals/settings, cold equality and release
-acceptance remain OPEN; the finite cases do not establish whole-product immunity.
 
 Further cleanup must classify remaining prose and purported tests by the current requirement or real behavior they
 protect, preserve load-bearing contracts and executable coverage, and delete obsolete history or make-believe proof.

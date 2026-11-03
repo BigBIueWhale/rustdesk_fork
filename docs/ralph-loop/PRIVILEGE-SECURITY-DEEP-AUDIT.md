@@ -135282,3 +135282,33 @@ private/RAM retirement; peak scratch is 402,841,600 bytes. Twelve bounded files
 match on CTE/TUF. `file-log-overlap-ledger-d8dc7a00.json`: 4,809 bytes, SHA-256
 `522062bef465a558aa5e1b35c54274d48051731909760997b43d403e3ac1d8c6`.
 This audit-only receipt preserves the counted ledger. No owned job remains.
+
+## 2026-11-04 — user pivot; installer evidence consolidation
+
+The user requests another aspect. Concurrent log retention is OPEN/PARKED with
+its reproduced failure and unchanged regression retained. No product correction
+or additional logging execution is attempted. All independent parks remain.
+
+Select the explicitly requested documentation-role cleanup: the last measured
+ledger is 399,592 tokens, only 408 below its documented budget. Consolidate the
+Windows preparation/installer evidence into source-specific component results,
+one resource profile and one open native/release acceptance list. Historical
+timings, duplicate caveats, removed-code inventories and intermediate resource
+experiments remain in Git and the existing receipts. This is a bounded ledger
+maintenance slice, not renewed Windows product work or a release acceptance claim.
+
+The selected section shrinks from 13,254 to 6,748 UTF-8 bytes; the complete ledger
+shrinks from 1,826,896 to 1,820,491 bytes including the pivot note. All eight
+evidence references resolve to the same retained files; the three serial hashes
+match the prior ledger. The general verification policy and following document
+bytes remain identical. Review preserves VM/host boundaries, acquisition/golden
+dependencies, all component/source distinctions, resource limits, seven unrun
+harness suites, native argv/UAC/MSI/settings gaps, cold equality and review.
+The named test totals remain historical snapshots, not a new aggregate pass.
+Requirements, live instructions, product sources and tests are unchanged.
+
+Read-only source/receipt comparison and git diff --check pass. The initial
+reference comparison needed path-prefix normalization: the table uses the
+section's existing evidence-directory convention. After resolving that prefix,
+the complete eight-file set is identical; no evidence file is deleted. Fresh
+isolated ledger counting and exact cleanup are the remaining checkpoint work.

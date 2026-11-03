@@ -133684,3 +133684,62 @@ retire. Twelve bounded records are copied and verified. Capsule
 `linux-repro-ledger-de3eabe6.json`: 4,787 bytes, SHA-256
 `9318f23d2f409e9e36f3f3ba30fc612f3c8ad7a849d3898ed7388e72ae939c47`.
 The application double-build checkpoint is complete; no owned job remains.
+
+## 2026-11-03 — user pivot: release-source delivery
+
+The user requests a different aspect. R-B9 scratch-directory replacement/consumer
+work remains OPEN/PARKED. Stash `9ca48810c2e5fd8287ee60fd84920e6ebe964898`
+preserves the unexecuted changes to `verify-private-tree-closure.py` and
+`verify-release-workspace-runtime.sh`; no fixture or product execution is claimed.
+Existing stashes and independent parks are preserved.
+
+Select R-B3's release-source delivery gap ahead of additional UI scenarios:
+release distribution needs a verifiable mapping from exact binaries to obtainable
+source. This checkpoint traces current coverage and identifies the missing
+acceptance condition; it does not add a ceremonial publication guard or change
+the release asset protocol before its source-delivery design is complete.
+
+Read-only committed-tree inspection at `2a867df2c24fda343c79beda37c402bc04830586`,
+tree `a5eeb42c4719b5d79e4ef22ad65e21bbe3b11ffd`, finds 1,606 tracked blobs,
+52,281,889 content bytes and no gitlinks. The three tracked `.gitattributes`
+files contain text treatment only, with no export-ignore/export-subst or LFS
+filter. `online/` has no tracked entries and is explicitly ignored. The exact
+`git ls-tree -r -l -z` output has SHA-256
+`8d6e716f8155dd62632929a746e1399d42a20ab56e31e2071484c1c5e9c03f65`.
+Parsing the committed Cargo lock finds 787 registry, 30 Git and 15 local packages;
+the Git packages use 21 distinct source identities. This inventories the full
+lock graph, not the target-specific linked or distributed dependency set.
+
+`scripts/build-release.sh:115,892,978,1999` constrains the producer to four
+binaries and their checksum manifest. `scripts/publish-github-release.sh:86,505,527`
+enforces the same five-file set; `:642` links the exact commit and `:995` uploads
+and downloads those declared assets. The source link and exact binary identity
+are present. No source-completeness or external-source delivery proof is part of
+that acceptance path. `scripts/online-fetch.sh:1717` obtains and verifies Cargo
+sources for the build; this private acquisition is distinct from recipient access.
+The build guide describes acquisition and offline consumption, not an accepted
+Corresponding Source distribution for named release artifacts.
+
+[GitHub's release documentation](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases)
+confirms automatic repository zip/tar links. The
+[Git archive documentation](https://git-scm.com/docs/git-archive) describes the
+named-tree archive and export attributes. Their implication here is limited:
+repository archives cover tracked source, not ignored acquired inputs. The
+repository's `LICENCE` sections 1 and 6(d) distinguish required source from system
+libraries/general build tools and describe source access, including clear directions
+when another server is used. A missing uploaded source asset alone does not prove
+source is unavailable; that availability and completeness remain unverified.
+
+Next: bind the exact release artifacts to the required local/external source,
+patches and build/install scripts; classify redistributable source separately from
+build-only/proprietary tooling and signing/authentication material. Verify the
+declared recipient acquisition route and source-only reconstruction in isolation
+before extending the manifest/publication protocol. Do not blindly publish the
+entire offline cache. Final release artifacts, source completeness, independent
+reconstruction and R-B3 acceptance remain OPEN.
+
+No product, release script or live instruction file changed. No external release
+was created, queried or published, and no archive was downloaded. TUF is clean at
+the inspected commit, has 47,383,120 KiB available memory and no private/RAM run
+markers. The only planned VM work is the required fresh ledger metric after this
+documentation update; no application rebuild is needed for this source review.

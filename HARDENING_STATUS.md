@@ -43,6 +43,11 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-03):** R-B9 scratch-directory replacement/consumer work
+remains OPEN/PARKED. Its two-file, unexecuted fixture draft is preserved in stash
+`9ca48810c2e5fd8287ee60fd84920e6ebe964898`; no native result is claimed.
+Work moves to R-B3 release-source delivery. All independent parks remain.
+
 **User pivot (2026-11-03):** Connecting from a filtered Recent-computer card
 remains OPEN/PARKED after read-only preparation; no new fixture, product patch
 or connection replay ran. The completed search cases below remain valid.
@@ -9839,12 +9844,25 @@ QA narratives remain available in Git and the external audit; they are not curre
 Release preparation follows [`docs/VERSIONING.md`](docs/VERSIONING.md#preparing-a-release).
 Tracked source does not substitute for the generated exact-commit artifact manifest; no release publication is claimed.
 
-**R-B3 source identity — requirement corrected; release-source delivery OPEN.**
-`hbb_common` is in-tree; there is no `.gitmodules` file or gitlink. The GitHub publisher
-links the full source commit and binds that same commit into its canonical tag, release
-metadata and artifact manifest. R-B3 no longer requires a nonexistent second repository
-and submodule revision. Availability of complete Corresponding Source for exact release
-artifacts, including the required external source inputs, remains unverified and OPEN.
+**R-B3 source identity — release-source delivery OPEN.** Source review at `2a867df2`
+confirms no gitlinks, tracked LFS filters or archive exclusions; `hbb_common`,
+local Flutter forks and build scripts are in-tree. The publisher links the full
+source commit and binds it into the tag, release metadata and binary manifest.
+GitHub supplies repository archives, but these do not include ignored `online/`
+inputs. The committed Cargo lock contains 787 registry and 30 Git packages
+(21 distinct Git source identities), plus 15 local packages; these are the
+whole lock graph, not an inventory of dependencies shipped in each artifact.
+
+The release producer and publisher accept exactly four binaries plus `SHA256SUMS`.
+Their manifest, upload and download-verification paths do not establish complete
+external source delivery. The next acceptance step is to map each exact release
+artifact to its required source, patches and build/install scripts, distinguish
+source from build-only/proprietary inputs and secrets, and verify recipient access
+and reconstruction from the declared source locations. Source review and GitHub's
+automatic archive are not that proof. No release was created, queried or published;
+no downloaded archive or independent source-only rebuild ran. The audit entry
+“2026-11-03 — user pivot: release-source delivery” retains the measured inventory,
+code references and primary documentation. R-B3 and full release acceptance remain OPEN.
 
 ## Upstream CVE review — source dispositions; native/artifact acceptance OPEN
 

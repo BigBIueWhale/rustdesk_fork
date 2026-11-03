@@ -73,6 +73,15 @@ static bool cursor_matches(GdkDisplay* display, unsigned int width,
   return matches;
 }
 
+static void dispatch_ready_events(GdkDisplay* display) {
+  gdk_display_sync(display);
+  unsigned int dispatched = 0;
+  while (g_main_context_pending(nullptr)) {
+    g_assert_cmpuint(++dispatched, <=, 256);
+    g_main_context_iteration(nullptr, FALSE);
+  }
+}
+
 int main() {
   g_assert_true(gtk_init_check(nullptr, nullptr));
   GdkDisplay* display = gdk_display_get_default();
@@ -97,6 +106,8 @@ int main() {
   GtkWidget* window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
   gtk_window_set_default_size(GTK_WINDOW(window), 200, 160);
   gtk_widget_show_all(window);
+  dispatch_ready_events(display);
+  g_assert_true(gtk_widget_get_mapped(window));
   GdkWindow* surface = gtk_widget_get_window(window);
   g_assert_nonnull(surface);
   GdkSeat* seat = gdk_display_get_default_seat(display);
@@ -104,7 +115,8 @@ int main() {
   int root_x = 0, root_y = 0;
   gdk_window_get_origin(surface, &root_x, &root_y);
   gdk_device_warp(pointer, gdk_window_get_screen(surface), root_x + 50, root_y + 50);
-  gdk_display_sync(display);
+  dispatch_ready_events(display);
+  g_assert_true(gdk_device_get_window_at_position(pointer, nullptr, nullptr) == surface);
 
   FlutterCustomCursorPlugin plugin;
   unsigned int released = 0, visible = 0;

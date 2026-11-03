@@ -134518,3 +134518,50 @@ SHA-256 `359e625360cc718eb00e8888d8b8184db4dbd333dd4215509a691360bd5e8efb`.
 This audit-only receipt preserves the counted ledger. No owned job remains.
 The next acceptance gap is the same navigation cases with real Android/iOS
 connection teardown; the component correction is complete and the goal stays active.
+
+## 2026-11-03 — current Android APK prerequisite for mobile close acceptance
+
+Previous turn is PROGRESS: `e8447792` corrects the mobile page bindings and the
+unchanged eighteen-case component shard passes. Continue R-S0 native navigation
+acceptance. The retained APKs `1ee23828` and `f372aacf` predate the correction;
+neither can establish the changed behavior. TUF has the pinned SDK/NDK, emulator,
+Android 14 x86_64 image and native/dependency closure. Its two-generation APK cache
+has capacity for the required current-source build. Independently parked tasks
+remain parked, including window persistence and Android CM admission work.
+
+Read-only admission finds 47,408,564 KiB available on TUF. The existing app build
+requests 24 GiB guest plus 16 GiB scratch, 6 GiB headroom and 1 GiB overhead:
+47 GiB total, above available RAM. Its build, verification and emulator containers
+are sequential, with respective hard memory/no-swap caps of 12/4/12 GiB. Commit
+`fd258e8b` gives this workload an exact 20 GiB guest profile, preserving 8 GiB
+guest reserve, the existing 16 GiB scratch/8 GiB file ceiling and host headroom.
+Total admission is 43 GiB. No host setting, input pin or product behavior changes.
+Docker documents hard memory caps and equal memory/swap limits disabling container
+swap: https://docs.docker.com/engine/containers/resource_constraints/.
+
+Isolated `RQL9lAZIuc` passes profile values, wrong-memory refusals, actual CLI
+insufficient-RAM refusal and all 80 workload-selection controls/five refusals.
+Seven token controls and the complete round trip also pass; the unchanged ledger
+remains 398,160 tokens, SHA-256
+`0ccde4a7c6ee9bbc8000c91c9ad5e9662651b39391d7924bd93dd7f00eb7e021`.
+The 27-second run has three zero listener deltas and joined process/private/RAM
+retirement. Twelve bounded files match on CTE/TUF. Capsule
+`mobile-android-profile-fd258e8b.json`: 4,804 bytes, SHA-256
+`5fcbcdcccc83569723546322c180234872cce26a421a95e64d7a044e0d3e844d`.
+
+Current-source build/install/launch transaction `GUYycVuzhk` is started on frozen
+TUF `fd258e8b` with `scripts/smoke-verifier-vm-authority.sh --android-emulator-app`.
+Control records are in `.harness-state/mobile-android-build-fd258e8b-control`;
+the retained execution handle is 34888, wrapper PID 1383511 and QEMU PID 1384086.
+At the 332-second observation both owners remain live; RAM workspace allocation
+is 5,769,412,608 bytes. Before/during listener deltas are zero. This is an ongoing
+integration job, not an APK or navigation pass. Keep TUF frozen, poll this exact
+handle, and reconcile its terminal result/artifact/process/private/RAM state
+before syncing or launching another job. No duplicate build is authorized by an
+observation timeout. The prior comparable build took 1,013 seconds.
+
+The existing Android peer driver exercises six ordinary Back/confirm/close/
+reconnect cycles with actual peer-connection counts. It does not establish the
+new ended-session-view regression or all hidden/replacement-route cases; those
+need explicit observations with the corrected APK. Complete native teardown,
+Android/iOS device and release acceptance remain open. The goal stays active.

@@ -43,15 +43,26 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
-**User pivot (2026-11-03):** Native connection-error retry work is OPEN/PARKED.
-Two unexecuted Flutter-bridge regressions are preserved in stash
-`ac067e981c1ddac8edc7826379f586a8ff13b3d6`; the verified component correction
-below remains valid. Work moves to remote-restart command outcomes (R-S0).
-Source review finds that `Session::restart_remote_device` sets its restarting
-flag before the void command sender can reject admission; the FFI/UI receives
-no result. Correct admission, session ownership and truthful failure presentation
-need focused behavioral evidence. No restart test or product change has run.
-All independent parks remain.
+**User pivot (2026-11-03):** Remote-restart work is OPEN/PARKED. Baseline
+`f0fb02a4` reproduces four admission/state failures with one successful-command
+control. Candidate `f4f544cf` fails fresh bridge generation on `ResultType<()>`
+before tests; its correction is unverified. Nine rendered cases and their lane
+(`94124746`) are also unexecuted. `restart-native-candidate-f4f544cf.json`
+retains the failure and exact VM/RAM retirement. Native connection-error retry
+remains independently parked with two unexecuted bridge tests in stash
+`ac067e981c1ddac8edc7826379f586a8ff13b3d6`; its accepted Flutter correction
+below remains valid. All other independent parks remain.
+
+**File-log process restarts — Linux component verified.** Work moves to R-S0
+log-storage correctness. At `4b62ff2f`, forty sequential, joined logger processes
+retain exactly the newest 32 records (31 archives plus current), preserve another
+log family and keep fixture bytes bounded after every exit. Both existing size/
+retention controls also pass: three tests in 0.13 seconds, 130 outer seconds.
+`file-log-restarts-4b62ff2f.json` binds source, artifact, four zero listener deltas
+and exact process/private/RAM retirement. Product logging is unchanged. This
+executes the production builder with real files, not full-app startup, concurrent
+writers, crashes, daily rollover, privileged namespaces or other platforms.
+Those acceptance gaps remain OPEN; single-record and Windows-log work stay parked.
 
 **Earlier pivot (2026-11-03):** Android imported-backup restore acceptance is
 OPEN/PARKED before execution; its six unfinished harness edits are preserved in

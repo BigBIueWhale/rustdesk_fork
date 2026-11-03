@@ -135108,3 +135108,23 @@ fixture bytes and preservation of another log family. The existing size/retentio
 controls remain. Product logging is unchanged. Execution is pending; this does
 not exercise full-app startup, concurrent writers, crashes, daily rollover,
 privileged directory safety or other platforms.
+
+Run `b6hUHwiQZf` at `4b62ff2f` passes all three named cases in 0.13 seconds
+(130 outer seconds). The new case joins forty separate processes and observes
+exact retention after every exit. Final state: records 8 through 39 in 32 files,
+2,334 fixture bytes, newest record in CURRENT, unrelated log family unchanged.
+The existing size case produces two files with a largest file of 4,208,640 bytes;
+the sustained case retains 32 files totaling 130,467,917 bytes. Production logging
+is unchanged; no product defect is established by this validation.
+The unchanged-before/after Rust 1.75 library artifact SHA-256 is
+`59c393437a9ff58aacde0f7a0f8126054f6e305fcc933ea3c38d69244e7732ea`.
+
+Four listener deltas are zero. Exact wrapper/QEMU/helpers, private directory and
+RAM workspace are absent under the shared lock; peak RAM scratch is 3,511,816,192
+bytes. Thirteen bounded evidence files match on CTE/TUF.
+`file-log-restarts-4b62ff2f.json`: 5,804 bytes, SHA-256
+`d079f76f6d5df05415e39831a3177920aa5e31b568ff0eaebbaacb2937ea7c17`.
+This closes the sequential-process component gap only. Full-app/installed,
+concurrent-writer, crash, daily-rollover and other-platform acceptance remains
+open. Update the current ledger and obtain its required fresh count; all parked
+topics remain parked and the overall release goal remains active.

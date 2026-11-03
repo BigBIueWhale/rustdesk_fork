@@ -133319,3 +133319,17 @@ identity and resource observations decide each resulting state. Do not claim
 all injected clicks became native selection transactions or prove queue
 overlap solely from XSync. Reuse the same app, engine, topology and resource
 bounds; no product edit or native pass is claimed before execution.
+
+Initial burst replay `8a6h3jdRzy` at `78b8d93f` passes the inline left
+baseline (four fresh frames and both relative pointer targets), then stops
+before injecting any burst. The fixture looks up buttons immediately after
+the asynchronous Show toolbar action; the diagnostic tree still exposes only
+Show toolbar. Correct readiness to require both visible/enabled button bounds
+to agree across three observations within the existing five-second UI deadline.
+Keep the 250-ms injected batch and all resulting-state thresholds unchanged.
+Add bounded failure observations distinguishing unknown pixels, wrong-display
+parity and stale age. This is a fixture correction, not a product finding.
+Four listener deltas are zero and exact processes/helpers plus VM/RAM state
+retire. Failure bundle duplicates match the retained app; seventeen bounded
+records are copied before exact private retirement.
+`monitor-burst-78b8d93f.json` binds the result and cleanup.

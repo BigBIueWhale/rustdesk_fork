@@ -5412,7 +5412,7 @@ out:
 
 static int click_monitor_burst(Display *display, const ViewerWindow *viewer,
                                unsigned int first, unsigned int clicks, unsigned int sequence) {
-    AtspiRect buttons[2];
+    AtspiRect buttons[2] = {{0}};
     Window child;
     int origin_x, origin_y, result = -1, held = 0;
     unsigned int mask;
@@ -5420,22 +5420,34 @@ static int click_monitor_burst(Display *display, const ViewerWindow *viewer,
     if (first > 1U || clicks < 2U || clicks > 17U ||
         !XTranslateCoordinates(display, viewer->window, DefaultRootWindow(display),
                                0, 0, &origin_x, &origin_y, &child)) return -1;
-    for (unsigned int side = 0U; side < 2U; ++side) {
-        AtspiAccessible *button = NULL;
-        AtspiStateSet *states = NULL;
-        if (query_named_accessible((unsigned int)viewer->pid, side ? "2" : "1",
-                                   deadline, &button, 0) != 0) return -1;
-        if (button != NULL) states = atspi_accessible_get_state_set(button);
-        int valid = states != NULL && atspi_state_set_contains(states, ATSPI_STATE_ENABLED) &&
-            atspi_state_set_contains(states, ATSPI_STATE_SENSITIVE) &&
-            read_accessible_rect(button, &buttons[side]) == 0;
-        g_clear_object(&states);
-        g_clear_object(&button);
-        if (!valid || buttons[side].x < origin_x || buttons[side].y < origin_y ||
-            (int64_t)buttons[side].x + buttons[side].width > (int64_t)origin_x + viewer->width ||
-            (int64_t)buttons[side].y + buttons[side].height > (int64_t)origin_y + viewer->height)
-            return -1;
+    unsigned int stable = 0U;
+    while (monotonic_millis() < deadline && stable < 3U) {
+        AtspiRect observed[2] = {{0}};
+        int ready = 1, same = 1;
+        for (unsigned int side = 0U; side < 2U; ++side) {
+            AtspiAccessible *button = NULL;
+            AtspiStateSet *states = NULL;
+            if (query_named_accessible((unsigned int)viewer->pid, side ? "2" : "1",
+                                       deadline, &button, 0) != 0) return -1;
+            if (button != NULL) states = atspi_accessible_get_state_set(button);
+            int valid = states != NULL && atspi_state_set_contains(states, ATSPI_STATE_ENABLED) &&
+                atspi_state_set_contains(states, ATSPI_STATE_SENSITIVE) &&
+                read_accessible_rect(button, &observed[side]) == 0;
+            g_clear_object(&states);
+            g_clear_object(&button);
+            if (!valid || observed[side].x < origin_x || observed[side].y < origin_y ||
+                (int64_t)observed[side].x + observed[side].width > (int64_t)origin_x + viewer->width ||
+                (int64_t)observed[side].y + observed[side].height > (int64_t)origin_y + viewer->height)
+                ready = 0;
+            if (observed[side].x != buttons[side].x || observed[side].y != buttons[side].y ||
+                observed[side].width != buttons[side].width || observed[side].height != buttons[side].height)
+                same = 0;
+            buttons[side] = observed[side];
+        }
+        stable = !ready ? 0U : same ? stable + 1U : 1U;
+        if (stable < 3U && sleep_millis(25U) != 0) return -1;
     }
+    if (stable != 3U || monotonic_millis() >= deadline) return -1;
     if ((int64_t)buttons[0].x + buttons[0].width > buttons[1].x) return -1;
     int x, y;
     if (mouse_snapshot(display, &x, &y, &mask) != 0 || mask != 0U) return -1;
@@ -5500,11 +5512,18 @@ static int exercise_monitor_switch(Display *source, Display *display,
         phase = "fresh-selected-pixels";
         started = monotonic_millis();
         deadline = started + RECOVERY_LIMIT_MS;
+        int64_t last_observed = -1;
+        unsigned int wrong_display = 0U, unknown = 0U;
+        uint64_t maximum_observed_age = 0U;
         while (monotonic_millis() < deadline && distinct < 4U) {
             uint8_t pixels[X11_FRAME_BYTES];
             uint64_t captured_us = 0U, age = 0U;
             int64_t state = x11_frame_capture(display, viewer->window, pixels, &captured_us);
             int fresh = x11_frame_age(history, "/coord", state, captured_us, &age) == 0;
+            last_observed = state;
+            if (state < 0) ++unknown;
+            else if (((uint32_t)state & 1U) != side) ++wrong_display;
+            if (fresh && age > maximum_observed_age) maximum_observed_age = age;
             if (history->failed) goto failed;
             if (fresh && state >= 0 && ((uint32_t)state & 1U) == side &&
                 age <= FRESH_LIMIT_MS && state > previous &&
@@ -5520,8 +5539,10 @@ static int exercise_monitor_switch(Display *source, Display *display,
         }
         if (distinct != 4U) {
             fprintf(stderr, "FLUTTER_PEER_MONITOR_PIXELS_FAILED side=%u distinct=%u "
-                    "last=%lld width_interval=%u..%u\n", side, distinct,
-                    (long long)previous, minimum, maximum);
+                    "last_accepted=%lld last_observed=%lld wrong_display=%u unknown=%u "
+                    "width_interval=%u..%u maximum_observed_age_ms=%llu\n", side, distinct,
+                    (long long)previous, (long long)last_observed, wrong_display, unknown,
+                    minimum, maximum, (unsigned long long)maximum_observed_age);
             goto failed;
         }
         phase = "remote-pointer";

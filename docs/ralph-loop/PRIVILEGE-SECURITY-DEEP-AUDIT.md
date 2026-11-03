@@ -133586,3 +133586,14 @@ Capsule `recent-search-dbec5300.json`: 8,395 bytes, SHA-256
 `a7a3f025a32be6b81ae5722c99385a002dca215aca2b4cbbf0f192e1a6d05b7a`.
 The live ledger records this limited acceptance. Its prescribed fresh whole-file
 token count follows. All independent user parks remain in force.
+
+Final whole-ledger count `HNB31ekewT` at `12d02a4f` passes seven controls and
+the exact byte round trip in 27 outer seconds: **394,762 tokens / 1,805,517
+bytes**, input SHA-256
+`d6a3c17078f9b7141b16347989c10ac8c8d53cc3849ddeffee77ff5c21a4d55b`.
+Three listener deltas are zero and exact process/VM/RAM/private retirement passes.
+Twelve bounded records are copied and verified. Capsule
+`recent-search-ledger-12d02a4f.json`: 4,797 bytes, SHA-256
+`10a2b23db8f8313f881bf1704d551a6cf5ee7bb33b45f0e9b1551563dfd8da64`.
+The named native Recent-search checkpoint is complete; no owned job remains.
+Broader product/release acceptance and every independent park remain OPEN.

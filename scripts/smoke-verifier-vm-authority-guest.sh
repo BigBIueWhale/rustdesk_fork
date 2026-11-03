@@ -14,6 +14,7 @@ FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE=0
 FLUTTER_VIEW_SCALING=0
 FLUTTER_SESSION_CLOSE=0
 FLUTTER_MONITOR_SWITCH=0
+FLUTTER_RECENT_SEARCH=0
 FLUTTER_IMAGE_QUALITY=0
 FLUTTER_QUALITY_RESTART=0
 FLUTTER_IMAGE_QUALITY_SAVE_FAILURE=0
@@ -317,6 +318,7 @@ case "$#:${8:-}" in
                 --view-scaling) FLUTTER_VIEW_SCALING=1 ;;
                 --session-close) FLUTTER_SESSION_CLOSE=1 ;;
                 --monitor-switch) FLUTTER_MONITOR_SWITCH=1 ;;
+                --recent-search) FLUTTER_RECENT_SEARCH=1 ;;
                 --monitor-burst) FLUTTER_MONITOR_SWITCH=2 ;;
                 --wake-lock) FLUTTER_SESSION_CLOSE=3 ;;
                 --image-quality) FLUTTER_IMAGE_QUALITY=1 ;;
@@ -427,6 +429,7 @@ readonly FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE
 readonly FLUTTER_VIEW_SCALING
 readonly FLUTTER_SESSION_CLOSE
 readonly FLUTTER_MONITOR_SWITCH
+readonly FLUTTER_RECENT_SEARCH
 readonly FLUTTER_IMAGE_QUALITY
 readonly FLUTTER_IMAGE_QUALITY_SAVE_FAILURE
 readonly FLUTTER_AUDIO_MUTE
@@ -14159,6 +14162,7 @@ run_flutter_peer_presentation() {
     [ "$FLUTTER_VIEW_SCALING" -eq 0 ] || peer_args+=(--view-scaling)
     [ "$FLUTTER_SESSION_CLOSE" -ne 1 ] || peer_args+=(--session-close)
     [ "$FLUTTER_MONITOR_SWITCH" -ne 1 ] || peer_args+=(--monitor-switch)
+    [ "$FLUTTER_RECENT_SEARCH" -eq 0 ] || peer_args+=(--recent-search)
     [ "$FLUTTER_MONITOR_SWITCH" -ne 2 ] || peer_args+=(--monitor-burst)
     [ "$FLUTTER_SESSION_CLOSE" -ne 3 ] || peer_args+=(--wake-lock)
     [ "$FLUTTER_IMAGE_QUALITY" -eq 0 ] || peer_args+=(--image-quality)
@@ -14297,6 +14301,9 @@ run_flutter_peer_presentation() {
         peer_cycles=1
     elif [ "$FLUTTER_IMAGE_QUALITY" -eq 1 ]; then
         peer_scenario=image-quality
+        peer_cycles=1
+    elif [ "$FLUTTER_RECENT_SEARCH" -eq 1 ]; then
+        peer_scenario=recent-search
         peer_cycles=1
     elif [ "$FLUTTER_MONITOR_SWITCH" -eq 2 ]; then
         peer_scenario=monitor-burst

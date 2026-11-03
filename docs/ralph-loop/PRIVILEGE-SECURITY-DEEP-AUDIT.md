@@ -133502,3 +133502,12 @@ Shell syntax and diff whitespace pass. TUF is clean at `e7717ef0`, has
 47,387,036 KiB available memory and no owned run/RAM workspace. Reuse app
 `f043c5ae` and engine `ddb1541d` in the canonical no-NIC bounded-RAM VM; no full
 app build or host product execution is needed. Native execution follows.
+
+Initial run `0rwyjIVPem` at `de0ef563` exits before product execution: the
+guest dispatcher had not been extended for the new argument. Its exit 2 is a
+fixture preparation failure, not a product result. Add the corresponding closed
+guest argument, forwarding and expected-scope branches. All four listener deltas
+are zero; exact wrapper/QEMU/helpers, RAM and private diagnostics retire under
+the shared lock. Capsule `recent-search-de0ef563.json` retains the failure and
+complete console provenance (14,796 bytes, SHA-256
+`fa635964f9d51b30c249a21f6862adc6551fdcb898c0faefe5ccfd3d09a7a8a9`).

@@ -43,11 +43,11 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
-**User pivot (2026-11-03):** Cursor work is OPEN/PARKED after the component
-correction below; full plugin/app and live cursor acceptance remain outstanding.
-Work moves to R-F1/R-S0 overlapping mouse-button correctness. TUF's small cached
-candidate lock is reconciled with the committed lock as a replay prerequisite;
-the retained app and canonical package caches are unchanged. All independent parks remain.
+**User pivot (2026-11-03):** Mouse focus-loss work is OPEN/PARKED. Run
+`usbFMul9p2` stops before any mouse-case receipt, so it establishes no focus-loss
+defect; setup/first-event diagnostics remain outstanding. Evidence and joined
+cleanup are retained in `mouse-focus-afa1eee2.json`. Work moves to R-S0 theme
+restoration after desktop appearance changes. Cursor and all independent parks remain.
 
 **Overlapping mouse buttons — named Linux native cases pass (2026-11-03).**
 `fffdc44e`, run `ZYMaxMdH9S`, reuses app `9f78434c` / engine `ddb1541d`.
@@ -163,6 +163,7 @@ the appearance for System and rejects invalid or unavailable targets.
 | Dart component, `theme-ordering-accepted-1000ebf4.json` | Baseline `ANyuhxg9wj` passes 34 cases and fails both delayed-value cases; corrected `j9HHXLDLHo` passes 36. Actual handlers, dispatcher and rendered widgets use native preference/platform doubles and regenerated bindings. Save failure, retry, ownership and subsequent OS brightness changes pass. |
 | Linux full app, `theme-system-appearance-f13a50e7.json` | `GczjjRBVla` uses app `c9323bf1` / engine `ddb1541d`: thirteen main/remote phases, four System-followed OS changes, five five-second explicit-mode holds, correct System reselection and all nine independently observed notifications. Fifty-two fresh frame samples have maximum age 319 ms; joined storage retains System. |
 | Linux full app, `theme-system-save-failure-f13a50e7.json` | `7BcrDr6IGA`, same app/engine: real EACCES reports failure, keeps both windows Light through four-second observations and preserves saved identity/bytes. Restored access permits Dark retry, clears the error and saves Dark after join. Sixteen fresh frames have maximum age 317 ms. |
+| Linux startup, `theme-startup-932dc733.json` | `VBK6C9NGXF` reuses app `9f78434c` / engine `ddb1541d` across four joined process generations, with OS appearance dark/dark/light/dark before launch. Saved Light and Dark override opposite OS appearances; saved System follows the changed appearance on restart. Seven exclusive-radio/main/remote pixel observations and all four joined storage checks pass; twenty-eight fresh frame samples have maximum age 319 ms. Three driver build pairs match; all four listener deltas are zero and VM/RAM/private cleanup passes. |
 | Dart macOS-channel component, `macos-theme-corrected-f8d92225.json` | Baseline `4Y3j1Wu5tt` passes 36 cases and fails four channel cases; corrected `WCYT4wRC8l` passes 40, including awaiting completion and visible failure/retry. Native/platform doubles; no macOS execution. |
 
 Both Linux app replays preserve the same window/connection, rebuild drivers

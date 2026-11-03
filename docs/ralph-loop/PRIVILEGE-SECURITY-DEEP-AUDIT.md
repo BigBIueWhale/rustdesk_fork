@@ -134112,3 +134112,21 @@ current brightness: https://api.flutter.dev/flutter/material/MaterialApp/themeMo
 GSettings writes complete asynchronously; the separate readback after the CLI
 write checks the shared backend before app launch:
 https://docs.gtk.org/gio/type_func.Settings.sync.html.
+
+Native run `VBK6C9NGXF` at `932dc7338ad2206325baa2e0bdb5a4c9d411b31c`
+passes all four complete app generations and seven main/remote observations.
+Saved Light remains light on the dark desktop; saved Dark remains dark after
+the OS changes to light; saved System becomes dark after the next closed-app OS
+change. All four joined preference checks pass. Twenty-eight post-observation
+fresh frames have maximum age 319 ms; each generation preserves its connection.
+No product correction is needed for this scenario. The test does not establish
+other providers/platforms, concurrent writers, crash durability or release acceptance.
+
+All three driver pairs build identically; controller SHA-256 is
+`40ce3be6bee1edf1b53dc36081e3d1bc269545c67efc64104b7d3d59cf7d7548`.
+The 130-second outer run retires exact wrapper/QEMU/helpers and private/RAM state,
+with 3,015,249,920 bytes peak RAM scratch and four zero listener deltas. Thirteen
+bounded evidence files are copied and hash-verified on CTE. Capsule
+`theme-startup-932dc733.json`: 10,207 bytes, SHA-256
+`137e386de64113ddbde4cbdc88952d43b676162ed720983c5ee3f66c149574b6`.
+Mouse and all other parks remain; no owned job remains. Fresh ledger count follows.

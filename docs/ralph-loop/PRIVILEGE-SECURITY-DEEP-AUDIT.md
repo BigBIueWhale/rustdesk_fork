@@ -135357,3 +135357,33 @@ bounded CPU/address space/output, exact receipt binding and joined retirement.
 It does not build or execute a Windows image. Shell syntax and diff checks pass;
 baseline execution is next. Synthetic PE component evidence cannot establish
 shipping-linker, Windows filesystem, installed or cold-release acceptance.
+
+Baseline `LR4TbfQ2qQ` at `8b01af88` passes the existing controls and three
+malformed empty-location refusals, then exits 1 on the first permitted empty
+marker. The other two positive cases are not reached. At `ad2b4f24`, run
+`kK94EyVaUz` passes all controls and all three file cases. The 9,029-byte self-test
+is identical (SHA-256 `45a05a1ea01efd15d84e128d941b9a162006051d2d1cab6d73ef6e475edb2a20`),
+as is the execution recipe. The correction admits zero-size/zero-location entries
+and counts REPRO entries separately from mutable payload ranges. The corrected
+outer run takes nine seconds. LLVM 15.0.6 independently confirms the documented
+layout in its DebugDirectoryChunk::writeTo implementation:
+https://github.com/llvm/llvm-project/blob/llvmorg-15.0.6/lld/COFF/Writer.cpp#L100-L107.
+
+Both runs have three zero listener deltas, exact process absence and RAM retirement;
+scratch peaks at 400,932,864/400,998,400 bytes. The failed run's nineteen private
+entries were inventoried and retired by retained descriptors under the shared
+lock. The collector initially assumed a virtiofsd extraction used by larger
+profiles; this direct seed-only profile has none. Its exact nineteen-entry
+inventory replaced that assumption. Source metadata also needed its separate
+4-MiB read bound; retained evidence files keep their 1-MiB limit. Both checks
+stopped before writes/deletion and required no workload rerun. Twelve evidence
+files per run now match on CTE/TUF. Baseline capsule: 10,150 bytes, SHA-256
+`0dff4e03e1c20fef857ca62a09c29c2c21a90ee8c1051bbf3fbfabd55a73b371`;
+corrected capsule: 6,254 bytes, SHA-256
+`e3d075ae339eccfc201e87df93e9c544cea9b08ee55a0e280175274e126cc070`.
+
+The required ledger count will also exercise the storage selector inventory:
+42 modes and 81 admitted selections now include the new PE mode, with five
+existing refusal controls. Update those exact expected totals together; resource
+budgets and refusals are unchanged. Native Windows/installed and complete-release
+acceptance remain open. No owned job remains; concurrent logging stays parked.

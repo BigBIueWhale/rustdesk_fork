@@ -43,6 +43,17 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**PE reproducibility markers — build component corrected.** `ad2b4f24` accepts
+the documented empty REPRO entry and counts it without authorizing payload writes.
+Baseline `8b01af88` passes existing controls then refuses the first valid empty
+marker. The identical self-test now passes three actual-file layouts, exact bytes,
+input preservation, idempotence and entry counts; malformed mapping/overlap and
+no-clobber controls remain. `pe-repro-{baseline-8b01af88,fixed-ad2b4f24}.json`
+retain Linux component evidence, source identities and joined VM/RAM retirement
+with zero listener deltas. Reproduce with `--pe-canonicalizer-tests` on the shared
+verifier-VM wrapper. Shipping-linker artifacts, native Windows filesystem and
+installation, cold release equality and full seven-suite integration remain OPEN.
+
 **User pivot (2026-11-03):** Remote-restart work is OPEN/PARKED. Baseline
 `f0fb02a4` reproduces four admission/state failures with one successful-command
 control. Candidate `f4f544cf` fails fresh bridge generation on `ResultType<()>`
@@ -79,7 +90,8 @@ logging is unchanged; correction is pending. This is an ordinary-user Linux
 logger-component failure, not installed/full-UI or privilege-boundary evidence.
 When resumed: give live writers stable ownership through rotation/retention while
 keeping storage bounded across starts; process-specific names alone do not establish
-that. Current work is the requested documentation/current-state consolidation.
+that. The installer-ledger consolidation is complete; the PE component result
+above records the subsequent selected work.
 
 **Earlier pivot (2026-11-03):** Android imported-backup restore acceptance is
 OPEN/PARKED before execution; its six unfinished harness edits are preserved in

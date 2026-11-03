@@ -133911,3 +133911,46 @@ the parked `0ccb2a7e` candidate must remain preserved. Full plugin/bridge and
 remote-peer delivery, image-allocation failure, plugin teardown, physical/other
 platform and release acceptance remain OPEN. The native image-lifetime correction
 is verified at its stated component scope; no owned job remains.
+
+Fresh ledger count `dRrZJ5tNQt` at `f8ced65a` passes seven controls and the
+whole-input round trip: 396,000 tokens / 1,810,891 bytes, SHA-256
+`b9f65985ede8a39266a5899b3cb46a3136d7a741df5314485cbad02e8cc64be8`.
+All three listener deltas are zero; exact wrapper/QEMU/helper and private/RAM
+retirement are verified. Peak scratch is 402,739,200 RAM bytes. Twelve bounded
+evidence files are copied and hash-verified on CTE. Capsule
+`cursor-image-ledger-f8ced65a.json` is 4,791 bytes, SHA-256
+`c00090f09574b4948e9279f295260e5d6d8f11d0c263dcae7ca8bee96f6b2373`.
+
+## 2026-11-03 — user pivot; native overlapping mouse buttons
+
+The user requests a different aspect. R-S11gv cursor work remains OPEN/PARKED
+after its accepted component correction; discovery-lock replacement, full app
+compilation and live cursor presentation are not resumed. The previous ledger
+job had already completed; its exact evidence and retirement are reconciled above.
+
+Select R-F1/R-S0 remote input correctness: releasing one button in an overlapping
+press must preserve the remaining held buttons, then the final release must clear
+the complete set. Earlier native runs already cover single-button clicks, dragging,
+outside release and abrupt viewer exit. Do not repeat those as the new achievement.
+The three new two/three/five-button schedules exercise ordinary input through both
+the Flutter pointer path and the Linux Back/Forward channel. This closes a concrete
+native gap behind the existing component conversion tests, ahead of cosmetic UI
+work, without a new application build or a privileged receiver investigation.
+
+Extend the existing mouse workload with twenty individually observed transitions.
+Each step requires the exact native event/pre-event state and the complete logical
+button set on both X servers through a 100-ms quiet interval. The controlled side
+receives no fixture injection. Existing single-button cases remain controls for
+the changed workload. The three new cases retain the same window/connection,
+resource bounds, finite deadlines and joined cleanup. XInput2 covers buttons beyond
+the core X11 five-button state mask; primary references:
+https://www.x.org/archive/X11R7.5/doc/man/man3/XIQueryPointer.3.html and
+https://www.x.org/releases/X11R7.5/doc/man/man3/XButtonEvent.3.html.
+
+Reuse source-bound app `9f78434c`, manifest SHA-256
+`a366e2066d1e46e9ae16aece2bdfa45d58ac745bac6b3f6117b7cb3250f82cd0`,
+and retained engine `ddb1541d`. Product differences since that app are confined to
+the parked cursor-package import/selection/correction. The input path is unchanged;
+this run cannot validate the new cursor plugin or claim current-release acceptance.
+TUF reports 47,381,864 KiB available memory and no owned run marker. No host service,
+SSH credential, cache generation or canonical input is changed.

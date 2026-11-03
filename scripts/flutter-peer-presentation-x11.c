@@ -2791,6 +2791,93 @@ static int wait_mouse_drag(Display *source, unsigned int button, int previous_x,
     return -1;
 }
 
+static int exercise_mouse_chords(Display *source, Display *display,
+                                  const ViewerWindow *viewer,
+                                  const ConnectionIdentity *connection,
+                                  const ProcessResources *baseline) {
+    static const struct { const char *name; unsigned int count; int steps[10]; } cases[] = {
+        {"left-right-release-left-first", 4U, {1, 3, -1, -3}},
+        {"three-buttons-release-middle-first", 6U, {1, 2, 3, -2, -1, -3}},
+        {"five-buttons-mixed-release", 10U, {1, 2, 3, 8, 9, -1, -8, -3, -9, -2}},
+    };
+    Window root = RootWindow(source, DefaultScreen(source));
+    unsigned int held = 0U;
+    int result = -1;
+    for (unsigned int i = 0U; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+        if (!mouse_buttons_match(source, 0U) || !mouse_buttons_match(display, 0U)) goto finished;
+        uint64_t case_start = monotonic_millis();
+        for (unsigned int step = 0U; step < cases[i].count; ++step) {
+            int down = cases[i].steps[step] > 0;
+            unsigned int button = (unsigned int)(down ? cases[i].steps[step] : -cases[i].steps[step]);
+            unsigned int bit = 1U << button, before = 0U, expected[5], count = 0U;
+            unsigned int received = 0U, events = 0U;
+            uint64_t start = monotonic_millis(), complete = 0U;
+            if (((held & bit) != 0U) == down) goto finished;
+            for (unsigned int b = 1U; b <= 5U; ++b)
+                if ((held & (1U << b)) != 0U) before |= 1U << (b + 7U);
+            if (XTestFakeButtonEvent(display, button, down, CurrentTime) == 0) goto finished;
+            held = down ? held | bit : held & ~bit;
+            XSync(display, False);
+            for (unsigned int b = 1U; b <= 9U; ++b) {
+                if ((held & (1U << b)) == 0U) continue;
+                if (count >= sizeof(expected) / sizeof(expected[0])) goto finished;
+                expected[count++] = b;
+            }
+            do {
+                while (XPending(source) != 0) {
+                    XEvent event;
+                    if (++events > 128U) goto finished;
+                    XNextEvent(source, &event);
+                    if (event.type != ButtonPress && event.type != ButtonRelease) continue;
+                    printf("FLUTTER_PEER_MOUSE_CHORD_EVENT case=%u step=%u type=%d button=%u "
+                           "state=%u synthetic=%d\n", i + 1U, step + 1U, event.type,
+                           event.xbutton.button, event.xbutton.state, event.xbutton.send_event);
+                    if (++received != 1U || event.xbutton.window != root || event.xbutton.send_event ||
+                        event.type != (down ? ButtonPress : ButtonRelease) ||
+                        event.xbutton.button != button || event.xbutton.state != before) goto finished;
+                    complete = monotonic_millis();
+                }
+                if (complete != 0U) {
+                    if (!mouse_button_set_matches(source, expected, count) ||
+                        !mouse_button_set_matches(display, expected, count)) goto finished;
+                    if (monotonic_millis() - complete >= 100U) break;
+                }
+                if (sleep_millis(10U) != 0) goto finished;
+            } while (monotonic_millis() - start < 5000U);
+            if (received != 1U || complete == 0U || monotonic_millis() - start >= 5000U) {
+                fprintf(stderr, "FLUTTER_PEER_X11_FAIL mouse chord=%u step=%u received=%u\n",
+                        i + 1U, step + 1U, received);
+                goto finished;
+            }
+            printf("FLUTTER_PEER_MOUSE_CHORD_STEP_OK case=%u step=%u held_bits=%u "
+                   "held_count=%u state=both quiet_ms=100 elapsed_ms=%llu\n",
+                   i + 1U, step + 1U, held, count, (unsigned long long)(complete - start));
+        }
+        ConnectionIdentity after = {{0}, {0}, 0UL};
+        ProcessResources resources;
+        ViewerWindow current = {0};
+        if (held != 0U || !mouse_buttons_match(source, 0U) || !mouse_buttons_match(display, 0U) ||
+            find_viewer_window(display, viewer->pid, &current) != 0 || current.window != viewer->window ||
+            read_connection_identity(&after) != 0 || !same_connection(connection, &after) ||
+            read_process_resources(viewer->pid, &resources) != 0 ||
+            !resources_are_bounded(baseline, &resources)) goto finished;
+        print_resources("mouse-chord", i + 1U, &resources);
+        printf("FLUTTER_PEER_MOUSE_CHORD_CASE_OK sequence=%u name=%s events=%u "
+               "elapsed_ms=%llu released=both stable_connection=true\n", i + 1U, cases[i].name,
+               cases[i].count, (unsigned long long)(monotonic_millis() - case_start));
+        fflush(stdout);
+    }
+    result = 0;
+finished:
+    /* Failure cleanup affects only injected viewer buttons, after the result is decided. */
+    for (unsigned int b = 1U; b <= 9U; ++b) {
+        if ((held & (1U << b)) != 0U &&
+            XTestFakeButtonEvent(display, b, False, CurrentTime) == 0) result = -1;
+    }
+    XSync(display, False);
+    return result;
+}
+
 static int exercise_mouse_input(Display *source, Display *display,
                                 const ViewerWindow *viewer,
                                 const ConnectionIdentity *connection,
@@ -2958,7 +3045,7 @@ static int exercise_mouse_input(Display *source, Display *display,
                cases[i].name, received, held_moves, (unsigned long long)(complete - start));
         fflush(stdout);
     }
-    result = 0;
+    result = exercise_mouse_chords(source, display, viewer, connection, baseline);
 finished:
     /* Retire only fixture-injected viewer input; never manufacture controlled-side releases. */
     if (injected_held != 0U) {
@@ -7559,7 +7646,8 @@ int main(int argc, char **argv) {
                  "viewer_exit=abrupt native_releases=true fixture_buttons_released=true");
         } else if (mouse_input) {
             puts("FLUTTER_PEER_MOUSE_INPUT_OK cases=21 button_events=42 drag_moves=2 "
-                 "wheel_directions=4 outside_releases=5 reentries=5 side_buttons=2 actual_peer=true native_events=true released=both "
+                 "wheel_directions=4 outside_releases=5 reentries=5 side_buttons=2 chord_cases=3 chord_events=20 "
+                 "actual_peer=true native_events=true released=both "
                  "same_window=true stable_connection=true resources=bounded");
         } else if (keyboard_retirement) {
             puts("FLUTTER_PEER_KEYBOARD_RETIREMENT_OK remote_keys=2 local_key=preserved "

@@ -2086,9 +2086,18 @@ PY
         [ "$(grep -Ec "^FLUTTER_PEER_MOUSE_SIDE_HELD sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
           || fail "mouse side-button hold $sequence is absent or duplicated"
       done
-      grep -Fxq 'FLUTTER_PEER_MOUSE_INPUT_OK cases=21 button_events=42 drag_moves=2 wheel_directions=4 outside_releases=5 reentries=5 side_buttons=2 actual_peer=true native_events=true released=both same_window=true stable_connection=true resources=bounded' \
+      for sequence in 1 2 3; do
+        [ "$(grep -Ec "^FLUTTER_PEER_MOUSE_CHORD_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
+          || fail "mouse chord case $sequence is absent or duplicated"
+        case "$sequence" in 1) steps=4 ;; 2) steps=6 ;; 3) steps=10 ;; esac
+        for ((step=1; step<=steps; step++)); do
+          [ "$(grep -Ec "^FLUTTER_PEER_MOUSE_CHORD_STEP_OK case=$sequence step=$step " <<<"$controller_output")" -eq 1 ] \
+            || fail "mouse chord step $sequence/$step is absent or duplicated"
+        done
+      done
+      grep -Fxq 'FLUTTER_PEER_MOUSE_INPUT_OK cases=21 button_events=42 drag_moves=2 wheel_directions=4 outside_releases=5 reentries=5 side_buttons=2 chord_cases=3 chord_events=20 actual_peer=true native_events=true released=both same_window=true stable_connection=true resources=bounded' \
         <<<"$controller_output" || fail 'native mouse input verdict is missing'
-      viewer_result='viewer=joined xvfb=joined mouse_cases=21 stable_connection=true resources=bounded'
+      viewer_result='viewer=joined xvfb=joined mouse_cases=21 mouse_chords=3 stable_connection=true resources=bounded'
     elif [ "$PEER_SCENARIO" = keyboard-retirement ]; then
       grep -Fxq 'FLUTTER_PEER_KEYBOARD_RETIREMENT_OK remote_keys=2 local_key=preserved viewer_exit=abrupt native_releases=true fixture_keys_released=true' \
         <<<"$controller_output" || fail 'native keyboard retirement verdict is missing'

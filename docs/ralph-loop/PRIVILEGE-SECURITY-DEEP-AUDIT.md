@@ -134023,3 +134023,28 @@ The five-second batch deadline and bounded event/log inventory remain finite.
 XTEST's delay applies before each event and orders subsequent requests from the
 same client; it is not a remote acknowledgement or measured device timing:
 https://www.x.org/releases/X11R7.7/doc/libXtst/xtestlib.pdf.
+
+Run `2zosh5y2lj`, source `2a181cd307ad203adf350d765d9cd1142521658c`, passes all
+six burst schedules and the unchanged 21 ordinary/three paced-chord controls.
+The six batches contain 16/24/40/16/24/40 native transitions. Every event has exact
+button, direction, ordering and pre-event state, and both displays are released
+through each final 100-ms quiet interval. Case lifetimes are 118/120/117/203/247/
+320 ms including quiet intervals and any requested XTEST delay; these do not
+measure input-to-visible latency or actual device event timing. Window/TCP identity
+and resource bounds hold. During burst samples, descriptors stay at 45 and threads
+remain below the initial 59; maximum RSS is 366,924 KiB versus 359,728 KiB initially.
+The app/engine remain unchanged, and all three native driver pairs are identical.
+Controller SHA-256: `f3c7d0ae820fb7da8f2b8ffad0258725596377da946f83f1db4a770376a2c79b`.
+
+The outer run completes in 112 seconds. Under the shared run lock, exact wrapper/
+QEMU/helper absence and private/RAM retirement are verified. Peak scratch is
+3,021,451,264 RAM bytes; all four listener deltas are zero. Thirteen bounded
+evidence files are copied and hash-verified on CTE. Capsule
+`mouse-burst-2a181cd3.json` is 37,992 bytes, SHA-256
+`78d6b1dd9d27fc32b39dcb83e3775740e90c4dc54f4884d11ac8c851538ecde6`.
+No product correction is needed for these schedules. Physical devices, focus/
+cancellation/owner changes, broader sustained input and application effects,
+other platforms and current-release acceptance remain OPEN. The next distinct
+input boundary is focus/cancellation during a held drag; do not repeat passed
+burst schedules without a relevant change. Cursor and every independent park
+remain parked. Fresh ledger count follows; no owned runtime job remains live.

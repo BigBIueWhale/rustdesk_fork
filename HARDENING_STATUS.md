@@ -56,7 +56,11 @@ exact remaining button set on both X servers after each release; twenty-one
 existing mouse controls also pass. The same window/connection survives, resource
 bounds pass, four listener deltas are zero and VM/RAM/private cleanup passes.
 `mouse-chords-fffdc44e-ready.json` binds the evidence. No product correction was
-needed. Physical devices, rapid unacknowledged input, application-specific effects,
+needed. Follow-up `2a181cd3`, run `2zosh5y2lj`, passes six bursts/160 ordered
+transitions without waiting for remote events between injections, at zero/five-ms
+requested local spacing. Both displays finish released; existing controls and
+joined cleanup pass. `mouse-burst-2a181cd3.json` binds this short native schedule.
+Physical devices, focus/owner changes, sustained use, application-specific effects,
 other platforms and current-release acceptance remain OPEN; R-S19 below retains detail.
 
 **Linux cursor image ownership — native component correction verified (2026-11-03).**
@@ -2632,6 +2636,21 @@ listener deltas. Thirteen bounded evidence files match on CTE/TUF;
 is needed for these schedules. This is paced Linux native input on the named
 artifact, not physical-device, rapid overlapping delivery, relative-mode,
 cross-window/owner, application action, other-platform or release acceptance.
+
+**Rapid button batches — six native schedules passed.** `2a181cd3` extends
+the same workload on app `9f78434c` / engine `ddb1541d`. Each two/three/five-button
+sequence repeats four times per batch, with zero and five-ms requested XTEST
+spacing and one local synchronization after the complete batch. All 160 native
+transitions preserve exact order, button/direction and pre-event state; no remote
+acknowledgement gates injection. All six final empty button sets persist on both
+displays through 100-ms quiet intervals. Batch lifetimes are 117–320 ms including
+those intervals, not input-to-visible latency. Existing 21 ordinary and three
+paced chord cases pass; window/TCP and resource bounds hold. Three driver pairs
+are identical, the app is unbuilt, all four listener deltas are zero, and the
+112-second outer run retires VM/private state and 3,021,451,264 peak RAM bytes.
+`mouse-burst-2a181cd3.json` binds native `2zosh5y2lj`; thirteen evidence files
+match on CTE/TUF. No product change is needed. This does not close physical-device,
+focus/cancel/owner changes, sustained/broader schedules or other-platform/release acceptance.
 
 **Linux remote keyboard — Ctrl+A corrected; eleven full-app cases passed.**
 `cf437894` routes Linux Legacy character shortcuts through the existing native

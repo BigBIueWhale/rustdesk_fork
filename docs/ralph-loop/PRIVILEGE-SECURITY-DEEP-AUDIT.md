@@ -134130,3 +134130,12 @@ bounded evidence files are copied and hash-verified on CTE. Capsule
 `theme-startup-932dc733.json`: 10,207 bytes, SHA-256
 `137e386de64113ddbde4cbdc88952d43b676162ed720983c5ee3f66c149574b6`.
 Mouse and all other parks remain; no owned job remains. Fresh ledger count follows.
+
+Fresh count `nRepwaVbzG` at `cca31f4d` passes seven controls and the whole-input
+round trip: 397,051 tokens / 1,815,420 bytes, SHA-256
+`bef01fd53c90b9b06140544eed6d66936b8997e7c7b7adaeb56c645a2662bf24`.
+The 27-second outer run retires exact processes/private/RAM state with three zero
+listener deltas and 402,612,224 bytes peak RAM scratch. Twelve bounded evidence
+files match on CTE/TUF. `theme-startup-ledger-cca31f4d.json`: 4,795 bytes,
+SHA-256 `056821a181af2ee72069393617b7c7becd27b5c15b82f041b6a7e3f2db744c9c`.
+This audit-only receipt leaves the counted ledger unchanged. No owned job remains.

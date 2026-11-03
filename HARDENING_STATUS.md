@@ -43,6 +43,16 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**Linux cursor image ownership — native component correction verified (2026-11-03).**
+`c45e3e6b` owns the registration's copied pixbuf with automatic release and points
+the application/default/candidate dependency descriptions at the maintained plugin.
+The unchanged native fixture observes 128 correct cursor images/hotspots in both
+baseline and corrected runs. Baseline retains all 128 image copies after deleting
+the cursors; corrected code finalizes all 128 with no retained copies. Real GTK,
+GObject and XFixes run; Flutter method arguments are doubles. Full app/bridge,
+strict offline lock resolution and remote-session acceptance remain OPEN. R-S11gv
+below and `cursor-image-fixed-c45e3e6b.json` retain the scope and evidence.
+
 **User pivot (2026-11-03):** R-B3 source delivery and the unfinished unused
 Android TLS-verifier removal remain OPEN/PARKED. The eight-file, untested
 removal is preserved in stash `ac531d3c706b6c6a7c594179efaae15a4679e7a2`;
@@ -14793,19 +14803,27 @@ shared/generated-bridge wiring is not execution evidence.
 
 ### R-S11gv/R-S11e-234 — exact bounded cursor-shape identity, publication, presentation, and retirement
 
-**Linux plugin image ownership — source defect; native reproduction/correction OPEN.**
-The pinned `flutter_custom_cursor` 0.0.4 Linux implementation copies the decoded
-`GdkPixbuf` during each registration without releasing that caller-owned reference.
-Its deletion path releases only the `GdkCursor`; the Dart registry's entry budget
-does not account for these abandoned copies. This is source/API ownership evidence,
-not a measured application leak. The next focused check must observe actual GObject
-finalization through valid cursor registration/deletion before and after correction.
-The existing full-peer pixel observer uses `XGetImage`, whose returned pixels exclude
-the pointer. Native shape/hotspot acceptance needs a separate XFixes cursor-image
-observation in the isolated viewer display; current frame-age passes do not supply it.
-The audit entry “2026-11-03 — user pivot: native remote cursor ownership” binds
-the inspected package source and primary API references. No cursor product change
-or new native run is claimed.
+**Linux plugin image ownership — native component correction verified.**
+At `c96eed84`, run `B5v1VM1UgX` executes the unchanged 0.0.4 create/delete
+function bodies with real GTK/GObject/X11 and controlled Flutter method values.
+All 128 valid registrations display exact 32x24 pixels and (3,5) hotspots through
+XFixes; every cursor deletion empties the cache, but all 128 copied pixbufs remain
+live. `c45e3e6b` gives that copy automatic ownership. The identical fixture in
+`mAn4uVushf` preserves all 128 native shape observations and finalizes every copy.
+Weak-reference controls and exact Xvfb/window cleanup pass. Three host listener
+deltas per run are zero, and VM/RAM/private cleanup is verified. Capsules
+`cursor-image-ready-c96eed84.json` and `cursor-image-fixed-c45e3e6b.json` bind the
+actual results; earlier fixture setup failures remain separately retained.
+
+The repository imports the package's runtime/build/license files and selects its
+path in the application manifest and both locks, preserving all package versions.
+Full plugin/Flutter bridge compilation, strict offline dependency acceptance,
+whole-app session/resource behavior and other-platform acceptance remain OPEN.
+The candidate discovery-lock input still needs the reviewed one-entry source
+transformation before its next build; its authenticated package-cache digest is
+unchanged. Existing full-peer `XGetImage` checks exclude the pointer: complete
+remote cursor delivery still needs XFixes observation on the actual viewer.
+No image-allocation failure, plugin teardown or whole-process leak claim is closed.
 
 **Source implemented; historical Flutter unit coverage; native acceptance OPEN.**
 `custom_cursor_registry.dart` binds a `CustomCursorPresentationSession` to its

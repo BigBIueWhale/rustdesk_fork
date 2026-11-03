@@ -133828,3 +133828,86 @@ bytes. Twelve bounded evidence files are copied and hash-verified on CTE.
 `a168769e5dfed0e0669bf415cc1249d771eb84772f79307a4cd9e8c68721ee9e`.
 This closes documentation verification only. Native cursor reproduction and
 correction are the selected next work; no owned job remains.
+
+## 2026-11-03 — Linux cursor image ownership: native baseline and correction
+
+Previous goal turn: progress. The source/API review identified the unowned copied
+pixbuf and changed the next action to actual GTK lifetime measurement. Continue
+R-S11gv; no parked topic is reopened. The joint functional/resource condition is
+that ordinary cursor registration preserves its exact displayed shape/hotspot,
+while deleting those cursors leaves no copied image reference behind.
+
+Preparation `77ef214b` imports fifteen exact runtime/build/license/manifest files
+from authenticated `flutter_custom_cursor` 0.0.4 (43,812 bytes); example apps,
+placeholder tests and template documentation are omitted. All fifteen match the
+retained upstream bytes before correction. `git diff --cached --check` reports
+twelve inherited whitespace lines in that exact import; subsequent authored
+diffs pass. `UPSTREAM.md` retains provenance and the Apache-2.0 license remains.
+No canonical package-cache file is changed. The initial import alone does not
+change the application's selected dependency.
+
+`--x11-display-tests --cursor-image` uses the existing authenticated devcheck/Xvfb
+VM lane, its bounded RAM workspace, ordinary UID/GID 4000 container, no network,
+no capabilities and joined cleanup. It executes the exact complete create/delete
+function bodies extracted without body rewriting; only the Flutter method-value
+accessors and containing cache holder are doubles. The copied pixbuf is an actual
+GObject with an actual weak-reference finalization observer. The loader, PNGs,
+GDK cursor creation/deletion, displayed cursor and XFixes observations are native.
+One retained/released image control checks the observer. The fixture repeatedly
+registers valid 32x24 images with hotspot (3,5), checks every displayed pixel,
+removes the cursor and checks finalization. Any baseline image reclamation occurs
+explicitly after the failure measurements, never before deciding the result.
+
+Initial `UEJrQuXs9f` compiles and passes observer controls but aborts at the first
+cursor comparison. Diagnostic preparation `6888e9d5` completes the ownership
+measurement in `RS3GAaAwny`: 128 copies remain live with zero cache entries, while
+XFixes still sees the default 16x16 cursor. These are not accepted presentation
+runs. `c96eed84` dispatches the fixture's pending GTK map/pointer-crossing events
+with a finite iteration bound, then requires a mapped window and the pointer on
+that exact GDK surface. It does not relax the cursor comparison or ownership test.
+
+| Exact source / run | Native shapes / registrations | Finalized copied images | Retained copies after cursor deletion | Result |
+| --- | ---: | ---: | ---: | --- |
+| `c96eed84` / `B5v1VM1UgX` | 128 / 128 | 0 | 128 | Reproduced ownership failure |
+| `c45e3e6b` / `mAn4uVushf` | 128 / 128 | 128 | 0 | Corrected component pass |
+
+The baseline and corrected fixture/runner bytes are identical. Fixture SHA-256:
+`8c720052419f29eae478b748afbe3e4a5394708e8c8ea5a9c6a8b04744436f66`.
+Correction `c45e3e6b1cf136ae77d25c275fe65866a4795355` changes the copied image's
+declaration to `g_autoptr(GdkPixbuf)`, preserving native creation and presentation.
+The application manifest, default lock and candidate lock now select the maintained
+repository package. Only that package's source changes in each lock; all versions
+and other entries remain unchanged. Candidate lock SHA-256 becomes
+`d406202a90a35705e857b73c7e1dacb8450451636849b38856e4ca2383c7c506`, also recorded
+in `pins.env`. Full app compilation/strict offline resolution have not run yet.
+
+All four QEMU processes exit zero after guest shutdown; the first three outer
+transactions truthfully exit 1, and the corrected outer transaction exits 0 in
+33 seconds. Every Xvfb child is joined. All twelve listener deltas are zero.
+The first three private diagnostic roots are inventoried, duplicate raw logs are
+verified, and exact descriptor-relative cleanup follows process/RAM retirement
+under the shared run lock. Four sets of twelve bounded evidence files are copied
+and hash-verified on CTE. Native runs use only the admitted RAM scratch; peak
+allocation ranges from 3,794,001,920 to 3,994,845,184 bytes. No full app is rebuilt.
+
+Primary capsules under `.harness-state/verifier-vm/`:
+
+- `cursor-image-ready-c96eed84.json`: 12,547 bytes, SHA-256
+  `f10448b29148bd85bde6b64a1e4a7fcc31da27b6531036a10f272727d2a7fc44`.
+- `cursor-image-fixed-c45e3e6b.json`: 5,212 bytes, SHA-256
+  `2e614952f9f1ceb54f9e4ea8fe61b767f0f8adf9b20e15898f0b4672d732b1a9`.
+- Initial failures: `cursor-image-baseline-77ef214b.json` and
+  `cursor-image-diagnostic-6888e9d5.json`; these do not replace the final baseline.
+
+Next: preserve and replace the old candidate discovery-lock input through the
+same reviewed-source, identity-checked, locked transformation used for `6b703f35`,
+then execute strict offline resolution and the complete native plugin/app build.
+Both CTE/TUF discovery locks still have the previous 46,169-byte identity/hash
+`98a4c11ed4edf1a53fd72ca3b0999b130cbf125d1a55c2e5f99f16e6a8eeab53`; no input
+mutation has occurred. The retained candidate package cache remains unchanged.
+Before admitting another complete app, reconcile its four-generation cache limit;
+`f043c5ae` has a previously verified identical payload retained in `9f78434c`, while
+the parked `0ccb2a7e` candidate must remain preserved. Full plugin/bridge and
+remote-peer delivery, image-allocation failure, plugin teardown, physical/other
+platform and release acceptance remain OPEN. The native image-lifetime correction
+is verified at its stated component scope; no owned job remains.

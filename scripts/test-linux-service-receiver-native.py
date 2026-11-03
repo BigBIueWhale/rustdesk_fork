@@ -2121,6 +2121,205 @@ def installed_desktop(scenario):
     print("LINUX_SERVICE_DESKTOP_SESSION=retired logind=actual x11=owned users=removed", flush=True)
 
 
+def recovery_refusals(commit, binary_sha, probe_sha, readiness_spec):
+    runtime = Path("/run/rustdesk")
+    record_path = runtime / "service-child.record"
+    parent = Path("/run/RustDesk-service")
+    unit = Path("/etc/systemd/system/rustdesk.service")
+    if any(os.path.lexists(p) for p in (runtime, parent, unit)):
+        raise RuntimeError("recovery refusal fixture requires absent service state")
+    readiness = WORK / "smoke_readiness"
+    shutil.copyfile(MEDIA / "receiver/smoke_readiness", readiness)
+    readiness.chmod(0o755)
+    if readiness.stat().st_size != readiness_spec["bytes"] or digest(readiness) != readiness_spec["sha256"]:
+        raise RuntimeError("retained readiness probe bytes differ")
+    runtime.mkdir(mode=0o700)
+    generation = str(uuid.uuid4())
+    actors = []
+    watch = None
+    started = False
+
+    def snapshot():
+        st = record_path.lstat()
+        if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1 or st.st_size > 1024:
+            raise RuntimeError("recovery fixture record type or size differs")
+        return {"identity": [st.st_dev, st.st_ino, st.st_uid, st.st_gid, st.st_mode,
+                             st.st_nlink, st.st_size, st.st_mtime_ns, st.st_ctime_ns],
+                "sha256": digest(record_path)}
+
+    def alive(actor):
+        process = actor["process"]
+        proc = Path("/proc") / str(process.pid)
+        fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+        exe = (proc / "exe").stat()
+        status = dict(line.split(":", 1) for line in (proc / "status").read_text().splitlines() if ":" in line)
+        if (process.poll() is not None or select.select([actor["pidfd"]], [], [], 0)[0]
+                or fields[0] in (b"Z", b"X") or int(fields[19]) != actor["start"]
+                or int(fields[1]) != os.getpid() or status["Uid"].split() != [str(actor["uid"])] * 4
+                or [exe.st_dev, exe.st_ino] != actor["executable"]
+                or (proc / "cmdline").read_bytes() != actor["argv"]):
+            raise RuntimeError("recovery refusal changed a retained actor identity")
+        argv = [str(readiness), "parked", str(process.pid), str(actor["start"]), "1000"]
+        if actor["uid"]:
+            argv = ["/usr/bin/setpriv", "--reuid=4002", "--regid=4002", "--clear-groups",
+                    "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs", *argv]
+        result = run(argv, timeout=3, allowed=(0, 1))
+        return result.returncode == 0 and result.stdout == "SMOKE_TYPED_IPC_READY state=parked\n" and not result.stderr
+
+    def protected_events():
+        events = []
+        while select.select([watch], [], [], 0)[0]:
+            data = os.read(watch, 65536)
+            offset = 0
+            while offset < len(data):
+                _, mask, _, size = struct.unpack_from("iIII", data, offset)
+                name = data[offset + 16:offset + 16 + size].rstrip(b"\0")
+                offset += 16 + size
+                if mask & 0x4000:
+                    raise RuntimeError("recovery namespace observation overflowed")
+                if name == b"RustDesk-service":
+                    events.append(mask)
+            if offset != len(data):
+                raise RuntimeError("recovery namespace event is incomplete")
+        return events
+
+    try:
+        for role, uid, args, extra in (
+                ("recorded", 0, ["--server", "--service-owned-server"],
+                 {"RUSTDESK_SERVICE_OWNED_SERVER_LAUNCH_PARENT": str(os.getpid()),
+                  "RUSTDESK_SERVICE_OWNED_SERVER_GENERATION": generation,
+                  "RD_SERVICE_SMOKE_UNSUPERVISED_RECOVERY_FIXTURE": "1", "HOME": "/root"}),
+                ("portable", 4002, ["--server"], {"HOME": "/home/rdreceiver4002", "USER": "rdreceiver4002"})):
+            log = WORK / ("recovery-" + role + ".log")
+            stream = log.open("xb")
+            argv = [str(PRIMARY), *args]
+            if uid:
+                argv = ["/usr/bin/setpriv", "--reuid=4002", "--regid=4002", "--clear-groups",
+                        "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs", *argv]
+            process = subprocess.Popen(argv, env={**ENV, "RUST_LOG": "info", **extra}, cwd="/",
+                                       stdin=subprocess.DEVNULL, stdout=stream, stderr=subprocess.STDOUT)
+            stream.close()
+            actor = {"process": process, "pidfd": os.pidfd_open(process.pid), "uid": uid, "role": role, "log": log}
+            actors.append(actor)
+            proc = Path("/proc") / str(process.pid)
+            deadline = time.monotonic() + 10
+            expected_argv = b"\0".join(a.encode() for a in [str(PRIMARY), *args]) + b"\0"
+            while (proc / "cmdline").read_bytes() != expected_argv:
+                if process.poll() is not None or time.monotonic() >= deadline:
+                    raise RuntimeError("recovery actor did not execute the installed image")
+                time.sleep(0.02)
+            fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+            exe = (proc / "exe").stat()
+            if digest(proc / "exe") != binary_sha:
+                raise RuntimeError("recovery actor image differs")
+            actor.update(start=int(fields[19]), executable=[exe.st_dev, exe.st_ino], argv=expected_argv)
+            while not alive(actor):
+                if time.monotonic() >= deadline:
+                    raise RuntimeError(f"recovery actor did not become typed parked: {log.read_text()[-4096:]}")
+                time.sleep(0.05)
+        libc = ctypes.CDLL(None, use_errno=True)
+        watch = libc.inotify_init1(os.O_NONBLOCK | os.O_CLOEXEC)
+        if watch < 0 or libc.inotify_add_watch(watch, b"/run", 0x100 | 0x200 | 0x40 | 0x80) < 0:
+            raise RuntimeError("cannot observe protected namespace creation")
+        cases = (("live-no-pidfd", actors[0], generation, True, "Kernel lacks required pidfd_open for live Linux service child"),
+                 ("generation", actors[0], str(uuid.uuid4()), False, "service generation is absent or duplicated"),
+                 ("generation-no-pidfd", actors[0], str(uuid.uuid4()), True, "Refusing ambiguous Linux service child recovery without pidfd"),
+                 ("portable-role", actors[1], generation, False, "exact service-owned role marker is absent"),
+                 ("portable-role-no-pidfd", actors[1], generation, True, "Refusing ambiguous Linux service child recovery without pidfd"))
+        for label, actor, recorded_generation, unavailable, reason in cases:
+            body = ("version=1\n" + f"pid={actor['process'].pid}\nstart_time={actor['start']}\n"
+                    + f"boot_id={Path('/proc/sys/kernel/random/boot_id').read_text().strip()}\n"
+                    + f"exe_dev={actor['executable'][0]}\nexe_ino={actor['executable'][1]}\n"
+                    + f"uid={actor['uid']}\ngeneration={recorded_generation}\nrole=--server+--service-owned-server\n").encode()
+            with record_path.open("xb") as stream:
+                os.fchmod(stream.fileno(), 0o600)
+                stream.write(body)
+                stream.flush()
+                os.fsync(stream.fileno())
+            before = snapshot()
+            if protected_events() or parent.exists() or not all(alive(a) for a in actors):
+                raise RuntimeError("recovery fixture lost its initial boundary")
+            env = {**ENV, "RUST_LOG": "info"}
+            if unavailable:
+                env["RD_SERVICE_SMOKE_FORCE_PIDFD_UNAVAILABLE"] = "1"
+            began = time.monotonic()
+            result = run(["/usr/bin/rustdesk", "--service"], env=env, timeout=10, allowed=(0, 1))
+            output = result.stdout + result.stderr
+            events = protected_events()
+            if (result.returncode != 1 or reason not in output
+                    or "Linux service lifecycle authority failed closed:" not in output
+                    or (unavailable and "Smoke forced pidfd_open unavailable" not in output)
+                    or snapshot() != before or events or parent.exists()
+                    or (runtime / "service-child.record.tmp").exists()
+                    or not all(alive(a) for a in actors)):
+                raise RuntimeError(f"record recovery did not refuse and preserve {label}: {output[-4096:]}")
+            print("LINUX_SERVICE_RECOVERY_REFUSAL_OBSERVED=" + json.dumps(
+                {"case": label, "record": before, "record_text": body.decode(), "exit": result.returncode,
+                 "stdout": result.stdout, "stderr": result.stderr, "elapsed_seconds": time.monotonic() - began,
+                 "namespace_events": events, "actors_parked": True, "pidfd_unavailable": unavailable,
+                 "actors": [{"role": a["role"], "pid": a["process"].pid, "start": a["start"],
+                             "uid": a["uid"], "executable": a["executable"]} for a in actors]}, sort_keys=True), flush=True)
+            if snapshot() != before:
+                raise RuntimeError("recovery record changed before exact fixture retirement")
+            record_path.unlink()
+            print(f"LINUX_SERVICE_RECOVERY_REFUSAL_CASE=pass case={label}", flush=True)
+        for actor in actors:
+            if not alive(actor):
+                raise RuntimeError("recovery actor failed its final parked observation")
+            signal.pidfd_send_signal(actor["pidfd"], signal.SIGTERM)
+            if actor["process"].wait(timeout=10) != 0 or not select.select([actor["pidfd"]], [], [], 0)[0]:
+                raise RuntimeError("recovery actor did not shut down cleanly")
+        if protected_events() or parent.exists():
+            raise RuntimeError("refused recovery created protected service authority")
+        shutil.copyfile(MEDIA / "repo/res/rustdesk.service", unit)
+        run(["/usr/bin/systemctl", "daemon-reload"])
+        started = True
+        run(["/usr/bin/systemctl", "start", "rustdesk.service"])
+        record = ready()
+        value = "Receiver-recovery-control-2026!"
+        change(0, value, True)
+        keyed(value, "recovery-control", record, probe_sha)
+        pidfds = [os.pidfd_open(record[key]) for key in ("supervisor", "pid")]
+        try:
+            run(["/usr/bin/systemctl", "stop", "rustdesk.service"], timeout=40)
+            deadline = time.monotonic() + 5
+            while Path("/sys/fs/cgroup/system.slice/rustdesk.service").exists() and time.monotonic() < deadline:
+                time.sleep(0.02)
+            if (any(not select.select([fd], [], [], 0)[0] for fd in pidfds)
+                    or any(Path(f"/proc/{record[key]}").exists() for key in ("supervisor", "pid"))
+                    or record_path.exists() or Path("/sys/fs/cgroup/system.slice/rustdesk.service").exists()):
+                raise RuntimeError("normal recovery control did not retire its exact service tree")
+        finally:
+            for fd in pidfds:
+                os.close(fd)
+        print(f"LINUX_SERVICE_RECOVERY_REFUSAL_NATIVE=pass cases=5 refused=5 actors=2 control=installed-cpace "
+              f"source={commit} binary_sha256={binary_sha} readiness_sha256={readiness_spec['sha256']} "
+              "fixture=debug-live-record namespace=inotify cleanup=joined", flush=True)
+    except BaseException:
+        for actor in actors:
+            with actor["log"].open("rb") as stream:
+                stream.seek(max(0, actor["log"].stat().st_size - 4096))
+                print("LINUX_SERVICE_RECOVERY_ACTOR_DIAGNOSTIC=" + json.dumps(
+                    {"role": actor["role"], "pid": actor["process"].pid,
+                     "output_tail": stream.read(4096).decode("utf-8", errors="replace")}, sort_keys=True), flush=True)
+        raise
+    finally:
+        if started:
+            run(["/usr/bin/systemctl", "stop", "rustdesk.service"], timeout=40)
+        if watch is not None and watch >= 0:
+            os.close(watch)
+        for actor in actors:
+            process = actor["process"]
+            try:
+                if process.poll() is None:
+                    signal.pidfd_send_signal(actor["pidfd"], signal.SIGKILL)
+                process.wait(timeout=10)
+                if actor["log"].stat().st_size > 131072:
+                    raise RuntimeError("recovery actor log exceeded its bound")
+            finally:
+                os.close(actor["pidfd"])
+
+
 def supervisor_crash(commit, binary_sha, probe_sha):
     unit = Path("/etc/systemd/system/rustdesk.service")
     runtime = Path("/run/rustdesk")
@@ -2800,7 +2999,7 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, ex
           f"binary_sha256={binary_sha} fixture=installed-layout unit=shipped legacy=unchanged cleanup=joined", flush=True)
 
 
-def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False, collisions=False, exclusive=False, desktop_exclusive=False, crash=False):
+def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False, collisions=False, exclusive=False, desktop_exclusive=False, crash=False, recovery=False):
     guard()
     checked = run(["/usr/bin/setpriv", "--reuid=1000", "--regid=1000", "--clear-groups",
                    "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
@@ -2829,6 +3028,9 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
     if "not found" in run(["/usr/bin/ldd", str(PROBE)]).stdout:
         raise RuntimeError("network probe runtime dependency is missing")
     run(["/usr/bin/systemctl", "is-active", "systemd-logind.service", "polkit.service"])
+    if recovery:
+        installed_desktop(lambda: recovery_refusals(commit, spec["sha256"], probe_spec["sha256"], description["files"]["smoke_readiness"]))
+        return
     if crash:
         installed_desktop(lambda: supervisor_crash(commit, spec["sha256"], probe_spec["sha256"]))
         return
@@ -3150,6 +3352,8 @@ if __name__ == "__main__":
         tests(sys.argv[1:6], desktop_exclusive=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--crash":
         tests(sys.argv[1:6], crash=True)
+    elif len(sys.argv) == 7 and sys.argv[-1] == "--recovery-refusal":
+        tests(sys.argv[1:6], recovery=True)
     elif len(sys.argv) == 6:
         tests(sys.argv[1:])
     else:

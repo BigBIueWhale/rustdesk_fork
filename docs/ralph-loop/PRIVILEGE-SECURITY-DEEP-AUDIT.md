@@ -132562,3 +132562,46 @@ retirement pass. Twelve bounded records are copied and hash-verified. Capsule
 `cc871396a97d7d2de17c17ec6afd44eedf521c7892e03b8309894dc4e4ae9515`.
 No owned job remains. This turn made progress through authoritative native
 evidence; the full release goal remains active and unproven.
+
+### 2026-11-03 — exact live-record recovery refusal
+
+Previous goal turn: progress; current installed-layout supervisor crash recovery
+passed. Select the complementary R-S11ca/R-S11c-27u refusal boundary ahead of
+more viewer preferences: a live recorded process must survive when a stable
+signal target is unavailable, and mismatched generation/role must not confer
+signal or replacement authority. Existing debug-only unsupported-pidfd and
+unsupervised-recorded-child hooks permit the exact retained `fdbab046` binary
+to exercise this without a product edit or rebuild. Real service launches clear
+those fixture variables; release builds compile the hooks to false. The older
+container lifecycle fixture is research input, not an authorized execution path.
+
+Reviewed ServiceRuntime acquisition/recovery/record decoding, complete procfs
+identity matching, bootstrap hook, runtime credential hook, old lifecycle
+fixture, typed readiness probe and both current VM dispatchers. Linux primary
+references distinguish pidfd process identity/exit observation
+(https://man7.org/linux/man-pages/man2/pidfd_open.2.html) from stable signal
+targeting (https://man7.org/linux/man-pages/man2/pidfd_send_signal.2.html).
+Process survival alone is supplemented by the exact image/UID/parent/start/argv
+checks and genuine typed parked-state responses on both sides of each refusal.
+
+The closed `--linux-service-recovery-refusal-tests` scenario constructs root-only
+records for a live root service-role fixture and an unrelated ordinary UID-4002
+server. Five cases cover an exact live record with pidfds forced unavailable,
+wrong generation with native/unavailable pidfds, and ordinary-server role with
+native/unavailable pidfds. Require status 1 and the corresponding receiver error,
+unchanged full record metadata/bytes, no temporary record, and both exact actors
+still responsive. A kernel inotify watch of `/run` rejects even transient creation
+of the protected service IPC parent; source ordering places recovery before IPC
+and replacement launch. Exact record removal and pidfd-directed actor shutdown
+are fixture cleanup. Then the shipped unit must start its real desktop child,
+authenticate a UID-4002 CPace control, and retire cleanly. Root credential
+provisioning is setup only; parked credential/admin work remains untouched.
+
+The readiness executable is source-bound and copied from the existing seven-file
+artifact. All product/build-input comparison, zero-NIC isolation, RAM admission,
+monitoring, host listener checks and joined cleanup remain. Constructed root-owned
+records do not establish that an unprivileged caller can write this directory.
+These are debug exact-binary refusal cases, with an installed positive control;
+native kernel ENOSYS injection, unverifiable records, other malformed/stale/race
+classes, final package/alternate-init/platform acceptance and independent review
+remain separate requirements. Execution is pending.

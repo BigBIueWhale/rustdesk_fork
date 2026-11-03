@@ -43,11 +43,14 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
-**User pivot (2026-11-03):** Linux service-child startup-failure cleanup is
-OPEN/PARKED after source review only. The completed post-reap record-cleanup
-fix and native regression remain accepted at their stated layer. No startup
-fixture or product change followed the pivot. Work moves to desktop outgoing
-session keep-awake ownership; do not resume the startup investigation automatically.
+**User pivot (2026-11-03):** Further outgoing-session keep-awake work is
+OPEN/PARKED. Its already-started app build completed and all owned VM/RAM
+resources retired; the new native wake-lock fixture remains unexecuted.
+Work moves to R-S11go/R-S11gq monitor switching: real display selection,
+presented content and input geometry must agree. Initial source/evidence
+review identifies missing full-application multi-monitor acceptance, not a
+new reproduced defect. Linux service-child startup-failure cleanup and all
+independent user parks remain unchanged.
 
 **Outgoing-session wake lock — component correction verified (2026-11-03):**
 `af9f4b2c` serializes platform transitions, retaining latest session demand

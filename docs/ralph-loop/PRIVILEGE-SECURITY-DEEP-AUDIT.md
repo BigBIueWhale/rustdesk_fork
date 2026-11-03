@@ -133117,3 +133117,43 @@ then the corrected artifact with the same scenario. A client disconnect,
 fixture setup error or missing invocation cannot count as a product ordering
 failure or a passing release. Real desktop power providers, physical screen
 behavior and the separate release/replacement overlap still need native evidence.
+
+### 2026-11-03 — user pivot to monitor switching
+
+The user directs: "Please focus on a different aspect. pivot". Further
+keep-awake work is OPEN/PARKED, including the prepared native fixture at
+`982153ca`. Do not execute its baseline/corrected replay on a generic resume.
+The component correction and its previously recorded evidence remain intact.
+
+The already-started build `jjQDFvY2wp` completed at source `f043c5ae` in
+1,088 outer seconds. Its thirteen widget and two native command build controls
+pass. All 75 retained artifact files were checked against the manifest,
+SHA-256 `42bddb145e4cd54665f9d25e3404f48d4a8c574da96acc16fd0e4a59dc158e84`.
+Wrapper 1285040, QEMU 1285677 and owned helpers are absent; RAM workspace
+`run.c3g_djo0` (29:41296) and private scratch retired, with four zero listener
+deltas. Thirteen bounded evidence records were copied and hash-verified.
+`viewer-wake-build-f043c5ae.json` is 7,346 bytes, SHA-256
+`96f5e6357c062031f05b285892efd44e5f053adcbe2e8ce40bac2e724a2c5a63`.
+This closes ownership of the previous build, not native wake-lock acceptance.
+
+Select R-S11go/R-S11gq full-application monitor switching. It affects ordinary
+multi-display viewing and input; its missing caller/native/presentation evidence
+is more consequential than extending already-passing appearance controls.
+The default-display setting and quality-monitor metric work remain separately
+parked. Review covered `openMonitorInTheSameTab`/`selectRemoteDisplays`, the
+toolbar caller, FfiModel topology commits, DisplaySelectionQueue, native
+`session_switch_display` regressions and retained ledger evidence. Native
+admission already reserves command capacity before committing display ownership;
+local admission is explicitly not peer completion. The existing native app
+fixture starts one Xvfb screen, whereas the X11 component fixture has two
+screens but does not exercise the complete app/UI/input path. Replaying either
+unchanged would not establish the missing multi-monitor behavior.
+
+The next decisive scenario must drive the real monitor chooser on an
+authenticated session with distinguishable display content, observe the selected
+display's fresh pixels and pointer target, and return to the first display while
+preserving the connection. Reuse the retained current app/engine and bounded VM
+orchestration; first establish the controlled multi-display topology and observer
+without expanding resource limits. This checkpoint is source/evidence review:
+no new product defect, correction, monitor runtime pass or release acceptance
+is claimed. All other user parks remain unchanged.

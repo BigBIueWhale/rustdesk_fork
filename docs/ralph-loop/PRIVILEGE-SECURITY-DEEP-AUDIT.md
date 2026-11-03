@@ -134302,3 +134302,31 @@ evidence files match on CTE/TUF. `engine-repro-ledger-594c8f1f.json`: 4,793 byte
 SHA-256 `cc26b054a2f1b4200e712a3b2833d7da022814550165a04cabd1b749aabe044c`.
 This audit-only receipt preserves the counted ledger. No owned job remains;
 the complete release-hardening goal is still active and all user parks remain.
+
+## 2026-11-03 — user pivot; peer window size persistence
+
+The user requests a different aspect. The read-only release-input investigation
+is OPEN/PARKED: the Debian recipe selects Flutter 3.24.5 and build.py does not
+select the patched local engine used by the validated 3.47.5 application producer.
+No pin, recipe, input or artifact changed and no job started for that investigation.
+All independent parks remain.
+
+Select R-S0's required window persistence workflow. Source inspection of
+`_saveSessionWindowPosition` finds that missing peer width/height fall back to
+the window's X/Y offsets when maximized or fullscreen. Correct dimensions are
+already available in the same saved normal frame. This concrete data mix-up takes
+priority over further speculative monitor-placement policy changes. Preserve
+prior peer dimensions/coordinates when present; missing dimensions must use the
+corresponding normal-frame dimensions. Ordinary saves must remain unchanged.
+
+Add three actual save-path component cases to the existing position shard:
+normal, maximized and fullscreen, each with RemoteDesktop/ViewCamera, zero,
+negative and positive offsets, and absent/complete/partial peer records. Window
+channels and native storage are explicit doubles; product saving and JSON
+serialization run unchanged. Run the baseline before the two-field correction.
+These are component observations, not native window-manager/restart acceptance.
+Microsoft's WINDOWPLACEMENT documents normal/restored geometry separately from
+maximized placement; its platform-specific coordinate conventions are not changed:
+https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-windowplacement.
+TUF has 47,407,180 KiB available RAM; the existing bounded position-test profile,
+no-NIC VM, resource monitor and joined retirement are retained.

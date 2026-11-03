@@ -1636,6 +1636,11 @@ FLOATING_POSITION_TESTS = {
     'floating position preserves storage read errors',
 }
 
+WINDOW_POSITION_TESTS = {
+    f'peer window {mode} save preserves dimensions separately from position'
+    for mode in ('normal', 'maximized', 'fullscreen')
+}
+
 
 FILE_COLUMNS_TESTS = {
     f'file columns {direction} {side} uses visible Size width'
@@ -2073,9 +2078,13 @@ def parse_result(path, profile="models"):
         expected_tests = len(VIRTUAL_JOYSTICK_TESTS)
         expected_names = VIRTUAL_JOYSTICK_TESTS
     elif profile == "floating-position":
-        expected_suites = {"draggable_position_test.dart"}
-        expected_tests = len(FLOATING_POSITION_TESTS)
-        expected_names = FLOATING_POSITION_TESTS
+        expected_by_suite = {
+            "draggable_position_test.dart": FLOATING_POSITION_TESTS,
+            "window_position_probe_test.dart": WINDOW_POSITION_TESTS,
+        }
+        expected_suites = set(expected_by_suite)
+        expected_names = FLOATING_POSITION_TESTS | WINDOW_POSITION_TESTS
+        expected_tests = len(expected_names)
     elif profile == "screenshot-save":
         expected_suites = {"screenshot_save_probe_test.dart"}
         expected_tests = len(SCREENSHOT_SAVE_TESTS)

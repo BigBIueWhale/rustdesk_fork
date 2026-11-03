@@ -120,8 +120,8 @@ class ResultTests(unittest.TestCase):
             suites = ["virtual_joystick_test.dart"]
             names = sorted(result.VIRTUAL_JOYSTICK_TESTS)
         elif profile == "floating-position":
-            suites = ["draggable_position_test.dart"]
-            names = sorted(result.FLOATING_POSITION_TESTS)
+            suites = ["draggable_position_test.dart", "window_position_probe_test.dart"]
+            names = sorted(result.FLOATING_POSITION_TESTS | result.WINDOW_POSITION_TESTS)
         elif profile == "screenshot-save":
             suites = ["screenshot_save_probe_test.dart"]
             names = sorted(result.SCREENSHOT_SAVE_TESTS)
@@ -181,6 +181,8 @@ class ResultTests(unittest.TestCase):
             suite_id = test_id % len(suites)
             if profile == "direct-address":
                 suite_id = int(name.startswith(("desktop address startup ", "mobile address startup ")))
+            if profile == "floating-position":
+                suite_id = int(name in result.WINDOW_POSITION_TESTS)
             if profile == "models":
                 suite_id = suites.index(model_cases[test_id][0])
             if profile in ("credential-dialog", "terminal-output", "file-navigation", "modifier-release", "peer-data", "tab-selection", "status-refresh", "audio-input", "trackpad-speed", "reconnect", "credential-badge", "menu-button", "help-button", "password-fields", "combo-box", "image-quality"):
@@ -302,7 +304,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("trackpad-speed"), "trackpad-speed"), (2, 16))
         self.assertEqual(self.parse(self.events("virtual-mouse-buttons"), "virtual-mouse-buttons"), (1, 17))
         self.assertEqual(self.parse(self.events("virtual-joystick"), "virtual-joystick"), (1, 8))
-        self.assertEqual(self.parse(self.events("floating-position"), "floating-position"), (1, 16))
+        self.assertEqual(self.parse(self.events("floating-position"), "floating-position"), (2, 19))
         self.assertEqual(self.parse(self.events("clipboard-keystrokes"), "clipboard-keystrokes"), (1, 12))
         self.assertEqual(self.parse(self.events("file-search"), "file-search"), (1, 12))
         self.assertEqual(self.parse(self.events("file-navigation"), "file-navigation"), (7, 125))

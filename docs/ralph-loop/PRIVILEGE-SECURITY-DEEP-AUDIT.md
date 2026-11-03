@@ -134507,3 +134507,14 @@ workspace; four listener deltas per run are zero. Thirteen bounded evidence
 files per run match on CTE/TUF. Accepted peak RAM scratch is 6,381,105,152 bytes;
 no full app rebuild, new persistent image or host service change was needed.
 No owned job remains. Fresh ledger counting follows; the overall goal is active.
+
+Fresh count `e6UVeHSCYD` at `7e244b46` passes seven controls and the complete
+input round trip: 398,160 tokens / 1,820,295 bytes, SHA-256
+`0ccde4a7c6ee9bbc8000c91c9ad5e9662651b39391d7924bd93dd7f00eb7e021`.
+The 28-second run retires exact processes/private/RAM state, with three zero
+listener deltas and 402,747,392 bytes peak scratch. Twelve bounded evidence
+files match on CTE/TUF. `mobile-navigation-ledger-7e244b46.json`: 4,812 bytes,
+SHA-256 `359e625360cc718eb00e8888d8b8184db4dbd333dd4215509a691360bd5e8efb`.
+This audit-only receipt preserves the counted ledger. No owned job remains.
+The next acceptance gap is the same navigation cases with real Android/iOS
+connection teardown; the component correction is complete and the goal stays active.

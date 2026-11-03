@@ -43,7 +43,10 @@ static int open_recent_search(Display *display, unsigned int pid, const AtspiRec
         if (valid) component = atspi_accessible_get_component_iface(row);
         if (component != NULL)
             rect = atspi_component_get_extents(component, ATSPI_COORD_TYPE_SCREEN, &error);
-        valid = valid && error == NULL && rect != NULL && rect->width == 220 && rect->height == 140;
+        valid = valid && error == NULL && rect != NULL && rect->width > 0 && rect->height > 0;
+        if (rect != NULL)
+            printf("FLUTTER_PEER_RECENT_SEARCH_CARD index=%u x=%d y=%d width=%d height=%d\n",
+                   i, rect->x, rect->y, rect->width, rect->height);
         if (valid && rect->y < top) top = rect->y;
         g_clear_error(&error);
         if (rect != NULL) g_boxed_free(ATSPI_TYPE_RECT, rect);

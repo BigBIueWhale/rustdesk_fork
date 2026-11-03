@@ -135476,3 +135476,15 @@ platform keyboard delivery, native preference persistence, full-session and
 release acceptance remain open. No owned job remains. The ledger records the
 PE pivot, corrected bridge-generation dependency and this component result;
 its required fresh isolated count is next.
+
+Count `jYBPSzn1Cj` at `28dcfa12` passes seven controls and whole-input round
+trip: 398,676 tokens / 1,822,747 bytes, SHA-256
+`9c7415b84b3a4e8f50c49ffc3bc781bc6296c8abc62b39731bae64fc15fea051`.
+The ledger remains 1,324 tokens below its budget. All 81 workload selections and
+five refusals across 42 modes pass. Three listener deltas are zero; exact process,
+helper, private and RAM retirement pass, with scratch peak 402,911,232 bytes.
+Twelve bounded evidence files match CTE/TUF. Capsule
+`floating-viewport-ledger-28dcfa12.json`: 5,126 bytes, SHA-256
+`2eb3f28cb62c95062d07409583838157d056d3b8a1c83d9d8f1f1383fb7f1b75`.
+This audit-only receipt preserves the counted ledger. No owned job remains;
+the panel component checkpoint is complete, with device/session acceptance open.

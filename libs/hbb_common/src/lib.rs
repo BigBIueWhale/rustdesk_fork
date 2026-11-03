@@ -566,6 +566,92 @@ mod test {
         check_log_restarts(true);
     }
 
+    #[cfg(not(debug_assertions))]
+    #[test]
+    fn file_logging_overlapping_process_preserves_new_records() {
+        use std::io::{BufRead, Write};
+        use std::process::{Command, Stdio};
+
+        const DIRECTORY_ENV: &str = "RUSTDESK_LOG_OVERLAP_TEST_DIRECTORY";
+        const ROLE_ENV: &str = "RUSTDESK_LOG_OVERLAP_TEST_ROLE";
+        const TEST_NAME: &str = "test::file_logging_overlapping_process_preserves_new_records";
+        if let Some(path) = std::env::var_os(DIRECTORY_ENV) {
+            let path = std::path::PathBuf::from(path);
+            let role = std::env::var(ROLE_ENV).unwrap();
+            let handle = init_log(false, path.file_name().unwrap().to_str().unwrap());
+            assert!(handle.is_some());
+            drop(handle);
+            log::info!("overlap-record-{role}");
+            if role == "resident" {
+                writeln!(std::io::stdout(), "FILE_LOG_RESIDENT_READY").unwrap();
+                std::io::stdout().flush().unwrap();
+                let mut command = String::new();
+                std::io::stdin().read_line(&mut command).unwrap();
+                assert_eq!(command, "finish\n");
+                log::info!("overlap-resident-final");
+            }
+            return;
+        }
+
+        let path = config::Config::log_path()
+            .join(format!("overlap-regression-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&path).unwrap();
+        let directory = LogDirectory(path);
+        let unrelated = directory.0.join("unrelated_r2000-01-01_00-00-00.log");
+        std::fs::write(&unrelated, b"preserve this log family").unwrap();
+        let executable = std::env::current_exe().unwrap();
+        let child_command = |role: &str| {
+            let mut command = Command::new(&executable);
+            command.args(["--exact", TEST_NAME, "--test-threads=1"])
+                .env(DIRECTORY_ENV, &directory.0)
+                .env(ROLE_ENV, role)
+                .env("RUST_LOG", "info");
+            command
+        };
+        let mut resident = child_command("resident")
+            .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped())
+            .spawn().unwrap();
+        let exercise = (|| -> ResultType<()> {
+            let mut reader = std::io::BufReader::new(resident.stdout.as_mut().unwrap());
+            let mut line = String::new();
+            let mut ready = false;
+            for _ in 0..8 {
+                line.clear();
+                if reader.read_line(&mut line)? == 0 { break; }
+                if line.ends_with("FILE_LOG_RESIDENT_READY\n") {
+                    ready = true;
+                    break;
+                }
+            }
+            anyhow::ensure!(ready, "resident did not announce its initial write");
+            let initial = directory.logs().into_iter()
+                .map(std::fs::read_to_string).collect::<std::io::Result<Vec<_>>>()?;
+            anyhow::ensure!(initial.iter().any(|s| s.contains("overlap-record-resident\n")));
+            for index in 1..=40 {
+                let output = child_command(&index.to_string()).output()?;
+                anyhow::ensure!(output.status.success(), "logger process {index}: {output:?}");
+            }
+            Ok(())
+        })();
+        // Release and join the resident even if a launch or observation failed.
+        let release = resident.stdin.take().unwrap().write_all(b"finish\n");
+        let output = resident.wait_with_output().unwrap();
+        assert!(release.is_ok(), "resident release failed: {release:?}");
+        assert!(output.status.success(), "resident process: {output:?}");
+        assert!(exercise.is_ok(), "overlap exercise failed: {exercise:?}");
+        let logs: Vec<_> = directory.logs().into_iter()
+            .filter(|path| path != &unrelated).collect();
+        let contents = logs.iter().map(std::fs::read_to_string)
+            .collect::<std::io::Result<Vec<_>>>().unwrap().join("");
+        let resident_final = contents.contains("overlap-resident-final\n");
+        let newest = contents.contains("overlap-record-40\n");
+        println!("FILE_LOG_OVERLAP launches=40 resident_initial=true resident_final={resident_final} newest={newest} files={} children=joined", logs.len());
+        assert!(newest, "the newest short-lived process record must survive");
+        assert!(resident_final, "a live logger must retain its newly written record");
+        assert!(logs.len() <= 33, "retention must remain bounded across process owners");
+        assert_eq!(std::fs::read(unrelated).unwrap(), b"preserve this log family");
+    }
+
     fn check_log_restarts(global: bool) {
         const DIRECTORY_ENV: &str = "RUSTDESK_LOG_RESTART_TEST_DIRECTORY";
         const RECORD_ENV: &str = "RUSTDESK_LOG_RESTART_TEST_RECORD";

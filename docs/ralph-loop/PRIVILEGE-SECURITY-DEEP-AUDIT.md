@@ -134002,6 +134002,42 @@ Twelve evidence files are copied and hash-verified on CTE.
 `7e62ce451e660a1c5a140871366a2d4357d40095f439c79e3b5076ae38f51716`.
 This audit-only receipt leaves the counted ledger unchanged. No owned job remains.
 
+### 2026-11-04 — concurrent log writers and live-record retention
+
+The previous turn was progress: public init_log, immediate handle drop, repeated
+initialization and sequential process exit pass on `46e498c5`; CTE/TUF are clean
+at `8d545d52`, with no owned job pending. Continue the distinct concurrent-owner
+gap under R-S0. A live process's newly written diagnostic must remain available
+even while other legitimate processes start/exit; storage must remain bounded.
+
+Reachability review: Linux main.cc invokes core_main before GApplication startup;
+core_main initializes logging before returning the normal UI branch. Its no-arg
+path has no primary-UI singleton admission. my_application_new explicitly selects
+G_APPLICATION_NON_UNIQUE, and local_command_line registers/activates locally.
+GIO documents that this flag disables the normal single-instance negotiation:
+https://docs.gtk.org/gio/flags.ApplicationFlags.html. Dart's runMainApp initializes
+its environment and renders a main window without adding a process singleton.
+Secondary desktop_multi_window engines share their process and are not themselves
+evidence of separate writers. The supported overlap examined here is repeated
+ordinary primary application launch, not a service-ownership or privilege test.
+
+The actual builder selects no file discriminant. Pinned flexi_logger 0.27.4
+suppresses the start timestamp when rotating, derives the same executable-name
+family, rotates CURRENT by pathname during startup and deletes matching archives
+past its count. The retained old writer can therefore refer to a file that another
+process has renamed or cleaned. This is a source concern until execution; no
+native data-loss or escalation claim is made yet.
+
+Add one actual-init case to the existing bounded VM profile. One resident child
+announces its first visible record and blocks on its private stdin. Forty other
+children sequentially initialize/write/exit to the same role directory. Then
+release and join the resident, whose last action writes a fresh marker. Check
+that marker and the newest short-lived record in actual files, bounded retention
+and unrelated-family preservation. Pipe coordination replaces timing sleeps;
+the resident is released/joined even if a short-child operation returns an error.
+The existing four controls remain. Product logging is unchanged; baseline
+execution and exact-artifact cleanup are pending. All independent parks remain.
+
 ## 2026-11-03 — native mouse burst ordering
 
 Previous goal turn: progress. Three full-peer overlapping-button schedules pass,

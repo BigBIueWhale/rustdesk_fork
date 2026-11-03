@@ -43,6 +43,13 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-03):** Mobile theme dialog work is OPEN/PARKED.
+Candidate `b98d0ea3`, run `UksnB7II3a`, passes 53 of 54 component cases;
+failed-save/retry ends with a pending timer after widget disposal. Complete
+correction acceptance and diagnosis remain open. `mobile-theme-parked-b98d0ea3.json`
+retains the result, four zero listener deltas and exact process/private/RAM
+retirement. Work moves to fork-specific issue reporting; all independent parks remain.
+
 **User pivot (2026-11-03):** Mouse focus-loss work is OPEN/PARKED. Run
 `usbFMul9p2` stops before any mouse-case receipt, so it establishes no focus-loss
 defect; setup/first-event diagnostics remain outstanding. Evidence and joined
@@ -1040,6 +1047,13 @@ recovery, input-to-visible latency, soak, installed/other-platform, R-S0/R-F5 an
 acceptance remain OPEN. Parked source, window/dispatcher and producer work remains parked.
 
 ## Documentation and verification architecture
+
+**Fork issue reporting.** The issue chooser no longer routes questions and
+feature requests to upstream RustDesk; blank issues provide a local route.
+Bug reports request both peers' fork versions, full build commits and package/
+installation details, with an explicit unknown-identity option. Screenshots are
+optional. This repairs routing and build identification for release regression
+triage. Source/schema review does not establish GitHub UI or product acceptance.
 
 **Vendored Linux URL-launcher documentation.** The package README now identifies
 the application's local path override, links its provenance and local correction,

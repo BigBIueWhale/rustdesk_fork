@@ -134185,3 +134185,39 @@ work drains after dismissal. Errors are caught, shown persistently in the curren
 dialog and leave retry available. The existing 200-ms success feedback interval
 remains within the pending operation, followed by exact-owner close. Shared
 manager, theme backend, language and mobile Boolean paths are unchanged.
+
+## 2026-11-03 — user pivot; fork issue reporting
+
+The user requests another aspect. Mobile theme work is OPEN/PARKED. Its already
+finished corrected run `UksnB7II3a` at `b98d0ea3` passes 53 of 54 component cases;
+failed-save/retry ends with a pending timer after widget disposal. Diagnosis and
+complete correction acceptance remain open; no further theme execution is started.
+Exact wrapper/QEMU/helpers, private diagnostics and RAM scratch are retired under
+the shared lock. Four listener deltas are zero; peak RAM scratch is 6,383,050,752
+bytes. Thirteen bounded evidence files are copied and hash-verified on CTE.
+`mobile-theme-parked-b98d0ea3.json`: 18,579 bytes, SHA-256
+`55d4375a044aff497c1992691a1ea30afa9177018db764628a23abfa2fc11a2e`.
+
+Select fork-specific issue intake as a release-triage prerequisite. The current
+chooser sends questions/features to upstream RustDesk, contrary to CONTRIBUTING;
+the bug form requests only the shared app version, although VERSIONING and
+`core_main` distinguish the fork release identity. This obstructs routing and
+exact-build reproduction. Correct these concrete mismatches before speculative
+onboarding rewrites; no release or product acceptance is claimed.
+
+Delete the upstream contact links and enable local blank issues for questions
+and features. Request both peers' fork version, full build commit and package/
+installation details, allowing an explicit unknown identity. Make screenshots
+optional so nonvisual failures can be reported. GitHub documents blank-issue and
+contact-link routing, textarea placeholders and required-field behavior:
+https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/configuring-issue-templates-for-your-repository
+https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-githubs-form-schema.
+This changes repository issue configuration only; live GitHub rendering is a
+separate observation, and no issue is submitted during validation.
+
+Read-only YAML parsing succeeds for both configuration files. Reviewed the parsed
+field types, unique IDs, required flags and placeholders against GitHub's schema;
+the manifest producer supplies the named fork-version/full-commit headers. The
+diff is limited to issue intake and status/audit records; `git diff --check` passes.
+No product build or new regression test is warranted for this configuration edit.
+A fresh isolated ledger token count follows the status update.

@@ -1,7 +1,11 @@
 name: 🐞 Bug report
-description: Thanks for taking the time to fill out this bug report! Please fill the form in **English**
+description: Report a problem with the hardened direct-IP fork. Please write in English.
 labels: ["bug"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Report bugs in this fork here. For questions or feature requests, choose a blank issue in this repository.
   - type: textarea
     id: desc
     attributes:
@@ -32,13 +36,15 @@ body:
         Windows 10 -> osx
     validations:
       required: true
-  - type: input
+  - type: textarea
     id: version
     attributes:
-      label: RustDesk Version(s) on local (controlling) side and remote (controlled) side
-      description: What RustDesk version(s) do you see this bug on? local (controlling) side -> remote (controlled) side.
+      label: Fork build on each side
+      description: |
+        For each side, give the fork version and full source commit from the verified release's SHA256SUMS header, plus the package filename and whether it is installed or portable. For a source build, give the full build commit and describe local changes. The shared app version alone does not identify a fork build. If an identity is unavailable, say so and describe where you obtained that build.
       placeholder: |
-        1.1.9 -> 1.1.8
+        Controlling side: fork version, full commit, package/source, installed or portable
+        Controlled side: fork version, full commit, package/source, installed or portable
     validations:
       required: true
   - type: textarea
@@ -47,7 +53,7 @@ body:
       label: Screenshots
       description: Please add screenshots to help explain your problem, if applicable, please upload video.
     validations:
-      required: true
+      required: false
   - type: textarea
     id: context
     attributes:

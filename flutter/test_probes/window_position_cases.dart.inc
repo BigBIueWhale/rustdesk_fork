@@ -14,21 +14,21 @@ class _WindowStorage implements RustdeskImpl {
   final writes = <String>[];
 
   @override
-  bool isIncomingOnly() => false;
+  bool isIncomingOnly({dynamic hint}) => false;
   @override
-  bool isOutgoingOnly() => false;
+  bool isOutgoingOnly({dynamic hint}) => false;
   @override
-  String getLocalFlutterOption({required String k}) => local[k] ?? '';
+  String getLocalFlutterOption({required String k, dynamic hint}) => local[k] ?? '';
   @override
-  Future<void> setLocalFlutterOption({required String k, required String v}) async {
+  Future<void> setLocalFlutterOption({required String k, required String v, dynamic hint}) async {
     local[k] = v;
   }
   @override
-  String mainGetPeerFlutterOptionSync({required String id, required String k}) =>
+  String mainGetPeerFlutterOptionSync({required String id, required String k, dynamic hint}) =>
       peers[id] ?? '';
   @override
   void mainSetPeerFlutterOptionSync(
-      {required String id, required String k, required String v}) {
+      {required String id, required String k, required String v, dynamic hint}) {
     expect(k, startsWith(kWindowPrefix));
     peers[id] = v;
     writes.add(id);

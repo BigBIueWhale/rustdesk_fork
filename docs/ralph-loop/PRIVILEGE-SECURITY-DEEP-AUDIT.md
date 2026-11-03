@@ -132657,3 +132657,34 @@ retirement pass. Twelve bounded records were copied and hash-verified. Capsule
 `293ce828f0c1eee003b95b98118f3712e8282be5a4293db2dabda863cd01926d`.
 No owned job remains. This turn made progress; the full release goal remains
 active, with exact final-artifact and broader acceptance still unproved.
+
+### 2026-11-03 — installed desktop child crash recovery
+
+The preceding goal checkpoint made progress through five exact-binary recovery
+refusals. Current master is `813fe433`; its worktree and TUF are clean, with no
+owned jobs or RAM/private run directories. Debian package/ELF follow-ups remain
+explicitly parked. Select R-S11c-27/R-S0's live supervisor child replacement:
+decisive native lifecycle evidence takes priority over further settings polish.
+The source `should_start_server` reaps its retained child, removes that exact
+record and admits a replacement; the supervisor generation remains unchanged.
+
+Reuse peer `fdbab046`, the shipped unit and actual PAM/logind/X11 desktop in the
+existing zero-NIC bounded-RAM VM. Extend the existing crash scenario with a
+closed child-only route. Retained-pidfd SIGKILL targets only the child. Require
+old-child reap and accepted TCP EOF, the same live supervisor/start identity,
+unit invocation and zero manager restarts, unchanged privileged endpoints,
+runtime/lease and durable credential, a fresh supervised child/record/listener,
+and real UID-4002 CPace/Remote PeerInfo logins before and after. Observe stability
+then normal stop and exact process/cgroup/record/PAM retirement. The original
+supervisor-crash scenario is the regression control for the shared fixture edit.
+No product change is proposed. Final packages, rendered recovery, other init
+systems/platforms and independent review remain open; authorization stays parked.
+
+Primary references reviewed: Linux's stable process-descriptor signal semantics
+at https://man7.org/linux/man-pages/man2/pidfd_send_signal.2.html and systemd 252
+main-process/restart semantics at
+https://www.freedesktop.org/software/systemd/man/252/systemd.service.html.
+The child-only case must not count a manager restart as successful supervisor
+recovery. TUF has 47,215,244 KiB available RAM and 31 GiB free shared memory;
+the unchanged admission/monitor and joined cleanup remain mandatory. Execution
+is pending. Existing password-only SSH is used; no SSH configuration changes.

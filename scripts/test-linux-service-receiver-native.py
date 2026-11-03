@@ -2326,7 +2326,9 @@ def recovery_refusals(commit, binary_sha, probe_sha, readiness_spec):
                 os.close(actor["pidfd"])
 
 
-def supervisor_crash(commit, binary_sha, probe_sha):
+def service_crash(commit, binary_sha, probe_sha, child_only=False):
+    prefix = "LINUX_SERVICE_CHILD_CRASH" if child_only else "LINUX_SERVICE_CRASH"
+    target = "child" if child_only else "supervisor"
     unit = Path("/etc/systemd/system/rustdesk.service")
     runtime = Path("/run/rustdesk")
     parent = Path("/run/RustDesk-service")
@@ -2424,10 +2426,10 @@ def supervisor_crash(commit, binary_sha, probe_sha):
                 or "READ_ERR" in lines[1] or "REMOTE-LOGIN-REJECTED" in lines[1]
                 or credential() != before or child_record() != record or direct_listener(record) != listener):
             raise RuntimeError(f"crash fixture desktop login failed: {result.stdout[-4096:]} {result.stderr[-4096:]}")
-        print("LINUX_SERVICE_CRASH_LOGIN_OBSERVED=" + json.dumps(
+        print(prefix + "_LOGIN_OBSERVED=" + json.dumps(
             {"phase": phase, "record": record, "listener_inode": listener,
              "stdout": result.stdout, "stderr": result.stderr, "exit": result.returncode}, sort_keys=True), flush=True)
-        print(f"LINUX_SERVICE_CRASH_LOGIN=pass phase={phase} uid=4002 cpace=mutual remote=peer-info probe_sha256={probe_sha}", flush=True)
+        print(f"{prefix}_LOGIN=pass phase={phase} uid=4002 cpace=mutual remote=peer-info probe_sha256={probe_sha}", flush=True)
         return listener
 
     try:
@@ -2465,35 +2467,45 @@ def supervisor_crash(commit, binary_sha, probe_sha):
                     time.sleep(0.01)
             if accepted is None or child_record() != old or properties() != before:
                 raise RuntimeError("crash fixture lacks an accepted exact-child connection")
-            print("LINUX_SERVICE_CRASH_INJECTION=" + json.dumps(
+            print(prefix + "_INJECTION=" + json.dumps(
                 {"record": old, "unit": before, "accepted_socket": accepted,
-                 "listener_inode": old_listener, "signal": "SIGKILL", "target": "supervisor-pidfd"},
+                 "listener_inode": old_listener, "signal": "SIGKILL", "target": target + "-pidfd"},
                 sort_keys=True), flush=True)
             began = time.monotonic()
-            signal.pidfd_send_signal(old_processes["supervisor"]["pidfd"], signal.SIGKILL)
-            # No service start/restart or child signal is issued after this injection.
+            signal.pidfd_send_signal(old_processes[target]["pidfd"], signal.SIGKILL)
+            # Recovery must occur without another fixture signal or service start/restart.
             peer.settimeout(10)
             if peer.recv(1) != b"":
                 raise RuntimeError("crashed prekey connection returned application data")
             eof_seconds = time.monotonic() - began
-        while not all_retired(old_processes) and time.monotonic() - began < 10:
+        expected_retired = {"child": old_processes["child"]} if child_only else old_processes
+        while not all_retired(expected_retired) and time.monotonic() - began < 10:
             time.sleep(0.02)
-        if not all_retired(old_processes):
-            raise RuntimeError(f"crash left an old process: {retired(old_processes)}")
+        if not all_retired(expected_retired):
+            raise RuntimeError(f"crash left an old process: {retired(expected_retired)}")
         retirement_seconds = time.monotonic() - began
-        print("LINUX_SERVICE_CRASH_RETIREMENT=" + json.dumps(
-            {"processes": retired(old_processes), "eof_seconds": eof_seconds,
+        recovery_retirement = retired(old_processes)
+        if child_only and recovery_retirement["supervisor"] != {"exited": False, "reaped": False}:
+            raise RuntimeError("child crash retired the original supervisor")
+        print(prefix + "_RETIREMENT=" + json.dumps(
+            {"processes": recovery_retirement, "eof_seconds": eof_seconds,
              "retirement_seconds": retirement_seconds}, sort_keys=True), flush=True)
-        recovered = ready(old)
+        recovered = ready(old, child_replacement=child_only)
         new_processes = retain(recovered)
         after = properties()
+        if child_only:
+            if (after != before or new_processes["supervisor"]["start"] != old_processes["supervisor"]["start"]
+                    or select.select([old_processes["supervisor"]["pidfd"]], [], [], 0)[0]):
+                raise RuntimeError("child recovery replaced or changed the surviving supervisor")
         if (after["ActiveState"] != "active" or after["SubState"] != "running" or after["Result"] != "success"
-                or after["NRestarts"] != "1" or after["InvocationID"] == before["InvocationID"]
+                or (not child_only and (after["NRestarts"] != "1" or after["InvocationID"] == before["InvocationID"]))
                 or authority(runtime, 0o700, directory=True) != runtime_before
                 or authority(runtime / "service-supervisor.lock", 0o600) != lease_before
                 or credential() != durable):
             raise RuntimeError(f"automatic crash recovery changed authority or restarted repeatedly: {after}")
         new_endpoints = endpoints(recovered)
+        if child_only and (new_endpoints != old_endpoints or digest(record_path) == old_record["sha256"]):
+            raise RuntimeError("child recovery changed privileged endpoints or retained the old child record")
         new_listener = login(recovered, "recovered")
         recovery_seconds = time.monotonic() - began
         if new_listener == old_listener or recovery_seconds >= 35:
@@ -2515,7 +2527,7 @@ def supervisor_crash(commit, binary_sha, probe_sha):
                 or cgroup.exists() or record_path.exists() or not all_retired(new_processes)
                 or credential() != durable):
             raise RuntimeError(f"recovered service did not stop and reap cleanly: {terminal}")
-        print("LINUX_SERVICE_CRASH_OBSERVED=" + json.dumps(
+        print(prefix + "_OBSERVED=" + json.dumps(
             {"before": before, "after": after, "terminal": terminal, "old": old, "recovered": recovered,
              "old_record": old_record, "runtime_identity": runtime_before, "lease_identity": lease_before,
              "old_endpoints": old_endpoints, "new_endpoints": new_endpoints,
@@ -2523,9 +2535,10 @@ def supervisor_crash(commit, binary_sha, probe_sha):
              "eof_seconds": eof_seconds, "retirement_seconds": retirement_seconds, "recovery_seconds": recovery_seconds,
              "old_retired": retired(old_processes), "new_retired": retired(new_processes),
              "durable_unchanged": True, "cgroup_absent": True, "record_absent": True}, sort_keys=True), flush=True)
-        print(f"LINUX_SERVICE_CRASH_NATIVE=pass generations=2 crashes=1 restarts=1 logins=2 source={commit} "
+        counts = "supervisors=1 children=2 crashes=1 restarts=0" if child_only else "generations=2 crashes=1 restarts=1"
+        print(f"{prefix}_NATIVE=pass {counts} logins=2 source={commit} "
               f"binary_sha256={binary_sha} probe_sha256={probe_sha} fixture=installed-layout unit=shipped "
-              "logind=actual child=supervised signal=supervisor-pidfd cleanup=joined", flush=True)
+              f"logind=actual child=supervised signal={target}-pidfd cleanup=joined", flush=True)
     except BaseException:
         print(run(["/usr/bin/journalctl", "--unit=rustdesk.service", "--no-pager", "-n", "60"]).stdout, flush=True)
         raise
@@ -3005,7 +3018,7 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, ex
           f"binary_sha256={binary_sha} fixture=installed-layout unit=shipped legacy=unchanged cleanup=joined", flush=True)
 
 
-def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False, collisions=False, exclusive=False, desktop_exclusive=False, crash=False, recovery=False):
+def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False, collisions=False, exclusive=False, desktop_exclusive=False, crash=False, recovery=False, child_crash=False):
     guard()
     checked = run(["/usr/bin/setpriv", "--reuid=1000", "--regid=1000", "--clear-groups",
                    "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
@@ -3037,8 +3050,8 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
     if recovery:
         installed_desktop(lambda: recovery_refusals(commit, spec["sha256"], probe_spec["sha256"], description["files"]["smoke_readiness"]))
         return
-    if crash:
-        installed_desktop(lambda: supervisor_crash(commit, spec["sha256"], probe_spec["sha256"]))
+    if crash or child_crash:
+        installed_desktop(lambda: service_crash(commit, spec["sha256"], probe_spec["sha256"], child_only=child_crash))
         return
     if desktop_exclusive:
         installed_desktop(lambda: startup_namespace(commit, spec["sha256"], exclusive=True, desktop_probe_sha=probe_spec["sha256"]))
@@ -3358,6 +3371,8 @@ if __name__ == "__main__":
         tests(sys.argv[1:6], desktop_exclusive=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--crash":
         tests(sys.argv[1:6], crash=True)
+    elif len(sys.argv) == 7 and sys.argv[-1] == "--child-crash":
+        tests(sys.argv[1:6], child_crash=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--recovery-refusal":
         tests(sys.argv[1:6], recovery=True)
     elif len(sys.argv) == 6:

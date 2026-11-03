@@ -509,7 +509,7 @@ case "$#:${1:-}" in
             || { echo 'host network test input/run overrides are forbidden' >&2; exit 2; }
         MODE=host-network-tests
         ;;
-    5:--linux-service-receiver-tests|5:--linux-service-convergence-failure-tests|5:--linux-service-notification-failure-tests|5:--linux-service-network-drain-tests|5:--linux-service-authorization-timeout-tests|5:--linux-service-startup-tests|5:--linux-service-incumbent-tests|5:--linux-service-collision-tests|5:--linux-service-exclusive-tests|5:--linux-service-desktop-exclusive-tests|5:--linux-service-crash-tests|5:--linux-service-recovery-refusal-tests)
+    5:--linux-service-receiver-tests|5:--linux-service-convergence-failure-tests|5:--linux-service-notification-failure-tests|5:--linux-service-network-drain-tests|5:--linux-service-authorization-timeout-tests|5:--linux-service-startup-tests|5:--linux-service-incumbent-tests|5:--linux-service-collision-tests|5:--linux-service-exclusive-tests|5:--linux-service-desktop-exclusive-tests|5:--linux-service-crash-tests|5:--linux-service-child-crash-tests|5:--linux-service-recovery-refusal-tests)
         [ "$2" = --peer-commit ] && [ "$4" = --peer-manifest-sha256 ] \
             && [[ "$3" =~ ^[0-9a-f]{40}$ ]] && [[ "$5" =~ ^[0-9a-f]{64}$ ]] \
             && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -535,6 +535,8 @@ case "$#:${1:-}" in
             LINUX_RECEIVER_PROFILE=desktop-exclusive
         elif [ "$1" = --linux-service-crash-tests ]; then
             LINUX_RECEIVER_PROFILE=crash
+        elif [ "$1" = --linux-service-child-crash-tests ]; then
+            LINUX_RECEIVER_PROFILE=child-crash
         elif [ "$1" = --linux-service-recovery-refusal-tests ]; then
             LINUX_RECEIVER_PROFILE=recovery-refusal
         fi
@@ -838,6 +840,7 @@ case "$#:${1:-}" in
         printf 'Installed Linux exclusive supervisor ownership: %s --linux-service-exclusive-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Installed Linux desktop supervisor ownership: %s --linux-service-desktop-exclusive-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Installed Linux automatic crash recovery: %s --linux-service-crash-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
+        printf 'Installed Linux child crash recovery: %s --linux-service-child-crash-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Linux live-record recovery refusal: %s --linux-service-recovery-refusal-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Exact CM read-tick ownership: %s --cm-read-tick-tests\n' "${0##*/}" >&2
         printf 'Native CM transfer outcome logs: %s --cm-file-log-tests\n' "${0##*/}" >&2
@@ -5162,6 +5165,8 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
         linux_receiver_guest_flag=--linux-service-desktop-exclusive-tests
     elif [ "$LINUX_RECEIVER_PROFILE" = crash ]; then
         linux_receiver_guest_flag=--linux-service-crash-tests
+    elif [ "$LINUX_RECEIVER_PROFILE" = child-crash ]; then
+        linux_receiver_guest_flag=--linux-service-child-crash-tests
     elif [ "$LINUX_RECEIVER_PROFILE" = recovery-refusal ]; then
         linux_receiver_guest_flag=--linux-service-recovery-refusal-tests
     fi
@@ -5877,6 +5882,12 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
         linux_receiver_readiness_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/smoke_readiness" | /usr/bin/awk '{print $1}')
         require_exact_fixed_receipt "LINUX_RECEIVER_CPACE=pass phase=recovery-control uid=4002 server=supervised-child listener=owned key_confirmation=mutual probe_sha256=$linux_receiver_probe_sha" 'normal installed startup after exact fixture retirement'
         require_exact_fixed_receipt "LINUX_SERVICE_RECOVERY_REFUSAL_NATIVE=pass cases=5 refused=5 actors=2 control=installed-cpace source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha readiness_sha256=$linux_receiver_readiness_sha fixture=debug-live-record namespace=inotify cleanup=joined" 'Linux live-record refusal finality'
+        require_exact_fixed_receipt 'LINUX_SERVICE_DESKTOP_SESSION=retired logind=actual x11=owned users=removed' 'owned desktop session retirement'
+    elif [ "$LINUX_RECEIVER_PROFILE" = child-crash ]; then
+        for phase in before recovered; do
+            require_exact_fixed_receipt "LINUX_SERVICE_CHILD_CRASH_LOGIN=pass phase=$phase uid=4002 cpace=mutual remote=peer-info probe_sha256=$linux_receiver_probe_sha" 'installed Linux child crash recovery login'
+        done
+        require_exact_fixed_receipt "LINUX_SERVICE_CHILD_CRASH_NATIVE=pass supervisors=1 children=2 crashes=1 restarts=0 logins=2 source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha probe_sha256=$linux_receiver_probe_sha fixture=installed-layout unit=shipped logind=actual child=supervised signal=child-pidfd cleanup=joined" 'installed Linux automatic child recovery'
         require_exact_fixed_receipt 'LINUX_SERVICE_DESKTOP_SESSION=retired logind=actual x11=owned users=removed' 'owned desktop session retirement'
     elif [ "$LINUX_RECEIVER_PROFILE" = crash ]; then
         for phase in before recovered; do
@@ -9545,6 +9556,11 @@ elif [ "$MODE" = ledger-token-count ]; then
 elif [ "$MODE" = linux-service-receiver-tests ]; then
     if [ "$LINUX_RECEIVER_PROFILE" = recovery-refusal ]; then
         printf 'LINUX_SERVICE_RECOVERY_REFUSAL_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s cases=5 refused=5 actors=2 control=installed-cpace fixture=debug-live-record namespace=inotify network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
+            "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \
+            "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" "$linux_receiver_binary_sha" "$vm_elapsed_seconds"
+    elif [ "$LINUX_RECEIVER_PROFILE" = child-crash ]; then
+        printf 'LINUX_SERVICE_CHILD_CRASH_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s supervisors=1 children=2 crashes=1 restarts=0 logins=2 fixture=installed-layout unit=shipped logind=actual child=supervised network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
             "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \
             "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" "$linux_receiver_binary_sha" "$vm_elapsed_seconds"

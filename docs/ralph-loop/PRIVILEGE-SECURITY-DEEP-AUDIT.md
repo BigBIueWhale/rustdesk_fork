@@ -135578,3 +135578,23 @@ ordinary/permanent denial returns false. The original main-looper dispatch,
 channel and exact request identity remain. Identical cases must pass before
 component acceptance; native Android dialog/channel and complete workflow
 acceptance remain open even after that result.
+
+Corrected replay AWVZiKMg4I at c868c6eb passes all four named permission
+cases and fifteen existing owner/voice controls (19 scenarios, 309 assertions)
+in 28 outer seconds. Tests and executable recipe are byte-identical to the
+baseline; only successful artifact-hash forwarding differs in the guest runner.
+The compiled test hash remains
+eda95bf2949278759b463d0eaa291796f23801865096cad4a31e24b9fc7adc63.
+The real pinned library interface invokes both implemented production methods;
+this is compiled JVM component evidence, not an Android system-dialog run.
+
+Four listener deltas are zero, exact processes/helpers/private/RAM retire, and
+scratch peaks at 2,528,911,360 bytes. Thirteen bounded evidence files match
+CTE/TUF. permission-fixed-c868c6eb.json is 6,889 bytes, SHA-256
+e9b28e38353df63864afab49eadac35b673805605b4378dffb60dd0b20436620.
+The source-input postcondition and outer admission pass. The ledger records
+the new pivot, inherited app-build result and this bounded correction without
+closing device or full-workflow acceptance. The next decisive step is exact-APK
+Android grant/deny/cancel-to-Flutter completion and subsequent-request usability,
+including storage-settings resume; no installed outcome or measured two-minute
+device delay is claimed by these component cases. No owned job remains.

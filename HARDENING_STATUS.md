@@ -43,11 +43,26 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
-**User pivot (2026-11-04):** Further PE/linker artifact validation is
-OPEN/PARKED. The accepted empty-REPRO component correction below remains valid.
-The subsequent authenticated LLVM archive inspection was read-only and created
-no extracted tools or VM. Work moved to floating-panel viewport ownership;
-concurrent logging and all independent parks remain.
+**User pivot (2026-11-04):** Further floating-panel native/device/session work is
+OPEN/PARKED; its accepted component correction remains valid. The already-running
+Linux app build at `27bf28eb` completes with thirteen widget/two native command
+checks and all 74 payload hashes verified. `floating-app-build-27bf28eb.json`
+binds that reusable artifact, four zero listener deltas and exact VM/RAM retirement;
+no native panel scenario ran. PE/linker validation, concurrent logging and all
+independent parks remain. Work moves to Android permission-denial completion.
+
+**Android permission denial — Kotlin component correction verified.**
+`c868c6eb` reports false through the existing exact-request callback for ordinary
+and permanent denial, retaining grant behavior and the OS consent flow. The
+previous SAM handled only grants; the real XXPermissions 18.5 denial default
+does nothing, leaving Flutter's owner pending until its 120-second timeout.
+Baseline `RZiCSRp650` at `2b554b43` reproduces both missing denial results;
+the two grant and fifteen owner/voice controls pass. Replay `AWVZiKMg4I`
+passes all nineteen cases in 28 outer seconds, using unchanged tests/recipe and
+the pinned real library. `permission-{before-2b554b43,fixed-c868c6eb}.json`
+bind exact source, compiled class hashes, four zero listener deltas per run and
+process/private/RAM retirement. Actual Android dialogs, looper/MethodChannel,
+complete settings workflows, final APK/device and release acceptance remain OPEN.
 
 **Floating-panel viewport ownership — Flutter component correction verified.**
 `f08e0ba3` passes each panel's local viewport into position adjustment and

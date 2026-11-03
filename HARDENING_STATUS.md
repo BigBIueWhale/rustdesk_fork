@@ -50,9 +50,11 @@ clicks ending on the left. `monitor-burst-97d9eab8.json` binds the failure;
 the unverified caller correction is preserved in stash
 `03ed0880cdbe32b69630cab4bfa44fc7cf722247`. No corrected-app build or replay
 has run. R-S11go below retains the acceptance boundary.
-Work moves to the documentation-architecture requirement: condense recent UI
-evidence into current results, limitations and retained references. Keep-awake,
-Linux service-child startup-failure cleanup and all independent parks remain.
+Documentation review found an additional OPEN R-B9 fixture-conformance gap:
+the release summary claimed coverage from a deleted verifier framework. The
+R-B2 section below now separates its outstanding contracts from retained runtime
+evidence. Keep-awake, Linux service-child startup-failure cleanup and all
+independent parks remain.
 The prior wake build completed and retired its owned resources; its native
 wake-lock fixture remains unexecuted.
 
@@ -9608,7 +9610,7 @@ TOCTOU, port-forward plaintext, decompression amplification, OS-login removal, d
 advisories retain their separate requirements/status entries. Appendix C #2b remains the native-decoder residual.
 The source topology is implemented; native, artifact, reproducibility, independent-reproduction, and
 external-review claims remain bounded by the OPEN table and R-B2/R-B10.
-**R-B2 — exact-commit release harness source implemented.**
+**R-B2 — release harness source retained; full release and R-B9 fixture conformance OPEN.**
 `scripts/build-release.sh` is the sole release-build entry point. It requires a clean committed source tree,
 runs the release gates, performs cold Debian/Android/Windows double-builds, requires A==B for each target, and
 writes the coherent commit/version/artifact identity to `dist/SHA256SUMS`. Publication is a separate optional
@@ -9656,8 +9658,8 @@ enabled, unset, and malformed flag states. The online-input mutation suite is no
 Current artifact evidence remains open until a clean pushed exact commit completes the full R-B2 transaction.
 
 **R-S11c-10w verifier scratch authority — SOURCE IMPLEMENTED; FOCUSED NO-NIC VM RUNTIME GREEN.**
-`scripts/verify.sh` owns one authenticated private workspace and runs only the fast semantic baseline in the ordinary
-loop. Its explicit VM self-test opens that exact initially empty mode-0700 root once and passes only the inherited
+`scripts/verify.sh` owns one authenticated private workspace. Its explicit VM self-test
+opens that exact initially empty mode-0700 root once and passes only the inherited
 descriptor plus its recorded creation identity to `verify-private-tree-closure.py`. The helper rejects a descriptor
 whose device/inode differs before allocating unpredictable descriptor-relative fixture
 children and exercises cleanup-error preservation, authority bounds, acquisition failures, normalization,
@@ -9709,63 +9711,44 @@ dedicated marker, either of which the result classifier rejects. Every negative 
 reached-state and failure diagnostic. The source verifier and release orchestrator install traps before allocation,
 block further managed signals during cleanup, preserve primary and cleanup failures, and defer green markers until
 publication reconciliation and descriptor-bound workspace removal succeed. A missing closure probe, mount, external
-hardlink, changed identity or inventory, cgroup ambiguity, publication ambiguity, or Windows ownership uncertainty
+hardlink, changed identity or inventory, publication ambiguity, or Windows ownership uncertainty
 preserves unresolved state and exits nonzero.
 
-The verifier launches every lifecycle-capable fixture behind a trusted gate in a random authenticated transient
-systemd user scope. Acquisition proves the exact unit name, independent description, transient/collection policy,
-invocation ID, control-group path, gated helper membership, and retained descriptor-walked cgroup-v2
-`cgroup.events`/`cgroup.kill` authority before the target receives its environment or inherited descriptors. The
-parent then transmits the bounded exact environment and descriptor-number allowlist over the gate's sole Unix
-`SOCK_SEQPACKET` control channel and transfers exactly those descriptors with `SCM_RIGHTS`; the gate collision-isolates
-them, restores only the requested inheritable descriptor numbers, closes the channel, and executes the target. The
-scope launcher is synchronous: acquisition failure waits for either completed launcher failure or the exact
-nonce-described unit, never a quiet-period inference. Target identity is retained by pidfd and aggregate output is
-bounded. Deadline expiry signals the exact unit with `SIGTERM`, preserves a bounded grace for shell EXIT traps, then
-writes `1` to the retained `cgroup.kill` descriptor. Normal target exit while the scope remains populated is failure.
-Completion requires recursive `populated 0`, launcher reap, unit collection, and cgroup-path absence. Temporary
-`SIGHUP`, `SIGINT`, and `SIGTERM` handlers span before/command/after state; signals during `Popen` acquisition are
-deferred until process ownership is assigned, and repeated signals stay blocked through cleanup and state proof.
-Behavioral fixtures cover post-spawn exceptions, pre-assignment and live parent signals, graceful TERM,
-TERM-resistant `setsid`, normal exit with a lingering descendant, and a pipe-closing double fork. A complete
-finalization fault fixture injects and requires propagation of forced-kill, launcher-reap, cgroup-descriptor-close,
-unit-collection, and cgroup-path failures. This closes ordinary daemonization and process-group escape. It deliberately
-does not claim to contain hostile same-UID code that migrates to a sibling cgroup, creates another user unit, or
-delegates work to Docker; repository fixtures are cooperative and may not use those channels.
+**R-B9 verifier-fixture conformance — OPEN.** Commit `665fb2bf` deleted
+`scripts/verify-verifier-workspace.py`, including its managed systemd scopes,
+descriptor-transfer gate, scratch-replacement driver and bounded publication
+snapshot worker. Their former source/mutation receipts and execution descriptions
+are historical; they establish no current coverage.
 
-One canonical current-principal mode-0700 scratch root is acquired component-by-component with `O_NOFOLLOW`; its
-parent and root descriptors, device/inode identities, mount ID, and exact edge are retained. Every subordinate fixture
-directory is randomly named and created, traversed, normalized, and removed descriptor-relative. Root and child
-acquisition-failure fixtures prove descriptor inventory equality; a child whose mount authority was not acquired is
-preserved as one ambiguous edge and removed only after independent re-acquisition. Managed consumers receive only the
-exact descriptors they need and normally address fixtures through unresolved `/proc/self/fd/*` paths. Two narrow test
-contracts require canonical names: Debian/Android build-script contract fixtures reject noncanonical repository paths,
-and the closure API itself requires a canonical tree root. Those calls re-prove the retained scratch edge before and
-after use but are race-detecting, not coherent against a deliberately concurrent same-principal pathname writer. A
-real managed consumer fixture renames a live child, installs a replacement, proves the consumer wrote only through the
-retained descriptor, and proves cleanup preserved the replacement. Cleanup rechecks every child edge, mount ID, and
-filesystem boundary; final success requires the retained root descriptor to be empty. The shell-created root is
-removed only through the closure probe's retained parent/root descriptors and recorded device/inode identity, and any
-scratch-cleanup failure is reported without losing the original failure.
+R-B9 still explicitly requires the following behavior. The deleted implementation
+cannot satisfy it, and the current release-workspace fixtures do not establish
+these complete properties:
 
-The before/after proof snapshots canonical `dist`, every `.dist-release-*` name, and the recorded private workspace
-identity. Publication traversal runs in a fresh isolated Python process that
-inherits the repository descriptor and is supervised by pidfd, deadline, and aggregate result bounds. It rejects links
-and special files; records ctime, `statx` masks/attributes/mount ID, mount flags, visible xattr digests, explicit ACL and
-file-capability probes, inode flags, extended inode flags, exact content and EOF; and compares before/after metadata,
-two directory inventories, and final parent edges. Independent constants, predicates, source mutations, and behavioral
-fixtures cover total entries, depth, content bytes, per-value xattr bytes, per-inode xattr-name bytes and count,
-aggregate xattr bytes and count, repository entry and name-byte inventories, canonical namespace entries, serialized
-worker result, aggregate worker output, and elapsed time. Behavioral state-difference fixtures additionally cover
-same-size content, visible xattr, ctime-only, symlink, noncanonical external content, and blocked-worker deadline cases.
-The proof is explicitly race-detecting under the verifier UID, not a coherent transaction against a privileged writer;
-Linux may hide inaccessible xattrs and cannot instantly kill a worker stuck in uninterruptible kernel I/O.
+| Outstanding fixture contract | Missing current evidence |
+| --- | --- |
+| Stateful command ownership | Authenticated transient scope and gated environment/descriptor transfer; exact target/launcher retirement, descendant emptiness, signal/deadline handling, unit collection and complete cleanup-failure propagation. |
+| Fixture scratch ownership | Component-wise no-follow acquisition, retained parent/root/child identities, acquisition-failure descriptor closure and a live path-replacement consumer that writes only through retained authority. |
+| Reserved publication-state comparison | Before/after `dist` and `.dist-release-*` snapshots through a bounded, pidfd-supervised worker, including complete metadata/content/resource limits and failure controls. |
+
+The current `scripts/verify-release-workspace-runtime.sh` executes actual
+release/reset/publisher/descriptor-helper fixtures as UID/GID 4000 inside the
+authenticated no-NIC VM. The guest entry separately refuses root and UID/GID
+4001. It uses bounded command timeouts; it does not recreate the deleted
+systemd-scope/descriptor-gate/publication-worker framework. Named native helper,
+reset and transaction evidence remains under R-S11dm and R-S11gm below.
+Those fixture passes use controlled artifact bytes and do not prove actual
+platform builders, installed behavior or complete cold R-B2/R-B10 equality.
+
+The specification is unchanged. Resolve the outstanding R-B9 fixture contracts
+against the intended runtime architecture and obtain real isolated evidence
+before claiming conformance. Same-UID quiescence, privileged-writer limits,
+inaccessible metadata and non-instantaneous kernel drain remain acceptance
+constraints, not properties proved by the narrower replacement lane.
 
 Transaction fixtures initialize an independent Git repository and reset fixtures use an independent no-hardlink clone.
 Detached exact-commit source validation is branch-neutral and takes an independently supplied commit; only the real
 release wrapper requires attached `master`. Exact snapshot contracts require private object storage, remote removal,
-strict object validation, mode 0700, mount closure, and complete inode-link closure. Mutations remove each authority
-stage independently.
+strict object validation, mode 0700, mount closure, and complete inode-link closure.
 
 Release verification is reset both before and after its writable consumer, so pass B is re-proved after pass A and no
 ignored state can become verifier input. Final APK certificate verification precedes the last A/B byte comparison and

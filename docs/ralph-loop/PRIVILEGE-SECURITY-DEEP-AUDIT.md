@@ -133387,3 +133387,31 @@ state retire. Twelve bounded records are copied and hash-verified; capsule
 `bca6c6c80a18b9f7ad34e1e162b3c9c350c50ef4b29df832334f43e4912b76fb`.
 This completes the selected documentation checkpoint. No owned job remains;
 the broader release objective and the recorded parked issues remain incomplete.
+
+### 2026-11-03 — remove retired verifier coverage from the release verdict
+
+The preceding documentation checkpoint made verified progress. Continue the
+binding document-role work with a concrete release-readiness discrepancy rather
+than another cosmetic condensation: the R-B2 summary describes managed systemd
+scopes, descriptor transfer, scratch replacement and publication snapshot workers
+as current coverage, but `665fb2bf` deleted their 35,217-line implementation in
+`scripts/verify-verifier-workspace.py`. Its parent revision contains the exact
+`run_managed_command`, `exercise_scratch_path_replacement`,
+`canonical_publication_state` and bounded-worker machinery described there.
+
+Current `verify.sh`, `verify-release.sh`, `verify-release-workspace-runtime.sh`,
+`build-release.sh` and the authority guest entry establish the replacement's
+actual source scope. The runtime lane invokes real helper/release/reset/publisher
+fixtures under bounded command timeouts; it does not implement the retired scope,
+descriptor gate or publication snapshot worker. R-B9 still explicitly requires
+those fixture contracts. Preserve the normative text and record this conformance
+gap as OPEN, instead of treating deletion or the narrower lane's passes as closure.
+Retain the separate current `test-build-faillo.sh` dirty-probe/classifier behavior,
+release source/publication rules, real helper evidence and all release limitations.
+Delete only the retired framework's current-coverage narrative and two obsolete
+baseline/mutation claims; classify the missing properties in one table.
+
+No product, fixture, requirement or live instruction changes; no parked runtime
+topic is resumed. Diff/source-history review establishes this documentation
+correction only. Native process containment, exact release transport/builds,
+R-S0/R-F5, independent reproduction and external review remain OPEN.

@@ -135007,3 +135007,14 @@ restart. Actual installed/device outcomes remain separate required evidence.
 No product or harness edit is made at this research checkpoint. The selected
 behavioral cases and correction remain open. Update the current selection in the
 ledger and obtain its required fresh isolated count; the release goal remains active.
+
+Fresh count `kp6mXFL9Go` at `6f19d88e` passes seven controls and the whole-input
+round trip: 399,157 tokens / 1,824,899 bytes, SHA-256
+`d94d5990fbf2329b5d4fee7de868efe0a08777ad9160d69fa2b259cb80074ee2`.
+The 28-second VM transaction retires exact processes/helpers/private/RAM state,
+with three zero listener deltas and 402,829,312 bytes peak scratch. Twelve bounded
+evidence files match on CTE/TUF. `restart-selection-ledger-6f19d88e.json`:
+4,813 bytes, SHA-256
+`697a21ac02921c5b4e63ad1a875bb1d70886c32b6a1b3df6bf0340cd9c30a878`.
+No product was executed and no owned job remains. This audit-only receipt leaves
+the counted ledger unchanged.

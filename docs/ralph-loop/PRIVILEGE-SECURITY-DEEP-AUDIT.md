@@ -135273,3 +135273,12 @@ rotation state and stale open handles during another writer's rotation. Preserve
 the real existing cases and this failing case while designing the shared ownership
 and bounded retirement model. The current implementation remains uncorrected.
 No owned job remains; other parked work stays parked and the release goal is active.
+
+Fresh count `3HfnzTwaj8` at `d8dc7a00` passes seven controls and the whole-input
+round trip: 399,592 tokens / 1,826,896 bytes, SHA-256
+`5584a821667d6c82bed6da57689a2b789cb7062c1ea9e0aaf8283be99a347a80`.
+The 28-second transaction has three zero listener deltas and exact process/helper/
+private/RAM retirement; peak scratch is 402,841,600 bytes. Twelve bounded files
+match on CTE/TUF. `file-log-overlap-ledger-d8dc7a00.json`: 4,809 bytes, SHA-256
+`522062bef465a558aa5e1b35c54274d48051731909760997b43d403e3ac1d8c6`.
+This audit-only receipt preserves the counted ledger. No owned job remains.

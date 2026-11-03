@@ -133373,3 +133373,17 @@ Do not alter requirements, product code, tests, live instructions or parked work
 Update current monitor status separately so the completed failure is not hidden
 behind the older ordinary-selection pass. This is documentation work, not new
 product acceptance. Whole-document classification/compression remains OPEN.
+
+Review preserves all fourteen capsule references in the two condensed blocks;
+their referenced JSON files remain readable. The blocks shrink from 11,839 to
+6,583 bytes; the whole ledger, including the new monitor failure, shrinks from
+1,827,973 to 1,823,612 bytes. Diff review and `git diff --check` pass.
+Fresh isolated count `pdLx3DxSst` at `5b7a1a3c` passes seven controls and the
+whole-input round trip in 28 outer seconds: 398,582 tokens, down 880, input
+SHA-256 `465de97c41fe3a5c1631e7302bc668453a517f4cdb3a8458996529d500ddae86`.
+Three listener deltas are zero and exact processes/helpers plus VM/RAM/private
+state retire. Twelve bounded records are copied and hash-verified; capsule
+`ui-evidence-ledger-5b7a1a3c.json` is 4,789 bytes, SHA-256
+`bca6c6c80a18b9f7ad34e1e162b3c9c350c50ef4b29df832334f43e4912b76fb`.
+This completes the selected documentation checkpoint. No owned job remains;
+the broader release objective and the recorded parked issues remain incomplete.

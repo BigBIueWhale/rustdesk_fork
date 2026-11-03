@@ -133427,3 +133427,35 @@ Twelve bounded records are copied and hash-verified. Capsule
 Source-history/diff review and unchanged product/specification/instruction
 comparisons pass. No owned job remains. The release goal stays active;
 the newly explicit fixture-conformance obligations require future resolution.
+
+### 2026-11-03 — current Debian and Android publication evidence
+
+The previous turn made progress by correcting retired-verifier coverage. Continue
+the binding ledger-role work on R-S11dv/R-S11dw: their long July narratives still
+describe host-container execution and a two-profile publisher as current state.
+This source/evidence classification supports release decisions without resuming
+the independently parked package/ELF or Android lifecycle work.
+
+Read both normative contracts, both builder admissions and final publication
+paths, private-result validation, the current shared publisher contracts and
+prepare/commit code, and the retained July/September audit provenance. The current
+builders require the authenticated no-NIC VM and shared guest daemon. The helper
+has four fixed profiles, including the Android test/instrumentation pair and the
+Linux engine. Historical two-profile filesystem passes cannot establish current
+full-builder, signing, package, device or release behavior.
+
+Replace 333 lines of implementation history, redundant exclusions, mutation
+counts, diagnostic repairs and obsolete hashes with 86 lines of current source
+disposition, historical evidence scope and integrated acceptance gaps. Preserve
+both requirement/finding IDs, Appendix #275/#276 and R-B2/R-B10/R-V3 obligations.
+The complete old text remains in Git at `7247f88b`; the audit retains the original
+corrections `65f26956`/`0c636fa7` and the September publisher replay. R-S11dv/dw's
+explicit Docker/configuration-retirement clauses still need reconciliation with
+shared guest authority and actual last-use/cleanup evidence; this review neither
+removes those clauses nor establishes a runtime defect or conformance pass.
+
+All bytes outside the two ledger entries are unchanged. Product, tests,
+requirements and live instructions are unchanged; diff review and whitespace
+checks pass. No new fixture or product execution is justified by this prose edit.
+The prescribed isolated whole-ledger count follows; full release acceptance and
+all independent user parks remain OPEN.

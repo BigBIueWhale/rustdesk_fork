@@ -13435,339 +13435,92 @@ sandbox implementation and checker-repair history remain in Git.
   runtime, independent reproduction, and external review remain OPEN.
   Detailed failed attempts and old verifier counts remain in Git history and
   `docs/ralph-loop/PRIVILEGE-SECURITY-DEEP-AUDIT.md`, not this live ledger.
-- **R-S11dv/R-S11e-140 — Debian result publication is private-until-verified,
-  exact-object, no-clobber, and authority-terminal — SOURCE AND CONFINED
-  SOURCE/MUTATION/FILESYSTEM VERIFICATION COMPLETE 2026-07-26; COLD RELEASE,
-  INSTALLED LIFECYCLE, AND EXTERNAL-REVIEW EVIDENCE REMAIN OPEN.**
-  Platform: the unprivileged Linux Debian-build host. Endpoint/action:
-  `scripts/build-debian.sh::build_one` selecting and validating each generated
-  package plus `publish_result` moving the validated pass-A package and its
-  canonical checksum into the caller-selected absent output leaf. Boundary:
-  private exact-commit build/package objects and child-owned Docker/workspace
-  authority plus the selected output-parent namespace ↔ the irreversible
-  public two-file Debian result and terminal child verdict.
+- **R-S11dv/R-S11e-140 — Debian private result publication — SOURCE PATH
+  RETAINED; HISTORICAL PUBLISHER/FILESYSTEM EVIDENCE; CURRENT FULL-BUILDER,
+  INSTALLED AND RELEASE ACCEPTANCE OPEN.** `scripts/build-debian.sh` requires
+  nonroot verifier-VM admission before repository helpers and uses only the
+  authenticated guest Docker route. The former host-container execution
+  description is not the current build authority.
 
-  Proven old path and history: after each compiler container,
-  `build_one` ran `mkdir -p "$OUT_DIR"`, selected the first globbed package,
-  copied it to `"$OUT_DIR/rustdesk-${profile}.deb"` with overwrite authority,
-  then ran the package-authority, polkit-policy, and maintainer-script
-  validators against that caller-visible copy. It wrote the checksum through
-  overwrite-capable `tee`. Direct reproducibility then read the public pass-A
-  checksum, published pass B beneath public `"$OUT_DIR/_rebuild"`, and only
-  afterward compared the two hashes. A verifier failure, failed second pass,
-  or A/B mismatch could therefore leave one or two apparently complete
-  caller-visible artifacts from a failed transaction; a rerun could replace
-  prior output. The EXIT path later removed child Docker configuration and
-  private build state, so a cleanup failure could also change the verdict
-  after public files existed. `git blame` and `git log -S` trace the output
-  creation/copy/checksum and `_rebuild` shape to the original
-  `cd09dcc5` Debian-builder commit, with later package checks added around the
-  same publication model.
+  `build_one` admits exactly one private, bounded (4 GiB), current-principal,
+  single-link regular `rustdesk-*.deb` with a constrained name and safe mode.
+  Package-authority, control-script/polkit, source and online-input checks precede
+  stable metadata/digest revalidation. Independent direct passes compare private
+  digests; a release child omits its inner second pass only when the enclosing
+  transaction supplies independent A/B snapshots.
 
-  The builder refuses numeric UID and primary GID zero and its sole compiler
-  remains the already-confined pinned no-pull/networkless/read-only-root,
-  numeric-nonroot, capability-free/no-new-privileges, resource-bounded
-  container. This finding was non-root package-output integrity,
-  intermediate-result exposure, overwrite, pathname-substitution, durability,
-  cleanup-order, and terminal-verdict debt. It is not evidence that the
-  builder was run, a package was modified or replaced, another Docker daemon
-  was selected, Docker escaped, host root was acquired, a listener or port was
-  exposed, or host RustDesk/service/configuration/firewall/network state
-  changed or was compromised.
+  `publish_result` rechecks source/inputs and VM admission, invokes the fixed
+  `debian-x86_64` prepare profile, retires its exact private workspace, then
+  invokes commit. The shared publisher retains parent/source/pending identity,
+  constructs a synchronized mode-0700 pending directory containing exactly
+  mode-0400 `rustdesk-x86_64.deb` and its canonical checksum, and revalidates it
+  before same-parent `RENAME_NOREPLACE`. Final namespace, identity and content
+  checks precede success. Existing destinations and ambiguous objects are
+  refused without an overwrite or cross-filesystem fallback.
 
-  Source correction: preflight now requires the requested output to be one
-  absent absolute canonical leaf beneath an already-existing canonical,
-  current-principal non-root parent with owner read/write/search and no
-  special, group-write, or world-write authority. It retains the parent's
-  device/inode before any build. Existing output, unsafe parent, symlinked or
-  noncanonical topology, and malformed destination names fail without
-  inspection, adoption, deletion, or overwrite.
+  Source correction `65f26956` and the July/September publisher fixtures are
+  historical evidence only. Their ordinary-filesystem cases cover successful
+  prepare/commit, exact inventory/modes, occupied-destination preservation,
+  source/parent/pending substitution, source hardlinks and extra inventory.
+  They did not execute the complete Debian builder, compiler/package flow,
+  release transaction or installed service. The original source-mutation totals,
+  diagnostic repairs and intermediate requirements hashes are archived in Git at
+  `7247f88b` and the audit journal; they are not current runtime coverage.
+  R-S11dv and Appendix C #275 retain the complete acceptance contract.
 
-  Each compiler still writes only into its private exact-commit source. The
-  post-container gate now admits exactly one constrained `rustdesk-*.deb`
-  basename and requires a bounded current-principal, non-symlink,
-  non-executable, non-group/world-writable, single-link regular file. It
-  records the package device/inode, metadata, and SHA-256; runs the complete
-  package-authority, polkit-policy, control-script/lifecycle, source, and
-  online-snapshot checks against that private object; then requires metadata
-  and digest stability. Direct pass A and independent pass B retain only
-  private artifact identities/digests and compare those digests. The release
-  child still uses `DOUBLE_BUILD=0` only because the enclosing release
-  transaction owns two independent exact snapshots. There is no public pass
-  copy, `_rebuild`, or checksum before every required check and equality
-  decision succeeds. The control-script/package extraction scratch is now
-  created as a private subtree of the recorded build workspace and retained
-  for its one exact descriptor-relative closer; the former unrelated `/tmp`
-  allocation and recursive `rm -rf` deletion path are absent.
+- **R-S11dw/R-S11e-141 — Android private pass/result publication — SOURCE PATH
+  RETAINED; HISTORICAL PUBLISHER/FILESYSTEM EVIDENCE; CURRENT FULL-BUILDER,
+  SIGNING, DEVICE AND RELEASE ACCEPTANCE OPEN.** `scripts/build-android.sh`
+  uses the same nonroot verifier-VM/guest-daemon authority. Direct A/B builds use
+  distinct coexisting private sources and results. Signing mounts the unsigned
+  APK read-only; `validate_private_result` checks the exact mode-0400 APK/checksum
+  inventory, owner/group/link/size, canonical checksum, certificate/signatures,
+  manifest/mobile-key policy and stable metadata/bytes before private digest
+  comparison. Source and online-input postconditions remain required.
 
-  Publication first re-proves and terminally removes the fixed local-Docker
-  configuration authority. The isolated
-  `scripts/publish-artifact-result.py` opens the exact validated package and
-  retained output parent no-follow; rechecks current-principal ownership,
-  safe mode, single-link, size, device/inode, and source digest authority; and
-  rejects POSIX access/default ACLs where applicable. While the requested name
-  is absent, it exclusively creates one kernel-random
-  `.debian-output-pending-<64hex>` mode-0700 directory under the authenticated
-  parent. Through retained descriptors it creates exactly a mode-0400
-  single-link nonempty `rustdesk-x86_64.deb` plus its mode-0400 canonical
-  lowercase SHA-256 line, hashes the copy against the already-validated
-  digest, synchronizes both files and the pending directory, revalidates the
-  closed inventory/content, synchronizes the parent namespace, and returns
-  only the strict pending name plus device/inode.
+  The final path replays VM admission, prepares only the fixed `android-arm64`
+  candidate, retires the complete owned workspace while the requested output is
+  absent, then commits through the shared identity-bound no-replace publisher.
+  The inventory is `rustdesk-arm64.apk` plus its canonical checksum. Verify-only
+  mode remains nonpublishing. Release-level independent builds still own the
+  equality obligation when a child runs only one pass.
 
-  With the requested output still absent, the shell invokes the shared
-  descriptor-relative private-tree closer against the child workspace's
-  device/inode recorded immediately after `mktemp`. The old recursive
-  `chmod -R`/`rm -rf` cleanup is absent. Substituted, cross-mount, special,
-  externally linked, descriptor-budget, or otherwise ambiguous state is
-  preserved and fails before final publication. This removes the direct
-  private source(s), online snapshot where child-owned, and all remaining
-  child scratch only after the package has been independently copied into the
-  authenticated private pending object. Release-parent-owned source/online
-  snapshots remain under their outer transaction rather than being adopted by
-  this child.
+  Correction `0c636fa7` and the July/September ordinary-filesystem fixtures cover
+  the shared publisher cases listed above for the then-current Android profile.
+  No compiler, signing operation, keystore access, APK install or device run was
+  part of that evidence. The audit entries “2026-07-26 — Android pass/result
+  publication and cleanup authority” and “2026-09-14 — Restore Debian and Android
+  publication requirements to normative form” retain scope and provenance.
+  R-S11dw and Appendix C #276 remain the complete acceptance contract.
 
-  A second isolated publisher invocation then reopens the exact parent and
-  pending identities, revalidates the exact modes, links, inventory, checksum,
-  and bytes, synchronizes and reproves the parent, and performs one
-  descriptor-relative same-parent `renameat2(RENAME_NOREPLACE)` to the
-  requested absent destination. It synchronizes the changed namespace, proves
-  pending absence and exact final-object identity/content, and reproves the
-  pending edge and final identity a second time after the potentially long
-  final content hash before reproving the parent. Collision,
-  source/parent/pending substitution, unsupported no-replace semantics, or
-  uncertainty has no copy, overwrite, deletion, cross-filesystem fallback, or
-  compatibility path at the requested name. Only namespace synchronization
-  and exact proof follow the final edge change; no build,
-  Docker/configuration cleanup, private-workspace deletion, or output write
-  remains afterward. R-S11dv and Appendix C #275 make this boundary normative.
+  **Shared source/evidence limits for both entries:** the current
+  `publish-artifact-result.py` has four fixed contracts:
+  `debian-x86_64`, `android-arm64`, `android-x86_64-test` (including its
+  instrumentation companion) and `flutter-linux-engine`. Artifact names remain
+  profile-defined. The former “two profiles only” claim is obsolete; a test APK
+  or engine artifact does not establish either release-builder path.
 
-  Confined verification used immutable image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
-  as numeric UID/GID 1000:1000 with no pull or network, read-only root and
-  repository, recursive bind inclusion disabled, all capabilities dropped,
-  no-new-privileges, finite PID/memory/no-swap/CPU/descriptor/core/file-size/
-  tmpfs limits, and no Docker/libvirt/service-manager socket, host namespace,
-  device, port, or host-configuration mount. Each outer Docker call used a
-  fresh mode-0700 private client configuration whose mode-0600 file and
-  directory were exactly removed. The focused Debian authority verifier
-  passes all 90 mutations. The bounded publisher fixture proves successful
-  prepare/commit and mode-0400 exact inventory; occupied-destination
-  preservation with pending state retained; source/output-parent/pending
-  substitution refusal; source-hardlink refusal; and extra-inventory refusal.
-  The independent workspace semantic baseline and its complete catalog of
-  2,491 deliberate source mutations pass from mutation one. Adjacent exact
-  reruns pass the
-  release-parent 27-mutation, Debian systemd-lifecycle 44-mutation, and Android
-  builder 145-mutation authority catalogs; the Debian package-authority
-  synthetic fixture, source polkit verifier, private-tree closer behavior
-  fixture, and native-codec normal/negative gate are green. Bash syntax,
-  in-memory Python compilation, requirements HTML parsing, active-hash
-  synchronization, and diff hygiene pass. The active requirements SHA-256 is
-  `ce7e3a94dc28f59cd64b00b0184655c15c091c517b957c66a8884021fcf25a36`.
+  Both current callers reprove shared guest-VM authority before prepare; they
+  no longer own the historical per-child host Docker configuration described
+  by the July implementation. Reconciliation of R-S11dv/R-S11dw's explicit
+  Docker/configuration-retirement clauses with this shared authority, and
+  execution proving the intended last-use/cleanup ordering, remain OPEN.
+  No normative clause is removed or treated as satisfied by this source review.
 
-  Preliminary failures are retained as verifier-hardening evidence. The
-  focused checker initially confused the pre-rename and post-rename parent
-  `fsync` while checking final order; an output-preflight-order mutation
-  survived; and a source-hardlink mutation survived a generic link-count
-  token. Those checks were made phase/object-specific and restarted. Three
-  later complete-catalog attempts rejected production mutations correctly
-  but expected older diagnostic labels for Docker-before-workspace cleanup,
-  the shared Debian disposition, and final no-clobber rename; each label was
-  corrected and the complete catalog restarted from mutation one. The final
-  destination-edge tightening then made an older focused pending-edge mutation
-  target occur twice; the checker now requires and separately mutates both
-  pre-content and post-content pending-retirement proofs. The first complete
-  rerun rejected each split mutation correctly but expected phase-specific
-  diagnostic labels rather than the validator's combined two-proof invariant;
-  those expected labels were corrected and the complete catalog restarted
-  from mutation one. A subsequent meta-mutation changed the focused
-  post-content final-edge enforcement label but survived because the
-  independent checker's generic text also occurred in the focused mutation
-  catalog; the independent binding now requires the exact enforcement tuple
-  and the complete catalog was again restarted from mutation one. No accepted
-  mutation or bookkeeping failure is represented as a pass.
-
-  This evidence intentionally does not invoke the Debian builder main path,
-  Docker/compiler workload inside the verifier, a release transaction, actual
-  package installation, root fixture, systemd/service manager, or any host
-  service/network action. The behavioral fixtures use only bounded disposable
-  ordinary filesystems inside the confined verifier container.
-
-  One process-boundary error during this slice is retained rather
-  than hidden: a host inspection command accidentally included
-  `python3 -c 'print()'` with its empty output redirected away. It read no
-  project file, wrote no file, used no privilege or socket, and performed no
-  service or network operation, but executing even that no-op interpreter on
-  the host violated the container-only rule. It is not used as verification;
-  every project syntax, behavior, or mutation check runs in the confined
-  verifier container.
-
-  Exact cold committed R-B2/R-B10 Debian/release artifacts, executable package
-  installation and service lifecycle, installed/native/device behavior,
-  independent reproduction where separately required, and R-V3 external
-  review remain open. No host RustDesk/service/configuration/firewall/network
-  state was inspected or mutated, and the broader Ralph-loop goal remains
-  active.
-- **R-S11dw/R-S11e-141 — Android pass isolation, private result validation,
-  exact cleanup, and publication are one no-clobber authority-terminal
-  transaction — SOURCE AND CONFINED FOCUSED SOURCE/MUTATION/FILESYSTEM
-  VERIFICATION COMPLETE 2026-07-26; COLD RELEASE, INSTALLED/DEVICE, AND
-  EXTERNAL-REVIEW EVIDENCE REMAIN OPEN.**
-  Platform: the unprivileged Linux Android-build host. Endpoint/action:
-  `scripts/build-android.sh::build_apk` and `sign_apk` creating each private
-  pass, `validate_private_result` proving its signed result, and
-  `publish_result` exposing only authenticated pass A after private A/B
-  equality. Boundary: independent exact-commit writable pass trees, signed
-  APK/checksum objects, and child-owned Docker/workspace authority plus the
-  selected output-parent namespace ↔ the irreversible caller-visible
-  two-file Android result and terminal child verdict.
-
-  Proven old path and history: the Android builder gave both passes the fixed
-  `"$OWNED_WORKSPACE/source-build"` pathname. After extracting and compiling
-  pass A it recursively changed that tree's permissions and removed it with
-  `rm -rf`, then constructed pass B at the same name. Publication ran
-  `mkdir -p "$OUT_DIR"` and overwrite-capable `install` for the APK and
-  checksum, compared private and public pathnames only after those writes,
-  checked the public checksum, and then launched another fallible
-  certificate/manifest/mobile-key verifier container against the public APK.
-  Docker/configuration and the private workspace remained live until EXIT,
-  whose fallback recursively changed and removed the workspace by pathname.
-  A verifier, collision, substitution, interruption, or cleanup failure could
-  therefore leave apparently complete caller-visible state from a failed
-  transaction or replace a prior result, while pass independence relied on
-  recursive deletion rather than coexisting object ownership. `git blame`
-  and `git log -S` trace this publication/source-reuse shape to
-  `d8d9ddaf` (`Confine Android artifact builds`) by Ronen Zyroff.
-
-  The builder has always refused numeric UID and primary GID zero, and its
-  build/sign/verification containers remain pinned, no-pull, networkless,
-  read-only-root, numeric-nonroot, capability-free/no-new-privileges, and
-  resource-bounded. This finding was non-root APK-output integrity,
-  pass-isolation, intermediate-result exposure, overwrite,
-  pathname-substitution, durability, cleanup-order, and terminal-verdict debt.
-  It is not evidence that the builder ran, an APK was modified or replaced,
-  another Docker daemon was selected, Docker escaped, host root was acquired,
-  a listener or port was exposed, or host
-  RustDesk/service/configuration/firewall/network state changed or was
-  compromised.
-
-  Source correction: preflight now requires one absent absolute canonical
-  output leaf under an already-existing canonical, current-principal non-root
-  parent with owner read/write/search and no special, group-write, or
-  world-write authority, and retains that parent's exact device/inode before
-  creating build authority. Existing output, unsafe/noncanonical/symlinked
-  parent topology, or malformed destination fails without adoption,
-  inspection, deletion, or overwrite. The private workspace is itself proved
-  canonical current-principal mode 0700 and retained by exact device/inode.
-
-  Pass A and pass B now receive distinct freshly absent
-  `source-pass-a`/`source-pass-b` exact-commit writable trees. They coexist
-  until the one whole-workspace close, so no between-pass recursive
-  permission rewrite or deletion establishes independence. Each unsigned APK
-  stays inside its pass source and is mounted read-only into signing; only the
-  signed APK is created in that pass's private result directory. After
-  signing, the result is sealed to exactly mode-0400
-  `rustdesk-arm64.apk` and its mode-0400 canonical lowercase SHA-256 record.
-  `validate_private_result` rejects extra entries, symlinks, hardlinks,
-  wrong ownership/group/mode, empty/oversized APKs, wrong checksum size/text,
-  and digest mismatch; runs the existing pinned-certificate,
-  v2/v3-signature, manifest, mobile-key, online-snapshot, and source checks
-  against that private APK; then requires APK/checksum metadata, checksum
-  bytes, and APK digest stability. It retains only validated pass-A
-  path/device/inode/digest and pass-B digest authority. Direct A/B equality is
-  private. `DOUBLE_BUILD=0` remains release-internal/diagnostic behavior; the
-  release transaction independently owns the two exact snapshots.
-
-  Publication re-proves and terminally removes the fixed local-Docker
-  configuration authority before any output candidate is prepared. The
-  former Debian-only descriptor publisher is now the deliberately closed
-  two-profile `scripts/publish-artifact-result.py`; it accepts only
-  `debian-x86_64` or `android-arm64`, never caller-selected artifact names.
-  The Android profile opens the exact validated pass-A APK and retained output
-  parent no-follow, rechecks current-principal ownership, safe mode,
-  single-link/size/device/inode and digest authority, rejects widening POSIX
-  ACLs, and exclusively creates one kernel-random
-  `.android-output-pending-<64hex>` mode-0700 directory beneath the
-  authenticated parent while the requested name is absent. Through retained
-  descriptors it creates exactly mode-0400 `rustdesk-arm64.apk` and
-  `rustdesk-arm64.apk.sha256`, hashes and synchronizes both, revalidates the
-  closed inventory/checksum/content, synchronizes the pending and parent, and
-  returns only the strict pending name plus device/inode.
-
-  The builder next invokes the shared descriptor-relative private-tree closer
-  against the exact recorded workspace while the requested destination
-  remains absent. Both pass sources/results, the child-owned online snapshot,
-  and all scratch retire together. The old builder-level recursive
-  `chmod -R`/`rm -rf` path and between-pass deletion are absent. Root-edge
-  substitution, mount/device crossing, special nodes, external links,
-  descriptor-budget exhaustion, or any ambiguity preserves state and fails
-  before final publication.
-
-  A second isolated publisher invocation reopens the exact parent/pending
-  identities, revalidates the exact profile inventory, modes, links,
-  checksum, bytes and parent authority, and performs one descriptor-relative
-  same-parent `renameat2(RENAME_NOREPLACE)` to the requested absent leaf. It
-  synchronizes the parent, proves the pending edge absent and final edge equal
-  to the still-open object, revalidates content, and reproves the parent.
-  Collision, source/parent/pending substitution, unsupported semantics, or
-  uncertainty has no public copy, overwrite, deletion, cross-filesystem
-  fallback, or compatibility path. No build, Docker operation, workspace
-  cleanup, public verification container, output mutation, or fallible
-  completion log follows the terminal publisher call. Verify-only mode does
-  not prepare or publish output and uses the same exact workspace closer.
-  R-S11dw and Appendix C #276 make this boundary normative.
-
-  Confined verification used immutable image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
-  as numeric UID/GID 1000:1000 with no pull or network, read-only root and
-  repository, recursive bind inclusion disabled, all capabilities dropped,
-  no-new-privileges, finite PID/memory/no-swap/CPU/descriptor/file-size/tmpfs
-  limits, and no Docker/libvirt/service-manager socket, host namespace,
-  device, port, or host-configuration mount. The focused Android authority
-  verifier passes all 166 deliberate mutations. The shared bounded publisher
-  fixture passes independently for both closed profiles, including successful
-  prepare/commit, exact mode-0400 inventory, occupied-destination
-  preservation, source/output-parent/pending substitution refusal, source
-  hardlink refusal, and extra-inventory refusal. Bash syntax, in-memory Python
-  compilation, the focused Debian 90-mutation regression, Android exact-source
-  comparator fixture, and the independent workspace semantic baseline are
-  green. One uninterrupted complete independent catalog rejects all 2,510
-  deliberate source mutations from mutation one. Adjacent exact reruns pass
-  the release-parent 27-mutation and Debian systemd-lifecycle 44-mutation
-  authority catalogs. The native-codec normal and negative fixtures,
-  requirements HTML parse, active-hash synchronization, and final Bash/Python
-  syntax gates are green. The active requirements SHA-256 is
-  `90e6c414eb90986568b603030ce8cd70c0d5b4e802fd89bb6beeca46f5b152dd`.
-
-  Preliminary failures are retained as verifier-hardening evidence. The first
-  complete-catalog attempt showed that replacing the recorded Android
-  workspace device/inode with a constant survived the independent checker;
-  the checker now requires that exact stat-derived assignment. The second
-  attempt showed that deleting the output-contract call while leaving its
-  function defined survived; the independent checker now binds its order
-  before execution/build authority. A third attempt rejected that deletion
-  correctly but expected the older diagnostic label. A fourth rejected the
-  shared no-clobber mutation correctly but expected an Android-specific label
-  even though the Debian profile checker encountered the shared helper first.
-  A fifth rejected the migrated Debian exact-inventory mutation correctly but
-  expected its pre-profile label. Those expected diagnostics were corrected
-  and every complete run restarted from mutation one. Final review then added
-  a second exact two-file inventory enumeration after signed-artifact
-  verification, with shell-option state preservation and new focused and
-  independent mutations; the final 2,510-mutation run passed uninterrupted.
-  No accepted mutation or diagnostic bookkeeping failure is represented as a
-  pass.
-
-  This source slice intentionally does not invoke the Android builder main
-  path, an Android build/signing/verifier workload, keystore, release
-  transaction, APK installation, emulator/device, root fixture, systemd or
-  any host service/network action. Exact cold committed R-B2/R-B10
-  Android/release artifacts, installed/native/device behavior (including the
-  separately tracked Android lifecycle/session correction), independent
-  reproduction where separately required, and R-V3 external review remain
-  open. No host RustDesk/service/configuration/firewall/network state was
-  inspected or mutated, and the broader Ralph-loop goal remains active.
+  **Remaining acceptance:** exact-current complete builder-to-publication runs
+  must establish parent/workspace/pass/artifact/pending/final identity,
+  private validation and A/B equality, terminal workspace retirement,
+  no-clobber publication and synchronization, and release-parent compatibility.
+  Collision/substitution, hardlink/inventory, mount/device/special-file,
+  descriptor-budget and cleanup-uncertainty cases remain required at that
+  integrated layer; historical helper cases cannot close it. Current isolated
+  execution must exclude public-before-verdict output, overwrites, pathname
+  cleanup fallbacks and post-publication compiler/container work. Cold R-B2/R-B10
+  artifacts, Debian installed service/package lifecycle, Android signing and
+  device/session behavior, durability/failure races, independent reproduction
+  and R-V3 external review remain OPEN. Existing package/ELF, Android lifecycle
+  and other user parks are unchanged. This ledger consolidation adds no runtime
+  acceptance.
 - **R-S11dx/R-S11e-142 — privileged service-control and SAS protocol type
   authority — SOURCE CLOSED/GATED 2026-07-27; PLATFORM-WIRE REGRESSION
   COVERAGE STRENGTHENED 2026-08-16; CURRENT CONFINED SOURCE/4,404-MUTATION

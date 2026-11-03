@@ -1208,6 +1208,7 @@ for profile, memory, scratch, overlay in (
         ('linux-flutter-replay', 10240, 7, 6),
         ('linux-flutter-suspend', 10240, 6, 5),
         ('android-storage-key', 10240, 7, 6),
+        ('android-app', 20480, 16, 8),
         ('android-replay', 18432, 16, 8),
         ('linux-resolution-lifetime', 2048, 6, 4),
         ('fusermount-process', 2048, 6, 4),
@@ -1249,6 +1250,7 @@ for profile, memory in (('ledger-token-count', 2049), ('ledger-token-count', 409
                         ('linux-flutter-replay', 10239), ('linux-flutter-replay', 24576),
                         ('linux-flutter-suspend', 10239), ('linux-flutter-suspend', 16384),
                         ('android-storage-key', 10239), ('android-storage-key', 16384),
+                        ('android-app', 20479), ('android-app', 24576),
                         ('android-replay', 18431), ('android-replay', 24576),
                         ('linux-resolution-lifetime', 2047), ('linux-resolution-lifetime', 4096),
                         ('xrandr-acquisition', 2048), ('xrandr-acquisition', 8192),
@@ -1305,6 +1307,13 @@ if (cli.returncode != 1 or cli.stdout or len(cli.stderr) > 4096 or
         'ValueError: VM refused: RAM requires 20480 MiB including scratch and headroom;' not in cli.stderr):
     raise SystemExit('input CLI did not reach native RAM admission: ' + cli.stderr)
 print('VM_TRANSIENT_X11_INPUT_CLI=pass profile=x11-key-input guest_mib=4096 required_mib=20480 insufficient_ram=refused allocation=not-entered')
+cli = subprocess.run([sys.executable, '-B', '-I', '-S', sys.argv[1], 'preflight',
+                      '--memory-mib', '20480', '--storage-profile', 'android-app'],
+                     capture_output=True, text=True, timeout=5, check=False)
+if (cli.returncode != 1 or cli.stdout or len(cli.stderr) > 4096 or
+        'ValueError: VM refused: RAM requires 44032 MiB including scratch and headroom;' not in cli.stderr):
+    raise SystemExit('Android app CLI did not reach native RAM admission: ' + cli.stderr)
+print('VM_TRANSIENT_ANDROID_APP_CLI=pass profile=android-app guest_mib=20480 required_mib=44032 insufficient_ram=refused allocation=not-entered')
 for profile, memory, required in (('linux-flutter-engine-prepare', 4096, 27648),
                                    ('linux-flutter-engine-build', 16384, 39936)):
     cli = subprocess.run([sys.executable, '-B', '-I', '-S', sys.argv[1], 'preflight',
@@ -1329,6 +1338,7 @@ special = {mode: mode for mode in ('ledger-token-count', 'cpace-recovery-tests',
                                   'linux-flutter-engine-prepare', 'linux-flutter-engine-build',
                                   'fixed-archive-tests', 'debian-package-tests')}
 special.update({'authority-smoke': 'authority-smoke', 'dependency-inventory': 'authority-smoke',
+                'android-emulator-app': 'android-app',
                 'android-emulator-runtime': 'android-replay',
                 'linux-ipc-parent-tests': 'linux-service-uid-tests',
                 'windows-service-result-tests': 'fixed-archive-tests',

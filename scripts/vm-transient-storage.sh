@@ -104,6 +104,8 @@ elif [ "${MODE:-}:${FLUTTER_APP_REPLAY:-0}" = flutter-peer-presentation:1 ]; the
     esac
 elif [ "${MODE:-}:${ANDROID_STORAGE_TESTS:-0}" = android-emulator-boot:1 ]; then
     readonly VM_STORAGE_PROFILE=android-storage-key
+elif [ "${MODE:-}" = android-emulator-app ]; then
+    readonly VM_STORAGE_PROFILE=android-app
 elif [ "${MODE:-}" = android-emulator-runtime ]; then
     readonly VM_STORAGE_PROFILE=android-replay
 elif [ "${MODE:-}" = android-frame-tests ] \
@@ -162,7 +164,7 @@ elif [ "${MODE:-}:${RUST_TEST_PROFILE:-}" = android-rust-lifecycle-tests:clipboa
     readonly VM_STORAGE_PROFILE=clipboard-response
 else
     case "${MODE:-}" in
-        android-emulator-app|android-emulator-boot|android-emulator-runtime|\
+        android-emulator-boot|android-emulator-runtime|\
         android-execution-probe|android-owner-tests|android-peer-build|\
         android-rust-lifecycle-tests|android-rust-target-check|\
         apple-conform|cm-file-replay|dart-audit|debian-elf-role-tests|\

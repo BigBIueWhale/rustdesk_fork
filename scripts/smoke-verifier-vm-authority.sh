@@ -1328,7 +1328,7 @@ elif [ "$MODE" = android-emulator-boot ]; then
 elif [ "$MODE" = android-emulator-app ]; then
     readonly VM_TIMEOUT_SECONDS=21600
     readonly OVERLAY_SIZE=64G
-    readonly VM_MEMORY=24576
+    readonly VM_MEMORY=20480
 elif [ "$MODE" = android-emulator-runtime ]; then
     if [ "$ANDROID_RUNTIME_SOAK" -eq 1 ]; then
         readonly VM_TIMEOUT_SECONDS=10800
@@ -6127,6 +6127,8 @@ elif [ "$MODE" = ledger-token-count ]; then
         'actual suspension profile CLI and RAM refusal'
     require_exact_fixed_receipt 'VM_TRANSIENT_X11_INPUT_CLI=pass profile=x11-key-input guest_mib=4096 required_mib=20480 insufficient_ram=refused allocation=not-entered' \
         'actual input profile CLI and RAM refusal'
+    require_exact_fixed_receipt 'VM_TRANSIENT_ANDROID_APP_CLI=pass profile=android-app guest_mib=20480 required_mib=44032 insufficient_ram=refused allocation=not-entered' \
+        'actual Android app profile CLI and RAM refusal'
     require_exact_fixed_receipt 'VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=41 controls=80 refusals=5 allocation=not-entered' \
         'VM workload class selection and unconfigured workload refusal'
     require_exact_fixed_receipt 'VM_TRANSIENT_ROOT_REFUSAL=pass operations=5 principal=root qemu=not-started' \

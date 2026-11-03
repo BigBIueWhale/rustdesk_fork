@@ -22,6 +22,10 @@ OVERHEAD = GIB
 
 
 def storage_limits(profile, memory_mib):
+    if profile == 'android-app':
+        require(memory_mib == 20480, 'Android app build requires its 20 GiB guest')
+        # Build/verification/emulator stages are sequential, each capped at 12 GiB.
+        return 16 * GIB, 8 * GIB
     if profile == 'android-replay':
         require(memory_mib == 18432, 'Android replay requires its 18 GiB guest')
         # Concurrent runtime/observer caps total 15 GiB; retain 3 GiB for the guest.
@@ -494,7 +498,7 @@ def main():
                                  'linux-service-uid-tests', 'audio-buffer', 'audio-mailbox', 'file-block', 'control-egress', 'clipboard-response',
                                  'linux-service-receiver', 'linux-flutter-build', 'linux-flutter-replay', 'installer-package',
                                  'linux-flutter-engine-prepare', 'linux-flutter-engine-build',
-                                 'android-storage-key', 'android-replay', 'linux-flutter-suspend', 'media-kernel-tests', 'media-nokhwa',
+                                 'android-storage-key', 'android-app', 'android-replay', 'linux-flutter-suspend', 'media-kernel-tests', 'media-nokhwa',
                                  'debian-package-tests', 'protobuf-parser', 'tcp-key-transition'),
                         default='standard')
     parser.add_argument('--workspace')

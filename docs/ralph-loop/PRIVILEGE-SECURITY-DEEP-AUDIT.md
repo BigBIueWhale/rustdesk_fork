@@ -134385,3 +134385,57 @@ evidence files match on CTE/TUF. `window-position-ledger-7984638b.json`:
 4,805 bytes, SHA-256
 `db9f95ef63724993f2f12285ea069420f528cc4d747cabf30a9a5ed5f06401a8`.
 This audit-only receipt preserves the counted ledger. No owned job remains.
+
+## 2026-11-03 — user pivot; mobile Remote/Camera route ownership
+
+The user requests a different aspect. Peer-window native close/reopen acceptance
+is OPEN/PARKED; its accepted nineteen-case component result is unchanged. The
+already-running full app build at `2ed4dd37` may finish and retire its exact
+workspace, preserving a reusable artifact. No Openbox consumer, window-manager
+fixture or native persistence replay is added. Independently parked work stays
+parked.
+
+Select R-S0 mobile Remote/Camera cancellation and route ownership, ahead of
+additional window test infrastructure. Both pages publish initial loading
+Cancel with the bare `closeConnection` callback; their explicit close controls
+use `clientClose` without a `MobileConnectionRoute`. The shared global close
+function pops to Home. `FFI.bindMobileConnectionRoute` currently admits Terminal
+only, whose page captures/binds/unbinds its exact route and whose close callback
+can dismiss its still-visible view after native connection retirement.
+
+This is a source-review checkpoint, not a reproduced mobile failure. Existing
+`DialogClose` checks revoke dismissed/replaced overlay entries before dispatch,
+so an isolated regression must preserve those checks and exercise an actual
+admitted callback, rather than invoke an invented unguarded dialog action.
+Required observations: ordinary Cancel/confirmed close completes once; a hidden
+or replaced route/session survives its predecessor's callback; unrelated pages
+remain; an ended connection's own visible error view remains dismissible. Use
+the existing exact-route design if these cases establish the missing binding,
+covering loading, Back and toolbar close together. Linux Flutter Navigator/FFI
+component evidence remains distinct from complete pages and Android device
+lifecycle/connection retirement. No product or test source is changed here.
+
+Primary API references: Flutter's `NavigatorState.popUntil` explicitly repeats
+pop until its predicate succeeds, including local route history; route ownership
+can be acquired after `initState` through `didChangeDependencies`:
+https://api.flutter.dev/flutter/widgets/NavigatorState/popUntil.html and
+https://api.flutter.dev/flutter/widgets/State/didChangeDependencies.html.
+
+The pre-pivot build `dstxgcdNbz` completes in 1,053 seconds on frozen source
+`2ed4dd37`, with thirteen widget and two native command checks. Independent
+inert inspection verifies all 74 payload files / 70,340,674 bytes and manifest
+SHA-256 `01f5874523a359b4f19986c98c16a2a2402e7bc0cf6af77c77018a521ba46a64`.
+The retained `ddb1541d` engine is reused. Four decoded listener deltas are zero;
+exact wrapper/QEMU/helpers, private state and RAM workspace are absent. Peak
+RAM scratch is 11,892,318,208 bytes. Fourteen bounded evidence files match on
+CTE/TUF. `window-app-build-2ed4dd37.json`: 6,256 bytes, SHA-256
+`cbe237f17e6630cdf72ea418531e7e35cdb2985154caa30e7f25518b62e6305a`.
+This establishes the build, not window persistence or mobile navigation behavior.
+
+Before that build, the four-generation app cache was admitted by retiring only
+`f043c5ae`, after verifying all 74 payload files byte-identical to retained
+`9f78434c`. Its manifest and full hashed inventory were preserved before removal;
+70,353,741 bytes were freed. `window-app-retire-f043c5ae.json` and
+`window-app-retired-f043c5ae.json` retain the decision and completed retirement.
+The earlier `0ccb2a7e`, `7e6f6459` and `9f78434c` generations remain alongside
+the new `2ed4dd37` app. Canonical inputs and unrelated data are unchanged.

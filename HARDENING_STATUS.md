@@ -43,6 +43,18 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-03):** Peer-window close/reopen acceptance is OPEN/PARKED.
+The nineteen-case component result below remains valid. The earlier Linux app
+build at `2ed4dd37` completes with thirteen widget/two native command checks,
+all payload hashes verified and VM/RAM retirement; `window-app-build-2ed4dd37.json`
+retains the receipt. No window-manager scenario ran. Work moves to R-S0 mobile
+Remote/Camera cancellation and
+route ownership. Source review finds their initial loading Cancel uses the
+global `closeConnection`, which pops to Home; their close confirmations lack
+the exact route binding already used by Terminal. The overlay's existing
+entry-retirement checks must be included in the reproduction. No new mobile
+failure or correction is established yet. All independent parks remain.
+
 **User pivot (2026-11-03):** Release-input promotion is OPEN/PARKED after
 read-only investigation. The Debian recipe still selects stock Flutter 3.24.5;
 the validated Linux app producer uses 3.47.5 with the patched engine. No input,

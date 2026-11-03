@@ -134221,3 +134221,13 @@ the manifest producer supplies the named fork-version/full-commit headers. The
 diff is limited to issue intake and status/audit records; `git diff --check` passes.
 No product build or new regression test is warranted for this configuration edit.
 A fresh isolated ledger token count follows the status update.
+
+Fresh count `X6p9jjBT7M` at `970dbe9e` passes seven controls and the whole-input
+round trip: 397,257 tokens / 1,816,358 bytes, SHA-256
+`76207dfc9899954a31080f1f07b70fa2690f6c3d6c4e5df2197b19996894aa35`.
+The 28-second outer run joins exact processes and retires private/RAM state,
+with three zero listener deltas and 402,808,832 bytes peak RAM scratch. Twelve
+bounded evidence files match on CTE/TUF. `issue-intake-ledger-970dbe9e.json`:
+4,793 bytes, SHA-256
+`63dcafd73748bfa4f4fc40d9978b1d1631d6957fd082883b72ce70edae77261e`.
+This audit-only receipt leaves the counted ledger unchanged. No owned job remains.

@@ -49,6 +49,20 @@ fix and native regression remain accepted at their stated layer. No startup
 fixture or product change followed the pivot. Work moves to desktop outgoing
 session keep-awake ownership; do not resume the startup investigation automatically.
 
+**Outgoing-session wake lock — component correction verified (2026-11-03):**
+`af9f4b2c` serializes platform transitions, retaining latest session demand
+and publishing completed state only after the plugin Future succeeds.
+Unchanged-product `JGcQCBM11v` passes 43 cases and fails both ordering cases:
+retirement during acquisition omits release, and replacement during release
+starts another acquisition prematurely. Corrected `BOCJDmEMfk` passes all
+47 cases, preserving the five baseline cases and adding definite acquisition/
+release rejection with later retry. Three result-parser controls also pass.
+The actual manager and pinned Linux plugin execute with native-preference and
+D-Bus reply doubles. Four listener deltas are zero and VM/RAM/private cleanup
+passes; `viewer-wake-accepted-af9f4b2c.json` binds evidence. Actual desktop
+session integration, D-Bus/provider behavior, screen power, uncertain outcomes,
+other platforms and installed/release acceptance remain OPEN.
+
 **Follow System reselection — verified native Linux correction (2026-11-02):**
 `c0ce6463` removes the App's replacement brightness callback and passes the saved
 theme preference to all app roots, preserving Flutter's System mode and normal

@@ -133031,3 +133031,24 @@ Preserve the five baseline cases and add two definite D-Bus rejection/retry
 controls. Lost replies after an unknown provider effect, silent platform
 failures, real D-Bus/service behavior, screen power, other platforms and
 installed/release acceptance remain unproved by this component correction.
+
+Corrected run `BOCJDmEMfk` at `af9f4b2c` passes all 47 cases and three
+result-parser controls in 260 outer seconds (264.295 capture seconds).
+All five baseline cases are unchanged; both ordering failures now pass.
+Two added controls observe definite acquisition/release refusal, explicit
+error handling and later retry, including retained release-cookie ownership.
+The correction reaches component acceptance with the actual manager and
+wakelock_plus 1.2.1, not native desktop or OS-power acceptance.
+
+Wrapper 1281643/QEMU 1282123 and owned helpers are absent. RAM workspace
+`run.1k40xy4w` (29:41227) and private scratch retire; all four listener deltas
+are zero. Peak RAM scratch is 6,381,527,040 bytes. Thirteen bounded evidence
+files are copied and hash-verified. `viewer-wake-accepted-af9f4b2c.json` is
+8,655 bytes, SHA-256
+`9a9275b29c1d3cc924e74bf294a14f584a5cdb8c577a440aa98c73a0d26cc2bd`.
+No owned build/test job remains. Keep the service startup investigation and
+all independent user parks unchanged. The next decisive wake-lock evidence
+is the corrected full application through real desktop session lifecycle and
+provider inhibition/release; existing full-app caches contain older product
+code and cannot establish this correction. Count the updated ledger in the
+existing isolated profile before the final documentation checkpoint.

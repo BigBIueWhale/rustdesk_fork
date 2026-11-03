@@ -134231,3 +134231,64 @@ bounded evidence files match on CTE/TUF. `issue-intake-ledger-970dbe9e.json`:
 4,793 bytes, SHA-256
 `63dcafd73748bfa4f4fc40d9978b1d1631d6957fd082883b72ce70edae77261e`.
 This audit-only receipt leaves the counted ledger unchanged. No owned job remains.
+
+## 2026-11-03 — Linux engine independent build comparison
+
+Previous goal turn: progress; fork issue intake is corrected. Select R-B2/R-B10's
+unproved engine reproducibility prerequisite. The accepted app comparison reused
+one engine, so it cannot establish an independently regenerated engine. This
+takes priority over further documentation cleanup. All user-parked work remains
+parked; this slice changes no engine or application behavior.
+
+Build exact source `7e103957cbdbfab0df09b89300690c87683bf7f4` twice through
+`--linux-flutter-engine-build`, each from a fresh no-NIC VM/container/generated
+tree using the unchanged authenticated inputs. Require whole archive, manifest
+and all payload bytes to match, preserving all differences if they do not.
+The fixed build path is part of this recorded environment; independent-operator,
+different-path/platform and complete release-artifact acceptance remain open.
+Primary methodology: https://reproducible-builds.org/docs/definition/ and
+https://reproducible-builds.org/docs/build-path/.
+
+TUF has 47,385,488 KiB available RAM before admission. The existing 16 GiB guest,
+16 GiB RAM scratch/14 GiB overlay ceiling, headroom, monitoring and joined cleanup
+remain unchanged. Prior engine execution took 724 seconds; these are explicit
+integration builds. Preserve the two existing 89,128,960-byte engine generations
+by identity-checked no-clobber renames under the shared lock, retaining canonical
+inputs and avoiding duplicate archives. Restore their paths after the comparison
+or a terminal interruption. `engine-repro-preservation-7e103957.json` binds both
+inventories and moves; TUF source stays frozen while an owned job is live.
+
+Build A, `w6RIUd9Tdu`, passes in 710 outer seconds. Independent inert inspection
+verifies all 341 payloads / 88,795,203 bytes, every manifest hash and canonical
+archive member metadata. Archive: 89,128,960 bytes, SHA-256
+`cf04a6fe3336221099454d0ef20752ef03ec0fb1e0a875aab74b2ca2a4051e37`;
+manifest SHA-256 `f4946f6f0e91a5621fc088c899e0341eaea486608f5d63fd6c2a346d41c46bfe`.
+Exact wrapper/QEMU/helpers and private/RAM state retire; four listener deltas are
+zero and peak RAM scratch is 13,622,734,848 bytes. Fourteen bounded evidence files
+match on CTE/TUF, including `engine-repro-a-7e103957.json` and the full manifest.
+Preserve A under the shared lock by no-clobber rename, recorded in
+`engine-repro-a-preserved-7e103957.json`; build B starts on the same frozen source.
+
+Build B, `qwiap5U2Bj`, passes in 711 outer seconds, with the same archive and
+manifest hashes. Independent inspection again verifies every payload and archive
+member, source/helper/patch binding and actual content hashes. A direct whole-file
+comparison in 1-MiB blocks finds identical archive bytes; manifests and all 341
+payload records match, with no context differences. Both builds use exact source
+tree `cff91331c1344fade372538e6453744d1eddfb8c`. Payloads also match the earlier
+`ddb1541d` engine; only its manifest source commit/tree differ from the new pair.
+No product correction was needed. The accepted scope is the pinned Linux toolkit
+profile with its fixed build paths; canonical input promotion, other platforms,
+independent operators and full package/installed/release acceptance remain open.
+
+Both complete producers pass their existing native settings/GTK, original GN and
+publication checks, and verify unchanged input/source postconditions. Build B's
+peak RAM scratch is 13,622,931,456 bytes. Eight decoded listener deltas are zero;
+all exact wrappers, QEMUs, helpers and private/RAM workspaces retire. After the
+comparison, verify and restore both old engine generations with no-clobber moves,
+then retire only A's duplicate archive/checksum (89,129,051 bytes) and its empty
+directories. B is retained; three intentional engine cache generations remain.
+Thirty-two bounded evidence files match on CTE/TUF. Pair capsule
+`engine-repro-pair-7e103957.json`: 1,130 bytes, SHA-256
+`c6e807d843168b13c749522fabe41930bd314c43602f668efdfee0b73c7a1b87`.
+Its retirement receipt binds restoration and duplicate cleanup. No owned job
+remains; fresh ledger counting follows the status update.

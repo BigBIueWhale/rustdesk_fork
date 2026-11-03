@@ -108,9 +108,26 @@ the shared app-manifest SHA-256 is
 Eight listener deltas are zero, and both VM/RAM/private workspaces retire.
 Superseded cache `c6aed851` and build A's duplicate payload are removed after
 verification; build B is retained within the four-generation cache limit.
-This closes the named unpackaged Linux app comparison only. The engine was
-reused; complete Debian/Android/Windows release artifacts, engine reproduction,
-independent-operator reproduction and installed/release acceptance remain OPEN.
+This closes the named unpackaged Linux app comparison only; it reused one engine.
+The separate engine comparison below establishes its named profile. Complete
+Debian/Android/Windows release artifacts, independent-operator reproduction and
+installed/release acceptance remain OPEN.
+
+**Linux engine reproducibility — exact-source double build passes (2026-11-03).**
+Fresh no-NIC runs `w6RIUd9Tdu` and `qwiap5U2Bj` build commit `7e103957`
+from independent generated state using the same authenticated engine inputs.
+The complete 89,128,960-byte archives, manifests and all 341 payload files
+(88,795,203 bytes) match exactly. Archive SHA-256 is
+`cf04a6fe3336221099454d0ef20752ef03ec0fb1e0a875aab74b2ca2a4051e37`.
+Payloads also match the earlier `ddb1541d` engine. Both builds pass the existing
+native component/publication checks, preserve inputs, leave four zero listener
+deltas each and retire exact VM/helper/private/RAM state. The prior engines are
+restored unchanged; build A's verified duplicate is removed and B is retained.
+`engine-repro-pair-7e103957.json` binds the comparison and per-build manifests.
+This closes this Linux release-toolkit profile's same-source comparison only.
+Fixed build paths and pinned maintenance inputs are part of its environment;
+canonical release-input promotion, other platforms/profiles, independent-operator
+reproduction and complete package/installed/release acceptance remain OPEN.
 
 **User pivot (2026-11-03):** Monitor-selection work is OPEN/PARKED.
 Retained app `f043c5ae` passes ordinary left/right/left selection, but native

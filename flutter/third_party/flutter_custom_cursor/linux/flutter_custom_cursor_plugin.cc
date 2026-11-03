@@ -79,7 +79,7 @@ static string create_custom_cursor(FlutterCustomCursorPlugin *self, FlValue *arg
   // Ignore [width] and [height].
   // int width = fl_value_get_int(fl_value_lookup_string(args, "width"));
   // int height = fl_value_get_int(fl_value_lookup_string(args, "height"));
-  GdkPixbuf* pixbuf = nullptr;
+  g_autoptr(GdkPixbuf) pixbuf = nullptr;
   auto buffer = fl_value_lookup_string(args, "buffer");
   const uint8_t *cursor_buff = fl_value_get_uint8_list(buffer);
   auto length = fl_value_get_length(buffer);

@@ -8,4 +8,5 @@ The runtime Dart, Linux, macOS and Windows source and build descriptions are
 retained with the upstream Apache-2.0 license. Example applications, placeholder
 tests and template documentation are omitted. Native ownership verification lives
 in `scripts/test-linux-cursor-image.py` and `scripts/test-linux-cursor-image.cc`.
-The imported baseline remains unchanged pending its native regression result.
+Linux cursor registration owns its copied pixbuf with `g_autoptr`, releasing the
+reference when registration returns, including when cursor creation fails.

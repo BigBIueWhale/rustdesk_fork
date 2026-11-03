@@ -490,10 +490,9 @@ packages:
   flutter_custom_cursor:
     dependency: "direct main"
     description:
-      name: flutter_custom_cursor
-      sha256: "3850a32ac6de351ccc5e4286b6d94ff70c10abecd44479ea6c5aaea17264285d"
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/flutter_custom_cursor"
+      relative: true
+    source: path
     version: "0.0.4"
   flutter_keyboard_visibility:
     dependency: "direct main"

@@ -55,7 +55,8 @@ dependencies:
   desktop_multi_window:
     path: third_party/desktop_multi_window
   freezed_annotation: ^2.0.3
-  flutter_custom_cursor: ^0.0.4
+  flutter_custom_cursor:
+    path: third_party/flutter_custom_cursor
   window_size:
     git:
       url: https://github.com/google/flutter-desktop-embedding.git

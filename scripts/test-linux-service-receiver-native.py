@@ -2071,7 +2071,7 @@ def network_shutdown(value, record, probe_sha):
             os.close(fd)
 
 
-def installed_desktop(scenario):
+def installed_desktop(scenario, close_session=False):
     pam = pam_module()
     confdir = WORK / "pam"
     confdir.mkdir(mode=0o700)
@@ -2098,10 +2098,14 @@ def installed_desktop(scenario):
             if actor.poll() is not None or time.monotonic() >= deadline:
                 raise RuntimeError("PAM-owned desktop did not start")
             time.sleep(0.05)
-        scenario()
+        if close_session:
+            scenario(actor, session, pam)
+        else:
+            scenario()
         if actor.poll() is not None:
             raise RuntimeError("desktop actor exited during service test")
-        pam.properties({"process": actor, "session": session, "uid": 4001, "type": "x11"}, "active")
+        pam.properties({"process": actor, "session": session, "uid": 4001, "type": "x11"},
+                       "closing" if close_session else "active")
     finally:
         try:
             if actor is not None:
@@ -2324,6 +2328,171 @@ def recovery_refusals(commit, binary_sha, probe_sha, readiness_spec):
                     raise RuntimeError("recovery actor log exceeded its bound")
             finally:
                 os.close(actor["pidfd"])
+
+
+def record_cleanup_retry(commit, binary_sha, probe_sha, actor, session, pam):
+    if os.uname().machine != "x86_64":
+        raise RuntimeError("record-cleanup syscall observer requires the pinned x86_64 VM")
+    unit = Path("/etc/systemd/system/rustdesk.service")
+    record_path = Path("/run/rustdesk/service-child.record")
+    if unit.exists() or record_path.parent.exists():
+        raise RuntimeError("record-cleanup fixture requires absent service state")
+    shutil.copyfile(MEDIA / "repo/res/rustdesk.service", unit)
+    run(["/usr/bin/systemctl", "daemon-reload"])
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.ptrace.argtypes = [ctypes.c_uint, ctypes.c_uint, ctypes.c_void_p, ctypes.c_void_p]
+    libc.ptrace.restype = ctypes.c_long
+    pidfds = []
+    traced = paused = False
+    supervisor = None
+    reference = ServiceUnitResultReference()
+
+    def trace(request, address=0, data=0):
+        result = libc.ptrace(request, supervisor, address, data)
+        if result == -1:
+            raise OSError(ctypes.get_errno(), "record-cleanup supervisor trace failed")
+        return result
+
+    def wait_trace(deadline):
+        while time.monotonic() < deadline:
+            pid, status = os.waitpid(supervisor, os.WNOHANG | 0x40000000)
+            if pid == supervisor:
+                return status
+            time.sleep(0.001)
+        raise RuntimeError("record-cleanup syscall observation exceeded its deadline")
+
+    try:
+        run(["/usr/bin/systemctl", "start", "rustdesk.service"])
+        record = ready()
+        supervisor = record["supervisor"]
+        supervisor_proc = Path("/proc") / str(supervisor)
+        if (digest(supervisor_proc / "exe") != binary_sha
+                or (supervisor_proc / "cmdline").read_bytes() != b"/usr/bin/rustdesk\0--service\0"):
+            raise RuntimeError("record-cleanup supervisor image or role differs")
+        supervisor_start = int((supervisor_proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()[19])
+        for pid in (supervisor, record["pid"]):
+            pidfds.append(os.pidfd_open(pid))
+        if child_record() != record or any(select.select([fd], [], [], 0)[0] for fd in pidfds):
+            raise RuntimeError("record-cleanup process ownership changed")
+        value = "Receiver-record-cleanup-2026!"
+        change(0, value, True)
+        durable = credential()
+        keyed(value, "record-cleanup-control", record, probe_sha)
+        raw_record = record_path.read_bytes()
+        metadata = record_path.lstat()
+        trace(0x4206, data=1 | 0x100000)  # SEIZE with TRACESYSGOOD and EXITKILL.
+        traced = True
+        trace(0x4207)  # INTERRUPT the retained supervisor's lifecycle thread only.
+        status = wait_trace(time.monotonic() + 3)
+        if not os.WIFSTOPPED(status) or status >> 16 != 128:
+            raise RuntimeError("record-cleanup supervisor did not reach the trace barrier")
+        paused = True
+        actor.stdin.write(b"close\n")
+        actor.stdin.flush()
+        if pam.reply(actor) != {"session": session, "phase": "closed"}:
+            raise RuntimeError("record-cleanup desktop did not close its PAM session")
+        events = []
+        active = None
+        injected = False
+        calls = 0
+        deadline = time.monotonic() + 30
+        deliver = 0
+        while True:
+            trace(24, data=deliver)  # SYSCALL; preserve ordinary signal delivery.
+            paused = False
+            status = wait_trace(deadline)
+            if os.WIFEXITED(status) or os.WIFSIGNALED(status):
+                traced = False
+                if not os.WIFEXITED(status) or os.WEXITSTATUS(status) != 1:
+                    raise RuntimeError("record-cleanup error did not produce the expected service failure")
+                break
+            if not os.WIFSTOPPED(status):
+                raise RuntimeError("record-cleanup trace returned an unknown process state")
+            paused = True
+            stopped_signal = os.WSTOPSIG(status)
+            deliver = 0
+            if stopped_signal != (signal.SIGTRAP | 0x80):
+                if status >> 16:
+                    raise RuntimeError("record-cleanup trace reported an unexpected ptrace event")
+                deliver = stopped_signal
+                continue
+            info = ctypes.create_string_buffer(128)
+            size = trace(0x420e, ctypes.sizeof(info), ctypes.byref(info))  # GET_SYSCALL_INFO.
+            data = info.raw
+            if size > len(data) or size < 24 or struct.unpack_from("I", data, 4)[0] != 0xc000003e:
+                raise RuntimeError("record-cleanup syscall ABI differs")
+            if data[0] == 1:
+                if size < 80:
+                    raise RuntimeError("record-cleanup syscall entry is incomplete")
+                number, *args = struct.unpack_from("7Q", data, 24)
+                active = (number, args)
+                calls += 1
+                if calls > 10000:
+                    raise RuntimeError("record-cleanup syscall count exceeded its bound")
+                if number == 62 and args[:2] == [record["pid"], signal.SIGTERM]:
+                    absent = not Path(f"/proc/{record['pid']}").exists()
+                    if injected and (not absent or not select.select([pidfds[1]], [], [], 0)[0]):
+                        raise RuntimeError("record-cleanup reaped child identity is no longer absent")
+                    events.append({"event": "term-entry", "after_reap": injected, "pid_absent": absent})
+            elif data[0] == 2:
+                if size < 33:
+                    raise RuntimeError("record-cleanup syscall exit is incomplete")
+                result = struct.unpack_from("q", data, 24)[0]
+                if active is not None:
+                    number, args = active
+                    if number == 62 and args[:2] == [record["pid"], signal.SIGTERM]:
+                        events.append({"event": "term-exit", "after_reap": injected, "result": result})
+                    if number == 61 and args[0] == record["pid"] and result == record["pid"]:
+                        if (injected or Path(f"/proc/{record['pid']}").exists()
+                                or not select.select([pidfds[1]], [], [], 0)[0]):
+                            raise RuntimeError("record-cleanup wait did not reap the original child exactly once")
+                        current = record_path.lstat()
+                        if ((current.st_dev, current.st_ino, current.st_uid, current.st_mode, current.st_nlink)
+                                != (metadata.st_dev, metadata.st_ino, metadata.st_uid, metadata.st_mode, metadata.st_nlink)
+                                or record_path.read_bytes() != raw_record):
+                            raise RuntimeError("record changed before the exact post-reap fault")
+                        record_path.unlink()
+                        injected = True
+                        events.append({"event": "reaped-record-unlinked", "pid": result,
+                                       "record_sha256": hashlib.sha256(raw_record).hexdigest()})
+                active = None
+            else:
+                raise RuntimeError("record-cleanup observer lacks syscall entry/exit information")
+        run(["/usr/bin/systemctl", "stop", "rustdesk.service"], timeout=40)
+        deadline = time.monotonic() + 5
+        while (supervisor_proc.exists() or Path("/sys/fs/cgroup/system.slice/rustdesk.service").exists()) and time.monotonic() < deadline:
+            time.sleep(0.02)
+        if (not injected or supervisor_proc.exists() or not all(select.select([fd], [], [], 0)[0] for fd in pidfds)
+                or Path("/sys/fs/cgroup/system.slice/rustdesk.service").exists() or credential() != durable):
+            raise RuntimeError("record-cleanup fixture did not retire the exact service tree")
+        before = [e for e in events if e["event"] == "term-exit" and not e["after_reap"]]
+        after = [e for e in events if e["event"] == "term-exit" and e["after_reap"]]
+        if before != [{"event": "term-exit", "after_reap": False, "result": 0}]:
+            raise RuntimeError("record-cleanup trace lacks its real successful-signal control")
+        print("LINUX_SERVICE_RECORD_CLEANUP_OBSERVED=" + json.dumps(
+            {"record": record, "supervisor_start": supervisor_start, "events": events, "syscalls": calls,
+             "post_reap_signals": len(after), "exit": 1, "durable_unchanged": True,
+             "processes_reaped": True, "cgroup_absent": True, "fault": "exact-record-unlink-after-wait4"},
+            sort_keys=True), flush=True)
+        if after:
+            raise RuntimeError("record-cleanup retry signalled an already reaped child")
+        print(f"LINUX_SERVICE_RECORD_CLEANUP_NATIVE=pass faults=1 post_reap_signals=0 cpace=1 source={commit} "
+              f"binary_sha256={binary_sha} probe_sha256={probe_sha} fixture=installed-layout "
+              "trace=actual-syscalls cleanup=joined", flush=True)
+    finally:
+        try:
+            if traced:
+                if not paused:
+                    trace(0x4207)
+                    status = wait_trace(time.monotonic() + 3)
+                    if not os.WIFSTOPPED(status):
+                        raise RuntimeError("record-cleanup trace cleanup lost its stop barrier")
+                trace(17)  # DETACH before requesting normal service cleanup.
+            run(["/usr/bin/systemctl", "stop", "rustdesk.service"], timeout=40)
+        finally:
+            reference.close()
+            for fd in pidfds:
+                os.close(fd)
 
 
 def stopped_child_shutdown(commit, binary_sha, probe_sha):
@@ -3189,7 +3358,7 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, ex
           f"binary_sha256={binary_sha} fixture=installed-layout unit=shipped legacy=unchanged cleanup=joined", flush=True)
 
 
-def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False, collisions=False, exclusive=False, desktop_exclusive=False, crash=False, recovery=False, child_crash=False, stopped_child=False):
+def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False, collisions=False, exclusive=False, desktop_exclusive=False, crash=False, recovery=False, child_crash=False, stopped_child=False, record_cleanup=False):
     guard()
     checked = run(["/usr/bin/setpriv", "--reuid=1000", "--regid=1000", "--clear-groups",
                    "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
@@ -3218,6 +3387,10 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
     if "not found" in run(["/usr/bin/ldd", str(PROBE)]).stdout:
         raise RuntimeError("network probe runtime dependency is missing")
     run(["/usr/bin/systemctl", "is-active", "systemd-logind.service", "polkit.service"])
+    if record_cleanup:
+        installed_desktop(lambda actor, session, pam: record_cleanup_retry(
+            commit, spec["sha256"], probe_spec["sha256"], actor, session, pam), close_session=True)
+        return
     if stopped_child:
         installed_desktop(lambda: stopped_child_shutdown(commit, spec["sha256"], probe_spec["sha256"]))
         return
@@ -3549,6 +3722,8 @@ if __name__ == "__main__":
         tests(sys.argv[1:6], child_crash=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--stopped-child":
         tests(sys.argv[1:6], stopped_child=True)
+    elif len(sys.argv) == 7 and sys.argv[-1] == "--record-cleanup":
+        tests(sys.argv[1:6], record_cleanup=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--recovery-refusal":
         tests(sys.argv[1:6], recovery=True)
     elif len(sys.argv) == 6:

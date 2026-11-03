@@ -132817,3 +132817,35 @@ retains `Child` and record without a separate retired-process state. A retained
 record must not restore process authority after reap. No fault reproduction,
 PID-reuse outcome, unprivileged trigger or product correction is yet claimed.
 This concrete error-path question takes priority over another healthy-path replay.
+
+### 2026-11-03 — post-reap record-cleanup retry reproduction
+
+Resume the selected R-S0/R-S11c-27c investigation at `5487a225`. The previous
+goal checkpoint made progress through native stopped-child evidence; the SSH
+interruption confirmed the existing password-only connection and changed no
+product state. TUF is clean at the same commit, with no owned RAM/private run
+and 47,232,876 KiB available RAM. This concrete lifecycle error path takes
+priority over another healthy-path test or unrelated settings work.
+
+The pending closed `--linux-service-record-cleanup-tests` profile observes the
+actual installed-layout supervisor's main-thread signal/wait syscalls. After
+real UID-4002 CPace succeeds, close the actual PAM session to initiate child
+retirement inside the service loop. At the successful wait4 exit that reaps the
+exact retained child, a root fixture removes only its verified record; then let
+the service's error cleanup run. Require zero subsequent TERM calls for that
+reaped identity, truthful service failure, unchanged durable credential and
+exact process/cgroup/session cleanup. The unchanged binary is expected to fail
+the zero-signal criterion; no syscall result or product memory is changed.
+This is a controlled root-only storage fault, not an unprivileged record-write
+trigger or a demonstrated PID-reuse outcome. Existing bounded VM admission,
+monitoring, listener comparison and joined cleanup remain unchanged.
+
+Primary research: Linux ptrace(2),
+https://man7.org/linux/man-pages/man2/ptrace.2.html, defines per-thread tracing,
+TRACESYSGOOD and GET_SYSCALL_INFO's entry/exit ABI. Rust 1.75's pinned source,
+https://raw.githubusercontent.com/rust-lang/rust/1.75.0/library/std/src/sys/unix/process/process_unix.rs,
+caches successful wait status and avoids a later Child::kill syscall when that
+status is present. The application's raw SIGTERM bypasses that protection.
+Execution must decide the actual retry behavior before a product correction.
+All independent user parks remain in force; no new artifact build is needed
+for this baseline, which reuses source-matched `fdbab046`.

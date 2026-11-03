@@ -101,7 +101,7 @@ case "$#:${8:-}" in
     8:--host-network-tests)
         MODE=host-network-tests
         ;;
-    12:--linux-service-receiver-tests|12:--linux-service-convergence-failure-tests|12:--linux-service-notification-failure-tests|12:--linux-service-network-drain-tests|12:--linux-service-authorization-timeout-tests|12:--linux-service-startup-tests|12:--linux-service-incumbent-tests|12:--linux-service-collision-tests|12:--linux-service-exclusive-tests|12:--linux-service-desktop-exclusive-tests|12:--linux-service-crash-tests|12:--linux-service-child-crash-tests|12:--linux-service-stopped-child-tests|12:--linux-service-recovery-refusal-tests)
+    12:--linux-service-receiver-tests|12:--linux-service-convergence-failure-tests|12:--linux-service-notification-failure-tests|12:--linux-service-network-drain-tests|12:--linux-service-authorization-timeout-tests|12:--linux-service-startup-tests|12:--linux-service-incumbent-tests|12:--linux-service-collision-tests|12:--linux-service-exclusive-tests|12:--linux-service-desktop-exclusive-tests|12:--linux-service-crash-tests|12:--linux-service-child-crash-tests|12:--linux-service-stopped-child-tests|12:--linux-service-record-cleanup-tests|12:--linux-service-recovery-refusal-tests)
         MODE=linux-service-receiver-tests
         if [ "${8}" = --linux-service-convergence-failure-tests ]; then
             LINUX_RECEIVER_PROFILE=convergence-failure
@@ -127,6 +127,8 @@ case "$#:${8:-}" in
             LINUX_RECEIVER_PROFILE=child-crash
         elif [ "${8}" = --linux-service-stopped-child-tests ]; then
             LINUX_RECEIVER_PROFILE=stopped-child
+        elif [ "${8}" = --linux-service-record-cleanup-tests ]; then
+            LINUX_RECEIVER_PROFILE=record-cleanup
         elif [ "${8}" = --linux-service-recovery-refusal-tests ]; then
             LINUX_RECEIVER_PROFILE=recovery-refusal
         fi
@@ -1016,6 +1018,8 @@ run_linux_service_receiver_tests() {
         native_args+=(--child-crash)
     elif [ "$LINUX_RECEIVER_PROFILE" = stopped-child ]; then
         native_args+=(--stopped-child)
+    elif [ "$LINUX_RECEIVER_PROFILE" = record-cleanup ]; then
+        native_args+=(--record-cleanup)
     elif [ "$LINUX_RECEIVER_PROFILE" = recovery-refusal ]; then
         native_args+=(--recovery-refusal)
     fi

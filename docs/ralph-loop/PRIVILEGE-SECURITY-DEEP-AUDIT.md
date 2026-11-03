@@ -133052,3 +133052,13 @@ is the corrected full application through real desktop session lifecycle and
 provider inhibition/release; existing full-app caches contain older product
 code and cannot establish this correction. Count the updated ledger in the
 existing isolated profile before the final documentation checkpoint.
+
+Fresh ledger count `5y67uFJa5R` at `37108254` passes seven controls and the
+whole-input round trip: 399,058 tokens / 1,826,181 bytes, SHA-256
+`74ea121fb78241cfb7756a1b455209d0e5ad833015a4f8fe61e7b8fd89bcad0d`.
+Three listener deltas are zero; exact process/helper, VM/RAM/private cleanup
+passes. Twelve bounded records are copied and verified. Capsule
+`viewer-wake-ledger-37108254.json` is 4,788 bytes, SHA-256
+`dbeb200b40ec7d772068d4f4e06d8982c6f3c90252c7f78b6dde5ebf6a60b035`.
+This completes the selected component checkpoint. The full release goal stays
+active, with target-native integration and all independent user parks preserved.

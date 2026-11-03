@@ -2336,16 +2336,18 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, ex
                     child.communicate(timeout=10)
             expected = {"exited": False, "unit": expected_unit, "namespace": namespace,
                         "lease": lease_before, "entries": expected_entries,
-                        "processes": sorted(expected_processes), "child": record, "child_record": child_before}
+                        "child": record, "child_record": child_before}
             actual = {"exited": bool(select.select([pidfd], [], [], 0)[0]), "unit": properties(),
                       "namespace": snapshot(parent), "lease": lease_identity(),
                       "entries": sorted(p.name for p in runtime.iterdir()),
-                      "processes": sorted(set(Path("/sys/fs/cgroup/system.slice/rustdesk.service/cgroup.procs").read_text().split())),
                       "child": child_record() if record else None,
                       "child_record": snapshot(runtime / "service-child.record") if record else None}
-            if actual != expected:
+            # Session refresh runs short-lived commands in this cgroup. Prove the
+            # retained members here and require whole-cgroup retirement at stop.
+            cgroup_processes = set(Path("/sys/fs/cgroup/system.slice/rustdesk.service/cgroup.procs").read_text().split())
+            if actual != expected or not expected_processes <= cgroup_processes:
                 processes = {}
-                for candidate in actual["processes"]:
+                for candidate in cgroup_processes:
                     proc = Path("/proc") / candidate
                     try:
                         processes[candidate] = {"exe": os.readlink(proc / "exe"),
@@ -2355,6 +2357,7 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, ex
                         processes[candidate] = {"exited_during_observation": True}
                 print(prefix + "_PRESERVATION_FAILURE=" + json.dumps(
                     {"count": count, "expected": expected, "actual": actual,
+                     "expected_processes": sorted(expected_processes), "cgroup_processes": sorted(cgroup_processes),
                      "process_details": processes, "outcomes": outcomes[-count:]}, sort_keys=True), flush=True)
                 raise RuntimeError("duplicate launch disturbed the incumbent service generation")
             for postfix in ("_service", "_service_password", "_service_credential"):
@@ -2367,6 +2370,7 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, ex
                 {"count": count, "elapsed_seconds": time.monotonic() - began,
                  "incumbent": pid, "unit": expected_unit, "namespace": namespace,
                  "lease": lease_before, "outcomes": outcomes[-count:],
+                 "cgroup_processes": sorted(cgroup_processes),
                  "child": record, "child_record": child_before}, sort_keys=True), flush=True)
         return outcomes
 

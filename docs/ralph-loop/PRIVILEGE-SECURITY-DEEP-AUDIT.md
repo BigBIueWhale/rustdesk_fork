@@ -132430,3 +132430,22 @@ are zero. The inspected 19-node private diagnostics are retired by retained
 directory descriptors after bounded evidence capture. Twelve records were copied
 and hash-verified. Capsule `linux-desktop-exclusive-9002130f.json` is 19,670 bytes,
 SHA-256 `3f95147379e85734f2482bd938a1080ccb9066ab835dbba40751abf44e814467`.
+
+Diagnostic replay `vQvmRytYm7` at `37c26d51` again passes the first generation.
+The second failure now identifies exactly one differing field: cgroup membership
+contains PID 8146 in addition to supervisor 8074 and child 8083. That extra process
+has exited before its executable can be inspected; do not claim a captured helper
+identity. All unit, namespace, lease, child and record fields are unchanged.
+Source review confirms desktop refresh executes transient fixed-path loginctl
+commands (`Desktop::refresh`, `Loginctl` query in hbb_common/platform/linux.rs).
+The cgroup therefore has no valid invariant of containing exactly two processes
+at an arbitrary instant. Correct the observer to require both exact retained
+members, preserving independent PID/start/parent/UID/image/capability/record checks,
+duplicate status-1/reaping, socket ownership, continued login and complete cgroup
+retirement. Record the full observed membership without interpreting every member
+as a second supervisor. Product code and the six duplicate cases are unchanged.
+
+Three listener deltas are zero; owned processes/helpers, RAM scratch and the
+inspected 19-node private directory retire. Twelve evidence records are copied
+and hash-verified. Capsule `linux-desktop-diagnostic-37c26d51.json` is 25,106 bytes,
+SHA-256 `ecd6d66d5c1702c01313f0cbc1c3a209e40db3cdc95df3a5523e2028fe16cb19`.

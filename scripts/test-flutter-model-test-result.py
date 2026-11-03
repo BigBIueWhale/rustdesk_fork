@@ -22,6 +22,8 @@ spec.loader.exec_module(result)
 
 
 SINGLE_PROFILE = None
+if len(sys.argv) > 1 and sys.argv[1] == "--reconnect":
+    SINGLE_PROFILE = sys.argv.pop(1)[2:]
 if len(sys.argv) > 1 and sys.argv[1] in ("--direct-address", "--connection-page"):
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
 if len(sys.argv) > 1 and sys.argv[1] == "--floating-position":

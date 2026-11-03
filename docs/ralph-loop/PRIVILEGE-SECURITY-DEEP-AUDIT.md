@@ -134900,3 +134900,31 @@ observation. Primary references: https://api.flutter.dev/flutter/dart-async/Time
 and https://api.flutter.dev/flutter/flutter_test/WidgetTester/pump.html.
 Current source requirements, retry producer/consumer and existing cases were
 reviewed before preparation. Product remains unchanged for the baseline.
+
+Baseline `cSgmJfFnqb` at `2c721c0e` reproduces both terminal-event failures:
+after PeerInfo and while replacing a pending retry, the UI creates a new timer
+despite native hasRetry being empty. Thirteen controls pass, including explicit
+retry, pre-PeerInfo refusal, backoff/countdown and ownership/credential controls.
+The named product cases take 8.1 seconds; the bounded VM transaction takes about
+224 seconds. Four listener deltas are zero and exact wrapper/QEMU/helper/RAM
+retirement is verified. Retained private diagnostics are inventoried and retired
+under the shared lock after evidence preservation. Thirteen bounded evidence
+files match on CTE/TUF. `terminal-retry-baseline-2c721c0e.json`: 15,178 bytes,
+SHA-256 `3e90c73ee5f400021b8fe7b6829ea71dfdff99dfbf3f058679abc7af3b950adb`.
+
+Candidate `58c6cdcb` deletes the obsolete text override and its unused wall-clock
+state. It preserves the native classifier, retry scheduler, credentials and
+session-close behavior. The identical fifteen cases and harness are replaying;
+candidate acceptance is pending. The audit entry is moved to the chronological
+end after its initial insertion matched an older repeated receipt sentence.
+
+Candidate run `SP6dB7ZOj0` reaches parser validation, then fails the pre-existing
+models-profile rename/duplicate/wrong-suite self-tests. Successful product-case
+JSON was not yet exported, so no named candidate result is accepted from this
+run. The selected reconnect profile now passes its own argument to the existing
+parser self-tests and exports product JSON before those checks. No models-parser
+behavior or independently parked work is changed. Product and test cases remain
+identical for the replay. Four zero listener deltas and exact process/helper/
+private/RAM retirement pass; thirteen bounded files match on CTE/TUF.
+`terminal-retry-fixed-58c6cdcb.json`: 16,012 bytes, SHA-256
+`bac5171d729f245e450cc9af826896a2b824598af6d3f123c652a75b626dbff4`.

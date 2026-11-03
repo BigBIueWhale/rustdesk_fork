@@ -132724,3 +132724,14 @@ No new artifact/cache generation was created. The selected native checkpoint
 is complete at its stated layer; final-package, rendered, alternate-init,
 other-platform and independent-review obligations remain open. All user parks
 remain in force. The ledger update requires its fresh isolated count next.
+
+Fresh count `42PuedGq3C` at `b14626f9` passes seven controls and the whole-
+input round trip: 398,076 tokens / 1,821,856 bytes, SHA-256
+`d620de5766353d042be643e914e3e57125fd422e2b80220a88e4313c2c31bfe8`.
+Three listener deltas are zero; process/helper, VM/RAM and private cleanup pass.
+Twelve bounded records are copied and hash-verified. Capsule
+`linux-child-crash-ledger-b14626f9.json` is 4,812 bytes, SHA-256
+`eee8fefeea3b1cdaa69d54042b692f2730e18a71ac7d782390d70b2d1af97dd2`.
+No owned job remains. This turn made progress by establishing child-crash
+recovery and retaining the supervisor-crash regression. The full release goal
+remains active; do not repeat these passing scenarios without relevant cause.

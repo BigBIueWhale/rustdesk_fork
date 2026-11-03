@@ -134357,3 +134357,21 @@ for this shard's existing parser controls, including its exact two-suite/ninetee
 case inventory. This repairs the focused invocation; the independently parked
 general-model parser failures are unchanged. Repeat the unchanged product/tests
 to obtain a complete acceptance receipt.
+
+Accepted run `AFAudjcL5b` at `829a57f9` completes in 240 outer seconds. The
+identical nineteen cases pass, including both regressions and seventeen controls;
+the three focused parser controls and exact-source postconditions also pass.
+The three save cases each cover both window types, three coordinate pairs and
+three peer-record shapes. The retained successful transcript contains exact case
+identities/results; its existing filter excludes debug print events and the
+preparer's diagnostic lines. Source checking remains an executed fail-fast step
+before final success. This establishes the save-path/serialization component
+behavior with explicit native storage/window doubles. Complete app/native restart,
+monitor topology changes and cross-platform/release acceptance remain open.
+
+Peak RAM scratch is 6,380,208,128 bytes. All exact wrapper/QEMU/helper processes,
+private diagnostics and RAM workspace retire; four listener deltas are zero.
+Thirteen bounded evidence files match on CTE/TUF. Capsule
+`window-position-accepted-829a57f9.json`: 6,171 bytes, SHA-256
+`c6fdc532e5f1864b97ed73e1a2c6fddb2b6f8f5b403c392c52b5b4053cd590fe`.
+All parked work remains parked. No owned job remains; fresh ledger counting follows.

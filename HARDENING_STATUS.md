@@ -43,6 +43,24 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-03):** Release-input promotion is OPEN/PARKED after
+read-only investigation. The Debian recipe still selects stock Flutter 3.24.5;
+the validated Linux app producer uses 3.47.5 with the patched engine. No input,
+pin, recipe or artifact changed. Work moved to peer-window size persistence.
+
+**Peer-window dimensions — component correction verified (2026-11-03).**
+`e2ef87f6` fills missing peer width/height from the saved normal frame's dimensions,
+instead of its X/Y offsets, when saving maximized/fullscreen state. The unchanged
+baseline fails both cases with 0x0 instead of 960x540. Run `AFAudjcL5b` at
+`829a57f9` passes all nineteen position cases and three focused parser controls,
+including RemoteDesktop/ViewCamera, normal/maximized/fullscreen, zero/negative/
+positive positions and absent/complete/partial records. Existing peer fields and
+ordinary saves are preserved. `window-position-accepted-829a57f9.json` binds
+results, source, four zero listener deltas and exact process/private/RAM retirement.
+Window channels and native storage are doubles; complete app/native restart,
+monitor changes, other-platform and release acceptance remain OPEN. Fixture setup
+and the unscoped parser failure are retained separately in the audit.
+
 **User pivot (2026-11-03):** Mobile theme dialog work is OPEN/PARKED.
 Candidate `b98d0ea3`, run `UksnB7II3a`, passes 53 of 54 component cases;
 failed-save/retry ends with a pending timer after widget disposal. Complete

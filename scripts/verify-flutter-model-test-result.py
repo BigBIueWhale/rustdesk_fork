@@ -1586,6 +1586,10 @@ AUDIO_INPUT_SUITES = {
 
 RECONNECT_SUITES = {
     'reconnect_backoff_test.dart': {
+        'terminal connection event stays terminal after peer info',
+        'terminal connection event retires a pending retry',
+        'explicit retry event retains recovery for offline text',
+        'terminal connection event stays terminal before peer info',
         'reconnect timer backoff stays bounded through repeated failures',
         'reconnect countdown agrees with the capped timer',
         'reconnect nonretry message cancels and resets the delay',

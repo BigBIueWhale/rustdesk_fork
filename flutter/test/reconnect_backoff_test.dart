@@ -3,9 +3,22 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/overlay.dart';
+import 'package:flutter_hbb/models/input_model.dart';
 import 'package:flutter_hbb/models/model.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uuid/uuid.dart';
+
+class _Input implements InputModel {
+  @override
+  bool setRelativeMouseMode(bool enabled) {
+    expect(enabled, isFalse);
+    return false;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw StateError('Unexpected input action: ${invocation.memberName}');
+}
 
 class _Session implements FFI {
   @override
@@ -14,6 +27,10 @@ class _Session implements FFI {
   final clientOwnerId = const Uuid().v4obj();
   @override
   final connType = ConnType.portForward;
+  @override
+  final inputModel = _Input();
+  @override
+  late final dialogManager = OverlayDialogManager(translateText: (text) => text);
   bool current = true;
   late final model = FfiModel(WeakReference<FFI>(this));
 
@@ -34,7 +51,7 @@ class _ScheduledRetry {
 
 class _Fixture {
   final session = _Session();
-  final manager = OverlayDialogManager(translateText: (text) => text);
+  OverlayDialogManager get manager => session.dialogManager;
 
   Future<void> mount(WidgetTester tester) async {
     final state = BlockableOverlayState();
@@ -48,11 +65,28 @@ class _Fixture {
   }
 
   List<_ScheduledRetry> show({bool retry = true}) {
-    final timers = <_ScheduledRetry>[];
-    runZoned(() {
+    return captureTimers(() {
       session.model.showMsgBox(session.sessionId, 'error', 'Connection Error',
           'Timeout', '', retry, manager);
-    }, zoneSpecification: ZoneSpecification(
+    });
+  }
+
+  List<_ScheduledRetry> message({required bool retry, bool peerInfo = true}) {
+    session.model.pi.isSet.value = peerInfo;
+    return captureTimers(() {
+      session.model.handleMsgBox({
+        'type': 'error',
+        'title': 'Connection Error',
+        'text': 'Remote desktop is offline',
+        'link': '',
+        'hasRetry': retry ? 'true' : '',
+      }, session.sessionId, 'reconnect-test');
+    });
+  }
+
+  List<_ScheduledRetry> captureTimers(void Function() action) {
+    final timers = <_ScheduledRetry>[];
+    runZoned(action, zoneSpecification: ZoneSpecification(
       createTimer: (self, parent, zone, duration, callback) {
         final timer = parent.createTimer(zone, duration, callback);
         timers.add(_ScheduledRetry(duration, callback, timer));
@@ -71,6 +105,63 @@ class _Fixture {
 }
 
 void main() {
+  testWidgets('terminal connection event stays terminal after peer info',
+      (tester) async {
+    final fixture = _Fixture();
+    await fixture.mount(tester);
+    try {
+      expect(fixture.message(retry: false), isEmpty);
+      await tester.pump();
+      expect(find.textContaining('Reconnect ('), findsNothing);
+      expect(find.text('Remote desktop is offline'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 31));
+      expect(tester.takeException(), isNull);
+    } finally {
+      await fixture.close(tester);
+    }
+  });
+
+  testWidgets('terminal connection event retires a pending retry', (tester) async {
+    final fixture = _Fixture();
+    await fixture.mount(tester);
+    try {
+      final previous = fixture.show().single;
+      expect(fixture.message(retry: false), isEmpty);
+      expect(previous.timer.isActive, isFalse);
+      previous.callback();
+      expect(fixture.show().single.duration, const Duration(seconds: 1));
+    } finally {
+      await fixture.close(tester);
+    }
+  });
+
+  testWidgets('explicit retry event retains recovery for offline text',
+      (tester) async {
+    final fixture = _Fixture();
+    await fixture.mount(tester);
+    try {
+      final retry = fixture.message(retry: true).single;
+      expect(retry.duration, const Duration(seconds: 1));
+      await tester.pump();
+      expect(find.text('Reconnect (1s)'), findsOneWidget);
+    } finally {
+      await fixture.close(tester);
+    }
+  });
+
+  testWidgets('terminal connection event stays terminal before peer info',
+      (tester) async {
+    final fixture = _Fixture();
+    await fixture.mount(tester);
+    try {
+      expect(fixture.message(retry: false, peerInfo: false), isEmpty);
+      await tester.pump();
+      expect(find.textContaining('Reconnect ('), findsNothing);
+    } finally {
+      await fixture.close(tester);
+    }
+  });
+
   testWidgets('reconnect timer backoff stays bounded through repeated failures',
       (tester) async {
     final fixture = _Fixture();

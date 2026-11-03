@@ -29,6 +29,54 @@ static int recent_rows(unsigned int pid, const AtspiRect *bounds, unsigned int e
     return 0;
 }
 
+static int open_recent_search(Display *display, unsigned int pid, const AtspiRect *bounds,
+                              const char *const names[3]) {
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    int top = bounds->y + bounds->height;
+    for (unsigned int i = 0U; i < 3U; ++i) {
+        AtspiAccessible *row = NULL;
+        AtspiComponent *component = NULL;
+        AtspiRect *rect = NULL;
+        GError *error = NULL;
+        int valid = query_accessible_with_focus(pid, names[i], deadline, &row,
+                                                0, 0, bounds, 0, 1) == 0 && row != NULL;
+        if (valid) component = atspi_accessible_get_component_iface(row);
+        if (component != NULL)
+            rect = atspi_component_get_extents(component, ATSPI_COORD_TYPE_SCREEN, &error);
+        valid = valid && error == NULL && rect != NULL && rect->width == 220 && rect->height == 140;
+        if (valid && rect->y < top) top = rect->y;
+        g_clear_error(&error);
+        if (rect != NULL) g_boxed_free(ATSPI_TYPE_RECT, rect);
+        g_clear_object(&component);
+        g_clear_object(&row);
+        if (!valid) return -1;
+    }
+    /* PeerTabPage: 12 right inset, 28 view + 28 Select, 13 search margin,
+     * 14 to search center. Cards start 12 below the 32-high toolbar. */
+    int x = bounds->x + bounds->width - 95, y = top - 28;
+    if (x < bounds->x || y < bounds->y ||
+        x >= DisplayWidth(display, DefaultScreen(display)) ||
+        y >= DisplayHeight(display, DefaultScreen(display)) ||
+        XTestFakeMotionEvent(display, DefaultScreen(display), x, y, CurrentTime) == 0) return -1;
+    XSync(display, False);
+    while (monotonic_millis() < deadline) {
+        AtspiAccessible *tooltip = NULL;
+        if (query_named_accessible(pid, "Search", deadline, &tooltip, 0) != 0) return -1;
+        int observed = tooltip != NULL;
+        g_clear_object(&tooltip);
+        if (observed) {
+            if (XTestFakeButtonEvent(display, 1U, True, CurrentTime) == 0 ||
+                XTestFakeButtonEvent(display, 1U, False, CurrentTime) == 0) return -1;
+            XSync(display, False);
+            puts("FLUTTER_PEER_RECENT_SEARCH_OPEN tooltip=observed pointer=native");
+            return 0;
+        }
+        if (sleep_millis(100U) != 0) return -1;
+    }
+    fprintf(stderr, "FLUTTER_PEER_RECENT_SEARCH_FAIL search_tooltip=absent x=%d y=%d\n", x, y);
+    return -1;
+}
+
 static int recent_query(Display *display, unsigned int pid, const AtspiRect *bounds,
                         const char *query) {
     AtspiAccessible *field = NULL;
@@ -109,7 +157,7 @@ static int exercise_recent_search(Display *display, const ViewerWindow *viewer,
     XSetInputFocus(display, main, RevertToParent, CurrentTime);
     XSync(display, False);
     if (recent_rows((unsigned int)viewer->pid, &bounds, 7U, 1U, "", names) != 0 ||
-        click_main_control(display, main, (unsigned int)viewer->pid, "Search") != 0) goto out;
+        open_recent_search(display, (unsigned int)viewer->pid, &bounds, names) != 0) goto out;
     for (phase = 1U; phase < sizeof(cases) / sizeof(cases[0]); ++phase) {
         if (recent_query(display, (unsigned int)viewer->pid, &bounds, cases[phase].query) != 0 ||
             recent_rows((unsigned int)viewer->pid, &bounds, cases[phase].mask,

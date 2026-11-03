@@ -133545,3 +133545,15 @@ or authentication result is claimed for this attempt. Four listener deltas are
 zero; exact cleanup and duplicate-artifact checks pass. Seventeen bounded files
 are retained on both hosts. `recent-search-ea5ba831.json`: 23,181 bytes, SHA-256
 `a90c4de755e8bf0fb4cd2f1f48e47c993550ee03b94348ce70c0ea1dd104b300`.
+
+`nIVGB92XZz` at `d9a2b18f` passes native loading/rendering of all three named
+fixture cards in three stable observations. Search disclosure stops because the
+Tooltip label is not exposed until pointer hover. The driver now derives the
+toolbar point from the observed card geometry and actual `PeerTabPage` layout,
+requires the visible Search tooltip, then clicks natively; focused-field readback
+still precedes every query. This is fixture interaction repair, not a product
+patch or filtering pass. Initial authenticated frames and identical driver builds
+pass. Four listener deltas are zero, and exact VM/RAM/private cleanup passes;
+seventeen bounded files are retained on both hosts. Capsule
+`recent-search-d9a2b18f.json`: 23,059 bytes, SHA-256
+`a2e132a79cc9c95f5e6fc1750fa093656c5f3a675ed59cc0f065bd2a362c36fa`.

@@ -43,6 +43,22 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-03):** Cursor work is OPEN/PARKED after the component
+correction below; full plugin/app and live cursor acceptance remain outstanding.
+Work moves to R-F1/R-S0 overlapping mouse-button correctness. TUF's small cached
+candidate lock is reconciled with the committed lock as a replay prerequisite;
+the retained app and canonical package caches are unchanged. All independent parks remain.
+
+**Overlapping mouse buttons — named Linux native cases pass (2026-11-03).**
+`fffdc44e`, run `ZYMaxMdH9S`, reuses app `9f78434c` / engine `ddb1541d`.
+Two-, three- and five-button schedules pass twenty native transitions with the
+exact remaining button set on both X servers after each release; twenty-one
+existing mouse controls also pass. The same window/connection survives, resource
+bounds pass, four listener deltas are zero and VM/RAM/private cleanup passes.
+`mouse-chords-fffdc44e-ready.json` binds the evidence. No product correction was
+needed. Physical devices, rapid unacknowledged input, application-specific effects,
+other platforms and current-release acceptance remain OPEN; R-S19 below retains detail.
+
 **Linux cursor image ownership — native component correction verified (2026-11-03).**
 `c45e3e6b` owns the registration's copied pixbuf with automatic release and points
 the application/default/candidate dependency descriptions at the maintained plugin.
@@ -2599,6 +2615,23 @@ source/artifact identity and eight raw evidence files. This is one Linux native
 schedule, not physical-device, overlapping-owner, cleanup-failure, reconnect,
 installed/other-platform or sustained-use acceptance. No product change is needed
 for this scenario; current release and all independent parked work remain OPEN.
+
+**Overlapping mouse buttons — native independent release passed.**
+At `fffdc44e`, TUF `ZYMaxMdH9S` reuses source-bound app `9f78434c` and engine
+`ddb1541d`. Three schedules hold Left/Right, Left/Middle/Right and all five
+buttons including Back/Forward, then release in mixed orders. All twenty native
+events have the exact button, direction and pre-event state. XInput2 observes
+the complete remaining button set on viewer and controlled displays after every
+step through a 100-ms quiet interval; each final release clears both. Only the
+viewer receives fixture input. The unchanged twenty-one single-button/drag/wheel/
+outside-release controls pass too. Window/TCP identity and resource bounds hold.
+All three drivers compile twice identically; the app is unbuilt. The 113-second
+outer run joins its VM and retires 3,015,925,760 peak RAM bytes, with four zero
+listener deltas. Thirteen bounded evidence files match on CTE/TUF;
+`mouse-chords-fffdc44e-ready.json` binds observations and cleanup. No product fix
+is needed for these schedules. This is paced Linux native input on the named
+artifact, not physical-device, rapid overlapping delivery, relative-mode,
+cross-window/owner, application action, other-platform or release acceptance.
 
 **Linux remote keyboard — Ctrl+A corrected; eleven full-app cases passed.**
 `cf437894` routes Linux Legacy character shortcuts through the existing native
@@ -14819,9 +14852,11 @@ The repository imports the package's runtime/build/license files and selects its
 path in the application manifest and both locks, preserving all package versions.
 Full plugin/Flutter bridge compilation, strict offline dependency acceptance,
 whole-app session/resource behavior and other-platform acceptance remain OPEN.
-The candidate discovery-lock input still needs the reviewed one-entry source
-transformation before its next build; its authenticated package-cache digest is
-unchanged. Existing full-peer `XGetImage` checks exclude the pointer: complete
+TUF's candidate discovery lock now matches the committed one-entry source change,
+with its previous bytes retained, as a prerequisite for the separate mouse replay.
+CTE's discovery lock still awaits that transformation. Package caches are unchanged;
+no new plugin/app build or strict offline resolution is implied. Existing full-peer
+`XGetImage` checks exclude the pointer: complete
 remote cursor delivery still needs XFixes observation on the actual viewer.
 No image-allocation failure, plugin teardown or whole-process leak claim is closed.
 

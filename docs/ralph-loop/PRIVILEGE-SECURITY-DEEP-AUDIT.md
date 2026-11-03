@@ -133954,3 +133954,40 @@ the parked cursor-package import/selection/correction. The input path is unchang
 this run cannot validate the new cursor plugin or claim current-release acceptance.
 TUF reports 47,381,864 KiB available memory and no owned run marker. No host service,
 SSH credential, cache generation or canonical input is changed.
+
+The first launch has the scenario flag in the wrong position and exits 2 before
+VM admission. The ordered retry refuses the outdated candidate discovery lock,
+also before guest startup. Its three small metadata files are retained in a
+bounded receipt and removed by exact directory descriptors after wrapper/RAM
+retirement. Under shared-run and candidate-directory locks, TUF's old 46,169-byte
+lock is preserved as `flutter-candidate-lock-before-c45e3e6b.lock` and atomically
+replaced by the reviewed 46,092-byte committed lock, SHA-256
+`d406202a90a35705e857b73c7e1dacb8450451636849b38856e4ca2383c7c506`.
+All 196 versions and every other package block are byte-identical. This necessary
+replay input reconciliation changes no package cache or retained app, performs no
+acquisition/resolution, and does not resume cursor testing. CTE's discovery lock
+remains unchanged. `mouse-chords-admission-fffdc44e.json` and
+`mouse-chords-candidate-lock-fffdc44e.json` retain these transactions.
+
+Native `ZYMaxMdH9S` at `fffdc44e429e1564366613148730a3ca2b63384f` passes all
+three overlapping-button schedules and twenty-one existing mouse controls.
+Every one of the twenty new transitions has the required native button/direction/
+pre-event state and complete remaining button set on both X servers through the
+100-ms quiet interval. The observed transition receipts take 10–11 ms; this is
+native event observation, not input-to-visible latency. Case lifetimes are
+469/706/1,173 ms including the intentional quiet intervals. Final button states
+are empty, the same window/TCP identity survives, and resource bounds pass.
+The native driver is built twice identically, SHA-256
+`e166044086049067f973d12883f3c5d7885531d749dcf86182d731fd7b3e664d`;
+both other driver comparisons pass. App/engine are reused without rebuilding.
+
+The outer run completes in 113 seconds. Exact wrapper/QEMU/helper and private/RAM
+retirement are verified; peak scratch is 3,015,925,760 RAM bytes and all four
+listener deltas are zero. Thirteen bounded evidence files are copied and
+hash-verified on CTE, alongside the eleven admission/input records.
+`mouse-chords-fffdc44e-ready.json`: 20,503 bytes, SHA-256
+`aa41805be847a976abd334aa3a585ee86a13ab12578e33106648c4cf696071b0`.
+No product correction is needed for these paced schedules. Rapid unacknowledged
+events, physical devices, relative mode, cross-window/owner handoff, actual
+application actions, other platforms and current-release acceptance remain OPEN.
+Cursor and all independent parks remain. No owned job is live; fresh ledger count follows.

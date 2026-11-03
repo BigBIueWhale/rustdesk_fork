@@ -134375,3 +134375,13 @@ Thirteen bounded evidence files match on CTE/TUF. Capsule
 `window-position-accepted-829a57f9.json`: 6,171 bytes, SHA-256
 `c6fdc532e5f1864b97ed73e1a2c6fddb2b6f8f5b403c392c52b5b4053cd590fe`.
 All parked work remains parked. No owned job remains; fresh ledger counting follows.
+
+Fresh count `6y0aU1PIuL` at `7984638b` passes seven controls and the whole-input
+round trip: 397,831 tokens / 1,818,808 bytes, SHA-256
+`0b8a295f2c73c8dfa921ac72d92050878a736d4c83101f04b7fd7dd329d02d06`.
+The 27-second outer run retires exact processes/private/RAM state, with three
+zero listener deltas and 402,681,856 bytes peak RAM scratch. Twelve bounded
+evidence files match on CTE/TUF. `window-position-ledger-7984638b.json`:
+4,805 bytes, SHA-256
+`db9f95ef63724993f2f12285ea069420f528cc4d747cabf30a9a5ed5f06401a8`.
+This audit-only receipt preserves the counted ledger. No owned job remains.

@@ -4231,6 +4231,7 @@ run_focused_rust_tests() {
             required_tests=(
                 test::file_logging_rotates_during_a_busy_day
                 test::file_logging_retains_only_the_configured_archives
+                test::file_logging_restarts_preserve_recent_records
             )
         fi
         if [ "$RUST_TEST_PROFILE" = file-send-log ]; then
@@ -8796,7 +8797,7 @@ PY
             grep -E '^test (fs::file_block|compress)::tests::[[:alnum:]_]+ [.][.][.] ok$|^DECOMPRESSION_(WINDOW|INPUT)' "$output"
         elif [ "$RUST_TEST_PROFILE" = file-logging ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'file logging test total differs'
-            grep -E '^test test::file_logging_[[:alnum:]_]+ [.][.][.] ok$|^FILE_LOG_(ROTATION|RETENTION)' "$output"
+            grep -E '^test test::file_logging_[[:alnum:]_]+ [.][.][.] ok$|^FILE_LOG_(ROTATION|RETENTION|RESTART)' "$output"
         elif [ "$RUST_TEST_PROFILE" = file-send-log ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'sender log test total differs'
             grep -E '^test fs::tests::read_step_[[:alnum:]_]+ [.][.][.] ok$|^READ_TERMINAL_(LOG|RETIREMENT)' "$output"

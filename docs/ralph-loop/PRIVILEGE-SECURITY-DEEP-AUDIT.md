@@ -135065,3 +135065,46 @@ Five baseline cases are retained unchanged, with four added outcome/retry,
 round-replacement, non-Remote and actual exported-owner cases. Nine rendered
 dialog cases are prepared. Candidate execution and generated Dart/native result
 delivery remain pending; this is not installed reboot or platform acceptance.
+
+### 2026-11-03 — user pivot; file-log retention across process restarts
+
+Remote-restart work is OPEN/PARKED on explicit user direction. Candidate
+`f4f544cf` run `9hryPHUwT4` failed during fresh bridge generation with
+`Failed to parse function output type ResultType<()>`; no candidate test executed.
+The candidate implementation and nine unexecuted dialog cases remain committed;
+`94124746` adds their unexecuted focused lane. No correction is accepted from
+these preparations. The earlier four-failure/one-control native baseline remains
+valid. Generated-result delivery, native replay, rendered dialog and installed
+outcomes remain open. No further restart work is selected by this pivot.
+
+The 177-second failed transaction has four zero listener deltas, exact wrapper/
+QEMU/helper absence and RAM retirement. Its bounded private diagnostics were
+inventoried and retired under the shared lock. Peak RAM scratch: 6,237,761,536
+bytes. Thirteen evidence files are hash-verified on CTE/TUF.
+`restart-native-candidate-f4f544cf.json`: 13,399 bytes, SHA-256
+`896eb4879f890920865d2acec41b0e56173ff95a82a1537f23af297a1ccd1973`.
+No owned job remains; all independent parks remain.
+
+Select R-S0 sustained log-storage correctness across repeated process starts.
+The accepted `88c90361` rotation correction and its two real-file cases cover
+one logger lifetime. They do not establish whether restarting retains the newest
+records within the 31-archive policy. This concrete resource/diagnostic obligation
+takes priority over another presentation-only change. Single-record size bounds,
+Windows privileged log namespaces and all other parked logging work stay parked.
+
+Source review: core_main selects a role subdirectory before init_log; the shared
+release builder uses flexi_logger 0.27.4 timestamp rotation and 31 archives. The
+pinned dependency's state initialization rotates the previous CURRENT file and
+runs retention; timestamps.rs handles colliding timestamps with restart suffixes.
+Its cleanup enumerates the matching log family. Read-only upstream documentation
+requests were unavailable; these conclusions come from the exact vendored source,
+not from an unverified latest-version contract.
+
+Add one focused case to the existing file-logging VM lane. Forty sequential,
+joined child processes each instantiate the actual builder and write a unique
+record to the same directory. After every process exits, inspect real files for
+exact newest-record retention, one current file, at most 31 archives, bounded
+fixture bytes and preservation of another log family. The existing size/retention
+controls remain. Product logging is unchanged. Execution is pending; this does
+not exercise full-app startup, concurrent writers, crashes, daily rollover,
+privileged directory safety or other platforms.

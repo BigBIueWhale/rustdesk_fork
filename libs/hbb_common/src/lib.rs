@@ -556,6 +556,70 @@ mod test {
     }
 
     #[test]
+    fn file_logging_restarts_preserve_recent_records() {
+        const DIRECTORY_ENV: &str = "RUSTDESK_LOG_RESTART_TEST_DIRECTORY";
+        const RECORD_ENV: &str = "RUSTDESK_LOG_RESTART_TEST_RECORD";
+        const MARKER: &str = "restart-record-";
+        if let Some(path) = std::env::var_os(DIRECTORY_ENV) {
+            let record: usize = std::env::var(RECORD_ENV).unwrap().parse().unwrap();
+            let (logger, handle) = file_logger(false, path.into()).unwrap().build().unwrap();
+            logger.log(
+                &log::Record::builder()
+                    .level(log::Level::Info)
+                    .target("restart_regression")
+                    .args(format_args!("{MARKER}{record}"))
+                    .build(),
+            );
+            handle.shutdown();
+            return;
+        }
+
+        let directory = LogDirectory::new();
+        let unrelated = directory.0.join("unrelated_r2000-01-01_00-00-00.log");
+        std::fs::write(&unrelated, b"preserve this log family").unwrap();
+        let executable = std::env::current_exe().unwrap();
+        let mut total = 0;
+        for record in 0_usize..40 {
+            let output = std::process::Command::new(&executable)
+                .args([
+                    "--exact",
+                    "test::file_logging_restarts_preserve_recent_records",
+                    "--test-threads=1",
+                ])
+                .env(DIRECTORY_ENV, &directory.0)
+                .env(RECORD_ENV, record.to_string())
+                .env("RUST_LOG", "info")
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "logger process {record}: {output:?}");
+            let logs: Vec<_> = directory.logs().into_iter()
+                .filter(|path| path != &unrelated)
+                .collect();
+            assert_eq!(logs.len(), (record + 1).min(32));
+            let mut retained = Vec::new();
+            total = 0;
+            for path in &logs {
+                let contents = std::fs::read_to_string(path).unwrap();
+                total += contents.len();
+                assert!(contents.len() < 1024);
+                let lines: Vec<_> = contents.lines().collect();
+                assert_eq!(lines.len(), 1, "each process wrote exactly one record");
+                let (_, value) = lines[0].rsplit_once(MARKER).unwrap();
+                retained.push(value.parse::<usize>().unwrap());
+            }
+            retained.sort_unstable();
+            assert_eq!(retained, ((record + 1).saturating_sub(32)..=record).collect::<Vec<_>>());
+            let current = logs.iter()
+                .find(|path| path.to_string_lossy().ends_with("_rCURRENT.log"))
+                .unwrap();
+            assert!(std::fs::read_to_string(current).unwrap()
+                .ends_with(&format!("{MARKER}{record}\n")));
+            assert_eq!(std::fs::read(&unrelated).unwrap(), b"preserve this log family");
+        }
+        println!("FILE_LOG_RESTART processes=40 restarts=39 files=32 oldest=8 newest=39 bytes={total} unrelated=preserved children=joined");
+    }
+
+    #[test]
     fn test_allow_err() {
         allow_err!(Err("test err") as Result<(), &str>);
         allow_err!(

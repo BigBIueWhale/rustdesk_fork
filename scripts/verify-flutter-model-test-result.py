@@ -1235,6 +1235,8 @@ SETTINGS_NAVIGATION_TESTS = {
     "settings wake lock respects disabled outgoing preference",
     "settings wake lock retirement waits for pending acquisition",
     "settings wake lock replacement waits for pending release",
+    "settings wake lock failed acquisition permits later retry",
+    "settings wake lock failed release retains its cookie for retry",
     "settings toast default expiry preserves pointer input",
     "settings toast newest message replaces older text and lifetime",
     "settings toast same-frame burst displays only its latest message",

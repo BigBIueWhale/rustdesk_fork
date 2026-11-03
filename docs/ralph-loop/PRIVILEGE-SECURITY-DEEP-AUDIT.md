@@ -133006,3 +133006,28 @@ and retired under the shared lock. Peak RAM scratch is 6,378,774,528 bytes.
 Thirteen bounded files are copied and verified. `viewer-wake-baseline-f4f0a5a5.json`
 is 13,301 bytes, SHA-256
 `d326ff4f440702e7d27b59816ef1276610e7b3a960d7faf974e03a06bafa264a`.
+
+Baseline `JGcQCBM11v` at `54ba791e` now completes: 43 cases pass and exactly
+the two ordering cases fail. Retirement during acquisition produces only
+`Inhibit`, omitting `UnInhibit`; replacement during pending release produces
+`Inhibit, UnInhibit, Inhibit` before the release reply. Ordinary/shared ownership
+and the disabled preference pass. The actual manager and pinned plugin run;
+native settings and D-Bus replies remain doubles. The earlier fixture failures
+are not part of this product evidence. Four listener deltas are zero; exact
+wrapper/QEMU/helper, RAM and private retirement passes. Peak RAM scratch is
+6,382,313,472 bytes. Thirteen bounded files are copied and verified. Capsule
+`viewer-wake-baseline-54ba791e.json` is 17,795 bytes, SHA-256
+`a42f2cc8f44d88166d82848595e3e7d3e0a7385c8393bff1e53bbd24884cde8e`.
+
+Correction: retain the latest desired boolean and one in-flight platform
+transition; publish completed state only after the Future succeeds, then
+reconcile current demand before retiring the worker. Desktop owner admission
+and reference counting stay unchanged. Errors are logged, retain the previous
+completed state, and permit a later owner request to retry. No per-callback
+queue, timer, dependency or extra platform mode is introduced. Dart's
+`unawaited` does not handle errors itself, so the worker owns explicit catch
+and finalization: https://api.dart.dev/dart-async/unawaited.html .
+Preserve the five baseline cases and add two definite D-Bus rejection/retry
+controls. Lost replies after an unknown provider effect, silent platform
+failures, real D-Bus/service behavior, screen power, other platforms and
+installed/release acceptance remain unproved by this component correction.

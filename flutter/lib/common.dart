@@ -2899,14 +2899,12 @@ class SimpleWrapper<T> {
 /// This manager handles multiple tabs within the same isolate.
 class WakelockManager {
   static final Set<UniqueKey> _enabledKeys = {};
-  // Don't use WakelockPlus.enabled, it causes error on Android:
-  // Unhandled Exception: FormatException: Message corrupted
-  //
-  // On Linux, multiple enable() calls create only one inhibit, but each disable()
-  // only releases if _cookie != null. So we need our own _enabled state to avoid
-  // calling disable() when not enabled.
-  // See: https://github.com/fluttercommunity/wakelock_plus/blob/0c74e5bbc6aefac57b6c96bb7ef987705ed559ec/wakelock_plus/lib/src/wakelock_plus_linux_plugin.dart#L48
+  // Track completed requests without querying the Android platform channel.
+  // Serialize transitions so a pending Linux Inhibit retains its cookie until
+  // the corresponding UnInhibit completes.
   static bool _enabled = false;
+  static bool _requested = false;
+  static bool _updating = false;
 
   static void enable(UniqueKey key, {bool isServer = false}) {
     // Check if we should keep awake during outgoing sessions
@@ -2920,10 +2918,7 @@ class WakelockManager {
     if (isDesktop) {
       _enabledKeys.add(key);
     }
-    if (!_enabled) {
-      _enabled = true;
-      WakelockPlus.enable();
-    }
+    _request(true);
   }
 
   static void disable(UniqueKey key) {
@@ -2933,9 +2928,28 @@ class WakelockManager {
         return;
       }
     }
-    if (_enabled) {
-      WakelockPlus.disable();
-      _enabled = false;
+    _request(false);
+  }
+
+  static void _request(bool enabled) {
+    _requested = enabled;
+    if (_updating || _enabled == _requested) return;
+    _updating = true;
+    unawaited(_update());
+  }
+
+  static Future<void> _update() async {
+    try {
+      while (_enabled != _requested) {
+        final enabled = _requested;
+        await WakelockPlus.toggle(enable: enabled);
+        _enabled = enabled;
+      }
+    } catch (error) {
+      // Preserve the last completed state; a later owner request can retry.
+      debugPrint('Failed to update wake lock: $error');
+    } finally {
+      _updating = false;
     }
   }
 }

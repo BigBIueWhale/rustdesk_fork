@@ -39,6 +39,7 @@ class _WakeRemote extends DBusRemoteObject {
   int nextCookie = 1;
   Completer<void>? acquisition;
   Completer<void>? release;
+  String? refuseNext;
 
   @override
   Future<DBusMethodSuccessResponse> callMethod(
@@ -47,6 +48,11 @@ class _WakeRemote extends DBusRemoteObject {
       bool noAutoStart = false, bool allowInteractiveAuthorization = false}) async {
     expectSync(interface, 'org.freedesktop.ScreenSaver');
     calls.add(name);
+    if (refuseNext == name) {
+      refuseNext = null;
+      throw DBusMethodResponseException(
+          DBusMethodErrorResponse.failed('wake-fixture refusal'));
+    }
     if (name == 'Inhibit') {
       expectSync(values.map((v) => v.asString()).toList(), ['RustDesk', 'wakelock']);
       expectSync(replySignature, DBusSignature.uint32);
@@ -571,6 +577,41 @@ void main() {
     WakelockManager.disable(keys.last);
     await _settleWake();
     expect(remote.active, isEmpty);
+  });
+
+  test('settings wake lock failed acquisition permits later retry', () async {
+    final (remote, plugin, keys) = wakeFixture();
+    remote.refuseNext = 'Inhibit';
+    WakelockManager.enable(keys.first);
+    await _settleWake();
+    expect(remote.calls, ['Inhibit']);
+    expect(remote.active, isEmpty);
+    expect(await plugin.enabled, isFalse);
+    WakelockManager.enable(keys.first);
+    await _settleWake();
+    expect(remote.calls, ['Inhibit', 'Inhibit']);
+    expect(remote.active, {1});
+    expect(await plugin.enabled, isTrue);
+    WakelockManager.disable(keys.first);
+    await _settleWake();
+    expect(remote.active, isEmpty);
+  });
+
+  test('settings wake lock failed release retains its cookie for retry', () async {
+    final (remote, plugin, keys) = wakeFixture();
+    WakelockManager.enable(keys.first);
+    await _settleWake();
+    remote.refuseNext = 'UnInhibit';
+    WakelockManager.disable(keys.first);
+    await _settleWake();
+    expect(remote.calls, ['Inhibit', 'UnInhibit']);
+    expect(remote.active, {1});
+    expect(await plugin.enabled, isTrue);
+    WakelockManager.disable(keys.first);
+    await _settleWake();
+    expect(remote.calls, ['Inhibit', 'UnInhibit', 'UnInhibit']);
+    expect(remote.active, isEmpty);
+    expect(await plugin.enabled, isFalse);
   });
 
   for (final scale in [1.0, 1.5]) {

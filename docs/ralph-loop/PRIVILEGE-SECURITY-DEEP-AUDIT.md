@@ -135128,3 +135128,12 @@ This closes the sequential-process component gap only. Full-app/installed,
 concurrent-writer, crash, daily-rollover and other-platform acceptance remains
 open. Update the current ledger and obtain its required fresh count; all parked
 topics remain parked and the overall release goal remains active.
+
+Fresh count `vZyTY4aX7f` at `269293a3` passes seven controls and the whole-input
+round trip: 399,357 tokens / 1,825,731 bytes, SHA-256
+`72863205ee686732a6fa83ee4c0f1007f543dc4958768fc0c7c5486962cc3167`.
+The 28-second transaction has three zero listener deltas and exact process/helper/
+private/RAM retirement; peak scratch is 402,771,968 bytes. Twelve bounded evidence
+files match on CTE/TUF. `file-log-restarts-ledger-269293a3.json`: 4,813 bytes,
+SHA-256 `a55a106ce1165d806abdd562a34b3ff9c0369f33cfb24730ef66f4621ed1ea01`.
+No owned job remains. This audit-only receipt preserves the counted ledger.

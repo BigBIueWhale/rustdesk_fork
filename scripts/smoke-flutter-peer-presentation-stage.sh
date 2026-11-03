@@ -1608,7 +1608,7 @@ PY
     [ "$PEER_SCENARIO" != language-restart ] || viewer_generations=4
     [ "$PEER_SCENARIO" != quality-restart ] || viewer_generations=4
     [ "$PEER_SCENARIO" != keyboard-restart ] || viewer_generations=4
-    if [ "$PEER_SCENARIO" = theme-appearance ]; then
+    if [ "$PEER_SCENARIO" = theme-appearance ] || [ "$PEER_SCENARIO" = theme-restart ]; then
       # Use GLib's real shared file backend, read by the unmodified native engine.
       # An absent portal must leave the engine able to follow GNOME settings.
       for method in ListNames ListActivatableNames; do
@@ -1621,6 +1621,8 @@ PY
       gsettings set org.gnome.desktop.interface gtk-theme Adwaita
       [ "$(gsettings get org.gnome.desktop.interface gtk-theme)" = "'Adwaita'" ] \
         || fail 'native initial appearance differs'
+    fi
+    if [ "$PEER_SCENARIO" = theme-appearance ]; then
       stdbuf --output=L gsettings monitor org.gnome.desktop.interface gtk-theme \
         >/tmp/theme-monitor.log 2>&1 &
       APPEARANCE_PID=$!
@@ -1657,6 +1659,21 @@ print('FLUTTER_PEER_RECENT_SEARCH_ENV seeded=3 credentials=absent app=not-starte
 PY
     fi
     for viewer_generation in $(seq 1 "$viewer_generations"); do
+    if [ "$PEER_SCENARIO" = theme-restart ]; then
+      # Change the desktop only after the preceding app process has joined.
+      # The app's own theme preference is changed exclusively through its UI.
+      system_theme=Adwaita-dark
+      system_dark=true
+      if [ "$viewer_generation" -eq 3 ]; then
+        system_theme=Adwaita
+        system_dark=false
+      fi
+      gsettings set org.gnome.desktop.interface gtk-theme "$system_theme"
+      [ "$(gsettings get org.gnome.desktop.interface gtk-theme)" = "'$system_theme'" ] \
+        || fail 'native restart appearance differs'
+      printf 'FLUTTER_PEER_THEME_RESTART_OS generation=%s dark=%s backend=keyfile readback=true app=not-started\n' \
+        "$viewer_generation" "$system_dark"
+    fi
     viewer_environment=()
     [ "$PEER_SCENARIO" != theme-appearance ] || viewer_environment+=(G_MESSAGES_DEBUG=all)
     viewer_rust_log=info,rustdesk::clipboard=debug
@@ -1917,10 +1934,17 @@ PY
       viewer_result='viewer=joined xvfb=joined language_restart=passed generations=4 choices=fr,pt-pt,en labels=verified storage=verified pixels=fresh'
     elif [ "$PEER_SCENARIO" = theme-restart ]; then
       theme_changed=true
-      [ "$viewer_generation" -ne 4 ] || theme_changed=false
-      grep -Fxq "FLUTTER_PEER_THEME_PHASE_OK generation=$viewer_generation restored=true changed=$theme_changed connected_sockets=2 stable_connection=true fresh_pixels=4" \
+      theme_observations=2
+      if [ "$viewer_generation" -eq 4 ]; then
+        theme_changed=false
+        theme_observations=1
+      fi
+      grep -Fxq "FLUTTER_PEER_THEME_PHASE_OK generation=$viewer_generation restored=true changed=$theme_changed system_dark=$system_dark observations=$theme_observations main_and_remote=true connected_sockets=2 stable_connection=true fresh_pixels=$((theme_observations * 4))" \
         <<<"$controller_output" || fail 'native theme generation result is absent'
-      viewer_result='viewer=joined xvfb=joined theme_restart=passed generations=4 light=restored dark=restored system=restored pixels=verified'
+      [ "$(grep -c '^FLUTTER_PEER_THEME_REMOTE_OBSERVED ' <<<"$controller_output")" -eq "$theme_observations" ] \
+        && [ "$(grep -c '^FLUTTER_PEER_THEME_OBSERVED ' <<<"$controller_output")" -eq "$theme_observations" ] \
+        || fail 'native main/remote restart observations differ'
+      viewer_result='viewer=joined xvfb=joined theme_restart=passed generations=4 light=restored dark=restored system=restored desktop_changes=verified main_and_remote=true pixels=verified'
     elif [ "$viewer_generations" -gt 1 ]; then
       if [ "$credential_phase" = empty ]; then
         grep -Fxq 'FLUTTER_PEER_CREDENTIAL_EMPTY_OK prompt=true remember=false input=absent cancel=true' \

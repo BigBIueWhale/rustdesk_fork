@@ -4516,27 +4516,35 @@ static int wait_for_theme(Display *display, Window main, unsigned int pid,
     return -1;
 }
 
+static int wait_for_theme_windows(Display *display, Window main, const ViewerWindow *viewer,
+                                   SourceHistory *history, const ConnectionIdentity *connection,
+                                   unsigned int expected, int dark, unsigned int hold_ms,
+                                   const char *phase, unsigned int generation);
+
 static int exercise_theme_restart(Display *display, const ViewerWindow *viewer,
-                                   unsigned int generation, const ConnectionIdentity *connection) {
+                                   SourceHistory *history, unsigned int generation,
+                                   const ConnectionIdentity *connection) {
     static const char *names[] = {"Light", "Dark", "Follow system"};
     static const unsigned int restored[] = {2U, 0U, 1U, 2U};
     unsigned long pid = viewer->pid;
     Window main = None;
     ConnectionIdentity after = {{0}, {0}, 0UL};
     unsigned int connected = 0U, listeners = 0U;
+    int system_dark = generation != 3U;
     int result = -1;
     if (prepare_main_settings(display, viewer, &main) != 0) goto out;
     XRaiseWindow(display, main);
     XSetInputFocus(display, main, RevertToParent, CurrentTime);
     XSync(display, False);
-    if (wait_for_theme(display, main, (unsigned int)pid, restored[generation - 1U],
-                       restored[generation - 1U] == 1U, 0U,
-                       generation, "restored") != 0) goto out;
+    unsigned int restored_choice = restored[generation - 1U];
+    int restored_dark = restored_choice == 2U ? system_dark : restored_choice == 1U;
+    if (wait_for_theme_windows(display, main, viewer, history, connection, restored_choice,
+                               restored_dark, 0U, "restart-restored", generation) != 0) goto out;
     if (generation < 4U &&
         (click_main_control(display, main, (unsigned int)pid, names[generation - 1U]) != 0 ||
-         wait_for_theme(display, main, (unsigned int)pid, generation - 1U,
-                        generation == 2U, 0U,
-                        generation, "changed") != 0)) goto out;
+         wait_for_theme_windows(display, main, viewer, history, connection, generation - 1U,
+                                generation == 3U ? system_dark : generation == 2U, 0U,
+                                "restart-changed", generation) != 0)) goto out;
     if (session_socket_counts(&connected, &listeners) != 0 || connected != 2U || listeners != 1U ||
         read_connection_identity(&after) != 0 || !same_connection(connection, &after))
         goto out;
@@ -4550,8 +4558,10 @@ out:
     if (main != None && close_viewer(display, main) != 0) result = -1;
     if (result == 0)
         printf("FLUTTER_PEER_THEME_PHASE_OK generation=%u restored=true changed=%s "
-               "connected_sockets=2 stable_connection=true fresh_pixels=4\n",
-               generation, generation < 4U ? "true" : "false");
+               "system_dark=%s observations=%u main_and_remote=true "
+               "connected_sockets=2 stable_connection=true fresh_pixels=%u\n",
+               generation, generation < 4U ? "true" : "false", system_dark ? "true" : "false",
+               generation < 4U ? 2U : 1U, generation < 4U ? 8U : 4U);
     return result;
 }
 
@@ -4736,7 +4746,7 @@ static int change_system_appearance(GSettings *settings, int dark) {
 static int wait_for_theme_windows(Display *display, Window main, const ViewerWindow *viewer,
                                    SourceHistory *history, const ConnectionIdentity *connection,
                                    unsigned int expected, int dark, unsigned int hold_ms,
-                                   const char *phase) {
+                                   const char *phase, unsigned int generation) {
     ConnectionIdentity after = {{0}, {0}, 0UL};
     unsigned long pid = 0UL;
     unsigned int luminance = 0U, stable = 0U, samples = 0U;
@@ -4744,7 +4754,7 @@ static int wait_for_theme_windows(Display *display, Window main, const ViewerWin
     int result = -1;
     if (main == viewer->window ||
         wait_for_theme(display, main, (unsigned int)viewer->pid, expected, dark,
-                       hold_ms, 1U, phase) != 0 ||
+                       hold_ms, generation, phase) != 0 ||
         read_window_pid(display, viewer->window, &pid) != 0 || pid != viewer->pid) return -1;
     /* Read displayed root pixels only after bringing this exact window to the front. */
     XRaiseWindow(display, viewer->window);
@@ -4770,8 +4780,8 @@ static int wait_for_theme_windows(Display *display, Window main, const ViewerWin
         read_connection_identity(&after) != 0 || !same_connection(connection, &after)) goto out;
     printf("FLUTTER_PEER_THEME_REMOTE_OBSERVED phase=%s dark=%s window=%lu luminance=%u "
            "native_pixels=true samples=%u hold_ms=%u maximum_age_ms=%llu distinct=4 "
-           "stable_connection=true\n", phase, dark ? "true" : "false", viewer->window,
-           luminance, samples, hold_ms, (unsigned long long)age);
+           "stable_connection=true generation=%u\n", phase, dark ? "true" : "false", viewer->window,
+           luminance, samples, hold_ms, (unsigned long long)age, generation);
     result = 0;
 out:
     if (result != 0)
@@ -4809,36 +4819,36 @@ static int exercise_theme_appearance(Display *display, const ViewerWindow *viewe
     XSetInputFocus(display, main, RevertToParent, CurrentTime);
     XSync(display, False);
     if (wait_for_theme_windows(display, main, viewer, history, connection,
-                               2U, 0, 0U, "system-initial") != 0) goto out;
+                               2U, 0, 0U, "system-initial", 1U) != 0) goto out;
     for (unsigned int i = 0U; i < 2U; ++i) {
         int dark = i == 0U;
         if (change_system_appearance(settings, dark) != 0 ||
             wait_for_theme_windows(display, main, viewer, history, connection, 2U, dark, 0U,
-                                   dark ? "system-dark" : "system-light") != 0) goto out;
+                                   dark ? "system-dark" : "system-light", 1U) != 0) goto out;
     }
     for (unsigned int choice = 0U; choice < 2U; ++choice) {
         if (click_main_control(display, main, pid, choice == 0U ? "Light" : "Dark") != 0 ||
             wait_for_theme_windows(display, main, viewer, history, connection,
-                                   choice, choice == 1U, 0U, "explicit-selected") != 0) goto out;
+                                   choice, choice == 1U, 0U, "explicit-selected", 1U) != 0) goto out;
         for (unsigned int i = 0U; i < 2U; ++i) {
             if (change_system_appearance(settings, i == 0U) != 0 ||
                 wait_for_theme_windows(display, main, viewer, history, connection,
                                        choice, choice == 1U, 5000U,
-                                       i == 0U ? "explicit-os-dark" : "explicit-os-light") != 0)
+                                       i == 0U ? "explicit-os-dark" : "explicit-os-light", 1U) != 0)
                 goto out;
         }
     }
     if (change_system_appearance(settings, 1) != 0 ||
         wait_for_theme_windows(display, main, viewer, history, connection,
-                               1U, 1, 5000U, "explicit-before-system") != 0 ||
+                               1U, 1, 5000U, "explicit-before-system", 1U) != 0 ||
         click_main_control(display, main, pid, "Follow system") != 0 ||
         wait_for_theme_windows(display, main, viewer, history, connection,
-                               2U, 1, 0U, "system-reselected") != 0) goto out;
+                               2U, 1, 0U, "system-reselected", 1U) != 0) goto out;
     for (unsigned int i = 0U; i < 2U; ++i) {
         int dark = i == 1U;
         if (change_system_appearance(settings, dark) != 0 ||
             wait_for_theme_windows(display, main, viewer, history, connection, 2U, dark, 0U,
-                                   dark ? "system-dark-again" : "system-light-again") != 0) goto out;
+                                   dark ? "system-dark-again" : "system-light-again", 1U) != 0) goto out;
     }
     if (close_viewer(display, main) != 0) goto out;
     main = None;
@@ -4951,7 +4961,7 @@ static int exercise_theme_save_failure(Display *display, const ViewerWindow *vie
     XSync(display, False);
     if (click_main_control(display, main, pid, "Light") != 0 ||
         wait_for_theme_windows(display, main, viewer, history, connection,
-                               0U, 0, 0U, "save-baseline") != 0 ||
+                               0U, 0, 0U, "save-baseline", 1U) != 0 ||
         theme_error_visible(pid, 0) != 0 || sleep_millis(1500U) != 0) goto out;
     directory = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     phase = "write-refusal-setup";
@@ -4972,10 +4982,10 @@ static int exercise_theme_save_failure(Display *display, const ViewerWindow *vie
     phase = "failed-choice-pixels";
     if (probe_error != EACCES || click_main_control(display, main, pid, "Dark") != 0 ||
         wait_for_theme_windows(display, main, viewer, history, connection,
-                               0U, 0, 0U, "failed-save") != 0 ||
+                               0U, 0, 0U, "failed-save", 1U) != 0 ||
         /* Observe the persistent inline error after the three-second toast retires. */
         wait_for_theme_windows(display, main, viewer, history, connection,
-                               0U, 0, 4000U, "failed-save-held") != 0) goto out;
+                               0U, 0, 4000U, "failed-save-held", 1U) != 0) goto out;
     phase = "visible-error";
     if (theme_error_visible(pid, 1) != 0) goto out;
     phase = "unchanged-file";
@@ -4990,7 +5000,7 @@ static int exercise_theme_save_failure(Display *display, const ViewerWindow *vie
     permissions_changed = 0;
     if (click_main_control(display, main, pid, "Dark") != 0 ||
         wait_for_theme_windows(display, main, viewer, history, connection,
-                               1U, 1, 0U, "save-retry") != 0 ||
+                               1U, 1, 0U, "save-retry", 1U) != 0 ||
         theme_error_visible(pid, 0) != 0 || close_viewer(display, main) != 0) goto out;
     main = None;
     XRaiseWindow(display, viewer->window);
@@ -7646,7 +7656,7 @@ int main(int argc, char **argv) {
 
     if (theme_generation != 0U || (argc == 6 && strcmp(argv[5], "--theme-appearance") == 0)) {
         int result = theme_generation != 0U
-            ? exercise_theme_restart(display, &viewer, theme_generation, &current_connection)
+            ? exercise_theme_restart(display, &viewer, &history, theme_generation, &current_connection)
             : exercise_theme_appearance(display, &viewer, &history, &current_connection);
         if (atspi_exit() != 0) result = -1;
         if (close_viewer(display, viewer.window) != 0) result = -1;

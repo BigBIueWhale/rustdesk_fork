@@ -222,7 +222,7 @@ elif [ "$PEER_SCENARIO" = theme-restart ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
-  VIEWER_RESULT='viewer=joined xvfb=joined theme_restart=passed generations=4 light=restored dark=restored system=restored pixels=verified'
+  VIEWER_RESULT='viewer=joined xvfb=joined theme_restart=passed generations=4 light=restored dark=restored system=restored desktop_changes=verified main_and_remote=true pixels=verified'
 elif [ "$PEER_SCENARIO" = credential-retry ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

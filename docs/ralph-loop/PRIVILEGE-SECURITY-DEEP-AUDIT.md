@@ -134081,3 +134081,34 @@ https://www.x.org/releases/X11R7.5/doc/man/man3/XSetInputFocus.3.html.
 This is focus-loss/release acceptance, not an assertion that focus loss itself
 must release a button or that Flutter cancellation/minimization has executed.
 Reuse app `9f78434c` / engine `ddb1541d`; no application build is needed.
+
+Run `usbFMul9p2` at `afa1eee2` fails before any mouse-case/event receipt, after
+authentication and initial fresh pixels. The failure does not establish a product
+focus-loss defect; setup/first-event diagnostics remain needed. All owned jobs,
+RAM and private payloads are retired; four listener deltas are zero. Seventeen
+bounded evidence files are retained on CTE, including `mouse-focus-afa1eee2.json`
+and its retirement receipt. The user's subsequent pivot leaves this work
+OPEN/PARKED; do not resume its diagnostics under a generic continuation.
+
+## 2026-11-03 — user pivot: theme restoration after desktop appearance changes
+
+Move from mouse focus to R-S0 settings correctness. Earlier four-generation theme
+acceptance kept the OS light; later native appearance checks changed it only while
+the app was running. The unproved condition is startup after an OS appearance
+change while the app is closed, including an explicit choice opposite to the OS.
+This exercises required persistence and rendered behavior ahead of further input
+permutations. Mouse, cursor and every independent parked topic remain parked.
+
+Reuse app `9f78434c` / engine `ddb1541d`; relevant theme product sources match
+current master. Extend the existing four-generation native replay, with the real
+private GSettings backend set/read back before each app starts: dark, dark, light,
+dark. Restore System, Light, Dark and System respectively; make the first three
+UI choices Light, Dark and System. Verify exclusive radios and actual main/remote
+header pixels for all seven observations, fresh peer frames, unchanged connection
+within each generation, saved preference after each joined process, and final
+VM/listener/storage cleanup. No app preference file is fixture-written.
+Flutter defines explicit modes independently of OS preference and System from
+current brightness: https://api.flutter.dev/flutter/material/MaterialApp/themeMode.html.
+GSettings writes complete asynchronously; the separate readback after the CLI
+write checks the shared backend before app launch:
+https://docs.gtk.org/gio/type_func.Settings.sync.html.

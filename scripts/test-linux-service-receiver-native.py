@@ -2326,6 +2326,177 @@ def recovery_refusals(commit, binary_sha, probe_sha, readiness_spec):
                 os.close(actor["pidfd"])
 
 
+def stopped_child_shutdown(commit, binary_sha, probe_sha):
+    unit = Path("/etc/systemd/system/rustdesk.service")
+    record_path = Path("/run/rustdesk/service-child.record")
+    cgroup = Path("/sys/fs/cgroup/system.slice/rustdesk.service")
+    if any(os.path.lexists(p) for p in (unit, record_path.parent, cgroup)):
+        raise RuntimeError("stopped-child fixture requires absent service state")
+    shutil.copyfile(MEDIA / "repo/res/rustdesk.service", unit)
+    run(["/usr/bin/systemctl", "daemon-reload"])
+    value = "Receiver-stopped-child-2026!"
+    reference = ServiceUnitResultReference()
+    retained = []
+
+    def properties():
+        return dict(line.split("=", 1) for line in run(
+            ["/usr/bin/systemctl", "show", "rustdesk.service",
+             "--property=ActiveState,SubState,Result,MainPID,ExecMainCode,ExecMainStatus,NRestarts,InvocationID"]).stdout.splitlines())
+
+    def retain(record):
+        identities = {}
+        for role, pid in (("supervisor", record["supervisor"]), ("child", record["pid"])):
+            proc = Path("/proc") / str(pid)
+            fd = os.pidfd_open(pid)
+            retained.append(fd)
+            fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+            if fields[0] in (b"Z", b"X") or select.select([fd], [], [], 0)[0]:
+                raise RuntimeError("stopped-child fixture retained an exited process")
+            if role == "child" and int(fields[19]) != record["start"]:
+                raise RuntimeError("stopped-child start identity differs")
+            if role == "supervisor" and (digest(proc / "exe") != binary_sha
+                    or (proc / "cmdline").read_bytes() != b"/usr/bin/rustdesk\0--service\0"):
+                raise RuntimeError("stopped-child supervisor image or role differs")
+            identities[role] = {"pid": pid, "start": int(fields[19]), "pidfd": fd}
+        if child_record() != record:
+            raise RuntimeError("stopped-child fixture lost its selected child")
+        return identities
+
+    def retired(identities):
+        result = {}
+        for role, identity in identities.items():
+            try:
+                fields = Path(f"/proc/{identity['pid']}/stat").read_bytes().rsplit(b") ", 1)[1].split()
+                reaped = int(fields[19]) != identity["start"]
+            except (FileNotFoundError, ProcessLookupError):
+                reaped = True
+            result[role] = {"exited": bool(select.select([identity["pidfd"]], [], [], 0)[0]), "reaped": reaped}
+        return result
+
+    def record_snapshot():
+        st = record_path.lstat()
+        return {"metadata": [st.st_dev, st.st_ino, st.st_uid, st.st_gid, st.st_mode,
+                             st.st_nlink, st.st_size, st.st_mtime_ns, st.st_ctime_ns],
+                "sha256": digest(record_path)}
+
+    def stopped(record):
+        proc = Path("/proc") / str(record["pid"])
+        states = {p.name: (p / "stat").read_bytes().rsplit(b") ", 1)[1].split()[0].decode()
+                  for p in (proc / "task").iterdir()}
+        status = dict(line.split(":", 1) for line in (proc / "status").read_text().splitlines() if ":" in line)
+        return {"threads": states, "term_pending": bool(int(status["ShdPnd"], 16) & (1 << (signal.SIGTERM - 1)))}
+
+    def wait_retired(identities, deadline):
+        while time.monotonic() < deadline:
+            result = retired(identities)
+            if not cgroup.exists() and all(v["exited"] and v["reaped"] for v in result.values()):
+                return result
+            time.sleep(0.02)
+        raise RuntimeError(f"stopped-child service did not retire: {retired(identities)}")
+
+    def clean_stop(identities, deadline, durable):
+        result = wait_retired(identities, deadline)
+        outcome = properties()
+        while outcome["ActiveState"] == "deactivating" and time.monotonic() < deadline:
+            time.sleep(0.02)
+            outcome = properties()
+        if (outcome["ActiveState"] != "inactive" or outcome["SubState"] != "dead"
+                or outcome["Result"] != "success" or outcome["MainPID"] != "0"
+                or outcome["ExecMainCode"] != "1" or outcome["ExecMainStatus"] != "0"
+                or outcome["NRestarts"] != "0" or record_path.exists() or credential() != durable):
+            raise RuntimeError(f"stopped-child service stop was not complete: {outcome}")
+        return {"unit": outcome, "processes": result, "record_absent": True, "cgroup_absent": True}
+
+    try:
+        run(["/usr/bin/systemctl", "start", "rustdesk.service"])
+        old = ready()
+        old_processes = retain(old)
+        before = properties()
+        if (before["ActiveState"], before["SubState"], before["Result"], before["NRestarts"]) != ("active", "running", "success", "0"):
+            raise RuntimeError("stopped-child initial service is not ready")
+        change(0, value, True)
+        durable = credential()
+        keyed(value, "stopped-before", old, probe_sha)
+        old_listener = direct_listener(old)
+        snapshot = record_snapshot()
+        signal.pidfd_send_signal(old_processes["child"]["pidfd"], signal.SIGSTOP)
+        deadline = time.monotonic() + 3
+        while True:
+            observed = stopped(old)
+            if observed["threads"] and set(observed["threads"].values()) == {"T"}:
+                break
+            if time.monotonic() >= deadline:
+                raise RuntimeError("exact child did not enter complete group stop")
+            time.sleep(0.02)
+        if child_record() != old or record_snapshot() != snapshot or properties() != before:
+            raise RuntimeError("stopping the child changed service authority")
+        print("LINUX_SERVICE_STOPPED_CHILD_INJECTION=" + json.dumps(
+            {"record": old, "unit": before, "record_snapshot": snapshot, "stopped": observed,
+             "listener_inode": old_listener, "signal": "SIGSTOP", "target": "child-pidfd"}, sort_keys=True), flush=True)
+        began = time.monotonic()
+        run(["/usr/bin/systemctl", "stop", "--no-block", "rustdesk.service"], timeout=2)
+        pending = None
+        samples = 0
+        while pending is None or time.monotonic() - pending < 4:
+            observed = stopped(old)
+            current = properties()
+            if (not observed["threads"] or set(observed["threads"].values()) != {"T"}
+                    or any(v["exited"] or v["reaped"] for v in retired(old_processes).values())
+                    or child_record() != old or record_snapshot() != snapshot or credential() != durable
+                    or current["ActiveState"] not in ("active", "deactivating")
+                    or (pending is not None and (current["ActiveState"] != "deactivating" or not observed["term_pending"]))
+                    or current["MainPID"] != before["MainPID"]
+                    or current["InvocationID"] != before["InvocationID"] or current["NRestarts"] != "0"):
+                raise RuntimeError("pending stop released ownership or resumed/replaced the stopped child")
+            if observed["term_pending"] and pending is None:
+                pending = time.monotonic()
+            if pending is None and time.monotonic() - began >= 3:
+                raise RuntimeError("supervisor did not request termination of the stopped child")
+            samples += 1
+            time.sleep(0.1)
+        print("LINUX_SERVICE_STOPPED_CHILD_HELD=" + json.dumps(
+            {"record": old, "unit": current, "record_snapshot": record_snapshot(), "stopped": observed,
+             "pending_observed_seconds": pending - began, "held_seconds": time.monotonic() - pending,
+             "samples": samples}, sort_keys=True), flush=True)
+        first_stop = clean_stop(old_processes, began + 20, durable)
+        elapsed = time.monotonic() - began
+        if elapsed < 8 or elapsed >= 20 or any(len(f := line.split()) >= 10 and f[3] == "0A" and f[9] == str(old_listener)
+                for line in Path("/proc/net/tcp").read_text().splitlines()[1:]):
+            raise RuntimeError("stopped-child termination timing or listener retirement differs")
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            if properties() != first_stop["unit"] or cgroup.exists() or record_path.exists():
+                raise RuntimeError("explicit stop was followed by an automatic restart")
+            time.sleep(0.2)
+        run(["/usr/bin/systemctl", "start", "rustdesk.service"])
+        new = ready(old)
+        new_processes = retain(new)
+        after = properties()
+        if (after["ActiveState"] != "active" or after["SubState"] != "running" or after["Result"] != "success"
+                or after["NRestarts"] != "0" or after["InvocationID"] == before["InvocationID"] or credential() != durable):
+            raise RuntimeError("fresh start after forced shutdown changed authority or failed")
+        keyed(value, "stopped-recovery", new, probe_sha)
+        run(["/usr/bin/systemctl", "stop", "rustdesk.service"], timeout=40)
+        final_stop = clean_stop(new_processes, time.monotonic() + 5, durable)
+        print("LINUX_SERVICE_STOPPED_CHILD_OBSERVED=" + json.dumps(
+            {"old": old, "new": new, "before": before, "after": after, "first_stop": first_stop,
+             "final_stop": final_stop, "forced_stop_seconds": elapsed, "old_listener": old_listener,
+             "durable_unchanged": True, "automatic_restarts": 0}, sort_keys=True), flush=True)
+        print(f"LINUX_SERVICE_STOPPED_CHILD_NATIVE=pass generations=2 stopped=1 held=4 restarts=0 cpace=2 "
+              f"source={commit} binary_sha256={binary_sha} probe_sha256={probe_sha} fixture=installed-layout "
+              "unit=shipped logind=actual signal=child-pidfd cleanup=joined", flush=True)
+    except BaseException:
+        print(run(["/usr/bin/journalctl", "--unit=rustdesk.service", "--no-pager", "-n", "60"]).stdout, flush=True)
+        raise
+    finally:
+        try:
+            run(["/usr/bin/systemctl", "stop", "rustdesk.service"], timeout=40)
+        finally:
+            reference.close()
+            for fd in retained:
+                os.close(fd)
+
+
 def service_crash(commit, binary_sha, probe_sha, child_only=False):
     prefix = "LINUX_SERVICE_CHILD_CRASH" if child_only else "LINUX_SERVICE_CRASH"
     target = "child" if child_only else "supervisor"
@@ -3018,7 +3189,7 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, ex
           f"binary_sha256={binary_sha} fixture=installed-layout unit=shipped legacy=unchanged cleanup=joined", flush=True)
 
 
-def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False, collisions=False, exclusive=False, desktop_exclusive=False, crash=False, recovery=False, child_crash=False):
+def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False, collisions=False, exclusive=False, desktop_exclusive=False, crash=False, recovery=False, child_crash=False, stopped_child=False):
     guard()
     checked = run(["/usr/bin/setpriv", "--reuid=1000", "--regid=1000", "--clear-groups",
                    "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
@@ -3047,6 +3218,9 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
     if "not found" in run(["/usr/bin/ldd", str(PROBE)]).stdout:
         raise RuntimeError("network probe runtime dependency is missing")
     run(["/usr/bin/systemctl", "is-active", "systemd-logind.service", "polkit.service"])
+    if stopped_child:
+        installed_desktop(lambda: stopped_child_shutdown(commit, spec["sha256"], probe_spec["sha256"]))
+        return
     if recovery:
         installed_desktop(lambda: recovery_refusals(commit, spec["sha256"], probe_spec["sha256"], description["files"]["smoke_readiness"]))
         return
@@ -3373,6 +3547,8 @@ if __name__ == "__main__":
         tests(sys.argv[1:6], crash=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--child-crash":
         tests(sys.argv[1:6], child_crash=True)
+    elif len(sys.argv) == 7 and sys.argv[-1] == "--stopped-child":
+        tests(sys.argv[1:6], stopped_child=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--recovery-refusal":
         tests(sys.argv[1:6], recovery=True)
     elif len(sys.argv) == 6:

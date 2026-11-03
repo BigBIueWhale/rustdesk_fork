@@ -132735,3 +132735,37 @@ Twelve bounded records are copied and hash-verified. Capsule
 No owned job remains. This turn made progress by establishing child-crash
 recovery and retaining the supervisor-crash regression. The full release goal
 remains active; do not repeat these passing scenarios without relevant cause.
+
+### 2026-11-03 — installed stopped-child shutdown boundary
+
+The preceding turn made progress through child-crash recovery and its supervisor
+control. Current clean master/TUF is `c6ad63d8`, with no owned jobs or RAM/private
+scratch. Select R-S11c-27c/R-S0's unresponsive-child stop boundary: historical
+forced-stop evidence is not current installed-layout execution, and ordinary
+shutdown/crash scenarios do not hold a child stopped during the graceful period.
+This required lifecycle gap takes priority over further settings work; parked
+package, caller-authorization and independent topics remain untouched.
+
+`terminate_child_with_timeouts` retains its direct `Child`, sends TERM, waits
+eight seconds, then sends KILL and waits/reaps before removing its exact record.
+The shipped notify/mixed unit gives the main supervisor the initial stop request
+and retains a 30-second manager backstop. Primary references:
+https://www.freedesktop.org/software/systemd/man/252/systemd.kill.html and
+https://man7.org/linux/man-pages/man7/signal.7.html. The mixed-manager/CONT behavior
+must be observed: do not assume a fixture-stopped child remains stopped.
+
+The separate closed `--linux-service-stopped-child-tests` route reuses peer
+`fdbab046`, the shipped unit and actual PAM/logind/X11 in the existing zero-NIC
+bounded-RAM VM. Retain exact process descriptors, require real UID-4002 CPace
+before injection, stop only the selected child through its pidfd, then issue
+ordinary systemctl stop. Require all child threads stopped, TERM pending and
+unchanged exact record/process ownership through four observed seconds. Require
+complete process/cgroup/record/listener retirement and clean unit result in the
+eight-to-twenty-second observation envelope, with no automatic restart. Explicit
+fresh startup must preserve the credential, complete CPace and stop normally.
+No fixture CONT/KILL helps the product drain. Kernel-stalled/failed-signal cases,
+admitted credential mutations, pixels, final packages, other init systems and
+platforms remain separate. The two passing crash scenarios are unchanged.
+No product correction is proposed; execution is pending. TUF has 47,224,120 KiB
+available RAM and 31 GiB free shared memory; unchanged admission, monitoring,
+source/artifact checks, bounded evidence and joined cleanup remain mandatory.

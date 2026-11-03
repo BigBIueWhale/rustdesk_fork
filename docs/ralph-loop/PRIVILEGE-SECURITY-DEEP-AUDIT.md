@@ -132797,3 +132797,23 @@ No new cache generation is created. The selected stopped-child checkpoint is
 verified at its stated layer. Other lifecycle, final-artifact/platform and
 independent-review obligations and user parks remain open. Count the edited
 ledger in the isolated VM before completing this checkpoint.
+
+Fresh count `spdWWxtl4k` at `26d6f9b5` passes seven controls and the whole-
+input round trip: 398,386 tokens / 1,823,230 bytes, SHA-256
+`f82e550284b4b8681dc86f587fc2768b25059a546e4892390f02e35041c37463`.
+Three listener deltas are zero and exact process/helper, VM/RAM/private cleanup
+passes. Twelve bounded records are copied and hash-verified. Capsule
+`linux-stopped-child-ledger-26d6f9b5.json` is 4,820 bytes, SHA-256
+`97dcfedbe21e6ab186acd55cc53d5c7ac7caf5fe5ae12ca214ef72ec5b86dea8`.
+No owned job remains. This turn made progress; the full release goal is active.
+
+Next focused investigation from read-only source review: in
+`terminate_child_with_timeouts`, record-removal failure after a successful
+`wait_child_exit` returns before `child.take()`. The service loop's error cleanup
+can call termination again, whose first operation is a raw numeric-PID TERM.
+Determine with native fault reproduction whether this retries a signal after the
+direct child has already been reaped. The `OwnedServiceChild` struct currently
+retains `Child` and record without a separate retired-process state. A retained
+record must not restore process authority after reap. No fault reproduction,
+PID-reuse outcome, unprivileged trigger or product correction is yet claimed.
+This concrete error-path question takes priority over another healthy-path replay.

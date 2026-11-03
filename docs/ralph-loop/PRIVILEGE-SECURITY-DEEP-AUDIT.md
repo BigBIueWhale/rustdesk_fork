@@ -134165,3 +134165,23 @@ Flutter's mounted flag describes its particular context, and StatefulBuilder
 state must outlive builder calls:
 https://api.flutter.dev/flutter/widgets/BuildContext/mounted.html
 https://api.flutter.dev/flutter/widgets/StatefulBuilder-class.html.
+
+Initial `tAnS0Qx8jN` at `b6ebe444` stops all seven new cases in dialog setup:
+the parent double omitted Android's `enable_soft_keyboard(true)` call. The 47
+existing controls pass. After adding only that validated platform double,
+unchanged-product `P93U1Q0fs8` at `629d67b7` passes 49 cases and fails the five
+new regression cases. Pending choices remain enabled; failed saves lack a
+persistent dialog message; retired and newly fixed callbacks still write Dark;
+a pending save completed after dismissal throws `setState() called after dispose`.
+Ordinary Light/Dark/System and cancellation controls pass. Both failed runs are
+fully reconciled, with four zero listener deltas each and exact process/private/
+RAM retirement. Twenty-six bounded evidence files match on CTE/TUF:
+`mobile-theme-setup-b6ebe444.json` and `mobile-theme-before-629d67b7.json`.
+
+The correction gives this dialog one pending save across rebuilds, disables all
+choices until completion, rechecks exact dialog/fixed-option authority at callback
+entry, and checks ownership before every result-driven rebuild. Admitted storage
+work drains after dismissal. Errors are caught, shown persistently in the current
+dialog and leave retry available. The existing 200-ms success feedback interval
+remains within the pending operation, followed by exact-owner close. Shared
+manager, theme backend, language and mobile Boolean paths are unchanged.

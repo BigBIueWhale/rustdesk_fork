@@ -439,27 +439,56 @@ void showLanguageSettings(OverlayDialogManager dialogManager) async {
 
 void showThemeSettings(OverlayDialogManager dialogManager) async {
   var themeMode = MyTheme.getThemeModePreference();
+  var saving = false;
+  var failed = false;
 
   dialogManager.show((setState, close, context) {
-    setTheme(v) async {
-      if (themeMode != v) {
-        if (!await MyTheme.changeDarkMode(v) || !context.mounted) return;
+    setTheme(ThemeMode? value) async {
+      if (value == null ||
+          saving ||
+          !close.isCurrent ||
+          !context.mounted ||
+          isOptionFixed(kCommConfKeyTheme) ||
+          (!failed && themeMode == value)) {
+        return;
+      }
+      setState(() {
+        saving = true;
+        failed = false;
+      });
+      try {
+        final saved = await MyTheme.changeDarkMode(value);
+        if (!close.isCurrent || !context.mounted) return;
+        if (!saved) {
+          setState(() => failed = true);
+          return;
+        }
         setState(() {
           themeMode = MyTheme.getThemeModePreference();
         });
-        Future.delayed(Duration(milliseconds: 200), close);
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        if (context.mounted) close();
+      } catch (error) {
+        debugPrint('Failed to change theme: $error');
+        if (close.isCurrent && context.mounted) setState(() => failed = true);
+      } finally {
+        saving = false;
+        if (close.isCurrent && context.mounted) setState(() {});
       }
     }
 
-    final isOptFixed = isOptionFixed(kCommConfKeyTheme);
+    final enabled = !saving && !isOptionFixed(kCommConfKeyTheme);
     return CustomAlertDialog(
       content: Column(children: [
         getRadio(Text(translate('Light')), ThemeMode.light, themeMode,
-            isOptFixed ? null : setTheme),
+            enabled ? setTheme : null),
         getRadio(Text(translate('Dark')), ThemeMode.dark, themeMode,
-            isOptFixed ? null : setTheme),
+            enabled ? setTheme : null),
         getRadio(Text(translate('Follow System')), ThemeMode.system, themeMode,
-            isOptFixed ? null : setTheme)
+            enabled ? setTheme : null),
+        if (failed)
+          Text(translate('Failed'),
+              style: TextStyle(color: Theme.of(context).colorScheme.error)),
       ]),
     );
   }, backDismiss: true, clickMaskDismiss: true);

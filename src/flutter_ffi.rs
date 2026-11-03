@@ -1969,7 +1969,7 @@ pub fn session_send_mouse(session_id: SessionID, msg: String) {
 pub fn session_restart_remote_device(
     session_id: SessionID,
     client_owner_id: SessionID,
-) -> ResultType<()> {
+) -> Result<()> {
     sessions::request_remote_restart_for_exact_ui_owner(&session_id, &client_owner_id)
 }
 

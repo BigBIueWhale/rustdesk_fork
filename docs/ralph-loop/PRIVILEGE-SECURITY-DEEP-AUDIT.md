@@ -135427,3 +135427,14 @@ Required success is rendered containment after resize/drag, preservation when
 already in bounds, and retained keyboard restoration controls. Physical device
 rotation, platform keyboard delivery, full-session routing and release acceptance
 remain separate open evidence boundaries.
+
+Baseline attempt `6foNgKuKZQ` at `75943a1f` reaches fresh bridge generation
+and stops on `ResultType<()>`, before any rendered case. This is the existing
+unverified restart export's alias, not evidence about panel behavior. hbb_common
+defines it as anyhow::Result, and flutter_ffi already imports that same Result
+type for its supported fallible exports. Change only the spelling to Result<()>;
+the function body, receiver and restart semantics remain unchanged and parked.
+This prerequisite repairs the shared generator for the selected panel tests.
+The attempted run retires QEMU, helper, private state and RAM, with four zero
+listener deltas. `floating-viewport-baseline-75943a1f.json` retains the failure,
+source, command and cleanup; thirteen bounded evidence files match CTE/TUF.

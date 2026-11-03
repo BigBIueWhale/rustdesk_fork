@@ -135195,3 +135195,12 @@ live writers are the next distinct evidence gap, subject to a real application
 path establishing shared log-family ownership before claiming a product defect.
 Update the ledger and obtain its fresh isolated count. No owned job remains;
 independent parked work remains parked and the overall release goal is incomplete.
+
+Fresh count `5c7FFGtSo7` at `593c6ece` passes seven controls and the whole-input
+round trip: 399,400 tokens / 1,825,965 bytes, SHA-256
+`d11d4c2fd9951b8fe075fd1cee7c64a5ff2405c61cf132c46735f1e19692b70f`.
+The 27-second transaction has three zero listener deltas and exact process/helper/
+private/RAM retirement; peak scratch is 402,706,432 bytes. Twelve bounded files
+match on CTE/TUF. `file-log-startup-ledger-593c6ece.json`: 4,808 bytes, SHA-256
+`17b2f7041dde8492c0a7790c8232163f694b2952757d4724be6fcbe21238919b`.
+This audit-only receipt leaves the counted ledger unchanged. No owned job remains.

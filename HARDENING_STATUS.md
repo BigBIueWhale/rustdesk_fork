@@ -4709,6 +4709,22 @@ evidence; it does not measure rendered recovery, prove continuous connection
 survival, or close final-package, other-init/platform and independent-review
 acceptance. Those remain OPEN, and package/authorization parks remain unchanged.
 
+**Installed stopped-child shutdown (`7973c6f1`).** TUF `0SV5IJiy9f` reuses
+`fdbab046` and the shipped unit with actual logind/X11. After a successful
+UID-4002 CPace control, pidfd-directed SIGSTOP holds the selected UID-4001
+child. Ordinary systemctl stop leaves all fifteen child threads stopped;
+38 observations cover a 4.035-second TERM-pending interval with the same live
+supervisor/child and exact record metadata/bytes. The unit remains deactivating.
+Both processes, cgroup, record and old listener retire in 8.259 seconds with
+successful unit exit and zero manager restarts. A further three-second stopped
+observation passes. Explicit fresh startup preserves the credential, completes
+CPace and stops cleanly. PAM/Xvfb/users, VM/RAM/private scratch and three zero
+listener deltas pass. `linux-stopped-child-7973c6f1.json` binds this separate
+scenario; existing crash tests and product code are unchanged. This establishes
+debug/headless installed-layout group-stop behavior, not kernel-stalled drain,
+signal/wait errors, concurrent admitted mutations, Remote pixels, final packages,
+other init systems/platforms or independent review. Those remain OPEN.
+
 **IPC / option CLI — component acceptance; installed acceptance OPEN.**
 At `ad638445`, TUF `1VEEFlN8jX` passes all **176 listener/transport, 32 CLI,
 10 Windows selector, 22 main-protocol, 8 main-transaction, 8 main-peer, 4 URL-loop,
@@ -10264,7 +10280,7 @@ sandbox implementation and checker-repair history remain in Git.
   | --- | --- |
   | R-S11c-27a | Source: retained direct child and supervisor-death binding. Current combined application/systemd crash retirement passes above; independent mechanism and final-artifact acceptance remain OPEN. |
   | R-S11c-27b | Source: root-only lease, durable identity record and pidfd-first recovery. Current installed-layout sessionless/active-desktop exclusivity, retained-connection login and automatic supervisor-crash recovery pass above; arbitrary live-record recovery and final artifacts remain OPEN. |
-  | R-S11c-27c | Source: bounded retained-child TERM/KILL/reap; uncertainty preserves ownership and record. |
+  | R-S11c-27c | Current debug/headless installed-layout `0SV5IJiy9f`: stopped child and exact record remain owned through the TERM-pending observation; ordinary stop retires the tree within 8.259 seconds and fresh startup completes CPace. Kernel-stalled/error/uncertain drain and final-artifact acceptance remain OPEN. |
   | R-S11c-27d | Historical focused behavior: parent death, lease release, stale-record removal and exact live-record recovery. |
   | R-S11c-27e | Historical focused behavior: executed-inode identity across rename/unlink, without pathname/argv authority. |
   | R-S11c-27f | Historical debug/container: manual/non-systemd restart, graceful/forced stop and unrelated portable survival. |

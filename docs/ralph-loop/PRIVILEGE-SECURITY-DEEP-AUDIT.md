@@ -132769,3 +132769,31 @@ platforms remain separate. The two passing crash scenarios are unchanged.
 No product correction is proposed; execution is pending. TUF has 47,224,120 KiB
 available RAM and 31 GiB free shared memory; unchanged admission, monitoring,
 source/artifact checks, bounded evidence and joined cleanup remain mandatory.
+
+Run `0SV5IJiy9f` at `7973c6f1` passes in 52 outer seconds (57.436 capture
+seconds). After the real CPace control, exact UID-4001 child 7902 enters group
+stop with fifteen threads. Ordinary stop reaches observed pending TERM after
+0.232839 seconds. Across 38 observations and the 4.034734-second pending interval,
+all observed child threads remain stopped, supervisor 7894/child identity and
+record metadata/bytes remain unchanged, and the unit stays deactivating. With no
+fixture continuation or kill, both exact processes, the cgroup, record and old
+listener retire; the unit reports successful exit, zero restarts, at 8.258929
+seconds. Three subsequent stopped seconds show no restart. Explicit fresh startup
+selects supervisor 8074/child 8082 with a fresh generation/invocation, preserves
+the credential, completes real UID-4002 CPace and stops/reaps normally. Both
+supervised children retain the actual UID/capability/no-new-privileges/executable
+checks. PAM, Xvfb and user retirement pass. This is group-stop/native lifecycle
+and key-exchange evidence; no Remote-login/pixel or kernel-stalled/error-path
+claim is added. No product defect was demonstrated; no product change or rebuild.
+
+Source/build-input and artifact identities match before and after. Under the
+shared lock, wrapper 1122282 and QEMU 1124023 return pidfd ESRCH, owned helpers
+are absent, and RAM `run.91jsk14w` (29:40892)/private scratch are absent. Peak RAM
+scratch is 4,109,594,624 bytes. Three endpoint deltas are zero. Twelve bounded
+records are copied and hash-verified on CTE. Capsule
+`linux-stopped-child-7973c6f1.json` is 10,630 bytes, SHA-256
+`ddd83a300f0f8804186b030e68c114447c7eee9ac319881bc01ec922b17de8d0`.
+No new cache generation is created. The selected stopped-child checkpoint is
+verified at its stated layer. Other lifecycle, final-artifact/platform and
+independent-review obligations and user parks remain open. Count the edited
+ledger in the isolated VM before completing this checkpoint.

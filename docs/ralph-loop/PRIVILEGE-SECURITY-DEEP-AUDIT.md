@@ -132552,3 +132552,13 @@ installed-layout crash checkpoint is complete; independent mechanism,
 live/ambiguous record refusal, alternate init systems, exact final packages,
 other platforms and broader release acceptance remain open. Reassess the
 next permitted release requirement at this checkpoint and preserve all parks.
+
+Fresh ledger count `FWRuieYxNw` at `f6f2055b` passes all seven controls and
+the whole-input round trip: 397,393 tokens / 1,818,810 bytes, SHA-256
+`a1a9935ce75b18f646c7b743adb6921134874d82d42edba3bbca1b1e6471e5d0`.
+Three listener deltas are zero; owned process/helper, VM/RAM and private-scratch
+retirement pass. Twelve bounded records are copied and hash-verified. Capsule
+`linux-crash-ledger-f6f2055b.json` is 4,789 bytes, SHA-256
+`cc871396a97d7d2de17c17ec6afd44eedf521c7892e03b8309894dc4e4ae9515`.
+No owned job remains. This turn made progress through authoritative native
+evidence; the full release goal remains active and unproven.

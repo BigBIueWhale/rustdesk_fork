@@ -71,6 +71,9 @@ case "$#:${8:-}" in
     8:--fixed-archive-tests)
         MODE=fixed-archive-tests
         ;;
+    8:--pe-canonicalizer-tests)
+        MODE=pe-canonicalizer-tests
+        ;;
     8:--windows-service-result-tests)
         MODE=windows-service-result-tests
         ;;
@@ -1331,7 +1334,7 @@ for caller in ('smoke-verifier-vm-authority.sh', 'online-fetch-vm.sh'):
     modes.update(re.findall(r'\bMODE=([a-z][a-z0-9-]*)', shell.with_name(caller).read_text()))
 # This closed CLI arm derives MODE from its argument instead of a literal assignment.
 modes.add('android-frame-tests')
-if len(modes) != 41:
+if len(modes) != 42:
     raise SystemExit('VM workload control inventory differs')
 special = {mode: mode for mode in ('ledger-token-count', 'cpace-recovery-tests',
                                   'linux-service-uid-tests', 'hbb-common-fs', 'media-kernel-tests',
@@ -1342,6 +1345,7 @@ special.update({'authority-smoke': 'authority-smoke', 'dependency-inventory': 'a
                 'android-emulator-runtime': 'android-replay',
                 'linux-ipc-parent-tests': 'linux-service-uid-tests',
                 'windows-service-result-tests': 'fixed-archive-tests',
+                'pe-canonicalizer-tests': 'fixed-archive-tests',
                 'debian-maintainer-tests': 'authority-smoke',
                 'android-runtime-log-tests': 'authority-smoke',
                 'network-impairment-probe': 'authority-smoke',
@@ -1505,6 +1509,44 @@ os.execl("/usr/bin/python3", "python3", "-B", "-I", "-S", sys.argv[1],
     fi
     printf 'LEDGER_TOKEN_COUNT_VM=pass uid=4000 gid=4000 caps=none nnp=yes input_sha256=%s recipe_sha256=%s source=readonly network=none docker=retired scratch=retired cleanup=joined\n' \
         "$LEDGER_INPUT_SHA256" "$LEDGER_RECIPE_SHA256"
+}
+
+run_pe_canonicalizer_tests() {
+    local source=$VERIFY_REPO/scripts/canonicalize-pe.py
+    local output=$ROOT/pe-canonicalizer-tests.out
+    local work work_id source_before status=0
+    source_before="$(sha256sum "$source")"
+    setpriv --reuid=4000 --regid=4000 --clear-groups /bin/bash "$ENTRY_PREFLIGHT" >/dev/null
+    work="$(setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/mktemp -d /tmp/pe-canonicalizer.XXXXXXXXXX)"
+    [ "$(stat -c '%u:%g:%a' "$work")" = 4000:4000:700 ] \
+        || fail 'PE canonicalizer scratch authority differs'
+    work_id="$(stat -c '%d:%i' "$work")"
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs \
+        /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent TMPDIR="$work" \
+        /usr/bin/prlimit --as=268435456 --cpu=20 --fsize=8388608 --nofile=64 \
+        /usr/bin/python3 -B -I -S "$source" --self-test >"$output" 2>&1 || status=$?
+    [ "$(stat -c '%s' "$output")" -le 65536 ] \
+        || fail 'PE canonicalizer diagnostics exceed their bound'
+    cat "$output"
+    [ "$status" -eq 0 ] || fail "PE canonicalizer tests failed with status $status"
+    [ "$(grep -Fxc 'PE_CANONICALIZER_CONTROLS=pass bytes=exact malformed=refused publication=noclobber' "$output")" -eq 1 ] \
+        && [ "$(grep -Fxc 'PE_EMPTY_REPRO=pass cases=3 bytes=exact idempotent=yes filesystem=actual' "$output")" -eq 1 ] \
+        && [ "$(grep -Fxc 'canonicalize-pe self-test: ok' "$output")" -eq 1 ] \
+        || fail 'PE canonicalizer test inventory differs'
+    [ "$(sha256sum "$source")" = "$source_before" ] \
+        || fail 'PE canonicalizer source changed'
+    [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
+        && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
+        || fail 'PE canonicalizer tests left a container or image'
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/python3 -B -I -S "$VERIFY_REPO/scripts/verify-private-tree-closure.py" \
+        --remove-empty-private-root "$work" --expected-identity "$work_id" \
+        || fail 'PE canonicalizer scratch did not retire'
+    stop_docker_authority
+    printf 'PE_CANONICALIZER_VM=pass uid=4000 gid=4000 source_sha256=%s source=readonly network=none windows=unexecuted docker=retired scratch=retired cleanup=joined\n' \
+        "$(sha256sum "$source" | awk '{print $1}')"
 }
 
 run_windows_service_result_tests() {
@@ -14959,6 +15001,11 @@ fi
 
 if [ "$MODE" = fixed-archive-tests ]; then
     run_fixed_archive_tests
+    exit 0
+fi
+
+if [ "$MODE" = pe-canonicalizer-tests ]; then
+    run_pe_canonicalizer_tests
     exit 0
 fi
 

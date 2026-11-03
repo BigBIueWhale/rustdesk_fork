@@ -595,10 +595,6 @@ def self_test() -> None:
     _set_debug_payload(inconsistent_empty, 0, 2, 0, 0x1080, repro_offset)
     _must_reject(inconsistent_empty, "empty debug payload with nonzero mappings", "inconsistent empty payload")
 
-    empty_repro = bytearray(source)
-    _set_debug_payload(empty_repro, 0, IMAGE_DEBUG_TYPE_REPRO, 0, 0, 0)
-    _must_reject(empty_repro, "empty REPRO payload", "IMAGE_DEBUG_TYPE_REPRO has no payload")
-
     empty_codeview = bytearray(source)
     _set_debug_payload(empty_codeview, 1, 2, 0, 0, 0)
     empty_canonical, empty_counts = canonicalize_bytes(bytes(empty_codeview))
@@ -672,6 +668,37 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("symlink PE input was accepted")
+    for rva, offset in ((0x1080, 0), (0, repro_offset), (0x1080, repro_offset)):
+        inconsistent_repro = bytearray(source)
+        _set_debug_payload(inconsistent_repro, 0, IMAGE_DEBUG_TYPE_REPRO, 0, rva, offset)
+        _must_reject(inconsistent_repro, "empty REPRO with a location", "inconsistent empty payload")
+    print("PE_CANONICALIZER_CONTROLS=pass bytes=exact malformed=refused publication=noclobber")
+    with tempfile.TemporaryDirectory(prefix="canonicalize-pe-empty-repro-") as directory:
+        for second_type, second_size in ((2, 8), (IMAGE_DEBUG_TYPE_REPRO, 8), (IMAGE_DEBUG_TYPE_REPRO, 0)):
+            empty_repro = bytearray(source)
+            _set_debug_payload(empty_repro, 0, IMAGE_DEBUG_TYPE_REPRO, 0, 0, 0)
+            _set_debug_payload(
+                empty_repro, 1, second_type, second_size,
+                0x1090 if second_size else 0, codeview_offset if second_size else 0,
+            )
+            expected = bytearray(empty_repro)
+            for offset in (0x88, optional + 64, 0x404, 0x420):
+                expected[offset:offset + 4] = bytes(4)
+            if second_type == IMAGE_DEBUG_TYPE_REPRO and second_size:
+                expected[codeview_offset:codeview_offset + second_size] = bytes(second_size)
+            regular = os.path.join(directory, f"input-{second_type}-{second_size}.exe")
+            output = os.path.join(directory, f"output-{second_type}-{second_size}.exe")
+            with open(regular, "wb") as handle:
+                handle.write(empty_repro)
+            canonicalize(regular, output)
+            with open(regular, "rb") as handle:
+                assert handle.read() == empty_repro
+            with open(output, "rb") as handle:
+                assert handle.read() == expected
+            repeated, counts = canonicalize_bytes(bytes(expected))
+            assert repeated == expected
+            assert counts == (2, 1 + int(second_type == IMAGE_DEBUG_TYPE_REPRO)), counts
+    print("PE_EMPTY_REPRO=pass cases=3 bytes=exact idempotent=yes filesystem=actual")
     print("canonicalize-pe self-test: ok")
 
 

@@ -135325,3 +135325,35 @@ SHA-256 `acf95a4ea6671b5d8d3d744f80b708947ee0cfdc91c9906e2d2192bbfecc7b45`.
 This audit-only receipt leaves the counted ledger unchanged. No owned job remains;
 the documentation slice is complete, wider document-role work and release remain
 open, and concurrent logging remains parked.
+
+## 2026-11-04 — PE reproducibility marker compatibility
+
+Previous turn: progress, with counted installer-ledger consolidation complete.
+Concurrent logging and all independent parks remain. Select R-B2 Windows artifact
+construction: build.py canonicalizes every release EXE/DLL and the Windows VM
+publisher canonicalizes setup, so refusal of a valid debug entry can stop packaging.
+This concrete compatibility finding takes priority over further documentation work.
+
+Microsoft's PE specification, Debug Type, permits empty IMAGE_DEBUG_TYPE_REPRO
+raw data: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#debug-type.
+LLVM's COFF DebugDirectoryChunk emits precisely type REPRO with size/RVA/pointer
+all zero: https://github.com/llvm/llvm-project/blob/main/lld/COFF/Writer.cpp.
+The fork's debug_plan rejects that form and its self-test enshrines the refusal.
+The intended correction admits an empty marker without creating a writable data
+range; nonzero locations on an empty entry and nonempty mapping/overlap errors
+remain refusals. Entry counts must include the marker. Only already-authorized
+timestamp/checksum/present-REPRO bytes may change, and publication remains no-clobber.
+
+Prepare three actual-file cases: an empty marker beside CodeView, beside a
+nonempty REPRO record, and beside another empty marker. Independent expected
+bytes check whole-output preservation and idempotence; three malformed empty
+locations and all existing controls remain. Replace the incorrect empty-marker
+negative assertion. AST comparison confirms every executable definition outside
+self_test is unchanged for this baseline.
+
+The focused --pe-canonicalizer-tests entry uses the existing fixed-archive RAM
+profile and non-root/capability-free/no-network guest Python, immutable source,
+bounded CPU/address space/output, exact receipt binding and joined retirement.
+It does not build or execute a Windows image. Shell syntax and diff checks pass;
+baseline execution is next. Synthetic PE component evidence cannot establish
+shipping-linker, Windows filesystem, installed or cold-release acceptance.

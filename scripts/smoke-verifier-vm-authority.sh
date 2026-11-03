@@ -461,6 +461,11 @@ case "$#:${1:-}" in
             || { echo 'Android runtime-log test input/run overrides are forbidden' >&2; exit 2; }
         MODE=android-runtime-log-tests
         ;;
+    1:--pe-canonicalizer-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'PE canonicalizer input/run overrides are forbidden' >&2; exit 2; }
+        MODE=pe-canonicalizer-tests
+        ;;
     1:--windows-service-result-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'Windows service-result input/run overrides are forbidden' >&2; exit 2; }
@@ -793,6 +798,7 @@ case "$#:${1:-}" in
         printf 'Source-bound Linux app producer: %s --linux-flutter-app-build --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend|--viewer-isolation|--viewer-soak|--input-latency|--input-soak|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--view-only-save-failure|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--wake-lock|--background-close|--theme-restart|--theme-appearance|--theme-save-failure|--credential-retry|--credential-restart|--credential-rotation|--credential-forget|--credential-menu|--credential-menu-accessible]\n' "${0##*/}" >&2
         printf 'Focused native Docker log-lifetime check: %s --android-runtime-log-tests\n' "${0##*/}" >&2
+        printf 'PE artifact canonicalization checks: %s --pe-canonicalizer-tests\n' "${0##*/}" >&2
         printf 'Windows service-result file checks: %s --windows-service-result-tests\n' "${0##*/}" >&2
         printf 'Focused archive transaction fixtures: %s --fixed-archive-tests\n' "${0##*/}" >&2
         printf 'Focused Debian authorization dependency tests: %s --debian-polkit-tests\n' "${0##*/}" >&2
@@ -1119,6 +1125,7 @@ readonly ONLINE_FETCH_ENTRY_PREFLIGHT="$SCRIPT_DIR/verify-online-fetch-vm-entry.
 readonly ONLINE_FETCH_AUTHORITY_CHECKER="$SCRIPT_DIR/verify-online-fetch-container-authority.py"
 readonly ONLINE_FETCH_RENAME_CHECKER="$SCRIPT_DIR/verify-online-fetch-virtiofs-rename.py"
 readonly FIXED_ARCHIVE_HELPER="$SCRIPT_DIR/online-fixed-archive-output.py"
+readonly PE_CANONICALIZER_SOURCE="$SCRIPT_DIR/canonicalize-pe.py"
 readonly WINDOWS_SERVICE_RESULT_SOURCE="$SCRIPT_DIR/verify-windows-installed-service-result.py"
 readonly WINDOWS_SERVICE_HASH_TEST="$SCRIPT_DIR/test-windows-installed-service-hash.py"
 readonly FIXED_ARCHIVE_MANIFEST="$REPO_ROOT/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
@@ -1281,7 +1288,7 @@ elif [ "$MODE" = debian-package-tests ]; then
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=2048
-elif [ "$MODE" = windows-service-result-tests ] || [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = host-network-tests ] || [ "$MODE" = dependency-inventory ]; then
+elif [ "$MODE" = pe-canonicalizer-tests ] || [ "$MODE" = windows-service-result-tests ] || [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = host-network-tests ] || [ "$MODE" = dependency-inventory ]; then
     readonly VM_TIMEOUT_SECONDS=150
     readonly OVERLAY_SIZE=6G
     readonly VM_MEMORY=2048
@@ -2798,7 +2805,7 @@ fi
 frame_inputs_before=
 FOCUSED_TEST_COMMIT=
 FOCUSED_TEST_TREE=
-if [ "$MODE" = network-impairment-probe ] || [ "$MODE" = windows-service-result-tests ] || [ "$MODE" = debian-maintainer-tests ] || [ "$MODE" = media-kernel-tests ] || [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
+if [ "$MODE" = network-impairment-probe ] || [ "$MODE" = pe-canonicalizer-tests ] || [ "$MODE" = windows-service-result-tests ] || [ "$MODE" = debian-maintainer-tests ] || [ "$MODE" = media-kernel-tests ] || [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
    || [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ] || [ "$MODE" = debian-package-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = host-network-tests ] || [ "$MODE" = dependency-inventory ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
    || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ] \
    || { [ "$MODE" = android-rust-lifecycle-tests ] \
@@ -2934,6 +2941,12 @@ if [ "$MODE" = debian-package-tests ]; then
         || fail 'Debian package-test compiler image authority differs'
     verify_sha256 "$DEV_CHECK_IMAGE_ARCHIVE" "$SHA256_DEV_CHECK_IMAGE_ARCHIVE"
     debian_package_inputs_before="$(/usr/bin/sha256sum "$DEV_CHECK_IMAGE_ARCHIVE" "$REPO_ROOT/res/com.carriez.RustDesk.policy")"
+fi
+if [ "$MODE" = pe-canonicalizer-tests ]; then
+    [ -f "$PE_CANONICALIZER_SOURCE" ] && [ ! -L "$PE_CANONICALIZER_SOURCE" ] \
+        || fail 'PE canonicalizer source is absent or ambiguous'
+    verify_committed_test_source "$PE_CANONICALIZER_SOURCE"
+    pe_canonicalizer_before="$(/usr/bin/sha256sum "$PE_CANONICALIZER_SOURCE")"
 fi
 if [ "$MODE" = windows-service-result-tests ]; then
     for source in "$WINDOWS_SERVICE_RESULT_SOURCE" "$WINDOWS_SERVICE_HASH_TEST"; do
@@ -3701,7 +3714,7 @@ for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT
     "$LIB_SOURCE" "$PIN_SOURCE"; do
     [ -f "$source" ] && [ ! -L "$source" ] \
         || fail "verifier-VM source is absent or symlinked: $source"
-    if [ "$MODE" = network-impairment-probe ] || [ "$MODE" = windows-service-result-tests ] || [ "$MODE" = debian-maintainer-tests ] || [ "$MODE" = media-kernel-tests ] || [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
+    if [ "$MODE" = network-impairment-probe ] || [ "$MODE" = pe-canonicalizer-tests ] || [ "$MODE" = windows-service-result-tests ] || [ "$MODE" = debian-maintainer-tests ] || [ "$MODE" = media-kernel-tests ] || [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
        || [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ] || [ "$MODE" = debian-package-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = dependency-inventory ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
        || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
         verify_committed_test_source "$source"
@@ -4858,6 +4871,9 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
         "repo/scripts/smoke-xvfb-packages.tsv=$SCRIPT_DIR/smoke-xvfb-packages.tsv"
         "repo/scripts/smoke-xvfb-files.tsv=$SCRIPT_DIR/smoke-xvfb-files.tsv"
     )
+elif [ "$MODE" = pe-canonicalizer-tests ]; then
+    payload_identity=(-uid 4000 -gid 4000)
+    lifecycle_payload_grafts=("repo/scripts/canonicalize-pe.py=$PE_CANONICALIZER_SOURCE")
 elif [ "$MODE" = windows-service-result-tests ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=(
@@ -5155,6 +5171,8 @@ elif [ "$MODE" = android-runtime-log-tests ]; then
     guest_invocation+=' --android-runtime-log-tests'
 elif [ "$MODE" = fixed-archive-tests ]; then
     guest_invocation+=' --fixed-archive-tests'
+elif [ "$MODE" = pe-canonicalizer-tests ]; then
+    guest_invocation+=' --pe-canonicalizer-tests'
 elif [ "$MODE" = windows-service-result-tests ]; then
     guest_invocation+=' --windows-service-result-tests'
 elif [ "$MODE" = debian-elf-role-tests ]; then
@@ -6189,6 +6207,16 @@ for label, input_sha, input_bytes in documents:
     print(label + "=" + json.dumps(result, sort_keys=True, separators=(",", ":")))
 PY
     printf '%s\n' "$ledger_vm_receipt"
+elif [ "$MODE" = pe-canonicalizer-tests ]; then
+    require_exact_fixed_receipt 'PE_CANONICALIZER_CONTROLS=pass bytes=exact malformed=refused publication=noclobber' \
+        'PE canonicalizer existing controls'
+    require_exact_fixed_receipt 'PE_EMPTY_REPRO=pass cases=3 bytes=exact idempotent=yes filesystem=actual' \
+        'PE canonicalizer empty REPRO cases'
+    require_exact_fixed_receipt \
+        "PE_CANONICALIZER_VM=pass uid=4000 gid=4000 source_sha256=$(/usr/bin/sha256sum "$PE_CANONICALIZER_SOURCE" | /usr/bin/awk '{print $1}') source=readonly network=none windows=unexecuted docker=retired scratch=retired cleanup=joined" \
+        'PE canonicalizer source and cleanup'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'PE canonicalizer completion'
+    /usr/bin/grep -E '^PE_CANONICALIZER_CONTROLS=|^PE_EMPTY_REPRO=' "$SERIAL_LOG"
 elif [ "$MODE" = windows-service-result-tests ]; then
     require_exact_fixed_receipt 'WINDOWS_SERVICE_HASH=pass tests=7 bytes=67108864 address_space=50331648 filesystem=actual children=joined windows=unexecuted' \
         'Windows service-result bounded artifact hashing'
@@ -9548,6 +9576,13 @@ if { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ] ||
         && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
         || fail 'Debian polkit-test source changed during execution'
 fi
+if [ "$MODE" = pe-canonicalizer-tests ]; then
+    [ "$(/usr/bin/sha256sum "$PE_CANONICALIZER_SOURCE")" = "$pe_canonicalizer_before" ] \
+        && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
+        && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')" = "$FOCUSED_TEST_TREE" ] \
+        && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
+        || fail 'PE canonicalizer source changed during execution'
+fi
 if [ "$MODE" = windows-service-result-tests ]; then
     [ "$(/usr/bin/sha256sum "$WINDOWS_SERVICE_RESULT_SOURCE" "$WINDOWS_SERVICE_HASH_TEST")" = "$windows_result_sources_before" ] \
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
@@ -9642,6 +9677,9 @@ elif [ "$MODE" = android-runtime-log-tests ]; then
         "$HOST_UID" "$vm_elapsed_seconds"
 elif [ "$MODE" = fixed-archive-tests ]; then
     printf 'FIXED_ARCHIVE_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
+elif [ "$MODE" = pe-canonicalizer-tests ]; then
+    printf 'PE_CANONICALIZER_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly windows=unexecuted cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = windows-service-result-tests ]; then
     printf 'WINDOWS_SERVICE_RESULT_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly windows=unexecuted cleanup=joined elapsed_seconds=%s\n' \

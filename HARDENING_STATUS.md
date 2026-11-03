@@ -43,6 +43,12 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-03):** R-B3 source delivery and the unfinished unused
+Android TLS-verifier removal remain OPEN/PARKED. The eight-file, untested
+removal is preserved in stash `ac531d3c706b6c6a7c594179efaae15a4679e7a2`;
+the lockfile was not changed. Work moves to R-S11gv native remote-cursor
+presentation and resource ownership. All independent parks remain.
+
 **User pivot (2026-11-03):** R-B9 scratch-directory replacement/consumer work
 remains OPEN/PARKED. Its two-file, unexecuted fixture draft is preserved in stash
 `9ca48810c2e5fd8287ee60fd84920e6ebe964898`; no native result is claimed.
@@ -14786,6 +14792,20 @@ invalidation, web-lane execution and native owner/token round trips remain OPEN;
 shared/generated-bridge wiring is not execution evidence.
 
 ### R-S11gv/R-S11e-234 — exact bounded cursor-shape identity, publication, presentation, and retirement
+
+**Linux plugin image ownership — source defect; native reproduction/correction OPEN.**
+The pinned `flutter_custom_cursor` 0.0.4 Linux implementation copies the decoded
+`GdkPixbuf` during each registration without releasing that caller-owned reference.
+Its deletion path releases only the `GdkCursor`; the Dart registry's entry budget
+does not account for these abandoned copies. This is source/API ownership evidence,
+not a measured application leak. The next focused check must observe actual GObject
+finalization through valid cursor registration/deletion before and after correction.
+The existing full-peer pixel observer uses `XGetImage`, whose returned pixels exclude
+the pointer. Native shape/hotspot acceptance needs a separate XFixes cursor-image
+observation in the isolated viewer display; current frame-age passes do not supply it.
+The audit entry “2026-11-03 — user pivot: native remote cursor ownership” binds
+the inspected package source and primary API references. No cursor product change
+or new native run is claimed.
 
 **Source implemented; historical Flutter unit coverage; native acceptance OPEN.**
 `custom_cursor_registry.dart` binds a `CustomCursorPresentationSession` to its

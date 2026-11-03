@@ -133753,3 +133753,67 @@ hash-verified on CTE. Capsule `source-delivery-ledger-492ac9c2.json` is 4,803 by
 SHA-256 `556985d58f0fb56acc288d8e44ee018a2a1baefd1d9434b9237505eabae293d4`.
 This verifies documentation size and isolated cleanup only. The source-delivery
 review checkpoint is complete; product/release acceptance remains OPEN.
+
+## 2026-11-03 — user pivot: native remote cursor ownership
+
+The user requests a different aspect. R-B3 source delivery and its unfinished
+unused Android TLS-verifier removal are OPEN/PARKED. Exact stash
+`ac531d3c706b6c6a7c594179efaae15a4679e7a2` retains all eight changed files:
+the Android Gradle/ProGuard files, hbb_common manifest/lib/config, Android scrap
+FFI, and the online-fetch and Android emulator app scripts. Cargo.lock and the
+remaining verifier helpers were not edited. No build/test ran for that draft.
+The worktree is clean after stashing; older stashes and independent parks remain.
+
+Select R-S11gv cursor presentation/resource ownership. This is a required live
+remote-desktop function whose existing ledger explicitly lacks native acceptance.
+Read-only review reaches a concrete native allocation defect, taking priority over
+another unrelated UI label/component check. This checkpoint establishes the path,
+the ownership error and the necessary observation; it does not claim a correction.
+
+At repository `341659f94e64b88fcecf0ecd9645ca1b40f7c41e`, the controlled-side
+`src/server/input_service.rs::run_cursor` publishes geometry/content-bound cursor
+data. `CursorModel::_prepareCursorShape` validates and prepares it;
+`remote_page.dart::mouseRegion` chooses the actual custom cursor while the pointer
+is over the remote image. `flutter/lib/native/custom_cursor.dart` uses the bounded
+registry and the package's register/set/delete API. Both canonical and retained-app
+candidate Pub locks select hosted `flutter_custom_cursor` 0.0.4, archive SHA-256
+`3850a32ac6de351ccc5e4286b6d94ff70c10abecd44479ea6c5aaea17264285d`.
+
+Read-only TUF cache inspection identifies
+`online/inputs/pub-cache/hosted/pub.dev/flutter_custom_cursor-0.0.4/linux/flutter_custom_cursor_plugin.cc`:
+7,514 bytes, SHA-256 `8f34c9c6c9a79e33412341ee5db3a378b5ded180fd3ebc466c18cc306635e8a9`.
+Its `create_custom_cursor` takes a `gdk_pixbuf_copy`, passes it to cursor creation,
+and neither unreferences nor retains an owner for that copy on return.
+`delete_custom_cursor` unreferences only the cached cursor. The corresponding
+`lib/cursor_manager.dart` is 3,190 bytes, SHA-256
+`187a9d7f5367c5c6f3a241cf5347e361b155211ce6f03a3f84500c3810046112`.
+No tracked patch or override of that native package implementation was found.
+
+The [GdkPixbuf copy contract](https://docs.gtk.org/gdk-pixbuf/method.Pixbuf.copy.html)
+assigns the new reference to the caller; the
+[GDK cursor constructor](https://docs.gtk.org/gdk3/ctor.Cursor.new_from_pixbuf.html)
+does not take ownership of its pixbuf input. This establishes an unreleased
+reference in the inspected successful-registration path, without a runtime memory
+measurement. The bounded Dart cache alone cannot retire that native reference.
+The smallest decisive correction check is valid PNG registration and deletion with
+actual GTK/GObject finalization observed by a weak reference, keeping ordinary
+cursor creation/selection functional. Preserve the authenticated input cache;
+any maintained native correction must be source-controlled and build-bound.
+
+The existing source and viewer drivers have no XFixes cursor-image observation.
+Their `XGetImage` pixel checks cannot observe the pointer itself, as specified by
+the [Xlib image API](https://xorg.freedesktop.org/archive/X11R7.5/doc/man/man3/XGetImage.3.html).
+The [XFixes cursor-image contract, section 7](https://xorg.freedesktop.org/archive/current/doc/fixesproto/fixesproto.txt)
+provides the current shape, dimensions, hotspot and premultiplied ARGB pixels;
+version negotiation precedes use. A later full-peer check should compare these
+native viewer observations with deliberate source cursor changes on the same live
+connection, including return to a prior shape. Frame freshness remains separately
+observable; neither a bridge receipt nor existing screenshot counters prove the
+cursor. Physical scanout, other platforms and complete resource/lifecycle acceptance
+remain OPEN. No product defect in shape delivery is asserted from missing coverage.
+
+The existing password-authenticated TUF SSH master works. TUF is clean at the
+inspected commit, reports 47,380,440 KiB available memory and has no RAM run markers.
+Only read-only inspection ran for this cursor checkpoint. No application build,
+cursor test, cache mutation, host service change or instruction-file edit occurred.
+The required fresh documentation count follows in the admitted no-NIC RAM VM.

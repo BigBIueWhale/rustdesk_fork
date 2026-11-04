@@ -137599,3 +137599,12 @@ The ledger decreases from 1,829,304 to 1,826,840 bytes; SHA-256 changes from
 bb5149b3be09d0b124924dc5f92e06209d10a803eadad1166cb9a14a3a0cefea.
 Full diff review and git diff --check pass. Fresh isolated token counting follows;
 this documentation consolidation adds no runtime or release-acceptance claim.
+
+Fresh count FIc0nbhnMU at f8449ec8 passes in 31.240 capture seconds: 399,311
+tokens (565 fewer), with seven controls and whole-input round trip. All 82 storage
+admissions/five refusals pass. Exact launcher/QEMU 1886709/1888130, private state
+and 402,866,176-byte peak RAM workspace retire; three listener deltas are zero.
+Twelve bounded records match CTE/TUF. Capsule verdict-ledger-f8449ec8.json is
+5,160 bytes, SHA-256 53d53962d2e9e3f3dabc3e99dfbef897713d9d9750e54afb91f9a4656b1663c6.
+The counted ledger stays unchanged. This consolidation checkpoint is complete;
+whole-document classification and all release obligations remain open.

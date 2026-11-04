@@ -138925,3 +138925,41 @@ binds eleven records. The automatically captured wrapper children and QEMU are
 absent by pidfd ESRCH; three listener deltas are zero, private/RAM state is
 retired and scratch peaks at 4,068,327,424 bytes. Retirement receipt: 443 bytes,
 SHA-256 da830b46243139dfa3aced9068c32c069e78bf9e4ff68f3c32a7e6d32a5d3236.
+
+## 2026-11-04 — user pivot; current-ledger classifier evidence
+
+The user redirects work to another aspect. Park OpenRC without further fixture,
+product or runtime changes. Its already-completed CTE YtmlOAZxOV run at 9e6aa6d4
+passes both CPace/Remote logins and exact supervisor/child retirement across
+restart and stop. Each supervisor exits zero; retirement takes 0.723/0.736 seconds.
+The combined final-state assertion then fails without identifying its differing
+field. The missing /etc/insserv.conf runtime dependency also remains unresolved.
+No full lifecycle, OpenRC-boot or final-package acceptance is established.
+
+The existing capsule openrc-exec-9e6aa6d4.json is 13,863 bytes, SHA-256
+344e789e867e61c5d1f01ca123954563c6c44e5a1ca3f8982803bc9e1bd5d630.
+Its 443-byte retirement receipt has SHA-256
+9d5e3248c8ecb18714b8816f26f7498031065981c67f1e8d7859d3257efb78d8.
+Both are inspected before further work: three listener deltas are zero;
+wrapper, QEMU and captured children are absent by pidfd ESRCH; private/RAM state
+is retired under the shared lock. Scratch peaked at 4,090,937,344 bytes. Preserve
+the committed fixture and these diagnostics; all independent parks remain.
+
+Select a bounded documentation-architecture correction, independently required
+by PROMPT.md, while product investigations remain parked. The inspected normative
+R-S11bn/R-S11bo clauses already state enduring requirements and remain untouched.
+Their ledger entries still contain obsolete pending-token-count statements and
+duplicate verifier-deletion narration. The accepted ff5aa517 count already binds
+the unchanged pre-edit ledger: 397,560 tokens, 1,816,607 bytes, SHA-256
+922f92ec38320bcb1b35e4a3a248641ab3617355c88476ee472dc20db489a688.
+
+Remove those two stale pending statements and condense the deletion histories.
+Retain each exact supported path/role contract, historical one-test result and
+source identity, both classification capsule paths, actual retained Rust tests,
+unexecuted revised Linux gate and every native/installed/platform/release gap.
+Line/mutation counts and repeated explanations of source-only evidence belong
+in the existing capsules, audit and Git. The OpenRC current verdict/index receives
+the observed failed checkpoint and explicit park. No product, tests, requirements
+or live instructions change. Exact diff/reference review and a fresh isolated
+whole-ledger count are required for this documentation checkpoint; no product
+execution or new product acceptance is sought.

@@ -50,6 +50,14 @@ the host requires the exact completion receipt. Evidence: the audit's
 
 ## Current Verdict
 
+**User pivot (2026-11-04):** OpenRC lifecycle validation is OPEN/PARKED.
+At `9e6aa6d4`, both generations complete authenticated login and exact
+supervisor/child retirement, but a combined final-state assertion fails without
+identifying its differing field. The runtime also lacks `/etc/insserv.conf`.
+`openrc-exec-9e6aa6d4.json` retains the failed run and joined cleanup; full
+lifecycle acceptance is unproved. Work moves to current-ledger classification;
+all independent parks remain.
+
 **User pivot (2026-11-04):** Further desktop settings-sidebar work is
 OPEN/PARKED. Its six-case rendered-component correction remains valid;
 full-application and OS screen-reader acceptance remain unproved. Work moves
@@ -10333,7 +10341,7 @@ sandbox implementation and checker-repair history remain in Git.
   | R-S11c-27n | Historical runtime: identical path/bytes in distinct mount/PID namespaces retained distinct executable identity. |
   | R-S11c-27o | Historical elevated-container behavior: actual kernel PID reuse refused the stale identity without signaling the replacement. |
   | R-S11c-27p | Source/package: OpenRC/runit/manual templates own only the foreground supervisor, with no competing child or discovery authority. |
-  | R-S11c-27q | Source/package plus historical native OpenRC manager/stale-state behavior; exact-artifact VM reproduction remains OPEN. |
+  | R-S11c-27q | OPEN/PARKED. VM `YtmlOAZxOV` at `9e6aa6d4` uses the shipped OpenRC script and retained `60e3fb0a` binary with real PAM/logind/X11. Two CPace/Remote logins and exact supervisor/child retirement pass across restart/stop; the final-state assertion fails and `/etc/insserv.conf` is missing. `openrc-exec-9e6aa6d4.json` binds observations and cleanup. Full manager, OpenRC-boot and final-package acceptance remain OPEN. |
   | R-S11c-27r | Historical runsvdir/runsv/supervisor/child ownership and recovery remain recorded. Current-source artifact `60e3fb0a` compiles and publishes all seven manifested files with `--linux-service-artifact-build`, using the existing bounded VM profile. Both wrappers require a distinct compile-only receipt; the file-transfer and limiter modes retain their scenarios. `runit-build-60e3fb0a.json` binds payload hashes, four zero listener deltas and exact process/private/RAM retirement. No product scenario runs in this producer. Actual runit start/stop/restart, current installed/final-artifact and independent acceptance remain OPEN. |
   | R-S11c-27s | Release wiring only; execution OPEN. The gate binds cold A==B pass-A `.deb`, commit/package identity, authenticated devcheck archive, installed systemd lifecycle and stable post-run inputs before publication, through the common no-NIC VM after Docker is joined. No current final `.deb` has passed. |
   | R-S11c-27t/R-T4 | Source/gate: owner loss remains selectable throughout headless CM bootstrap; post-bootstrap completion is bounded and terminal-first. Native/package/device lifecycle remains OPEN. |
@@ -10461,20 +10469,13 @@ sandbox implementation and checker-repair history remain in Git.
   classification is not privileged receiver authority. Windows remains governed
   separately by its exact current-MSI-package executable contract.
 
-  The historical Rust-1.75 locked/offline Linux classifier regression recorded with
-  `9da6251b` passed 1/1 in confinement. It exercises path classification, not an installed
-  service, OS authorization, live credential transaction, native macOS, or current release
-  artifact. The 317-line Python spelling checker and its thirteen in-memory replacements
-  are deleted, together with the shared/Apple source-success wrappers. They inspected
-  strings, names, diagnostics and self-wiring without executing either classifier.
-  Both actual Rust path-match tests remain unchanged. The shared gate now selects the
-  real Linux test through the existing guest-only Cargo authority and requires exactly
-  one named passing result; zero-selection cannot pass. The new wiring is unexecuted.
-  macOS native test execution remains required rather than represented by Linux source
-  wording. Classification is retained in
+  Historical Rust-1.75 locked/offline Linux evidence at `9da6251b` passes one
+  path-classification regression; it does not establish an installed service,
+  authorization, credential transaction, native macOS or current release artifact.
+  Both Rust path-match tests remain. The shared guest-only Cargo gate requires
+  exactly one named Linux pass; its revised wiring remains unexecuted. The obsolete
+  spelling/mutation checker and shared/Apple wrappers are deleted; classification:
   `.harness-state/verifier-vm/installed-classifier-verifier-removal-2610e06f.json`.
-  Fresh current ledger count remains pending resource admission. Detailed historical
-  analysis and receipts remain in the named commit and audit journal.
 
   **Still required:** exact-current compiled regressions and native packaged execution of
   all supported identities and lookup/prefix/sibling/helper/copied-bundle/Nix-store refusal
@@ -10490,19 +10491,13 @@ sandbox implementation and checker-repair history remain in Git.
   launch-parent, token/HMAC, endpoint-challenge, connection-capability and privileged
   action proofs remain independent; argv shape cannot replace them.
 
-  The historical Rust-1.75 locked/offline Linux exact-role regression recorded with
-  `22d1f62f` passed 1/1 in confinement. It exercises pure argument-vector decisions,
-  not a native connected-peer acquisition, end-to-end helper connection, installed service,
-  macOS signature/authorization path, or current release artifact. The 335-line Python
-  checker and its seventeen in-memory replacements are deleted, together with shared/Apple
-  source-success wrappers. They inspected spelling, call counts/order, test names and
-  self-wiring without executing argv predicates or kernel/process authentication.
-  The actual Rust role-vector test and existing `ipc::ipc_auth::tests` Cargo gate remain
-  byte-identical; no replacement fixture or platform override is introduced. This deletion
-  supplies no new test/native result. Classification is retained in
+  Historical Rust-1.75 locked/offline Linux evidence at `22d1f62f` passes one
+  pure argument-vector regression; it does not establish connected-peer acquisition,
+  end-to-end helpers, an installed service, macOS signature/authorization or current
+  release artifacts. The Rust role-vector test and `ipc::ipc_auth::tests` Cargo gate
+  remain. The obsolete spelling/mutation checker and shared/Apple wrappers are
+  deleted, with no new native result; classification:
   `.harness-state/verifier-vm/unix-role-verifier-removal-f0ba5a5b.json`.
-  Fresh current ledger count remains pending resource admission. Historical detailed
-  review, failures and receipts remain in the named commit and audit journal.
 
   **Still required:** exact-current regressions and native Linux/macOS connected-peer runs
   covering every admitted/refused vector, acquisition failure, process/identity replacement,

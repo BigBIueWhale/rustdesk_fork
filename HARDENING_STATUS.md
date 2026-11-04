@@ -50,6 +50,11 @@ the host requires the exact completion receipt. Evidence: the audit's
 
 ## Current Verdict
 
+**User pivot (2026-11-04):** Further mobile Settings metadata work and the
+not-yet-started ledger consolidation are OPEN/PARKED. The completed eight-case
+Settings correction remains valid. Work moves to release-version validation
+below; all independent parks remain.
+
 **User pivot (2026-11-04):** Authenticated-session continuity during password
 throttling is OPEN/PARKED. The extension at `ffa36e12` has not been compiled or
 executed; the earlier 21-case installed limiter recovery result remains valid.
@@ -9915,6 +9920,18 @@ QA narratives remain available in Git and the external audit; they are not curre
 
 Release preparation follows [`docs/VERSIONING.md`](docs/VERSIONING.md#preparing-a-release).
 Tracked source does not substitute for the generated exact-commit artifact manifest; no release publication is claimed.
+
+**Release-version file bytes (`f4266c41`).** The shell reader compares the complete
+FORK_VERSION file with its parsed value plus one newline before validating grammar,
+base and history. Bash previously discarded embedded NUL bytes: eight refusal
+cases returned success while twenty controls passed. The identical 28-case
+zero-NIC Linux replay now passes both executable and sourced entry points,
+including normal releases, rebases and malformed file/history refusal. Both runs
+have three zero host-listener deltas and verified process/private/RAM retirement.
+Evidence: `fork-version-before-db7c8f09.json`, `fork-version-fixed-f4266c41.json`
+and the audit's release-version entry. The broader authority smoke stops at a
+separate Flutter presentation source assertion; its complete acceptance remains
+OPEN. No fresh target build, release artifact set or publication ran.
 
 **R-B3 source identity — release-source delivery OPEN.** Source review at `2a867df2`
 confirms no gitlinks, tracked LFS filters or archive exclusions; `hbb_common`,

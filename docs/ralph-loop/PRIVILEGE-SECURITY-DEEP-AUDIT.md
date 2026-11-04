@@ -139283,3 +139283,27 @@ retains rejection of extra lines and missing final newline. Canonical grammar,
 base equality and complete changelog-history validation remain unchanged.
 Replay the identical 28 cases, then let the existing authority integration
 smoke continue because the reader is shared by build and publication entry points.
+
+CTE uGNoEec1g1 at f4266c41 passes all 28 unchanged executable/sourced cases.
+The complete guest test source is byte-identical to db7c8f09. Its subsequent
+main-verifier authority check passes, but the unrelated Flutter presentation
+source guard rejects its expected controller_args ordering. The overall smoke
+therefore exits 1; only the release-version comparison is accepted. Do not
+change an unrelated gate or claim complete integration acceptance in this slice.
+
+fork-version-fixed-f4266c41.json (18,667 bytes, SHA-256
+3201fffda53f58edb47d25ab1381118ce5a34acb541a6ac2a7bfbb908341e738)
+retains eleven raw/control records, all outcomes and the failed private inventory.
+Three host-listener deltas are zero, exact wrapper/QEMU/children are absent by
+pidfd ESRCH, and RAM/private state is retired under the shared lock. Peak scratch
+is 403,693,568 bytes. The 430-byte retirement receipt has SHA-256
+7264adabccf188445bbde5eff6cad1ba7599ea8798d970ddbdd0852afa1f5fa8.
+No owned run remains. Update the concise release ledger and count its exact bytes
+in the admitted VM; the metadata correction does not require an application build.
+
+During the comparison the user reports restored TUF SSH access. Confirm the
+existing /tmp/cm199.sock master (PID 3510017) and successful remote /usr/bin/true
+through it, both exit zero with BatchMode enabled. TUF access is available again;
+do not carry the earlier missing-socket condition forward as a current blocker.
+No key, password, SSH configuration or reconnection service is created or changed.
+The selected CTE comparison remains local; independent user parks still apply.

@@ -137561,3 +137561,14 @@ c62b6f32df4c212068b08031a0fcf968b646e0ab048bfce4df188770ba1a38b9.
 The first generation exercises the retained UID-4001/default desktop paths; the
 second exercises the explicit new UID. Fresh ledger counting follows the concise
 current-state update. No owned runtime remains and no host product executed.
+
+Fresh count rAwoOWsb5w at a29bf96e passes: 399,876 tokens / 1,829,304 bytes,
+input SHA-256 059d2d3fcb3263b90253fe533d0add7588eb430d2521379456f750010c599fd0.
+Seven controls, whole-input round trip and 82 storage admissions/five refusals
+pass in 30.901 capture seconds. Launcher/QEMU 1883146/1884564 are absent; helpers,
+private state and 402,931,712-byte peak RAM scratch retire with three zero listener
+deltas. Twelve bounded records match CTE/TUF. Capsule
+linux-handoff-ledger-a29bf96e.json is 5,185 bytes, SHA-256
+a09faad386e909f44017ec9805902175917c065b973da9e64d3e323d19732545.
+The audit-only receipt preserves the counted ledger. The selected handoff
+checkpoint is complete; the full release objective remains active and incomplete.

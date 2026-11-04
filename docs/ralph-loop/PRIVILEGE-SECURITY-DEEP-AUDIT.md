@@ -136912,3 +136912,13 @@ RAM run.u0j_l44s are absent under the shared lock. Peak RAM scratch is
 3,290,710,016 bytes, QEMU host block writes 4,096 bytes, and four listener
 deltas are zero. The ledger replaces the previous timing row with both results
 and preserves the earlier failure and every open obligation. Fresh counting follows.
+
+Fresh count GURBqWQH0h at 9562d497 passes: 399,870 tokens / 1,828,807 bytes,
+input SHA-256 8b9a1dbd0d8adb7911ac8f8781c6ad482c06a8c2afd87986205cace1f939f67f.
+Seven controls, whole-input round trip and 82 workload admissions/five refusals
+pass. Processes 1841596/1843015, helpers, private state and RAM scratch retire;
+three listener deltas are zero and scratch peaks at 402,796,544 bytes.
+pake-serial-ledger-9562d497.json is 5,177 bytes, SHA-256
+9f053bef92a32d50bb8dc74a09997ba6120b22fb24abebaeec08873a47fee432.
+Twelve bounded files match CTE/TUF. The counted ledger is unchanged by this
+audit-only receipt. No owned job remains; R-P12 and the full release goal stay OPEN.

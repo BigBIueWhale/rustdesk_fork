@@ -136643,3 +136643,29 @@ scratch peaks at 402,857,984 bytes. winprotocol-ledger-862cb815.json is 5,176
 bytes, SHA-256 b6a8332e7f566b7f2c233dea7b1b7e0736645a7e3c65b090ac64b784e9cbe673.
 Twelve bounded files match CTE/TUF. This audit-only receipt preserves the counted
 ledger; the wire-component checkpoint is complete and no owned job remains.
+
+## 2026-11-04 — framed Windows service protocol methods
+
+Previous goal turn: progress; the existing schema regression now has accepted
+Linux execution. Continue R-S11hg at its unproved typed-I/O boundary: the prior
+case exercises only selected serialized variants and no ConnectionTmpl methods.
+This required path takes priority over further dependency cleanup. Windows VM
+storage, voice controls, parent-build work and independently parked topics remain parked;
+the selected component does not invoke protected handlers or any installed service.
+
+Extend the existing bounded profile with six cases over anonymous real Unix
+socket pairs. Compile the exact eight typed send/read methods, their JSON/raw
+operations, protected constructor, frame reader, production codec and timeout
+helper. Preserve the existing schema regression. Test all request/response
+variants and exact synthetic values, twelve wrong-direction/endpoint routes,
+exact 32-KiB encoded values and limit-plus-one refusal before subsequent valid
+delivery, inbound frame limits, each reader's silent-peer deadline and peer EOF.
+No listener, manual worker or detached task is needed; process exit joins the
+test artifact. Production sources and all resource limits remain unchanged.
+
+Tokio's UnixStream::pair contract supplies anonymous connected sockets
+(https://docs.rs/tokio/latest/tokio/net/struct.UnixStream.html#method.pair).
+The pinned 1.44.2 timeout contract cancels a yielding future at expiry, without
+preempting synchronous work (https://docs.rs/tokio/1.44.2/tokio/time/fn.timeout.html).
+Claims are limited to these methods and real Linux framing; Windows pipes,
+process/token authority, handlers, full application and release acceptance remain OPEN.

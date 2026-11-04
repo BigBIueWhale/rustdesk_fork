@@ -898,7 +898,7 @@ case "$#:${1:-}" in
         printf 'Generated protobuf parser limits: %s --protobuf-parser-tests\n' "${0##*/}" >&2
         printf 'Focused production clipboard tests: %s --android-rust-lifecycle-tests --clipboard\n' "${0##*/}" >&2
         printf 'Focused installer encoder/decoder tests: %s --installer-package-tests\n' "${0##*/}" >&2
-        printf 'Windows service wire schema (Linux component): %s --windows-service-protocol-tests\n' "${0##*/}" >&2
+        printf 'Windows service IPC framing (Linux component): %s --windows-service-protocol-tests\n' "${0##*/}" >&2
         printf 'Closed main-IPC config query keys: %s --main-config-key-tests\n' "${0##*/}" >&2
         printf 'Optimized PAKE primitive timing: %s --pake-timing-tests\n' "${0##*/}" >&2
         printf 'PAKE backend comparison: %s --pake-backend-{default,serial}-tests\n' "${0##*/}" >&2
@@ -8322,11 +8322,11 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [[ "$RUST_TEST_PROFILE" = pak
         'PAKE backend result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'PAKE backend completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = windows-service-protocol ]; then
-    [ "$(/usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -Ec 'WINDOWS_SERVICE_PROTOCOL_ARTIFACT=pass sha256=[0-9a-f]{64} tests=1 unchanged=before-after$')" -eq 1 ] \
+    [ "$(/usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -Ec 'WINDOWS_SERVICE_PROTOCOL_ARTIFACT=pass sha256=[0-9a-f]{64} tests=7 unchanged=before-after$')" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'WINDOWS_SERVICE_PROTOCOL_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'Windows service protocol artifact receipt differs'
     require_exact_fixed_receipt \
-        "WINDOWS_SERVICE_PROTOCOL_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=1 target=linux-x86_64 scope=production-wire-schema windows=unexecuted data=close-variant-fixture rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined" \
+        "WINDOWS_SERVICE_PROTOCOL_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=7 target=linux-x86_64 scope=production-framed-service-protocol transport=unix-socket-pair windows=unexecuted data=close-variant-fixture rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined" \
         'Windows service protocol result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Windows service protocol completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main-config-key ]; then
@@ -10048,7 +10048,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'PAKE_BACKEND_VM_OUTER=pass host_uid=%s commit=%s tree=%s selection=%s tests=21 scope=optimized-backend-timing network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "${RUST_TEST_PROFILE#pake-backend-}" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = windows-service-protocol ]; then
-        printf 'WINDOWS_SERVICE_PROTOCOL_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=1 scope=production-wire-schema windows=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'WINDOWS_SERVICE_PROTOCOL_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=7 scope=production-framed-service-protocol transport=unix-socket-pair windows=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = main-config-key ]; then
         printf 'MAIN_CONFIG_KEY_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=3 scope=production-key-schema network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

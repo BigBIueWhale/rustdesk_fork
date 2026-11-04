@@ -5894,9 +5894,19 @@ run_focused_rust_tests() {
             memory=1g
             memory_bytes=1073741824
             tmpfs_size=64m
-            source_fingerprints=(Cargo.lock src/ipc.rs scripts/verify-linux-service-password-ipc.py
-                scripts/run-windows-service-protocol-tests.py)
-            required_tests=(test::windows_service_credential_and_control_channels_use_closed_directional_protocols)
+            source_fingerprints=(Cargo.lock src/ipc.rs src/ipc/framed.rs
+                libs/hbb_common/src/lib.rs libs/hbb_common/src/bytes_codec.rs
+                scripts/verify-linux-service-password-ipc.py scripts/run-windows-service-protocol-tests.py
+                scripts/test-windows-service-protocol.rs)
+            required_tests=(
+                test::windows_service_credential_and_control_channels_use_closed_directional_protocols
+                framed_cases::credential_requests_round_trip
+                framed_cases::control_requests_round_trip
+                framed_cases::responses_round_trip
+                framed_cases::readers_refuse_other_endpoint_and_direction
+                framed_cases::typed_methods_preserve_frame_budget
+                framed_cases::typed_reads_report_deadline_and_peer_exit
+            )
         elif [ "$RUST_TEST_PROFILE" = main-config-key ]; then
             container_name=rustdesk-main-config-key-tests
             memory=1g
@@ -7569,7 +7579,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [[ "$RUST_TEST_PROFILE" = pake-backend-default || "$RUST_TEST_PROFILE" = pake-backend-serial ]]; then
         printf 'PAKE_TIMING_PROFILE=%s stage=container-start tests=21 cohorts=4 fixtures=1 samples=500000 control_samples=100000\n' "$RUST_TEST_PROFILE"
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = windows-service-protocol ]; then
-        printf 'WINDOWS_SERVICE_PROTOCOL_PROFILE=windows-service-protocol stage=container-start tests=1 windows=unexecuted\n'
+        printf 'WINDOWS_SERVICE_PROTOCOL_PROFILE=windows-service-protocol stage=container-start tests=7 windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main-config-key ]; then
         printf 'MAIN_CONFIG_KEY_PROFILE=main-config-key stage=container-start tests=3 app=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = language-selection ]; then
@@ -8437,9 +8447,9 @@ PY
             || fail 'PAKE backend extended measurements differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = windows-service-protocol ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'service protocol summary count differs'
-        [ "$(grep -Ec '^WINDOWS_SERVICE_PROTOCOL_ARTIFACT=pass sha256=[0-9a-f]{64} tests=1 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^WINDOWS_SERVICE_PROTOCOL_ARTIFACT=pass sha256=[0-9a-f]{64} tests=7 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'WINDOWS_SERVICE_PROTOCOL_ARTIFACT=' "$output")" -eq 1 ] \
-            && [ "$(grep -Ec '^WINDOWS_SERVICE_PROTOCOL_SOURCE=pass ipc=[0-9a-f]{64} types=[0-9a-f]{64} test=[0-9a-f]{64} lock=[0-9a-f]{64} data=close-variant-fixture$' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^WINDOWS_SERVICE_PROTOCOL_SOURCE=pass ipc=[0-9a-f]{64} types=[0-9a-f]{64} test=[0-9a-f]{64} io=[0-9a-f]{64} cases=[0-9a-f]{64} lock=[0-9a-f]{64} data=close-variant-fixture$' "$output")" -eq 1 ] \
             || fail 'service protocol artifact or source receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main-config-key ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'main config-key summary count differs'
@@ -9206,9 +9216,9 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "${RUST_TEST_PROFILE#pake-backend-}" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = windows-service-protocol ]; then
-            [ "$tests_passed" -eq 1 ] || fail 'service protocol test count differs'
-            grep -E '^test test::.* \.\.\. ok$|^WINDOWS_SERVICE_PROTOCOL_(ARTIFACT(_BEFORE)?|SOURCE)=' "$output"
-            printf 'WINDOWS_SERVICE_PROTOCOL_VM=pass commit=%s tree=%s tests=1 target=linux-x86_64 scope=production-wire-schema windows=unexecuted data=close-variant-fixture rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \
+            [ "$tests_passed" -eq 7 ] || fail 'service protocol test count differs'
+            grep -E '^test (test|framed_cases)::.* \.\.\. ok$|^WINDOWS_SERVICE_PROTOCOL_(ARTIFACT(_BEFORE)?|SOURCE)=' "$output"
+            printf 'WINDOWS_SERVICE_PROTOCOL_VM=pass commit=%s tree=%s tests=7 target=linux-x86_64 scope=production-framed-service-protocol transport=unix-socket-pair windows=unexecuted data=close-variant-fixture rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = main-config-key ]; then
             grep -E '^test tests::.* \.\.\. ok$|^MAIN_CONFIG_KEY_(ARTIFACT(_BEFORE)?|LOCK)=' "$output"

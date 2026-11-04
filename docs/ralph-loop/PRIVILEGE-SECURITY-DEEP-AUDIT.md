@@ -139520,3 +139520,31 @@ Its 469-byte retirement receipt has SHA-256
 63a1043147135eb42f4ee90fb0cd6d7ee0f9f7bd8d480055ae127fd831297d3d.
 The selected API-retirement checkpoint is complete; the full release objective
 remains active with native/installed acceptance and independent parks open.
+
+## 2026-11-04 — release-task resumption constraint
+
+After checkpoint 27b77d48, three consecutive goal turns encounter the same
+constraint: the remaining identified substantive release tracks and their
+necessary native/artifact prerequisites are explicitly user-parked. PROMPT.md
+lines 62–66 exclude generic continuation as resumption and require reporting
+the constraint rather than substituting unrelated cleanup. Current ledger
+entries retain Linux application/dependency artifacts, Debian package checks,
+installed caller/administrator workflows, network recovery and Android
+presentation/artifact parks. No specific resumption reply has arrived.
+
+Read-only preflight confirms TUF SSH and a remote command work, its checkout is
+clean and an ancestor of current master, and cached build inputs are present.
+It reports 50,734,039,040 available RAM bytes and 1,858,630,377,472 free disk
+bytes. Six production files differ from the last accepted full Linux build at
+59b51e80. Current Linux build/package verification is the recommended next
+release task once specifically resumed. Access and capacity are not blockers.
+
+The second continuation made no progress; the third rechecks the unchanged
+27b77d48 worktree and controlling entries, with no retained CTE run directory.
+No further permitted release step or feasible prerequisite was identified.
+Mark the overall goal blocked after this three-turn audit, preserving its full
+scope and open acceptance obligations. This record and the pending selection
+question create no new approval requirement: the controlling restrictions are
+the existing explicit user parks. A specific resumption covers its necessary
+implementation, build, test and cleanup work under the prompt's authorization
+clarification; TUF access needs no further permission.

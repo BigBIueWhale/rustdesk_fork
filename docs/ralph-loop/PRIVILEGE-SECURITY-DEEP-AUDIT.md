@@ -139398,3 +139398,18 @@ No owned run remains. Record this completed release-tooling checkpoint and
 perform the required fresh ledger count, which also replays the unchanged
 nine-case four-generation artifact-capacity controls. Release acceptance and
 independent user parks remain open.
+
+Fresh isolated count at 45a8f88e, CTE 7Ci5W8EhwA: 398,440 tokens /
+1,820,007 bytes, SHA-256
+d27ecd2727188916dbdfb62f9ffa7b53224a3917df31dc709a94f7d843b2a0f3.
+Seven tokenizer controls, whole-input round trip, nine native artifact-cache
+controls and 84 workload controls/five refusals pass in 28 workload seconds.
+Three zero listener deltas, exact process absence and private/RAM retirement
+are verified under the shared lock; no owned run remains. Peak scratch is
+402,894,848 bytes. Eleven records are bound by
+release-integration-ledger-45a8f88e.json (7,647 bytes, SHA-256
+ddc4a517b5741cf4e898d75f652ec94a0e84a3ac8a32404cdaff8bc86aace4cc),
+with a 456-byte retirement receipt, SHA-256
+87196b88b503165b47c4ce3e258b8e7e8936aa581f17895ece760354d143a1da.
+This completes the selected integration checkpoint. The full release objective
+remains active; current-artifact/native acceptance and independent parks remain.

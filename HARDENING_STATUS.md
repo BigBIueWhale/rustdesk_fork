@@ -43,14 +43,16 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
-**User pivot (2026-11-04):** Further X11 authenticated-capture integration is
-OPEN/PARKED; the accepted component evidence remains valid. The selected next
-issue is mobile **Reverse mouse wheel**: its control and checked native setter
-are available, but `Session::get_scroll_xy` compiles out preference application
-on Android/iOS. Source tracing establishes the mismatch; no mobile runtime
-reproduction or correction is claimed. Next: exercise actual emitted scroll
-commands with the preference off/on/off on Android, retaining desktop controls,
-then correct and replay the same regression. All independent parks remain.
+**User pivot (2026-11-04):** Mobile **Reverse mouse wheel** is OPEN/PARKED.
+The Android/iOS preference exclusion remains a source finding. The in-progress
+baseline was cancelled before a compilation/behavioral result; exact VM/RAM cleanup
+and four zero listener deltas are retained in `android-scroll-admitted-ca70a84d.json`.
+The unverified two-line candidate is preserved in stash
+`9536b1f8a6f28b8192009b6b23b39433551a699e`; preparation remains at `ca70a84d`.
+No mobile correction or runtime acceptance is claimed. X11 capture integration
+and all independent parks remain. The selected documentation checkpoint condenses
+the retained-account section's credential-workflow history without changing its
+implementation, evidence boundaries or open release obligations.
 
 **User pivot (2026-11-04):** Android permission native-workflow acceptance is
 OPEN/PARKED; the accepted Kotlin callback correction below remains valid.
@@ -15715,120 +15717,45 @@ artifact/input hashes and timings belong there and in Git history.
 | Peer metadata (`730bb9b0`) | Recent/Favorite export omits the legacy password hash. Dart Peer has no credential/group fields or unused serializers/copy/equality/constructor; placeholders use its local-metadata parser. The unused account-specific recent-peer loader and web stub are deleted. Identical peer/credential tests pass eight suites/63 cases plus three parser controls after the old parser fails on a retired field. Fresh bridge/import checks establish the named API absence, not execution of the Rust mapper or full connection pages. | `peer-metadata-corrected-730bb9b0.json` |
 | Metadata diagnostics (`c4acc5ce`, `d5c61913`) | Peer-list/cached-session failures use fixed diagnostics; the original peer-list clearing/notification is superseded by the atomic snapshot correction below, while cached-session null refusal remains. PeerInfo full platform/resolution decoding preserves each refused field; valid/empty snapshots, both resolution formats, positive dimensions, ordering and recovery remain covered. Session/type checks stay at callers; incremental merging is separate. Ten corrected Dart cases and three parser controls pass. The live baseline exposes synthetic values in two failed cases but its whole transaction is unaccepted because of two unattributed endpoint additions. | `live-peer-baseline-6dfedef7.json`, `live-peer-corrected-c4acc5ce.json`, `cached-peer-baseline-110cc6d3.json`, `cached-peer-corrected-d5c61913.json` |
 
-**Remembered password across a Linux viewer restart — native workflow accepted.**
-At harness `5c4bad90`, TUF `61hrq3pLTo`, retained app `cf437894` and engine
-`63493887` pass the real unchecked-to-checked Remember password choice,
-authentication, four fresh frames and normal process exit. A fresh viewer
-using the same private home and machine identity then authenticates without
-password input or a password field, presents four fresh frames and exits zero.
-Maximum sampled frame ages are 329/301 ms; this is bounded workflow evidence,
-not a latency soak. The server remains unchanged. The relevant credential,
-storage, prompt and title source files match the artifact source exactly.
-The initial attempt exposed the observer's omission of saved `@hostname`
-decoration; its corrected lookup retains exact PID/class/address/role and
-independent pixel checks. No product edit was needed. Both attempts join,
-retire RAM scratch and leave zero listener deltas. Reproduce with retained-app
-replay option `--credential-restart`; exact identities and raw evidence are in
-the audit journal. Other-platform remember-off, privileged rotation, installed authority,
-at-rest confidentiality and current release-artifact acceptance remain OPEN.
+**Retained Linux credential workflows — bounded native evidence.** These runs use
+private user-owned configuration and real viewers/servers; they do not establish
+installed privileged authority or current release-artifact acceptance. App
+`cf437894` and engine `63493887` supply the first three workflows, with relevant
+credential/storage/prompt/title source equality checked. Each authenticated phase
+observes four fresh frames; sampled maximum ages across these workflows are
+301–364 ms, not a reliability or latency-soak result. The audit retains exact
+artifacts, commands, observer repairs and raw output.
 
-**Live password rotation — bounded Linux user-server workflow accepted.**
-Harness `23a11d8f`, TUF `HBRHHVZxxC`, uses the same retained app/engine and
-unchanged authentication/storage source. After enrollment and viewer exit,
-the shipped `--password-stdin` changes the private user-server credential
-without replacing its PID/start identity or listener. The old saved viewer
-reaches the real replacement prompt; the server records exactly one typed
-key-confirmation refusal, with no shedding or rate limit. Remember password
-stays checked, explicit new input authenticates, and a third fresh process
-restores the replacement without input or a password field. All three phases
-present four fresh frames (maximum sampled ages 319/364/333 ms) and exit zero.
-The single server generation, VM and RAM workspace join/retire with four zero
-listener deltas. Reproduce with retained-app option `--credential-rotation`.
-No product change was needed. This is a normal sequential user-owned Linux
-rotation; installed privileged authorization, in-flight/concurrent rotation,
-other platforms and release-artifact acceptance remain OPEN.
+| Workflow / reproduction option | Accepted observation and source | Retained evidence |
+| --- | --- | --- |
+| Remember across restart / `--credential-restart` | Selecting Remember persists the credential; a fresh viewer with the same home/machine identity authenticates without password input or a password field. Server unchanged. | Harness `5c4bad90`, run `61hrq3pLTo` |
+| Live rotation / `--credential-rotation` | Shipped `--password-stdin` changes the private user-server credential without replacing its process/listener. The saved old credential receives exactly one key-confirmation refusal, without shedding/rate limiting; the checked replacement prompt accepts new input, and a third viewer restores it. | Harness `23a11d8f`, run `HBRHHVZxxC` |
+| Remember off / `--credential-forget` | After rotation, unchecking Remember still permits login but empties the joined peer record. A fresh viewer shows a blank unchecked prompt; Cancel exits normally and leaves the record empty. The observer reports presence only. This is active-record removal, not forensic erasure. | Harness `9f425932`, run `bl4sHxoBea` |
+| Recent peers without Documents; pointer Forget | `7e9491ad` removes desktop Recent/Favorites' APP_DIR dependency; peer files already use the configuration path and the mobile guard remains. A complete Rust/Flutter/FRB build and native A/B show the previously missing Recent peer. App `7e9491ad` then restores a saved credential, forgets it through the pointer menu without losing the connection, removes the menu item and requires a blank unchecked prompt after restart. Native Favorites remains unproved. | Harness `80ba8258`, run `xrEXPeFPQW`; `desktop-peer-documents-7e9491ad.json` |
+| Accessible Forget / button-entry action | `f286b321` leaves callback, enablement and dismissal with the reactive TextButton inside a passive PopupMenuEntry. Six baseline failures become 61 passing pointer/keyboard/semantics, dismissal, live-enablement and dialog cases. Full app `a630f880` restores, activates Forget through AT-SPI, empties the peer record and requires a blank unchecked prompt after restart. Further menu work, including pointer replay of this bundle, is PARKED; switch entries and secondary controls are unproved. | Native run `wtXXQV0Hf3`; `menu-entry-action-f286b321.json` |
 
-**Remember-off removal — bounded native Linux workflow accepted.**
-Harness `9f425932`, TUF `bl4sHxoBea`, reuses app `cf437894`/engine `63493887`.
-The first viewer enrolls and leaves a nonempty credential field. After the live
-user-server rotation, the replacement prompt's checked Remember password is
-explicitly unchecked; login still succeeds with four fresh frames, and the
-joined viewer's peer record now has an empty credential array. A third fresh
-viewer receives no password input, shows a blank prompt with remember unchecked,
-and exits zero after real Cancel. Its record remains empty. All three processes
-join normally; both authenticated phases show four fresh frames, and the
-server retains the mandatory old-credential refusal. The bounded read-only
-storage observer emits only present/empty, never credential bytes. The VM and
-RAM workspace retire with four zero listener deltas. Reproduce with retained-app
-option `--credential-forget`; no product correction was needed. This establishes
-normal removal from the active peer record and subsequent prompting, not
-forensic erasure, confidentiality, other platforms or release acceptance.
+All named native viewer processes exit normally; the VMs join and bounded RAM
+scratch retires with zero listener deltas. One earlier corrected-app Documents
+replay authenticated/decoded but failed fresh-pixel observation; later same-app
+runs pass, and the cause remains OPEN. Corrected observers retain exact window
+identity and independent pixels, including a destroyed-window control.
+Other platforms, failure/concurrency and in-flight rotation, privileged rotation,
+at-rest confidentiality, complete menus/Favorites and release acceptance remain OPEN.
 
-**Saved-peer lists without Documents; native pointer Forget workflow.**
-`7e9491ad` removes the desktop Recent/Favorites dependency on `APP_DIR`;
-desktop peer files already use the platform configuration path. The mobile
-initialization guard remains. The old Linux app authenticates and persists a
-credential but displays no recent peer when Documents is unavailable. A complete
-Rust/Flutter/FRB build of the correction succeeds, and the new app exposes that
-peer in the same missing-Documents fixture. Native Favorites and other-platform
-acceptance remain OPEN.
+**Peer history snapshots (`6fc33995`) — Dart component A/B verified.**
+`Peers.updatePeers` prepares rows and pending addresses before publishing either
+or notifying. Refused JSON/payload/row/ID decoding preserves both previous objects
+without notification; a valid empty event clears both. Pending IDs consume native
+comma/space separators while preserving case, root-dot and port spelling.
+Diagnostics remain payload-free; Recent/Favorites share this model.
 
-Harness `80ba8258`, TUF `xrEXPeFPQW`, retained app `7e9491ad` and engine
-`63493887` pass enrollment, a complete viewer restart without password input,
-a real pointer click on the peer's Forget password item, and a third viewer
-requiring a blank prompt with Remember unchecked. The first joined peer record
-contains saved PRS; the second and third are empty. Reopening the menu shows
-Forget absent, and the existing TCP connection survives the action. All three
-viewer processes exit zero. This proves normal removal and subsequent prompting,
-not forensic erasure or privileged credential authority.
-
-**Button-entry action corrected (`f286b321`).** A passive `PopupMenuEntry`
-now leaves callback, enabled state and dismissal with the existing reactive
-TextButton. The unchanged component cases reproduce six failures before the
-correction and pass all 61 cases afterward, covering pointer/keyboard/semantics,
-both dismissal modes, live enablement and dialog routing. Full app `a630f880`
-builds successfully; its already-running accessible Forget replay `wtXXQV0Hf3`
-passes at the subsequent user pivot. It enrolls, restores, activates Forget
-through AT-SPI, verifies the empty joined peer record, and requires a blank
-unchecked prompt in the third viewer. All three processes exit zero; the VM
-joins, RAM scratch retires and four listener deltas are zero. The pivot parks
-further menu work, including pointer replay of this new bundle. Switch entries,
-secondary controls and other platforms are not covered by this correction.
-Exact comparison/build/native records: `menu-entry-action-f286b321.json`.
-
-**OPEN:** One earlier
-corrected-app replay authenticated/decoded but failed fresh-pixel observation;
-later runs of the same app pass, and causation remains unresolved. The final
-authenticated phases each present four fresh frames (maximum sampled ages
-346/318 ms); this is no reliability or latency-soak claim. The observer separately
-corrects actual card/translated labels and tolerates a candidate window retiring
-during discovery, with an executed destroyed-window control. Every run joins,
-retires RAM scratch and leaves zero listener deltas. Exact failures, artifacts,
-cleanup and reproduction command are in the audit and
-`desktop-peer-documents-7e9491ad.json`. Remaining menu surfaces, failure/concurrency,
-other platforms, installed authority and release acceptance remain OPEN.
-
-**Peer history snapshots (`6fc33995`) — Dart component A/B verified; full application/native integration OPEN.**
-`Peers.updatePeers` now prepares the peer rows and pending-address list before
-publishing either or notifying listeners. A refused decode is distinct from a
-valid empty list; invalid payload/ID types, malformed JSON/rows and empty ID
-segments preserve both previous list objects without notification. Native empty
-messages still clear both lists. Pending IDs consume the native comma/space
-separator and preserve address case, root-dot and port spelling. Diagnostics
-remain fixed and payload-free. Recent and Favorites use the same model.
-
-At unchanged-product baseline `6785948d`, 79 cases pass and seven fail on unwanted
-notification/list clearing, a missing-payload type error, retained separator spaces
-and premature autocomplete completion. Some later assertions in failing cases are
-not reached. The identical four-suite/86-case cohort and three parser controls
-pass after correction, with fresh bridge/import compilation. Tests execute the
-production peer model and autocomplete loader with controlled events; no actual
-native history scan, complete application, platform event transport or network
-connection runs. Successful execution retains the strict named-inventory summary,
-not per-case success JSON. The earlier formatter-only failure is not behavioral
-evidence. Exact sources, logs, controls, joined VM/RAM cleanup and fresh ledger
-count are retained in `peer-snapshots-0afe17ae.json`; endpoint deltas are zero.
-Full platform/installed behavior, global dispatch lifetime, R-S0/R-F5, all fifteen
+The unchanged-product baseline passes 79/fails seven; the identical production
+model/autocomplete cohort then passes all 86 cases and three parser controls with
+fresh bridge/import compilation. Events are controlled doubles; native scans,
+Rust mapper/event transport and complete pages do not run. Strict summaries,
+source bindings and joined VM/RAM retirement with zero endpoint deltas are in
+`peer-snapshots-0afe17ae.json`; setup/formatter failures provide no product evidence.
+Native/installed integration, global dispatch lifetime, R-S0/R-F5, all fifteen
 credential actions and release acceptance remain OPEN. All user parks remain.
 
 **Direct credential API — OPEN/PARKED by user instruction.** Candidate `0248c624`

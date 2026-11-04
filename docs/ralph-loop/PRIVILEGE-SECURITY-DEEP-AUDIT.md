@@ -125892,54 +125892,6 @@ seconds; 402,489,344 bytes peak RAM scratch retires and all three listener delta
 are zero. Fourteen native/capsule/count files are hash-verified on CTE/TUF.
 This audit-only receipt preserves the counted ledger bytes.
 
-## 2026-11-04 — Android native scroll regression preparation
-
-Previous turn is progress: it traced the Android/iOS preference exclusion,
-recorded the user's X11 pivot and completed the counted, pushed checkpoint.
-The selected R-S0 mobile settings defect continues from clean 8b3703ce.
-
-The new parent-library Rust test calls the unchanged Session::send_mouse and
-observes real MouseEvent messages from its production viewer command channel.
-It checks off/on/off, six axis/sign combinations, wheel/trackpad/ordinary motion,
-all four modifiers, singular dispatch and channel retirement: 54 commands.
-The configured field is controlled directly; persistence and Flutter routing
-remain distinct acceptance obligations. No authenticated peer is started.
-
-The existing admitted Android emulator build compiles this exact library with
-the genuine x86_64-linux-android target and its pinned NDK/native closure.
-Cargo's --no-run builds the libtest executable without host execution; the owned
-emulator runs only the exact new test, with its matching NDK C++ runtime.
-The fixture checks copied bytes, bounded output, real target/result and private
-directory retirement; failure remains failure. The build's artifact digest
-must match the executed result before APK acceptance. Existing isolation,
-storage admission, process joins and APK smoke checks remain required.
-Primary design references are https://doc.rust-lang.org/cargo/commands/cargo-test.html
-and https://github.com/bbqsrc/cargo-ndk . No synthetic target_os setting or copied
-scroll implementation is used. This is native Rust component execution, not an
-Android UI or full-peer scrolling claim. Production behavior remains unchanged
-for the baseline. Shell syntax, Python parsing and whitespace checks pass;
-Android compilation and behavioral execution are pending.
-
-Preparation ca70a84d is pushed. Admission prTHakvLFC refuses before VM creation
-because the Android cache already contains four generations. After the exact
-launcher exits, the shared lock guards retirement of superseded 1ee23828's
-verified two APKs and sidecars (47,762,653 bytes). Newer f372aacf, aca3df16 and
-33fc2bdb remain. Historical hashes and results survive; the old binaries are
-no longer replayable without rebuilding. The three-file failed private root
-and absent RAM workspace are reconciled. Six bounded records match both hosts;
-android-scroll-cache-ca70a84d.json is 3,355 bytes, SHA-256
-a4192f8b054865d69b7a3b562508a4f973d69e2c45a8fd2a417e849fa1fe6078.
-
-Retry PBktN2SkWU is admitted at the same source. Its controller is
-.harness-state/android-scroll-admitted-ca70a84d-control, launcher PID 1680731
-start ticks 314334911, QEMU PID 1681300 start ticks 314335369. The 20 GiB guest
-uses the existing bounded android-app profile; initial listener deltas are zero.
-The process is observed live; no compilation or behavioral success is claimed.
-The two-line product correction is prepared in CTE's working tree, removing only
-the Android/iOS exclusions from the existing native preference application.
-TUF stays at ca70a84d throughout the unchanged-product baseline. Do not sync,
-replace or restart this owned run merely because its quiet build takes time;
-collect its actual exit and cleanup before replaying the candidate.
 
 ### 2026-11-01 — pivot to native camera identity
 
@@ -135876,3 +135828,108 @@ db2d96bd6862b2e9a4c6a142e850ada0dcb0c914e86ada6f988480282b4bc032.
 Whitespace and full diff review pass. Only ledger/audit records change; product,
 tests, requirements and live instructions are unchanged. No owned job remains.
 This audit-only receipt preserves the counted ledger bytes.
+
+## 2026-11-04 — Android native scroll regression preparation
+
+Previous turn is progress: it traced the Android/iOS preference exclusion,
+recorded the user's X11 pivot and completed the counted, pushed checkpoint.
+The selected R-S0 mobile settings defect continues from clean 8b3703ce.
+
+The new parent-library Rust test calls the unchanged Session::send_mouse and
+observes real MouseEvent messages from its production viewer command channel.
+It checks off/on/off, six axis/sign combinations, wheel/trackpad/ordinary motion,
+all four modifiers, singular dispatch and channel retirement: 54 commands.
+The configured field is controlled directly; persistence and Flutter routing
+remain distinct acceptance obligations. No authenticated peer is started.
+
+The existing admitted Android emulator build compiles this exact library with
+the genuine x86_64-linux-android target and its pinned NDK/native closure.
+Cargo's --no-run builds the libtest executable without host execution; the owned
+emulator runs only the exact new test, with its matching NDK C++ runtime.
+The fixture checks copied bytes, bounded output, real target/result and private
+directory retirement; failure remains failure. The build's artifact digest
+must match the executed result before APK acceptance. Existing isolation,
+storage admission, process joins and APK smoke checks remain required.
+Primary design references are https://doc.rust-lang.org/cargo/commands/cargo-test.html
+and https://github.com/bbqsrc/cargo-ndk . No synthetic target_os setting or copied
+scroll implementation is used. This is native Rust component execution, not an
+Android UI or full-peer scrolling claim. Production behavior remains unchanged
+for the baseline. Shell syntax, Python parsing and whitespace checks pass;
+Android compilation and behavioral execution are pending.
+
+Preparation ca70a84d is pushed. Admission prTHakvLFC refuses before VM creation
+because the Android cache already contains four generations. After the exact
+launcher exits, the shared lock guards retirement of superseded 1ee23828's
+verified two APKs and sidecars (47,762,653 bytes). Newer f372aacf, aca3df16 and
+33fc2bdb remain. Historical hashes and results survive; the old binaries are
+no longer replayable without rebuilding. The three-file failed private root
+and absent RAM workspace are reconciled. Six bounded records match both hosts;
+android-scroll-cache-ca70a84d.json is 3,355 bytes, SHA-256
+a4192f8b054865d69b7a3b562508a4f973d69e2c45a8fd2a417e849fa1fe6078.
+
+Retry PBktN2SkWU is admitted at the same source. Its controller is
+.harness-state/android-scroll-admitted-ca70a84d-control, launcher PID 1680731
+start ticks 314334911, QEMU PID 1681300 start ticks 314335369. The 20 GiB guest
+uses the existing bounded android-app profile; initial listener deltas are zero.
+The process is observed live; no compilation or behavioral success is claimed.
+The two-line product correction is prepared in CTE's working tree, removing only
+the Android/iOS exclusions from the existing native preference application.
+TUF stays at ca70a84d throughout the unchanged-product baseline. Do not sync,
+replace or restart this owned run merely because its quiet build takes time;
+collect its actual exit and cleanup before replaying the candidate.
+
+## 2026-11-04 — user pivot; retained-account release-ledger consolidation
+
+The user explicitly requests a different aspect. Mobile Reverse mouse wheel is
+OPEN/PARKED; source preparation ca70a84d remains, and the unverified two-line
+candidate is preserved in stash 9536b1f8a6f28b8192009b6b23b39433551a699e.
+Existing X11 and independent parks remain. No mobile correction or runtime
+acceptance is claimed.
+
+The owned baseline PBktN2SkWU was still compiling when redirected. A retained
+pidfd, exact start ticks and complete launcher argv identify 1680731/314334911
+before SIGTERM. Its existing trap joins QEMU and helpers; the capture controller
+observes exit 143. No compilation result or scroll behavioral receipt exists.
+The storage supervisor reports completed retirement, not successful workload
+acceptance. Its 20 GiB guest and RAM workspace retire; peak scratch was
+6,134,714,368 bytes. Four host listener deltas are zero. Under the shared lock,
+launcher/QEMU absence, workspace absence and exact private-tree inventory are
+proved before descriptor-relative retirement. Seventeen bounded evidence files
+match CTE/TUF. android-scroll-admitted-ca70a84d.json is 14,433 bytes, SHA-256
+010ae05176e704db7cc5671d371ae9a544092d8231c4b6ed17f09828758ce1bf.
+The prior preparation/run notes are moved intact from their accidental insertion
+among November 1 entries to this journal's chronological tail.
+
+Selected work is the binding documentation-architecture requirement. The last
+verified ledger count is 398,093 tokens, leaving 1,907 below its budget; repeated
+workflow narratives consume space needed for truthful release status. This
+bounded consolidation takes priority over another new product investigation
+while the explicit parks remain. The completion condition is less redundant
+current status with every existing accepted behavior, evidence limit, open defect,
+platform obligation and resumption restriction preserved.
+
+R-S11hj/Appendix C #370 retain the account/storage absence contract, separately
+from live peer TOML and direct-session credentials. The ledger's existing source
+and chat/CM tables remain unchanged. Five repeated native credential/menu workflow
+narratives become one table retaining source, harness/run/receipt and reproduction
+identities. Shared cleanup and evidence limits are stated once. The unresolved
+authenticated/decoded-but-no-fresh-pixels observation, native Favorites gap,
+menu park, absence of forensic-erasure/confidentiality/privileged-authorization
+proof and complete release obligations remain explicit. The peer-snapshot row
+retains atomic publication, empty/refused distinction, address spelling,
+baseline/corrected counts, doubles and native gaps. Intermediate observer/setup
+details and individual timings remain in the existing cited capsules, audit and
+pre-consolidation Git at ede1b15d; no evidence is deleted or upgraded.
+
+Product, tests, requirements and live instructions are unchanged. Validation is
+exact edit-boundary/content review, whitespace checks and a fresh isolated actual
+ledger-token count; no product test rerun is warranted by this document edit.
+
+Exact comparison passes: the workflow record falls from 8,171 to 4,574 bytes;
+the complete ledger, including the new pivot status, falls from 1,821,694 to
+1,818,243 bytes. All other ledger bytes and pre-existing audit content are
+preserved, with the preparation block relocated intact. The three cited
+workflow capsules remain present with recorded hashes. Classification receipt
+retained-account-ledger-ede1b15d.json is 1,228 bytes, SHA-256
+3011c4261ebc85fce0fd0b017103c2ce4540a772c8f0fda9e7d4eb0bbca36bcd.
+Actual token measurement follows; byte reduction alone is not a token count.

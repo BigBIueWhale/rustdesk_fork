@@ -136017,3 +136017,14 @@ ABI/storage absence, native asset loading and glyph rendering, final Debian and
 aarch64 stable-signed Android packages, Windows/Apple artifacts, installed behavior,
 cold equality, independent reproduction and review remain OPEN. No release is
 created. Whitespace and complete diff review precede the fresh required ledger count.
+
+Commit 0e4b0835 is pushed. Fresh isolated count 0wGWJhWK3l passes in 27 outer
+seconds: 397,738 tokens / 1,819,621 bytes, SHA-256
+a42673da78bd36367c7af38fc5cb4b33732a8469d195ecf1a492da4ca7d17cd0.
+Seven token controls and the full byte round trip pass, with 42 workload modes,
+81 admissions and five refusals. Three listener deltas are zero; exact processes,
+helpers/private/RAM retire, with 402,780,160 bytes peak scratch. Twelve bounded
+files match CTE/TUF; account-assets-ledger-0e4b0835.json is 5,114 bytes, SHA-256
+0ccfac8b5ba4e6b7dbebc5635be0971812f9c5408dbdde2dd6c16f852941ca3f.
+No owned run remains. The final diff contains only the two obsolete font deletions
+and ledger/audit records; this audit receipt leaves the measured ledger unchanged.

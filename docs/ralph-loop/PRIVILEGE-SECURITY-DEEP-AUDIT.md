@@ -138147,10 +138147,24 @@ Under the shared lock, pidfd checks establish wrapper 1687905 and QEMU 1688434
 absence; matching helpers, private run state and RAM workspace run.pkyuym4s
 (identity 29:468) are absent. All four decoded listener inventories have zero
 additions/removals. RAM scratch peaks at 2,362,740,736 bytes and is retired.
-Only bounded evidence remains; no new corpus download, image or build cache was
-created. Capsule nfc-conformance-66dc8496.json is 4,993 bytes, SHA-256
+Only bounded evidence remains; no new corpus download, image or build cache is
+retained. Capsule nfc-conformance-66dc8496.json is 4,993 bytes, SHA-256
 e1df1cdbe65050c8199d47753a8ce10a8bdcc3c1a8a71584622098abe1ff9fb2;
 its retirement receipt and eleven exact raw/control records remain on CTE.
 The live ledger records the normalization checkpoint and pivot. Full UI-input,
 Argon2 derivation, cross-platform peer, shipping-artifact and independent-review
 acceptance remains OPEN; no password-authority or complete release claim follows.
+
+Fresh CTE ledger count `ziWWiYq13q` at `2597c863` completes in 29 seconds:
+398,673 tokens, 1,823,604 bytes, input SHA-256
+62dd2661fe3eedf3ae00a52f0c719f64059ec71149718b5f4b1b9a1fcea2f006.
+The pinned tiktoken 0.12.0/cl100k_base/encode_ordinary method passes seven controls
+and the whole-input byte round trip; 1,327 tokens remain below the budget. Existing
+42-mode/82-control/five-refusal storage admission checks also pass. Exact wrapper,
+QEMU, helpers, private state and RAM retirement are verified under the shared
+lock; three listener inventories have zero additions/removals. Scratch peaks at
+402,751,488 bytes. Capsule nfc-ledger-2597c863.json is 5,142 bytes, SHA-256
+cbad35eb7894603c27a47622fd0ed72ca0c323b04e84376e3fe2e099f9d7d6ee.
+Whitespace inspection passes. This Unicode normalization validation reaches its
+checkpoint; all broader acceptance gaps and independent parks remain. No owned
+VM job remains active, and the overall release goal remains active.

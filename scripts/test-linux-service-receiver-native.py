@@ -160,9 +160,10 @@ def install_polkit(archive_sha, manifest_sha):
           "libpam-systemd=252.39-1~deb12u2 packages=82", flush=True)
 
 
-def child_record():
-    main = int(run(["/usr/bin/systemctl", "show", "rustdesk.service",
-                    "--property=MainPID", "--value"]).stdout.strip())
+def child_record(supervisor=None):
+    main = supervisor if supervisor is not None else int(run(
+        ["/usr/bin/systemctl", "show", "rustdesk.service",
+         "--property=MainPID", "--value"]).stdout.strip())
     if main <= 1:
         raise RuntimeError("installed supervisor is absent")
     path = Path("/run/rustdesk/service-child.record")
@@ -1644,8 +1645,8 @@ def admin_change(value, record, phase="apply", actor=None):
           "authentication=polkit-pam policy=shipped durable=changed listener=owned cleanup=agent-client-joined", flush=True)
 
 
-def direct_listener(record):
-    if child_record() != record:
+def direct_listener(record, supervisor=None):
+    if child_record(supervisor) != record:
         raise RuntimeError("serving child changed before listener proof")
     proc = Path("/proc") / str(record["pid"])
     listeners = []
@@ -1671,7 +1672,7 @@ def direct_listener(record):
         match = re.fullmatch(r"socket:\[([1-9][0-9]*)\]", target)
         if match is not None:
             sockets.add(int(match[1]))
-    if listeners[0] not in sockets or child_record() != record:
+    if listeners[0] not in sockets or child_record(supervisor) != record:
         raise RuntimeError("direct listener is not owned by the retained child")
     return listeners[0]
 
@@ -2666,6 +2667,150 @@ def stopped_child_shutdown(commit, binary_sha, probe_sha):
                 os.close(fd)
 
 
+def service_parent_death(commit, binary_sha, probe_sha):
+    unit = Path("/etc/systemd/system/rustdesk.service")
+    record_path = Path("/run/rustdesk/service-child.record")
+    if any(os.path.lexists(p) for p in (unit, record_path.parent, Path("/run/RustDesk-service"))):
+        raise RuntimeError("manual supervisor fixture requires absent service state")
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.prctl.restype = ctypes.c_int
+    previous = ctypes.c_int()
+    if libc.prctl(37, ctypes.byref(previous), 0, 0, 0) != 0 or previous.value != 0:
+        raise RuntimeError("fixture subreaper state differs")
+    if libc.prctl(36, 1, 0, 0, 0) != 0:
+        raise OSError(ctypes.get_errno(), "cannot retain orphaned service child")
+    value = "Receiver-parent-death-2026!"
+    supervisor = None
+    sibling = None
+    retained = []
+    child_pid = None
+    child_fd = None
+    observations = []
+    try:
+        sibling = subprocess.Popen(["/usr/bin/sleep", "120"], env=ENV)
+        for generation in (1, 2):
+            with (WORK / f"manual-supervisor-{generation}.log").open("xb") as output:
+                supervisor = subprocess.Popen(["/usr/bin/rustdesk", "--service"], env=ENV,
+                                              stdout=output, stderr=subprocess.STDOUT)
+            supervisor_fd = os.pidfd_open(supervisor.pid)
+            retained.append(supervisor_fd)
+            deadline = time.monotonic() + 25
+            last = ""
+            while True:
+                if supervisor.poll() is not None:
+                    raise RuntimeError("manual supervisor exited before readiness")
+                try:
+                    record = child_record(supervisor.pid)
+                    for suffix in ("_service", "_service_password", "_service_credential"):
+                        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as endpoint:
+                            endpoint.settimeout(1)
+                            endpoint.connect(f"/run/RustDesk-service/ipc{suffix}")
+                            peer = struct.unpack("3i", endpoint.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+                            if peer != (supervisor.pid, 0, 0):
+                                raise RuntimeError("manual supervisor endpoint owner differs")
+                    break
+                except (OSError, ValueError, RuntimeError) as error:
+                    last = str(error)
+                if time.monotonic() >= deadline:
+                    raise RuntimeError(f"manual supervisor readiness failed: {last}")
+                time.sleep(0.05)
+            child_pid = record["pid"]
+            child_fd = os.pidfd_open(child_pid)
+            retained.append(child_fd)
+            if (child_record(supervisor.pid) != record or unit.exists()
+                    or digest(Path(f"/proc/{supervisor.pid}/exe")) != binary_sha
+                    or Path(f"/proc/{supervisor.pid}/cgroup").read_bytes() != Path("/proc/self/cgroup").read_bytes()):
+                raise RuntimeError("manual supervisor identity or manager isolation differs")
+            if generation == 1:
+                change(0, value, True)
+                durable = credential()
+            elif credential() != durable or record["generation"] == observations[0]["record"]["generation"]:
+                raise RuntimeError("manual restart did not preserve credential and replace generation")
+            deadline = time.monotonic() + 10
+            while direct_listener(record, supervisor.pid) is None and time.monotonic() < deadline:
+                time.sleep(0.05)
+            listener = direct_listener(record, supervisor.pid)
+            if listener is None:
+                raise RuntimeError("manual child did not open its direct listener")
+            login = run(["/usr/bin/setpriv", "--reuid=4002", "--regid=4002", "--clear-groups",
+                         "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
+                         str(PROBE), "127.0.0.1:21118", "--password-stdin", "ok", "login"],
+                        input=value + "\n", timeout=15)
+            lines = login.stdout.splitlines()
+            if (login.stderr or len(lines) != 3 or lines[0] != "probe_client: keying ok=true (expected=ok)"
+                    or lines[-1] != "probe_client: PASS" or "[REMOTE-LOGIN-ADMITTED peer-info]" not in lines[1]
+                    or credential() != durable or child_record(supervisor.pid) != record):
+                raise RuntimeError("manual child authenticated login failed")
+            print(f"LINUX_SERVICE_PARENT_DEATH_LOGIN=pass generation={generation} uid=4002 cpace=mutual "
+                  f"remote=peer-info probe_sha256={probe_sha}", flush=True)
+            if generation == 1:
+                before_record = record_path.read_bytes()
+                began = time.monotonic()
+                signal.pidfd_send_signal(supervisor_fd, signal.SIGKILL)
+                if supervisor.wait(timeout=5) != -signal.SIGKILL:
+                    raise RuntimeError("manual supervisor crash status differs")
+                if not select.select([child_fd], [], [], max(0, 5 - (time.monotonic() - began)))[0]:
+                    raise RuntimeError("service child survived its parent without manager cleanup")
+                waited, status = os.waitpid(child_pid, 0)
+                if waited != child_pid or not os.WIFSIGNALED(status) or os.WTERMSIG(status) != signal.SIGKILL:
+                    raise RuntimeError("adopted service child did not terminate by parent-death SIGKILL")
+                child_pid = None
+                elapsed = time.monotonic() - began
+                if elapsed >= 5 or record_path.read_bytes() != before_record:
+                    raise RuntimeError("parent-death retirement exceeded deadline or changed durable record")
+            else:
+                signal.pidfd_send_signal(supervisor_fd, signal.SIGTERM)
+                if supervisor.wait(timeout=20) != 0 or not select.select([child_fd], [], [], 0)[0]:
+                    raise RuntimeError("manual restarted service did not retire normally")
+                if record_path.exists():
+                    raise RuntimeError("normal manual shutdown retained its child record")
+                child_pid = None
+                elapsed = None
+            if (Path(f"/proc/{record['pid']}").exists() or unit.exists() or sibling.poll() is not None
+                    or credential() != durable
+                    or any(len(f := line.split()) >= 10 and f[3] == "0A" and f[9] == str(listener)
+                           for line in Path("/proc/net/tcp").read_text().splitlines()[1:])):
+                raise RuntimeError("manual retirement left a child/listener or affected unrelated state")
+            observations.append({"generation": generation, "record": record, "listener_inode": listener,
+                                 "supervisor_exit": supervisor.returncode, "child_reaped": True,
+                                 "parent_death_seconds": elapsed, "sibling_alive": True, "credential_unchanged": True})
+            print("LINUX_SERVICE_PARENT_DEATH_OBSERVED=" + json.dumps(observations[-1], sort_keys=True), flush=True)
+    except BaseException:
+        for log in sorted(WORK.glob("manual-supervisor-*.log")):
+            with log.open("rb") as output:
+                output.seek(max(0, os.fstat(output.fileno()).st_size - 4096))
+                print("LINUX_SERVICE_PARENT_DEATH_DIAGNOSTIC=" + json.dumps(
+                    {"file": log.name, "tail": output.read(4096).decode(errors="replace")}), flush=True)
+        raise
+    finally:
+        try:
+            if supervisor is not None and supervisor.poll() is None:
+                supervisor.terminate()
+                supervisor.wait(timeout=20)
+            if child_pid is not None and child_fd is not None:
+                if not select.select([child_fd], [], [], 0)[0]:
+                    signal.pidfd_send_signal(child_fd, signal.SIGKILL)
+                if not select.select([child_fd], [], [], 5)[0]:
+                    raise RuntimeError("failed manual scenario could not retire its exact child")
+                try:
+                    os.waitpid(child_pid, 0)
+                except ChildProcessError:
+                    if Path(f"/proc/{child_pid}").exists():
+                        raise RuntimeError("failed manual scenario left its exact child")
+        finally:
+            if sibling is not None:
+                if sibling.poll() is None:
+                    sibling.terminate()
+                sibling.wait(timeout=5)
+            for fd in retained:
+                os.close(fd)
+            if libc.prctl(36, 0, 0, 0, 0) != 0:
+                raise OSError(ctypes.get_errno(), "cannot restore fixture subreaper state")
+    print(f"LINUX_SERVICE_PARENT_DEATH_NATIVE=pass generations=2 crashes=1 logins=2 source={commit} "
+          f"binary_sha256={binary_sha} probe_sha256={probe_sha} fixture=installed-layout "
+          "manager=absent logind=actual child=supervised signal=supervisor-pidfd cleanup=joined", flush=True)
+
+
 def service_crash(commit, binary_sha, probe_sha, child_only=False):
     prefix = "LINUX_SERVICE_CHILD_CRASH" if child_only else "LINUX_SERVICE_CRASH"
     target = "child" if child_only else "supervisor"
@@ -3358,7 +3503,7 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, ex
           f"binary_sha256={binary_sha} fixture=installed-layout unit=shipped legacy=unchanged cleanup=joined", flush=True)
 
 
-def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False, collisions=False, exclusive=False, desktop_exclusive=False, crash=False, recovery=False, child_crash=False, stopped_child=False, record_cleanup=False):
+def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False, collisions=False, exclusive=False, desktop_exclusive=False, crash=False, recovery=False, child_crash=False, stopped_child=False, record_cleanup=False, parent_death=False):
     guard()
     checked = run(["/usr/bin/setpriv", "--reuid=1000", "--regid=1000", "--clear-groups",
                    "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
@@ -3387,6 +3532,9 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
     if "not found" in run(["/usr/bin/ldd", str(PROBE)]).stdout:
         raise RuntimeError("network probe runtime dependency is missing")
     run(["/usr/bin/systemctl", "is-active", "systemd-logind.service", "polkit.service"])
+    if parent_death:
+        installed_desktop(lambda: service_parent_death(commit, spec["sha256"], probe_spec["sha256"]))
+        return
     if record_cleanup:
         installed_desktop(lambda actor, session, pam: record_cleanup_retry(
             commit, spec["sha256"], probe_spec["sha256"], actor, session, pam), close_session=True)
@@ -3720,6 +3868,8 @@ if __name__ == "__main__":
         tests(sys.argv[1:6], crash=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--child-crash":
         tests(sys.argv[1:6], child_crash=True)
+    elif len(sys.argv) == 7 and sys.argv[-1] == "--parent-death":
+        tests(sys.argv[1:6], parent_death=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--stopped-child":
         tests(sys.argv[1:6], stopped_child=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--record-cleanup":

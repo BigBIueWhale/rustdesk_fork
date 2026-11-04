@@ -137387,3 +137387,38 @@ clipboard-evidence-ledger-1f91c609.json has SHA-256
 bda2bdd9933f2844a3c787674fcd08d0230a61a4a7c17494f855a6a4cbf2221e.
 All twelve bounded evidence files match CTE/TUF. This audit-only receipt preserves
 the counted ledger. The documentation checkpoint is complete; no owned job remains.
+
+## 2026-11-04 — Linux supervisor parent-death acceptance without manager cleanup
+
+Previous goal turn: progress. Ledger reconciliation is complete; the delayed
+4fd74591 receipt push now succeeds and TUF is synchronized. Select R-S0 and
+R-S11c-27's init-independent service-child lifetime. Existing actual-systemd crash
+evidence proves combined application/manager cleanup, leaving independent parent-
+death handling unproved on the retained binary. This is a consequential, executable
+acceptance gap, ahead of further history compression. The parked startup-failure
+investigation concerns pre-registration cleanup and is not resumed. All other
+explicit parks, including privacy, clipboard and hostname resolution, remain.
+
+Linux's PR_SET_PDEATHSIG contract describes credential/privileged-exec clearing and
+termination of the creating thread; PR_SET_CHILD_SUBREAPER permits exact orphan
+reaping by a surviving ancestor. Primary references:
+https://man7.org/linux/man-pages/man2/PR_SET_PDEATHSIG.2const.html and
+https://man7.org/linux/man-pages/man2/PR_SET_CHILD_SUBREAPER.2const.html.
+The product arms after credential transition and again in the final image, then
+checks parent identity. Current Linux supervisor/desktop/core/server sources match
+retained e0c73321; the intervening ipc.rs difference is a Windows-only test fixture.
+The retained manifest matches b04d19948bec8bb5e1604699d2cded956725e4558dd8d4d492a6ac8505a0bb60.
+
+The new closed --linux-service-parent-death-tests profile uses the existing admitted
+receiver VM and actual logind/X11 desktop. Its fixture starts the real supervisor
+directly, with no RustDesk service unit and the same cgroup as its living parent.
+Kernel IPC credentials, child record/principal/image and listener ownership bind
+the running processes. A real UID-4002 CPace/Remote login precedes pidfd-directed
+SIGKILL of the supervisor alone. The fixture becomes a subreaper and requires the
+exact child to terminate by SIGKILL and be reaped within five seconds, with its
+listener absent, unrelated sibling alive and durable credential/record preserved.
+An explicit second start must recover the dead record, preserve the credential,
+complete another login and stop normally with child/record/listener retirement.
+All actors and the desktop then join. This establishes only the named debug/headless
+installed-layout scenario if it passes; final packages, other init managers and
+complete R-S0/R-F5 acceptance remain open. No product patch or rebuild is needed.

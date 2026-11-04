@@ -533,7 +533,7 @@ case "$#:${1:-}" in
             || { echo 'host network test input/run overrides are forbidden' >&2; exit 2; }
         MODE=host-network-tests
         ;;
-    5:--linux-service-receiver-tests|5:--linux-service-convergence-failure-tests|5:--linux-service-notification-failure-tests|5:--linux-service-network-drain-tests|5:--linux-service-authorization-timeout-tests|5:--linux-service-startup-tests|5:--linux-service-incumbent-tests|5:--linux-service-collision-tests|5:--linux-service-exclusive-tests|5:--linux-service-desktop-exclusive-tests|5:--linux-service-crash-tests|5:--linux-service-child-crash-tests|5:--linux-service-stopped-child-tests|5:--linux-service-record-cleanup-tests|5:--linux-service-recovery-refusal-tests)
+    5:--linux-service-receiver-tests|5:--linux-service-convergence-failure-tests|5:--linux-service-notification-failure-tests|5:--linux-service-network-drain-tests|5:--linux-service-authorization-timeout-tests|5:--linux-service-startup-tests|5:--linux-service-incumbent-tests|5:--linux-service-collision-tests|5:--linux-service-exclusive-tests|5:--linux-service-desktop-exclusive-tests|5:--linux-service-crash-tests|5:--linux-service-child-crash-tests|5:--linux-service-parent-death-tests|5:--linux-service-stopped-child-tests|5:--linux-service-record-cleanup-tests|5:--linux-service-recovery-refusal-tests)
         [ "$2" = --peer-commit ] && [ "$4" = --peer-manifest-sha256 ] \
             && [[ "$3" =~ ^[0-9a-f]{40}$ ]] && [[ "$5" =~ ^[0-9a-f]{64}$ ]] \
             && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -561,6 +561,8 @@ case "$#:${1:-}" in
             LINUX_RECEIVER_PROFILE=crash
         elif [ "$1" = --linux-service-child-crash-tests ]; then
             LINUX_RECEIVER_PROFILE=child-crash
+        elif [ "$1" = --linux-service-parent-death-tests ]; then
+            LINUX_RECEIVER_PROFILE=parent-death
         elif [ "$1" = --linux-service-stopped-child-tests ]; then
             LINUX_RECEIVER_PROFILE=stopped-child
         elif [ "$1" = --linux-service-record-cleanup-tests ]; then
@@ -880,6 +882,7 @@ case "$#:${1:-}" in
         printf 'Installed Linux automatic crash recovery: %s --linux-service-crash-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Installed Linux child crash recovery: %s --linux-service-child-crash-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Installed Linux stopped-child shutdown: %s --linux-service-stopped-child-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
+        printf 'Linux manual supervisor parent-death cleanup: %s --linux-service-parent-death-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Installed Linux post-reap record cleanup: %s --linux-service-record-cleanup-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Linux live-record recovery refusal: %s --linux-service-recovery-refusal-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Exact CM read-tick ownership: %s --cm-read-tick-tests\n' "${0##*/}" >&2
@@ -5234,6 +5237,8 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
         linux_receiver_guest_flag=--linux-service-crash-tests
     elif [ "$LINUX_RECEIVER_PROFILE" = child-crash ]; then
         linux_receiver_guest_flag=--linux-service-child-crash-tests
+    elif [ "$LINUX_RECEIVER_PROFILE" = parent-death ]; then
+        linux_receiver_guest_flag=--linux-service-parent-death-tests
     elif [ "$LINUX_RECEIVER_PROFILE" = stopped-child ]; then
         linux_receiver_guest_flag=--linux-service-stopped-child-tests
     elif [ "$LINUX_RECEIVER_PROFILE" = record-cleanup ]; then
@@ -5958,7 +5963,13 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
     linux_receiver_binary_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/rustdesk" | /usr/bin/awk '{print $1}')
     linux_receiver_probe_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/probe_client" | /usr/bin/awk '{print $1}')
     require_exact_fixed_receipt 'verify-linux-service-password-ipc: source checks passed' 'supplementary password IPC source checks'
-    if [ "$LINUX_RECEIVER_PROFILE" = record-cleanup ]; then
+    if [ "$LINUX_RECEIVER_PROFILE" = parent-death ]; then
+        for generation in 1 2; do
+            require_exact_fixed_receipt "LINUX_SERVICE_PARENT_DEATH_LOGIN=pass generation=$generation uid=4002 cpace=mutual remote=peer-info probe_sha256=$linux_receiver_probe_sha" 'manual Linux supervisor login'
+        done
+        require_exact_fixed_receipt "LINUX_SERVICE_PARENT_DEATH_NATIVE=pass generations=2 crashes=1 logins=2 source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha probe_sha256=$linux_receiver_probe_sha fixture=installed-layout manager=absent logind=actual child=supervised signal=supervisor-pidfd cleanup=joined" 'Linux parent-death retirement without service manager'
+        require_exact_fixed_receipt 'LINUX_SERVICE_DESKTOP_SESSION=retired logind=actual x11=owned users=removed' 'owned desktop session retirement'
+    elif [ "$LINUX_RECEIVER_PROFILE" = record-cleanup ]; then
         require_exact_fixed_receipt "LINUX_RECEIVER_CPACE=pass phase=record-cleanup-control uid=4002 server=supervised-child listener=owned key_confirmation=mutual probe_sha256=$linux_receiver_probe_sha" 'installed Linux record cleanup control'
         require_exact_fixed_receipt "LINUX_SERVICE_RECORD_CLEANUP_NATIVE=pass faults=1 post_reap_signals=0 cpace=1 source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha probe_sha256=$linux_receiver_probe_sha fixture=installed-layout trace=actual-syscalls cleanup=joined" 'installed Linux post-reap signal refusal'
         require_exact_fixed_receipt 'LINUX_SERVICE_DESKTOP_SESSION=retired logind=actual x11=owned users=removed' 'owned desktop session retirement'
@@ -9754,7 +9765,12 @@ elif [ "$MODE" = ledger-token-count ]; then
     printf 'LEDGER_TOKEN_COUNT_OUTER=pass host_uid=%s commit=%s tree=%s input_sha256=%s recipe_sha256=%s network=none listeners=no-harness-addition inputs=readonly product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$ledger_input_sha" "$ledger_recipe_sha" "$vm_elapsed_seconds"
 elif [ "$MODE" = linux-service-receiver-tests ]; then
-    if [ "$LINUX_RECEIVER_PROFILE" = record-cleanup ]; then
+    if [ "$LINUX_RECEIVER_PROFILE" = parent-death ]; then
+        printf 'LINUX_SERVICE_PARENT_DEATH_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s generations=2 crashes=1 logins=2 fixture=installed-layout manager=absent logind=actual network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
+            "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \
+            "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" "$linux_receiver_binary_sha" "$vm_elapsed_seconds"
+    elif [ "$LINUX_RECEIVER_PROFILE" = record-cleanup ]; then
         printf 'LINUX_SERVICE_RECORD_CLEANUP_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s faults=1 post_reap_signals=0 cpace=1 fixture=installed-layout trace=actual-syscalls network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
             "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \

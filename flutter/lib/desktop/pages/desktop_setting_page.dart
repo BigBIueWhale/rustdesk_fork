@@ -188,12 +188,14 @@ class _DesktopSettingPageState extends State<DesktopSettingPage>
         children: <Widget>[
           SizedBox(
             width: _kTabWidth,
-            child: ListView(
-              primary: false,
-              children: [
-                _header(context),
-                ..._settingTabs().map((tab) => _listItem(tab: tab)),
-              ],
+            child: FocusTraversalGroup(
+              child: ListView(
+                primary: false,
+                children: [
+                  _header(context),
+                  ..._settingTabs().map((tab) => _listItem(tab: tab)),
+                ],
+              ),
             ),
           ),
           const VerticalDivider(width: 1),
@@ -248,40 +250,45 @@ class _DesktopSettingPageState extends State<DesktopSettingPage>
   Widget _listItem({required _TabInfo tab}) {
     return Obx(() {
       bool selected = tab.key == selectedTab.value;
-      return ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: _kTabHeight),
-        child: InkWell(
-          onTap: () {
-            if (selectedTab.value != tab.key) {
-              int index = DesktopSettingPage.tabKeys.indexOf(tab.key);
-              if (index == -1) {
-                return;
+      return Semantics(
+        button: true,
+        enabled: true,
+        selected: selected,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: _kTabHeight),
+          child: InkWell(
+            onTap: () {
+              if (selectedTab.value != tab.key) {
+                int index = DesktopSettingPage.tabKeys.indexOf(tab.key);
+                if (index == -1) {
+                  return;
+                }
+                controller.jumpToPage(index);
               }
-              controller.jumpToPage(index);
-            }
-            selectedTab.value = tab.key;
-          },
-          child: Row(children: [
-            Container(
-              width: 4,
-              height: _kTabHeight * 0.7,
-              color: selected ? _accentColor : null,
-            ),
-            Icon(
-              selected ? tab.selected : tab.unselected,
-              color: selected ? _accentColor : null,
-              size: 20,
-            ).marginOnly(left: 13, right: 10),
-            Expanded(
-              child: Text(
-                translate(tab.label),
-                style: TextStyle(
-                    color: selected ? _accentColor : null,
-                    fontWeight: FontWeight.w400,
-                    fontSize: _kContentFontSize),
-              ).marginOnly(top: 8, bottom: 8, right: 10),
-            ),
-          ]),
+              selectedTab.value = tab.key;
+            },
+            child: Row(children: [
+              Container(
+                width: 4,
+                height: _kTabHeight * 0.7,
+                color: selected ? _accentColor : null,
+              ),
+              Icon(
+                selected ? tab.selected : tab.unselected,
+                color: selected ? _accentColor : null,
+                size: 20,
+              ).marginOnly(left: 13, right: 10),
+              Expanded(
+                child: Text(
+                  translate(tab.label),
+                  style: TextStyle(
+                      color: selected ? _accentColor : null,
+                      fontWeight: FontWeight.w400,
+                      fontSize: _kContentFontSize),
+                ).marginOnly(top: 8, bottom: 8, right: 10),
+              ),
+            ]),
+          ),
         ),
       );
     });

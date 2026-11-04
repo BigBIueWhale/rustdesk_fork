@@ -138547,3 +138547,22 @@ new settings-sidebar subset reuses the existing exact-page/native-double VM
 fixture and four sidebar controls; broader settings/theme inventories retain
 all their cases. First run unchanged product, then the same tests after any
 necessary correction. No installed/native-screen-reader acceptance is implied.
+
+Unchanged-product CTE UqAJc1Aepk at 26e47801 completes in 292.728 outer
+seconds. Four controls pass; the new semantics case observes missing button and
+enabled flags, and Tab traversal loses the expected About destination after the
+first three entries. Grouping the sidebar is appropriate under Flutter's
+FocusTraversalGroup/ReadingOrderTraversalPolicy contract: one navigation region
+should not interleave with controls in the changing content page. Add that group
+and selected/enabled/button semantics without changing navigation handlers or
+settings authority. The exact six cases remain unchanged for comparison.
+
+Four listener deltas are zero. Exact wrapper/QEMU and five captured wrapper
+children are absent by pidfd ESRCH; no host process sweep is used. Under the
+shared lock, retained console/output/results are reconciled and the exact failed
+private tree is retired by inode/hash. RAM scratch peaks at 6,385,709,056 bytes
+and retires. Capsule sidebar-before-26e47801.json (29,485 bytes, SHA-256
+4a6e23aeb8d11963732cc5dd23eb69b523fa263f24101fab4cad66637cf6b978)
+retains twelve raw/control records; its retirement receipt is 261 bytes. The
+baseline intentionally fails before parser controls and the final source-copy
+check. Candidate runtime acceptance follows before claiming a correction.

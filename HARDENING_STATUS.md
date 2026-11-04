@@ -43,6 +43,12 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-04):** Further Android boot-first credential reload is
+OPEN/PARKED before execution. Six unfinished harness edits are preserved in stash
+`7549e817c376e670fde85eddba74cda20f0e7276`. The accepted healthy process-reload
+evidence remains valid; it does not establish boot-first startup. Work moves to
+release-ledger consolidation; all independent parks remain.
+
 **User pivot (2026-11-04):** Direct SysV init-script lifecycle validation is
 OPEN/PARKED before implementation or execution. Existing Linux service evidence
 below remains valid; it does not establish SysV integration or final-package
@@ -4742,190 +4748,39 @@ those obligations.
 
 <a id="linux-ipc-components"></a>
 
-**Installed Linux IPC startup (`674573db`).** The shipped systemd unit and
-debug/headless binary `154f69db` pass four native cases in TUF
-`eCAUBD6TmW`: foreign-owned and symlinked `/run/RustDesk-service` parents
-refuse readiness without changing their identity, metadata or sentinel contents;
-fresh creation and a subsequent stop/start become ready with root-owned 0711
-parent and three 0666 sockets, each kernel-bound to the exact supervisor. Both
-successful generations exit zero and are reaped; every service cgroup retires.
-The foreign-owned retired `/tmp/RustDesk-service` fixture remains unchanged.
-Product/build inputs match the retained binary's source. This is sessionless
-installed-layout execution, not final Debian packaging, active-desktop/credential
-authorization, replacement races, other init systems or complete R-S0 acceptance.
-Those remain OPEN. `--linux-service-startup-tests` reuses the canonical bounded
-VM. The audit records the initial unit-result observer repair, exact artifacts,
-four-case raw receipts and correction of the outer summary's inherited counts.
-That superseded binary was retired after manifest/hash verification to admit the
-current build; its bounded evidence remains retained.
+**Linux installed-layout lifecycle evidence — verified scenarios; release acceptance OPEN.**
+The table distinguishes each native scenario from final-package and complete authority
+acceptance. Tests use the shipped systemd unit unless the manual row says otherwise,
+source-bound debug/headless binaries, and disposable TUF VMs. Desktop cases use actual
+PAM/logind/X11 sessions; authenticated controls establish CPace/Remote PeerInfo, not
+rendered pixels or input. Each accepted run retires its exact owned processes,
+cgroups/desktop fixtures where applicable, private state and RAM, with zero host
+listener deltas. Capsule filenames are relative to `.harness-state/verifier-vm/`;
+they and the audit retain exact timings, run IDs, hashes, observations and fixture repairs.
 
-**Installed live-endpoint preservation (`753d594a`).** TUF `nsuFGI7S20`
-passes six cases on the same source-matched binary and shipped unit. An
-unrelated root process occupies each of `_service`, `_service_password` and
-`_service_credential` in turn. Startup refuses before readiness, sends no
-payload over either observed probe, and preserves the live socket's identity,
-metadata and transport functionality. Closing the fixture listener leaves its
-pathname; the next real service start recovers it and owns all three sockets.
-All three successful generations stop cleanly and are reaped, with cgroups
-retired and the public temporary namespace unchanged. This adds installed-layout
-R-S11bs evidence; genuine-image incumbents, non-root actors, races, privileged
-action authorization, final packages and other-platform acceptance remain OPEN.
+| Scenario and source checkpoint | Demonstrated behavior | Retained evidence |
+| --- | --- | --- |
+| IPC startup (`674573db`, binary `154f69db`) | Four cases: foreign-owned/symlinked service parents refuse readiness without mutation; fresh startup and stop/start produce root-owned 0711 parent and three 0666 sockets kernel-bound to each supervisor. Successful generations exit zero. The retired public temporary namespace stays unchanged. | Audit's installed Linux IPC startup record; `--linux-service-startup-tests`. The superseded binary was retired after manifest/hash verification; bounded evidence remains. |
+| Live endpoints (`753d594a`, same binary) | Six cases: an unrelated root listener occupies each privileged endpoint in turn. Startup refuses before readiness, discloses no payload over either probe and preserves socket identity, metadata and transport. Once that listener closes, startup recovers its stale pathname, owns all three endpoints and stops cleanly. | `nsuFGI7S20` and its audit record. |
+| Non-socket endpoints (`120b3030`, binary `fdbab046`) | Twenty-four cases: regular file, FIFO, sentinel directory and symlink at each endpoint refuse startup unchanged, including contents and symlink target. After exact obstruction removal, each fresh supervisor owns all three sockets and exits zero. Root-created obstructions do not demonstrate unprivileged access to the protected parent. | `linux-namespace-120b3030.json`; source/seven-payload build provenance in `linux-namespace-build-fdbab046.json`. |
+| Supervisor exclusivity (`541f8436`/`c1479c68`, `fdbab046`; R-S11c-27b) | Sessionless and desktop runs each cover two orderly generations and six duplicate launches, singly and concurrently. Duplicates exit 1/reap; incumbent process/unit, sockets, lease and desktop child/record stay intact. Two UID-4002 peers complete CPace before duplication and receive encrypted-login PeerInfo afterward on the same connections. Restart reacquires ownership. | `linux-exclusive-541f8436.json`, `linux-desktop-accepted-c1479c68.json`. |
+| Automatic supervisor crash recovery (`f4a443dc`, `fdbab046`) | Supervisor-only pidfd SIGKILL retires its exact child and accepted prekey connection. Without fixture restart or child signaling, systemd creates exactly one fresh supervisor/child/generation. Runtime-directory/lease identity, protected ownership and credential persist; fresh endpoints, CPace/Remote logins before/after, stability observation and ordinary stop pass. | `linux-crash-f4a443dc.json`. |
+| Manual parent-death cleanup (`89828922`, new matching binary) | With no RustDesk service unit, supervisor-only pidfd SIGKILL causes the selected UID-4001 child to die by SIGKILL and be reaped; its listener disappears and an unrelated sibling survives. Credential/record bytes persist. Explicit restart recovers the dead record with a new generation; both generations pass UID-4002 logins and clean stop. The same artifact also passes automatic systemd recovery. | `linux-parent-death-build-89828922.json`, `linux-parent-death-accepted-89828922.json`, `linux-parent-death-crash-control-89828922.json`. |
+| Cross-user desktop handoff (`9cf79e74`, `89828922`) | Closing UID 4001's seatless session and opening UID 4003's replaces/reaps the child with the correct UID, environment, Xauthority and listener; both authenticated logins pass. Supervisor identity/generation, privileged endpoints and credential persist with zero manager restarts. After both sessions close, three seconds of observation find no child record/listener while both PAM actors and X11 desktops remain alive. Ordinary stop succeeds. | `linux-handoff-9cf79e74.json`. Physical seat/VT switching remains unverified. |
+| Live-record refusal (`da985dbc`, `fdbab046`) | Five cases cover a live matching record with unavailable pidfds, wrong generation and ordinary-server role with native/unavailable pidfds. Supervisors exit 1, preserve records, leave both fixture servers responsive and create no protected IPC parent (kernel inotify observation). After fixture retirement, the positive control creates that parent, starts the desktop child and completes CPace/clean stop. Debug hooks and root-created records construct these cases. | `linux-recovery-accepted-da985dbc.json`. Real kernel ENOSYS and other unverifiable-record classes remain unverified. |
+| Child crash recovery (`830acf07`, `fdbab046`) | Child-only pidfd SIGKILL retires the child and its prekey connection. The original supervisor/generation/unit and privileged sockets persist with zero systemd restarts; runtime/lease authority and credential remain. A fresh child/record/listener, logins before/after, stability observation and ordinary stop pass. The same-artifact supervisor-crash control retains exactly one automatic restart. | `linux-child-crash-830acf07.json`, `linux-crash-control-830acf07.json`. This does not prove continuous connection survival. |
+| Stopped-child shutdown (`7973c6f1`, `fdbab046`) | After CPace, exact-child SIGSTOP holds all fifteen threads. Ordinary stop remains deactivating with the same supervisor/child and unchanged record through four seconds of TERM pending, then retires the tree in 8.259 seconds with successful unit exit and zero restarts. A three-second stopped observation and explicit new startup preserve the credential and pass CPace/stop. | `linux-stopped-child-7973c6f1.json`. |
+| Post-reap cleanup correction (`e0c73321`) | A controlled root-only fault removes the record at successful wait4. The old binary sends numeric-PID TERM after reaping and gets ESRCH. Termination now checks the retained Child exit status before signaling; reaped children permit only record cleanup, and inspection/removal errors remain errors. The unchanged fault now causes zero post-reap TERM calls, service exit 1, unchanged credential and full cleanup after successful CPace. Same-artifact stopped-child regression retains four seconds of pending TERM, retires in 8.265 seconds, then passes fresh startup/login/stop. | `linux-record-cleanup-86c4fc22.json`, `linux-record-cleanup-build-e0c73321.json`, `linux-record-cleanup-accepted-e0c73321.json`, `linux-record-cleanup-stop-e0c73321.json`. No unprivileged record-write trigger or actual wrong-process signal is demonstrated. |
 
-**Installed non-socket endpoint preservation (`120b3030`).** TUF `hnH9L1Hq4J`
-passes 24 cases on freshly built service artifact `fdbab046` and the shipped unit.
-For each of the three privileged endpoints, a regular file, FIFO, sentinel-bearing
-directory and symlink cause startup to refuse before readiness. All twelve
-obstructions retain their exact identity, type, ownership, mode, link count,
-size, change times and regular-file contents; the symlink target and abandoned
-public namespace remain unchanged. After each exact fixture removal, a new
-supervisor starts and owns all three sockets by kernel peer credentials, then
-exits zero and is reaped. Every service cgroup retires. Three listener deltas
-are zero and VM/RAM/private cleanup passes. `linux-namespace-120b3030.json`
-binds native evidence; `linux-namespace-build-fdbab046.json` binds the source,
-seven payload files, build controls and cleanup. No product correction was needed.
-This is sessionless installed-layout execution with fixture-created obstructions,
-not proof an unprivileged actor can populate the protected parent. Final Debian
-artifacts, namespace races, action authorization and other platforms remain OPEN.
-
-**Installed supervisor exclusivity (`541f8436`, `c1479c68`).** Artifact
-`fdbab046` and the shipped unit pass sessionless `r4CZyCVTvs` and real
-logind/X11 desktop `AriJBD8N3d`. Each run covers two orderly generations and
-six duplicate launches (single and two-process batches): all exit 1 with the
-occupied-lease diagnostic and are reaped. Incumbent process/unit state,
-IPC namespace, socket peer credentials and lease identity/permissions/contents
-remain intact. The desktop run additionally preserves each exact UID-4001 child
-and record metadata/bytes. Two UID-4002 connections complete CPace before the
-duplicates, then receive current-protocol PeerInfo for their subsequently released
-encrypted login on the same connections. Both service trees retire cleanly;
-restart reacquires ownership, and PAM/Xvfb/user cleanup passes. Three listener
-deltas per run are zero, with VM/RAM/private cleanup. Capsules
-`linux-exclusive-541f8436.json` and `linux-desktop-accepted-c1479c68.json`
-bind evidence. The audit retains the failed cgroup-cardinality assumption and
-its diagnostic correction; transient commands do not change retained ownership.
-No product correction or rebuild was needed. This is debug/headless installed-
-layout R-S11c-27b evidence. Pixels/input, controlled races, crash recovery, final
-packages and other platforms remain OPEN; the authorization profile stays parked.
-
-**Installed automatic crash recovery (`f4a443dc`).** TUF `kljRzPGxIE` uses
-the same `fdbab046` artifact, shipped unit and actual logind/X11 desktop. A
-pidfd-directed SIGKILL targets only the supervisor. Its exact UID-4001 child
-and supervisor are reaped within 2.6 ms; an accepted child-owned prekey TCP
-connection reaches receiver EOF within 2.5 ms. With no fixture start/restart or
-child signal, systemd starts exactly one fresh supervisor/child/generation.
-Runtime directory and lease identity, protected ownership and credential persist;
-all three privileged endpoints belong to the fresh supervisor. UID-4002 CPace
-and actual Remote PeerInfo logins pass before and after; the recovery probe
-finishes within 5.36 seconds. A further three-second stability observation and
-ordinary stop pass, with exact process/cgroup/record/PAM/Xvfb/user retirement.
-Three host listener deltas are zero and VM/RAM/private cleanup passes.
-`linux-crash-f4a443dc.json` binds evidence. No product correction or rebuild was
-needed. This verifies the combined application/systemd installed-layout crash
-path. Independent parent-death evidence follows; live stale-record recovery,
-pixels/input, final packages, other init systems and other platforms remain OPEN.
-
-**Manual supervisor parent-death cleanup (`89828922`).** Fresh source-matched
-debug/headless artifact `89828922` passes TUF `Q4fBwL1Fcy` with actual logind/X11
-and no RustDesk service unit. Supervisor-only pidfd SIGKILL causes the selected
-UID-4001 child to terminate by SIGKILL and be reaped by the living fixture in
-5.723 ms. Its listener disappears; the unrelated sibling survives, and durable
-credential and record bytes remain unchanged. Explicit manual restart recovers
-the dead record with a new generation, preserves the credential and stops cleanly.
-Both generations complete UID-4002 CPace/Remote PeerInfo login. Desktop, VM/RAM
-and private cleanup pass, with three zero host listener deltas. Same-artifact
-systemd regression `UYXdauLLMZ` passes automatic restart, both logins and cleanup.
-The `linux-parent-death-{build,accepted,crash-control}-89828922.json` capsules
-bind source, artifacts and results. No product correction was needed. This proves
-the named manual lifecycle scenario; final packages, other init-manager
-integration, pixels/input and complete R-S0 acceptance remain OPEN.
-
-**Cross-user desktop handoff (`9cf79e74`).** TUF `RhZmAHC40g` reuses artifact
-`89828922` and the shipped unit with actual seatless PAM/logind sessions. Closing
-UID 4001's session and opening UID 4003's replaces the child and completes the
-second authenticated Remote PeerInfo login within 3.948 seconds. Both children
-have the expected UID, home/runtime/display/Xauthority environment and owned
-listener; the old child is reaped. Supervisor PID/start/generation, all three
-privileged endpoint identities and durable credential persist, with zero manager
-restarts. After both sessions close, 28 observations over three seconds find no
-child record or direct listener while both PAM actors and X11 desktops remain
-alive. Ordinary stop exits zero; process/cgroup/desktop and VM/RAM/private cleanup
-pass with three zero listener deltas. `linux-handoff-9cf79e74.json` binds evidence;
-the audit retains the initial observer-ordering failure and correction. No product
-change or rebuild was needed. Physical seat/VT switching, pixels/input, final
-packages, other platforms and complete R-S0 acceptance remain OPEN.
-
-**Live-record recovery refusal (`da985dbc`).** TUF `Spe5rPjrqj` passes five
-exact-binary cases on `fdbab046`: live matching record with pidfds forced
-unavailable, wrong generation with native/unavailable pidfds, and ordinary-server
-role with native/unavailable pidfds. Each supervisor exits 1, preserves exact
-record metadata/bytes, and leaves the root service-role fixture and unrelated
-UID-4002 server responsive to typed parked-state probes. Kernel inotify observes
-no protected IPC parent creation, then observes the installed positive control's
-real creation. After exact fixture retirement, the shipped unit starts a selected
-desktop child, completes CPace and retires its process tree/cgroup/record.
-PAM/Xvfb/user, VM/RAM/private cleanup and three zero listener deltas pass.
-`linux-recovery-accepted-da985dbc.json` binds evidence; the audit retains the first
-run's outer receipt-name collision and correction. Debug hooks construct the live
-record and unavailable-pidfd branch; no product change or rebuild was needed.
-Kernel ENOSYS injection, unverifiable/other record classes, final packages and
-other init/platform acceptance remain OPEN. Root-created records do not imply
-unprivileged write access to the protected runtime directory.
-
-**Installed child crash recovery (`830acf07`).** TUF `dWYcT4RQuI` reuses
-`fdbab046`, the shipped unit and an actual logind/X11 desktop. A retained-pidfd
-SIGKILL targets only the UID-4001 child. Its accepted prekey connection reaches
-EOF within 1.43 ms and the exact child is reaped within 328 ms. The original
-supervisor/start identity, generation, unit invocation and all three privileged
-socket identities remain; systemd reports zero restarts. Runtime/lease authority
-and durable credential are preserved. The supervisor launches a fresh child,
-record and listener; real UID-4002 CPace/Remote PeerInfo logins pass before and
-after, with the recovery probe complete within 3.65 seconds. A further three-
-second stability observation and ordinary stop pass, including process/cgroup/
-record/PAM/Xvfb/user retirement. Three listener deltas are zero and VM/RAM/private
-cleanup passes. `linux-child-crash-830acf07.json` binds the result. Shared-fixture
-regression `dKlhv0UJaX` also passes the original supervisor-crash scenario with
-exactly one automatic service restart and both authenticated logins;
-`linux-crash-control-830acf07.json` binds that control and joined cleanup.
-No product change or rebuild was needed. This is debug/headless installed-layout lifecycle
-evidence; it does not measure rendered recovery, prove continuous connection
-survival, or close final-package, other-init/platform and independent-review
-acceptance. Those remain OPEN, and package/authorization parks remain unchanged.
-
-**Installed stopped-child shutdown (`7973c6f1`).** TUF `0SV5IJiy9f` reuses
-`fdbab046` and the shipped unit with actual logind/X11. After a successful
-UID-4002 CPace control, pidfd-directed SIGSTOP holds the selected UID-4001
-child. Ordinary systemctl stop leaves all fifteen child threads stopped;
-38 observations cover a 4.035-second TERM-pending interval with the same live
-supervisor/child and exact record metadata/bytes. The unit remains deactivating.
-Both processes, cgroup, record and old listener retire in 8.259 seconds with
-successful unit exit and zero manager restarts. A further three-second stopped
-observation passes. Explicit fresh startup preserves the credential, completes
-CPace and stops cleanly. PAM/Xvfb/users, VM/RAM/private scratch and three zero
-listener deltas pass. `linux-stopped-child-7973c6f1.json` binds this separate
-scenario; existing crash tests and product code are unchanged. This establishes
-debug/headless installed-layout group-stop behavior, not kernel-stalled drain,
-signal/wait errors, concurrent admitted mutations, Remote pixels, final packages,
-other init systems/platforms or independent review. Those remain OPEN.
-
-**Post-reap cleanup retry corrected (`e0c73321`).** Baseline `5Oc6qQtEVt`
-on `fdbab046` reproduces a numeric-PID TERM after the child is already reaped:
-a root fixture removes the exact record at successful wait4 exit, and error
-cleanup signals that absent PID again, returning ESRCH. Termination now reads
-the retained Child's exit status before signaling; a reaped child permits only
-record cleanup, while inspection/removal errors remain errors. Corrected build
-`ucV1OpdZq3` and replay `AJQ8LuAUHy` pass: the same fault produces zero
-post-reap TERM calls, service exit 1, unchanged credential and complete
-process/cgroup/PAM/Xvfb/user retirement. Real CPace succeeds before the fault.
-The `linux-record-cleanup-{86c4fc22,build-e0c73321,accepted-e0c73321}.json`
-capsules bind baseline, exact binary and native evidence; VM/RAM/private cleanup
-and listener comparisons pass. This fixes a demonstrated lifecycle safety bug
-under a controlled root-only storage fault; no unprivileged record-write trigger
-or actual wrong-process signal is claimed. Arbitrary I/O/kernel failure,
-final-package, other-platform and independent-review acceptance remain OPEN.
-Same-artifact regression `JO4qAZvARA` retains the stopped child/record through
-four seconds of pending TERM, retires the tree cleanly in 8.265 seconds without
-automatic restart, then completes CPace after explicit fresh startup and stops
-normally. `linux-record-cleanup-stop-e0c73321.json` binds both generations and
-their complete cleanup. The existing stopped-child fixture is unchanged.
+**Still OPEN:** exact current release packages and upgrades; installed privileged
+action/settings authorization; genuine-image incumbents, non-root actors and
+namespace/replacement/identity races; physical-seat switching and rendered
+pixels/input/recovery; kernel-stalled drain, signal/wait/arbitrary I/O failures and
+concurrent admitted mutations; other init systems/platforms; independent
+reproduction/review and complete R-S0 acceptance. R-S11bs retains its remaining
+endpoint-authority obligations below. SysV, package/authorization and all
+independent parks remain in force. These scenario results do not reopen them or
+replace the broader release obligations.
 
 **IPC / option CLI — component acceptance; installed acceptance OPEN.**
 At `ad638445`, TUF `1VEEFlN8jX` passes all **176 listener/transport, 32 CLI,

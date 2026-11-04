@@ -137700,3 +137700,38 @@ match CTE/TUF. android-storage-ledger-9f15d925.json is 5,192 bytes, SHA-256
 8c9644a0e2ba82d0e0560308fef84f7ad726d9e8f1daff92ccadfff8681d2d55.
 This audit-only receipt preserves the counted ledger. The healthy Android
 process-reload checkpoint is complete; the full release objective remains active.
+
+## 2026-11-04 — user pivot; Linux lifecycle release-ledger consolidation
+
+The user requests a different aspect. Park Android boot-first credential reload
+before any native run; preserve its six unfinished harness files in stash
+7549e817c376e670fde85eddba74cda20f0e7276 (167 additions, 46 deletions).
+Healthy process-reload evidence remains valid, with no boot-first claim. No
+owned Android job was launched for that preparation. Independent parks remain.
+
+Select the binding current-state documentation obligation: the ledger has only
+501 tokens of budget headroom and repeats eleven installed-layout lifecycle
+histories. Consolidate that completed evidence rather than reopen a parked
+implementation/native task. The intended result is a compact scenario index with
+the same source/artifact identities, demonstrated behaviors, retained evidence
+and unresolved release obligations. This is documentation work, not new product
+or native acceptance.
+
+Classify detailed observation counts/timings, run IDs and fixture-repair history
+as retained evidence, not additional current obligations. Keep the eleven
+scenarios distinct, including root-only fixture limits, the post-reap correction,
+its stopped-child regression, retired-binary status and CPace/PeerInfo-versus-pixel
+scope. Preserve genuine-image/non-root/race, physical-seat, kernel/I/O/drain,
+admitted-mutation, final-package/upgrade, other-init/platform, independent-review
+and complete R-S0 gaps. The new table names all seventeen existing capsules
+individually; each local file is present and bounded below 64 KiB. The two older
+startup/endpoint records remain linked by their source checkpoint/run and audit.
+
+Read-only comparison proves every ledger byte outside this block and the new
+Android pivot is unchanged; Markdown headings and HTML anchors are identical.
+The evidence block decreases from 13,548 to 7,703 bytes. Including the pivot,
+the complete ledger decreases from 1,827,662 to 1,822,197 bytes; its new SHA-256 is
+8aff0b9c2fbdfe56f89f6130c81fca3aae377ede27282e51699d368e3260defb.
+Normative requirements, product code, tests, launchers and live instructions are
+unchanged. Full diff review and git diff --check pass. Fresh isolated counting
+follows before this documentation checkpoint is reported complete.

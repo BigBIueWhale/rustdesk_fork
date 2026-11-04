@@ -137994,3 +137994,21 @@ explicit pivot/failure additions differ. The selected section falls from 7,599 t
 3,935 bytes; the complete ledger falls from 1,825,095 to 1,822,251 bytes, SHA-256
 224f1c6f98d248c5d447a0aad3a0beeb2ccf694c2a7a62518bd3e512f420ecef.
 These byte counts are not token-budget evidence; the isolated count follows.
+
+At pushed `58ffb5b3`, TUF `JpbaLsaLvA` completes the existing
+`--ledger-token-count` transaction in 27 seconds. The unchanged pinned
+`tiktoken 0.12.0 / cl100k_base / encode_ordinary` method reports **398,367 tokens**,
+down from 398,818, leaving 1,633 below the 400,000 budget. Seven known-token controls
+and the complete byte round trip pass against the exact input SHA above; the
+existing 42-mode admission suite passes 82 controls and five refusals. This is
+document-count evidence only; no product tests or native acceptance ran.
+
+Exact wrapper/QEMU/helper, private-directory and RAM-workspace retirement is
+verified under the shared lock. All three listener snapshots have zero added or
+removed endpoints; RAM scratch peaks at 402,608,128 bytes. Twelve bounded records
+are retained and hash-verified on CTE/TUF. Capsule:
+`doc-history-ledger-58ffb5b3.json`, 5,177 bytes, SHA-256
+f2728844718b622fc8ea0999dd5ebd687acd3b261d5965b77852177bdecd4189.
+`git diff --check` passes. The fourteen-row consolidation reaches its checkpoint;
+whole-document classification/compression remains OPEN. All product acceptance
+gaps and user parks remain in force; the goal stays active.

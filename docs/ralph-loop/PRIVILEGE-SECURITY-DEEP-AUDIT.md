@@ -137072,3 +137072,14 @@ scratch is 401,547,264 bytes and three listener deltas are zero. Eleven bounded
 files match both hosts. The live ledger records the pivot and this dependency
 checkpoint; every independent park and native/installed/release obligation remains.
 Fresh whole-ledger counting follows. No owned product-test job remains.
+
+Fresh count OpQCCKqn3x at 8dcd3ea1 passes: 399,946 tokens / 1,829,196 bytes,
+input SHA-256 30f39377c1b61a3d30e9a48486c1f959b581ec1c36a24b1d622b44d28cb8b270.
+Seven controls, whole-input round trip and 82 storage admissions/five refusals
+pass. Processes 1850356/1851772, helpers, private state and RAM scratch retire;
+three listener deltas are zero and scratch peaks at 402,665,472 bytes.
+dropdown-ledger-8dcd3ea1.json is 5,165 bytes, SHA-256
+f6e551b4692c84c3dd3b06978f582625d591433acc558daa7405649071b2268d.
+Twelve bounded files match both hosts. This audit-only receipt preserves the
+counted ledger. The dependency checkpoint is complete, no owned job remains,
+and PAKE timing plus all independent parks remain OPEN/PARKED.

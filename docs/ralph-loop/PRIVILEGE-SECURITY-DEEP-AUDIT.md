@@ -139209,3 +139209,23 @@ A FutureBuilder attached only to the lazily displayed row would not by itself
 own an error arriving while that row is unmounted, so retain ownership in the
 page that starts the read. No bridge ABI or native getter change is necessary.
 Run the unchanged eight-case suite against this product correction.
+
+CTE Lb70MPnuTP at 4f75cc4f passes all eight unchanged cases. Four exact error
+diagnostics are now handled locally; mounted failures render Failed, reopening
+loads the new date, and disposed states receive no update. All prior healthy,
+rebuild and replacement controls remain green. Test-runner total is 10.698
+seconds; outer capture is 270.235 seconds and the workload reports 266 seconds.
+Fresh bridge generation, three result-parser controls and exact-source postchecks
+pass. The retained capsule also verifies identical test bytes against 5abbc087.
+
+mobile-date-errors-fixed-4f75cc4f.json (12,075 bytes, SHA-256
+4b8828610e95217bc9988c71e3d1fba75d3b94de5934e6e2111ff0bb9b290cfa)
+binds twelve raw/control records, the baseline, cases and source hashes. Exact
+wrapper/QEMU/captured children are absent by pidfd ESRCH; all four listener
+deltas are zero, private/RAM state is retired under the shared lock and no owned
+run remains. Scratch peaks at 6,386,618,368 bytes. The 560-byte retirement
+receipt has SHA-256
+82ff4af57c8d1539f33437c8f22d2f155df62da7c74277daf2c2650c0dc38d18.
+This closes the reproduced rendered-page error handling defect; native bridge
+faults, a current APK/device run, complete settings and release acceptance remain
+OPEN. Update the existing row, then perform its mandatory isolated token count.

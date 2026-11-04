@@ -1332,6 +1332,14 @@ acceptance remain OPEN. Parked source, window/dispatcher and producer work remai
 
 ## Documentation and verification architecture
 
+**Rust test-name checks.** Remove 26 standalone test-name greps from `verify.sh`
+and five from the Apple source gate. All 28 named tests, their eight Rust source
+files, execution commands and remaining gate bytes are unchanged. Four checks
+paired with exact single-test Cargo selectors remain pending a stronger executed-
+case guard. Exact deletion comparison, Bash syntax and whitespace checks pass.
+This removes naming constraints; it adds no native, privilege or release acceptance.
+Classification is in the audit's “2026-11-04 — standalone Rust test-name checks”.
+
 **Fork issue reporting.** The issue chooser no longer routes questions and
 feature requests to upstream RustDesk; blank issues provide a local route.
 Bug reports request both peers' fork versions, full build commits and package/

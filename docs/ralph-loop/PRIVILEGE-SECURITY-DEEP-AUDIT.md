@@ -138492,3 +138492,31 @@ ff4968a2ce95da7342f9f31d269b06ee35346c9107d3360d7df4630a0ff53c63,
 with ten raw/control records and its retirement receipt. No owned job remains.
 The partial navigation checkpoint is recorded; complete harness, target-native
 settings and release acceptance remain OPEN, with independent parks intact.
+
+## 2026-11-04 — standalone Rust test-name checks
+
+The previous turn produced partial current desktop-settings integration evidence
+at a2e4baa2/7028446f. Keep all independent product parks. Select the explicit
+verification-cleanup obligation under R-A6: classify standalone source searches
+for Rust test names, retaining production authority/exclusion checks and actual
+execution. Inspect the affected checks, surrounding production predicates,
+selected declarations/test attributes, and current Cargo commands before deletion.
+
+Delete 26 single-line greps in scripts/verify.sh and five in the Apple gate,
+covering 28 distinct tests across eight Rust files. These searches only establish
+that a name occurs; they neither run its assertions nor observe native behavior.
+Retain the four similar checks paired with exact single-test Cargo selectors
+(custom-client app name/path and the two saved-keyboard-mode cases): those need
+an executed-case guard before their presence checks can be retired safely. Keep
+the runtime-command wiring checks, test-body searches not classified here, and
+every production predicate. No product task is resumed by this gate cleanup.
+
+Against clean base 7028446fcbb653b68aa6a55f8e701d8c0b77b90a, exact reconstruction
+proves the only script changes are those 31 complete line deletions: 3,974 bytes
+from verify.sh and 792 bytes from apple-conform-check.sh. All other script bytes
+and all eight Rust source/test files match the base. Both Bash syntax checks and
+git diff --check pass. All test/build invocation bytes, native fixtures, requirement
+text and live instructions are unchanged. No new test is added, no product/native
+execution runs for this deletion, and no broader acceptance is inferred. Keep
+native/installed, R-S0/R-F5, independent review and the release objective OPEN.
+The current ledger records the classification; its fresh count is pending.

@@ -2696,9 +2696,6 @@ grep -q 'pub enum OwnedPhysicalKey' "$REPO/src/server/input_service.rs" || r_s11
 grep -q 'pub fn owned_physical_key' "$REPO/src/server/input_service.rs" || r_s11b2="$r_s11b2 desktop-input-key-resolution-missing"
 grep -q 'struct InputBlockOwnerRegistry' "$REPO/src/server/connection.rs" || r_s11b2="$r_s11b2 desktop-block-input-owner-registry-missing"
 grep -q 'SpecialKey(KeyEvent)' "$REPO/src/server/connection.rs" || r_s11b2="$r_s11b2 desktop-special-key-queue-path-missing"
-grep -q 'desktop_input_drop_delegates_join_without_waiting_for_dispatch' "$REPO/src/server/connection.rs" || r_s11b2="$r_s11b2 desktop-input-drop-supervisor-test-missing"
-grep -q 'desktop_special_keys_are_consumed_and_trigger_only_on_edges' "$REPO/src/server/connection.rs" || r_s11b2="$r_s11b2 desktop-special-key-edge-test-missing"
-grep -q 'desktop_key_state_survives_unwind_until_cleanup_release' "$REPO/src/server/connection.rs" || r_s11b2="$r_s11b2 desktop-input-unwind-ownership-test-missing"
 grep -q 'keyboard input mode and payload are inconsistent' "$REPO/src/server/connection.rs" || r_s11b2="$r_s11b2 desktop-input-structural-validation-missing"
 grep -qF '(OPTION_KEY, "")' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 trust-anchor-option-not-pinned-empty"
 grep -qF '(OPTION_PROXY_USERNAME, "")' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 proxy-username-not-pinned-empty"
@@ -3920,8 +3917,6 @@ grep -Fq 'const UNIX_TERMINAL_SHELLS' "$terminal_service_rs" || r_s11c20="$r_s11
 grep -Fq 'metadata.uid() == 0' "$terminal_service_rs" || r_s11c20="$r_s11c20 not-root-owned-gated"
 grep -Fq 'metadata.mode() & 0o022 == 0' "$terminal_service_rs" || r_s11c20="$r_s11c20 writable-mode-not-gated"
 grep -Fq 'metadata.mode() & 0o111 != 0' "$terminal_service_rs" || r_s11c20="$r_s11c20 executable-mode-not-gated"
-grep -Fq 'trusted_unix_terminal_shell_rejects_relative_and_parent_paths' "$terminal_service_rs" || r_s11c20="$r_s11c20 bad-path-test-missing"
-grep -Fq 'trusted_unix_terminal_shell_returns_absolute_candidate_when_available' "$terminal_service_rs" || r_s11c20="$r_s11c20 candidate-test-missing"
 if echo "$unix_terminal_shell_block" | grep -qE 'std::env::var\("SHELL"\)|Ok\("/bin/sh"\.to_string\(\)\)|return Ok\(shell\)|CommandBuilder::new\("(sh|bash|zsh)"\)'; then
   r_s11c20="$r_s11c20 ambient-or-bare-shell-fallback"
 fi

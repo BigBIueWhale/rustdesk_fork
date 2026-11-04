@@ -1700,8 +1700,6 @@ unix_terminal_shell_block=$(awk '/fn get_default_shell\(\) -> Result<String>/,/^
 grep -Fq 'fn trusted_unix_terminal_shell_path(path: &Path) -> Option<PathBuf>' src/server/terminal_service.rs || r_s11c20="$r_s11c20 trusted-resolver-missing"
 grep -Fq 'hbb_common::platform::trusted_executable::resolve(path)' src/server/terminal_service.rs || r_s11c20="$r_s11c20 shared-resolver-missing"
 grep -Fq 'const UNIX_TERMINAL_SHELLS' src/server/terminal_service.rs || r_s11c20="$r_s11c20 candidate-set-missing"
-grep -Fq 'trusted_unix_terminal_shell_rejects_relative_and_parent_paths' src/server/terminal_service.rs || r_s11c20="$r_s11c20 bad-path-test-missing"
-grep -Fq 'trusted_unix_terminal_shell_returns_absolute_candidate_when_available' src/server/terminal_service.rs || r_s11c20="$r_s11c20 candidate-test-missing"
 if echo "$unix_terminal_shell_block" | grep -qE 'std::env::var\("SHELL"\)|Ok\("/bin/sh"\.to_string\(\)\)|return Ok\(shell\)|CommandBuilder::new\("(sh|bash|zsh)"\)'; then
   r_s11c20="$r_s11c20 ambient-or-bare-shell-fallback"
 fi
@@ -1775,7 +1773,6 @@ echo "$windows_run_cm_helper" | grep -Fq 'WindowsConnectionManagerProcessHandle 
 if echo "$windows_run_cm_helper" | grep -Fq 'std::process::Command'; then
   r_s11e35="$r_s11e35 cm-jobless-same-user-spawn-remains"
 fi
-grep -Fq 'fn windows_user_helper_launch_shape_is_typed_and_exact()' src/platform/windows.rs || r_s11e35="$r_s11e35 closed-launch-shape-test-missing"
 grep -Fq 'CreateProcessAsUserW(hToken, application, commandLine.data(), NULL, NULL, FALSE,' src/platform/windows.cc || r_s11e35="$r_s11e35 token-launch-handle-inheritance-not-disabled"
 grep -Fq 'CreateProcessW(application, commandLine.data(), NULL, NULL, FALSE,' src/platform/windows.cc || r_s11e35="$r_s11e35 current-token-launch-handle-inheritance-not-disabled"
 grep -Fq 'PROC_THREAD_ATTRIBUTE_JOB_LIST' src/platform/windows.cc || r_s11e35="$r_s11e35 cm-creation-time-job-list-missing"
@@ -1963,7 +1960,6 @@ r_s11d_retained=
 grep -Fq 'trusted_system_tool_path("mstsc.exe")' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:mstsc-not-system32-bound"
 grep -Fq 'format!("/v:localhost:{}", port)' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:loopback-endpoint-argument-missing"
 grep -Fq '[rdp_endpoint_arg(port), "/prompt".to_owned()]' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:prompt-only-argument-policy-missing"
-grep -Fq 'fn rdp_launch_only_passes_endpoint_and_prompt()' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:argument-policy-test-missing"
 grep -Fq 'const RETIRED_RDP_CREDENTIAL_OPTIONS: [&str; 2] = ["rdp_username", "rdp_password"];' libs/hbb_common/src/config.rs || r_s11d_retained="$r_s11d_retained rdp:retired-option-policy-missing"
 if grep -Eq 'Cred(Read|Write|Delete)W|TERMSRV/localhost|RdpCredentialLease|CRED_PERSIST_SESSION|Command::new\("mstsc"\)|Command::new\("cmdkey"\)|/pass:' src/port_forward.rs; then
   r_s11d_retained="$r_s11d_retained rdp:credential-or-ambient-launch-path-leftover"
@@ -2241,7 +2237,6 @@ grep -Fq 'drop(process);' src/platform/windows.rs || r_s11d3="$r_s11d3 retained-
 grep -Fq 'candidate_session_id == expected_session_id' src/platform/windows.rs || r_s11d3="$r_s11d3 consent-session-comparison-missing"
 grep -Fq 'normalized_windows_path_text(candidate_path)' src/platform/windows.rs || r_s11d3="$r_s11d3 consent-candidate-path-comparison-missing"
 grep -Fq 'normalized_windows_path_text(expected_path)' src/platform/windows.rs || r_s11d3="$r_s11d3 consent-system-path-comparison-missing"
-grep -Fq 'fn consent_candidate_requires_exact_system_image_and_current_session()' src/platform/windows.rs || r_s11d3="$r_s11d3 consent-authority-regression-test-missing"
 if grep -RInE 'pids_by_exact_process_name|terminate_processes_by_exact_process_name|try_kill_broker|taskkill|fn get_pids|is_logon_ui|LogonUI\.exe|stop_main_window_process|try_kill_rustdesk_main_window_process|NtTerminateProcess|PROCESS_ALL_ACCESS|ipc is occupied by another process, try kill it|Command::new\("cmd"\)|tasklist \| findstr consent\.exe' src/server.rs src/platform/windows.rs libs/portable/src/main.rs >"$VERIFY_TMP/rd_verify_r_s11d3"; then
   cat "$VERIFY_TMP/rd_verify_r_s11d3"
   r_s11d3="$r_s11d3 ambient-or-obsolete-process-authority-leftover"
@@ -4472,7 +4467,6 @@ grep -qF 'require_existing_directory_no_reparse(&install_dir, "current Windows p
 grep -qF 'require_existing_file_no_reparse(&executable, "current Windows package executable")' src/platform/windows.rs || r_s11e23="$r_s11e23 installed-executable-object-proof-missing"
 grep -qF 'current_package_registry_value("share_rdp")' src/platform/windows.rs         || r_s11e23="$r_s11e23 service-policy-current-package-read-missing"
 grep -qF 'current_package_uninstall_subkey(),' src/platform/windows.rs                 || r_s11e23="$r_s11e23 service-policy-current-package-write-missing"
-grep -qF 'package_uninstall_subkey_is_the_current_msi_namespace' src/platform/windows.rs || r_s11e23="$r_s11e23 namespace-regression-test-missing"
 grep -qF 'Name="InstallLocation" Value="[App.InstallFolder]"' res/msi/preprocess.py  || r_s11e23="$r_s11e23 msi-install-location-owner-missing"
 grep -qF '<RegistryKey Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\$(var.Product)"' res/msi/Package/Components/Regs.wxs || r_s11e23="$r_s11e23 msi-current-product-key-missing"
 if verify_scan_capture "$VERIFY_TMP/r_s11e23_legacy_registry" -nE 'get_uninstall_registry_subkey|get_install_info|get_reg_of|Wow6432Node|54E86BC2-6C85-41F3-A9EB-1A94AC9B1F93|_is1' src/platform/windows.rs; then
@@ -4510,10 +4504,7 @@ grep -qF 'reg_item.set_raw_value(REG_RECENT_VALUE, &reg_recovery.old_recent)?;' 
 grep -qF 'for recovery in recoveries {' <<<"$reg_recovery_restore_all"               || r_s11e24="$r_s11e24 all-recoveries-not-attempted"
 grep -qF 'reg_recoveries: Vec<reg_display_settings::RegRecovery>' src/privacy_mode/win_virtual_display.rs || r_s11e24="$r_s11e24 process-local-owner-missing"
 grep -qF 'std::mem::take(&mut self.reg_recoveries)' src/privacy_mode/win_virtual_display.rs || r_s11e24="$r_s11e24 recoveries-not-consumed-once"
-grep -qF 'connectivity_recovery_contains_only_enumerated_subkey_and_snapshot' src/platform/windows.rs || r_s11e24="$r_s11e24 fixed-target-test-missing"
-grep -qF 'connectivity_recovery_rejects_invalid_subkeys' src/platform/windows.rs || r_s11e24="$r_s11e24 invalid-subkey-test-missing"
 grep -qF 'connectivity_subkey_path(&"x".repeat(256)).is_err()' src/platform/windows.rs || r_s11e24="$r_s11e24 overlong-subkey-test-missing"
-grep -qF 'connectivity_recovery_retains_every_changed_subkey' src/platform/windows.rs || r_s11e24="$r_s11e24 multi-display-recovery-test-missing"
 if printf '%s\n' "$reg_recovery_struct" | grep -Eq '^[[:space:]]*(path|key|new|changed|changed_recent):|\(Vec<u8>,[[:space:]]*isize\)'; then
   r_s11e24="$r_s11e24 caller-selected-registry-target-or-type-field-present"
 fi
@@ -7025,9 +7016,6 @@ grep -q 'let result = apply(false)' <<<"$block_owner_registry"                  
 grep -q 'if result.0' <<<"$block_owner_registry"                                    || r_s11c23="$r_s11c23 block-input-success-proof-missing"
 grep -q 'state.applied = false' <<<"$block_owner_registry"                          || r_s11c23="$r_s11c23 block-input-applied-state-not-cleared"
 grep -q 'release_block_owner_with_retry(&INPUT_BLOCK_OWNERS, self.conn_id, apply_block_input)' src/server/connection.rs || r_s11c23="$r_s11c23 block-input-cleanup-not-retry-and-fail-stop-wired"
-grep -q 'desktop_block_input_is_released_only_by_the_final_owner' src/server/connection.rs || r_s11c23="$r_s11c23 block-input-owner-test-missing"
-grep -q 'desktop_block_input_failed_release_remains_retryable' src/server/connection.rs || r_s11c23="$r_s11c23 block-input-release-retry-test-missing"
-grep -q 'desktop_block_cleanup_failure_retains_applied_state_for_fail_stop' src/server/connection.rs || r_s11c23="$r_s11c23 block-input-cleanup-fail-stop-test-missing"
 grep -q 'drop(receiver);' src/server/connection.rs                                   || r_s11c23="$r_s11c23 input-backlog-not-drained"
 grep -q 'async fn stop_input_worker' src/server/connection.rs                        || r_s11c23="$r_s11c23 normal-input-worker-stop-missing"
 grep -q 'struct InputWorkerCompletion' src/server/connection.rs                       || r_s11c23="$r_s11c23 input-worker-completion-state-missing"
@@ -7037,17 +7025,13 @@ grep -q 'Condvar' src/server/connection.rs                                      
 grep -q 'join.join()' src/server/connection.rs                                       || r_s11c23="$r_s11c23 input-worker-join-missing"
 grep -q 'impl Drop for Connection' src/server/connection.rs                          || r_s11c23="$r_s11c23 connection-drop-backstop-missing"
 grep -q 'QUEUE.exec_sync' src/server/input_service.rs                                || r_s11c23="$r_s11c23 macos-input-dispatch-not-synchronous"
-grep -q 'desktop_input_cancellation_is_nonblocking_and_closes_admission' src/server/connection.rs || r_s11c23="$r_s11c23 input-linearization-test-missing"
-grep -q 'desktop_input_join_ownership_survives_cancelled_async_wait' src/server/connection.rs || r_s11c23="$r_s11c23 input-join-cancellation-test-missing"
 grep -q 'auth_conn_type == AuthConnType::Remote && !self.start_input_worker().await' src/server/connection.rs || r_s11c23="$r_s11c23 input-worker-not-remote-auth-bound"
 if grep -Eq 'CGEventTap|SetupEventTap|TeardownEventTap|MyEventTapCallback|g_eventTap|g_runLoopSource' src/platform/macos.mm; then
   r_s11c23="$r_s11c23 macos-privacy-input-event-tap-present"
 fi
 grep -q 'pub enum OwnedPhysicalKey' src/server/input_service.rs                       || r_s11c23="$r_s11c23 canonical-physical-key-id-missing"
 grep -q 'pub fn owned_physical_key' src/server/input_service.rs                      || r_s11c23="$r_s11c23 backend-key-resolution-missing"
-grep -q 'desktop_legacy_and_raw_control_share_backend_physical_key_identity' src/server/connection.rs || r_s11c23="$r_s11c23 cross-mode-key-identity-test-missing"
 grep -q 'keyboard input mode and payload are inconsistent' src/server/connection.rs   || r_s11c23="$r_s11c23 input-mode-payload-validation-missing"
-grep -q 'desktop_key_state_survives_unwind_until_cleanup_release' src/server/connection.rs || r_s11c23="$r_s11c23 input-unwind-ownership-test-missing"
 grep -q 'pub(crate) const WINDOWS_SERVICE_SAS_IPC_POSTFIX: &str = "_service_sas";' src/ipc.rs || r_s11c23="$r_s11c23 dedicated-sas-endpoint-missing"
 grep -q 'const WINDOWS_SERVICE_SAS_IPC_TRANSACTION_BUDGET: usize = 1;' src/platform/windows.rs || r_s11c23="$r_s11c23 dedicated-sas-budget-missing"
 grep -q 'handle_windows_service_sas_ipc_request' src/platform/windows.rs              || r_s11c23="$r_s11c23 dedicated-sas-handler-missing"
@@ -7060,15 +7044,11 @@ grep -q 'WindowsProcessIdentityKey' src/platform/windows.rs                     
 grep -q 'prepare_sas_as_windows_pipe_client(requester)' src/platform/windows.rs       || r_s11c23="$r_s11c23 sas-retained-pipe-dispatch-not-wired"
 grep -q 'dispatch(requester, session_id)' src/platform/windows.rs                     || r_s11c23="$r_s11c23 sas-final-generation-check-not-wired"
 grep -q 'require_running("Windows SAS requester")' src/ipc/auth.rs                   || r_s11c23="$r_s11c23 sas-final-liveness-check-missing"
-grep -q 'windows_service_control_and_sas_dacls_are_system_only' src/ipc/auth.rs        || r_s11c23="$r_s11c23 sas-system-only-dacl-test-missing"
-grep -q 'windows_service_sas_client_deadline_covers_server_admission_and_response' src/platform/windows.rs || r_s11c23="$r_s11c23 sas-deadline-order-test-missing"
-grep -q 'windows_service_sas_targets_only_the_live_supervised_child' src/platform/windows.rs || r_s11c23="$r_s11c23 sas-supervisor-test-missing"
 sas_policy_body=$(awk '/fn read_software_sas_generation_policy/,/^}/' src/platform/windows.rs)
 echo "$sas_policy_body" | grep -q 'KEY_READ' || r_s11c23="$r_s11c23 sas-policy-not-read-only"
 if echo "$sas_policy_body" | grep -Eq 'KEY_SET_VALUE|set_value|delete_value|remove_value|RegSetValue|RegDeleteValue'; then
   r_s11c23="$r_s11c23 sas-policy-runtime-mutation-present"
 fi
-grep -q 'windows_sas_policy_matrix_is_read_only_and_fail_closed' src/platform/windows.rs || r_s11c23="$r_s11c23 sas-policy-matrix-test-missing"
 if [ -n "$r_s11c23" ]; then echo "  FAIL R-S11c-2/R-S11c-3 Windows _service raw privileged command closure:$r_s11c23"; rc=1; else
   echo "  ok  R-S11c-2/R-S11c-3/R-S11g input dispatch is connection-owned, capacity-bounded, cancellation-linearized, and cleanup-joined; Windows SAS uses a dedicated bounded SYSTEM-only endpoint, immutable process-generation authority, exact supervised-child authorization, and read-only administrator policy"; fi
 
@@ -9209,9 +9189,6 @@ echo "$pw_cli_helpers" | grep -Eq 'std::env|var_os|var\(' && r_s11e16="$r_s11e16
 echo "$pw_arm" | grep -Fq 'PasswordCliInput::Terminal => prompt_unattended_password()' || r_s11e16="$r_s11e16 terminal-input-not-dispatched"
 echo "$pw_arm" | grep -Fq 'PasswordCliInput::Stdin => read_unattended_password_from_stdin()' || r_s11e16="$r_s11e16 stdin-input-not-dispatched"
 echo "$pw_arm" | grep -Eq 'args\[[[:space:]]*1[[:space:]]*\]' && r_s11e16="$r_s11e16 positional-password-read-present"
-grep -q 'fn password_cli_rejects_positional_secrets' src/core_main.rs || r_s11e16="$r_s11e16 positional-secret-test-missing"
-grep -q 'fn password_stdin_reader_is_line_bounded_and_utf8_only' src/core_main.rs || r_s11e16="$r_s11e16 bounded-stdin-test-missing"
-grep -q 'fn sensitive_password_constant_time_comparison_matches_equal_bytes_only' src/ipc/password.rs || r_s11e16="$r_s11e16 constant-time-password-comparison-test-missing"
 [ "$(awk '/--password-stdin/{count++} END{print count+0}' scripts/smoke-server.sh scripts/smoke-server-stage.sh)" -ge 4 ] || r_s11e16="$r_s11e16 safe-headless-smoke-input-missing"
 grep -Eq -- 'rustdesk --password[[:space:]]+[^|[:space:]]' scripts/smoke-server.sh scripts/smoke-server-stage.sh && r_s11e16="$r_s11e16 password-valued-smoke-command-present"
 smoke_nonroot_stage=$(awk '/^  password-nonroot\)/{capture=1} capture{print} /^  password-installed\)/{exit}' scripts/smoke-server-stage.sh)
@@ -11860,9 +11837,6 @@ grep -q 'privacy_mode_response_admission(state, &impl_key)' src/client/io_loop.r
 grep -q 'persist_privacy_mode_response_if_admitted' src/client/io_loop.rs || r_s15_missing="$r_s15_missing privacy-persist-helper-missing"
 r_s15_privacy_persist_calls=$(grep -c 'self.update_privacy_mode(impl_key' src/client/io_loop.rs || true)
 [ "$r_s15_privacy_persist_calls" -eq 1 ] || r_s15_missing="$r_s15_missing privacy-direct-persist-call-count:$r_s15_privacy_persist_calls"
-grep -q 'privacy_mode_response_classifier_requires_matching_pending_request' src/client/io_loop.rs || r_s15_missing="$r_s15_missing privacy-response-match-test-missing"
-grep -q 'privacy_mode_response_classifier_handles_off_and_expiry' src/client/io_loop.rs || r_s15_missing="$r_s15_missing privacy-response-expiry-test-missing"
-grep -q 'privacy_mode_pending_request_is_recorded_only_from_local_remote_toggle' src/client/io_loop.rs || r_s15_missing="$r_s15_missing privacy-request-record-test-missing"
 # peer-controlled version/platform may determine the effective runtime keyboard mode, but must not
 # select or rewrite the operator-owned persisted PeerConfig.keyboard_mode.
 r_s15_peer_info_body="$(sed -n '/pub fn handle_peer_info(&mut self, pi: &PeerInfo)/,/pub fn get_remote_dir/p' src/client.rs)"

@@ -136771,3 +136771,56 @@ deciding whether a serial comparison adds useful evidence. A detected timing
 difference is research evidence, not a completed constant-time correction;
 a finite nondetection is not proof. Full sampling/RNG, erasure, other targets,
 shipping builds, higher-order effects, automatic CI and R-V3 remain OPEN.
+
+At 16c04ee4831e53907153815b1d80d4b858860539, TUF Rk91ISkqi5 completes
+all seven cohorts in 159.59 native seconds / 308.976 outer seconds. The twenty
+functional cases pass; timing exits 101 and outer acceptance refuses. This is
+the preregistered detection outcome, not a timeout or a successful timing gate.
+Optimized Rust 1.75.0 selects dalek 4.1.3's 64-bit SIMD backend. Executable
+SHA-256 before/after is
+c741592b9fabb11660b448a1f362310e57ab320ce553b390183967ebfd11a716.
+
+| Cohort | Raw t | Pooled-p99 t |
+| --- | ---: | ---: |
+| variable-time one/random control | -1636.050748 | -6299.563886 |
+| one/random | -21.873928 | -86.054096 |
+| random/one | 7.919275 | 72.032906 |
+| one/one control | 0.132368 | 1.342688 |
+| fixed/random | -0.075005 | -0.862841 |
+| random/fixed | -1.566633 | -0.387585 |
+| fixed/fixed control | -0.384530 | -0.159151 |
+
+The nontrivial scalar is
+0033d9506d8229bb06126afe408f1aa545a49b57184eddd7f04a7f78d7a96501
+(122 set bits). All original corpus hashes, seeds, counts, budgets and threshold
+match retained l7uE7lOxEI. Each assessed cohort has 250,202/249,798 class
+observations. Both identical-input controls and the deliberate variable-time
+control behave as required. Resolved memcpy bytes, backing libc hash and
+disassembly hash match the earlier capture; before/after equality passes.
+The selected AVX2 multiplication and related disassembly are retained, without
+claiming that this slice established their full dynamic behavior.
+
+Inference limited to this artifact/run: replacing the special scalar one with
+this nontrivial fixed value removes detection under the unchanged budget and
+criterion. This does not identify the causal instruction or exclude other
+fixed values, input preparation/cache effects, host interference or frequency
+effects. The added test changes the artifact; no production correction or
+constant-time acceptance is claimed. Same-corpus serial comparison is the next
+decisive step, followed by independent implementation/environment investigation.
+Do not weaken the original failing cohorts or switch production backends from
+this result alone. The stage-only cohort-count label was still four in this
+run; the follow-up metadata edit makes it seven, matching the executed cases
+and already-updated acceptance checks. No timing rerun is needed for that label.
+
+pake-dense-default-16c04ee4.json is 25,883 bytes, SHA-256
+a7f39c0c31db57fe2f9be628e9d14d2b1299d9674b7b5b4f6f021e985e83a53b.
+Thirty-one bounded evidence files total 670,809 bytes per host, hash-matched
+on CTE/TUF. Exact launch 1809342 and QEMU 1809814 are absent by pidfd;
+helpers and run.Rk91ISkqi5 retire under the shared lock. RAM workspace
+run.osri9enp is absent, peak scratch 3,236,622,336 bytes, QEMU host block
+writes 4,096 bytes. Four listener deltas are zero. Two retained live snapshots
+bind the QEMU start identity and all 21/18 observed threads to CPU 0/seccomp 2;
+they establish placement, not exclusive CPU or frequency control. The helper
+package and failed private scratch are removed after bounded evidence retention.
+The ledger replaces its timing row with this current result and preserved gaps;
+fresh isolated token counting follows. All independent parks remain unchanged.

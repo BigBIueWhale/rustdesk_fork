@@ -7577,7 +7577,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = pake-timing ]; then
         printf 'PAKE_TIMING_PROFILE=pake-timing stage=container-start tests=1 cohorts=24\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [[ "$RUST_TEST_PROFILE" = pake-backend-default || "$RUST_TEST_PROFILE" = pake-backend-serial ]]; then
-        printf 'PAKE_TIMING_PROFILE=%s stage=container-start tests=21 cohorts=4 fixtures=1 samples=500000 control_samples=100000\n' "$RUST_TEST_PROFILE"
+        printf 'PAKE_TIMING_PROFILE=%s stage=container-start tests=21 cohorts=7 fixtures=1 samples=500000 control_samples=100000\n' "$RUST_TEST_PROFILE"
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = windows-service-protocol ]; then
         printf 'WINDOWS_SERVICE_PROTOCOL_PROFILE=windows-service-protocol stage=container-start tests=7 windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main-config-key ]; then

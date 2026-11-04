@@ -137748,3 +137748,14 @@ That clarification changes the ledger to 1,822,222 bytes, SHA-256
 fe055066d1ef3d3f634fd7dce1409268d6c5412fb6933bc29c7c0973dcf624f1.
 A new count is required for this final input; the earlier receipt remains valid
 only for its recorded bytes. No product or native test is rerun.
+
+Final count crPAHpkeJf at ba9d77d4 passes in 27 outer seconds: 398,246 tokens,
+1,253 fewer than the starting ledger. Seven controls, the whole-input round trip
+and all 82 workload admissions/five refusals pass. Launcher/QEMU 1903746/1905165,
+private state and the 402,866,176-byte peak RAM workspace retire; all three
+listener deltas are zero. Twelve bounded evidence records match CTE/TUF.
+lifecycle-ledger-ba9d77d4.json is 5,169 bytes, SHA-256
+13ad2752c9696f6e32fe2e8faefc42b495b3304dea412f5ff762de9d206ae811.
+The counted ledger remains unchanged; only this audit receipt is appended.
+This consolidation checkpoint is complete. Android boot-first remains parked;
+whole-document classification and the complete release objective remain open.

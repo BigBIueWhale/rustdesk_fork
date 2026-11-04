@@ -138072,3 +138072,26 @@ available memory for the existing bounded count profile. Perform the fresh ledge
 count there while remote access is unavailable. Product behavior is unchanged;
 the narrowed optimized-library evidence does not close the remaining integration,
 shipping-artifact, other-platform, installed or independent-review obligations.
+
+The first CTE count refused before VM admission because the owned harness entry
+had mode 0775. After no-follow descriptor/owner/link/committed-byte checks, only
+that file's mode was corrected to 0755; its contents and Git executable bit are
+unchanged. Retained control `version-ledger-0585f70d-control` records the refusal.
+No host policy or service was changed.
+
+Same-source count `TBYT2wUpbp` at `0585f70d` succeeds in 29 seconds on CTE:
+**398,446 tokens**, 1,822,589 bytes, input SHA-256
+6e0b0ab9597a256b0f143b72651123e6757d6aac76c637610bc1601e4537720c.
+The pinned tiktoken/cl100k_base method, seven known controls, full byte round trip
+and existing 82 admission controls/five refusals pass. Exact process/helper,
+private-state and RAM retirement is verified under the shared lock; three listener
+snapshots have zero additions/removals. RAM scratch peaks at 402,874,368 bytes.
+Capsule `version-ledger-ready-0585f70d.json` is 6,256 bytes, SHA-256
+ea4d258ad2ef6c05cc0dcb54cba9e0a8b752c7ce0460a3ad0a9fb5a1c6cfc3fa,
+and retains the initial refusal, successful count and cleanup evidence on CTE.
+The TUF SSH master is still absent at the final check. Its successful native result
+is retained on CTE, while the separate post-run reinspection/full evidence copy
+and TUF Git synchronization remain pending access restoration. The native test is
+terminal, not an active or unobserved job; do not restart it because SSH is absent.
+The goal remains active, and no product/native/release acceptance beyond the named
+optimized library scenarios is claimed.

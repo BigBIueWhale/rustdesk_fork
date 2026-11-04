@@ -135657,3 +135657,34 @@ and permission-apk-retired-fd258e8b.json (278 bytes, SHA-256
 95f3e0964d6ecf84c8c4f0aa2c693f30847d522bcc94d37da004073b4664de47).
 No source or canonical offline input was removed. The build and fresh ledger
 count require their own final receipts before this checkpoint is complete.
+
+Inherited build RYxu00ftB6 at 33fc2bdb completes successfully in 1,026 outer
+seconds: actual APK install/launch/rendering and instrumentation-process smoke
+pass. The runtime APK is 48,315,044 bytes, SHA-256
+1d8c1fc050d09656fcd3167ece7b9703432e367c5651d026ad219142c371f509;
+the instrumentation APK is 110,287 bytes, SHA-256
+943a645c59da2c383dda9b2550930cc8e375776ce8e4f530514fe5dcbb138d1c.
+Both test-only artifacts and sidecars are verified and retained on TUF. Four
+host listener deltas are zero. Exact launcher/QEMU/helper/private/RAM retirement
+passes, with 7,333,740,544 bytes peak RAM scratch and no remaining run directory.
+Thirteen bounded evidence files match CTE/TUF; permission-apk-build-33fc2bdb.json
+is 9,006 bytes, SHA-256
+413aa9efcc8e5e31e32dcc1c7f8aa61c7f03ec52df2cff58a4d4aa92eea65910.
+This retains a current-source test artifact without claiming permission-dialog,
+denial/retry, callback-to-Flutter or release acceptance. Native permission work
+stays parked. TUF advances to the documentation commit only after retirement.
+
+Fresh count bMVOhUv0eh at 88fd4030 passes seven known controls and the complete
+byte round trip in 27 outer seconds: 397,726 tokens / 1,819,850 bytes, input
+SHA-256 325c4d67e2e8b97f78352cb4dedb5041ba4cbdad4250d91dbf00c4815b703c48.
+That is 1,210 fewer tokens than the preceding count and 2,274 below the budget.
+All 42 workload modes, 81 admissions and five refusals pass. Three listener
+deltas are zero; exact process/helper/private/RAM retirement passes, with
+402,841,600 bytes peak scratch. Twelve bounded evidence files match CTE/TUF;
+x11-ledger-88fd4030.json is 5,070 bytes, SHA-256
+e2486654889d692e285d393f49b5d24c04231ce5cc09453c4c6a05debc3bbf68.
+Whitespace and exact-diff review pass: only the current pivot and contiguous
+X11 summary change in the ledger. Requirements, product/test sources, live
+instructions and adjacent acceptance sections remain byte-identical. This
+audit-only receipt leaves the counted ledger unchanged. The documentation
+checkpoint is complete, all independent parks remain, and no owned job remains.

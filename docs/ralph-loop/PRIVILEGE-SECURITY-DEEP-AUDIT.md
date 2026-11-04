@@ -135815,3 +135815,15 @@ Native Android execution, complete authenticated peer effects and iOS evidence
 remain separate acceptance obligations. No product patch, simulated-mobile
 execution, new harness, emulator, or full application build is claimed here.
 The current ledger records this source finding and the explicit X11 park.
+
+Commit cbcf03f2 is pushed. Fresh isolated count HCeDEfqw2z passes seven controls
+and the byte round trip in 28 outer seconds: 398,093 tokens / 1,821,694 bytes,
+SHA-256 b20faa1bace3d95f81c5c60285a6b38b5848ad923c65a23fbc817aa4d4516fed.
+All 42 workload modes, 81 admissions and five refusals pass. Three listener
+deltas are zero; exact launcher/QEMU/helper/private/RAM retirement passes, with
+402,780,160 bytes peak scratch. Twelve bounded files match CTE/TUF;
+mobile-scroll-pivot-cbcf03f2.json is 5,106 bytes, SHA-256
+db2d96bd6862b2e9a4c6a142e850ada0dcb0c914e86ada6f988480282b4bc032.
+Whitespace and full diff review pass. Only ledger/audit records change; product,
+tests, requirements and live instructions are unchanged. No owned job remains.
+This audit-only receipt preserves the counted ledger bytes.

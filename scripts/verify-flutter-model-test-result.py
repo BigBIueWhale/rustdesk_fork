@@ -1259,7 +1259,9 @@ SETTINGS_NAVIGATION_TESTS = {
     *{f"mobile build date {skin} {case}"
       for skin in ("android", "iOS")
       for case in ("renders completed read and retains it through rebuilds",
-                   "closed page cannot replace reopened metadata")},
+                   "closed page cannot replace reopened metadata",
+                   "failed read stays local and reopen retries",
+                   "closed page handles a late read failure")},
     "settings wake lock ordinary owner releases its cookie",
     "settings wake lock retains the remaining owner",
     "settings wake lock respects disabled outgoing preference",

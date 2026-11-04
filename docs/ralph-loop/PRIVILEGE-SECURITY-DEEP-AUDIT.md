@@ -139158,3 +139158,32 @@ mobile-date-ledger-93fa3aaa.json (7,613 bytes, SHA-256
 with a 456-byte retirement receipt, SHA-256
 1ef4d5a4047797761a247e85e72f963a2853d95bd9a8b4754a4e7df0b742685e.
 The selected rendered-page checkpoint is complete; broader release work remains.
+
+## 2026-11-04 — mobile Settings metadata read failures
+
+Previous goal turn: progress, completing four real rendered-page cases and their
+ledger validation. Review native Android reuse next. The matching retained APK
+aca3df16 is on TUF, with the complete mobile Settings page and build.rs unchanged
+at current source; its main_get_build_date implementation remains a constant-string
+getter. CTE has only older APKs with a different page. The /tmp/cm199.sock control
+socket is absent. Do not reconnect with a new key, change SSH configuration, or
+claim current Android execution; this is an unavailable environment, not missing
+authorization. The native replay remains an open dependency.
+
+Continue the same R-S0 page lifetime at the failure boundary: mainGetBuildDate is
+an asynchronous bridge API, and the post-frame callback currently awaits it with
+no error handler. Both synchronous dispatch and asynchronous Future failures
+escape that callback; the mounted check after await cannot handle an error.
+The Rust constant getter has no ordinary application error return. These tests
+inject a bridge failure, not a claim that the current native getter fails on a
+device. Primary Dart async/await error semantics and Flutter State lifetime:
+https://dart.dev/libraries/async/async-await
+https://api.flutter.dev/flutter/widgets/State/mounted.html
+
+Add four rendered cases to the admitted mobile-build-date profile: a failed read
+must remain local, show Failed in the date row and permit a successful read after
+reopening; a failure delivered after disposal must cause no page update or
+unhandled asynchronous error. Both SettingsList visual styles run, retaining
+the four healthy/replacement controls. Observe the unchanged-product result
+before correction. No unrelated parked settings, native artifacts or isolation
+limits change. Device execution remains separate from these controlled replies.

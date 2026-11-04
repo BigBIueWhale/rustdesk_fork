@@ -297,7 +297,7 @@ class ResultTests(unittest.TestCase):
                                   "draggable-divider": 22, "file-columns": 13,
                                   "file-progress": 52, "peer-search": 36,
                                   "restart-dialog": 9, "desktop-theme": 56,
-                                  "settings-sidebar": 6, "mobile-build-date": 4, "custom-scale": 42, "cm-duration": 8}[SINGLE_PROFILE]))
+                                  "settings-sidebar": 6, "mobile-build-date": 8, "custom-scale": 42, "cm-duration": 8}[SINGLE_PROFILE]))
             return
         self.assertEqual(
             self.parse(self.events("models"), "models"),
@@ -335,9 +335,9 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("file-search"), "file-search"), (1, 12))
         self.assertEqual(self.parse(self.events("file-navigation"), "file-navigation"), (7, 125))
         self.assertEqual(self.parse(self.events("terminal-output"), "terminal-output"), (2, 37))
-        self.assertEqual(self.parse(self.events("settings-navigation"), "settings-navigation"), (1, 90))
+        self.assertEqual(self.parse(self.events("settings-navigation"), "settings-navigation"), (1, 94))
         self.assertEqual(self.parse(self.events("settings-sidebar"), "settings-sidebar"), (1, 6))
-        self.assertEqual(self.parse(self.events("mobile-build-date"), "mobile-build-date"), (1, 4))
+        self.assertEqual(self.parse(self.events("mobile-build-date"), "mobile-build-date"), (1, 8))
         self.assertEqual(self.parse(self.events("desktop-theme"), "desktop-theme"), (1, 56))
         self.assertEqual(self.parse(self.events("modifier-release"), "modifier-release"), (5, 121))
         self.assertEqual(self.parse(self.events("connect-password"), "connect-password"), (1, 14))

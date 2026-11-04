@@ -1739,6 +1739,69 @@ void main() {
     });
   }
 
+  for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
+    final skin = platform.name;
+
+    testWidgets('mobile build date $skin failed read stays local and reopen retries',
+        (tester) async {
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      installSettingsProbeAndroid(true);
+      final date = Completer<String>();
+      native.readBuildDate = () => date.future;
+      const recovered = '2026-11-04 19:00';
+      try {
+        await _mountMobile(tester, platform);
+        await _showBoolean(tester, 'Build Date');
+        expect(native.buildDateReads, 1);
+        date.completeError(StateError('metadata read unavailable'));
+        await _settle(tester);
+        expect(find.descendant(of: _booleanTile('Build Date'),
+            matching: find.text('Failed')).hitTestable(), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        tester.state(find.byType(mobile.SettingsPage)).setState(() {});
+        await _settle(tester);
+        expect(native.buildDateReads, 1);
+        await tester.pumpWidget(const SizedBox.shrink());
+        native.readBuildDate = () => Future<String>.value(recovered);
+        await _mountMobile(tester, platform);
+        await _showBoolean(tester, 'Build Date');
+        expect(find.text(recovered).hitTestable(), findsOneWidget);
+        expect(find.text('Failed'), findsNothing);
+        expect(native.buildDateReads, 2);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        if (!date.isCompleted) date.complete(recovered);
+        await _settle(tester);
+      }
+    });
+
+    testWidgets('mobile build date $skin closed page handles a late read failure',
+        (tester) async {
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      installSettingsProbeAndroid(true);
+      final date = Completer<String>();
+      native.readBuildDate = () => date.future;
+      try {
+        await _mountMobile(tester, platform);
+        final state = tester.state(find.byType(mobile.SettingsPage));
+        expect(native.buildDateReads, 1);
+        await tester.pumpWidget(const SizedBox.shrink());
+        expect(state.mounted, isFalse);
+        date.completeError(StateError('closed-page metadata read unavailable'));
+        await _settle(tester);
+        expect(find.byType(mobile.SettingsPage), findsNothing);
+        expect(find.text('Failed'), findsNothing);
+        expect(native.buildDateReads, 1);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        if (!date.isCompleted) date.complete('2026-11-04');
+        await _settle(tester);
+      }
+    });
+  }
+
   testWidgets('settings about retains pending metadata across rebuilds',
       (tester) async {
     addTearDown(() => tester.binding.setSurfaceSize(null));

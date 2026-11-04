@@ -422,13 +422,13 @@ case "$#:${8:-}" in
         exit 2
         ;;
 esac
-FLUTTER_SETTINGS_TEST_COUNT=90
+FLUTTER_SETTINGS_TEST_COUNT=94
 if [ "$FLUTTER_TEST_PROFILE" = desktop-theme ]; then
     FLUTTER_SETTINGS_TEST_COUNT=56
 elif [ "$FLUTTER_TEST_PROFILE" = settings-sidebar ]; then
     FLUTTER_SETTINGS_TEST_COUNT=6
 elif [ "$FLUTTER_TEST_PROFILE" = mobile-build-date ]; then
-    FLUTTER_SETTINGS_TEST_COUNT=4
+    FLUTTER_SETTINGS_TEST_COUNT=8
 fi
 readonly RUST_TEST_PROFILE
 readonly DOCKER_ARCHIVE=$1

@@ -136824,3 +136824,13 @@ they establish placement, not exclusive CPU or frequency control. The helper
 package and failed private scratch are removed after bounded evidence retention.
 The ledger replaces its timing row with this current result and preserved gaps;
 fresh isolated token counting follows. All independent parks remain unchanged.
+
+Fresh count UOv2xgaUTE at fa8573e2 passes: 399,788 tokens / 1,828,593 bytes,
+input SHA-256 0e5e00fbb35174c98f74d51eaf3fbca0797fe17f4e2687096af72d84c19ca3f7.
+Seven controls, whole-input round trip and all 82 workload admissions/five
+refusals pass. The exact processes 1812077/1813494, helpers, private state and
+RAM workspace retire; three listener deltas are zero and scratch peaks at
+402,468,864 bytes. pake-dense-ledger-fa8573e2.json is 5,172 bytes, SHA-256
+1881ff940ec16e36d235689577ee3ac92c58e571e259d29f7b4d04813b9e553b.
+Twelve bounded files match CTE/TUF. This audit-only receipt preserves the
+counted ledger. No owned job remains; the timing requirement remains OPEN.

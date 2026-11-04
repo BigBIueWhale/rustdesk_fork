@@ -27,11 +27,11 @@ def shell(*args):
 
 
 package = "com.carriez.flutter_hbb"
-principal = shell("cmd", "package", "list", "packages", "-U", "--user", "0", package).decode().strip()
-match = re.fullmatch(r"package:" + re.escape(package) + r" uid:(\d+)", principal)
-if not match or not 10000 <= int(match[1]) < 20000:
+principal = shell("cmd", "package", "list", "packages", "-U", "--user", "0", package).decode()
+matches = re.findall(r"^package:" + re.escape(package) + r" uid:(\d+)$", principal, re.M)
+if len(matches) != 1 or not 10000 <= int(matches[0]) < 20000:
     raise ValueError("unexpected installed application UID")
-uid = int(match[1])
+uid = int(matches[0])
 status = shell("cat", f"/proc/{pid}/status").decode()
 uids = re.search(r"^Uid:\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)$", status, re.M)
 if not uids or list(map(int, uids.groups())) != [uid] * 4:

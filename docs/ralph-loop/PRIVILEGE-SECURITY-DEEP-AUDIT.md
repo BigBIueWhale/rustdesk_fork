@@ -137643,3 +137643,13 @@ for the named retained test APK. Legacy migration/provider failures, physical
 devices, other API levels, iOS, current release artifacts and full R-S0/R-F5
 acceptance remain OPEN. No rebuild, new bulk artifact cache or host product run
 is needed. Native execution follows after diff review and source synchronization.
+
+Review caught the package-manager substring filter returning the matching
+instrumentation companion as well as the application (already documented by the
+backup fixture). Correct the observer to require one exact application record.
+Cancel DJeHlJYWPt before any product verdict; retained launcher identity and pidfd
+target only that owned job. Launcher/QEMU 1890018/1891112 are absent, five listener
+deltas are zero, and 4,375,982,080 peak RAM-scratch bytes plus private diagnostics
+retire under the shared lock. android-storage-cabe0cea.json (10,873 bytes,
+SHA-256 247a08d7249f97df635e34959f3e4f96202d54852ff2ce49e0d606a280de5a3d)
+retains the cancellation and bounded diagnostics. No application pass is claimed.

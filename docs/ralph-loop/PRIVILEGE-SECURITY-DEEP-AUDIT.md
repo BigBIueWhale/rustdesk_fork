@@ -139242,3 +139242,26 @@ with a 456-byte retirement receipt, SHA-256
 f4394af094a34c374d2880d801d7883365eb071459570d894b92345b5f871bb4.
 The focused correction and comparison checkpoint is complete. Release work
 remains active, with the named native/device gap and independent parks intact.
+
+## 2026-11-04 — user pivot: release version metadata
+
+User requests another aspect. Leave further mobile Settings metadata work and the
+not-yet-started ledger consolidation OPEN/PARKED; retain the completed eight-case
+Settings correction and all independent parks. Select release identity validation:
+the shared fork-version reader supplies verification, build and publication tools,
+so it must agree with the build script on the exact canonical FORK_VERSION bytes.
+This bounded check is available on CTE without a new application build or TUF
+connection, unlike the outstanding current-APK acceptance. No release publication
+or version bump is authorized or needed.
+
+Source review finds read -r in scripts/fork-version.sh, whereas build.rs checks
+the full UTF-8 value and canonical digit suffix. GNU Bash documents that read
+discards NUL characters except with an empty delimiter:
+https://www.gnu.org/software/bash/manual/html_node/Bash-Builtins.html
+Test the actual shell reader before changing it. Fourteen file/history fixtures
+exercise both executable and sourced entry points: normal release, rebase,
+missing file, newline/CRLF/base/counter/date/history errors and four NUL positions.
+Require exact success bytes or nonzero refusal with no identity output. Run as
+UID/GID 4000 without capabilities in the existing zero-NIC authority VM; temporary
+files and children are joined inside the guest. This is metadata correctness,
+not evidence of a local privilege escalation or release readiness.

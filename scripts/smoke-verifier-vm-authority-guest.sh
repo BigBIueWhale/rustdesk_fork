@@ -15644,6 +15644,73 @@ fi
 
 if [ "$MODE" = authority-smoke ]; then
     setpriv --reuid=4000 --regid=4000 --clear-groups \
+        --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs \
+        env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+        /usr/bin/timeout --foreground --signal=TERM --kill-after=5s 30s \
+        /usr/bin/python3 -B -I -S - "$VERIFY_REPO/scripts/fork-version.sh" <<'PY' \
+        || fail 'release version metadata tests failed'
+import hashlib
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+
+source = Path(sys.argv[1])
+source_bytes = source.read_bytes()
+version = b'1.4.7-hardened.6\n'
+history = '## 1.4.7-hardened.6 - 2026-11-04\n## 1.4.7-hardened.5 - 2026-11-03\n'
+cases = [
+    ('canonical', version, '1.4.7', history, b'1.4.7-hardened.6'),
+    ('rebase', b'1.4.8-hardened.1\n', '1.4.8',
+     history.replace('1.4.7-hardened.6', '1.4.8-hardened.1'), b'1.4.8-hardened.1'),
+    ('missing', None, '1.4.7', history, None),
+    ('no-final-newline', version[:-1], '1.4.7', history, None),
+    ('extra-line', version + b'other\n', '1.4.7', history, None),
+    ('crlf', version[:-1] + b'\r\n', '1.4.7', history, None),
+    ('wrong-base', version, '1.4.8', history, None),
+    ('zero-counter', b'1.4.7-hardened.0\n', '1.4.7', history, None),
+    ('invalid-date', version, '1.4.7', history.replace('2026-11-04', '2026-02-30'), None),
+    ('skipped-counter', version, '1.4.7', history.replace('hardened.5', 'hardened.4'), None),
+    ('nul-prefix', b'\0' + version, '1.4.7', history, None),
+    ('nul-base', b'1.\0' + version[2:], '1.4.7', history, None),
+    ('nul-counter', version[:-2] + b'\0' + version[-2:], '1.4.7', history, None),
+    ('nul-suffix', version[:-1] + b'\0\n', '1.4.7', history, None),
+]
+failures = 0
+with tempfile.TemporaryDirectory(prefix='rustdesk-fork-version.') as temporary:
+    root = Path(temporary)
+    (root / 'scripts').mkdir()
+    script = root / 'scripts/fork-version.sh'
+    shutil.copyfile(source, script)
+    assert script.read_bytes() == source_bytes
+    for name, contents, base, headings, expected in cases:
+        fork = root / 'FORK_VERSION'
+        fork.unlink(missing_ok=True)
+        if contents is not None:
+            fork.write_bytes(contents)
+        (root / 'Cargo.toml').write_text('[package]\nversion = "' + base + '"\n')
+        (root / 'CHANGELOG.md').write_text('# Changelog\n\n' + headings)
+        for mode in ('cli', 'sourced'):
+            command = ['/usr/bin/bash', '--noprofile', '--norc']
+            command += ([str(script)] if mode == 'cli' else
+                        ['-c', 'source "$1"; fork_version', 'fixture', str(script)])
+            result = subprocess.run(command, capture_output=True, timeout=5)
+            if expected is None:
+                passed = result.returncode != 0 and not result.stdout and bool(result.stderr)
+            else:
+                wanted = expected + (b'\n' if mode == 'cli' else b'')
+                passed = result.returncode == 0 and result.stdout == wanted and not result.stderr
+            failures += not passed
+            print(f'FORK_VERSION_CASE={name} mode={mode} result={"pass" if passed else "fail"} '
+                  f'exit={result.returncode} stdout={result.stdout!r}', flush=True)
+assert not root.exists()
+assert source.read_bytes() == source_bytes
+print(f'FORK_VERSION_TESTS={"pass" if not failures else "fail"} cases={len(cases) * 2} '
+      f'failures={failures} source_sha256={hashlib.sha256(source_bytes).hexdigest()} cleanup=joined')
+raise SystemExit(bool(failures))
+PY
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
         env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
         /usr/bin/python3 -B -I -S \
             "$VERIFY_REPO/scripts/verify-main-verifier-authority.py" --repo "$VERIFY_REPO" --self-test \

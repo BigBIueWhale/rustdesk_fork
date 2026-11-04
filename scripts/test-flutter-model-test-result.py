@@ -26,7 +26,7 @@ if len(sys.argv) > 1 and sys.argv[1] == "--cm-duration":
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
 if len(sys.argv) > 1 and sys.argv[1] == "--reconnect":
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
-if len(sys.argv) > 1 and sys.argv[1] in ("--direct-address", "--connection-page"):
+if len(sys.argv) > 1 and sys.argv[1] in ("--direct-address", "--connection-page", "--connect-password"):
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
 if len(sys.argv) > 1 and sys.argv[1] in ("--floating-position", "--path-labels"):
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
@@ -243,6 +243,9 @@ class ResultTests(unittest.TestCase):
             return result.parse_result(path, profile)
 
     def test_complete_profiles(self):
+        if SINGLE_PROFILE == "connect-password":
+            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (1, 14))
+            return
         if SINGLE_PROFILE == "modifier-release":
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (5, 121))
             return

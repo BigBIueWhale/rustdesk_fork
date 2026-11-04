@@ -139467,3 +139467,18 @@ the shared lock. Peak scratch is 6,384,898,048 bytes. The 534-byte retirement
 receipt has SHA-256
 67f86675e0017a8d9f5bd9717ff9bb895c170d44487fa94a3cd7ad46587f3b75.
 No owned run remains. Repeat only this focused lane after the selector repair.
+
+The first selector repair at 7dae0b73 was incomplete: the result fixtures already
+define connect-password, but their CLI did not accept --connect-password.
+Stop CTE kicA0bOKb2 through the exact wrapper's pidfd after verifying its launch
+start ticks, before bridge generation or Flutter tests. Add that CLI selection
+and its existing one-suite/fourteen-case positive expectation; negative cases
+and the actual result validator remain unchanged. The full-model failures stay
+parked. The captured run exits 143, all four endpoint deltas are zero, and exact
+wrapper/QEMU/captured children plus private/RAM state retire under the shared lock.
+Peak scratch is 512,282,624 bytes. Twelve records and the private inventory are
+bound by environment-bridge-cancelled-7dae0b73.json (27,448 bytes, SHA-256
+3f50a57cb026330874cfd0c0b3c7cec6acc1ab8ee1ea8c700d972f374eee9d32).
+The 456-byte retirement receipt has SHA-256
+137b81d13405daf20a8640c0f153c9c291761139022fa646ed42a129dcb178b3.
+No owned run remains; this cancellation supplies no product acceptance.

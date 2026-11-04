@@ -136183,3 +136183,14 @@ absence. The retained Android APK still has the old export; Android rebuild,
 native session behavior, full storage/egress absence, final packages and
 cross-platform/installed/release acceptance remain OPEN. No mobile-scroll or
 other parked scenario ran. The required fresh count follows the ledger edit.
+
+Evidence checkpoint bf987a5a is pushed. Fresh count ufUZzZlmU9 passes in
+27 seconds: 398,175 tokens / 1,821,666 bytes, SHA-256
+955f8fabadb680cd884be5d4e22f676da772199ea1057eca4b0cde36cd01512f.
+Seven controls, whole-input round trip, 42 modes / 81 admissions / five refusals
+and three zero listener deltas pass. Exact processes/helpers/private/RAM retire;
+scratch peaks at 402,784,256 bytes. Twelve bounded files match both hosts.
+account-abi-accepted-ledger-bf987a5a.json is 5,137 bytes, SHA-256
+2158c987cd83e08b245fa6e0b9d1d599fbe8b875891b49f78bd44152d29a094d.
+No owned job remains. This audit-only receipt preserves the counted ledger;
+the Linux application/ABI checkpoint is complete with the stated remaining gaps.

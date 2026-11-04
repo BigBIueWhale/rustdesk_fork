@@ -136953,3 +136953,55 @@ memory/storage ceilings, monitors and joined cleanup stay unchanged. The
 short three-fixture test retains one round. Production and dependencies are
 unchanged. Research/evidence, not a speculative production patch, is the
 completion condition for this slice; R-P12/R-V3 and independent parks remain OPEN.
+
+TUF jdaV1ucecW at 34f59ed8ab9e9b916175c14df9d77f8eed90396c completes
+both rounds in guest PID 296. All twenty functional tests pass. Native timing
+exits 101 after 397.54 seconds; captured outer execution is 542.399 seconds.
+Both rounds finish with valid positive and identical-input controls and an
+assessed detection, so the aggregate refusal is correct. This is no timeout.
+
+| Cohort | Round 1 raw / p99 t | Round 2 raw / p99 t |
+| --- | ---: | ---: |
+| variable-time one/random control | -1610.003990 / -8279.238624 | -1869.043951 / -8407.198736 |
+| one/random | -2.886589 / -25.008691 | -0.070745 / -19.183925 |
+| random/one | 3.741463 / 22.763297 | 4.206272 / 18.647324 |
+| one/one control | 0.104648 / 0.580357 | 0.027359 / -0.984313 |
+| fixed/random | -0.754992 / -1.556846 | -1.127789 / 0.759016 |
+| random/fixed | 0.944547 / 0.269232 | -0.503241 / -1.069547 |
+| fixed/fixed control | -1.760762 / -0.388711 | -0.666860 / 0.141391 |
+
+All seven corpus hashes, seeds, class counts, budgets, repeats and threshold
+match between rounds and fUYxL6dNCJ. The fixed scalar remains the same 122-bit
+weight value. The optimized serial/64 artifact is unchanged before/after:
+64706e44005d76ef9aeff6f58383c6b9a55e03ca4751d4013eb1f25920864259.
+Resolved memcpy capture binds that same PID and unchanged executable/library
+mapping across the rounds; libc, entry and code/disassembly hashes match the
+earlier serial artifact's resolved copy. No rebuild or process restart occurs
+between the two rounds. Both assessed orientations retain MXCSR 00001fa0.
+
+The one/random difference therefore repeats under this one process/artifact;
+the earlier finite serial nondetection cannot close R-P12. Magnitude still
+varies, and this does not identify an instruction, prove a hardware cause, or
+exclude allocator/cache/order/environment effects. Do not replace the retained
+failures with the earlier pass, weaken the threshold, or switch production
+backends from this result. The new default two-round profile was not run.
+
+Read-only TUF sysfs inspection reports cpu_core/cpus=0-7 and cpu_atom/cpus=8-23.
+The kernel's primary hybrid documentation
+(https://raw.githubusercontent.com/torvalds/linux/master/tools/perf/Documentation/intel-hybrid.txt)
+defines those files as the respective CPU groups. This supplies a concrete
+next comparison within the authorized host: the same artifact/corpora on the
+other group, after checking its required runtime allowance. It is not a second
+machine or independent operator review. No PMU sampling, host affinity changes
+outside the owned launcher, power controls, MSRs or services were used.
+
+pake-repeat-serial-34f59ed8.json is 34,460 bytes, SHA-256
+1d3d1ad884d46da4b07ae21e109026ac6e0912d2b95031f88fb1d3b0de3aa11a.
+Thirty-one bounded files total 584,423 bytes per host and match CTE/TUF. Exact
+launch 1843849 and QEMU 1844318 are absent by pidfd; helpers, failed private
+scratch and RAM run.ati5z3ma retire under the shared lock. Three live snapshots
+bind the exact QEMU start identity and all 13/8/8 observed threads to CPU 0 and
+seccomp 2. Peak RAM scratch is 3,337,764,864 bytes; QEMU host block writes are
+4,096 bytes; four listener deltas are zero. Production and dependencies remain
+unchanged. The current ledger replaces its timing row, retaining prior evidence
+and all open requirements; fresh counting follows.

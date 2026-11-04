@@ -138739,3 +138739,15 @@ observation cannot recover elapsed time predating CM startup; keep that broader
 timing requirement explicit. No product, fixture, protocol or live instruction
 file is changed in this research checkpoint. The ledger records the pivot and
 source finding; a fresh isolated token count follows.
+
+Fresh CTE count z2Zbe52qeH at 46395b71 passes in 28 workload seconds:
+398,186 tokens / 1,819,623 bytes, SHA-256
+15cdc34511e4755c61930120e678deae8057a5428c3acc26c87d7d7a0ebe8d64.
+Seven controls and the whole-input round trip pass. Three listener deltas are
+zero; wrapper, QEMU and four captured children are absent by pidfd ESRCH.
+Under the shared lock, private/RAM state is absent and no owned run remains;
+scratch peaks at 402,817,024 bytes. Capsule cm-duration-ledger-46395b71.json
+(5,962 bytes, SHA-256
+0ea3cca18bf60bc3f178c095fa6e761cf568f2f5602ea1b2cbfcbfb384962193)
+binds eleven raw/control records and a 248-byte retirement receipt. This count
+validates documentation maintenance only; product behavior remains unexecuted.

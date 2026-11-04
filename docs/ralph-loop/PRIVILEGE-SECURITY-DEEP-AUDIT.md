@@ -136028,3 +136028,67 @@ files match CTE/TUF; account-assets-ledger-0e4b0835.json is 5,114 bytes, SHA-256
 0ccfac8b5ba4e6b7dbebc5635be0971812f9c5408dbdde2dd6c16f852941ca3f.
 No owned run remains. The final diff contains only the two obsolete font deletions
 and ledger/audit records; this audit receipt leaves the measured ledger unchanged.
+
+
+## 2026-11-04 — compiled account ABI inspection; orphan login metadata correction
+
+Previous turn is progress: actual Linux/Android asset inventories passed, two
+unconsumed fonts were removed, and the counted checkpoint reached 44083a47.
+Both hosts start clean with no owned job. Mobile scroll, X11 and every independent
+park remain; no unrelated workflow is reopened.
+
+The next R-S11hj/R-SV6a requirement is compiled account API absence. Source-bound
+artifacts already exist, so inspecting their actual bridge exports takes priority
+over another build or further document consolidation. GNU readelf's documented
+--dyn-syms view and the ELF symbol-table contract distinguish defined/global/
+visible functions from undefined references and internal symbols:
+https://www.sourceware.org/binutils/docs/binutils/readelf.html
+https://gabi.xinuos.com/elf/05-symtab.html .
+No library is loaded or executed on a host. A bounded ELF reader inspects the
+actual Linux file and Android ZIP member; GNU readelf independently agrees on
+every Linux wire export. The complete ELF headers, linked string/symbol tables,
+file/archive hashes and source bindings are checked.
+
+Linux 27bf28eb has 843 dynamic entries; Android test APK 33fc2bdb has 500.
+Both define all 227 current public wire functions, with exact names, GLOBAL/FUNC/
+DEFAULT attributes and non-undefined section identity. Five existing event/session/
+application-name exports are positive controls. Seventeen historical account,
+address-book/group storage, deployment, audit-note and feature-gate API names are
+absent. However, wire_main_get_login_device_info is still defined on both.
+The initial source-absence expectation for that eighteenth name correctly fails;
+it is a real remaining export, not an empty-symbol-table or reader success.
+
+Historical callers at c2abd3b3 are Flutter's account LoginRequest serializer,
+the Rust OIDC request's deviceInfo field and the retired Sciter UI. Those callers
+are gone. Complete current reference review finds only LoginDeviceInfo, its two
+Rust constructors/serializers, the FFI method and the authored web equivalent.
+They build account device metadata from OS/hostname or browser information.
+There is no demonstrated current account egress, privilege escalation or live
+required feature consumer; retained direct-session login/profile paths are separate.
+
+The correction deletes that complete unused chain and its now-unused Serialize
+and dart:html imports: forty lines in src/flutter_ffi.rs, src/ui_interface.rs
+and flutter/lib/web/bridge.dart, with no replacement stub or dependency change.
+Public FFI declaration comparison removes exactly main_get_login_device_info
+and preserves the other 226 names. Whitespace and complete diff review pass.
+
+account-abi-before-44083a47.json is 20,985 bytes, SHA-256
+c1d55e2957a86ad551c634c6f05f9bde92c5fe240a8c7479ac3caa6acad26214.
+Its 72,691-byte raw Linux readelf output and capsule match CTE/TUF. The Android
+native member is 15,932,112 bytes, SHA-256
+971448189b21e81f50db96e3a1e7905b24eb6e5d2acc3cb2c40084b7fea00cb4;
+the enclosing APK retains its previously verified complete identity. Both exact
+build versions have byte-identical pre-correction src/flutter_ffi.rs. These are
+dynamic-ABI observations, not complete implementation/storage/egress acceptance.
+
+Required confirmation is a fresh generated bridge and actual complete Linux
+application artifact with exactly the previous 227 exports minus the one removed
+name. Reuse the existing authenticated engine ddb1541d and the canonical
+--linux-flutter-app-build lane. This is an intentional noninteractive integration
+job: the prior equivalent build took about eighteen minutes, with a 20 GiB guest,
+16 GiB bounded RAM scratch and joined cleanup. TUF currently has about 44.9 GiB
+available; admission/monitoring must still decide at launch. No disk fallback,
+host product execution, new launcher or enlarged verifier is authorized by this
+plan. Android rebuilt ABI and final/platform/runtime acceptance remain OPEN;
+the parked mobile scroll regression is not resumed. The ledger records source
+removal with compiled confirmation pending, not completion.

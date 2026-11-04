@@ -4,7 +4,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
-import 'dart:html' as html;
 
 import 'package:flutter_hbb/consts.dart';
 
@@ -1066,18 +1065,6 @@ class RustdeskImpl {
 
   Future<List<SoundInput>> mainGetSoundInputs({dynamic hint}) {
     throw UnimplementedError("mainGetSoundInputs");
-  }
-
-  String mainGetLoginDeviceInfo({dynamic hint}) {
-    String userAgent = html.window.navigator.userAgent;
-    String appName = html.window.navigator.appName;
-    String appVersion = html.window.navigator.appVersion;
-    String? platform = html.window.navigator.platform;
-    return jsonEncode({
-      'os': '$userAgent, $appName $appVersion ($platform)',
-      'type': 'Web client',
-      'name': js.context.callMethod('getByName', ['my_name']),
-    });
   }
 
   Future<String> mainGetOption({required String key, dynamic hint}) {

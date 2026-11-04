@@ -1179,10 +1179,6 @@ pub fn main_get_sound_inputs() -> Vec<SoundInput> {
     }]
 }
 
-pub fn main_get_login_device_info() -> SyncReturn<String> {
-    SyncReturn(get_login_device_info_json())
-}
-
 // R-G4 / R-SV5 (§19): the Flutter `main_change_id` export and the `main_get_async_status` progress
 // FFI are removed with the Change-ID flow — the numeric RustDesk ID is dead under the direct-IP
 // model (R-SV5), and the Sciter Change-ID UI it fed is gone (`mod ui` is deleted, src/lib.rs).

@@ -11,7 +11,6 @@ use hbb_common::{
     futures::future::join_all,
     log, tokio,
 };
-use serde_derive::Serialize;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -19,13 +18,6 @@ use std::{
 
 #[cfg(not(any(target_os = "ios")))]
 use crate::ipc;
-
-#[derive(Debug, Clone, Serialize)]
-pub struct LoginDeviceInfo {
-    pub os: String,
-    pub r#type: String,
-    pub name: String,
-}
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 lazy_static::lazy_static! {
@@ -702,21 +694,6 @@ pub fn set_user_default_option(key: String, value: String) -> hbb_common::Result
 pub fn get_user_default_option(key: String) -> String {
     use hbb_common::config::UserDefaultConfig;
     UserDefaultConfig::get_option(&key)
-}
-
-#[inline]
-pub fn get_login_device_info() -> LoginDeviceInfo {
-    LoginDeviceInfo {
-        // std::env::consts::OS is better than whoami::platform() here.
-        os: std::env::consts::OS.to_owned(),
-        r#type: "client".to_owned(),
-        name: crate::common::hostname(),
-    }
-}
-
-#[inline]
-pub fn get_login_device_info_json() -> String {
-    serde_json::to_string(&get_login_device_info()).unwrap_or("{}".to_string())
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

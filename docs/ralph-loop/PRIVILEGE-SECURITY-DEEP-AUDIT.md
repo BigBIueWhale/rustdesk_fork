@@ -137689,3 +137689,14 @@ run remains; 4,494,995,456 peak RAM-scratch bytes and private state are retired.
 Record only healthy full-app reload as demonstrated. Migration, provider failures,
 physical devices/other APIs, iOS, final artifacts and broader acceptance stay OPEN.
 No product correction or rebuild was needed. Fresh ledger-budget validation follows.
+
+Fresh isolated count v3uv3qQZf6 at 9f15d925 passes: 399,499 tokens /
+1,827,662 bytes, input SHA-256
+f22d713009822b230b2ce9cf92b6695fa33674811754f7b61de6782fe57176ed.
+Seven controls, whole-input round trip and 82 workload admissions/five refusals
+pass in 28 outer seconds. Exact process/private/RAM retirement and three zero
+listener deltas pass; scratch peaks at 402,870,272 bytes. Twelve bounded files
+match CTE/TUF. android-storage-ledger-9f15d925.json is 5,192 bytes, SHA-256
+8c9644a0e2ba82d0e0560308fef84f7ad726d9e8f1daff92ccadfff8681d2d55.
+This audit-only receipt preserves the counted ledger. The healthy Android
+process-reload checkpoint is complete; the full release objective remains active.

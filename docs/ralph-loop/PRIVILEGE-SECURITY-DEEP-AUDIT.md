@@ -138599,3 +138599,15 @@ Primary design contracts: Flutter's [selected semantics](https://api.flutter.dev
 [focus groups](https://api.flutter.dev/flutter/widgets/FocusTraversalGroup-class.html)
 and [reading-order traversal](https://api.flutter.dev/flutter/widgets/ReadingOrderTraversalPolicy-class.html).
 The actual comparison uses the repository's pinned Flutter 3.24.5 SDK.
+
+Fresh CTE count 5ionivkTUg at c3219cfa passes in 28 workload seconds:
+399,303 tokens / 1,826,534 bytes, SHA-256
+32168b5b23a4616a419f85d5f8e8d3682040f4753564f37062cdb8b3de467737.
+Seven token controls, exact round trip and the existing 42-mode/82-control/five-
+refusal admission pass. Three listener deltas are zero; exact wrapper/QEMU and
+four captured children, private state and RAM are absent under the shared lock.
+Scratch peaks at 402,755,584 bytes. The 5,404-byte sidebar-ledger-c3219cfa.json
+capsule (SHA-256 12755dc4b02ef3c2f1451a613b9e7be3282d7bcbe617bf40bced7dd86f067bcd)
+binds eleven raw/control records and a 248-byte retirement receipt. No owned job
+remains. The sidebar component checkpoint is complete; release acceptance and
+independently parked tasks remain OPEN.

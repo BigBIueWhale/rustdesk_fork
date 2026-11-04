@@ -137059,8 +137059,7 @@ dependency-candidate-lock-59b51e80.json retains that provenance. The superseded
 its manifest/inventory: 70,357,837 file bytes removed. The designated 7e6f6459
 baseline, a3192591 and unfinished 0ccb2a7e were preserved. The dependency-app-retire/
 retired-27bf28eb receipts retain this bounded cleanup. No canonical input or
-authenticated cache was replaced. This preserves completed work, not permission
-to continue the unfinished artifact observer or Android build.
+authenticated cache was replaced.
 
 Selected separate R-B2 task: make the operator's release-verification procedure
 match the existing release producer, publisher and Android signature checks.
@@ -139330,3 +139329,31 @@ Its 469-byte retirement receipt has SHA-256
 63a1043147135eb42f4ee90fb0cd6d7ee0f9f7bd8d480055ae127fd831297d3d.
 The selected API-retirement checkpoint is complete; the full release objective
 remains active with native/installed acceptance and other open tasks open.
+
+## 2026-11-05 — current Linux application build and artifact validation
+
+Previous turn is progress: inferred persistent task restrictions were removed
+through 1ddd5c12. The user's clarification preserves specific intentional host,
+network and isolation requirements, including CTE's direct public exposure.
+Two residual sentences discovered during the required reads are removed without
+changing any such requirement or the open native/installed acceptance conditions.
+
+Select current Linux compilation and artifact verification under R-B5/R-X2.
+Six product files differ from accepted build 59b51e80: desktop/mobile Settings,
+the web bridge, native FFI and two Linux resolution sources. In particular,
+environment-setter retirement has fresh bridge/widget evidence but no compiled
+native-library ABI result. A current complete app is also a prerequisite for
+meaningful native-session/settings and final-package verification; this takes
+priority over another component-only correction.
+
+TUF's existing SSH master works and its checkout is clean. Read-only admission
+observes 49,550,760 KiB available RAM, no owned run directory and the required
+authenticated caches. Use the existing build-only producer and retained engine
+ddb1541d with unchanged admission, bounded RAM scratch, monitoring and joined
+cleanup. Its Flutter 3.47.5 candidate remains separate from canonical SDK promotion.
+Retain the designated 7e6f6459 baseline, pending 0ccb2a7e and latest accepted
+59b51e80 app; verify and retire superseded a3192591 to stay within four generations.
+Required result: current bridge/Rust/Flutter build, existing widget/native command
+controls, exact bundle manifest, and artifact/API inspection. Build success alone
+does not establish installed authority, native functionality, other platforms,
+cold final-release equality or release readiness.

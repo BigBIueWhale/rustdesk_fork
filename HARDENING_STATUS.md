@@ -4776,7 +4776,7 @@ namespace/replacement/identity races; physical-seat switching and rendered
 pixels/input/recovery; kernel-stalled drain, signal/wait/arbitrary I/O failures and
 concurrent admitted mutations; other init systems/platforms; independent
 reproduction/review and complete R-S0 acceptance. R-S11bs retains its remaining
-endpoint-authority obligations below. SysV, package/authorization remain in force. These scenario results
+endpoint-authority obligations below.
 
 **IPC / option CLI — component acceptance; installed acceptance OPEN.**
 At `ad638445`, TUF `1VEEFlN8jX` passes all **176 listener/transport, 32 CLI,

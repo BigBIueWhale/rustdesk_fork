@@ -139043,3 +139043,16 @@ The named installed-layout gap is exercised successfully without a product chang
 Final packages, other platforms/suspend, sustained load, rendered pixels/input,
 independent review and complete R-S0/release acceptance remain OPEN. Update the
 R-S10 ledger with this evidence and run its mandatory fresh isolated count.
+
+Fresh count at e6dd0ce2, CTE AVzTJ1vLVH: 397,925 tokens / 1,817,600 bytes,
+SHA-256 fec91f442fad4379fced89550b6e259ff3a6528e7e7795b480c4757200f1d96c.
+Seven tokenizer controls, whole-input round trip and 83 workload controls/five
+refusals pass in 28 workload seconds. Three endpoint deltas are zero; exact
+wrapper/QEMU/captured children are absent, private/RAM state is retired and no
+owned run remains. Scratch peaks at 402,890,752 bytes. Capsule
+service-limiter-ledger-e6dd0ce2.json (7,632 bytes, SHA-256
+055f5ee69c30574fc492443a961dc5ffaad395420a37b3882b93e3b937c6acda)
+binds eleven records and the 456-byte retirement receipt, SHA-256
+fb68a6d93c3b41f13b703d9e020f4f84effa16413e5e2649736927310a819e64.
+The focused installed-layout validation checkpoint is complete. Product bytes
+remain unchanged; broader R-S10/R-S0 and release acceptance remain OPEN.

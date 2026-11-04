@@ -137083,3 +137083,79 @@ f6e551b4692c84c3dd3b06978f582625d591433acc558daa7405649071b2268d.
 Twelve bounded files match both hosts. This audit-only receipt preserves the
 counted ledger. The dependency checkpoint is complete, no owned job remains,
 and PAKE timing plus all independent parks remain OPEN/PARKED.
+
+## 2026-11-04 — Android account-API artifact acceptance
+
+Previous turn is progress: 8d6d8707's dependency removal passes the existing
+widget and inventory checks, with the counted checkpoint at af8f69cb. Continue
+R-S11hj/R-SV6a's missing Android artifact evidence. The retained 33fc2bdb APK
+still exports wire_main_get_login_device_info; current source has removed it,
+and the rebuilt Linux artifact already proves its absence. A fresh Android
+artifact can decide this concrete gap and is more useful than another unused
+declaration. The FFI/interface/web sources are byte-identical to accepted Linux
+a3192591; no production or harness change is needed. Native account-storage,
+permission, PAKE timing and every independent parked investigation remain parked.
+
+Use the canonical --android-emulator-app lane at frozen af8f69cb: pinned offline
+build, explicit test-only signing, actual emulator install/launch/rendering and
+instrumentation-process smoke. This is a noninteractive integration job; its
+previous accepted run took 1,026 outer seconds. Existing admission remains
+20 GiB guest plus 16 GiB bounded RAM scratch, 6 GiB host headroom and 1 GiB
+overhead, with an 8 GiB file ceiling, live monitoring and exact joined cleanup.
+TUF had 47,086,500 KiB available, no owned VM/scratch and three retained APK
+generations before launch. Preserve the old ABI baseline and other artifacts.
+No host product execution, new input acquisition or listener change is needed.
+
+Required ABI result: the actual APK's x86_64 librustdesk.so must preserve the
+previous 227-name wire inventory except the removed metadata function, retain
+the five existing live-API controls and omit all eighteen retired names. Verify
+APK/member hashes, ELF structure and symbol attributes, and compare with GNU
+readelf without loading the library. Primary references were reread:
+https://www.sourceware.org/binutils/docs/binutils/readelf.html and
+https://gabi.xinuos.com/elf/05-symtab.html. This will establish test-APK compilation,
+basic launch and dynamic-ABI evidence only; complete storage/egress absence,
+all required mobile workflows, Android aarch64/cold release artifacts and other
+platform acceptance remain OPEN.
+
+## 2026-11-04 — user pivot; direct-address ledger consolidation
+
+The user explicitly requests a different aspect. Further Android account-API
+artifact validation is OPEN/PARKED. The preceding CQ4XBSwjHA run was cancelled
+after inspection found that ordinary APK validation unconditionally includes the
+separately parked scroll experiment from ca70a84d. The earlier assertion that no
+harness change was needed is therefore superseded. No scope repair was implemented,
+no fresh APK or build/native verdict was obtained, and neither investigation is
+resumed here. Existing Linux ABI acceptance and all independent parks remain.
+
+Cancellation reconciliation proves launcher 1852122 and QEMU 1852695 absent by
+pidfd, exact helpers absent, and RAM workspace run.sepx3nbm retired. The capture
+exits 143 after 297.448 seconds; the storage supervisor records joined cleanup,
+5,771,137,024 bytes peak scratch and four independently decoded zero listener
+deltas. After preserving exact bounded diagnostics, only the inventoried private
+files and disposable virtiofsd package are retired under the shared run lock.
+account-android-build-af8f69cb.json is 9,625 bytes, SHA-256
+1edca47ac432072c10ecda6cbbea0563ca02f64a29f94e0a1ae0f814524b13db.
+All 31 bounded evidence files match CTE/TUF. No owned run/workspace remains.
+
+Selected separate task: the binding documentation-role/ledger-compression item.
+The accepted ledger stood at 399,946 tokens, leaving 54 before its budget. A
+scoped current-state consolidation is now useful for keeping release decisions
+and unresolved obligations visible without reopening a parked product task.
+Classify the direct-address subsection's repeated execution history against its
+retained evidence and audit references. Preserve current grammar/controller
+behavior, each named component verdict and its limitations, the demonstrated
+resolver transport/cancellation defect, explicit park, and every remaining native,
+platform, installed, artifact and independent-review requirement. Historical full
+hashes, repeated environment/resource narration and superseded fixture detail stay
+in existing receipts, audit and Git; they are not new acceptance claims.
+
+The subsection shrinks from 165 lines / 13,572 bytes to 77 lines / 8,607 bytes.
+Nine named evidence files exist; its three requirement IDs and three external
+references are preserved. All following ledger bytes are identical. Including the
+new Android pivot entry, the complete ledger decreases from 1,829,196 to 1,824,738
+bytes, SHA-256 07f90f3d89236b4278a19ac2ab1596b018d4c4432d387624f6310b48d0771c04.
+Full diff and whitespace review pass. Only the ledger and this audit change;
+requirements, live instructions, product sources, tests and launchers are unchanged.
+No product check is repeated for prose. Fresh isolated whole-ledger counting is
+the remaining validation for this documentation checkpoint; the broader
+documentation classification and release obligations remain OPEN.

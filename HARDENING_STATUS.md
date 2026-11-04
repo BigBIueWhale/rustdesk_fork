@@ -43,6 +43,14 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-04):** Further Android account-API artifact validation is
+OPEN/PARKED. Run `CQ4XBSwjHA` was cancelled before a build/native-test verdict;
+`account-android-build-af8f69cb.json` binds exact process/private/RAM retirement
+and four zero listener deltas. Ordinary APK validation still includes the parked
+scroll experiment; that prerequisite repair remains unimplemented. Existing Linux
+ABI evidence remains valid. Work moves to ledger-history consolidation; all
+independent parks remain.
+
 **User pivot (2026-11-04):** Further PAKE timing work is OPEN/PARKED.
 The repeated detections remain valid evidence; the proposed CPU-group comparison
 has not run. Work moves to dependency minimization below. Independent parks remain.
@@ -14560,167 +14568,79 @@ Debian/Android/Windows R-B2/R-B10 transaction, native Apple/device coverage wher
 reproduction, and external review remain governed by their open ledger rows. A regression or contrary runtime result
 reopens the affected claim; the removed historical “do not re-open” instruction carried no authority.
 
-**Direct-address verification cleanup (`3ce29ac6`).** The duplicate Dart and Apple
-source catalogues and shared behavioral wording/count assertions are deleted
-(102 net lines). The shared retired numeric-ID API/file absence check remains.
-The unchanged 25 address/controller/TextField tests and three result-parser controls
-pass in isolated run `SWq2Z5THRd` (109 outer seconds, pinned Flutter 3.24.5).
-The existing Dart test command, focused profile, product and requirements are unchanged.
-QEMU joined and RAM scratch retired; no endpoint was added, and one baseline
-endpoint removal remains unattributed without owner inspection. Exact source,
-serial, storage and cleanup evidence is in the audit entry “2026-10-28 — user pivot;
-direct-address source-catalogue deletion”. This is focused component evidence;
-full gate execution, connect-page dispatch, peer-card rendering, native Apple/device
-and installed/release acceptance remain OPEN.
+**Direct-address source and component checkpoints.** The shared Rust predicate
+accepts IPv4, IPv4:port and qualified ASCII hostname:port targets. Ports are ASCII
+decimal 1–65535; IPv4 rejects leading-zero/shorthand forms and DNS labels/names
+have explicit bounds. Numeric IDs, IPv6 direct targets, relay modifiers and
+malformed addresses are refused. Dart trims only outer whitespace and preserves
+spelling; unrelated IPv6 socket formatting uses standard-library parsing.
+Client initiation, desktop URL admission and login-name admission use the Rust
+predicate. The common fixture contains fourteen accepted and 65 refused targets.
 
-The orphaned host-pin canonicalizer, `libs/address_it` crate and stale `relay_route_tests`
-invocation are deleted. Candidate `2a373f2562566fec28f48c62596c1c0ecb3eaba8` passed the existing
-`--cpace-recovery-tests` lane: current shared-library/locked-graph compilation and 20 retained
-CPace wire tests on pinned Rust 1.75, offline inputs, a zero-NIC VM and a networkless UID/GID-1000
-container; 142 seconds, unchanged host endpoints and joined cleanup. Retained serial
-`.harness-state/verifier-vm/cpace-recovery-tests-run.tRhO0uOUou.serial.log`, SHA-256
-`7604e2ebee2082a720f61f7bd2b187e5a9dd0a9eac997d8f07f12458112db404`; bounded nonindependent
-observer receipt `.harness-state/verifier-vm/route-retirement-2a373f25-evidence/observation.json`.
-This is historical library/wire evidence without a final-product digest or independent reproduction;
-it does not prove direct-address grammar conformance. The focused predicate evidence follows.
+One connection-address controller owns initial restoration, autocomplete and the
+field on both pages. Explicit writes (including unchanged normalized empty text),
+text changes, Clear and disposal retire restoration; selection-only changes do not.
+The duplicate editor/registration, onChanged copies and build-time copier are
+absent. Autocomplete writes the peer address directly. Both pages handle failed
+post-frame restoration with generic translated feedback only while mounted,
+preserving newer input, normal restoration and the one-attempt/error contract.
+These are source corrections with the component evidence below; whole-page
+selection/composition behavior has not been reproduced or validated.
 
-**Connection address ownership/restoration — source corrected; focused controller tests PASSED;
-native page integration OPEN.**
-The controller owns one initial lookup; explicit address writes, text changes, Clear or disposal
-retire it, including writes that normalize to unchanged empty text. Selection-only changes preserve
-restoration. Both connection pages now bind that same controller to autocomplete and its field;
-the duplicate editor, generic editor registration, onChanged copies and build-time text copier are
-deleted. Autocomplete selection writes the peer address directly. This removes the source path that
-reset selection/composition during builds; whole-page behavior has not been reproduced or validated.
-At `1f5ec5e4`, the unchanged nineteen production controller/TextField and grammar tests plus three
-result-parser controls passed on pinned Flutter 3.24.5 in 103 outer seconds. The focused shard now
-uses the existing 7-GiB RAM scratch/6-GiB hard-overlay profile, with unchanged admission headroom,
-live monitoring and joined retirement. Scratch peaked at 4,028,821,504 bytes. All 395 complete
-source/control freezes and endpoint sets matched before/during/after. Exact source, raw serial,
-endpoint and cleanup evidence is retained in
-`.harness-state/verifier-vm/connection-editor-component-1f5ec5e4.json`.
-This is controller/TextField evidence, without compilation or execution of the whole pages,
-RawAutocomplete, AutoSizeTextField, real IMEs, screen readers, sockets/peers or installed artifacts.
-Native page/platform, current production engine, release and independent reproduction remain OPEN.
+Evidence paths below are relative to `.harness-state/verifier-vm/`. Counts
+belong to their named source snapshots; they are not a fresh aggregate run.
 
-**Connection-screen saved-address failures (`9823e986`).** Both pages handle
-failed initial lookups at their async post-frame caller, request generic translated
-feedback while mounted and suppress late notifications after removal. Newer typed
-addresses, normal restoration and the controller's one-attempt/error contract
-remain. The unchanged-product comparison reproduces eight desktop/mobile error
-cases with 37 controls passing. Final `311e4f6a`, TUF `lPKTw1OTIY`, passes the
-identical 45-case workload and three focused result-parser controls in 94 outer
-seconds. Two intervening runs pass the product cases but fail runner inventory
-checks; their corrections retain exact case-to-suite ownership and negative
-controls. All four VMs join, retire bounded RAM scratch and show zero listener
-deltas. The exact page callbacks, production controller and rendered TextField
-execute on Linux Flutter 3.24.5; native reads and feedback are adapters. Complete
-pages, real IPC/toast/device behavior, current production engine and installed/
-release acceptance remain OPEN. Sources, failures and cleanup are in the audit
-entry “2026-11-01 — user pivot; connection address restoration failure”.
+| Checkpoint | Accepted component evidence and limits | Retained evidence |
+| --- | --- | --- |
+| Retired host-pin/route residue, `2a373f25` | Deletes the orphaned host-pin canonicalizer, `libs/address_it` and stale `relay_route_tests` invocation. Offline pinned Rust 1.75 compiles the locked shared library and passes twenty CPace wire cases in 142 seconds. This does not validate address grammar or a final product. | `cpace-recovery-tests-run.tRhO0uOUou.serial.log`; `route-retirement-2a373f25-evidence/observation.json` (nonindependent observer). |
+| Shared address grammar, `78729435` / `b6e8d8b9` | Dart passes twelve production address/controller cases plus three result-parser controls on Flutter 3.24.5 (101 seconds). Rust 1.75 passes 75 cases: four config, 65 filesystem, five address/IPv6-formatting and one socket helper (140 seconds). Both real predicates exercise the common fixture and hostname boundaries. The only candidate difference is a socket-test fixture; production/Dart/vector bytes match. | `direct-address-78729435-evidence/dart.accepted.json`; `direct-address-b6e8d8b9-evidence/rust.accepted.json`; raw runs `hZ6vWc2fvX` / `B8K5H3439l`. |
+| Controller/restoration ownership, `1f5ec5e4` | Nineteen production controller/TextField/grammar cases and three parser controls pass on Flutter 3.24.5 (103 seconds). The whole pages, RawAutocomplete, AutoSizeTextField, real IMEs, screen readers and sockets/peers do not execute. | `connection-editor-component-1f5ec5e4.json`. |
+| Restoration errors, correction `9823e986`, accepted `311e4f6a` | The unchanged-product comparison fails eight desktop/mobile error cases with 37 controls passing; the identical 45-case workload and three parser controls then pass (94 seconds, run `lPKTw1OTIY`). Exact page callbacks, production controller and rendered TextField execute; native reads/feedback are adapters. Two intermediate runner-inventory failures remain unaccepted. | Audit entry “2026-11-01 — user pivot; connection address restoration failure”, including all four transactions and cleanup. |
+| Duplicate source catalogues retired, `3ce29ac6` | Removes the Dart/Apple catalogues and behavioral wording/count assertions; retains retired numeric-ID API/file absence checks and every executable test. The unchanged 25 address/controller/TextField cases plus three parser controls pass on Flutter 3.24.5 (109 seconds, `SWq2Z5THRd`). | Audit entry “2026-10-28 — user pivot; direct-address source-catalogue deletion”. No host endpoint was added; one baseline endpoint removal is unattributed. |
 
-**SOURCE CORRECTED — direct-address grammar; focused Rust/Dart tests PASSED, native integration OPEN.**
-`hbb_common::is_direct_address` owns the IPv4/IPv4:port/qualified-ASCII-hostname:port predicate used by
-client initiation, desktop URL IPC validation and login-name admission. Supplied ports are bounded ASCII
-decimal values 1–65535; IPv4 rejects ambiguous leading-zero and shorthand forms; DNS labels/names have
-explicit syntax and length bounds. IPv6 direct targets, numeric IDs, relay modifiers and malformed addresses
-are refused. Generic IPv6 socket formatting uses standard-library IP/socket parsing independently of this
-predicate. Dart validates the same exact target after trimming only outer whitespace; spelling is preserved.
-The shared fixture has 14 accepted and 65 refused targets; both real predicates exercise it and the
-hostname boundaries. The accepted focused transactions are:
+These isolated zero-NIC VM transactions used immutable offline inputs and
+guest-only networkless containers, checked their source/artifact bindings and
+joined VM/RAM retirement. Earlier failed fixtures remain historical failures.
+Cleanup and source checks do not establish installed behavior. **OPEN:** complete
+pages and connect-page dispatch, peer-card rendering, real IPC/toasts/devices,
+client/URL/login integration, current production Flutter engine, native Apple and
+other-platform coverage, current whole-app/installed/release artifacts, full-gate
+integration, independent reproduction and external review. Listener IPv4-only
+binding remains the separate R-D5 obligation.
 
-- `--flutter-model-tests --direct-address` at `787294355c0d1df256b5b2dd0722e82a48768bf6`, tree
-  `9acd9f3cf77db1bfcebd28c9e9e34fc0ae98638e`: pinned Flutter 3.24.5, one suite/twelve production
-  address/controller tests and three result-parser fixture tests; 101 seconds. Read-only source, exact
-  JSON completion inventory and offline-tools freshness passed, without Rust/LLVM/FRB generation.
-  Serial `.harness-state/verifier-vm/flutter-model-tests-run.hZ6vWc2fvX.serial.log`, SHA-256
-  `d2e8c0586c8e81b887ce57f19cc8d43520884b6d3554ef24d8559691239e13c4`;
-  observer/source receipt `.harness-state/verifier-vm/direct-address-78729435-evidence/dart.accepted.json`.
-- `--hbb-common-fs` at `b6e8d8b99a951e11535985e3b0f43d8825c1ceda`, tree
-  `dc1bea039b5c813bb274d1d58006faa17ecd0435`: pinned Rust 1.75, 75 tests comprising four config,
-  65 filesystem, five address/IPv6-formatting and one socket-helper test; 140 seconds. One compiled
-  shared-library test executable retained SHA-256
-  `a280ad595ad1f023afc215439c305e393f3065e4809c6edbdf9a53a0a0810c53` before, between and after
-  all four groups. Serial `.harness-state/verifier-vm/hbb-common-fs-run.B8K5H3439l.serial.log`, SHA-256
-  `632ce059f26653f09943081e634cc22ba9861ba356dde3ead5ec47dabcba8b5c`;
-  observer/source receipt `.harness-state/verifier-vm/direct-address-b6e8d8b9-evidence/rust.accepted.json`.
+**OPEN/PARKED — hostname resolution transport and lifetime (R-SV5/R-SV10).**
+The user explicitly parked correction and further investigation. The viewer uses
+`Client::_start` → `connect_tcp_local` → `FramedStream::new`. After source
+separation at `cf58ee67`, the constructor accepts one `SocketAddr`; the shared
+connector owns lookup/candidate selection and retains native connect/bind/
+TCP_NODELAY errors. Blocking lookup still precedes the per-address timeout:
+Tokio 1.44.2 uses the standard-library resolver and Rust 1.75 calls libc
+`getaddrinfo` with a stream hint. Reviewed glibc 2.27 creates datagram sockets
+for ordinary DNS and multiple-address sorting; TCP DNS alone does not eliminate
+the latter. Dart address/controller tests do not exercise resolution.
 
-The sole change between accepted candidates is one corrected socket-test fixture; every production and
-Dart source/test/vector byte is identical. The Dart run remains attributed to its actual candidate. Both
-transactions used ordinary-user zero-NIC VMs and guest-only UID/GID-1000 networkless containers, immutable
-offline inputs, unchanged 1,284-path source snapshots and before/during/after host endpoints, with joined
-cleanup and exact run-directory removal. Earlier formatting and obsolete-fixture failures are retained in
-the corresponding private evidence and audit and are not accepted runs. This proves focused production
-validators and shared-library behavior, not a final product artifact or privileged receiver. Native whole-app
-client/URL/login dispatch, rendered UI, installed/platform artifacts, full-verifier integration and independent
-reproduction remain OPEN; listener IPv4-only binding is a separate R-D5 property.
+| Named Linux baseline | Observed result | Retained evidence |
+| --- | --- | --- |
+| `8367f58b` | Seven instrumented constructor processes: literal IPv4 and one hosts-file address connect without datagram attempts; the literal bypasses libc lookup. Two hosts-file addresses attempt two datagram sockets with default or TCP DNS. A missing name attempts two with default DNS and zero with TCP DNS; both fail against the closed loopback resolver. Controlled native entry outlives a 5-ms connect budget and async cancellation across a 50-ms gate, then drains on release. All 128 existing library regressions pass (188 seconds). | `hostname-probe-observed-8367f58b.json`; `hbb-common-fs-run.M555mfWUXj.serial.log`. |
+| `66613e06` | Nine processes include real TCP DNS A/AAAA replies. Positive resolution connects to its loopback application peer. The silent-peer case stays pending after 51 ms against a 5-ms budget; libc lookup and accepted DNS TCP connection survive exact async caller cancellation/join. Late replies trigger two trapped datagram attempts after caller retirement, then native completion/peer EOF; no late application connection is observed. All 171 library/file-peer regressions pass (217 seconds). The first fixture-drain failure is unaccepted. | `dns-tcp-observed-66613e06.json`. |
+| Connector separation, `cf58ee67` | 173 tests and nine connector diagnostics pass (190 seconds). Both the old test-only constructor and current constructor connect to the owned peer; occupied bind loses its native cause in the old path and retains `EADDRINUSE` in the current constructor/connector. This source-bound comparison leaves the blocking resolver defect unresolved. | `tcp-resolution-boundary-cf58ee67.json`. |
 
-**NATIVE COMPONENT EXPOSURE CONFIRMED; CORRECTION OPEN/PARKED — hostname resolution transport and lifetime (R-SV5/R-SV10).**
-Parked by explicit user request to change topic. Keep the unresolved transport/cancellation
-defect and retained evidence open; do not resume this item automatically.
-The actual viewer path is `Client::_start` → `connect_tcp_local` → `FramedStream::new`
-with name lookup now explicit in the connector. String targets use Tokio
-1.44.2's blocking standard-library resolver; Rust 1.75 calls libc `getaddrinfo`
-with a stream hint. Resolution precedes the per-address TCP-connect timeout. Reviewed glibc 2.27
-source creates datagram sockets for ordinary DNS and, with multiple returned addresses, for
-source-address sorting probes. TCP DNS configuration alone does not remove the latter path.
-The nineteen Dart controller/grammar tests do not exercise name resolution. Whole-viewer
-syscall tracing and a demonstrated local privilege escalation are not established. Required
-remaining evidence includes a source-bound isolated viewer/connector replay covering
-literal IPv4 controls, qualified hostnames, single/multiple A/AAAA and hosts-file results, default/TCP
-DNS, transient socket creation, failure, cancellation and exact resolver drain. Hostname support and
-the zero-UDP contract remain binding; the product correction and all target-native acceptance are OPEN.
-The named Linux shared-library transaction at `8367f58b` executed the real
-`FramedStream::new` in seven instrumented processes. Literal IPv4 and one hosts-file
-address connected with zero IP-datagram attempts; the literal also bypassed libc lookup.
-Two hosts-file addresses connected while attempting two datagram sockets, both with
-default DNS and with `RES_OPTIONS=use-vc`. A missing DNS name attempted two datagram
-sockets by default and none with TCP DNS; both failed against the closed loopback resolver.
-In the controlled cancellation case, native entry remained active across a 50 ms gate
-despite the 5 ms per-connect budget and after async-future cancellation; it drained after
-gate release. This establishes constructor/native-entry behavior, not a natural DNS stall.
+The baseline observer first proves IPv4/IPv6 syscall traps and real-libc
+forwarding, then denies measured datagram syscalls. These are instrumented
+constructor/connector observations, with stable executables, source/input
+bindings and joined bounded-RAM cleanup; they do not show packet transmission,
+a natural Internet outage/stall, unrestricted whole-viewer behavior or a
+demonstrated local privilege escalation.
 
-Each process first proved IPv4/IPv6 syscall traps and real-libc forwarding. The observer
-denied the measured datagram syscalls; no datagram creation or packet transmission is claimed.
-The exact private executable was hash-stable, singly linked and separate from Cargo's
-two-link build output: SHA-256
-`d1c020425daff741420bc15a015003b98383f682dfe13e494d21ee85723f3df3`.
-All 128 existing library regressions also passed. The 188-second zero-NIC transaction
-kept source/input bindings, added no observed host endpoint and joined cleanup. Raw
-`hbb-common-fs-run.M555mfWUXj.serial.log` and the scoped record
-`.harness-state/verifier-vm/hostname-probe-observed-8367f58b.json` retain the evidence.
-This is an observed defect baseline, not a product correction or zero-UDP acceptance.
-Exact `66613e06` extends the diagnostic to nine processes and real TCP DNS
-A/AAAA replies. The positive case connected to its loopback application peer;
-the silent-peer case remained pending after 51 ms despite its 5 ms connect budget.
-After exact async caller cancellation/join, both libc lookup and its accepted
-DNS TCP connection remained active. Late valid answers caused **two trapped
-datagram attempts after caller retirement**, then native completion and peer EOF.
-No late application connection was observed after that cancelled caller.
-The fixture retires its listener and half-closes replies before final drain.
-All nine processes and 171 existing library/file-peer regressions passed in
-217 VM seconds; executable/source bindings and joined bounded-RAM cleanup pass.
-`.harness-state/verifier-vm/dns-tcp-observed-66613e06.json` retains the measurements;
-the first fixture drain failure is separately retained and unaccepted.
-This is an instrumented constructor defect baseline. The observer denied the
-datagram syscalls; no packet transmission or natural Internet outage is claimed.
-Product correction, unrestricted/whole-viewer behavior, platform DNS-policy
-integration and exact-current artifacts remain OPEN. Literal-only admission,
-TCP DNS configuration or a timeout wrapper do not establish the required
-transport/lifetime correction.
-**Resolver boundary — source separated; named Linux comparison accepted.**
-`FramedStream::new` accepts one `SocketAddr`; it no longer resolves names or
-selects candidates. The existing `connect_tcp_local` facade owns those steps,
-and returned socket/connect and TCP_NODELAY failures retain their native cause.
-Hostname probes now use the same facade as the viewer. The blocking lookup still exists there; its
-transport and cancellation correction remain OPEN. Exact `cf58ee67` passed
-173 tests and nine connector diagnostic processes in 190 VM seconds. Both the
-exact earlier constructor and current constructor connected to the owned
-loopback peer; occupied bind erased the old native cause, while the current
-constructor and connector retained `EADDRINUSE`. The old method is test-only.
-Frozen source, stable artifacts, unchanged host endpoints and joined bounded-RAM
-retirement are bound in `.harness-state/verifier-vm/tcp-resolution-boundary-cf58ee67.json`.
-Full-root/video-probe, other-platform, installed and release acceptance remain OPEN.
+**Remaining acceptance:** preserve hostname support and the zero-UDP contract;
+correct transport and cancellation ownership, then run source-bound isolated
+viewer/connector cases for literal IPv4, qualified hostnames, single/multiple
+A/AAAA and hosts-file results, default/TCP DNS, transient sockets, failures,
+cancellation and exact resolver drain. Platform DNS policy, full-root/video-probe,
+other-platform, exact-current installed/release artifacts and native acceptance
+remain OPEN. Literal-only admission, TCP DNS configuration and a timeout wrapper
+do not establish the correction. No parked investigation is resumed here.
+
 Primary references: [Rust 1.75 lookup](https://github.com/rust-lang/rust/blob/1.75.0/library/std/src/sys_common/net.rs#L181),
 [glibc 2.27 sorting](https://github.com/bminor/glibc/blob/glibc-2.27/sysdeps/posix/getaddrinfo.c#L2187),
 [glibc DNS sockets](https://github.com/bminor/glibc/blob/glibc-2.27/resolv/res_send.c#L858).

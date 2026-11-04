@@ -136834,3 +136834,81 @@ RAM workspace retire; three listener deltas are zero and scratch peaks at
 1881ff940ec16e36d235689577ee3ac92c58e571e259d29f7b4d04813b9e553b.
 Twelve bounded files match CTE/TUF. This audit-only receipt preserves the
 counted ledger. No owned job remains; the timing requirement remains OPEN.
+
+## 2026-11-04 — same-corpus serial PAKE timing comparison
+
+The preceding goal turn made progress: its default-backend result established
+a narrower tested input distinction and changed the next experiment. This slice
+continues R-P12 with the already-implemented serial profile rather than choosing
+another cleanup. Required result: measure the same seven cohorts under the
+serial override with unchanged budgets, seeds, controls, threshold and CPU-0
+launch placement. Both hosts were clean at 5a749e1a; TUF had about 48 GB
+available RAM and no owned VM/scratch before admission. No product/test source
+change or new acquisition was needed.
+
+Research: dalek's pinned 4.1.3 README
+(https://raw.githubusercontent.com/dalek-cryptography/curve25519-dalek/curve25519-4.1.3/curve25519-dalek/README.md)
+documents the serial cfg override and warns that backends share implementation
+parts. The authenticated vendored README/build.rs agree. Its serial variable-base
+source uses a fixed radix-16 traversal and constant-time table selection; these
+source properties cannot settle the observed target timing. The existing runner
+checks the actual build-script backend/word-size selection and serial link map.
+The earlier runtime-copy evidence also prevents treating serial arithmetic as
+a claim that the entire process avoids AVX.
+
+Command: /usr/bin/taskset --cpu-list 0 /bin/bash scripts/smoke-verifier-vm-authority.sh --pake-backend-serial-tests.
+TUF fUYxL6dNCJ at 5a749e1aba4808c0c7778aee0f101d79ebaae951 passes
+twenty functional tests and the seven-cohort timing test. Native timing is
+199.57 seconds; complete captured outer execution is 344.875 seconds, within
+the existing 240/420-second bounds. Optimized Rust 1.75.0 selects serial/64.
+Executable SHA-256 before/after:
+9af620933716b05fd53bcf03dbcba86ab0b9dc39cf29573bc04e0ee10447b284.
+
+| Cohort | Raw t | Pooled-p99 t |
+| --- | ---: | ---: |
+| variable-time one/random control | -738.909297 | -6186.621677 |
+| one/random | -4.025754 | -9.405182 |
+| random/one | 2.014225 | 7.523096 |
+| one/one control | 0.561214 | 1.482704 |
+| fixed/random | -0.873961 | -1.664525 |
+| random/fixed | 0.171071 | -0.420926 |
+| fixed/fixed control | 0.464086 | 0.569425 |
+
+All seven input hashes, labels/counts, seeds, budgets, repeats and threshold
+match Rk91ISkqi5; the original four also match l7uE7lOxEI. Fixed scalar bytes
+and 122-bit weight agree. Both identical controls and the deliberate variable-time
+control behave as required. Resolved memcpy's libc hash, entry, captured code
+and disassembly hashes match both previous runs; before/after identity passes.
+This run has inherited taskset placement but no live thread-mask snapshot: the
+next observation found the exact job already terminal, and did not restart it.
+
+The retained selected serial routine has the same mangled name and 2,800-byte
+length as l7uE7lOxEI, now at 0x7f890 rather than 0x753c0. Reconstruction of
+the bounded objdump byte columns finds changes only in ten RIP-relative address-
+bearing instruction lines, at offsets 0x128, 0x1a7, 0x3fd, 0x454, 0x4be,
+0x4f3, 0x508, 0x653, 0x662 and 0xa43. All other encoded bytes in this routine
+agree. Four changed references reach the independently captured memcpy slot;
+the other six address data that this comparison did not capture. This does not
+prove whole-binary or referenced-data equivalence, and does not identify a
+causal instruction or environmental cause. Current routine disassembly SHA-256:
+5b95911a9b36b2e56d564aef4eaad3d26b2aba976f2231fc64c73a1613c7fc72.
+
+The new fixed-scalar cohorts stay below threshold on both backends. Serial's
+one/random statistic now stays just below 10, but earlier serial measurements
+crossed it (-24.582/21.568 pooled-p99 in l7uE7lOxEI), and the default backend
+still detects. Preserve all outcomes; this pass is not a correction, proof of
+constant-time execution or reason to change the production backend. The next
+research need is controlled same-artifact repetition that separates run/layout
+variation from the tested input effect, plus independent reproduction; do not
+keep rerunning rebuilt artifacts until a passing threshold replaces failures.
+Full sampling/RNG, erasure, other targets/shipping artifacts, higher-order effects,
+automatic CI, R-V3 and all independent parks remain OPEN.
+
+pake-dense-serial-5a749e1a.json is 11,883 bytes, SHA-256
+9b74969afcd19db1b125f9d5ab41c9c7430545260cb8d42fd74c0a02f77394e9.
+Twelve bounded files total 170,427 bytes per host and match CTE/TUF. Exact
+launch 1813865 and QEMU 1814324 are absent by pidfd; helpers, private state and
+RAM run.u0j_l44s are absent under the shared lock. Peak RAM scratch is
+3,290,710,016 bytes, QEMU host block writes 4,096 bytes, and four listener
+deltas are zero. The ledger replaces the previous timing row with both results
+and preserves the earlier failure and every open obligation. Fresh counting follows.

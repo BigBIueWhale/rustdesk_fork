@@ -138383,3 +138383,17 @@ their complete remaining bytes against HEAD after only the classified deletions;
 the real Rust source/test files must match HEAD. No product or live instruction
 file changes, new tests, full source catalog or native scenario are needed for
 this deletion-only correction. Fresh ledger count is pending.
+
+Exact comparisons pass: verify.sh loses only eleven classified lines and the
+Apple script only ten; both Rust files remain byte-identical. CTE count 8IshHzPeo8
+at pushed a7059e3d completes in 28 outer seconds: 398,658 tokens / 1,823,285 bytes,
+SHA-256 db14ed45fab9f97020a72c6d9e49a9d8e57b91059b611dff94c2c51ae879d8f5.
+Pinned token method, seven controls, full byte round trip and 42-mode/82-control/
+five-refusal admission pass. Three listener deltas are zero; exact wrapper/QEMU,
+helpers, private state and RAM are absent under the shared-lock reconciliation.
+Scratch peaks at 402,890,752 bytes and is retired. Capsule
+pty-wording-ledger-a7059e3d.json is 5,175 bytes, SHA-256
+3687b9c97de33e70b5ae2ca1ef82f8e7b8bdab81e9118ae9c479ee5a627b4f3d,
+with ten raw/control records and its retirement receipt. No owned job remains.
+The focused deletion is complete; native acceptance and the overall release goal
+remain OPEN, with independent user parks intact.

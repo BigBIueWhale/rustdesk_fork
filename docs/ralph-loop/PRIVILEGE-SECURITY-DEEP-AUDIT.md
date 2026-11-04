@@ -137939,3 +137939,58 @@ without replacing the older candidate or canonical inputs. Shared storage admiss
 monitoring, network topology and joined cleanup remain mandatory. Acquiring this
 prerequisite does not establish native product behavior; the intended next check
 uses both X servers solely inside the networkless disposable runtime.
+
+## 2026-11-04 — user pivot; release-ledger history consolidation
+
+The user requests a different aspect. Further rotated Linux resolution/native
+runtime work is OPEN/PARKED, including acquisition retries. The existing product
+correction and 21-case component evidence remain valid; no rotated X-server or
+complete Remote-session acceptance is claimed.
+
+Reconciled the already-finished acquisition work at clean `0d7be02e` before the
+pivot. Preflight `Jd0pZRUcN5` refused missing bootstrap inputs without booting.
+Two pinned inputs were then copied to TUF without host installation/execution:
+Buildx v0.20.0 (65,241,240 bytes) and Buildkit v0.18.2 (81,953,628 bytes), each
+digest-verified against `scripts/pins.env` before and after transfer. These
+147,194,868 bytes are intentional authenticated cache, not retired scratch.
+The preflight receipt is `rotation-runtime-preflight-0d7be02e.json`.
+
+Actual acquisition `RyuxnCijwU` failed signed snapshot index retrieval with HTTP
+503; the single same-source retry `GJV4OsqClJ` failed package retrieval with
+HTTP 503/504 and connection errors. Neither published a runtime candidate.
+The latter's wrapper/QEMU PIDs 1921474/1922696 are absent; helpers, the exact
+inventoried private tree and `/dev/shm/rustdesk-fork-vm-1000/run.xdffjlgh`
+identity 29:47127 are retired. The first actual run is likewise reconciled.
+Each before/during/after listener inventory is byte-identical with empty new
+listener deltas. RAM-workspace peaks were 4,030,935,040 and 4,029,259,776 bytes;
+the original CTE xrandr-only candidate and canonical inputs remain untouched.
+Bounded evidence is retained on both hosts:
+`rotation-runtime-ready-0d7be02e.json` (9,634 bytes, SHA-256
+316e93f2ae884e0d58fa043bcce9675aa3b8ae8d8ba54f5374a4ba85d3ed6847),
+and `rotation-runtime-retry-0d7be02e.json` (10,701 bytes, SHA-256
+4fab9fd5698217a8b75a61f2e169c464248f490912b47e19843b64e53dd22fa2).
+
+Selected the binding release-documentation architecture task: the current ledger
+is only 1,182 tokens below its 400,000-token budget. Condense the fourteen completed
+documentation-classification rows from build-guide entrypoints through Linux
+authorization/lifecycle helper evidence. This gives release assessment room to
+record current blockers without continuing the parked display work or reopening
+independent parks. The useful completion condition is a smaller current-state
+index with all fourteen scopes and evidence references, explicit open acceptance
+limits, and a fresh isolated whole-ledger count.
+
+Classification: old deleted-code narration, historical unchanged-file inventories,
+size comparisons and repeated absence-of-runtime disclaimers are history. Their
+original detail remains in Git at `0d7be02e`, the unchanged cited audit entries and
+existing receipts. Keep the current disposition, requirement/finding references,
+source-versus-native distinction and every open obligation; the normative
+specification and product/test sources are unchanged. The only additional ledger
+changes record the new user pivot and the already-completed acquisition failures.
+No product defect or native acceptance is inferred from this documentation work.
+
+Exact comparison preserves all fourteen scope/evidence columns, their requirement
+references, and every ledger heading/anchor. Outside those rows, only the two
+explicit pivot/failure additions differ. The selected section falls from 7,599 to
+3,935 bytes; the complete ledger falls from 1,825,095 to 1,822,251 bytes, SHA-256
+224f1c6f98d248c5d447a0aad3a0beeb2ccf694c2a7a62518bd3e512f420ecef.
+These byte counts are not token-budget evidence; the isolated count follows.

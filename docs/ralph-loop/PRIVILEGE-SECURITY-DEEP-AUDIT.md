@@ -138214,3 +138214,32 @@ admission and joined cleanup. CTE has roughly 30 GiB available memory and empty
 owned run/RAM state. The reference library's availability is still unverified;
 absence must fail explicitly without an alternate implementation or download.
 Shell/Python/JSON syntax and whitespace checks pass; native acceptance is pending.
+
+CTE `ozMRZqFm7C` at pushed `1cf48290` completes with outer/QEMU exit zero in
+190 outer seconds (193.547 monitored). The existing pinned VM contains Debian
+libargon2 0~20171227-0.3+deb12u1, SHA-256
+090f9d048e21e57434dd81e38e725142c5d5f51853a504381d09f32e635dfae7.
+Its RFC 9106 §5.3 known answer passes. The exact production integration test passes
+all seventeen cases in 0.95 seconds; sixteen outputs match and empty input returns
+None. Equivalent accents and Hangul share outputs; the fourteen distinct nonempty
+normalized inputs produce distinct outputs in this sample. This is observed
+compatibility, not a general collision or cryptographic-security proof.
+
+The retained reference record binds the source fixture SHA-256
+df48f37d4798534b15666355855a0fd84830c9a1bf070cc0eb07710537607470,
+salt cc1a0573d033aeb63a1bb30380abe0c5, exact parameters and all expected outputs.
+The reference file remains unchanged. Cargo verifies optimization level 3 with
+overflow/debug checks disabled; production test artifact
+c73b0a01e73c9636fe7d69e144bb235a64c5bea4a6b9cbda0d1271f1c6d0f1e1
+remains identical before/after execution. The artifact selector controls pass
+inside the VM. No production algorithm, parameter, representation or API changed.
+
+Under the shared lock, pidfd checks prove wrapper 1755872 and QEMU 1756540 absent;
+matching helpers, private state and RAM workspace run.zjpb2miv (29:537) are absent.
+All four decoded listener inventories have zero additions/removals. RAM scratch
+peaks at 3,042,660,352 bytes and is retired; only bounded evidence is retained.
+Capsule prs-derivation-1cf48290.json is 7,515 bytes, SHA-256
+8eefebf33c19b01c906d0ca4dc57ef5eef0e70aafc4aae505736e36a64af7482,
+with its retirement receipt and eleven raw/control records on CTE. The ledger
+records this component checkpoint without closing UI/peer, storage, other-platform,
+shipping-artifact or independent-review acceptance. All independent parks remain.

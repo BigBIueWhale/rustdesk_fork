@@ -137820,3 +137820,15 @@ pake-erasure-8b2a0378.json is 6,273 bytes, SHA-256
 5ce5fda452376fbe0896869a374082ab5b6eaeb22c4ce100ad45416f86fa0860.
 Update only the named evidence row; broader R-P12/R-S0, current release and
 independent-review obligations remain open. Fresh ledger counting follows.
+
+Fresh count rCnonbgQYI at 62b424e1 passes in 27 outer seconds: 398,481 tokens /
+1,823,403 bytes, input SHA-256
+85fecb4498a3c331b46fd039705aa588fe70150969acff4e9dc2ae804d7e08a5.
+Seven controls, whole-input round trip and 82 workload admissions/five refusals
+pass. Launcher/QEMU 1907035/1908461, private state and 402,800,640 peak RAM bytes
+retire; three listener deltas are zero. Twelve bounded records match CTE/TUF.
+pake-erasure-ledger-62b424e1.json is 5,180 bytes, SHA-256
+55abc29389777e96675b0891505065374abc6e85acdeb64e545d2946e49a462e.
+This audit-only receipt leaves the counted ledger unchanged. The credential-buffer
+erasure checkpoint is complete; remaining secret representations and target/release
+acceptance stay open, as do the overall goal and independent user parks.

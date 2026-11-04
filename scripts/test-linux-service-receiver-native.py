@@ -2971,6 +2971,141 @@ def service_session_handoff(commit, binary_sha, probe_sha):
           "logind=actual seats=none credential=preserved cleanup=joined", flush=True)
 
 
+def service_limiter(commit, binary_sha, probe_sha):
+    unit = Path("/etc/systemd/system/rustdesk.service")
+    record_path = Path("/run/rustdesk/service-child.record")
+    cgroup = Path("/sys/fs/cgroup/system.slice/rustdesk.service")
+    if any(os.path.lexists(p) for p in (unit, record_path.parent, cgroup)):
+        raise RuntimeError("limiter fixture requires absent service state")
+    shutil.copyfile(MEDIA / "repo/res/rustdesk.service", unit)
+    run(["/usr/bin/systemctl", "daemon-reload"])
+    reference = ServiceUnitResultReference()
+    retained = []
+    observations = []
+    value = "Receiver-limiter-recovery-2026!"
+
+    def properties():
+        return dict(line.split("=", 1) for line in run(
+            ["/usr/bin/systemctl", "show", "rustdesk.service",
+             "--property=ActiveState,SubState,Result,MainPID,ExecMainCode,ExecMainStatus,NRestarts,InvocationID"]).stdout.splitlines())
+
+    def unchanged():
+        if (properties() != before or child_record() != record or credential() != durable
+                or direct_listener(record) != listener
+                or any(select.select([fd], [], [], 0)[0] for _, fd in retained)):
+            raise RuntimeError("limiter observation changed service, child, listener or credential")
+
+    def attempt(password, allowed, source, phase):
+        unchanged()
+        began = time.monotonic()
+        expected = "ok" if allowed else "fail"
+        result = run(["/usr/bin/setpriv", "--reuid=4002", "--regid=4002", "--clear-groups",
+                      "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
+                      str(PROBE), "127.0.0.1:21118", "--password-stdin", expected,
+                      "login" if allowed else "", source + ":0"], input=password + "\n", timeout=15)
+        lines = result.stdout.splitlines()
+        if (result.stderr or len(lines) != (3 if allowed else 2)
+                or lines[0] != f"probe_client: keying ok={str(allowed).lower()} (expected={expected})"
+                or lines[-1] != "probe_client: PASS"
+                or (allowed and "[REMOTE-LOGIN-ADMITTED peer-info]" not in lines[1])):
+            raise RuntimeError(f"installed limiter outcome differs: {phase}: {result.stdout} {result.stderr}")
+        unchanged()
+        observations.append({"phase": phase, "source": source, "keyed": allowed,
+                             "remote_peer_info": allowed, "began": began,
+                             "completed": time.monotonic()})
+        print("LINUX_SERVICE_LIMITER_CASE=" + json.dumps(observations[-1], sort_keys=True), flush=True)
+
+    def wait_until(deadline):
+        while time.monotonic() < deadline:
+            unchanged()
+            time.sleep(min(1, max(0, deadline - time.monotonic())))
+
+    try:
+        run(["/usr/bin/systemctl", "start", "rustdesk.service"])
+        record = ready()
+        for pid in (record["supervisor"], record["pid"]):
+            retained.append((pid, os.pidfd_open(pid)))
+        if (digest(Path(f"/proc/{record['supervisor']}/exe")) != binary_sha
+                or Path(f"/proc/{record['supervisor']}/cmdline").read_bytes() != b"/usr/bin/rustdesk\0--service\0"):
+            raise RuntimeError("limiter supervisor executable or role differs")
+        change(0, value, True)
+        durable = credential()
+        deadline = time.monotonic() + 10
+        listener = direct_listener(record)
+        while listener is None and time.monotonic() < deadline:
+            time.sleep(0.05)
+            listener = direct_listener(record)
+        before = properties()
+        if (listener is None or before["MainPID"] != str(record["supervisor"])
+                or (before["ActiveState"], before["SubState"], before["Result"], before["NRestarts"])
+                != ("active", "running", "success", "0")):
+            raise RuntimeError("limiter service did not become ready")
+        source, other = "127.0.0.1", "127.0.0.2"
+        attempt(value, True, source, "initial")
+        attempt(value, True, other, "initial-other")
+        for index in range(1, 10):
+            attempt(value + "-wrong", False, source, f"wrong-{index}")
+            if index == 1:
+                first = observations[-1]
+        for _ in range(12):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as peer:
+                peer.settimeout(5)
+                peer.bind((source, 0))
+                peer.connect(("127.0.0.1", 21118))
+                peer.shutdown(socket.SHUT_WR)
+                if peer.recv(1) != b"":
+                    raise RuntimeError("pre-key EOF control did not close")
+        attempt(value, True, source, "nine-failures-plus-eof")
+        attempt(value + "-wrong", False, source, "wrong-10")
+        for checkpoint in (0, 20, 40):
+            wait_until(first["began"] + checkpoint)
+            attempt(value, False, source, f"blocked-{checkpoint}")
+            if observations[-1]["completed"] - first["began"] >= 55:
+                raise RuntimeError("blocked observation ran too near window expiry")
+            attempt(value, True, other, f"other-{checkpoint}")
+        wait_until(first["completed"] + 64)
+        attempt(value, True, source, "recovered")
+        attempt(value, True, other, "recovered-other")
+        recovery_seconds = observations[-2]["completed"] - first["completed"]
+        if not 64 <= recovery_seconds < 70:
+            raise RuntimeError("installed limiter recovery exceeded its observation deadline")
+        if len(observations) != 21 or sum(item["remote_peer_info"] for item in observations) != 8:
+            raise RuntimeError("installed limiter case inventory differs")
+    except BaseException:
+        print(run(["/usr/bin/journalctl", "--unit=rustdesk.service", "--no-pager", "-n", "60"]).stdout, flush=True)
+        raise
+    finally:
+        try:
+            run(["/usr/bin/systemctl", "stop", "rustdesk.service"], timeout=40)
+            deadline = time.monotonic() + 5
+            for pid, fd in retained:
+                if not select.select([fd], [], [], max(0, deadline - time.monotonic()))[0]:
+                    raise RuntimeError("limiter service process did not exit")
+                while Path(f"/proc/{pid}").exists() and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                if Path(f"/proc/{pid}").exists():
+                    raise RuntimeError("limiter service process was not reaped")
+            after = properties()
+            if (after["ActiveState"] != "inactive" or after["SubState"] != "dead"
+                    or after["Result"] != "success" or after["MainPID"] != "0"
+                    or after["ExecMainCode"] != "1" or after["ExecMainStatus"] != "0"
+                    or after["NRestarts"] != "0" or record_path.exists() or cgroup.exists()):
+                raise RuntimeError(f"limiter service cleanup differs: {after}")
+        finally:
+            reference.close()
+            for _, fd in retained:
+                os.close(fd)
+    if credential() != durable:
+        raise RuntimeError("limiter service stop changed its credential")
+    print("LINUX_SERVICE_LIMITER_OBSERVED=" + json.dumps(
+        {"record": record, "listener_inode": listener, "before": before, "after": after,
+         "recovery_seconds": recovery_seconds, "cases": len(observations), "logins": 8,
+         "eof_controls": 12, "credential_unchanged": True, "processes_reaped": True}, sort_keys=True), flush=True)
+    print(f"LINUX_SERVICE_LIMITER_NATIVE=pass cases=21 logins=8 eof=12 threshold=10 checkpoints=0,20,40 "
+          f"recovered=64s source={commit} binary_sha256={binary_sha} probe_sha256={probe_sha} "
+          "fixture=installed-layout unit=shipped logind=actual generation=unchanged credential=preserved cleanup=joined", flush=True)
+
+
 def service_openrc(commit, binary_sha, probe_sha):
     unit = Path("/etc/systemd/system/rustdesk.service")
     script = Path("/etc/init.d/rustdesk")
@@ -3993,7 +4128,7 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, ex
           f"binary_sha256={binary_sha} fixture=installed-layout unit=shipped legacy=unchanged cleanup=joined", flush=True)
 
 
-def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False, collisions=False, exclusive=False, desktop_exclusive=False, crash=False, recovery=False, child_crash=False, stopped_child=False, record_cleanup=False, parent_death=False, handoff=False, openrc=False):
+def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False, collisions=False, exclusive=False, desktop_exclusive=False, crash=False, recovery=False, child_crash=False, stopped_child=False, record_cleanup=False, parent_death=False, handoff=False, openrc=False, limiter=False):
     guard()
     checked = run(["/usr/bin/setpriv", "--reuid=1000", "--regid=1000", "--clear-groups",
                    "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
@@ -4022,6 +4157,9 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
     if "not found" in run(["/usr/bin/ldd", str(PROBE)]).stdout:
         raise RuntimeError("network probe runtime dependency is missing")
     run(["/usr/bin/systemctl", "is-active", "systemd-logind.service", "polkit.service"])
+    if limiter:
+        installed_desktop(lambda: service_limiter(commit, spec["sha256"], probe_spec["sha256"]))
+        return
     if openrc:
         install_openrc()
         installed_desktop(lambda: service_openrc(commit, spec["sha256"], probe_spec["sha256"]))
@@ -4378,6 +4516,8 @@ if __name__ == "__main__":
         tests(sys.argv[1:6], handoff=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--openrc":
         tests(sys.argv[1:6], openrc=True)
+    elif len(sys.argv) == 7 and sys.argv[-1] == "--limiter":
+        tests(sys.argv[1:6], limiter=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--stopped-child":
         tests(sys.argv[1:6], stopped_child=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--record-cleanup":

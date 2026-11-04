@@ -138980,3 +138980,42 @@ binds eleven raw/control records and a 456-byte retirement receipt, SHA-256
 9c34e01d4c391a381183e63149d167ca538c13171ff3a9cb07ab97dd3b25d360.
 Diff/reference review and whitespace checks pass. This documentation checkpoint
 is complete; whole-document classification and all product/release gaps remain OPEN.
+
+## 2026-11-04 — installed-service password-attempt recovery
+
+Previous turn: progress, with committed ledger correction, fresh accepted count
+and joined cleanup. Select R-S10/R-S0's installed-service login-recovery gap over
+further documentation consolidation. Standalone Linux server accounting/recovery
+already passed; its ledger explicitly excludes full Remote login and installed
+service ownership. OpenRC, other managers, privileged-settings investigations
+and all independent parks remain parked. No product defect is assumed.
+
+Reuse authenticated 60e3fb0a artifacts: current src/libs, Cargo/build inputs,
+probe/readiness sources and shipped systemd unit have no changes from that source.
+Add one closed profile to the existing admitted no-NIC installed-layout VM;
+ordinary container staging, root only inside that disposable VM, bounded RAM,
+monitoring and joined retirement remain unchanged. No new build is needed.
+
+The scenario uses real PAM/logind/X11 and the shipped unit. A known fixture
+credential is provisioned through the existing authorized root operation. Ordinary
+UID-4002 probes must complete eight real CPace/Remote PeerInfo logins across two
+guest-loopback source addresses. Nine known-wrong attempts plus twelve ordinary
+pre-key EOFs retain valid login; the tenth wrong attempt blocks its source at
+immediate/20/40-second observations while the other source still logs in.
+Both must log in after the 64-second recovery observation. Every phase preserves
+the exact supervisor/child, service invocation, listener inode and durable
+credential. Normal stop must reap both retained pidfds and retire record/cgroup
+before success. No flood, credential search, host peer or external target runs.
+
+Production accounting is in libs/hbb_common/src/cpace.rs and admission in
+src/server.rs: the first confirmation failure starts a fixed 60-second window;
+success does not reset it and non-confirmation errors do not increment it.
+Primary Rust 1.75 time documentation/source:
+https://raw.githubusercontent.com/rust-lang/rust/1.75.0/library/std/src/time.rs
+Use real monotonic elapsed time; platform suspend behavior remains outside this
+awake Linux scenario. systemd's documented Type=notify readiness and explicit
+stop semantics supplement actual process/listener and application observations:
+https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html
+The fixture is installed-layout debug/headless evidence, not final-package,
+rendered pixels, other-platform, sustained-load or complete privilege acceptance.
+Shell syntax, Python AST and diff review pass; native execution follows.

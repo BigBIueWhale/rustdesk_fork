@@ -540,7 +540,7 @@ case "$#:${1:-}" in
             || { echo 'host network test input/run overrides are forbidden' >&2; exit 2; }
         MODE=host-network-tests
         ;;
-    5:--linux-service-receiver-tests|5:--linux-service-convergence-failure-tests|5:--linux-service-notification-failure-tests|5:--linux-service-network-drain-tests|5:--linux-service-authorization-timeout-tests|5:--linux-service-startup-tests|5:--linux-service-incumbent-tests|5:--linux-service-collision-tests|5:--linux-service-exclusive-tests|5:--linux-service-desktop-exclusive-tests|5:--linux-service-crash-tests|5:--linux-service-child-crash-tests|5:--linux-service-parent-death-tests|5:--linux-service-handoff-tests|5:--linux-service-stopped-child-tests|5:--linux-service-record-cleanup-tests|5:--linux-service-recovery-refusal-tests|5:--linux-service-openrc-tests)
+    5:--linux-service-receiver-tests|5:--linux-service-convergence-failure-tests|5:--linux-service-notification-failure-tests|5:--linux-service-network-drain-tests|5:--linux-service-authorization-timeout-tests|5:--linux-service-startup-tests|5:--linux-service-incumbent-tests|5:--linux-service-collision-tests|5:--linux-service-exclusive-tests|5:--linux-service-desktop-exclusive-tests|5:--linux-service-crash-tests|5:--linux-service-child-crash-tests|5:--linux-service-parent-death-tests|5:--linux-service-handoff-tests|5:--linux-service-stopped-child-tests|5:--linux-service-record-cleanup-tests|5:--linux-service-recovery-refusal-tests|5:--linux-service-openrc-tests|5:--linux-service-limiter-tests)
         [ "$2" = --peer-commit ] && [ "$4" = --peer-manifest-sha256 ] \
             && [[ "$3" =~ ^[0-9a-f]{40}$ ]] && [[ "$5" =~ ^[0-9a-f]{64}$ ]] \
             && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -574,6 +574,8 @@ case "$#:${1:-}" in
             LINUX_RECEIVER_PROFILE=handoff
         elif [ "$1" = --linux-service-openrc-tests ]; then
             LINUX_RECEIVER_PROFILE=openrc
+        elif [ "$1" = --linux-service-limiter-tests ]; then
+            LINUX_RECEIVER_PROFILE=limiter
         elif [ "$1" = --linux-service-stopped-child-tests ]; then
             LINUX_RECEIVER_PROFILE=stopped-child
         elif [ "$1" = --linux-service-record-cleanup-tests ]; then
@@ -890,6 +892,7 @@ case "$#:${1:-}" in
         printf 'Focused directory-ordering publication and home correlation: %s --flutter-model-tests --directory-ordering\n' "${0##*/}" >&2
         printf 'Installed Linux authorization deadline: %s --linux-service-authorization-timeout-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Installed-layout OpenRC lifecycle: %s --linux-service-openrc-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
+        printf 'Installed-service limiter recovery: %s --linux-service-limiter-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Installed Linux IPC startup: %s --linux-service-startup-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Bounded Linux service artifacts (compile only): %s --linux-service-artifact-build\n' "${0##*/}" >&2
         printf 'Installed Linux live IPC preservation: %s --linux-service-incumbent-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
@@ -5269,6 +5272,8 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
         linux_receiver_guest_flag=--linux-service-handoff-tests
     elif [ "$LINUX_RECEIVER_PROFILE" = openrc ]; then
         linux_receiver_guest_flag=--linux-service-openrc-tests
+    elif [ "$LINUX_RECEIVER_PROFILE" = limiter ]; then
+        linux_receiver_guest_flag=--linux-service-limiter-tests
     elif [ "$LINUX_RECEIVER_PROFILE" = stopped-child ]; then
         linux_receiver_guest_flag=--linux-service-stopped-child-tests
     elif [ "$LINUX_RECEIVER_PROFILE" = record-cleanup ]; then
@@ -6003,7 +6008,10 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
     linux_receiver_binary_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/rustdesk" | /usr/bin/awk '{print $1}')
     linux_receiver_probe_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/probe_client" | /usr/bin/awk '{print $1}')
     require_exact_fixed_receipt 'verify-linux-service-password-ipc: source checks passed' 'supplementary password IPC source checks'
-    if [ "$LINUX_RECEIVER_PROFILE" = openrc ]; then
+    if [ "$LINUX_RECEIVER_PROFILE" = limiter ]; then
+        require_exact_fixed_receipt "LINUX_SERVICE_LIMITER_NATIVE=pass cases=21 logins=8 eof=12 threshold=10 checkpoints=0,20,40 recovered=64s source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha probe_sha256=$linux_receiver_probe_sha fixture=installed-layout unit=shipped logind=actual generation=unchanged credential=preserved cleanup=joined" 'installed service limiter recovery'
+        require_exact_fixed_receipt 'LINUX_SERVICE_DESKTOP_SESSION=retired logind=actual x11=owned users=removed' 'owned desktop session retirement'
+    elif [ "$LINUX_RECEIVER_PROFILE" = openrc ]; then
         for generation in 1 2; do
             require_exact_fixed_receipt "LINUX_OPENRC_LOGIN=pass generation=$generation uid=4002 cpace=mutual remote=peer-info probe_sha256=$linux_receiver_probe_sha" 'OpenRC owned service login'
         done
@@ -9845,7 +9853,12 @@ elif [ "$MODE" = ledger-token-count ]; then
     printf 'LEDGER_TOKEN_COUNT_OUTER=pass host_uid=%s commit=%s tree=%s input_sha256=%s recipe_sha256=%s network=none listeners=no-harness-addition inputs=readonly product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$ledger_input_sha" "$ledger_recipe_sha" "$vm_elapsed_seconds"
 elif [ "$MODE" = linux-service-receiver-tests ]; then
-    if [ "$LINUX_RECEIVER_PROFILE" = openrc ]; then
+    if [ "$LINUX_RECEIVER_PROFILE" = limiter ]; then
+        printf 'LINUX_SERVICE_LIMITER_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s cases=21 logins=8 eof=12 fixture=installed-layout unit=shipped logind=actual network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
+            "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \
+            "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" "$linux_receiver_binary_sha" "$vm_elapsed_seconds"
+    elif [ "$LINUX_RECEIVER_PROFILE" = openrc ]; then
         printf 'LINUX_OPENRC_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s generations=2 restarts=1 stops=1 logins=2 fixture=installed-layout manager=openrc script=shipped logind=actual network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
             "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \

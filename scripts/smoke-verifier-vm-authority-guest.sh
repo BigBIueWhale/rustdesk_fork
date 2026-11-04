@@ -112,7 +112,7 @@ case "$#:${8:-}" in
     8:--host-network-tests)
         MODE=host-network-tests
         ;;
-    12:--linux-service-receiver-tests|12:--linux-service-convergence-failure-tests|12:--linux-service-notification-failure-tests|12:--linux-service-network-drain-tests|12:--linux-service-authorization-timeout-tests|12:--linux-service-startup-tests|12:--linux-service-incumbent-tests|12:--linux-service-collision-tests|12:--linux-service-exclusive-tests|12:--linux-service-desktop-exclusive-tests|12:--linux-service-crash-tests|12:--linux-service-child-crash-tests|12:--linux-service-parent-death-tests|12:--linux-service-handoff-tests|12:--linux-service-stopped-child-tests|12:--linux-service-record-cleanup-tests|12:--linux-service-recovery-refusal-tests|12:--linux-service-openrc-tests)
+    12:--linux-service-receiver-tests|12:--linux-service-convergence-failure-tests|12:--linux-service-notification-failure-tests|12:--linux-service-network-drain-tests|12:--linux-service-authorization-timeout-tests|12:--linux-service-startup-tests|12:--linux-service-incumbent-tests|12:--linux-service-collision-tests|12:--linux-service-exclusive-tests|12:--linux-service-desktop-exclusive-tests|12:--linux-service-crash-tests|12:--linux-service-child-crash-tests|12:--linux-service-parent-death-tests|12:--linux-service-handoff-tests|12:--linux-service-stopped-child-tests|12:--linux-service-record-cleanup-tests|12:--linux-service-recovery-refusal-tests|12:--linux-service-openrc-tests|12:--linux-service-limiter-tests)
         MODE=linux-service-receiver-tests
         if [ "${8}" = --linux-service-convergence-failure-tests ]; then
             LINUX_RECEIVER_PROFILE=convergence-failure
@@ -142,6 +142,8 @@ case "$#:${8:-}" in
             LINUX_RECEIVER_PROFILE=handoff
         elif [ "${8}" = --linux-service-openrc-tests ]; then
             LINUX_RECEIVER_PROFILE=openrc
+        elif [ "${8}" = --linux-service-limiter-tests ]; then
+            LINUX_RECEIVER_PROFILE=limiter
         elif [ "${8}" = --linux-service-stopped-child-tests ]; then
             LINUX_RECEIVER_PROFILE=stopped-child
         elif [ "${8}" = --linux-service-record-cleanup-tests ]; then
@@ -1061,6 +1063,8 @@ run_linux_service_receiver_tests() {
         native_args+=(--handoff)
     elif [ "$LINUX_RECEIVER_PROFILE" = openrc ]; then
         native_args+=(--openrc)
+    elif [ "$LINUX_RECEIVER_PROFILE" = limiter ]; then
+        native_args+=(--limiter)
     elif [ "$LINUX_RECEIVER_PROFILE" = stopped-child ]; then
         native_args+=(--stopped-child)
     elif [ "$LINUX_RECEIVER_PROFILE" = record-cleanup ]; then

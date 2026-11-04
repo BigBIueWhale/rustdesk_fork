@@ -138699,3 +138699,15 @@ This completes the selected artifact prerequisite. Next use the pinned runit
 binaries and shipped run script in the zero-NIC VM, retaining exact manager,
 supervisor and child identities through readiness, stop/start/restart and cleanup.
 Actual runit, current installed, cross-platform and release acceptance remain OPEN.
+
+Fresh CTE ledger count mCE5QSgMxE at ee73e9d1 passes in 27 workload seconds:
+397,966 tokens / 1,818,521 bytes, SHA-256
+f8c857d1cc463e33aabce8f73ed5e8a369ced1366a57598b219d51b928185acf.
+Seven controls, exact round trip and storage admission pass. Three listener
+deltas are zero; exact wrapper/QEMU and private/RAM absence are independently
+verified under the shared lock. The supplemental child snapshot missed the
+already-exited wrapper; helper joins rely on the harness completion receipt.
+Scratch peaks at 402,878,464 bytes; no owned run remains. Capsule
+runit-ledger-ee73e9d1.json (5,291 bytes, SHA-256
+4e4f3aba39de332724df9d41efe8498101536fd234b3dc464f3f56c2a5548f3c)
+binds ten raw/control records and a 196-byte retirement receipt.

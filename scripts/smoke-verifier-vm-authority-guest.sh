@@ -190,6 +190,7 @@ case "$#:${8:-}" in
             --writer-retirement) RUST_TEST_PROFILE=writer-retirement ;;
             --version-number) RUST_TEST_PROFILE=version-number ;;
             --nfc-conformance) RUST_TEST_PROFILE=nfc-conformance ;;
+            --prs-derivation) RUST_TEST_PROFILE=prs-derivation ;;
             --guess-limiter) RUST_TEST_PROFILE=guess-limiter ;;
             --config-options) RUST_TEST_PROFILE=config-options ;;
             --compression) RUST_TEST_PROFILE=compression ;;
@@ -3615,6 +3616,7 @@ run_focused_rust_tests() {
     local source_archive_sha source_before input_mount_options pub_receipt post_pub_receipt
     local path remainder size digest test_name expected_groups helper_case
     local uid_test_artifact_sha hbb_test_artifact_sha
+    local prs_reference_sha
     local input_provider_build=$ROOT/input-provider-build
     local input_provider_installed=$ROOT/input-provider-installed
     local input_provider_sha
@@ -4364,6 +4366,14 @@ run_focused_rust_tests() {
             required_tests=(unicode_15_1_official_nfc_rows
                 unicode_15_1_unlisted_scalars_remain_unchanged
                 password_policy_preserves_case_spaces_and_compatibility)
+        fi
+        if [ "$RUST_TEST_PROFILE" = prs-derivation ]; then
+            source_fingerprints+=(libs/pake/src/lib.rs
+                libs/hbb_common/src/config/permanent_password.rs
+                libs/hbb_common/tests/prs_derivation.rs
+                libs/hbb_common/tests/fixtures/prs_derivation.json
+                scripts/prs-derivation-reference.py)
+            required_tests=(password_derivation_matches_independent_argon2_reference)
         fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             required_tests=(
@@ -6257,6 +6267,19 @@ run_focused_rust_tests() {
     fi
     if { [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ]; } \
        && [ "$HBB_LOGIND_NATIVE" -eq 0 ]; then
+        if [ "$RUST_TEST_PROFILE" = prs-derivation ]; then
+            install -d -o 1000 -g 1000 -m 0700 "$ROOT/prs-reference"
+            timeout --signal=TERM --kill-after=5s 45s \
+                setpriv --reuid=1000 --regid=1000 --clear-groups --no-new-privs \
+                --bounding-set=-all --inh-caps=-all --ambient-caps=-all \
+                prlimit --as=536870912 --nofile=64:64 --core=0:0 --fsize=65536 \
+                /usr/bin/python3 -B -I -S "$source_root/scripts/prs-derivation-reference.py" \
+                "$source_root/libs/hbb_common/tests/fixtures/prs_derivation.json" \
+                "$ROOT/prs-reference/expected.json" >"$ROOT/prs-reference-observation" \
+                || { cat "$ROOT/prs-reference-observation"; fail 'independent Argon2 reference failed'; }
+            prs_reference_sha=$(sha256sum "$ROOT/prs-reference/expected.json" | cut -d ' ' -f 1)
+            dependency_mounts+=(--mount "type=bind,source=$ROOT/prs-reference/expected.json,target=/inputs/prs-reference.json,readonly")
+        fi
         [ "$(stat -c '%u:%g:%a:%h:%s' -- "$rust_archive")" = \
           "1000:1000:400:1:$SIZE_RUST_1_75" ] \
             && [ "$(sha256sum "$rust_archive" | awk '{ print $1 }')" = "$SHA256_RUST_1_75" ] \
@@ -6589,6 +6612,9 @@ run_focused_rust_tests() {
                             test_package=pake
                             test_identity=nfc_conformance
                             test_target=(--test nfc_conformance)
+                        elif [ "$RUST_TEST_PROFILE" = prs-derivation ]; then
+                            test_identity=prs_derivation
+                            test_target=(--test prs_derivation)
                         fi
                         if [[ "$RUST_TEST_PROFILE" = protobuf-parser || "$RUST_TEST_PROFILE" = tcp-key-transition ]]; then
                             export CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 \
@@ -6598,7 +6624,7 @@ run_focused_rust_tests() {
                             export CARGO_PROFILE_TEST_DEBUG_ASSERTIONS=false
                         fi
                         artifact_options=()
-                        if [[ "$RUST_TEST_PROFILE" = version-number || "$RUST_TEST_PROFILE" = nfc-conformance ]]; then
+                        if [[ "$RUST_TEST_PROFILE" = version-number || "$RUST_TEST_PROFILE" = nfc-conformance || "$RUST_TEST_PROFILE" = prs-derivation ]]; then
                             export CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 \
                                 CARGO_PROFILE_TEST_OPT_LEVEL=3 CARGO_PROFILE_TEST_DEBUG=0 \
                                 CARGO_PROFILE_TEST_DEBUG_ASSERTIONS=false \
@@ -6829,6 +6855,19 @@ run_focused_rust_tests() {
                             [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
                             if [ "$group_status" -ne 0 ]; then
                                 printf "NFC_CONFORMANCE_ARTIFACT_STOP=observed sha256=%s status=%s unchanged=before-after\n" \
+                                    "$artifact_sha" "$group_status"
+                                exit "$group_status"
+                            fi
+                        elif [ "$RUST_TEST_PROFILE" = prs-derivation ]; then
+                            export PRS_DERIVATION_REFERENCE=/inputs/prs-reference.json
+                            printf "PRS_DERIVATION_PROFILE=pass opt_level=3 overflow_checks=false debug_assertions=false artifact_sha256=%s\n" "$artifact_sha"
+                            group_status=0
+                            timeout --signal=TERM --kill-after=5s 30s \
+                                "$test_executable" --color never --test-threads=1 --show-output \
+                                || group_status=$?
+                            [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                            if [ "$group_status" -ne 0 ]; then
+                                printf "PRS_DERIVATION_ARTIFACT_STOP=observed sha256=%s status=%s unchanged=before-after\n" \
                                     "$artifact_sha" "$group_status"
                                 exit "$group_status"
                             fi
@@ -7836,6 +7875,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=12; fi
         if [ "$RUST_TEST_PROFILE" = version-number ]; then expected_groups=1; fi
         if [ "$RUST_TEST_PROFILE" = nfc-conformance ]; then expected_groups=1; fi
+        if [ "$RUST_TEST_PROFILE" = prs-derivation ]; then expected_groups=1; fi
         if [ "$RUST_TEST_PROFILE" = guess-limiter ]; then expected_groups=1; fi
         if [ "$RUST_TEST_PROFILE" = compression ]; then expected_groups=2; fi
         if [ "$RUST_TEST_PROFILE" = file-logging ]; then expected_groups=1; fi
@@ -7877,6 +7917,7 @@ PY
         if [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then hbb_artifact_name=protobuf_it; fi
         if [ "$RUST_TEST_PROFILE" = tcp-key-transition ]; then hbb_artifact_name=key_transition; fi
         if [ "$RUST_TEST_PROFILE" = nfc-conformance ]; then hbb_artifact_name=nfc_conformance; fi
+        if [ "$RUST_TEST_PROFILE" = prs-derivation ]; then hbb_artifact_name=prs_derivation; fi
         mapfile -t hbb_artifact_receipts < <(
             grep -E "^HBB_COMMON_FS_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/$hbb_artifact_name-[0-9a-f]{16} unchanged=before-between-after$" "$output"
         )
@@ -7909,6 +7950,13 @@ PY
                 && [ "$(grep -Fxc 'NFC_CONFORMANCE_SCALARS=pass unicode=15.1.0 unchanged=1095035 listed=17029' "$output")" -eq 1 ] \
                 && [ "$(grep -Fxc 'NFC_PASSWORD_POLICY=pass cases=12 scope=normalization-only casefold=absent compatibility-fold=absent space-mapping=absent' "$output")" -eq 1 ] \
                 || fail 'Unicode NFC conformance evidence differs'
+        elif [ "$RUST_TEST_PROFILE" = prs-derivation ]; then
+            [ "$(grep -Ec '^test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in .+s$' "$output")" -eq 1 ] \
+                && [ "$(grep -Ec '^test [[:alnum:]_]+ [.][.][.] ok$' "$output")" -eq 1 ] \
+                && [ "$(grep -Fxc "PRS_DERIVATION_PROFILE=pass opt_level=3 overflow_checks=false debug_assertions=false artifact_sha256=$hbb_test_artifact_sha" "$output")" -eq 1 ] \
+                && [ "$(grep -Fxc 'PRS_DERIVATION_CASES=pass cases=17 derived=16 empty=refused oracle=libargon2-rfc9106' "$output")" -eq 1 ] \
+                && [ "$(sha256sum "$ROOT/prs-reference/expected.json" | cut -d ' ' -f 1)" = "$prs_reference_sha" ] \
+                || fail 'password derivation or independent reference evidence differs'
         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             local group count
             [ "$(grep -Fxc 'test test::test_get_version_number ... ok' "$output")" -eq 1 ] \
@@ -8983,6 +9031,10 @@ PY
         elif [ "$RUST_TEST_PROFILE" = nfc-conformance ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'Unicode NFC test total differs'
             grep -E '^test (unicode_15_1_[[:alnum:]_]+|password_policy_preserves_case_spaces_and_compatibility) [.][.][.] ok$|^NFC_(CONFORMANCE|PASSWORD)_' "$output"
+        elif [ "$RUST_TEST_PROFILE" = prs-derivation ]; then
+            [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'password derivation test total differs'
+            cat "$ROOT/prs-reference-observation"
+            grep -E '^test password_derivation_matches_independent_argon2_reference [.][.][.] ok$|^PRS_DERIVATION_(PROFILE|CASES)=' "$output"
         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'writer retirement test total differs'
             grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests|exclusive_listener_tests|seal_tests|open_tests)|cpace::(seal_tests|open_tests)|bytes_codec::tests|socket_client::tests)::[[:alnum:]_]+ [.][.][.] ok$|^test test::(test_get_version_number|test_try_into_v4) [.][.][.] ok$|^DIRECT_ADDRESS_NORMALIZATION=|^VERSION_NUMBER_(OVERFLOW|RANGE)=|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|FAILURE_READ)=|^READ_JOB_BACKPRESSURE(_CASE)?=|^(CIPHER_SEAL_ALLOCATION|TCP_SEAL_ALLOCATION|CIPHER_KEY_GUARD|RECEIVE_CIPHER|RECEIVE_CODEC)' "$output"
@@ -9060,6 +9112,10 @@ PY
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = nfc-conformance ]; then
             printf 'NFC_CONFORMANCE_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$hbb_test_artifact_sha" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = prs-derivation ]; then
+            printf 'PRS_DERIVATION_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$hbb_test_artifact_sha" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = guess-limiter ]; then

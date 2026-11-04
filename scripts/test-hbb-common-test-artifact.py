@@ -27,6 +27,19 @@ def encode(*messages):
 
 
 class ArtifactSelectionTests(unittest.TestCase):
+    def test_prs_derivation_selects_the_shared_library_integration_target(self):
+        artifact = copy.deepcopy(ARTIFACT)
+        artifact["target"] = {"name": "prs_derivation", "kind": ["test"],
+                              "src_path": "/source/libs/hbb_common/tests/prs_derivation.rs"}
+        artifact["executable"] = "/cargo-target/debug/deps/prs_derivation-0123456789abcdef"
+        self.assertEqual(select_artifact(encode(artifact, FINISHED), "prs_derivation"),
+                         artifact["executable"])
+        for field in ("manifest_path", "target", "profile", "executable"):
+            value = "/source/libs/pake/Cargo.toml" if field == "manifest_path" else (
+                {"test": False} if field == "profile" else ARTIFACT[field])
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                select_artifact(encode(dict(artifact, **{field: value}), FINISHED), "prs_derivation")
+
     def test_nfc_conformance_uses_the_exact_pake_integration_target(self):
         artifact = copy.deepcopy(ARTIFACT)
         artifact["manifest_path"] = "/source/libs/pake/Cargo.toml"

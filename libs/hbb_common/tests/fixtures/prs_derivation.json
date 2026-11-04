@@ -1,0 +1,19 @@
+[
+  {"name":"ascii","password":"Password","nfc":"Password"},
+  {"name":"lowercase","password":"password","nfc":"password"},
+  {"name":"leading-space","password":" Password","nfc":" Password"},
+  {"name":"trailing-space","password":"Password ","nfc":"Password "},
+  {"name":"space-only","password":" ","nfc":" "},
+  {"name":"nonbreaking-space","password":"\u00a0","nfc":"\u00a0"},
+  {"name":"wide-space","password":"\u3000","nfc":"\u3000"},
+  {"name":"composed","password":"Caf\u00e9","nfc":"Caf\u00e9"},
+  {"name":"decomposed","password":"Cafe\u0301","nfc":"Caf\u00e9"},
+  {"name":"hangul","password":"\uac00","nfc":"\uac00"},
+  {"name":"jamo","password":"\u1100\u1161","nfc":"\uac00"},
+  {"name":"combining-order","password":"D\u0307\u0323","nfc":"\u1e0c\u0307"},
+  {"name":"fullwidth","password":"\uff21","nfc":"\uff21"},
+  {"name":"ligature","password":"\ufb03","nfc":"\ufb03"},
+  {"name":"embedded-nul","password":"pass\u0000word","nfc":"pass\u0000word"},
+  {"name":"emoji","password":"x\ud83d\udc69\u200d\ud83d\udcbb","nfc":"x\ud83d\udc69\u200d\ud83d\udcbb"},
+  {"name":"empty","password":"","nfc":""}
+]

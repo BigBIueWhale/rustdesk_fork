@@ -138168,3 +138168,49 @@ cbad35eb7894603c27a47622fd0ed72ca0c323b04e84376e3fe2e099f9d7d6ee.
 Whitespace inspection passes. This Unicode normalization validation reaches its
 checkpoint; all broader acceptance gaps and independent parks remain. No owned
 VM job remains active, and the overall release goal remains active.
+
+## 2026-11-04 — independent password-derivation compatibility
+
+The preceding Unicode conformance turn made verified progress at 66dc8496 and
+18a2bf67. Select the next R-P1 byte-compatibility gap: production
+config/permanent_password.rs::derive_cpace_prs applies NFC, fixed-domain salt,
+Argon2id13 with two passes/64 MiB, and padded Original base64. Its existing storage
+round trip compares values derived by the same code; the PAKE non-ASCII case uses
+raw PRS text and does not exercise production Argon2id. Independent byte comparison
+can detect drift that would break provisioned/viewer credential agreement. It
+takes priority over further ledger-history compression. This is pure derivation
+validation; the separately parked connection-start derivation/receive-timeout
+investigation, credential persistence/decoder work and PAKE timing/erasure remain
+parked, with no connection startup or credential storage operations selected.
+
+Primary research: https://doc.libsodium.org/password_hashing/default_phf documents
+the algorithm, salt and cost values required to reproduce a key, explicit
+Argon2id13 selection and allocation failure. R-P1 deliberately fixes its own public
+salt and numeric parameters. RFC 9106 section 5.3 supplies an independent Argon2id
+known answer with secret/associated data and four lanes:
+https://www.rfc-editor.org/rfc/rfc9106.html#section-5.3.
+The reference ABI is documented at
+https://raw.githubusercontent.com/P-H-C/phc-winner-argon2/20190702/include/argon2.h.
+
+Use the pinned disposable Debian VM's libargon2 as the reference, distinct from
+the application builder's libsodium. First require the published RFC vector; then
+derive expected outputs from seventeen source-bound inputs with literal NFC
+expectations. Cover ASCII/case, leading/trailing/space-only and non-ASCII spaces,
+composed/decomposed accents, Hangul/Jamo, reordered combining marks, compatibility
+characters, embedded NUL, emoji and empty refusal. Sixteen nonempty cases use
+Argon2id version 19, two passes, 65,536 KiB, one lane and 32 output bytes. Preserve
+the complete reference output, library digest/package version, source-case digest
+and parameters. No expected output comes from the production derivation function.
+
+The reference runs as guest UID 1000 without capabilities/no-new-privileges, with
+a 45-second deadline and 512-MiB address-space bound. Its completed output is
+mounted read-only into the ordinary zero-NIC compiler/test container. One exact
+integration test calls the actual production public API for every case; Cargo
+metadata verifies optimization level 3 and disabled overflow/debug checks. Its
+30-second deadline, fixed artifact identity, strict result inventory and reference
+file equality prevent partial or stale acceptance. Reuse the existing six-GiB
+guest/six-GiB RAM scratch profile and five-minute VM deadline, with monitored
+admission and joined cleanup. CTE has roughly 30 GiB available memory and empty
+owned run/RAM state. The reference library's availability is still unverified;
+absence must fail explicitly without an alternate implementation or download.
+Shell/Python/JSON syntax and whitespace checks pass; native acceptance is pending.

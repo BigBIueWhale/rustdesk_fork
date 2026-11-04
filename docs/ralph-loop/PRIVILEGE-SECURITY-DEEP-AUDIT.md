@@ -137534,3 +137534,30 @@ listener deltas are zero. Under the shared lock, eighteen exact bounded private
 files are retained and the diagnostic directory retires. Twenty-nine records
 match CTE/TUF. Capsule linux-handoff-1300b391.json is 7,910 bytes, SHA-256
 4069144e74779e29fb2249937121e3021f0b9d56d86799810344035bb81697c4.
+
+Corrected fixture 9cf79e7417edbeb57128b4f823446dda275edaff passes RhZmAHC40g
+in 72.093 capture seconds on the same 89828922 artifact and manifest. Actual
+UID-4001/:77 child 7896 is reaped after its PAM session closes; UID-4003/:78
+child 8060 completes the second CPace/Remote PeerInfo login within 3.947278 seconds
+of the first close request. Kernel UID/record/image/capability/NNP and listener
+ownership checks pass for each child. Actual HOME/USER/LOGNAME/DISPLAY/runtime/
+Xauthority environment and reported PeerInfo usernames match each selected user.
+Supervisor 7888, its start identity/generation, unit invocation, three privileged
+socket identities/kernel peers and durable credential remain; manager restarts=0.
+Both PAM actors and X11 desktops remain live throughout application child retirement.
+
+After the second session closes, its child is reaped and 28 observations span
+three stable seconds with no service-child record or direct listener. The stable
+privileged supervisor then stops with exit zero; process, cgroup and desktop
+retirement pass. No product correction or rebuild was needed. Seatless PAM/logind
+execution is not physical-seat/VT switching, rendered recovery, final packaging,
+other platforms or complete R-S0 acceptance; those remain open and parks unchanged.
+
+Three host listener deltas are zero. Exact launcher/QEMU 1879168/1880902 are absent
+by pidfd; the 4,108,255,232-byte peak bounded RAM workspace, private directory and
+helpers retire. Twelve bounded records match CTE/TUF. Capsule
+linux-handoff-9cf79e74.json is 10,484 bytes, SHA-256
+c62b6f32df4c212068b08031a0fcf968b646e0ab048bfce4df188770ba1a38b9.
+The first generation exercises the retained UID-4001/default desktop paths; the
+second exercises the explicit new UID. Fresh ledger counting follows the concise
+current-state update. No owned runtime remains and no host product executed.

@@ -4870,6 +4870,21 @@ bind source, artifacts and results. No product correction was needed. This prove
 the named manual lifecycle scenario; final packages, other init-manager
 integration, pixels/input and complete R-S0 acceptance remain OPEN.
 
+**Cross-user desktop handoff (`9cf79e74`).** TUF `RhZmAHC40g` reuses artifact
+`89828922` and the shipped unit with actual seatless PAM/logind sessions. Closing
+UID 4001's session and opening UID 4003's replaces the child and completes the
+second authenticated Remote PeerInfo login within 3.948 seconds. Both children
+have the expected UID, home/runtime/display/Xauthority environment and owned
+listener; the old child is reaped. Supervisor PID/start/generation, all three
+privileged endpoint identities and durable credential persist, with zero manager
+restarts. After both sessions close, 28 observations over three seconds find no
+child record or direct listener while both PAM actors and X11 desktops remain
+alive. Ordinary stop exits zero; process/cgroup/desktop and VM/RAM/private cleanup
+pass with three zero listener deltas. `linux-handoff-9cf79e74.json` binds evidence;
+the audit retains the initial observer-ordering failure and correction. No product
+change or rebuild was needed. Physical seat/VT switching, pixels/input, final
+packages, other platforms and complete R-S0 acceptance remain OPEN.
+
 **Live-record recovery refusal (`da985dbc`).** TUF `Spe5rPjrqj` passes five
 exact-binary cases on `fdbab046`: live matching record with pidfds forced
 unavailable, wrong generation with native/unavailable pidfds, and ordinary-server
@@ -10524,7 +10539,7 @@ sandbox implementation and checker-repair history remain in Git.
   | R-S11c-27e | Historical focused behavior: executed-inode identity across rename/unlink, without pathname/argv authority. |
   | R-S11c-27f | Current debug/headless VM `Q4fBwL1Fcy`: manual supervisor crash, exact child reap, dead-record recovery, preserved credential, two Remote logins and graceful stop pass; unrelated sibling survives. Other manager integrations/final artifacts remain OPEN. |
   | R-S11c-27g | Systemd `kljRzPGxIE` and current-artifact `UYXdauLLMZ` pass child/connection retirement, one automatic fresh generation and both Remote logins. Independent manual parent death passes `Q4fBwL1Fcy`; final artifacts remain OPEN. |
-  | R-S11c-27h | Source plus historical elevated-container behavior: descriptor-bound UID/GID/groups, bounded environment, empty live capabilities and no-new-privileges. |
+  | R-S11c-27h | `RhZmAHC40g` passes actual cross-user child replacement, UID/environment/capability/NNP checks and authenticated login under one stable supervisor. Physical seat/VT and final-artifact acceptance remain OPEN. |
   | R-S11c-27i | Historical runtime: seven malformed/ambiguous record classes refused without signal or replacement authority. |
   | R-S11c-27j | Historical separate-Docker behavior: the unrelated sibling survived until its own harness drained it. |
   | R-S11c-27k | SUPERSEDED: the numeric-PID recovery fallback was deleted by R-S11c-27u/R-S11ca; it is unavailable. |
